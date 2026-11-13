@@ -9,6 +9,7 @@ import {
 	importEd25519PublicKey,
 	ecpDefaultGrant,
 	ecpHostOperatorOnlyFeature,
+	ecpLostAfterDeadlineMs,
 	publishedKeyJwk,
 	signFrame,
 	verifyFrame,
@@ -226,8 +227,56 @@ function heartbeatSetting(value: unknown, fallback: number) {
 		: fallback
 }
 
-/** One connection: resolves when the socket closes. */
-export async function runDaemonConnection(input: DaemonInput) {
+type HeldRun = {
+	request: EcpRunRequestBody
+	abort: AbortController
+	committed: boolean
+	committedAt?: number
+}
+
+/**
+ * What outlives one socket. Kody keeps a committed run until its deadline
+ * plus {@link ecpLostAfterDeadlineMs}, so after a drop the next connection
+ * lists it in hello (`heldRuns`) and reports its result.
+ */
+type DaemonRunState = {
+	runs: Map<string, HeldRun>
+	/** Finished runs whose `run.result` Kody has not acked yet. */
+	results: Map<string, { body: Record<string, unknown>; expiresAt: number }>
+	hostFs: EffectiveFs
+	grantFs: Array<{ path: string; mode: string }>
+	/** Sends a queued result over the live connection; null between sockets. */
+	report: ((runId: string) => void) | null
+}
+
+function daemonRunState(): DaemonRunState {
+	return {
+		runs: new Map(),
+		results: new Map(),
+		hostFs: emptyEffectiveFs,
+		grantFs: [],
+		report: null,
+	}
+}
+
+/** Drops results Kody has already ended as lost; returns how many remain. */
+function pruneResults(state: DaemonRunState, now = Date.now()) {
+	for (const [runId, result] of state.results) {
+		if (result.expiresAt <= now) state.results.delete(runId)
+	}
+	return state.results.size
+}
+
+/**
+ * One connection: resolves when the socket closes. Pass the state of the
+ * previous connection so runs in flight carry over a reconnect; a lone
+ * connection has no next socket to report over, so it ends its runs.
+ */
+export async function runDaemonConnection(
+	input: DaemonInput,
+	carried?: DaemonRunState,
+) {
+	const state = carried ?? daemonRunState()
 	const Socket = input.WebSocketImpl ?? globalThis.WebSocket
 	if (!Socket) {
 		throw new Error(
@@ -241,12 +290,10 @@ export async function runDaemonConnection(input: DaemonInput) {
 	url.searchParams.set('ticket', ticket)
 	const ws = new Socket(url.toString())
 	let welcomed = false
-	let grantFs: Array<{ path: string; mode: string }> = []
-	let hostFs: EffectiveFs = emptyEffectiveFs
 	const effectiveFsNow = async () => {
 		if (!input.fs) return emptyEffectiveFs
 		try {
-			return await input.fs.effective(grantFs)
+			return await input.fs.effective(state.grantFs)
 		} catch (error) {
 			input.log(
 				`Host folders are off: ${error instanceof Error ? error.message : String(error)}`,
@@ -269,19 +316,19 @@ export async function runDaemonConnection(input: DaemonInput) {
 				),
 				ecpHostOperatorOnlyFeature,
 				...(input.control ? [daemonControlFeature] : []),
-				...fsFeatures(hostFs),
+				...fsFeatures(state.hostFs),
 			],
 		}
 	}
 	const applyFs = async () => {
 		if (!input.fs) return
-		hostFs = await effectiveFsNow()
-		for (const mount of hostFs.mounts) {
+		state.hostFs = await effectiveFsNow()
+		for (const mount of state.hostFs.mounts) {
 			input.log(
 				`Host folder ${mount.path} is available to runs (${mount.mode}).`,
 			)
 		}
-		for (const refusal of hostFs.refused) {
+		for (const refusal of state.hostFs.refused) {
 			input.log(
 				`Host folder ${refusal.path} is not available: ${refusal.reason} (${layerLabel[refusal.layer]}).`,
 			)
@@ -301,15 +348,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 	let sid = ''
 	let inSeq = 0
 	let outSeq = 0
-	const runs = new Map<
-		string,
-		{
-			request: EcpRunRequestBody
-			abort: AbortController
-			committed: boolean
-			committedAt?: number
-		}
-	>()
+	const runs = state.runs
 	// The grant's limit can only lower what this machine offers.
 	let maxConcurrent = input.maxConcurrent
 	const applyLimits = (grant: unknown) => {
@@ -389,12 +428,20 @@ export async function runDaemonConnection(input: DaemonInput) {
 		acceptingRuns: !input.drainSignal?.aborted && runs.size < maxConcurrent,
 	})
 	let closeWhenDrained = () => {}
+	// A failed send already ends this connection, and the result stays
+	// queued until Kody acks it, so the next hello carries it over.
+	const reportResult = (runId: string) => {
+		const result = state.results.get(runId)
+		if (!result) return
+		void send('run.result', result.body)
+			.then(() => send('status', status()))
+			.then(
+				() => closeWhenDrained(),
+				() => {},
+			)
+	}
 
-	const startRun = async (run: {
-		request: EcpRunRequestBody
-		abort: AbortController
-		committedAt?: number
-	}) => {
+	const startRun = async (run: HeldRun) => {
 		const startedAt = Date.now()
 		const committedAt = run.committedAt ?? startedAt
 		let deadlineHit = false
@@ -407,13 +454,13 @@ export async function runDaemonConnection(input: DaemonInput) {
 		)
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
-			if (input.fs) hostFs = await effectiveFsNow()
+			if (input.fs) state.hostFs = await effectiveFsNow()
 			// Host folders and commands are for the operator's own runs only.
 			const operatorRun = run.request.sharedRun !== true
 			result = await input.execute({
 				request: run.request,
 				// A getter, so a grant.update or policy change narrows runs already in flight.
-				...(input.fs && operatorRun ? { hostFs: () => hostFs } : {}),
+				...(input.fs && operatorRun ? { hostFs: () => state.hostFs } : {}),
 				signal: run.abort.signal,
 				...(input.hostCommands && operatorRun
 					? { hostCommands: input.hostCommands }
@@ -459,18 +506,20 @@ export async function runDaemonConnection(input: DaemonInput) {
 		}
 		runs.delete(run.request.runId)
 		if (input.activity) input.activity.runs = runs.size
-		await send('run.result', {
-			runId: run.request.runId,
-			...outcome,
-			// The local deadline stopped it: a cancel, not a code error.
-			...(deadlineHit && result.isError ? { cancelReason: 'deadline' } : {}),
-			startedAt,
-			endedAt,
-			resultBytes,
-			timing,
+		state.results.set(run.request.runId, {
+			body: {
+				runId: run.request.runId,
+				...outcome,
+				// The local deadline stopped it: a cancel, not a code error.
+				...(deadlineHit && result.isError ? { cancelReason: 'deadline' } : {}),
+				startedAt,
+				endedAt,
+				resultBytes,
+				timing,
+			},
+			expiresAt: run.request.deadline + ecpLostAfterDeadlineMs,
 		})
-		await send('status', status())
-		closeWhenDrained()
+		state.report?.(run.request.runId)
 	}
 
 	const handle = async (frame: EcpFramePayload) => {
@@ -487,7 +536,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 						heartbeatSetting(body.pongTimeoutMs, defaultPongTimeoutMs),
 					)
 				}
-				grantFs = grantFsOf(body.grant)
+				state.grantFs = grantFsOf(body.grant)
 				await applyFs()
 				input.onPaused?.(pauseOf(body.paused))
 				welcomed = true
@@ -498,13 +547,24 @@ export async function runDaemonConnection(input: DaemonInput) {
 					grantVersion: body.grantVersion,
 					status: status(),
 					// Kody ends committed runs this daemon no longer holds right away.
-					heldRuns: [...runs.values()]
-						.filter((run) => run.committed)
-						.map((run) => run.request.runId),
+					// Finished ones count: their results follow as run.result.
+					heldRuns: [
+						...[...runs.values()]
+							.filter((run) => run.committed)
+							.map((run) => run.request.runId),
+						...(pruneResults(state) > 0 ? state.results.keys() : []),
+					],
 					pendingResults: [],
 				})
-				if (!connectionEnded) input.hostCommands?.setReporter(reporter)
+				if (!connectionEnded) {
+					input.hostCommands?.setReporter(reporter)
+					state.report = reportResult
+					for (const queued of state.results.keys()) reportResult(queued)
+				}
 				input.log('Connected. Waiting for runs.')
+				return
+			case 'run.result.ack':
+				state.results.delete(runId)
 				return
 			case 'run.request': {
 				const request = body as unknown as EcpRunRequestBody
@@ -534,7 +594,9 @@ export async function runDaemonConnection(input: DaemonInput) {
 				input.log(
 					`Running ${runId} for ${run.request.requestedBy.handle ?? run.request.requestedBy.userId}.`,
 				)
-				void startRun(run)
+				void startRun(run).catch((error) =>
+					input.log(`Run ${runId} could not finish: ${String(error)}`),
+				)
 				return
 			}
 			case 'run.abort':
@@ -549,7 +611,7 @@ export async function runDaemonConnection(input: DaemonInput) {
 			}
 			case 'grant.update': {
 				applyGrant(body.grant)
-				grantFs = grantFsOf(body.grant)
+				state.grantFs = grantFsOf(body.grant)
 				const before = JSON.stringify(capabilities())
 				const limitsChanged = applyLimits(body.grant)
 				await refreshFs(before)
@@ -626,7 +688,12 @@ export async function runDaemonConnection(input: DaemonInput) {
 			ping = setInterval(() => {
 				if (ws.readyState !== ws.OPEN || pongTimer) return
 				const sentAt = Date.now()
-				ws.send(ecpPingFrame)
+				try {
+					ws.send(ecpPingFrame)
+				} catch {
+					closeAndSettle(heartbeatTimeoutCloseCode, 'heartbeat send failed')
+					return
+				}
 				pongTimer = setTimeout(() => {
 					pongTimer = undefined
 					if (lastInboundAt >= sentAt) return
@@ -657,7 +724,16 @@ export async function runDaemonConnection(input: DaemonInput) {
 			unsubscribeFs?.()
 			input.signal?.removeEventListener('abort', shutdown)
 			input.drainSignal?.removeEventListener('abort', drain)
-			for (const run of runs.values()) run.abort.abort()
+			if (state.report === reportResult) state.report = null
+			// Kody ends uncommitted runs itself. Committed ones keep running for
+			// the next connection unless nothing will carry them over.
+			for (const [runId, run] of runs) {
+				if (!run.committed || !carried || input.signal?.aborted) {
+					run.abort.abort()
+				}
+				if (!run.committed) runs.delete(runId)
+			}
+			if (input.activity) input.activity.runs = runs.size
 			resolve({ code, reason })
 		}
 		// Some runtimes never emit `close` for a socket closed mid-handshake.
@@ -685,6 +761,8 @@ export async function runDaemonConnection(input: DaemonInput) {
 		closeWhenDrained = () => {
 			if (!input.drainSignal?.aborted) return
 			if ([...runs.values()].some((run) => run.committed)) return
+			// Results from before a drop go out after the welcome.
+			if (!welcomed && pruneResults(state) > 0) return
 			if (input.drainHold?.()) {
 				holdTimer ??= setInterval(
 					() => closeWhenDrained(),
@@ -769,13 +847,45 @@ function peekSid(p: string) {
  * drained, or Kody refuses this context for good (revoked or deleted).
  */
 export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
+	const state = daemonRunState()
+	// Between sockets no connection watches local policy, so a folder removed
+	// while offline must still leave the runs that outlive the drop.
+	const unsubscribeFs = input.fs?.onChange?.(() => {
+		if (state.report || !input.fs) return
+		void input.fs.effective(state.grantFs).then(
+			(next) => {
+				state.hostFs = next
+			},
+			() => {
+				state.hostFs = emptyEffectiveFs
+			},
+		)
+	})
+	try {
+		return await reconnectLoop(input, state)
+	} finally {
+		unsubscribeFs?.()
+		for (const run of state.runs.values()) run.abort.abort()
+	}
+}
+
+async function reconnectLoop(
+	input: DaemonInput,
+	state: DaemonRunState,
+): Promise<DaemonStop> {
 	let attempt = 0
-	const stopping = () => input.signal?.aborted || input.drainSignal?.aborted
+	// A drain still reconnects to report runs a dropped socket left behind.
+	const holding = () => state.runs.size > 0 || pruneResults(state) > 0
+	const stopping = () =>
+		input.signal?.aborted || (input.drainSignal?.aborted && !holding())
 	while (!stopping()) {
 		const startedAt = Date.now()
 		try {
-			const closed = await runDaemonConnection(input)
+			const closed = await runDaemonConnection(input, state)
 			if (closed.reason === 'revoked') return 'revoked'
+			if (input.drainSignal?.aborted && closed.reason === 'shutdown') {
+				return 'shutdown'
+			}
 			if (stopping()) return 'shutdown'
 			// Reconnecting would replace the other daemon, which would replace
 			// this one again: stand down once instead of flapping.
@@ -785,6 +895,11 @@ export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 			input.log(
 				`Disconnected (${closed.code}${closed.reason ? ` ${closed.reason}` : ''}). Reconnecting.`,
 			)
+			if (state.runs.size > 0) {
+				input.log(
+					`${state.runs.size} run(s) in flight keep running and report over the next connection.`,
+				)
+			}
 		} catch (error) {
 			if (stopping()) return 'shutdown'
 			// Retrying cannot help until the person turns the experiment on.
@@ -806,7 +921,7 @@ export async function runDaemon(input: DaemonInput): Promise<DaemonStop> {
 		const delay = Math.min(60_000, 1000 * 2 ** Math.min(attempt, 6))
 		await abortableDelay(
 			delay * (0.5 + Math.random() / 2),
-			input.drainSignal
+			input.drainSignal && !holding()
 				? AbortSignal.any(
 						[input.signal, input.drainSignal].filter(
 							(signal): signal is AbortSignal => signal !== undefined,

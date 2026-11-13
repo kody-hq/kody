@@ -27,6 +27,7 @@ import {
 	ecpLostAfterDeadlineMs,
 	ecpMaxConcurrentRunsCap,
 	ecpMaxRunLogLines,
+	ecpCancelReasons,
 	ecpPingFrame,
 	ecpPongFrame,
 	ecpProtocolVersion,
@@ -857,7 +858,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					Array.isArray(features) && features.includes(daemonControlFeature)
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
-				await this.#reconcileHeldRuns(body)
+				await this.#reconcileHeldRuns(ws, body)
 				await this.#recordCapabilities(body)
 				this.ctx.waitUntil(this.#drainQueue())
 				return
@@ -1736,8 +1737,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	 * A daemon that lists the committed runs it still holds in hello lets the
 	 * rest end now instead of at deadline + grace. Older daemons omit
 	 * `heldRuns`, so the alarm still decides for them. A run is never re-run.
+	 * A held run Kody already ended while the daemon was away (a cancel it
+	 * missed, or lost at its deadline) gets a `run.cancel` so it stops.
 	 */
-	async #reconcileHeldRuns(body: Record<string, unknown>) {
+	async #reconcileHeldRuns(ws: WebSocket, body: Record<string, unknown>) {
 		if (!Array.isArray(body.heldRuns)) return
 		const held = new Set(
 			body.heldRuns.filter((id): id is string => typeof id === 'string'),
@@ -1761,6 +1764,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					receivedAt,
 				)
 			}
+		}
+		for (const runId of held) {
+			const run = this.#run(runId)
+			if (run?.state !== 'cancelled' && run?.state !== 'lost') continue
+			const reason =
+				ecpCancelReasons.find((known) => known === run.cancel_reason) ??
+				'deadline'
+			await this.#send(ws, 'run.cancel', { runId, reason })
 		}
 		for (const run of committed) {
 			if (held.has(run.run_id)) continue
