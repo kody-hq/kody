@@ -1280,7 +1280,7 @@ class McpClientHubBase extends DurableObject<Env> {
 				throw error
 			}
 			if (oauthStorageSnapshot.size > 0) {
-				await this.ctx.storage
+				await this.oauthStorage
 					.put(Object.fromEntries(oauthStorageSnapshot))
 					.catch(() => {})
 			}
