@@ -1,6 +1,7 @@
 const config = require('./electron-builder.cjs')
 module.exports = {
 	...config,
+	toolsets: { winCodeSign: '1.1.0' },
 	win: {
 		...config.win,
 		target: ['appx'],
