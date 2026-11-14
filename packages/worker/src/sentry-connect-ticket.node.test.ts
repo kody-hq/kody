@@ -235,4 +235,23 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 	expect(aliases.first.authorization).toBe('[redacted]')
 	expect(aliases.second.authorization).toBe('[redacted]')
 	expect(aliases.first).toBe(aliases.second)
+
+	const cyclic: Record<string, unknown> = {
+		child: {} as Record<string, unknown>,
+		authorization: 'Bearer cycle-secret',
+	}
+	;(cyclic.child as Record<string, unknown>).ref = cyclic
+	Object.freeze(cyclic)
+	const cyclicEvent = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: cyclic,
+	})
+	const cyclicExtra = cyclicEvent.extra as {
+		authorization: string
+		child: { ref: { authorization: string } }
+	}
+	expect(cyclicExtra.authorization).toBe('[redacted]')
+	expect(cyclicExtra.child.ref).toBe(cyclicExtra)
+	expect(cyclicExtra.child.ref.authorization).toBe('[redacted]')
+	expect(cyclicExtra).not.toBe(cyclic)
 })

@@ -138,92 +138,109 @@ function isAssignableProperty(target: object, key: PropertyKey) {
 }
 
 /**
- * Write `next` onto `target[key]`. Skips when the value is unchanged *and* the
- * property is a writable data field. Getter-only / non-writable properties
- * always materialize `next` onto a plain mutable clone: later JSON reads must
- * not re-invoke a getter that returns a fresh unredacted object. Never throws.
- * When a write is blocked and `dropIfBlocked` is set (sensitive fields), delete
- * the key when configurable; otherwise clone so secrets do not stay on the
- * payload.
+ * True when in-place mutation is unsafe: frozen / non-extensible hosts, or any
+ * own enumerable getter-only / non-writable key. Those need a plain clone shell
+ * registered in `seen` *before* descending so cycle back-edges resolve to the
+ * sanitized replacement instead of the original.
  */
-function writeRedactedProperty(
-	target: object,
+function needsRedactionCloneShell(value: object) {
+	if (Object.isFrozen(value) || !Object.isExtensible(value)) return true
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			if (!isAssignableProperty(value, index)) return true
+		}
+		return false
+	}
+	for (const key of Object.keys(value as Record<string, unknown>)) {
+		if (!isAssignableProperty(value, key)) return true
+	}
+	return false
+}
+
+/**
+ * Assign `next` onto a mutable host; never throws. When `inPlace`, skip writes
+ * that did not change the value. Clone shells start empty, so they must always
+ * receive the field even when the child was redacted in place (`next === child`).
+ */
+function assignRedacted(
+	target: Record<string, unknown> | unknown[],
 	key: PropertyKey,
 	next: unknown,
 	previous: unknown,
-	options: {
-		dropIfBlocked: boolean
-		ensureMutable: () => Record<string, unknown>
-	},
+	inPlace: boolean,
 ): void {
-	const assignable = isAssignableProperty(target, key)
-	// Unchanged writable data props need no write. Non-writable / getter-only
-	// props still need a snapshot even when `next === previous` (in-place child
-	// mutation) so serialization cannot re-read the accessor.
-	if (next === previous && assignable) return
-	if (assignable) {
-		try {
-			if (Reflect.set(target, key, next)) return
-		} catch {
-			// Fall through to drop / clone.
-		}
+	if (inPlace && next === previous) return
+	try {
+		Reflect.set(target, key, next)
+	} catch {
+		// Mutable hosts from clone shells / plain objects should not throw;
+		// ignore rather than abort beforeSend.
 	}
-	if (options.dropIfBlocked) {
-		try {
-			if (Reflect.deleteProperty(target, key)) return
-		} catch {
-			// Non-configurable; clone below.
-		}
-	}
-	// Plain clone so redacted values apply without touching accessors / frozen
-	// props on the original. Prefer this over silently leaving secrets.
-	options.ensureMutable()[String(key)] = next
 }
 
 /** Original object → sanitized replacement (identity when mutated in place). */
 type RedactionSeen = WeakMap<object, unknown>
+
+function redactRecordFields(
+	source: Record<string, unknown>,
+	host: Record<string, unknown>,
+	depth: number,
+	seen: RedactionSeen,
+	queryStringMode: boolean,
+	inPlace: boolean,
+): void {
+	for (const key of Object.keys(source)) {
+		const decodedKey = queryStringMode
+			? decodeQueryParamName(key).toLowerCase()
+			: key.toLowerCase()
+		const sensitive = queryStringMode
+			? sensitiveQueryParamNames.has(decodedKey) ||
+				sensitiveFieldNames.has(decodedKey)
+			: sensitiveFieldNames.has(decodedKey)
+		if (sensitive) {
+			const previous = source[key]
+			if (previous !== undefined && previous !== null) {
+				assignRedacted(host, key, redactedValue, previous, inPlace)
+			}
+			continue
+		}
+		const child = source[key]
+		if (
+			!queryStringMode &&
+			key === 'query_string' &&
+			child !== null &&
+			typeof child === 'object' &&
+			!Array.isArray(child)
+		) {
+			const redactedQuery = redactQueryStringObject(
+				child as Record<string, unknown>,
+				depth,
+				seen,
+			)
+			assignRedacted(host, key, redactedQuery, child, inPlace)
+			continue
+		}
+		const next = redactSentryValue(child, depth + 1, seen)
+		assignRedacted(host, key, next, child, inPlace)
+	}
+}
 
 function redactQueryStringObject(
 	query: Record<string, unknown>,
 	depth: number,
 	seen: RedactionSeen,
 ): Record<string, unknown> {
-	let host: Record<string, unknown> = query
-	let cloned = false
-	const ensureMutable = () => {
-		if (cloned) return host
-		host = { ...query }
-		cloned = true
+	if (seen.has(query)) return seen.get(query) as Record<string, unknown>
+	if (needsRedactionCloneShell(query)) {
+		const host: Record<string, unknown> = {}
 		seen.set(query, host)
 		seen.set(host, host)
+		redactRecordFields(query, host, depth, seen, true, false)
 		return host
 	}
-	for (const key of Object.keys(host)) {
-		// Keep sensitiveFieldNames coverage (x-api-key, authorization, …) that
-		// generic object walking had before this query_string special case.
-		// Decode before both lookups so `%78-api-key` matches `x-api-key`.
-		const decodedKey = decodeQueryParamName(key).toLowerCase()
-		if (
-			sensitiveQueryParamNames.has(decodedKey) ||
-			sensitiveFieldNames.has(decodedKey)
-		) {
-			const previous = host[key]
-			if (previous !== undefined && previous !== null) {
-				writeRedactedProperty(host, key, redactedValue, previous, {
-					dropIfBlocked: true,
-					ensureMutable,
-				})
-			}
-			continue
-		}
-		const previous = host[key]
-		const next = redactSentryValue(previous, depth + 1, seen)
-		writeRedactedProperty(host, key, next, previous, {
-			dropIfBlocked: false,
-			ensureMutable,
-		})
-	}
-	return host
+	seen.set(query, query)
+	redactRecordFields(query, query, depth, seen, true, true)
+	return query
 }
 
 function redactSentryValue(
@@ -235,90 +252,46 @@ function redactSentryValue(
 	if (value === null || typeof value !== 'object') return value
 	if (seen.has(value)) return seen.get(value)
 	if (depth >= maxRedactionDepth) return redactedValue
-	// Provisional: in-place result is the original until a clone replaces it.
-	seen.set(value, value)
 	if (Array.isArray(value)) {
+		if (needsRedactionCloneShell(value)) {
+			const copy: unknown[] = []
+			seen.set(value, copy)
+			seen.set(copy, copy)
+			for (let index = 0; index < value.length; index++) {
+				copy[index] = redactSentryValue(value[index], depth + 1, seen)
+			}
+			return copy
+		}
+		seen.set(value, value)
 		for (let index = 0; index < value.length; index++) {
 			const previous = value[index]
 			const next = redactSentryValue(previous, depth + 1, seen)
-			if (next === previous && isAssignableProperty(value, index)) continue
-			if (isAssignableProperty(value, index)) {
-				try {
-					if (Reflect.set(value, index, next)) continue
-				} catch {
-					// Frozen / non-writable index: replace the array below.
-				}
-			}
-			// Non-writable index: return a shallow copy with the redaction applied
-			// so secrets in array slots are not left intact.
-			const copy = value.slice()
-			copy[index] = next
-			for (let rest = index + 1; rest < copy.length; rest++) {
-				const restPrevious = copy[rest]
-				const restNext = redactSentryValue(restPrevious, depth + 1, seen)
-				if (restNext !== restPrevious) copy[rest] = restNext
-			}
-			seen.set(value, copy)
-			seen.set(copy, copy)
-			return copy
+			assignRedacted(value, index, next, previous, true)
 		}
 		return value
 	}
 	const original = value as Record<string, unknown>
-	let host: Record<string, unknown> = original
-	let cloned = false
-	const ensureMutable = () => {
-		if (cloned) return host
-		host = { ...host }
-		cloned = true
+	if (needsRedactionCloneShell(original)) {
+		// Register the empty shell before children so cycle back-edges and
+		// shared aliases resolve to this sanitized object, not the original.
+		const host: Record<string, unknown> = {}
 		seen.set(original, host)
 		seen.set(host, host)
+		redactRecordFields(original, host, depth, seen, false, false)
 		return host
 	}
-	for (const key of Object.keys(host)) {
-		if (sensitiveFieldNames.has(key.toLowerCase())) {
-			const previous = host[key]
-			if (previous !== undefined && previous !== null) {
-				writeRedactedProperty(host, key, redactedValue, previous, {
-					dropIfBlocked: true,
-					ensureMutable,
-				})
-			}
-			continue
-		}
-		const child = host[key]
-		if (
-			key === 'query_string' &&
-			child !== null &&
-			typeof child === 'object' &&
-			!Array.isArray(child)
-		) {
-			const redactedQuery = redactQueryStringObject(
-				child as Record<string, unknown>,
-				depth,
-				seen,
-			)
-			writeRedactedProperty(host, key, redactedQuery, child, {
-				dropIfBlocked: false,
-				ensureMutable,
-			})
-			continue
-		}
-		const next = redactSentryValue(child, depth + 1, seen)
-		writeRedactedProperty(host, key, next, child, {
-			dropIfBlocked: false,
-			ensureMutable,
-		})
-	}
-	return host
+	seen.set(original, original)
+	redactRecordFields(original, original, depth, seen, false, true)
+	return original
 }
 
 /**
  * Deep-redact a Sentry payload: strings, sensitive field names, auth schemes,
  * and secret query params (events, transactions, and breadcrumbs). Mutates in
- * place when properties are writable; returns a plain clone when getter-only or
- * frozen properties block assignment so redaction cannot throw or silently skip
- * secrets. Clones are recorded so later aliases reuse the sanitized replacement.
+ * place when every own property is writable; otherwise builds a plain clone
+ * shell first (registered in a WeakMap before descending) so getter-only /
+ * frozen properties and cycle back-edges cannot throw or leave secrets on the
+ * original identity.
  */
 export function redactKodyCredentialsInSentryEvent<T extends object>(
 	event: T,
