@@ -10,8 +10,8 @@ import {
 	buildWebhookDispatchFailureLogs,
 	dispatchWebhookInvocation,
 	markAckWebhookDelivery,
+	startAckWebhookDeliveryAttempt,
 	webhookAckQueuedHoldMs,
-	webhookAckStartedHoldMs,
 	readWebhookInvocationError,
 	readWebhookInvocationResult,
 	recordWebhookDelivery,
@@ -34,6 +34,25 @@ import { stripUntrustedWebhookSyntheticFields } from './synthetic.ts'
 const webhookDispatchRetryDelaySeconds = 30
 /** Matches `kody-webhook-dispatch` consumer `max_retries` in wrangler.jsonc. */
 export const webhookDispatchMaxRetries = 10
+
+const webhookDispatchDeferralBaseSeconds = 5
+const webhookDispatchDeferralMaxSeconds = 300
+
+/**
+ * How long a delivery waits before the consumer looks at it again after its
+ * owner was at the started limit. Doubles per deferral, with jitter so one
+ * owner's backlog does not come back all at once.
+ */
+export function webhookDispatchDeferralDelaySeconds(
+	deferrals: number,
+	random: () => number = Math.random,
+) {
+	const base = Math.min(
+		webhookDispatchDeferralMaxSeconds,
+		webhookDispatchDeferralBaseSeconds * 2 ** Math.min(deferrals, 10),
+	)
+	return Math.ceil(base / 2 + random() * (base / 2))
+}
 
 function resolveWebhookDispatchInvocation(
 	message: WebhookDispatchQueueMessage,
@@ -236,13 +255,45 @@ export async function handleWebhookDispatchQueue(
 		}
 		const delivery = ackDeliveryFromMessage(message)
 		const attemptStartedAt = new Date().toISOString()
-		await markAckWebhookDelivery({
+		const priorAttempts = message.priorAttempts ?? 0
+		const attempts = priorAttempts + queueMessage.attempts
+		const started = await startAckWebhookDeliveryAttempt({
 			env,
 			delivery,
-			state: 'started',
-			holdMs: webhookAckStartedHoldMs,
-			attempts: queueMessage.attempts,
+			attempts,
 		})
+		if (!started) {
+			// Re-send instead of retry(): a retry counts toward max_retries, so a
+			// long wait behind the owner's own backlog would dead-letter it.
+			const deferrals = message.deferrals ?? 0
+			try {
+				await env.WEBHOOK_DISPATCH_QUEUE.send(
+					{
+						...message,
+						deferrals: deferrals + 1,
+						priorAttempts: attempts - 1,
+					} satisfies WebhookDispatchQueueMessage,
+					{ delaySeconds: webhookDispatchDeferralDelaySeconds(deferrals) },
+				)
+			} catch (error) {
+				console.error('webhook-dispatch-deferral-send-failed', {
+					queueMessageId: queueMessage.id,
+					endpointId: message.endpoint.id,
+					error,
+				})
+				queueMessage.retry({ delaySeconds: webhookDispatchRetryDelaySeconds })
+				continue
+			}
+			await markAckWebhookDelivery({
+				env,
+				delivery,
+				state: 'queued',
+				holdMs: webhookAckQueuedHoldMs,
+				attempts: attempts - 1,
+			})
+			queueMessage.ack()
+			continue
+		}
 		try {
 			const hydrated = await hydrateWebhookDispatchQueueMessage({
 				message,
@@ -276,7 +327,7 @@ export async function handleWebhookDispatchQueue(
 						error: 'ack_queue_payload_missing',
 						payloadBytes: message.payloadBytes,
 						invocationId: message.deliveryId,
-						attempts: queueMessage.attempts,
+						attempts,
 						startedAt: missingStartedAt,
 						receivedAt: message.receivedAt,
 						logs: [
@@ -303,7 +354,7 @@ export async function handleWebhookDispatchQueue(
 				continue
 			}
 			const outcome = await processWebhookDispatch(hydrated, env, {
-				attempts: queueMessage.attempts,
+				attempts,
 			})
 			if (outcome === 'retry') {
 				queueMessage.retry({ delaySeconds: webhookDispatchRetryDelaySeconds })
@@ -331,7 +382,7 @@ export async function handleWebhookDispatchQueue(
 			const lastError = `dispatch_processing_failed: ${
 				error instanceof Error ? error.message : String(error)
 			}`.slice(0, 500)
-			if (queueMessage.attempts >= webhookDispatchMaxRetries) {
+			if (attempts >= webhookDispatchMaxRetries) {
 				try {
 					await recordWebhookDelivery({
 						env,
@@ -342,7 +393,7 @@ export async function handleWebhookDispatchQueue(
 						error: 'invocation_retry_exhausted',
 						payloadBytes: message.payloadBytes,
 						invocationId: message.deliveryId,
-						attempts: queueMessage.attempts,
+						attempts,
 						startedAt: attemptStartedAt,
 						receivedAt: message.receivedAt,
 						invocationErrorCode: 'dispatch_processing_failed',
@@ -364,7 +415,7 @@ export async function handleWebhookDispatchQueue(
 				delivery,
 				state: 'queued',
 				holdMs: webhookAckQueuedHoldMs,
-				attempts: queueMessage.attempts,
+				attempts,
 				lastError,
 			})
 			queueMessage.retry({ delaySeconds: webhookDispatchRetryDelaySeconds })

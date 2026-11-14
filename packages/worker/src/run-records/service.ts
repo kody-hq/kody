@@ -418,6 +418,44 @@ export async function ensureRunRecordStarted(input: {
 }
 
 /**
+ * Start a webhook delivery attempt unless `limit` of the owner's other
+ * deliveries are already started. Fails open (`started: true`) when the run
+ * log is unavailable, so a run-log outage never stalls deliveries.
+ */
+export async function startWebhookDeliveryAttemptRecord(input: {
+	env: Env
+	handle: RunRecordHandle | null
+	staleAfter: string
+	limit: number
+}): Promise<{ started: boolean; inFlight: number | null }> {
+	const handle = input.handle
+	if (!handle || handle.persistence !== 'eager' || !runLogBinding(input.env)) {
+		return { started: true, inFlight: null }
+	}
+	try {
+		return await runLogRpc({
+			env: input.env,
+			userId: handle.userId,
+		}).startWebhookDeliveryAttempt({
+			run: buildRunRow({
+				handle,
+				status: 'running',
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				updatedAt: handle.startedAt,
+			}),
+			staleAfter: input.staleAfter,
+			limit: input.limit,
+		})
+	} catch (error) {
+		console.warn('run-record-webhook-attempt-start-failed', error)
+		return { started: true, inFlight: null }
+	}
+}
+
+/**
  * Persist the handle's current metadata onto its still-running row, so keyed
  * retries that land mid-run see it. A finished row is left alone. Never throws.
  */

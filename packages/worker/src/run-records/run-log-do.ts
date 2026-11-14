@@ -2663,6 +2663,72 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
+	 * Start a webhook delivery attempt only while fewer than `limit` of this
+	 * owner's other deliveries are started. A started delivery is a `running`
+	 * webhook row whose metadata state is `started` and whose hold has not
+	 * lapsed, so a finished, requeued, or killed attempt frees its slot without
+	 * a release call. DO RPCs are serialized, so count-then-start is race-free.
+	 *
+	 * A delivery whose accepted or queued hold lapsed while it waited was
+	 * healed to interrupted; its attempt is real, so the row goes back to
+	 * `running` and takes a slot (the finish replaces it as usual). A row that
+	 * finished with a real outcome is left alone, so a redelivery after the
+	 * finish still finds that outcome.
+	 */
+	async startWebhookDeliveryAttempt(input: {
+		run: RunLogRowInput
+		staleAfter: string
+		limit: number
+	}): Promise<{ started: boolean; inFlight: number }> {
+		const inFlight =
+			Number(
+				this.ctx.storage.sql
+					.exec<{ count: number }>(
+						`SELECT COUNT(*) AS count FROM runs
+						WHERE status = 'running' AND surface = 'webhook' AND id != ?
+							AND stale_after > ?
+							AND json_extract(metadata_json, '$.state') = 'started'`,
+						input.run.id,
+						new Date().toISOString(),
+					)
+					.one().count,
+			) || 0
+		if (inFlight >= input.limit) return { started: false, inFlight }
+		const previous = this.getRunStatusAndStartedAt(input.run.id)
+		const healed =
+			previous?.status === 'error' &&
+			this.ctx.storage.sql
+				.exec<{ error_name: string | null }>(
+					`SELECT error_name FROM runs WHERE id = ? LIMIT 1`,
+					input.run.id,
+				)
+				.toArray()[0]?.error_name === runRecordPlatformInterruptedErrorName
+		if (previous && healed) {
+			this.transactionSyncWithMetaCache(() => {
+				this.upsertRun(input.run, 'replace')
+				this.applyRunDayCountTransition({
+					previousStatus: previous.status,
+					previousStartedAt: previous.startedAt,
+					run: input.run,
+				})
+			})
+			this.retentionIdleConfirmed = false
+			this.retentionAlarmArmed = false
+			this.invalidateReadMemos()
+			this.resetRetentionEmptyBackoff()
+		} else {
+			this.insertRunningRun(input.run)
+		}
+		this.holdRunningUntil(input.run.id, input.staleAfter)
+		await this.updateRunningMetadata({
+			runId: input.run.id,
+			metadataJson: input.run.metadataJson,
+		})
+		await this.ensureRetentionAlarm()
+		return { started: true, inFlight }
+	}
+
+	/**
 	 * Atomically claim an idempotency key (or return the existing owner). DO
 	 * RPCs are serialized, so select-then-insert here is race-free without a
 	 * separate lock. Callers that need keyed execute replay use this instead of
@@ -5366,6 +5432,11 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	deleteRunIfRunning: (input: {
 		runId: string
 	}) => Promise<{ deleted: boolean }>
+	startWebhookDeliveryAttempt: (input: {
+		run: RunLogRowInput
+		staleAfter: string
+		limit: number
+	}) => Promise<{ started: boolean; inFlight: number }>
 	updateRunningMetadata: (input: {
 		runId: string
 		metadataJson: string

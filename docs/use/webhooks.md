@@ -319,19 +319,25 @@ Every ack delivery Kody answers with **202** already has a row in
 `webhookDeliveryList` and Activity, with the same id across every retry. Its
 `state` moves through:
 
-| `state`     | `outcome`   | Meaning                                                                                                       |
-| ----------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
-| `accepted`  | `pending`   | Recorded at ingress before the 202, then waiting on the shared dispatch queue.                                |
-| `queued`    | `pending`   | Waiting to retry after an attempt failed before your export finished. `error` holds that attempt's reason.    |
-| `started`   | `pending`   | A consumer attempt is running: payload hydration, package load, then your export. `attempts` counts them.     |
-| `succeeded` | `delivered` | The export returned.                                                                                          |
-| `failed`    | `failed`    | The export failed, a step before it failed for good, retries ran out, or the attempt was killed. Has `error`. |
-| `rejected`  | `rejected`  | Refused at ingress (signature, enablement, size, replay). Never queued.                                       |
+| `state`     | `outcome`   | Meaning                                                                                                                                           |
+| ----------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `accepted`  | `pending`   | Recorded at ingress before the 202, then waiting on the shared dispatch queue.                                                                    |
+| `queued`    | `pending`   | Waiting to retry after an attempt failed before your export finished (`error` holds that attempt's reason), or waiting for the per-account limit. |
+| `started`   | `pending`   | A consumer attempt is running: payload hydration, package load, then your export. `attempts` counts them.                                         |
+| `succeeded` | `delivered` | The export returned.                                                                                                                              |
+| `failed`    | `failed`    | The export failed, a step before it failed for good, retries ran out, or the attempt was killed. Has `error`.                                     |
+| `rejected`  | `rejected`  | Refused at ingress (signature, enablement, size, replay). Never queued.                                                                           |
 
 Latency: a delivery usually starts within seconds, but ack work shares one queue
 across all accounts, so under load `accepted` can last several minutes. Treat
 ack mode as at-least-once and eventually-run, not real-time; use `sync` when the
 caller must see the result.
+
+Per-account limit: one account runs at most 4 ack deliveries at a time. More
+than that wait in `queued` (no `error`) and start as earlier ones finish, with a
+wait that grows from a few seconds up to 5 minutes between checks. Waiting this
+way does not use up retries. A burst from one account does not delay other
+accounts' deliveries.
 
 Retries: failures before your export runs (payload storage, artifact or package
 load, a crashed attempt) put the delivery back in `queued` and retry about every
