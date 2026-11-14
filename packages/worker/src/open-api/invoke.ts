@@ -19,6 +19,10 @@ import {
 	capabilityNameForOperation,
 } from './operations.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
+import {
+	assertNativeOutputMatchesSchema,
+	shouldCheckNativeOutput,
+} from './native-output-check.ts'
 
 /**
  * CapabilityProxy native routes (`org:execute`). Their observe-only
@@ -128,10 +132,16 @@ async function dispatch(input: {
 				{ env: ctx.env, request: ctx.callerContext.request },
 				operation.permission,
 			)
-			return nativeApiOperationDefinitions[operation.operationId].handler(
-				params,
-				ctx,
-			)
+			const definition = nativeApiOperationDefinitions[operation.operationId]
+			const result = await definition.handler(params, ctx)
+			if (shouldCheckNativeOutput(ctx.env)) {
+				assertNativeOutputMatchesSchema({
+					operationId: operation.operationId,
+					outputSchema: definition.outputSchema,
+					result,
+				})
+			}
+			return result
 		}
 		case 'capability': {
 			const capability = await resolveCapability(operation)
