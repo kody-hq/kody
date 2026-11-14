@@ -80,7 +80,7 @@ export class AccountDeletionWritersActiveError extends McpCallerError {
 				? ''
 				: ` Held by: ${named}${unnamed > 0 ? `, and ${unnamed} more` : ''}.`
 		super(
-			`Deletion is waiting for ${activeWriteCount} write(s) on this account to finish.${holders} Nothing was deleted. Retry in a few seconds; a write that stopped without finishing stops blocking within ${Math.round(writeLeaseTtlMs / 60_000)} minutes.`,
+			`Deletion is waiting for ${activeWriteCount} write(s) on this account to finish.${holders} The delete did not finish. Retry in a few seconds; a write that stopped without finishing stops blocking within ${Math.round(writeLeaseTtlMs / 60_000)} minutes.`,
 		)
 		this.name = 'AccountDeletionWritersActiveError'
 		this.activeWriteCount = activeWriteCount

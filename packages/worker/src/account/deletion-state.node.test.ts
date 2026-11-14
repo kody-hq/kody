@@ -1073,7 +1073,7 @@ test('a deletion refused by active writes names the holders and is a caller conf
 		nowMs,
 	)
 	expect(error.message).toBe(
-		'Deletion is waiting for 3 write(s) on this account to finish. Held by: packagePublish (started 12s ago), packageSave (started 5s ago), and 1 more. Nothing was deleted. Retry in a few seconds; a write that stopped without finishing stops blocking within 2 minutes.',
+		'Deletion is waiting for 3 write(s) on this account to finish. Held by: packagePublish (started 12s ago), packageSave (started 5s ago), and 1 more. The delete did not finish. Retry in a few seconds; a write that stopped without finishing stops blocking within 2 minutes.',
 	)
 	expect(isMcpCallerError(error)).toBe(true)
 })
