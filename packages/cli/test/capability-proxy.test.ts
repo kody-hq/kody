@@ -347,6 +347,21 @@ test('checkCredentialCallMap preflights picks and surfaces structured failures',
 	)
 })
 
+test('checkCredentialCallMap checks picks in the selected org', async () => {
+	const ok = respondWith(200, { result: { ok: true, value: {} } })
+	await checkCredentialCallMap({
+		apiUrl: 'https://api.kody.codes',
+		token,
+		fetchFn: ok.fetchFn,
+		org: 'team',
+		credentials: { youtube: 'channel' },
+	})
+	assert.equal(
+		new URL(ok.requests[0]?.url ?? '').searchParams.get('org'),
+		'team',
+	)
+})
+
 test('callCapabilityProxy surfaces capability errors from string or object bodies', async () => {
 	for (const body of [
 		{ error: 'Unknown capability' },
