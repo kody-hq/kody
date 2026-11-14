@@ -26,6 +26,7 @@ const {
 	runWithRetry,
 	sleepSync,
 } = require('./release-retry.cjs')
+const { assertAppInstaller } = require('./win-appinstaller.cjs')
 
 // Uploads only the assets the draft is missing, then publishes it as latest
 // only when every expected asset and update feed is present and consistent.
@@ -256,30 +257,30 @@ function publishRelease({
 		rmSync(copy, { force: true })
 		return hash
 	}
+	const text = (name) => {
+		const asset = assets.find((candidate) => candidate.name === name)
+		const file = local.get(name)
+		if (file && digests.get(name) === asset.digest)
+			return readFileSync(file, 'utf8')
+		const copy = join(workDir, name)
+		gh(
+			[
+				'api',
+				'-H',
+				'Accept: application/octet-stream',
+				`repos/${repo}/releases/assets/${asset.id}`,
+			],
+			{ toFile: copy },
+		)
+		return readFileSync(copy, 'utf8')
+	}
 	try {
+		for (const name of expected.filter((name) => /^latest.*\.yml$/.test(name)))
+			assertFeed(name, text(name), version, assets, sha512Of)
 		for (const name of expected.filter((name) =>
-			/^latest.*\.yml$/.test(name),
-		)) {
-			const asset = assets.find((candidate) => candidate.name === name)
-			const file = local.get(name)
-			let text
-			if (file && digests.get(name) === asset.digest)
-				text = readFileSync(file, 'utf8')
-			else {
-				const copy = join(workDir, name)
-				gh(
-					[
-						'api',
-						'-H',
-						'Accept: application/octet-stream',
-						`repos/${repo}/releases/assets/${asset.id}`,
-					],
-					{ toFile: copy },
-				)
-				text = readFileSync(copy, 'utf8')
-			}
-			assertFeed(name, text, version, assets, sha512Of)
-		}
+			name.endsWith('.appinstaller'),
+		))
+			assertAppInstaller(name, text(name), version, uploaded)
 	} finally {
 		rmSync(workDir, { recursive: true, force: true })
 	}
@@ -317,7 +318,7 @@ if (require.main === module) {
 			repo: process.env.GH_REPO,
 			version: process.env.RELEASE_VERSION,
 			sourceSha: process.env.SOURCE_SHA,
-			scope: process.env.RELEASE_PLATFORMS || 'mac',
+			scope: process.env.RELEASE_PLATFORMS || 'mac-win',
 			assetsDir: process.argv[2] ?? 'release-assets',
 		})
 	} catch (error) {

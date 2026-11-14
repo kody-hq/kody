@@ -36,7 +36,7 @@ if (platform === 'darwin') {
 	executable = join(bundle, 'Kody.exe')
 	resources = join(bundle, 'resources')
 	os = 'win'
-	extensions = ['exe']
+	extensions = ['msix']
 } else if (platform === 'linux') {
 	const bundle = join(
 		output,
@@ -123,14 +123,11 @@ const files = extensions.map((extension) => {
 	}
 })
 const feedPath = join(resources, 'app-update.yml')
-if (process.env.KODY_DESKTOP_RELEASE === '1') {
+// Windows MSIX installs update through App Installer, never electron-updater.
+if (process.env.KODY_DESKTOP_RELEASE === '1' && platform !== 'win32') {
 	// Verify the same architecture-specific manifest the installed updater reads.
 	const suffix =
-		platform === 'darwin'
-			? '-mac'
-			: platform === 'linux'
-				? `-linux${arch === 'x64' ? '' : `-${arch}`}`
-				: ''
+		platform === 'darwin' ? '-mac' : `-linux${arch === 'x64' ? '' : `-${arch}`}`
 	const channel = `latest-${arch}${suffix}.yml`
 	const manifest = parse(readFileSync(join(output, channel), 'utf8'))
 	assert.equal(manifest.version, version)
@@ -156,7 +153,7 @@ if (process.env.KODY_DESKTOP_RELEASE === '1') {
 } else {
 	assert.ok(
 		!existsSync(feedPath),
-		'Unsigned test builds must not contain an update feed.',
+		'Only Mac and Linux release builds contain an update feed.',
 	)
 }
 writeFileSync(

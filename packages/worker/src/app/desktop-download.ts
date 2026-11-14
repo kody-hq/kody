@@ -33,12 +33,6 @@ export type DesktopGithubRelease = {
 	assets: ReadonlyArray<{ name: string }>
 }
 
-const installerExtension: Record<DesktopPlatform, string> = {
-	mac: '.dmg',
-	win: '.exe',
-	linux: '.AppImage',
-}
-
 /**
  * Tag-specific asset URLs stay valid after a newer release becomes latest, so
  * a cached `/download` Location cannot 404 when the feed moves forward.
@@ -78,19 +72,20 @@ export function pickDesktopInstallerAsset(
 ): DesktopInstallerAsset | null {
 	const version = versionFromDesktopReleaseTag(release.tag_name)
 	if (!version) return null
-	const os =
-		target.platform === 'mac'
-			? 'mac'
-			: target.platform === 'win'
-				? 'win'
-				: 'linux'
-	const archToken =
-		target.platform === 'linux' && target.arch === 'x64'
-			? 'x86_64'
-			: target.arch
-	const assetName = `Kody-${version}-${os}-${archToken}${installerExtension[target.platform]}`
+	const assetName = desktopInstallerAssetName(version, target)
 	if (!release.assets.some((asset) => asset.name === assetName)) return null
 	return { version, assetName }
+}
+
+// Windows installs through the App Installer file, which keeps the MSIX
+// updated from the latest release.
+function desktopInstallerAssetName(
+	version: string,
+	{ platform, arch }: DesktopDownloadTarget,
+): string {
+	if (platform === 'mac') return `Kody-${version}-mac-${arch}.dmg`
+	if (platform === 'win') return `Kody-win-${arch}.appinstaller`
+	return `Kody-${version}-linux-${arch === 'x64' ? 'x86_64' : arch}.AppImage`
 }
 
 function normalizePlatform(

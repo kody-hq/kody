@@ -117,8 +117,10 @@ naming the other process and stops instead of reconnecting in a loop.
 Install the desktop app from
 [kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
 (canonical) or the shareable shortcut
-[https://kody.codes/download](https://kody.codes/download). The desktop app and
-the CLI share this machine's registration and its runner:
+[https://kody.codes/download](https://kody.codes/download). On Windows, trust
+the sideloading certificate once, then open the App Installer link
+([Windows install](../../packages/desktop/README.md#windows-install-and-updates)).
+The desktop app and the CLI share this machine's registration and its runner:
 
 - When `kody daemon install` set up a service, or a daemon already runs, the app
   adopts it. **This machine** shows that runner and its version, and Pause,

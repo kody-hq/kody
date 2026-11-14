@@ -43,24 +43,44 @@ test('versions advance past the public feed even when the source package stays u
 	assert.equal(plan({ latest: null }).version, '0.1.5')
 })
 
-test('a published source is skipped on retry', () => {
-	assert.equal(plan({ sha: 'a'.repeat(40) }).release, false)
-	assert.equal(plan().release, true)
+test('a published source is skipped on retry unless it lacked Windows', () => {
+	const latest = {
+		tag_name: 'v0.1.5',
+		body: releaseNotes('a'.repeat(40), 'mac-win'),
+		assets: [],
+	}
+	assert.equal(plan({ latest, sha: 'a'.repeat(40) }).release, false)
+	assert.equal(plan({ latest }).release, true)
+	assert.equal(plan({ sha: 'a'.repeat(40) }).release, true)
 })
 
-test('automatic scope preserves existing platform feeds and explicit mac cannot remove them', () => {
+test('automatic scope preserves existing platform feeds and explicit mac-win cannot remove them', () => {
 	const latest = {
 		tag_name: 'v0.1.5',
 		body: releaseNotes('a'.repeat(40), 'all'),
-		assets: [{ name: 'latest-x64.yml' }],
+		assets: [{ name: 'latest-x64-linux.yml' }],
 	}
 	assert.equal(plan({ latest }).platforms, 'all')
-	assert.equal(plan().platforms, 'mac')
 	assert.equal(plan({ platforms: 'all' }).platforms, 'all')
 	assert.throws(
-		() => plan({ latest, platforms: 'mac' }),
+		() => plan({ latest, platforms: 'mac-win' }),
 		/Choose all platforms/,
 	)
+})
+
+test('every automatic release after a Mac-only release adds Windows', () => {
+	assert.deepEqual(plan(), {
+		version: '0.1.6',
+		platforms: 'mac-win',
+		release: true,
+	})
+	const latest = {
+		tag_name: 'v0.1.6',
+		body: releaseNotes('a'.repeat(40), 'mac-win'),
+		assets: [{ name: 'latest-arm64-mac.yml' }],
+	}
+	assert.equal(plan({ latest }).platforms, 'mac-win')
+	assert.equal(plan({ latest, sha: 'a'.repeat(40) }).release, false)
 })
 
 test('malformed and prerelease versions fail before signing', () => {
@@ -132,13 +152,14 @@ test('matching drafts resume while drafts from another source reserve their vers
 	const draft = {
 		draft: true,
 		tag_name: 'v0.1.6',
-		body: releaseNotes('b'.repeat(40), 'mac'),
+		body: releaseNotes('b'.repeat(40), 'mac-win'),
 		assets: [{ name: 'Kody-0.1.6-mac-arm64.zip' }],
 	}
 	assert.equal(plan({ drafts: [draft] }).version, '0.1.6')
 	assert.equal(
-		plan({ drafts: [{ ...draft, body: releaseNotes('c'.repeat(40), 'mac') }] })
-			.version,
+		plan({
+			drafts: [{ ...draft, body: releaseNotes('c'.repeat(40), 'mac-win') }],
+		}).version,
 		'0.1.7',
 	)
 	assert.equal(
@@ -181,7 +202,7 @@ test('recorded platform coverage survives missing feed assets', () => {
 	}
 	assert.equal(plan({ latest }).platforms, 'all')
 	assert.throws(
-		() => plan({ latest, platforms: 'mac' }),
+		() => plan({ latest, platforms: 'mac-win' }),
 		/Choose all platforms/,
 	)
 })

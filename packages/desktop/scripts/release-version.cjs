@@ -2,6 +2,7 @@ const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const {
 	assertFeedCoverage,
+	servesLinux,
 	releaseNotes,
 	releaseAssetNames,
 	assertDraft,
@@ -86,19 +87,14 @@ function planVersion({
 			latest = release
 	}
 	const assets = latest?.assets.map((asset) => asset.name) || []
-	const recordedPlatforms = latest?.body?.match(/\nPlatforms: (mac|all)$/)?.[1]
+	// Releases before Windows recorded `mac`; they now continue as mac-win.
+	const recordedPlatforms = latest?.body?.match(
+		/\nPlatforms: (mac|mac-win|all)$/,
+	)?.[1]
 	const scope =
 		platforms ||
-		(recordedPlatforms === 'all' ||
-		assets.some(
-			(name) =>
-				name.startsWith('latest-') &&
-				name.endsWith('.yml') &&
-				!name.endsWith('-mac.yml'),
-		)
-			? 'all'
-			: 'mac')
-	if (scope === 'mac' && recordedPlatforms === 'all')
+		(recordedPlatforms === 'all' || servesLinux(assets) ? 'all' : 'mac-win')
+	if (scope !== 'all' && recordedPlatforms === 'all')
 		throw new Error(
 			'Choose all platforms to preserve the recorded desktop release scope.',
 		)
@@ -107,7 +103,7 @@ function planVersion({
 	if (latest) {
 		const published = versionFromTag(latest.tag_name)
 		const source = latest.body?.match(
-			/^Source: https:\/\/github\.com\/kody-hq\/kody\/commit\/([a-f0-9]{40})\nPlatforms: (mac|all)$/,
+			/^Source: https:\/\/github\.com\/kody-hq\/kody\/commit\/([a-f0-9]{40})\nPlatforms: (mac|mac-win|all)$/,
 		)?.[1]
 		if (!source)
 			throw new Error('Published desktop release has no valid source commit')

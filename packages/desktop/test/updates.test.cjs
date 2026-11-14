@@ -6,6 +6,7 @@ const { startUpdates, finishQuit } = require('../updates.cjs')
 function setup({
 	isPackaged = true,
 	hasUpdateFeed = true,
+	isMsix = false,
 	checkForUpdates,
 } = {}) {
 	const updater = new EventEmitter()
@@ -38,6 +39,7 @@ function setup({
 		},
 		updater,
 		hasUpdateFeed,
+		isMsix,
 		dialog: {
 			showMessageBox: async (options) => messages.push(options.message),
 		},
@@ -218,6 +220,13 @@ test('an installer error still completes the requested quit', async () => {
 
 test('unsigned CI packages never check or install production updates', () => {
 	const fixture = setup({ hasUpdateFeed: false })
+	assert.equal(fixture.updates, null)
+	assert.equal(fixture.checks, 0)
+	assert.equal(fixture.installs, 0)
+})
+
+test('MSIX installs leave updates to App Installer', () => {
+	const fixture = setup({ isMsix: true })
 	assert.equal(fixture.updates, null)
 	assert.equal(fixture.checks, 0)
 	assert.equal(fixture.installs, 0)

@@ -90,6 +90,23 @@ test('picks tag-specific installer assets from the GitHub latest release', () =>
 	).toBe(macArmDmgUrl)
 })
 
+test('Windows downloads the App Installer file that keeps the MSIX updated', () => {
+	const release = {
+		tag_name: 'v0.1.74',
+		assets: [
+			{ name: 'Kody-0.1.74-win-arm64.msix' },
+			{ name: 'Kody-win-arm64.appinstaller' },
+			{ name: 'Kody-win-signer.cer' },
+		],
+	}
+	expect(
+		pickDesktopInstallerAsset(release, { platform: 'win', arch: 'arm64' }),
+	).toEqual({ version: '0.1.74', assetName: 'Kody-win-arm64.appinstaller' })
+	expect(
+		pickDesktopInstallerAsset(release, { platform: 'win', arch: 'x64' }),
+	).toBeNull()
+})
+
 test('download handler redirects to the matched installer or the releases page', async () => {
 	const handler = createDesktopDownloadHandler({
 		fetchLatestRelease: async () => macRelease,
