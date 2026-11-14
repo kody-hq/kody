@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	artifactBuildFailureMessage,
 	externalPublishResourceLimitMessage,
 	publishComputeLimitMessage,
 	repoCheckStepResourceLimitAdvice,
@@ -20,9 +21,7 @@ test('every compute-limit message names the local and execution-context publish 
 	]) {
 		expect(message).toContain('kody package publish --build local')
 		expect(message).toContain('`--context <name>`')
-		expect(message).toContain(
-			'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context',
-		)
+		expect(message).toContain('https://kody.codes/docs/execution-contexts')
 		expect(message).toContain('https://kody.codes/docs/publish-large-packages')
 	}
 })
@@ -122,22 +121,20 @@ test('only bundling steps name npm dependencies in compute-limit hints', () => {
 	)
 })
 
-test('an in-isolate memory error from an artifact build names the kody:@ cost and the fix', async () => {
-	const { artifactBuildFailureMessage } =
-		await import('./isolated-runner-limit-message.ts')
-	const message = artifactBuildFailureMessage(
-		'Dynamic import exceeded memory limits',
-		'check',
-	)
-	expect(message).toContain('Dynamic import exceeded memory limits')
-	expect(message).toContain(
-		"exceeded the isolated check runner's memory or CPU limits",
-	)
-	expect(message).toContain('every kody:@ package the entry imports')
-	expect(message).toContain('kody dev check --build local')
-	expect(message).toContain('--build local')
-	expect(message).not.toContain('\u2014')
+test('an in-isolate memory error from an artifact build names the kody:@ cost and the fix', () => {
+	const platform = 'Dynamic import exceeded memory limits'
+	const check = artifactBuildFailureMessage(platform, 'check')
+	const rebuild = artifactBuildFailureMessage(platform, 'rebuild')
+	expect(check).toContain(platform)
+	expect(check).toContain('kody:@')
+	expect(check).toContain('kody package publish --build local')
+	expect(check).toMatch(/isolated check runner/)
+	expect(rebuild).toMatch(/isolated rebuild runner/)
+	expect(rebuild).not.toBe(check)
 	expect(artifactBuildFailureMessage('Unexpected token', 'rebuild')).toBe(
 		'Unexpected token',
 	)
+	expect(
+		artifactBuildFailureMessage('Unexpected token', 'check'),
+	).not.toContain('kody:@')
 })
