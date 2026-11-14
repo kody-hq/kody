@@ -507,82 +507,18 @@ const liveStored: StoredApiToken = {
 	expiresAt: new Date(Date.now() + 14 * 86_400_000).toISOString(),
 }
 
-function resolveWithDeadLogin(input: {
-	login: StoredCredentials
-	stored: StoredApiToken | null
-	env?: NodeJS.ProcessEnv
-}) {
-	const saves: Array<{ token: string; replacesOrg?: string }> = []
-	const credential = resolveCliCredential({
-		env: input.env ?? {},
-		apiUrl,
-		mcpUrl,
-		loadApiToken: () => input.stored,
-		loadLogin: () => input.login,
-		saveLogin: (credentials, _backend, _resolution, options) => {
-			saves.push({
-				token: credentials.accessToken,
-				...(options?.replacesOrg ? { replacesOrg: options.replacesOrg } : {}),
-			})
-			return { backend: createFileBackend('/dev/null') }
-		},
-		deleteApiToken: () => ({
-			deleted: true,
-			backend: createFileBackend('/dev/null'),
-		}),
-	})
-	return { credential, saves }
-}
-
-test('an expired login with no refresh token gives way to a live old-slot token', () => {
-	const { credential, saves } = resolveWithDeadLogin({
-		login: deadLogin,
-		stored: liveStored,
-	})
-	assert.equal(credential?.source, 'login')
-	assert.equal(credential?.login?.accessToken, 'kody_at_stored_live')
-	assert.equal(credential?.login?.org, undefined)
-	assert.deepEqual(saves, [
-		{ token: 'kody_at_stored_live', replacesOrg: 'acme' },
-	])
-})
-
-test('an expired login stays when it can refresh or the old-slot token expired too', () => {
-	const refreshable = resolveWithDeadLogin({
-		login: { ...deadLogin, refreshToken: 'refresh-1' },
-		stored: liveStored,
-	})
-	assert.equal(refreshable.credential?.login?.accessToken, 'kody_at_login_dead')
-	assert.deepEqual(refreshable.saves, [])
-
-	const bothExpired = resolveWithDeadLogin({
-		login: deadLogin,
-		stored: { ...liveStored, expiresAt: '2026-01-01T00:00:00.000Z' },
-	})
-	assert.equal(bothExpired.credential?.login?.accessToken, 'kody_at_login_dead')
-	assert.deepEqual(bothExpired.saves, [])
-})
-
 test('KODY_API_TOKEN wins over an expired login and an old-slot token', () => {
-	const { credential } = resolveWithDeadLogin({
-		login: deadLogin,
-		stored: liveStored,
-		env: { KODY_API_TOKEN: 'kody_at_env' },
-	})
-	assert.equal(credential?.source, 'env')
-	assert.equal(credential?.token, 'kody_at_env')
 	for (const purpose of ['call', 'session', 'mint'] as const) {
-		assert.equal(
-			resolveCliCredential({
-				env: { KODY_API_TOKEN: 'kody_at_env' },
-				apiUrl,
-				mcpUrl,
-				purpose,
-				loadApiToken: () => liveStored,
-				loadLogin: () => deadLogin,
-			})?.source,
-			'env',
-		)
+		const credential = resolveCliCredential({
+			env: { KODY_API_TOKEN: 'kody_at_env' },
+			apiUrl,
+			mcpUrl,
+			purpose,
+			loadApiToken: () => liveStored,
+			loadLogin: () => deadLogin,
+		})
+		assert.equal(credential?.source, 'env')
+		assert.equal(credential?.token, 'kody_at_env')
 	}
 })
 
@@ -673,35 +609,31 @@ async function withDeadLogin(
 	}
 }
 
-test('status, whoami, and execute agree on the live old-slot token over an expired login', async () => {
+test('with an expired login and a live old-slot token, status and execute name the same expired credential', async () => {
 	await withDeadLogin({ stored: true }, async ({ authHeaders, capture }) => {
 		const status = await capture(['status'])
 		assert.equal(status.code, 0, status.stderr)
 		assert.match(
 			status.stdout,
-			/credential in use \(every command\): saved CLI credential\n/,
+			/access token expires: \S+ \(expired; no refresh token, run `kody login` if `kody whoami` fails\)/,
 		)
-		assert.match(status.stdout, /stored API token: no/)
-		assert.doesNotMatch(status.stdout, /\(expired/)
-
-		const whoami = await capture(['whoami'])
-		assert.equal(whoami.code, 0, whoami.stderr)
+		assert.match(
+			status.stdout,
+			/credential in use \(every command\): saved CLI credential \(org acme\)/,
+		)
 
 		const execute = await capture([
 			'execute',
 			'--code',
 			'export default () => 1',
 		])
-		assert.equal(execute.code, 0, execute.stderr)
-		assert.match(execute.stdout, /ran/)
-
-		assert.ok(authHeaders.includes('Bearer kody_at_stored_live'))
-		assert.ok(
-			authHeaders.every(
-				(header) => header === '' || header === 'Bearer kody_at_stored_live',
-			),
-			authHeaders.join(', '),
+		assert.equal(execute.code, 1)
+		assert.match(
+			execute.stderr,
+			/The saved CLI credential \(org acme\) expired at \S+ and has no refresh token\. Run `kody login`/,
 		)
+		assert.doesNotMatch(execute.stderr, /Stored API token/)
+		assert.ok(!authHeaders.includes('Bearer kody_at_stored_live'))
 	})
 })
 

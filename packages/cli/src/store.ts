@@ -7,7 +7,7 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { homedir } from 'node:os'
-import { accessTokenSkewMs, defaultMcpUrl } from './defaults.js'
+import { defaultMcpUrl } from './defaults.js'
 import { KeychainTimeoutError, createKeyringEntry } from './keyring-entry.js'
 
 export { secretServiceKeyringOptions } from './keyring-entry.js'
@@ -452,14 +452,6 @@ function saveCredentialStore(
 	}
 }
 
-export function isAccessTokenExpired(
-	credentials: StoredCredentials,
-	now: number = Date.now(),
-): boolean {
-	if (!credentials.expiresAt) return false
-	return now + accessTokenSkewMs >= credentials.expiresAt
-}
-
 /**
  * Resolve one org's credentials. Precedence for which org: explicit `org`
  * option, else the store's active org, else the sole pending legacy session.
@@ -527,15 +519,12 @@ function pickCredentialsFromStore(
  * `activate` (default true) makes the saved org active — used by `kody login`.
  * Pass `activate: false` for token refresh so a one-shot `--org` / `KODY_ORG`
  * refresh does not steal the active org from `kody org use`.
- *
- * `replacesOrg` (org-less saves only) drops that org's login so the saved
- * org-less credential is the one commands pick.
  */
 export function saveCredentials(
 	credentials: StoredCredentials,
 	backend?: SecretBackend,
 	resolution?: StoreResolution,
-	options?: { activate?: boolean; replacesOrg?: string },
+	options?: { activate?: boolean },
 ): { backend: SecretBackend } {
 	const mcpUrl = credentials.mcpUrl
 	const existing =
@@ -576,15 +565,11 @@ export function saveCredentials(
 				: {}),
 		}
 	} else {
-		const replaced = options?.replacesOrg?.trim().toLowerCase()
-		const orgs = { ...existing.orgs }
-		if (replaced) delete orgs[replaced]
 		next = {
 			version: 2,
 			mcpUrl,
-			activeOrg:
-				replaced && existing.activeOrg === replaced ? null : existing.activeOrg,
-			orgs,
+			activeOrg: existing.activeOrg,
+			orgs: existing.orgs,
 			pending: record,
 		}
 	}

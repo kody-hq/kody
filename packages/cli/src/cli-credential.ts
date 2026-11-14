@@ -1,7 +1,6 @@
 import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
-	isAccessTokenExpired,
 	loadCredentials,
 	saveCredentials,
 	type SecretBackend,
@@ -86,33 +85,23 @@ function loadCandidate(
 		// and an old-slot token has no org, so `--org` never adopts it.
 		const desktop =
 			(input.env ?? process.env).KODY_CREDENTIAL_SOURCE === 'login'
-		const adopted =
-			desktop || input.org || (login && !isDeadLogin(login))
-				? null
-				: adoptLegacyStoredApiToken(input, mcpUrl, login)
-		const saved = adopted ?? login
+		const saved =
+			login ??
+			(desktop || input.org ? null : adoptLegacyStoredApiToken(input, mcpUrl))
 		return { candidate: saved ? { source, token: null, login: saved } : null }
 	} catch (error) {
 		return { candidate: null, error }
 	}
 }
 
-/** Expired with nothing to refresh it from (`kody login` is the only way back). */
-function isDeadLogin(login: StoredCredentials): boolean {
-	return isAccessTokenExpired(login) && !login.refreshToken
-}
-
 /**
  * Move a token from the slot `auth bootstrap` / `setup-git` used before the
  * CLI had one saved credential into that credential, then clear the old
- * slot. Runs when nothing is saved, or when the saved credential is dead and
- * the old-slot token has not expired: a dead login never shadows a live token.
- * Otherwise the saved credential always wins.
+ * slot. Only runs when nothing is saved: the saved credential always wins.
  */
 function adoptLegacyStoredApiToken(
 	input: ResolveCliCredentialInput,
 	mcpUrl: string,
-	dead: StoredCredentials | null,
 ): StoredCredentials | null {
 	const apiUrl = input.apiUrl || defaultApiUrl
 	const legacy = (input.loadApiToken ?? loadStoredApiToken)(
@@ -128,14 +117,8 @@ function adoptLegacyStoredApiToken(
 		scopes: legacy.scopes ?? [],
 		apiUrl,
 	})
-	if (dead && isAccessTokenExpired(adopted)) return null
 	try {
-		;(input.saveLogin ?? saveCredentials)(
-			adopted,
-			input.loginBackend,
-			undefined,
-			dead?.org ? { replacesOrg: dead.org } : undefined,
-		)
+		;(input.saveLogin ?? saveCredentials)(adopted, input.loginBackend)
 		;(input.deleteApiToken ?? deleteStoredApiToken)(
 			apiUrl,
 			input.apiTokenBackend,
