@@ -50,7 +50,7 @@ export const adminWhatsNewDeliveryEventListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminWhatsNewDeliveryEventList',
-		contextRuns: 'allow',
+		contextRuns: 'deny',
 		description:
 			'List the latest matched delivery report per newsletter send, retained for 90 days. This is a mutable status snapshot, not a complete event history. Site admins only.',
 		inputSchema: z.object({
@@ -120,7 +120,7 @@ export const adminWhatsNewRecipientListCapability = defineDomainCapability(
 	{
 		...adminCapabilityAccess,
 		name: 'adminWhatsNewRecipientList',
-		contextRuns: 'allow',
+		contextRuns: 'deny',
 		description:
 			"List verified, live users for What's New in Kody emails. Site admins only.",
 		inputSchema: z.object({
@@ -184,7 +184,7 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminWhatsNewOptInSet',
-		contextRuns: 'allow',
+		contextRuns: 'deny',
 		description:
 			"Set or clear a user's What's New in Kody email consent. Site admins only.",
 		inputSchema: z.object({
@@ -233,7 +233,7 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 	{
 		...adminMutationCapabilityAccess,
 		name: 'adminWhatsNewEmailSend',
-		contextRuns: 'allow',
+		contextRuns: 'deny',
 		description:
 			"Send one What's New in Kody email from news@. Site admins only; the package manages consent and signed unsubscribe links.",
 		inputSchema: z
