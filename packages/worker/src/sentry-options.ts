@@ -124,76 +124,206 @@ export function redactSentryString(value: string) {
 	)
 }
 
-function redactQueryStringObject(
-	query: Record<string, unknown>,
-	depth: number,
-	seen: WeakSet<object>,
-) {
-	for (const key of Object.keys(query)) {
-		// Keep sensitiveFieldNames coverage (x-api-key, authorization, …) that
-		// generic object walking had before this query_string special case.
-		// Decode before both lookups so `%78-api-key` matches `x-api-key`.
-		const decodedKey = decodeQueryParamName(key).toLowerCase()
-		if (
-			sensitiveQueryParamNames.has(decodedKey) ||
-			sensitiveFieldNames.has(decodedKey)
-		) {
-			if (query[key] !== undefined && query[key] !== null) {
-				query[key] = redactedValue
-			}
-			continue
+/**
+ * True when `target[key]` can be assigned without throwing. Avoids writing
+ * getter-only / non-writable / frozen properties (strict-mode ESM throws
+ * `Cannot set property … which has only a getter`, which aborted Sentry
+ * `beforeSendTransaction` and dropped the event — Sentry 7848336526).
+ */
+function isAssignableProperty(target: object, key: PropertyKey) {
+	const descriptor = Object.getOwnPropertyDescriptor(target, key)
+	if (!descriptor) return Reflect.isExtensible(target)
+	// Accessors (even with setters) must be snapshotted onto plain data props;
+	// later serialization re-invokes getters and can return a fresh secret.
+	if ('get' in descriptor || 'set' in descriptor) return false
+	return descriptor.writable === true
+}
+
+/**
+ * True when in-place mutation is unsafe: frozen / non-extensible hosts, or any
+ * own enumerable getter-only / non-writable key. Those need a plain clone shell
+ * registered in `seen` *before* descending so cycle back-edges resolve to the
+ * sanitized replacement instead of the original.
+ */
+function needsRedactionCloneShell(value: object) {
+	if (Object.isFrozen(value) || !Object.isExtensible(value)) return true
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index++) {
+			if (!isAssignableProperty(value, index)) return true
 		}
-		query[key] = redactSentryValue(query[key], depth + 1, seen)
+		return false
+	}
+	for (const key of Object.keys(value as Record<string, unknown>)) {
+		if (!isAssignableProperty(value, key)) return true
+	}
+	return false
+}
+
+/**
+ * Assign `next` onto a mutable host; never throws. When `inPlace`, skip writes
+ * that did not change the value. Clone shells start empty, so they must always
+ * receive the field even when the child was redacted in place (`next === child`).
+ */
+function assignRedacted(
+	target: Record<string, unknown> | unknown[],
+	key: PropertyKey,
+	next: unknown,
+	previous: unknown,
+	inPlace: boolean,
+): void {
+	if (inPlace && next === previous) return
+	try {
+		Reflect.set(target, key, next)
+	} catch {
+		// Mutable hosts from clone shells / plain objects should not throw;
+		// ignore rather than abort beforeSend.
 	}
 }
 
-function redactSentryValue(
-	value: unknown,
+/**
+ * Separate caches for generic vs query_string walks. `code` is sensitive only
+ * as a query param; reusing a generic replacement under `query_string` would
+ * leave OAuth codes intact.
+ */
+type RedactionSeen = {
+	generic: WeakMap<object, unknown>
+	query: WeakMap<object, unknown>
+}
+
+function redactRecordFields(
+	source: Record<string, unknown>,
+	host: Record<string, unknown>,
 	depth: number,
-	seen: WeakSet<object>,
-): unknown {
-	if (typeof value === 'string') return redactSentryString(value)
-	if (value === null || typeof value !== 'object') return value
-	if (seen.has(value)) return value
-	if (depth >= maxRedactionDepth) return redactedValue
-	seen.add(value)
-	if (Array.isArray(value)) {
-		for (let index = 0; index < value.length; index++) {
-			value[index] = redactSentryValue(value[index], depth + 1, seen)
-		}
-		return value
-	}
-	const record = value as Record<string, unknown>
-	for (const key of Object.keys(record)) {
-		if (sensitiveFieldNames.has(key.toLowerCase())) {
-			if (record[key] !== undefined && record[key] !== null) {
-				record[key] = redactedValue
+	seen: RedactionSeen,
+	queryStringMode: boolean,
+	inPlace: boolean,
+): void {
+	for (const key of Object.keys(source)) {
+		const decodedKey = queryStringMode
+			? decodeQueryParamName(key).toLowerCase()
+			: key.toLowerCase()
+		const sensitive = queryStringMode
+			? sensitiveQueryParamNames.has(decodedKey) ||
+				sensitiveFieldNames.has(decodedKey)
+			: sensitiveFieldNames.has(decodedKey)
+		if (sensitive) {
+			const previous = source[key]
+			if (previous !== undefined && previous !== null) {
+				assignRedacted(host, key, redactedValue, previous, inPlace)
 			}
 			continue
 		}
-		const child = record[key]
+		const child = source[key]
 		if (
+			!queryStringMode &&
 			key === 'query_string' &&
 			child !== null &&
 			typeof child === 'object' &&
 			!Array.isArray(child)
 		) {
-			redactQueryStringObject(child as Record<string, unknown>, depth, seen)
+			const redactedQuery = redactQueryStringObject(
+				child as Record<string, unknown>,
+				depth,
+				seen,
+			)
+			assignRedacted(host, key, redactedQuery, child, inPlace)
 			continue
 		}
-		record[key] = redactSentryValue(child, depth + 1, seen)
+		// Query-mode cycles must resolve to the query clone (not a generic
+		// walk that would keep query-only secrets like `code`).
+		const next =
+			queryStringMode &&
+			child !== null &&
+			typeof child === 'object' &&
+			seen.query.has(child)
+				? seen.query.get(child)
+				: redactSentryValue(child, depth + 1, seen)
+		assignRedacted(host, key, next, child, inPlace)
 	}
-	return value
+}
+
+function redactQueryStringObject(
+	query: Record<string, unknown>,
+	depth: number,
+	seen: RedactionSeen,
+): Record<string, unknown> {
+	if (seen.query.has(query)) {
+		return seen.query.get(query) as Record<string, unknown>
+	}
+	// Do not reuse `seen.generic`: query-param names (e.g. `code`) are stricter
+	// than generic field names. Clone whenever the object was already visited
+	// generically (including in-place identity) so mutating query redaction
+	// cannot change `extra`'s status `code`.
+	if (needsRedactionCloneShell(query) || seen.generic.has(query)) {
+		const host: Record<string, unknown> = {}
+		seen.query.set(query, host)
+		seen.query.set(host, host)
+		redactRecordFields(query, host, depth, seen, true, false)
+		return host
+	}
+	seen.query.set(query, query)
+	redactRecordFields(query, query, depth, seen, true, true)
+	return query
+}
+
+function redactSentryValue(
+	value: unknown,
+	depth: number,
+	seen: RedactionSeen,
+): unknown {
+	if (typeof value === 'string') return redactSentryString(value)
+	if (value === null || typeof value !== 'object') return value
+	if (seen.generic.has(value)) return seen.generic.get(value)
+	if (depth >= maxRedactionDepth) return redactedValue
+	if (Array.isArray(value)) {
+		if (needsRedactionCloneShell(value)) {
+			const copy: unknown[] = []
+			seen.generic.set(value, copy)
+			seen.generic.set(copy, copy)
+			for (let index = 0; index < value.length; index++) {
+				copy[index] = redactSentryValue(value[index], depth + 1, seen)
+			}
+			return copy
+		}
+		seen.generic.set(value, value)
+		for (let index = 0; index < value.length; index++) {
+			const previous = value[index]
+			const next = redactSentryValue(previous, depth + 1, seen)
+			assignRedacted(value, index, next, previous, true)
+		}
+		return value
+	}
+	const original = value as Record<string, unknown>
+	if (needsRedactionCloneShell(original)) {
+		// Register the empty shell before children so cycle back-edges and
+		// shared aliases resolve to this sanitized object, not the original.
+		const host: Record<string, unknown> = {}
+		seen.generic.set(original, host)
+		seen.generic.set(host, host)
+		redactRecordFields(original, host, depth, seen, false, false)
+		return host
+	}
+	seen.generic.set(original, original)
+	redactRecordFields(original, original, depth, seen, false, true)
+	return original
 }
 
 /**
- * Deep-redact a Sentry payload in place: strings, sensitive field names, auth
- * schemes, and secret query params (events, transactions, and breadcrumbs).
+ * Deep-redact a Sentry payload: strings, sensitive field names, auth schemes,
+ * and secret query params (events, transactions, and breadcrumbs). Mutates in
+ * place when every own property is writable; otherwise builds a plain clone
+ * shell first (registered in a WeakMap before descending) so getter-only /
+ * frozen properties and cycle back-edges cannot throw or leave secrets on the
+ * original identity. Query-string walks use a separate seen map so `code` and
+ * other query-only secrets are still redacted after a generic visit.
  */
 export function redactKodyCredentialsInSentryEvent<T extends object>(
 	event: T,
 ): T {
-	return redactSentryValue(event, 0, new WeakSet()) as T
+	return redactSentryValue(event, 0, {
+		generic: new WeakMap(),
+		query: new WeakMap(),
+	}) as T
 }
 
 /** Execution context connect tickets are bearer secrets in a query param. */
