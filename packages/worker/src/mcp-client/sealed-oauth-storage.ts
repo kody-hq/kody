@@ -101,32 +101,6 @@ export async function openMcpOAuthStorageValue(input: {
 	) as unknown
 }
 
-function isLegacyPlaintext(key: string, value: unknown) {
-	return (
-		value !== undefined &&
-		mcpOAuthSecretServerId(key) !== null &&
-		!isSealedSecretPayload(value)
-	)
-}
-
-/**
- * Reseal one legacy plaintext key. Re-reads right before the write and only
- * replaces the exact value that was sealed, so a concurrent save wins.
- */
-async function resealLegacyKey(input: {
-	storage: DurableObjectStorage
-	env: SealedStorageEnv
-	ownerId: string
-	key: string
-	value: unknown
-}) {
-	const sealed = await sealMcpOAuthStorageValue(input)
-	const current = await input.storage.get(input.key)
-	if (JSON.stringify(current) !== JSON.stringify(input.value)) return false
-	await input.storage.put(input.key, sealed)
-	return true
-}
-
 async function openEntries(input: {
 	env: SealedStorageEnv
 	ownerId: string
@@ -224,39 +198,4 @@ export function createSealedMcpOAuthStorage(input: {
 			return typeof value === 'function' ? value.bind(target) : value
 		},
 	})
-}
-
-export type McpOAuthStorageBackfillResult = {
-	scanned: number
-	sealed: number
-	remainingPlaintext: number
-}
-
-/** Bounded per-hub backfill: seal every legacy plaintext OAuth secret key. */
-export async function sealLegacyMcpOAuthStorage(input: {
-	storage: DurableObjectStorage
-	env: SealedStorageEnv
-	ownerId: string
-	dryRun: boolean
-}): Promise<McpOAuthStorageBackfillResult> {
-	const result: McpOAuthStorageBackfillResult = {
-		scanned: 0,
-		sealed: 0,
-		remainingPlaintext: 0,
-	}
-	for (const prefix of [mcpOAuthSdkPrefix, ...sealedSidecarPrefixes]) {
-		const entries = await input.storage.list({ prefix })
-		for (const [key, value] of entries) {
-			if (mcpOAuthSecretServerId(key) === null) continue
-			result.scanned += 1
-			if (!isLegacyPlaintext(key, value)) continue
-			if (!input.dryRun && (await resealLegacyKey({ ...input, key, value }))) {
-				result.sealed += 1
-				continue
-			}
-			const current = await input.storage.get(key)
-			if (isLegacyPlaintext(key, current)) result.remainingPlaintext += 1
-		}
-	}
-	return result
 }

@@ -155,7 +155,7 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 	})
 })
 
-test('static bearer headers move out of server_options into sealed storage', async () => {
+test('transfer carries sealed static headers as a sidecar, never in the row', async () => {
 	const userId = ownerIdFromStored(`hub-headers-${crypto.randomUUID()}`)
 	const serverId = 'bearer-server'
 	const bearer = 'Bearer static-secret-value'
@@ -171,60 +171,18 @@ test('static bearer headers move out of server_options into sealed storage', asy
 			'https://kody.example.com/mcp-oauth/callback',
 			null,
 			'https://auth.example.com/authorize',
-			JSON.stringify({
-				transport: {
-					type: 'streamable-http',
-					headers: { Authorization: bearer },
-					requestInit: { headers: { Authorization: bearer } },
-				},
-			}),
+			JSON.stringify({ transport: { type: 'streamable-http' } }),
 		)
-	})
-	const hub = hubFor(userId) as unknown as {
-		sealLegacyOAuthStorage(input: { dryRun: boolean }): Promise<{
-			scanned: number
-			sealed: number
-			remainingPlaintext: number
-		}>
-	}
-	expect(await hub.sealLegacyOAuthStorage({ dryRun: true })).toEqual({
-		scanned: 1,
-		sealed: 0,
-		remainingPlaintext: 1,
-	})
-	expect(await hub.sealLegacyOAuthStorage({ dryRun: false })).toEqual({
-		scanned: 2,
-		sealed: 1,
-		remainingPlaintext: 0,
-	})
-	await runInDurableObject(hubFor(userId), async (_instance, state) => {
-		const [row] = state.storage.sql
-			.exec<{ server_options: string }>(
-				'SELECT server_options FROM cf_agents_mcp_servers WHERE id = ?',
-				serverId,
-			)
-			.toArray()
-		expect(row?.server_options).not.toContain('static-secret-value')
-		expect(JSON.parse(row!.server_options)).toEqual({
-			transport: { type: 'streamable-http' },
-		})
 		const key = `mcp-static-transport-headers/${serverId}`
-		const raw = await state.storage.get(key)
-		expect(raw).toMatch(/^v2\./)
-		expect(JSON.stringify(raw)).not.toContain('static-secret-value')
-		expect(
-			await openMcpOAuthStorageValue({
+		await state.storage.put(
+			key,
+			await sealMcpOAuthStorageValue({
 				env,
 				ownerId: state.id.name!,
 				key,
-				value: raw,
+				value: { authorization: bearer },
 			}),
-		).toEqual({ authorization: bearer })
-	})
-	expect(await hub.sealLegacyOAuthStorage({ dryRun: true })).toEqual({
-		scanned: 1,
-		sealed: 0,
-		remainingPlaintext: 0,
+		)
 	})
 	// Transfer carries the sealed headers as a sidecar, never in the row.
 	const exported = await mcpClientHubTransferStub({

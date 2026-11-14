@@ -95,8 +95,6 @@ import {
 	createSealedMcpOAuthStorage,
 	mcpStaticTransportHeadersStorageKey,
 	mcpStaticTransportHeadersStoragePrefix,
-	sealLegacyMcpOAuthStorage,
-	type McpOAuthStorageBackfillResult,
 } from './sealed-oauth-storage.ts'
 import {
 	splitPersistedStaticHeaders,
@@ -435,37 +433,6 @@ class McpClientHubBase extends DurableObject<Env> {
 		await this.lifecycle.start()
 		await this.hydrateTokenRecoveryErrors()
 		this.operationallyRestored = true
-	}
-
-	/**
-	 * Move static headers that an older deploy let the SDK persist in
-	 * `server_options` into sealed storage. Returns how many rows held them.
-	 */
-	private async moveStaticTransportHeadersToSealedStorage(input: {
-		dryRun: boolean
-	}) {
-		const rows = Array.from(
-			this.ctx.storage.sql.exec<{ id: string; server_options: string | null }>(
-				`SELECT id, server_options FROM cf_agents_mcp_servers`,
-			),
-		)
-		const result = { rowsWithHeaders: 0, moved: 0 }
-		for (const row of rows) {
-			const split = splitPersistedStaticHeaders(row.server_options)
-			if (!split.headers) continue
-			result.rowsWithHeaders += 1
-			if (input.dryRun) continue
-			await this.storeStaticTransportHeaders(row.id, split.headers)
-			this.ctx.storage.sql.exec(
-				`UPDATE cf_agents_mcp_servers SET server_options = ?
-				 WHERE id = ? AND server_options = ?`,
-				split.serverOptions,
-				row.id,
-				row.server_options,
-			)
-			result.moved += 1
-		}
-		return result
 	}
 
 	private async hydrateStaticTransportHeaders() {
@@ -2423,27 +2390,6 @@ class McpClientHubBase extends DurableObject<Env> {
 		return await this.oauthStorage.get<McpHubStagedServer>(
 			mcpTransferStagingStorageKey(serverId),
 		)
-	}
-
-	/** Admin backfill: seal legacy plaintext OAuth secrets in this hub. */
-	async sealLegacyOAuthStorage(input: {
-		dryRun: boolean
-	}): Promise<McpOAuthStorageBackfillResult> {
-		const ownerId = this.ctx.id.name
-		if (!ownerId) throw new Error('MCP client hub owner is unknown.')
-		const headers = await this.moveStaticTransportHeadersToSealedStorage(input)
-		const result = await sealLegacyMcpOAuthStorage({
-			storage: this.ctx.storage,
-			env: this.env,
-			ownerId,
-			dryRun: input.dryRun,
-		})
-		return {
-			scanned: result.scanned + headers.rowsWithHeaders,
-			sealed: result.sealed + headers.moved,
-			remainingPlaintext:
-				result.remainingPlaintext + headers.rowsWithHeaders - headers.moved,
-		}
 	}
 
 	/** Org resource transfer planning: registered and staged server ids. */

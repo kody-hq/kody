@@ -6,7 +6,6 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	confirmTwoFactorSetup,
 	createTwoFactorSetup,
-	sealPlaintextTotpSecrets,
 	verifyTwoFactorCode,
 } from './two-factor.ts'
 
@@ -105,45 +104,4 @@ test('a plaintext 2FA secret fails closed', async () => {
 		}),
 	).rejects.toThrow('Unable to decrypt platform secret.')
 	expect(storedSecret(3)).toBe(secret)
-})
-
-test('the backfill seals every plaintext row and reports zero remaining', async () => {
-	const { env, storedSecret, insertPlaintext } = setup()
-	const secrets = await Promise.all(
-		[4, 5, 6].map(async () => (await generateTOTP()).secret),
-	)
-	secrets.forEach((secret, index) => insertPlaintext(4 + index, secret))
-	await enroll(env, 7)
-	expect(
-		await sealPlaintextTotpSecrets({ env, dryRun: true, limit: 10 }),
-	).toEqual({ scanned: 3, sealed: 0, remainingPlaintext: 3, nextCursor: null })
-	const firstPage = await sealPlaintextTotpSecrets({
-		env,
-		dryRun: false,
-		limit: 2,
-	})
-	expect(firstPage).toMatchObject({
-		scanned: 2,
-		sealed: 2,
-		remainingPlaintext: 1,
-	})
-	expect(
-		await sealPlaintextTotpSecrets({
-			env,
-			dryRun: false,
-			limit: 2,
-			cursor: firstPage.nextCursor,
-		}),
-	).toEqual({ scanned: 1, sealed: 1, remainingPlaintext: 0, nextCursor: null })
-	for (const [index, secret] of secrets.entries()) {
-		expect(storedSecret(4 + index)).toMatch(/^v2\./)
-		expect(
-			await verifyTwoFactorCode({
-				env,
-				userId: 4 + index,
-				code: await currentCode(secret),
-				type: '2fa',
-			}),
-		).toBe(true)
-	}
 })

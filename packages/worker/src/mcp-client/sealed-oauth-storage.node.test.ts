@@ -4,7 +4,6 @@ import { mcpOAuthRefreshTokenStorageKey } from './oauth-token-recovery.ts'
 import {
 	createSealedMcpOAuthStorage,
 	mcpOAuthSecretServerId,
-	sealLegacyMcpOAuthStorage,
 } from './sealed-oauth-storage.ts'
 
 const env = { SECRET_STORE_KEY: 'mcp-oauth-test-secret-store-key-32-chars' }
@@ -150,43 +149,4 @@ test('plaintext OAuth secrets fail closed and are left for the backfill', async 
 		token_type: 'Bearer',
 	})
 	expect(values.get('/Kody/server-a/oauth_discovery')).toEqual({ issuer: 'x' })
-})
-
-test('the hub backfill seals every legacy secret key and is idempotent', async () => {
-	const { storage, values } = createMemoryStorage()
-	values.set(tokenKey, { access_token: 'a' })
-	values.set('/Kody/server-a/client-1/client_info/', {
-		client_id: 'client-1',
-		client_secret: 's',
-	})
-	values.set(mcpOAuthRefreshTokenStorageKey('server-a'), {
-		refresh_token: 'r',
-	})
-	values.set('/Kody/server-a/oauth_discovery', { issuer: 'x' })
-	await sealedView(storage).put('/Kody/server-b/client-9/token', {
-		access_token: 'b',
-	})
-	const run = (dryRun: boolean) =>
-		sealLegacyMcpOAuthStorage({ storage, env, ownerId: 'owner-a', dryRun })
-	expect(await run(true)).toEqual({
-		scanned: 4,
-		sealed: 0,
-		remainingPlaintext: 3,
-	})
-	expect(await run(false)).toEqual({
-		scanned: 4,
-		sealed: 3,
-		remainingPlaintext: 0,
-	})
-	expect(await run(false)).toEqual({
-		scanned: 4,
-		sealed: 0,
-		remainingPlaintext: 0,
-	})
-	expect(await sealedView(storage).get(tokenKey)).toEqual({
-		access_token: 'a',
-	})
-	expect(
-		await sealedView(storage).get(mcpOAuthRefreshTokenStorageKey('server-a')),
-	).toEqual({ refresh_token: 'r' })
 })

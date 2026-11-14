@@ -163,29 +163,6 @@ function sealGuestClaimCode(
 	)
 }
 
-/**
- * Converts one legacy row (plaintext claim_code) to hash plus sealed copy.
- * Compare-and-swap on the plaintext so a concurrent claim or rerun is safe.
- */
-async function sealLegacyGuestClaimCode(
-	env: GuestSecretEnv,
-	personId: string,
-	claimCode: string,
-) {
-	const result = await env.APP_DB.prepare(
-		`UPDATE guest_accounts SET claim_code = ?, claim_code_encrypted = ?
-		 WHERE person_id = ? AND claim_code = ?`,
-	)
-		.bind(
-			await guestClaimCodeHash(claimCode),
-			await sealGuestClaimCode(env, personId, claimCode),
-			personId,
-			claimCode,
-		)
-		.run()
-	return (result.meta?.changes ?? 0) > 0
-}
-
 /** The guest's own claim code, opened for display. Null fails closed. */
 export async function readGuestClaimCode(
 	env: Pick<Env, 'SECRET_STORE_KEY'>,
@@ -243,61 +220,6 @@ export async function readGuestAccountByClaimCode(
 		.first<GuestAccountRow>()
 	if (!row || !(await timingSafeEqualString(row.claim_code, hash))) return null
 	return toGuestAccount(row)
-}
-
-export type GuestClaimCodeBackfillResult = {
-	scanned: number
-	sealed: number
-	remainingPlaintext: number
-	nextCursor: string | null
-}
-
-/**
- * Bounded backfill: converts guest_accounts rows whose claim_code is still
- * the plaintext code into hash plus sealed copy. Safe to rerun.
- */
-// Claimed guests drop claim_code_encrypted, so plaintext means claim_code is
-// not yet a 64-char SHA-256 hex lookup hash.
-const guestPlaintextClaimCodeSql = 'length(claim_code) <> 64'
-
-export async function sealPlaintextGuestClaimCodes(input: {
-	env: GuestSecretEnv
-	dryRun: boolean
-	limit: number
-	cursor?: string | null
-}): Promise<GuestClaimCodeBackfillResult> {
-	const db = input.env.APP_DB
-	const rows = await db
-		.prepare(
-			`SELECT person_id, claim_code FROM guest_accounts
-			 WHERE ${guestPlaintextClaimCodeSql} AND person_id > ?
-			 ORDER BY person_id LIMIT ?`,
-		)
-		.bind(input.cursor ?? '', input.limit)
-		.all<{ person_id: string; claim_code: string }>()
-	const page = rows.results ?? []
-	let sealed = 0
-	for (const row of page) {
-		if (input.dryRun || !isGuestClaimCodeShape(row.claim_code)) continue
-		if (
-			await sealLegacyGuestClaimCode(input.env, row.person_id, row.claim_code)
-		) {
-			sealed += 1
-		}
-	}
-	const remaining = await db
-		.prepare(
-			`SELECT COUNT(*) AS count FROM guest_accounts
-			 WHERE ${guestPlaintextClaimCodeSql}`,
-		)
-		.first<{ count: number }>()
-	return {
-		scanned: page.length,
-		sealed,
-		remainingPlaintext: Number(remaining?.count ?? 0),
-		nextCursor:
-			page.length < input.limit ? null : (page.at(-1)?.person_id ?? null),
-	}
 }
 
 /** Grants minted for a merged guest resolve to the claiming person. */
