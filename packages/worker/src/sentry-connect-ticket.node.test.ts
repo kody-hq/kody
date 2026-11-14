@@ -105,6 +105,12 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 	)
 	expect(event.request?.url).toContain('password=[redacted]')
 	expect(event.request?.url).not.toContain('?omega')
+	expect(
+		redactKodyCredentialsInSentryEvent({
+			type: undefined,
+			message: 'path?a;code=semicolon-code&password=alpha;beta',
+		}).message,
+	).toBe('path?a;code=[redacted]&password=[redacted]')
 	expect(event.request?.url).toContain('%63ode=[redacted]')
 	expect(event.request?.url).toContain('state=ok')
 	expect(event.request?.query_string).toEqual({

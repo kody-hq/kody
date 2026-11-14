@@ -97,13 +97,13 @@ function isSensitiveQueryParamName(name: string) {
 
 /** Redact sensitive query params, including percent-encoded names (`%63ode=`). */
 function redactSensitiveQueryParams(value: string, depth = 0): string {
-	// Exclude `?` from names so `https://host/path?code=` splits on the query
-	// delimiter. Sensitive values keep the full `[^&#\s]*` span (including `?`
-	// / `;` inside the secret). Non-sensitive values are rescanned so nested
-	// `?code=` / `;token=` segments still redact.
+	// Exclude `?` and `;` from names so those delimiters still split pairs
+	// (`?a;code=` must not become a single name). Sensitive values keep the
+	// full `[^&#\s]*` span (including `?` / `;` inside the secret).
+	// Non-sensitive values are rescanned for nested params.
 	if (depth >= maxRedactionDepth) return redactedValue
 	return value.replace(
-		/([?&#;]|^)([^=&#?\s]+)=([^&#\s]*)/g,
+		/([?&#;]|^)([^=&#?;\s]+)=([^&#\s]*)/g,
 		(match, separator: string, name: string, rawValue: string) => {
 			if (isSensitiveQueryParamName(name)) {
 				return `${separator}${name}=${redactedValue}`
