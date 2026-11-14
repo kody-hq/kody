@@ -5,7 +5,10 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
+import {
+	getRequestPermissions,
+	runWithRequestPermissions,
+} from '#worker/authorization/authorize.ts'
 import { accessGrantCapability } from '#mcp/capabilities/access/access-grants.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import * as mcpExecutor from '#mcp/executor.ts'
@@ -198,6 +201,37 @@ export default async function main() { return await ping() }`,
 	expect(moduleGraph.buildKodyModuleBundle).not.toHaveBeenCalledWith(
 		expect.objectContaining({ userId: granteeId }),
 	)
+
+	// A permission-bound execute rebinds the caller's permissions inside the
+	// build isolate, so the grantee still resolves the granted package there.
+	const resolvedInBuildIsolate: Array<string | undefined> = []
+	vi.mocked(moduleGraph.buildKodyModuleBundle).mockImplementationOnce(
+		async () => {
+			const granted = await resolveSavedPackageImport({
+				db,
+				userId: ownerId,
+				specifier: `kody:${packageName}/ping`,
+			})
+			resolvedInBuildIsolate.push(
+				getRequestPermissions()?.orgId,
+				granted?.row.id,
+			)
+			return {
+				mainModule: 'entry.js',
+				modules: { 'entry.js': 'export default async () => null' },
+				dependencies: [],
+			}
+		},
+	)
+	await runWithRequestPermissions({ env, request: carolInAlice.request! }, () =>
+		runModuleWithRegistry(
+			env,
+			carolInAlice,
+			`import ping from "kody:${packageName}/ping"
+export default async function main() { return await ping() }`,
+		),
+	)
+	expect(resolvedInBuildIsolate).toEqual([ownerId, packageId])
 })
 
 test('Read grant: grantee can read the source but cannot import or run it', async () => {
