@@ -1,3 +1,4 @@
+import { addInProcessExecuteBundleIsolates } from '#worker/test-support/execute-bundle-isolates.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -184,6 +185,7 @@ test('Use grant: grantee bound to owner org resolves and execute looks up that o
 			}) as never,
 	)
 	vi.mocked(moduleGraph.buildKodyModuleBundle).mockClear()
+	addInProcessExecuteBundleIsolates(env)
 	await runModuleWithRegistry(
 		env,
 		carolInAlice,

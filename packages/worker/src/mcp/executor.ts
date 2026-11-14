@@ -21,6 +21,10 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import {
+	executeLocallyCommand,
+	isExecuteBundleTooLargeMessage,
+} from '#mcp/execute-bundle-limit-messages.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
@@ -1747,6 +1751,17 @@ export type ExecutionErrorDetails =
 			}
 	  }
 	| {
+			kind: 'execute_bundle_too_large'
+			message: string
+			nextStep: string
+			suggestedAction: {
+				type: 'run_locally'
+				/** Shell command that runs the same module on the caller's machine. */
+				command: string
+				requires: Array<string>
+			}
+	  }
+	| {
 			kind: 'execution_timed_out'
 			message: string
 			nextStep: string
@@ -1858,6 +1873,19 @@ export function getExecutionErrorDetails(
 			limit: maxConcurrentDynamicWorkerEvaluationsPerRequest,
 			suggestedAction: {
 				type: 'retry',
+			},
+		}
+	}
+
+	if (causeMessages.some(isExecuteBundleTooLargeMessage)) {
+		return {
+			kind: 'execute_bundle_too_large',
+			message,
+			nextStep: `Nothing ran. Save the module to a file and run \`${executeLocallyCommand}\` to bundle and run it on this machine with the same Kody capabilities. Retrying the identical call on Kody cloud will fail the same way; to stay on Kody cloud, import fewer or smaller packages in one module.`,
+			suggestedAction: {
+				type: 'run_locally',
+				command: executeLocallyCommand,
+				requires: ['node>=22', 'kody_cli_signed_in'],
 			},
 		}
 	}
