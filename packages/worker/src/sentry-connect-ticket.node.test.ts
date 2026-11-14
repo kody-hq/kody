@@ -150,3 +150,59 @@ test('deep redaction tolerates cycles', () => {
 		'[redacted]',
 	)
 })
+
+test('deep redaction skips getter-only and frozen props without throwing', () => {
+	const apiToken = `kody_at_${'a'.repeat(20)}_${'B'.repeat(43)}`
+	const withGetterOnly = {
+		authorization: 'Bearer writable-secret',
+		nested: { note: `token ${apiToken}` },
+	}
+	Object.defineProperty(withGetterOnly, '$', {
+		enumerable: true,
+		configurable: false,
+		get() {
+			return { kept: 'accessor-child' }
+		},
+	})
+	const frozenSensitive = Object.freeze({
+		authorization: 'Bearer frozen-secret',
+		ok: 'kept-frozen',
+	})
+	const frozenQuery = Object.freeze({
+		code: 'frozen-query-code',
+		state: 'kept-query-state',
+	})
+	const frozenArray = Object.freeze([
+		`Bearer array-secret-token`,
+		{ refresh_token: 'rt-in-frozen-array' },
+	])
+
+	const event = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: withGetterOnly,
+		contexts: { frozen: frozenSensitive },
+		request: { query_string: frozenQuery },
+		breadcrumbs: [{ data: { items: frozenArray } }],
+	})
+	const serialized = JSON.stringify(event)
+	for (const secret of [
+		'writable-secret',
+		apiToken,
+		'frozen-secret',
+		'frozen-query-code',
+		'array-secret-token',
+		'rt-in-frozen-array',
+	]) {
+		expect(serialized).not.toContain(secret)
+	}
+	expect(serialized).toContain('accessor-child')
+	expect(serialized).toContain('kept-frozen')
+	expect(serialized).toContain('kept-query-state')
+	expect((event.extra as Record<string, unknown>).authorization).toBe(
+		'[redacted]',
+	)
+	expect(
+		(event.contexts as { frozen: Record<string, unknown> }).frozen
+			.authorization,
+	).toBe('[redacted]')
+})

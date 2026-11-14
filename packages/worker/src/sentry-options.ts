@@ -124,12 +124,71 @@ export function redactSentryString(value: string) {
 	)
 }
 
+/**
+ * True when `target[key]` can be assigned without throwing. Avoids writing
+ * getter-only / non-writable / frozen properties (strict-mode ESM throws
+ * `Cannot set property … which has only a getter`, which aborted Sentry
+ * `beforeSendTransaction` and dropped the event — Sentry 7848336526).
+ */
+function isAssignableProperty(target: object, key: PropertyKey) {
+	const descriptor = Object.getOwnPropertyDescriptor(target, key)
+	if (!descriptor) return Reflect.isExtensible(target)
+	if ('writable' in descriptor) return descriptor.writable === true
+	return typeof descriptor.set === 'function'
+}
+
+/**
+ * Write `next` only when it differs from `previous`. Never throws on
+ * non-writable targets. When a write is blocked and `dropIfBlocked` is set
+ * (sensitive fields), delete the key so the secret does not stay on the
+ * payload; if delete is also blocked (non-configurable), fall back to a plain
+ * mutable clone via the caller's `ensureMutable` so redaction still sticks.
+ */
+function writeRedactedProperty(
+	target: object,
+	key: PropertyKey,
+	next: unknown,
+	previous: unknown,
+	options: {
+		dropIfBlocked: boolean
+		ensureMutable: () => Record<string, unknown>
+	},
+): void {
+	if (next === previous) return
+	if (isAssignableProperty(target, key)) {
+		try {
+			Reflect.set(target, key, next)
+			return
+		} catch {
+			// Fall through to drop / clone.
+		}
+	}
+	if (options.dropIfBlocked) {
+		try {
+			if (Reflect.deleteProperty(target, key)) return
+		} catch {
+			// Non-configurable; clone below.
+		}
+	}
+	// Plain clone so redacted values apply without touching accessors / frozen
+	// props on the original. Prefer this over silently leaving secrets.
+	options.ensureMutable()[String(key)] = next
+}
+
 function redactQueryStringObject(
 	query: Record<string, unknown>,
 	depth: number,
 	seen: WeakSet<object>,
-) {
-	for (const key of Object.keys(query)) {
+): Record<string, unknown> {
+	let host: Record<string, unknown> = query
+	let cloned = false
+	const ensureMutable = () => {
+		if (cloned) return host
+		host = { ...query }
+		cloned = true
+		return host
+	}
+	for (const key of Object.keys(host)) {
 		// Keep sensitiveFieldNames coverage (x-api-key, authorization, …) that
 		// generic object walking had before this query_string special case.
 		// Decode before both lookups so `%78-api-key` matches `x-api-key`.
@@ -138,13 +197,23 @@ function redactQueryStringObject(
 			sensitiveQueryParamNames.has(decodedKey) ||
 			sensitiveFieldNames.has(decodedKey)
 		) {
-			if (query[key] !== undefined && query[key] !== null) {
-				query[key] = redactedValue
+			const previous = host[key]
+			if (previous !== undefined && previous !== null) {
+				writeRedactedProperty(host, key, redactedValue, previous, {
+					dropIfBlocked: true,
+					ensureMutable,
+				})
 			}
 			continue
 		}
-		query[key] = redactSentryValue(query[key], depth + 1, seen)
+		const previous = host[key]
+		const next = redactSentryValue(previous, depth + 1, seen)
+		writeRedactedProperty(host, key, next, previous, {
+			dropIfBlocked: false,
+			ensureMutable,
+		})
 	}
+	return host
 }
 
 function redactSentryValue(
@@ -159,36 +228,85 @@ function redactSentryValue(
 	seen.add(value)
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
-			value[index] = redactSentryValue(value[index], depth + 1, seen)
+			const previous = value[index]
+			const next = redactSentryValue(previous, depth + 1, seen)
+			if (next === previous) continue
+			if (isAssignableProperty(value, index)) {
+				try {
+					value[index] = next
+					continue
+				} catch {
+					// Frozen / non-writable index: replace the array below.
+				}
+			}
+			// Non-writable index: return a shallow copy with the redaction applied
+			// so secrets in array slots are not left intact.
+			const copy = value.slice()
+			copy[index] = next
+			for (let rest = index + 1; rest < copy.length; rest++) {
+				const restPrevious = copy[rest]
+				const restNext = redactSentryValue(restPrevious, depth + 1, seen)
+				if (restNext !== restPrevious) copy[rest] = restNext
+			}
+			return copy
 		}
 		return value
 	}
-	const record = value as Record<string, unknown>
-	for (const key of Object.keys(record)) {
+	let host = value as Record<string, unknown>
+	let cloned = false
+	const ensureMutable = () => {
+		if (cloned) return host
+		host = { ...host }
+		cloned = true
+		// The clone is a new object; allow further redaction walks to treat it
+		// as seen so cycles through the replacement still terminate.
+		seen.add(host)
+		return host
+	}
+	for (const key of Object.keys(host)) {
 		if (sensitiveFieldNames.has(key.toLowerCase())) {
-			if (record[key] !== undefined && record[key] !== null) {
-				record[key] = redactedValue
+			const previous = host[key]
+			if (previous !== undefined && previous !== null) {
+				writeRedactedProperty(host, key, redactedValue, previous, {
+					dropIfBlocked: true,
+					ensureMutable,
+				})
 			}
 			continue
 		}
-		const child = record[key]
+		const child = host[key]
 		if (
 			key === 'query_string' &&
 			child !== null &&
 			typeof child === 'object' &&
 			!Array.isArray(child)
 		) {
-			redactQueryStringObject(child as Record<string, unknown>, depth, seen)
+			const redactedQuery = redactQueryStringObject(
+				child as Record<string, unknown>,
+				depth,
+				seen,
+			)
+			writeRedactedProperty(host, key, redactedQuery, child, {
+				dropIfBlocked: false,
+				ensureMutable,
+			})
 			continue
 		}
-		record[key] = redactSentryValue(child, depth + 1, seen)
+		const next = redactSentryValue(child, depth + 1, seen)
+		writeRedactedProperty(host, key, next, child, {
+			dropIfBlocked: false,
+			ensureMutable,
+		})
 	}
-	return value
+	return host
 }
 
 /**
- * Deep-redact a Sentry payload in place: strings, sensitive field names, auth
- * schemes, and secret query params (events, transactions, and breadcrumbs).
+ * Deep-redact a Sentry payload: strings, sensitive field names, auth schemes,
+ * and secret query params (events, transactions, and breadcrumbs). Mutates in
+ * place when properties are writable; returns a plain clone when getter-only or
+ * frozen properties block assignment so redaction cannot throw or silently skip
+ * secrets.
  */
 export function redactKodyCredentialsInSentryEvent<T extends object>(
 	event: T,
