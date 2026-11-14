@@ -234,7 +234,12 @@ test('a cache hit serves the stored graph without rebuilding it', async () => {
 	expect(second.packageBindings['pkg-hub']).not.toBe(
 		first.packageBindings['pkg-hub'],
 	)
-	expect([...store.values()].join('')).not.toContain('kpb1.')
+	const [stored] = [...store.values()]
+	const storedText = await new Response(
+		new Blob([stored!]).stream().pipeThrough(new DecompressionStream('gzip')),
+	).text()
+	expect(JSON.parse(storedText).imports).toEqual(['kody:@acme/hub/run'])
+	expect(storedText).not.toContain('kpb1.')
 })
 
 test('a new commit on an imported package misses the cache and rebuilds', async () => {
@@ -330,6 +335,35 @@ export default async () => small()`
 		isolateNames.every((name) => name.startsWith('isolated-package-graph-')),
 	).toBe(true)
 	expect(store.size).toBe(1)
+})
+
+test('a graph larger than the KV value limit is cached compressed and served on the next call', async () => {
+	addPackage('@acme/hub')
+	// Seven targets that each embed the same ~4.2 MB dependency, like a large
+	// private package imported from many entrypoints.
+	const dependency = 'export const row = "dependency module text";\n'.repeat(
+		Math.ceil((4.2 * 1024 * 1024) / 45),
+	)
+	mocks.buildUnsigned.mockImplementation(async (input: { code: string }) => {
+		const graph = unsignedGraphFor(importsIn(input.code))
+		for (let target = 1; target <= 7; target++) {
+			graph.modules.push({
+				name: `.__kody_packages__/pkg-hub/.__published_bundle__/t${target}/dep.js`,
+				esModule: dependency,
+			})
+		}
+		return graph
+	})
+	const { env, store } = createEnv()
+
+	await serve(env, hubCode)
+	const second = await serve(env, hubCode)
+
+	expect(JSON.stringify(second.modules).length).toBeGreaterThan(
+		25 * 1024 * 1024,
+	)
+	expect(store.size).toBe(1)
+	expect(mocks.buildUnsigned).toHaveBeenCalledTimes(1)
 })
 
 test('a graph that resolved packages beyond its keyed imports is not cached', async () => {

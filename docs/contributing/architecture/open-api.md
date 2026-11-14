@@ -219,12 +219,13 @@ module and does not silently hop to `kody.execute`. See
   alone; origin synthesizes a tiny entry from that list so the multi-megabyte
   bundle never crosses the wire.
 - Package-graph builds never run in the API isolate. Origin resolves each direct
-  import to its package id and serving commit, hashes them with the org, base
-  URL, and worker version, and serves a cached unsigned graph from
-  `BUNDLE_ARTIFACTS_KV` when one matches (a new commit on any import changes the
-  key). On a miss a throwaway `RepoSession` isolate builds and caches the graph.
-  Bindings are signed per request either way. A build that exceeds the isolate's
-  memory or CPU limits fails only its own request with
+  import to its package id, serving commit, and published artifact rows, hashes
+  them with the org, base URL, and worker version, and serves a gzip-compressed
+  cached unsigned graph from `BUNDLE_ARTIFACTS_KV` when one matches (a new
+  commit or a same-commit artifact repair on any import changes the key). On a
+  miss a throwaway `RepoSession` isolate builds and caches the graph. Bindings
+  are signed per request either way. A build that exceeds the isolate's memory
+  or CPU limits fails only its own request with
   `400 package_graph_resource_limit`, which names the packages and suggests
   `.kodyignore` and a smaller package
   (`packages/worker/src/package-runtime/isolated-local-execute-package-graph.ts`).

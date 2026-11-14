@@ -45,7 +45,7 @@ import {
 } from './package-import-resolution.ts'
 
 /** Bump when the unsigned graph shape changes. */
-const cacheKeyVersion = 'v1'
+const cacheKeyVersion = 'v2'
 const cacheKeyPrefix = `local-execute-package-graph:${cacheKeyVersion}:`
 const cacheTtlSeconds = 7 * 24 * 60 * 60
 /** KV values cap at 25 MiB; leave headroom for the JSON envelope. */
@@ -227,8 +227,13 @@ async function resolvePackageGraphCacheKey(input: {
 }
 
 async function readCachedPackageGraph(env: Env, key: string) {
-	const stored = await env.BUNDLE_ARTIFACTS_KV.get(key, 'json')
-	if (stored == null) return null
+	const bytes = await env.BUNDLE_ARTIFACTS_KV.get(key, 'arrayBuffer')
+	if (bytes == null) return null
+	const stored: unknown = await new Response(
+		new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip')),
+	)
+		.json()
+		.catch(() => null)
 	const parsed = unsignedGraphSchema.safeParse(stored)
 	return parsed.success ? parsed.data : null
 }
@@ -360,8 +365,13 @@ async function cachePackageGraph(
 	if (!graph.resolvedPackageIds.every((packageId) => keyed.has(packageId))) {
 		return
 	}
-	const value = JSON.stringify(graph)
-	if (value.length > maxCachedGraphBytes) return
+	// Graphs repeat module text across targets; gzip keeps large ones in KV.
+	const value = await new Response(
+		new Blob([JSON.stringify(graph)])
+			.stream()
+			.pipeThrough(new CompressionStream('gzip')),
+	).arrayBuffer()
+	if (value.byteLength > maxCachedGraphBytes) return
 	try {
 		await env.BUNDLE_ARTIFACTS_KV.put(cache.key, value, {
 			expirationTtl: cacheTtlSeconds,

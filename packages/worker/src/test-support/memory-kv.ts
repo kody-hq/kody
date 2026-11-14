@@ -5,17 +5,36 @@
  * revoke loop) does not skip the next one.
  */
 export function createMemoryKvNamespace(initial?: Record<string, string>) {
-	const store = new Map<string, string>(Object.entries(initial ?? {}))
+	const store = new Map<string, string | Uint8Array<ArrayBuffer>>(
+		Object.entries(initial ?? {}),
+	)
 	const defaultListLimit = 1000
 	const namespace = {
 		async get(key: string, options?: string | { type?: string }) {
 			const raw = store.get(key)
 			if (raw === undefined) return null
 			const type = typeof options === 'string' ? options : options?.type
-			return type === 'json' ? JSON.parse(raw) : raw
+			if (type === 'arrayBuffer') {
+				const bytes =
+					typeof raw === 'string' ? new TextEncoder().encode(raw) : raw
+				return bytes.slice().buffer
+			}
+			const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw)
+			return type === 'json' ? JSON.parse(text) : text
 		},
-		async put(key: string, value: string) {
-			store.set(key, value)
+		async put(key: string, value: string | ArrayBuffer | ArrayBufferView) {
+			store.set(
+				key,
+				typeof value === 'string'
+					? value
+					: ArrayBuffer.isView(value)
+						? new Uint8Array(
+								value.buffer,
+								value.byteOffset,
+								value.byteLength,
+							).slice()
+						: new Uint8Array(value).slice(),
+			)
 		},
 		async delete(key: string) {
 			store.delete(key)
