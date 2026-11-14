@@ -172,23 +172,35 @@ export function linkedArtifactPrefix(input: {
 /**
  * {@link materializePublishedArtifactModules} for a dependency artifact
  * composed into another bundle: the linked artifacts it carries move up to
- * the shared {@link linkedArtifactPrefix} root instead of nesting under it (a
- * hub artifact otherwise holds one copy of a shared package per dependency
- * that imports it), and the placeholder proxies that import `./artifacts/…`
- * point at the shared copies.
+ * `linkedRoot`'s `.__kody_linked__/artifacts/` instead of nesting (a hub
+ * artifact otherwise holds one copy of a shared package per dependency that
+ * imports it), and the placeholder proxies that import `./artifacts/…` point
+ * at the hoisted copies. `linkedRoot` must contain `artifactPrefix`: the root
+ * of the artifact being written when linking (`''`), or the composed
+ * artifact's own prefix when composing a load graph, so every module stays
+ * under its package's prefix.
  */
 export function materializeDependencyArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
+	linkedRoot: string
 }) {
-	const marker = `${linkedArtifactsRoot}/`
+	const rootPrefix = input.linkedRoot === '' ? '' : `${input.linkedRoot}/`
+	if (!`${input.artifactPrefix}/`.startsWith(rootPrefix)) {
+		throw new Error(
+			`Linked artifact root "${input.linkedRoot}" does not contain "${input.artifactPrefix}".`,
+		)
+	}
+	const marker = `/${linkedArtifactsRoot}/`
 	const materialized: Record<string, string> = {}
 	for (const [modulePath, source] of Object.entries(
 		materializePublishedArtifactModules(input),
 	)) {
-		const nested = modulePath.lastIndexOf(`/${marker}`)
-		materialized[nested === -1 ? modulePath : modulePath.slice(nested + 1)] =
-			source
+		const relative = modulePath.slice(rootPrefix.length)
+		const nested = `/${relative}`.lastIndexOf(marker)
+		materialized[
+			nested === -1 ? modulePath : `${rootPrefix}${relative.slice(nested)}`
+		] = source
 	}
 	for (const [modulePath, source] of Object.entries(materialized)) {
 		if (!dirname(modulePath).endsWith(`/${linkedPackageImportPrefix}`)) {
@@ -199,7 +211,7 @@ export function materializeDependencyArtifactModules(input: {
 			(_match, quote: string, artifactPath: string) =>
 				`${quote}${createRelativeImportSpecifier(
 					modulePath,
-					joinPath(linkedArtifactsRoot, artifactPath),
+					`${rootPrefix}${joinPath(linkedArtifactsRoot, artifactPath)}`,
 				)}${quote}`,
 		)
 	}

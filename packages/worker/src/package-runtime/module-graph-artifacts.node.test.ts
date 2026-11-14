@@ -70,6 +70,7 @@ test('a composed dependency artifact keeps one copy of each linked package it ca
 	const modules = materializeDependencyArtifactModules({
 		artifactPrefix: hub,
 		modules: nestedHubArtifactModules(),
+		linkedRoot: '',
 	})
 	const copiesOfAi = Object.entries(modules).filter(
 		([, source]) => source === aiBundle,
@@ -114,6 +115,46 @@ test('linking the same dependency twice writes the same modules', () => {
 	const once = materializeDependencyArtifactModules({
 		artifactPrefix: prefix,
 		modules: { 'bundle.js': aiBundle },
+		linkedRoot: '',
 	})
 	expect(once).toEqual({ [`${prefix}/bundle.js`]: aiBundle })
+})
+
+test('composing a dependency artifact into a load graph keeps every module under its prefix', () => {
+	const packagePrefix =
+		'.__kody_packages__/@u/week-run/.__published_bundle__/2e2f6472697665'
+	const modules = materializeDependencyArtifactModules({
+		artifactPrefix: packagePrefix,
+		modules: nestedHubArtifactModules(),
+		linkedRoot: packagePrefix,
+	})
+	expect(
+		Object.keys(modules).filter(
+			(modulePath) => !modulePath.startsWith(`${packagePrefix}/`),
+		),
+	).toEqual([])
+	expect(
+		Object.entries(modules)
+			.filter(([, source]) => source === aiBundle)
+			.map(([modulePath]) => modulePath),
+	).toEqual([`${packagePrefix}/${ai}/bundle.js`])
+	for (const [modulePath, source] of Object.entries(modules)) {
+		for (const [, specifier] of source.matchAll(/from "(\.[^"]+)"/g)) {
+			if (!specifier || specifier.includes('.__kody_virtual__')) continue
+			expect(
+				modules[resolveRelative(modulePath, specifier)],
+				`${modulePath} imports ${specifier}`,
+			).toBeDefined()
+		}
+	}
+})
+
+test('a linked artifact root must contain the artifact prefix', () => {
+	expect(() =>
+		materializeDependencyArtifactModules({
+			artifactPrefix: calendar,
+			modules: { 'bundle.js': aiBundle },
+			linkedRoot: '.__kody_packages__/@u/other',
+		}),
+	).toThrow(/does not contain/)
 })
