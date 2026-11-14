@@ -25,6 +25,11 @@ import {
 	executeLocallyCommand,
 	isExecuteBundleTooLargeMessage,
 } from '#mcp/execute-bundle-limit-messages.ts'
+import {
+	executionContextsExperimentUrl,
+	hasPublishOutsideCloudAdvice,
+	publishLocalBuildCommand,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
@@ -1426,7 +1431,10 @@ export async function createExecutorModuleSource({
 	excludedHostname?: string
 }) {
 	const normalizeCode = await loadNormalizeCode()
-	return createExecutorModule({ ...input, normalizedCode: normalizeCode(code) })
+	return createExecutorModule({
+		...input,
+		normalizedCode: normalizeCode(code),
+	})
 }
 
 function createProviderProxySource(provider: ResolvedProvider) {
@@ -1762,6 +1770,17 @@ export type ExecutionErrorDetails =
 			}
 	  }
 	| {
+			kind: 'package_build_limit'
+			message: string
+			nextStep: string
+			suggestedAction: {
+				type: 'publish_local_build'
+				/** Shell command that builds and publishes on the caller's machine. */
+				command: string
+				requires: Array<string>
+			}
+	  }
+	| {
 			kind: 'execution_timed_out'
 			message: string
 			nextStep: string
@@ -1769,6 +1788,15 @@ export type ExecutionErrorDetails =
 			timedOutAfterMs: number | null
 			suggestedAction: {
 				type: 'fix_code'
+			}
+			/**
+			 * Present only for ad hoc execute, where the caller can rerun the
+			 * same module on its own machine with no execution time budget.
+			 */
+			alternativeAction?: {
+				type: 'run_locally'
+				command: string
+				requires: Array<string>
 			}
 	  }
 
@@ -1816,7 +1844,11 @@ function parseTrustedReconnectLoginHint(
 
 export function getExecutionErrorDetails(
 	error: unknown,
-	options: { orgSlug?: string | null } = {},
+	options: {
+		orgSlug?: string | null
+		/** The failed run was an ad hoc execute module the caller holds. */
+		adHocExecute?: boolean
+	} = {},
 ): ExecutionErrorDetails | null {
 	const message = getErrorMessage(error)
 
@@ -1885,7 +1917,24 @@ export function getExecutionErrorDetails(
 			suggestedAction: {
 				type: 'run_locally',
 				command: executeLocallyCommand,
-				requires: ['node>=22', 'kody_cli_signed_in'],
+				requires: runLocallyRequirements,
+			},
+		}
+	}
+
+	if (causeMessages.some(hasPublishOutsideCloudAdvice)) {
+		return {
+			kind: 'package_build_limit',
+			message,
+			nextStep: `Retrying the same build on Kody cloud is likely to hit the same limit. Build and publish from the package's checkout on this machine, naming the package, with \`${publishLocalBuildCommand}\`, which needs the Execution contexts experiment (${executionContextsExperimentUrl}). To stay on Kody cloud, shrink what the package's entry points import.`,
+			suggestedAction: {
+				type: 'publish_local_build',
+				command: publishLocalBuildCommand,
+				requires: [
+					'node>=22',
+					'kody_cli_signed_in',
+					'execution_contexts_experiment',
+				],
 			},
 		}
 	}
@@ -1896,13 +1945,22 @@ export function getExecutionErrorDetails(
 			return {
 				kind: 'execution_timed_out',
 				message,
-				nextStep: createExecutionTimedOutNextStep(
+				nextStep: `${createExecutionTimedOutNextStep(
 					timeoutDetails.timedOutAfterMs,
-				),
+				)}${options.adHocExecute ? ` ${executionTimedOutRunLocallyNextStep}` : ''}`,
 				timedOutAfterMs: timeoutDetails.timedOutAfterMs,
 				suggestedAction: {
 					type: 'fix_code',
 				},
+				...(options.adHocExecute
+					? {
+							alternativeAction: {
+								type: 'run_locally',
+								command: executeLocallyCommand,
+								requires: runLocallyRequirements,
+							},
+						}
+					: {}),
 			}
 		}
 	}
@@ -2168,6 +2226,10 @@ function parseExecutorSandboxTimeoutErrorMessage(message: string) {
 	const value = Number(amount)
 	return { timedOutAfterMs: unit === 'ms' ? value : value * 1000 }
 }
+
+const runLocallyRequirements = ['node>=22', 'kody_cli_signed_in']
+
+const executionTimedOutRunLocallyNextStep = `To run it as written, save the module to a file and run \`${executeLocallyCommand}\`: local runs have no execution time budget and call the same Kody capabilities.`
 
 function createExecutionTimedOutNextStep(timedOutAfterMs: number | null) {
 	const budgetSentence =

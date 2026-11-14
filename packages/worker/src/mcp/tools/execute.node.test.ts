@@ -20,6 +20,7 @@ import {
 	wrapDownstreamMcpToolResult,
 } from '#mcp/downstream-mcp-result.ts'
 import { executeInvokeRemovedMessage } from '#mcp/execute-invoke-removed.ts'
+import { createExecutorSandboxTimeoutMessage } from '#mcp/executor.ts'
 import type * as AccessControlModule from '#mcp/capabilities/access-control.ts'
 import type * as MemoryToolContextModule from './memory-tool-context.ts'
 import type * as CapabilityRegistryModule from '#mcp/capabilities/registry.ts'
@@ -817,6 +818,22 @@ test('execute tool replays finished keyed runs and reports in-progress without r
 		runId: 'run-running-1',
 		inProgress: true,
 		status: 'running',
+	})
+
+	const timedOut = await replay('conv-timeout-replay', {
+		id: 'run-timeout-replay-1',
+		status: 'error',
+		errorName: 'Error',
+		errorMessage: createExecutorSandboxTimeoutMessage(90_000),
+		metadata: {},
+	})
+	expect(timedOut.isError).toBe(true)
+	expect(timedOut.structuredContent).toMatchObject({
+		replayed: true,
+		errorDetails: {
+			kind: 'execution_timed_out',
+			alternativeAction: { type: 'run_locally' },
+		},
 	})
 
 	const quotaLimit = planLimits.free.maxExecuteUniqueWorkersPerDay

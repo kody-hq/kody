@@ -25,9 +25,21 @@ export const executionContextsExperimentUrl =
  * build on this machine or on an execution context the publisher operates.
  * Every compute-limit failure in dev check and publish ends with this.
  */
+/** What an agent runs to build and publish a package on its own machine. */
+export const publishLocalBuildCommand =
+	'npx -y @kodycodes/cli@latest package publish <package> --build local'
+
+const publishOutsideCloudAdviceLead =
+	"This package is near Kody cloud's build CPU or memory limit."
+
+/** True for any failure that ends with `publishOutsideCloudAdvice()`. */
+export function hasPublishOutsideCloudAdvice(message: string) {
+	return message.includes(publishOutsideCloudAdviceLead)
+}
+
 export function publishOutsideCloudAdvice() {
 	return (
-		"This package is near Kody cloud's build CPU or memory limit. Build it " +
+		`${publishOutsideCloudAdviceLead} Build it ` +
 		'on your machine with `kody package publish --build local`, or on an ' +
 		'execution context with `--context <name>`. Both need the Execution ' +
 		`contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +

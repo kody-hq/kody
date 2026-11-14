@@ -588,6 +588,7 @@ export async function runExecuteToolCall(input: {
 			const { errorName, errorMessage } = errorFields(error)
 			const errorDetails = getExecutionErrorDetails(error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			logMcpEvent({
 				category: 'mcp',
@@ -643,6 +644,7 @@ export async function runExecuteToolCall(input: {
 				const timing = finishToolTiming(timingStart)
 				return buildKeyedExecuteLookupResponse({
 					run: existing,
+					orgSlug: callerContext.request?.org.slug,
 					conversationId: resolvedConversationId,
 					timing,
 				})
@@ -775,6 +777,7 @@ export async function runExecuteToolCall(input: {
 				const timing = finishToolTiming(timingStart)
 				return buildKeyedExecuteLookupResponse({
 					run: claim.run,
+					orgSlug: callerContext.request?.org.slug,
 					conversationId: resolvedConversationId,
 					timing,
 				})
@@ -1183,6 +1186,7 @@ export async function runExecuteToolCall(input: {
 			})
 			return buildKeyedExecuteLookupResponse({
 				run: spanned.run,
+				orgSlug: callerContext.request?.org.slug,
 				conversationId: resolvedConversationId,
 				timing,
 			})
@@ -1267,6 +1271,7 @@ export async function runExecuteToolCall(input: {
 		if (result.error) {
 			const errorDetails = getExecutionErrorDetails(result.error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			const { errorName, errorMessage } = errorFields(result.error)
 			logMcpEvent({
@@ -1577,6 +1582,7 @@ function buildTransportBudgetFollowResponse(input: {
 
 function buildKeyedExecuteLookupResponse(input: {
 	run: RunRecord
+	orgSlug?: string | null
 	conversationId: string
 	timing: {
 		startedAt: string
@@ -1620,6 +1626,10 @@ function buildKeyedExecuteLookupResponse(input: {
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
 		const replayedError = new Error(errorMessage)
 		if (input.run.errorName) replayedError.name = input.run.errorName
+		const errorDetails = getExecutionErrorDetails(replayedError, {
+			orgSlug: input.orgSlug,
+			adHocExecute: true,
+		})
 		return {
 			content: prependToolMetadataContent(input.conversationId, [
 				{
@@ -1639,6 +1649,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				returnedBytes: 0,
 				error: errorMessage,
 				...(input.run.errorName ? { errorName: input.run.errorName } : {}),
+				...(errorDetails ? { errorDetails } : {}),
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,

@@ -204,6 +204,20 @@ its own machine and calls the same Kody capabilities
 ([local execute](../guides/local-execute.md)). To stay on Kody cloud, import
 fewer or smaller packages in one module.
 
+Two more failures name a local path in `errorDetails`:
+
+- `kind: "execution_timed_out"` from an ad hoc execute adds
+  `alternativeAction: { type: "run_locally", command, requires }` beside its
+  `suggestedAction`. Local runs have no execution time budget, so the same
+  module runs as written. Durable workflows remain the hosted path for long
+  work.
+- `kind: "package_build_limit"` means a package build or check ran out of memory
+  or CPU on Kody cloud. Its
+  `suggestedAction: { type: "publish_local_build", command, requires }` carries
+  `npx -y @kodycodes/cli@latest package publish <package> --build local`, which
+  needs the Execution contexts experiment
+  ([Publish packages too big for Kody cloud](../guides/publish-large-packages.md)).
+
 ### Long calls: start a workflow and check back
 
 For work that may outlast one MCP call, return the `id` from `workflows.create`
