@@ -93,7 +93,11 @@ Kody trusts nothing it did not compute itself:
 - Every target must be one the commit's `package.json` declares, with the right
   hashes and sizes and no platform-reserved module names.
 - Kody rebuilds a sample of targets itself and compares hashes (more for
-  community-listed packages).
+  community-listed packages). The sample is the smallest targets, rebuilt in a
+  Kody cloud isolate. A sampled target too big for that isolate's memory or CPU
+  limit is not compared and does not refuse the publish, so a package built off
+  cloud is not held to the cloud limit it was built to avoid. A sampled target
+  that fails to build, or builds to different bytes, still refuses it.
 - A build never contains another Kody package. Each `kody:@` import stays a
   linked placeholder, and Kody fills it in when it commits the upload: the
   dependency's own published artifact, resolved for you the same way a cloud

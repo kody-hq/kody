@@ -3732,9 +3732,11 @@ class RepoSessionBase extends DurableObject<Env> {
 						})
 						return sampleTargets.map((_, index) => {
 							const result = outcome.results[index]
-							return result?.ok && result.built
-								? result.built
-								: new Error(result?.message ?? outcome.message)
+							if (result?.ok && result.built) return result.built
+							const message = result?.message ?? outcome.message
+							return result?.resourceLimit
+								? { overCloudLimit: true as const, message }
+								: new Error(message)
 						})
 					} finally {
 						await runner.discard(stagingKey).catch(() => {})

@@ -116,6 +116,11 @@ export type IsolatedArtifactRebuildTargetResult = {
 	 * Sentry drops the event after the DO serializes the error to a string.
 	 */
 	callerFailure?: boolean
+	/**
+	 * True when the throwaway isolate hit Cloudflare's memory or CPU limit
+	 * on this target, as opposed to a build error.
+	 */
+	resourceLimit?: boolean
 	skipped?: boolean
 	kvKey?: string | null
 	/** Build check only, when `includeModuleHashes` asked for it. */
@@ -228,6 +233,7 @@ export function createIsolatedArtifactRebuildRunner(
 					results: request.targets.map((target) => ({
 						ok: false,
 						message,
+						resourceLimit: true,
 						target,
 					})),
 				}

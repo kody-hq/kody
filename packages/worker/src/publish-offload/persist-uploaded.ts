@@ -35,12 +35,13 @@ import type {
 } from './types.ts'
 import {
 	assertSameBuildUploadMatches,
-	assertServerRebuildMatches,
 	assertSupportedBuilderVersion,
+	checkServerRebuildSample,
 	matchUploadedTargets,
 	pickServerRebuildSample,
 	PublishBuildVerificationError,
 	verifySourceManifest,
+	type ServerRebuildSampleResult,
 	verifyUploadedTargetModules,
 } from './verify.ts'
 
@@ -170,9 +171,7 @@ export async function persistUploadedPublishBuild(input: {
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
 	rebuildSample: (
 		targets: Array<PublishedPackageArtifactBuildTarget>,
-	) => Promise<
-		Array<{ mainModule: string; moduleHashes: Record<string, string> } | Error>
-	>
+	) => Promise<Array<ServerRebuildSampleResult>>
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
 	const reject = async (message: string) => {
@@ -286,14 +285,16 @@ export async function persistUploadedPublishBuild(input: {
 		const rebuilt = await input.rebuildSample(
 			sample.map((entry) => entry.target),
 		)
-		for (const [index, entry] of sample.entries()) {
-			const result = rebuilt[index]
-			if (!result || result instanceof Error) {
-				return await reject(
-					`the server could not rebuild "${entry.uploaded.entryPoint}" to compare it: ${result ? result.message : 'no result'}.`,
-				)
-			}
-			assertServerRebuildMatches({ uploaded: entry.uploaded, rebuilt: result })
+		const sampleCheck = checkServerRebuildSample({ sample, rebuilt })
+		if (sampleCheck.overCloudLimit.length > 0) {
+			console.info(
+				JSON.stringify({
+					message: 'publish build sample rebuild over cloud limit',
+					buildId: input.buildId,
+					sourceId: input.source.id,
+					entryPoints: sampleCheck.overCloudLimit,
+				}),
+			)
 		}
 		const results = await persistPublishedPackageArtifactTargets({
 			env: input.env,
@@ -322,7 +323,8 @@ export async function persistUploadedPublishBuild(input: {
 		return {
 			ok: true,
 			targetCount: matched.length,
-			sampledTargetCount: sample.length,
+			sampledTargetCount: sampleCheck.comparedCount,
+			sampleOverCloudLimit: sampleCheck.overCloudLimit,
 		}
 	} catch (error) {
 		if (error instanceof PublishBuildVerificationError) {
