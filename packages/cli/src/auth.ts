@@ -7,8 +7,8 @@ import {
 import { hostname } from 'node:os'
 import { dirname } from 'node:path'
 import { isScopedApiToken, notAuthenticatedMessage } from './api-token.js'
+import { SavedCredentialExpiredError } from './cli-credential.js'
 import {
-	accessTokenSkewMs,
 	cliRedirectUrl,
 	defaultApiUrl,
 	defaultMcpUrl,
@@ -46,6 +46,7 @@ import { OpenApiError, openApiGet, openApiRequest } from './open-api-client.js'
 import { openUrl } from './open-url.js'
 import { redactError } from './redact.js'
 import {
+	isAccessTokenExpired,
 	loadCredentialStore,
 	loadCredentials,
 	loadPendingCredentials,
@@ -96,14 +97,6 @@ export type LoginOptions = {
 		org?: string
 		fetchFn?: typeof fetch
 	}) => Promise<LoginIdentity>
-}
-
-export function isAccessTokenExpired(
-	credentials: StoredCredentials,
-	now: number = Date.now(),
-): boolean {
-	if (!credentials.expiresAt) return false
-	return now + accessTokenSkewMs >= credentials.expiresAt
 }
 
 export function credentialsFromTokens(input: {
@@ -243,7 +236,7 @@ export async function refreshStoredCredentials(input: {
 		if (!isAccessTokenExpired(credentials, input.now)) return credentials
 		const slid = await adoptSlidingDeviceExpiry(input)
 		if (slid) return slid
-		throw new Error('Stored API token expired. Run `kody login`.')
+		throw new SavedCredentialExpiredError(credentials)
 	}
 	if (!credentials.refreshToken) {
 		throw new Error('No refresh token is stored. Run `kody login`.')

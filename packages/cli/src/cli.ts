@@ -31,6 +31,7 @@ import { orgSlugFromFlag, resolveOrgSlug } from './org-resolve.js'
 import { refreshGitCredentialHelperPinIfNeeded } from './setup-git.js'
 import {
 	deleteCredentials,
+	isAccessTokenExpired,
 	listStoredOrgs,
 	loadCredentialStore,
 	loadCredentials,
@@ -816,6 +817,9 @@ async function dispatch(
 				process.env,
 				mcpUrl,
 			)
+			// Resolve first: a dead login gives way to a live old-slot token here,
+			// so the lines below show what every command will send.
+			const inUse = resolveCliCredential({ mcpUrl, apiUrl })
 			// Status always reports the active (or pending) login — not KODY_ORG.
 			const credentials = loadCredentials(mcpUrl)
 			const orgs = listStoredOrgs(mcpUrl)
@@ -826,8 +830,9 @@ async function dispatch(
 			}
 			const lines: Array<string> = []
 			if (credentials || orgs.length > 0) {
+				const expired = credentials ? isAccessTokenExpired(credentials) : false
 				const expires = credentials?.expiresAt
-					? new Date(credentials.expiresAt).toISOString()
+					? `${new Date(credentials.expiresAt).toISOString()}${expired ? (credentials.refreshToken ? ' (expired; refreshes on next use)' : ' (expired; no refresh token, run `kody login` if `kody whoami` fails)') : ''}`
 					: 'unknown'
 				lines.push(
 					`mcp: ${credentials?.mcpUrl ?? mcpUrl}`,
@@ -853,10 +858,9 @@ async function dispatch(
 			} else {
 				lines.push(`api: ${apiUrl}`, `stored API token: no`)
 			}
-			const inUse = resolveCliCredential({ mcpUrl, apiUrl })
 			if (inUse) {
 				lines.push(
-					`credential in use (api, whoami, package): ${describeCliCredential(inUse)}`,
+					`credential in use (every command): ${describeCliCredential(inUse)}`,
 				)
 			}
 			lines.push('')

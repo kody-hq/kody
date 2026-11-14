@@ -8,6 +8,7 @@ import {
 import {
 	noteActiveLoginCredential,
 	resolveCliCredential,
+	SavedCredentialExpiredError,
 } from './cli-credential.js'
 import { defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import type { SecretBackend } from './store.js'
@@ -96,10 +97,11 @@ export async function resolveLocalExecuteBearer(
 		noteActiveLoginCredential({ login: credentials })
 		return credentials.accessToken
 	} catch (error) {
-		// Preserve org-specific guidance from ensureFreshCredentials.
+		// Preserve org-specific and expired-credential guidance.
 		if (
-			error instanceof Error &&
-			error.message.startsWith('No login stored for org "')
+			error instanceof SavedCredentialExpiredError ||
+			(error instanceof Error &&
+				error.message.startsWith('No login stored for org "'))
 		) {
 			throw error
 		}

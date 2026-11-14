@@ -3,11 +3,7 @@ import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import {
-	credentialsFromTokens,
-	isAccessTokenExpired,
-	login,
-} from '../src/auth.js'
+import { credentialsFromTokens, login } from '../src/auth.js'
 import { CredentialDirError } from '../src/credential-dir.js'
 import { buildCliAuthorizationUrl } from '../src/oauth-browser.js'
 import {
@@ -16,6 +12,7 @@ import {
 } from '../src/oauth-provider.js'
 import {
 	createFileBackend,
+	isAccessTokenExpired,
 	loadCredentials,
 	parseCredentials,
 	saveCredentials,

@@ -191,7 +191,10 @@ One resolver picks the credential for every command, and `kody whoami` reports
 the same pick:
 
 Every command uses the same order: `--token`, `KODY_API_TOKEN`, then the one
-saved CLI credential.
+saved CLI credential. `kody status` names that pick and marks an expired saved
+credential. A saved credential that expired with no refresh token never shadows
+a still-valid token an older CLI left in its separate API-token slot: that token
+replaces it (except with `--org` / `KODY_ORG`, since the old token has no org).
 
 Desktop integrations can set `KODY_CREDENTIAL_SOURCE=login` to select only the
 saved credential. Unset it for normal CLI precedence.

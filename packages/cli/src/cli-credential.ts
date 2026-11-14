@@ -1,6 +1,7 @@
 import { deleteStoredApiToken, loadStoredApiToken } from './api-token-store.js'
 import { apiTokenEnvVar, defaultApiUrl, defaultMcpUrl } from './defaults.js'
 import {
+	isAccessTokenExpired,
 	loadCredentials,
 	saveCredentials,
 	type SecretBackend,
@@ -85,23 +86,33 @@ function loadCandidate(
 		// and an old-slot token has no org, so `--org` never adopts it.
 		const desktop =
 			(input.env ?? process.env).KODY_CREDENTIAL_SOURCE === 'login'
-		const saved =
-			login ??
-			(desktop || input.org ? null : adoptLegacyStoredApiToken(input, mcpUrl))
+		const adopted =
+			desktop || input.org || (login && !isDeadLogin(login))
+				? null
+				: adoptLegacyStoredApiToken(input, mcpUrl, login)
+		const saved = adopted ?? login
 		return { candidate: saved ? { source, token: null, login: saved } : null }
 	} catch (error) {
 		return { candidate: null, error }
 	}
 }
 
+/** Expired with nothing to refresh it from (`kody login` is the only way back). */
+function isDeadLogin(login: StoredCredentials): boolean {
+	return isAccessTokenExpired(login) && !login.refreshToken
+}
+
 /**
  * Move a token from the slot `auth bootstrap` / `setup-git` used before the
  * CLI had one saved credential into that credential, then clear the old
- * slot. Only runs when nothing is saved: the saved credential always wins.
+ * slot. Runs when nothing is saved, or when the saved credential is dead and
+ * the old-slot token has not expired: a dead login never shadows a live token.
+ * Otherwise the saved credential always wins.
  */
 function adoptLegacyStoredApiToken(
 	input: ResolveCliCredentialInput,
 	mcpUrl: string,
+	dead: StoredCredentials | null,
 ): StoredCredentials | null {
 	const apiUrl = input.apiUrl || defaultApiUrl
 	const legacy = (input.loadApiToken ?? loadStoredApiToken)(
@@ -117,8 +128,14 @@ function adoptLegacyStoredApiToken(
 		scopes: legacy.scopes ?? [],
 		apiUrl,
 	})
+	if (dead && isAccessTokenExpired(adopted)) return null
 	try {
-		;(input.saveLogin ?? saveCredentials)(adopted, input.loginBackend)
+		;(input.saveLogin ?? saveCredentials)(
+			adopted,
+			input.loginBackend,
+			undefined,
+			dead?.org ? { replacesOrg: dead.org } : undefined,
+		)
 		;(input.deleteApiToken ?? deleteStoredApiToken)(
 			apiUrl,
 			input.apiTokenBackend,
@@ -260,6 +277,19 @@ export function credentialUsedNote(input: {
 		return `${used} It wins over the saved CLI credential; mint a token with the missing scope (tokenCreate) and update ${credential.source === 'env' ? apiTokenEnvVar : '--token'}, or unset it to use the saved credential.`
 	}
 	return `${used} Your org role must grant the scope. If this credential was minted with a narrower --scopes list, ${resignInHint}`
+}
+
+/** The saved credential expired and has no refresh token. */
+export class SavedCredentialExpiredError extends Error {
+	constructor(login: StoredCredentials) {
+		const at = login.expiresAt
+			? ` at ${new Date(login.expiresAt).toISOString()}`
+			: ''
+		super(
+			`The ${describeCliCredential({ source: 'login', token: null, login })} expired${at} and has no refresh token. ${resignInHint}`,
+		)
+		this.name = 'SavedCredentialExpiredError'
+	}
 }
 
 /**
