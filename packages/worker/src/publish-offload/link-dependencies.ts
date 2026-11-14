@@ -133,6 +133,7 @@ export async function linkUploadedPackageImports(input: {
 		const materialized = materializeDependencyArtifactModules({
 			artifactPrefix,
 			modules: artifact.modules,
+			linkedRoot: '',
 		})
 		Object.assign(modules, materialized)
 		const mainPath = joinPath(artifactPrefix, artifact.mainModule)

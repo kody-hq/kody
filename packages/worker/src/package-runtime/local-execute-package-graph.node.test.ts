@@ -209,11 +209,18 @@ export default async function main(params) { return greet(params.name) }`
 	).toBe(false)
 })
 
-const discordPrefix = linkedArtifactPrefix({
-	specifier: 'kody:@kentcdodds/discord/edit-message',
-	sourceId: 'source-discord',
-	publishedCommit: 'commit-discord',
-})
+const linkedDependencyPrefixes = {
+	discord: linkedArtifactPrefix({
+		specifier: 'kody:@kentcdodds/discord/edit-message',
+		sourceId: 'source-discord',
+		publishedCommit: 'commit-discord',
+	}),
+	github: linkedArtifactPrefix({
+		specifier: 'kody:@kentcdodds/github/comment',
+		sourceId: 'source-github',
+		publishedCommit: 'commit-github',
+	}),
+}
 const grokPrefix = linkedArtifactPrefix({
 	specifier: 'kody:@kentcdodds/grok-bot/wake',
 	sourceId: 'source-grok',
@@ -227,38 +234,45 @@ function linkedProxyTo(target: string) {
 }
 
 /**
- * An `./advance` artifact that links discord, which itself links grok-bot.
- * `nested` is how linking wrote it before #5153 (grok-bot inside discord's
- * prefix); `hoisted` is how it writes it since (grok-bot at the artifact's
- * own `.__kody_linked__/artifacts/` root).
+ * An `./advance` artifact that links discord and github, which both link
+ * grok-bot. `nested` is how linking wrote it before #5153 (a grok-bot copy
+ * inside each dependency's prefix); `hoisted` is how it writes it since (one
+ * grok-bot at the artifact's own `.__kody_linked__/artifacts/` root).
  */
 function advanceArtifactModules(layout: 'nested' | 'hoisted') {
-	const grokInDiscord =
-		layout === 'nested' ? `${discordPrefix}/${grokPrefix}` : grokPrefix
-	return {
+	const modules: Record<string, string> = {
 		'dist/advance.js':
-			'import editMessage from "../.__kody_linked__/discord.js";\nexport default async function advance() { return editMessage() }\n',
+			'import editMessage from "../.__kody_linked__/discord.js";\nimport comment from "../.__kody_linked__/github.js";\nexport default async function advance() { return [editMessage(), comment()] }\n',
 		'.__kody_virtual__/runtime.js': linkedRuntimeStub,
-		'.__kody_linked__/discord.js': linkedProxyTo(
-			`./artifacts/${discordPrefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`,
-		),
-		[`${discordPrefix}/bundle.js`]:
-			'import wake from "./.__kody_linked__/grok.js";\nexport default function editMessage() { return wake() }\n',
-		[`${discordPrefix}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
-		[`${discordPrefix}/.__kody_linked__/grok.js`]: linkedProxyTo(
-			createRelativeImportSpecifier(
-				`${discordPrefix}/.__kody_linked__/grok.js`,
-				`${grokInDiscord}/bundle.js`,
-			),
-		),
-		[`${grokInDiscord}/bundle.js`]:
-			'export default function wake() { return "woke" }\n',
-		[`${grokInDiscord}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
 	}
+	for (const [name, prefix] of Object.entries(linkedDependencyPrefixes)) {
+		const grokInDependency =
+			layout === 'nested' ? `${prefix}/${grokPrefix}` : grokPrefix
+		Object.assign(modules, {
+			[`.__kody_linked__/${name}.js`]: linkedProxyTo(
+				`./artifacts/${prefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`,
+			),
+			[`${prefix}/bundle.js`]:
+				'import wake from "./.__kody_linked__/grok.js";\nexport default function run() { return wake() }\n',
+			[`${prefix}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+			[`${prefix}/.__kody_linked__/grok.js`]: linkedProxyTo(
+				layout === 'nested'
+					? `./artifacts/${grokPrefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`
+					: createRelativeImportSpecifier(
+							`${prefix}/.__kody_linked__/grok.js`,
+							`${grokInDependency}/bundle.js`,
+						),
+			),
+			[`${grokInDependency}/bundle.js`]:
+				'export default function wake() { return "woke" }\n',
+			[`${grokInDependency}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+		})
+	}
+	return modules
 }
 
 test.each(['nested', 'hoisted'] as const)(
-	'buildLocalExecutePackageGraph loads a %s-layout artifact whose linked kody:@ dependency links another package',
+	'buildLocalExecutePackageGraph loads a %s-layout artifact whose linked kody:@ dependencies share a linked package once',
 	async (layout) => {
 		mockModule.getSavedPackageByName.mockResolvedValue(
 			createSavedPackageRecord(),
