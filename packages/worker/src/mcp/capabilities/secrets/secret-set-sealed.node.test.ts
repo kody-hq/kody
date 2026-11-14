@@ -125,7 +125,13 @@ async function setup() {
 			env,
 			response: Response.json({ access_token: plaidToken, item_id: 'item-1' }),
 			requestUrl: 'https://sandbox.plaid.com/item/public_token/exchange',
-			approvedHosts: ['sandbox.plaid.com', 'production.plaid.com'],
+			mintedWith: [
+				{
+					secret: 'clientSecret',
+					scope: 'user',
+					hosts: ['sandbox.plaid.com', 'production.plaid.com'],
+				},
+			],
 			filledValues: input.filledValues ?? ['plaid-client-secret'],
 			org: input.org ?? org,
 			binding: input.binding ?? 'run:1',
@@ -360,7 +366,13 @@ test('package code that tries to keep a sealed token is pointed at a login crede
 		env: t.env,
 		response: Response.json({ access_token: 'token-demo-access-token' }),
 		requestUrl: 'https://auth.example.com/oauth/token',
-		approvedHosts: ['auth.example.com', 'api.example.com'],
+		mintedWith: [
+			{
+				secret: 'clientSecret',
+				scope: 'user',
+				hosts: ['auth.example.com', 'api.example.com'],
+			},
+		],
 		filledValues: ['token-demo-refresh-token'],
 		org: t.org,
 		binding: 'run:1',

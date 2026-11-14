@@ -116,7 +116,13 @@ async function setup() {
 				refresh_token: refreshToken,
 			}),
 			requestUrl: 'https://auth.example.com/oauth/token',
-			approvedHosts: ['auth.example.com', 'api.example.com'],
+			mintedWith: [
+				{
+					secret: 'clientSecret',
+					scope: 'user',
+					hosts: ['auth.example.com', 'api.example.com'],
+				},
+			],
 			filledValues: ['dummy-client-secret'],
 			org,
 			binding: input.binding ?? 'run:1',

@@ -303,10 +303,16 @@ Kody fills in `send_to_host` when every earlier any-host handle from that org
 and package went to one registrable domain (the result's **`warning`** names the
 host) and refuses the call otherwise. A token endpoint's `access_token`,
 `refresh_token`, and `id_token` come back sealed the same way. They fill on the
-token URL's registrable domain and the client secret's approved hosts; an
-`access_token` JWT also fills on the exact host of its https **`aud`** (for
-example `https://management.azure.com` from `login.microsoftonline.com`), so the
-client secret stays approved for the token host only.
+token URL's registrable domain and the exact hosts approved on the stored
+secrets that minted them, including the key behind a `secretJwtSign` JWT sent to
+the token endpoint. A Google service-account token from
+`oauth2.googleapis.com/token` fills on `run.googleapis.com` when the
+service-account key approves `run.googleapis.com`. An `access_token` JWT also
+fills on the exact host of its https **`aud`** (for example
+`https://management.azure.com` from `login.microsoftonline.com`), so the client
+secret stays approved for the token host only. A refused fill names the secrets
+that minted the token, the hosts they approve, and the approval link for the
+missing host.
 
 The caller supplies the JWT header and claims, then performs any provider-
 specific token exchange with ordinary **`fetch`**. Pass the saved secret as
