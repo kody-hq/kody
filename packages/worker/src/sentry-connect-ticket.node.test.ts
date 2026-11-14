@@ -265,4 +265,20 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 	expect(cyclicExtra.child.ref).toBe(cyclicExtra)
 	expect(cyclicExtra.child.ref.authorization).toBe('[redacted]')
 	expect(cyclicExtra).not.toBe(cyclic)
+
+	// Generic walk keeps status `code`; query_string walk must still redact it
+	// when the same frozen object is reused (extra before request key order).
+	const sharedCode = Object.freeze({ code: 'oauth-secret', state: 'kept' })
+	const sharedOrder = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: { cached: sharedCode },
+		request: { query_string: sharedCode },
+	})
+	expect((sharedOrder.extra as { cached: { code: unknown } }).cached.code).toBe(
+		'oauth-secret',
+	)
+	expect(
+		(sharedOrder.request as { query_string: { code: string; state: string } })
+			.query_string,
+	).toEqual({ code: '[redacted]', state: 'kept' })
 })
