@@ -15,6 +15,7 @@ import {
 	jwtSignMayFillAnyHost,
 	jwtSignSendToHostRequiredDate,
 	sealToken,
+	sealedTokenMinter,
 	sealedTokenDomainForUrl,
 } from '#worker/credentials/sealed-token.ts'
 import { secretScopeValues } from '#mcp/secrets/types.ts'
@@ -187,11 +188,12 @@ export const jwtSignCapability = defineDomainCapability(
 						domains: binding.domains,
 						source: 'jwt-sign',
 						mintedWith: [
-							{
+							sealedTokenMinter({
 								secret: secretName,
 								scope: resolved.scope ?? secretScope ?? 'user',
 								hosts: resolved.allowedHosts,
-							},
+								storageContext,
+							}),
 						],
 						...(binding.anyHostPackageId === undefined
 							? {}

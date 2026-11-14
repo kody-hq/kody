@@ -389,3 +389,40 @@ test('a token exchanged for a secretJwtSign JWT fills on the signing secret appr
 	await expect(refused).rejects.not.toThrow(/credential that minted it/)
 	expect(seen).toHaveLength(4)
 })
+
+test('a refused token minted with another package secret names it without a link to the wrong package', async () => {
+	const globalFetch = vi.fn(async () =>
+		Response.json({ ok: true }),
+	) as unknown as typeof fetch
+	const token = await sealToken({
+		env,
+		value: 'ya29.opaque-google-token',
+		to: {
+			org: props.userId,
+			binding: 'run-a',
+			domains: ['oauth2.googleapis.com'],
+			source: 'token-response',
+			mintedWith: [
+				{
+					secret: 'gcpPackageKey',
+					scope: 'package',
+					bucket: 'pkg-google',
+					hosts: ['run.googleapis.com'],
+				},
+			],
+		},
+	})
+	await expect(
+		executeGatewayFetch({
+			env,
+			props: { ...props, credentialClientBinding: 'run-a' },
+			request: new Request('https://monitoring.googleapis.com/v3/x', {
+				headers: { Authorization: `Bearer ${token}` },
+			}),
+			globalFetch,
+		}),
+	).rejects.toThrow(
+		/It was minted with secret "gcpPackageKey", approved for run\.googleapis\.com\. None of those approves monitoring\.googleapis\.com; to send it there, approve monitoring\.googleapis\.com on "gcpPackageKey"\. \(credential_placement_refused\)$/,
+	)
+	expect(globalFetch).not.toHaveBeenCalled()
+})

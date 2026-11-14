@@ -29,6 +29,7 @@ import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import { buildIntegrationTokenPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { credentialHostsAllow } from '#worker/credentials/credential-request.ts'
 import { type SecretScope, secretScopeValues } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 export const sealedTokenNamePrefix = 'kody-sealed.'
 /** A `domains` entry that lets a sealed token fill on any host. */
@@ -78,6 +79,7 @@ const sealedPayloadSchema = z.object({
 			z.object({
 				secret: z.string().min(1),
 				scope: z.enum(secretScopeValues),
+				bucket: z.string().min(1).optional(),
 				hosts: z.array(z.string().min(1)),
 			}),
 		)
@@ -95,7 +97,34 @@ type SealedTokenEnv = Pick<Env, 'SECRET_STORE_KEY'>
 export type SealedTokenMinter = {
 	secret: string
 	scope: SecretScope
+	/** Package or session id a package- or session-scope secret lives in. */
+	bucket?: string
 	hosts: ReadonlyArray<string>
+}
+
+export function sealedTokenMinter(input: {
+	secret: string
+	scope: SecretScope
+	hosts: ReadonlyArray<string>
+	storageContext: StorageContext | null
+}): SealedTokenMinter {
+	const bucket = sealedTokenMinterBucket(input.scope, input.storageContext)
+	return {
+		secret: input.secret,
+		scope: input.scope,
+		...(bucket ? { bucket } : {}),
+		hosts: input.hosts,
+	}
+}
+
+/** The package or session a secret of `scope` resolves in for `storageContext`. */
+export function sealedTokenMinterBucket(
+	scope: SecretScope,
+	storageContext: StorageContext | null,
+) {
+	if (scope === 'package') return storageContext?.packageId ?? undefined
+	if (scope === 'session') return storageContext?.sessionId ?? undefined
+	return undefined
 }
 
 export type SealedTokenBinding = {
@@ -177,6 +206,7 @@ export async function sealToken(input: {
 					via: input.to.mintedWith.map((minter) => ({
 						secret: minter.secret,
 						scope: minter.scope,
+						...(minter.bucket ? { bucket: minter.bucket } : {}),
 						hosts: [...new Set(minter.hosts)],
 					})),
 				}
@@ -259,8 +289,8 @@ export async function openSealedToken(
 		parts: ReadonlyArray<string>
 		/** Called when an any-host JWT fills, with the caller that minted it. */
 		onAnyHostFill?: (caller: { ownerId: string; packageId: string }) => void
-		/** Link that approves the request host on a minting secret. */
-		hostApprovalUrl?: (minter: SealedTokenMinter) => string
+		/** Link that approves the request host on a minting secret, if one can. */
+		hostApprovalUrl?: (minter: SealedTokenMinter) => string | undefined
 	},
 ): Promise<{ value: string; mintedWith: Array<SealedTokenMinter> }> {
 	const payload = await openSealedPayload(input, refuse)
@@ -305,7 +335,9 @@ export async function openSealedToken(
 function refusedHostHint(
 	payload: z.infer<typeof sealedPayloadSchema>,
 	host: string,
-	hostApprovalUrl: ((minter: SealedTokenMinter) => string) | undefined,
+	hostApprovalUrl:
+		| ((minter: SealedTokenMinter) => string | undefined)
+		| undefined,
 ) {
 	const hints: Array<string> = []
 	if (payload.src === 'jwt-sign') {
@@ -350,9 +382,11 @@ function refusedHostHint(
 export function sealedTokenAudienceHosts(
 	token: string,
 	domains: ReadonlyArray<string> = [],
+	approvedHosts: ReadonlyArray<string> = [],
 ) {
 	const covered = (host: string) =>
-		domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
+		domains.some((domain) => host === domain || host.endsWith(`.${domain}`)) ||
+		credentialHostsAllow(approvedHosts, host)
 	const outside = new Map<string, Array<string>>()
 	for (const host of readJwtAudiences(token).map(audienceHost)) {
 		if (host === null) continue
@@ -471,7 +505,11 @@ function audienceHostsFor(
 	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
 ) {
 	if (repeatsFilledValue(token, input.filledValues)) return []
-	return sealedTokenAudienceHosts(token, input.to.domains)
+	return sealedTokenAudienceHosts(
+		token,
+		input.to.domains,
+		(input.to.mintedWith ?? []).flatMap((minter) => minter.hosts),
+	)
 }
 
 function repeatsFilledValue(

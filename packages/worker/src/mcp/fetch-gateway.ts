@@ -89,6 +89,8 @@ import {
 	isSealedTokenName,
 	openSealedToken,
 	type SealedTokenMinter,
+	sealedTokenMinter,
+	sealedTokenMinterBucket,
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
 import {
@@ -980,14 +982,19 @@ export async function expandSecretPlaceholders(input: {
 				onAnyHostFill: (caller) => {
 					anyHostFill.caller = caller
 				},
+				// A package or session secret is approved in its own bucket, so
+				// only link when this run resolves the minter's bucket.
 				hostApprovalUrl: (minter) =>
-					buildSecretHostApprovalUrl({
-						baseUrl: batchProps.baseUrl,
-						name: minter.secret,
-						scope: minter.scope,
-						requestedHost: requestHost,
-						storageContext,
-					}),
+					minter.bucket ===
+					sealedTokenMinterBucket(minter.scope, storageContext)
+						? buildSecretHostApprovalUrl({
+								baseUrl: batchProps.baseUrl,
+								name: minter.secret,
+								scope: minter.scope,
+								requestedHost: requestHost,
+								storageContext,
+							})
+						: undefined,
 			})
 			const value = opened.value
 			mintedWith.push(...opened.mintedWith)
@@ -1228,11 +1235,14 @@ export async function expandSecretPlaceholders(input: {
 			}),
 		)
 		for (const { referenced, resolved, value } of resolvedSecretResults) {
-			mintedWith.push({
-				secret: referenced.name,
-				scope: resolved.scope ?? referenced.scope ?? 'user',
-				hosts: resolved.allowedHosts,
-			})
+			mintedWith.push(
+				sealedTokenMinter({
+					secret: referenced.name,
+					scope: resolved.scope ?? referenced.scope ?? 'user',
+					hosts: resolved.allowedHosts,
+					storageContext,
+				}),
+			)
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {

@@ -502,6 +502,20 @@ test('an approved Entra resource host still adds its documented alias', () => {
 	).toEqual([])
 })
 
+test('an audience on a minting secret approved host does not hide a new API audience', () => {
+	const token = fakeJwt({
+		aud: ['https://run.googleapis.com', 'https://monitoring.googleapis.com'],
+	})
+	expect(
+		sealedTokenAudienceHosts(
+			token,
+			['oauth2.googleapis.com'],
+			['run.googleapis.com'],
+		),
+	).toEqual(['monitoring.googleapis.com'])
+	expect(sealedTokenAudienceHosts(token, ['oauth2.googleapis.com'])).toEqual([])
+})
+
 test('a token response that echoes a filled secret keeps only the token and approved domains', async () => {
 	const echoed = fakeJwt({ aud: 'https://evil.test' }).replace(
 		'signature',
