@@ -236,6 +236,33 @@ test('a rebuild that exceeds its isolate fails only that run and says to publish
 	expect(isTransientModuleArtifactError(error)).toBe(false)
 })
 
+test('a rebuild reset is not retried even when the export name reads like a transient failure', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-reset-fetch',
+		manifest: {
+			name: '@kody/rebuild-reset-fetch',
+			exports: { './fetch-network-timeout': './src/nightly.ts' },
+			kody: { id: 'rebuild-reset-fetch', description: 'Nightly workflow' },
+		},
+		artifactName: './fetch-network-timeout',
+		rebuildIsolate: async () => {
+			throw new Error(durableObjectIsolateMemoryResetMessage)
+		},
+	})
+
+	const error = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'fetch-network-timeout' },
+		userId,
+	}).catch((caught: unknown) => caught)
+
+	expect((error as Error).message).toContain('"./fetch-network-timeout"')
+	expect(isTransientModuleArtifactError(error)).toBe(false)
+})
+
 test('the caller serves the artifact the rebuild isolate returns, not its own earlier read', async () => {
 	silenceIncidentalRuntimeWarnings()
 	// Another run repaired the commit-keyed entry after this caller read the

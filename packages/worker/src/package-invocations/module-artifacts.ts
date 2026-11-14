@@ -338,6 +338,23 @@ type IsolatedModuleArtifactRebuildStub = {
 }
 
 /**
+ * The rebuild isolate was reset for memory or CPU. Never transient: a retry
+ * would rebuild the same package into the same limit. It carries no `cause`
+ * because the reset text reads as a retryable storage error.
+ */
+export class ModuleArtifactRebuildResourceLimitError extends Error {
+	constructor(artifactName: string) {
+		super(
+			`Rebuilding the stored bundle for "${artifactName}" exceeded ` +
+				"the isolated rebuild runner's memory or CPU limits, so only this " +
+				'run failed and it will fail the same way until the package is ' +
+				`published again. ${publishOutsideCloudAdvice()}`,
+		)
+		this.name = 'ModuleArtifactRebuildResourceLimitError'
+	}
+}
+
+/**
  * Rebuild a missing or outdated module artifact in a throwaway isolate. The
  * rebuild loads the package's whole source and bundles it, which can exceed
  * an isolate's limits; in the calling isolate that would also kill every
@@ -364,14 +381,7 @@ async function rebuildModuleArtifactInIsolate(
 				isDurableObjectIsolateResourceLimitResetMessage,
 			)
 		) {
-			// No `cause`: the reset text reads as a retryable storage error, and
-			// a retry would rebuild the same package into the same limit.
-			throw new Error(
-				`Rebuilding the stored bundle for "${request.artifactName}" exceeded ` +
-					"the isolated rebuild runner's memory or CPU limits, so only this " +
-					'run failed and it will fail the same way until the package is ' +
-					`published again. ${publishOutsideCloudAdvice()}`,
-			)
+			throw new ModuleArtifactRebuildResourceLimitError(request.artifactName)
 		}
 		throw error
 	}
@@ -595,6 +605,7 @@ export function isMissingPackageModuleError(error: unknown) {
 }
 
 export function isTransientModuleArtifactError(error: unknown) {
+	if (error instanceof ModuleArtifactRebuildResourceLimitError) return false
 	if (isRetryableD1LockError(error)) return true
 	if (isPublishedRuntimeBundleMissingError(error)) return true
 	if (!(error instanceof Error)) return false
