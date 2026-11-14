@@ -1,3 +1,8 @@
+import {
+	runIsolatedModuleArtifactRebuild,
+	type IsolatedModuleArtifactRebuildOutcome,
+	type IsolatedModuleArtifactRebuildRequest,
+} from '#worker/package-invocations/module-artifacts.ts'
 import { repoSessionState } from './repo-session-state.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
 import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
@@ -3938,6 +3943,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		input: IsolatedLocalExecutePackageGraphRequest,
 	): Promise<IsolatedLocalExecutePackageGraphOutcome> {
 		return await runIsolatedLocalExecutePackageGraphBuild(this.env, input)
+	}
+
+	/**
+	 * An invocation's missing module artifact, rebuilt in this throwaway
+	 * isolate so a large package cannot reset the isolate that jobs, webhooks,
+	 * and requests share (`#worker/package-invocations/module-artifacts.ts`).
+	 */
+	async rebuildIsolatedModuleArtifact(
+		input: IsolatedModuleArtifactRebuildRequest,
+	): Promise<IsolatedModuleArtifactRebuildOutcome> {
+		return await runIsolatedModuleArtifactRebuild(this.env, input)
 	}
 
 	/**

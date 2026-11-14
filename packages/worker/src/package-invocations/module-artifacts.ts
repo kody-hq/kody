@@ -52,6 +52,19 @@ import {
 	type PackageAppSlugLookup,
 } from './invoke-contract-cache.ts'
 import { isRetryableD1LockError } from '#worker/d1-retry.ts'
+import {
+	errorCauseChainIncludes,
+	getErrorCauseChain,
+	getErrorMessage,
+} from '@kody-internal/shared/error-message.ts'
+import {
+	getRequestPermissions,
+	runWithBoundPermissions,
+	type EffectivePermissions,
+} from '#worker/authorization/authorize.ts'
+import { isMcpCallerError, McpCallerError } from '#mcp/caller-error.ts'
+import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
+import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
 
 export async function resolveSavedPackage(input: {
 	db: D1Database
@@ -228,6 +241,208 @@ async function ensureModuleArtifactUncached(input: {
 			entryPoint: resolution.entryPoint,
 		}
 	}
+	const rebuild = await rebuildModuleArtifactInIsolate(input.env, {
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		savedPackage: {
+			id: input.savedPackage.id,
+			kodyId: input.savedPackage.kodyId,
+			sourceId: input.savedPackage.sourceId,
+		},
+		selector: input.selector,
+		publishedCommit: currentPublishedCommit,
+		artifactName: resolution.artifactName,
+		entryPoint: resolution.entryPoint,
+		hasCurrentArtifact: currentArtifact != null,
+		hasStoredArtifact: loaded?.artifact != null,
+		permissions: getRequestPermissions(),
+	})
+	const moduleLabel =
+		input.selector.kind === 'export'
+			? `export "${input.selector.exportName}"`
+			: `subscription "${input.selector.topic}"`
+	if (rebuild.serve === 'current' || rebuild.serve === 'previous') {
+		const artifact =
+			rebuild.serve === 'current' ? currentArtifact : loaded?.artifact
+		if (!artifact) {
+			throw new Error(
+				`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
+			)
+		}
+		return {
+			artifact,
+			source:
+				rebuild.serve === 'current' ? packageManifest.source : rebuild.source,
+			entryPoint:
+				rebuild.serve === 'current'
+					? resolution.entryPoint
+					: artifact.entryPoint,
+		}
+	}
+	const rebuilt = await loadPublishedBundleArtifactByIdentity({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.savedPackage.sourceId,
+		kind: 'module',
+		artifactName: rebuild.artifactName,
+		entryPoint: rebuild.entryPoint,
+		commit: rebuild.source.published_commit,
+	})
+	if (!rebuilt?.artifact) {
+		throw new Error(
+			`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
+		)
+	}
+	return {
+		artifact: rebuilt.artifact,
+		source: rebuild.source,
+		entryPoint: rebuild.entryPoint,
+	}
+}
+
+type ModuleArtifactSource = CachedInvokeModuleArtifact['source']
+
+export type IsolatedModuleArtifactRebuildRequest = {
+	baseUrl: string
+	userId: string
+	savedPackage: Pick<SavedPackageRecord, 'id' | 'kodyId' | 'sourceId'>
+	selector: PackageModuleSelector
+	/** The commit, artifact name, and entry point the caller resolved. */
+	publishedCommit: string | null
+	artifactName: string
+	entryPoint: string
+	/** The caller holds a same-commit artifact that may predate bindings. */
+	hasCurrentArtifact: boolean
+	/** The caller holds an artifact of any commit it can keep serving. */
+	hasStoredArtifact: boolean
+	/** The caller's permission binding, rebound around the rebuild. */
+	permissions: EffectivePermissions | undefined
+}
+
+/**
+ * What the caller serves: its own same-commit artifact, the previous
+ * commit's artifact, or the one this rebuild just stored.
+ */
+export type ModuleArtifactRebuildResult =
+	| { serve: 'current' }
+	| { serve: 'previous'; source: ModuleArtifactSource }
+	| {
+			serve: 'rebuilt'
+			source: ModuleArtifactSource
+			artifactName: string
+			entryPoint: string
+	  }
+
+export type IsolatedModuleArtifactRebuildOutcome =
+	| { ok: true; result: ModuleArtifactRebuildResult }
+	| {
+			ok: false
+			name: string
+			/** The error's message, then each cause's, outermost first. */
+			messages: Array<string>
+			callerError: boolean
+	  }
+
+type IsolatedModuleArtifactRebuildStub = {
+	rebuildIsolatedModuleArtifact(
+		input: IsolatedModuleArtifactRebuildRequest,
+	): Promise<IsolatedModuleArtifactRebuildOutcome>
+}
+
+/**
+ * Rebuild a missing or outdated module artifact in a throwaway isolate. The
+ * rebuild loads the package's whole source and bundles it, which can exceed
+ * an isolate's limits; in the calling isolate that would also kill every
+ * other job, webhook, and request sharing it.
+ */
+async function rebuildModuleArtifactInIsolate(
+	env: Env,
+	request: IsolatedModuleArtifactRebuildRequest,
+): Promise<ModuleArtifactRebuildResult> {
+	// A fresh, org-namespaced id per rebuild puts it in its own isolate. The
+	// instance never touches its storage.
+	const stub = env.REPO_SESSION.get(
+		env.REPO_SESSION.idFromName(
+			`isolated-module-artifact-rebuild-${request.userId}-${crypto.randomUUID()}`,
+		),
+	) as unknown as IsolatedModuleArtifactRebuildStub
+	let outcome: IsolatedModuleArtifactRebuildOutcome
+	try {
+		outcome = await stub.rebuildIsolatedModuleArtifact(request)
+	} catch (error) {
+		if (
+			errorCauseChainIncludes(
+				error,
+				isDurableObjectIsolateResourceLimitResetMessage,
+			)
+		) {
+			// No `cause`: the reset text reads as a retryable storage error, and
+			// a retry would rebuild the same package into the same limit.
+			throw new Error(
+				`Rebuilding the stored bundle for "${request.artifactName}" exceeded ` +
+					"the isolated rebuild runner's memory or CPU limits, so only this " +
+					'run failed and it will fail the same way until the package is ' +
+					`published again. ${publishOutsideCloudAdvice()}`,
+			)
+		}
+		throw error
+	}
+	if (outcome.ok) return outcome.result
+	// Rebuild the cause chain so retry classification reads it as before.
+	const [message = 'Module artifact rebuild failed.', ...causeMessages] =
+		outcome.messages
+	const cause = causeMessages.reduceRight<Error | undefined>(
+		(inner, causeMessage) => new Error(causeMessage, { cause: inner }),
+		undefined,
+	)
+	const error = outcome.callerError
+		? new McpCallerError(message, { cause })
+		: new Error(message, { cause })
+	error.name = outcome.name
+	throw error
+}
+
+/** The isolate side of {@link rebuildModuleArtifactInIsolate}. Runs in `RepoSession`. */
+export async function runIsolatedModuleArtifactRebuild(
+	env: Env,
+	request: IsolatedModuleArtifactRebuildRequest,
+): Promise<IsolatedModuleArtifactRebuildOutcome> {
+	try {
+		const result = await runWithBoundPermissions(request.permissions, () =>
+			rebuildModuleArtifact({ env, ...request }),
+		)
+		return { ok: true, result }
+	} catch (error) {
+		// Error classes do not survive the RPC boundary; carry what callers read.
+		return {
+			ok: false,
+			name: error instanceof Error ? error.name : 'Error',
+			messages: getErrorCauseChain(error).map(getErrorMessage),
+			callerError: isMcpCallerError(error),
+		}
+	}
+}
+
+async function rebuildModuleArtifact(
+	input: { env: Env } & IsolatedModuleArtifactRebuildRequest,
+): Promise<ModuleArtifactRebuildResult> {
+	const loaded = input.hasCurrentArtifact
+		? await loadPublishedBundleArtifactByIdentity({
+				env: input.env,
+				userId: input.userId,
+				sourceId: input.savedPackage.sourceId,
+				kind: 'module',
+				artifactName: input.artifactName,
+				entryPoint: input.entryPoint,
+				commit: input.publishedCommit,
+			})
+		: null
+	const currentArtifact =
+		loaded?.artifact &&
+		loaded.artifact.publishedCommit === input.publishedCommit &&
+		loaded.row.publishedCommit === input.publishedCommit
+			? loaded.artifact
+			: null
 	const packageSource = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.baseUrl,
@@ -241,11 +456,7 @@ async function ensureModuleArtifactUncached(input: {
 			sourceFiles: packageSource.files,
 		})
 	) {
-		return {
-			artifact: currentArtifact,
-			source: packageManifest.source,
-			entryPoint: resolution.entryPoint,
-		}
+		return { serve: 'current' }
 	}
 	// The caller's manifest may come from the freshness-cached source row and
 	// trail a republish by up to the freshness TTL, while the source load
@@ -272,16 +483,12 @@ async function ensureModuleArtifactUncached(input: {
 			.length > 0
 	) {
 		if (
-			loaded?.artifact &&
+			input.hasStoredArtifact &&
 			canKeepPreviousNpmBundleDuringRebuild({
 				publishedAt: packageSource.snapshotCreatedAt,
 			})
 		) {
-			return {
-				artifact: loaded.artifact,
-				source: packageSource.source,
-				entryPoint: loaded.artifact.entryPoint,
-			}
+			return { serve: 'previous', source: packageSource.source }
 		}
 		assertPublishedSourceCanRebuildWithoutInstallingDeps({
 			sourceFiles: packageSource.files,
@@ -324,27 +531,10 @@ async function ensureModuleArtifactUncached(input: {
 			sourceId: input.savedPackage.sourceId,
 		},
 	})
-	const rebuilt = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.savedPackage.sourceId,
-		kind: 'module',
-		artifactName: freshResolution.artifactName,
-		entryPoint: freshResolution.entryPoint,
-		commit: packageSource.source.published_commit,
-	})
-	if (!rebuilt?.artifact) {
-		const moduleLabel =
-			input.selector.kind === 'export'
-				? `export "${input.selector.exportName}"`
-				: `subscription "${input.selector.topic}"`
-		throw new Error(
-			`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
-		)
-	}
 	return {
-		artifact: rebuilt.artifact,
+		serve: 'rebuilt',
 		source: packageSource.source,
+		artifactName: freshResolution.artifactName,
 		entryPoint: freshResolution.entryPoint,
 	}
 }

@@ -1,3 +1,4 @@
+import { addInProcessExecuteBundleIsolates } from './execute-bundle-isolates.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -571,7 +572,7 @@ export function createEnv(
 ) {
 	const meter =
 		overrides['USER_METER'] == null ? createInMemoryUserMeterEnv() : null
-	return {
+	const env = {
 		APP_DB: db,
 		RUN_LOG: db.runLog.namespace,
 		BUNDLE_ARTIFACTS_KV: {
@@ -582,6 +583,8 @@ export function createEnv(
 		...(meter ? { USER_METER: meter.env.USER_METER } : {}),
 		...overrides,
 	} as unknown as Env
+	if (overrides['REPO_SESSION'] == null) addInProcessExecuteBundleIsolates(env)
+	return env
 }
 
 /**
