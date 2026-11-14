@@ -19,7 +19,10 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { ExecuteResult } from '@cloudflare/codemode'
-import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
+import {
+	AccountDeletionInProgressError,
+	withAccountWriteLease,
+} from '#worker/account/deletion-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	backgroundRunBilledActor,
@@ -1931,6 +1934,25 @@ export async function runDueJobsForUser(input: {
 	> = []
 	try {
 		return await runDueJobsForUserUnderLease(input, autoDisabledNotices)
+	} catch (error) {
+		// Deletion fences user-owned writes, so there is nothing to run. Report
+		// a skip so the JobManager defers instead of Cloudflare retrying.
+		if (error instanceof AccountDeletionInProgressError) {
+			logJobSchedulerEvent({
+				event: 'run_due_jobs_skipped',
+				userId: input.userId,
+				dueJobCount: 0,
+				reason: 'account_deleted',
+			})
+			return {
+				dueJobCount: 0,
+				successCount: 0,
+				errorCount: 0,
+				jobOutcomes: [] satisfies Array<SchedulerJobOutcomeLog>,
+				skippedReason: 'account_deleted' as const,
+			}
+		}
+		throw error
 	} finally {
 		if (autoDisabledNotices.length > 0) {
 			const sending = Promise.all(

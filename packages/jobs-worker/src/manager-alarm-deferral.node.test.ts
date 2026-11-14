@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { silenceExpectedConsoleErrors } from '#worker/test-support/console-spies.ts'
 import {
+	jobAccountDeletionDeferralMs,
 	jobD1UnavailableRearmDelayMs,
 	tryRearmAlarmForRetryableD1Failure,
 	trySettleHungRunDueJobsFailure,
@@ -26,6 +27,7 @@ type JobManagerAlarmHarness = {
 				successCount: number
 				errorCount: number
 				jobOutcomes: Array<unknown>
+				skippedReason?: 'account_deleted'
 			}>
 			settleHungDueJobsForUser: (input: { userId: string }) => Promise<{
 				settledCount: number
@@ -169,6 +171,62 @@ test('JobManager alarm still rethrows non-retryable runDueJobs failures', async 
 	await expect(manager.alarm()).rejects.toThrow('permanent job host failure')
 	expect(setAlarm).not.toHaveBeenCalled()
 	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+})
+
+async function runAccountDeletedAlarm(currentAlarmAt: number | null) {
+	const { JobManagerBase } = await import('./manager-do.ts')
+
+	const setAlarm = vi.fn(async (_atMs: number) => undefined)
+	const deleteAlarm = vi.fn(async () => undefined)
+	const storageGet = vi.fn(async (key: string) =>
+		key === 'user-id' ? 'user-1' : undefined,
+	)
+	const runDueJobsForUser = vi.fn().mockResolvedValue({
+		dueJobCount: 0,
+		successCount: 0,
+		errorCount: 0,
+		jobOutcomes: [],
+		skippedReason: 'account_deleted',
+	})
+	const settleHungDueJobsForUser = vi.fn()
+	const syncAlarm = vi.fn()
+
+	const state = {
+		blockConcurrencyWhile: async <T>(callback: () => Promise<T>) => callback(),
+		storage: {
+			get: storageGet,
+			getAlarm: vi.fn(async () => currentAlarmAt),
+			setAlarm,
+			deleteAlarm,
+		},
+	}
+	const manager = new (JobManagerBase as unknown as new (
+		state: unknown,
+		env: unknown,
+	) => JobManagerAlarmHarness)(state, {
+		HOST: { runDueJobsForUser, settleHungDueJobsForUser },
+	})
+	manager.syncAlarm = syncAlarm
+
+	await expect(manager.alarm()).resolves.toBeUndefined()
+	expect(deleteAlarm).not.toHaveBeenCalled()
+	expect(syncAlarm).not.toHaveBeenCalled()
+	expect(settleHungDueJobsForUser).not.toHaveBeenCalled()
+	return { setAlarm }
+}
+
+test('JobManager alarm defers instead of disarming when the owner account is fenced for deletion', async () => {
+	const before = Date.now()
+	const { setAlarm } = await runAccountDeletedAlarm(null)
+	expect(setAlarm).toHaveBeenCalledTimes(1)
+	const armedAt = setAlarm.mock.calls[0]?.[0] ?? 0
+	expect(armedAt).toBeGreaterThanOrEqual(before + jobAccountDeletionDeferralMs)
+	expect(armedAt).toBeLessThanOrEqual(Date.now() + jobAccountDeletionDeferralMs)
+})
+
+test('JobManager account-deletion deferral keeps an earlier armed alarm', async () => {
+	const { setAlarm } = await runAccountDeletedAlarm(Date.now() + 60_000)
+	expect(setAlarm).not.toHaveBeenCalled()
 })
 
 test('trySettleHungRunDueJobsFailure settles claimed jobs and ignores other errors', async () => {
