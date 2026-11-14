@@ -119,6 +119,32 @@ test('newsletter mail has a dedicated sender, quota, send kind, and one-recipien
 	expect(payloads).toHaveLength(1)
 })
 
+test('system send paths never extract a different recipient from unsupported address syntax', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const payloads: Array<Record<string, unknown>> = []
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, async ({ request }) => {
+				payloads.push((await request.json()) as Record<string, unknown>)
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: 'address-check' },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: "o'connor@example.com",
+		subject: 'Updates',
+		text: 'News',
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow('recipient')
+	await expect(sendSystemEmail(input)).rejects.toThrow('recipient')
+	expect(payloads).toEqual([])
+})
+
 test('newsletter mail respects suppression and refunds provider failures', async () => {
 	consoleWarn.mockImplementation(() => {})
 	await ensureEmailTestSchema(env.APP_DB)

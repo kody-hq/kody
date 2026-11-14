@@ -1,7 +1,7 @@
 import { resolveTransactionalSenderReplyTo } from '@kody-internal/shared/transactional-sender-reply-to.ts'
 import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { normalizeEmailAddress } from './address.ts'
+import { normalizeAddrSpec, normalizeHeaderMailbox } from './address.ts'
 import {
 	loadRecipientSuppression,
 	recipientSuppressedMessage,
@@ -75,7 +75,7 @@ function resolveRecipients(to: string | Array<string>): Array<string> {
 	const values = Array.isArray(to) ? to : [to]
 	const recipients: Array<string> = []
 	for (const value of values) {
-		const address = normalizeEmailAddress(value)
+		const address = normalizeHeaderMailbox(value)
 		if (!address) {
 			throw new McpCallerError(`Invalid recipient email address: ${value}`)
 		}
@@ -151,7 +151,7 @@ export async function sendNewsletterEmail(
 		to: string
 	},
 ): Promise<SystemOutboundResult> {
-	if (typeof input.to !== 'string' || !normalizeEmailAddress(input.to)) {
+	if (typeof input.to !== 'string' || !normalizeAddrSpec(input.to)) {
 		throw new McpCallerError(
 			'One newsletter recipient email address is required.',
 		)
@@ -188,7 +188,7 @@ async function sendReservedEmail(
 		throw new McpCallerError('Email text or HTML body is required.')
 	}
 	const explicitReplyTo = input.replyTo
-		? normalizeEmailAddress(input.replyTo)
+		? normalizeHeaderMailbox(input.replyTo)
 		: null
 	if (input.replyTo && !explicitReplyTo) {
 		throw new McpCallerError(`Invalid reply-to address: ${input.replyTo}`)
