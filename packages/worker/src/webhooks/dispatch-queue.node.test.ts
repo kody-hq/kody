@@ -22,7 +22,20 @@ import { parseWebhookJsonBody } from './params.ts'
 const mocks = vi.hoisted(() => ({
 	dispatchWebhookInvocation: vi.fn(),
 	recordWebhookDelivery: vi.fn(),
+	markAckWebhookDelivery: vi.fn(),
+	getRunRecord: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 }))
+
+vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/run-records/service.ts')>()
+	return {
+		...actual,
+		getRunRecord: (...args: Array<unknown>) => mocks.getRunRecord(...args),
+	}
+})
 
 vi.mock('./delivery.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./delivery.ts')>()
@@ -32,6 +45,8 @@ vi.mock('./delivery.ts', async (importOriginal) => {
 			mocks.dispatchWebhookInvocation(...args),
 		recordWebhookDelivery: (...args: Array<unknown>) =>
 			mocks.recordWebhookDelivery(...args),
+		markAckWebhookDelivery: (...args: Array<unknown>) =>
+			mocks.markAckWebhookDelivery(...args),
 	}
 })
 
@@ -555,4 +570,84 @@ test('queue hydrates spilled payloads, deletes them after terminal work, and ack
 			invocationId: 'delivery-missing',
 		}),
 	)
+})
+
+test('the consumer marks the accepted row started, then queued with the reason when an attempt fails before the export runs', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation
+		.mockRejectedValueOnce(new Error('No such module ".__kody_linked__/x"'))
+		.mockResolvedValueOnce({
+			status: 503,
+			body: { ok: false, error: { code: 'artifact_preparation_failed' } },
+		})
+	const crashed = createQueueMessage('crashed', createMessage())
+	const transient = createQueueMessage('transient', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([crashed, transient]), {} as Env)
+
+	expect([crashed, transient].map(queueOutcome)).toEqual([retried, retried])
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	const marks = mocks.markAckWebhookDelivery.mock.calls.map(
+		([input]) =>
+			[
+				input.delivery.deliveryId,
+				input.state,
+				input.lastError ?? null,
+			] as const,
+	)
+	expect(marks).toEqual([
+		['delivery-1', 'started', null],
+		[
+			'delivery-1',
+			'queued',
+			'dispatch_processing_failed: No such module ".__kody_linked__/x"',
+		],
+		['delivery-1', 'started', null],
+		['delivery-1', 'queued', 'artifact_preparation_failed'],
+	])
+})
+
+test('a thrown processing error on the last attempt finishes the row failed instead of waiting for the hold', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation.mockRejectedValueOnce(new Error('boom'))
+	const last = {
+		...createQueueMessage('last', createMessage()),
+		attempts: webhookDispatchMaxRetries,
+	}
+
+	await handleWebhookDispatchQueue(createBatch([last]), {} as Env)
+
+	expect(queueOutcome(last)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: 'failed',
+			error: 'invocation_retry_exhausted',
+			invocationErrorCode: 'dispatch_processing_failed',
+			invocationId: 'delivery-1',
+			attempts: webhookDispatchMaxRetries,
+		}),
+	)
+})
+
+test('a redelivered spilled message whose delivery already finished is acked without overwriting the row', async () => {
+	mocks.getRunRecord.mockResolvedValueOnce({
+		run: { id: 'delivery-1', status: 'success' },
+		logs: [],
+	})
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const redelivered = createQueueMessage('redelivered', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const kv = { get: vi.fn(async () => null), delete: vi.fn() }
+
+	await handleWebhookDispatchQueue(createBatch([redelivered]), {
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+
+	expect(queueOutcome(redelivered)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
 })

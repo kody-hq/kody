@@ -134,6 +134,25 @@ export function isWebhookPreviousHmacLive(
 
 export type WebhookDeliveryOutcome = 'delivered' | 'rejected' | 'failed'
 
+/**
+ * Lifecycle of one delivery's run row. Ack deliveries write `accepted` before
+ * the 202, then move through `queued` and `started` until a terminal state.
+ * Sync and rejected deliveries are written once in their terminal state.
+ */
+export const webhookDeliveryStateValues = [
+	'accepted',
+	'queued',
+	'started',
+	'succeeded',
+	'failed',
+	'rejected',
+] as const
+export type WebhookDeliveryState = (typeof webhookDeliveryStateValues)[number]
+export type WebhookDeliveryInFlightState = Extract<
+	WebhookDeliveryState,
+	'accepted' | 'queued' | 'started'
+>
+
 export type WebhookDeliveryRecord = {
 	id: string
 	endpointId: string

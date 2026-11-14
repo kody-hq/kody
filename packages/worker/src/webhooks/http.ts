@@ -45,9 +45,12 @@ import {
 	verifyWebhookHmacSignature,
 } from './crypto.ts'
 import {
+	type AckWebhookDelivery,
 	dispatchWebhookInvocation,
+	markAckWebhookDelivery,
 	readWebhookInvocationResult,
 	recordWebhookDelivery,
+	webhookAckQueuedHoldMs,
 } from './delivery.ts'
 import {
 	createWebhookDispatchQueueMessage,
@@ -1022,12 +1025,58 @@ export async function handleWebhookIngressRequest(
 			})
 			return ackQueueMessageTooLargeResponse()
 		}
+		const ackDelivery: AckWebhookDelivery = {
+			endpoint: message.endpoint,
+			kodyId: savedPackage.kodyId,
+			deliveryId,
+			payloadBytes: bodyBytes.byteLength,
+			receivedAt,
+		}
+		// The row exists before the 202 so an accepted delivery is never
+		// invisible, even when its consumer is killed before it records.
+		const accepted = await markAckWebhookDelivery({
+			env,
+			delivery: ackDelivery,
+			state: 'accepted',
+			holdMs: webhookAckQueuedHoldMs,
+			enablement: plan.runs[0],
+		})
+		if (!accepted) {
+			if (message.payloadKvKey) {
+				await deleteWebhookDispatchPayload({
+					kv: env.BUNDLE_ARTIFACTS_KV,
+					key: message.payloadKvKey,
+				}).catch((error) => {
+					console.error('webhook-dispatch-payload-delete-failed', {
+						endpointId: liveEndpoint.id,
+						error,
+					})
+				})
+			}
+			console.error('webhook-dispatch-accept-record-failed', {
+				endpointId: liveEndpoint.id,
+				deliveryId,
+			})
+			return dispatchUnavailableResponse()
+		}
 		try {
 			await enqueueWebhookDispatch({
 				queue: env.WEBHOOK_DISPATCH_QUEUE,
 				message,
 			})
 		} catch (error) {
+			await recordWebhookDelivery({
+				env,
+				endpoint: liveEndpoint,
+				kodyId: savedPackage.kodyId,
+				outcome: 'failed',
+				httpStatus: 503,
+				error: 'dispatch_unavailable',
+				payloadBytes: bodyBytes.byteLength,
+				invocationId: deliveryId,
+				startedAt: receivedAt,
+				waitUntil,
+			})
 			if (message.payloadKvKey) {
 				await deleteWebhookDispatchPayload({
 					kv: env.BUNDLE_ARTIFACTS_KV,
