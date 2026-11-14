@@ -80,7 +80,7 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 		type: undefined,
 		message: 'redirect=https://app.test/cb?code=nested-code&state=ok',
 		request: {
-			url: 'https://kody.test/oauth/callback?%63ode=auth-code&state=ok',
+			url: 'https://kody.test/oauth/callback?%63ode=auth-code&password=alpha?omega&state=ok',
 			query_string: {
 				code: 'object-code',
 				'%63ode': 'encoded-object-code',
@@ -95,12 +95,16 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 		'object-code',
 		'encoded-object-code',
 		'nested-code',
+		'alpha?omega',
+		'omega',
 	]) {
 		expect(serialized).not.toContain(secret)
 	}
 	expect(event.message).toBe(
 		'redirect=https://app.test/cb?code=[redacted]&state=ok',
 	)
+	expect(event.request?.url).toContain('password=[redacted]')
+	expect(event.request?.url).not.toContain('?omega')
 	expect(event.request?.url).toContain('%63ode=[redacted]')
 	expect(event.request?.url).toContain('state=ok')
 	expect(event.request?.query_string).toEqual({
