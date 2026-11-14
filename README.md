@@ -127,17 +127,19 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and
 
 ## License
 
-Free for personal use. For any other use, email support@kody.codes.
+Free for personal, family, nonprofit, and classroom use. For any other use,
+email support@kody.codes.
 
-Kody is licensed under the [Business Source License 1.1](./LICENSE) (BUSL-1.1),
-the same license as the self-hosted
-[kody-hq/kody-celld](https://github.com/kody-hq/kody-celld). The Additional Use
-Grant allows personal, noncommercial production use, including self-hosting, and
-keeps the competing-use restriction from the previous license. Each version
-becomes available under the Apache License 2.0 on the second anniversary of the
-date that version was first made publicly available.
+Kody is source-available under the [Kody License](./LICENSE)
+(`LicenseRef-Kody-FSL-1.1-ALv2-Personal`), the same license as the self-hosted
+[kody-hq/kody-celld](https://github.com/kody-hq/kody-celld). It is a modified
+[Functional Source License 1.1](https://fsl.software/) that limits the free
+Permitted Purposes to personal, family, nonprofit, and classroom use, including
+self-hosted deployments and modified forks you run on infrastructure you
+control. It keeps the FSL competing-use restriction, and each version becomes
+available under the Apache License 2.0 on the second anniversary of its release.
 
-Code published before this change stays under
+Code published before this change stays under the standard
 [FSL-1.1-ALv2](https://fsl.software/), the license it was released under,
 including its two-year Apache 2.0 conversion. Directories with their own LICENSE
 file, such as [`packages/cli`](./packages/cli/LICENSE) and

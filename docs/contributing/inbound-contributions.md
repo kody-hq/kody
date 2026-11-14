@@ -14,7 +14,7 @@ A pull request needs a signed Contributor License Agreement when any commit on
 it is authored by someone other than Kent C. Dodds or an allowlisted bot.
 
 The contributor keeps copyright. The CLA is an inbound license so the repository
-can stay a single-licensor tree under [BUSL-1.1](../../LICENSE).
+can stay a single-licensor tree under the [Kody License](../../LICENSE).
 
 Sign the [Individual CLA](../legal/individual-cla.md) unless an employer owns
 the work. If an organization owns the work, an authorized representative
