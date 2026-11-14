@@ -15,6 +15,7 @@ import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
 import {
 	createRunRecordHandle,
 	ensureRunRecordStarted,
+	startWebhookDeliveryAttemptRecord,
 	recordRunRecord,
 	updateRunningRunRecordMetadata,
 } from '#worker/run-records/service.ts'
@@ -77,20 +78,49 @@ export type AckWebhookDelivery = {
 }
 
 /**
+ * How many ack deliveries one owner may have started at once. The dispatch
+ * consumer runs 16 at a time for everyone, so this leaves most of it to other
+ * owners when one owner's webhook floods.
+ */
+export const webhookAckOwnerStartedLimit = 4
+
+/**
+ * Mark an ack delivery `started` unless the owner already has
+ * {@link webhookAckOwnerStartedLimit} other deliveries started. Returns false
+ * when the owner is at the limit; the row is left as it was. Never throws.
+ */
+export async function startAckWebhookDeliveryAttempt(input: {
+	env: Env
+	delivery: AckWebhookDelivery
+	attempts?: number
+}): Promise<boolean> {
+	const handle = await ackWebhookDeliveryRunHandle({
+		...input,
+		state: 'started',
+	})
+	const { started } = await startWebhookDeliveryAttemptRecord({
+		env: input.env,
+		handle,
+		staleAfter: new Date(Date.now() + webhookAckStartedHoldMs).toISOString(),
+		limit: webhookAckOwnerStartedLimit,
+	})
+	return started
+}
+
+/**
  * Write an ack delivery's in-flight state onto its run row (id = deliveryId),
  * so Activity and `webhookDeliveryList` show it from the moment Kody accepts
  * it. `accepted` inserts the row; later states update it and extend its hold.
  * A row that already finished is left alone. Never throws.
  */
-export async function markAckWebhookDelivery(input: {
+async function ackWebhookDeliveryRunHandle(input: {
 	env: Env
 	delivery: AckWebhookDelivery
 	state: WebhookDeliveryInFlightState
-	holdMs: number
 	attempts?: number
 	lastError?: string | null
 	enablement?: EnablementRun
-}): Promise<boolean> {
+}) {
 	const { delivery } = input
 	const request = input.enablement
 		? await webhookRequestForEnablement({
@@ -99,7 +129,7 @@ export async function markAckWebhookDelivery(input: {
 				enablement: input.enablement,
 			}).catch(() => null)
 		: null
-	const handle = createRunRecordHandle({
+	return createRunRecordHandle({
 		env: input.env,
 		userId: delivery.endpoint.userId,
 		request,
@@ -119,6 +149,18 @@ export async function markAckWebhookDelivery(input: {
 			},
 		}),
 	})
+}
+
+export async function markAckWebhookDelivery(input: {
+	env: Env
+	delivery: AckWebhookDelivery
+	state: WebhookDeliveryInFlightState
+	holdMs: number
+	attempts?: number
+	lastError?: string | null
+	enablement?: EnablementRun
+}): Promise<boolean> {
+	const handle = await ackWebhookDeliveryRunHandle(input)
 	const started = await ensureRunRecordStarted({
 		env: input.env,
 		handle,
