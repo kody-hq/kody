@@ -69,7 +69,7 @@ import {
 	refreshKodyRuntimeModules,
 } from './runtime-source-modules.ts'
 import { collectModuleExportNames } from './module-export-names.ts'
-import { materializeDependencyArtifactModules } from './module-graph-artifacts.ts'
+import { materializePublishedArtifactModules } from './module-graph-artifacts.ts'
 import {
 	collectReachableSourceFilePaths,
 	isBundlerRootConfigPath,
@@ -201,7 +201,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		encodePathKeyAsPath(exportName),
 	)
 	for (const [modulePath, module] of Object.entries(
-		materializeDependencyArtifactModules({
+		materializePublishedArtifactModules({
 			artifactPrefix,
 			modules: artifact.artifact.modules,
 		}),

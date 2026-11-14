@@ -17,6 +17,8 @@ import {
 	resolveRelativeModulePath,
 	runtimeModulePath,
 } from './module-graph-paths.ts'
+import { linkedArtifactPrefix } from './module-graph-artifacts.ts'
+import { createRelativeImportSpecifier } from './module-graph-path-basics.ts'
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	resolveSavedPackageRef: (...args: Array<unknown>) =>
@@ -206,6 +208,103 @@ export default async function main(params) { return greet(params.name) }`
 		graph.modules.some((module) => module.name.startsWith('.__kody_root__/')),
 	).toBe(false)
 })
+
+const discordPrefix = linkedArtifactPrefix({
+	specifier: 'kody:@kentcdodds/discord/edit-message',
+	sourceId: 'source-discord',
+	publishedCommit: 'commit-discord',
+})
+const grokPrefix = linkedArtifactPrefix({
+	specifier: 'kody:@kentcdodds/grok-bot/wake',
+	sourceId: 'source-grok',
+	publishedCommit: 'commit-grok',
+})
+const linkedRuntimeStub =
+	'export function __kodyMeterStaticPackageExport(_id, value) { return value }'
+
+function linkedProxyTo(target: string) {
+	return `import * as __kodyPackageModule from ${JSON.stringify(target)};\nimport { __kodyMeterStaticPackageExport } from "../.__kody_virtual__/runtime.js";\nexport default __kodyMeterStaticPackageExport("pkg", __kodyPackageModule.default);\n`
+}
+
+/**
+ * An `./advance` artifact that links discord, which itself links grok-bot.
+ * `nested` is how linking wrote it before #5153 (grok-bot inside discord's
+ * prefix); `hoisted` is how it writes it since (grok-bot at the artifact's
+ * own `.__kody_linked__/artifacts/` root).
+ */
+function advanceArtifactModules(layout: 'nested' | 'hoisted') {
+	const grokInDiscord =
+		layout === 'nested' ? `${discordPrefix}/${grokPrefix}` : grokPrefix
+	return {
+		'dist/advance.js':
+			'import editMessage from "../.__kody_linked__/discord.js";\nexport default async function advance() { return editMessage() }\n',
+		'.__kody_virtual__/runtime.js': linkedRuntimeStub,
+		'.__kody_linked__/discord.js': linkedProxyTo(
+			`./artifacts/${discordPrefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`,
+		),
+		[`${discordPrefix}/bundle.js`]:
+			'import wake from "./.__kody_linked__/grok.js";\nexport default function editMessage() { return wake() }\n',
+		[`${discordPrefix}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+		[`${discordPrefix}/.__kody_linked__/grok.js`]: linkedProxyTo(
+			createRelativeImportSpecifier(
+				`${discordPrefix}/.__kody_linked__/grok.js`,
+				`${grokInDiscord}/bundle.js`,
+			),
+		),
+		[`${grokInDiscord}/bundle.js`]:
+			'export default function wake() { return "woke" }\n',
+		[`${grokInDiscord}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+	}
+}
+
+test.each(['nested', 'hoisted'] as const)(
+	'buildLocalExecutePackageGraph loads a %s-layout artifact whose linked kody:@ dependency links another package',
+	async (layout) => {
+		mockModule.getSavedPackageByName.mockResolvedValue(
+			createSavedPackageRecord(),
+		)
+		mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+			makeLoadedSource({
+				exports: { './advance': './src/advance.ts' },
+				files: {
+					'src/advance.ts':
+						"import editMessage from 'kody:@kentcdodds/discord/edit-message'\nexport default async function advance() { return editMessage() }",
+				},
+			}),
+		)
+		mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+			makeArtifactHit({
+				artifactName: './advance',
+				entryPoint: 'src/advance.ts',
+				mainModule: 'dist/advance.js',
+				modules: advanceArtifactModules(layout),
+			}),
+		)
+
+		const graph = await buildLocalExecutePackageGraph({
+			...graphInput,
+			code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+		})
+
+		const moduleNames = new Set(graph.modules.map((module) => module.name))
+		const grokBundles = graph.modules.filter((module) =>
+			module.esModule.includes('return "woke"'),
+		)
+		expect(grokBundles).toHaveLength(1)
+		expect(grokBundles[0]?.name).toContain('/.__published_bundle__/')
+		for (const module of graph.modules) {
+			for (const [, specifier] of module.esModule.matchAll(
+				/(?:from|import) ["'](\.[^"']*(?:__kody_linked__|bundle\.js)[^"']*)["']/g,
+			)) {
+				expect(
+					moduleNames.has(resolveRelativeModulePath(module.name, specifier!)!),
+					`${module.name} imports ${specifier}`,
+				).toBe(true)
+			}
+		}
+	},
+)
 
 test('buildLocalExecutePackageGraph rewrites inlined virtual runtime onto the CapabilityProxy shim', async () => {
 	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
