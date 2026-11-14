@@ -133,7 +133,12 @@ vi.mock('#worker/run-records/service.ts', () => ({
 		),
 }))
 
-type FinishArgs = { status: string; logs?: Array<string>; error: unknown }
+type FinishArgs = {
+	status: string
+	logs?: Array<string>
+	error: unknown
+	skipErrorSubscriptions?: boolean
+}
 
 const runAt = '2026-05-03T12:34:56.000Z'
 const packageBody = { packageId: 'pkg-1', exportName: './workflow-run-event' }
@@ -607,6 +612,78 @@ test('suspended owners fail inline and package workflow steps once without retri
 		})
 		backgroundUserMocks.resolveBackgroundMcpUser.mockReset()
 	}
+})
+
+test('packagePublishExternalPush compute-limit failures fail the step once', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'publish-oom',
+			workflowName: 'packagePublishExternalPush',
+		},
+		null,
+		{ step },
+	)
+	const limitMessage =
+		'packagePublishExternalPush hit the Durable Object isolate memory or CPU limit during the published artifact rebuild, so the publish stopped instead of retrying the same limit.'
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error: limitMessage,
+		logs: [],
+	})
+
+	await expect(run()).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof NonRetryableError && error.message === limitMessage,
+	)
+	expect(attempts.get('execute inline workflow code')).toBe(1)
+	const [finish] = runRecordMocks.finishRunRecord.mock.lastCall as unknown as [
+		FinishArgs,
+	]
+	expect(finish).toMatchObject({
+		status: 'error',
+		skipErrorSubscriptions: false,
+	})
+	expect(findRun(created.id)).toMatchObject({
+		status: 'errored',
+		lastError: limitMessage,
+	})
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
+test('packagePublishExternalPush does not retry a generic step failure or ignore its only attempt', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	const { step, attempts } = createRetryingStep()
+	const { run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			runAt,
+			idempotencyKey: 'publish-generic-fail',
+			workflowName: 'packagePublishExternalPush',
+		},
+		null,
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error: 'Error: boom',
+		logs: [],
+	})
+
+	await expect(run()).rejects.toThrow(/boom/)
+	expect(attempts.get('execute inline workflow code')).toBe(1)
+	const skips = runRecordMocks.finishRunRecord.mock.calls.map(
+		([input]) => input.skipErrorSubscriptions ?? false,
+	)
+	expect(skips).toEqual([false])
+	invocationMocks.runModuleWithRegistry.mockReset()
 })
 
 test('inline code that throws a kody-terminal error fails its step once with that reason', async () => {
