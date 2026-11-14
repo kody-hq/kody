@@ -15,7 +15,7 @@ export const adminAccountWriteLeaseListCapability = defineDomainCapability(
 		name: 'adminAccountWriteLeaseList',
 		contextRuns: 'deny',
 		description:
-			'Inspect active non-expiring account write leases before manual repair. Admin-only.',
+			'Inspect account write leases before manual repair. Leases lapse 2 minutes after their last renewal. Admin-only.',
 		keywords: ['admin', 'account', 'deletion', 'lease', 'repair'],
 		inputSchema: z.object({
 			stable_user_id: z.string().min(1),
