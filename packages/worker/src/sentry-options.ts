@@ -251,12 +251,10 @@ function redactQueryStringObject(
 		return seen.query.get(query) as Record<string, unknown>
 	}
 	// Do not reuse `seen.generic`: query-param names (e.g. `code`) are stricter
-	// than generic field names. Clone when the object was already replaced
-	// generically so `extra` keeps status `code` while `query_string` redacts it.
-	const genericReplacement = seen.generic.get(query)
-	const alreadyGeneric =
-		genericReplacement !== undefined && genericReplacement !== query
-	if (needsRedactionCloneShell(query) || alreadyGeneric) {
+	// than generic field names. Clone whenever the object was already visited
+	// generically (including in-place identity) so mutating query redaction
+	// cannot change `extra`'s status `code`.
+	if (needsRedactionCloneShell(query) || seen.generic.has(query)) {
 		const host: Record<string, unknown> = {}
 		seen.query.set(query, host)
 		seen.query.set(host, host)
