@@ -262,6 +262,19 @@ export function credentialUsedNote(input: {
 	return `${used} Your org role must grant the scope. If this credential was minted with a narrower --scopes list, ${resignInHint}`
 }
 
+/** The saved credential expired and has no refresh token. */
+export class SavedCredentialExpiredError extends Error {
+	constructor(login: StoredCredentials) {
+		const at = login.expiresAt
+			? ` at ${new Date(login.expiresAt).toISOString()}`
+			: ''
+		super(
+			`The ${describeCliCredential({ source: 'login', token: null, login })} expired${at} and has no refresh token. ${resignInHint}`,
+		)
+		this.name = 'SavedCredentialExpiredError'
+	}
+}
+
 /**
  * Sentence for 401 / rejected-token errors naming the credential that was sent
  * and the matching reauth path (null when none was resolved in this process).

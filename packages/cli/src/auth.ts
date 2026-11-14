@@ -7,6 +7,7 @@ import {
 import { hostname } from 'node:os'
 import { dirname } from 'node:path'
 import { isScopedApiToken, notAuthenticatedMessage } from './api-token.js'
+import { SavedCredentialExpiredError } from './cli-credential.js'
 import {
 	accessTokenSkewMs,
 	cliRedirectUrl,
@@ -243,7 +244,7 @@ export async function refreshStoredCredentials(input: {
 		if (!isAccessTokenExpired(credentials, input.now)) return credentials
 		const slid = await adoptSlidingDeviceExpiry(input)
 		if (slid) return slid
-		throw new Error('Stored API token expired. Run `kody login`.')
+		throw new SavedCredentialExpiredError(credentials)
 	}
 	if (!credentials.refreshToken) {
 		throw new Error('No refresh token is stored. Run `kody login`.')
