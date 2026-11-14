@@ -1,8 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	DesktopMachinePanel,
-	useDesktopMachine,
-} from '../components/desktop-execution.tsx'
+import { useDesktopMachine } from '../components/desktop-execution.tsx'
+import { DesktopMachinePanel } from '../components/desktop-machine-panel.tsx'
 import { css } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
 import { createListDetailLinks } from '#client/list-detail-route.ts'

@@ -731,6 +731,7 @@ export async function checkCredentialCallMap(
 		token: input.token,
 		fetchFn: input.fetchFn,
 		signal: input.signal,
+		org: input.org,
 		path: ['kody', 'credentialClientCheck'],
 		args: [args],
 		conversationId: input.conversationId,
