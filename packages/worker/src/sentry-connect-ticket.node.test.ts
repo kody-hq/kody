@@ -75,6 +75,70 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 	expect(serialized).toContain('kept')
 })
 
+test('query redaction decodes percent-encoded names and object query_string', () => {
+	const event = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		message: 'redirect=https://app.test/cb?code=nested-code&state=ok',
+		request: {
+			url: 'https://kody.test/oauth/callback?%63ode=auth-code&password=alpha?omega&state=ok',
+			query_string: {
+				code: 'object-code',
+				'%63ode': 'encoded-object-code',
+				state: 'kept-state',
+			},
+		},
+		extra: { code: 'status-kept', nested: { code: 404 } },
+	})
+	const serialized = JSON.stringify(event)
+	for (const secret of [
+		'auth-code',
+		'object-code',
+		'encoded-object-code',
+		'nested-code',
+		'alpha?omega',
+		'omega',
+	]) {
+		expect(serialized).not.toContain(secret)
+	}
+	expect(event.message).toBe(
+		'redirect=https://app.test/cb?code=[redacted]&state=ok',
+	)
+	expect(event.request?.url).toContain('password=[redacted]')
+	expect(event.request?.url).not.toContain('?omega')
+	expect(
+		redactKodyCredentialsInSentryEvent({
+			type: undefined,
+			message: 'path?a;code=semicolon-code&password=alpha;beta',
+		}).message,
+	).toBe('path?a;code=[redacted]&password=[redacted]')
+	expect(event.request?.url).toContain('%63ode=[redacted]')
+	expect(event.request?.url).toContain('state=ok')
+	expect(event.request?.query_string).toEqual({
+		code: '[redacted]',
+		'%63ode': '[redacted]',
+		state: 'kept-state',
+	})
+	expect(event.extra).toEqual({ code: 'status-kept', nested: { code: 404 } })
+
+	const headerQuery = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		request: {
+			query_string: {
+				'x-api-key': 'upstream-credential',
+				'%78-api-key': 'encoded-upstream-credential',
+				authorization: 'Bearer keep-header-shape',
+				state: 'kept',
+			},
+		},
+	})
+	expect(headerQuery.request?.query_string).toEqual({
+		'x-api-key': '[redacted]',
+		'%78-api-key': '[redacted]',
+		authorization: '[redacted]',
+		state: 'kept',
+	})
+})
+
 test('deep redaction tolerates cycles', () => {
 	const extra: Record<string, unknown> = { authorization: 'Bearer zzzzzzzz' }
 	extra.self = extra

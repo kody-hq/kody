@@ -5,7 +5,7 @@ import {
 	ownerIdFromStored,
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { RunLog } from './run-log-do.ts'
+import { RunLog, runLogSchemaVersion } from './run-log-do.ts'
 import { seedRunLogMeta } from './run-log-meta-test-seed.ts'
 import {
 	beginRunRecord,
@@ -220,7 +220,8 @@ async function upgradeFromLegacySchema(
 				initializeSchema: () => void
 			}
 			proto.initializeSchema.call(instance)
-			expect(schemaVersion(state)).toBeGreaterThan(version)
+			expect(schemaVersion(state)).toBe(runLogSchemaVersion)
+			expect(runLogSchemaVersion).toBeGreaterThan(version)
 			expect(columnNames(state, 'runs')).toContain('stale_after')
 			verify(state)
 		},

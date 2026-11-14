@@ -44,10 +44,18 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	expect(workersRetry.replace(/\s+/g, ' ')).toContain(
 		"needs.workers.outputs.outcome_1 == 'timeout' || needs.workers.outputs.outcome_2 == 'timeout'",
 	)
-	const retrySteps = workersRetry.split(/\n      - name: /).slice(1)
+	const retryStepsBody = workersRetry.slice(
+		workersRetry.indexOf('\n    steps:'),
+	)
+	const retrySteps = retryStepsBody.split(/\n      - /).slice(1)
 	expect(retrySteps.length).toBeGreaterThan(0)
 	for (const step of retrySteps) {
-		expect(step).toMatch(/RETRY == 'true'/)
+		const ifExpression = step.match(/(?:^|\n)\s*if:\s*(.+)/)?.[1]?.trim()
+		expect(ifExpression).toBeTruthy()
+		// Require the true comparison and reject OR bypasses such as
+		// `always() || env.RETRY == 'true'` (current steps only AND the gate).
+		expect(ifExpression).not.toMatch(/\|\|/)
+		expect(ifExpression).toMatch(/\benv\.RETRY\s*==\s*'true'/)
 	}
 	expect(e2e).toContain('shard: [1, 2]')
 	expect(e2e).toContain('E2E_SHARD: ${{ matrix.shard }}/2')
