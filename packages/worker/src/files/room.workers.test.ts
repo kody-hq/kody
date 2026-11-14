@@ -825,6 +825,42 @@ test('a broadcast resolves access once per session and still closes revoked sock
 	}
 })
 
+test('a broadcast looks up each person once instead of once per session', async () => {
+	const f = await fixture()
+	// Distinct issuedAt values give each socket its own session key, so the
+	// per-session cache alone cannot dedupe them.
+	const sockets = (
+		await Promise.all(
+			[0, 1, 2].map((offset) =>
+				openSockets(f, 1, {
+					issuedAt: Date.now() - offset * 1000,
+					expiresAt: Date.now() + 10 * 60_000,
+				}),
+			),
+		)
+	).flat()
+	try {
+		await runInDurableObject(f.stub, async (instance: FileRoom) => {
+			const room = instance as unknown as RoomInternals & { env: Env }
+			const prepare = vi.spyOn(room.env.APP_DB, 'prepare')
+			try {
+				await room.broadcastPresence()
+				const sql = prepare.mock.calls.map(([query]) => String(query))
+				const userLookups = sql.filter((query) =>
+					/FROM users WHERE stable_user_id (=|IN)/.test(query),
+				)
+				// One batched liveness query plus at most one collaboration-flag
+				// user lookup, regardless of how many sessions are connected.
+				expect(userLookups.length).toBeLessThanOrEqual(2)
+			} finally {
+				prepare.mockRestore()
+			}
+		})
+	} finally {
+		for (const { socket } of sockets) socket.close()
+	}
+})
+
 test('a shared session lookup still closes an expired socket with 4000', async () => {
 	const f = await fixture()
 	const [expired, live] = await openSockets(f, 2)

@@ -53,12 +53,14 @@ export async function fileCollaborationEnabled(
 export async function fileEffectivePermissions(
 	env: Env,
 	request: RequestContext,
+	/** Shared `fileCollaborationEnabled` lookup, so callers that also need the flag resolve it once. */
+	collaborationEnabled: () => Promise<boolean> = () =>
+		fileCollaborationEnabled(env, request),
 ) {
 	const { computeEffectivePermissions } =
 		await import('#worker/authorization/authorize.ts')
 	const effective = await computeEffectivePermissions({ env, request })
-	return request.membership?.role === 'member' &&
-		(await fileCollaborationEnabled(env, request))
+	return request.membership?.role === 'member' && (await collaborationEnabled())
 		? {
 				...effective,
 				permissions: new Set([...effective.permissions, 'file:read' as const]),
