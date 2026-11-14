@@ -102,3 +102,47 @@ test('started deliveries whose consumer was killed stop counting once their hold
 		true,
 	)
 })
+
+test('accepted deliveries healed to interrupted while they waited take a slot when they finally start', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	const owner = `owner-healed-${crypto.randomUUID()}`
+	const waited = Array.from({ length: webhookAckOwnerStartedLimit }, (_, i) =>
+		deliveryFor(owner, `waited-${i}`),
+	)
+	for (const delivery of waited) {
+		await markAckWebhookDelivery({
+			env,
+			delivery,
+			state: 'accepted',
+			holdMs: webhookAckQueuedHoldMs,
+		})
+	}
+
+	vi.setSystemTime(Date.now() + webhookAckQueuedHoldMs + 1_000)
+	for (const delivery of waited) {
+		const record = await getRunRecord({
+			env,
+			userId: delivery.endpoint.userId,
+			runId: delivery.deliveryId,
+		})
+		expect(record?.run.status).toBe('error')
+	}
+
+	for (const delivery of waited) {
+		expect(await startAckWebhookDeliveryAttempt({ env, delivery })).toBe(true)
+		const record = await getRunRecord({
+			env,
+			userId: delivery.endpoint.userId,
+			runId: delivery.deliveryId,
+		})
+		expect(record?.run.status).toBe('running')
+		expect(record?.run.metadata?.['state']).toBe('started')
+	}
+
+	expect(
+		await startAckWebhookDeliveryAttempt({
+			env,
+			delivery: deliveryFor(owner, 'next'),
+		}),
+	).toBe(false)
+})

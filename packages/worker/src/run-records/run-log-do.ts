@@ -2668,6 +2668,10 @@ class RunLogBase extends DurableObject<Env> {
 	 * webhook row whose metadata state is `started` and whose hold has not
 	 * lapsed, so a finished, requeued, or killed attempt frees its slot without
 	 * a release call. DO RPCs are serialized, so count-then-start is race-free.
+	 *
+	 * A delivery whose accepted or queued hold lapsed while it waited was
+	 * healed to interrupted; its attempt is real, so the row goes back to
+	 * `running` and takes a slot (the finish replaces it as usual).
 	 */
 	async startWebhookDeliveryAttempt(input: {
 		run: RunLogRowInput
@@ -2688,7 +2692,23 @@ class RunLogBase extends DurableObject<Env> {
 					.one().count,
 			) || 0
 		if (inFlight >= input.limit) return { started: false, inFlight }
-		this.insertRunningRun(input.run)
+		const previous = this.getRunStatusAndStartedAt(input.run.id)
+		if (previous && previous.status !== 'running') {
+			this.transactionSyncWithMetaCache(() => {
+				this.upsertRun(input.run, 'replace')
+				this.applyRunDayCountTransition({
+					previousStatus: previous.status,
+					previousStartedAt: previous.startedAt,
+					run: input.run,
+				})
+			})
+			this.retentionIdleConfirmed = false
+			this.retentionAlarmArmed = false
+			this.invalidateReadMemos()
+			this.resetRetentionEmptyBackoff()
+		} else {
+			this.insertRunningRun(input.run)
+		}
 		this.holdRunningUntil(input.run.id, input.staleAfter)
 		await this.updateRunningMetadata({
 			runId: input.run.id,
