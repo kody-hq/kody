@@ -58,7 +58,7 @@ type IsolatedExecuteBundleStub = {
  * package or an npm package. `kody:runtime` and relative imports cost nothing.
  */
 function importsPackages(code: string) {
-	if (!code.includes('import') && !code.includes(' from ')) return false
+	if (!code.includes('import') && !code.includes('from')) return false
 	return collectLiteralImportSpecifiers(code).some(
 		(specifier) =>
 			specifier.startsWith(packageSpecifierPrefix) ||

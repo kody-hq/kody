@@ -1146,10 +1146,17 @@ export default async function main() { return await run({}) }`,
 		`import { z } from 'zod'
 export default async function main() { return z.string().parse('ok') }`,
 	)
+	const reExport = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`export { default } from
+'kody:@you/big/run'`,
+	)
 	expect(saved.error).toBeUndefined()
 	expect(npm.error).toBeUndefined()
-	expect(isolateNames).toHaveLength(2)
-	expect(new Set(isolateNames).size).toBe(2)
+	expect(reExport.error).toBeUndefined()
+	expect(isolateNames).toHaveLength(3)
+	expect(new Set(isolateNames).size).toBe(3)
 	for (const name of isolateNames) {
 		expect(name).toMatch(/^isolated-execute-bundle-/)
 	}
