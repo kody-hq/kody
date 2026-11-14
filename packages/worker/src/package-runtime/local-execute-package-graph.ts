@@ -476,18 +476,35 @@ const relativeSpecifierCandidatePattern = /["'`](\.\.?\/[^"'`\n]*)["'`]/g
  * that `shouldOmitPreparedModule` did not know went unnoticed. This throws a
  * plain error, a server fault, because the caller cannot fix a dropped module.
  *
- * workerd links only the modules a run reaches, so served modules nothing
- * imports are not checked. Quoted relative strings are only candidates: they
- * are followed when they name a served module, and a module is parsed only
- * when one does not, so a complete graph costs no parse.
+ * The first pass avoids parsing: it follows every quoted relative string that
+ * names a served module and parses a module only when one names nothing. That
+ * can reach modules no import reaches, so a miss it finds is confirmed by a
+ * second pass that follows parsed static imports only, the ones workerd links
+ * before running anything. A complete graph costs no parse.
  */
 function assertLocalExecuteModuleGraphIsClosed(
 	modulesByName: ReadonlyMap<string, string>,
 	entryModuleNames: ReadonlyArray<string>,
 	primaryRuntimePath: string,
 ) {
+	const scan = { modulesByName, entryModuleNames, primaryRuntimePath }
+	if (findUnservedImport({ ...scan, parseEveryModule: false }) == null) return
+	const unserved = findUnservedImport({ ...scan, parseEveryModule: true })
+	if (unserved == null) return
+	throw new Error(
+		`Local execute package graph is incomplete: "${unserved.modulePath}" imports "${unserved.specifier}", but "${unserved.target}" is not among the served modules.`,
+	)
+}
+
+function findUnservedImport(input: {
+	modulesByName: ReadonlyMap<string, string>
+	entryModuleNames: ReadonlyArray<string>
+	primaryRuntimePath: string
+	parseEveryModule: boolean
+}) {
+	const { modulesByName, primaryRuntimePath } = input
 	const visited = new Set<string>()
-	const pending = [...entryModuleNames]
+	const pending = [...input.entryModuleNames]
 	while (pending.length > 0) {
 		const modulePath = pending.pop()!
 		if (visited.has(modulePath)) continue
@@ -495,36 +512,32 @@ function assertLocalExecuteModuleGraphIsClosed(
 		// The primary runtime shim joins the graph when it is signed.
 		const source = modulesByName.get(modulePath)
 		if (source == null) continue
-		let hasUnservedCandidate = false
-		for (const match of source.matchAll(relativeSpecifierCandidatePattern)) {
-			const target = resolveRelativeModulePath(modulePath, match[1] ?? '')
-			if (target == null) continue
-			if (modulesByName.has(target)) pending.push(target)
-			else if (target !== primaryRuntimePath) hasUnservedCandidate = true
-		}
-		if (!hasUnservedCandidate) continue
-		let imports: ReturnType<typeof collectLiteralImportNodes>
-		try {
-			imports = collectLiteralImportNodes(source, { filePath: modulePath })
-		} catch {
-			// workerd reports a module that does not parse on its own.
-			continue
-		}
-		for (const { specifier, kind } of imports) {
-			if (kind !== 'static') continue
-			const target = resolveRelativeModulePath(modulePath, specifier)
-			if (
-				target == null ||
-				target === primaryRuntimePath ||
-				modulesByName.has(target)
-			) {
+		if (!input.parseEveryModule) {
+			const candidateTargets: Array<string> = []
+			let hasUnservedCandidate = false
+			for (const match of source.matchAll(relativeSpecifierCandidatePattern)) {
+				const target = resolveRelativeModulePath(modulePath, match[1] ?? '')
+				if (target == null) continue
+				if (modulesByName.has(target)) candidateTargets.push(target)
+				else if (target !== primaryRuntimePath) hasUnservedCandidate = true
+			}
+			if (!hasUnservedCandidate) {
+				pending.push(...candidateTargets)
 				continue
 			}
-			throw new Error(
-				`Local execute package graph is incomplete: "${modulePath}" imports "${specifier}", but "${target}" is not among the served modules.`,
-			)
+		}
+		// A module that does not parse yields no imports; workerd reports it.
+		for (const { specifier, kind } of collectLiteralImportNodes(source, {
+			filePath: modulePath,
+		})) {
+			if (kind !== 'static') continue
+			const target = resolveRelativeModulePath(modulePath, specifier)
+			if (target == null || target === primaryRuntimePath) continue
+			if (!modulesByName.has(target)) return { modulePath, specifier, target }
+			pending.push(target)
 		}
 	}
+	return null
 }
 
 function shouldOmitPreparedModule(modulePath: string) {
