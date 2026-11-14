@@ -1035,6 +1035,48 @@ test('a writer that stops renewing stops blocking deletion after the TTL and the
 	}
 })
 
+test('a nested write does not reuse a lease that a deletion dropped', async () => {
+	vi.useFakeTimers()
+	try {
+		// Renewals fail until the lease has lapsed, as in a stalled isolate.
+		let renewalsLand = false
+		const env = createWrappedMeterEnv((stub) => ({
+			renewWriteLease: async (args) => {
+				if (!renewalsLand) throw new Error('renewal did not land')
+				return stub.renewWriteLease(args)
+			},
+		}))
+		const h = createLeaseHarness(env)
+		let nested: Promise<unknown> | undefined
+		let resume!: () => void
+		const resumed = new Promise<void>((resolve) => {
+			resume = resolve
+		})
+		const outer = h.lease(
+			async () => {
+				await resumed
+				nested = h.lease(async () => 'nested write ran', {
+					holder: 'test:nested',
+				})
+				await nested.catch(() => {})
+				return 'outer'
+			},
+			{ holder: 'test:outer' },
+		)
+		await vi.advanceTimersByTimeAsync(writeLeaseTtlMs + 1_000)
+		expect((await h.markDeleting()).leaseCount).toBe(0)
+
+		renewalsLand = true
+		await vi.advanceTimersByTimeAsync(accountWriteLeaseHeartbeatMs)
+		resume()
+
+		await expect(outer).rejects.toBeInstanceOf(AccountWriteLeaseLostError)
+		await expect(nested).rejects.toBeInstanceOf(AccountDeletionInProgressError)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
 test('the heartbeat stops once the write finishes', async () => {
 	vi.useFakeTimers()
 	try {

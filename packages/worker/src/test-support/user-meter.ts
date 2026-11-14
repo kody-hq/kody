@@ -70,6 +70,13 @@ export function createInMemoryUserMeterEnv() {
 		if (!existingRows) metersByUser.set(userId, rows)
 
 		const deletion = deletionStateFor(userId)
+		// Mirrors UserMeter: once a deletion is fencing, a lapsed lease is gone.
+		const dropLapsedLeasesWhileDeleting = () => {
+			if (deletion.deletingAt == null) return
+			for (const [token, lease] of deletion.leases) {
+				if (lease.expiresAtMs <= Date.now()) deletion.leases.delete(token)
+			}
+		}
 		const existingDynamicWorkerDays = dynamicWorkerDaysByUser.get(userId)
 		const dynamicWorkerDays = existingDynamicWorkerDays ?? new Set<string>()
 		if (!existingDynamicWorkerDays) {
@@ -551,9 +558,7 @@ export function createInMemoryUserMeterEnv() {
 			async markDeleting(input: { deletingAt: string }) {
 				const created = deletion.deletingAt == null
 				if (created) deletion.deletingAt = input.deletingAt
-				for (const [token, lease] of deletion.leases) {
-					if (lease.expiresAtMs <= Date.now()) deletion.leases.delete(token)
-				}
+				dropLapsedLeasesWhileDeleting()
 				const leaseCount = deletion.leases.size
 				return {
 					deletingAt: deletion.deletingAt ?? input.deletingAt,
@@ -593,15 +598,18 @@ export function createInMemoryUserMeterEnv() {
 				return { acquired: true }
 			},
 			async renewWriteLease(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
 				const existing = deletion.leases.get(input.token)
 				if (!existing) return { renewed: false }
 				existing.expiresAtMs = Date.now() + writeLeaseTtlMs
 				return { renewed: true }
 			},
 			async releaseWriteLease(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
 				return { released: deletion.leases.delete(input.token) }
 			},
 			async assertWriteLeaseHeld(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
 				return { held: deletion.leases.has(input.token) }
 			},
 			async prepareWriteLeaseRepair(input: {
@@ -658,7 +666,13 @@ export function createInMemoryUserMeterEnv() {
 				return pageWriteLeases(input)
 			},
 			async countActiveWriteLeases() {
-				return { count: deletion.leases.size }
+				dropLapsedLeasesWhileDeleting()
+				const nowMs = Date.now()
+				return {
+					count: [...deletion.leases.values()].filter(
+						(lease) => lease.expiresAtMs > nowMs,
+					).length,
+				}
 			},
 			async touchInboundConnectionLastUsed(input: {
 				clientId: string
