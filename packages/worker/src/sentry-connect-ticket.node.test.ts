@@ -164,9 +164,21 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 			return { kept: 'accessor-child' }
 		},
 	})
+	const freshSensitiveGetter: Record<string, unknown> = {}
+	Object.defineProperty(freshSensitiveGetter, '$', {
+		enumerable: true,
+		configurable: false,
+		get() {
+			return { authorization: 'Bearer accessor-secret' }
+		},
+	})
 	const frozenSensitive = Object.freeze({
 		authorization: 'Bearer frozen-secret',
 		ok: 'kept-frozen',
+	})
+	const sharedFrozen = Object.freeze({
+		authorization: 'Bearer shared-secret',
+		ok: 'kept-shared',
 	})
 	const frozenQuery = Object.freeze({
 		code: 'frozen-query-code',
@@ -180,7 +192,11 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 	const event = redactKodyCredentialsInSentryEvent({
 		type: undefined,
 		extra: withGetterOnly,
-		contexts: { frozen: frozenSensitive },
+		contexts: {
+			frozen: frozenSensitive,
+			fresh: freshSensitiveGetter,
+			aliases: { first: sharedFrozen, second: sharedFrozen },
+		},
 		request: { query_string: frozenQuery },
 		breadcrumbs: [{ data: { items: frozenArray } }],
 	})
@@ -189,6 +205,8 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 		'writable-secret',
 		apiToken,
 		'frozen-secret',
+		'shared-secret',
+		'accessor-secret',
 		'frozen-query-code',
 		'array-secret-token',
 		'rt-in-frozen-array',
@@ -197,6 +215,7 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 	}
 	expect(serialized).toContain('accessor-child')
 	expect(serialized).toContain('kept-frozen')
+	expect(serialized).toContain('kept-shared')
 	expect(serialized).toContain('kept-query-state')
 	expect((event.extra as Record<string, unknown>).authorization).toBe(
 		'[redacted]',
@@ -205,4 +224,15 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 		(event.contexts as { frozen: Record<string, unknown> }).frozen
 			.authorization,
 	).toBe('[redacted]')
+	const aliases = (
+		event.contexts as {
+			aliases: {
+				first: Record<string, unknown>
+				second: Record<string, unknown>
+			}
+		}
+	).aliases
+	expect(aliases.first.authorization).toBe('[redacted]')
+	expect(aliases.second.authorization).toBe('[redacted]')
+	expect(aliases.first).toBe(aliases.second)
 })

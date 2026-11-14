@@ -138,11 +138,13 @@ function isAssignableProperty(target: object, key: PropertyKey) {
 }
 
 /**
- * Write `next` only when it differs from `previous`. Never throws on
- * non-writable targets. When a write is blocked and `dropIfBlocked` is set
- * (sensitive fields), delete the key so the secret does not stay on the
- * payload; if delete is also blocked (non-configurable), fall back to a plain
- * mutable clone via the caller's `ensureMutable` so redaction still sticks.
+ * Write `next` onto `target[key]`. Skips when the value is unchanged *and* the
+ * property is a writable data field. Getter-only / non-writable properties
+ * always materialize `next` onto a plain mutable clone: later JSON reads must
+ * not re-invoke a getter that returns a fresh unredacted object. Never throws.
+ * When a write is blocked and `dropIfBlocked` is set (sensitive fields), delete
+ * the key when configurable; otherwise clone so secrets do not stay on the
+ * payload.
  */
 function writeRedactedProperty(
 	target: object,
@@ -154,11 +156,14 @@ function writeRedactedProperty(
 		ensureMutable: () => Record<string, unknown>
 	},
 ): void {
-	if (next === previous) return
-	if (isAssignableProperty(target, key)) {
+	const assignable = isAssignableProperty(target, key)
+	// Unchanged writable data props need no write. Non-writable / getter-only
+	// props still need a snapshot even when `next === previous` (in-place child
+	// mutation) so serialization cannot re-read the accessor.
+	if (next === previous && assignable) return
+	if (assignable) {
 		try {
-			Reflect.set(target, key, next)
-			return
+			if (Reflect.set(target, key, next)) return
 		} catch {
 			// Fall through to drop / clone.
 		}
@@ -175,10 +180,13 @@ function writeRedactedProperty(
 	options.ensureMutable()[String(key)] = next
 }
 
+/** Original object → sanitized replacement (identity when mutated in place). */
+type RedactionSeen = WeakMap<object, unknown>
+
 function redactQueryStringObject(
 	query: Record<string, unknown>,
 	depth: number,
-	seen: WeakSet<object>,
+	seen: RedactionSeen,
 ): Record<string, unknown> {
 	let host: Record<string, unknown> = query
 	let cloned = false
@@ -186,6 +194,8 @@ function redactQueryStringObject(
 		if (cloned) return host
 		host = { ...query }
 		cloned = true
+		seen.set(query, host)
+		seen.set(host, host)
 		return host
 	}
 	for (const key of Object.keys(host)) {
@@ -219,22 +229,22 @@ function redactQueryStringObject(
 function redactSentryValue(
 	value: unknown,
 	depth: number,
-	seen: WeakSet<object>,
+	seen: RedactionSeen,
 ): unknown {
 	if (typeof value === 'string') return redactSentryString(value)
 	if (value === null || typeof value !== 'object') return value
-	if (seen.has(value)) return value
+	if (seen.has(value)) return seen.get(value)
 	if (depth >= maxRedactionDepth) return redactedValue
-	seen.add(value)
+	// Provisional: in-place result is the original until a clone replaces it.
+	seen.set(value, value)
 	if (Array.isArray(value)) {
 		for (let index = 0; index < value.length; index++) {
 			const previous = value[index]
 			const next = redactSentryValue(previous, depth + 1, seen)
-			if (next === previous) continue
+			if (next === previous && isAssignableProperty(value, index)) continue
 			if (isAssignableProperty(value, index)) {
 				try {
-					value[index] = next
-					continue
+					if (Reflect.set(value, index, next)) continue
 				} catch {
 					// Frozen / non-writable index: replace the array below.
 				}
@@ -248,19 +258,21 @@ function redactSentryValue(
 				const restNext = redactSentryValue(restPrevious, depth + 1, seen)
 				if (restNext !== restPrevious) copy[rest] = restNext
 			}
+			seen.set(value, copy)
+			seen.set(copy, copy)
 			return copy
 		}
 		return value
 	}
-	let host = value as Record<string, unknown>
+	const original = value as Record<string, unknown>
+	let host: Record<string, unknown> = original
 	let cloned = false
 	const ensureMutable = () => {
 		if (cloned) return host
 		host = { ...host }
 		cloned = true
-		// The clone is a new object; allow further redaction walks to treat it
-		// as seen so cycles through the replacement still terminate.
-		seen.add(host)
+		seen.set(original, host)
+		seen.set(host, host)
 		return host
 	}
 	for (const key of Object.keys(host)) {
@@ -306,12 +318,12 @@ function redactSentryValue(
  * and secret query params (events, transactions, and breadcrumbs). Mutates in
  * place when properties are writable; returns a plain clone when getter-only or
  * frozen properties block assignment so redaction cannot throw or silently skip
- * secrets.
+ * secrets. Clones are recorded so later aliases reuse the sanitized replacement.
  */
 export function redactKodyCredentialsInSentryEvent<T extends object>(
 	event: T,
 ): T {
-	return redactSentryValue(event, 0, new WeakSet()) as T
+	return redactSentryValue(event, 0, new WeakMap()) as T
 }
 
 /** Execution context connect tickets are bearer secrets in a query param. */
