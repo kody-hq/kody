@@ -1,5 +1,7 @@
 import { expect, test, vi } from 'vitest'
 import { z } from 'zod'
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import * as cliCredentialBootstrap from '#worker/api-tokens/cli-credential-bootstrap.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { createOpenApiTestHarness } from '#worker/test-support/open-api-http.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
@@ -27,6 +29,38 @@ test('a native handler that drifts from its outputSchema fails under the test ha
 		expect.objectContaining({
 			message: expect.stringContaining(
 				'Native operation "tokenGetCurrent" returned a response that does not match its documented outputSchema',
+			),
+		}),
+	)
+})
+
+test('bootstrap redeem fails under the test harness when login_org is dropped', async () => {
+	const api = await createOpenApiTestHarness()
+	const minted = await cliCredentialBootstrap.mintCliCredentialBootstrap({
+		db: api.db,
+		userId: ownerIdFromStored(api.userId),
+		orgId: api.userId,
+		lifetime: 'short',
+	})
+	const realRedeem = cliCredentialBootstrap.redeemCliCredentialBootstrap
+	vi.spyOn(
+		cliCredentialBootstrap,
+		'redeemCliCredentialBootstrap',
+	).mockImplementationOnce(async (input) => {
+		const redeemed = await realRedeem(input)
+		return { ...redeemed, loginOrg: undefined as never }
+	})
+	consoleError.mockImplementation(() => {})
+	const redeemed = await api.call('POST', '/v1/tokens/bootstrap/redeem', {
+		body: { code: minted.bootstrap_code },
+	})
+	expect(redeemed.status).toBe(500)
+	expect(consoleError).toHaveBeenCalledWith(
+		'open-api-request-failed',
+		'/v1/tokens/bootstrap/redeem',
+		expect.objectContaining({
+			message: expect.stringContaining(
+				'Native operation "cliCredentialBootstrapRedeem" returned a response that does not match its documented outputSchema (login_org',
 			),
 		}),
 	)
