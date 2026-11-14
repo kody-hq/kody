@@ -16,7 +16,8 @@ vi.mock('./system-email-sent-package-subscriptions.ts', () => ({
 		mocks.dispatchSystemEmailSentSubscriptionEvent,
 }))
 
-const { sendSystemEmail } = await import('./system-outbound.ts')
+const { sendSystemEmail, sendNewsletterEmail } =
+	await import('./system-outbound.ts')
 
 const cloudflareEmailApi =
 	'https://api.cloudflare.test/client/v4/accounts/account-123/email/sending/send'
@@ -53,6 +54,106 @@ function send(overrides: Partial<Parameters<typeof sendSystemEmail>[0]> = {}) {
 		...overrides,
 	})
 }
+
+test('newsletter mail has a dedicated sender, quota, send kind, and one-recipient contract', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-14T05:06:07.000Z')
+	const payloads: Array<Record<string, unknown>> = []
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, async ({ request }) => {
+				payloads.push((await request.json()) as Record<string, unknown>)
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: 'newsletter-1' },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		html: '<p>News</p>',
+		text: 'News',
+		headers: { 'List-Unsubscribe': '<https://example.com/unsubscribe>' },
+		now,
+	}
+	const before = await readSendCounter('kody', now)
+	await sendNewsletterEmail(input)
+	expect(payloads[0]).toMatchObject({
+		from: { address: 'news@kody.example.com', name: 'Kent from Kody' },
+		to: 'reader@example.com',
+		reply_to: 'kent@kody.example.com',
+		html: input.html,
+		text: input.text,
+		headers: input.headers,
+	})
+	expect(await readSendCounter('news', now)).toBe(1)
+	expect(await readSendCounter('kody', now)).toBe(before)
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT kind, sender FROM system_email_sends WHERE provider_message_id = 'newsletter-1'`,
+		).first(),
+	).toMatchObject({ kind: 'whats_new', sender: 'news@kody.example.com' })
+	for (const to of ['', ['reader@example.com']]) {
+		await expect(
+			sendNewsletterEmail({ ...input, to: to as string }),
+		).rejects.toThrow('One newsletter recipient')
+	}
+	await expect(
+		sendNewsletterEmail({ ...input, text: '', html: '' }),
+	).rejects.toThrow('Email text or HTML')
+	await expect(
+		sendSystemEmail({ ...input, localPart: 'news' }),
+	).rejects.toThrow('not available for transactional')
+	await env.APP_DB.prepare(
+		`UPDATE system_email_daily_counters SET count = ? WHERE local_part = 'send:news' AND day = ?`,
+	)
+		.bind(systemEmailLimits.maxNewsletterSendsPerDay, systemEmailDayKey(now))
+		.run()
+	await expect(sendNewsletterEmail(input)).rejects.toThrow(
+		'newsletter send limit (2000)',
+	)
+	expect(payloads).toHaveLength(1)
+})
+
+test('newsletter mail respects suppression and refunds provider failures', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-15T05:06:07.000Z')
+	await env.APP_DB.prepare(
+		`INSERT INTO email_recipient_suppressions (recipient, hard_bounce_count, suppressed_at, last_status, last_hard_bounce_at, created_at, updated_at) VALUES ('newsletter-gone@example.com', 2, ?1, 'bounced', ?1, ?1, ?1)`,
+	)
+		.bind(now.toISOString())
+		.run()
+	const input = {
+		env: createSystemEnv(),
+		to: 'newsletter-gone@example.com',
+		subject: 'Updates',
+		text: 'News',
+		now,
+	}
+	await expect(sendNewsletterEmail(input)).rejects.toThrow('Email was not sent')
+	expect(await readSendCounter('news', now)).toBe(0)
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () =>
+				HttpResponse.json({
+					success: false,
+					errors: [{ message: 'Provider failed' }],
+				}),
+			),
+		],
+		mswOptions,
+	)
+	await expect(
+		sendNewsletterEmail({ ...input, to: 'reader@example.com' }),
+	).rejects.toThrow('Provider failed')
+	expect(await readSendCounter('news', now)).toBe(0)
+	expect(consoleWarn).toHaveBeenCalled()
+})
 
 test('sendSystemEmail sends from the reserved system sender to external recipients', async () => {
 	await ensureEmailTestSchema(env.APP_DB)
