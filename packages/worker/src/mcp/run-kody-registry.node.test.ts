@@ -18,6 +18,13 @@ import {
 	executeBundleTimeoutMs,
 	runModuleWithRegistry,
 } from './run-kody-registry.ts'
+import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import {
+	executeBundleResourceLimitMessage,
+	executeLocallyCommand,
+} from '#mcp/execute-bundle-limit-messages.ts'
+import { addInProcessExecuteBundleIsolates } from '#worker/test-support/execute-bundle-isolates.ts'
+import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import * as runRecords from '#worker/run-records/service.ts'
 import * as mcpExecutor from '#mcp/executor.ts'
 import * as executeInterpretable from '#mcp/execute-interpretable.ts'
@@ -51,6 +58,17 @@ vi.mock('#worker/package-runtime/module-graph.ts', async () => {
 		})),
 	}
 })
+
+/**
+ * `REPO_SESSION` stand-in: every `get` is a separate isolate whose input
+ * crosses a structured-clone boundary like Durable Object RPC.
+ */
+function envWithBundleIsolate(
+	isolate?: Parameters<typeof addInProcessExecuteBundleIsolates>[1],
+) {
+	const env = {} as Env
+	return { env, ...addInProcessExecuteBundleIsolates(env, isolate) }
+}
 
 type ProviderFns = Record<string, (args: unknown) => Promise<unknown>>
 
@@ -826,7 +844,7 @@ test('runModuleWithRegistry records execute interpretable class only on execute-
 	const recordSpy = vi
 		.spyOn(executeInterpretable, 'recordExecuteInterpretableEvent')
 		.mockImplementation(() => {})
-	const env = {} as Env
+	const { env } = envWithBundleIsolate()
 	const callerContext = meCaller()
 	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
 		emptyRegistry,
@@ -1036,6 +1054,13 @@ test('runModuleWithRegistry begins a run before bundling and records a clear tim
 		await vi.advanceTimersByTimeAsync(executeBundleTimeoutMs)
 		const result = await pending
 		expect(result.error).toMatch(/Execute module bundling exceeded/)
+		expect(
+			mcpExecutor.getExecutionErrorDetails(result.error)?.suggestedAction,
+		).toEqual({
+			type: 'run_locally',
+			command: executeLocallyCommand,
+			requires: ['node>=22', 'kody_cli_signed_in'],
+		})
 		expect(result.runId).toBe('run-bundle-timeout')
 		expect(finishSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
@@ -1091,4 +1116,132 @@ test('credential needs come from entry closures, never a pinned dependency', () 
 	expect(entries('own')).toEqual(['own', 'dynamic'])
 	expect(entries('own', 'callee')).toEqual(['own', 'callee', 'dynamic'])
 	expect(entries(null, 'callee')).toEqual(['callee', 'dynamic'])
+})
+
+test('runModuleWithRegistry bundles a module that imports packages in a throwaway isolate', async () => {
+	silenceIncidentalRuntimeWarnings()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	mockExecutor()
+	const { env, isolateNames } = envWithBundleIsolate()
+
+	await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import { kody } from 'kody:runtime'
+export default async function main() { return await kody.capability_id({}) }`,
+	)
+	expect(isolateNames).toEqual([])
+
+	const saved = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import run from 'kody:@you/big/run'
+export default async function main() { return await run({}) }`,
+	)
+	const npm = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import { z } from 'zod'
+export default async function main() { return z.string().parse('ok') }`,
+	)
+	const reExport = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`export { default } from
+'kody:@you/big/run'`,
+	)
+	expect(saved.error).toBeUndefined()
+	expect(npm.error).toBeUndefined()
+	expect(reExport.error).toBeUndefined()
+	expect(isolateNames).toHaveLength(3)
+	expect(new Set(isolateNames).size).toBe(3)
+	for (const name of isolateNames) {
+		expect(name).toMatch(/^isolated-execute-bundle-/)
+	}
+})
+
+test('runModuleWithRegistry refuses a bundle that exceeds the build isolate limits and points at execute --local', async () => {
+	silenceIncidentalRuntimeWarnings()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	const executor = mockExecutor()
+	const handle = {
+		id: 'run-bundle-limit',
+		userId: ownerIdFromStored('user-1'),
+		startedAt: '2026-11-13T00:00:00.000Z',
+		persistence: 'eager' as const,
+		context: { surface: 'execute' as const },
+	}
+	const finishSpy = vi
+		.spyOn(runRecords, 'finishRunRecord')
+		.mockResolvedValue(true)
+	const { env } = envWithBundleIsolate(async () => {
+		throw new Error(durableObjectIsolateMemoryResetMessage)
+	})
+
+	const result = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import run from 'kody:@you/big/run'
+export default async function main() { return await run({}) }`,
+		undefined,
+		{ runRecordHandle: handle },
+	)
+
+	expect(result.error).toBe(executeBundleResourceLimitMessage)
+	expect(result.runId).toBe('run-bundle-limit')
+	expect(executor.spy).not.toHaveBeenCalled()
+	const recorded = finishSpy.mock.calls[0]?.[0].error
+	expect(isMcpCallerError(recorded)).toBe(true)
+	expect(mcpExecutor.getExecutionErrorDetails(result.error)).toEqual({
+		kind: 'execute_bundle_too_large',
+		message: executeBundleResourceLimitMessage,
+		nextStep: expect.stringContaining(executeLocallyCommand),
+		suggestedAction: {
+			type: 'run_locally',
+			command: executeLocallyCommand,
+			requires: ['node>=22', 'kody_cli_signed_in'],
+		},
+	})
+	finishSpy.mockRestore()
+})
+
+test('runModuleWithRegistry keeps a build failure from the isolate a caller error with its message', async () => {
+	silenceIncidentalRuntimeWarnings()
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	mockExecutor()
+	vi.mocked(moduleGraph.buildKodyModuleBundle).mockRejectedValueOnce(
+		new McpCallerError('Saved package "@you/missing" was not found.'),
+	)
+	const finishSpy = vi
+		.spyOn(runRecords, 'finishRunRecord')
+		.mockResolvedValue(true)
+	const { env } = envWithBundleIsolate()
+
+	const result = await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import run from 'kody:@you/missing/run'
+export default async function main() { return await run({}) }`,
+		undefined,
+		{
+			runRecordHandle: {
+				id: 'run-missing',
+				userId: ownerIdFromStored('user-1'),
+				startedAt: '2026-11-13T00:00:00.000Z',
+				persistence: 'eager',
+				context: { surface: 'execute' },
+			},
+		},
+	)
+
+	expect(result.error).toBe('Saved package "@you/missing" was not found.')
+	expect(isMcpCallerError(finishSpy.mock.calls[0]?.[0].error)).toBe(true)
+	expect(mcpExecutor.getExecutionErrorDetails(result.error)).toBeNull()
+	finishSpy.mockRestore()
 })

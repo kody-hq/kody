@@ -83,10 +83,10 @@ import {
 	loadRunCredentialNeedEntries,
 	validateCredentialCallMap,
 } from '#worker/credentials/credential-client.ts'
-import {
-	buildKodyModuleBundle,
-	hydrateKodyRuntimeModules,
-} from '#worker/package-runtime/module-graph.ts'
+import { hydrateKodyRuntimeModules } from '#worker/package-runtime/module-graph.ts'
+import { buildExecuteModuleBundle } from '#worker/package-runtime/isolated-execute-bundle.ts'
+import { createExecuteBundleTimeoutMessage } from '#mcp/execute-bundle-limit-messages.ts'
+import { getRequestPermissions } from '#worker/authorization/authorize.ts'
 import {
 	buildComputedPackageImportCallBundle,
 	maxComputedPackageImportDepth,
@@ -169,11 +169,6 @@ import {
  * MCP client abort with no run row) finishes as a recorded error instead.
  */
 export const executeBundleTimeoutMs = 90_000
-
-export function createExecuteBundleTimeoutMessage(timeoutMs: number) {
-	const seconds = Math.max(1, Math.round(timeoutMs / 1000))
-	return `Execute module bundling exceeded ${seconds}s before sandbox start. Heavy multi-export package graphs (for example multiple zod-based exports from one package) can exceed this budget; prefer remix/data-schema for agent-facing export validation, or import one heavy export per execute module.`
-}
 
 export class ExecuteBundleTimeoutError extends Error {
 	override name = 'ExecuteBundleTimeoutError'
@@ -778,14 +773,15 @@ export async function runModuleWithRegistry(
 		const bundleStartedAtMs = Date.now()
 		const bundled = await raceWithExecuteBundleDeadline(
 			async () =>
-				await buildKodyModuleBundle({
+				await buildExecuteModuleBundle({
 					env,
 					baseUrl: callerContext.baseUrl,
 					userId: packageOwnerUserId,
+					code,
 					sourceFiles: createAdHocExecuteSourceFiles(code),
-					entryPoint: 'entry.ts',
-					reuseCachedBundle: true,
-					bundleContext: 'ad-hoc-execute',
+					// Only a caller that bound request permissions gets them
+					// rebound in the build isolate.
+					request: getRequestPermissions() ? callerContext.request : null,
 				}),
 			{
 				timeoutMs: executeBundleTimeoutMs,

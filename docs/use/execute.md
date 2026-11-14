@@ -190,6 +190,20 @@ Sandbox budgets are the same on every plan:
 A `sync` webhook's HTTP response stops waiting after 30s. Work that does not fit
 the interactive budget goes in a workflow or a job.
 
+### Modules too large to bundle on Kody cloud
+
+Hosted execute bundles a module that imports saved packages (`kody:@…`) or npm
+packages in its own short-lived isolate. If that build exceeds the isolate's
+memory or CPU limit, or takes longer than 90s, only that call fails and nothing
+runs. The error says so, and its structured `errorDetails` has
+`kind: "execute_bundle_too_large"` and a
+`suggestedAction: { type: "run_locally", command, requires }`. An agent with a
+shell can save the module to a file and run that command
+(`npx -y @kodycodes/cli@latest execute --local --file <file>`), which bundles on
+its own machine and calls the same Kody capabilities
+([local execute](../guides/local-execute.md)). To stay on Kody cloud, import
+fewer or smaller packages in one module.
+
 ### Long calls: start a workflow and check back
 
 For work that may outlast one MCP call, return the `id` from `workflows.create`

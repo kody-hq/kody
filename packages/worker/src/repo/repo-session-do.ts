@@ -6,6 +6,11 @@ import {
 	type IsolatedLocalExecutePackageGraphOutcome,
 	type IsolatedLocalExecutePackageGraphRequest,
 } from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
+import {
+	runIsolatedExecuteBundleBuild,
+	type IsolatedExecuteBundleOutcome,
+	type IsolatedExecuteBundleRequest,
+} from '#worker/package-runtime/isolated-execute-bundle.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
 import { hashWorkerLoaderModules } from '#worker/publish-offload/module-hashes.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
@@ -3933,6 +3938,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		input: IsolatedLocalExecutePackageGraphRequest,
 	): Promise<IsolatedLocalExecutePackageGraphOutcome> {
 		return await runIsolatedLocalExecutePackageGraphBuild(this.env, input)
+	}
+
+	/**
+	 * Hosted execute's module bundle in this throwaway isolate, so a large
+	 * import can exceed the isolate limits without resetting the caller's
+	 * isolate (`#worker/package-runtime/isolated-execute-bundle.ts`).
+	 */
+	async buildIsolatedExecuteBundle(
+		input: IsolatedExecuteBundleRequest,
+	): Promise<IsolatedExecuteBundleOutcome> {
+		return await runIsolatedExecuteBundleBuild(this.env, input)
 	}
 
 	/**
