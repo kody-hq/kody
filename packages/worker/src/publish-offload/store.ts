@@ -287,24 +287,6 @@ export async function getCommittedPublishBuildOrigin(input: {
 	}
 }
 
-export async function isPackageCommunityListed(
-	db: D1Database,
-	packageId: string,
-) {
-	const row = await db
-		.prepare(
-			`SELECT 1 AS listed FROM community_listings
-			WHERE ${communityListingPackageColumn} = ? AND status = 'active'
-				AND deleted_at IS NULL
-			LIMIT 1`,
-		)
-		.bind(packageId)
-		.first<{ listed: number }>()
-	return row != null
-}
-
-const communityListingPackageColumn = 'package_id'
-
 function rejected(message: string) {
 	return new McpCallerError(
 		`Publish build rejected: ${message} ${publishBuildRejectionHint}`,
@@ -362,10 +344,6 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	if (!document) throw rejected('the build has no sealed manifest.')
 	return {
 		buildId: row.id,
-		communityListed: await isPackageCommunityListed(
-			input.env.APP_DB,
-			input.packageId,
-		).catch(() => false),
 		origin: row.origin,
 		contextName: row.context_name,
 	}

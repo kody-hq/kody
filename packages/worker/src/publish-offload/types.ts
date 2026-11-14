@@ -43,17 +43,10 @@ export type PublishBuildDocument = {
 
 export type UploadedPublishBuildRef = {
 	buildId: string
-	communityListed: boolean
 	origin: PublishBuildOrigin
 	contextName: string | null
 }
 
 export type PersistUploadedPublishBuildResult =
-	| {
-			ok: true
-			targetCount: number
-			sampledTargetCount: number
-			/** Sampled entry points too big for the cloud rebuild isolate. */
-			sampleOverCloudLimit: Array<string>
-	  }
+	| { ok: true; targetCount: number }
 	| { ok: false; message: string }

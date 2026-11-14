@@ -1,18 +1,11 @@
 import { expect, test } from 'vitest'
-import {
-	hashWorkerLoaderModules,
-	sha256Hex,
-	workerLoaderModuleBytes,
-} from './module-hashes.ts'
+import { sha256Hex, workerLoaderModuleBytes } from './module-hashes.ts'
 import { preparePublishBuildSourceTree } from './source-tree.ts'
 import type { PublishBuildTargetEntry } from './types.ts'
 import {
 	assertSameBuildUploadMatches,
 	PublishBuildVerificationError,
-	assertServerRebuildMatches,
-	checkServerRebuildSample,
 	matchUploadedTargets,
-	pickServerRebuildSample,
 	verifySourceManifest,
 	verifyUploadedTargetModules,
 } from './verify.ts'
@@ -157,78 +150,6 @@ test('unsafe module paths and a missing main module are refused', async () => {
 			linkedImports: new Map(),
 		}),
 	).rejects.toThrow(/main module/i)
-})
-
-test('the server rebuild sample must hash the same as the upload', async () => {
-	const uploaded = await uploadedTarget({ 'index.js': 'export default 1' })
-	const same = await hashWorkerLoaderModules({
-		'index.js': 'export default 1',
-	})
-	expect(() =>
-		assertServerRebuildMatches({
-			uploaded,
-			rebuilt: { mainModule: 'index.js', moduleHashes: same },
-		}),
-	).not.toThrow()
-	const different = await hashWorkerLoaderModules({
-		'index.js': 'export default 2',
-	})
-	expect(() =>
-		assertServerRebuildMatches({
-			uploaded,
-			rebuilt: { mainModule: 'index.js', moduleHashes: different },
-		}),
-	).toThrow(PublishBuildVerificationError)
-})
-
-test('a sample too big for the cloud rebuild isolate is not compared, and does not reject the upload', async () => {
-	const small = { uploaded: await uploadedTarget({ 'index.js': 'a' }) }
-	const big = {
-		uploaded: {
-			...(await uploadedTarget({ 'index.js': 'b'.repeat(1000) })),
-			entryPoint: 'src/drive.ts',
-		},
-	}
-	const smallHashes = await hashWorkerLoaderModules({ 'index.js': 'a' })
-	expect(
-		checkServerRebuildSample({
-			sample: [small, big],
-			rebuilt: [
-				{ mainModule: 'index.js', moduleHashes: smallHashes },
-				{
-					overCloudLimit: true,
-					message:
-						"Durable Object's isolate exceeded its memory limit and was reset.",
-				},
-			],
-		}),
-	).toEqual({ comparedCount: 1, overCloudLimit: ['src/drive.ts'] })
-
-	// A build error still rejects, and so does a rebuild that fits but differs.
-	expect(() =>
-		checkServerRebuildSample({
-			sample: [big],
-			rebuilt: [new Error('Could not resolve "./missing"')],
-		}),
-	).toThrow(PublishBuildVerificationError)
-	expect(() =>
-		checkServerRebuildSample({ sample: [big], rebuilt: [] }),
-	).toThrow(/no result/)
-	expect(() =>
-		checkServerRebuildSample({
-			sample: [big],
-			rebuilt: [{ mainModule: 'index.js', moduleHashes: smallHashes }],
-		}),
-	).toThrow(/different bytes/)
-})
-
-test('the rebuild sample takes the smallest targets up to the sample size', async () => {
-	const small = { uploaded: await uploadedTarget({ 'index.js': 'a' }) }
-	const big = {
-		uploaded: await uploadedTarget({ 'index.js': 'a'.repeat(1000) }),
-	}
-	expect(pickServerRebuildSample([big, small], 1)).toEqual([small])
-	expect(pickServerRebuildSample([big, small], 3)).toHaveLength(2)
 })
 
 test('the builder manifest matches the server snapshot for binaries and .kodyignore', async () => {

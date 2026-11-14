@@ -72,14 +72,6 @@ export const publishBuildCloneTokenTtlSeconds = 300
  */
 export const publishBuildRetentionMs = 24 * 60 * 60 * 1000
 
-/**
- * 9B: community-listed packages may offload, with a bigger server re-check
- * sample. The server rebuilds this many targets and compares hashes.
- */
-export function serverRebuildSampleSize(input: { communityListed: boolean }) {
-	return input.communityListed ? 3 : 1
-}
-
 /** 10A: local and context build compute is free; only verification meters. */
 export const meterOffloadedBuildCompute = false
 

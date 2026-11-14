@@ -72,12 +72,12 @@ included, and naming a context other than `cloud` is refused.
 
 ## What runs where
 
-| Step                                                                    | Where                                           |
-| ----------------------------------------------------------------------- | ----------------------------------------------- |
-| Typecheck, and bundling every export, job, handler, and app target      | Your machine or context (same code as Kody)     |
-| File manifest check, cheap publish checks, credential stamp             | Kody                                            |
-| Hash, size, and package-identity checks for each target, sample rebuild | Kody                                            |
-| Writing the registry and switching the serving version                  | Kody, only after every check and write succeeds |
+| Step                                                               | Where                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| Typecheck, and bundling every export, job, handler, and app target | Your machine or context (same code as Kody)     |
+| File manifest check, cheap publish checks, credential stamp        | Kody                                            |
+| Hash, size, and package-identity checks for each target            | Kody                                            |
+| Writing the registry and switching the serving version             | Kody, only after every check and write succeeds |
 
 Kody never publishes a commit it cannot see. `--build local` refuses uncommitted
 changes, pushes HEAD to its upstream branch on the package's Kody remote if it
@@ -86,18 +86,18 @@ that exact commit is the head of the package repo. If Kody reports a different
 commit, nothing is built or uploaded. `--build context` builds the commit Kody
 sees, so push first.
 
-Kody trusts nothing it did not compute itself:
+What Kody checks before it serves an uploaded build:
 
 - The build's per-file SHA-256 manifest must match the pushed commit's tree
   exactly.
 - Every target must be one the commit's `package.json` declares, with the right
   hashes and sizes and no platform-reserved module names.
-- Kody rebuilds a sample of targets itself and compares hashes (more for
-  community-listed packages). The sample is the smallest targets, rebuilt in a
-  Kody cloud isolate. A sampled target too big for that isolate's memory or CPU
-  limit is not compared and does not refuse the publish, so a package built off
-  cloud is not held to the cloud limit it was built to avoid. A sampled target
-  that fails to build, or builds to different bytes, still refuses it.
+- Kody does not build your package again. The build you upload is the published
+  artifact, so Kody cloud's build memory and CPU limits never apply to a
+  `--build local` or `--build context` publish. Kody checks that the build
+  describes the pushed commit and declares the right targets; it does not prove
+  the uploaded bundles were compiled from that source. Package info and the
+  publish result show where each version was built.
 - A build never contains another Kody package. Each `kody:@` import stays a
   linked placeholder, and Kody fills it in when it commits the upload: the
   dependency's own published artifact, resolved for you the same way a cloud

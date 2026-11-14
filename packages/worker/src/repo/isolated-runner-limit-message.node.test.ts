@@ -19,7 +19,9 @@ test('every compute-limit message names the local and execution-context publish 
 		externalPublishResourceLimitMessage('rebuild'),
 		authoringChecksResourceLimitMessage('credentials'),
 	]) {
-		expect(message).toContain('kody package publish --build local')
+		expect(message).toContain(
+			'npx -y @kodycodes/cli@latest package publish <package> --build local',
+		)
 		expect(message).toContain('`--context <name>`')
 		expect(message).toContain('https://kody.codes/docs/execution-contexts')
 		expect(message).toContain('https://kody.codes/docs/publish-large-packages')
@@ -127,7 +129,9 @@ test('an in-isolate memory error from an artifact build names the kody:@ cost an
 	const rebuild = artifactBuildFailureMessage(platform, 'rebuild')
 	expect(check).toContain(platform)
 	expect(check).toContain('kody:@')
-	expect(check).toContain('kody package publish --build local')
+	expect(check).toContain(
+		'npx -y @kodycodes/cli@latest package publish <package> --build local',
+	)
 	expect(check).toMatch(/isolated check runner/)
 	expect(rebuild).toMatch(/isolated rebuild runner/)
 	expect(rebuild).not.toBe(check)

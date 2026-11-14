@@ -80,13 +80,6 @@ export type IsolatedArtifactBuildCheckRequest = {
 	/** The saved package's id, when the checked package was published before. */
 	rootPackageId?: string
 	targets: Array<PublishedPackageArtifactBuildTarget>
-	/**
-	 * Return each built target's per-module sha256 so publish offload can
-	 * compare a server rebuild against an uploaded bundle.
-	 */
-	includeModuleHashes?: boolean
-	/** Build the way an off-worker publish build does (6C linked imports). */
-	linkKodyPackageImports?: boolean
 }
 
 /**
@@ -116,15 +109,8 @@ export type IsolatedArtifactRebuildTargetResult = {
 	 * Sentry drops the event after the DO serializes the error to a string.
 	 */
 	callerFailure?: boolean
-	/**
-	 * True when the throwaway isolate hit Cloudflare's memory or CPU limit
-	 * on this target, as opposed to a build error.
-	 */
-	resourceLimit?: boolean
 	skipped?: boolean
 	kvKey?: string | null
-	/** Build check only, when `includeModuleHashes` asked for it. */
-	built?: { mainModule: string; moduleHashes: Record<string, string> }
 	target: PublishedPackageArtifactBuildTarget
 }
 
@@ -233,7 +219,6 @@ export function createIsolatedArtifactRebuildRunner(
 					results: request.targets.map((target) => ({
 						ok: false,
 						message,
-						resourceLimit: true,
 						target,
 					})),
 				}

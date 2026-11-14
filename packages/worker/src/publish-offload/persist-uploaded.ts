@@ -16,7 +16,6 @@ import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { serverRebuildSampleSize } from './policy.ts'
 import {
 	finishPublishBuild,
 	getPublishBuild,
@@ -36,12 +35,9 @@ import type {
 import {
 	assertSameBuildUploadMatches,
 	assertSupportedBuilderVersion,
-	checkServerRebuildSample,
 	matchUploadedTargets,
-	pickServerRebuildSample,
 	PublishBuildVerificationError,
 	verifySourceManifest,
-	type ServerRebuildSampleResult,
 	verifyUploadedTargetModules,
 } from './verify.ts'
 
@@ -153,15 +149,14 @@ export function createUploadedTargetBuilders(
 /**
  * Publish offload commit step, run on the RepoSession that owns the publish:
  * verify the sealed upload against the pushed commit, link the Kody
- * packages it imports (6C), re-check a sample by rebuilding it here, then
- * write every target the same way a rebuild does
- * (one KV value per target, then the batched D1 rows). The caller advances
+ * packages it imports (6C), then write every target the same way a rebuild
+ * does (one KV value per target, then the batched D1 rows). Nothing is built
+ * here: the upload is the artifact, so no cloud build limit applies to it. The caller advances
  * `serving_commit` only after this returns ok.
  */
 export async function persistUploadedPublishBuild(input: {
 	env: Env
 	buildId: string
-	communityListed: boolean
 	baseUrl: string
 	userId: string
 	source: EntitySourceRow
@@ -169,9 +164,6 @@ export async function persistUploadedPublishBuild(input: {
 	publishedCommit: string
 	sourceFiles: Record<string, string>
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
-	rebuildSample: (
-		targets: Array<PublishedPackageArtifactBuildTarget>,
-	) => Promise<Array<ServerRebuildSampleResult>>
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
 	const reject = async (message: string) => {
@@ -278,24 +270,6 @@ export async function persistUploadedPublishBuild(input: {
 				}),
 			})
 		}
-		const sample = pickServerRebuildSample(
-			matched,
-			serverRebuildSampleSize({ communityListed: input.communityListed }),
-		)
-		const rebuilt = await input.rebuildSample(
-			sample.map((entry) => entry.target),
-		)
-		const sampleCheck = checkServerRebuildSample({ sample, rebuilt })
-		if (sampleCheck.overCloudLimit.length > 0) {
-			console.info(
-				JSON.stringify({
-					message: 'publish build sample rebuild over cloud limit',
-					buildId: input.buildId,
-					sourceId: input.source.id,
-					entryPoints: sampleCheck.overCloudLimit,
-				}),
-			)
-		}
 		const results = await persistPublishedPackageArtifactTargets({
 			env: input.env,
 			userId: input.userId,
@@ -323,8 +297,6 @@ export async function persistUploadedPublishBuild(input: {
 		return {
 			ok: true,
 			targetCount: matched.length,
-			sampledTargetCount: sampleCheck.comparedCount,
-			sampleOverCloudLimit: sampleCheck.overCloudLimit,
 		}
 	} catch (error) {
 		if (error instanceof PublishBuildVerificationError) {
