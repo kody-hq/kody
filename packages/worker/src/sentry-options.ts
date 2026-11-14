@@ -59,19 +59,79 @@ const sensitiveFieldNames = new Set([
 	'ticket',
 ])
 
-const sensitiveQueryParamPattern =
-	/([?&#;]|^)(ticket|token|access_token|refresh_token|id_token|client_secret|secret|code|code_verifier|password|api_key|apikey|key|sig|signature)=[^&#\s]*/gi
+/** Query-param names only; do not merge into `sensitiveFieldNames` (would over-redact status/error `code`). */
+const sensitiveQueryParamNames = new Set([
+	'ticket',
+	'token',
+	'access_token',
+	'refresh_token',
+	'id_token',
+	'client_secret',
+	'secret',
+	'code',
+	'code_verifier',
+	'password',
+	'api_key',
+	'apikey',
+	'key',
+	'sig',
+	'signature',
+])
 
 const credentialSchemePattern =
 	/\b(Bearer|Basic|Token|Digest)\s+[A-Za-z0-9._~+/=:-]{6,}/gi
 
 const maxRedactionDepth = 16
 
+function decodeQueryParamName(name: string) {
+	try {
+		return decodeURIComponent(name.replace(/\+/g, ' '))
+	} catch {
+		return name
+	}
+}
+
+function isSensitiveQueryParamName(name: string) {
+	return sensitiveQueryParamNames.has(decodeQueryParamName(name).toLowerCase())
+}
+
+/** Redact sensitive query params, including percent-encoded names (`%63ode=`). */
+function redactSensitiveQueryParams(value: string) {
+	// Exclude `?` from the name class so `https://host/path?code=` still
+	// splits on the query delimiter instead of treating the whole URL as a name.
+	return value.replace(
+		/([?&#;]|^)([^=&#?\s]+)=([^&#\s]*)/g,
+		(match, separator: string, name: string) => {
+			if (!isSensitiveQueryParamName(name)) return match
+			return `${separator}${name}=${redactedValue}`
+		},
+	)
+}
+
 /** Redact Kody credentials, auth schemes, and secret query params in text. */
 export function redactSentryString(value: string) {
-	return redactKodyCredentials(value)
-		.replace(credentialSchemePattern, `$1 ${redactedValue}`)
-		.replace(sensitiveQueryParamPattern, `$1$2=${redactedValue}`)
+	return redactSensitiveQueryParams(
+		redactKodyCredentials(value).replace(
+			credentialSchemePattern,
+			`$1 ${redactedValue}`,
+		),
+	)
+}
+
+function redactQueryStringObject(
+	query: Record<string, unknown>,
+	depth: number,
+	seen: WeakSet<object>,
+) {
+	for (const key of Object.keys(query)) {
+		if (isSensitiveQueryParamName(key)) {
+			if (query[key] !== undefined && query[key] !== null) {
+				query[key] = redactedValue
+			}
+			continue
+		}
+		query[key] = redactSentryValue(query[key], depth + 1, seen)
+	}
 }
 
 function redactSentryValue(
@@ -98,7 +158,17 @@ function redactSentryValue(
 			}
 			continue
 		}
-		record[key] = redactSentryValue(record[key], depth + 1, seen)
+		const child = record[key]
+		if (
+			key === 'query_string' &&
+			child !== null &&
+			typeof child === 'object' &&
+			!Array.isArray(child)
+		) {
+			redactQueryStringObject(child as Record<string, unknown>, depth, seen)
+			continue
+		}
+		record[key] = redactSentryValue(child, depth + 1, seen)
 	}
 	return value
 }

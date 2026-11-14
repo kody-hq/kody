@@ -75,6 +75,33 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 	expect(serialized).toContain('kept')
 })
 
+test('query redaction decodes percent-encoded names and object query_string', () => {
+	const event = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		request: {
+			url: 'https://kody.test/oauth/callback?%63ode=auth-code&state=ok',
+			query_string: {
+				code: 'object-code',
+				'%63ode': 'encoded-object-code',
+				state: 'kept-state',
+			},
+		},
+		extra: { code: 'status-kept', nested: { code: 404 } },
+	})
+	const serialized = JSON.stringify(event)
+	for (const secret of ['auth-code', 'object-code', 'encoded-object-code']) {
+		expect(serialized).not.toContain(secret)
+	}
+	expect(event.request?.url).toContain('%63ode=[redacted]')
+	expect(event.request?.url).toContain('state=ok')
+	expect(event.request?.query_string).toEqual({
+		code: '[redacted]',
+		'%63ode': '[redacted]',
+		state: 'kept-state',
+	})
+	expect(event.extra).toEqual({ code: 'status-kept', nested: { code: 404 } })
+})
+
 test('deep redaction tolerates cycles', () => {
 	const extra: Record<string, unknown> = { authorization: 'Bearer zzzzzzzz' }
 	extra.self = extra
