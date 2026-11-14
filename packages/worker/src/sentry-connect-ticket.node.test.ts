@@ -109,6 +109,22 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 		state: 'kept-state',
 	})
 	expect(event.extra).toEqual({ code: 'status-kept', nested: { code: 404 } })
+
+	const headerQuery = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		request: {
+			query_string: {
+				'x-api-key': 'upstream-credential',
+				authorization: 'Bearer keep-header-shape',
+				state: 'kept',
+			},
+		},
+	})
+	expect(headerQuery.request?.query_string).toEqual({
+		'x-api-key': '[redacted]',
+		authorization: '[redacted]',
+		state: 'kept',
+	})
 })
 
 test('deep redaction tolerates cycles', () => {

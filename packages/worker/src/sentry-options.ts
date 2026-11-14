@@ -125,7 +125,12 @@ function redactQueryStringObject(
 	seen: WeakSet<object>,
 ) {
 	for (const key of Object.keys(query)) {
-		if (isSensitiveQueryParamName(key)) {
+		// Keep sensitiveFieldNames coverage (x-api-key, authorization, …) that
+		// generic object walking had before this query_string special case.
+		if (
+			isSensitiveQueryParamName(key) ||
+			sensitiveFieldNames.has(key.toLowerCase())
+		) {
 			if (query[key] !== undefined && query[key] !== null) {
 				query[key] = redactedValue
 			}
