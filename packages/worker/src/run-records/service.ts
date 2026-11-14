@@ -600,35 +600,28 @@ export async function finishRunRecord(input: {
 }
 
 /**
- * One-RPC terminal write for callers that have no work between begin and
- * finish. Equivalent to minting a handle and calling `finishRunRecord` without
- * `beginRunRecord` (finish already upserts a complete row). Prefer this over a
- * no-op begin when the surface is known to be terminal-only.
+ * Mint a run handle without writing it. `id` and `startedAt` let a caller that
+ * writes the same run from more than one isolate (webhook ack ingress and its
+ * queue consumer) address one row. Never throws.
  */
-export async function recordRunRecord(input: {
+export function createRunRecordHandle(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
 	request?: RequestContext | null
 	startedByLabel?: string | null
-	status: RunTerminalStatus
-	logs?: Array<RunRecordLogInput>
-	error?: unknown
-	result?: unknown
+	id?: string | null
 	startedAt?: string | null
-	waitUntil?: (promise: Promise<unknown>) => void
-}): Promise<RunRecordHandle | null> {
+}): RunRecordHandle | null {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
 		? withRunStartedBy(input.context, input.request, input.startedByLabel)
 		: null
 	if (!namespace || !userId || !context) return null
-
-	let handle: RunRecordHandle
 	try {
-		handle = {
-			id: crypto.randomUUID(),
+		return {
+			id: normalizeOptionalString(input.id) ?? crypto.randomUUID(),
 			userId,
 			startedAt:
 				normalizeOptionalString(input.startedAt) ?? new Date().toISOString(),
@@ -639,6 +632,31 @@ export async function recordRunRecord(input: {
 		console.warn('run-record-begin-failed', error)
 		return null
 	}
+}
+
+/**
+ * One-RPC terminal write for callers that have no work between begin and
+ * finish. Equivalent to minting a handle and calling `finishRunRecord` without
+ * `beginRunRecord` (finish already upserts a complete row). Prefer this over a
+ * no-op begin when the surface is known to be terminal-only. Pass `id` to
+ * finish a row an earlier writer already started.
+ */
+export async function recordRunRecord(input: {
+	env: Env
+	userId?: OwnerId | null
+	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
+	id?: string | null
+	status: RunTerminalStatus
+	logs?: Array<RunRecordLogInput>
+	error?: unknown
+	result?: unknown
+	startedAt?: string | null
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<RunRecordHandle | null> {
+	const handle = createRunRecordHandle(input)
+	if (!handle) return null
 	const persisted = await finishRunRecord({
 		env: input.env,
 		handle,

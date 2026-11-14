@@ -290,14 +290,15 @@ package settings.
   The message says which, and includes the approval link.
 - Rate limit per minted webhook → **429**. Default **60**/min; override with
   `rateLimitPerMinute` up to **600**.
-- `ack`: **202** `{ "ok": true }` after Kody durably queues the delivery; the
-  export runs in the background. Bodies use the same **1 MB** cap as sync;
-  oversized queue messages spill to ephemeral storage until the consumer runs. A
-  temporary queue failure returns **503** so the provider can retry without Kody
-  claiming acceptance. Activity duration for ack deliveries measures queue
-  consumer + export time (ingress receive time is kept as metadata). Failed
-  deliveries keep diagnostic logs — including when the export never reached user
-  code.
+- `ack`: **202** `{ "ok": true }` after Kody records the delivery and durably
+  queues it; the export runs in the background. See
+  [Ack delivery lifecycle](#ack-delivery-lifecycle) for states, latency, and
+  retries. Bodies use the same **1 MB** cap as sync; oversized queue messages
+  spill to ephemeral storage until the consumer runs. A temporary queue failure
+  returns **503** so the provider can retry without Kody claiming acceptance.
+  Activity duration for ack deliveries measures queue consumer + export time
+  (ingress receive time is kept as metadata). Failed deliveries keep diagnostic
+  logs — including when the export never reached user code.
 - `sync`: waits for the export JSON result (**502** on failure). The failure
   body is `{ "ok": false, "error": { "code", "message" }, "runId" }` and never
   carries package internals. `runId` names the delivery's Activity run, where
@@ -311,6 +312,44 @@ package settings.
   (never a value); a Basic Auth pair or a vault reference omits it. A fill
   placement refusal also sets `error.part` to the refused part. Ack deliveries
   record the same code in Activity.
+
+### Ack delivery lifecycle
+
+Every ack delivery Kody answers with **202** already has a row in
+`webhookDeliveryList` and Activity, with the same id across every retry. Its
+`state` moves through:
+
+| `state`     | `outcome`   | Meaning                                                                                                       |
+| ----------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
+| `accepted`  | `pending`   | Recorded at ingress, before the 202.                                                                          |
+| `queued`    | `pending`   | Waiting on the shared dispatch queue, or waiting to retry. `error` holds the last attempt's reason.           |
+| `started`   | `pending`   | A consumer attempt is running: payload hydration, package load, then your export. `attempts` counts them.     |
+| `succeeded` | `delivered` | The export returned.                                                                                          |
+| `failed`    | `failed`    | The export failed, a step before it failed for good, retries ran out, or the attempt was killed. Has `error`. |
+| `rejected`  | `rejected`  | Refused at ingress (signature, enablement, size, replay). Never queued.                                       |
+
+Latency: a delivery usually starts within seconds, but ack work shares one queue
+across all accounts, so under load `queued` can last several minutes. Treat ack
+mode as at-least-once and eventually-run, not real-time; use `sync` when the
+caller must see the result.
+
+Retries: failures before your export runs (payload storage, artifact or package
+load, a crashed attempt) put the delivery back in `queued` and retry about every
+30 seconds, up to 10 times, then mark it `failed` with
+`invocation_retry_exhausted`. An attempt killed by the platform (memory or time
+limit) is retried the same way. A delivery that stays `accepted`, `queued`, or
+`started` past its hold (about an hour queued, about 10 minutes started) turns
+`failed` with an interrupted error; if a late attempt finishes, its real outcome
+replaces that.
+
+Dedupe: with `replay.deliveryIdHeader` (for GitHub, `X-GitHub-Delivery`), the
+export runs at most once per provider delivery id. Every POST still gets its own
+row; a repeat of an id that already ran finishes `succeeded` with the original
+result instead of running again, and a repeat that arrives while the first is
+still running waits in `queued` until it can replay. Queue retries reuse the
+same key too. GitHub's "Redeliver" reuses the original delivery id, so it is
+deduped; send a fresh event if you need a second run. Without a delivery id
+header, every POST runs the export.
 
 Background delivery retries keep the same idempotency key, so a transient
 platform persistence failure does not duplicate a completed export. Ack (queued)

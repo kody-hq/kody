@@ -22,6 +22,7 @@ import { parseWebhookJsonBody } from './params.ts'
 const mocks = vi.hoisted(() => ({
 	dispatchWebhookInvocation: vi.fn(),
 	recordWebhookDelivery: vi.fn(),
+	markAckWebhookDelivery: vi.fn(),
 }))
 
 vi.mock('./delivery.ts', async (importOriginal) => {
@@ -32,6 +33,8 @@ vi.mock('./delivery.ts', async (importOriginal) => {
 			mocks.dispatchWebhookInvocation(...args),
 		recordWebhookDelivery: (...args: Array<unknown>) =>
 			mocks.recordWebhookDelivery(...args),
+		markAckWebhookDelivery: (...args: Array<unknown>) =>
+			mocks.markAckWebhookDelivery(...args),
 	}
 })
 
@@ -555,4 +558,39 @@ test('queue hydrates spilled payloads, deletes them after terminal work, and ack
 			invocationId: 'delivery-missing',
 		}),
 	)
+})
+
+test('the consumer marks the accepted row started, then queued with the reason when an attempt fails before the export runs', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation
+		.mockRejectedValueOnce(new Error('No such module ".__kody_linked__/x"'))
+		.mockResolvedValueOnce({
+			status: 503,
+			body: { ok: false, error: { code: 'artifact_preparation_failed' } },
+		})
+	const crashed = createQueueMessage('crashed', createMessage())
+	const transient = createQueueMessage('transient', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([crashed, transient]), {} as Env)
+
+	expect([crashed, transient].map(queueOutcome)).toEqual([retried, retried])
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	const marks = mocks.markAckWebhookDelivery.mock.calls.map(
+		([input]) =>
+			[
+				input.delivery.deliveryId,
+				input.state,
+				input.lastError ?? null,
+			] as const,
+	)
+	expect(marks).toEqual([
+		['delivery-1', 'started', null],
+		[
+			'delivery-1',
+			'queued',
+			'dispatch_processing_failed: No such module ".__kody_linked__/x"',
+		],
+		['delivery-1', 'started', null],
+		['delivery-1', 'queued', 'artifact_preparation_failed'],
+	])
 })

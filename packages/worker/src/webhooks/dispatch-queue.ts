@@ -5,8 +5,12 @@ import {
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
 import { readPreExecutionPackageInvocationInfrastructureCode } from '#worker/package-invocations/infrastructure-codes.ts'
 import {
+	type AckWebhookDelivery,
 	buildWebhookDispatchFailureLogs,
 	dispatchWebhookInvocation,
+	markAckWebhookDelivery,
+	webhookAckQueuedHoldMs,
+	webhookAckStartedHoldMs,
 	readWebhookInvocationError,
 	readWebhookInvocationResult,
 	recordWebhookDelivery,
@@ -63,6 +67,18 @@ function resolveWebhookDispatchInvocation(
 	}
 }
 
+function ackDeliveryFromMessage(
+	message: WebhookDispatchQueueMessage,
+): AckWebhookDelivery {
+	return {
+		endpoint: message.endpoint,
+		kodyId: message.packageKodyId,
+		deliveryId: message.deliveryId,
+		payloadBytes: message.payloadBytes,
+		receivedAt: message.receivedAt,
+	}
+}
+
 function asInvocationResponseBody(body: unknown): Record<string, unknown> {
 	if (body && typeof body === 'object' && !Array.isArray(body)) {
 		return body as Record<string, unknown>
@@ -88,6 +104,7 @@ export async function processWebhookDispatch(
 			error: resolved.code,
 			payloadBytes: message.payloadBytes,
 			invocationId: message.deliveryId,
+			attempts,
 			startedAt: dispatchStartedAt,
 			receivedAt: message.receivedAt,
 			logs: [
@@ -135,6 +152,7 @@ export async function processWebhookDispatch(
 				error: 'invocation_retry_exhausted',
 				payloadBytes: message.payloadBytes,
 				invocationId: message.deliveryId,
+				attempts,
 				startedAt: dispatchStartedAt,
 				receivedAt: message.receivedAt,
 				invocationErrorCode: invocationError.code ?? retryableCode,
@@ -150,6 +168,15 @@ export async function processWebhookDispatch(
 			})
 			return 'terminal'
 		}
+		await markAckWebhookDelivery({
+			env,
+			delivery: ackDeliveryFromMessage(message),
+			state: 'queued',
+			holdMs: webhookAckQueuedHoldMs,
+			attempts,
+			lastError:
+				readWebhookInvocationError(response.body).code ?? retryableCode,
+		})
 		return 'retry'
 	}
 
@@ -171,6 +198,7 @@ export async function processWebhookDispatch(
 				: `invocation_status_${response.status}`,
 		payloadBytes: message.payloadBytes,
 		invocationId: message.deliveryId,
+		attempts,
 		result: readWebhookInvocationResult(response.body),
 		startedAt: dispatchStartedAt,
 		receivedAt: message.receivedAt,
@@ -205,6 +233,14 @@ export async function handleWebhookDispatchQueue(
 			queueMessage.ack()
 			continue
 		}
+		const delivery = ackDeliveryFromMessage(message)
+		await markAckWebhookDelivery({
+			env,
+			delivery,
+			state: 'started',
+			holdMs: webhookAckStartedHoldMs,
+			attempts: queueMessage.attempts,
+		})
 		try {
 			const hydrated = await hydrateWebhookDispatchQueueMessage({
 				message,
@@ -227,6 +263,7 @@ export async function handleWebhookDispatchQueue(
 						error: 'ack_queue_payload_missing',
 						payloadBytes: message.payloadBytes,
 						invocationId: message.deliveryId,
+						attempts: queueMessage.attempts,
 						startedAt: missingStartedAt,
 						receivedAt: message.receivedAt,
 						logs: [
@@ -277,6 +314,16 @@ export async function handleWebhookDispatchQueue(
 				queueMessageId: queueMessage.id,
 				endpointId: message.endpoint.id,
 				error,
+			})
+			await markAckWebhookDelivery({
+				env,
+				delivery,
+				state: 'queued',
+				holdMs: webhookAckQueuedHoldMs,
+				attempts: queueMessage.attempts,
+				lastError: `dispatch_processing_failed: ${
+					error instanceof Error ? error.message : String(error)
+				}`.slice(0, 500),
 			})
 			queueMessage.retry({ delaySeconds: webhookDispatchRetryDelaySeconds })
 		}

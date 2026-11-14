@@ -35,7 +35,11 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureSavedPackageInternetVisibleColumn } from '#worker/package-registry/internet-visible-column-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
-import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleInfo,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 
@@ -1407,6 +1411,39 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 		.bind(endpointId)
 		.first<{ previous_hmac_secret_encrypted: string | null }>()
 	expect(afterSuccess?.previous_hmac_secret_encrypted).toBeNull()
+})
+
+test('an accepted ack delivery is visible as queued before any consumer runs, and a failed enqueue finishes that row', async () => {
+	const userId = await setupOwnerWithWebhooks(['planning'])
+	declareWebhook({ name: 'planning' })
+	const body = JSON.stringify({ action: 'opened' })
+
+	expect(await statusOf('planning', { body, unsigned: true })).toBe(202)
+	const { deliveryId } = enqueued(0)
+	const [accepted] = await listDeliveries(userId, 'planning')
+	expect(accepted).toMatchObject({
+		id: deliveryId,
+		status: 'running',
+		metadata: expect.objectContaining({
+			state: 'queued',
+			httpStatus: 202,
+			payloadBytes: body.length,
+		}),
+	})
+
+	mocks.enqueueWebhookDispatch.mockRejectedValueOnce(
+		new Error('queue unavailable'),
+	)
+	consoleError.mockImplementation(() => {})
+	expect(await statusOf('planning', { body, unsigned: true })).toBe(503)
+	const unavailableId = enqueued(1).deliveryId
+	const rows = await listDeliveries(userId, 'planning')
+	expect(rows).toHaveLength(2)
+	expect(rows.find((run) => run.id === unavailableId)).toMatchObject({
+		status: 'error',
+		errorMessage: 'dispatch_unavailable',
+		metadata: expect.objectContaining({ state: 'failed', httpStatus: 503 }),
+	})
 })
 
 test('a webhook with no enablement on answers 409 instead of running', async () => {
