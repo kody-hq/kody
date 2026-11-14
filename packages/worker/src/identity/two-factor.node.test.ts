@@ -92,27 +92,19 @@ test('a sealed secret copied onto another user fails closed', async () => {
 	).rejects.toThrow('Unable to decrypt platform secret.')
 })
 
-test('existing plaintext 2FA keeps working and is sealed on first use', async () => {
+test('a plaintext 2FA secret fails closed', async () => {
 	const { env, storedSecret, insertPlaintext } = setup()
 	const { secret } = await generateTOTP()
 	insertPlaintext(3, secret)
-	expect(
-		await verifyTwoFactorCode({
+	await expect(
+		verifyTwoFactorCode({
 			env,
 			userId: 3,
 			code: await currentCode(secret),
 			type: '2fa',
 		}),
-	).toBe(true)
-	expect(storedSecret(3)).toMatch(/^v2\./)
-	expect(
-		await verifyTwoFactorCode({
-			env,
-			userId: 3,
-			code: await currentCode(secret),
-			type: '2fa',
-		}),
-	).toBe(true)
+	).rejects.toThrow('Unable to decrypt platform secret.')
+	expect(storedSecret(3)).toBe(secret)
 })
 
 test('the backfill seals every plaintext row and reports zero remaining', async () => {

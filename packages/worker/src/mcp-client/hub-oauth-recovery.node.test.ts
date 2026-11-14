@@ -1,7 +1,10 @@
 import { mcpReadSnapshotStorageKey } from './read-snapshot.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { openMcpOAuthStorageValue } from './sealed-oauth-storage.ts'
+import {
+	openMcpOAuthStorageValue,
+	sealMcpOAuthStorageValue,
+} from './sealed-oauth-storage.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import {
 	mcpOAuthRefreshGrantOmittedStorageKey,
@@ -321,6 +324,19 @@ function opened(values: Map<string, unknown>, key: string) {
 	})
 }
 
+/** Seeds a stored value the way the hub writes it (OAuth secrets sealed). */
+async function seal(values: Map<string, unknown>, key: string, value: unknown) {
+	values.set(
+		key,
+		await sealMcpOAuthStorageValue({
+			env: testHubEnv,
+			ownerId: testHubOwner,
+			key,
+			value,
+		}),
+	)
+}
+
 function createHub() {
 	const values = new Map<string, unknown>()
 	const state = {
@@ -479,11 +495,11 @@ test('reconnect repairs stale callbacks and always replaces pending OAuth state'
 		clientId: 'stale-client',
 		authUrl: 'https://auth.example/authorize?state=stale.server-1',
 	})
-	values.set('/Kody/server-1/stale-client/client_info/', {
+	await seal(values, '/Kody/server-1/stale-client/client_info/', {
 		client_id: 'stale-client',
 	})
-	values.set('/Kody/server-1/state/stale', { serverId: 'server-1' })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, '/Kody/server-1/state/stale', { serverId: 'server-1' })
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'old-rt',
 	})
 
@@ -505,8 +521,10 @@ test('reconnect repairs stale callbacks and always replaces pending OAuth state'
 	)
 	expect(values.has(mcpOAuthRefreshTokenStorageKey('server-1'))).toBe(false)
 
-	values.set('/Kody/server-1/client-1/client_info/', { client_id: 'client-1' })
-	values.set('/Kody/server-1/state/fresh-1', { serverId: 'server-1' })
+	await seal(values, '/Kody/server-1/client-1/client_info/', {
+		client_id: 'client-1',
+	})
+	await seal(values, '/Kody/server-1/state/fresh-1', { serverId: 'server-1' })
 	const restarted = await reconnect(hub)
 	expect(restarted.authUrl).toContain('state=fresh-2.server-1')
 	expect(restarted.authUrl).not.toBe(repaired.authUrl)
@@ -527,9 +545,9 @@ test('failed replacement registration restores the saved server and OAuth state'
 	const clientInfoKey = '/Kody/server-1/stale-client/client_info/'
 	const stateKey = '/Kody/server-1/state/stale'
 	const sidecarKey = mcpOAuthRefreshTokenStorageKey('server-1')
-	values.set(clientInfoKey, { client_id: 'stale-client' })
-	values.set(stateKey, { serverId: 'server-1' })
-	values.set(sidecarKey, { refresh_token: 'old-rt' })
+	await seal(values, clientInfoKey, { client_id: 'stale-client' })
+	await seal(values, stateKey, { serverId: 'server-1' })
+	await seal(values, sidecarKey, { refresh_token: 'old-rt' })
 	manager.registerFailuresRemaining = 1
 
 	await expect(reconnect(hub)).rejects.toThrow(
@@ -560,7 +578,7 @@ test('replayed unusable callbacks leave past-OAuth server credentials intact', a
 	})
 	manager.callbackMatches = false
 	manager.rows[0]!.auth_url = null
-	values.set(tokenKey, { access_token: 'still-valid' })
+	await seal(values, tokenKey, { access_token: 'still-valid' })
 	connection.connectionState = 'ready'
 
 	expect(await oauthCallback(hub, 'used')).toEqual({
@@ -728,7 +746,7 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 		topic: 'mcp.server.reconnected' as const,
 		state: 'ready' as const,
 	}
-	values.set(pendingEventsKey, [...queued, laterEvent])
+	await seal(values, pendingEventsKey, [...queued, laterEvent])
 	await hub.ackConnectionEvents([firstId!])
 	expect(await hub.peekConnectionEvents()).toEqual([laterEvent])
 	expect(await hub.takeConnectionEvents()).toHaveLength(1)
@@ -883,8 +901,8 @@ test('remint for stuck authenticating without authUrl keeps leftover refresh tok
 		refresh_token: 'keep-rt',
 	}
 	setTokens(connection, { ...storedTokens })
-	values.set(tokenKey, { ...storedTokens })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, tokenKey, { ...storedTokens })
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'keep-rt',
 	})
 	// Refresh-first parks without an auth URL; remint must still preserve the
@@ -911,7 +929,7 @@ test('reconnect tries stored refresh before wiping tokens, and a parked authenti
 		refresh_token: 'rotating-rt',
 	}
 	setTokens(connection, { ...storedTokens })
-	values.set(tokenKey, { ...storedTokens })
+	await seal(values, tokenKey, { ...storedTokens })
 	manager.connectBehavior = 'ready'
 	const refreshed = await reconnect(hub)
 	expect(refreshed.state).toBe('ready')
@@ -960,10 +978,10 @@ test('ready grant without a refresh token warns when the authorization server ad
 	}
 	setTokens(connection, { access_token: 'at-only' })
 	connection.options.transport.authProvider.storedDiscovery = discovery
-	values.set('/Kody/server-1/oauth_discovery', discovery)
+	await seal(values, '/Kody/server-1/oauth_discovery', discovery)
 	// Stamp only when saveTokens recorded that this grant omitted RT — not
 	// whenever tokens() is empty while ready (e.g. after a refresh wipe).
-	values.set(mcpOAuthRefreshGrantOmittedStorageKey('server-1'), {
+	await seal(values, mcpOAuthRefreshGrantOmittedStorageKey('server-1'), {
 		omitted: true,
 		at: '2026-10-14T08:00:00.000Z',
 	})
@@ -995,7 +1013,7 @@ test('ready without a refresh token does not warn unless saveTokens marked the g
 	}
 	setTokens(connection, { access_token: 'at-only' })
 	connection.options.transport.authProvider.storedDiscovery = discovery
-	values.set('/Kody/server-1/oauth_discovery', discovery)
+	await seal(values, '/Kody/server-1/oauth_discovery', discovery)
 
 	const snapshot = await hub.getSnapshot()
 	expect(snapshot.servers[0]?.state).toBe('ready')
@@ -1091,7 +1109,7 @@ test('handleOAuthCallback reports a durable tool-discovery lastError when IdP su
 	acceptCallback(manager)
 	manager.connectBehavior = 'connected'
 	connection.connectionState = 'connected'
-	values.set('/Kody/server-1/oauth_discovery', {
+	await seal(values, '/Kody/server-1/oauth_discovery', {
 		resource: 'https://mcp.posthog.com/',
 		authorization_servers: ['https://auth.posthog.com/?client_secret=hidden'],
 	})
@@ -1138,8 +1156,8 @@ test('replayed unusable callback after incomplete settle reports lastError inste
 	manager.callbackMatches = false
 	manager.connectBehavior = 'connected'
 	manager.rows[0]!.auth_url = null
-	values.set(tokenKey, { access_token: 'still-valid' })
-	values.set('/Kody/server-1/oauth_discovery', {
+	await seal(values, tokenKey, { access_token: 'still-valid' })
+	await seal(values, '/Kody/server-1/oauth_discovery', {
 		resource: 'https://mcp.posthog.com/',
 		authorization_servers: ['https://auth.posthog.com/'],
 	})
@@ -1402,8 +1420,11 @@ test('changing the OAuth client on a ready server parks for approval without a f
 	const { values, hub, manager } = createHub()
 	const connection = await seedReadyHomeServer(hub, manager)
 	setTokens(connection, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(tokenKey, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, tokenKey, {
+		access_token: 'old-at',
+		refresh_token: 'old-rt',
+	})
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'old-rt',
 	})
 
@@ -1435,7 +1456,10 @@ test('a failed restart after a client change keeps the new client and reports it
 	const { values, hub, manager } = createHub()
 	const connection = await seedReadyHomeServer(hub, manager)
 	setTokens(connection, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(tokenKey, { access_token: 'old-at', refresh_token: 'old-rt' })
+	await seal(values, tokenKey, {
+		access_token: 'old-at',
+		refresh_token: 'old-rt',
+	})
 	manager.registerFailuresRemaining = 1
 
 	const change = await setOAuthClient(hub, sealedClient('gh-client'))
@@ -1553,7 +1577,7 @@ test('callback whose RFC 9207 iss names another authorization server is refused 
 	seedServer(manager, {
 		authUrl: 'https://auth.example/authorize?state=live.server-1',
 	})
-	values.set('/Kody/server-1/oauth_discovery', {
+	await seal(values, '/Kody/server-1/oauth_discovery', {
 		authorizationServerUrl: 'https://auth.example',
 		authorizationServerMetadata: { issuer: 'https://auth.example' },
 	})

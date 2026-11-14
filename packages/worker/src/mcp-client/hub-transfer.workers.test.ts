@@ -5,7 +5,10 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { mcpClientHubDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { mcpClientHubTransferStub } from './hub-transfer.ts'
 import { mcpOAuthRefreshTokenStorageKey } from './oauth-token-recovery.ts'
-import { openMcpOAuthStorageValue } from './sealed-oauth-storage.ts'
+import {
+	openMcpOAuthStorageValue,
+	sealMcpOAuthStorageValue,
+} from './sealed-oauth-storage.ts'
 
 function hubFor(userId: ReturnType<typeof ownerIdFromStored>) {
 	return env.MCP_CLIENT_HUB.get(
@@ -34,11 +37,20 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 			'https://auth.example.com/authorize',
 			JSON.stringify({ transport: { type: 'streamable-http' } }),
 		)
-		await state.storage.put({
+		const seeded: Record<string, unknown> = {
 			[tokenKey]: { access_token: 'tok', token_type: 'Bearer' },
 			[mcpOAuthRefreshTokenStorageKey(serverId)]: { refresh_token: 'r' },
 			'/Kody/other-server/client-2/token': { access_token: 'other' },
-		})
+		}
+		for (const [key, value] of Object.entries(seeded)) {
+			seeded[key] = await sealMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key,
+				value,
+			})
+		}
+		await state.storage.put(seeded)
 	})
 
 	const from = mcpClientHubTransferStub({ env, userId: fromUserId })
@@ -73,10 +85,6 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 		expect(
 			await state.storage.get(mcpOAuthRefreshTokenStorageKey(serverId)),
 		).toMatch(/^v2\./)
-	})
-	// The legacy plaintext rows in the source were resealed on export.
-	await runInDurableObject(hubFor(fromUserId), async (_instance, state) => {
-		expect(await state.storage.get(tokenKey)).toMatch(/^v2\./)
 	})
 	expect(await to.importServerForTransfer(exported!)).toEqual({
 		ok: false,
@@ -137,7 +145,12 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 			await state.storage.get(mcpOAuthRefreshTokenStorageKey(serverId)),
 		).toBeUndefined()
 		expect(
-			await state.storage.get('/Kody/other-server/client-2/token'),
+			await openMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key: '/Kody/other-server/client-2/token',
+				value: await state.storage.get('/Kody/other-server/client-2/token'),
+			}),
 		).toEqual({ access_token: 'other' })
 	})
 })

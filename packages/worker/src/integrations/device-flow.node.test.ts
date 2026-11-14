@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
+import { sealPlatformSecret } from '#mcp/secrets/crypto.ts'
 import {
 	completeDevicePendingSession,
 	consumeDevicePendingSession,
@@ -387,7 +388,12 @@ test('completeDevicePendingSession keeps a receipt after provider expiry', async
 	pending.expiresAtMs = Date.now() - 1_000
 	await env.OAUTH_KV!.put(
 		`integration-device-session:${baseStart.userId}:${started.sessionId}`,
-		JSON.stringify(pending),
+		await sealPlatformSecret(
+			env,
+			'integration-device-session',
+			`integration-device-session:${baseStart.userId}:${started.sessionId}`,
+			JSON.stringify(pending),
+		),
 	)
 	await completeDevicePendingSession({
 		env,
@@ -727,7 +733,7 @@ test('pending sessions are sealed at rest and bound to user and session', async 
 	).toBeNull()
 })
 
-test('legacy plaintext pending sessions still load during the TTL and reseal on write', async () => {
+test('plaintext pending sessions fail closed', async () => {
 	const env = createSqliteEnv()
 	const fetchImpl = vi.fn(async () =>
 		jsonResponse({
@@ -751,18 +757,14 @@ test('legacy plaintext pending sessions still load during the TTL and reseal on 
 		userId: baseStart.userId,
 		sessionId: started.sessionId,
 	})
+	expect(pending?.deviceCode).toBe('dc-legacy')
 	const key = `integration-device-session:${baseStart.userId}:${started.sessionId}`
 	await env.OAUTH_KV!.put(key, JSON.stringify(pending))
-	const legacy = await loadDevicePendingSession({
-		env,
-		userId: baseStart.userId,
-		sessionId: started.sessionId,
-	})
-	expect(legacy?.deviceCode).toBe('dc-legacy')
-	await storeDevicePendingSession({
-		env,
-		sessionId: started.sessionId,
-		session: legacy!,
-	})
-	expect(await env.OAUTH_KV!.get(key)).toMatch(/^v2\./)
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: baseStart.userId,
+			sessionId: started.sessionId,
+		}),
+	).toBeNull()
 })
