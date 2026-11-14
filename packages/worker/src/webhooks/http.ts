@@ -1094,12 +1094,6 @@ export async function handleWebhookIngressRequest(
 			})
 			return dispatchUnavailableResponse()
 		}
-		await markAckWebhookDelivery({
-			env,
-			delivery: ackDelivery,
-			state: 'queued',
-			holdMs: webhookAckQueuedHoldMs,
-		})
 		await retirePreviousWebhookUrlIfConfirmed({
 			env,
 			endpoint: liveEndpoint,

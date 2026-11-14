@@ -1413,7 +1413,7 @@ test('sync rejected dispatch does not retire previous HMAC grace', async () => {
 	expect(afterSuccess?.previous_hmac_secret_encrypted).toBeNull()
 })
 
-test('an accepted ack delivery is visible as queued before any consumer runs, and a failed enqueue finishes that row', async () => {
+test('an accepted ack delivery is visible before any consumer runs, and a failed enqueue finishes that row', async () => {
 	const userId = await setupOwnerWithWebhooks(['planning'])
 	declareWebhook({ name: 'planning' })
 	const body = JSON.stringify({ action: 'opened' })
@@ -1425,7 +1425,7 @@ test('an accepted ack delivery is visible as queued before any consumer runs, an
 		id: deliveryId,
 		status: 'running',
 		metadata: expect.objectContaining({
-			state: 'queued',
+			state: 'accepted',
 			httpStatus: 202,
 			payloadBytes: body.length,
 		}),

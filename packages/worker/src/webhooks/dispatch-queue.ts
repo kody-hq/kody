@@ -4,6 +4,7 @@ import {
 } from '#worker/credentials/placement-refusal.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
 import { readPreExecutionPackageInvocationInfrastructureCode } from '#worker/package-invocations/infrastructure-codes.ts'
+import { getRunRecord } from '#worker/run-records/service.ts'
 import {
 	type AckWebhookDelivery,
 	buildWebhookDispatchFailureLogs,
@@ -247,6 +248,17 @@ export async function handleWebhookDispatchQueue(
 				kv: env.BUNDLE_ARTIFACTS_KV,
 			})
 			if (!hydrated) {
+				// A redelivery after success finds its spill already deleted; the
+				// finished row is the answer, not a missing payload.
+				const existing = await getRunRecord({
+					env,
+					userId: message.endpoint.userId,
+					runId: message.deliveryId,
+				}).catch(() => null)
+				if (existing && existing.run.status !== 'running') {
+					queueMessage.ack()
+					continue
+				}
 				console.error('webhook-dispatch-payload-missing', {
 					queueMessageId: queueMessage.id,
 					endpointId: message.endpoint.id,
@@ -315,15 +327,44 @@ export async function handleWebhookDispatchQueue(
 				endpointId: message.endpoint.id,
 				error,
 			})
+			const lastError = `dispatch_processing_failed: ${
+				error instanceof Error ? error.message : String(error)
+			}`.slice(0, 500)
+			if (queueMessage.attempts >= webhookDispatchMaxRetries) {
+				try {
+					await recordWebhookDelivery({
+						env,
+						endpoint: message.endpoint,
+						kodyId: message.packageKodyId,
+						outcome: 'failed',
+						httpStatus: 502,
+						error: 'invocation_retry_exhausted',
+						payloadBytes: message.payloadBytes,
+						invocationId: message.deliveryId,
+						attempts: queueMessage.attempts,
+						startedAt: new Date().toISOString(),
+						receivedAt: message.receivedAt,
+						invocationErrorCode: 'dispatch_processing_failed',
+						logs: [{ level: 'error', message: lastError }],
+						requirePersistence: true,
+					})
+					queueMessage.ack()
+					continue
+				} catch (recordError) {
+					console.error('webhook-dispatch-exhausted-record-failed', {
+						queueMessageId: queueMessage.id,
+						endpointId: message.endpoint.id,
+						error: recordError,
+					})
+				}
+			}
 			await markAckWebhookDelivery({
 				env,
 				delivery,
 				state: 'queued',
 				holdMs: webhookAckQueuedHoldMs,
 				attempts: queueMessage.attempts,
-				lastError: `dispatch_processing_failed: ${
-					error instanceof Error ? error.message : String(error)
-				}`.slice(0, 500),
+				lastError,
 			})
 			queueMessage.retry({ delaySeconds: webhookDispatchRetryDelaySeconds })
 		}

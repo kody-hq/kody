@@ -298,7 +298,7 @@ package settings.
   returns **503** so the provider can retry without Kody claiming acceptance.
   Activity duration for ack deliveries measures queue consumer + export time
   (ingress receive time is kept as metadata). Failed deliveries keep diagnostic
-  logs — including when the export never reached user code.
+  logs, including when the export never reached user code.
 - `sync`: waits for the export JSON result (**502** on failure). The failure
   body is `{ "ok": false, "error": { "code", "message" }, "runId" }` and never
   carries package internals. `runId` names the delivery's Activity run, where
@@ -321,16 +321,16 @@ Every ack delivery Kody answers with **202** already has a row in
 
 | `state`     | `outcome`   | Meaning                                                                                                       |
 | ----------- | ----------- | ------------------------------------------------------------------------------------------------------------- |
-| `accepted`  | `pending`   | Recorded at ingress, before the 202.                                                                          |
-| `queued`    | `pending`   | Waiting on the shared dispatch queue, or waiting to retry. `error` holds the last attempt's reason.           |
+| `accepted`  | `pending`   | Recorded at ingress before the 202, then waiting on the shared dispatch queue.                                |
+| `queued`    | `pending`   | Waiting to retry after an attempt failed before your export finished. `error` holds that attempt's reason.    |
 | `started`   | `pending`   | A consumer attempt is running: payload hydration, package load, then your export. `attempts` counts them.     |
 | `succeeded` | `delivered` | The export returned.                                                                                          |
 | `failed`    | `failed`    | The export failed, a step before it failed for good, retries ran out, or the attempt was killed. Has `error`. |
 | `rejected`  | `rejected`  | Refused at ingress (signature, enablement, size, replay). Never queued.                                       |
 
 Latency: a delivery usually starts within seconds, but ack work shares one queue
-across all accounts, so under load `queued` can last several minutes. Treat ack
-mode as at-least-once and eventually-run, not real-time; use `sync` when the
+across all accounts, so under load `accepted` can last several minutes. Treat
+ack mode as at-least-once and eventually-run, not real-time; use `sync` when the
 caller must see the result.
 
 Retries: failures before your export runs (payload storage, artifact or package

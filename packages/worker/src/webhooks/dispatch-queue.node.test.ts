@@ -23,7 +23,17 @@ const mocks = vi.hoisted(() => ({
 	dispatchWebhookInvocation: vi.fn(),
 	recordWebhookDelivery: vi.fn(),
 	markAckWebhookDelivery: vi.fn(),
+	getRunRecord: vi.fn(async () => null),
 }))
+
+vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/run-records/service.ts')>()
+	return {
+		...actual,
+		getRunRecord: (...args: Array<unknown>) => mocks.getRunRecord(...args),
+	}
+})
 
 vi.mock('./delivery.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./delivery.ts')>()
@@ -593,4 +603,49 @@ test('the consumer marks the accepted row started, then queued with the reason w
 		['delivery-1', 'started', null],
 		['delivery-1', 'queued', 'artifact_preparation_failed'],
 	])
+})
+
+test('a thrown processing error on the last attempt finishes the row failed instead of waiting for the hold', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation.mockRejectedValueOnce(new Error('boom'))
+	const last = {
+		...createQueueMessage('last', createMessage()),
+		attempts: webhookDispatchMaxRetries,
+	}
+
+	await handleWebhookDispatchQueue(createBatch([last]), {} as Env)
+
+	expect(queueOutcome(last)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: 'failed',
+			error: 'invocation_retry_exhausted',
+			invocationErrorCode: 'dispatch_processing_failed',
+			invocationId: 'delivery-1',
+			attempts: webhookDispatchMaxRetries,
+		}),
+	)
+})
+
+test('a redelivered spilled message whose delivery already finished is acked without overwriting the row', async () => {
+	mocks.getRunRecord.mockResolvedValueOnce({
+		run: { id: 'delivery-1', status: 'success' },
+		logs: [],
+	})
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const redelivered = createQueueMessage('redelivered', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const kv = { get: vi.fn(async () => null), delete: vi.fn() }
+
+	await handleWebhookDispatchQueue(createBatch([redelivered]), {
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+
+	expect(queueOutcome(redelivered)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
 })

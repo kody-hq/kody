@@ -1827,6 +1827,28 @@ test('dashboard aggregates complete owner history and excludes exports, child ru
 	expect(charts.countsSince).toBeNull()
 })
 
+test('a finish that moves startedAt to another UTC day moves its day count too', async () => {
+	const userId = uniqueUserId('dashboard-moved-day')
+	const now = new Date()
+	const today = Date.parse(now.toISOString().slice(0, 10) + 'T00:00:00.000Z')
+	const id = crypto.randomUUID()
+	const context = { surface: 'webhook' as const, name: 'github' }
+	expect(
+		await ensureRunRecordStarted({
+			env,
+			handle: handleFor(userId, id, context, today - 60_000),
+		}),
+	).toBe(true)
+	await finishRunRecord({
+		env,
+		handle: handleFor(userId, id, context, today + 60_000),
+		status: 'success',
+	})
+	const charts = await loadWorkspaceRunCharts({ env, userId, now })
+	expect(charts.days.at(-2)).toMatchObject({ success: 0, error: 0, running: 0 })
+	expect(charts.days.at(-1)).toMatchObject({ success: 1, error: 0, running: 0 })
+})
+
 test('dashboard day counts survive the 2000-run cap across several UTC days', async () => {
 	const userId = uniqueUserId('dashboard-cap')
 	const now = new Date('2026-10-22T18:00:00.000Z')

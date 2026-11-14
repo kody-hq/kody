@@ -1660,6 +1660,8 @@ class RunLogBase extends DurableObject<Env> {
 
 	private applyRunDayCountTransition(input: {
 		previousStatus: RunStatus | null
+		/** Stored startedAt when a finish rewrites it (ack webhook consumers). */
+		previousStartedAt?: string | null
 		run: Pick<
 			RunLogRowInput,
 			'surface' | 'parentRunId' | 'startedAt' | 'status'
@@ -1681,9 +1683,12 @@ class RunLogBase extends DurableObject<Env> {
 			this.adjustRunDayCount({ day, surface, status: next, delta: 1 })
 			return
 		}
-		if (input.previousStatus === next) return
+		const previousDay = input.previousStartedAt
+			? this.runDayCountDayFromStartedAt(input.previousStartedAt)
+			: day
+		if (input.previousStatus === next && previousDay === day) return
 		this.adjustRunDayCount({
-			day,
+			day: previousDay,
 			surface,
 			status: input.previousStatus,
 			delta: -1,
@@ -2813,6 +2818,22 @@ class RunLogBase extends DurableObject<Env> {
 		return { deleted: true }
 	}
 
+	private getRunStatusAndStartedAt(
+		runId: string,
+	): { status: RunStatus; startedAt: string } | null {
+		const row = this.ctx.storage.sql
+			.exec<{ status: string; started_at: string }>(
+				`SELECT status, started_at FROM runs WHERE id = ? LIMIT 1`,
+				runId,
+			)
+			.toArray()[0]
+		if (!row) return null
+		const status = String(row.status)
+		return runState.is(status)
+			? { status, startedAt: String(row.started_at) }
+			: null
+	}
+
 	private getRunStatus(runId: string): RunStatus | null {
 		const row = this.ctx.storage.sql
 			.exec<{ status: string }>(
@@ -3068,7 +3089,8 @@ class RunLogBase extends DurableObject<Env> {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
 	}): Promise<{ ok: true; wrote: boolean }> {
-		const previousStatus = this.getRunStatus(input.run.id)
+		const previous = this.getRunStatusAndStartedAt(input.run.id)
+		const previousStatus = previous?.status ?? null
 		const existed = previousStatus != null
 		// Scheduled ticks release their idempotency key on platform interrupt so
 		// the occurrence can be claimed again. A late finish from the stranded
@@ -3093,6 +3115,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 			this.applyRunDayCountTransition({
 				previousStatus,
+				previousStartedAt: previous?.startedAt,
 				run: input.run,
 			})
 			this.recordTerminalRunSideEffects({
