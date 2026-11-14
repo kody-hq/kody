@@ -33,7 +33,7 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 			{
 				category: 'fetch',
 				data: {
-					url: 'https://upstream.test/cb?code=oauth-code&state=ok',
+					url: 'https://upstream.test/cb?code=oauth-code&secret=hunter2&state=ok',
 					headers: { Authorization: 'Bearer upstream-access-token' },
 				},
 				message: 'Authorization: Bearer abcdef123456',
@@ -57,6 +57,7 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 		apiToken,
 		bootstrap,
 		'oauth-code',
+		'hunter2',
 		'upstream-access-token',
 		'abcdef123456',
 		'rt-secret',
@@ -67,6 +68,7 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 	]) {
 		expect(serialized).not.toContain(secret)
 	}
+	expect(serialized).toContain('secret=[redacted]')
 	expect(serialized).toContain('state=ok')
 	expect(serialized).toContain('page=2')
 	expect(serialized).toContain('vitest')

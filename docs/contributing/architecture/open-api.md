@@ -224,7 +224,7 @@ module and does not silently hop to `kody.execute`. See
   (`packages/worker/src/package-runtime/isolated-local-execute-package-graph.ts`).
   Isolate memory or CPU limits fail only that request with
   `400 package_graph_resource_limit`. A graph is served only when every
-  reachable relative import names a module in the response; otherwise
+  reachable static relative import names a module in the response; otherwise
   `500 internal_error`.
 - Calls dispatch through the same `kody.*` tool map as ad hoc cloud execute, so
   capability behavior, `kody.mcp`, and workflows match the cloud. Caller errors

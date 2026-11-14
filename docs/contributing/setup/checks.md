@@ -15,9 +15,11 @@ pushes. See the [setup index](./index.md) for the other setup pages.
   CI's `npm run lint` and `npm run format:check` (a few seconds each, and they
   parse every file without the Nx cache), `npm run typecheck`, `npm run knip`,
   then related unit tests separately for `node-unit` and `workers-unit`, with
-  `CI=1`. Related tests come from a recent Validate run's test module map
-  (`tools/vitest-related-observed.ts`) when `gh` can fetch one whose tree is in
-  this branch's history; otherwise `vitest related --run`. Pushes touching
+  `CI=1`. Related tests prefer a recent Validate test module map whose tree is
+  in this branch's history (`tools/vitest-related-observed.ts`). If none
+  matches, the newest map that has the project is used (main changes since the
+  branch point count as changed). `vitest related --run` is only when no map is
+  available or `KODY_PRE_PUSH_TEST_SELECTION=related`. Pushes touching
   `packages/worker/src` or `packages/jobs-worker/src` scripts also run CI
   Static's `node tools/soft-delete-read-filter.ts` (under a second). Related
   inputs are the pushed, non-deleted JavaScript/TypeScript source and test paths

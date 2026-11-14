@@ -260,10 +260,12 @@ Secret values are **never** exported. `secret_entries` rows are metadata-only:
 name, description, bucket, allowed hosts, allowed kody, allowed packages, and
 timestamps. The encrypted payload (`encrypted_value`) and lookup hash
 (`lookup_hash`) are omitted. The same redaction rule is applied to other
-credential-equivalent fields such as password hashes, password/email reset token
-hashes, and guest claim lookup hashes plus sealed claim codes. The manifest
-states these redactions explicitly so a partial or intentionally redacted export
-is not mistaken for a complete secret backup.
+credential-equivalent fields such as password hashes and password/email reset
+token hashes. Guest claim lookup hashes and sealed claim codes are covered by
+that rule, but `guest_accounts` is not an export target, so the manifest does
+not list them. The manifest lists redacted columns only for exported tables so a
+partial or intentionally redacted export is not mistaken for a complete secret
+backup.
 
 The browser route `GET /account/export.json` downloads a bounded metadata
 manifest for the signed-in user and identifies the MCP capabilities required for

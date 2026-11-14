@@ -132,8 +132,8 @@ on its own or with `--build context`; it cannot be combined with
 `--json` prints structured MCP results. On command failures it also prints a
 JSON error object on stdout (`error`, `message`; additive
 `sent: false | "unknown"` when a network hop failed before an HTTP response;
-additive `runId` and `idempotencyKey` when execute failed after its run
-started).
+additive `runId` and `idempotencyKey` only when the API error body includes them
+— not on transport failures, even after a run may have started).
 
 ## Token-authenticated execute (no `kody login`)
 
