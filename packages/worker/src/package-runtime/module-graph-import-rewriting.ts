@@ -98,11 +98,28 @@ export type LoadedKodyGraphPackage = LoadedPackageSource & {
 
 export type LoadedKodyGraphPackages = Map<string, LoadedKodyGraphPackage>
 
+/**
+ * Why a module is in a prepared graph, recorded where the module is added.
+ * Consumers pick modules by role instead of guessing from the path, so a
+ * layout change cannot silently drop modules from one of them.
+ */
+export type KodyGraphModuleRole =
+	| 'runtime'
+	| 'public-runtime'
+	| 'package-runtime'
+	| 'import-proxy'
+	| 'published-artifact'
+	| 'package-source'
+	| 'root-config'
+	| 'root-dependency'
+	| 'root-source'
+
 type RewriteState = {
 	env: Env
 	baseUrl: string
 	userId: string
 	files: Record<string, string>
+	moduleRoles: Map<string, KodyGraphModuleRole>
 	sourceFiles: Record<string, string>
 	rootPackage: {
 		manifest: AuthoredPackageJson
@@ -208,6 +225,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		}),
 	)) {
 		input.state.files[modulePath] = module
+		input.state.moduleRoles.set(modulePath, 'published-artifact')
 	}
 	for (const dependency of artifact.artifact.dependencies) {
 		input.state.publishedArtifactDependencies.push(dependency)
@@ -353,6 +371,7 @@ async function materializePackageSourceIntoFiles(
 		const normalizedPath = normalizePackageWorkspacePath(filePath)
 		assertNoKodyVirtualModuleReference(normalizedPath, content)
 		const targetPath = joinPath(loaded.prefix, normalizedPath)
+		state.moduleRoles.set(targetPath, 'package-source')
 		if (isTypeDeclarationFilePath(normalizedPath)) {
 			state.files[targetPath] = content
 			continue
@@ -433,6 +452,7 @@ async function ensurePackageProxy(
 		proxyPath,
 		absoluteExportPath,
 	)
+	state.moduleRoles.set(proxyPath, 'import-proxy')
 	state.files[proxyPath] = calleePackageId
 		? createMeteredPackageImportProxySource({
 				targetPath: proxyTarget,
@@ -514,11 +534,13 @@ function createUniqueHelperName(source: string, baseName: string) {
 function ensurePackageRuntimeModule(state: RewriteState, packageId: string) {
 	const modulePath = buildPackageRuntimeModulePath(packageId)
 	state.files[modulePath] ??= createPackageRuntimeModuleSource(packageId)
+	state.moduleRoles.set(modulePath, 'package-runtime')
 	return modulePath
 }
 
 function ensurePublicRuntimeModule(state: RewriteState) {
 	state.files[publicRuntimeModulePath] ??= createPublicRuntimeModuleSource()
+	state.moduleRoles.set(publicRuntimeModulePath, 'public-runtime')
 	return publicRuntimeModulePath
 }
 
@@ -726,6 +748,11 @@ async function rewriteKodyImports(input: {
 
 export type PreparedKodyGraph = {
 	files: Record<string, string>
+	/**
+	 * Role of each module in `files`. A module the runtime refresh adds after
+	 * composition has none.
+	 */
+	moduleRoles: ReadonlyMap<string, KodyGraphModuleRole>
 	packages: LoadedKodyGraphPackages
 	publishedArtifactDependencies: Array<BundleArtifactDependency>
 	entryPoint: string
@@ -761,6 +788,9 @@ export async function prepareKodyGraphFiles(input: {
 	const files: Record<string, string> = {
 		[runtimeModulePath]: createRuntimeModuleSource(),
 	}
+	const moduleRoles = new Map<string, KodyGraphModuleRole>([
+		[runtimeModulePath, 'runtime'],
+	])
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const entryPoint =
 		resolveWorkspaceSourceFilePath({
@@ -779,6 +809,7 @@ export async function prepareKodyGraphFiles(input: {
 		baseUrl: input.baseUrl,
 		userId: input.userId,
 		files,
+		moduleRoles,
 		sourceFiles: input.sourceFiles,
 		rootPackage,
 		rootPackageId: input.rootPackageId?.trim() || null,
@@ -801,8 +832,10 @@ export async function prepareKodyGraphFiles(input: {
 		}
 		if (isBundlerRootConfigPath(normalizedSourcePath)) {
 			files[normalizedSourcePath] = content
+			moduleRoles.set(normalizedSourcePath, 'root-config')
 		}
 		if (isBundlerRootDependencyPath(normalizedSourcePath)) {
+			moduleRoles.set(normalizedSourcePath, 'root-dependency')
 			// Same rewrite dependency packages get after an artifact miss in
 			// materializePackageSourceIntoFiles, so computed import() in
 			// installed dependency code hits the guard.
@@ -821,11 +854,13 @@ export async function prepareKodyGraphFiles(input: {
 		const normalizedPath = joinPath(rootSourcePrefix, normalizedSourcePath)
 		if (normalizedSourcePath === packageManifestPath) {
 			files[normalizedPath] = content
+			moduleRoles.set(normalizedPath, 'root-source')
 			continue
 		}
 		if (!reachableRootFiles.has(normalizedSourcePath)) {
 			continue
 		}
+		moduleRoles.set(normalizedPath, 'root-source')
 		if (isTypeDeclarationFilePath(normalizedSourcePath)) {
 			files[normalizedPath] = content
 			continue
@@ -839,6 +874,7 @@ export async function prepareKodyGraphFiles(input: {
 	}
 	return {
 		files: refreshKodyRuntimeModules(files) as Record<string, string>,
+		moduleRoles,
 		packages: state.packages,
 		publishedArtifactDependencies: state.publishedArtifactDependencies,
 		entryPoint,

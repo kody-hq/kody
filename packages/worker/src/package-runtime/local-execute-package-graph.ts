@@ -10,6 +10,7 @@ import {
 import {
 	assertNoKodyVirtualModuleReference,
 	prepareKodyGraphFiles,
+	type KodyGraphModuleRole,
 } from './module-graph-import-rewriting.ts'
 import {
 	createPackageProxyPathSegment,
@@ -20,7 +21,6 @@ import {
 	packageRuntimeModulePrefix,
 	packageSourcePrefix,
 	resolveRelativeModulePath,
-	rootSourcePrefix,
 	runtimeModulePath,
 } from './module-graph-paths.ts'
 import { rewriteLocalExecuteModuleForSecretAwareFetch } from './rewrite-local-execute-secret-fetch.ts'
@@ -197,7 +197,14 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 	const runtimeModulePaths: Array<string> = []
 	for (const [modulePath, source] of Object.entries(prepared.files)) {
 		const normalized = normalizeWorkspaceModulePath(modulePath)
-		if (shouldOmitPreparedModule(normalized)) continue
+		if (
+			shouldOmitLocalExecutePreparedModule(
+				normalized,
+				prepared.moduleRoles.get(modulePath),
+			)
+		) {
+			continue
+		}
 		if (isKodyRuntimeModulePath(normalized)) {
 			runtimeModulePaths.push(normalized)
 			continue
@@ -473,7 +480,7 @@ const relativeSpecifierCandidatePattern = /["'`](\.\.?\/[^"'`\n]*)["'`]/g
  * Every relative import reachable from the entry's `kody:@…` aliases must
  * name a served module. workerd would otherwise fail on the caller's machine
  * with "No such module" after this route answered 200, which is how a layout
- * that `shouldOmitPreparedModule` did not know went unnoticed. This throws a
+ * that `shouldOmitLocalExecutePreparedModule` did not know went unnoticed. This throws a
  * plain error, a server fault, because the caller cannot fix a dropped module.
  *
  * The first pass avoids parsing: it follows every quoted relative string that
@@ -540,20 +547,38 @@ function findUnservedImport(input: {
 	return null
 }
 
-function shouldOmitPreparedModule(modulePath: string) {
+/**
+ * Whether local execute leaves a prepared module out of the served graph. It
+ * serves published artifacts and the runtime modules they import; root and
+ * package source, npm dependency copies, and cloud import proxies stay out.
+ * A module with no role is served: an unneeded module costs bytes, a dropped
+ * one fails in the caller's workerd.
+ */
+export function shouldOmitLocalExecutePreparedModule(
+	modulePath: string,
+	role: KodyGraphModuleRole | undefined,
+) {
 	if (modulePath === 'package.json') return true
-	if (modulePath.startsWith(`${rootSourcePrefix}/`)) return true
 	if (isKodyPublicRuntimeModulePath(modulePath)) return true
-	// Cloud import proxies are replaced by `kody:@…` aliases in the response.
-	if (modulePath.startsWith(`${packageImportProxyPrefix}/`)) return true
 	if (isKodyRuntimeModulePath(modulePath)) return false
 	if (parsePackageRuntimeModulePathPackageId(modulePath) != null) return false
-	// Prefer published importable-module artifacts only — omit live package
-	// source and npm dependency copies from a rebuild miss.
-	if (modulePath.includes('/.__published_bundle__/')) return false
-	if (modulePath.startsWith(`${packageSourcePrefix}/`)) return true
-	if (modulePath.startsWith('.__kody_virtual__/')) return false
-	return true
+	switch (role) {
+		case 'root-config':
+		case 'root-dependency':
+		case 'root-source':
+		case 'public-runtime':
+		// Cloud import proxies are replaced by `kody:@…` aliases in the response.
+		case 'import-proxy':
+		// Prefer published importable-module artifacts only: omit live package
+		// source and npm dependency copies from a rebuild miss.
+		case 'package-source':
+			return true
+		case 'runtime':
+		case 'package-runtime':
+		case 'published-artifact':
+		case undefined:
+			return false
+	}
 }
 
 function shouldRewritePublishedModuleForSecretAwareFetch(modulePath: string) {

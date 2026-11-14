@@ -6,7 +6,11 @@ import {
 	createSavedPackageRecord,
 } from '#worker/test-support/module-graph.ts'
 import { buildLocalExecutePackageGraph } from '#worker/test-support/local-execute-package-graph.ts'
-import type { LocalExecutePackageGraphError } from './local-execute-package-graph.ts'
+import {
+	shouldOmitLocalExecutePreparedModule,
+	type LocalExecutePackageGraphError,
+} from './local-execute-package-graph.ts'
+import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
 import {
 	createLocalExecutePackageRuntimeModuleSource,
 	createLocalExecuteRuntimeShimSource,
@@ -429,6 +433,92 @@ export default async function main() { return typeof advance }`,
 			module.esModule.includes('./not-an-import.js'),
 		),
 	).toBe(true)
+})
+
+test('prepareKodyGraphFiles records a role for every module it composes, apart from runtime modules', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				'dist/advance.js':
+					'import "./helper.js"\nexport default async function advance() {}\n',
+				'dist/helper.js': 'export const helper = 1\n',
+			},
+		}),
+	)
+
+	const prepared = await prepareKodyGraphFiles({
+		env: graphInput.env,
+		baseUrl: graphInput.baseUrl,
+		userId: graphInput.userId,
+		sourceFiles: {
+			'entry.ts': `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+		},
+		entryPoint: 'entry.ts',
+	})
+
+	const roles = Object.keys(prepared.files).map((modulePath) => [
+		modulePath,
+		prepared.moduleRoles.get(modulePath),
+	])
+	expect(
+		roles.filter(
+			([modulePath, role]) =>
+				role == null && !/(^|\/)runtime\.js$/.test(modulePath ?? ''),
+		),
+	).toEqual([])
+	const roleSet = new Set(roles.map(([, role]) => role))
+	expect(roleSet).toContain('root-source')
+	expect(roleSet).toContain('import-proxy')
+	expect(roleSet).toContain('published-artifact')
+	expect(
+		roles.filter(([, role]) => role === 'published-artifact'),
+	).toHaveLength(2)
+})
+
+test('local execute picks prepared modules by role and serves a module that has none', () => {
+	const artifactModule =
+		'.__kody_packages__/pkg/.__published_bundle__/advance/dist/advance.js'
+	expect(
+		shouldOmitLocalExecutePreparedModule(artifactModule, 'published-artifact'),
+	).toBe(false)
+	// A published artifact module is served wherever a layout puts it.
+	expect(
+		shouldOmitLocalExecutePreparedModule(
+			'some/new/layout/advance.js',
+			'published-artifact',
+		),
+	).toBe(false)
+	expect(
+		shouldOmitLocalExecutePreparedModule(
+			'some/new/layout/advance.js',
+			undefined,
+		),
+	).toBe(false)
+	for (const role of [
+		'root-config',
+		'root-dependency',
+		'root-source',
+		'import-proxy',
+		'package-source',
+		'public-runtime',
+	] as const) {
+		expect(shouldOmitLocalExecutePreparedModule('some/module.js', role)).toBe(
+			true,
+		)
+	}
 })
 
 test('buildLocalExecutePackageGraph rewrites inlined virtual runtime onto the CapabilityProxy shim', async () => {
