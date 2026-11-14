@@ -5,6 +5,7 @@ import { getRunRecord } from '#worker/run-records/service.ts'
 import {
 	type AckWebhookDelivery,
 	markAckWebhookDelivery,
+	recordWebhookDelivery,
 	startAckWebhookDeliveryAttempt,
 	webhookAckOwnerStartedLimit,
 	webhookAckQueuedHoldMs,
@@ -145,4 +146,31 @@ test('accepted deliveries healed to interrupted while they waited take a slot wh
 			delivery: deliveryFor(owner, 'next'),
 		}),
 	).toBe(false)
+})
+
+test('a redelivery of a finished delivery leaves its recorded outcome in place', async () => {
+	const delivery = deliveryFor(`owner-finished-${crypto.randomUUID()}`, 'done')
+	expect(await startAckWebhookDeliveryAttempt({ env, delivery })).toBe(true)
+	await recordWebhookDelivery({
+		env,
+		endpoint: delivery.endpoint,
+		kodyId: delivery.kodyId,
+		outcome: 'delivered',
+		httpStatus: 200,
+		payloadBytes: delivery.payloadBytes,
+		invocationId: delivery.deliveryId,
+		startedAt: new Date().toISOString(),
+		receivedAt: delivery.receivedAt,
+		requirePersistence: true,
+	})
+
+	expect(await startAckWebhookDeliveryAttempt({ env, delivery })).toBe(true)
+
+	const record = await getRunRecord({
+		env,
+		userId: delivery.endpoint.userId,
+		runId: delivery.deliveryId,
+	})
+	expect(record?.run.status).toBe('success')
+	expect(record?.run.metadata?.['state']).toBe('succeeded')
 })

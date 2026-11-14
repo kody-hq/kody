@@ -2671,7 +2671,9 @@ class RunLogBase extends DurableObject<Env> {
 	 *
 	 * A delivery whose accepted or queued hold lapsed while it waited was
 	 * healed to interrupted; its attempt is real, so the row goes back to
-	 * `running` and takes a slot (the finish replaces it as usual).
+	 * `running` and takes a slot (the finish replaces it as usual). A row that
+	 * finished with a real outcome is left alone, so a redelivery after the
+	 * finish still finds that outcome.
 	 */
 	async startWebhookDeliveryAttempt(input: {
 		run: RunLogRowInput
@@ -2693,7 +2695,15 @@ class RunLogBase extends DurableObject<Env> {
 			) || 0
 		if (inFlight >= input.limit) return { started: false, inFlight }
 		const previous = this.getRunStatusAndStartedAt(input.run.id)
-		if (previous && previous.status !== 'running') {
+		const healed =
+			previous?.status === 'error' &&
+			this.ctx.storage.sql
+				.exec<{ error_name: string | null }>(
+					`SELECT error_name FROM runs WHERE id = ? LIMIT 1`,
+					input.run.id,
+				)
+				.toArray()[0]?.error_name === runRecordPlatformInterruptedErrorName
+		if (previous && healed) {
 			this.transactionSyncWithMetaCache(() => {
 				this.upsertRun(input.run, 'replace')
 				this.applyRunDayCountTransition({
