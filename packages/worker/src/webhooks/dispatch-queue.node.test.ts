@@ -23,7 +23,9 @@ const mocks = vi.hoisted(() => ({
 	dispatchWebhookInvocation: vi.fn(),
 	recordWebhookDelivery: vi.fn(),
 	markAckWebhookDelivery: vi.fn(),
-	getRunRecord: vi.fn(async () => null),
+	getRunRecord: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 }))
 
 vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
