@@ -96,6 +96,7 @@ export function parseStoredBundleArtifactManifest(
 	if (!manifest.modules || typeof manifest.modules !== 'object') return null
 	const entries = Object.entries(manifest.modules)
 	if (entries.length !== modulePaths.length) return null
+	let moduleBytesSum = 0
 	for (const modulePath of modulePaths) {
 		const entry = (manifest.modules as Record<string, unknown>)[modulePath] as
 			| { role?: unknown; bytes?: unknown }
@@ -104,7 +105,16 @@ export function parseStoredBundleArtifactManifest(
 		if (typeof entry.role !== 'string' || !moduleRoles.has(entry.role)) {
 			return null
 		}
-		if (!Number.isSafeInteger(entry.bytes)) return null
+		const bytes = entry.bytes
+		if (
+			typeof bytes !== 'number' ||
+			!Number.isSafeInteger(bytes) ||
+			bytes < 0
+		) {
+			return null
+		}
+		moduleBytesSum += bytes
 	}
+	if (manifest.totalBytes !== moduleBytesSum) return null
 	return manifest as BundleArtifactManifest
 }

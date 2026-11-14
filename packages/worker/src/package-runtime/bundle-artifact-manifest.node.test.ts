@@ -153,6 +153,15 @@ test('a stored manifest that does not describe the stored modules is dropped, no
 				'dist/chunk.js': { role: 'module', bytes: 1.5 },
 			},
 		},
+		{ ...valid, totalBytes: 0 },
+		{
+			...valid,
+			totalBytes: 0,
+			modules: {
+				'dist/index.js': { role: 'main', bytes: 1 },
+				'dist/chunk.js': { role: 'module', bytes: -1 },
+			},
+		},
 	]
 	for (const stored of rejected) {
 		expect(parseStoredBundleArtifactManifest(stored, modulePaths)).toBeNull()
