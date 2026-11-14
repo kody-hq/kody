@@ -1,4 +1,8 @@
 import {
+	runIsolatedModuleArtifactRebuild,
+	type IsolatedModuleArtifactRebuildRequest,
+} from '#worker/package-invocations/module-artifacts.ts'
+import {
 	runIsolatedExecuteBundleBuild,
 	type IsolatedExecuteBundleRequest,
 } from '#worker/package-runtime/isolated-execute-bundle.ts'
@@ -12,6 +16,9 @@ import {
 export function addInProcessExecuteBundleIsolates(
 	env: Env,
 	isolate?: (input: IsolatedExecuteBundleRequest) => Promise<unknown>,
+	rebuildIsolate?: (
+		input: IsolatedModuleArtifactRebuildRequest,
+	) => Promise<unknown>,
 ) {
 	const isolateNames: Array<string> = []
 	Object.assign(env, {
@@ -22,6 +29,18 @@ export function addInProcessExecuteBundleIsolates(
 			},
 			get() {
 				return {
+					async rebuildIsolatedModuleArtifact(
+						input: IsolatedModuleArtifactRebuildRequest,
+					) {
+						const cloned = structuredClone(input)
+						// The result carries the artifact to serve, so it crosses the
+						// same boundary on the way back.
+						return structuredClone(
+							rebuildIsolate
+								? await rebuildIsolate(cloned)
+								: await runIsolatedModuleArtifactRebuild(env, cloned),
+						)
+					},
 					async buildIsolatedExecuteBundle(
 						input: IsolatedExecuteBundleRequest,
 					) {

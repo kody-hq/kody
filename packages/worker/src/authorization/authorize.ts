@@ -984,6 +984,18 @@ export async function runWithRequestPermissions<T>(
 	return await requestPermissionsStorage.run(access, run)
 }
 
+/**
+ * Bind permissions that were computed elsewhere, so work handed to another
+ * isolate runs under the binding its caller had. Undefined binds nothing.
+ */
+export async function runWithBoundPermissions<T>(
+	access: EffectivePermissions | undefined,
+	run: () => Promise<T>,
+): Promise<T> {
+	if (!access) return await run()
+	return await requestPermissionsStorage.run(access, run)
+}
+
 /** The permissions bound by `runWithRequestPermissions`, if any. */
 export function getRequestPermissions(): EffectivePermissions | undefined {
 	return requestPermissionsStorage.getStore()

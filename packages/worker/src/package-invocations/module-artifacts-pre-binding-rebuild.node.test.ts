@@ -1,3 +1,4 @@
+import { addInProcessExecuteBundleIsolates } from '#worker/test-support/execute-bundle-isolates.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
@@ -12,7 +13,19 @@ import {
 	insertPublishedEntitySource,
 	resetJobServiceMocks,
 } from '#worker/test-support/jobs-service.ts'
-import { ensureModuleArtifact } from './module-artifacts.ts'
+import {
+	ensureModuleArtifact,
+	isTransientModuleArtifactError,
+	runIsolatedModuleArtifactRebuild,
+	type IsolatedModuleArtifactRebuildRequest,
+} from './module-artifacts.ts'
+import {
+	runWithBoundPermissions,
+	type EffectivePermissions,
+} from '#worker/authorization/authorize.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
+import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 
 vi.mock('#worker/repo/source-service.ts', async () =>
 	(
@@ -86,6 +99,13 @@ async function seedPreBindingModuleBundle(input: {
 	 * free-fetch heuristic alone would have kept serving.
 	 */
 	bundledEntry?: string
+	/** Stored artifact name. Defaults to `./nightly`. */
+	artifactName?: string
+	/** Stands in for the rebuild isolate, for example to make it reset. */
+	rebuildIsolate?: (
+		env: Env,
+		request: IsolatedModuleArtifactRebuildRequest,
+	) => Promise<unknown>
 }) {
 	const db = createDatabase()
 	const bundleKv = createBundleArtifactsKv()
@@ -93,8 +113,14 @@ async function seedPreBindingModuleBundle(input: {
 		APP_DB: db,
 		BUNDLE_ARTIFACTS_KV: bundleKv,
 		LOADER: {} as WorkerLoader,
-		REPO_SESSION: {} as DurableObjectNamespace,
 	})
+	const { isolateNames } = addInProcessExecuteBundleIsolates(
+		env,
+		undefined,
+		input.rebuildIsolate
+			? (request) => input.rebuildIsolate!(env, request)
+			: undefined,
+	)
 	const savedPackage = createSavedPackage(input.suffix)
 	await insertPublishedEntitySource({
 		db,
@@ -120,7 +146,7 @@ async function seedPreBindingModuleBundle(input: {
 		userId,
 		source,
 		kind: 'module',
-		artifactName: './nightly',
+		artifactName: input.artifactName ?? './nightly',
 		entryPoint: 'src/nightly.ts',
 		mainModule: 'dist/bundled-entry.js',
 		modules: {
@@ -144,12 +170,12 @@ async function seedPreBindingModuleBundle(input: {
 	const stored = (await bundleKv.get(kvKey, 'json')) as Record<string, unknown>
 	delete stored.packageBindingRewrite
 	await bundleKv.put(kvKey, JSON.stringify(stored))
-	return { env, savedPackage }
+	return { env, savedPackage, isolateNames }
 }
 
 test('a pre-binding module bundle that inlines another package rebuilds before a workflow export step runs it', async () => {
 	silenceIncidentalRuntimeWarnings()
-	const { env, savedPackage } = await seedPreBindingModuleBundle({
+	const { env, savedPackage, isolateNames } = await seedPreBindingModuleBundle({
 		suffix: 'pre-binding-workflow',
 		manifest: {
 			name: '@kody/pre-binding-workflow',
@@ -169,6 +195,175 @@ test('a pre-binding module bundle that inlines another package rebuilds before a
 	const modules = Object.values(artifact.modules).join('\n')
 	expect(modules).toContain('userEntrypoint')
 	expect(modules).not.toContain('pre-binding-bundle')
+	// The rebuild ran in its own org-namespaced throwaway isolate.
+	expect(isolateNames).toHaveLength(1)
+	expect(isolateNames[0]).toMatch(
+		new RegExp(`^isolated-module-artifact-rebuild-${userId}-`),
+	)
+})
+
+const nightlyManifest = (id: string) => ({
+	name: `@kody/${id}`,
+	exports: { './nightly': './src/nightly.ts' },
+	kody: { id, description: 'Nightly workflow' },
+})
+
+test('a rebuild that exceeds its isolate fails only that run and says to publish again', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-reset',
+		manifest: nightlyManifest('rebuild-reset'),
+		rebuildIsolate: async () => {
+			throw new Error(durableObjectIsolateMemoryResetMessage)
+		},
+	})
+
+	const error = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'nightly' },
+		userId,
+	}).catch((caught: unknown) => caught)
+
+	expect(error).toBeInstanceOf(Error)
+	const message = (error as Error).message
+	expect(message).toContain(
+		"exceeded the isolated rebuild runner's memory or CPU limits",
+	)
+	expect(message).toContain('kody package publish --build local')
+	// Retrying cannot help, so the run must not be retried as artifact prep.
+	expect(isTransientModuleArtifactError(error)).toBe(false)
+})
+
+test('a rebuild reset is not retried even when the export name reads like a transient failure', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-reset-fetch',
+		manifest: {
+			name: '@kody/rebuild-reset-fetch',
+			exports: { './fetch-network-timeout': './src/nightly.ts' },
+			kody: { id: 'rebuild-reset-fetch', description: 'Nightly workflow' },
+		},
+		artifactName: './fetch-network-timeout',
+		rebuildIsolate: async () => {
+			throw new Error(durableObjectIsolateMemoryResetMessage)
+		},
+	})
+
+	const error = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'fetch-network-timeout' },
+		userId,
+	}).catch((caught: unknown) => caught)
+
+	expect((error as Error).message).toContain('"./fetch-network-timeout"')
+	expect(isTransientModuleArtifactError(error)).toBe(false)
+})
+
+test('the caller serves the artifact the rebuild isolate returns, not its own earlier read', async () => {
+	silenceIncidentalRuntimeWarnings()
+	// Another run repaired the commit-keyed entry after this caller read the
+	// pre-binding bundle, so the isolate finds nothing left to rebuild.
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-concurrent',
+		manifest: nightlyManifest('rebuild-concurrent'),
+		rebuildIsolate: async () => ({
+			ok: true,
+			result: {
+				serve: 'current',
+				artifact: {
+					mainModule: 'dist/bundled-entry.js',
+					modules: { 'dist/bundled-entry.js': 'repaired-by-another-run' },
+				},
+			},
+		}),
+	})
+
+	const { artifact } = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'nightly' },
+		userId,
+	})
+
+	const modules = Object.values(artifact.modules).join('\n')
+	expect(modules).toContain('repaired-by-another-run')
+	expect(modules).not.toContain('pre-binding-bundle')
+})
+
+test('a rebuild failure keeps its cause chain and caller-error class across the isolate boundary', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-causes',
+		manifest: nightlyManifest('rebuild-causes'),
+		rebuildIsolate: async () => {
+			return {
+				ok: false,
+				name: 'McpCallerError',
+				messages: [
+					'Could not store the bundle.',
+					'D1_ERROR: database is locked',
+				],
+				callerError: true,
+			}
+		},
+	})
+
+	const error = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'nightly' },
+		userId,
+	}).catch((caught: unknown) => caught)
+
+	expect(isMcpCallerError(error)).toBe(true)
+	expect((error as Error).message).toBe('Could not store the bundle.')
+	expect(((error as Error).cause as Error).message).toBe(
+		'D1_ERROR: database is locked',
+	)
+	expect(isTransientModuleArtifactError(error)).toBe(true)
+})
+
+test('a rebuild runs under the permissions its caller was bound to', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const received: Array<EffectivePermissions | undefined> = []
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-permissions',
+		manifest: nightlyManifest('rebuild-permissions'),
+		rebuildIsolate: async (isolateEnv, request) => {
+			received.push(request.permissions)
+			return await runIsolatedModuleArtifactRebuild(isolateEnv, request)
+		},
+	})
+	const access: EffectivePermissions = {
+		orgId: userId,
+		permissions: new Set<OrgPermission>(['package:execute']),
+		isOwner: false,
+		resourcePermissions: new Map([
+			[
+				`package:${savedPackage.id}`,
+				new Set<OrgPermission>(['package:execute']),
+			],
+		]),
+		credentialScopes: null,
+	}
+
+	await runWithBoundPermissions(access, () =>
+		ensureModuleArtifact({
+			env,
+			baseUrl: 'https://kody.dev',
+			savedPackage,
+			selector: { kind: 'export', exportName: 'nightly' },
+			userId,
+		}),
+	)
+
+	expect(received).toEqual([access])
 })
 
 test('a packageStorage-only multi-package module bundle without a binding marker rebuilds for workflow export steps', async () => {
