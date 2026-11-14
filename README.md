@@ -75,8 +75,8 @@ If you are trying to understand what this repository is for, start with
 
 ## Scope
 
-- Fair Source platform for individuals and teams, not a general-purpose agent
-  harness
+- Source-available platform for individuals and teams, not a general-purpose
+  agent harness
 - MCP-first architecture intended to work across compatible AI agent hosts
 - Compact MCP surface area preferred over a large static tool inventory
 - ChatGPT is a likely primary host target, while keeping the server usable from
@@ -127,17 +127,22 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and
 
 ## License
 
-Kody is licensed under the
-[Functional Source License, Version 1.1, ALv2 Future License](./LICENSE)
-([FSL-1.1-ALv2](https://fsl.software/)). You can use, copy, modify, create
-derivative works from, publicly perform, publicly display, and redistribute the
-software for any purpose other than Competing Use. Competing Use means making
-the software available to others in a commercial product or service that
-substitutes for Kody, substitutes for another product or service the licensor
-offers using Kody that existed when the version was made available, or offers
-the same or substantially similar functionality. Each version becomes available
-under the Apache License 2.0 on the second anniversary of the date that version
-was made available.
+Free for personal use. For any other use, email support@kody.codes.
+
+Kody is licensed under the [Business Source License 1.1](./LICENSE) (BUSL-1.1),
+the same license as the self-hosted
+[kody-hq/kody-celld](https://github.com/kody-hq/kody-celld). The Additional Use
+Grant allows personal, noncommercial production use, including self-hosting, and
+keeps the competing-use restriction from the previous license. Each version
+becomes available under the Apache License 2.0 on the second anniversary of the
+date that version was first made publicly available.
+
+Code published before this change stays under
+[FSL-1.1-ALv2](https://fsl.software/), the license it was released under,
+including its two-year Apache 2.0 conversion. Directories with their own LICENSE
+file, such as [`packages/cli`](./packages/cli/LICENSE) and
+[`packages/dev-runtime`](./packages/dev-runtime/LICENSE), use that license
+(MIT). Third-party files keep their original licenses.
 
 Public packages published through Kody do not use this repository's CLA and have
 no license gate; that is separate from this repository's license.

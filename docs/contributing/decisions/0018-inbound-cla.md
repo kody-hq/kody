@@ -2,6 +2,10 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-16
+- **Update (2026-11-14):** the repository moved from FSL-1.1-ALv2 to the
+  Business Source License 1.1 ([BUSL-1.1](../../../LICENSE)). The CLA's
+  relicensing grant covers signed contributions; the Context below describes the
+  license at the time of this decision.
 
 ## Context
 

@@ -2,7 +2,7 @@
   "name": "kody",
   "private": true,
   "version": "0.0.0",
-  "license": "FSL-1.1-ALv2",
+  "license": "BUSL-1.1",
   "type": "module",
   "imports": {
     "#app/*": "./packages/worker/src/app/*",

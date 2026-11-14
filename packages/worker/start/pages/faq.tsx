@@ -189,7 +189,7 @@ const faqItems: ReadonlyArray<FaqItem> = [
 					as names, hosts, and allowlists only.
 				</p>
 				<p>
-					Kody is Fair Source. The{' '}
+					Kody is source-available. The{' '}
 					<SiteLink
 						href="https://github.com/kody-hq/kody"
 						target="_blank"
@@ -197,7 +197,8 @@ const faqItems: ReadonlyArray<FaqItem> = [
 					>
 						source is on GitHub
 					</SiteLink>
-					: you can read it, fork it, and run your own deployment.
+					: you can read it and fork it, and running your own deployment is free
+					for personal use. For any other use, email support@kody.codes.
 				</p>
 			</>
 		),
