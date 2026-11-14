@@ -88,10 +88,11 @@ import {
 	type McpAgentSession,
 } from '#mcp/session-registry.ts'
 import {
-	AccountDeletionWritersActiveError,
 	abortAccountDeleting,
 	clearUserMeterDeletionTombstone,
 	markAccountDeleting,
+	accountDeletionWritersActive,
+	type BlockingAccountWriteLease,
 } from '#worker/account/deletion-state.ts'
 import {
 	buildPublishedSourceManifestSnapshotKvKey,
@@ -1709,6 +1710,7 @@ export async function deleteUserAccount(input: {
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
 	let marked: {
 		leaseCount: number
+		blockingLeases?: ReadonlyArray<BlockingAccountWriteLease>
 		created: boolean
 		deletingAt: string
 	}
@@ -1745,7 +1747,7 @@ export async function deleteUserAccount(input: {
 					expectedDeletingAt: marked.deletingAt,
 				})
 			}
-			throw new AccountDeletionWritersActiveError(marked.leaseCount)
+			throw accountDeletionWritersActive(marked)
 		}
 	}
 	const warnings: Array<string> = []

@@ -1,6 +1,7 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { expect, test } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { AccountDeletionWritersActiveError } from '#worker/account/deletion-state.ts'
 import {
 	AuthorizationError,
 	LivePersonRequiredError,
@@ -456,4 +457,26 @@ test('toApiError reports a profile denial as profile_grant, not insufficient_sco
 			}),
 		),
 	).toMatchObject({ status: 403, code: 'profile_inactive' })
+})
+
+test('toApiError maps a deletion refused by active writes to a retryable 409 naming the holders', () => {
+	const error = new AccountDeletionWritersActiveError(
+		1,
+		[{ holder: 'packagePublish', acquiredAt: '2099-01-01 00:00:00' }],
+		Date.UTC(2099, 0, 1, 0, 0, 30),
+	)
+	expect(toApiError(error)).toMatchObject({
+		status: 409,
+		code: 'account_writes_active',
+		message: expect.stringContaining(
+			'Held by: packagePublish (started 30s ago).',
+		),
+		details: {
+			active_writes: 1,
+			held_by: [
+				{ holder: 'packagePublish', acquired_at: '2099-01-01 00:00:00' },
+			],
+			retryable: true,
+		},
+	})
 })

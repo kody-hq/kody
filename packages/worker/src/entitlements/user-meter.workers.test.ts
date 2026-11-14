@@ -20,6 +20,7 @@ import {
 	userMeterRpc,
 } from './user-meter-client.ts'
 import { UserMeter, userMeterMirrorUpdatedAtToken } from './user-meter-do.ts'
+import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
 import { withPatchedDbPrepare } from '#worker/test-support/user-meter.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
@@ -107,19 +108,25 @@ function sqliteNames(state: DurableObjectState, where: string) {
 		.map((row) => row.name)
 }
 
-function expectSchemaV15(state: DurableObjectState) {
+function expectSchemaV16(state: DurableObjectState) {
 	const version = state.storage.sql
 		.exec<{ value: number }>(
 			`SELECT value FROM user_meter_meta WHERE key = 'schema_version' LIMIT 1`,
 		)
 		.toArray()[0]
-	expect(Number(version?.value)).toBe(15)
+	expect(Number(version?.value)).toBe(16)
 	expect(
 		state.storage.sql
 			.exec<{ name: string }>(`PRAGMA table_info(account_write_leases)`)
 			.toArray()
 			.map((row) => String(row.name)),
-	).toEqual(['token', 'holder', 'acquired_at', 'pending_repair_id'])
+	).toEqual([
+		'token',
+		'holder',
+		'acquired_at',
+		'pending_repair_id',
+		'expires_at',
+	])
 	expect(
 		sqliteNames(
 			state,
@@ -146,13 +153,13 @@ function recentDailyCounterNow(): Date {
 	)
 }
 
-test('fresh UserMeter schema is v15 and warm v7 upgrades to v15 preserving leases', async () => {
+test('fresh UserMeter schema is v16 and warm v7 upgrades to v16 preserving leases with a grace expiry', async () => {
 	const fresh = await seedFreeUser('meter-schema-v12-fresh')
 	await runInDurableObject(
 		meterStub(fresh.userId),
 		async (instance: UserMeter, state) => {
 			expect(instance).toBeInstanceOf(UserMeter)
-			expectSchemaV15(state)
+			expectSchemaV16(state)
 		},
 	)
 
@@ -199,7 +206,7 @@ test('fresh UserMeter schema is v15 and warm v7 upgrades to v15 preserving lease
 			}
 			proto.initializeSchema.call(instance)
 
-			expectSchemaV15(state)
+			expectSchemaV16(state)
 			expect(
 				state.storage.sql
 					.exec(
@@ -215,6 +222,15 @@ test('fresh UserMeter schema is v15 and warm v7 upgrades to v15 preserving lease
 					pending_repair_id: 'repair-v7',
 				},
 			])
+			// A lease taken before expiry existed gets a grace window, not forever.
+			const [upgraded] = state.storage.sql
+				.exec<{ expires_at: string }>(
+					`SELECT expires_at FROM account_write_leases`,
+				)
+				.toArray()
+			const graceMs = Date.parse(upgraded!.expires_at) - Date.now()
+			expect(graceMs).toBeGreaterThan(19 * 60 * 1000)
+			expect(graceMs).toBeLessThanOrEqual(20 * 60 * 1000)
 			expect(
 				sqliteNames(
 					state,
@@ -956,6 +972,7 @@ test('UserMeter deletion leases: mark, acquire, release, repair, export, and pur
 		deletingAt: '2026-08-01 10:00:00',
 		created: true,
 		leaseCount: 0,
+		blockingLeases: [],
 	})
 	expect(
 		await meterA.markDeleting({ deletingAt: '2026-08-01 11:00:00' }),
@@ -963,6 +980,7 @@ test('UserMeter deletion leases: mark, acquire, release, repair, export, and pur
 		deletingAt: '2026-08-01 10:00:00',
 		created: false,
 		leaseCount: 0,
+		blockingLeases: [],
 	})
 	expect(await meterA.clearDeleting()).toEqual({ cleared: true })
 	expect(await meterA.readDeletionState()).toEqual({ deletingAt: null })
@@ -985,6 +1003,7 @@ test('UserMeter deletion leases: mark, acquire, release, repair, export, and pur
 		deletingAt: '2026-08-01 10:00:00',
 		created: true,
 		leaseCount: 0,
+		blockingLeases: [],
 	})
 
 	// acquireWriteLease is idempotent (same token).
@@ -1004,6 +1023,10 @@ test('UserMeter deletion leases: mark, acquire, release, repair, export, and pur
 		deletingAt: '2026-08-01 09:00:00',
 		created: true,
 		leaseCount: 2,
+		blockingLeases: [
+			{ holder: 'test:writer-1', acquiredAt: '2026-08-01 10:05:00' },
+			{ holder: 'test:writer-2', acquiredAt: '2026-08-01 10:06:00' },
+		],
 	})
 	await expect(
 		acquire(
@@ -1146,6 +1169,7 @@ test('UserMeter deletion leases: mark, acquire, release, repair, export, and pur
 		deletingAt: '2026-08-01 09:00:00',
 		created: false,
 		leaseCount: 0,
+		blockingLeases: [],
 	})
 	expect(await meterB.countActiveWriteLeases()).toEqual({ count: 0 })
 }, 30_000)
@@ -1306,3 +1330,68 @@ test('UserMeter budget enforcement separates user and automation limits and reco
 		automationMicroUsd: 500_000,
 	})
 })
+
+test('UserMeter write leases lapse without renewal, and a deletion claims the lapsed ones', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		const { meter } = await seedFreeUser('meter-lease-ttl')
+		const renewed = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+		const abandoned = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+		for (const [token, holder] of [
+			[renewed, 'packageSave'],
+			[abandoned, 'packagePublish'],
+		] as const) {
+			await meter.acquireWriteLease({
+				token,
+				holder,
+				acquiredAt: '2026-08-01 10:00:00',
+			})
+		}
+		expect(await meter.countActiveWriteLeases()).toEqual({ count: 2 })
+
+		vi.setSystemTime(Date.now() + writeLeaseTtlMs - 1_000)
+		expect(await meter.renewWriteLease({ token: renewed })).toEqual({
+			renewed: true,
+		})
+		vi.setSystemTime(Date.now() + 2_000)
+		expect(await meter.countActiveWriteLeases()).toEqual({ count: 1 })
+
+		// Not yet claimed by a deletion, so a late writer still finishes cleanly.
+		expect(await meter.renewWriteLease({ token: abandoned })).toEqual({
+			renewed: true,
+		})
+		vi.setSystemTime(Date.now() + writeLeaseTtlMs + 1_000)
+		expect(await meter.renewWriteLease({ token: renewed })).toEqual({
+			renewed: true,
+		})
+
+		expect(
+			await meter.markDeleting({ deletingAt: '2026-08-01 10:10:00' }),
+		).toEqual({
+			deletingAt: '2026-08-01 10:10:00',
+			created: true,
+			leaseCount: 1,
+			blockingLeases: [
+				{ holder: 'packageSave', acquiredAt: '2026-08-01 10:00:00' },
+			],
+		})
+		// Claimed: the lapsed writer cannot come back.
+		expect(await meter.renewWriteLease({ token: abandoned })).toEqual({
+			renewed: false,
+		})
+		expect(await meter.releaseWriteLease({ token: abandoned })).toEqual({
+			released: false,
+		})
+		// A lease that lapses while the deletion waits is dropped the same way.
+		vi.setSystemTime(Date.now() + writeLeaseTtlMs + 1_000)
+		expect(await meter.assertWriteLeaseHeld({ token: renewed })).toEqual({
+			held: false,
+		})
+		expect(await meter.countActiveWriteLeases()).toEqual({ count: 0 })
+		expect(await meter.releaseWriteLease({ token: renewed })).toEqual({
+			released: false,
+		})
+	} finally {
+		vi.useRealTimers()
+	}
+}, 30_000)

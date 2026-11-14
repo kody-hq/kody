@@ -19,6 +19,7 @@ import {
 	abortOrgDeleting,
 	clearUserMeterDeletionTombstone,
 	markOrgDeleting,
+	accountDeletionWritersActive,
 } from '#worker/account/deletion-state.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -313,7 +314,7 @@ export async function softDeleteOrg(input: {
 			} finally {
 				// Prefer the lease-busy signal even when abort's UserMeter RPC fails;
 				// leftover heal clears meter tombstones once D1 is live again.
-				throw new AccountDeletionWritersActiveError(marked.leaseCount)
+				throw accountDeletionWritersActive(marked)
 			}
 		}
 	}

@@ -20,6 +20,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import {
 	AccountDeletionInProgressError,
+	AccountDeletionWritersActiveError,
 	AccountWriteLeaseLostError,
 } from '#worker/account/deletion-state.ts'
 import {
@@ -113,6 +114,7 @@ const platformApiErrorCodes = [
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
+	'account_writes_active',
 	'payload_too_large',
 	'unsupported_media_type',
 	'rate_limited',
@@ -285,6 +287,25 @@ export function toApiError(
 			details: {
 				capability: error.capabilityName,
 				denial: 'live_person_required',
+			},
+			cause: error,
+		})
+	}
+	const writersActive = getErrorCauseChain(error).find(
+		(entry) => entry instanceof AccountDeletionWritersActiveError,
+	)
+	if (writersActive) {
+		return new ApiError({
+			status: 409,
+			code: 'account_writes_active',
+			message: writersActive.message,
+			details: {
+				active_writes: writersActive.activeWriteCount,
+				held_by: writersActive.blockingLeases.map((lease) => ({
+					holder: lease.holder,
+					acquired_at: lease.acquiredAt,
+				})),
+				retryable: true,
 			},
 			cause: error,
 		})

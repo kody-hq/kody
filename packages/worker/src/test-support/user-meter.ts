@@ -1,4 +1,5 @@
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
 import {
 	admitExecuteCallInWindows,
 	ExecuteRepeatWindow,
@@ -25,6 +26,7 @@ type WriteLeaseRow = {
 	holder: string
 	acquiredAt: string
 	pendingRepairId: string | null
+	expiresAtMs: number
 }
 type DeletionState = {
 	deletingAt: string | null
@@ -549,11 +551,18 @@ export function createInMemoryUserMeterEnv() {
 			async markDeleting(input: { deletingAt: string }) {
 				const created = deletion.deletingAt == null
 				if (created) deletion.deletingAt = input.deletingAt
+				for (const [token, lease] of deletion.leases) {
+					if (lease.expiresAtMs <= Date.now()) deletion.leases.delete(token)
+				}
 				const leaseCount = deletion.leases.size
 				return {
 					deletingAt: deletion.deletingAt ?? input.deletingAt,
 					created,
 					leaseCount,
+					blockingLeases: [...deletion.leases.values()].map((lease) => ({
+						holder: lease.holder,
+						acquiredAt: lease.acquiredAt,
+					})),
 				}
 			},
 			async clearDeleting(input?: { expectedDeletingAt?: string }) {
@@ -579,8 +588,15 @@ export function createInMemoryUserMeterEnv() {
 					holder: input.holder,
 					acquiredAt: input.acquiredAt,
 					pendingRepairId: null,
+					expiresAtMs: Date.now() + writeLeaseTtlMs,
 				})
 				return { acquired: true }
+			},
+			async renewWriteLease(input: { token: string }) {
+				const existing = deletion.leases.get(input.token)
+				if (!existing) return { renewed: false }
+				existing.expiresAtMs = Date.now() + writeLeaseTtlMs
+				return { renewed: true }
 			},
 			async releaseWriteLease(input: { token: string }) {
 				return { released: deletion.leases.delete(input.token) }

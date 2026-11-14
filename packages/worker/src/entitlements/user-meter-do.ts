@@ -6,6 +6,7 @@ import {
 	type BudgetLimitErrorDetails,
 } from './errors.ts'
 import { DurableObject } from 'cloudflare:workers'
+import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
 import {
 	type DurableObjectPitrRpc,
 	getRecoveryBookmark,
@@ -34,9 +35,16 @@ export const userMeterDailyCounterRetentionDays = 14
 
 const metaSchemaVersionKey = 'schema_version'
 /** Bump when initializeSchema DDL changes; warm objects skip DDL. */
-const userMeterSchemaVersion = 15
+const userMeterSchemaVersion = 16
 // How long a completed release is remembered for reset-retry idempotency.
 const writeLeaseReleaseMemoryMs = 60 * 60 * 1000
+/** Leases taken before expiry existed get this long to finish. */
+const legacyWriteLeaseGraceMs = 20 * 60 * 1000
+/** Lapsed rows this old belong to a writer that is gone; acquire drops them. */
+const writeLeaseAbandonedAfterMs = 10 * 60 * 1000
+/** How many blocking leases a deletion conflict names. */
+const maxReportedBlockingWriteLeases = 5
+
 /** Singleton row id for monthly org budget spend (schema v13). */
 const budgetSpendStateRowId = 1
 const utcMonthKeyPattern = /^\d{4}-\d{2}$/
@@ -262,6 +270,8 @@ export type UserMeterMarkDeletingResult = {
 	created: boolean
 	/** Count of active write leases (DO-authority rows) at the time of marking. */
 	leaseCount: number
+	/** Oldest active leases, without tokens, so a refusal can name its blockers. */
+	blockingLeases: Array<{ holder: string; acquiredAt: string }>
 }
 
 export type UserMeterClearDeletingResult = {
@@ -270,6 +280,10 @@ export type UserMeterClearDeletingResult = {
 
 export type UserMeterAcquireWriteLeaseResult = {
 	acquired: boolean
+}
+
+export type UserMeterRenewWriteLeaseResult = {
+	renewed: boolean
 }
 
 export type UserMeterReleaseWriteLeaseResult = {
@@ -689,7 +703,8 @@ class UserMeterBase extends DurableObject<Env> {
 				token TEXT PRIMARY KEY NOT NULL,
 				holder TEXT NOT NULL,
 				acquired_at TEXT NOT NULL,
-				pending_repair_id TEXT
+				pending_repair_id TEXT,
+				expires_at TEXT
 			)
 		`)
 		this.ctx.storage.sql.exec(`
@@ -737,6 +752,21 @@ class UserMeterBase extends DurableObject<Env> {
 					RENAME TO account_write_leases`,
 				)
 			})
+		}
+		if (version != null && version < 16) {
+			// After the v7 rebuild, which recreates the table without this column.
+			try {
+				this.ctx.storage.sql.exec(
+					`ALTER TABLE account_write_leases ADD COLUMN expires_at TEXT`,
+				)
+			} catch {
+				// Column already present on a partially migrated object.
+			}
+			this.ctx.storage.sql.exec(
+				`UPDATE account_write_leases SET expires_at = ?
+				WHERE expires_at IS NULL`,
+				new Date(Date.now() + legacyWriteLeaseGraceMs).toISOString(),
+			)
 		}
 		this.ctx.storage.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_account_write_leases_acquired_token
@@ -1755,13 +1785,35 @@ class UserMeterBase extends DurableObject<Env> {
 		return rows.map((row) => this.writeLeaseFromRow(row))
 	}
 
+	/** Active means not lapsed; a lapsed row stays until a deletion drops it. */
 	private countWriteLeases(): number {
 		const row = this.ctx.storage.sql
 			.exec<{
 				count: number
-			}>(`SELECT COUNT(*) AS count FROM account_write_leases`)
+			}>(
+				`SELECT COUNT(*) AS count FROM account_write_leases
+				WHERE expires_at IS NULL OR expires_at > ?`,
+				new Date().toISOString(),
+			)
 			.toArray()[0]
 		return Math.max(0, Number(row?.count ?? 0))
+	}
+
+	private deleteWriteLeasesExpiredBefore(cutoffMs: number) {
+		this.ctx.storage.sql.exec(
+			`DELETE FROM account_write_leases
+			WHERE expires_at IS NOT NULL AND expires_at <= ?`,
+			new Date(cutoffMs).toISOString(),
+		)
+	}
+
+	/**
+	 * Once a deletion is fencing, expiry wins: a lapsed lease is dropped, so
+	 * its writer can neither revive it nor release it as still held.
+	 */
+	private dropLapsedWriteLeasesWhileDeleting() {
+		if (this.readDeletingAt() == null) return
+		this.deleteWriteLeasesExpiredBefore(Date.now())
 	}
 
 	private insertOrPreserveDeletingAt(deletingAt: string): {
@@ -1853,11 +1905,18 @@ class UserMeterBase extends DurableObject<Env> {
 		const deletingAt = assertDeletionTimestamp('deletingAt', input.deletingAt)
 		return await this.ctx.blockConcurrencyWhile(async () => {
 			const marked = this.insertOrPreserveDeletingAt(deletingAt)
+			this.dropLapsedWriteLeasesWhileDeleting()
 			const leaseCount = this.countWriteLeases()
 			return {
 				deletingAt: marked.deletingAt,
 				created: marked.created,
 				leaseCount,
+				blockingLeases: this.listAllWriteLeaseRows()
+					.slice(0, maxReportedBlockingWriteLeases)
+					.map((lease) => ({
+						holder: lease.holder,
+						acquiredAt: lease.acquiredAt,
+					})),
 			}
 		})
 	}
@@ -1905,20 +1964,40 @@ class UserMeterBase extends DurableObject<Env> {
 			return { acquired: true }
 		}
 		if (this.readDeletingAt() != null) return { acquired: false }
+		const nowMs = Date.now()
+		this.deleteWriteLeasesExpiredBefore(nowMs - writeLeaseAbandonedAfterMs)
 		const cursor = this.ctx.storage.sql.exec(
 			`INSERT INTO account_write_leases (
-				token, holder, acquired_at, pending_repair_id
+				token, holder, acquired_at, pending_repair_id, expires_at
 			)
-			VALUES (?, ?, ?, NULL)
+			VALUES (?, ?, ?, NULL, ?)
 			ON CONFLICT(token) DO NOTHING`,
 			token,
 			holder,
 			acquiredAt,
+			new Date(nowMs + writeLeaseTtlMs).toISOString(),
 		)
 		const held = this.readWriteLease(token)
 		return {
 			acquired: cursor.rowsWritten > 0 || held != null,
 		}
+	}
+
+	/**
+	 * Heartbeat from a running writer. A lapsed row that no deletion has
+	 * claimed is still renewable; one a deletion dropped is gone for good.
+	 */
+	async renewWriteLease(input: {
+		token: string
+	}): Promise<UserMeterRenewWriteLeaseResult> {
+		const token = assertWriteLeaseToken(input.token)
+		this.dropLapsedWriteLeasesWhileDeleting()
+		const cursor = this.ctx.storage.sql.exec(
+			`UPDATE account_write_leases SET expires_at = ? WHERE token = ?`,
+			new Date(Date.now() + writeLeaseTtlMs).toISOString(),
+			token,
+		)
+		return { renewed: cursor.rowsWritten > 0 }
 	}
 
 	/**
@@ -1932,6 +2011,7 @@ class UserMeterBase extends DurableObject<Env> {
 	}): Promise<UserMeterReleaseWriteLeaseResult> {
 		const token = assertWriteLeaseToken(input.token)
 		const nowMs = Date.now()
+		this.dropLapsedWriteLeasesWhileDeleting()
 		this.ctx.storage.sql.exec(
 			`DELETE FROM account_write_lease_releases WHERE released_at < ?`,
 			new Date(nowMs - writeLeaseReleaseMemoryMs).toISOString(),
@@ -1964,6 +2044,7 @@ class UserMeterBase extends DurableObject<Env> {
 		token: string
 	}): Promise<UserMeterAssertWriteLeaseHeldResult> {
 		const token = assertWriteLeaseToken(input.token)
+		this.dropLapsedWriteLeasesWhileDeleting()
 		const lease = this.readWriteLease(token)
 		return { held: lease != null }
 	}
@@ -2649,6 +2730,10 @@ export type UserMeterRpc = DurableObjectPitrRpc & {
 		holder: string
 		acquiredAt: string
 	}) => Promise<UserMeterAcquireWriteLeaseResult>
+	/** Heartbeat that pushes a held lease's expiry out. */
+	renewWriteLease: (input: {
+		token: string
+	}) => Promise<UserMeterRenewWriteLeaseResult>
 	/** Authoritative lease release. */
 	releaseWriteLease: (input: {
 		token: string
