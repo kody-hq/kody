@@ -124,7 +124,7 @@ test('fetch gateway seals token fields of a credential-filled response and fills
 		}),
 	).rejects.toThrow(/another run/)
 	await expect(send('https://collector.test/x', bearer)).rejects.toThrow(
-		/may only be sent to example\.com, not collector\.test/,
+		/may only be sent to example\.com, auth\.example\.com, not collector\.test/,
 	)
 	expect(seen).toHaveLength(2)
 })
@@ -157,8 +157,11 @@ test('a token minted on a separate auth domain fills on the client secret approv
 	const bearer = `Bearer ${String(token.access_token)}`
 	await send('https://api.example.org/v1/me', bearer)
 	expect(seen[1]).toBe('Bearer minted')
+	await expect(send('https://www.example.org/v1/me', bearer)).rejects.toThrow(
+		/not www\.example\.org\./,
+	)
 	await expect(send('https://collector.test/x', bearer)).rejects.toThrow(
-		/may only be sent to example-auth\.com, example\.org, not collector\.test/,
+		/may only be sent to example-auth\.com, login\.example-auth\.com, api\.example\.org, not collector\.test/,
 	)
 	expect(seen).toHaveLength(2)
 })
@@ -234,7 +237,7 @@ test('an Entra client-credentials token reaches its audience APIs with the secre
 	await expect(
 		send('https://collector.test/x', { headers: { Authorization: arm } }),
 	).rejects.toThrow(
-		/may only be sent to microsoftonline\.com, management\.azure\.com, not collector\.test/,
+		/may only be sent to microsoftonline\.com, management\.azure\.com, login\.microsoftonline\.com, not collector\.test/,
 	)
 	expect(seen).toHaveLength(4)
 })
@@ -306,4 +309,83 @@ test('an any-host JWT fill counts the host it was sent to for the caller that mi
 		vi.useRealTimers()
 		vi.restoreAllMocks()
 	}
+})
+
+test('a token exchanged for a secretJwtSign JWT fills on the signing secret approved hosts and names it when refused', async () => {
+	vi.spyOn(secretService, 'resolveSecret').mockResolvedValue(
+		userSecret('unused', []),
+	)
+	const seen: Array<{ url: string; authorization: string | null }> = []
+	const globalFetch = vi.fn(async (outbound: Request) => {
+		seen.push({
+			url: outbound.url,
+			authorization: outbound.headers.get('authorization'),
+		})
+		if (outbound.url === 'https://oauth2.googleapis.com/token') {
+			expect(await outbound.text()).toContain('assertion=signed-google-jwt')
+			return Response.json({
+				access_token: 'ya29.opaque-google-token',
+				expires_in: 3599,
+				token_type: 'Bearer',
+			})
+		}
+		return Response.json({ ok: true })
+	}) as unknown as typeof fetch
+	const runProps = { ...props, credentialClientBinding: 'run-a' }
+	// What secretJwtSign returns for aud https://oauth2.googleapis.com/token.
+	const jwt = await sealToken({
+		env,
+		value: 'signed-google-jwt',
+		to: {
+			org: props.userId,
+			binding: 'run-a',
+			domains: ['oauth2.googleapis.com'],
+			source: 'jwt-sign',
+			mintedWith: [
+				{
+					secret: 'gcpReadonlyServiceAccount',
+					scope: 'user',
+					hosts: [
+						'run.googleapis.com',
+						'sqladmin.googleapis.com',
+						'logging.googleapis.com',
+					],
+				},
+			],
+		},
+	})
+	const send = (request: Request) =>
+		executeGatewayFetch({ env, props: runProps, request, globalFetch })
+	const token = (await (
+		await send(
+			new Request('https://oauth2.googleapis.com/token', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+				body: `grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=${jwt}`,
+			}),
+		)
+	).json()) as Record<string, unknown>
+	expect(String(token.access_token)).not.toContain('ya29')
+	const bearer = { Authorization: `Bearer ${String(token.access_token)}` }
+	for (const url of [
+		'https://run.googleapis.com/v2/projects/p/locations/l/services',
+		'https://sqladmin.googleapis.com/v1/projects/p/instances',
+		'https://logging.googleapis.com/v2/entries:list',
+	]) {
+		await send(new Request(url, { headers: bearer }))
+		expect(seen.at(-1)).toEqual({
+			url,
+			authorization: 'Bearer ya29.opaque-google-token',
+		})
+	}
+	const refused = send(
+		new Request('https://monitoring.googleapis.com/v3/projects/p/timeSeries', {
+			headers: bearer,
+		}),
+	)
+	await expect(refused).rejects.toThrow(
+		/not monitoring\.googleapis\.com\..* It was minted with secret "gcpReadonlyServiceAccount", approved for run\.googleapis\.com, sqladmin\.googleapis\.com, logging\.googleapis\.com\. None of those approves monitoring\.googleapis\.com; to send it there, approve monitoring\.googleapis\.com on "gcpReadonlyServiceAccount" \(https:\/\/example\.com\/connect\/secrets\?name=gcpReadonlyServiceAccount&hosts=monitoring\.googleapis\.com\)\./,
+	)
+	await expect(refused).rejects.not.toThrow(/credential that minted it/)
+	expect(seen).toHaveLength(4)
 })

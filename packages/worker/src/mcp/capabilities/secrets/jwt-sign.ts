@@ -186,6 +186,13 @@ export const jwtSignCapability = defineDomainCapability(
 						binding: ctx.credentialClientBinding ?? null,
 						domains: binding.domains,
 						source: 'jwt-sign',
+						mintedWith: [
+							{
+								secret: secretName,
+								scope: resolved.scope ?? secretScope ?? 'user',
+								hosts: resolved.allowedHosts,
+							},
+						],
 						...(binding.anyHostPackageId === undefined
 							? {}
 							: { anyHostPackageId: binding.anyHostPackageId }),

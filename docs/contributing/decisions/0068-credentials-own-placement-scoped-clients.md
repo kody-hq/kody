@@ -1132,6 +1132,32 @@ sanctioned path:
   package-held tokens remain open
   ([kody-hq/kody#4457](https://github.com/kody-hq/kody/issues/4457)).
 
+### 2026-11-14: a derived token fills on its minting secrets' exact hosts
+
+Platform feedback: a Google service-account package signed a JWT with
+`secretJwtSign` (`aud` `https://oauth2.googleapis.com/token`), exchanged it at
+`oauth2.googleapis.com/token`, and every Google API refused the returned
+`access_token`, though the key approved `run.googleapis.com` and
+`sqladmin.googleapis.com`. Two causes: `googleapis.com` is on the Public Suffix
+List, so the token URL's registrable domain is `oauth2.googleapis.com` itself;
+and the only stored secret behind the token request was the signing key, which
+reached it through a sealed JWT, so no approved host joined the token. The
+refusal then told the caller to approve the host on "the credential that minted
+it", which named no credential and could not help.
+
+- **Minters.** A sealed token records the stored secrets it was minted with,
+  each with its scope and approved hosts. A `secretJwtSign` JWT records its
+  signing key. A token response records every secret the request filled,
+  directly or through a sealed token, so the signing key's hosts carry to the
+  exchanged token.
+- **Exact hosts.** A sealed token fills on the token URL's registrable domain,
+  its `aud` hosts, and the hosts its minters approve, matched exactly as Keys
+  match (`*.example.com` is one label). This replaces the registrable domains of
+  approved hosts in the Bound rule above, which could reach hosts no minter
+  approved; a token is never wider than the secrets that minted it.
+- **Refusal.** A refused host names the secrets that minted the token, the hosts
+  they approve, and the approval link that adds the refused host to each.
+
 ## Amendment 2026-10-28: owner placement approval links
 
 - **Context.** A new user Key for a body-auth API (Plaid) was approved for its

@@ -82,7 +82,10 @@ boundary, on the final serialized request, and only for hosts you approved.
   Pass the secret as `private_key_secret_name` (a saved secret name **or** the
   opaque ref from `packageSecrets.get`). When `aud` is not an https URL, pass
   **`send_to_host`** (bare host) so the sealed JWT fills on that host's
-  registrable domain. An https `aud` already names the fill domain. See
+  registrable domain. An https `aud` already names the fill domain. A token a
+  token endpoint returns for the JWT (Google's `oauth2.googleapis.com/token`)
+  fills on the exact hosts approved on the signing key; `send_to_host` does not
+  change where that token goes. See
   [Signing JWTs with saved secrets](../use/secrets-and-values.md#signing-jwts-with-saved-secrets).
 
 - **Saving a token from a token exchange**: a token response (`access_token`,

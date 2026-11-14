@@ -88,6 +88,7 @@ import { credentialClientHeaderName } from '#worker/credentials/credential-clien
 import {
 	isSealedTokenName,
 	openSealedToken,
+	type SealedTokenMinter,
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
 import {
@@ -547,7 +548,7 @@ async function fetchThroughGateway(
 					env: input.env,
 					response,
 					requestUrl: transformed.url,
-					approvedHosts: expanded.approvedHosts,
+					mintedWith: expanded.mintedWith,
 					filledValues: substitutedValues,
 					org: input.props.userId,
 					binding: input.props.credentialClientBinding ?? null,
@@ -708,8 +709,11 @@ export async function expandSecretPlaceholders(input: {
 	 * Used to warn on a 4xx; never includes values.
 	 */
 	pathSegmentEncodedNames: Array<string>
-	/** Approved hosts of the stored secrets this request filled. */
-	approvedHosts: Array<string>
+	/**
+	 * Stored secrets this request filled, directly or through a sealed token
+	 * minted with them, and their approved hosts.
+	 */
+	mintedWith: Array<SealedTokenMinter>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -756,7 +760,7 @@ export async function expandSecretPlaceholders(input: {
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
 			pathSegmentEncodedNames: [],
-			approvedHosts: [],
+			mintedWith: [],
 		}
 	}
 
@@ -784,7 +788,7 @@ export async function expandSecretPlaceholders(input: {
 	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
-	const approvedHosts: Array<string> = []
+	const mintedWith: Array<SealedTokenMinter> = []
 	let referencedAnyCredential = false
 
 	const requestHost = normalizeHost(requestUrl.hostname)
@@ -964,7 +968,7 @@ export async function expandSecretPlaceholders(input: {
 				continue
 			}
 			const anyHostFill: { caller?: JwtSignAnyHostCaller } = {}
-			const value = await openSealedToken({
+			const opened = await openSealedToken({
 				env: input.env,
 				name,
 				org: requireFetchUserId(batchProps),
@@ -976,7 +980,17 @@ export async function expandSecretPlaceholders(input: {
 				onAnyHostFill: (caller) => {
 					anyHostFill.caller = caller
 				},
+				hostApprovalUrl: (minter) =>
+					buildSecretHostApprovalUrl({
+						baseUrl: batchProps.baseUrl,
+						name: minter.secret,
+						scope: minter.scope,
+						requestedHost: requestHost,
+						storageContext,
+					}),
 			})
+			const value = opened.value
+			mintedWith.push(...opened.mintedWith)
 			if (anyHostFill.caller) {
 				const recorded = recordJwtSignAnyHostDestination({
 					env: input.env,
@@ -1214,7 +1228,11 @@ export async function expandSecretPlaceholders(input: {
 			}),
 		)
 		for (const { referenced, resolved, value } of resolvedSecretResults) {
-			approvedHosts.push(...resolved.allowedHosts)
+			mintedWith.push({
+				secret: referenced.name,
+				scope: resolved.scope ?? referenced.scope ?? 'user',
+				hosts: resolved.allowedHosts,
+			})
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
@@ -1352,7 +1370,7 @@ export async function expandSecretPlaceholders(input: {
 		bodyFillDone,
 		deferRedirectFollow,
 		pathSegmentEncodedNames,
-		approvedHosts,
+		mintedWith,
 	}
 }
 
