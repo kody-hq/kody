@@ -4,7 +4,7 @@ import {
 	maxSystemOutboundRecipients,
 	sendSystemEmail,
 } from '#worker/email/system-outbound.ts'
-import { systemEmailLocals } from '#worker/email/system-email.ts'
+import { transactionalSystemEmailLocals } from '#worker/email/system-email.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -26,7 +26,7 @@ const inputSchema = z
 		text: z.string().min(1).optional(),
 		html: z.string().min(1).optional(),
 		from_local: z
-			.enum(systemEmailLocals)
+			.enum(transactionalSystemEmailLocals)
 			.optional()
 			.describe(
 				'Reserved system sender local part. Defaults to kody, the transactional sender.',

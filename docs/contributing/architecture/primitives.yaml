@@ -237,6 +237,7 @@ primitives:
       - docs/contributing/social-login.md
     adrs:
       - docs/contributing/decisions/0030-discord-guilds-join-on-social-login.md
+      - docs/contributing/decisions/0102-whats-new-email.md
 
   - id: mcp-oauth
     group: auth
@@ -591,6 +592,7 @@ primitives:
       - docs/use/email-primitives.md
     adrs:
       - docs/contributing/decisions/0041-no-hardcoded-operator-correspondence.md
+      - docs/contributing/decisions/0102-whats-new-email.md
       - docs/contributing/decisions/0074-org-email-address-and-per-sender-enablement.md
 
   - id: webhooks

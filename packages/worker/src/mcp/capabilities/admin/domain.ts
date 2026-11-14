@@ -1,4 +1,10 @@
 import { defineDomain } from '#mcp/capabilities/define-domain.ts'
+import {
+	adminWhatsNewRecipientListCapability,
+	adminWhatsNewOptInSetCapability,
+	adminWhatsNewEmailSendCapability,
+	adminWhatsNewDeliveryEventListCapability,
+} from './admin-whats-new.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { adminAuditLogQueryCapability } from './admin-audit-log-query.ts'
 import { adminCommunityActivityListCapability } from './admin-community-activity-list.ts'
@@ -271,6 +277,10 @@ export const adminDomain = defineDomain({
 		adminSystemEmailClassifyCapability,
 		adminSystemEmailDeleteCapability,
 		adminSystemEmailSendCapability,
+		adminWhatsNewRecipientListCapability,
+		adminWhatsNewOptInSetCapability,
+		adminWhatsNewEmailSendCapability,
+		adminWhatsNewDeliveryEventListCapability,
 		adminSystemEmailSendListCapability,
 		adminSystemEmailSenderRuleListCapability,
 		adminSystemEmailSenderRuleSetCapability,

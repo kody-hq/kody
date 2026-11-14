@@ -277,7 +277,16 @@ export function AuthForm(
 					data-sitekey={props.turnstileSiteKey}
 				></div>
 			) : null}
-			{!props.isSignup ? (
+			{props.isSignup ? (
+				<label css={rememberCss}>
+					<input
+						type="checkbox"
+						name="whatsNewEmailOptIn"
+						css={rememberInputCss}
+					/>
+					<span>Send me What's New in Kody emails</span>
+				</label>
+			) : (
 				<label css={rememberCss}>
 					<input
 						type="checkbox"
@@ -287,7 +296,7 @@ export function AuthForm(
 					/>
 					<span>Remember me on this device</span>
 				</label>
-			) : null}
+			)}
 			{renderStatusMessage(props.handleId, props.status, props.message)}
 			{/*
 			 * Sign-in submit works before (or without) hydration: the form posts

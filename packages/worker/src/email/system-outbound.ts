@@ -1,7 +1,7 @@
 import { resolveTransactionalSenderReplyTo } from '@kody-internal/shared/transactional-sender-reply-to.ts'
 import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { normalizeEmailAddress } from './address.ts'
+import { normalizeAddrSpec, normalizeHeaderMailbox } from './address.ts'
 import {
 	loadRecipientSuppression,
 	recipientSuppressedMessage,
@@ -12,6 +12,8 @@ import {
 	isSystemEmailLocal,
 	refundSystemEmailDailySend,
 	systemEmailLocals,
+	systemEmailLimits,
+	transactionalSystemEmailLocals,
 	type SystemEmailLocal,
 } from './system-email.ts'
 import { dispatchSystemEmailSentSubscriptionEvent } from './system-email-sent-package-subscriptions.ts'
@@ -73,7 +75,7 @@ function resolveRecipients(to: string | Array<string>): Array<string> {
 	const values = Array.isArray(to) ? to : [to]
 	const recipients: Array<string> = []
 	for (const value of values) {
-		const address = normalizeEmailAddress(value)
+		const address = normalizeHeaderMailbox(value)
 		if (!address) {
 			throw new McpCallerError(`Invalid recipient email address: ${value}`)
 		}
@@ -110,7 +112,7 @@ function resolveRecipients(to: string | Array<string>): Array<string> {
  * refused before the counter is consumed (`adminEmailSuppressionClear`
  * lifts it).
  */
-export async function sendSystemEmail(input: {
+type SystemEmailInput = {
 	env: SystemOutboundEnv
 	/** Reserved system local part; defaults to the `kody` sender. */
 	localPart?: SystemEmailLocal
@@ -124,7 +126,46 @@ export async function sendSystemEmail(input: {
 	kind?: string
 	now?: Date
 	waitUntil?: (promise: Promise<unknown>) => void
-}): Promise<SystemOutboundResult> {
+}
+
+export async function sendSystemEmail(
+	input: SystemEmailInput,
+): Promise<SystemOutboundResult> {
+	if (
+		!transactionalSystemEmailLocals.includes(
+			(input.localPart ??
+				'kody') as (typeof transactionalSystemEmailLocals)[number],
+		)
+	) {
+		throw new McpCallerError(
+			`Unknown system sender "${input.localPart}". This sender is not available for transactional system email.`,
+		)
+	}
+	return sendReservedEmail(input, false)
+}
+
+// Newsletter volume and complaints use a dedicated sender and quota, separate
+// from transactional correspondence.
+export async function sendNewsletterEmail(
+	input: Omit<SystemEmailInput, 'localPart' | 'replyTo' | 'kind' | 'to'> & {
+		to: string
+	},
+): Promise<SystemOutboundResult> {
+	if (typeof input.to !== 'string' || !normalizeAddrSpec(input.to)) {
+		throw new McpCallerError(
+			'One newsletter recipient email address is required.',
+		)
+	}
+	return sendReservedEmail(
+		{ ...input, localPart: 'news', kind: 'whats_new' },
+		true,
+	)
+}
+
+async function sendReservedEmail(
+	input: SystemEmailInput,
+	newsletter: boolean,
+): Promise<SystemOutboundResult> {
 	const localPart = input.localPart ?? 'kody'
 	if (!isSystemEmailLocal(localPart)) {
 		throw new McpCallerError(
@@ -147,16 +188,17 @@ export async function sendSystemEmail(input: {
 		throw new McpCallerError('Email text or HTML body is required.')
 	}
 	const explicitReplyTo = input.replyTo
-		? normalizeEmailAddress(input.replyTo)
+		? normalizeHeaderMailbox(input.replyTo)
 		: null
 	if (input.replyTo && !explicitReplyTo) {
 		throw new McpCallerError(`Invalid reply-to address: ${input.replyTo}`)
 	}
-	const replyTo =
-		resolveTransactionalSenderReplyTo({
-			from,
-			replyTo: explicitReplyTo,
-		}) ?? null
+	const replyTo = newsletter
+		? `kent@${domain}`
+		: (resolveTransactionalSenderReplyTo({
+				from,
+				replyTo: explicitReplyTo,
+			}) ?? null)
 
 	for (const recipient of to) {
 		const suppression = await loadRecipientSuppression({
@@ -173,10 +215,15 @@ export async function sendSystemEmail(input: {
 		db: input.env.APP_DB,
 		localPart,
 		now,
+		limit: newsletter
+			? systemEmailLimits.maxNewsletterSendsPerDay
+			: systemEmailLimits.maxSendsPerDay,
 	})
 	if (consumed === null) {
 		throw new McpCallerError(
-			`Daily system email send limit reached for ${from}. Try again tomorrow.`,
+			newsletter
+				? `Daily newsletter send limit (${systemEmailLimits.maxNewsletterSendsPerDay}) reached for ${from}. Try again tomorrow.`
+				: `Daily system email send limit reached for ${from}. Try again tomorrow.`,
 		)
 	}
 
@@ -191,6 +238,7 @@ export async function sendSystemEmail(input: {
 			{
 				to: to.length === 1 ? to[0]! : to,
 				from,
+				...(newsletter ? { fromName: 'Kent from Kody' } : {}),
 				subject,
 				html: html ?? htmlFromText(text ?? ''),
 				text: text ?? undefined,

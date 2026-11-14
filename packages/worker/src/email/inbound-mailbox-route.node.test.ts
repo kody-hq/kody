@@ -24,6 +24,11 @@ function routeFor(envelopeTo: string) {
 }
 
 test('permanent reserved locals cover system locals and inbound aliases', () => {
+	expect(routeFor('news@kody.codes')).toMatchObject({
+		kind: 'system',
+		localBase: 'news',
+	})
+	expect(isPermanentlyReservedUsername('news')).toBe(true)
 	for (const local of systemEmailLocals) {
 		expect(isPermanentlyReservedUsername(local)).toBe(true)
 		expect(permanentlyReservedSystemLocals).toContain(local)

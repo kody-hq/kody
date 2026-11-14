@@ -176,6 +176,7 @@ export function LoginPage({
 		const username =
 			mode === 'signup' ? String(formData.get('username') ?? '').trim() : ''
 		const rememberMe = mode === 'login' && formData.get('rememberMe') === 'on'
+		const whatsNewEmailOptIn = formData.get('whatsNewEmailOptIn') === 'on'
 		const protection = readPublicFormProtection(formData, form)
 
 		const clientValidation = validateAuthFormFields({
@@ -244,6 +245,7 @@ export function LoginPage({
 					...(mode === 'signup'
 						? {
 								username,
+								whatsNewEmailOptIn,
 								redirectTo: redirectTo,
 								...serializeFirstTouchAttributionForTransport(attribution),
 							}

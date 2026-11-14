@@ -57,7 +57,7 @@ test('a new user signs up, verifies email from the message, and reaches MCP conn
 		).toBeVisible()
 
 		await page.getByRole('textbox', { name: 'Username' }).fill(username)
-		await page.getByLabel('Email').fill(email)
+		await page.getByLabel('Email', { exact: true }).fill(email)
 		await page.getByLabel('Password', { exact: true }).fill(password)
 		await expect(
 			page.getByRole('status').filter({ hasText: `${username} is available` }),

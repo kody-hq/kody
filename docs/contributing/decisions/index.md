@@ -52,6 +52,8 @@ Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
 
+- [0102: Newsletter consent and a dedicated sender](./0102-whats-new-email.md)
+
 - [0101: Model operations, not arbitrary status-pair graphs](./0101-xstate-lifecycles.md)
   XState lifecycles and actors; status enums for unconstrained replacement
 

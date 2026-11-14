@@ -295,6 +295,7 @@ const reservedUsernameSubstringMinLength = 4
  * imports this module). These also feed built-in substring roots.
  */
 export const permanentlyReservedSystemLocals = [
+	'news',
 	'kody',
 	'support',
 	'abuse',
