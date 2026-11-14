@@ -172,6 +172,15 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 			return { authorization: 'Bearer accessor-secret' }
 		},
 	})
+	const getterWithSetter: Record<string, unknown> = {}
+	Object.defineProperty(getterWithSetter, '$', {
+		enumerable: true,
+		configurable: true,
+		get() {
+			return { authorization: 'Bearer getter-setter-secret' }
+		},
+		set(_value: unknown) {},
+	})
 	const frozenSensitive = Object.freeze({
 		authorization: 'Bearer frozen-secret',
 		ok: 'kept-frozen',
@@ -195,6 +204,7 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 		contexts: {
 			frozen: frozenSensitive,
 			fresh: freshSensitiveGetter,
+			getterSetter: getterWithSetter,
 			aliases: { first: sharedFrozen, second: sharedFrozen },
 		},
 		request: { query_string: frozenQuery },
@@ -207,6 +217,7 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 		'frozen-secret',
 		'shared-secret',
 		'accessor-secret',
+		'getter-setter-secret',
 		'frozen-query-code',
 		'array-secret-token',
 		'rt-in-frozen-array',

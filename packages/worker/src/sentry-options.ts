@@ -133,8 +133,10 @@ export function redactSentryString(value: string) {
 function isAssignableProperty(target: object, key: PropertyKey) {
 	const descriptor = Object.getOwnPropertyDescriptor(target, key)
 	if (!descriptor) return Reflect.isExtensible(target)
-	if ('writable' in descriptor) return descriptor.writable === true
-	return typeof descriptor.set === 'function'
+	// Accessors (even with setters) must be snapshotted onto plain data props;
+	// later serialization re-invokes getters and can return a fresh secret.
+	if ('get' in descriptor || 'set' in descriptor) return false
+	return descriptor.writable === true
 }
 
 /**
