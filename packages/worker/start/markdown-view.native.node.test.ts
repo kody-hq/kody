@@ -313,6 +313,28 @@ test('first-party watch blocks render a lite youtube player; untrusted markdown 
 	expect(untrusted).toContain('<blockquote>')
 })
 
+test('first-party vertical watch blocks render a 9:16 lite player', async () => {
+	const html = await renderToString(
+		jsx('div', {
+			children: renderMarkdownNodes(
+				[
+					'> [!WATCH-VERTICAL] https://www.youtube.com/watch?v=_EJTrJFLa3g',
+					'> Watch: A phone-shot video',
+				].join('\n'),
+				{
+					linkPolicy: 'first-party',
+					headingOffset: 0,
+					linkRel: 'noopener noreferrer',
+				},
+			),
+		}),
+	)
+	expect(html).toContain('data-doc-youtube-vertical')
+	expect(html).toContain('/youtube-thumb/_EJTrJFLa3g')
+	expect(html).toContain('Play A phone-shot video')
+	expect(html).not.toContain('[!WATCH-VERTICAL]')
+})
+
 test('first-party diagram blocks render a registered figure with the quote as its caption', async () => {
 	const markdown = [
 		'> [!DIAGRAM] placeholder-fill',

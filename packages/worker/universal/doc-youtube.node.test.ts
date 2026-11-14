@@ -17,6 +17,7 @@ test('parseDocWatchBlock reads a youtube watch blockquote', () => {
 		href: `https://www.youtube.com/watch?v=${videoId}`,
 		label: 'Watch: Make your agent safe and autonomous',
 		title: 'Make your agent safe and autonomous',
+		vertical: false,
 	})
 	expect(
 		parseDocWatchBlock(
@@ -36,6 +37,28 @@ test('parseDocWatchBlock reads a youtube watch blockquote', () => {
 			),
 		)?.videoId,
 	).toBe(videoId)
+})
+
+test('parseDocWatchBlock marks a [!WATCH-VERTICAL] block as vertical', () => {
+	expect(
+		parseDocWatchBlock(
+			[
+				`> [!WATCH-VERTICAL] https://www.youtube.com/watch?v=${videoId}`,
+				'> Watch: A phone-shot video',
+			].join('\n'),
+		),
+	).toEqual({
+		videoId,
+		href: `https://www.youtube.com/watch?v=${videoId}`,
+		label: 'Watch: A phone-shot video',
+		title: 'A phone-shot video',
+		vertical: true,
+	})
+	expect(
+		parseDocWatchBlock(
+			`> [!WATCH-SIDEWAYS] https://www.youtube.com/watch?v=${videoId}\n> Watch: Nope`,
+		),
+	).toBeNull()
 })
 
 test('parseDocWatchBlock rejects non-youtube targets and bare markers', () => {
