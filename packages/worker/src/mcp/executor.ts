@@ -1431,7 +1431,10 @@ export async function createExecutorModuleSource({
 	excludedHostname?: string
 }) {
 	const normalizeCode = await loadNormalizeCode()
-	return createExecutorModule({ ...input, normalizedCode: normalizeCode(code) })
+	return createExecutorModule({
+		...input,
+		normalizedCode: normalizeCode(code),
+	})
 }
 
 function createProviderProxySource(provider: ResolvedProvider) {
@@ -1923,7 +1926,7 @@ export function getExecutionErrorDetails(
 		return {
 			kind: 'package_build_limit',
 			message,
-			nextStep: `Retrying the same build on Kody cloud is likely to hit the same limit. Build and publish from the package directory on this machine with \`${publishLocalBuildCommand}\`, which needs the Execution contexts experiment (${executionContextsExperimentUrl}). To stay on Kody cloud, shrink what the package's entry points import.`,
+			nextStep: `Retrying the same build on Kody cloud is likely to hit the same limit. Build and publish from the package's checkout on this machine, naming the package, with \`${publishLocalBuildCommand}\`, which needs the Execution contexts experiment (${executionContextsExperimentUrl}). To stay on Kody cloud, shrink what the package's entry points import.`,
 			suggestedAction: {
 				type: 'publish_local_build',
 				command: publishLocalBuildCommand,

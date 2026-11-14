@@ -27,7 +27,7 @@ export const executionContextsExperimentUrl =
  */
 /** What an agent runs to build and publish a package on its own machine. */
 export const publishLocalBuildCommand =
-	'npx -y @kodycodes/cli@latest package publish --build local'
+	'npx -y @kodycodes/cli@latest package publish <package> --build local'
 
 const publishOutsideCloudAdviceLead =
 	"This package is near Kody cloud's build CPU or memory limit."

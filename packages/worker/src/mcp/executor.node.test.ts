@@ -1743,7 +1743,8 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 		nextStep: expect.stringContaining('https://kody.codes/account/experiments'),
 		suggestedAction: {
 			type: 'publish_local_build',
-			command: 'npx -y @kodycodes/cli@latest package publish --build local',
+			command:
+				'npx -y @kodycodes/cli@latest package publish <package> --build local',
 			requires: [
 				'node>=22',
 				'kody_cli_signed_in',

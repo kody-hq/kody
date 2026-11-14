@@ -214,8 +214,8 @@ Two more failures name a local path in `errorDetails`:
 - `kind: "package_build_limit"` means a package build or check ran out of memory
   or CPU on Kody cloud. Its
   `suggestedAction: { type: "publish_local_build", command, requires }` carries
-  `npx -y @kodycodes/cli@latest package publish --build local`, which needs the
-  Execution contexts experiment
+  `npx -y @kodycodes/cli@latest package publish <package> --build local`, which
+  needs the Execution contexts experiment
   ([Publish packages too big for Kody cloud](../guides/publish-large-packages.md)).
 
 ### Long calls: start a workflow and check back
