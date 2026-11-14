@@ -49,5 +49,11 @@ export type UploadedPublishBuildRef = {
 }
 
 export type PersistUploadedPublishBuildResult =
-	| { ok: true; targetCount: number; sampledTargetCount: number }
+	| {
+			ok: true
+			targetCount: number
+			sampledTargetCount: number
+			/** Sampled entry points too big for the cloud rebuild isolate. */
+			sampleOverCloudLimit: Array<string>
+	  }
 	| { ok: false; message: string }

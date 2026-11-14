@@ -470,3 +470,37 @@ export function assertServerRebuildMatches(input: {
 		)
 	}
 }
+
+export type ServerRebuildSampleResult =
+	| { mainModule: string; moduleHashes: Record<string, string> }
+	| { overCloudLimit: true; message: string }
+	| Error
+
+/**
+ * Compares each sampled target Kody rebuilt against its upload. A target the
+ * rebuild isolate could not hold (Cloudflare memory or CPU limit) is not
+ * compared: the upload was built off cloud so that limit would not apply, and
+ * the manifest, identity, and size checks still ran on it.
+ */
+export function checkServerRebuildSample(input: {
+	sample: ReadonlyArray<{ uploaded: PublishBuildTargetEntry }>
+	rebuilt: ReadonlyArray<ServerRebuildSampleResult | undefined>
+}) {
+	const overCloudLimit: Array<string> = []
+	let comparedCount = 0
+	for (const [index, entry] of input.sample.entries()) {
+		const result = input.rebuilt[index]
+		if (!result || result instanceof Error) {
+			fail(
+				`the server could not rebuild "${entry.uploaded.entryPoint}" to compare it: ${result ? result.message : 'no result'}.`,
+			)
+		}
+		if ('overCloudLimit' in result) {
+			overCloudLimit.push(entry.uploaded.entryPoint)
+			continue
+		}
+		assertServerRebuildMatches({ uploaded: entry.uploaded, rebuilt: result })
+		comparedCount += 1
+	}
+	return { comparedCount, overCloudLimit }
+}
