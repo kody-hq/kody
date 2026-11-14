@@ -206,12 +206,29 @@ function capabilityContext(personId: string) {
 test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', async () => {
 	mocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, guest, created } = await setup()
+	const storedClaim = sqlite
+		.prepare(
+			'SELECT claim_code, claim_code_encrypted FROM guest_accounts WHERE person_id = ?',
+		)
+		.get(created.personId) as {
+		claim_code: string
+		claim_code_encrypted: string
+	}
+	expect(storedClaim.claim_code).not.toBe(guest.claimCode)
+	expect(storedClaim.claim_code_encrypted).toMatch(/^v2\./)
+	expect(JSON.stringify(storedClaim)).not.toContain(guest.claimCode)
+
 	const started = (await guestClaimStartCapability.handler(
 		{ email: 'claimer@example.test', username: 'claimer' } as never,
 		capabilityContext(created.personId),
 	)) as { dev_code?: string | null }
 	const devCode = started.dev_code
-	expect(devCode).toBeTruthy()
+	expect(devCode).toMatch(/^\d{6}$/)
+	const storedEmailCode = sqlite
+		.prepare('SELECT code_hash FROM guest_claim_codes WHERE person_id = ?')
+		.get(created.personId) as { code_hash: string }
+	expect(storedEmailCode.code_hash).not.toBe(devCode)
+	expect(storedEmailCode.code_hash).not.toContain(devCode)
 	const result = await guestClaimFinishCapability.handler(
 		{ code: String(devCode) },
 		capabilityContext(created.personId),
@@ -242,14 +259,15 @@ test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', 
 			created_at: guest.createdAt,
 			expires_at: guest.expiresAt,
 			claimed_at: claimedAt,
-			phase: expect.stringMatching(/^(active|hold)$/),
+			phase:
+				Date.parse(guest.expiresAt) > Date.parse(claimedAt) ? 'active' : 'hold',
 		},
 		claimed_at: claimedAt,
 		counts: seededCounts,
 		renamed_packages: 0,
 	})
 	expect(JSON.stringify(event)).not.toContain(guest.claimCode)
-	expect(JSON.stringify(event)).not.toContain(String(devCode))
+	expect(JSON.stringify(event)).not.toContain(devCode)
 	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledTimes(1)
 	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledWith(
 		expect.objectContaining({ stableUserId: guest.personId }),
@@ -375,15 +393,19 @@ test('guestClaimStart reports provider acceptance and wrong codes point to the c
 		claim_url: claimUrl,
 		code_delivery: 'accepted',
 		provider_message_id: null,
-		next_step: expect.stringContaining('send them claim_url instead'),
+		code_sent_to: 'claimer@example.test',
 	})
+	expect(String((started as { next_step?: string }).next_step)).toContain(
+		'claimer@example.test',
+	)
+	expect(String((started as { next_step?: string }).next_step)).toContain(
+		'claim_url',
+	)
 	await expect(
 		guestClaimFinishCapability.handler(
 			{ code: '000000x' },
 			capabilityContext(created.personId),
 		),
-	).rejects.toThrow(
-		`If the code email did not arrive, send them the claim link instead: ${claimUrl}`,
-	)
+	).rejects.toThrow(claimUrl)
 	expect(mocks.dispatch).not.toHaveBeenCalled()
 })

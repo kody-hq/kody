@@ -4,8 +4,6 @@ import * as esbuild from 'esbuild'
 import {
 	createPackageAppEntrySource,
 	createPackageLocalRuntimeModuleSource,
-	prodPackageSecretsUnsupportedMessage,
-	prodPackageStorageUnsupportedMessage,
 } from '../src/package-local-runtime-source.js'
 
 const samplePackageContext = {
@@ -115,15 +113,15 @@ test('package-local kody.mcp calls without a binding are unchanged', async () =>
 	])
 })
 
-test('--target prod refuses working-tree storage, secrets, email, events and packages', async () => {
+async function importPackageRuntime(mockStorage: boolean) {
 	const source = createPackageLocalRuntimeModuleSource({
 		packageContext: samplePackageContext,
-		mockStorage: false,
+		mockStorage,
 	})
-	const runtime = (await import(
+	return (await import(
 		`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
 	)) as {
-		packageStorage: () => unknown
+		packageStorage: () => { get?: (key: string) => Promise<unknown> }
 		packageSecrets: {
 			get: (alias: string) => Promise<unknown>
 			has: (alias: string) => Promise<unknown>
@@ -132,25 +130,41 @@ test('--target prod refuses working-tree storage, secrets, email, events and pac
 		events: unknown
 		packages: unknown
 	}
-	const wontDoDocs =
-		/https:\/\/kody\.codes\/docs\/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod/
-	for (const message of [
-		prodPackageStorageUnsupportedMessage,
-		prodPackageSecretsUnsupportedMessage,
-	]) {
-		assert.match(message, /intentionally unsupported on --target prod/)
-		assert.match(message, /--target mock/)
-		assert.match(message, /publish and use packageAppFetch/)
-		assert.match(message, wontDoDocs)
-	}
-	assert.throws(() => runtime.packageStorage(), {
-		message: prodPackageStorageUnsupportedMessage,
+}
+
+function assertProdUnsupported(error: unknown, exportName: string) {
+	assert.ok(error instanceof Error)
+	assert.match(
+		error.message,
+		new RegExp(`${exportName} is intentionally unsupported on --target prod`),
+	)
+	assert.match(error.message, /--target mock/)
+	assert.match(error.message, /publish and use packageAppFetch/)
+	assert.match(
+		error.message,
+		/https:\/\/kody\.codes\/docs\/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod/,
+	)
+}
+
+test('--target prod refuses working-tree storage, secrets, email, events and packages', async () => {
+	const mockRuntime = await importPackageRuntime(true)
+	assert.equal(typeof mockRuntime.packageStorage().get, 'function')
+
+	const runtime = await importPackageRuntime(false)
+	assert.throws(
+		() => runtime.packageStorage(),
+		(error: unknown) => {
+			assertProdUnsupported(error, 'packageStorage\\(\\)')
+			return true
+		},
+	)
+	await assert.rejects(runtime.packageSecrets.get('api'), (error: unknown) => {
+		assertProdUnsupported(error, 'packageSecrets')
+		return true
 	})
-	await assert.rejects(runtime.packageSecrets.get('api'), {
-		message: prodPackageSecretsUnsupportedMessage,
-	})
-	await assert.rejects(runtime.packageSecrets.has('api'), {
-		message: prodPackageSecretsUnsupportedMessage,
+	await assert.rejects(runtime.packageSecrets.has('api'), (error: unknown) => {
+		assertProdUnsupported(error, 'packageSecrets')
+		return true
 	})
 	assert.equal(runtime.email, null)
 	assert.equal(runtime.events, null)
