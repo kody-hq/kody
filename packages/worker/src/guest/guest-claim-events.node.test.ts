@@ -406,6 +406,12 @@ test('guestClaimStart reports provider acceptance and wrong codes point to the c
 			{ code: '000000x' },
 			capabilityContext(created.personId),
 		),
-	).rejects.toThrow(claimUrl)
+	).rejects.toMatchObject({
+		message: expect.stringMatching(
+			new RegExp(
+				`That code is not right\\. Check the email and try again\\. \\(code_invalid\\).*${claimUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+			),
+		),
+	})
 	expect(mocks.dispatch).not.toHaveBeenCalled()
 })

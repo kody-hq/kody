@@ -129,7 +129,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 21
+export const runLogSchemaVersion = 21
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
