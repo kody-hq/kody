@@ -412,7 +412,8 @@ for (const origin of ['local', 'context'] as const) {
 			expect(uploadedSources).toContain('__kody_linked__')
 			expect(uploadedSources).not.toContain(notes.packageId)
 			expect(uploadedSources).not.toContain('select name from notes')
-			// Kody's own rebuild in linked mode hashes the same (rebuild sample).
+			// The off-worker builder is deterministic: the same tree builds to the
+			// same bytes on Kody.
 			const rebuilt = await buildKodyImportableModuleBundle({
 				env,
 				baseUrl,

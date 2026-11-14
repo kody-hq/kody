@@ -39,10 +39,11 @@ export function hasPublishOutsideCloudAdvice(message: string) {
 
 export function publishOutsideCloudAdvice() {
 	return (
-		`${publishOutsideCloudAdviceLead} Build it ` +
-		'on your machine with `kody package publish --build local`, or on an ' +
-		'execution context with `--context <name>`. Both need the Execution ' +
-		`contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
+		`${publishOutsideCloudAdviceLead} Build it on your machine with ` +
+		`\`${publishLocalBuildCommand}\`, or on an execution context with ` +
+		'`--context <name>`. Kody serves that build as is and ' +
+		'does not build it again, so these limits do not apply to it. Both need ' +
+		`the Execution contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
 		`(docs: ${executionContextPublishDocsUrl}). ` +
 		'`kody dev check --build local` checks the same local build before you ' +
 		`publish. More: ${publishLargePackagesDocsUrl}`

@@ -231,7 +231,9 @@ test('a rebuild that exceeds its isolate fails only that run and says to publish
 	expect(message).toContain(
 		"exceeded the isolated rebuild runner's memory or CPU limits",
 	)
-	expect(message).toContain('kody package publish --build local')
+	expect(message).toContain(
+		'npx -y @kodycodes/cli@latest package publish <package> --build local',
+	)
 	// Retrying cannot help, so the run must not be retried as artifact prep.
 	expect(isTransientModuleArtifactError(error)).toBe(false)
 })

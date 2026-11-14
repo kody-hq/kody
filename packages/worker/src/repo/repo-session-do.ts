@@ -5,7 +5,6 @@ import {
 } from '#worker/package-invocations/module-artifacts.ts'
 import { repoSessionState } from './repo-session-state.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
-import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
 import {
 	runIsolatedLocalExecutePackageGraphBuild,
 	type IsolatedLocalExecutePackageGraphOutcome,
@@ -17,7 +16,6 @@ import {
 	type IsolatedExecuteBundleRequest,
 } from '#worker/package-runtime/isolated-execute-bundle.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
-import { hashWorkerLoaderModules } from '#worker/publish-offload/module-hashes.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -3665,7 +3663,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 		publishedCommit: string
 		buildId: string
-		communityListed: boolean
 		baseUrl?: string
 	}): Promise<PersistUploadedPublishBuildResult> {
 		const source = await this.resolvePublishSource(input)
@@ -3704,7 +3701,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		return await persistUploadedPublishBuild({
 			env: this.env,
 			buildId: input.buildId,
-			communityListed: input.communityListed,
 			baseUrl,
 			userId: input.userId,
 			source: sourceAtCommit,
@@ -3712,65 +3708,6 @@ class RepoSessionBase extends DurableObject<Env> {
 			publishedCommit: input.publishedCommit,
 			sourceFiles,
 			targets,
-			rebuildSample: async (sampleTargets) => {
-				if (sampleTargets.length === 0) return []
-				const runner = createIsolatedArtifactRebuildRunner(this.env)
-				if (runner) {
-					const stagingKey = await runner.stage({
-						userId: input.userId,
-						sourceFiles,
-					})
-					try {
-						// One isolate per sampled target, so a target over the cloud
-						// limit cannot hide another target's result.
-						return await Promise.all(
-							sampleTargets.map(async (target) => {
-								const outcome = await runner.buildCheck({
-									stagingKey,
-									userId: input.userId,
-									baseUrl,
-									rootPackageId: savedPackage.id,
-									targets: [target],
-									includeModuleHashes: true,
-									linkKodyPackageImports: true,
-								})
-								const result = outcome.results[0]
-								if (result?.ok && result.built) return result.built
-								const message = result?.message ?? outcome.message
-								return result?.resourceLimit
-									? { overCloudLimit: true as const, message }
-									: new Error(message)
-							}),
-						)
-					} finally {
-						await runner.discard(stagingKey).catch(() => {})
-					}
-				}
-				const builders = await this.publishedPackageArtifactBuilders({
-					userId: input.userId,
-					baseUrl,
-					sourceFiles,
-					rootPackageId: savedPackage.id,
-					prepareCache: new Map(),
-					linkKodyPackageImports: true,
-				})
-				const results = []
-				for (const target of sampleTargets) {
-					try {
-						const bundle = await buildPublishedPackageArtifactTargetBundle({
-							...builders,
-							target,
-						})
-						results.push({
-							mainModule: bundle.mainModule,
-							moduleHashes: await hashWorkerLoaderModules(bundle.modules),
-						})
-					} catch (error) {
-						results.push(new Error(getErrorMessage(error)))
-					}
-				}
-				return results
-			},
 		})
 	}
 
@@ -3908,7 +3845,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		sourceFiles: Record<string, string>
 		rootPackageId?: string
 		prepareCache: PreparedKodyGraphCache
-		linkKodyPackageImports?: boolean
 	}): Promise<PublishedPackageArtifactBuilders> {
 		const {
 			buildKodyAppBundle,
@@ -3923,7 +3859,6 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: input.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: input.prepareCache,
-			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		}
 		return memoizePublishedPackageArtifactBuilders({
 			buildAppBundle: async ({ entryPoint }) =>
@@ -4010,26 +3945,17 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: staged.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: new Map(),
-			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		})
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		for (const target of input.targets) {
 			try {
-				const bundle = await buildPublishedPackageArtifactTargetBundle({
+				await buildPublishedPackageArtifactTargetBundle({
 					...builders,
 					target,
 				})
 				results.push({
 					ok: true,
 					message: 'Built.',
-					...(input.includeModuleHashes
-						? {
-								built: {
-									mainModule: bundle.mainModule,
-									moduleHashes: await hashWorkerLoaderModules(bundle.modules),
-								},
-							}
-						: {}),
 					target,
 				})
 			} catch (error) {

@@ -661,8 +661,6 @@ test('an uploaded build advances serving_commit only after every target is writt
 	mockModule.persistUploadedPublishBuild.mockResolvedValueOnce({
 		ok: true,
 		targetCount: 3,
-		sampledTargetCount: 1,
-		sampleOverCloudLimit: [],
 	})
 	await expect(rebuild({ uploadedBuild })).resolves.toEqual({
 		rebuiltTargetCount: 3,
