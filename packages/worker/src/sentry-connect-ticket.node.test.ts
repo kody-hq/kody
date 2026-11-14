@@ -78,6 +78,7 @@ test('deep redaction covers breadcrumbs, extras, contexts, headers, and URLs', (
 test('query redaction decodes percent-encoded names and object query_string', () => {
 	const event = redactKodyCredentialsInSentryEvent({
 		type: undefined,
+		message: 'redirect=https://app.test/cb?code=nested-code&state=ok',
 		request: {
 			url: 'https://kody.test/oauth/callback?%63ode=auth-code&state=ok',
 			query_string: {
@@ -89,9 +90,17 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 		extra: { code: 'status-kept', nested: { code: 404 } },
 	})
 	const serialized = JSON.stringify(event)
-	for (const secret of ['auth-code', 'object-code', 'encoded-object-code']) {
+	for (const secret of [
+		'auth-code',
+		'object-code',
+		'encoded-object-code',
+		'nested-code',
+	]) {
 		expect(serialized).not.toContain(secret)
 	}
+	expect(event.message).toBe(
+		'redirect=https://app.test/cb?code=[redacted]&state=ok',
+	)
 	expect(event.request?.url).toContain('%63ode=[redacted]')
 	expect(event.request?.url).toContain('state=ok')
 	expect(event.request?.query_string).toEqual({

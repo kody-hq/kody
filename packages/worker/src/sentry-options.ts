@@ -97,10 +97,11 @@ function isSensitiveQueryParamName(name: string) {
 
 /** Redact sensitive query params, including percent-encoded names (`%63ode=`). */
 function redactSensitiveQueryParams(value: string) {
-	// Exclude `?` from the name class so `https://host/path?code=` still
-	// splits on the query delimiter instead of treating the whole URL as a name.
+	// Exclude `?` from names so `https://host/path?code=` splits on the query
+	// delimiter. Stop values at `?` / `;` too so a leading non-sensitive pair
+	// (e.g. `redirect=https://x?code=…`) cannot swallow nested params.
 	return value.replace(
-		/([?&#;]|^)([^=&#?\s]+)=([^&#\s]*)/g,
+		/([?&#;]|^)([^=&#?\s]+)=([^?&#;\s]*)/g,
 		(match, separator: string, name: string) => {
 			if (!isSensitiveQueryParamName(name)) return match
 			return `${separator}${name}=${redactedValue}`
