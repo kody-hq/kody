@@ -1,3 +1,4 @@
+import { createBundleArtifactManifest } from './bundle-artifact-manifest.ts'
 import {
 	isPublishedArtifactRefusedByLoadSites,
 	isUnrepairablePreBindingArtifact,
@@ -609,6 +610,7 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 		entryPoint,
 		kvKey,
 		dependencies: loaded.artifact.dependencies,
+		totalBytes: createBundleArtifactManifest(artifact).totalBytes,
 	})
 	try {
 		await writePublishedBundleArtifact({
