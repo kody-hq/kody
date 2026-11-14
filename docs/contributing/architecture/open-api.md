@@ -229,6 +229,12 @@ module and does not silently hop to `kody.execute`. See
   `400 package_graph_resource_limit`, which names the packages and suggests
   `.kodyignore` and a smaller package
   (`packages/worker/src/package-runtime/isolated-local-execute-package-graph.ts`).
+  A built graph is checked before it is served or cached: every relative import
+  reachable from the entry's `kody:@…` imports must name a served module, or the
+  request fails with `500 internal_error` naming the import. The caller's
+  workerd would otherwise fail with "No such module" after a 200
+  (`assertLocalExecuteModuleGraphIsClosed` in
+  `packages/worker/src/package-runtime/local-execute-package-graph.ts`).
 - Calls dispatch through the same `kody.*` tool map as ad hoc cloud execute, so
   capability behavior, `kody.mcp`, and workflows match the cloud. Caller errors
   from a capability keep their status and message. Unexpected capability
