@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { McpCallerError } from '#mcp/caller-error.ts'
+import {
+	listWhatsNewDeliveryEvents,
+	listWhatsNewRecipients,
+	setWhatsNewOptIn,
+} from '#worker/admin/whats-new.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { redactEmailRecipient } from '#worker/audit-log.ts'
@@ -20,30 +24,6 @@ const optInSchema = z.object({
 		.enum(['signup', 'settings', 'email_link', 'admin'])
 		.nullable(),
 })
-
-type RecipientRow = {
-	stable_user_id: string
-	email: string
-	username: string
-	whats_new_email_opt_in: number
-	whats_new_email_opt_in_updated_at: string | null
-	whats_new_email_opt_in_source:
-		| 'signup'
-		| 'settings'
-		| 'email_link'
-		| 'admin'
-		| null
-}
-
-const deliveryCursorSchema = z.tuple([z.iso.datetime(), z.string(), z.string()])
-
-function parseDeliveryCursor(value: string) {
-	try {
-		return deliveryCursorSchema.parse(JSON.parse(value))
-	} catch {
-		throw new McpCallerError('Invalid cursor; pass next_cursor unchanged.')
-	}
-}
 
 export const adminWhatsNewDeliveryEventListCapability = defineDomainCapability(
 	capabilityDomainNames.admin,
@@ -73,43 +53,7 @@ export const adminWhatsNewDeliveryEventListCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminWhatsNewDeliveryEventList',
-				async () => {
-					const cursor = args.cursor
-						? parseDeliveryCursor(args.cursor)
-						: ['', '', '']
-					const rows = await ctx.env.APP_DB.prepare(
-						`SELECT provider_message_id, recipient, last_status AS event, last_status_at AS occurred_at
-					 FROM system_email_sends
-					 WHERE kind = 'whats_new' AND last_status IS NOT NULL AND last_status_at IS NOT NULL
-					 AND last_status_at >= ?
-					 AND (last_status_at, provider_message_id, recipient) > (?, ?, ?)
-					 ORDER BY last_status_at, provider_message_id, recipient LIMIT ?`,
-					)
-						.bind(
-							args.since ? new Date(args.since).toISOString() : '',
-							...cursor,
-							args.limit + 1,
-						)
-						.all<{
-							provider_message_id: string
-							recipient: string
-							event: (typeof emailDeliveryStatusValues)[number]
-							occurred_at: string
-						}>()
-					const events = rows.results.slice(0, args.limit)
-					const last = events.at(-1)
-					return {
-						events,
-						next_cursor:
-							rows.results.length > args.limit && last
-								? JSON.stringify([
-										last.occurred_at,
-										last.provider_message_id,
-										last.recipient,
-									])
-								: null,
-					}
-				},
+				() => listWhatsNewDeliveryEvents({ db: ctx.env.APP_DB, ...args }),
 			)
 		},
 	},
@@ -142,38 +86,7 @@ export const adminWhatsNewRecipientListCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminWhatsNewRecipientList',
-				async () => {
-					const rows = await ctx.env.APP_DB.prepare(
-						`SELECT stable_user_id, email, username,
-						whats_new_email_opt_in, whats_new_email_opt_in_updated_at, whats_new_email_opt_in_source
-					 FROM users
-					 WHERE deleted_at IS NULL AND deleting_at IS NULL
-						AND email_verified_at IS NOT NULL
-						AND stable_user_id > ?
-						${args.audience === 'opted-in' ? 'AND whats_new_email_opt_in = 1' : ''}
-					 ORDER BY stable_user_id LIMIT ?`,
-					)
-						.bind(args.cursor ?? '', args.limit + 1)
-						.all<RecipientRow>()
-					const page = rows.results.slice(0, args.limit)
-					return {
-						users: page.map((row) => ({
-							stable_user_id: row.stable_user_id,
-							email: row.email,
-							username: row.username,
-							opted_in: row.whats_new_email_opt_in === 1,
-							opt_in_updated_at: row.whats_new_email_opt_in_updated_at,
-							opt_in_source: row.whats_new_email_opt_in_source,
-							unsubscribed:
-								row.whats_new_email_opt_in === 0 &&
-								row.whats_new_email_opt_in_updated_at !== null,
-						})),
-						next_cursor:
-							rows.results.length > args.limit
-								? page.at(-1)!.stable_user_id
-								: null,
-					}
-				},
+				() => listWhatsNewRecipients({ db: ctx.env.APP_DB, ...args }),
 			)
 		},
 	},
@@ -197,28 +110,7 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminWhatsNewOptInSet',
-				async () => {
-					const updatedAt = new Date().toISOString()
-					const row = await ctx.env.APP_DB.prepare(
-						`UPDATE users SET whats_new_email_opt_in = ?, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = ?
-					 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
-					 RETURNING stable_user_id`,
-					)
-						.bind(
-							args.opted_in ? 1 : 0,
-							updatedAt,
-							args.source,
-							args.stable_user_id,
-						)
-						.first<{ stable_user_id: string }>()
-					if (!row) throw new McpCallerError('User not found.')
-					return {
-						stable_user_id: row.stable_user_id,
-						opted_in: args.opted_in,
-						opt_in_updated_at: updatedAt,
-						opt_in_source: args.source,
-					}
-				},
+				() => setWhatsNewOptIn({ db: ctx.env.APP_DB, ...args }),
 				{
 					successReason: (result) =>
 						`target_stable_user_id=${result.stable_user_id};opted_in=${result.opted_in}`,
