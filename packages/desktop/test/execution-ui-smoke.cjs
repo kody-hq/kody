@@ -15,7 +15,8 @@ async function smoke() {
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {DesktopExecutionProvider, DesktopMachinePanel} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopExecutionProvider} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopMachinePanel} from './packages/worker/start/components/desktop-machine-panel.tsx';
 const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
 window.refreshFixture = () => client.invalidateQueries();
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><DesktopExecutionProvider actorKey="jane" username="jane" orgSlug="jane" pathname="/@jane"><DesktopMachinePanel orgSlug={window.fixture.panelOrg ?? null}/></DesktopExecutionProvider></QueryClientProvider>);

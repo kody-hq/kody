@@ -12,29 +12,24 @@ const runtimeEntry = 'packages/worker/src/runtime-worker.ts'
 const runtimeConfigPath = 'packages/runtime-worker/wrangler.jsonc'
 const baselinePath = 'tools/ci/runtime-worker-env-reads-baseline.json'
 
-function collectDeclaredNames(config: unknown, names = new Set<string>()) {
+function collectDeclaredNames(
+	config: unknown,
+	names = new Set<string>(),
+	inArray = false,
+) {
+	if (Array.isArray(config)) {
+		for (const entry of config) collectDeclaredNames(entry, names, true)
+		return names
+	}
 	if (!config || typeof config !== 'object') return names
+	const { binding, name } = config as { binding?: unknown; name?: unknown }
+	if (typeof binding === 'string') names.add(binding)
+	else if (inArray && typeof name === 'string') names.add(name)
 	for (const [key, value] of Object.entries(config)) {
-		if (key === 'env') {
-			for (const env of Object.values(value as object)) {
-				collectDeclaredNames(env, names)
-			}
-		} else if (key === 'vars' && value && typeof value === 'object') {
-			for (const name of Object.keys(value)) names.add(name)
-		} else if (Array.isArray(value)) {
-			for (const entry of value) {
-				const name = entry?.binding ?? entry?.name
-				if (typeof name === 'string') names.add(name)
-			}
-		} else if (value && typeof value === 'object') {
-			const { binding, bindings } = value as {
-				binding?: unknown
-				bindings?: Array<{ name?: unknown }>
-			}
-			if (typeof binding === 'string') names.add(binding)
-			for (const entry of bindings ?? []) {
-				if (typeof entry.name === 'string') names.add(entry.name)
-			}
+		if (key === 'vars' && value && typeof value === 'object') {
+			for (const varName of Object.keys(value)) names.add(varName)
+		} else {
+			collectDeclaredNames(value, names)
 		}
 	}
 	return names
