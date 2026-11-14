@@ -3721,23 +3721,27 @@ class RepoSessionBase extends DurableObject<Env> {
 						sourceFiles,
 					})
 					try {
-						const outcome = await runner.buildCheck({
-							stagingKey,
-							userId: input.userId,
-							baseUrl,
-							rootPackageId: savedPackage.id,
-							targets: sampleTargets,
-							includeModuleHashes: true,
-							linkKodyPackageImports: true,
-						})
-						return sampleTargets.map((_, index) => {
-							const result = outcome.results[index]
-							if (result?.ok && result.built) return result.built
-							const message = result?.message ?? outcome.message
-							return result?.resourceLimit
-								? { overCloudLimit: true as const, message }
-								: new Error(message)
-						})
+						// One isolate per sampled target, so a target over the cloud
+						// limit cannot hide another target's result.
+						return await Promise.all(
+							sampleTargets.map(async (target) => {
+								const outcome = await runner.buildCheck({
+									stagingKey,
+									userId: input.userId,
+									baseUrl,
+									rootPackageId: savedPackage.id,
+									targets: [target],
+									includeModuleHashes: true,
+									linkKodyPackageImports: true,
+								})
+								const result = outcome.results[0]
+								if (result?.ok && result.built) return result.built
+								const message = result?.message ?? outcome.message
+								return result?.resourceLimit
+									? { overCloudLimit: true as const, message }
+									: new Error(message)
+							}),
+						)
 					} finally {
 						await runner.discard(stagingKey).catch(() => {})
 					}
