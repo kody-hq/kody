@@ -818,7 +818,11 @@ async function acquireDoAccountWriteLeaseAndWrite<T>(input: {
 				await meter.renewWriteLease({ token: lease.token }),
 		}).then(
 			(renewed) => {
-				if (!renewed.renewed) clearInterval(heartbeat)
+				if (renewed.renewed) return
+				// A deletion dropped the lease. The write in flight fails at
+				// release; nested writes must not ride on a lease that is gone.
+				clearInterval(heartbeat)
+				input.frame.active = false
 			},
 			() => {},
 		)
