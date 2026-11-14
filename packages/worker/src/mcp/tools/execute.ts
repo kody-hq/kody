@@ -588,6 +588,7 @@ export async function runExecuteToolCall(input: {
 			const { errorName, errorMessage } = errorFields(error)
 			const errorDetails = getExecutionErrorDetails(error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			logMcpEvent({
 				category: 'mcp',
@@ -1267,6 +1268,7 @@ export async function runExecuteToolCall(input: {
 		if (result.error) {
 			const errorDetails = getExecutionErrorDetails(result.error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			const { errorName, errorMessage } = errorFields(result.error)
 			logMcpEvent({
