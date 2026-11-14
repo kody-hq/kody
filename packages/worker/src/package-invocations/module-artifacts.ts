@@ -51,6 +51,7 @@ import {
 	type CachedInvokeModuleArtifact,
 	type PackageAppSlugLookup,
 } from './invoke-contract-cache.ts'
+import type { PublishedBundleArtifact } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import {
 	errorCauseChainIncludes,
@@ -261,42 +262,28 @@ async function ensureModuleArtifactUncached(input: {
 		input.selector.kind === 'export'
 			? `export "${input.selector.exportName}"`
 			: `subscription "${input.selector.topic}"`
-	if (rebuild.serve === 'current' || rebuild.serve === 'previous') {
-		const artifact =
-			rebuild.serve === 'current' ? currentArtifact : loaded?.artifact
-		if (!artifact) {
+	if (rebuild.serve === 'previous') {
+		if (!loaded?.artifact) {
 			throw new Error(
 				`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
 			)
 		}
 		return {
-			artifact,
-			source:
-				rebuild.serve === 'current' ? packageManifest.source : rebuild.source,
-			entryPoint:
-				rebuild.serve === 'current'
-					? resolution.entryPoint
-					: artifact.entryPoint,
+			artifact: loaded.artifact,
+			source: rebuild.source,
+			entryPoint: loaded.artifact.entryPoint,
 		}
 	}
-	const rebuilt = await loadPublishedBundleArtifactByIdentity({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.savedPackage.sourceId,
-		kind: 'module',
-		artifactName: rebuild.artifactName,
-		entryPoint: rebuild.entryPoint,
-		commit: rebuild.source.published_commit,
-	})
-	if (!rebuilt?.artifact) {
-		throw new Error(
-			`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
-		)
-	}
+	// Serve the artifact the isolate checked or stored, not this isolate's
+	// earlier read of the same commit-keyed entry: that read may be a
+	// pre-binding bundle another run has since repaired, or a miss this
+	// location still caches.
 	return {
-		artifact: rebuilt.artifact,
-		source: rebuild.source,
-		entryPoint: rebuild.entryPoint,
+		artifact: rebuild.artifact,
+		source:
+			rebuild.serve === 'current' ? packageManifest.source : rebuild.source,
+		entryPoint:
+			rebuild.serve === 'current' ? resolution.entryPoint : rebuild.entryPoint,
 	}
 }
 
@@ -320,16 +307,17 @@ export type IsolatedModuleArtifactRebuildRequest = {
 }
 
 /**
- * What the caller serves: its own same-commit artifact, the previous
- * commit's artifact, or the one this rebuild just stored.
+ * What the caller serves: the same-commit artifact the isolate found to need
+ * no rebuild, the caller's own previous-commit artifact, or the one this
+ * rebuild just stored.
  */
 export type ModuleArtifactRebuildResult =
-	| { serve: 'current' }
+	| { serve: 'current'; artifact: PublishedBundleArtifact }
 	| { serve: 'previous'; source: ModuleArtifactSource }
 	| {
 			serve: 'rebuilt'
+			artifact: PublishedBundleArtifact
 			source: ModuleArtifactSource
-			artifactName: string
 			entryPoint: string
 	  }
 
@@ -456,7 +444,7 @@ async function rebuildModuleArtifact(
 			sourceFiles: packageSource.files,
 		})
 	) {
-		return { serve: 'current' }
+		return { serve: 'current', artifact: currentArtifact }
 	}
 	// The caller's manifest may come from the freshness-cached source row and
 	// trail a republish by up to the freshness TTL, while the source load
@@ -531,10 +519,28 @@ async function rebuildModuleArtifact(
 			sourceId: input.savedPackage.sourceId,
 		},
 	})
+	const rebuilt = await loadPublishedBundleArtifactByIdentity({
+		env: input.env,
+		userId: input.userId,
+		sourceId: input.savedPackage.sourceId,
+		kind: 'module',
+		artifactName: freshResolution.artifactName,
+		entryPoint: freshResolution.entryPoint,
+		commit: packageSource.source.published_commit,
+	})
+	if (!rebuilt?.artifact) {
+		const moduleLabel =
+			input.selector.kind === 'export'
+				? `export "${input.selector.exportName}"`
+				: `subscription "${input.selector.topic}"`
+		throw new Error(
+			`Published bundle artifact for ${moduleLabel} could not be loaded after rebuild.`,
+		)
+	}
 	return {
 		serve: 'rebuilt',
+		artifact: rebuilt.artifact,
 		source: packageSource.source,
-		artifactName: freshResolution.artifactName,
 		entryPoint: freshResolution.entryPoint,
 	}
 }

@@ -99,6 +99,8 @@ async function seedPreBindingModuleBundle(input: {
 	 * free-fetch heuristic alone would have kept serving.
 	 */
 	bundledEntry?: string
+	/** Stored artifact name. Defaults to `./nightly`. */
+	artifactName?: string
 	/** Stands in for the rebuild isolate, for example to make it reset. */
 	rebuildIsolate?: (
 		env: Env,
@@ -144,7 +146,7 @@ async function seedPreBindingModuleBundle(input: {
 		userId,
 		source,
 		kind: 'module',
-		artifactName: './nightly',
+		artifactName: input.artifactName ?? './nightly',
 		entryPoint: 'src/nightly.ts',
 		mainModule: 'dist/bundled-entry.js',
 		modules: {
@@ -232,6 +234,38 @@ test('a rebuild that exceeds its isolate fails only that run and says to publish
 	expect(message).toContain('kody package publish --build local')
 	// Retrying cannot help, so the run must not be retried as artifact prep.
 	expect(isTransientModuleArtifactError(error)).toBe(false)
+})
+
+test('the caller serves the artifact the rebuild isolate returns, not its own earlier read', async () => {
+	silenceIncidentalRuntimeWarnings()
+	// Another run repaired the commit-keyed entry after this caller read the
+	// pre-binding bundle, so the isolate finds nothing left to rebuild.
+	const { env, savedPackage } = await seedPreBindingModuleBundle({
+		suffix: 'rebuild-concurrent',
+		manifest: nightlyManifest('rebuild-concurrent'),
+		rebuildIsolate: async () => ({
+			ok: true,
+			result: {
+				serve: 'current',
+				artifact: {
+					mainModule: 'dist/bundled-entry.js',
+					modules: { 'dist/bundled-entry.js': 'repaired-by-another-run' },
+				},
+			},
+		}),
+	})
+
+	const { artifact } = await ensureModuleArtifact({
+		env,
+		baseUrl: 'https://kody.dev',
+		savedPackage,
+		selector: { kind: 'export', exportName: 'nightly' },
+		userId,
+	})
+
+	const modules = Object.values(artifact.modules).join('\n')
+	expect(modules).toContain('repaired-by-another-run')
+	expect(modules).not.toContain('pre-binding-bundle')
 })
 
 test('a rebuild failure keeps its cause chain and caller-error class across the isolate boundary', async () => {
