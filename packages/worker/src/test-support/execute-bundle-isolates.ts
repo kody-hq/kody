@@ -33,9 +33,13 @@ export function addInProcessExecuteBundleIsolates(
 						input: IsolatedModuleArtifactRebuildRequest,
 					) {
 						const cloned = structuredClone(input)
-						return rebuildIsolate
-							? await rebuildIsolate(cloned)
-							: await runIsolatedModuleArtifactRebuild(env, cloned)
+						// The result carries the artifact to serve, so it crosses the
+						// same boundary on the way back.
+						return structuredClone(
+							rebuildIsolate
+								? await rebuildIsolate(cloned)
+								: await runIsolatedModuleArtifactRebuild(env, cloned),
+						)
 					},
 					async buildIsolatedExecuteBundle(
 						input: IsolatedExecuteBundleRequest,
