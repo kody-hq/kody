@@ -130,8 +130,10 @@ on its own or with `--build context`; it cannot be combined with
 [publish-large-packages](https://kody.codes/docs/publish-large-packages).
 
 `--json` prints structured MCP results. On command failures it also prints a
-JSON error object on stdout (`error`, `message`, and when a network hop failed
-before an HTTP response, additive `sent: false | "unknown"`).
+JSON error object on stdout (`error`, `message`; additive
+`sent: false | "unknown"` when a network hop failed before an HTTP response;
+additive `runId` and `idempotencyKey` when execute failed after its run
+started).
 
 ## Token-authenticated execute (no `kody login`)
 
@@ -275,8 +277,8 @@ publish. Bundling reuses the same esbuild path as `execute --file` / publish
 | `execute` / `search` | Real capabilities, storage, secrets          | Mock catalog / scratch storage / fake credentials |
 
 On `--target prod` the working-tree package itself gets no hosted
-`packageStorage` or `packageSecrets` (published deps keep theirs). That is
-intentionally unsupported; see
+`packageStorage`, `packageSecrets`, `email`, `events`, or `packages` (published
+deps keep theirs). That is intentionally unsupported; see
 [Won't do](https://kody.codes/docs/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod).
 
 The mock is built into the CLI (no kody-celld). It refuses unimplemented routes

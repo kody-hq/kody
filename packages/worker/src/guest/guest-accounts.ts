@@ -61,8 +61,9 @@ export type GuestPhase = 'active' | 'hold'
 export type GuestAccount = {
 	personId: PersonId
 	personalOrgId: OwnerId
-	/** SHA-256 lookup hash (legacy rows: plaintext until the backfill). */
+	/** SHA-256 lookup hash of the claim code (`guest_accounts.claim_code`). */
 	claimCodeLookup: string
+	/** Sealed claim code for display. Null after claim. */
 	claimCodeEncrypted: string | null
 	clientName: string | null
 	expiresAt: string

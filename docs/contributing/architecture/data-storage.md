@@ -260,9 +260,10 @@ Secret values are **never** exported. `secret_entries` rows are metadata-only:
 name, description, bucket, allowed hosts, allowed kody, allowed packages, and
 timestamps. The encrypted payload (`encrypted_value`) and lookup hash
 (`lookup_hash`) are omitted. The same redaction rule is applied to other
-credential-equivalent fields such as password hashes and password/email reset
-token hashes. The manifest states these redactions explicitly so a partial or
-intentionally redacted export is not mistaken for a complete secret backup.
+credential-equivalent fields such as password hashes, password/email reset token
+hashes, and guest claim lookup hashes plus sealed claim codes. The manifest
+states these redactions explicitly so a partial or intentionally redacted export
+is not mistaken for a complete secret backup.
 
 The browser route `GET /account/export.json` downloads a bounded metadata
 manifest for the signed-in user and identifies the MCP capabilities required for
@@ -465,6 +466,10 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `package_scope_grants`, `package_share_grants`, or `username_redirects` table.
   Reserved old handles live in `handles`.
 - `password_resets`: hashed reset tokens with expiry and foreign key to users
+- `guest_accounts`: Try it out person plus personal org. `claim_code` is a
+  SHA-256 lookup hash; `claim_code_encrypted` is the sealed plaintext (purpose
+  `guest-claim-code`). Lookup hashes the presented code; display opens the seal.
+  A successful claim clears the ciphertext.
 - Workflow, activation, and package-success state lives in dedicated RunLog
   tables; D1 has no corresponding projection tables (see
   [Run records](./run-records.md)).

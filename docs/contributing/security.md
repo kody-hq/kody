@@ -650,9 +650,11 @@ guarded by a bearer secret comparison.
   for platform OAuth client secrets), so a ciphertext copied into another user's
   row fails to decrypt. Integration-owned OAuth tokens and user-lane client
   secrets live only as ciphertext on `user_integrations` / `user_oauth_apps`;
-  they are not stored in `secret_entries`. Row swaps already require write
-  access to the database, so AAD binding is defense-in-depth, not a standing
-  hole.
+  they are not stored in `secret_entries`. Guest claim codes use the same seal
+  (purpose `guest-claim-code`, context `guest:<personId>:claim-code`);
+  `guest_accounts.claim_code` stores only the SHA-256 lookup hash. Row swaps
+  already require write access to the database, so AAD binding is
+  defense-in-depth, not a standing hole.
 - `SECRET_STORE_KEY` is escrowed for disaster recovery as a passphrase-sealed
   blob in the DR backup bucket (solo operator; see
   [Disaster recovery](./disaster-recovery.md) and

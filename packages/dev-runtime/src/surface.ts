@@ -45,7 +45,8 @@ export const kodyDevAllowlist: ReadonlyArray<KodyDevAllowlistEntry> = []
 /**
  * Won't do: exports the working-tree bridge refuses on purpose. CI accepts
  * them as intentionally unsupported. Unpublished code has no published package
- * id, and publish is the trust boundary for hosted storage and secrets.
+ * id, and publish is the trust boundary for hosted storage, secrets, email,
+ * events, and packages.
  */
 export const kodyDevWontDo: ReadonlyArray<KodyDevUnsupportedEntry> = [
 	{
