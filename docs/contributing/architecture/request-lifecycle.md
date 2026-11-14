@@ -389,7 +389,9 @@ The runtime capability registry **merges** synthesized domains from enabled
 Shared options are built in `packages/worker/src/sentry-options.ts`: **release**
 comes from `APP_COMMIT_SHA` when set (deploy workflows pass it as a var), and
 **environment** defaults from `SENTRY_ENVIRONMENT` in
-`packages/worker/wrangler.jsonc` per deploy target.
+`packages/worker/wrangler.jsonc` per deploy target. `beforeSend`,
+`beforeSendTransaction`, and `beforeBreadcrumb` deep-redact credentials, auth
+schemes, sensitive field names, and secret query params before ingest.
 
 MCP tools emit structured `mcp-event` logs via
 `packages/worker/src/mcp/observability.ts`. On failures, the same module sends

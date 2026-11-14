@@ -226,6 +226,10 @@ still auth or permission — use the Failure section below. Two workarounds for
   run). Use hosted package execute, or set the secret from the account UI
   (`/connect/secret-set`) or Open API `secretSet` with a user scope / outside
   local execute. See [Secrets](./secrets.md#scopes).
+- Package-graph prep that exceeds the throwaway isolate's memory or CPU returns
+  `400 package_graph_resource_limit` (the error names the packages). A served
+  graph missing a reachable static relative import is `500 internal_error`. See
+  [Open API architecture](../contributing/architecture/open-api.md).
 - The module imports `kody:@…`. Keep `--local`.
 - Auth priority for `--local` (and every other command): `--token` /
   `KODY_API_TOKEN`, then the one saved CLI credential from `kody login` or

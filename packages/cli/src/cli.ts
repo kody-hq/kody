@@ -458,7 +458,7 @@ type CliErrorJson = {
 /**
  * Structured `--json` error body. Additive `sent` when a network hop failed
  * before an HTTP response (`false` = connect phase; `"unknown"` otherwise),
- * and `runId` / `idempotencyKey` when an execute failed after its run started.
+ * and `runId` / `idempotencyKey` only when the API error body includes them.
  */
 export function formatCliErrorJson(error: Error): CliErrorJson {
 	const body: CliErrorJson = {

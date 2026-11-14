@@ -60,7 +60,7 @@ const sensitiveFieldNames = new Set([
 ])
 
 const sensitiveQueryParamPattern =
-	/([?&#;]|^)(ticket|token|access_token|refresh_token|id_token|client_secret|code|code_verifier|password|api_key|apikey|key|sig|signature)=[^&#\s]*/gi
+	/([?&#;]|^)(ticket|token|access_token|refresh_token|id_token|client_secret|secret|code|code_verifier|password|api_key|apikey|key|sig|signature)=[^&#\s]*/gi
 
 const credentialSchemePattern =
 	/\b(Bearer|Basic|Token|Digest)\s+[A-Za-z0-9._~+/=:-]{6,}/gi
@@ -104,8 +104,8 @@ function redactSentryValue(
 }
 
 /**
- * Deep-redact a Sentry event in place: messages, exceptions, breadcrumbs,
- * extras, contexts, tags, request URL, query, headers, cookies, and data.
+ * Deep-redact a Sentry payload in place: strings, sensitive field names, auth
+ * schemes, and secret query params (events, transactions, and breadcrumbs).
  */
 export function redactKodyCredentialsInSentryEvent<T extends object>(
 	event: T,

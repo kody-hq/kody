@@ -218,23 +218,14 @@ module and does not silently hop to `kody.execute`. See
   (or `kody dev` worker bundles that only need stamped deps) pass `imports`
   alone; origin synthesizes a tiny entry from that list so the multi-megabyte
   bundle never crosses the wire.
-- Package-graph builds never run in the API isolate. Origin resolves each direct
-  import to its package id, serving commit, and published artifact rows, hashes
-  them with the org, base URL, and worker version, and serves a gzip-compressed
-  cached unsigned graph from `BUNDLE_ARTIFACTS_KV` when one matches (a new
-  commit or a same-commit artifact repair on any import changes the key). On a
-  miss a throwaway `RepoSession` isolate builds and caches the graph. Bindings
-  are signed per request either way. A build that exceeds the isolate's memory
-  or CPU limits fails only its own request with
-  `400 package_graph_resource_limit`, which names the packages and suggests
-  `.kodyignore` and a smaller package
+- Package-graph builds never run in the API isolate. Origin caches unsigned
+  graphs by import identity and builds misses in a throwaway `RepoSession`
+  isolate
   (`packages/worker/src/package-runtime/isolated-local-execute-package-graph.ts`).
-  A built graph is checked before it is served or cached: every relative import
-  reachable from the entry's `kody:@…` imports must name a served module, or the
-  request fails with `500 internal_error` naming the import. The caller's
-  workerd would otherwise fail with "No such module" after a 200
-  (`assertLocalExecuteModuleGraphIsClosed` in
-  `packages/worker/src/package-runtime/local-execute-package-graph.ts`).
+  Isolate memory or CPU limits fail only that request with
+  `400 package_graph_resource_limit`. A graph is served only when every
+  reachable static relative import names a module in the response; otherwise
+  `500 internal_error`.
 - Calls dispatch through the same `kody.*` tool map as ad hoc cloud execute, so
   capability behavior, `kody.mcp`, and workflows match the cloud. Caller errors
   from a capability keep their status and message. Unexpected capability

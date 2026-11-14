@@ -670,7 +670,7 @@ account creation can be retried once the environment is fixed.
 `POST /session` (`packages/worker/src/app/handlers/session.ts`) includes `roles`
 and `permissions` in the session payload when the cookie is valid. Unclaimed
 guest accounts (Try it out) also include `guest`: `phase`, `claimUrl`,
-`fullAccessUntil`, and `deleteAt`.
+`fullAccessUntil`, and `deleteAt` when the sealed claim code can be opened.
 
 The Start root loads request-scoped identity and shell data through
 `packages/worker/start/routes/__root.tsx` and

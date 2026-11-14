@@ -910,13 +910,17 @@ routed from `packages/worker/src/index.ts`.
   email link is opened elsewhere, so the original OAuth query remains resumable.
   Signup never auto-approves; the person clicks Approve after they return. **Try
   it out** creates a guest person and finishes authorization in the same
-  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo`.
-  Signed-in vs signed-out chrome on that page comes from the SSR-embedded app
-  session; the route does not wait on a separate browser `/session` fetch before
-  rendering approve or login. Social buttons use the same SSR-embedded provider
-  list as `/login`, so a full-document load does not wait on
-  `/auth/providers.json`. The approve control stays inert until hydration so the
-  visible button cannot submit a GET that drops `client_id`.
+  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo` when
+  the sealed claim code opens; a missing `guest` block is not proof the account
+  was claimed. The claim URL is opened from the sealed claim code;
+  `guest_accounts.claim_code` stores only a SHA-256 lookup hash
+  (`packages/worker/src/guest/guest-accounts.ts`). Signed-in vs signed-out
+  chrome on that page comes from the SSR-embedded app session; the route does
+  not wait on a separate browser `/session` fetch before rendering approve or
+  login. Social buttons use the same SSR-embedded provider list as `/login`, so
+  a full-document load does not wait on `/auth/providers.json`. The approve
+  control stays inert until hydration so the visible button cannot submit a GET
+  that drops `client_id`.
 - Approval is rejected before `completeAuthorization` when the account email is
   unverified, so no grant/token is created until verification succeeds.
 
