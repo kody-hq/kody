@@ -12,7 +12,7 @@ Open the page that owns the task:
 
 - Docs map: [contributing](./docs/contributing/index.md) ·
   [principles](./docs/principles/index.md) · [skills](./.agents/skills/) ·
-  [blog posts](./docs/contributing/blog.md) (category and series rules)
+  [blog posts](./docs/contributing/blog.md) (category, series, video roundups)
 - Invite a whole team: [organizations](./docs/guides/organizations.md)
   (`guide:organizations`, `inviteLinkCreate`)
 - Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):

@@ -73,6 +73,7 @@ export const blogPostSlugs = [
 	'the-assistant-that-cant-leak-your-keychain',
 	'the-automations-you-never-built',
 	'three-ways-to-share-an-ai-built-app',
+	'whats-new-in-kody-2026-11-12',
 	'where-to-store-api-keys-for-ai-agents',
 	'whose-credentials-does-this-app-use',
 	'why-ai-agent-costs-keep-growing',

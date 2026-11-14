@@ -401,6 +401,7 @@ function renderToken(
 							videoId={watch.videoId}
 							title={watch.title}
 							label={watch.label}
+							vertical={watch.vertical}
 						/>
 					)
 				}

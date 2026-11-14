@@ -27,7 +27,7 @@ const docQuotes: MarkdownExtension = {
 	name: 'kody-doc-quotes',
 	parseBlock(context) {
 		if (
-			!/^\s*>\s*\[!(?:WATCH|DIAGRAM|NOTE|TIP|IMPORTANT|WARNING)\]/.test(
+			!/^\s*>\s*\[!(?:WATCH|WATCH-VERTICAL|DIAGRAM|NOTE|TIP|IMPORTANT|WARNING)\]/.test(
 				context.lines[context.index] ?? '',
 			)
 		)
