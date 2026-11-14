@@ -59,8 +59,21 @@
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        "appx"
+      ],
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
+    },
+    "appx": {
+      "identityName": "KodyCodes.Kody",
+      "applicationId": "Kody",
+      "displayName": "Kody",
+      "publisherDisplayName": "Kody",
+      "backgroundColor": "transparent",
+      "artifactName": "Kody-${version}-win-${arch}.msix"
     },
     "linux": {
       "target": [
@@ -69,7 +82,10 @@
       "executableName": "kody"
     },
     "icon": "assets/icon.png",
-    "artifactName": "Kody-${version}-${os}-${arch}.${ext}"
+    "artifactName": "Kody-${version}-${os}-${arch}.${ext}",
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    }
   },
   "author": "Kody"
 }

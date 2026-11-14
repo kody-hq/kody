@@ -1,4 +1,5 @@
 const config = require('./electron-builder.cjs')
+const { signtoolOptions, ...win } = config.win
 const azure =
 	process.platform === 'win32' &&
 	process.env.KODY_WINDOWS_SIGNING_PROVIDER === 'azure'
@@ -48,16 +49,20 @@ const provisioningProfile =
 		: undefined
 module.exports = {
 	...config,
-	// Architecture channels keep parallel Windows and Mac jobs from
-	// replacing each other's update manifests.
-	publish: {
-		provider: 'github',
-		owner: 'kody-hq',
-		repo: 'kody-desktop',
-		channel: `latest-${process.arch}`,
-		tagNamePrefix: 'v',
-		releaseType: 'draft',
-	},
+	// Architecture channels keep parallel Mac and Linux jobs from replacing
+	// each other's update manifests. Windows MSIX installs update through App
+	// Installer instead, so they ship no electron-updater feed.
+	publish:
+		process.platform === 'win32'
+			? null
+			: {
+					provider: 'github',
+					owner: 'kody-hq',
+					repo: 'kody-desktop',
+					channel: `latest-${process.arch}`,
+					tagNamePrefix: 'v',
+					releaseType: 'draft',
+				},
 	forceCodeSigning: process.platform !== 'linux',
 	afterPack: './scripts/mac-app-update-config.cjs',
 	mac: {
@@ -75,8 +80,7 @@ module.exports = {
 			: {}),
 	},
 	win: {
-		...config.win,
-		verifyUpdateCodeSignature: true,
+		...win,
 		...(azure
 			? {
 					azureSignOptions: {
@@ -88,6 +92,7 @@ module.exports = {
 				}
 			: {
 					signtoolOptions: {
+						...signtoolOptions,
 						publisherName: process.env.KODY_WINDOWS_PUBLISHER,
 					},
 				}),

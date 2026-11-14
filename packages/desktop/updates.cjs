@@ -66,8 +66,11 @@ function startUpdates({
 	hasUpdateFeed = !!process.resourcesPath &&
 		existsSync(join(process.resourcesPath, 'app-update.yml')),
 	setIntervalFn = setInterval,
+	// MSIX installs update through App Installer; electron-updater cannot
+	// replace a package install.
+	isMsix = process.windowsStore === true,
 }) {
-	if (!app.isPackaged || !hasUpdateFeed) return null
+	if (!app.isPackaged || !hasUpdateFeed || isMsix) return null
 	const readiness = createActor(updateReadinessState).start()
 	const checking = createActor(updateCheckState).start()
 	updater.autoDownload = true

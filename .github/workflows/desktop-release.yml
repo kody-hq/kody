@@ -13,9 +13,9 @@ on:
   workflow_dispatch:
     inputs:
       platforms:
-        description: Platforms to publish, use all after adding Windows or Linux
+        description: Platforms to publish, use all to add Linux
         type: choice
-        options: [auto, mac, all]
+        options: [auto, mac-win, all]
         default: auto
 
 permissions:
@@ -239,22 +239,20 @@ jobs:
           ditto -x -k "$zip" "$RUNNER_TEMP/zip-check"
           codesign --verify --deep --strict "$RUNNER_TEMP/zip-check/Kody.app"
           node packages/desktop/scripts/verify-mac-notarization.cjs "$RUNNER_TEMP/zip-check/Kody.app"
-      - name: Verify Windows signatures
+      - name: Verify Windows signatures and install the MSIX
         if: runner.os == 'Windows'
         env:
           EXPECTED_PUBLISHER: ${{ vars.DESKTOP_WINDOWS_PUBLISHER }}
         shell: pwsh
-        run: |
-          $files = @(Get-ChildItem artifacts/desktop -Filter '*.exe')
-          $bundle = if ($env:KODY_DESKTOP_ARCH -eq 'arm64') { 'win-arm64-unpacked' } else { 'win-unpacked' }
-          $files += Get-Item "artifacts/desktop/$bundle/Kody.exe"
-          foreach ($file in $files) {
-            $signature = Get-AuthenticodeSignature $file.FullName
-            if ($signature.Status -ne 'Valid') { throw "Invalid signature: $($file.Name)" }
-            $env:ACTUAL_PUBLISHER_SUBJECT = $signature.SignerCertificate.Subject
-            node packages/desktop/scripts/verify-windows-publisher.cjs
-            if ($LASTEXITCODE -ne 0) { throw 'Windows update publisher verification failed.' }
-          }
+        run: ./packages/desktop/scripts/win-install-msix.ps1
+      - name: Smoke the installed MSIX (app starts, main window loads)
+        if: runner.os == 'Windows'
+        run:
+          npm run test:smoke --workspace @kodycodes/desktop --
+          "$KODY_MSIX_EXECUTABLE"
+      - name: Write the App Installer file
+        if: runner.os == 'Windows'
+        run: node packages/desktop/scripts/win-appinstaller.cjs
       - run: npm run test:packaged-cli --workspace @kodycodes/desktop
       - name: Upload release assets
         uses: actions/upload-artifact@v4
@@ -266,7 +264,9 @@ jobs:
           path: |
             artifacts/desktop/*.dmg
             artifacts/desktop/*.zip
-            artifacts/desktop/*.exe
+            artifacts/desktop/*.msix
+            artifacts/desktop/*.appinstaller
+            artifacts/desktop/*.cer
             artifacts/desktop/*.AppImage
             artifacts/desktop/*.blockmap
             artifacts/desktop/latest*.yml
