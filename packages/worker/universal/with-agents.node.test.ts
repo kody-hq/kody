@@ -4,7 +4,8 @@ import {
 	withAgentYoutubeVideoIds,
 	withAgents,
 } from './with-agents.ts'
-import { isYoutubeVideoId } from './youtube-watch.ts'
+
+const youtubeVideoId = /^[A-Za-z0-9_-]{11}$/
 
 test('pathname lookup only accepts /with/:agent for catalog agents', () => {
 	expect(findWithAgentByPathname('/with/cursor')?.name).toBe('Cursor')
@@ -66,12 +67,12 @@ test('promo videos map to their /with pages and other agents have none', () => {
 	expect(ids.length).toBeLessThan(withAgents.length)
 	expect(new Set(ids).size).toBe(ids.length)
 	for (const id of ids) {
-		expect(isYoutubeVideoId(id)).toBe(true)
+		expect(id).toMatch(youtubeVideoId)
 	}
 	for (const slug of ['cursor', 'muse', 'pi', 'hermes']) {
-		const videoId = findWithAgentByPathname(`/with/${slug}`)?.youtubeVideoId
-		expect(videoId).toBeTruthy()
-		expect(ids).toContain(videoId)
+		expect(findWithAgentByPathname(`/with/${slug}`)?.youtubeVideoId).toMatch(
+			youtubeVideoId,
+		)
 	}
 	expect(
 		findWithAgentByPathname('/with/instinct')?.youtubeVideoId,

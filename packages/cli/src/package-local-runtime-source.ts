@@ -39,12 +39,12 @@ export { localWorkerModuleNames, runSecretEnvVar, runSecretHeader }
 const prodTargetWontDoDocsUrl =
 	'https://kody.codes/docs/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod'
 
-export const prodPackageStorageUnsupportedMessage =
+const prodPackageStorageUnsupportedMessage =
 	'packageStorage() is intentionally unsupported on --target prod: the working tree is unpublished, so hosted storage cannot trust it. ' +
 	'Use `--target mock` for scratch storage, or publish and use packageAppFetch. ' +
 	`See ${prodTargetWontDoDocsUrl}`
 
-export const prodPackageSecretsUnsupportedMessage =
+const prodPackageSecretsUnsupportedMessage =
 	'packageSecrets is intentionally unsupported on --target prod: the working tree is unpublished, so hosted secrets cannot trust it. ' +
 	'Use `kody dev --target mock` for placeholder secrets, or publish and use packageAppFetch. ' +
 	`See ${prodTargetWontDoDocsUrl}`

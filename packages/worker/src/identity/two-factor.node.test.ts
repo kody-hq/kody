@@ -55,11 +55,18 @@ async function enroll(env: ReturnType<typeof setup>['env'], userId: number) {
 }
 
 test('setup stores only a sealed secret and the setup URI still carries it', async () => {
-	const { env, storedSecret } = setup()
+	const { sqlite, env, storedSecret } = setup()
 	const { otpUri, secret } = await enroll(env, 1)
 	expect(otpUri).toContain(`secret=${secret}`)
 	expect(storedSecret(1)).toMatch(/^v2\./)
 	expect(storedSecret(1)).not.toContain(secret)
+	const storedType = () =>
+		(
+			sqlite
+				.prepare('SELECT type FROM verifications WHERE target = ?')
+				.get('1') as { type: string }
+		).type
+	expect(storedType()).toBe('2fa-verify')
 	const { otp } = await generateTOTP({ secret })
 	expect(
 		await verifyTwoFactorCode({
@@ -70,12 +77,14 @@ test('setup stores only a sealed secret and the setup URI still carries it', asy
 		}),
 	).toBe(true)
 	expect(await confirmTwoFactorSetup(env.APP_DB, 1)).toBe(true)
+	expect(storedType()).toBe('2fa')
 	expect(
 		await verifyTwoFactorCode({ env, userId: 1, code: otp, type: '2fa' }),
 	).toBe(true)
+	const wrong = `${otp.slice(0, 5)}${otp.endsWith('0') ? '1' : '0'}`
 	expect(
-		await verifyTwoFactorCode({ env, userId: 1, code: '000000', type: '2fa' }),
-	).toBe(otp === '000000')
+		await verifyTwoFactorCode({ env, userId: 1, code: wrong, type: '2fa' }),
+	).toBe(false)
 })
 
 test('a sealed secret copied onto another user fails closed', async () => {
