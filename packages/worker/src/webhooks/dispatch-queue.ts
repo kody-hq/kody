@@ -235,6 +235,7 @@ export async function handleWebhookDispatchQueue(
 			continue
 		}
 		const delivery = ackDeliveryFromMessage(message)
+		const attemptStartedAt = new Date().toISOString()
 		await markAckWebhookDelivery({
 			env,
 			delivery,
@@ -342,7 +343,7 @@ export async function handleWebhookDispatchQueue(
 						payloadBytes: message.payloadBytes,
 						invocationId: message.deliveryId,
 						attempts: queueMessage.attempts,
-						startedAt: new Date().toISOString(),
+						startedAt: attemptStartedAt,
 						receivedAt: message.receivedAt,
 						invocationErrorCode: 'dispatch_processing_failed',
 						logs: [{ level: 'error', message: lastError }],
