@@ -52,6 +52,9 @@ test('CI matrices hash shards, retain crash retry and aggregate every shard at t
 	for (const step of retrySteps) {
 		const ifExpression = step.match(/(?:^|\n)\s*if:\s*(.+)/)?.[1]?.trim()
 		expect(ifExpression).toBeTruthy()
+		// Require the true comparison and reject OR bypasses such as
+		// `always() || env.RETRY == 'true'` (current steps only AND the gate).
+		expect(ifExpression).not.toMatch(/\|\|/)
 		expect(ifExpression).toMatch(/\benv\.RETRY\s*==\s*'true'/)
 	}
 	expect(e2e).toContain('shard: [1, 2]')

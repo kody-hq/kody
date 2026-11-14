@@ -131,9 +131,11 @@ function redactQueryStringObject(
 	for (const key of Object.keys(query)) {
 		// Keep sensitiveFieldNames coverage (x-api-key, authorization, …) that
 		// generic object walking had before this query_string special case.
+		// Decode before both lookups so `%78-api-key` matches `x-api-key`.
+		const decodedKey = decodeQueryParamName(key).toLowerCase()
 		if (
-			isSensitiveQueryParamName(key) ||
-			sensitiveFieldNames.has(key.toLowerCase())
+			sensitiveQueryParamNames.has(decodedKey) ||
+			sensitiveFieldNames.has(decodedKey)
 		) {
 			if (query[key] !== undefined && query[key] !== null) {
 				query[key] = redactedValue

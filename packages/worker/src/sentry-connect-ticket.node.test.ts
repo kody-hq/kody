@@ -119,6 +119,7 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 		request: {
 			query_string: {
 				'x-api-key': 'upstream-credential',
+				'%78-api-key': 'encoded-upstream-credential',
 				authorization: 'Bearer keep-header-shape',
 				state: 'kept',
 			},
@@ -126,6 +127,7 @@ test('query redaction decodes percent-encoded names and object query_string', ()
 	})
 	expect(headerQuery.request?.query_string).toEqual({
 		'x-api-key': '[redacted]',
+		'%78-api-key': '[redacted]',
 		authorization: '[redacted]',
 		state: 'kept',
 	})
