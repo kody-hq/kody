@@ -76,7 +76,11 @@ async function fixture() {
 	const store = {
 		revision: vi.fn(async () => null),
 		objectProvider: vi.fn(async () => null),
-		storageStatus: vi.fn(async () => ({ active: null, providers: [] })),
+		storageUsage: vi.fn(async () => ({
+			includedBytes: 1048576,
+			usedBytes: 0,
+			external: false,
+		})),
 		list: vi.fn(async () => [file, hidden]),
 		metadata: vi.fn(
 			async (_owner: string, _id: string): Promise<FileMetadata> => file,

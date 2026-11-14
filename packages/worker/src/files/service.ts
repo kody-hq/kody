@@ -127,12 +127,12 @@ export async function listFiles(ctx: CapabilityContext, includeTrash = false) {
 	const files = (await s.store.list(s.request.org.id, includeTrash)).filter(
 		(file) => s.holds('file:read', file.id),
 	)
+	const storage = await s.store.storageUsage(s.request.org.id)
 	return {
 		files: files.map((file) => ({ ...file, access: s.accessFor(file.id) })),
 		can_create: s.holds('file:create'),
-		writes_enabled:
-			Number(ctx.env.FILES_INCLUDED_BYTES ?? 0) > 0 ||
-			!!(await s.store.storageStatus(s.request.org.id)).active,
+		writes_enabled: storage.includedBytes > 0 || storage.external,
+		storage,
 	}
 }
 async function describeFile(

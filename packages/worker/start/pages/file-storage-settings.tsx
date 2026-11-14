@@ -1,14 +1,25 @@
 /** @jsxImportSource @emotion/react */
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
-import { readFileStorage, setFileStorage } from '#start/server/file-storage'
+import {
+	readFileStorage,
+	readFileStorageCredentials,
+	setFileStorage,
+} from '#start/server/file-storage'
 import { accountInputCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
+const bucketSetupPrompts = {
+	'Cloudflare R2':
+		'Help me create a private Cloudflare R2 bucket for Kody Files. Show me how to create an Object Read & Write key scoped to that bucket and find its S3 API endpoint. Use region auto.',
+	'Amazon S3':
+		'Help me create a private Amazon S3 bucket for Kody Files. Show me how to create a dedicated access key with permission to read, write, and delete objects in that bucket and find its regional HTTPS S3 endpoint and region.',
+} as const
+
 export default function FileStorageSettings({
 	orgSlug,
 	onClose,
@@ -27,6 +38,21 @@ export default function FileStorageSettings({
 		[credentialName, setCredentialName] = useState(''),
 		[busy, setBusy] = useState(false),
 		[error, setError] = useState('')
+	const credentials = useQuery({
+		queryKey: ['file-storage-credentials', orgSlug],
+		queryFn: () => readFileStorageCredentials({ data: { orgSlug } }),
+	})
+	const [copyStatus, setCopyStatus] = useState('')
+	async function copySetup(provider: keyof typeof bucketSetupPrompts) {
+		try {
+			await navigator.clipboard.writeText(
+				`${bucketSetupPrompts[provider]} Have me save the accessKeyId and secretAccessKey as JSON directly in Kody Credentials and approve the bucket endpoint host. Then walk me through entering the endpoint, bucket and region in Files → Storage settings and selecting that credential. Keep the key out of chat.`,
+			)
+			setCopyStatus(`${provider} setup prompt copied.`)
+		} catch {
+			setCopyStatus('Could not copy the setup prompt.')
+		}
+	}
 	const operation = useRef<string>(crypto.randomUUID())
 	const [reconnecting, setReconnecting] = useState(false)
 	useEffect(() => {
@@ -120,15 +146,18 @@ export default function FileStorageSettings({
 				) : null}
 				{status && (
 					<>
-						<p css={{ margin: '0 0 12px' }}>
-							{status.active
-								? `${status.active.bucket} · ${new URL(status.active.endpoint).hostname}`
-								: 'Included storage'}
-						</p>
-						<p css={{ fontSize: 12, color: colors.textMuted }}>
-							New revisions use this connection. Older versions stay in their
-							original storage. Disconnecting does not move or delete files.
-						</p>
+						{status.active && (
+							<p css={{ margin: '0 0 12px' }}>
+								{status.active.bucket} ·{' '}
+								{new URL(status.active.endpoint).hostname}
+							</p>
+						)}
+						{status.active && (
+							<p css={{ fontSize: 12, color: colors.textMuted }}>
+								New revisions use this bucket. Older revisions stay in their
+								original storage.
+							</p>
+						)}
 						{status.active && (
 							<button
 								type="button"
@@ -201,6 +230,25 @@ export default function FileStorageSettings({
 								)}
 							</div>
 						)}
+						<div
+							css={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 18 }}
+						>
+							{(
+								Object.keys(bucketSetupPrompts) as Array<
+									keyof typeof bucketSetupPrompts
+								>
+							).map((provider) => (
+								<button
+									key={provider}
+									type="button"
+									css={button}
+									onClick={() => void copySetup(provider)}
+								>
+									Copy {provider === 'Cloudflare R2' ? 'R2' : 'S3'} setup prompt
+								</button>
+							))}
+						</div>
+						{copyStatus && <p role="status">{copyStatus}</p>}
 						<div css={{ display: 'grid', gap: 12, marginTop: 18 }}>
 							<label>
 								R2 or S3 endpoint
@@ -233,30 +281,51 @@ export default function FileStorageSettings({
 							</label>
 							<label>
 								Workspace credential
-								<input
+								<select
 									required
 									css={accountInputCss}
 									value={credentialName}
 									onChange={(e) => setCredentialName(e.target.value)}
-								/>
+								>
+									<option value="">
+										{credentials.isPending
+											? 'Loading credentials…'
+											: 'Select a credential'}
+									</option>
+									{credentials.data?.map((name) => (
+										<option key={name} value={name}>
+											{name}
+										</option>
+									))}
+								</select>
 							</label>
 						</div>
 						<p css={{ fontSize: 12, color: colors.textMuted }}>
 							Use a dedicated credential with JSON accessKeyId and
 							secretAccessKey, approved for this endpoint.{' '}
 							<a
-								href={`/@${orgSlug}/-/credentials`}
+								href={`/@${orgSlug}/-/credentials/new?kind=secret`}
 								target="_blank"
 								rel="noreferrer"
 							>
-								Manage credentials
+								Create credential
 							</a>
 						</p>
-						<div css={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-							<button type="button" css={button} onClick={onClose}>
-								Close
+						{credentials.isError && (
+							<button
+								type="button"
+								css={button}
+								onClick={() => void credentials.refetch()}
+							>
+								Retry loading credentials
 							</button>
-							<button type="submit" css={button} disabled={busy}>
+						)}
+						<div css={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+							<button
+								type="submit"
+								css={button}
+								disabled={busy || !credentials.data?.includes(credentialName)}
+							>
 								{busy
 									? 'Checking connection…'
 									: reconnecting

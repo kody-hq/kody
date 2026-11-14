@@ -228,3 +228,31 @@ export const readAdminCodemodItems = createServerFn({ method: 'GET' })
 			await import('../../src/admin/codemods-operations.ts')
 		return readAdminCodemodRunItems(env, data)
 	})
+
+const fileQuotaTarget = z.object({ orgId: z.string().min(1).optional() })
+
+export const readAdminFileStorageQuota = createServerFn({ method: 'GET' })
+	.validator(fileQuotaTarget)
+	.handler(async ({ data }) => {
+		const { env } = await adminContext()
+		const { readAdminFileQuota } =
+			await import('../../src/admin/file-storage-quotas.ts')
+		return readAdminFileQuota(env, data.orgId)
+	})
+
+export const updateAdminFileStorageQuota = createServerFn({ method: 'POST' })
+	.validator(
+		fileQuotaTarget.extend({
+			bytes: z.number().int().nonnegative().nullable(),
+			reason: z.string(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		return withWebsiteMutation({}, async () => {
+			const { env, actor } = await adminContext()
+			const { updateAdminFileQuota } =
+				await import('../../src/admin/file-storage-quotas.ts')
+			return updateAdminFileQuota({ env, actor, ...data })
+		})
+	})

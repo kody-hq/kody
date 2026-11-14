@@ -205,9 +205,10 @@ callouts, Mermaid, collapse, contents, links, tables, and file embeds);
 
 The initial bounds are 64 files per org, 64 KiB of UTF-8 text per revision, and
 16 MiB per binary revision. All revisions count against the workspace allowance.
-`FILES_INCLUDED_BYTES` must be explicitly supplied to the write service. Missing
-or zero capacity disables writes without blocking reads, exports, or deletion.
-This does not choose the public free-tier size.
+The included storage quota uses the workspace override, the default in Admin →
+Organizations, or the deployed `FILES_INCLUDED_BYTES` fallback, in that order. A
+zero quota blocks new writes to included storage. Reads, exports, and deletion
+remain available. A connected bucket receives new revisions.
 
 Writes carry a unique id and expected base revision. Retrying the same id and
 content returns the original revision, conflicting bases return both versions,
