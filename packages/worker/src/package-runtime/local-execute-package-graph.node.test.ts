@@ -320,6 +320,79 @@ export default async function main() { return typeof advance }`,
 	},
 )
 
+test('buildLocalExecutePackageGraph fails on the server when a served module imports a module the graph does not serve', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				// A quoted relative path in a string is not an import.
+				'dist/advance.js':
+					'import helper from "./missing-helper.js";\nexport default async function advance() { return [helper, "./not-an-import.js"] }\n',
+			},
+		}),
+	)
+
+	const error = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+	}).catch((caught: unknown) => caught)
+
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).name).toBe('Error')
+	expect((error as Error).message).toMatch(
+		/Local execute package graph is incomplete: ".*\/dist\/advance\.js" imports "\.\/missing-helper\.js", but ".*\/dist\/missing-helper\.js" is not among the served modules\./,
+	)
+})
+
+test('buildLocalExecutePackageGraph serves a graph whose only unresolved relative paths are a string or in a module nothing imports', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				'dist/advance.js':
+					'export default async function advance() { return "./not-an-import.js" }\n',
+				// workerd never links a served module that nothing imports.
+				'dist/unreached.js': 'import "./also-missing.js"\n',
+			},
+		}),
+	)
+
+	const graph = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+	})
+
+	expect(
+		graph.modules.some((module) =>
+			module.esModule.includes('./not-an-import.js'),
+		),
+	).toBe(true)
+})
+
 test('buildLocalExecutePackageGraph rewrites inlined virtual runtime onto the CapabilityProxy shim', async () => {
 	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue(

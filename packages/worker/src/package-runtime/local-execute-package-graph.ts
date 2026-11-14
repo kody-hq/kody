@@ -3,7 +3,10 @@ import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-support-load.ts'
 import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
-import { collectDynamicImportExpressionNodes } from './import-specifiers.ts'
+import {
+	collectDynamicImportExpressionNodes,
+	collectLiteralImportNodes,
+} from './import-specifiers.ts'
 import {
 	assertNoKodyVirtualModuleReference,
 	prepareKodyGraphFiles,
@@ -376,6 +379,11 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 			(a?.sourceId ?? left).localeCompare(b?.sourceId ?? right)
 		)
 	})
+	assertLocalExecuteModuleGraphIsClosed(
+		modulesByName,
+		staticImports,
+		primaryRuntimePath,
+	)
 	const modules = [...modulesByName.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([name, esModule]) => ({ name, esModule }))
@@ -457,6 +465,66 @@ function uniqueSpecifiers(specifiers: ReadonlyArray<string>) {
 	return [...new Set(specifiers)].sort((left, right) =>
 		left.localeCompare(right),
 	)
+}
+
+const relativeSpecifierCandidatePattern = /["'`](\.\.?\/[^"'`\n]*)["'`]/g
+
+/**
+ * Every relative import reachable from the entry's `kody:@…` aliases must
+ * name a served module. workerd would otherwise fail on the caller's machine
+ * with "No such module" after this route answered 200, which is how a layout
+ * that `shouldOmitPreparedModule` did not know went unnoticed. This throws a
+ * plain error, a server fault, because the caller cannot fix a dropped module.
+ *
+ * workerd links only the modules a run reaches, so served modules nothing
+ * imports are not checked. Quoted relative strings are only candidates: they
+ * are followed when they name a served module, and a module is parsed only
+ * when one does not, so a complete graph costs no parse.
+ */
+function assertLocalExecuteModuleGraphIsClosed(
+	modulesByName: ReadonlyMap<string, string>,
+	entryModuleNames: ReadonlyArray<string>,
+	primaryRuntimePath: string,
+) {
+	const visited = new Set<string>()
+	const pending = [...entryModuleNames]
+	while (pending.length > 0) {
+		const modulePath = pending.pop()!
+		if (visited.has(modulePath)) continue
+		visited.add(modulePath)
+		// The primary runtime shim joins the graph when it is signed.
+		const source = modulesByName.get(modulePath)
+		if (source == null) continue
+		let hasUnservedCandidate = false
+		for (const match of source.matchAll(relativeSpecifierCandidatePattern)) {
+			const target = resolveRelativeModulePath(modulePath, match[1] ?? '')
+			if (target == null) continue
+			if (modulesByName.has(target)) pending.push(target)
+			else if (target !== primaryRuntimePath) hasUnservedCandidate = true
+		}
+		if (!hasUnservedCandidate) continue
+		let imports: ReturnType<typeof collectLiteralImportNodes>
+		try {
+			imports = collectLiteralImportNodes(source, { filePath: modulePath })
+		} catch {
+			// workerd reports a module that does not parse on its own.
+			continue
+		}
+		for (const { specifier, kind } of imports) {
+			if (kind !== 'static') continue
+			const target = resolveRelativeModulePath(modulePath, specifier)
+			if (
+				target == null ||
+				target === primaryRuntimePath ||
+				modulesByName.has(target)
+			) {
+				continue
+			}
+			throw new Error(
+				`Local execute package graph is incomplete: "${modulePath}" imports "${specifier}", but "${target}" is not among the served modules.`,
+			)
+		}
+	}
 }
 
 function shouldOmitPreparedModule(modulePath: string) {
