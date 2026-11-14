@@ -4,7 +4,10 @@ import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-su
 import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
 import { collectDynamicImportExpressionNodes } from './import-specifiers.ts'
-import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
+import {
+	assertNoKodyVirtualModuleReference,
+	prepareKodyGraphFiles,
+} from './module-graph-import-rewriting.ts'
 import {
 	createPackageProxyPathSegment,
 	createRelativeImportSpecifier,
@@ -53,11 +56,37 @@ export type LocalExecutePackageGraph = {
 	packageIdsByImport: Record<string, string>
 }
 
+/**
+ * A package graph before it is signed for one caller: the heavy part of a
+ * graph build. It depends only on the org, the base URL, the imports, and
+ * each imported package's serving commit, so it is what the package graph
+ * cache stores. {@link signLocalExecutePackageGraph} adds the caller's
+ * signed package bindings and the primary runtime shim.
+ */
+export type UnsignedLocalExecutePackageGraph = {
+	/** Sorted, without the primary runtime shim. */
+	modules: Array<LocalExecutePackageModule>
+	primaryRuntimePath: string
+	/** True when the graph needs the primary shim even with no bindings. */
+	includesPrimaryRuntime: boolean
+	imports: Array<string>
+	packageIdsByImport: Record<string, string>
+	graphPackageIds: Array<string>
+	entryPackageIds: Array<string>
+	/**
+	 * Saved packages the build resolved live (by name, at their serving
+	 * commit). Published artifact dependencies are pinned by the artifact
+	 * and are not listed.
+	 */
+	resolvedPackageIds: Array<string>
+}
+
 export class LocalExecutePackageGraphError extends Error {
 	readonly code:
 		| 'package_import_unresolved'
 		| 'package_import_unpublished'
 		| 'unsupported_dynamic_package_import'
+		| 'package_graph_resource_limit'
 
 	constructor(
 		code: LocalExecutePackageGraphError['code'],
@@ -88,57 +117,65 @@ export function synthesizeLocalExecutePackageGraphEntry(
 }
 
 /**
- * Resolve published, stamped `kody:@…` modules for CLI `execute --local`
- * embedding. Does not execute the user module and does not claim a dynamic
- * worker day — callers meter this as an Open API prep operation.
+ * The static `kody:@…` imports a package graph build serves for `code`.
+ * Rejects literal dynamic saved-package imports, which it cannot bind.
  */
-export async function buildLocalExecutePackageGraph(input: {
-	env: Env
-	baseUrl: string
-	userId: string
-	/**
-	 * Org actor the CLI authenticated as. Each package in the graph gets a
-	 * binding signed for this org and actor; the shim sends that binding in
-	 * place of the bare package id, so CapabilityProxy can tell which package
-	 * a call comes from without trusting sandbox code.
-	 */
-	actorUserId: string | null
-	code: string
-}): Promise<LocalExecutePackageGraph> {
-	assertNoLiteralDynamicSavedPackageImports(input.code)
-
-	const sourceFiles = { 'entry.ts': input.code }
-	const staticImports = uniqueSpecifiers(
-		collectStaticKodyPackageImportsFromFiles(sourceFiles).map(
+export function collectLocalExecutePackageGraphImports(code: string) {
+	assertNoLiteralDynamicSavedPackageImports(code)
+	const imports = uniqueSpecifiers(
+		collectStaticKodyPackageImportsFromFiles({ 'entry.ts': code }).map(
 			(entry) => entry.specifier,
 		),
 	)
+	// Cached graphs skip the build's source checks, so check the entry here.
+	try {
+		assertNoKodyVirtualModuleReference('entry.ts', code)
+	} catch (error) {
+		throw mapPrepareFailure(error, imports)
+	}
+	return imports
+}
+
+/**
+ * The graph for an entry with no `kody:@` imports: only the gateway-fetch
+ * runtime shim. Ad-hoc scripts that call ambient `fetch` with `{{secret:…}}`
+ * placeholders still need globalThis.fetch wrapped so the hop expands on
+ * origin (or fails closed) instead of sending the raw template to a third
+ * party (kody#3020).
+ */
+export const emptyUnsignedLocalExecutePackageGraph: UnsignedLocalExecutePackageGraph =
+	{
+		modules: [],
+		primaryRuntimePath: runtimeModulePath,
+		includesPrimaryRuntime: true,
+		imports: [],
+		packageIdsByImport: {},
+		graphPackageIds: [],
+		entryPackageIds: [],
+		resolvedPackageIds: [],
+	}
+
+/**
+ * Resolve published, stamped `kody:@…` modules for CLI `execute --local`
+ * embedding. Does not execute the user module and does not claim a dynamic
+ * worker day. This is the heavy, memory-hungry part of a graph build, so it
+ * runs only in a throwaway isolate
+ * (`#worker/package-runtime/isolated-local-execute-package-graph.ts`).
+ */
+export async function buildUnsignedLocalExecutePackageGraph(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	code: string
+}): Promise<UnsignedLocalExecutePackageGraph> {
+	const staticImports = collectLocalExecutePackageGraphImports(input.code)
+	if (staticImports.length === 0) return emptyUnsignedLocalExecutePackageGraph
+	const sourceFiles = { 'entry.ts': input.code }
 
 	const {
 		rewriteInlinedLocalExecuteBundleSource,
-		createLocalExecuteRuntimeShimSource,
 		createLocalExecutePackageRuntimeModuleSource,
 	} = await loadLocalExecuteRuntimeSupport()
-
-	// Always embed the gateway-fetch runtime shim, even when the entry has no
-	// `kody:@` imports. Ad-hoc scripts that call ambient `fetch` with
-	// `{{secret:…}}` placeholders still need globalThis.fetch wrapped so the
-	// hop expands on origin (or fails closed) instead of sending the raw
-	// template to a third party (kody#3020).
-	if (staticImports.length === 0) {
-		return {
-			modules: [
-				{
-					name: runtimeModulePath,
-					esModule: createLocalExecuteRuntimeShimSource(runtimeModulePath),
-				},
-			],
-			imports: [],
-			warnings: [],
-			packageBindings: {},
-			packageIdsByImport: {},
-		}
-	}
 
 	let prepared: Awaited<ReturnType<typeof prepareKodyGraphFiles>>
 	try {
@@ -179,11 +216,10 @@ export async function buildLocalExecutePackageGraph(input: {
 	const primaryRuntimePath =
 		pickLocalExecutePrimaryRuntimePath(runtimeModulePaths)
 	for (const modulePath of runtimeModulePaths) {
+		if (modulePath === primaryRuntimePath) continue
 		modulesByName.set(
 			modulePath,
-			modulePath === primaryRuntimePath
-				? createLocalExecuteRuntimeShimSource(modulePath)
-				: createRuntimeModuleReexportSource(modulePath, primaryRuntimePath),
+			createRuntimeModuleReexportSource(modulePath, primaryRuntimePath),
 		)
 	}
 
@@ -296,9 +332,7 @@ export async function buildLocalExecutePackageGraph(input: {
 		}
 	}
 
-	// Sign one binding per package this graph serves and embed them in the
-	// primary shim (module-private, never exported). Nested runtime copies
-	// re-export the primary, so they share its bindings.
+	// Every package this graph serves gets a binding at sign time.
 	const graphPackageIds = new Set<string>([
 		...packageIdsByPrefix.values(),
 		...packageIdByModulePath.values(),
@@ -342,35 +376,69 @@ export async function buildLocalExecutePackageGraph(input: {
 			(a?.sourceId ?? left).localeCompare(b?.sourceId ?? right)
 		)
 	})
-	const packageBindings = await signLocalExecutePackageBindings({
-		env: input.env,
-		packageIds: graphPackageIds,
-		subject: { org: input.userId, actor: input.actorUserId },
-		entryPackageIds,
-	})
-	if (modulesByName.has(primaryRuntimePath) || packageBindings.size > 0) {
-		modulesByName.set(
-			primaryRuntimePath,
-			createLocalExecuteRuntimeShimSource(primaryRuntimePath, {
-				packageBindings: Object.fromEntries(packageBindings),
-			}),
-		)
-	}
-
 	const modules = [...modulesByName.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([name, esModule]) => ({ name, esModule }))
 
 	return {
 		modules,
+		primaryRuntimePath,
+		includesPrimaryRuntime: runtimeModulePaths.includes(primaryRuntimePath),
 		imports: staticImports,
-		warnings: [],
-		packageBindings: Object.fromEntries(packageBindings),
 		packageIdsByImport: Object.fromEntries(
 			[...packageIdsByImport.entries()].sort(([left], [right]) =>
 				left.localeCompare(right),
 			),
 		),
+		graphPackageIds: [...graphPackageIds].sort(),
+		entryPackageIds,
+		resolvedPackageIds: [...prepared.packages.values()]
+			.map((loaded) => loaded.row.id)
+			.sort(),
+	}
+}
+
+/**
+ * Sign one binding per package the graph serves for this caller and embed
+ * them in the primary shim (module-private, never exported). Nested runtime
+ * copies re-export the primary, so they share its bindings. Cheap: runs in
+ * the API isolate for every request, cached graph or not.
+ */
+export async function signLocalExecutePackageGraph(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	graph: UnsignedLocalExecutePackageGraph
+	/**
+	 * Org and actor the CLI authenticated as. The shim sends the signed
+	 * binding in place of the bare package id, so CapabilityProxy can tell
+	 * which package a call comes from without trusting sandbox code.
+	 */
+	subject: { org: string; actor: string | null }
+}): Promise<LocalExecutePackageGraph> {
+	const { graph } = input
+	const { createLocalExecuteRuntimeShimSource } =
+		await loadLocalExecuteRuntimeSupport()
+	const packageBindings = await signLocalExecutePackageBindings({
+		env: input.env,
+		packageIds: graph.graphPackageIds,
+		subject: input.subject,
+		entryPackageIds: graph.entryPackageIds,
+	})
+	const modules = [...graph.modules]
+	if (graph.includesPrimaryRuntime || packageBindings.size > 0) {
+		modules.push({
+			name: graph.primaryRuntimePath,
+			esModule: createLocalExecuteRuntimeShimSource(graph.primaryRuntimePath, {
+				packageBindings: Object.fromEntries(packageBindings),
+			}),
+		})
+		modules.sort((left, right) => left.name.localeCompare(right.name))
+	}
+	return {
+		modules,
+		imports: [...graph.imports],
+		warnings: [],
+		packageBindings: Object.fromEntries(packageBindings),
+		packageIdsByImport: { ...graph.packageIdsByImport },
 	}
 }
 
