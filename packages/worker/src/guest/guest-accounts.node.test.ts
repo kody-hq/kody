@@ -17,7 +17,6 @@ import {
 	readGuestAccountByClaimCode,
 	readGuestAccountByPerson,
 	readGuestClaimCode,
-	sealPlaintextGuestClaimCodes,
 } from './guest-accounts.ts'
 import { guestErrorPayload } from './guest-errors.ts'
 import {
@@ -313,7 +312,7 @@ test('claim codes are stored only as a lookup hash plus a person-bound sealed co
 	expect(await readGuestClaimCode(env, swapped!)).toBeNull()
 })
 
-test('plaintext claim rows fail closed until the backfill migrates them', async () => {
+test('plaintext claim rows fail closed', async () => {
 	const { sqlite, db, env } = createDb()
 	const first = await createGuest(db)
 	const second = await createGuest(db, '198.51.100.4')
@@ -329,38 +328,4 @@ test('plaintext claim rows fail closed until the backfill migrates them', async 
 	expect(await readGuestAccountByClaimCode(env, first.claimCode)).toBeNull()
 	const legacyRow = await readGuestAccountByPerson(db, second.personId)
 	expect(await readGuestClaimCode(env, legacyRow!)).toBeNull()
-
-	expect(
-		await sealPlaintextGuestClaimCodes({ env, dryRun: true, limit: 10 }),
-	).toMatchObject({ scanned: 2, sealed: 0, remainingPlaintext: 2 })
-	expect(
-		await sealPlaintextGuestClaimCodes({ env, dryRun: false, limit: 10 }),
-	).toMatchObject({ scanned: 2, sealed: 2, remainingPlaintext: 0 })
-	expect(
-		await sealPlaintextGuestClaimCodes({ env, dryRun: false, limit: 10 }),
-	).toMatchObject({ scanned: 0, sealed: 0, remainingPlaintext: 0 })
-	// A claimed guest keeps only its lookup hash and is not plaintext.
-	sqlite
-		.prepare(
-			"UPDATE guest_accounts SET claimed_at = '2026-01-01T00:00:00Z', claim_code_encrypted = NULL WHERE person_id = ?",
-		)
-		.run(first.personId)
-	expect(
-		await sealPlaintextGuestClaimCodes({ env, dryRun: true, limit: 10 }),
-	).toMatchObject({ scanned: 0, remainingPlaintext: 0 })
-	expect(
-		(await readGuestAccountByClaimCode(env, second.claimCode))?.personId,
-	).toBe(second.personId)
-	expect(
-		await readGuestClaimCode(
-			env,
-			(await readGuestAccountByPerson(db, second.personId))!,
-		),
-	).toBe(second.claimCode)
-	const plaintext = sqlite
-		.prepare(
-			'SELECT COUNT(*) AS count FROM guest_accounts WHERE claim_code IN (?, ?)',
-		)
-		.get(first.claimCode, second.claimCode) as { count: number }
-	expect(plaintext.count).toBe(0)
 })

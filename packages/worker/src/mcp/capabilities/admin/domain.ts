@@ -98,7 +98,6 @@ import { adminCredentialPathSegmentImpactCapability } from './admin-credential-p
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
 import { adminCreatorAccessBackfillCapability } from './admin-creator-access-backfill.ts'
-import { adminPlaintextSecretBackfillCapability } from './admin-plaintext-secret-backfill.ts'
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
@@ -231,7 +230,6 @@ export const adminDomain = defineDomain({
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminCredentialAllowedPackagesGrandfatherCapability,
 		adminCreatorAccessBackfillCapability,
-		adminPlaintextSecretBackfillCapability,
 		adminPackageAppCapabilityMigrationReportCapability,
 		adminPackageCredentialSupplierReportCapability,
 		adminPackageScopedSecretReportCapability,
