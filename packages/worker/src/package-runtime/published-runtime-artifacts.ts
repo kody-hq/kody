@@ -2,6 +2,11 @@ import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { repoRelativeSourceFiles } from '#worker/repo/published-source-files.ts'
+import {
+	createBundleArtifactManifest,
+	parseStoredBundleArtifactManifest,
+	type BundleArtifactManifest,
+} from './bundle-artifact-manifest.ts'
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
@@ -162,6 +167,12 @@ export type PublishedBundleArtifact = {
 	 * See `pre-binding-artifact-repair.ts`.
 	 */
 	packageBindingRewrite?: number
+	/**
+	 * Role and size of each stored module, written with the artifact. Absent
+	 * on artifacts stored before the manifest existed, and on an artifact that
+	 * was changed in memory after it was read.
+	 */
+	manifest?: BundleArtifactManifest
 }
 
 type StoredPublishedBundleArtifact = Omit<
@@ -736,9 +747,11 @@ export async function writePublishedBundleArtifact(input: {
 			artifactName: input.artifact.artifactName,
 			entryPoint: input.artifact.entryPoint,
 		})
+	// Always derived from the modules being written, never carried over.
 	const serialized = JSON.stringify({
 		...input.artifact,
 		modules: serializeWorkerLoaderModules(input.artifact.modules),
+		manifest: createBundleArtifactManifest(input.artifact),
 	})
 	const kv = getBundleArtifactsKv(input.env)
 	await Promise.all([
@@ -910,13 +923,24 @@ function parseStoredPublishedBundleArtifact(
 			? {}
 			: { packageBindingRewrite: artifact.packageBindingRewrite }),
 	} satisfies PublishedBundleArtifact
+	const manifest = parseStoredBundleArtifactManifest(
+		(stored as { manifest?: unknown }).manifest,
+		Object.keys(loaded.modules),
+	)
 	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
 	// repair imports the shared runtime module, which only resolves inside a
 	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
-	if (!isRepairableArtifactKind(loaded.kind)) return loaded
-	return repairInlinedFacadeBindingsInArtifact(
+	if (!isRepairableArtifactKind(loaded.kind)) {
+		return manifest ? { ...loaded, manifest } : loaded
+	}
+	const repaired = repairInlinedFacadeBindingsInArtifact(
 		repairPreBindingPublishedArtifact(loaded),
 	)
+	// A read-time repair rewrites module source, so the stored sizes no longer
+	// describe what is served.
+	return manifest && repaired.modules === loaded.modules
+		? { ...repaired, manifest }
+		: repaired
 }
 
 export async function deletePublishedBundleArtifact(input: {

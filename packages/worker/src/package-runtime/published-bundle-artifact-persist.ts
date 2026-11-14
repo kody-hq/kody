@@ -16,6 +16,7 @@ import {
 	publishedPackageArtifactBuildKey,
 	type PublishedPackageArtifactBuildTarget,
 } from './package-artifact-targets.ts'
+import { createBundleArtifactManifest } from './bundle-artifact-manifest.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,
@@ -91,6 +92,7 @@ export function toDbRowInput(input: {
 	entryPoint: string
 	kvKey: string
 	dependencies: Array<BundleArtifactDependency>
+	totalBytes: number
 }): PublishedBundleArtifactUpsertInput {
 	return {
 		userId: input.userId,
@@ -101,6 +103,7 @@ export function toDbRowInput(input: {
 		entryPoint: input.entryPoint,
 		kvKey: input.kvKey,
 		dependenciesJson: JSON.stringify(input.dependencies),
+		totalBytes: input.totalBytes,
 	}
 }
 
@@ -183,6 +186,7 @@ export function preparePublishedBundleArtifactPersist(
 			entryPoint,
 			kvKey,
 			dependencies: input.dependencies,
+			totalBytes: createBundleArtifactManifest(artifact).totalBytes,
 		}),
 	}
 }

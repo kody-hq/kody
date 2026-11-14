@@ -94,6 +94,7 @@ async function ensureSecretAuthorityTestSchema() {
 		entry_point TEXT NOT NULL,
 		kv_key TEXT NOT NULL,
 		dependencies_json TEXT NOT NULL DEFAULT '[]',
+		total_bytes INTEGER,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
