@@ -229,7 +229,15 @@ function redactRecordFields(
 			assignRedacted(host, key, redactedQuery, child, inPlace)
 			continue
 		}
-		const next = redactSentryValue(child, depth + 1, seen)
+		// Query-mode cycles must resolve to the query clone (not a generic
+		// walk that would keep query-only secrets like `code`).
+		const next =
+			queryStringMode &&
+			child !== null &&
+			typeof child === 'object' &&
+			seen.query.has(child)
+				? seen.query.get(child)
+				: redactSentryValue(child, depth + 1, seen)
 		assignRedacted(host, key, next, child, inPlace)
 	}
 }

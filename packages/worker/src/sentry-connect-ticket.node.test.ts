@@ -281,4 +281,28 @@ test('deep redaction skips getter-only and frozen props without throwing', () =>
 		(sharedOrder.request as { query_string: { code: string; state: string } })
 			.query_string,
 	).toEqual({ code: '[redacted]', state: 'kept' })
+
+	const cyclicQuery: Record<string, unknown> = {
+		code: 'oauth-cycle-secret',
+		state: 'kept-cycle',
+	}
+	cyclicQuery.self = cyclicQuery
+	Object.freeze(cyclicQuery)
+	const cyclicQueryEvent = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		request: { query_string: cyclicQuery },
+	})
+	const cyclicQueryString = (
+		cyclicQueryEvent.request as {
+			query_string: {
+				code: string
+				state: string
+				self: { code: string }
+			}
+		}
+	).query_string
+	expect(cyclicQueryString.code).toBe('[redacted]')
+	expect(cyclicQueryString.state).toBe('kept-cycle')
+	expect(cyclicQueryString.self).toBe(cyclicQueryString)
+	expect(cyclicQueryString.self.code).toBe('[redacted]')
 })
