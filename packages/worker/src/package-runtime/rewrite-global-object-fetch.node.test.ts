@@ -40,3 +40,7 @@ test('a module can read through one global object while aliasing the other', () 
 		`const s = self; F(url); s.fetch(url)`,
 	)
 })
+
+test('a parenthesized global object is still read as the global object', () => {
+	expect(rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
+})

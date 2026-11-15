@@ -161,12 +161,9 @@ const globalObjectNames = new Set(['globalThis', 'self'])
  * the same name is never mistaken for the global object. Returns the source
  * unchanged when it does not parse.
  */
-const globalObjectFetchReadPattern =
-	/\b(?:globalThis|self)\s*(?:\??\.\s*fetch\b|\[\s*['"`]fetch['"`]\s*\])/
-
 /** Cheap text check that runs before parsing. */
 export function sourceMayReadFetchThroughGlobalObject(source: string) {
-	return globalObjectFetchReadPattern.test(source)
+	return /\b(?:globalThis|self)\b/.test(source) && source.includes('fetch')
 }
 
 export function rewriteGlobalObjectFetchReads(
