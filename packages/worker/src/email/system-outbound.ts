@@ -234,6 +234,7 @@ async function sendReservedEmail(
 				accountId: input.env.CLOUDFLARE_ACCOUNT_ID,
 				apiBaseUrl: input.env.CLOUDFLARE_API_BASE_URL,
 				apiToken: input.env.CLOUDFLARE_API_TOKEN,
+				retryTransportErrors: !newsletter,
 			},
 			{
 				to: to.length === 1 ? to[0]! : to,

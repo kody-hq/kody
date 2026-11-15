@@ -119,6 +119,44 @@ test('newsletter mail has a dedicated sender, quota, send kind, and one-recipien
 	expect(payloads).toHaveLength(1)
 })
 
+test('newsletter transport loss surfaces without retry while transactional mail still retries', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-16T05:06:07.000Z')
+	const lost = Object.assign(new Error('Network connection lost.'), {
+		retryable: true,
+	})
+	const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(lost)
+	const input = {
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		now,
+	}
+	try {
+		await expect(sendNewsletterEmail(input)).rejects.toThrow(
+			'Network connection lost.',
+		)
+		expect(fetchSpy).toHaveBeenCalledTimes(1)
+		expect(await readSendCounter('news', now)).toBe(0)
+		fetchSpy.mockReset()
+		fetchSpy.mockRejectedValueOnce(lost).mockResolvedValueOnce(
+			Response.json({
+				success: true,
+				result: { message_id: 'transactional-retry' },
+			}),
+		)
+		await expect(sendSystemEmail(input)).resolves.toMatchObject({
+			providerMessageId: 'transactional-retry',
+		})
+		expect(fetchSpy).toHaveBeenCalledTimes(2)
+		expect(await readSendCounter('kody', now)).toBe(1)
+	} finally {
+		fetchSpy.mockRestore()
+	}
+})
+
 test('system send paths never extract a different recipient from unsupported address syntax', async () => {
 	await ensureEmailTestSchema(env.APP_DB)
 	const payloads: Array<Record<string, unknown>> = []
