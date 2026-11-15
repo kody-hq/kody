@@ -1,12 +1,16 @@
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { test } = require('node:test')
-const { startUpdates, finishQuit } = require('../updates.cjs')
+const { mkdtempSync, rmSync, writeFileSync } = require('node:fs')
+const { tmpdir } = require('node:os')
+const { join } = require('node:path')
+const { isDebInstall, startUpdates, finishQuit } = require('../updates.cjs')
 
 function setup({
 	isPackaged = true,
 	hasUpdateFeed = true,
 	isMsix = false,
+	isDeb = false,
 	checkForUpdates,
 } = {}) {
 	const updater = new EventEmitter()
@@ -40,6 +44,7 @@ function setup({
 		updater,
 		hasUpdateFeed,
 		isMsix,
+		isDeb,
 		dialog: {
 			showMessageBox: async (options) => messages.push(options.message),
 		},
@@ -79,6 +84,21 @@ test('development builds never contact the update feed', () => {
 	const fixture = setup({ isPackaged: false })
 	assert.equal(fixture.updates, null)
 	assert.equal(fixture.checks, 0)
+})
+
+test('.deb installs never start electron-updater; AppImages do', () => {
+	const deb = setup({ isDeb: true })
+	assert.equal(deb.updates, null)
+	assert.equal(deb.checks, 0)
+	assert.notEqual(setup().updates, null)
+	const resources = mkdtempSync(join(tmpdir(), 'kody-package-type-'))
+	try {
+		assert.equal(isDebInstall(resources), false)
+		writeFileSync(join(resources, 'package-type'), 'deb')
+		assert.equal(isDebInstall(resources), true)
+	} finally {
+		rmSync(resources, { recursive: true, force: true })
+	}
 })
 
 test('downloads automatically, checks every five minutes, and leaves restart to app shutdown', async () => {

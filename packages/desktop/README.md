@@ -227,13 +227,13 @@ runs that packaged Electron executable in Node mode to check its CLI and native
 keyring binding. The check does not read or write stored credentials.
 
 Download the artifacts from the workflow run. They contain macOS DMG and ZIP
-files, Windows MSIX packages with App Installer files, or Linux AppImages, with
-architecture-specific filenames, SHA-256 checksums, and build metadata
-identifying the source commit. On Linux, install your distribution's FUSE 2
-compatibility library (`libfuse2t64` on Ubuntu 24.04), then make the downloaded
-AppImage executable before opening it. Artifacts expire after 30 days. This
-workflow uploads test artifacts only. The Desktop release workflow publishes
-production downloads and the update feed.
+files, Windows MSIX packages with App Installer files, or Linux AppImages and
+`.deb` packages, with architecture-specific filenames, SHA-256 checksums, and
+build metadata identifying the source commit. On Linux, install your
+distribution's FUSE 2 compatibility library (`libfuse2t64` on Ubuntu 24.04),
+then make the downloaded AppImage executable before opening it. Artifacts expire
+after 30 days. This workflow uploads test artifacts only. The Desktop release
+workflow publishes production downloads and the update feed.
 
 CI builds use no production credentials. macOS builds are unsigned and not
 notarized. Windows builds sign the MSIX with a disposable certificate so CI can
@@ -266,12 +266,41 @@ update feed separate from the website's daily releases. Users do not need a
 GitHub token. Every architecture has its own update manifest so parallel jobs
 cannot overwrite another architecture's feed.
 
-On macOS and Linux, production apps check on launch and every five minutes,
-download automatically, and install on Quit. **Updates > Restart to update**
-quits and relaunches with the downloaded version. Both paths stop the local
-runner before installing. Closing a Mac window continues to keep the app and
-runner open. Update failures retry without interrupting the app. Development
-builds never check for updates. Updates do not downgrade or install prereleases.
+On macOS and in the Linux AppImage, production apps check on launch and every
+five minutes, download automatically, and install on Quit. **Updates > Restart
+to update** quits and relaunches with the downloaded version. Both paths stop
+the local runner before installing. Closing a Mac window continues to keep the
+app and runner open. Update failures retry without interrupting the app.
+Development builds never check for updates. Updates do not downgrade or install
+prereleases.
+
+### Linux install and updates
+
+Linux ships for x64 and arm64 as an AppImage, which
+`https://kody.codes/download` picks for Linux visitors, and a `.deb` for Debian
+and Ubuntu. Linux builds are not code signed. Each release publishes:
+
+| Asset                                                  | Purpose                                               |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| `Kody-<version>-linux-<x86_64\|arm64>.AppImage`        | Portable app; electron-updater keeps it updated       |
+| `Kody-<version>-linux-<amd64\|arm64>.deb`              | Package for `sudo apt install ./Kody-*.deb`           |
+| `latest-x64-linux.yml`, `latest-arm64-linux-arm64.yml` | Update feed the AppImage reads                        |
+| `SHA256SUMS-linux-<arch>.txt`                          | Checksums of that architecture's installers           |
+| `build-info-linux-<arch>.json`                         | Version, source commit, and architecture of the build |
+
+The AppImage needs the FUSE 2 library (`libfuse2t64` on Ubuntu 24.04) and must
+be made executable before its first launch. It updates itself like the Mac app.
+A `.deb` install has one update path: download and install the new `.deb`.
+electron-builder marks those installs with `resources/package-type`, so the app
+skips electron-updater there and **Updates > Download the latest version…**
+opens `https://kody.codes/download`. The `.deb` installs the app as
+`kody-desktop` so it never shadows the `kody` CLI on `PATH`.
+
+Always-latest links need the version in the file name, so use
+`https://kody.codes/download` (or `?platform=linux&arch=arm64`) for a stable
+AppImage link, or the
+[latest release page](https://github.com/kody-hq/kody-desktop/releases/latest)
+for the `.deb`.
 
 ### Windows install and updates
 
@@ -351,16 +380,16 @@ and also fails naming the starved targets when attempts run out. A newer main
 release run supersedes the watch, since it publishes the next version.
 `packages/desktop/scripts/release-runner-watch.cjs` holds that logic.
 
-Every release builds macOS and Windows on both architectures (`mac-win`). The
-default `auto` scope keeps Linux once a release has published it; run the
-workflow manually on main with `all` to add Linux. macOS builds require
+Every release, automatic or dispatched, builds macOS, Windows, and Linux on both
+architectures; a release publishes only with all of them. macOS builds require
 Developer ID signing, Apple's notarization service, and a valid stapled ticket.
 Windows builds require valid signatures on the application and the MSIX, then
 install the package on the runner and smoke test that the app starts and its
-main window loads. The final job uploads all installers, blockmaps, manifests,
-App Installer files, and checksums to a draft, then publishes it. Published
-versions cannot be replaced. The normal Desktop binaries workflow still produces
-unsigned CI artifacts.
+main window loads. Linux builds launch the AppImage and the installed `.deb`
+under Xvfb with the same smoke test (`scripts/linux-smoke.sh`). The final job
+uploads all installers, blockmaps, manifests, App Installer files, and checksums
+to a draft, then publishes it. Published versions cannot be replaced. The normal
+Desktop binaries workflow still produces unsigned CI artifacts.
 
 A repository admin must create the `desktop-release` GitHub environment in
 `kody-hq/kody` and restrict its deployment branches to main. The first Mac

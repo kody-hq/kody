@@ -12,6 +12,9 @@ const { join } = require('node:path')
 const { execFileSync } = require('node:child_process')
 const { planVersion } = require('../scripts/release-version.cjs')
 const { releaseNotes } = require('../scripts/release-plan.cjs')
+// Releases before every target shipped recorded `mac` or `mac-win`.
+const legacyNotes = (sha, platforms) =>
+	`Source: https://github.com/kody-hq/kody/commit/${sha}\nPlatforms: ${platforms}`
 
 function plan(overrides = {}) {
 	return planVersion({
@@ -20,7 +23,7 @@ function plan(overrides = {}) {
 		isAncestor: () => true,
 		latest: {
 			tag_name: 'v0.1.5',
-			body: releaseNotes('a'.repeat(40), 'mac'),
+			body: legacyNotes('a'.repeat(40), 'mac'),
 			assets: [{ name: 'latest-arm64-mac.yml' }],
 		},
 		...overrides,
@@ -33,7 +36,7 @@ test('versions advance past the public feed even when the source package stays u
 		plan({
 			latest: {
 				tag_name: 'v0.1.9',
-				body: releaseNotes('a'.repeat(40), 'mac'),
+				body: legacyNotes('a'.repeat(40), 'mac'),
 				assets: [],
 			},
 		}).version,
@@ -43,44 +46,22 @@ test('versions advance past the public feed even when the source package stays u
 	assert.equal(plan({ latest: null }).version, '0.1.5')
 })
 
-test('a published source is skipped on retry unless it lacked Windows', () => {
+test('a published source is skipped on retry unless it lacked Linux', () => {
 	const latest = {
 		tag_name: 'v0.1.5',
-		body: releaseNotes('a'.repeat(40), 'mac-win'),
+		body: releaseNotes('a'.repeat(40)),
 		assets: [],
 	}
 	assert.equal(plan({ latest, sha: 'a'.repeat(40) }).release, false)
 	assert.equal(plan({ latest }).release, true)
-	assert.equal(plan({ sha: 'a'.repeat(40) }).release, true)
-})
-
-test('automatic scope preserves existing platform feeds and explicit mac-win cannot remove them', () => {
-	const latest = {
-		tag_name: 'v0.1.5',
-		body: releaseNotes('a'.repeat(40), 'all'),
-		assets: [{ name: 'latest-x64-linux.yml' }],
-	}
-	assert.equal(plan({ latest }).platforms, 'all')
-	assert.equal(plan({ platforms: 'all' }).platforms, 'all')
-	assert.throws(
-		() => plan({ latest, platforms: 'mac-win' }),
-		/Choose all platforms/,
-	)
-})
-
-test('every automatic release after a Mac-only release adds Windows', () => {
-	assert.deepEqual(plan(), {
-		version: '0.1.6',
-		platforms: 'mac-win',
-		release: true,
-	})
-	const latest = {
-		tag_name: 'v0.1.6',
-		body: releaseNotes('a'.repeat(40), 'mac-win'),
-		assets: [{ name: 'latest-arm64-mac.yml' }],
-	}
-	assert.equal(plan({ latest }).platforms, 'mac-win')
-	assert.equal(plan({ latest, sha: 'a'.repeat(40) }).release, false)
+	for (const platforms of ['mac', 'mac-win'])
+		assert.deepEqual(
+			plan({
+				latest: { ...latest, body: legacyNotes('a'.repeat(40), platforms) },
+				sha: 'a'.repeat(40),
+			}),
+			{ version: '0.1.6', release: true },
+		)
 })
 
 test('malformed and prerelease versions fail before signing', () => {
@@ -152,13 +133,13 @@ test('matching drafts resume while drafts from another source reserve their vers
 	const draft = {
 		draft: true,
 		tag_name: 'v0.1.6',
-		body: releaseNotes('b'.repeat(40), 'mac-win'),
+		body: releaseNotes('b'.repeat(40)),
 		assets: [{ name: 'Kody-0.1.6-mac-arm64.zip' }],
 	}
 	assert.equal(plan({ drafts: [draft] }).version, '0.1.6')
 	assert.equal(
 		plan({
-			drafts: [{ ...draft, body: releaseNotes('c'.repeat(40), 'mac-win') }],
+			drafts: [{ ...draft, body: releaseNotes('c'.repeat(40)) }],
 		}).version,
 		'0.1.7',
 	)
@@ -168,8 +149,9 @@ test('matching drafts resume while drafts from another source reserve their vers
 		'0.1.7',
 	)
 	assert.equal(
-		plan({ drafts: [{ ...draft, body: releaseNotes('b'.repeat(40), 'all') }] })
-			.version,
+		plan({
+			drafts: [{ ...draft, body: legacyNotes('b'.repeat(40), 'mac-win') }],
+		}).version,
 		'0.1.7',
 	)
 	assert.equal(
@@ -194,19 +176,6 @@ test('matching drafts resume while drafts from another source reserve their vers
 	)
 })
 
-test('recorded platform coverage survives missing feed assets', () => {
-	const latest = {
-		tag_name: 'v0.1.5',
-		body: releaseNotes('a'.repeat(40), 'all'),
-		assets: [],
-	}
-	assert.equal(plan({ latest }).platforms, 'all')
-	assert.throws(
-		() => plan({ latest, platforms: 'mac-win' }),
-		/Choose all platforms/,
-	)
-})
-
 test('unrelated and prerelease drafts cannot block a stable release', () => {
 	const drafts = ['v0.2.0-rc', 'unrelated', ''].map((tag_name) => ({
 		draft: true,
@@ -221,13 +190,12 @@ test('published history sets the version floor even when latest points to an old
 		{
 			draft: false,
 			tag_name: 'v0.1.6',
-			body: releaseNotes('a'.repeat(40), 'all'),
+			body: releaseNotes('a'.repeat(40)),
 			assets: [],
 		},
 		{ draft: false, prerelease: true, tag_name: 'v0.2.0-rc', assets: [] },
 	]
 	assert.equal(plan({ releases }).version, '0.1.7')
-	assert.equal(plan({ releases }).platforms, 'all')
 	assert.equal(plan({ latest: null, releases }).version, '0.1.7')
 	assert.equal(plan({ releases, isAncestor: () => false }).release, false)
 	assert.equal(
