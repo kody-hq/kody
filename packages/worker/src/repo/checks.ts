@@ -1938,7 +1938,10 @@ export async function runRepoChecks(input: {
 			input.typecheckRanOffWorker !== true &&
 			totalBytes > repoChecksCloudBuildMaxRuntimeSourceBytes
 		) {
-			const { runtime } = publishSizeHints({ files: collected })
+			const { runtime } = publishSizeHints({
+				files: collected,
+				runtimeOnly: true,
+			})
 			if (runtime.bytes > repoChecksCloudBuildMaxRuntimeSourceBytes) {
 				return {
 					ok: false as const,

@@ -97,3 +97,35 @@ test('publishSizeHints names the runtime inputs and npm dependencies, not tiny c
 	expect(message).not.toContain('tsconfig.json')
 	expect(formatPublishSizeHints(null)).toBe('')
 })
+
+test('publishSizeHints follows an extensionless entry and can leave out type-only files', () => {
+	const files = {
+		'package.json': JSON.stringify({
+			name: '@example/demo',
+			exports: { '.': { types: './src/api.d.ts', default: './src/index' } },
+		}),
+		'src/api.d.ts': 'export type Api = string\n',
+		'src/index.ts': [
+			"import type { Shape } from './shape.ts'",
+			'import {',
+			'\ttype Other,',
+			'\tvalue,',
+			"} from './value.ts'",
+			"export type { Shape } from './shape.ts'",
+			'export default (): Shape | Other => value',
+		].join('\n'),
+		'src/shape.ts': 'export type Shape = string\n',
+		'src/value.ts': 'export type Other = number\nexport const value = 1\n',
+	}
+
+	expect(
+		publishSizeHints({ files })
+			.runtime.largest.map((hint) => hint.path)
+			.sort(),
+	).toEqual(['src/api.d.ts', 'src/index.ts', 'src/shape.ts', 'src/value.ts'])
+	expect(
+		publishSizeHints({ files, runtimeOnly: true })
+			.runtime.largest.map((hint) => hint.path)
+			.sort(),
+	).toEqual(['src/index.ts', 'src/value.ts'])
+})
