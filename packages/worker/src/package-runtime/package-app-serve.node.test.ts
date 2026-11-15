@@ -18,6 +18,7 @@ import {
 } from './package-app-diagnostics.ts'
 import {
 	parsePackageAppCustomHostnamePath,
+	parsePackageAppPath,
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
 	createPackageCodeRequest,
@@ -53,6 +54,35 @@ test('subdomain paths parse the short /{name} form and the legacy /packages/{nam
 		restPath: '/report',
 		mount: 'user-subdomain',
 	})
+})
+
+test('package app paths forward a trailing slash so apps never redirect to themselves', () => {
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/newsletter/admin/',
+			username: 'kody',
+		}),
+	).toMatchObject({ kodyId: 'newsletter', restPath: '/admin/' })
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/newsletter/admin',
+			username: 'kody',
+		}),
+	).toMatchObject({ kodyId: 'newsletter', restPath: '/admin' })
+	expect(
+		parsePackageAppSubdomainPath({ pathname: '/newsletter/', username: 'kody' })
+			?.restPath,
+	).toBe('/')
+	expect(
+		parsePackageAppPath('/@kody/packages/newsletter/admin/')?.restPath,
+	).toBe('/admin/')
+	expect(
+		parsePackageAppCustomHostnamePath({
+			pathname: '/admin/',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}).restPath,
+	).toBe('/admin/')
 })
 
 test('subdomain paths never parse reserved first segments or a bare /packages', () => {

@@ -156,6 +156,16 @@ export type PackageAppPath = {
 	openHandoff?: boolean
 }
 
+/**
+ * App path below the package leaf. A trailing slash is part of the URL the
+ * visitor asked for, so it is forwarded as-is: an app that canonicalizes
+ * `/admin` to `/admin/` would otherwise redirect to itself forever.
+ */
+function packageAppRestPath(parts: Array<string>, pathname: string) {
+	if (parts.length === 0) return '/'
+	return `/${parts.join('/')}${pathname.endsWith('/') ? '/' : ''}`
+}
+
 export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 	const parts = pathname.split('/').filter(Boolean)
 	const rawUsername = parts[0]?.startsWith('@') ? parts[0].slice(1) : ''
@@ -177,7 +187,7 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 	return {
 		username,
 		kodyId,
-		restPath: restParts.length > 0 ? `/${restParts.join('/')}` : '/',
+		restPath: packageAppRestPath(restParts, pathname),
 		mount: 'username-path',
 		...(openHandoff ? { openHandoff: true } : {}),
 	}
@@ -212,10 +222,7 @@ export function parsePackageAppSubdomainPath(input: {
 	return {
 		username: input.username,
 		kodyId,
-		restPath:
-			parts.length > leafIndex + 1
-				? `/${parts.slice(leafIndex + 1).join('/')}`
-				: '/',
+		restPath: packageAppRestPath(parts.slice(leafIndex + 1), input.pathname),
 		mount: 'user-subdomain',
 	}
 }
@@ -235,7 +242,7 @@ export function parsePackageAppCustomHostnamePath(input: {
 	return {
 		username: input.username,
 		kodyId: input.kodyId,
-		restPath: parts.length > 0 ? `/${parts.join('/')}` : '/',
+		restPath: packageAppRestPath(parts, pathname),
 		mount: 'custom-hostname',
 	}
 }
