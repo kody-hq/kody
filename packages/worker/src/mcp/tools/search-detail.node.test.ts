@@ -387,7 +387,7 @@ test('resolveEntityDetail hostedUrl uses PACKAGE_APP_BASE_URL when configured', 
 	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
-		manifest: { kody: {} },
+		manifest: { kody: {}, exports: {} },
 		files: {},
 	})
 
@@ -417,7 +417,7 @@ test('resolveEntityDetail hostedUrl uses the package name leaf when kodyId lags'
 	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
-		manifest: { kody: {} },
+		manifest: { kody: {}, exports: {} },
 		files: {},
 	})
 

@@ -311,7 +311,7 @@ test('publish and invocation agree on exports with a narrowly typed required par
 		await runTypecheck({ ...sourceFiles, 'tsconfig.json': packageTsconfig }),
 	).toMatchObject({ kind: 'typecheck', ok: true })
 	expect(
-		checkPublishedEntrypointsForRebuild({
+		await checkPublishedEntrypointsForRebuild({
 			sourceFiles,
 			entryPoints: [{ path: 'src/index.ts' }],
 		}),

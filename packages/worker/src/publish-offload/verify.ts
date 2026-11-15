@@ -273,7 +273,7 @@ function assertSafeModulePath(path: string) {
  * (another package's facade, a linked artifact's internals) is refused.
  * Returns the placeholders the module imports.
  */
-function assertImportsStayInPackage(input: {
+async function assertImportsStayInPackage(input: {
 	path: string
 	source: string
 	label: string
@@ -281,7 +281,7 @@ function assertImportsStayInPackage(input: {
 	linkedImports: ReadonlyMap<string, string>
 	referenced: Set<string>
 }) {
-	const specifiers = collectBundlerResolvedSpecifiers(input.source)
+	const specifiers = await collectBundlerResolvedSpecifiers(input.source)
 	if (specifiers === null) {
 		fail(`${input.label} does not parse as a module.`)
 	}
@@ -380,7 +380,7 @@ export async function verifyUploadedTargetModules(input: {
 				)
 			}
 		}
-		assertImportsStayInPackage({
+		await assertImportsStayInPackage({
 			path,
 			source,
 			label,

@@ -24,7 +24,7 @@ function manual(path: string, snippet: string) {
 	return { path, message: expect.stringContaining(snippet) }
 }
 
-test('0002 rewrites invokeChecked member calls and leaves non-targets alone', () => {
+test('0002 rewrites invokeChecked member calls and leaves non-targets alone', async () => {
 	const files = {
 		'package.json': manifest,
 		'index.ts': source(
@@ -38,10 +38,10 @@ test('0002 rewrites invokeChecked member calls and leaves non-targets alone', ()
 		),
 	}
 
-	expect(codemod.detect(files, packageContext)).toEqual([
+	expect(await codemod.detect(files, packageContext)).toEqual([
 		manual('index.ts', '`packages.invokeChecked`'),
 	])
-	const result = codemod.transform(files, packageContext)
+	const result = await codemod.transform(files, packageContext)
 	expect(result).toMatchObject({
 		changed: true,
 		changedPaths: ['index.ts'],
@@ -56,7 +56,7 @@ test('0002 rewrites invokeChecked member calls and leaves non-targets alone', ()
 	)
 	expect(output).not.toContain('invokeChecked')
 	expect(output).not.toContain("kodyId: 'github'")
-	const rerun = codemod.transform(result.files, packageContext)
+	const rerun = await codemod.transform(result.files, packageContext)
 	expect(rerun.changed).toBe(false)
 	expect(rerun.files).toEqual(result.files)
 
@@ -71,14 +71,14 @@ test('0002 rewrites invokeChecked member calls and leaves non-targets alone', ()
 			'}',
 		),
 	}
-	expect(codemod.detect(untouched, packageContext)).toEqual([])
-	expect(codemod.transform(untouched, packageContext)).toMatchObject({
+	expect(await codemod.detect(untouched, packageContext)).toEqual([])
+	expect(await codemod.transform(untouched, packageContext)).toMatchObject({
 		changed: false,
 		files: untouched,
 	})
 })
 
-test('0002 reports needsManual and leaves files unchanged for non-migratable calls', () => {
+test('0002 reports needsManual and leaves files unchanged for non-migratable calls', async () => {
 	const cases: Array<{
 		name: string
 		files: Record<string, string>
@@ -129,15 +129,16 @@ test('0002 reports needsManual and leaves files unchanged for non-migratable cal
 	]
 	for (const { name, files, needsManual } of cases) {
 		const input = { 'package.json': manifest, ...files }
-		expect({ name, ...codemod.transform(input, packageContext) }).toMatchObject(
-			{
-				name,
-				changed: false,
-				changedPaths: [],
-				files: input,
-				needsManual,
-			},
-		)
+		expect({
+			name,
+			...(await codemod.transform(input, packageContext)),
+		}).toMatchObject({
+			name,
+			changed: false,
+			changedPaths: [],
+			files: input,
+			needsManual,
+		})
 	}
 
 	const mixedFiles = {
@@ -155,7 +156,7 @@ test('0002 reports needsManual and leaves files unchanged for non-migratable cal
 			'}',
 		),
 	}
-	const mixedResult = codemod.transform(mixedFiles, packageContext)
+	const mixedResult = await codemod.transform(mixedFiles, packageContext)
 	expect(mixedResult).toMatchObject({
 		changed: true,
 		changedPaths: ['auto.ts'],

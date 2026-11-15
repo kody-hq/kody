@@ -843,7 +843,7 @@ test('runModuleWithRegistry records execute interpretable class only on execute-
 	silenceIncidentalRuntimeWarnings()
 	const recordSpy = vi
 		.spyOn(executeInterpretable, 'recordExecuteInterpretableEvent')
-		.mockImplementation(() => {})
+		.mockImplementation(async () => {})
 	const { env } = envWithBundleIsolate()
 	const callerContext = meCaller()
 	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(

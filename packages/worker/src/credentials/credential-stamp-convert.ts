@@ -101,15 +101,15 @@ function readDeclaredDependencyNames(
  * including side-effect imports (`import 'remix/setup'`). Only allowlisted
  * names are considered for auto-declaration.
  */
-export function collectAllowlistedUndeclaredBareDeps(
+export async function collectAllowlistedUndeclaredBareDeps(
 	files: Record<string, string>,
-): Array<string> {
+): Promise<Array<string>> {
 	const declared = readDeclaredDependencyNames(files[packageManifestPath])
 	const found = new Set<string>()
-	for (const path of listScannableModulePaths(files)) {
+	for (const path of await listScannableModulePaths(files)) {
 		const source = files[path]
 		if (source == null) continue
-		const specifiers = collectBundlerResolvedSpecifiers(source)
+		const specifiers = await collectBundlerResolvedSpecifiers(source)
 		if (specifiers == null) continue
 		for (const specifier of specifiers) {
 			if (!isBarePackageImportSpecifier(specifier)) continue
@@ -168,10 +168,10 @@ function addAllowlistedDependencies(
  * plan. Never creates or changes credential values. Never strips `|scope=`
  * (that would widen secret resolution). Writes only when stamp-sealable.
  */
-export function convertCredentialStampFiles(input: {
+export async function convertCredentialStampFiles(input: {
 	files: Record<string, string>
 	packageName: string
-}): CredentialStampConvertResult {
+}): Promise<CredentialStampConvertResult> {
 	if (isCredentialStampMigrateHoldout(input.packageName)) {
 		return {
 			files: { ...input.files },
@@ -189,7 +189,7 @@ export function convertCredentialStampFiles(input: {
 	let files = { ...input.files }
 	const changedPaths = new Set<string>()
 
-	const missingDeps = collectAllowlistedUndeclaredBareDeps(files)
+	const missingDeps = await collectAllowlistedUndeclaredBareDeps(files)
 	if (missingDeps.length > 0) {
 		const withDeps = addAllowlistedDependencies(files, missingDeps)
 		if (withDeps.changed) {
@@ -222,7 +222,7 @@ export function convertCredentialStampFiles(input: {
 		}
 	}
 
-	const plan = planCredentialStampSeal(files)
+	const plan = await planCredentialStampSeal(files)
 	const sealReady =
 		plan.blockingFailures.length === 0 && plan.uninferableKeys.length === 0
 

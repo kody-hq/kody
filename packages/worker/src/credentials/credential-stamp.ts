@@ -672,12 +672,13 @@ const unparsedCredentialMentionPattern = /\b(?:credentials?|kody)\b/
  * A server-runtime module the parser rejects could alias or pass credential
  * around unseen, so it fails closed when it mentions credential or kody.
  */
-function unparsedServerModuleFailure(
+async function unparsedServerModuleFailure(
 	path: string,
 	source: string,
-): CredentialStampGateFailure | null {
+): Promise<CredentialStampGateFailure | null> {
 	if (!unparsedCredentialMentionPattern.test(source)) return null
-	const parseError = readModuleParseError(source) ?? 'unknown parse error'
+	const parseError =
+		(await readModuleParseError(source)) ?? 'unknown parse error'
 	return {
 		code: 'non_literal',
 		path,
@@ -703,9 +704,9 @@ function nonLiteralFixMessage(kind: string) {
  * entry except `app-client`, plus modules reachable from those entries.
  * Modules shared with the UI graph follow the server rule.
  */
-export function collectServerRuntimeModulePaths(
+export async function collectServerRuntimeModulePaths(
 	files: Record<string, string>,
-): Set<string> {
+): Promise<Set<string>> {
 	const manifestSource = files[packageManifestPath]
 	if (manifestSource == null) return new Set()
 	let manifest: AuthoredPackageJson
@@ -757,7 +758,7 @@ export function collectServerRuntimeModulePaths(
 	// About 100 entries share most modules; parse each module once.
 	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const entry of serverEntries) {
-		for (const path of collectReachableSourceFilePaths({
+		for (const path of await collectReachableSourceFilePaths({
 			files,
 			entryPoint: entry,
 			rootPackage,
@@ -826,15 +827,15 @@ function isEvalOrFunctionTarget(node: AstNode | null | undefined): boolean {
 const serverEvalTextFallbackPattern =
 	/\b(?:globalThis|window|global|self)\s*(?:\?\.)?\s*(?:\.\s*(?:eval|Function)\b|\[\s*['"](?:eval|Function)['"]\s*\])|\beval\s*\(|\b(?:new\s+)?Function\s*\(|\bimport\s*\(\s*[^'"`]/
 
-function scanServerEvalFailures(
+async function scanServerEvalFailures(
 	files: Record<string, string>,
 	serverPaths: ReadonlySet<string>,
-): Array<CredentialStampGateFailure> {
+): Promise<Array<CredentialStampGateFailure>> {
 	const failures: Array<CredentialStampGateFailure> = []
 	for (const path of [...serverPaths].sort()) {
 		const source = files[path]
 		if (source == null) continue
-		const parsed = parseModule(source)
+		const parsed = await parseModule(source)
 		if (!parsed) {
 			if (serverEvalTextFallbackPattern.test(source)) {
 				failures.push({
@@ -857,7 +858,7 @@ function scanServerEvalFailures(
 				foundEval = true
 			}
 		})
-		const dynamicImports = collectDynamicImportExpressionNodes(source)
+		const dynamicImports = await collectDynamicImportExpressionNodes(source)
 		const hasNonLiteralImport = dynamicImports.some(
 			(node) => node.literalSpecifier == null,
 		)
@@ -876,17 +877,19 @@ function scanServerEvalFailures(
  * Collect literal `kody.mcp.SERVER` / `kody.mcp["SERVER"]` names and fail on
  * dynamic access (`kody.mcp[variable]`, `const { mcp } = kody` then computed).
  */
-export function scanLiteralMcpServerKeys(files: Record<string, string>): {
+export async function scanLiteralMcpServerKeys(
+	files: Record<string, string>,
+): Promise<{
 	keys: Array<string>
 	failures: Array<CredentialStampGateFailure>
-} {
+}> {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
 	const declaredMcpKeys = declaredMcpCredentialKeys(
 		readManifestCredentialSlots(files[packageManifestPath]),
 	)
-	forEachScannableModule(files, (path, parsed, constants) => {
+	await forEachScannableModule(files, (path, parsed, constants) => {
 		const source = files[path]!
 		if (!parsed) {
 			if (
@@ -1510,10 +1513,10 @@ export function inferCredentialStampDescription(input: {
  * Plan phase-2 seal updates: add missing slots / descriptions where inferable,
  * and list blocking failures / uninferable keys that need an agent or owner.
  */
-export function planCredentialStampSeal(
+export async function planCredentialStampSeal(
 	files: Record<string, string>,
-): CredentialStampSealPlan {
-	const scanned = scanCredentialStamp(files)
+): Promise<CredentialStampSealPlan> {
+	const scanned = await scanCredentialStamp(files)
 	const slots = readManifestCredentialSlots(files[packageManifestPath])
 	const mcpKeySet = new Set(scanned.mcpKeys)
 	const jwtKeySet = new Set(scanned.jwtSignKeys)
@@ -1652,19 +1655,19 @@ export function applyCredentialStampSealPlan(
  * Scan package source for stampable literal credential keys and publish-time
  * gate failures (non-literal uses, unstampable legacy patterns, server eval).
  */
-export function scanCredentialStamp(
+export async function scanCredentialStamp(
 	files: Record<string, string>,
 	options: {
 		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
 		secretProviders?: ResolvedSecretProviderSlots
 	} = {},
-): CredentialStampScan {
+): Promise<CredentialStampScan> {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
 	const oauthKeys = new Set<string>()
 	const slots = readManifestCredentialSlots(files[packageManifestPath])
-	const scan = scanPackageCredentials({
+	const scan = await scanPackageCredentials({
 		files,
 		slots: toInventorySlots(slots),
 	})
@@ -1704,7 +1707,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	scanModuleCredentialReferences(files, (_path) => ({
+	await scanModuleCredentialReferences(files, (_path) => ({
 		add: () => {},
 		named: (name, kind) => {
 			if (packageCredentialSlotNamePattern.test(name)) {
@@ -1752,10 +1755,10 @@ export function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
-	const serverPaths = collectServerRuntimeModulePaths(files)
-	forEachScannableModule(files, (path, parsed, constants) => {
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	await forEachScannableModule(files, async (path, parsed, constants) => {
 		if (!parsed && serverPaths.has(path)) {
-			const failure = unparsedServerModuleFailure(path, files[path]!)
+			const failure = await unparsedServerModuleFailure(path, files[path]!)
 			if (failure) failures.push(failure)
 		}
 		const keyScan: KeyScan = {
@@ -1797,13 +1800,16 @@ export function scanCredentialStamp(
 		else scanUnparsedCredentialKeys(files[path]!, keyScan)
 	})
 
-	const mcp = scanLiteralMcpServerKeys(files)
+	const mcp = await scanLiteralMcpServerKeys(files)
 	for (const key of mcp.keys) keys.add(key)
 	failures.push(...mcp.failures)
 
-	for (const finding of detectLegacyCredentialPatternsCodemod.detect(files, {
-		packageName: '',
-	})) {
+	for (const finding of await detectLegacyCredentialPatternsCodemod.detect(
+		files,
+		{
+			packageName: '',
+		},
+	)) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
 		if (pattern == null || !unstampableLegacyPatterns.has(pattern)) continue
 		failures.push({
@@ -1813,7 +1819,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	failures.push(...scanServerEvalFailures(files, serverPaths))
+	failures.push(...(await scanServerEvalFailures(files, serverPaths)))
 
 	const sortedKeys = [...keys].sort()
 	const staleManifestKeys = Object.keys(slots)

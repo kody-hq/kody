@@ -18,10 +18,10 @@ import {
  * isolate, so publish rejects it. Shared helpers imported by both graphs are
  * fine; only the client entry itself is off limits to the Worker.
  */
-export function validatePackageAppGraphSeparation(input: {
+export async function validatePackageAppGraphSeparation(input: {
 	manifest: AuthoredPackageJson
 	sourceFiles: Record<string, string>
-}): { ok: true; message: string } | { ok: false; message: string } {
+}): Promise<{ ok: true; message: string } | { ok: false; message: string }> {
 	const appEntry = getPackageAppEntryPath(input.manifest)
 	const clientEntry = getPackageAppClientEntryPath(input.manifest)
 	if (!appEntry || !clientEntry) {
@@ -43,7 +43,7 @@ export function validatePackageAppGraphSeparation(input: {
 			message: `package.json#kody.app.entry and kody.app.client both point at "${resolvedClientEntry}". The Worker fetch handler and the browser client are separate module graphs; give the client its own entry (for example ./src/client/index.ts).`,
 		}
 	}
-	const workerGraph = collectReachableSourceFilePaths({
+	const workerGraph = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint: resolvedAppEntry,
 		rootPackage: readRootPackage(input.sourceFiles),

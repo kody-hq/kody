@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { kodyappsDevToKodyRunCodemod } from './0004-kodyapps-dev-to-kody-run.ts'
 
-test('0004 rewrites apex and per-user subdomain origins and preserves boundaries', () => {
+test('0004 rewrites apex and per-user subdomain origins and preserves boundaries', async () => {
 	const files = {
 		'index.ts': [
 			"const apex = 'https://kodyapps.dev'",
@@ -12,7 +12,7 @@ test('0004 rewrites apex and per-user subdomain origins and preserves boundaries
 		'README.md': 'Docs: visit https://alice.kodyapps.dev.\n',
 	}
 
-	const result = kodyappsDevToKodyRunCodemod.transform(files)
+	const result = await kodyappsDevToKodyRunCodemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['index.ts', 'README.md'])
 	expect(result.files['index.ts']).toBe(
@@ -28,12 +28,12 @@ test('0004 rewrites apex and per-user subdomain origins and preserves boundaries
 	)
 	expect(result.needsManual).toEqual([])
 
-	const again = kodyappsDevToKodyRunCodemod.transform(result.files)
+	const again = await kodyappsDevToKodyRunCodemod.transform(result.files)
 	expect(again.changed).toBe(false)
 	expect(again.changedPaths).toEqual([])
 })
 
-test('0004 skips non-rewritable hosts, lookalikes, and binary-ish paths', () => {
+test('0004 skips non-rewritable hosts, lookalikes, and binary-ish paths', async () => {
 	const boundaryFiles = {
 		'config.ts': [
 			"const site = 'https://kody.codes'",
@@ -51,7 +51,8 @@ test('0004 skips non-rewritable hosts, lookalikes, and binary-ish paths', () => 
 		'index.ts': "export const url = 'https://bob.kodyapps.dev/packages/x'\n",
 		'logo.png': 'https://kodyapps.dev pretend-binary',
 	}
-	const boundaryResult = kodyappsDevToKodyRunCodemod.transform(boundaryFiles)
+	const boundaryResult =
+		await kodyappsDevToKodyRunCodemod.transform(boundaryFiles)
 	expect(boundaryResult.changed).toBe(true)
 	expect(boundaryResult.changedPaths).toEqual(['index.ts'])
 	expect(boundaryResult.files['config.ts']).toBe(boundaryFiles['config.ts'])
@@ -70,7 +71,7 @@ test('0004 skips non-rewritable hosts, lookalikes, and binary-ish paths', () => 
 		]),
 	)
 
-	const findings = kodyappsDevToKodyRunCodemod.detect(boundaryFiles)
+	const findings = await kodyappsDevToKodyRunCodemod.detect(boundaryFiles)
 	expect(findings).toEqual(
 		expect.arrayContaining([
 			{

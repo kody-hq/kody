@@ -568,7 +568,7 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	])
 	if (!previousSnapshot?.files || !nextSnapshot?.files) return false
 	if (
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: input.target.entryPoint,
 			previousFiles: previousSnapshot.files,
 			nextFiles: nextSnapshot.files,
@@ -696,7 +696,7 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 		if (!previousSnapshot?.files) continue
 		const previousFiles = packageRootFiles(input.source, previousSnapshot.files)
 		if (
-			publishedPackageArtifactTargetInputsChanged({
+			await publishedPackageArtifactTargetInputsChanged({
 				entryPoint: target.entryPoint,
 				previousFiles,
 				nextFiles: input.files,

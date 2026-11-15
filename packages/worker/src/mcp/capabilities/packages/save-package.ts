@@ -669,7 +669,7 @@ export const savePackageCapability = defineDomainCapability(
 							)
 						: null,
 					credentialPatternsNotice:
-						credentialPatternNoticeForFiles(publishedFiles),
+						await credentialPatternNoticeForFiles(publishedFiles),
 					allowedPackagesPublishNotice,
 				}),
 			}

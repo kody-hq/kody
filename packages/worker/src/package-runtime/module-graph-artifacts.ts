@@ -48,10 +48,10 @@ export function includeDynamicDependenciesWhenPresent(
 	return dynamicDependencies.length > 0 ? { dynamicDependencies } : {}
 }
 
-function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
+async function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
 	const unresolved = new Map<string, Set<string>>()
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const specifier of collectLiteralImportSpecifiers(source)) {
+		for (const specifier of await collectLiteralImportSpecifiers(source)) {
 			if (!isBarePackageImportSpecifier(specifier)) continue
 			// Match the pre-bundle check: unprefixed Node builtins stay external
 			// under nodejs_compat (e.g. fflate's `import … from "module"`). Prefixed
@@ -74,7 +74,7 @@ function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
 	}))
 }
 
-export function assertBundleHasNoUnresolvedBareImports(input: {
+export async function assertBundleHasNoUnresolvedBareImports(input: {
 	modules: WorkerLoaderModules
 	bundleLabel: string
 	resolutionHint?: string
@@ -86,7 +86,7 @@ export function assertBundleHasNoUnresolvedBareImports(input: {
 	 */
 	sourceFiles?: Record<string, string>
 }) {
-	const unresolved = collectUnresolvedBareImports(input.modules)
+	const unresolved = await collectUnresolvedBareImports(input.modules)
 	if (unresolved.length === 0) return
 	const details = unresolved
 		.map(
@@ -132,7 +132,7 @@ function materializeArtifactModuleSource(input: {
 	)
 }
 
-export function materializePublishedArtifactModules(input: {
+export async function materializePublishedArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
 	/**
@@ -151,9 +151,9 @@ export function materializePublishedArtifactModules(input: {
 			})
 	}
 	if (input.omitRuntimeModules) return materializedModules
-	return refreshKodyRuntimeModules(materializedModules, {
+	return (await refreshKodyRuntimeModules(materializedModules, {
 		includeDefaultRuntimePath: false,
-	}) as Record<string, string>
+	})) as Record<string, string>
 }
 
 const linkedArtifactsRoot = joinPath(linkedPackageImportPrefix, 'artifacts')
@@ -187,7 +187,7 @@ export function linkedArtifactPrefix(input: {
  * artifact's own prefix when composing a load graph, so every module stays
  * under its package's prefix.
  */
-export function materializeDependencyArtifactModules(input: {
+export async function materializeDependencyArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
 	linkedRoot: string
@@ -202,7 +202,7 @@ export function materializeDependencyArtifactModules(input: {
 	const marker = `/${linkedArtifactsRoot}/`
 	const materialized: Record<string, string> = {}
 	for (const [modulePath, source] of Object.entries(
-		materializePublishedArtifactModules(input),
+		await materializePublishedArtifactModules(input),
 	)) {
 		const relative = modulePath.slice(rootPrefix.length)
 		const nested = `/${relative}`.lastIndexOf(marker)
@@ -313,7 +313,7 @@ export function collectDynamicKodyDependenciesFromModules(
 	)
 }
 
-export function installDynamicPackageArtifactModules(input: {
+export async function installDynamicPackageArtifactModules(input: {
 	modules: WorkerLoaderModules
 	modulePath: string
 	specifier: string
@@ -327,7 +327,7 @@ export function installDynamicPackageArtifactModules(input: {
 		),
 	)
 	for (const [artifactModulePath, module] of Object.entries(
-		materializePublishedArtifactModules({
+		await materializePublishedArtifactModules({
 			artifactPrefix,
 			modules: input.artifact.modules,
 		}),

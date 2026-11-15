@@ -18,8 +18,8 @@ function manifest(kody: Record<string, unknown> = {}, indent = '\t') {
 	)}\n`
 }
 
-function transform(source: string, kody: Record<string, unknown> = {}) {
-	return sealCredentialStampsCodemod.transform(
+async function transform(source: string, kody: Record<string, unknown> = {}) {
+	return await sealCredentialStampsCodemod.transform(
 		{ 'package.json': manifest(kody), 'index.ts': source },
 		packageContext,
 	)
@@ -32,8 +32,8 @@ function declaredSlots(result: { files: Record<string, string> }) {
 	>
 }
 
-test('0014 seals literal credential(), MCP servers, and OAuth accounts with inferred descriptions', () => {
-	const result = transform(
+test('0014 seals literal credential(), MCP servers, and OAuth accounts with inferred descriptions', async () => {
+	const result = await transform(
 		[
 			"import { credential, createAuthenticatedFetch, kody } from 'kody:runtime'",
 			'export default async function run() {',
@@ -62,8 +62,8 @@ test('0014 seals literal credential(), MCP servers, and OAuth accounts with infe
 	})
 })
 
-test('0014 never overwrites an existing description', () => {
-	const result = transform(
+test('0014 never overwrites an existing description', async () => {
+	const result = await transform(
 		[
 			"import { credential } from 'kody:runtime'",
 			'export default async function run() {',
@@ -83,8 +83,8 @@ test('0014 never overwrites an existing description', () => {
 	})
 })
 
-test('0014 reports needs_manual for non-literal credential uses without changing files', () => {
-	const result = transform(
+test('0014 reports needs_manual for non-literal credential uses without changing files', async () => {
+	const result = await transform(
 		[
 			"import { credential } from 'kody:runtime'",
 			'export default async function run(key: string) {',
@@ -101,7 +101,7 @@ test('0014 reports needs_manual for non-literal credential uses without changing
 	])
 })
 
-test('0014 seals a nested package against its own manifest path and source root', () => {
+test('0014 seals a nested package against its own manifest path and source root', async () => {
 	const nestedManifest = `${JSON.stringify(
 		{
 			name: '@acme/nested',
@@ -126,14 +126,14 @@ test('0014 seals a nested package against its own manifest path and source root'
 		manifestPath: 'packages/nested/package.json',
 		sourceRoot: 'packages/nested',
 	}
-	const findings = sealCredentialStampsCodemod.detect(files, context)
+	const findings = await sealCredentialStampsCodemod.detect(files, context)
 	expect(findings).toEqual([
 		{
 			path: 'package.json',
 			message: sealCredentialStampsMessages.declare,
 		},
 	])
-	const result = sealCredentialStampsCodemod.transform(files, context)
+	const result = await sealCredentialStampsCodemod.transform(files, context)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toContain('packages/nested/package.json')
 	const nestedSlots = JSON.parse(result.files['packages/nested/package.json']!)
@@ -144,7 +144,7 @@ test('0014 seals a nested package against its own manifest path and source root'
 	expect(rootSlots).toBeUndefined()
 })
 
-test('0014 seals when the snapshot is already keyed from the nested source root', () => {
+test('0014 seals when the snapshot is already keyed from the nested source root', async () => {
 	const nestedManifest = `${JSON.stringify(
 		{
 			name: '@acme/nested',
@@ -168,7 +168,7 @@ test('0014 seals when the snapshot is already keyed from the nested source root'
 		manifestPath: 'packages/nested/package.json',
 		sourceRoot: 'packages/nested',
 	}
-	const result = sealCredentialStampsCodemod.transform(files, context)
+	const result = await sealCredentialStampsCodemod.transform(files, context)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['package.json'])
 	expect(result.files['packages/nested/package.json']).toBeUndefined()

@@ -108,7 +108,7 @@ export async function serveLocalExecutePackageGraph(input: {
 }): Promise<LocalExecutePackageGraph> {
 	const { env } = input
 	const subject = { org: input.userId, actor: input.actorUserId }
-	const imports = collectLocalExecutePackageGraphImports(input.code)
+	const imports = await collectLocalExecutePackageGraphImports(input.code)
 	if (imports.length === 0) {
 		return await signLocalExecutePackageGraph({
 			env,
@@ -262,7 +262,7 @@ async function buildInThrowawayIsolate(
 			throw new LocalExecutePackageGraphError(
 				'package_graph_resource_limit',
 				packageGraphResourceLimitMessage(
-					collectLocalExecutePackageGraphImports(request.code),
+					await collectLocalExecutePackageGraphImports(request.code),
 				),
 				{ cause: error },
 			)

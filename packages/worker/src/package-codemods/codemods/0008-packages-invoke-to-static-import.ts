@@ -163,9 +163,9 @@ function isTypeDeclarationFilePath(path: string) {
 	)
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -512,13 +512,13 @@ function classifyInvokeCall(input: {
 	}
 }
 
-function buildModuleRewrites(input: {
+async function buildModuleRewrites(input: {
 	path: string
 	source: string
 	offset?: number
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (!hasPackagesInvokeTokens(input.source)) return null
-	const program = parseProgram(input.source)
+	const program = await parseProgram(input.source)
 	if (!program) {
 		return /packages\s*\??\.\s*invoke\b/.test(input.source)
 			? {
@@ -819,10 +819,10 @@ function sourceOutsideRangesHasPackagesInvoke(
 	return /packages\s*\??\.\s*invoke\b/.test(source.slice(cursor))
 }
 
-function classifyMarkdownFile(input: {
+async function classifyMarkdownFile(input: {
 	path: string
 	source: string
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (!hasPackagesInvokeTokens(input.source)) return null
 	const fences = listMarkdownCodeFences(input.source)
 	const coveredRanges: Array<{ start: number; end: number }> = fences.map(
@@ -838,7 +838,7 @@ function classifyMarkdownFile(input: {
 			}
 			continue
 		}
-		const classification = buildModuleRewrites({
+		const classification = await buildModuleRewrites({
 			path: input.path,
 			source: content,
 			offset: fence.contentStart,
@@ -851,7 +851,7 @@ function classifyMarkdownFile(input: {
 		const range = { start: inlineCode.start, end: inlineCode.end }
 		if (rangeOverlaps(range, coveredRanges)) continue
 		coveredRanges.push(range)
-		const classification = buildModuleRewrites({
+		const classification = await buildModuleRewrites({
 			path: input.path,
 			source: input.source.slice(
 				inlineCode.contentStart,
@@ -877,28 +877,31 @@ function classifyMarkdownFile(input: {
 	}
 }
 
-function classifyFile(input: {
+async function classifyFile(input: {
 	path: string
 	source: string
-}): FileClassification | null {
-	if (markdownFilePattern.test(input.path)) return classifyMarkdownFile(input)
+}): Promise<FileClassification | null> {
+	if (markdownFilePattern.test(input.path))
+		return await classifyMarkdownFile(input)
 	if (
 		!scannableModuleFilePattern.test(input.path) ||
 		isTypeDeclarationFilePath(input.path)
 	) {
 		return null
 	}
-	return buildModuleRewrites(input)
+	return await buildModuleRewrites(input)
 }
 
-function classifyFiles(
+async function classifyFiles(
 	files: Record<string, string>,
-): Array<FileClassification> {
-	return Object.entries(files)
-		.flatMap(([path, source]) => {
-			const classification = classifyFile({ path, source })
-			return classification ? [classification] : []
-		})
+): Promise<Array<FileClassification>> {
+	const classifications = await Promise.all(
+		Object.entries(files).map(([path, source]) =>
+			classifyFile({ path, source }),
+		),
+	)
+	return classifications
+		.filter((classification) => classification != null)
 		.sort((left, right) => left.path.localeCompare(right.path))
 }
 
@@ -984,17 +987,19 @@ function applyRewrites(source: string, rewrites: Array<SourceRewrite>) {
 		.replaceAll(/,\s*\} from/g, ' } from')
 }
 
-function detect(files: Record<string, string>): Array<PackageCodemodFinding> {
-	return classifyFiles(files).map((classification) => ({
+async function detect(
+	files: Record<string, string>,
+): Promise<Array<PackageCodemodFinding>> {
+	return (await classifyFiles(files)).map((classification) => ({
 		path: classification.path,
 		message: classification.needsManual ?? rewriteMessage,
 	}))
 }
 
-function transform(
+async function transform(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
-	const classifications = classifyFiles(files)
+): Promise<PackageCodemodTransformResult> {
+	const classifications = await classifyFiles(files)
 	const nextFiles = { ...files }
 	const changedPaths: Array<string> = []
 	const needsManual: Array<PackageCodemodFinding> = []

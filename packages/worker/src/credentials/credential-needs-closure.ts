@@ -177,7 +177,7 @@ async function loadDependencyCredentialNeeds(input: {
 }): Promise<Array<DependencyCredentialNeeds>> {
 	const names = [
 		...new Set(
-			collectStaticKodyPackageImportsFromFiles(input.files)
+			(await collectStaticKodyPackageImportsFromFiles(input.files))
 				.map((imported) => imported.packageName)
 				.filter((name) => name !== input.manifest.name),
 		),

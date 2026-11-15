@@ -1,8 +1,11 @@
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { expect, test } from 'vitest'
 import {
 	buildPackageSearchProjection,
 	parseAuthoredPackageJson,
 } from './manifest.ts'
+
+const parser = await loadModuleSourceParser()
 
 function projectExport(files: Record<string, string>) {
 	const manifest = parseAuthoredPackageJson({
@@ -13,7 +16,10 @@ function projectExport(files: Record<string, string>) {
 		}),
 		mode: 'published',
 	})
-	const [exportDetail] = buildPackageSearchProjection(manifest, files).exports
+	const [exportDetail] = buildPackageSearchProjection(manifest, {
+		files: files,
+		parser,
+	}).exports
 	return exportDetail
 }
 
@@ -223,6 +229,7 @@ import { RepeatSpecSchema } from './repeat.ts'
 import { text } from './shared.ts'
 import { trimmedString } from './strings.ts'
 import { MissingSchema } from './missing.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 
 export const CreateEventInputSchema = object(
 	{
