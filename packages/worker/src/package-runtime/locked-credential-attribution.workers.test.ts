@@ -1388,7 +1388,7 @@ async function publishJobPackage(input: {
 
 async function runJob(userId: string, job: JobRecord) {
 	const seen = installFakeUpstream()
-	const { source: _source, ...callerContext } = createCallerContext(userId)
+	const callerContext = createCallerContext(userId)
 	const outcome = await executeJobOnce({
 		env,
 		job,
