@@ -457,6 +457,5 @@ raised again.
   `module-source.ts` owns the only loader (`loadModuleSourceParser()`, one
   memoized dynamic import), so the parse helpers and their callers are async.
   `local-execute-runtime-support.mjs` imports the sibling module instead of
-  inlining its own copy. Local check against main 52a39286a: platform
-  7_575_471 to 7_283_020 and runtime 5_785_757 to 5_493_080. Budgets
-  unchanged.
+  inlining its own copy. Local check against main 52a39286a: platform 7_575_471
+  to 7_283_020 and runtime 5_785_757 to 5_493_080. Budgets unchanged.
