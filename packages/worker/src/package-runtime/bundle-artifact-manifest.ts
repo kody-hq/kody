@@ -1,5 +1,4 @@
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { linkedArtifactGroupPrefix } from './linked-artifact-store.ts'
 import {
 	decodePathKey,
 	linkedPackageImportPrefix,
@@ -83,27 +82,35 @@ function moduleRole(
 	return 'module'
 }
 
-/** The dependency version a `.__kody_linked__/artifacts/…` path names. */
+const linkedArtifactKey = /^(.+)#([^#]+)#([0-9a-f]{40})$/
+
+/**
+ * The dependency version a `.__kody_linked__/artifacts/…` path names. The
+ * path does not mark where the encoded key ends, and a module directory can
+ * look like one more piece of it, so this takes the shortest run of segments
+ * that decodes to a whole `specifier#sourceId#commit` key.
+ */
 function linkedArtifactOwner(
 	modulePath: string,
 ): BundleArtifactModuleOwner | null {
 	// The innermost group, in case a linked artifact sits under another one.
 	const innermost = `/${modulePath}`.lastIndexOf(`/${linkedArtifactsSegment}`)
-	const prefix = linkedArtifactGroupPrefix(modulePath.slice(innermost))
-	if (!prefix) return null
-	const key = decodePathKey(
-		prefix.slice(linkedArtifactsSegment.length).replaceAll('/', ''),
-	)
-	if (!key) return null
-	const commitAt = key.lastIndexOf('#')
-	const sourceAt = key.lastIndexOf('#', commitAt - 1)
-	if (sourceAt <= 0) return null
-	const owner = {
-		specifier: key.slice(0, sourceAt),
-		sourceId: key.slice(sourceAt + 1, commitAt),
-		publishedCommit: key.slice(commitAt + 1),
+	const segments = modulePath
+		.slice(innermost + linkedArtifactsSegment.length)
+		.split('/')
+	let encoded = ''
+	for (const segment of segments.slice(0, -1)) {
+		encoded += segment
+		const match = linkedArtifactKey.exec(decodePathKey(encoded) ?? '')
+		if (match) {
+			return {
+				specifier: match[1]!,
+				sourceId: match[2]!,
+				publishedCommit: match[3]!,
+			}
+		}
 	}
-	return owner.sourceId && owner.publishedCommit ? owner : null
+	return null
 }
 
 export function createBundleArtifactManifest(input: {

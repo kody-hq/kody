@@ -14,7 +14,7 @@ const own = { sourceId: 'source-own', publishedCommit: 'commit-1' }
 const dependency = {
 	specifier: 'kody:@u/dep/read',
 	sourceId: 'source-dep',
-	publishedCommit: 'commit-dep',
+	publishedCommit: 'a'.repeat(40),
 }
 const linkedArtifactModule = `${linkedArtifactPrefix(dependency)}/dist/index.js`
 const linkedImportModule = '.__kody_linked__/kody_dep.js'
@@ -216,7 +216,7 @@ test('a module nested under two linked artifacts is owned by the innermost one',
 	const inner = {
 		specifier: 'kody:@u/ai/ask',
 		sourceId: 'source-ai',
-		publishedCommit: 'commit-ai',
+		publishedCommit: 'b'.repeat(40),
 	}
 	const nested = `${linkedArtifactPrefix(dependency)}/${linkedArtifactPrefix(inner)}/bundle.js`
 	const manifest = createBundleArtifactManifest({
@@ -261,4 +261,23 @@ test('a manifest written before owners were recorded is still read, and a malfor
 			['dist/index.js'],
 		),
 	).toBeNull()
+})
+
+test('a hex-named module directory after a key that fills its last path chunk is not read as part of the key', () => {
+	// 48 characters encode to exactly one 96-character path chunk.
+	const exact = {
+		specifier: 'kody',
+		sourceId: 'ab',
+		publishedCommit: 'c'.repeat(40),
+	}
+	const prefix = linkedArtifactPrefix(exact)
+	expect(prefix.split('/').at(-1)).toHaveLength(96)
+	const modulePath = `${prefix}/ab/index.js`
+	const manifest = createBundleArtifactManifest({
+		...own,
+		mainModule: 'dist/index.js',
+		modules: { 'dist/index.js': 'a', [modulePath]: 'b' },
+	})
+
+	expect(manifest.modules[modulePath]?.owner).toEqual(exact)
 })
