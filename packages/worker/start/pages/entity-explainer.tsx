@@ -6,7 +6,7 @@ import { useEffect } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { docHref } from '#universal/docs-nav.ts'
-import { hoverMq } from '#universal/styles/style-primitives.ts'
+import { hoverMq, getSquircleCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -468,7 +468,7 @@ const entityExplainerButtonCss: CSSObject = {
 	marginInline: '-0.2rem',
 	padding: 0,
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('md'),
 	background: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { listenForAvatarFileDrop } from '#client/listen-for-avatar-file-drop.ts'
 import type { AccountPagePayloads } from '#client/routes/account-page-data.ts'
@@ -10,10 +11,7 @@ import { shouldShowOnboardingChecklist } from '#universal/onboarding-checklist.t
 import { toast } from '#client/toast.ts'
 import { saveProfile, updateAvatar } from '#start/server/account-mutations'
 import type { ProfileVisibility } from '#universal/loader-data.ts'
-import {
-	getGhostButtonCss,
-	mutedLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { mutedLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -498,13 +496,13 @@ export function AccountPage({
 						description="Download a portable JSON export of your Kody account data for backup or migration. Secret values are never included; secret entries export metadata such as names, hosts, and allowlists only."
 					>
 						<div>
-							<SiteLink
+							<Button
 								href="/account/export.json"
 								download="kody-account-export.json"
-								css={compactGhostButtonCss}
+								variant="secondary"
 							>
 								Download account export
-							</SiteLink>
+							</Button>
 						</div>
 					</AccountManagementPanel>
 					<AccountManagementPanel
@@ -570,8 +568,6 @@ export function AccountPage({
 		</AccountManagementShell>
 	)
 }
-
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const mutationResources = [
 	'loadAccountPage',

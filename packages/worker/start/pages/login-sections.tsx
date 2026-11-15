@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -20,9 +21,7 @@ import {
 	authFieldLabelCss,
 	authFieldLabelRowCss,
 	getAuthInputCss,
-	getGhostButtonCss,
 	getLanternGlowCss,
-	getPillButtonCss,
 	getSwapLabelCss,
 	hoverMq,
 	visuallyHiddenCss,
@@ -303,11 +302,13 @@ export function AuthForm(
 			 * to `/login` as plain HTML (ADR 0094). Sign-up has no plain HTML
 			 * handler, so it waits for the page JavaScript.
 			 */}
-			<button
+			<Button
 				type="submit"
 				disabled={
 					props.isSubmitting || (props.isSignup && !props.isInteractive)
 				}
+				variant="primary"
+				size="lg"
 				css={authSubmitCss}
 			>
 				<span
@@ -324,7 +325,7 @@ export function AuthForm(
 				>
 					{props.submitBusyLabel}
 				</span>
-			</button>
+			</Button>
 			{props.isSignup ? (
 				<p css={signupConsentCss}>
 					By creating an account you agree to the{' '}
@@ -333,15 +334,16 @@ export function AuthForm(
 				</p>
 			) : null}
 			{!props.isSignup ? (
-				<button
+				<Button
 					type="button"
 					disabled={!props.isInteractive || props.isSubmitting}
-					css={ghostButtonCss}
+					variant="secondary"
+					size="lg"
 					onClick={props.onPasskeySignIn}
 				>
 					{renderIcon('key', { size: '17' })}
 					Sign in with a passkey
-				</button>
+				</Button>
 			) : null}
 		</form>
 	)
@@ -530,7 +532,6 @@ export const formMessageCss: CSSObject = {
 }
 
 const authSubmitCss = [
-	getPillButtonCss(),
 	getSwapLabelCss(),
 	{
 		marginTop: '0.3rem',
@@ -547,5 +548,3 @@ const authSubmitCss = [
 		},
 	},
 ]
-
-const ghostButtonCss = getGhostButtonCss()

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	inviteOrganizationMember,
 	setOrganizationMemberRole,
@@ -15,12 +16,7 @@ import {
 	orgRoleLabel,
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-	getSelectCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -32,7 +28,6 @@ import type { CSSObject } from '@emotion/react'
 import type { QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -202,15 +197,15 @@ function OrgMembersContent({
 										</span>
 									</span>
 									{member.role === 'owner' || member.role === 'admin' ? null : (
-										<SiteLink
+										<Button
 											href={orgGrantAccessPath(data.org.slug, member.userId)}
 											data-testid="org-member-access"
 											aria-label={`Access for ${memberName(member)}`}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											{renderIcon('key', { size: '1.05rem' })}
 											Access
-										</SiteLink>
+										</Button>
 									)}
 									{data.canManage ? (
 										<span css={rowActionsCss}>
@@ -247,11 +242,11 @@ function OrgMembersContent({
 													</option>
 												))}
 											</select>
-											<button
+											<Button
 												type="button"
 												disabled={lastOwner || targetLocked || pending}
 												title={lockedTitle}
-												css={getDangerPillCss({ size: 'sm' })}
+												variant="danger"
 												onBlur={() => setConfirmed(null)}
 												onClick={() => {
 													if (confirmed !== member.userId) {
@@ -273,7 +268,7 @@ function OrgMembersContent({
 												{confirmed === member.userId
 													? 'Confirm remove'
 													: 'Remove'}
-											</button>
+											</Button>
 										</span>
 									) : (
 										<span css={rowActionsCss}>
@@ -360,14 +355,14 @@ function OrgMembersContent({
 								</p>
 							</label>
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="submit"
 									disabled={pending || invitee.trim().length === 0}
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 								>
 									{renderIcon('plus', { size: '1.05rem' })}
 									{inviteMutation.isPending ? 'Inviting…' : 'Send invite'}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</AccountManagementPanel>
@@ -398,11 +393,11 @@ function OrgMembersContent({
 										</span>
 									</span>
 									{invite.kind === 'membership' ? (
-										<button
+										<Button
 											type="button"
 											disabled={pending}
 											data-testid="org-invite-revoke"
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 											onClick={() =>
 												post(
 													() =>
@@ -418,7 +413,7 @@ function OrgMembersContent({
 											revokeMutation.variables?.inviteId === invite.id
 												? 'Revoking…'
 												: 'Revoke'}
-										</button>
+										</Button>
 									) : null}
 								</div>
 							</li>

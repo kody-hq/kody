@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
@@ -6,7 +7,6 @@ import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { composioAlternatives as page } from '#universal/acquisition/composioAlternatives.ts'
 import { acquisitionPageMeta } from '#universal/acquisition/metadata.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const architectures = {
 	personal: {
 		label: 'My own workflows',
@@ -158,9 +158,9 @@ export function ComposioAlternativesPage() {
 						Connect your agent to Kody and try a GitHub lookup, then run the
 						same saved tool from another agent.
 					</p>
-					<SiteLink href="/onboarding" css={getPillButtonCss()}>
+					<Button href="/onboarding" variant="primary" size="lg">
 						Get started with Kody
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="prompt">
 					<p>{page.prompt}</p>

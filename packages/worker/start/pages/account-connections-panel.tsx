@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	disconnectAccountProvider,
 	syncDiscordMemberRole as syncDiscordRole,
@@ -7,11 +8,7 @@ import type { loadAccountPage } from '#start/server/account-page'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountConnectionsLoaderData } from '#universal/loader-data.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	mutedLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { mutedLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useIsMutating,
@@ -321,16 +318,16 @@ export function useAccountConnections(
 									>
 										{connection.provider === 'discord' &&
 										canSyncDiscordRoles ? (
-											<button
+											<Button
 												type="button"
 												disabled={connectionsBusy}
-												css={compactGhostButtonCss}
+												variant="secondary"
 												onClick={onSyncDiscordMemberRole}
 											>
 												Sync Discord roles
-											</button>
+											</Button>
 										) : null}
-										<button
+										<Button
 											type="button"
 											disabled={connectionsBusy || !canDisconnect}
 											title={
@@ -338,11 +335,11 @@ export function useAccountConnections(
 													? undefined
 													: 'This connection is your only way to sign in. Set a password or register a passkey first.'
 											}
-											css={dangerButtonCss}
+											variant="danger"
 											onClick={() => onDisconnectProvider(connection.provider)}
 										>
 											Disconnect
-										</button>
+										</Button>
 									</span>
 								</li>
 							))}
@@ -361,16 +358,16 @@ export function useAccountConnections(
 							}}
 						>
 							{availableProviders.map((provider) => (
-								<button
+								<Button
 									key={provider.id}
 									type="button"
 									disabled={connectionsBusy}
-									css={compactGhostButtonCss}
+									variant="secondary"
 									onClick={() => onConnectProvider(provider.id)}
 								>
 									<ProviderIcon providerId={provider.id} />
 									Connect {provider.label}
-								</button>
+								</Button>
 							))}
 						</div>
 					) : null}
@@ -379,7 +376,3 @@ export function useAccountConnections(
 		)
 	}
 }
-
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })

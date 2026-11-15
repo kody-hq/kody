@@ -7,7 +7,7 @@ import {
 	parseYoutubeWatchSearch,
 	stripYoutubeWatchSearch,
 } from '#universal/youtube-watch.ts'
-import { hoverMq } from '#universal/styles/style-primitives.ts'
+import { hoverMq, getSquircleCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -102,7 +102,7 @@ const closeCss = {
 	width: '2.25rem',
 	height: '2.25rem',
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('sm'),
 	backgroundColor: 'rgba(0, 0, 0, 0.72)',
 	color: colors.onScrim,
 	fontSize: '1.5rem',

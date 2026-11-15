@@ -2,20 +2,23 @@
 import { WorkspaceEmptyFolder } from '../workspace-empty-folder.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import { colors } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	getButtonCss,
+	getSquircleCss,
+} from '#universal/styles/style-primitives.ts'
 import { renderIcon } from '../../components/icon.tsx'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
 import { useEffect, useState } from 'react'
 import { zipDirectory } from '#universal/zip-directory.ts'
 
 const control = {
-	...getGhostButtonCss(),
+	...getButtonCss({ variant: 'secondary', size: 'lg' }),
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: 6,
 	minHeight: 28,
 	padding: '4px 7px',
-	borderRadius: 5,
+	...getSquircleCss('xs'),
 	fontSize: 12,
 	whiteSpace: 'nowrap',
 	textDecoration: 'none',

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import type { CSSObject } from '@emotion/react'
@@ -26,8 +27,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAuthInputCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
@@ -161,16 +160,17 @@ export function AdminOrgLimitsPanel({
 							<span css={{ color: colors.textMuted }}>
 								{row.override.reason}
 							</span>
-							<button
+							<Button
 								type="button"
 								disabled={saving}
+								variant="secondary"
 								css={removeButtonCss}
 								onClick={() =>
 									void save({ key: row.key, value: null, expiresAt: null })
 								}
 							>
 								Remove
-							</button>
+							</Button>
 						</span>
 					) : (
 						<span css={{ color: colors.textMuted }}>None</span>
@@ -297,13 +297,13 @@ export function AdminOrgLimitsPanel({
 								onChange={(event) => setReasonText(event.currentTarget.value)}
 							/>
 						</label>
-						<button
+						<Button
 							type="submit"
 							disabled={saving || valueText.trim() === ''}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{saving ? 'Saving…' : 'Save override'}
-						</button>
+						</Button>
 					</form>
 				</>
 			) : message || query.error ? null : (
@@ -314,9 +314,7 @@ export function AdminOrgLimitsPanel({
 }
 
 const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }
-const primaryButtonCss: CSSObject = getPillButtonCss({ size: 'sm' })
 const removeButtonCss: CSSObject = {
-	...getGhostButtonCss({ size: 'sm' }),
 	justifySelf: 'start',
 }
 const headCss: CSSObject = {

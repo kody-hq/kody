@@ -8,6 +8,7 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
+import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import { fanOutPackageEventToMcpSubscriptions } from './fan-out.ts'
 import {
 	buildMcpEventSubscriptionId,
@@ -167,6 +168,7 @@ function message(
 		invokeDepth: 1,
 		mcp: true,
 		emittedAt,
+		lineage: sessionRequestLineage('stable-user-1'),
 		...overrides,
 	}
 }

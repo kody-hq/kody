@@ -24,8 +24,8 @@ test('retryHrefFromRequest keeps same-origin paths and rejects protocol-relative
 	const body = await renderInternalServerErrorPage(
 		retryHrefFromRequest(new Request('https://example.com//evil.example')),
 	).text()
-	expect(body).toContain('data-variant="pill" href="/"')
-	expect(body).not.toContain('data-variant="pill" href="//evil.example"')
+	expect(body).toContain('data-variant="primary" href="/"')
+	expect(body).not.toContain('data-variant="primary" href="//evil.example"')
 	expect(body).toContain('data-error-agent-prompt')
 	expect(body).toContain(
 		'<script src="/error-agent-prompt-copy.js" defer></script>',
@@ -40,4 +40,11 @@ test('illustrated 500 prompt names this path and the internal_error contract', a
 	expect(body).toContain('illustrated internal error')
 	expect(body).toContain('runList')
 	expect(body).toContain('guide:sentry_issues')
+})
+
+test('illustrated 500 actions use the shared squircle button, not a pill', async () => {
+	const body = await renderInternalServerErrorPage('/').text()
+	expect(body).toContain('.illustrated-error-page a[data-variant="primary"]{')
+	expect(body).toContain('corner-shape:squircle')
+	expect(body).not.toContain('999px')
 })

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	createOrganizationInviteLink,
 	revokeOrganizationInviteLink,
@@ -8,12 +9,7 @@ import type {
 	OrgMembersTeamOption,
 } from '#universal/loader-data.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-	getSelectCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -211,17 +207,17 @@ export function OrgMembersInviteLinks({
 									</span>
 								</span>
 								<span css={rowActionsCss}>
-									<button
+									<Button
 										type="button"
 										disabled={pending}
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										onClick={() => void revokeLink(link.id)}
 									>
 										{revokeMutation.isPending &&
 										revokeMutation.variables?.linkId === link.id
 											? 'Revoking…'
 											: 'Revoke'}
-									</button>
+									</Button>
 								</span>
 							</div>
 						</li>
@@ -236,9 +232,9 @@ export function OrgMembersInviteLinks({
 			{copiedLinkUrl ? (
 				<div css={copiedLinkCss} data-testid="invite-link-url">
 					<code css={copiedLinkCodeCss}>{copiedLinkUrl}</code>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={async () => {
 							const active = capture()
 							const copied = await copyText(copiedLinkUrl)
@@ -252,7 +248,7 @@ export function OrgMembersInviteLinks({
 						}}
 					>
 						{renderIcon('copy', { size: '1.05rem' })}Copy again
-					</button>
+					</Button>
 				</div>
 			) : null}
 
@@ -374,37 +370,37 @@ export function OrgMembersInviteLinks({
 						again later.
 					</p>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={pending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 							data-testid="org-invite-link-copy"
 						>
 							{renderIcon('link', { size: '1.05rem' })}
 							{creating ? 'Creating…' : 'Copy invite link'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={creating}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={closeForm}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : (
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={pending}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						data-testid="org-invite-link-open-create"
 						onClick={() => setFormOpen(true)}
 					>
 						{renderIcon('plus', { size: '1.05rem' })}
 						Create invite link
-					</button>
+					</Button>
 				</div>
 			)}
 		</AccountManagementPanel>

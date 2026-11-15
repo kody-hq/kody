@@ -1,10 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { ReactNode } from 'react'
 import { Combobox, type ComboboxOption } from './combobox.tsx'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
-
-const removeButtonCss = getGhostButtonCss({ size: 'sm' })
 const identityCss = {
 	display: 'grid',
 	gap: spacing.xs,
@@ -68,14 +66,14 @@ export function AllowedPackagesPicker(props: {
 									<strong>{option ? option.label : props.unknownLabel}</strong>
 									<code>{packageId}</code>
 								</span>
-								<button
+								<Button
 									type="button"
 									aria-label={`Remove package ${label}`}
 									onClick={() => props.onRemove(packageId)}
-									css={removeButtonCss}
+									variant="secondary"
 								>
 									Remove
-								</button>
+								</Button>
 							</li>
 						)
 					})}

@@ -1,8 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import type { OnboardingChecklistLoaderData } from '#universal/loader-data.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 import { onboardingPath } from '#client/routes/onboarding-redirect.ts'
@@ -83,17 +82,14 @@ export function renderOnboardingBanner(options?: OnboardingBannerOptions) {
 						: 'Kody works through MCP. Add this deployment as an MCP server in Cursor, Claude, Copilot, or any MCP-capable agent, then ask your agent to help you get set up.'}
 				</p>
 			</div>
-			<SiteLink
+			<Button
 				href={onboardingPath}
-				css={{
-					...getPillButtonCss(),
-					flex: 'none',
-					fontSize: '0.95rem',
-					padding: '0.8rem 1.35rem',
-				}}
+				variant="primary"
+				size="lg"
+				css={{ flex: 'none', fontSize: '0.95rem', padding: '0.8rem 1.35rem' }}
 			>
 				{showChecklistProgress ? 'Continue onboarding' : 'Connect your agent'}
-			</SiteLink>
+			</Button>
 		</section>
 	)
 }

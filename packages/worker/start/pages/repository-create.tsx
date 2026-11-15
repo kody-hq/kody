@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
@@ -13,17 +14,12 @@ import {
 	type RepositoryOwnerOption,
 } from '#universal/repository-create.ts'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	AccountManagementMessage,
@@ -236,19 +232,12 @@ function RepositoryCreateForm(props: {
 					</span>
 				</label>
 				<div css={accountActionsCss}>
-					<button
-						type="submit"
-						disabled={mutation.isPending}
-						css={getPillButtonCss({ size: 'sm' })}
-					>
+					<Button type="submit" disabled={mutation.isPending} variant="primary">
 						{mutation.isPending ? 'Creating…' : 'Create repository'}
-					</button>
-					<SiteLink
-						href={props.repositoriesHref}
-						css={getGhostButtonCss({ size: 'sm' })}
-					>
+					</Button>
+					<Button href={props.repositoriesHref} variant="secondary">
 						Cancel
-					</SiteLink>
+					</Button>
 				</div>
 			</form>
 		</AccountManagementPanel>
@@ -282,19 +271,16 @@ function RepositoryCreatedView(props: {
 						copiedLabel="Copied"
 						ariaLabel="Copy prompt"
 					/>
-					<SiteLink
-						href={created.repositoryHref}
-						css={getGhostButtonCss({ size: 'sm' })}
-					>
+					<Button href={created.repositoryHref} variant="secondary">
 						Open repository
-					</SiteLink>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={props.onCreateAnother}
 					>
 						Create another
-					</button>
+					</Button>
 				</div>
 			</AccountManagementPanel>
 		</>

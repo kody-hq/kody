@@ -21,7 +21,7 @@ const optInSchema = z.object({
 	opted_in: z.boolean(),
 	opt_in_updated_at: z.string().nullable(),
 	opt_in_source: z
-		.enum(['signup', 'settings', 'email_link', 'admin'])
+		.enum(['signup', 'settings', 'email_link', 'admin', 'newsletter_page'])
 		.nullable(),
 })
 

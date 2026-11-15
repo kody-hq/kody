@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import type { CSSObject } from '@emotion/react'
 import {
@@ -48,10 +49,8 @@ import {
 } from './onboarding-wizard-panels.tsx'
 import { WizardStepsNav } from './onboarding-wizard-chrome.tsx'
 import { ProviderIcon } from '../components/provider-icons.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { routes } from '#universal/routes.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 const subscribeHydration = () => () => {}
 export function OnboardingRoute({
 	payload,
@@ -355,14 +354,15 @@ export function OnboardingRoute({
 				style={{ '--rise': '1' } as CSSProperties}
 				css={discordInviteWrapCss}
 			>
-				<SiteLink
+				<Button
 					href={routes.discord.href()}
+					variant="secondary"
 					css={discordInviteLinkCss}
 					data-testid="onboarding-join-discord"
 				>
 					<ProviderIcon providerId="discord" size="1.1em" />
 					Join the Discord
-				</SiteLink>
+				</Button>
 			</p>
 		</section>
 	)
@@ -415,7 +415,6 @@ const discordInviteWrapCss: CSSObject = {
 }
 
 const discordInviteLinkCss: CSSObject = {
-	...getGhostButtonCss({ size: 'sm' }),
 	width: 'fit-content',
 	gap: '0.4rem',
 	padding: '0.4rem 0.85rem 0.4rem 0.65rem',

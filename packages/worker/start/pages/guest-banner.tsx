@@ -1,7 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useEffect, useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 
@@ -101,9 +100,9 @@ export function GuestBanner(props: { guest: GuestBannerInfo }) {
 					{body}
 				</p>
 			</div>
-			<SiteLink href={claimPath(guest.claimUrl)} css={getPillButtonCss()}>
+			<Button href={claimPath(guest.claimUrl)} variant="primary" size="lg">
 				Claim account
-			</SiteLink>
+			</Button>
 		</section>
 	)
 }

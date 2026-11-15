@@ -69,8 +69,8 @@ role. The org is never inherited; it is re-resolved for the identity the run
 uses. Lineage crosses durable boundaries as JSON: workflow payloads (`lineage`,
 kept out of instance-id hashing), package event queue messages (`lineage`), and
 the jobs worker run-now RPC. Readers re-validate it with `parseRequestLineage`.
-A payload written before lineage existed runs as Automation, which can only
-narrow what the starter could do.
+Lineage is required: a workflow payload without it fails validation, and a queue
+message without it is acked as invalid.
 
 ## The one swap point
 

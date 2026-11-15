@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, useMemo } from 'react'
@@ -17,7 +18,6 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	getPillButtonCss,
 	getSurfaceCardCss,
 	pageHeadCss,
 	proseCss,
@@ -139,9 +139,14 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 								Give your assistant a home of its own. Create a free account and
 								start saving packages.
 							</p>
-							<SiteLink href={signedOutCta.href} css={postCtaButtonCss}>
+							<Button
+								href={signedOutCta.href}
+								variant="primary"
+								size="lg"
+								css={postCtaButtonCss}
+							>
 								{signedOutCta.label}
-							</SiteLink>
+							</Button>
 						</div>
 					</footer>
 				</>
@@ -370,7 +375,6 @@ const postCtaCss = {
 } satisfies CSSObject
 
 const postCtaButtonCss = {
-	...getPillButtonCss(),
 	fontSize: '0.95rem',
 	padding: '0.8rem 1.35rem',
 	[mq.mobile]: {

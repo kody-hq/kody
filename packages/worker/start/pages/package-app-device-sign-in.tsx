@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
@@ -9,8 +10,6 @@ import {
 	descriptionCss,
 	fieldLabelCss,
 	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -83,13 +82,16 @@ function renderBody(data: PackageAppDeviceSignInView) {
 		case 'expired':
 			return (
 				<div css={actionsCss}>
-					<a
+					<Button
 						href={data.startAgainUrl}
+						variant="primary"
+						size="md"
+						reloadDocument
 						css={primaryLinkCss}
 						data-testid="package-app-device-start-again"
 					>
 						Start again
-					</a>
+					</Button>
 				</div>
 			)
 		case 'none':
@@ -151,13 +153,16 @@ function PendingCard(props: {
 					and continues to the app on its own.
 				</p>
 				<div css={actionsCss}>
-					<a
+					<Button
 						href={packageAppOauthPaths.device}
+						variant="secondary"
+						size="md"
+						reloadDocument
 						css={secondaryLinkCss}
 						data-testid="package-app-device-check-now"
 					>
 						Check now
-					</a>
+					</Button>
 				</div>
 			</section>
 			<p role="note" css={getAlertCardCss('info')}>
@@ -183,18 +188,11 @@ const pageCss = {
 	maxWidth: '32rem',
 	margin: '0 auto',
 }
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const primaryLinkCss = {
-	...primaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }
 const secondaryLinkCss = {
-	...secondaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }

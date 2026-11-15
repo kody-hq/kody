@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	joinOrganization,
 	declineOrganizationInvite,
@@ -19,8 +20,6 @@ import { routes } from '#universal/routes.ts'
 import {
 	cardCss,
 	nativeDisclosureCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
@@ -166,17 +165,24 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 				) : null}
 				{data.alreadyMember ? (
 					<p css={footerCss}>
-						<SiteLink href={copy.openHref} css={linkButtonCss}>
+						<Button
+							href={copy.openHref}
+							variant="primary"
+							size="md"
+							css={linkButtonCss}
+						>
 							{copy.openLabel}
-						</SiteLink>
+						</Button>
 					</p>
 				) : data.authenticated ? (
 					<div css={actionsCss}>
-						<button
+						<Button
 							type="button"
 							disabled={mutation.isPending || mutation.isSuccess}
 							data-testid="org-invite-join-confirm"
-							css={[getPrimaryButtonCss(), iconButtonCss]}
+							variant="primary"
+							size="md"
+							css={iconButtonCss}
 							onClick={() => {
 								const active = capture()
 								mutation.mutate(
@@ -200,12 +206,13 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 							{mutation.isPending && mutation.variables.action === 'accept'
 								? 'Accepting…'
 								: copy.acceptLabel}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={mutation.isPending || mutation.isSuccess}
 							data-testid="org-invite-join-decline"
-							css={getSecondaryButtonCss()}
+							variant="secondary"
+							size="md"
 							onClick={() => {
 								const active = capture()
 								mutation.mutate(
@@ -222,16 +229,26 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 							{mutation.isPending && mutation.variables.action === 'decline'
 								? 'Declining…'
 								: 'Decline'}
-						</button>
+						</Button>
 					</div>
 				) : (
 					<div css={actionsCss}>
-						<SiteLink href={loginHref} css={linkButtonCss}>
+						<Button
+							href={loginHref}
+							variant="primary"
+							size="md"
+							css={linkButtonCss}
+						>
 							Sign in to accept
-						</SiteLink>
-						<SiteLink href={signupHref} css={linkSecondaryButtonCss}>
+						</Button>
+						<Button
+							href={signupHref}
+							variant="secondary"
+							size="md"
+							css={linkSecondaryButtonCss}
+						>
 							Create an account
-						</SiteLink>
+						</Button>
 					</div>
 				)}
 				<details css={detailsCss} data-testid="org-invite-join-details">
@@ -354,7 +371,6 @@ const iconButtonCss = {
 }
 
 const linkButtonCss = {
-	...getPrimaryButtonCss(),
 	display: 'inline-flex',
 	alignItems: 'center',
 	justifyContent: 'center',
@@ -365,7 +381,6 @@ const linkButtonCss = {
 }
 
 const linkSecondaryButtonCss = {
-	...getSecondaryButtonCss(),
 	display: 'inline-flex',
 	alignItems: 'center',
 	justifyContent: 'center',

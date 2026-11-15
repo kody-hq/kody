@@ -9,6 +9,7 @@ import {
 	pageEyebrowCss,
 	pageGutter,
 	pageHeadCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 
 type PlateTone = 'light' | 'dark'
@@ -405,7 +406,7 @@ const downloadCss: CSSObject = {
 	alignItems: 'center',
 	gap: '0.3rem',
 	padding: '0.4rem 0.65rem',
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	font: '600 0.72rem/1 ui-monospace, "SF Mono", Menlo, monospace',
 	letterSpacing: '0.04em',
 	textDecoration: 'none',

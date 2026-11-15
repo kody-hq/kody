@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useState, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -21,7 +22,6 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
 	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
@@ -193,9 +193,14 @@ export function VerifyRoute() {
 						data-sitekey={turnstileSiteKey}
 					></div>
 				) : null}
-				<button type="submit" disabled={isSubmitting} css={primaryButtonCss}>
+				<Button
+					type="submit"
+					disabled={isSubmitting}
+					variant="primary"
+					size="md"
+				>
 					{isSubmitting ? 'Verifying...' : 'Verify'}
-				</button>
+				</Button>
 				{(message ?? formErrorMessage) ? (
 					<p
 						aria-live="polite"
@@ -238,8 +243,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

@@ -37,6 +37,7 @@ import { colors, transitions } from '#universal/styles/tokens.ts'
 import {
 	getSurfaceCardCss,
 	visuallyHiddenCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 
 /**
@@ -447,7 +448,7 @@ const categoryNavCss = {
 		minHeight: '44px',
 		backgroundColor: colors.surface,
 		border: `1.5px solid ${colors.border}`,
-		borderRadius: '999px',
+		...getSquircleCss('sm'),
 		padding: '0.35rem 0.85rem',
 	},
 } satisfies CSSObject
@@ -512,7 +513,7 @@ const sortGroupCss = {
 	alignItems: 'stretch',
 	backgroundColor: colors.surface,
 	border: `1.5px solid ${colors.border}`,
-	borderRadius: '999px',
+	...getSquircleCss('md'),
 	padding: '0.2rem',
 } satisfies CSSObject
 
@@ -522,7 +523,7 @@ const sortLinkCss = {
 	justifyContent: 'center',
 	minHeight: '44px',
 	padding: '0.3rem 0.95rem',
-	borderRadius: '999px',
+	...getSquircleCss('sm'),
 	color: colors.textMuted,
 	fontSize: '0.88rem',
 	fontWeight: 650,

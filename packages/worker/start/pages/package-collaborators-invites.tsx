@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState, type FormEvent } from 'react'
 import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -29,11 +30,6 @@ import {
 	packageCollaboratorPresets,
 } from '#universal/package-collaborators.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -182,14 +178,14 @@ export function PackageCollaboratorInvites({
 						testId="package-collaborators-advanced-invite"
 					/>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={busy || !invitee.trim()}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('mail', { size: '1.05rem' })}
 							{busyKey === 'invite' ? 'Creating…' : 'Create invite'}
-						</button>
+						</Button>
 					</div>
 				</form>
 				{created ? (
@@ -241,13 +237,14 @@ export function PackageCollaboratorInvites({
 							time.
 						</p>
 						<div css={calloutActionsCss}>
-							<SiteLink
+							<Button
 								href={routes.accountOrganizationsNew.href()}
+								variant="secondary"
 								css={calloutButtonCss}
 							>
 								{renderIcon('plus', { size: '1.05rem' })}Create a team
 								organization
-							</SiteLink>
+							</Button>
 							<SiteLink href={routes.docDetail.href({ slug: 'organizations' })}>
 								Learn more
 							</SiteLink>
@@ -286,15 +283,15 @@ export function PackageCollaboratorInvites({
 									</span>
 								</span>
 								<span css={rowActionsCss}>
-									<button
+									<Button
 										type="button"
 										disabled={busy}
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										onClick={() => void revoke(invite)}
 									>
 										{renderIcon('close', { size: '1.05rem' })}
 										{confirmed === invite.id ? 'Confirm revoke' : 'Revoke'}
-									</button>
+									</Button>
 								</span>
 							</li>
 						))}
@@ -403,7 +400,6 @@ const calloutActionsCss = {
 }
 
 const calloutButtonCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	maxWidth: '100%',
 	boxSizing: 'border-box' as const,
 	whiteSpace: 'normal' as const,

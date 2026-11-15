@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	setAdminGlobalFeatureFlag,
@@ -22,9 +23,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
@@ -275,9 +273,6 @@ export function AdminFeatureFlagsPage({
 			if (ok) form.reset()
 		})
 	}
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const isMutating = actionState !== 'idle'
 	const registryFlags = featureFlags.filter((flag) => !flag.stale)
 	const staleFlags = featureFlags.filter((flag) => flag.stale)
@@ -529,13 +524,9 @@ export function AdminFeatureFlagsPage({
 										css={accountInputCss}
 									/>
 								</label>
-								<button
-									type="submit"
-									disabled={isMutating}
-									css={primaryButtonCss}
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-global' ? 'Saving…' : 'Save'}
-								</button>
+								</Button>
 							</div>
 							{flag.global ? (
 								<MetadataGrid
@@ -638,7 +629,7 @@ export function AdminFeatureFlagsPage({
 													</p>
 												) : null}
 											</div>
-											<button
+											<Button
 												type="button"
 												disabled={isMutating}
 												onClick={() =>
@@ -653,12 +644,12 @@ export function AdminFeatureFlagsPage({
 														`Removed org override for @${orgOverride.slug}.`,
 													)
 												}
-												css={secondaryButtonCss}
+												variant="secondary"
 											>
 												{actionState === 'clearing-org-override'
 													? 'Removing…'
 													: 'Remove'}
-											</button>
+											</Button>
 										</div>
 									))}
 								</div>
@@ -718,15 +709,11 @@ export function AdminFeatureFlagsPage({
 										css={accountInputCss}
 									/>
 								</label>
-								<button
-									type="submit"
-									disabled={isMutating}
-									css={primaryButtonCss}
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-org-override'
 										? 'Adding…'
 										: 'Add org override'}
-								</button>
+								</Button>
 							</form>
 						</AccountManagementPanel>
 						<AccountManagementPanel
@@ -766,7 +753,7 @@ export function AdminFeatureFlagsPage({
 													updated {formatNullableTimestamp(override.updatedAt)}
 												</p>
 											</div>
-											<button
+											<Button
 												type="button"
 												disabled={isMutating}
 												onClick={() =>
@@ -781,12 +768,12 @@ export function AdminFeatureFlagsPage({
 														`Removed override for ${override.username}.`,
 													)
 												}
-												css={secondaryButtonCss}
+												variant="secondary"
 											>
 												{actionState === 'clearing-override'
 													? 'Removing…'
 													: 'Remove'}
-											</button>
+											</Button>
 										</div>
 									))}
 								</div>
@@ -831,15 +818,11 @@ export function AdminFeatureFlagsPage({
 										<option value="false">Off</option>
 									</select>
 								</label>
-								<button
-									type="submit"
-									disabled={isMutating}
-									css={primaryButtonCss}
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-override'
 										? 'Adding…'
 										: 'Add override'}
-								</button>
+								</Button>
 							</form>
 						</AccountManagementPanel>
 					</section>
@@ -892,7 +875,7 @@ export function AdminFeatureFlagsPage({
 												: ''}
 										</p>
 									</div>
-									<button
+									<Button
 										type="button"
 										disabled={isMutating}
 										onClick={() =>
@@ -906,10 +889,10 @@ export function AdminFeatureFlagsPage({
 												`Deleted stale flag ${flag.key}.`,
 											)
 										}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{actionState === 'deleting-stale' ? 'Deleting…' : 'Delete'}
-									</button>
+									</Button>
 								</div>
 							</article>
 						))}

@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from './site-link.tsx'
+import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 
 import { workspaceLandingItem } from '#client/routes/account-rail.ts'
@@ -13,11 +13,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	pageDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { pageDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { UserAvatar } from './user-avatar.tsx'
 
 const profilePagePath = (username: string) => routes.profile.href({ username })
@@ -77,36 +73,33 @@ export function renderProfileIdentity(
 						<p css={guestCtaCopyCss}>
 							You're a member. Everyone sees this public page.
 						</p>
-						<SiteLink
+						<Button
 							href={orgHomeHref}
 							data-testid="profile-org-home"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Organization home
-						</SiteLink>
-						<SiteLink
+						</Button>
+						<Button
 							href={workspaceLandingItem(shell.username).href}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Workspace
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 				{shell.isSelf ? (
 					<div css={actionsCss} data-testid="profile-actions">
-						<SiteLink
+						<Button
 							href={workspaceLandingItem(workspaceSlug).href}
 							data-testid="profile-workspace"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Workspace
-						</SiteLink>
-						<SiteLink
-							href={routes.account.href()}
-							css={getGhostButtonCss({ size: 'sm' })}
-						>
+						</Button>
+						<Button href={routes.account.href()} variant="secondary">
 							Account settings
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 				{!shell.loggedIn
@@ -146,13 +139,13 @@ export function renderOrgIdentity(input: {
 				<p css={usernameCss}>{input.handle}</p>
 				{input.publicPageHref ? (
 					<div css={actionsCss}>
-						<SiteLink
+						<Button
 							href={input.publicPageHref}
 							data-testid="org-public-page"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							View public page
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 			</div>
@@ -165,18 +158,20 @@ function renderProfileLoggedOutCtas(returnTo: string) {
 		<div css={guestCtaCss} data-testid="profile-guest-cta">
 			<p css={guestCtaCopyCss}>Log in or sign up to fork these packages.</p>
 			<p css={guestCtaActionsCss}>
-				<SiteLink
+				<Button
 					href={buildAuthLink(routes.login.href(), returnTo)}
-					css={getGhostButtonCss()}
+					variant="secondary"
+					size="lg"
 				>
 					Log in
-				</SiteLink>
-				<SiteLink
+				</Button>
+				<Button
 					href={buildAuthLink(routes.signup.href(), returnTo)}
-					css={getPillButtonCss()}
+					variant="primary"
+					size="lg"
 				>
 					Sign up
-				</SiteLink>
+				</Button>
 			</p>
 		</div>
 	)

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	buildAdminEmailHtmlPreviewDocument,
 	emailHtmlPreviewSandbox,
@@ -15,11 +16,7 @@ import {
 	type EmailMessageView,
 } from '#universal/email-message-view.ts'
 import type { AdminSystemEmailLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -388,9 +385,9 @@ export function AdminSystemEmailPage({
 														archivedAt={selectedMessage.archived_at}
 													/>
 													{selectedMessage.classification === 'accepted' ? (
-														<button
+														<Button
 															type="button"
-															css={getGhostButtonCss({ size: 'sm' })}
+															variant="secondary"
 															disabled={pending}
 															onClick={() =>
 																void triageMessage({
@@ -400,11 +397,11 @@ export function AdminSystemEmailPage({
 															}
 														>
 															Mark as spam
-														</button>
+														</Button>
 													) : (
-														<button
+														<Button
 															type="button"
-															css={getGhostButtonCss({ size: 'sm' })}
+															variant="secondary"
 															disabled={pending}
 															onClick={() =>
 																void triageMessage({
@@ -414,11 +411,11 @@ export function AdminSystemEmailPage({
 															}
 														>
 															Not spam
-														</button>
+														</Button>
 													)}
-													<button
+													<Button
 														type="button"
-														css={getGhostButtonCss({ size: 'sm' })}
+														variant="secondary"
 														disabled={pending}
 														onClick={() =>
 															void triageMessage({
@@ -430,10 +427,10 @@ export function AdminSystemEmailPage({
 														{selectedMessage.archived_at
 															? 'Unarchive'
 															: 'Archive'}
-													</button>
-													<button
+													</Button>
+													<Button
 														type="button"
-														css={getDangerPillCss({ size: 'sm' })}
+														variant="danger"
 														disabled={pending}
 														aria-label={`${armedId === selectedMessage.id ? 'Confirm delete' : 'Delete'} message "${selectedMessage.subject || '(no subject)'}"`}
 														title={
@@ -451,7 +448,7 @@ export function AdminSystemEmailPage({
 															: armedId === selectedMessage.id
 																? 'Confirm delete'
 																: 'Delete'}
-													</button>
+													</Button>
 												</div>
 											</div>
 											<p
@@ -472,24 +469,24 @@ export function AdminSystemEmailPage({
 														Also block future mail from{' '}
 														<code>{selectedMessage.from_address}</code>?
 													</span>
-													<button
+													<Button
 														type="button"
-														css={getGhostButtonCss({ size: 'sm' })}
+														variant="secondary"
 														disabled={pending}
 														onClick={() => void blockSender(selectedMessage.id)}
 													>
 														{blockMutation.isPending
 															? 'Blocking…'
 															: 'Block sender'}
-													</button>
-													<button
+													</Button>
+													<Button
 														type="button"
-														css={getGhostButtonCss({ size: 'sm' })}
+														variant="secondary"
 														disabled={pending}
 														onClick={() => setBlockOfferId(null)}
 													>
 														No thanks
-													</button>
+													</Button>
 												</div>
 											) : null}
 										</div>

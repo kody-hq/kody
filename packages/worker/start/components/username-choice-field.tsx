@@ -30,6 +30,7 @@ import {
 	authFieldLabelCss,
 	getAuthInputCss,
 	hoverMq,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
 import { renderIcon } from './icon.tsx'
@@ -389,7 +390,7 @@ const tipButtonCss: CSSObject = {
 	height: '1.55rem',
 	padding: 0,
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	background: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',

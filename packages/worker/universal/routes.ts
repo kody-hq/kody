@@ -565,6 +565,7 @@ export const routes = {
 	automation: { href: () => '/use-cases/ai-workflow-automation' },
 	support: { href: () => '/support' },
 	about: { href: () => '/about' },
+	newsletter: { href: () => '/newsletter' },
 	brandGuide: { href: () => '/brand-guide' },
 	contact: { href: () => '/contact' },
 	privacy: { href: () => '/privacy' },

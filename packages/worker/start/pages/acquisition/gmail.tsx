@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { gmail } from '#universal/acquisition/gmail.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const threads = [
 	{
 		sender: 'Maya Chen',
@@ -51,9 +51,9 @@ export function GmailPage() {
 						Let your agent help with the inbox. It can prepare replies for you
 						to review, and you can save the workflow to use again.
 					</p>
-					<SiteLink href={routes.onboarding.href()} css={getPillButtonCss()}>
+					<Button href={routes.onboarding.href()} variant="primary" size="lg">
 						Connect your agent
-					</SiteLink>
+					</Button>
 				</div>
 			</header>
 			<section
@@ -242,9 +242,9 @@ export function GmailPage() {
 						Connect your agent to Kody, then ask it to build a workflow you can
 						inspect before you use it.
 					</p>
-					<SiteLink href={routes.onboarding.href()} css={getPillButtonCss()}>
+					<Button href={routes.onboarding.href()} variant="primary" size="lg">
 						Get started with Kody
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="prompt">
 					<blockquote>{gmail.prompt}</blockquote>

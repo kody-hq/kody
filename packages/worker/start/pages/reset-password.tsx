@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -20,7 +21,6 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
 	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
@@ -217,17 +217,18 @@ export function ResetPasswordRoute() {
 				{turnstileSiteKey ? (
 					<div className={turnstileWidgetClassName}></div>
 				) : null}
-				<button
+				<Button
 					type="submit"
 					disabled={!hydrated || isSubmitting}
-					css={primaryButtonCss}
+					variant="primary"
+					size="md"
 				>
 					{isSubmitting
 						? 'Submitting...'
 						: mode === 'confirm'
 							? 'Update password'
 							: 'Send reset link'}
-				</button>
+				</Button>
 				{message ? (
 					<p
 						aria-live="polite"
@@ -257,8 +258,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

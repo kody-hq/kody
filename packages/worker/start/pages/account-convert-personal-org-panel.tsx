@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { convertPersonalOrganization } from '#start/server/convert-personal-org'
@@ -8,11 +9,6 @@ import { conversionMutationOptions } from '../convert-personal-org-mutation.ts'
 import { useRouter } from '@tanstack/react-router'
 import { toast } from '#client/toast.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
@@ -53,10 +49,10 @@ export function AccountConvertPersonalOrgPanel({
 		>
 			{!confirmOpen ? (
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="account-convert-personal-org-start"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={() => {
 							setConfirmOpen(true)
 							setConfirmation('')
@@ -64,7 +60,7 @@ export function AccountConvertPersonalOrgPanel({
 						}}
 					>
 						Convert @{current || '…'}…
-					</button>
+					</Button>
 				</div>
 			) : (
 				<form
@@ -186,9 +182,9 @@ export function AccountConvertPersonalOrgPanel({
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							disabled={mutation.isPending}
 							onClick={() => {
 								setConfirmOpen(false)
@@ -197,19 +193,15 @@ export function AccountConvertPersonalOrgPanel({
 							}}
 						>
 							Cancel
-						</button>
-						<button
+						</Button>
+						<Button
 							type="submit"
 							data-testid="account-convert-personal-org-submit"
-							css={
-								ready
-									? getDangerPillCss({ size: 'sm' })
-									: getPillButtonCss({ size: 'sm' })
-							}
+							variant={ready ? 'danger' : 'primary'}
 							disabled={!ready}
 						>
 							{mutation.isPending ? 'Converting…' : 'Convert organization'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

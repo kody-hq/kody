@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, RefCallback } from 'react'
@@ -50,10 +51,7 @@ import {
 	connectStatusCss,
 } from './onboarding-wizard-chrome.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import {
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 
 type StepNavigationProps = {
 	activeStep: OnboardingWizardStepNumber
@@ -560,15 +558,16 @@ function renderConnectAgentStatus(props: {
 			props.loginHref ??
 			onboardingAgentHref(props.selectedAgent, props.search ?? '')
 		return (
-			<SiteLink
+			<Button
 				href={buildAuthLink(routes.login.href(), resumeHref)}
 				data-testid="onboarding-agent-login"
+				variant="primary"
 				css={agentLoginCss}
 			>
 				{props.selectedAgentLabel
 					? `Log in to connect ${props.selectedAgentLabel}`
 					: 'Log in to connect'}
-			</SiteLink>
+			</Button>
 		)
 	}
 	return null
@@ -642,7 +641,6 @@ const changeSelectionCss: CSSObject = {
 }
 
 const agentLoginCss: CSSObject = {
-	...getPillButtonCss({ size: 'sm' }),
 	width: 'fit-content',
 }
 

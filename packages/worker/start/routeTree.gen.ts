@@ -33,6 +33,7 @@ import { Route as GuidesDotmdRouteImport } from './routes/guides[.]md'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NewsletterRouteImport } from './routes/newsletter'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PendingVerificationRouteImport } from './routes/pending-verification'
 import { Route as PricingRouteImport } from './routes/pricing'
@@ -98,6 +99,7 @@ import { Route as IntegrationsGmailRouteImport } from './routes/integrations_.gm
 import { Route as IntegrationsSlackRouteImport } from './routes/integrations_.slack'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as LoginDeviceRouteImport } from './routes/login_.device'
+import { Route as NewsletterConfirmRouteImport } from './routes/newsletter_.confirm'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OgChar123pageChar125DotpngRouteImport } from './routes/og_.{$page}[.]png'
@@ -424,6 +426,11 @@ const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsletterRoute = NewsletterRouteImport.update({
+  id: '/newsletter',
+  path: '/newsletter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -757,6 +764,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const LoginDeviceRoute = LoginDeviceRouteImport.update({
   id: '/login_/device',
   path: '/login/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsletterConfirmRoute = NewsletterConfirmRouteImport.update({
+  id: '/newsletter_/confirm',
+  path: '/newsletter/confirm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -1971,6 +1983,7 @@ export interface FileRoutesByFullPath {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
@@ -2034,6 +2047,7 @@ export interface FileRoutesByFullPath {
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login/device': typeof LoginDeviceRoute
+  '/newsletter/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2269,6 +2283,7 @@ export interface FileRoutesByTo {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -2331,6 +2346,7 @@ export interface FileRoutesByTo {
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login/device': typeof LoginDeviceRoute
+  '/newsletter/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2568,6 +2584,7 @@ export interface FileRoutesById {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
@@ -2631,6 +2648,7 @@ export interface FileRoutesById {
   '/integrations_/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login_/device': typeof LoginDeviceRoute
+  '/newsletter_/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og_/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2868,6 +2886,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/onboarding'
     | '/pending-verification'
     | '/pricing'
@@ -2931,6 +2950,7 @@ export interface FileRouteTypes {
     | '/integrations/slack'
     | '/join/$token'
     | '/login/device'
+    | '/newsletter/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3166,6 +3186,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/pending-verification'
     | '/pricing'
     | '/privacy'
@@ -3228,6 +3249,7 @@ export interface FileRouteTypes {
     | '/integrations/slack'
     | '/join/$token'
     | '/login/device'
+    | '/newsletter/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3464,6 +3486,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/onboarding'
     | '/pending-verification'
     | '/pricing'
@@ -3527,6 +3550,7 @@ export interface FileRouteTypes {
     | '/integrations_/slack'
     | '/join/$token'
     | '/login_/device'
+    | '/newsletter_/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og_/{$page}.png'
@@ -3764,6 +3788,7 @@ export interface RootRouteChildren {
   HealthRoute: typeof HealthRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
+  NewsletterRoute: typeof NewsletterRoute
   OnboardingRoute: typeof OnboardingRouteWithChildren
   PendingVerificationRoute: typeof PendingVerificationRoute
   PricingRoute: typeof PricingRoute
@@ -3825,6 +3850,7 @@ export interface RootRouteChildren {
   IntegrationsSlackRoute: typeof IntegrationsSlackRoute
   JoinTokenRoute: typeof JoinTokenRoute
   LoginDeviceRoute: typeof LoginDeviceRoute
+  NewsletterConfirmRoute: typeof NewsletterConfirmRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OgChar123pageChar125DotpngRoute: typeof OgChar123pageChar125DotpngRoute
@@ -4048,6 +4074,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletter': {
+      id: '/newsletter'
+      path: '/newsletter'
+      fullPath: '/newsletter'
+      preLoaderRoute: typeof NewsletterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -4503,6 +4536,13 @@ declare module '@tanstack/react-router' {
       path: '/login/device'
       fullPath: '/login/device'
       preLoaderRoute: typeof LoginDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletter_/confirm': {
+      id: '/newsletter_/confirm'
+      path: '/newsletter/confirm'
+      fullPath: '/newsletter/confirm'
+      preLoaderRoute: typeof NewsletterConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/authorize': {
@@ -6420,6 +6460,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthRoute: HealthRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
+  NewsletterRoute: NewsletterRoute,
   OnboardingRoute: OnboardingRouteWithChildren,
   PendingVerificationRoute: PendingVerificationRoute,
   PricingRoute: PricingRoute,
@@ -6482,6 +6523,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsSlackRoute: IntegrationsSlackRoute,
   JoinTokenRoute: JoinTokenRoute,
   LoginDeviceRoute: LoginDeviceRoute,
+  NewsletterConfirmRoute: NewsletterConfirmRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OgChar123pageChar125DotpngRoute: OgChar123pageChar125DotpngRoute,

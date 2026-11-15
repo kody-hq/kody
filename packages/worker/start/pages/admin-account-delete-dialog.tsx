@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -10,12 +11,7 @@ import {
 } from '#start/server/admin-account-deletion'
 import { canConfirmAdminAccountDeletion } from '#universal/admin-account-deletion.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	accountActionsCss,
 	accountFieldCss,
@@ -23,10 +19,6 @@ import {
 	accountInputCss,
 } from './account-management-components.tsx'
 import { AdminAccountDeletionSummaryList } from './admin-account-deletion-summary.tsx'
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 export function AdminUserAccountModeration(props: {
 	stableUserId: string
@@ -112,45 +104,45 @@ export function AdminUserAccountModeration(props: {
 				}}
 			>
 				{props.suspendedAt ? (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						onClick={() => props.onSubmitModerationAction('unsuspend_user')}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						{props.parentMutating ? 'Working…' : 'Clear suspension'}
-					</button>
+					</Button>
 				) : (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						data-testid="admin-suspend-account"
 						onClick={() => props.onSubmitModerationAction('suspend_user')}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{props.parentMutating ? 'Working…' : 'Suspend account'}
-					</button>
+					</Button>
 				)}
-				<button
+				<Button
 					type="button"
 					disabled={pending}
 					data-testid="admin-delete-account"
 					onClick={openDialog}
-					css={dangerButtonCss}
+					variant="danger"
 				>
 					Delete account
-				</button>
+				</Button>
 				{props.emailOutboundPausedAt ? (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						onClick={() =>
 							props.onSubmitModerationAction('resume_email_outbound')
 						}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{props.parentMutating ? 'Working…' : 'Resume outbound email'}
-					</button>
+					</Button>
 				) : null}
 			</div>
 			{open && (
@@ -238,22 +230,22 @@ export function AdminUserAccountModeration(props: {
 							</p>
 						) : null}
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="button"
 								disabled={deletion.isPending}
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								onClick={closeDialog}
 							>
 								Cancel
-							</button>
-							<button
+							</Button>
+							<Button
 								type="submit"
 								disabled={!canDelete}
 								data-testid="admin-delete-account-confirm"
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 							>
 								{deletion.isPending ? 'Deleting…' : 'Delete account'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</ModalDialog>

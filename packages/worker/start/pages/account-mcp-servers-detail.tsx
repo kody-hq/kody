@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	McpServerOAuthClientSection,
 	type McpServerOAuthClientInput,
 } from './account-mcp-servers-oauth-client.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
 import {
 	AccountManagementMessage,
@@ -29,9 +29,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getDangerPillCss,
-	type getGhostButtonCss,
-	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 function McpServerUsageForm(props: {
@@ -149,15 +146,15 @@ function McpServerUsageForm(props: {
 					</div>
 				)
 			) : null}
-			<button
+			<Button
 				type="button"
 				data-testid="save-mcp-server-usage"
 				disabled={saving}
 				onClick={onSave}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				{saving ? 'Saving…' : 'Save usage'}
-			</button>
+			</Button>
 		</section>
 	)
 }
@@ -171,9 +168,6 @@ export type McpServerDetailProps = {
 	deleteArmed: boolean
 	onDeleteArm: () => void
 	onDeleteReset: () => void
-	primaryButtonCss: ReturnType<typeof getPillButtonCss>
-	secondaryButtonCss: ReturnType<typeof getGhostButtonCss>
-	dangerButtonCss: ReturnType<typeof getDangerPillCss>
 	onUsageDraftChange: (draft: McpServerUsageDraft) => void
 	onUsageSave: () => void
 	onReconnect: () => void
@@ -194,9 +188,6 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 		deleteArmed,
 		onDeleteArm,
 		onDeleteReset,
-		primaryButtonCss,
-		secondaryButtonCss,
-		dangerButtonCss,
 		onUsageDraftChange,
 		onUsageSave,
 		onReconnect,
@@ -308,17 +299,14 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 						become available.
 					</span>
 					<div>
-						<SiteLink
+						<Button
 							href={server.authUrl}
 							rel="noopener noreferrer"
-							css={{
-								...primaryButtonCss,
-								display: 'inline-block',
-								textDecoration: 'none',
-							}}
+							variant="primary"
+							css={{ display: 'inline-block', textDecoration: 'none' }}
 						>
 							Authorize {server.name}
-						</SiteLink>
+						</Button>
 					</div>
 				</div>
 			) : null}
@@ -336,9 +324,6 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 				key={server.id}
 				server={server}
 				isMutating={isMutating}
-				primaryButtonCss={primaryButtonCss}
-				secondaryButtonCss={secondaryButtonCss}
-				dangerButtonCss={dangerButtonCss}
 				onSave={onOAuthClientSave}
 				onRemove={onOAuthClientRemove}
 			/>
@@ -378,34 +363,34 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					flexWrap: 'wrap',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onReconnect}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					Reconnect
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onRefresh}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					Refresh tools
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onToggleEnabled}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					{server.enabled ? 'Disable' : 'Enable'}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
-					css={dangerButtonCss}
+					variant="danger"
 					onBlur={onDeleteReset}
 					onClick={() => {
 						if (deleteArmed) onDelete()
@@ -413,7 +398,7 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					}}
 				>
 					{deleteArmed ? 'Confirm remove' : 'Remove'}
-				</button>
+				</Button>
 			</div>
 		</section>
 	)

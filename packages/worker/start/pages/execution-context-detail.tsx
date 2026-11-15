@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
@@ -55,11 +56,6 @@ import {
 	sharingSummary,
 	unusableReasonCopy,
 } from '#universal/execution-contexts.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
@@ -314,17 +310,18 @@ function DeleteControls(props: {
 				Past runs keep its name in their history.
 			</p>
 			<div>
-				<button
+				<Button
 					type="button"
 					data-testid="context-delete-open"
-					css={[getDangerPillCss({ size: 'sm' }), target]}
+					variant="danger"
+					css={target}
 					onClick={() => {
 						setError(null)
 						dialog.current?.showModal()
 					}}
 				>
 					Delete context
-				</button>
+				</Button>
 			</div>
 			<dialog
 				ref={dialog}
@@ -346,22 +343,24 @@ function DeleteControls(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						data-testid="context-delete-confirm"
-						css={[getDangerPillCss({ size: 'sm' }), target]}
+						variant="danger"
+						css={target}
 						disabled={busy}
 						onClick={() => void remove()}
 					>
 						{busy ? 'Deleting…' : 'Delete permanently'}
-					</button>
+					</Button>
 				</div>
 			</dialog>
 		</section>
@@ -448,14 +447,15 @@ function NoticesPanel(props: {
 							<li key={entryText(entry)}>{entryText(entry)}</li>
 						))}
 					</ul>
-					<button
+					<Button
 						type="button"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
+						variant="primary"
+						css={target}
 						disabled={busy}
 						onClick={() => void dismiss(elevation.fingerprint)}
 					>
 						Dismiss
-					</button>
+					</Button>
 				</div>
 			) : null}
 			{review.length > 0 ? (
@@ -643,53 +643,58 @@ function DaemonPanel(props: {
 							data-testid="context-daemon-pause-reason"
 						/>
 					</label>
-					<button
+					<Button
 						type="button"
-						css={[getDangerPillCss({ size: 'sm' }), target]}
+						variant="danger"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => void run('pause')}
 						data-testid="context-daemon-pause-confirm"
 					>
 						{busy === 'pause' ? daemonActionBusyLabel.pause : 'Pause'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => setConfirmingPause(false)}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			) : (
 				<div css={rowCss}>
 					{paused && canResume ? (
-						<button
+						<Button
 							type="button"
-							css={[getPillButtonCss({ size: 'sm' }), target]}
+							variant="primary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => void run('resume')}
 							data-testid="context-daemon-resume"
 						>
 							{busy === 'resume' ? daemonActionBusyLabel.resume : 'Resume'}
-						</button>
+						</Button>
 					) : null}
 					{!paused && canPause ? (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => setConfirmingPause(true)}
 							data-testid="context-daemon-pause"
 						>
 							Pause
-						</button>
+						</Button>
 					) : null}
 					{canControl ? (
 						<>
-							<button
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online || !serviceManaged}
 								title={
 									!online
@@ -702,10 +707,11 @@ function DaemonPanel(props: {
 								data-testid="context-daemon-restart"
 							>
 								{busy === 'restart' ? daemonActionBusyLabel.restart : 'Restart'}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online}
 								title={!online ? 'The daemon is offline' : undefined}
 								onClick={() => void run('update')}
@@ -714,7 +720,7 @@ function DaemonPanel(props: {
 								{busy === 'update'
 									? daemonActionBusyLabel.update
 									: 'Update now'}
-							</button>
+							</Button>
 						</>
 					) : null}
 				</div>
@@ -722,9 +728,10 @@ function DaemonPanel(props: {
 			{context.canReadDaemonLogs ? (
 				<div css={{ display: 'grid', gap: spacing.sm }}>
 					<div css={rowCss}>
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null || !online}
 							title={!online ? 'The daemon is offline' : undefined}
 							onClick={() => void run('logs')}
@@ -735,7 +742,7 @@ function DaemonPanel(props: {
 								: logLines
 									? 'Refresh log'
 									: 'View recent log'}
-						</button>
+						</Button>
 						<span css={mutedCss}>
 							Only you see this. Or run{' '}
 							<code>kody daemon logs --context {context.name}</code>
@@ -909,34 +916,37 @@ function CommandsPanel(props: {
 							Turn off commands? Background commands stop right away. Turning
 							them back on needs the machine.
 						</span>
-						<button
+						<Button
 							type="button"
-							css={[getDangerPillCss({ size: 'sm' }), target]}
+							variant="danger"
+							css={target}
 							disabled={busy}
 							onClick={() => void turnOff()}
 							data-testid="context-commands-off-confirm"
 						>
 							{busy ? 'Turning off…' : 'Turn off'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy}
 							onClick={() => setConfirming(false)}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				) : (
 					<div>
-						<button
+						<Button
 							type="button"
-							css={[getDangerPillCss({ size: 'sm' }), target]}
+							variant="danger"
+							css={target}
 							onClick={() => setConfirming(true)}
 							data-testid="context-commands-off"
 						>
 							Turn off commands
-						</button>
+						</Button>
 					</div>
 				)
 			) : null}
@@ -1059,29 +1069,32 @@ function OptInControls(props: {
 									? 'This also removes it from your chain.'
 									: 'Your runs stop using it.'}
 							</span>
-							<button
+							<Button
 								type="button"
-								css={[getDangerPillCss({ size: 'sm' }), target]}
+								variant="danger"
+								css={target}
 								onClick={optOut}
 							>
 								Confirm leave
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmLeave(false)}
 							>
 								Cancel
-							</button>
+							</Button>
 						</>
 					) : (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							onClick={() => (inChain ? setConfirmLeave(true) : optOut())}
 						>
 							Leave
-						</button>
+						</Button>
 					)}
 				</div>
 			) : leftLocally && context.optedIn && !undoable.pending ? (
@@ -1090,10 +1103,11 @@ function OptInControls(props: {
 				</p>
 			) : canOptIntoContext({ ...context, optedIn }) ? (
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="context-opt-in"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
+						variant="primary"
+						css={target}
 						onClick={() => {
 							setAddToChain(false)
 							setError(null)
@@ -1101,7 +1115,7 @@ function OptInControls(props: {
 						}}
 					>
 						Opt in
-					</button>
+					</Button>
 				</div>
 			) : null}
 			<dialog
@@ -1141,21 +1155,23 @@ function OptInControls(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
+						variant="primary"
+						css={target}
 						disabled={busy}
 						onClick={() => void optIn()}
 					>
 						{busy ? 'Opting in…' : 'Opt in'}
-					</button>
+					</Button>
 				</div>
 			</dialog>
 			{undoable.pending ? (
@@ -1359,29 +1375,32 @@ function SharingPanel(props: {
 							<span css={mutedCss}>
 								{stopSharingConfirm(`everyone in @${props.orgSlug}`)}
 							</span>{' '}
-							<button
+							<Button
 								type="button"
-								css={[getDangerPillCss({ size: 'sm' }), target]}
+								variant="danger"
+								css={target}
 								onClick={() => void stopSharingWithEveryone()}
 							>
 								Stop sharing
-							</button>{' '}
-							<button
+							</Button>{' '}
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmRemove(null)}
 							>
 								Cancel
-							</button>
+							</Button>
 						</>
 					) : (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							onClick={() => setConfirmRemove(allMembersKey)}
 						>
 							Remove
-						</button>
+						</Button>
 					)}
 				</p>
 			) : null}
@@ -1403,29 +1422,32 @@ function SharingPanel(props: {
 									<span css={mutedCss}>
 										{stopSharingConfirm(subjectLabel(grant))}
 									</span>{' '}
-									<button
+									<Button
 										type="button"
-										css={[getDangerPillCss({ size: 'sm' }), target]}
+										variant="danger"
+										css={target}
 										onClick={() => void remove(grant.grantId)}
 									>
 										Stop sharing
-									</button>{' '}
-									<button
+									</Button>{' '}
+									<Button
 										type="button"
-										css={[getGhostButtonCss({ size: 'sm' }), target]}
+										variant="secondary"
+										css={target}
 										onClick={() => setConfirmRemove(null)}
 									>
 										Cancel
-									</button>
+									</Button>
 								</>
 							) : (
-								<button
+								<Button
 									type="button"
-									css={[getGhostButtonCss({ size: 'sm' }), target]}
+									variant="secondary"
+									css={target}
 									onClick={() => setConfirmRemove(grant.grantId)}
 								>
 									Remove
-								</button>
+								</Button>
 							)}
 						</li>
 					))}
@@ -1496,13 +1518,14 @@ function SharingPanel(props: {
 								))}
 							</select>
 						</label>
-						<button
+						<Button
 							type="submit"
-							css={[getPillButtonCss({ size: 'sm' }), target]}
+							variant="primary"
+							css={target}
 							disabled={busy}
 						>
 							{excessWarning === `${kind}:${value}` ? 'Share anyway' : 'Share'}
-						</button>
+						</Button>
 					</div>
 					{excessWarning === `${kind}:${value}` ? (
 						<p
@@ -1714,15 +1737,16 @@ function RunHistory(props: {
 			) : null}
 			{last?.nextCursor ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}
 					>
 						Load more
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</section>
@@ -1742,32 +1766,35 @@ export function RunCancelControl(props: {
 	if (props.confirming) {
 		return (
 			<>
-				<button
+				<Button
 					type="button"
-					css={[getGhostButtonCss({ size: 'sm' }), target]}
+					variant="secondary"
+					css={target}
 					onClick={props.onConfirm}
 				>
 					Stop run
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
-					css={[getGhostButtonCss({ size: 'sm' }), target]}
+					variant="secondary"
+					css={target}
 					onClick={props.onKeep}
 				>
 					Keep running
-				</button>
+				</Button>
 			</>
 		)
 	}
 	return (
-		<button
+		<Button
 			type="button"
-			css={[getGhostButtonCss({ size: 'sm' }), target]}
+			variant="secondary"
+			css={target}
 			aria-label={`Cancel run ${props.runId}`}
 			onClick={props.onAsk}
 		>
 			Cancel
-		</button>
+		</Button>
 	)
 }
 
@@ -1852,15 +1879,16 @@ function AuditLog(props: {
 			)}
 			{last?.nextCursor ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}
 					>
 						Load more
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</section>

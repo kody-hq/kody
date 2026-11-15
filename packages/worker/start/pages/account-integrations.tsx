@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	setIntegrationUsage,
 	approveIntegrationPackage,
@@ -37,10 +38,7 @@ import {
 	AccountPageHeader,
 } from './account-management-components.tsx'
 import { RecordTable, RecordTableSearch } from './record-table.tsx'
-import {
-	getGhostButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	type IntegrationUsageDraft,
 	buildIntegrationHref,
@@ -458,12 +456,12 @@ export function AccountIntegrationsPage({
 				currentHref={currentHref}
 				actions={
 					orgSlug ? (
-						<SiteLink
+						<Button
 							href={credentialsConnectionsHref(orgSlug)}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Connections in Credentials
-						</SiteLink>
+						</Button>
 					) : null
 				}
 			/>

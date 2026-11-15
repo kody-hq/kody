@@ -1,4 +1,5 @@
 import { deviceAuthorizationState } from './oauth-device/device-authorization-state.ts'
+import { newsletterSignupState } from './newsletter/signup-state.ts'
 import { agentRegistrationState } from './agent-registration/agent-registration-state.ts'
 import { inviteState } from './orgs/invite-state.ts'
 import { publishBuildState } from './publish-offload/publish-build-state.ts'
@@ -43,6 +44,10 @@ export const stateMachines = [
 		file: 'packages/worker/src/agent-registration/agent-registration-state.ts',
 	},
 	{ machine: inviteState, file: 'packages/worker/src/orgs/invite-state.ts' },
+	{
+		machine: newsletterSignupState,
+		file: 'packages/worker/src/newsletter/signup-state.ts',
+	},
 	{
 		machine: publishBuildState,
 		file: 'packages/worker/src/publish-offload/publish-build-state.ts',

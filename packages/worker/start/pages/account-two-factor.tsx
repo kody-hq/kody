@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startTwoFactorSetup,
@@ -31,9 +32,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
@@ -307,9 +305,9 @@ export function AccountTwoFactorPage({
 							/>
 						</label>
 						<div>
-							<button type="submit" disabled={isBusy} css={dangerButtonCss}>
+							<Button type="submit" disabled={isBusy} variant="danger">
 								{isBusy ? 'Working...' : 'Disable 2FA'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</section>
@@ -324,14 +322,14 @@ export function AccountTwoFactorPage({
 						like 1Password or Google Authenticator each time you sign in.
 					</p>
 					<div>
-						<button
+						<Button
 							type="button"
 							disabled={isBusy}
-							css={primaryButtonCss}
+							variant="primary"
 							onClick={handleStartSetup}
 						>
 							{isBusy ? 'Working...' : 'Enable 2FA'}
-						</button>
+						</Button>
 					</div>
 				</section>
 			) : null}
@@ -391,17 +389,17 @@ export function AccountTwoFactorPage({
 							/>
 						</label>
 						<div css={{ display: 'flex', gap: spacing.sm }}>
-							<button type="submit" disabled={isBusy} css={primaryButtonCss}>
+							<Button type="submit" disabled={isBusy} variant="primary">
 								{isBusy ? 'Working...' : 'Confirm'}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
 								disabled={isBusy}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={handleCancelSetup}
 							>
 								Cancel
-							</button>
+							</Button>
 						</div>
 					</form>
 				</section>
@@ -415,10 +413,6 @@ export function AccountTwoFactorPage({
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 const mutationResources = ['loadAccountSecurity', 'loadAccountPage'] as const
 

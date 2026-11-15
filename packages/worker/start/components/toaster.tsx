@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useSyncExternalStore } from 'react'
 import {
@@ -8,10 +9,6 @@ import {
 	type ToastRecord,
 	type ToastTone,
 } from '#client/toast.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -64,25 +61,26 @@ function ToastCard({ item }: { item: ToastRecord }) {
 				) : null}
 			</div>
 			{item.action ? (
-				<button
+				<Button
 					type="button"
 					data-testid="toast-action"
-					css={toastActionButtonCss}
+					variant="primary"
 					onClick={() => item.action?.onClick()}
 				>
 					{item.action.label}
-				</button>
+				</Button>
 			) : null}
 			{item.dismissible ? (
-				<button
+				<Button
 					type="button"
 					aria-label="Dismiss notification"
 					data-testid="toast-dismiss"
+					variant="secondary"
 					css={toastDismissButtonCss}
 					onClick={() => toast.dismiss(item.id)}
 				>
 					×
-				</button>
+				</Button>
 			) : null}
 		</div>
 	)
@@ -158,10 +156,7 @@ const toastDescriptionCss: CSSObject = {
 	color: colors.textMuted,
 }
 
-const toastActionButtonCss = getPillButtonCss({ size: 'sm' })
-
 const toastDismissButtonCss: CSSObject = {
-	...getGhostButtonCss({ size: 'sm' }),
 	minWidth: '2.25rem',
 	minHeight: '2.25rem',
 	padding: 0,
