@@ -27,7 +27,10 @@ import {
 } from './package-app.ts'
 import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
-import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
+import {
+	buildPackageAppWorkerTemplateKvKey,
+	persistPublishedSourceSnapshot,
+} from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
@@ -455,17 +458,15 @@ async function publishApp(userId: string, appSource: string) {
 	return { savedPackage, source, sourceFiles }
 }
 
-async function serveApp(
+async function fetchApp(
 	userId: string,
-	appSource: string,
-	afterPublish?: (appPackageId: string) => Promise<void>,
+	published: Awaited<ReturnType<typeof publishApp>>,
+	// The built worker is cached per serving name, so a second name reads
+	// the stored bundle again.
+	servingPrefix = 'wt',
 ) {
-	const { savedPackage, source, sourceFiles } = await publishApp(
-		userId,
-		appSource,
-	)
-	await afterPublish?.(savedPackage.id)
-	const username = `wt-${userId.slice(-12)}`
+	const { savedPackage, source, sourceFiles } = published
+	const username = `${servingPrefix}-${userId.slice(-12)}`
 	const callerContext = await createPackageAppCallerContext({
 		baseUrl: 'https://kody.dev',
 		owner: {
@@ -503,6 +504,16 @@ async function serveApp(
 	)
 	const text = await response.text()
 	return { seen, status: response.status, text }
+}
+
+async function serveApp(
+	userId: string,
+	appSource: string,
+	afterPublish?: (appPackageId: string) => Promise<void>,
+) {
+	const published = await publishApp(userId, appSource)
+	await afterPublish?.(published.savedPackage.id)
+	return await fetchApp(userId, published)
 }
 
 const LOCKED = 'dummy-locked-user-secret-1111'
@@ -990,11 +1001,14 @@ async function storeAsOlderBundle(
 	const kv = (env as Env & { BUNDLE_ARTIFACTS_KV: KVNamespace })
 		.BUNDLE_ARTIFACTS_KV
 	let restoredReads = 0
-	for (const row of rows.results) {
-		const stored = (await kv.get(row.kv_key, 'json')) as {
+	const rewriteStored = async (kvKey: string, counted: boolean) => {
+		const stored = (await kv.get(kvKey, 'json')) as {
+			kind?: string
+			publishedCommit?: string
 			modules: Record<string, unknown>
 			packageBindingRewrite?: number
-		}
+		} | null
+		if (!stored) return null
 		const modules: Record<string, unknown> = {}
 		for (const [path, module] of Object.entries(stored.modules)) {
 			const source =
@@ -1007,13 +1021,16 @@ async function storeAsOlderBundle(
 			}
 			let older = source
 			for (const [urlPath, read] of Object.entries(globalReads)) {
-				const bound = `__kodyBoundFetch("https://upstream.example.com${urlPath}"`
-				if (!older.includes(bound)) continue
+				// An inlined package's bound fetch gets a numbered name.
+				const bound = new RegExp(
+					`__kodyBoundFetch\\d*\\("https://upstream\\.example\\.com${urlPath}"`,
+				)
+				if (!bound.test(older)) continue
 				older = older.replace(
 					bound,
 					`${read}("https://upstream.example.com${urlPath}"`,
 				)
-				restoredReads += 1
+				if (counted) restoredReads += 1
 			}
 			modules[path] =
 				typeof module === 'string'
@@ -1021,9 +1038,23 @@ async function storeAsOlderBundle(
 					: { ...(module as Record<string, unknown>), js: older }
 		}
 		await kv.put(
-			row.kv_key,
+			kvKey,
 			JSON.stringify({ ...stored, modules, packageBindingRewrite: 1 }),
 		)
+		return stored
+	}
+	for (const row of rows.results) {
+		const stored = await rewriteStored(row.kv_key, true)
+		// A package app is also stored as a worker template for its commit.
+		if (stored?.kind === 'app' && stored.publishedCommit) {
+			await rewriteStored(
+				buildPackageAppWorkerTemplateKvKey({
+					sourceId,
+					publishedCommit: stored.publishedCommit,
+				}),
+				false,
+			)
+		}
 	}
 	return restoredReads
 }
@@ -1155,7 +1186,9 @@ test(
 		const { userId } = await setupLocked()
 		await publishImported(
 			userId,
-			`export default function run() { return 'helper' }`,
+			`export default async function run() {
+	return await ${attempt('globalThis.fetch', '/inlined/helper')}
+}`,
 		)
 		const older = await publishListedPackage({
 			userId,
@@ -1165,21 +1198,111 @@ test(
 			source: `import run from 'kody:@kentcdodds/imported-b/run'
 export default async function call() {
 	const viaGlobal = await globalThis.fetch('https://upstream.example.com/inlined/global', ${lockedHeaders})
-	return [run(), viaGlobal.status]
+	return [await run(), viaGlobal.status]
 }`,
 		})
 		expect(
 			await storeAsOlderBundle(older.sourceId, {
 				'/inlined/global': 'globalThis.fetch',
+				'/inlined/helper': 'globalThis.fetch',
 			}),
-		).toBe(1)
+		).toBe(2)
 		const seen = installFakeUpstream()
 		const run = await runModule(userId, {
 			'entry.ts': `import call from 'kody:@kentcdodds/older-c/call'
 export default async function main() { return await call() }`,
 		})
 		expect(run.error).toBeUndefined()
-		expect(run.result).toEqual(['helper', 200])
+		// The inlined package's read is its own, not the listed package's.
+		expect(run.result).toEqual([
+			expect.stringMatching(/is not allowed for package "imported-b"/),
+			200,
+		])
 		expect(pathsCarrying(seen, LOCKED)).toEqual(['GET /inlined/global'])
+	},
+)
+
+test(
+	'a package app stored as an older bundle keeps its own global-object fetch read, and a sibling it imports is refused',
+	{ timeout: 180_000 },
+	async () => {
+		const { userId } = await setupLocked()
+		await ensureCreditWalletTestSchema(env.APP_DB)
+		const lockTo = async (appPackageId: string) => {
+			await setSecretAllowedPackages({
+				env,
+				userId: ownerIdFromStored(userId),
+				scope: 'user',
+				name: 'locked',
+				allowedPackages: [appPackageId],
+				storageContext: null,
+				audit: null,
+			})
+		}
+
+		// An app with no imports: its older bundle is bound when it is read.
+		const alone = await publishApp(
+			userId,
+			`export default { async fetch() {
+	return Response.json({ own: await ${attempt('globalThis.fetch', '/app-older/alone')} })
+} }`,
+		)
+		await lockTo(alone.savedPackage.id)
+		// The first visit builds and stores the app bundle.
+		expect((await fetchApp(userId, alone, 'first')).status).toBe(200)
+		expect(
+			await storeAsOlderBundle(alone.savedPackage.sourceId, {
+				'/app-older/alone': 'globalThis.fetch',
+			}),
+		).toBe(1)
+		const aloneOut = await fetchApp(userId, alone)
+		expect(JSON.parse(aloneOut.text)).toEqual({ own: 200 })
+		expect(pathsCarrying(aloneOut.seen, LOCKED)).toEqual([
+			'GET /app-older/alone',
+		])
+		expect(await storedBindingMarkers(alone.savedPackage.sourceId)).toEqual([1])
+
+		// An app that imports a sibling: its older bundle is built again.
+		await publishImported(
+			userId,
+			`export default async function run() {
+	const shared = globalThis
+	return await ${attempt('shared.fetch', '/app-older/sibling')}
+}`,
+		)
+		const withSibling = await publishApp(
+			userId,
+			`import run from 'kody:@kentcdodds/imported-b/run'
+export default { async fetch() {
+	return Response.json({
+		own: await ${attempt('globalThis.fetch', '/app-older/own')},
+		sibling: await run(),
+	})
+} }`,
+		)
+		await lockTo(withSibling.savedPackage.id)
+		expect((await fetchApp(userId, withSibling, 'first')).status).toBe(200)
+		await env.APP_DB.prepare(
+			`DELETE FROM credential_attribution_log WHERE owner_id = ?`,
+		)
+			.bind(userId)
+			.run()
+		expect(
+			await storeAsOlderBundle(withSibling.savedPackage.sourceId, {
+				'/app-older/own': 'globalThis.fetch',
+			}),
+		).toBe(1)
+		const out = await fetchApp(userId, withSibling)
+		expect(JSON.parse(out.text)).toEqual({ own: 200, sibling: refused })
+		expect(pathsCarrying(out.seen, LOCKED)).toEqual(['GET /app-older/own'])
+		expect(
+			await storedBindingMarkers(withSibling.savedPackage.sourceId),
+		).toEqual([2])
+		expect(await refusalRows(userId)).toEqual([
+			expect.objectContaining({
+				kind: 'listed_package_unbound',
+				surface: 'app',
+			}),
+		])
 	},
 )
