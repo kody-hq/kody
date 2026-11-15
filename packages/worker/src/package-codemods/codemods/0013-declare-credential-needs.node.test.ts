@@ -15,8 +15,8 @@ function manifest(kody: Record<string, unknown> = {}, indent = '\t') {
 	)}\n`
 }
 
-function transform(source: string, kody: Record<string, unknown> = {}) {
-	return declareCredentialNeedsCodemod.transform(
+async function transform(source: string, kody: Record<string, unknown> = {}) {
+	return await declareCredentialNeedsCodemod.transform(
 		{ 'package.json': manifest(kody), 'index.ts': source },
 		packageContext,
 	)
@@ -54,8 +54,8 @@ const messages = {
 		'A module could not be parsed, so the credential names it uses were not read reliably. Declare each credential it uses as a kody.credentials slot by hand.',
 }
 
-test('0013 declares every literal name the fetch gateway fills', () => {
-	const result = transform(
+test('0013 declares every literal name the fetch gateway fills', async () => {
+	const result = await transform(
 		[
 			"import { createAuthenticatedFetch, secretHeaders, oauthClientCredentials } from 'kody:runtime'",
 			"const TOKEN = 'RESEND_API_KEY'",
@@ -85,7 +85,7 @@ test('0013 declares every literal name the fetch gateway fills', () => {
 	})
 })
 
-test('0013 leaves undeclared credential() keys for the owner and accepts declared ones', () => {
+test('0013 leaves undeclared credential() keys for the owner and accepts declared ones', async () => {
 	const source = [
 		"import { credential as cred, credentials } from 'kody:runtime'",
 		"import kody from 'kody:runtime'",
@@ -99,7 +99,7 @@ test('0013 leaves undeclared credential() keys for the owner and accepts declare
 		"\treturn cred.named('legacy')",
 		'}',
 	].join('\n')
-	expect(transform(source)).toMatchObject({
+	expect(await transform(source)).toMatchObject({
 		changed: false,
 		needsManual: [
 			{
@@ -110,7 +110,7 @@ test('0013 leaves undeclared credential() keys for the owner and accepts declare
 	})
 	const declared = { description: 'Owner text.' }
 	expect(
-		transform(source, {
+		await transform(source, {
 			credentials: {
 				docusign: { kind: 'keypair', description: 'Owner text.' },
 				linear: declared,
@@ -121,8 +121,8 @@ test('0013 leaves undeclared credential() keys for the owner and accepts declare
 	).toMatchObject({ changed: false, needsManual: [] })
 })
 
-test('0013 does not read a kody.credential member as passing credential around', () => {
-	const result = transform(
+test('0013 does not read a kody.credential member as passing credential around', async () => {
+	const result = await transform(
 		[
 			"import { credential } from 'kody:runtime'",
 			"import kody from 'kody:runtime'",
@@ -136,8 +136,8 @@ test('0013 does not read a kody.credential member as passing credential around',
 	expect(result).toMatchObject({ changed: false, needsManual: [] })
 })
 
-test('0013 keeps declared slots and helpers that bypass the gateway, and declares mounted names', () => {
-	const result = transform(
+test('0013 keeps declared slots and helpers that bypass the gateway, and declares mounted names', async () => {
+	const result = await transform(
 		[
 			"import { packageSecrets, secretJwtSign, integrationTokenRefresh } from 'kody:runtime'",
 			'export default async function run() {',
@@ -158,15 +158,15 @@ test('0013 keeps declared slots and helpers that bypass the gateway, and declare
 		REAL_NAME: slot,
 	})
 	expect(
-		declareCredentialNeedsCodemod.detect(
+		await declareCredentialNeedsCodemod.detect(
 			{ 'package.json': manifest(), 'index.ts': 'export default 1' },
 			packageContext,
 		),
 	).toEqual([])
 })
 
-test('0013 flags what it cannot declare and still declares the rest', () => {
-	const result = transform(
+test('0013 flags what it cannot declare and still declares the rest', async () => {
+	const result = await transform(
 		[
 			"import { credential } from 'kody:runtime'",
 			'export default async function run(input: { key: string; name: string }) {',
@@ -202,7 +202,7 @@ test('0013 flags what it cannot declare and still declares the rest', () => {
 	).toBe(true)
 })
 
-test('0013 reads a nested package from its source root', () => {
+test('0013 reads a nested package from its source root', async () => {
 	const files = {
 		'package.json': '{ "name": "repo-root", "private": true }\n',
 		'packages/demo/package.json': manifest(),
@@ -216,7 +216,10 @@ test('0013 reads a nested package from its source root', () => {
 		manifestPath: 'packages/demo/package.json',
 		sourceRoot: '/packages/demo/',
 	}
-	const result = declareCredentialNeedsCodemod.transform(files, nestedContext)
+	const result = await declareCredentialNeedsCodemod.transform(
+		files,
+		nestedContext,
+	)
 	expect(result).toMatchObject({
 		changed: true,
 		changedPaths: ['packages/demo/package.json'],
@@ -226,7 +229,7 @@ test('0013 reads a nested package from its source root', () => {
 	expect(
 		JSON.parse(result.files['packages/demo/package.json']!).kody.credentials,
 	).toEqual({ K: slot })
-	const rootKeyed = declareCredentialNeedsCodemod.transform(
+	const rootKeyed = await declareCredentialNeedsCodemod.transform(
 		{
 			'package.json': manifest(),
 			'index.ts': files['packages/demo/index.ts'],
@@ -235,7 +238,7 @@ test('0013 reads a nested package from its source root', () => {
 	)
 	expect(rootKeyed.changedPaths).toEqual(['package.json'])
 	expect(declaredSlots(rootKeyed)).toEqual({ K: slot })
-	const sourceRelativeManifest = declareCredentialNeedsCodemod.transform(
+	const sourceRelativeManifest = await declareCredentialNeedsCodemod.transform(
 		{
 			'package.json': manifest(),
 			'index.ts': files['packages/demo/index.ts'],
@@ -246,8 +249,8 @@ test('0013 reads a nested package from its source root', () => {
 	expect(declaredSlots(sourceRelativeManifest)).toEqual({ K: slot })
 })
 
-test('0013 does not declare names read from a module it cannot parse', () => {
-	const result = transform(
+test('0013 does not declare names read from a module it cannot parse', async () => {
+	const result = await transform(
 		[
 			"// createAuthenticatedFetch('commented') is not a call",
 			'export default async function run( {',
@@ -264,7 +267,7 @@ test('0013 does not declare names read from a module it cannot parse', () => {
 	})
 })
 
-test('0013 keeps manifest indentation, other kody fields, and is idempotent', () => {
+test('0013 keeps manifest indentation, other kody fields, and is idempotent', async () => {
 	const files = {
 		'package.json': manifest(
 			{ jobs: { tick: { handler: './tick.ts' } } },
@@ -272,27 +275,30 @@ test('0013 keeps manifest indentation, other kody fields, and is idempotent', ()
 		),
 		'index.ts': "export default () => fetch('https://x.test?k={{secret:K}}')",
 	}
-	const once = declareCredentialNeedsCodemod.transform(files, packageContext)
+	const once = await declareCredentialNeedsCodemod.transform(
+		files,
+		packageContext,
+	)
 	expect(once.files['package.json']).toContain('\n  "name"')
 	expect(JSON.parse(once.files['package.json']!).kody).toMatchObject({
 		jobs: { tick: { handler: './tick.ts' } },
 		credentials: { K: slot },
 	})
-	expect(declareCredentialNeedsCodemod.detect(files, packageContext)).toEqual([
-		{ path: 'package.json', message: messages.declare },
-	])
-	const twice = declareCredentialNeedsCodemod.transform(
+	expect(
+		await declareCredentialNeedsCodemod.detect(files, packageContext),
+	).toEqual([{ path: 'package.json', message: messages.declare }])
+	const twice = await declareCredentialNeedsCodemod.transform(
 		once.files,
 		packageContext,
 	)
 	expect(twice).toMatchObject({ changed: false, needsManual: [] })
 	expect(
-		declareCredentialNeedsCodemod.detect(once.files, packageContext),
+		await declareCredentialNeedsCodemod.detect(once.files, packageContext),
 	).toEqual([])
 })
 
-test('0013 reports an invalid manifest without writing', () => {
-	const result = declareCredentialNeedsCodemod.transform(
+test('0013 reports an invalid manifest without writing', async () => {
+	const result = await declareCredentialNeedsCodemod.transform(
 		{
 			'package.json': '{ not json',
 			'index.ts': "export default () => '{{secret:K}}'",
@@ -310,8 +316,8 @@ test('0013 reports an invalid manifest without writing', () => {
 	})
 })
 
-test('0013 findings never carry credential names', () => {
-	const findings = declareCredentialNeedsCodemod.detect(
+test('0013 findings never carry credential names', async () => {
+	const findings = await declareCredentialNeedsCodemod.detect(
 		{
 			'package.json': manifest(),
 			'index.ts':

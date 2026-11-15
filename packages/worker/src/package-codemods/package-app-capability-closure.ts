@@ -42,11 +42,12 @@ function isPackageSpecifier(specifier: string) {
 	return specifier.startsWith(packageSpecifierPrefix)
 }
 
-function countComputedImports(source: string) {
+async function countComputedImports(source: string) {
 	try {
-		return collectModuleImportNodes(source).dynamicImportExpressions.filter(
-			(node) => node.literalSpecifier == null,
-		).length
+		return (
+			await collectModuleImportNodes(source)
+		).dynamicImportExpressions.filter((node) => node.literalSpecifier == null)
+			.length
 	} catch {
 		return 1
 	}
@@ -72,13 +73,13 @@ export async function scanPackageAppImportClosure(input: {
 	const visitedModules = new Set<string>()
 	const pendingImports: Array<string> = []
 
-	const queueImportsFrom = (source: string) => {
-		const specifiers = collectBundlerResolvedSpecifiers(source)
+	const queueImportsFrom = async (source: string) => {
+		const specifiers = await collectBundlerResolvedSpecifiers(source)
 		if (specifiers == null) {
 			unresolvedImports += 1
 			return []
 		}
-		unresolvedImports += countComputedImports(source)
+		unresolvedImports += await countComputedImports(source)
 		const relative: Array<string> = []
 		for (const specifier of specifiers) {
 			if (isPackageSpecifier(specifier)) pendingImports.push(specifier)
@@ -87,8 +88,8 @@ export async function scanPackageAppImportClosure(input: {
 		return relative
 	}
 
-	for (const path of listScannableModulePaths(input.appFiles)) {
-		queueImportsFrom(input.appFiles[path]!)
+	for (const path of await listScannableModulePaths(input.appFiles)) {
+		await queueImportsFrom(input.appFiles[path]!)
 	}
 
 	while (pendingImports.length > 0) {
@@ -126,7 +127,9 @@ export async function scanPackageAppImportClosure(input: {
 			unresolvedImports += 1
 			continue
 		}
-		const modulePaths = new Set(listScannableModulePaths(dependency.files))
+		const modulePaths = new Set(
+			await listScannableModulePaths(dependency.files),
+		)
 		const queue = [entry]
 		while (queue.length > 0) {
 			const path = queue.pop()!
@@ -134,7 +137,7 @@ export async function scanPackageAppImportClosure(input: {
 			if (visitedModules.has(key)) continue
 			visitedModules.add(key)
 			const source = dependency.files[path]
-			const parsed = source == null ? null : parseModule(source)
+			const parsed = source == null ? null : await parseModule(source)
 			if (source == null || !parsed) {
 				unresolvedImports += 1
 				continue
@@ -143,7 +146,7 @@ export async function scanPackageAppImportClosure(input: {
 			for (const name of calls.names) names.add(name)
 			computedCalls += calls.computedCalls
 			mcpCalls += calls.mcpCalls
-			for (const relative of queueImportsFrom(source)) {
+			for (const relative of await queueImportsFrom(source)) {
 				const target = resolveRelativeModulePath(path, relative, modulePaths)
 				if (target) queue.push(target)
 			}

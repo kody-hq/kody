@@ -17,6 +17,7 @@ import {
 } from '#worker/community/pending-fork-lookup.ts'
 import { describePackageCredentialNeeds } from '#worker/credentials/package-credential-needs.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
@@ -104,10 +105,10 @@ export const getPackageCapability = defineDomainCapability(
 				userId: owner.ownerUserId,
 				sourceId: saved.sourceId,
 			})
-			const projection = buildPackageSearchProjection(
-				loaded.manifest,
-				loaded.files,
-			)
+			const projection = buildPackageSearchProjection(loaded.manifest, {
+				files: loaded.files,
+				parser: await loadModuleSourceParser(),
+			})
 			const packageSecretsById = await listPackageSecretsByPackageIds({
 				env: ctx.env,
 				userId: owner.ownerUserId,

@@ -12,7 +12,11 @@ export type LocalExecuteRuntimeSupport = {
 		modulePath: string
 		source: string
 		primaryRuntimePath: string
-	}) => { source: string; rewritten: boolean; packageId: string | null }
+	}) => Promise<{
+		source: string
+		rewritten: boolean
+		packageId: string | null
+	}>
 	createLocalExecuteRuntimeShimSource: (
 		modulePath?: string,
 		options?: { packageBindings?: Record<string, string> },

@@ -18,7 +18,9 @@ function manifest(name = '@user/demo') {
 
 function contextOf(files: Record<string, string>) {
 	try {
-		const parsed = JSON.parse(files['package.json'] ?? '') as { name?: unknown }
+		const parsed = JSON.parse(files['package.json'] ?? '') as {
+			name?: unknown
+		}
 		return {
 			packageName: typeof parsed.name === 'string' ? parsed.name : '@user/demo',
 		}
@@ -34,26 +36,28 @@ function findings(entries: Array<[path: string, snippet: string]>) {
 	}))
 }
 
-function expectUnchangedWithManual(
+async function expectUnchangedWithManual(
 	files: Record<string, string>,
 	manual: Array<[path: string, snippet: string]>,
 ) {
-	expect(codemod.detect(files, contextOf(files))).toEqual(findings(manual))
-	const result = codemod.transform(files, contextOf(files))
+	expect(await codemod.detect(files, contextOf(files))).toEqual(
+		findings(manual),
+	)
+	const result = await codemod.transform(files, contextOf(files))
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
 	expect(result.needsManual).toEqual(findings(manual))
 }
 
-function expectIdempotent(files: Record<string, string>) {
-	const rerun = codemod.transform(files, contextOf(files))
+async function expectIdempotent(files: Record<string, string>) {
+	const rerun = await codemod.transform(files, contextOf(files))
 	expect(rerun.changed).toBe(false)
 	expect(rerun.changedPaths).toEqual([])
 	expect(rerun.needsManual).toEqual([])
 	expect(rerun.files).toEqual(files)
 }
 
-test('0006 rewrites safe object-only invokes to owner-scoped string-first calls', () => {
+test('0006 rewrites safe object-only invokes to owner-scoped string-first calls', async () => {
 	const files = {
 		'package.json': manifest('@kentcdodds/demo'),
 		'index.ts': [
@@ -74,10 +78,10 @@ test('0006 rewrites safe object-only invokes to owner-scoped string-first calls'
 		].join('\n'),
 	}
 
-	expect(codemod.detect(files, contextOf(files))).toEqual(
+	expect(await codemod.detect(files, contextOf(files))).toEqual(
 		findings([['index.ts', 'removed object-only']]),
 	)
-	const result = codemod.transform(files, contextOf(files))
+	const result = await codemod.transform(files, contextOf(files))
 	expect(result).toMatchObject({
 		changed: true,
 		changedPaths: ['index.ts'],
@@ -91,10 +95,10 @@ test('0006 rewrites safe object-only invokes to owner-scoped string-first calls'
 	)
 	expect(result.files['index.ts']).not.toContain("kodyId: '")
 	expect(result.files['already-migrated.ts']).toBe(files['already-migrated.ts'])
-	expectIdempotent(result.files)
+	await expectIdempotent(result.files)
 })
 
-test('0006 partially migrates safe files and reports ambiguous calls for review', () => {
+test('0006 partially migrates safe files and reports ambiguous calls for review', async () => {
 	const unsafe = {
 		'package-id.ts':
 			"await packages.invoke({ packageId: 'pkg-123', exportName: './run' })\n",
@@ -119,7 +123,7 @@ test('0006 partially migrates safe files and reports ambiguous calls for review'
 		...unsafe,
 	}
 
-	const result = codemod.transform(files, contextOf(files))
+	const result = await codemod.transform(files, contextOf(files))
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['safe.ts'])
 	expect(result.files['safe.ts']).toContain(
@@ -136,7 +140,7 @@ test('0006 partially migrates safe files and reports ambiguous calls for review'
 	expect(result.files).toMatchObject({ ...unsafe, 'broken.ts': broken })
 })
 
-test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
+test('0006 migrates JavaScript and TypeScript examples in Markdown', async () => {
 	const files = {
 		'package.json': manifest('@docs-owner/demo'),
 		'README.md': [
@@ -153,10 +157,10 @@ test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
 		].join('\n'),
 	}
 
-	expect(codemod.detect(files, contextOf(files))).toEqual(
+	expect(await codemod.detect(files, contextOf(files))).toEqual(
 		findings([['README.md', 'removed object-only']]),
 	)
-	const result = codemod.transform(files, contextOf(files))
+	const result = await codemod.transform(files, contextOf(files))
 	expect(result).toMatchObject({
 		changed: true,
 		changedPaths: ['README.md'],
@@ -169,7 +173,7 @@ test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
 	]) {
 		expect(result.files['README.md']).toContain(snippet)
 	}
-	expectIdempotent(result.files)
+	await expectIdempotent(result.files)
 
 	const ambiguous = {
 		'package.json': manifest(),
@@ -182,7 +186,10 @@ test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
 			'',
 		].join('\n'),
 	}
-	const ambiguousResult = codemod.transform(ambiguous, contextOf(ambiguous))
+	const ambiguousResult = await codemod.transform(
+		ambiguous,
+		contextOf(ambiguous),
+	)
 	expect(ambiguousResult.changed).toBe(false)
 	expect(ambiguousResult.files).toEqual(ambiguous)
 	expect(ambiguousResult.needsManual).toEqual(
@@ -190,7 +197,7 @@ test('0006 migrates JavaScript and TypeScript examples in Markdown', () => {
 	)
 })
 
-test('0006 requires a scoped manifest whose org owns the invoked packages', () => {
+test('0006 requires a scoped manifest whose org owns the invoked packages', async () => {
 	const workerInvoke =
 		"await packages.invoke({ kodyId: 'worker', exportName: './run' })\n"
 	const docsInvoke = (kodyId: string, exportName: string) =>
@@ -203,7 +210,7 @@ test('0006 requires a scoped manifest whose org owns the invoked packages', () =
 			'',
 		].join('\n')
 
-	expectUnchangedWithManual(
+	await expectUnchangedWithManual(
 		{ 'package.json': manifest('demo'), 'index.ts': workerInvoke },
 		[['package.json', 'scope could not be read']],
 	)
@@ -214,17 +221,17 @@ test('0006 requires a scoped manifest whose org owns the invoked packages', () =
 		'README.md': docsInvoke('github', './request'),
 	}
 	const otherOrg = { packageName: '@renamed/demo' }
-	expect(codemod.detect(files, otherOrg)).toEqual(
+	expect(await codemod.detect(files, otherOrg)).toEqual(
 		findings([
 			['index.ts', "not the package's org"],
 			['README.md', "not the package's org"],
 		]),
 	)
-	const mismatchResult = codemod.transform(files, otherOrg)
+	const mismatchResult = await codemod.transform(files, otherOrg)
 	expect(mismatchResult.changed).toBe(false)
 	expect(mismatchResult.files).toEqual(files)
 
-	const sameOrg = codemod.transform(files, contextOf(files))
+	const sameOrg = await codemod.transform(files, contextOf(files))
 	expect(sameOrg).toMatchObject({
 		changed: true,
 		changedPaths: ['index.ts', 'README.md'],
@@ -246,6 +253,8 @@ test('0006 requires a scoped manifest whose org owns the invoked packages', () =
 			'',
 		].join('\n'),
 	}
-	expect(codemod.detect(unrelated, contextOf(unrelated))).toEqual([])
-	expect(codemod.transform(unrelated, contextOf(unrelated)).changed).toBe(false)
+	expect(await codemod.detect(unrelated, contextOf(unrelated))).toEqual([])
+	expect(
+		(await codemod.transform(unrelated, contextOf(unrelated))).changed,
+	).toBe(false)
 })

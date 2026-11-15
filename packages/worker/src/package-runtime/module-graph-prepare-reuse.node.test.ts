@@ -43,11 +43,11 @@ vi.mock('./module-graph-workspace.ts', async () => {
 	)
 	return {
 		...actual,
-		collectReachableSourceFilePaths: (
+		collectReachableSourceFilePaths: async (
 			...args: Parameters<typeof actual.collectReachableSourceFilePaths>
 		) => {
 			collectReachableCalls.count += 1
-			return actual.collectReachableSourceFilePaths(...args)
+			return await actual.collectReachableSourceFilePaths(...args)
 		},
 	}
 })

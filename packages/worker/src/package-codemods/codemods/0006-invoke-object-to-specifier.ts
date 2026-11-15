@@ -82,9 +82,9 @@ function isTypeDeclarationFilePath(path: string) {
 	)
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -277,16 +277,16 @@ function rewritesOverlap(rewrites: Array<SourceRewrite>) {
 	)
 }
 
-function classifyModuleSource(input: {
+async function classifyModuleSource(input: {
 	path: string
 	source: string
 	scope: string
 	offset?: number
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (!input.source.includes('packages') || !input.source.includes('invoke')) {
 		return null
 	}
-	const program = parseProgram(input.source)
+	const program = await parseProgram(input.source)
 	if (!program) {
 		return /packages\s*\??\.\s*invoke\b/.test(input.source)
 			? {
@@ -409,11 +409,11 @@ function sourceOutsideRangesHasDeprecatedObjectCall(
 	return /packages\s*\??\.\s*invoke\s*\(\s*\{/.test(source.slice(cursor))
 }
 
-function classifyMarkdownFile(input: {
+async function classifyMarkdownFile(input: {
 	path: string
 	source: string
 	scope: string
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (!input.source.includes('packages') || !input.source.includes('invoke')) {
 		return null
 	}
@@ -431,7 +431,7 @@ function classifyMarkdownFile(input: {
 			}
 			continue
 		}
-		const classification = classifyModuleSource({
+		const classification = await classifyModuleSource({
 			path: input.path,
 			source: content,
 			scope: input.scope,
@@ -452,7 +452,7 @@ function classifyMarkdownFile(input: {
 		if (rangeOverlaps(fullRange, coveredRanges)) continue
 		coveredRanges.push(fullRange)
 		const content = inlineCode[1] ?? ''
-		const classification = classifyModuleSource({
+		const classification = await classifyModuleSource({
 			path: input.path,
 			source: content,
 			scope: input.scope,
@@ -476,36 +476,38 @@ function classifyMarkdownFile(input: {
 	}
 }
 
-function classifyFile(input: {
+async function classifyFile(input: {
 	path: string
 	source: string
 	scope: string
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (markdownFilePattern.test(input.path)) {
-		return classifyMarkdownFile(input)
+		return await classifyMarkdownFile(input)
 	}
 	if (!scannableModuleFilePattern.test(input.path)) return null
 	if (isTypeDeclarationFilePath(input.path)) return null
-	return classifyModuleSource(input)
+	return await classifyModuleSource(input)
 }
 
-function classifyFiles(
+async function classifyFiles(
 	files: Record<string, string>,
-): Array<FileClassification> {
+): Promise<Array<FileClassification>> {
 	const scope = readPackageScope(files) ?? '@invalid'
-	return Object.entries(files)
-		.flatMap(([path, source]) => {
-			const classification = classifyFile({ path, source, scope })
-			return classification ? [classification] : []
-		})
+	const classifications = await Promise.all(
+		Object.entries(files).map(([path, source]) =>
+			classifyFile({ path, source, scope }),
+		),
+	)
+	return classifications
+		.filter((classification) => classification != null)
 		.sort((left, right) => left.path.localeCompare(right.path))
 }
 
-function detect(
+async function detect(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Array<PackageCodemodFinding> {
-	const classifications = classifyFiles(files)
+): Promise<Array<PackageCodemodFinding>> {
+	const classifications = await classifyFiles(files)
 	if (classifications.length === 0) return []
 	const scope = readPackageScope(files)
 	if (!scope) {
@@ -536,11 +538,11 @@ function applyRewrites(source: string, rewrites: Array<SourceRewrite>) {
 	return nextSource
 }
 
-function transform(
+async function transform(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
-	const classifications = classifyFiles(files)
+): Promise<PackageCodemodTransformResult> {
+	const classifications = await classifyFiles(files)
 	if (classifications.length === 0) {
 		return {
 			files: { ...files },

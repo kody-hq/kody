@@ -13,7 +13,7 @@ import {
  * entry, plus bundler root config and `node_modules` files that every
  * target receives.
  */
-export function collectPublishedPackageArtifactInputPaths(input: {
+export async function collectPublishedPackageArtifactInputPaths(input: {
 	files: Record<string, string>
 	entryPoint: string
 	/**
@@ -24,7 +24,7 @@ export function collectPublishedPackageArtifactInputPaths(input: {
 	importNodesCache?: ModuleImportNodesCache
 }) {
 	const rootPackage = readRootPackage(input.files)
-	const paths = collectReachableSourceFilePaths({
+	const paths = await collectReachableSourceFilePaths({
 		files: input.files,
 		entryPoint: input.entryPoint,
 		rootPackage,
@@ -61,19 +61,19 @@ function fileContentAt(
  * reachable inputs, bundler root config, or vendored `node_modules` differ
  * between snapshots, or the graph is empty so reuse cannot be proven.
  */
-export function publishedPackageArtifactTargetInputsChanged(input: {
+export async function publishedPackageArtifactTargetInputsChanged(input: {
 	entryPoint: string
 	previousFiles: Record<string, string>
 	nextFiles: Record<string, string>
 	importNodesCache?: ModuleImportNodesCache
 }) {
 	const cache = input.importNodesCache
-	const previousPaths = collectPublishedPackageArtifactInputPaths({
+	const previousPaths = await collectPublishedPackageArtifactInputPaths({
 		files: input.previousFiles,
 		entryPoint: input.entryPoint,
 		...(cache ? { importNodesCache: cache } : {}),
 	})
-	const nextPaths = collectPublishedPackageArtifactInputPaths({
+	const nextPaths = await collectPublishedPackageArtifactInputPaths({
 		files: input.nextFiles,
 		entryPoint: input.entryPoint,
 		...(cache ? { importNodesCache: cache } : {}),

@@ -28,7 +28,7 @@ function manifest(kodyExtra: Record<string, unknown> = {}, indent = '\t') {
 	)}\n`
 }
 
-test('0012 is detect-only: it reports undeclared webhooks as a recommendation and never rewrites the manifest', () => {
+test('0012 is detect-only: it reports undeclared webhooks as a recommendation and never rewrites the manifest', async () => {
 	const files = {
 		'package.json': manifest(
 			{
@@ -45,7 +45,7 @@ test('0012 is detect-only: it reports undeclared webhooks as a recommendation an
 		),
 		'src/telegram.ts': 'export default () => ({ ok: true })\n',
 	}
-	const findings = codemod.detect(files)
+	const findings = await codemod.detect(files)
 	expect(findings).toEqual([
 		{
 			path: 'package.json',
@@ -54,7 +54,7 @@ test('0012 is detect-only: it reports undeclared webhooks as a recommendation an
 	])
 	expect(findings[0]?.message).toContain('keeps working on its URL secret')
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result).toEqual({
 		files,
 		changed: false,
@@ -68,7 +68,7 @@ test('0012 is detect-only: it reports undeclared webhooks as a recommendation an
 	).toEqual([null, 'hmac-sha256'])
 })
 
-test('0012 leaves packages without webhooks or with every webhook declared untouched', () => {
+test('0012 leaves packages without webhooks or with every webhook declared untouched', async () => {
 	for (const files of [
 		{ 'package.json': manifest() },
 		{ 'package.json': manifest({ webhooks: [] }) },
@@ -85,8 +85,8 @@ test('0012 leaves packages without webhooks or with every webhook declared untou
 		},
 		{ 'package.json': '{ "name": "@user/demo" }\n' },
 	]) {
-		expect(codemod.detect(files)).toEqual([])
-		const result = codemod.transform(files)
+		expect(await codemod.detect(files)).toEqual([])
+		const result = await codemod.transform(files)
 		expect(result).toEqual({
 			files,
 			changed: false,
@@ -96,7 +96,7 @@ test('0012 leaves packages without webhooks or with every webhook declared untou
 	}
 })
 
-test('0012 flags unreadable manifests and malformed webhooks for manual review without echoing their contents', () => {
+test('0012 flags unreadable manifests and malformed webhooks for manual review without echoing their contents', async () => {
 	for (const source of [
 		undefined,
 		'{ not json',
@@ -111,11 +111,11 @@ test('0012 flags unreadable manifests and malformed webhooks for manual review w
 	]) {
 		const files: Record<string, string> =
 			source === undefined ? {} : { 'package.json': source }
-		const findings = codemod.detect(files)
+		const findings = await codemod.detect(files)
 		expect(findings).toHaveLength(1)
 		expect(findings[0]?.message).toMatch(/manual/)
 		expect(findings[0]?.message).not.toContain('telegram')
-		const result = codemod.transform(files)
+		const result = await codemod.transform(files)
 		expect(result.changed).toBe(false)
 		expect(result.files).toEqual(files)
 		expect(result.needsManual).toEqual(findings)

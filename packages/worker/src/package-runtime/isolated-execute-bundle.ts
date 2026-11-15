@@ -57,9 +57,9 @@ type IsolatedExecuteBundleStub = {
  * True when bundling loads code Kody does not ship in the runtime: a saved
  * package or an npm package. `kody:runtime` and relative imports cost nothing.
  */
-function importsPackages(code: string) {
+async function importsPackages(code: string) {
 	if (!code.includes('import') && !code.includes('from')) return false
-	return collectLiteralImportSpecifiers(code).some(
+	return (await collectLiteralImportSpecifiers(code)).some(
 		(specifier) =>
 			specifier.startsWith(packageSpecifierPrefix) ||
 			getBarePackageNameFromSpecifier(specifier) != null,
@@ -79,7 +79,7 @@ export async function buildExecuteModuleBundle(input: {
 	sourceFiles: Record<string, string>
 	request: RequestContext | null
 }): Promise<RuntimeBundle> {
-	if (!importsPackages(input.code)) {
+	if (!(await importsPackages(input.code))) {
 		return await buildAdHocExecuteBundle(input.env, input)
 	}
 	// A fresh, org-namespaced id per build puts it in its own isolate, never

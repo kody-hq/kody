@@ -539,7 +539,7 @@ export function isPackageAppAssetPath(
  * never imported). An asset that a server/runtime entry actually imports
  * stays scannable so credential stamps and server_eval still cover it.
  */
-export function listScannableModulePaths(files: Record<string, string>) {
+export async function listScannableModulePaths(files: Record<string, string>) {
 	const assetsDirectory = readPackageAppAssetsDirectory(
 		files[packageManifestPath],
 	)
@@ -566,7 +566,7 @@ export function listScannableModulePaths(files: Record<string, string>) {
 		const path = queue.pop()!
 		if (runtime.has(path)) continue
 		runtime.add(path)
-		const specifiers = collectBundlerResolvedSpecifiers(files[path]!)
+		const specifiers = await collectBundlerResolvedSpecifiers(files[path]!)
 		if (specifiers == null) continue
 		for (const specifier of specifiers) {
 			const target = resolveRelativeModulePath(path, specifier, modulePathSet)
@@ -818,12 +818,12 @@ function indexStillMatches(
  * reused for the same unchanged file map, so the several credential scans of
  * one publish check parse each module for constants only once.
  */
-export function scannableModuleIndex(
+export async function scannableModuleIndex(
 	files: Record<string, string>,
-): ScannableModuleIndex {
+): Promise<ScannableModuleIndex> {
 	const cached = scannableModuleIndexes.get(files)
 	if (cached && indexStillMatches(cached, files)) return cached
-	const modulePaths = listScannableModulePaths(files)
+	const modulePaths = await listScannableModulePaths(files)
 	const modulePathSet = new Set(modulePaths)
 	const summaries = new Map<string, ModuleConstantsSummary>()
 	for (const path of modulePaths) {
@@ -831,7 +831,7 @@ export function scannableModuleIndex(
 			path,
 			readModuleConstantsSummary(
 				path,
-				parseModule(files[path]!),
+				await parseModule(files[path]!),
 				modulePathSet,
 			),
 		)
@@ -851,21 +851,25 @@ export function scannableModuleIndex(
  * module constants. Only one AST is alive at a time; keep only small results
  * from each visit, never the AST.
  */
-export function forEachScannableModule(
+export async function forEachScannableModule(
 	files: Record<string, string>,
 	visit: (
 		path: string,
 		parsed: AstNode | null,
 		constants: ReadonlyMap<string, string>,
-	) => void,
+	) => void | Promise<void>,
 	options: { sorted?: boolean } = {},
 ) {
-	const index = scannableModuleIndex(files)
+	const index = await scannableModuleIndex(files)
 	const paths = options.sorted
 		? [...index.modulePaths].sort()
 		: index.modulePaths
 	for (const path of paths) {
-		visit(path, parseModule(files[path]!), index.readConstants(path))
+		await visit(
+			path,
+			await parseModule(files[path]!),
+			index.readConstants(path),
+		)
 	}
 }
 
@@ -944,18 +948,20 @@ export function getCalleeObjectName(callee: AstNode | undefined) {
 	return null
 }
 
-export function parseModule(source: string) {
+export async function parseModule(source: string) {
 	try {
-		return parseModuleSourceAllowingTypeAssertions(source) as unknown as AstNode
+		return (await parseModuleSourceAllowingTypeAssertions(
+			source,
+		)) as unknown as AstNode
 	} catch {
 		return null
 	}
 }
 
 /** The parser's message for a module {@link parseModule} returns null for. */
-export function readModuleParseError(source: string) {
+export async function readModuleParseError(source: string) {
 	try {
-		parseModuleSourceAllowingTypeAssertions(source)
+		await parseModuleSourceAllowingTypeAssertions(source)
 		return null
 	} catch (error) {
 		return error instanceof Error ? error.message : String(error)

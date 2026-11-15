@@ -16,7 +16,6 @@ import {
 import { userVectorNamespace } from '#worker/vectorize/vector-namespaces.ts'
 import {
 	buildPackageSearchDocument,
-	buildPackageSearchProjection,
 	type PackageSearchProjection,
 } from '#worker/package-registry/manifest.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
@@ -697,13 +696,9 @@ export const packageSearchEntityPlugin = {
 		}
 	},
 	formatEntityDetail(detail, options) {
-		const exportProjection = buildPackageSearchProjection(
-			detail.manifest,
-			detail.files,
-		)
 		if (detail.section) {
 			const exportDetail = findPackageExportByFragment(
-				exportProjection.exports,
+				detail.exports,
 				detail.section,
 			)
 			if (exportDetail) {
@@ -723,11 +718,11 @@ export const packageSearchEntityPlugin = {
 				formatUnknownPackageExportError({
 					entityRef: buildEntityRef(detail.record.kodyId, 'package'),
 					section: detail.section,
-					exports: exportProjection.exports,
+					exports: detail.exports,
 				}),
 			)
 		}
-		const exportDetails = exportProjection.exports.map((exportDetail) => ({
+		const exportDetails = detail.exports.map((exportDetail) => ({
 			subpath: exportDetail.subpath,
 			description:
 				exportDetail.description ??

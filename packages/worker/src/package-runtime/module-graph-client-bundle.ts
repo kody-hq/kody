@@ -74,7 +74,7 @@ type ClientGraphProblem = {
 	specifiers: Array<string>
 }
 
-function collectServerOnlyImports(input: {
+async function collectServerOnlyImports(input: {
 	files: Record<string, string>
 	reachable: Set<string>
 }) {
@@ -86,7 +86,7 @@ function collectServerOnlyImports(input: {
 		if (source == null) continue
 		const serverOnlySpecifiers = new Set<string>()
 		const stylesheetSpecifiers = new Set<string>()
-		for (const node of collectLiteralImportNodes(source)) {
+		for (const node of await collectLiteralImportNodes(source)) {
 			if (isServerOnlySpecifier(node.specifier)) {
 				serverOnlySpecifiers.add(node.specifier)
 			} else if (isStylesheetSpecifier(node.specifier)) {
@@ -118,12 +118,12 @@ function formatProblems(problems: Array<ClientGraphProblem>) {
 		.join('; ')
 }
 
-function assertClientGraphIsBrowserSafe(input: {
+async function assertClientGraphIsBrowserSafe(input: {
 	files: Record<string, string>
 	reachable: Set<string>
 	bundleLabel: string
 }) {
-	const { serverOnly, stylesheets } = collectServerOnlyImports(input)
+	const { serverOnly, stylesheets } = await collectServerOnlyImports(input)
 	if (serverOnly.length > 0) {
 		throw new Error(
 			`${input.bundleLabel} imports server-only modules that cannot run in the browser (${formatProblems(
@@ -210,7 +210,7 @@ export function createClientExternalsPlugin(externals: ReadonlyArray<string>) {
 	}
 }
 
-function assertBrowserBundleHasNoUnresolvedImports(input: {
+async function assertBrowserBundleHasNoUnresolvedImports(input: {
 	modules: WorkerLoaderModules
 	bundleLabel: string
 	externals: ReadonlyArray<string>
@@ -219,7 +219,7 @@ function assertBrowserBundleHasNoUnresolvedImports(input: {
 	const serverOnly = new Set<string>()
 	const unresolved = new Set<string>()
 	for (const [, source] of iterateModuleSourceTexts(input.modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
+		for (const node of await collectLiteralImportNodes(source)) {
 			if (isServerOnlySpecifier(node.specifier)) {
 				serverOnly.add(node.specifier)
 			} else if (
@@ -269,12 +269,12 @@ export async function buildKodyAppClientBundle(input: {
 		)
 	}
 	const rootPackage = readRootPackage(input.sourceFiles)
-	const reachable = collectReachableSourceFilePaths({
+	const reachable = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
 	})
-	assertClientGraphIsBrowserSafe({
+	await assertClientGraphIsBrowserSafe({
 		files: input.sourceFiles,
 		reachable,
 		bundleLabel,
@@ -319,7 +319,7 @@ export async function buildKodyAppClientBundle(input: {
 		)
 	}
 	const modules: WorkerLoaderModules = { [bundle.mainModule]: source }
-	assertBrowserBundleHasNoUnresolvedImports({
+	await assertBrowserBundleHasNoUnresolvedImports({
 		modules,
 		bundleLabel,
 		externals,

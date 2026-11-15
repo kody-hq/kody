@@ -19,8 +19,8 @@ import {
 	scanPackageCredentialSupplierReportStep,
 } from './admin-package-credential-supplier-report.ts'
 
-test('credential supplier report counts package sources without returning identifiers', () => {
-	const analysis = analyzePackageCredentialSupplierSource({
+test('credential supplier report counts package sources without returning identifiers', async () => {
+	const analysis = await analyzePackageCredentialSupplierSource({
 		manifestPath: 'package.json',
 		files: {
 			'package.json': JSON.stringify({
@@ -72,8 +72,8 @@ test('credential supplier report counts package sources without returning identi
 	expect(output).not.toContain('example')
 })
 
-test('credential supplier report recognizes multiple owner needs but no visitor call', () => {
-	const analysis = analyzePackageCredentialSupplierSource({
+test('credential supplier report recognizes multiple owner needs but no visitor call', async () => {
+	const analysis = await analyzePackageCredentialSupplierSource({
 		manifestPath: 'package.json',
 		files: {
 			'package.json': JSON.stringify({
@@ -216,8 +216,8 @@ test('credential supplier mapping queries chunk need keys for D1 parameter limit
 	expect(state.counts.ownerCredentialForVisitorsNeeds).toBe(120)
 })
 
-test('credential supplier report counts an explicitly declared empty visitor needs object', () => {
-	const analysis = analyzePackageCredentialSupplierSource({
+test('credential supplier report counts an explicitly declared empty visitor needs object', async () => {
+	const analysis = await analyzePackageCredentialSupplierSource({
 		manifestPath: 'package.json',
 		files: {
 			'package.json': JSON.stringify({

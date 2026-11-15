@@ -123,16 +123,16 @@ export function synthesizeLocalExecutePackageGraphEntry(
  * The static `kody:@…` imports a package graph build serves for `code`.
  * Rejects literal dynamic saved-package imports, which it cannot bind.
  */
-export function collectLocalExecutePackageGraphImports(code: string) {
-	assertNoLiteralDynamicSavedPackageImports(code)
+export async function collectLocalExecutePackageGraphImports(code: string) {
+	await assertNoLiteralDynamicSavedPackageImports(code)
 	const imports = uniqueSpecifiers(
-		collectStaticKodyPackageImportsFromFiles({ 'entry.ts': code }).map(
+		(await collectStaticKodyPackageImportsFromFiles({ 'entry.ts': code })).map(
 			(entry) => entry.specifier,
 		),
 	)
 	// Cached graphs skip the build's source checks, so check the entry here.
 	try {
-		assertNoKodyVirtualModuleReference('entry.ts', code)
+		await assertNoKodyVirtualModuleReference('entry.ts', code)
 	} catch (error) {
 		throw mapPrepareFailure(error, imports)
 	}
@@ -171,7 +171,7 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 	userId: string
 	code: string
 }): Promise<UnsignedLocalExecutePackageGraph> {
-	const staticImports = collectLocalExecutePackageGraphImports(input.code)
+	const staticImports = await collectLocalExecutePackageGraphImports(input.code)
 	if (staticImports.length === 0) return emptyUnsignedLocalExecutePackageGraph
 	const sourceFiles = { 'entry.ts': input.code }
 
@@ -290,7 +290,7 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 	for (const [modulePath, source] of modulesByName.entries()) {
 		if (isKodyRuntimeModulePath(modulePath)) continue
 		if (parsePackageRuntimeModulePathPackageId(modulePath) != null) continue
-		const rewritten = rewriteInlinedLocalExecuteBundleSource({
+		const rewritten = await rewriteInlinedLocalExecuteBundleSource({
 			modulePath,
 			source,
 			primaryRuntimePath,
@@ -331,7 +331,7 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 		const packageId =
 			packageIdByModulePath.get(modulePath) ??
 			packageIdForModulePath(modulePath, packageIdsByPrefix)
-		const rewritten = rewriteLocalExecuteModuleForSecretAwareFetch({
+		const rewritten = await rewriteLocalExecuteModuleForSecretAwareFetch({
 			modulePath,
 			source,
 			primaryRuntimePath,
@@ -386,7 +386,7 @@ export async function buildUnsignedLocalExecutePackageGraph(input: {
 			(a?.sourceId ?? left).localeCompare(b?.sourceId ?? right)
 		)
 	})
-	assertLocalExecuteModuleGraphIsClosed(
+	await assertLocalExecuteModuleGraphIsClosed(
 		modulesByName,
 		staticImports,
 		primaryRuntimePath,
@@ -457,8 +457,8 @@ export async function signLocalExecutePackageGraph(input: {
 	}
 }
 
-function assertNoLiteralDynamicSavedPackageImports(code: string) {
-	for (const node of collectDynamicImportExpressionNodes(code)) {
+async function assertNoLiteralDynamicSavedPackageImports(code: string) {
+	for (const node of await collectDynamicImportExpressionNodes(code)) {
 		if (node.literalSpecifier?.startsWith(packageSpecifierPrefix)) {
 			throw new LocalExecutePackageGraphError(
 				'unsupported_dynamic_package_import',
@@ -489,21 +489,25 @@ const relativeSpecifierCandidatePattern = /["'`](\.\.?\/[^"'`\n]*)["'`]/g
  * second pass that follows parsed static imports only, the ones workerd links
  * before running anything. A complete graph costs no parse.
  */
-function assertLocalExecuteModuleGraphIsClosed(
+async function assertLocalExecuteModuleGraphIsClosed(
 	modulesByName: ReadonlyMap<string, string>,
 	entryModuleNames: ReadonlyArray<string>,
 	primaryRuntimePath: string,
 ) {
 	const scan = { modulesByName, entryModuleNames, primaryRuntimePath }
-	if (findUnservedImport({ ...scan, parseEveryModule: false }) == null) return
-	const unserved = findUnservedImport({ ...scan, parseEveryModule: true })
+	if ((await findUnservedImport({ ...scan, parseEveryModule: false })) == null)
+		return
+	const unserved = await findUnservedImport({
+		...scan,
+		parseEveryModule: true,
+	})
 	if (unserved == null) return
 	throw new Error(
 		`Local execute package graph is incomplete: "${unserved.modulePath}" imports "${unserved.specifier}", but "${unserved.target}" is not among the served modules.`,
 	)
 }
 
-function findUnservedImport(input: {
+async function findUnservedImport(input: {
 	modulesByName: ReadonlyMap<string, string>
 	entryModuleNames: ReadonlyArray<string>
 	primaryRuntimePath: string
@@ -534,7 +538,7 @@ function findUnservedImport(input: {
 			}
 		}
 		// A module that does not parse yields no imports; workerd reports it.
-		for (const { specifier, kind } of collectLiteralImportNodes(source, {
+		for (const { specifier, kind } of await collectLiteralImportNodes(source, {
 			filePath: modulePath,
 		})) {
 			if (kind !== 'static') continue

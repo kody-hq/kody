@@ -289,9 +289,9 @@ function usesCredentialHelper(parsed: AstNode) {
 	return uses
 }
 
-function detectPackageAppVisitorAuthority(
+async function detectPackageAppVisitorAuthority(
 	files: Record<string, string>,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const app = readPackageAppManifest(
 		Object.hasOwn(files, packageManifestPath)
 			? files[packageManifestPath]
@@ -311,13 +311,13 @@ function detectPackageAppVisitorAuthority(
 		return patterns
 	}
 	const credentialPaths = new Set<string>()
-	for (const path of listScannableModulePaths(files)) {
-		const parsed = parseModule(files[path]!)
+	for (const path of await listScannableModulePaths(files)) {
+		const parsed = await parseModule(files[path]!)
 		if (!parsed) continue
 		detectInModule(parsed, app, (pattern) => patternsFor(path).add(pattern))
 		if (usesCredentialHelper(parsed)) credentialPaths.add(path)
 	}
-	scanModuleCredentialReferences(files, (path) => {
+	await scanModuleCredentialReferences(files, (path) => {
 		const note = () => credentialPaths.add(path)
 		return { add: () => {}, named: note, computed: note, unnamed: note }
 	})
@@ -341,14 +341,14 @@ function detectPackageAppVisitorAuthority(
 	)
 }
 
-function transformPackageAppVisitorAuthority(
+async function transformPackageAppVisitorAuthority(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	return {
 		files,
 		changed: false,
 		changedPaths: [],
-		needsManual: detectPackageAppVisitorAuthority(files),
+		needsManual: await detectPackageAppVisitorAuthority(files),
 	}
 }
 

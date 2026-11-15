@@ -100,9 +100,9 @@ type ScannedModules = {
 	aliasShapes: Array<string>
 }
 
-export function scanModulesForGlobalObjectFetch(
+export async function scanModulesForGlobalObjectFetch(
 	modules: Record<string, unknown>,
-): ScannedModules {
+): Promise<ScannedModules> {
 	const scanned: ScannedModules = {
 		globalReads: false,
 		notParsed: false,
@@ -114,13 +114,13 @@ export function scanModulesForGlobalObjectFetch(
 		if (source == null || !source.includes('fetch')) continue
 		if (
 			sourceMayReadFetchThroughGlobalObject(source) &&
-			!collectTopLevelFetchCollisionNames(source)
+			!(await collectTopLevelFetchCollisionNames(source))
 		) {
 			// Unreadable, so it cannot be shown to have no such read.
 			scanned.globalReads = true
 			scanned.notParsed = true
 		} else if (
-			rewriteGlobalObjectFetchReads(source, scanProbeName) !== source
+			(await rewriteGlobalObjectFetchReads(source, scanProbeName)) !== source
 		) {
 			scanned.globalReads = true
 		}
@@ -234,7 +234,7 @@ async function scanPackage(input: {
 	const shapes = new Set<string>()
 	for (const bundle of bundles) {
 		base.bundles += 1
-		const scanned = scanModulesForGlobalObjectFetch(bundle.modules ?? {})
+		const scanned = await scanModulesForGlobalObjectFetch(bundle.modules ?? {})
 		for (const shape of scanned.aliasShapes) shapes.add(shape)
 		if (!scanned.globalReads) continue
 		base.bundlesWithGlobalReads += 1

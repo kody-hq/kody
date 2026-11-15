@@ -3,19 +3,19 @@ import { rewriteGlobalObjectFetchReads } from './rewrite-local-execute-secret-fe
 
 const rewrite = (source: string) => rewriteGlobalObjectFetchReads(source, 'F')
 
-test('reads of fetch through the global object use the replacement', () => {
-	expect(rewrite(`await globalThis.fetch(url)`)).toBe(`await F(url)`)
-	expect(rewrite(`const f = self.fetch`)).toBe(`const f = F`)
-	expect(rewrite(`globalThis['fetch'](url)`)).toBe(`F(url)`)
-	expect(rewrite(`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`)).toBe(
-		`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`,
-	)
-	expect(rewrite(`new Sdk({ fetch: globalThis.fetch, self: 1 })`)).toBe(
+test('reads of fetch through the global object use the replacement', async () => {
+	expect(await rewrite(`await globalThis.fetch(url)`)).toBe(`await F(url)`)
+	expect(await rewrite(`const f = self.fetch`)).toBe(`const f = F`)
+	expect(await rewrite(`globalThis['fetch'](url)`)).toBe(`F(url)`)
+	expect(
+		await rewrite(`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`),
+	).toBe(`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`)
+	expect(await rewrite(`new Sdk({ fetch: globalThis.fetch, self: 1 })`)).toBe(
 		`new Sdk({ fetch: F, self: 1 })`,
 	)
 })
 
-test('writes, aliases and local bindings are left alone', () => {
+test('writes, aliases and local bindings are left alone', async () => {
 	for (const source of [
 		`globalThis.fetch = polyfill`,
 		`({ fetch: globalThis.fetch } = polyfill)`,
@@ -31,21 +31,21 @@ test('writes, aliases and local bindings are left alone', () => {
 		`globalThis.fetcher(url)`,
 		`this is not ( valid js globalThis.fetch`,
 	]) {
-		expect(rewrite(source)).toBe(source)
+		expect(await rewrite(source)).toBe(source)
 	}
 })
 
-test('a module can read through one global object while aliasing the other', () => {
-	expect(rewrite(`const s = self; globalThis.fetch(url); s.fetch(url)`)).toBe(
-		`const s = self; F(url); s.fetch(url)`,
-	)
+test('a module can read through one global object while aliasing the other', async () => {
+	expect(
+		await rewrite(`const s = self; globalThis.fetch(url); s.fetch(url)`),
+	).toBe(`const s = self; F(url); s.fetch(url)`)
 })
 
-test('a parenthesized global object is still read as the global object', () => {
-	expect(rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
+test('a parenthesized global object is still read as the global object', async () => {
+	expect(await rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
 })
 
-test('an optional read through the global object is still a read', () => {
-	expect(rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
-	expect(rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
+test('an optional read through the global object is still a read', async () => {
+	expect(await rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
+	expect(await rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
 })

@@ -230,7 +230,7 @@ export async function buildCredentialAllowedPackagesPublishWarnings(input: {
 		const scopedFiles = filesForPackageSourceRoot(input.files, input.sourceRoot)
 		let scan: PackageCredentialScan
 		try {
-			scan = scanPackageCredentials({
+			scan = await scanPackageCredentials({
 				files: scopedFiles,
 				slots:
 					input.slots ??

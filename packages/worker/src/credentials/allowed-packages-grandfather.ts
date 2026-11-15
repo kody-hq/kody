@@ -172,7 +172,7 @@ export async function scanPackageUserCredentialNames(input: {
 	})
 	if (!snapshot) return { status: 'no_snapshot' }
 	const files = packageSourceFiles({ source, files: snapshot.files }).files
-	const scan = scanPackageCredentials({
+	const scan = await scanPackageCredentials({
 		files,
 		slots: readDeclaredCredentialSlots(files['package.json']),
 	})

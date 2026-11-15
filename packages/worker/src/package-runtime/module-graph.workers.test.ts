@@ -348,7 +348,8 @@ test(
 	{ timeout: 40_000 },
 	async () => {
 		silenceIncidentalRuntimeWarnings()
-		const sourceFiles = createAdHocExecuteSourceFiles(`import kleur from 'kleur'
+		const sourceFiles =
+			await createAdHocExecuteSourceFiles(`import kleur from 'kleur'
 export default function main() {
 	return { formatted: kleur.green('ad-hoc-dependency-ok') }
 }`)

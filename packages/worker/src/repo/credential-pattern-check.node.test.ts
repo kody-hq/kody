@@ -18,8 +18,8 @@ function manifest(kody: Record<string, unknown> = {}) {
 	})
 }
 
-function check(source: string, kody: Record<string, unknown> = {}) {
-	return buildCredentialPatternCheck({
+async function check(source: string, kody: Record<string, unknown> = {}) {
+	return await buildCredentialPatternCheck({
 		'package.json': manifest(kody),
 		'src/index.ts': source,
 	})
@@ -31,8 +31,8 @@ function hintLines(text: string) {
 	return index === -1 ? [] : lines.slice(index)
 }
 
-test('buildCredentialPatternCheck hard-fails non-literal createAuthenticatedFetch', () => {
-	const result = check(
+test('buildCredentialPatternCheck hard-fails non-literal createAuthenticatedFetch', async () => {
+	const result = await check(
 		'export const run = (name: string) => createAuthenticatedFetch(name)',
 	)
 	expect(result.ok).toBe(false)
@@ -42,8 +42,8 @@ test('buildCredentialPatternCheck hard-fails non-literal createAuthenticatedFetc
 	expect(result.message).toMatch(/credentials call map/)
 })
 
-test('buildCredentialPatternCheck auto-writes missing keys and fails without descriptions', () => {
-	const result = check(
+test('buildCredentialPatternCheck auto-writes missing keys and fails without descriptions', async () => {
+	const result = await check(
 		"export const send = () => fetch('https://api.example.com', { headers: { Authorization: 'Bearer {{secret:TOKEN}}' } })",
 	)
 	expect(result.ok).toBe(false)
@@ -57,8 +57,8 @@ test('buildCredentialPatternCheck auto-writes missing keys and fails without des
 	expect(parsed.kody.credentials.TOKEN).toEqual({})
 })
 
-test('buildCredentialPatternCheck passes when literal uses have descriptions', () => {
-	const result = check(
+test('buildCredentialPatternCheck passes when literal uses have descriptions', async () => {
+	const result = await check(
 		"export const send = () => fetch('https://api.example.com', { headers: { Authorization: 'Bearer {{secret:TOKEN}}' } })",
 		{
 			credentials: {
@@ -71,40 +71,40 @@ test('buildCredentialPatternCheck passes when literal uses have descriptions', (
 	expect(result.message).toMatch(/Credential stamp keys \(sorted\): TOKEN/)
 })
 
-test('oauth hints are only Authorization Bearer integration headers', () => {
+test('oauth hints are only Authorization Bearer integration headers', async () => {
 	// Undeclared slots fail the stamp gate on missing descriptions; hints still
 	// appear on the failure message for undeclared placements.
-	const otherShapes = check(
+	const otherShapes = await check(
 		"export const send = () => fetch('https://api.example.com', { headers: { 'X-Token': '{{integration-token:github}}', Authorization: 'Token {{integration-token:gitlab}}', 'X-Api-Key': '{{secret:KEY}}' } })",
 	)
 	expect(otherShapes.ok).toBe(false)
 	expect(hintLines(otherShapes.message)).toEqual([hintsHeading, injectHint])
 
-	const bearer = check(
+	const bearer = await check(
 		"export const gh = () => fetch('https://api.github.com/user', { headers: { Authorization: 'Bearer {{integration-token:github}}', 'X-Token': '{{integration-token:github}}' } })",
 	)
 	expect(bearer.ok).toBe(false)
 	expect(hintLines(bearer.message)).toEqual([hintsHeading, oauthHint])
 })
 
-test('secret-basic pairs do not get an inject hint', () => {
-	const pair = check(
+test('secret-basic pairs do not get an inject hint', async () => {
+	const pair = await check(
 		"export const send = () => fetch('https://api.example.com', { headers: { Authorization: 'Basic {{secret-basic:username=USER,password=PASS}}' } })",
 	)
 	expect(pair.ok).toBe(false)
 	expect(hintLines(pair.message)).toEqual([])
 })
 
-test('login hints require an exchange endpoint and an exact credential field', () => {
-	const exchange = check(
+test('login hints require an exchange endpoint and an exact credential field', async () => {
+	const exchange = await check(
 		"export const login = () => fetch('https://api.example.com/oauth/token', { method: 'POST', body: JSON.stringify({ pass: '{{secret:PASSWORD}}', refreshToken: '{{secret:REFRESH}}', client_secret: '{{secret:CLIENT}}' }) })",
 	)
 	expect(exchange.ok).toBe(false)
 	expect(hintLines(exchange.message)).toEqual([hintsHeading, loginHint])
 })
 
-test('hints skip placeholders a declared slot of the same kind already covers', () => {
-	const covered = check(
+test('hints skip placeholders a declared slot of the same kind already covers', async () => {
+	const covered = await check(
 		[
 			"export const send = () => fetch('https://api.example.com', { headers: { Authorization: 'Bearer {{secret:TOKEN}}' } })",
 			"export const gh = () => fetch('https://api.github.com/user', { headers: { Authorization: 'Bearer {{integration-token:github}}' } })",
@@ -123,8 +123,8 @@ test('hints skip placeholders a declared slot of the same kind already covers', 
 const signingHint =
 	'- Signing (secretJwtSign or signature key material): a signing credential (secretSet kind "signing") signs through credential(key).sign() without exposing the key.'
 
-test('declared signing keys do not get a signing hint from jwtSignCalls', () => {
-	const covered = check(
+test('declared signing keys do not get a signing hint from jwtSignCalls', async () => {
+	const covered = await check(
 		"export const sign = () => kody.secretJwtSign({ private_key_secret_name: 'KEY', claims: {} })",
 		{
 			credentials: {
@@ -136,8 +136,8 @@ test('declared signing keys do not get a signing hint from jwtSignCalls', () => 
 	expect(hintLines(covered.message)).toEqual([])
 })
 
-test('secretJwtSign with a non-literal key name fails the stamp gate', () => {
-	const dynamic = check(
+test('secretJwtSign with a non-literal key name fails the stamp gate', async () => {
+	const dynamic = await check(
 		[
 			"const keyName = 'APNS_KEY'",
 			'export const sign = () => kody.secretJwtSign({ private_key_secret_name: keyName, claims: {} })',
@@ -148,14 +148,14 @@ test('secretJwtSign with a non-literal key name fails the stamp gate', () => {
 	expect(hintLines(dynamic.message)).toEqual([hintsHeading, signingHint])
 })
 
-test('large kody.app.assets client bundle does not fail the publish gate', () => {
+test('large kody.app.assets client bundle does not fail the publish gate', async () => {
 	const chunk =
 		'function x(){eval("1");new Function("return 1");import(n);return 1}'
 	const largeClient = `${chunk};`.repeat(
 		Math.ceil((1.7 * 1024 * 1024) / (chunk.length + 1)),
 	)
 	const started = performance.now()
-	const result = buildCredentialPatternCheck({
+	const result = await buildCredentialPatternCheck({
 		'package.json': JSON.stringify({
 			name: '@kody/world-like',
 			exports: { '.': './src/server.ts' },
@@ -186,8 +186,8 @@ test('large kody.app.assets client bundle does not fail the publish gate', () =>
 	expect(elapsedMs).toBeLessThan(2_000)
 })
 
-test('manifest-only secretMounts is an ok compat note', () => {
-	const result = check(
+test('manifest-only secretMounts is an ok compat note', async () => {
+	const result = await check(
 		[
 			"import { credential } from 'kody:runtime'",
 			'export default async function wake() {',
@@ -207,8 +207,8 @@ test('manifest-only secretMounts is an ok compat note', () => {
 	expect(result.message).not.toMatch(/Publish failed/)
 })
 
-test('packageSecrets.get still fails the stamp gate when secretMounts remain', () => {
-	const result = check(
+test('packageSecrets.get still fails the stamp gate when secretMounts remain', async () => {
+	const result = await check(
 		[
 			"import { packageSecrets } from 'kody:runtime'",
 			'export default async function wake() {',

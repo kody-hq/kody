@@ -28,10 +28,15 @@ test('an undeclared literal call in a library package warns without failing', as
 		'src/index.ts':
 			"import { kody } from 'kody:runtime'\nexport default async () => { await kody.secretList({}); await kody.visitorNeed({}) }\n",
 	}
-	expect(findCapabilityDeclarationGaps({ manifest, sourceFiles })).toEqual([
+	expect(
+		await findCapabilityDeclarationGaps({ manifest, sourceFiles }),
+	).toEqual([
 		{ kind: 'undeclared', path: 'src/index.ts', names: ['secretList'] },
 	])
-	const check = await buildCapabilityDeclarationCheck({ manifest, sourceFiles })
+	const check = await buildCapabilityDeclarationCheck({
+		manifest,
+		sourceFiles,
+	})
 	expect(check).toMatchObject({ kind: 'capabilities', ok: true })
 	expect(check?.message).toContain('`src/index.ts` calls `secretList`')
 	expect(check?.message).toContain('`kody.capabilities`')
@@ -86,13 +91,13 @@ test('computed names warn only while nothing is declared', async () => {
 			"import { kody } from 'kody:runtime'\nexport default async (name) => { await kody[name]({}); return kody.mcp }\n",
 	}
 	expect(
-		findCapabilityDeclarationGaps({
+		await findCapabilityDeclarationGaps({
 			manifest: kodyManifest(),
 			sourceFiles,
 		}),
 	).toEqual([{ kind: 'unverifiable', path: 'src/index.ts', calls: 2 }])
 	expect(
-		findCapabilityDeclarationGaps({
+		await findCapabilityDeclarationGaps({
 			manifest: kodyManifest({ capabilities: ['secretList'] }),
 			sourceFiles,
 		}),

@@ -42,9 +42,9 @@ function isTypeDeclarationFilePath(path: string) {
 	)
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -63,15 +63,15 @@ function referencesDeprecatedSurface(source: string) {
 	)
 }
 
-function collectUnparseableDeprecatedFiles(
+async function collectUnparseableDeprecatedFiles(
 	files: Record<string, string>,
-): Array<string> {
+): Promise<Array<string>> {
 	const paths: Array<string> = []
 	for (const [path, source] of Object.entries(files)) {
 		if (!scannableModuleFilePattern.test(path)) continue
 		if (isTypeDeclarationFilePath(path)) continue
 		if (!referencesDeprecatedSurface(source)) continue
-		if (parseProgram(source) == null) {
+		if ((await parseProgram(source)) == null) {
 			paths.push(path)
 		}
 	}
@@ -124,8 +124,8 @@ function collectInvokeCheckedPropertyRanges(
 	return ranges.sort((left, right) => left.start - right.start)
 }
 
-function rewriteInvokeChecked(source: string): string | null {
-	const program = parseProgram(source)
+async function rewriteInvokeChecked(source: string): Promise<string | null> {
+	const program = await parseProgram(source)
 	if (!program) return null
 	const ranges = collectInvokeCheckedPropertyRanges(program)
 	if (ranges.length === 0) return source
@@ -144,10 +144,10 @@ type StaticFirstDeprecatedInvocationUsage = DeprecatedInvocationUsage & {
 	kind: Exclude<DeprecatedInvocationUsage['kind'], 'packages.invoke-object'>
 }
 
-function collectStaticFirstDeprecatedInvocationUsage(
+async function collectStaticFirstDeprecatedInvocationUsage(
 	files: Record<string, string>,
-): Array<StaticFirstDeprecatedInvocationUsage> {
-	return collectDeprecatedInvocationUsage(files).filter(
+): Promise<Array<StaticFirstDeprecatedInvocationUsage>> {
+	return (await collectDeprecatedInvocationUsage(files)).filter(
 		(usage): usage is StaticFirstDeprecatedInvocationUsage =>
 			usage.kind !== 'packages.invoke-object',
 	)
@@ -171,13 +171,16 @@ function findingMessageForUsage(
 	}
 }
 
-function detect(files: Record<string, string>): Array<PackageCodemodFinding> {
-	const findings: Array<PackageCodemodFinding> =
-		collectStaticFirstDeprecatedInvocationUsage(files).map((usage) => ({
-			path: usage.filePath,
-			message: findingMessageForUsage(usage),
-		}))
-	for (const path of collectUnparseableDeprecatedFiles(files)) {
+async function detect(
+	files: Record<string, string>,
+): Promise<Array<PackageCodemodFinding>> {
+	const findings: Array<PackageCodemodFinding> = (
+		await collectStaticFirstDeprecatedInvocationUsage(files)
+	).map((usage) => ({
+		path: usage.filePath,
+		message: findingMessageForUsage(usage),
+	}))
+	for (const path of await collectUnparseableDeprecatedFiles(files)) {
 		findings.push({ path, message: manualParseFailureMessage })
 	}
 	return findings.sort((left, right) =>
@@ -185,15 +188,15 @@ function detect(files: Record<string, string>): Array<PackageCodemodFinding> {
 	)
 }
 
-function transform(
+async function transform(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
-	const usages = collectStaticFirstDeprecatedInvocationUsage(files)
+): Promise<PackageCodemodTransformResult> {
+	const usages = await collectStaticFirstDeprecatedInvocationUsage(files)
 	const nextFiles: Record<string, string> = { ...files }
 	const changedPaths: Array<string> = []
 	const needsManual: Array<PackageCodemodFinding> = []
-	const unparseablePaths = collectUnparseableDeprecatedFiles(files)
+	const unparseablePaths = await collectUnparseableDeprecatedFiles(files)
 	for (const path of unparseablePaths) {
 		needsManual.push({ path, message: manualParseFailureMessage })
 	}
@@ -220,7 +223,7 @@ function transform(
 	)) {
 		const source = nextFiles[path]
 		if (typeof source !== 'string') continue
-		const rewritten = rewriteInvokeChecked(source)
+		const rewritten = await rewriteInvokeChecked(source)
 		if (rewritten == null) {
 			needsManual.push({ path, message: manualParseFailureMessage })
 			continue
@@ -241,9 +244,11 @@ function transform(
 		const source = nextFiles[path]
 		if (!scannableModuleFilePattern.test(path)) continue
 		if (isTypeDeclarationFilePath(path)) continue
-		const remaining = collectDeprecatedInvocationUsage({
-			[path]: source ?? '',
-		}).filter((usage) => usage.kind === 'packages.invokeChecked')
+		const remaining = (
+			await collectDeprecatedInvocationUsage({
+				[path]: source ?? '',
+			})
+		).filter((usage) => usage.kind === 'packages.invokeChecked')
 		if (remaining.length > 0) {
 			needsManual.push({
 				path,
@@ -265,7 +270,7 @@ function transform(
 				objectRepairFiles[path] = source
 			}
 		}
-		const objectRepair = invokeObjectToSpecifierCodemod.transform(
+		const objectRepair = await invokeObjectToSpecifierCodemod.transform(
 			objectRepairFiles,
 			context,
 		)
