@@ -1360,6 +1360,34 @@ test('an app artifact rebuild persists artifactName null using the fresh source 
 	)
 })
 
+test('a visitor pinned to an older approved commit rebuilds without saving over the serving bundle', async () => {
+	const { env } = createPackageAppTestEnv()
+	const servingSource = {
+		...createPackageAppTestSource(),
+		published_commit: 'commit-2',
+		serving_commit: 'commit-2',
+	}
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		null,
+	)
+	packageAppRuntimeMock.buildKodyAppBundle.mockResolvedValue(freshBundle)
+	packageAppRuntimeMock.getEntitySourceById.mockResolvedValue(servingSource)
+
+	await buildPackageAppWorker(
+		makeBuildInput(env, 'pinned-visitor', {
+			userId: ownerIdFromStored('user-1'),
+			savedPackage: { publishedCommit: 'commit-1' },
+			pinnedCommit: 'commit-1',
+			loadSourceFiles: sourceFilesFor(),
+		}),
+	)
+
+	expect(packageAppRuntimeMock.buildKodyAppBundle).toHaveBeenCalledTimes(1)
+	expect(
+		packageAppRuntimeMock.persistPublishedBundleArtifact,
+	).not.toHaveBeenCalled()
+})
+
 test('buildPackageAppWorker rejects persisting artifacts for a source owned by another user', async () => {
 	const { env } = createPackageAppTestEnv()
 	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(

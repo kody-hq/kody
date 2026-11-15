@@ -1523,6 +1523,7 @@ async function servePackageAppRequestWithId(input: {
 			source: packageManifest.source,
 			manifest: packageManifest.manifest,
 			loadSourceFiles,
+			pinnedCommit: anonymousCommit,
 			serverTiming,
 			runtime: {
 				callerContext,
