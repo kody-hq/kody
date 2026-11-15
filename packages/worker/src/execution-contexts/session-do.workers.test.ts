@@ -450,6 +450,45 @@ test('an unanswered run offer reads the context offline until its next heartbeat
 	ws.close()
 }, 60_000)
 
+test('a run queued behind an unanswered offer is offered again once heartbeats resume', async () => {
+	const ecid = 'ec_unanswered_queue'
+	const { stub, next, ws } = await connect(ecid)
+	expect(
+		await stub.dispatch({
+			request: { ...runRequest('run_asleep'), acceptBy: Date.now() + 100 },
+			lease: lease(ecid, 'run_asleep'),
+			runRecord: null,
+			position: 1,
+		}),
+	).toEqual({ outcome: 'timeout', code: 'timeout' })
+	await next('run.request')
+	const before = Date.now()
+	await stub.enqueue({
+		request: runRequest('run_waiting'),
+		lease: lease(ecid, 'run_waiting'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: before + 10 * 60_000,
+	})
+	await runInDurableObject(stub, async (_instance, state) => {
+		const alarm = await state.storage.getAlarm()
+		expect(alarm ?? Infinity).toBeLessThanOrEqual(before + 31_000)
+	})
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	await runInDurableObject(stub, async (instance) => {
+		await instance.alarm()
+	})
+	expect(await stub.listQueued()).toEqual([])
+	ws.close()
+}, 60_000)
+
 test('runs awaiting the daemon hold a slot, so a third concurrent dispatch at maxConcurrent 2 is busy', async () => {
 	const ecid = 'ec_slots'
 	const { stub, next, send } = await connect(ecid)

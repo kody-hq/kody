@@ -1268,10 +1268,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.expiresAt,
 			Date.now(),
 		)
-		await this.#ensureAlarm(input.expiresAt)
+		await this.#ensureAlarm(this.#queueRecheckAt(Date.now(), input.expiresAt))
 		// It may have come back between the offline probe and now.
 		if (this.#liveSocket()) this.ctx.waitUntil(this.#drainQueue())
 		return { queued: true }
+	}
+
+	/**
+	 * A connected but silent daemon comes back through heartbeats, which the
+	 * runtime answers without waking this object, so queued runs recheck it.
+	 */
+	#queueRecheckAt(now: number, expiresAt: number) {
+		return this.#socket() ? Math.min(expiresAt, now + queuedRetryMs) : expiresAt
 	}
 
 	/** Queued runs waiting for this context, oldest first. */
@@ -2557,7 +2565,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.exec<{ at: number | null }>(`SELECT MIN(expires_at) AS at FROM queued`)
 			.one().at
 		if (queuedNext !== null)
-			await this.#ensureAlarm(Math.max(now + 1000, queuedNext))
+			await this.#ensureAlarm(
+				Math.max(now + 1000, this.#queueRecheckAt(now, queuedNext)),
+			)
 		const next = this.ctx.storage.sql
 			.exec<{ deadline: number | null }>(
 				`SELECT MIN(deadline) AS deadline FROM runs WHERE state = 'committed'`,
