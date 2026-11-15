@@ -9,6 +9,7 @@ import {
 	ecpDeadlineCancelGraceMs,
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
+	ecpPingFrame,
 	importEd25519PrivateKey,
 	parseEnvelope,
 	decodeEnvelopePayload,
@@ -408,6 +409,44 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 			})
 		).ok,
 	).toBe(false)
+	ws.close()
+}, 60_000)
+
+test('an unanswered run offer reads the context offline until its next heartbeat', async () => {
+	const ecid = 'ec_unanswered'
+	const { stub, next, send, ws } = await connect(ecid)
+	const dispatch = (runId: string, acceptWithinMs: number) =>
+		stub.dispatch({
+			request: { ...runRequest(runId), acceptBy: Date.now() + acceptWithinMs },
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+	expect(await dispatch('run_asleep', 100)).toEqual({
+		outcome: 'timeout',
+		code: 'timeout',
+	})
+	await next('run.request')
+	expect(await dispatch('run_next', frameWaitMs)).toEqual({
+		outcome: 'offline',
+	})
+	expect((await stub.getStatus()).online).toBe(false)
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	const awake = dispatch('run_awake', frameWaitMs)
+	const offered = await next('run.request')
+	expect(offered.body).toMatchObject({ runId: 'run_awake' })
+	await send(
+		'run.reject',
+		{ runId: 'run_awake', code: 'busy' },
+		{ re: offered.seq },
+	)
+	expect(await awake).toEqual({ outcome: 'busy' })
 	ws.close()
 }, 60_000)
 

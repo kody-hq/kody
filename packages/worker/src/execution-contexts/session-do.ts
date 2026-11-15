@@ -194,6 +194,12 @@ type SocketAttachment = {
 	apiOrigin?: string
 	/** The daemon answers `control.request` (it advertised `daemon-control`). */
 	control?: boolean
+	/**
+	 * A run offer went unanswered at this time. The socket reads as offline
+	 * until a heartbeat newer than this, so a sleeping machine costs one
+	 * accept wait and later runs fall through to the next context at once.
+	 */
+	unansweredAt?: number
 }
 
 /** A server-side pause, as the daemon and status views see it. */
@@ -982,7 +988,22 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const lastProbe = this.ctx.getWebSocketAutoResponseTimestamp(ws)
 		const freshAt = lastProbe ? lastProbe.getTime() : attachment.connectedAt
 		if (Date.now() - freshAt > ecpLivenessFreshMs) return null
+		if (
+			attachment.unansweredAt !== undefined &&
+			freshAt <= attachment.unansweredAt
+		) {
+			return null
+		}
 		return { ws, attachment, heardAt: freshAt }
+	}
+
+	#markUnanswered(ws: WebSocket) {
+		try {
+			const attachment = ws.deserializeAttachment() as SocketAttachment
+			ws.serializeAttachment({ ...attachment, unansweredAt: Date.now() })
+		} catch {
+			// The socket closed meanwhile; it is offline either way.
+		}
 	}
 
 	/**
@@ -1172,6 +1193,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			this.#setRunState(lease.runId, timedOut ? 'aborted' : 'rejected')
 			record(timedOut ? 'timeout' : 'rejected')
 			if (timedOut) {
+				this.#markUnanswered(live.ws)
 				await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			}
 			return {

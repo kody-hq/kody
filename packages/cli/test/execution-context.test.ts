@@ -555,6 +555,53 @@ test('a half-dead socket that stops answering pings is closed with a heartbeat c
 	)
 })
 
+test('a machine that slept through a ping pings again instead of reconnecting', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	const realNow = Date.now
+	let sleptMs = 0
+	class SleepySocket extends ServerSocket {
+		pings = 0
+		override send(data = '') {
+			this.sent.push(data)
+			if (data !== ecpPingFrame) return
+			this.pings += 1
+			// The first ping goes out just before the machine sleeps: monotonic
+			// timers stop while the wall clock moves on, and no pong is read.
+			if (this.pings === 1) {
+				sleptMs = 10 * 60_000
+				return
+			}
+			queueMicrotask(() =>
+				this.dispatchEvent(
+					Object.assign(new Event('message'), { data: ecpPongFrame }),
+				),
+			)
+		}
+	}
+	Date.now = () => realNow() + sleptMs
+	try {
+		const abort = new AbortController()
+		setTimeout(() => abort.abort(), 300)
+		const { input, lines } = await daemonInput({
+			serverKeys,
+			pingMs: 40,
+			pongTimeoutMs: 20,
+			signal: abort.signal,
+			WebSocketImpl: SleepySocket as unknown as typeof WebSocket,
+		})
+		const closed = await runDaemonConnection(input)
+		assert.deepEqual(closed, { code: 1000, reason: 'shutdown' })
+		assert.match(lines.join('\n'), /asleep or stalled for about 600s/)
+		assert.ok(!lines.some((line) => /did not answer a ping/.test(line)))
+		const socket = SilentSocket.instances[0] as unknown as SleepySocket
+		assert.ok(socket.pings >= 2)
+	} finally {
+		Date.now = realNow
+	}
+})
+
 test('a socket that answers pings stays connected until shutdown', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([welcome])

@@ -1,3 +1,4 @@
+import { parse as parseJavaScript } from 'acorn'
 import {
 	type EcpCancelReason,
 	type EcpCapabilities,
@@ -6,6 +7,7 @@ import {
 	type EcpRunRequestBody,
 	sha256Base64Url,
 	ecpHostOperatorOnlyFeature,
+	ecpTypeScriptSourceFeature,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	credentialCallMapToJson,
@@ -323,6 +325,26 @@ export function sharedRunHostRefusal(input: {
 		: 'fs_daemon_outdated'
 }
 
+/**
+ * A daemon from before {@link ecpTypeScriptSourceFeature} runs execute code
+ * as plain JavaScript, so code that only parses as TypeScript skips it with
+ * a "please update" reason instead of failing there with a syntax error.
+ */
+export function typeScriptSourceRefusal(
+	code: string,
+	capabilities: EcpCapabilities,
+): string | null {
+	if ((capabilities.features ?? []).includes(ecpTypeScriptSourceFeature)) {
+		return null
+	}
+	try {
+		parseJavaScript(code, { ecmaVersion: 'latest', sourceType: 'module' })
+		return null
+	} catch {
+		return 'typescript_daemon_outdated'
+	}
+}
+
 /** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
@@ -541,6 +563,14 @@ export async function routeExecute(input: {
 		})
 		if (refusal) {
 			skip(refusal)
+			continue
+		}
+		const sourceRefusal =
+			input.code !== null && !input.publishBuild
+				? typeScriptSourceRefusal(input.code, parseCapabilities(row))
+				: null
+		if (sourceRefusal) {
+			skip(sourceRefusal)
 			continue
 		}
 		if (input.publishBuild && sharedRun) {
@@ -786,6 +816,8 @@ const contextReasonText: Record<string, string> = {
 		"fs_operator_only: host folders are only for the operator's own runs",
 	fs_daemon_outdated:
 		"fs_daemon_outdated: it has host folders and its daemon is too old to keep them to the operator's runs; the operator can update it with `kody daemon update`",
+	typescript_daemon_outdated:
+		'typescript_daemon_outdated: this code is TypeScript and its daemon is too old to run TypeScript; please update it with `kody daemon update`',
 	operator_left:
 		'operator_left: the person who runs this machine is no longer a member of this org',
 }

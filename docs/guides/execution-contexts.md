@@ -45,6 +45,13 @@ call. Three things are added, and only when you allow them:
   command grant can run shell commands there (see
   [Run commands on the machine](#run-commands-on-the-machine)).
 
+Code runs the same way too. Execute code is a TypeScript module everywhere: Kody
+cloud, a context, and `execute --local` apply the same TypeScript transform, so
+annotations, `enum`, `satisfies`, and top-level `await` work on all three. A
+daemon older than this support is skipped for TypeScript code (reason
+`typescript_daemon_outdated`, which says to run `kody daemon update`), so the
+run falls through the chain instead of failing with a syntax error.
+
 Credentials stay in Kody cloud and never reach the machine. When code on your
 machine calls a service with a credential, that request leaves from Kody cloud,
 which adds the credential on the way out. The machine sees the response, not the
@@ -293,6 +300,14 @@ contexts, with Kody cloud last. For each run Kody walks the chain and uses the
 first entry that can take it. An entry is skipped when it is offline, busy, you
 lost access to it, or it lacks what the run `requires`. When no context can take
 the run, it runs on Kody cloud.
+
+A machine counts as offline as soon as its heartbeat goes quiet: the daemon
+pings every 30 seconds, and a context whose last ping is older than 45 seconds
+is skipped. A machine that goes to sleep between pings can still be offered one
+run; when it does not accept within 10 seconds that run moves on, and the
+context reads as offline until its next ping, so later runs skip it at once.
+After the machine wakes, the daemon pings again before deciding its connection
+is dead, so a short sleep does not force a reconnect.
 
 A run can also pick where it goes:
 

@@ -1,4 +1,9 @@
 import {
+	executeModuleEntryFile,
+	executeModuleLoader,
+	executeModuleTarget,
+} from '@kody-internal/shared/execute-module.ts'
+import {
 	nodeModulesImportKind,
 	parseBarePackageSpecifier,
 	resolveNodeModulesImport,
@@ -126,7 +131,7 @@ export function localBundleOptions(entry: string) {
 		write: false,
 		format: 'esm' as const,
 		platform: 'neutral' as const,
-		target: 'esnext',
+		target: executeModuleTarget,
 		logLevel: 'silent' as const,
 		packages: 'bundle' as const,
 		external: [
@@ -185,6 +190,43 @@ const nodeModulesResolutionPlugin: esbuild.Plugin = {
 			return undefined
 		})
 	},
+}
+
+/** Inline execute code that is not valid TypeScript, worded like Kody cloud's build error. */
+export class ExecuteModuleBuildError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'ExecuteModuleBuildError'
+	}
+}
+
+/**
+ * Inline execute code (`--code`, and every execution context run) as the
+ * runnable module: the same TypeScript transform Kody cloud applies to
+ * {@link executeModuleEntryFile}. Imports stay as written and nothing is read
+ * from this machine's disk.
+ */
+export async function prepareExecuteModuleSource(code: string) {
+	try {
+		const result = await esbuild.transform(code, {
+			loader: executeModuleLoader,
+			format: 'esm',
+			target: executeModuleTarget,
+			sourcefile: executeModuleEntryFile,
+			logLevel: 'silent',
+		})
+		return result.code
+	} catch (error) {
+		const errors = (error as { errors?: Array<esbuild.Message> }).errors
+		if (!errors?.length) throw error
+		const lines = errors.map(
+			(item) =>
+				`${item.location ? `${item.location.file}:${item.location.line}:${item.location.column}: ` : ''}ERROR: ${item.text}`,
+		)
+		throw new ExecuteModuleBuildError(
+			`Build failed with ${errors.length} error${errors.length === 1 ? '' : 's'}:\n${lines.join('\n')}`,
+		)
+	}
 }
 
 export type LocalUserBundle = {
