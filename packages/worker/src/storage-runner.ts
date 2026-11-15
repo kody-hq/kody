@@ -1943,7 +1943,7 @@ export function createStorageKodyTools(input: {
 				typeof payload.query === 'string' ? payload.query : '',
 				writable,
 			)
-			const params = Array.isArray(payload.params) ? payload.params : undefined
+			const params = normalizeSqlParams(payload.params)
 			// packageStorage()/writable helpers always pass writable:true so
 			// CREATE/INSERT are allowed, but pure reads must not pay the
 			// all-bucket entitlement fan-out.
