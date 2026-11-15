@@ -75,20 +75,36 @@ export type UnboundSandboxCall = {
 	pattern: 'shared_fetch' | 'shared_capability'
 }
 
+/** A package-bound fetch that reported changed shared globals. */
+export type BoundSandboxCallIntrinsics = {
+	surface: 'hosted' | 'app'
+	packageId: string
+	changedIntrinsics: ReadonlyArray<string>
+}
+
 const unboundSandboxCallStorage = new AsyncLocalStorage<{
 	call: UnboundSandboxCall | null
+	boundIntrinsics: BoundSandboxCallIntrinsics | null
 }>()
 
 /** `call` null means the channel is bound to a package. */
 export function runAsSandboxCall<T>(
 	call: UnboundSandboxCall | null,
 	fn: () => T,
+	boundIntrinsics: BoundSandboxCallIntrinsics | null = null,
 ): T {
-	return unboundSandboxCallStorage.run({ call }, fn)
+	return unboundSandboxCallStorage.run(
+		{ call, boundIntrinsics: call ? null : boundIntrinsics },
+		fn,
+	)
 }
 
 export function getUnboundSandboxCall(): UnboundSandboxCall | null {
 	return unboundSandboxCallStorage.getStore()?.call ?? null
+}
+
+export function getBoundSandboxCallIntrinsics(): BoundSandboxCallIntrinsics | null {
+	return unboundSandboxCallStorage.getStore()?.boundIntrinsics ?? null
 }
 
 /**

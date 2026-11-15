@@ -607,7 +607,7 @@ async function refusalRows(userId: string) {
 		async () => {
 			const { results } = await env.APP_DB.prepare(
 				`SELECT kind, surface, run_package_id, observations
-			 FROM credential_unbound_use_refusals WHERE owner_id = ?`,
+			 FROM credential_attribution_log WHERE owner_id = ?`,
 			)
 				.bind(userId)
 				.all()
@@ -617,7 +617,7 @@ async function refusalRows(userId: string) {
 	)
 	const { results } = await env.APP_DB.prepare(
 		`SELECT kind, surface, pattern, credential_name, run_package_id, observations
-		 FROM credential_unbound_use_refusals WHERE owner_id = ?
+		 FROM credential_attribution_log WHERE owner_id = ?
 		 ORDER BY kind, surface`,
 	)
 		.bind(userId)
@@ -694,6 +694,13 @@ export default async function main() {
 			'GET /via/locked-a-from-b/global',
 			'GET /via/locked-a/global',
 		])
+		await new Promise((resolve) => setTimeout(resolve, 1_500))
+		const { results } = await env.APP_DB.prepare(
+			`SELECT kind FROM credential_attribution_log WHERE owner_id = ?`,
+		)
+			.bind(userId)
+			.all()
+		expect(results).toEqual([])
 	},
 )
 
@@ -802,7 +809,7 @@ test(
 	{ timeout: 120_000 },
 	async () => {
 		const { userId } = await setupLocked()
-		await publishLockedPackage(userId)
+		const locked = await publishLockedPackage(userId)
 		await publishImported(
 			userId,
 			`import call from 'kody:@kentcdodds/locked-a/call'
@@ -854,5 +861,105 @@ export default async function main() { return await run() }`,
 			'GET /via/locked-a-tampered',
 			'GET /via/locked-a-tampered/global',
 		])
+		// Allowed, and recorded with the names of what was replaced.
+		await vi.waitFor(
+			async () => {
+				const { results } = await env.APP_DB.prepare(
+					`SELECT kind, surface, pattern, credential_name, bound_package_id, changed_intrinsics, observations
+					 FROM credential_attribution_log WHERE owner_id = ?`,
+				)
+					.bind(userId)
+					.all<{ changed_intrinsics: string }>()
+				const row = results.find((entry) =>
+					entry.changed_intrinsics.includes('Reflect.apply'),
+				)
+				expect(row).toMatchObject({
+					kind: 'intrinsics_changed',
+					surface: 'hosted',
+					pattern: 'bound_fetch',
+					credential_name: 'locked',
+					bound_package_id: locked.packageId,
+					observations: 2,
+				})
+				expect(row?.changed_intrinsics.split(',')).toEqual(
+					expect.arrayContaining([
+						'Headers',
+						'JSON.stringify',
+						'Object.prototype (added key)',
+						'Request',
+						'String.prototype.startsWith',
+						'String.prototype.trim',
+						'URL',
+						'fetch',
+					]),
+				)
+			},
+			{ timeout: 10_000, interval: 250 },
+		)
+	},
+)
+
+test(
+	'in a package app, shared globals replaced by an imported package are recorded on the app package request',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupLocked()
+		await ensureCreditWalletTestSchema(env.APP_DB)
+		await publishImported(
+			userId,
+			`export default function run() {
+	const elsewhere = 'https://upstream.example.com/via/redirected'
+	const NativeRequest = Request
+	globalThis.Request = class extends NativeRequest {
+		constructor(input, init) { super(elsewhere, init) }
+	}
+	globalThis.URL = class { constructor() { this.href = elsewhere } toString() { return elsewhere } }
+	String.prototype.trim = function () { return elsewhere }
+}`,
+		)
+		let appId = ''
+		const out = await serveApp(
+			userId,
+			`import run from 'kody:@kentcdodds/imported-b/run'
+export default { async fetch() {
+	run()
+	return Response.json({ own: await ${attempt('fetch', '/via/app-own')} })
+} }`,
+			async (appPackageId) => {
+				appId = appPackageId
+				await setSecretAllowedPackages({
+					env,
+					userId: ownerIdFromStored(userId),
+					scope: 'user',
+					name: 'locked',
+					allowedPackages: [appPackageId],
+					storageContext: null,
+					audit: null,
+				})
+			},
+		)
+		expect(out.status).toBe(200)
+		expect(JSON.parse(out.text)).toEqual({ own: 200 })
+		expect(pathsCarrying(out.seen, LOCKED)).toEqual(['GET /via/app-own'])
+		await vi.waitFor(
+			async () => {
+				const { results } = await env.APP_DB.prepare(
+					`SELECT kind, surface, pattern, bound_package_id, changed_intrinsics
+					 FROM credential_attribution_log WHERE owner_id = ?`,
+				)
+					.bind(userId)
+					.all()
+				expect(results).toEqual([
+					{
+						kind: 'intrinsics_changed',
+						surface: 'app',
+						pattern: 'bound_fetch',
+						bound_package_id: appId,
+						changed_intrinsics: 'Request,String.prototype.trim,URL',
+					},
+				])
+			},
+			{ timeout: 10_000, interval: 250 },
+		)
 	},
 )

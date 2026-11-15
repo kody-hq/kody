@@ -17,6 +17,7 @@ import { findSecret, type FoundSecret } from './service.ts'
 import type { SecretScope } from './types.ts'
 import type { StorageContext } from '#mcp/storage.ts'
 import {
+	getBoundSandboxCallIntrinsics,
 	getUnboundSandboxCall,
 	resolveCallerSecretAuthority,
 } from './secret-authority.ts'
@@ -35,7 +36,10 @@ import {
 	scheduleAllowedPackagesWouldBlock,
 	type AllowedPackagesWouldBlockAccessKind,
 } from '#worker/credentials/allowed-packages-would-block.ts'
-import { scheduleUnboundUseRefusal } from '#worker/credentials/unbound-use-refusals.ts'
+import {
+	scheduleChangedIntrinsicsUse,
+	scheduleUnboundUseRefusal,
+} from '#worker/credentials/attribution-log.ts'
 
 type SecretMountDefinition = {
 	name: string
@@ -255,7 +259,25 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 		)
 	}
 	if (!packageId || input.resolved.scope !== 'user') return
-	if (input.resolved.allowedPackages.includes(packageId)) return
+	if (input.resolved.allowedPackages.includes(packageId)) {
+		const boundIntrinsics = getBoundSandboxCallIntrinsics()
+		const credentialId = input.resolved.credentialId?.trim()
+		if (boundIntrinsics && credentialId) {
+			scheduleChangedIntrinsicsUse({
+				env: input.env,
+				use: {
+					ownerId: String(input.userId),
+					credentialId,
+					credentialName: input.secretName,
+					surface: boundIntrinsics.surface,
+					runPackageId: input.storageContext?.packageId ?? null,
+					boundPackageId: boundIntrinsics.packageId,
+					changedIntrinsics: boundIntrinsics.changedIntrinsics,
+				},
+			})
+		}
+		return
+	}
 
 	const intent = input.intent ?? 'use'
 	const runContext =

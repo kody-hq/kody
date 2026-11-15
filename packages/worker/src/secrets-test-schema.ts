@@ -112,7 +112,7 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
-			`CREATE TABLE IF NOT EXISTS credential_unbound_use_refusals (
+			`CREATE TABLE IF NOT EXISTS credential_attribution_log (
 				day TEXT NOT NULL,
 				owner_id TEXT NOT NULL,
 				credential_id TEXT NOT NULL,
@@ -120,11 +120,13 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				surface TEXT NOT NULL,
 				pattern TEXT NOT NULL,
 				run_package_id TEXT NOT NULL DEFAULT '',
+				bound_package_id TEXT NOT NULL DEFAULT '',
+				changed_intrinsics TEXT NOT NULL DEFAULT '',
 				credential_name TEXT NOT NULL,
 				first_seen_at TEXT NOT NULL,
 				last_seen_at TEXT NOT NULL,
 				observations INTEGER NOT NULL DEFAULT 0,
-				PRIMARY KEY (day, owner_id, credential_id, kind, surface, pattern, run_package_id)
+				PRIMARY KEY (day, owner_id, credential_id, kind, surface, pattern, run_package_id, bound_package_id, changed_intrinsics)
 			)`,
 		)
 		.run()

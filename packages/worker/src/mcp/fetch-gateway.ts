@@ -140,6 +140,7 @@ import {
 	requestContextFromVisitClaims,
 	verifyPackageAppVisitTicket,
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
+import { normalizeChangedIntrinsicNames } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
 import { kodyDevOutboundFetch } from '#worker/package-runtime/kody-dev-simulation.ts'
 
 type FetchGatewayProps = {
@@ -178,6 +179,8 @@ type FetchGatewayProps = {
 	 * Must name a package in `grantedSecretAuthorityPackageIds`.
 	 */
 	boundPackageId?: string | null
+	/** Shared globals a package app's bound fetch reported as changed. */
+	changedIntrinsics?: ReadonlyArray<string> | null
 	/**
 	 * The run (or CapabilityProxy credential) `credential()` client handles
 	 * must be bound to. Without it, a client fetch is refused.
@@ -333,25 +336,46 @@ async function applyPackageAppVisitTicketToGateway(input: {
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 	/** Refusals come back as a marked response; see `sandbox-rpc-outcome.ts`. */
 	async fetch(request: Request) {
+		return await this.gatewayFetch(request, this.ctx.props?.changedIntrinsics)
+	}
+
+	/**
+	 * A package-bound fetch from a run whose shared globals changed since the
+	 * sandbox started. The names are recorded, never acted on.
+	 */
+	async fetchWithChangedIntrinsics(request: Request, changed: unknown) {
+		return await this.gatewayFetch(
+			request,
+			normalizeChangedIntrinsicNames(changed),
+		)
+	}
+
+	private async gatewayFetch(
+		request: Request,
+		changedIntrinsics: ReadonlyArray<string> | null | undefined,
+	) {
 		try {
 			const props = this.ctx.props
+			const surface = props?.packageAppAuthority ? 'app' : 'hosted'
+			const boundPackageId = props?.boundPackageId?.trim() || null
 			// Run code reaches this entrypoint. Only the per-package binding
 			// says which package's code is fetching.
-			const unboundCall: UnboundSandboxCall | null =
-				props?.boundPackageId?.trim()
-					? null
-					: {
-							surface: props?.packageAppAuthority ? 'app' : 'hosted',
-							pattern: 'shared_fetch',
-						}
+			const unboundCall: UnboundSandboxCall | null = boundPackageId
+				? null
+				: { surface, pattern: 'shared_fetch' }
 			return withoutForgedGatewayErrorHeader(
-				await runAsSandboxCall(unboundCall, () =>
-					executeGatewayFetch({
-						env: this.env,
-						props,
-						request,
-						waitUntil: (promise) => this.ctx.waitUntil(promise),
-					}),
+				await runAsSandboxCall(
+					unboundCall,
+					() =>
+						executeGatewayFetch({
+							env: this.env,
+							props,
+							request,
+							waitUntil: (promise) => this.ctx.waitUntil(promise),
+						}),
+					boundPackageId && changedIntrinsics?.length
+						? { surface, packageId: boundPackageId, changedIntrinsics }
+						: null,
 				),
 			)
 		} catch (error) {

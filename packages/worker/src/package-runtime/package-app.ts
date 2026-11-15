@@ -1,4 +1,8 @@
 import {
+	createIntrinsicChangeDetectorSource,
+	normalizeChangedIntrinsicNames,
+} from '#worker/package-runtime/intrinsic-change-detector-source.ts'
+import {
 	servingCommitForSource,
 	toServingSourceView,
 } from '#worker/repo/serving-commit.ts'
@@ -541,6 +545,7 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 						packageId,
 						new __kodyRequestCaptured(requestInput, init),
 						__kodyCurrentVisitTicket(),
+						__kodyChangedIntrinsics(),
 					),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
@@ -627,6 +632,7 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 	};
 	globalThis[__kodyEvaluateFetchPatchedSymbol] = true;
 }
+${createIntrinsicChangeDetectorSource()}
 
 function buildFacetName(rawFacetName) {
 	return typeof rawFacetName === 'string' && rawFacetName.trim().length > 0
@@ -2176,6 +2182,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageId: string,
 		request: Request,
 		visitTicket?: string | null,
+		changedIntrinsics?: unknown,
 	) {
 		const boundPackageId = await this.assertPackageBindingCapability(
 			token,
@@ -2200,6 +2207,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							null)
 						: null,
 					credentialClientBinding: this.credentialBindingFor(visit),
+					changedIntrinsics: normalizeChangedIntrinsicNames(changedIntrinsics),
 				},
 			})
 			.fetch(forwarded)
