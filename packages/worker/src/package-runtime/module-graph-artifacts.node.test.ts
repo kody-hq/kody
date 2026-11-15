@@ -4,7 +4,6 @@ import {
 	materializeDependencyArtifactModules,
 } from './module-graph-artifacts.ts'
 import { dirname, joinPath } from './module-graph-path-basics.ts'
-import { stripKodyRuntimeModules } from './runtime-source-modules.ts'
 
 function proxyTo(target: string) {
 	return `export * from ${JSON.stringify(target)};\nimport * as __kodyPackageModule from ${JSON.stringify(target)};\nimport { __kodyMeterStaticPackageExport } from "../.__kody_virtual__/runtime.js";\nexport default __kodyMeterStaticPackageExport("pkg", __kodyPackageModule.default);\n`
@@ -160,7 +159,7 @@ test('a linked artifact root must contain the artifact prefix', () => {
 	).toThrow(/does not contain/)
 })
 
-test('omitting runtime modules gives what stripping them afterwards gives', () => {
+test('omitting runtime modules leaves Kody runtime paths out of the linked graph', () => {
 	const input = {
 		artifactPrefix: calendar,
 		modules: nestedHubArtifactModules(),
@@ -171,8 +170,15 @@ test('omitting runtime modules gives what stripping them afterwards gives', () =
 		...input,
 		omitRuntimeModules: true,
 	})
-	expect(Object.keys(withRuntime).length).toBeGreaterThan(
-		Object.keys(withoutRuntime).length,
+	const isRuntimePath = (modulePath: string) =>
+		modulePath.includes('.__kody_virtual__/')
+	expect(Object.keys(withRuntime).some(isRuntimePath)).toBe(true)
+	expect(Object.keys(withoutRuntime).some(isRuntimePath)).toBe(false)
+	expect(withoutRuntime).toEqual(
+		Object.fromEntries(
+			Object.entries(withRuntime).filter(
+				([modulePath]) => !isRuntimePath(modulePath),
+			),
+		),
 	)
-	expect(withoutRuntime).toEqual(stripKodyRuntimeModules(withRuntime))
 })

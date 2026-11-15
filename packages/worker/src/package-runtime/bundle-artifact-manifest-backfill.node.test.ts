@@ -149,9 +149,14 @@ test("a package app's template copy gains the same manifest", async () => {
 
 	await runBundleArtifactManifestBackfill({ env, dryRun: false, afterId: null })
 
-	expect(JSON.parse(store.get(templateKey)!).manifest).toEqual(
-		JSON.parse(store.get('key-a')!).manifest,
-	)
+	const expectedBytes = 'export {}'.length + 'export const a = 1'.length
+	const { manifest, ...rest } = JSON.parse(store.get(templateKey)!)
+	expect(rest).toEqual(stored)
+	expect(manifest.totalBytes).toBe(expectedBytes)
+	expect(manifest.modules['index.js']).toMatchObject({
+		role: 'main',
+		owner: { sourceId: 'source-1', publishedCommit: 'commit-1' },
+	})
 })
 
 test('pages by row id and can be limited to some owners', async () => {

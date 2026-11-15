@@ -483,7 +483,7 @@ test(
 	'targets that import the same Kody package link it once per publish',
 	{ timeout: 120_000 },
 	async () => {
-		const { userId, reader } = await setup()
+		const { userId, notes, reader } = await setup()
 		const built = await buildOffWorker(userId, reader.packageId)
 		const linkedImports = collectLinkedPackageImports({
 			sourceFiles: importerFiles,
@@ -507,11 +507,15 @@ test(
 				...(cache ? { artifactCache: cache } : {}),
 			})
 		const first = await link(artifactCache)
-		const linkedOnce = [...artifactCache.values()]
-		const second = await link(artifactCache)
+		const linkedSources = Object.values(first.modules)
+			.map((module) => JSON.stringify(module))
+			.join('\n')
+		expect(artifactCache.size).toBe(1)
+		expect(linkedSources).toContain('select name from notes')
+		expect(linkedSources).toContain(notes.packageId)
 
-		expect(linkedOnce).toHaveLength(1)
-		expect([...artifactCache.values()]).toEqual(linkedOnce)
+		const second = await link(artifactCache)
+		expect(artifactCache.size).toBe(1)
 		expect(second).toEqual(first)
 		expect(await link()).toEqual(first)
 	},
