@@ -134,7 +134,7 @@ export async function recordWhatsNewVerifiedAccount(input: {
 	try {
 		const row = await input.env.APP_DB.prepare(
 			`SELECT whats_new_email_opt_in AS opted_in, whats_new_email_opt_in_updated_at AS updated_at,
-				whats_new_email_opt_in_source AS source, email_verified_at
+				whats_new_email_opt_in_source AS source, email_verified_at, email
 			 FROM users
 			 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
 				AND email_verified_at IS NOT NULL`,
@@ -145,9 +145,31 @@ export async function recordWhatsNewVerifiedAccount(input: {
 				updated_at: string | null
 				source: WhatsNewConsentSource | null
 				email_verified_at: string
+				email: string
 			}>()
 		if (!row) return
 		const madeChoice = row.updated_at !== null
+		if (!madeChoice) {
+			// The recipient list counts a confirmed public sign-up for the same
+			// address as this account's opt-in until the account makes a choice.
+			const signup = await input.env.APP_DB.prepare(
+				`SELECT confirmed_at FROM newsletter_signups
+				 WHERE email = ? AND status = 'confirmed' AND source = 'newsletter_page'`,
+			)
+				.bind(row.email)
+				.first<{ confirmed_at: string }>()
+			if (signup) {
+				await recordWhatsNewConsentChange({
+					env: input.env,
+					stableUserId: input.stableUserId,
+					optedIn: true,
+					source: 'newsletter_page',
+					occurredAt: signup.confirmed_at,
+					now: input.now,
+				})
+				return
+			}
+		}
 		await recordWhatsNewConsentChange({
 			env: input.env,
 			stableUserId: input.stableUserId,

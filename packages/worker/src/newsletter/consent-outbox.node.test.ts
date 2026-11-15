@@ -269,6 +269,19 @@ test('a change is kept, uncounted, while no admin package subscribes', async () 
 	expect(outbox()).toMatchObject([{ id: row!.id, attempts: 0 }])
 })
 
+test('an account with no choice of its own is announced with the public sign-up its address confirmed', async () => {
+	const { env, sqlite, outbox } = setup()
+	sqlite
+		.prepare(
+			`UPDATE users SET email = 'guest@example.com', whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = NULL, whats_new_email_opt_in_source = NULL`,
+		)
+		.run()
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	expect(outbox()).toMatchObject([
+		{ stable_user_id: accountId, opted_in: 1, source: 'newsletter_page' },
+	])
+})
+
 test('without a queue binding a change is delivered inline', async () => {
 	const { env, outbox } = setup()
 	delete (env as Partial<Env>).PACKAGE_EVENTS_DISPATCH_QUEUE
