@@ -970,3 +970,216 @@ export default { async fetch() {
 		)
 	},
 )
+
+// Bundles stored before reads of fetch through the global object were bound.
+
+/**
+ * Rewrites a package's stored bundles to how the builder wrote them before
+ * that change: the reads are back in the source and the marker is one behind.
+ */
+async function storeAsOlderBundle(
+	sourceId: string,
+	/** Request path to the expression the source read fetch through. */
+	globalReads: Record<string, string>,
+) {
+	const rows = await env.APP_DB.prepare(
+		`SELECT kv_key FROM published_bundle_artifacts WHERE source_id = ?1`,
+	)
+		.bind(sourceId)
+		.all<{ kv_key: string }>()
+	const kv = (env as Env & { BUNDLE_ARTIFACTS_KV: KVNamespace })
+		.BUNDLE_ARTIFACTS_KV
+	let restoredReads = 0
+	for (const row of rows.results) {
+		const stored = (await kv.get(row.kv_key, 'json')) as {
+			modules: Record<string, unknown>
+			packageBindingRewrite?: number
+		}
+		const modules: Record<string, unknown> = {}
+		for (const [path, module] of Object.entries(stored.modules)) {
+			const source =
+				typeof module === 'string'
+					? module
+					: ((module as { js?: string }).js ?? null)
+			if (source == null) {
+				modules[path] = module
+				continue
+			}
+			let older = source
+			for (const [urlPath, read] of Object.entries(globalReads)) {
+				const bound = `__kodyBoundFetch("https://upstream.example.com${urlPath}"`
+				if (!older.includes(bound)) continue
+				older = older.replace(
+					bound,
+					`${read}("https://upstream.example.com${urlPath}"`,
+				)
+				restoredReads += 1
+			}
+			modules[path] =
+				typeof module === 'string'
+					? older
+					: { ...(module as Record<string, unknown>), js: older }
+		}
+		await kv.put(
+			row.kv_key,
+			JSON.stringify({ ...stored, modules, packageBindingRewrite: 1 }),
+		)
+	}
+	return restoredReads
+}
+
+async function storedBindingMarkers(sourceId: string) {
+	const rows = await env.APP_DB.prepare(
+		`SELECT kv_key FROM published_bundle_artifacts WHERE source_id = ?1`,
+	)
+		.bind(sourceId)
+		.all<{ kv_key: string }>()
+	const kv = (env as Env & { BUNDLE_ARTIFACTS_KV: KVNamespace })
+		.BUNDLE_ARTIFACTS_KV
+	const markers: Array<number | null> = []
+	for (const row of rows.results) {
+		const stored = (await kv.get(row.kv_key, 'json')) as {
+			packageBindingRewrite?: number
+		}
+		markers.push(stored.packageBindingRewrite ?? null)
+	}
+	return markers
+}
+
+async function publishListedPackage(input: {
+	userId: string
+	name: string
+	kodyId: string
+	source: string
+	dependencies?: Record<string, string>
+}) {
+	const published = await publishForkedPackage({
+		userId: input.userId,
+		name: input.name,
+		kodyId: input.kodyId,
+		sourceFiles: {
+			'package.json': manifest(
+				input.name,
+				{
+					id: input.kodyId,
+					description: 'Uses the locked credential',
+					...(input.dependencies ? { dependencies: input.dependencies } : {}),
+				},
+				{ exports: { './call': './src/call.ts' } },
+			),
+			'src/call.ts': input.source,
+		},
+		exports: [{ artifactName: './call', entryPoint: 'src/call.ts' }],
+	})
+	await setSecretAllowedPackages({
+		env,
+		userId: ownerIdFromStored(input.userId),
+		scope: 'user',
+		name: 'locked',
+		allowedPackages: [published.packageId],
+		storageContext: null,
+		audit: null,
+	})
+	return published
+}
+
+test(
+	'a listed package stored as an older bundle keeps its own global-object fetch reads, and a sibling in the same run is refused',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupLocked()
+		const older = await publishListedPackage({
+			userId,
+			name: '@kentcdodds/older-a',
+			kodyId: 'older-a',
+			source: `export default async function call() {
+	const viaGlobal = await globalThis.fetch('https://upstream.example.com/older/global', ${lockedHeaders})
+	const viaSelf = await self.fetch('https://upstream.example.com/older/self', ${lockedHeaders})
+	const viaName = await fetch('https://upstream.example.com/older/name', ${lockedHeaders})
+	return [viaGlobal.status, viaSelf.status, viaName.status]
+}`,
+		})
+		expect(
+			await storeAsOlderBundle(older.sourceId, {
+				'/older/global': 'globalThis.fetch',
+				'/older/self': 'self.fetch',
+			}),
+		).toBe(2)
+		await publishImported(
+			userId,
+			`export default async function run() {
+	const shared = globalThis
+	return await ${attempt('shared.fetch', '/via/sibling')}
+}`,
+		)
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import call from 'kody:@kentcdodds/older-a/call'
+import run from 'kody:@kentcdodds/imported-b/run'
+export default async function main() {
+	return { listed: await call(), sibling: await run() }
+}`,
+		})
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual({ listed: [200, 200, 200], sibling: refused })
+		expect(pathsCarrying(seen, LOCKED).sort()).toEqual([
+			'GET /older/global',
+			'GET /older/name',
+			'GET /older/self',
+		])
+		expect(await refusalRows(userId)).toHaveLength(1)
+		const logged = await env.APP_DB.prepare(
+			`SELECT kind, surface, pattern, bound_package_id, observations
+			 FROM credential_attribution_log WHERE owner_id = ?`,
+		)
+			.bind(userId)
+			.all()
+		expect(logged.results).toEqual([
+			{
+				kind: 'listed_package_unbound',
+				surface: 'hosted',
+				pattern: 'shared_fetch',
+				bound_package_id: older.packageId,
+				observations: 1,
+			},
+		])
+		// The stored bundle is bound when it is read, not written back.
+		expect(await storedBindingMarkers(older.sourceId)).toEqual([1])
+	},
+)
+
+test(
+	'a listed package stored as an older bundle that inlines another package is built again from source and keeps its own global-object fetch reads',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupLocked()
+		await publishImported(
+			userId,
+			`export default function run() { return 'helper' }`,
+		)
+		const older = await publishListedPackage({
+			userId,
+			name: '@kentcdodds/older-c',
+			kodyId: 'older-c',
+			dependencies: { '@kentcdodds/imported-b': '*' },
+			source: `import run from 'kody:@kentcdodds/imported-b/run'
+export default async function call() {
+	const viaGlobal = await globalThis.fetch('https://upstream.example.com/inlined/global', ${lockedHeaders})
+	return [run(), viaGlobal.status]
+}`,
+		})
+		expect(
+			await storeAsOlderBundle(older.sourceId, {
+				'/inlined/global': 'globalThis.fetch',
+			}),
+		).toBe(1)
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import call from 'kody:@kentcdodds/older-c/call'
+export default async function main() { return await call() }`,
+		})
+		expect(run.error).toBeUndefined()
+		expect(run.result).toEqual(['helper', 200])
+		expect(pathsCarrying(seen, LOCKED)).toEqual(['GET /inlined/global'])
+	},
+)
