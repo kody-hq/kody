@@ -857,7 +857,7 @@ export async function forEachScannableModule(
 		path: string,
 		parsed: AstNode | null,
 		constants: ReadonlyMap<string, string>,
-	) => void,
+	) => void | Promise<void>,
 	options: { sorted?: boolean } = {},
 ) {
 	const index = await scannableModuleIndex(files)
@@ -865,7 +865,11 @@ export async function forEachScannableModule(
 		? [...index.modulePaths].sort()
 		: index.modulePaths
 	for (const path of paths) {
-		visit(path, await parseModule(files[path]!), index.readConstants(path))
+		await visit(
+			path,
+			await parseModule(files[path]!),
+			index.readConstants(path),
+		)
 	}
 }
 
