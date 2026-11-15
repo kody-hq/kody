@@ -41,6 +41,9 @@ export type FocusStop = {
 	onScreen: boolean
 }
 
+/** `truncated` is the stop limit when the tab order had not wrapped by then. */
+export type FocusSweep = { stops: FocusStop[]; truncated: number | null }
+
 /**
  * Tab through the page (or one container) the way a keyboard user would and
  * record every stop. A stop fails when nothing visibly changes while it has
@@ -52,7 +55,7 @@ export type FocusStop = {
 export async function sweepFocus(
 	page: Page,
 	options: { within?: string; maxStops?: number } = {},
-): Promise<FocusStop[]> {
+): Promise<FocusSweep> {
 	await page.evaluate((within) => {
 		const style = document.createElement('style')
 		style.dataset.uiVerify = ''
@@ -86,7 +89,14 @@ export async function sweepFocus(
 				}
 				state.__uiVerifyFocus ??= { pending: null, seen: new Set() }
 				const sweep = state.__uiVerifyFocus
-				if (last) (document.activeElement as HTMLElement | null)?.blur()
+				const element = document.activeElement as HTMLElement | null
+				const container = within ? document.querySelector(within) : null
+				const wrapped =
+					!element ||
+					element === document.body ||
+					sweep.seen.has(element) ||
+					(container !== null && !container.contains(element))
+				if (last) element?.blur()
 				// The indicator may sit on a wrapper (focus-within) or on a
 				// descendant such as the active option of an
 				// aria-activedescendant listbox, so read a little of both.
@@ -119,18 +129,10 @@ export async function sweepFocus(
 						}
 					: null
 				sweep.pending = null
-				const element = document.activeElement as HTMLElement | null
-				const container = within ? document.querySelector(within) : null
-				const done =
-					last ||
-					!element ||
-					element === document.body ||
-					sweep.seen.has(element) ||
-					(container !== null && !container.contains(element))
-				if (done) {
+				if (last || wrapped) {
 					delete state.__uiVerifyFocus
 					document.querySelector('style[data-ui-verify]')?.remove()
-					return { finished, done: true }
+					return { finished, done: true, truncated: !wrapped }
 				}
 				sweep.seen.add(element)
 				if (element.tagName !== 'IFRAME') {
@@ -153,18 +155,18 @@ export async function sweepFocus(
 						description: `<${element.tagName.toLowerCase()}${role ? ` role="${role}"` : ''}${testId ? ` data-testid="${testId}"` : ''}> ${name ? `"${name}"` : '(no text)'}`,
 					}
 				}
-				return { finished, done: false }
+				return { finished, done: false, truncated: false }
 			},
 			{ within: options.within ?? null, last: index === maxStops },
 		)
 		if (step.finished) stops.push(step.finished)
-		if (step.done) break
+		if (step.done) return { stops, truncated: step.truncated ? maxStops : null }
 	}
-	return stops
+	return { stops, truncated: null }
 }
 
-export function describeFocusProblems(stops: FocusStop[]) {
-	return stops.flatMap((stop) => {
+export function describeFocusProblems({ stops, truncated }: FocusSweep) {
+	const problems = stops.flatMap((stop) => {
 		const problems: string[] = []
 		if (!stop.hasIndicator)
 			problems.push(`${stop.description}: no visible focus indicator`)
@@ -172,4 +174,9 @@ export function describeFocusProblems(stops: FocusStop[]) {
 			problems.push(`${stop.description}: receives focus but has no size`)
 		return problems
 	})
+	if (truncated !== null)
+		problems.push(
+			`stopped after ${truncated} focus stops before the tab order wrapped; the rest of the page was not checked. Pass a higher maxStops to sweepFocus for this target.`,
+		)
+	return problems
 }
