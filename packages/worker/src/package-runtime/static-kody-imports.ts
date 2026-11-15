@@ -45,27 +45,26 @@ export async function collectStaticKodyPackageImportsFromFiles(
 		includeTypeOnly?: boolean
 	},
 ): Promise<Array<StaticKodyPackageImport>> {
-	const perFile = await Promise.all(
-		Object.entries(files)
-			.filter(
-				([filePath]) =>
-					options?.includeTypeDeclarations === true ||
-					!isTypeDeclarationFilePath(filePath),
-			)
-			.map(([filePath, source]) =>
-				collectStaticKodyPackageImportsFromSource({
-					filePath,
-					source,
-					includeTypeOnly: options?.includeTypeOnly,
-				}),
-			),
-	)
-	return perFile
-		.flat()
-		.sort(
-			(left, right) =>
-				left.packageName.localeCompare(right.packageName) ||
-				left.exportName.localeCompare(right.exportName) ||
-				left.filePath.localeCompare(right.filePath),
+	const imports: Array<StaticKodyPackageImport> = []
+	for (const [filePath, source] of Object.entries(files)) {
+		if (
+			options?.includeTypeDeclarations !== true &&
+			isTypeDeclarationFilePath(filePath)
+		) {
+			continue
+		}
+		imports.push(
+			...(await collectStaticKodyPackageImportsFromSource({
+				filePath,
+				source,
+				includeTypeOnly: options?.includeTypeOnly,
+			})),
 		)
+	}
+	return imports.sort(
+		(left, right) =>
+			left.packageName.localeCompare(right.packageName) ||
+			left.exportName.localeCompare(right.exportName) ||
+			left.filePath.localeCompare(right.filePath),
+	)
 }
