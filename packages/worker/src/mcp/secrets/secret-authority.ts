@@ -70,7 +70,10 @@ export function getSecretAuthorityScope() {
  * cannot be attributed to one package's code. Package-bound channels clear
  * the mark. Host code that acts for a package outside run code never sets it.
  */
-export type UnboundSandboxCall = { surface: 'hosted' | 'app' }
+export type UnboundSandboxCall = {
+	surface: 'hosted' | 'app'
+	pattern: 'shared_fetch' | 'shared_capability'
+}
 
 const unboundSandboxCallStorage = new AsyncLocalStorage<{
 	call: UnboundSandboxCall | null

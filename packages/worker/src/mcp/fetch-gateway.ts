@@ -340,7 +340,10 @@ export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 			const unboundCall: UnboundSandboxCall | null =
 				props?.boundPackageId?.trim()
 					? null
-					: { surface: props?.packageAppAuthority ? 'app' : 'hosted' }
+					: {
+							surface: props?.packageAppAuthority ? 'app' : 'hosted',
+							pattern: 'shared_fetch',
+						}
 			return withoutForgedGatewayErrorHeader(
 				await runAsSandboxCall(unboundCall, () =>
 					executeGatewayFetch({

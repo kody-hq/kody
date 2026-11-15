@@ -9,12 +9,16 @@ import { waitUntil } from 'cloudflare:workers'
  * quickly.
  */
 export type UnboundUseSurface = 'hosted' | 'app'
+/** The shared channel the call arrived on. */
+export type UnboundUsePattern = 'shared_fetch' | 'shared_capability'
 export type UnboundUseKind = 'ad_hoc' | 'run_package_unbound'
 
 export type UnboundUseRefusal = {
 	ownerId: string
 	credentialId: string
+	credentialName: string
 	surface: UnboundUseSurface
+	pattern: UnboundUsePattern
 	/** The run's own package, or null for ad hoc code. */
 	runPackageId: string | null
 }
@@ -27,7 +31,9 @@ type PendingRefusal = {
 	credentialId: string
 	kind: UnboundUseKind
 	surface: UnboundUseSurface
+	pattern: UnboundUsePattern
 	runPackageId: string
+	credentialName: string
 	firstSeenAt: string
 	lastSeenAt: string
 	observations: number
@@ -40,10 +46,11 @@ function buildUpsert(db: D1Database, row: PendingRefusal) {
 	return db
 		.prepare(
 			`INSERT INTO credential_unbound_use_refusals (
-				day, owner_id, credential_id, kind, surface, run_package_id,
-				first_seen_at, last_seen_at, observations
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(day, owner_id, credential_id, kind, surface, run_package_id) DO UPDATE SET
+				day, owner_id, credential_id, kind, surface, pattern, run_package_id,
+				credential_name, first_seen_at, last_seen_at, observations
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(day, owner_id, credential_id, kind, surface, pattern, run_package_id) DO UPDATE SET
+				credential_name = excluded.credential_name,
 				first_seen_at = min(credential_unbound_use_refusals.first_seen_at, excluded.first_seen_at),
 				last_seen_at = max(credential_unbound_use_refusals.last_seen_at, excluded.last_seen_at),
 				observations = credential_unbound_use_refusals.observations + excluded.observations`,
@@ -54,7 +61,9 @@ function buildUpsert(db: D1Database, row: PendingRefusal) {
 			row.credentialId,
 			row.kind,
 			row.surface,
+			row.pattern,
 			row.runPackageId,
+			row.credentialName,
 			row.firstSeenAt,
 			row.lastSeenAt,
 			row.observations,
@@ -93,12 +102,18 @@ export function scheduleUnboundUseRefusal(input: {
 		if (!db || !ownerId || !credentialId) return
 		const runPackageId = input.refusal.runPackageId?.trim() ?? ''
 		const kind: UnboundUseKind = runPackageId ? 'run_package_unbound' : 'ad_hoc'
-		const { surface } = input.refusal
+		const { surface, pattern } = input.refusal
 		const now = input.now ?? new Date().toISOString()
 		const day = now.slice(0, 10)
-		const key = [day, ownerId, credentialId, kind, surface, runPackageId].join(
-			'\0',
-		)
+		const key = [
+			day,
+			ownerId,
+			credentialId,
+			kind,
+			surface,
+			pattern,
+			runPackageId,
+		].join('\0')
 		let pending = pendingByDb.get(db)
 		if (!pending) {
 			pending = new Map()
@@ -116,7 +131,9 @@ export function scheduleUnboundUseRefusal(input: {
 			credentialId,
 			kind,
 			surface,
+			pattern,
 			runPackageId,
+			credentialName: input.refusal.credentialName,
 			firstSeenAt: now,
 			lastSeenAt: now,
 			observations: 1,

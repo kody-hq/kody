@@ -1561,7 +1561,9 @@ export function createToolDispatchers(
 						// set and resolveCallerSecretAuthority fails closed.
 						const withStamp = () =>
 							runAsSandboxCall(
-								requestedPackageId ? null : { surface: 'hosted' },
+								requestedPackageId
+									? null
+									: { surface: 'hosted', pattern: 'shared_capability' },
 								() => runWithCurrentSecretAuthority(requestedPackageId, invoke),
 							)
 						return capturedGrantedPackageIds

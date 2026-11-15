@@ -616,7 +616,7 @@ async function refusalRows(userId: string) {
 		{ timeout: 10_000, interval: 250 },
 	)
 	const { results } = await env.APP_DB.prepare(
-		`SELECT kind, surface, run_package_id, observations
+		`SELECT kind, surface, pattern, credential_name, run_package_id, observations
 		 FROM credential_unbound_use_refusals WHERE owner_id = ?
 		 ORDER BY kind, surface`,
 	)
@@ -624,6 +624,8 @@ async function refusalRows(userId: string) {
 		.all<{
 			kind: string
 			surface: string
+			pattern: string
+			credential_name: string
 			run_package_id: string
 			observations: number
 		}>()
@@ -654,6 +656,8 @@ test(
 			{
 				kind: 'ad_hoc',
 				surface: 'hosted',
+				pattern: 'shared_fetch',
+				credential_name: 'locked',
 				run_package_id: '',
 				observations: 2,
 			},

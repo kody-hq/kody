@@ -2353,7 +2353,9 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			capability.handler(input.args, { env: this.env, callerContext })
 		const grantedPackageIds = new Set(this.ctx.props.packageStorageGrantIds)
 		return await runAsSandboxCall(
-			boundPackageId?.trim() ? null : { surface: 'app' },
+			boundPackageId?.trim()
+				? null
+				: { surface: 'app', pattern: 'shared_capability' },
 			() =>
 				runWithSecretAuthorityScope(grantedPackageIds, () =>
 					runWithCurrentSecretAuthority(boundPackageId, invoke),

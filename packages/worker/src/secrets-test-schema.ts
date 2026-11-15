@@ -118,11 +118,13 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				credential_id TEXT NOT NULL,
 				kind TEXT NOT NULL,
 				surface TEXT NOT NULL,
+				pattern TEXT NOT NULL,
 				run_package_id TEXT NOT NULL DEFAULT '',
+				credential_name TEXT NOT NULL,
 				first_seen_at TEXT NOT NULL,
 				last_seen_at TEXT NOT NULL,
 				observations INTEGER NOT NULL DEFAULT 0,
-				PRIMARY KEY (day, owner_id, credential_id, kind, surface, run_package_id)
+				PRIMARY KEY (day, owner_id, credential_id, kind, surface, pattern, run_package_id)
 			)`,
 		)
 		.run()

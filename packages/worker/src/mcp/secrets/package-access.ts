@@ -243,7 +243,9 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 				refusal: {
 					ownerId: String(input.userId),
 					credentialId,
+					credentialName: input.secretName,
 					surface: unboundCall.surface,
+					pattern: unboundCall.pattern,
 					runPackageId: input.storageContext?.packageId ?? null,
 				},
 			})
