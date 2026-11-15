@@ -220,3 +220,22 @@ test('createStableDynamicWorkerId hashes a multi-megabyte module to the same id 
 	const expected = Buffer.from(digest).toString('base64url').slice(0, 43)
 	expect(await createStableDynamicWorkerId(input)).toBe(`kody-${expected}`)
 })
+
+test('createStableDynamicWorkerId hashes a hole in a sparse JSON array as null, like JSON.stringify', async () => {
+	const idFor = (json: Array<unknown>) =>
+		createStableDynamicWorkerId({
+			userId: 'user-1',
+			storageContext: null,
+			workerOptions: {
+				compatibilityDate: '2026-01-01',
+				compatibilityFlags: ['nodejs_compat'],
+				mainModule: 'executor.js',
+				modules: { 'executor.js': 'export default 1', 'a.json': { json } },
+			},
+		})
+	const holes: Array<unknown> = []
+	holes.length = 2
+	const sparse = await idFor(holes)
+	expect(sparse).toBe(await idFor([null, null]))
+	expect(sparse).not.toBe(await idFor([]))
+})

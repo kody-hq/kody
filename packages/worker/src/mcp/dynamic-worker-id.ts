@@ -127,10 +127,11 @@ function writeJson(write: JsonWriter, value: unknown) {
 	}
 	if (Array.isArray(value)) {
 		write('[')
-		value.forEach((entry, index) => {
+		for (let index = 0; index < value.length; index++) {
 			if (index > 0) write(',')
-			writeJson(write, entry)
-		})
+			// Like JSON.stringify, a hole in a sparse array is written as null.
+			writeJson(write, value[index] ?? null)
+		}
 		write(']')
 		return
 	}
