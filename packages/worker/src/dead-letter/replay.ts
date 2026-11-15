@@ -27,7 +27,9 @@ export async function sendDeadLetterBodyToSourceQueue(input: {
 					`Queue producer binding ${replay.binding} is not bound in this environment.`,
 				)
 			}
-			await producer.send(input.body, { contentType: 'json' })
+			await producer.send(withoutConsumerBookkeeping(input.body), {
+				contentType: 'json',
+			})
 			return
 		}
 		case 'scheduled-dispatch': {
@@ -47,4 +49,21 @@ export async function sendDeadLetterBodyToSourceQueue(input: {
 			throw new Error(`Unhandled replay target: ${String(unhandled)}`)
 		}
 	}
+}
+
+/**
+ * Drops the counts a consumer adds when it puts a message back behind its
+ * owner's cap (package events, webhooks). A replay starts with fresh retries,
+ * so a count left over from before the dead-letter must not come with it.
+ */
+function withoutConsumerBookkeeping(body: unknown) {
+	if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+		return body
+	}
+	const {
+		priorAttempts: _priorAttempts,
+		deferrals: _deferrals,
+		...rest
+	} = body as Record<string, unknown>
+	return rest
 }
