@@ -3,7 +3,6 @@ import {
 	shouldSuppressStaleRouteChunkFollowOnError,
 } from '#client/reload-on-stale-route-chunk.ts'
 import { isDeploySkewRecoveryError } from '#client/reload-on-deploy-skew.ts'
-import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import {
 	isBrowserAbortError,
 	isBrowserInjectedGlobalNoiseError,
@@ -16,7 +15,6 @@ import {
 	isTanStackRouterNotFoundError,
 	isTanStackServerFnFetchNetworkError,
 	isThirdPartyProxyBlockPageError,
-	isUnknownStartReleaseError,
 } from '#client/sentry-browser-filters.ts'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 import {
@@ -84,7 +82,6 @@ function shouldIgnoreBufferedError(error: unknown) {
 		isBrowserInjectedGlobalNoiseError(error) ||
 		isMetaMaskWalletNoAccountError(error) ||
 		isChromeExtensionMessageChannelDisconnectedError(error) ||
-		isUnknownStartReleaseError(error) ||
 		isDeploySkewRecoveryError(error) ||
 		isTanStackServerFnFetchNetworkError(error) ||
 		isThirdPartyProxyBlockPageError(error) ||
@@ -98,7 +95,6 @@ function shouldIgnoreBufferedError(error: unknown) {
 
 function enqueueBufferedError(error: unknown, context?: ClientErrorContext) {
 	if (!buffering || captureImpl) return
-	reloadOnUnknownStartRelease(error)
 	// First stale-chunk miss reloads and is expected. A later miss (flag
 	// already set) falls through so a genuinely missing chunk is reported.
 	if (reloadOnStaleRouteChunk(error)) return
@@ -221,9 +217,6 @@ export function captureClientException(
 	error: unknown,
 	context?: ClientErrorContext,
 ) {
-	// Stale Start release after deploy (KODY-9E): recover with one hard reload
-	// before dropping the event from Sentry (handled createServerFn path).
-	reloadOnUnknownStartRelease(error)
 	// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y): skip
 	// Sentry only when this call triggered the one-shot reload.
 	if (reloadOnStaleRouteChunk(error)) return
