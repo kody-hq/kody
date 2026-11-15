@@ -2,10 +2,10 @@ import { expect, test } from 'vitest'
 import { refreshKodyRuntimeModules } from './runtime-source-modules.ts'
 import { materializePublishedArtifactModules } from './module-graph-artifacts.ts'
 
-test('compose artifact then canonical refresh leaves one full runtime', () => {
+test('compose artifact then canonical refresh leaves one full runtime', async () => {
 	const prefix = 'artifacts/pkg/.__published__/deadbeef'
 	const artRuntime = `${prefix}/.__kody_virtual__/runtime.js`
-	const materialized = materializePublishedArtifactModules({
+	const materialized = await materializePublishedArtifactModules({
 		artifactPrefix: prefix,
 		modules: {
 			'.__kody_virtual__/runtime.js': 'stale',
@@ -15,7 +15,7 @@ test('compose artifact then canonical refresh leaves one full runtime', () => {
 	})
 	expect(materialized[artRuntime]).toContain('__kodyCreateRuntimeObjectProxy')
 
-	const composed = refreshKodyRuntimeModules({
+	const composed = await refreshKodyRuntimeModules({
 		'.__kody_virtual__/runtime.js': 'stale-canonical',
 		'entry.js': `import wake from "./${prefix}/wake.js"; export default async () => wake()`,
 		...materialized,

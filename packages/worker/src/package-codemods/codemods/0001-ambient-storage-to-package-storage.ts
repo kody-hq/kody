@@ -91,9 +91,9 @@ function isTypeDeclarationFilePath(path: string) {
 	)
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -434,26 +434,26 @@ function packageDeclaresNonExportExecutionSurface(
 	return { blocked: false as const }
 }
 
-function listParseFailureCandidates(files: Record<string, string>) {
+async function listParseFailureCandidates(files: Record<string, string>) {
 	const paths: Array<string> = []
 	for (const [path, source] of Object.entries(files)) {
 		if (!scannableModuleFilePattern.test(path)) continue
 		if (isTypeDeclarationFilePath(path)) continue
 		if (!source.includes('kody:runtime') || !source.includes('storage'))
 			continue
-		if (parseProgram(source) == null) {
+		if ((await parseProgram(source)) == null) {
 			paths.push(path)
 		}
 	}
 	return paths.sort((left, right) => left.localeCompare(right))
 }
 
-function transformSourceFile(source: string): {
+async function transformSourceFile(source: string): Promise<{
 	content: string
 	changed: boolean
 	needsManual: string | null
-} {
-	const parsed = parseProgram(source)
+}> {
+	const parsed = await parseProgram(source)
 	if (!parsed) {
 		return {
 			content: source,
@@ -538,7 +538,7 @@ function transformSourceFile(source: string): {
 		})),
 	)
 
-	const reparsedAfterUses = parseProgram(nextSource)
+	const reparsedAfterUses = await parseProgram(nextSource)
 	if (!reparsedAfterUses) {
 		return {
 			content: source,
@@ -579,7 +579,7 @@ function transformSourceFile(source: string): {
 	}
 	nextSource = withImport
 
-	const verified = parseProgram(nextSource)
+	const verified = await parseProgram(nextSource)
 	if (!verified) {
 		return {
 			content: source,
@@ -607,15 +607,16 @@ function transformSourceFile(source: string): {
 	return { content: nextSource, changed: true, needsManual: null }
 }
 
-function detectAmbientStorage(
+async function detectAmbientStorage(
 	files: Record<string, string>,
-): Array<PackageCodemodFinding> {
-	const findings: Array<PackageCodemodFinding> =
-		collectAmbientStorageImportFiles(files).map((path) => ({
-			path,
-			message: ambientStorageDetectMessage,
-		}))
-	for (const path of listParseFailureCandidates(files)) {
+): Promise<Array<PackageCodemodFinding>> {
+	const findings: Array<PackageCodemodFinding> = (
+		await collectAmbientStorageImportFiles(files)
+	).map((path) => ({
+		path,
+		message: ambientStorageDetectMessage,
+	}))
+	for (const path of await listParseFailureCandidates(files)) {
 		if (findings.some((finding) => finding.path === path)) continue
 		findings.push({ path, message: manualParseFailureMessage })
 	}
@@ -625,11 +626,11 @@ function detectAmbientStorage(
 	return findings
 }
 
-function transformAmbientStorage(
+async function transformAmbientStorage(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
-	const ambientPaths = collectAmbientStorageImportFiles(files)
-	const parseFailurePaths = listParseFailureCandidates(files)
+): Promise<PackageCodemodTransformResult> {
+	const ambientPaths = await collectAmbientStorageImportFiles(files)
+	const parseFailurePaths = await listParseFailureCandidates(files)
 	const candidatePaths = [
 		...new Set([...ambientPaths, ...parseFailurePaths]),
 	].sort((left, right) => left.localeCompare(right))
@@ -662,7 +663,7 @@ function transformAmbientStorage(
 	for (const path of candidatePaths) {
 		const source = files[path]
 		if (typeof source !== 'string') continue
-		const result = transformSourceFile(source)
+		const result = await transformSourceFile(source)
 		if (result.needsManual) {
 			needsManual.push({ path, message: result.needsManual })
 			continue

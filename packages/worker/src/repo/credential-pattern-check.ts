@@ -123,10 +123,10 @@ function credentialTypeHintFor(
 	}
 }
 
-function credentialTypeHintLines(sourceFiles: Record<string, string>) {
-	let scan: ReturnType<typeof scanPackageCredentials>
+async function credentialTypeHintLines(sourceFiles: Record<string, string>) {
+	let scan: Awaited<ReturnType<typeof scanPackageCredentials>>
 	try {
-		scan = scanPackageCredentials({
+		scan = await scanPackageCredentials({
 			files: sourceFiles,
 			slots: readDeclaredCredentialSlots(sourceFiles['package.json']),
 		})
@@ -247,11 +247,11 @@ export type CredentialPatternCheckResult = {
  * server-runtime entry graphs. Auto-writes missing `kody.credentials` keys
  * from the stamp and fails when any stamped key lacks a description.
  */
-export function buildCredentialPatternCheck(
+export async function buildCredentialPatternCheck(
 	sourceFiles: Record<string, string>,
 	options: { secretProviders?: ResolvedSecretProviderSlots } = {},
-): CredentialPatternCheckResult {
-	const preliminary = scanCredentialStamp(sourceFiles, options)
+): Promise<CredentialPatternCheckResult> {
+	const preliminary = await scanCredentialStamp(sourceFiles, options)
 	const merged = mergeCredentialStampIntoManifestFiles(
 		sourceFiles,
 		preliminary.keys,
@@ -262,9 +262,9 @@ export function buildCredentialPatternCheck(
 	const stamp =
 		merged.addedKeys.length === 0
 			? preliminary
-			: scanCredentialStamp(merged.files, options)
+			: await scanCredentialStamp(merged.files, options)
 	const patternsByPath = new Map<string, Array<string>>()
-	for (const finding of detectLegacyCredentialPatternsCodemod.detect(
+	for (const finding of await detectLegacyCredentialPatternsCodemod.detect(
 		merged.files,
 		{ packageName: readPackageName(merged.files) },
 	)) {
@@ -300,7 +300,7 @@ export function buildCredentialPatternCheck(
 				...staleNote,
 				...(mountNote ? [mountNote] : []),
 				credentialStampConversionFixGuidance,
-				...credentialTypeHintLines(merged.files),
+				...(await credentialTypeHintLines(merged.files)),
 			].join('\n'),
 			sourceFiles: merged.files,
 			stampKeys: stamp.keys,
@@ -357,7 +357,7 @@ export function buildCredentialPatternCheck(
 				: []),
 			...staleNote,
 			...(mountNote ? [mountNote] : []),
-			...credentialTypeHintLines(merged.files),
+			...(await credentialTypeHintLines(merged.files)),
 		]
 			.filter((line): line is string => line != null && line.length > 0)
 			.join('\n'),
@@ -385,7 +385,7 @@ function readPackageName(sourceFiles: Record<string, string>) {
  * The findings for a published file set, or null when there are none. Repo
  * paths are scoped to `sourceRoot` the way `runRepoChecks` reads them.
  */
-export function credentialPatternNoticeForFiles(
+export async function credentialPatternNoticeForFiles(
 	files: Record<string, string>,
 	sourceRoot = '',
 ) {
@@ -397,7 +397,9 @@ export function credentialPatternNoticeForFiles(
 					.map(([path, content]) => [path.slice(root.length + 1), content]),
 			)
 		: files
-	return credentialPatternFindingsNotice([buildCredentialPatternCheck(scoped)])
+	return credentialPatternFindingsNotice([
+		await buildCredentialPatternCheck(scoped),
+	])
 }
 
 /** The credentials check message when it found something, for publish output. */

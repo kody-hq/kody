@@ -486,7 +486,7 @@ export function createInlinePublishHeavyWork(input: {
 				}
 			}
 			const patternNotice = noticesInput.includePatternNotice
-				? credentialPatternNoticeForFiles(
+				? await credentialPatternNoticeForFiles(
 						publishedFiles,
 						input.publishedFilesSourceRoot ?? source.source_root,
 					)

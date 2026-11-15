@@ -120,12 +120,12 @@ function remapConvertFilesToSnapshot(
 	return next
 }
 
-function detectConvertCredentialStamps(
+async function detectConvertCredentialStamps(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const located = locatePackage(files, context)
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		files: located.files,
 		packageName: context.packageName,
 	})
@@ -147,12 +147,12 @@ function detectConvertCredentialStamps(
 	return []
 }
 
-function transformConvertCredentialStamps(
+async function transformConvertCredentialStamps(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	const located = locatePackage(files, context)
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		files: located.files,
 		packageName: context.packageName,
 	})

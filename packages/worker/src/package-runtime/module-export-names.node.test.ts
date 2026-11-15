@@ -4,9 +4,9 @@ import {
 	moduleSourceDeclaresDefaultExport,
 } from './module-export-names.ts'
 
-test('collects value exports across declarations, re-exports, and artifact JS', () => {
+test('collects value exports across declarations, re-exports, and artifact JS', async () => {
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: {
 				'pkg/index.ts': [
 					'export function add(left: number, right: number) { return left + right }',
@@ -46,7 +46,7 @@ test('collects value exports across declarations, re-exports, and artifact JS', 
 
 	// Shape of esbuild output for a published importable-module artifact.
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: {
 				'artifact/index.js': [
 					'var entry_default = async function main() {}',
@@ -59,9 +59,9 @@ test('collects value exports across declarations, re-exports, and artifact JS', 
 	).toEqual(['listItems'])
 })
 
-test('follows export-star chains and tolerates cycles and parse failures', () => {
+test('follows export-star chains and tolerates cycles and parse failures', async () => {
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: {
 				'pkg/index.ts': [
 					"export * from './math.ts'",
@@ -81,7 +81,7 @@ test('follows export-star chains and tolerates cycles and parse failures', () =>
 	).toEqual(['extensionless', 'helpers', 'local', 'multiply', 'nestedValue'])
 
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: {
 				'pkg/a.ts': [
 					"export * from './b.ts'",
@@ -96,20 +96,20 @@ test('follows export-star chains and tolerates cycles and parse failures', () =>
 	).toEqual(['fromB'])
 
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: { 'pkg/broken.ts': 'export const = not parseable {{{' },
 			modulePath: 'pkg/broken.ts',
 		}),
 	).toEqual([])
 	expect(
-		collectModuleExportNames({
+		await collectModuleExportNames({
 			files: {},
 			modulePath: 'pkg/missing.ts',
 		}),
 	).toEqual([])
 })
 
-test('detects runtime default exports and leaves unparseable sources to the bundler', () => {
+test('detects runtime default exports and leaves unparseable sources to the bundler', async () => {
 	for (const source of [
 		'export default function run() {}',
 		'export default async () => ({ ok: true })',
@@ -125,7 +125,7 @@ test('detects runtime default exports and leaves unparseable sources to the bund
 	]) {
 		expect({
 			source,
-			declaresDefault: moduleSourceDeclaresDefaultExport(source),
+			declaresDefault: await moduleSourceDeclaresDefaultExport(source),
 		}).toEqual({ source, declaresDefault: true })
 	}
 	for (const source of [
@@ -143,10 +143,10 @@ test('detects runtime default exports and leaves unparseable sources to the bund
 	]) {
 		expect({
 			source,
-			declaresDefault: moduleSourceDeclaresDefaultExport(source),
+			declaresDefault: await moduleSourceDeclaresDefaultExport(source),
 		}).toEqual({ source, declaresDefault: false })
 	}
 	expect(
-		moduleSourceDeclaresDefaultExport('export const = not parseable {{{'),
+		await moduleSourceDeclaresDefaultExport('export const = not parseable {{{'),
 	).toBeNull()
 })

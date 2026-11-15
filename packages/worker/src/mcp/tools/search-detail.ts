@@ -1,3 +1,5 @@
+import { loadModuleSourceParser } from '#worker/module-source.ts'
+import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -164,6 +166,10 @@ export async function resolveEntityDetail(input: {
 			record,
 			manifest: loaded.manifest,
 			files: loaded.files,
+			exports: buildPackageSearchProjection(loaded.manifest, {
+				files: loaded.files,
+				parser: await loadModuleSourceParser(),
+			}).exports,
 			publishedCommit: loaded.source?.published_commit ?? null,
 			baseUrl: input.callerContext.baseUrl,
 			ownerUsername,

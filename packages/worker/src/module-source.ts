@@ -1,4 +1,32 @@
-import { parse, type ParserPlugin } from '@babel/parser'
+/**
+ * `@babel/parser` loads from the deferred
+ * `node_modules/.kody-generated/module-source-parser.mjs` additional module so
+ * it stays off the platform and runtime startup entries. The specifier must
+ * stay relative to `packages/worker/src` (see `codemode-normalize-load.ts`).
+ * Type the payload with `import(...)` type queries only; esbuild walks a
+ * top-level `import type` edge.
+ */
+type BabelParse = typeof import('@babel/parser').parse
+type ParserPlugin = import('@babel/parser').ParserPlugin
+
+let parserMemo: Promise<ModuleSourceParser> | null = null
+
+/**
+ * The one async boundary for parsing: loads `@babel/parser` once and returns
+ * sync parse functions. Code that parses many files in a sync walk awaits
+ * this once and passes the parser down.
+ */
+export function loadModuleSourceParser(): Promise<ModuleSourceParser> {
+	parserMemo ??=
+		import('./node_modules/.kody-generated/module-source-parser.mjs').then(
+			(module) => createModuleSourceParser(module.parse),
+			(error: unknown) => {
+				parserMemo = null
+				throw error
+			},
+		)
+	return parserMemo
+}
 
 export type ModuleAstNode = {
 	type: string
@@ -39,15 +67,11 @@ export function moduleSourceParserPlugins(filePath?: string | null) {
 	}
 }
 
-export function parseModuleSource(
+export async function parseModuleSource(
 	source: string,
 	options?: { filePath?: string | null },
 ) {
-	return parse(source, {
-		sourceType: 'module',
-		plugins: moduleSourceParserPlugins(options?.filePath),
-		createImportExpressions: true,
-	})
+	return (await loadModuleSourceParser()).parseModuleSource(source, options)
 }
 
 export type ModuleSourceParseError = {
@@ -84,23 +108,44 @@ const fallbackParserPlugins: Array<ParserPlugin[]> = [
  * `<T>value` type assertions (a JSX parse error) still yields an AST, and with
  * decorators so decorated classes are scanned instead of skipped.
  */
-export function parseModuleSourceAllowingTypeAssertions(source: string) {
-	try {
-		return parseModuleSource(source)
-	} catch (error) {
-		for (const plugins of fallbackParserPlugins) {
-			try {
-				return parse(source, {
-					sourceType: 'module',
-					plugins,
-					createImportExpressions: true,
-				})
-			} catch {
-				// Try the next plugin set; rethrow the original error if none parse.
-			}
-		}
-		throw error
+export async function parseModuleSourceAllowingTypeAssertions(source: string) {
+	return (
+		await loadModuleSourceParser()
+	).parseModuleSourceAllowingTypeAssertions(source)
+}
+
+export type ModuleSourceParser = ReturnType<typeof createModuleSourceParser>
+
+function createModuleSourceParser(parse: BabelParse) {
+	function parseModuleSource(
+		source: string,
+		options?: { filePath?: string | null },
+	) {
+		return parse(source, {
+			sourceType: 'module',
+			plugins: moduleSourceParserPlugins(options?.filePath),
+			createImportExpressions: true,
+		})
 	}
+	function parseModuleSourceAllowingTypeAssertions(source: string) {
+		try {
+			return parseModuleSource(source)
+		} catch (error) {
+			for (const plugins of fallbackParserPlugins) {
+				try {
+					return parse(source, {
+						sourceType: 'module',
+						plugins,
+						createImportExpressions: true,
+					})
+				} catch {
+					// Try the next plugin set; rethrow the original error if none parse.
+				}
+			}
+			throw error
+		}
+	}
+	return { parseModuleSource, parseModuleSourceAllowingTypeAssertions }
 }
 
 function getProgramBody(parsed: ModuleAstNode) {
@@ -118,11 +163,11 @@ function getNodeName(node: unknown) {
 	return null
 }
 
-export function hasTopLevelDefaultExport(source: string) {
+export async function hasTopLevelDefaultExport(source: string) {
 	if (!source) return false
 	try {
 		const body = getProgramBody(
-			parseModuleSource(source) as unknown as ModuleAstNode,
+			(await parseModuleSource(source)) as unknown as ModuleAstNode,
 		)
 		return body.some((statement) => {
 			if (statement.type === 'ExportDefaultDeclaration') return true

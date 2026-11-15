@@ -257,7 +257,7 @@ export async function persistUploadedPublishBuild(input: {
 			const linkedImports =
 				target.bundleKind === 'app-client'
 					? new Map<string, string>()
-					: collectLinkedPackageImports({
+					: await collectLinkedPackageImports({
 							sourceFiles: input.sourceFiles,
 							entryPoint: target.entryPoint,
 							importNodesCache,

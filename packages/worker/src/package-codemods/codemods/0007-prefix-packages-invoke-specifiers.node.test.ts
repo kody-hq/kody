@@ -19,11 +19,11 @@ function expectPrivacySafe(findings: Array<Finding>, secrets: Array<string>) {
 	expect(secrets.filter((secret) => serialized.includes(secret))).toEqual([])
 }
 
-function expectIdempotent(
+async function expectIdempotent(
 	files: Record<string, string>,
 	needsManual: Array<Finding> = [],
 ) {
-	expect(codemod.transform(files)).toEqual({
+	expect(await codemod.transform(files)).toEqual({
 		files,
 		changed: false,
 		changedPaths: [],
@@ -34,8 +34,8 @@ function expectIdempotent(
 const wrapperCount = (text: string | undefined) =>
 	text?.match(/kody-codemod-0007/g)?.length ?? 0
 
-test('0007 prefixes JS and TS literals while preserving options and export precedence', () => {
-	const result = codemod.transform({
+test('0007 prefixes JS and TS literals while preserving options and export precedence', async () => {
+	const result = await codemod.transform({
 		'index.ts': `
 const result = await packages.invoke('@owner/pkg/specifier-export', {
   exportName: computedExport,
@@ -69,10 +69,10 @@ await packages.invoke('kody:@owner/already/export', { params: {} })
 	expect(result.files['spaced.ts']).toBe(
 		"await packages.invoke('kody:@owner/package/export-name', { exportName: fallback, params: buildParams() })\n",
 	)
-	expectIdempotent(result.files)
+	await expectIdempotent(result.files)
 })
 
-test('0007 detects and rewrites comment-separated packages.invoke access', () => {
+test('0007 detects and rewrites comment-separated packages.invoke access', async () => {
 	const files = {
 		'before-operator.ts': `
 await packages /* block note */ .invoke('@owner/block/export')
@@ -86,11 +86,11 @@ await packages. // line note
 await packages /* optional note */ ?. /* property note */ invoke('@owner/optional/export')
 `,
 	}
-	const findings = codemod.detect(files)
+	const findings = await codemod.detect(files)
 	expect(paths(findings)).toEqual(['before-invoke.ts', 'before-operator.ts'])
 	expect(findings.every((finding) => finding.message.length > 0)).toBe(true)
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result.changedPaths).toEqual([
 		'before-invoke.ts',
 		'before-operator.ts',
@@ -111,7 +111,7 @@ await packages /* optional note */ ?. /* property note */ invoke('@owner/optiona
 	).toEqual([])
 })
 
-test('0007 rewrites only proven Kody packages bindings', () => {
+test('0007 rewrites only proven Kody packages bindings', async () => {
 	const untouched = {
 		'shadowed.ts': `
 await packages.invoke('@owner/file-level/export')
@@ -158,7 +158,7 @@ namespace packages {
 packages.invoke('@owner/namespace/export')
 `,
 	}
-	const result = codemod.transform({
+	const result = await codemod.transform({
 		'global.ts': "await packages.invoke('@owner/global/export')\n",
 		'kody-import.ts': `
 import { packages } from 'kody:runtime'
@@ -182,8 +182,8 @@ await packages.invoke('@owner/imported/export')
 	expectPrivacySafe(result.needsManual, ['private-owner'])
 })
 
-test('0007 rewrites parseable Markdown and MDX examples but never HTML comments', () => {
-	const result = codemod.transform({
+test('0007 rewrites parseable Markdown and MDX examples but never HTML comments', async () => {
+	const result = await codemod.transform({
 		'README.md': `
 \`\`\`ts
 await packages.invoke('@owner/pkg/export', { params: { value: 1 } })
@@ -242,7 +242,7 @@ await packages?.invoke('@owner/mdx/export', options)
 	).toEqual([])
 })
 
-test('0007 partially rewrites safe calls and emits fixed privacy-safe manual findings', () => {
+test('0007 partially rewrites safe calls and emits fixed privacy-safe manual findings', async () => {
 	const files = {
 		'ambiguous.ts': `
 await packages.invoke('@private-owner/private-package/export', options)
@@ -253,7 +253,7 @@ await packages.invoke(\`@\${owner}/pkg/export\`, options)
 		'object-only.ts':
 			"await packages.invoke({ kodyId: 'legacy', exportName: 'run' })\n",
 	}
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 
 	expect(result.changedPaths).toEqual(['ambiguous.ts'])
 	expect(result.files['ambiguous.ts']).toContain(
@@ -264,8 +264,8 @@ await packages.invoke(\`@\${owner}/pkg/export\`, options)
 	expectPrivacySafe(result.needsManual, ['private-owner', 'private-package'])
 })
 
-test('0007 detect orders rewritable and manual findings and omits prefixed calls', () => {
-	const findings = codemod.detect({
+test('0007 detect orders rewritable and manual findings and omits prefixed calls', async () => {
+	const findings = await codemod.detect({
 		'a-rewrite.ts':
 			"packages.invoke('@private-owner/private-package/export')\n",
 		'b-manual.ts': 'packages.invoke(privateSpecifier)\n',
@@ -279,9 +279,9 @@ test('0007 detect orders rewritable and manual findings and omits prefixed calls
 	expectPrivacySafe(findings, ['private-owner', 'private-package'])
 })
 
-test('0007 evaluates dynamic JS specifiers and sequence expressions once and preserves runtime rejection inputs', () => {
-	const run = (source: string) => {
-		const result = codemod.transform({ 'index.js': source })
+test('0007 evaluates dynamic JS specifiers and sequence expressions once and preserves runtime rejection inputs', async () => {
+	const run = async (source: string) => {
+		const result = await codemod.transform({ 'index.js': source })
 		const transformed = result.files['index.js'] ?? ''
 		const observed: Array<unknown> = []
 		const context: {
@@ -307,7 +307,7 @@ test('0007 evaluates dynamic JS specifiers and sequence expressions once and pre
 		}
 	}
 
-	const dynamic = run(`
+	const dynamic = await run(`
 let producerCalls = 0
 function produce(value) {
   producerCalls += 1
@@ -329,7 +329,7 @@ globalThis.codemodResult = { producerCalls }
 		42,
 	])
 
-	const sequence = run(`
+	const sequence = await run(`
 let initCalls = 0
 function init() {
   initCalls += 1
@@ -344,11 +344,11 @@ globalThis.codemodResult = { initCalls, result }
 		result: 'kody:@owner/pkg/run',
 	})
 	expect(sequence.observed).toEqual(['kody:@owner/pkg/run'])
-	expectIdempotent(sequence.result.files)
+	await expectIdempotent(sequence.result.files)
 })
 
-test('0007 normalizes every parseable dynamic expression and preserves the rest of each call', () => {
-	const result = codemod.transform({
+test('0007 normalizes every parseable dynamic expression and preserves the rest of each call', async () => {
+	const result = await codemod.transform({
 		'index.ts': `
 const __kodyCodemod0007Value = outerValue
 const __kodyCodemod0007Trimmed = outerTrimmed
@@ -380,7 +380,7 @@ await packages?.invoke(__kodyCodemod0007Value, options)
 	).toEqual([])
 })
 
-test('0007 rewrites non-null, static computed, and nested invoke forms but ignores dynamic keys', () => {
+test('0007 rewrites non-null, static computed, and nested invoke forms but ignores dynamic keys', async () => {
 	const files = {
 		'non-null.ts': `
 packages!.invoke(firstSpecifier, firstOptions)
@@ -397,7 +397,7 @@ packages?.['invoke']?.(thirdSpecifier, thirdOptions)
 		'nested.js':
 			'packages.invoke(select(packages.invoke(innerSpecifier)), outerOptions)\n',
 	}
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 
 	expect(result.changedPaths).toEqual([
 		'computed.ts',
@@ -433,8 +433,8 @@ packages?.['invoke']?.(thirdSpecifier, thirdOptions)
 	).toEqual([])
 })
 
-test('0007 emits type-correct TS and JSDoc-only JS wrappers', () => {
-	const result = codemod.transform({
+test('0007 emits type-correct TS and JSDoc-only JS wrappers', async () => {
+	const result = await codemod.transform({
 		'index.ts':
 			"declare const dynamicSpecifier: unknown\npackages.invoke(dynamicSpecifier, { exportName: 'run' })\n",
 		'worker.js': `
@@ -505,8 +505,8 @@ declare const packages: {
 	expect(virtualFiles['worker.js']).not.toMatch(/: unknown| as `kody:/)
 })
 
-test('0007 normalizes parseable Markdown dynamics with valid inline code and is idempotent', () => {
-	const result = codemod.transform({
+test('0007 normalizes parseable Markdown dynamics with valid inline code and is idempotent', async () => {
+	const result = await codemod.transform({
 		'guide.md': `
 \`\`\`ts
 await packages.invoke(metadata.import_specifier, options)
@@ -536,22 +536,20 @@ await packages?.invoke(\`@\${owner}/pkg/run\`, options)
 		]),
 	).toEqual([])
 	expect(result.files['guide.mdx']).toContain('kody-codemod-0007')
-	expectIdempotent(result.files)
-	expect(codemod.detect(result.files)).toEqual([])
+	await expectIdempotent(result.files)
+	expect(await codemod.detect(result.files)).toEqual([])
 
 	// Generated single-backtick inline code stays one valid span.
 	const inline = result.files['inline.md'] ?? ''
 	expect(inline.match(/`/g)).toHaveLength(2)
 	expect(inline).toContain('/** @type {any} */')
 	expect(inline).not.toContain('`kody:@${string}/${string}`')
-	expect(() =>
-		parseModuleSource(
-			inline.slice(inline.indexOf('`') + 1, inline.lastIndexOf('`')),
-		),
-	).not.toThrow()
+	await parseModuleSource(
+		inline.slice(inline.indexOf('`') + 1, inline.lastIndexOf('`')),
+	)
 })
 
-test('0007 confines malformed inline delimiters to physical lines', () => {
+test('0007 confines malformed inline delimiters to physical lines', async () => {
 	const malformed = [
 		'Malformed: `packages.invoke(/* private-source',
 		'backtick on another line `',
@@ -563,7 +561,7 @@ test('0007 confines malformed inline delimiters to physical lines', () => {
 	const prose =
 		'Intervening prose packages.invoke(privateProse) must remain unchanged.'
 	const later = 'Later: `packages.invoke(laterSpecifier, laterOptions)`.'
-	const result = codemod.transform({
+	const result = await codemod.transform({
 		'recovery.md': [
 			malformed,
 			'',
@@ -587,7 +585,7 @@ test('0007 confines malformed inline delimiters to physical lines', () => {
 			'Later: `packages.invoke(/** @type {any} */',
 		]),
 	).toEqual([])
-	expectIdempotent(result.files, result.needsManual)
+	await expectIdempotent(result.files, result.needsManual)
 	expectPrivacySafe(result.needsManual, [
 		'private-source',
 		'privateSpecifier',
@@ -596,7 +594,7 @@ test('0007 confines malformed inline delimiters to physical lines', () => {
 	])
 })
 
-test('0007 Markdown fallback requires a call shape and keeps findings privacy-safe', () => {
+test('0007 Markdown fallback requires a call shape and keeps findings privacy-safe', async () => {
 	const privateSource = '@private-owner/private-package/private-export'
 	const files = {
 		'discord.md':
@@ -609,7 +607,7 @@ test('0007 Markdown fallback requires a call shape and keeps findings privacy-sa
 		'broken-non-null-invoke.ts': `packages.invoke! /* private */ (${privateSource}\n`,
 		'broken-non-null-both.ts': `packages! /* private */ .invoke! /* private */ ?. (${privateSource}\n`,
 	}
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 
 	expect(result.files).toEqual(files)
 	expect(result.changed).toBe(false)
@@ -630,7 +628,7 @@ test('0007 Markdown fallback requires a call shape and keeps findings privacy-sa
 	])
 })
 
-test('0007 treats packages and packages.invoke mutations as ambiguous', () => {
+test('0007 treats packages and packages.invoke mutations as ambiguous', async () => {
 	const call = '\npackages.invoke(dynamicSpecifier)\n'
 	const files = Object.fromEntries(
 		Object.entries({
@@ -650,7 +648,7 @@ test('0007 treats packages and packages.invoke mutations as ambiguous', () => {
 			'for-in-array-assignment.js': 'for ([packages] in providers) {}',
 		}).map(([path, mutation]) => [path, `${mutation}${call}`]),
 	)
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)

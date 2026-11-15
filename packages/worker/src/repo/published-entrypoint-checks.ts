@@ -5,20 +5,18 @@ function readSourceFile(sourceFiles: Record<string, string>, path: string) {
 	return sourceFiles[path] ?? sourceFiles[path.replace(/^\.\//, '')] ?? null
 }
 
-export function collectEntrypointsMissingDefaultExport(input: {
+export async function collectEntrypointsMissingDefaultExport(input: {
 	snapshot: { read(path: string): string | null }
 	targets: ReadonlyArray<{ path: string }>
 }) {
-	return [
-		...new Set(
-			input.targets
-				.map((target) => target.path)
-				.filter((path) => {
-					const source = input.snapshot.read(path)
-					return source != null && !hasTopLevelDefaultExport(source)
-				}),
-		),
-	]
+	const paths = [...new Set(input.targets.map((target) => target.path))]
+	const missing = await Promise.all(
+		paths.map(async (path) => {
+			const source = input.snapshot.read(path)
+			return source != null && !(await hasTopLevelDefaultExport(source))
+		}),
+	)
+	return paths.filter((_, index) => missing[index])
 }
 
 export function formatMissingDefaultExportMessage(
@@ -46,10 +44,10 @@ export function formatMissingDefaultExportMessage(
  * export. Reporting them here gives a clear message instead of a bundler or
  * "default is not a function" failure.
  */
-export function checkPublishedEntrypointsForRebuild(input: {
+export async function checkPublishedEntrypointsForRebuild(input: {
 	sourceFiles: Record<string, string>
 	entryPoints: ReadonlyArray<{ path: string }>
-}): { ok: true } | { ok: false; message: string } {
+}): Promise<{ ok: true } | { ok: false; message: string }> {
 	const missingEntryPoints = input.entryPoints
 		.map((target) => target.path)
 		.filter((path) => readSourceFile(input.sourceFiles, path) == null)
@@ -61,7 +59,7 @@ export function checkPublishedEntrypointsForRebuild(input: {
 				.join(', ')}. Republish the package to restore them.`,
 		}
 	}
-	const missingDefaultExports = collectEntrypointsMissingDefaultExport({
+	const missingDefaultExports = await collectEntrypointsMissingDefaultExport({
 		snapshot: { read: (path) => readSourceFile(input.sourceFiles, path) },
 		targets: input.entryPoints,
 	})

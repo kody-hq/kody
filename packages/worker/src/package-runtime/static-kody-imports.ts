@@ -15,13 +15,13 @@ export function isTypeDeclarationFilePath(filePath: string) {
 	return /\.d\.[cm]?ts$/.test(filePath)
 }
 
-function collectStaticKodyPackageImportsFromSource(input: {
+async function collectStaticKodyPackageImportsFromSource(input: {
 	filePath: string
 	source: string
 	includeTypeOnly?: boolean
-}): Array<StaticKodyPackageImport> {
+}): Promise<Array<StaticKodyPackageImport>> {
 	const imports: Array<StaticKodyPackageImport> = []
-	for (const node of collectLiteralImportNodes(input.source, {
+	for (const node of await collectLiteralImportNodes(input.source, {
 		includeTypeOnly: input.includeTypeOnly,
 		filePath: input.filePath,
 	})) {
@@ -38,30 +38,33 @@ function collectStaticKodyPackageImportsFromSource(input: {
 	return imports
 }
 
-export function collectStaticKodyPackageImportsFromFiles(
+export async function collectStaticKodyPackageImportsFromFiles(
 	files: Record<string, string>,
 	options?: {
 		includeTypeDeclarations?: boolean
 		includeTypeOnly?: boolean
 	},
-): Array<StaticKodyPackageImport> {
-	return Object.entries(files)
-		.filter(
-			([filePath]) =>
-				options?.includeTypeDeclarations === true ||
-				!isTypeDeclarationFilePath(filePath),
-		)
-		.flatMap(([filePath, source]) =>
-			collectStaticKodyPackageImportsFromSource({
+): Promise<Array<StaticKodyPackageImport>> {
+	const imports: Array<StaticKodyPackageImport> = []
+	for (const [filePath, source] of Object.entries(files)) {
+		if (
+			options?.includeTypeDeclarations !== true &&
+			isTypeDeclarationFilePath(filePath)
+		) {
+			continue
+		}
+		imports.push(
+			...(await collectStaticKodyPackageImportsFromSource({
 				filePath,
 				source,
 				includeTypeOnly: options?.includeTypeOnly,
-			}),
+			})),
 		)
-		.sort(
-			(left, right) =>
-				left.packageName.localeCompare(right.packageName) ||
-				left.exportName.localeCompare(right.exportName) ||
-				left.filePath.localeCompare(right.filePath),
-		)
+	}
+	return imports.sort(
+		(left, right) =>
+			left.packageName.localeCompare(right.packageName) ||
+			left.exportName.localeCompare(right.exportName) ||
+			left.filePath.localeCompare(right.filePath),
+	)
 }

@@ -40,7 +40,7 @@ import { PublishBuildVerificationError } from './verify.ts'
  * entry reaches in source. The server derives this; an upload may only
  * import placeholders in this map.
  */
-export function collectLinkedPackageImports(input: {
+export async function collectLinkedPackageImports(input: {
 	sourceFiles: Record<string, string>
 	entryPoint: string
 	importNodesCache?: ModuleImportNodesCache
@@ -51,7 +51,7 @@ export function collectLinkedPackageImports(input: {
 			files: input.sourceFiles,
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
-	const reachable = collectReachableSourceFilePaths({
+	const reachable = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
@@ -60,7 +60,7 @@ export function collectLinkedPackageImports(input: {
 			: {}),
 	})
 	const linked = new Map<string, string>()
-	for (const imported of collectStaticKodyPackageImportsFromFiles(
+	for (const imported of await collectStaticKodyPackageImportsFromFiles(
 		Object.fromEntries(
 			Object.entries(input.sourceFiles).filter(([path]) => reachable.has(path)),
 		),
@@ -112,7 +112,7 @@ async function linkDependency(input: {
 		sourceId: artifact.sourceId,
 		publishedCommit: artifact.publishedCommit,
 	})
-	const modules = materializeDependencyArtifactModules({
+	const modules = await materializeDependencyArtifactModules({
 		artifactPrefix,
 		modules: artifact.modules,
 		linkedRoot: '',
@@ -120,7 +120,7 @@ async function linkDependency(input: {
 		omitRuntimeModules: true,
 	})
 	const mainPath = joinPath(artifactPrefix, artifact.mainModule)
-	const exportNames = collectModuleExportNames({
+	const exportNames = await collectModuleExportNames({
 		files: modules,
 		modulePath: mainPath,
 	})

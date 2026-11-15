@@ -1298,10 +1298,10 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
  * Every relative import in `modules`, resolved. One parse per module, shared
  * by the three collectors below: dependency artifacts are megabytes each.
  */
-function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
+async function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
 	const importedPaths: Array<string> = []
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
+		for (const node of await collectLiteralImportNodes(source)) {
 			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
 			if (resolvedPath) importedPaths.push(resolvedPath)
 		}
@@ -1375,15 +1375,15 @@ function collectReferencedPublicRuntimeModulePaths(
 	return publicRuntimePaths
 }
 
-export function refreshKodyRuntimeModules(
+export async function refreshKodyRuntimeModules(
 	modules: WorkerLoaderModules,
 	options?: {
 		includeDefaultRuntimePath?: boolean
 	},
-): WorkerLoaderModules {
+): Promise<WorkerLoaderModules> {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
-	const importedPaths = collectResolvedLiteralImportPaths(modules)
+	const importedPaths = await collectResolvedLiteralImportPaths(modules)
 	const runtimePaths = new Set(
 		collectReferencedRuntimeModulePaths(modules, importedPaths, options),
 	)

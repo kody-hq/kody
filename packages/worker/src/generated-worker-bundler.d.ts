@@ -46,6 +46,10 @@ declare module '*/node_modules/.kody-generated/codemode-normalize.mjs' {
 	export { normalizeCode } from './mcp/codemode-normalize-module.ts'
 }
 
+declare module '*/node_modules/.kody-generated/module-source-parser.mjs' {
+	export { parse } from './module-source-parser-module.ts'
+}
+
 declare module '*/node_modules/.kody-generated/disposable-email-domains.mjs' {
 	export { disposableEmailDomainList } from './identity/disposable-email-domains-module.ts'
 }

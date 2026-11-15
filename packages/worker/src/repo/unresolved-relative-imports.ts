@@ -18,7 +18,7 @@ export type UnresolvedRelativeImport = {
  * for esbuild when publish defers bundling to rebuild. Files that do not
  * parse are skipped: other checks report them.
  */
-export function collectUnresolvedRelativeImports(input: {
+export async function collectUnresolvedRelativeImports(input: {
 	files: Record<string, string>
 	entryPoints: ReadonlyArray<string>
 }) {
@@ -45,7 +45,8 @@ export function collectUnresolvedRelativeImports(input: {
 		if (source == null) continue
 		let imports
 		try {
-			imports = collectModuleImportNodes(source, { filePath }).literalImports
+			imports = (await collectModuleImportNodes(source, { filePath }))
+				.literalImports
 		} catch {
 			continue
 		}

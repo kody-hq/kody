@@ -214,9 +214,9 @@ export function publishedArtifactInlinesOtherPackages(
  * current, have no package context, inline other packages, or are browser
  * bundles (`app-client`) come back unchanged.
  */
-export function repairPreBindingPublishedArtifact<
+export async function repairPreBindingPublishedArtifact<
 	Artifact extends RepairableArtifact,
->(artifact: Artifact): Artifact {
+>(artifact: Artifact): Promise<Artifact> {
 	if (!isRepairableArtifactKind(artifact.kind)) return artifact
 	const ownPackageId = artifact.packageContext?.packageId?.trim()
 	if (!ownPackageId) return artifact
@@ -227,7 +227,7 @@ export function repairPreBindingPublishedArtifact<
 		if (isPlatformRuntimeModulePath(modulePath)) continue
 		const original = moduleSource(module)
 		if (original == null) continue
-		const collisions = collectTopLevelFetchCollisionNames(original)
+		const collisions = await collectTopLevelFetchCollisionNames(original)
 		if (!collisions) {
 			// The module does not parse, so its top-level names are unknown and
 			// inserting bindings could shadow or break it.
