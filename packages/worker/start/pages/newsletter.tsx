@@ -25,7 +25,10 @@ import {
 	sectionTitleCss,
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
-import { useState } from 'react'
+import { useActor } from '@xstate/react'
+import { useEffect, type FormEvent } from 'react'
+import { submissionGateState } from '#client/routes/submission-gate-state.ts'
+import { sendUiEvent } from '#client/ui-actor.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
 function newsletterErrorText(error: NewsletterPageError) {
@@ -99,8 +102,30 @@ export function NewsletterRoute(props: { data: NewsletterPageData }) {
 	)
 }
 
+/**
+ * Pending state for a plain form post. The gate refuses a second submit even
+ * before React has rendered the first, and reopens when the browser restores
+ * the page from its back/forward cache.
+ */
+function useNativeSubmitGate() {
+	const [snapshot, , actor] = useActor(submissionGateState)
+	useEffect(() => {
+		function pageshow(event: PageTransitionEvent) {
+			if (event.persisted) sendUiEvent(actor, { type: 'SETTLED' })
+		}
+		window.addEventListener('pageshow', pageshow)
+		return () => window.removeEventListener('pageshow', pageshow)
+	}, [actor])
+	return {
+		pending: snapshot.matches('running'),
+		onSubmit(event: FormEvent<HTMLFormElement>) {
+			if (!sendUiEvent(actor, { type: 'SUBMIT' })) event.preventDefault()
+		},
+	}
+}
+
 function SignupForm(props: { error: NewsletterPageError | null }) {
-	const [pending, setPending] = useState(false)
+	const { pending, onSubmit } = useNativeSubmitGate()
 	const errorId = 'newsletter-signup-error'
 	const emailInvalid = props.error === 'invalid_email'
 	return (
@@ -113,7 +138,7 @@ function SignupForm(props: { error: NewsletterPageError | null }) {
 			// The post is a normal form submission, so it works without
 			// JavaScript; with it, the button shows progress until the page
 			// navigates.
-			onSubmit={() => setPending(true)}
+			onSubmit={onSubmit}
 		>
 			{props.error ? (
 				<p css={getAlertCardCss('error')} role="alert" id={errorId}>
@@ -167,7 +192,7 @@ function SignupForm(props: { error: NewsletterPageError | null }) {
 
 /** Page behind the emailed link: confirming takes a deliberate button press. */
 export function NewsletterConfirmRoute(props: { token: string }) {
-	const [pending, setPending] = useState(false)
+	const { pending, onSubmit } = useNativeSubmitGate()
 	return (
 		<section css={pageCss}>
 			<header css={pageHeaderCss}>
@@ -184,7 +209,7 @@ export function NewsletterConfirmRoute(props: { token: string }) {
 					css={cardCss}
 					data-testid="newsletter-confirm-form"
 					aria-busy={pending}
-					onSubmit={() => setPending(true)}
+					onSubmit={onSubmit}
 				>
 					<input type="hidden" name="token" value={props.token} />
 					<button
