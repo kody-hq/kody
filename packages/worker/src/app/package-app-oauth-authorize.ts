@@ -1,4 +1,5 @@
 import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
+import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -40,7 +41,7 @@ import {
 } from '#universal/package-app-oauth-paths.ts'
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
-import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -175,14 +176,32 @@ async function shouldSkipConsent(input: {
  * which mints fresh PKCE state.
  */
 async function renderPackageAppSignInError(input: {
+	env: Env
 	request: Request
 	redirectUri: string
+	orgUsername: string
 	kodyId: string
 	destroySession: boolean
 	setCookie?: string
 }) {
 	const retry = new URL(packageAppOauthPaths.login, input.redirectUri)
+	retry.searchParams.set('org', input.orgUsername)
 	retry.searchParams.set('app', input.kodyId)
+	// Custom hostnames serve the app at `/`, the login default.
+	const app = new URL(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
+			appBaseUrl: getAppBaseUrl({
+				env: input.env,
+				requestUrl: input.request.url,
+			}),
+			username: input.orgUsername,
+			kodyId: input.kodyId,
+		}),
+	)
+	if (app.origin === retry.origin) {
+		retry.searchParams.set('return_to', app.pathname)
+	}
 	const href = escapeHtml(retry.toString())
 	const headers = new Headers({
 		'Cache-Control': 'no-store',
@@ -221,8 +240,10 @@ async function issueCodeAndRedirect(input: {
 	)
 	if (!sessionExpiresAt) {
 		return await renderPackageAppSignInError({
+			env: input.env,
 			request: input.request,
 			redirectUri: input.redirectUri,
+			orgUsername: input.orgUsername,
 			kodyId: input.kodyId,
 			destroySession: true,
 		})
@@ -834,16 +855,20 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		// /login and here, so it is cleared instead.
 		if (resolved.user) {
 			return await renderPackageAppSignInError({
+				env,
 				request,
 				redirectUri: validated.redirectUri,
+				orgUsername: validated.client.username,
 				kodyId: validated.client.kodyId,
 				destroySession: true,
 			})
 		}
 		if (url.searchParams.has(packageAppOauthLoginAttemptParam)) {
 			return await renderPackageAppSignInError({
+				env,
 				request,
 				redirectUri: validated.redirectUri,
+				orgUsername: validated.client.username,
 				kodyId: validated.client.kodyId,
 				destroySession: false,
 				setCookie: resolved.setCookie,

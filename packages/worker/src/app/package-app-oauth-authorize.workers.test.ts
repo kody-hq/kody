@@ -781,7 +781,15 @@ async function buildDemoAuthorizeUrl() {
 	return authorizeUrl
 }
 
-const demoRetryLogin = `https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.login}?app=demo`
+function expectDemoRetryLink(html: string) {
+	const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&')
+	const retry = new URL(href ?? '')
+	expect(retry.origin).toBe(`https://${ownerUsername}.packages.isolated.test`)
+	expect(retry.pathname).toBe(packageAppOauthPaths.login)
+	expect(retry.searchParams.get('org')).toBe(ownerUsername)
+	expect(retry.searchParams.get('app')).toBe('demo')
+	expect(retry.searchParams.get('return_to')).toMatch(/^\/demo\/?$/)
+}
 
 test('signed-out authorize sends to /login once, then renders a retry page instead of looping', async () => {
 	configureOrigins()
@@ -806,8 +814,7 @@ test('signed-out authorize sends to /login once, then renders a retry page inste
 	expect(second.status).toBe(400)
 	expect(second.headers.get('Location')).toBeNull()
 	expect(second.headers.get('Content-Type')).toContain('text/html')
-	const html = await second.text()
-	expect(html).toContain(`href="${demoRetryLogin}"`)
+	expectDemoRetryLink(await second.text())
 })
 
 test('authorize clears a live session the app gate refuses instead of bouncing through /login', async () => {
@@ -828,7 +835,7 @@ test('authorize clears a live session the app gate refuses instead of bouncing t
 		const setCookie = response.headers.get('Set-Cookie') ?? ''
 		expect(setCookie).toContain('kody_session=')
 		expect(setCookie).toContain('Max-Age=0')
-		expect(await response.text()).toContain(`href="${demoRetryLogin}"`)
+		expectDemoRetryLink(await response.text())
 	} finally {
 		await env.APP_DB.prepare(
 			`UPDATE users SET suspended_at = NULL WHERE email = ?`,
