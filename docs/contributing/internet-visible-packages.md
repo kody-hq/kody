@@ -86,9 +86,9 @@ Anonymous HTTP visitors still read the commit their cached approval names
 (`toPinnedSourceView`), which only differs from the serving commit while that
 cache trails an advance. Anonymous realtime sockets need the approved commit to
 be the serving commit. An app that was never approved keeps returning 403 to
-anonymous visitors, and its republishes advance for members as before. Apps that
-are not internet-visible never hold a commit. There is no members-only preview
-of a held commit; test it with local dev or a dev check.
+anonymous visitors, and its republishes advance for members. Apps that are not
+internet-visible never hold a commit. There is no members-only preview of a held
+commit; test it with local dev or a dev check.
 
 `loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
 held state from `held_commit`: an internet-visible app whose held commit is the

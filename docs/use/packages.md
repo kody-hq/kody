@@ -1070,7 +1070,7 @@ Approving moves everyone to the new version. To try the new version before you
 approve it, use local dev or a dev check.
 
 Apps that are not internet-visible switch to each new version as soon as it
-finishes building, as before.
+finishes building.
 
 When the published version has no [security audit](#security-audit) yet, both
 responses also return the next step for the agent. `packageUpdate` returns
