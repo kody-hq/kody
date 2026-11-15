@@ -178,6 +178,25 @@ export async function persistUploadedPublishBuild(input: {
 			message: `Publish build rejected: ${message}`,
 		}
 	}
+	// Wall time per step: the clock only advances at I/O, so a step that
+	// does no I/O is counted with the next one that does.
+	let stepStartedAt = Date.now()
+	const stepMs: Record<string, number> = {}
+	const endStep = (step: string) => {
+		const now = Date.now()
+		stepMs[step] = (stepMs[step] ?? 0) + (now - stepStartedAt)
+		stepStartedAt = now
+		// Logged as it goes: a CPU limit reset loses anything held for later.
+		console.info(
+			JSON.stringify({
+				event: 'publish_upload_persist_step',
+				sourceId: input.source.id,
+				buildId: input.buildId,
+				step,
+				totalMs: stepMs[step],
+			}),
+		)
+	}
 	try {
 		const row = await getPublishBuild(db, input.buildId)
 		const document = row ? parsePublishBuildDocument(row) : null
@@ -195,6 +214,7 @@ export async function persistUploadedPublishBuild(input: {
 			serverFiles: input.sourceFiles,
 			claimed: document.files,
 		})
+		endStep('verify-source')
 		const matched = matchUploadedTargets({
 			expected: input.targets,
 			uploaded: document.targets,
@@ -233,6 +253,7 @@ export async function persistUploadedPublishBuild(input: {
 							importNodesCache,
 							loadedPackages,
 						})
+			endStep('resolve-dependencies')
 			const linkedImports =
 				target.bundleKind === 'app-client'
 					? new Map<string, string>()
@@ -246,12 +267,14 @@ export async function persistUploadedPublishBuild(input: {
 				buildId: input.buildId,
 				uploaded,
 			})
+			endStep('read-modules')
 			const { referencedLinkedImports } = await verifyUploadedTargetModules({
 				uploaded,
 				modules,
 				ownPackageId,
 				linkedImports,
 			})
+			endStep('verify-modules')
 			const linked = await linkUploadedPackageImports({
 				env: input.env,
 				baseUrl: input.baseUrl,
@@ -261,6 +284,7 @@ export async function persistUploadedPublishBuild(input: {
 				referenced: referencedLinkedImports,
 				artifactCache,
 			})
+			endStep('link-imports')
 			prepared.set(target, {
 				mainModule: uploaded.mainModule,
 				modules: linked.modules,
@@ -278,6 +302,7 @@ export async function persistUploadedPublishBuild(input: {
 			targets: input.targets,
 			...createUploadedTargetBuilders(prepared),
 		})
+		endStep('write-artifacts')
 		const failed = results.filter((result) => !result.ok)
 		if (failed.length > 0) {
 			// Not a verification verdict: storage failed. Leave the build sealed

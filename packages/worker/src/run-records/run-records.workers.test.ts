@@ -1851,9 +1851,11 @@ test('a finish that moves startedAt to another UTC day moves its day count too',
 
 test('dashboard day counts survive the 2000-run cap across several UTC days', async () => {
 	const userId = uniqueUserId('dashboard-cap')
-	const now = new Date('2026-10-22T18:00:00.000Z')
-	const windowStart = new Date('2026-10-16T00:00:00.000Z')
+	// Relative to the real clock: retention deletes runs older than 30 real days.
 	const dayCount = 7
+	const todayStart = Math.floor(Date.now() / dayMs) * dayMs
+	const now = new Date(todayStart + 18 * 60 * 60 * 1000)
+	const windowStart = new Date(todayStart - (dayCount - 1) * dayMs)
 	const perDay = Math.floor(runRecordMaxRunsPerUser / dayCount) + 1
 	const totalCounted = perDay * dayCount
 	expect(totalCounted).toBeGreaterThan(runRecordMaxRunsPerUser)

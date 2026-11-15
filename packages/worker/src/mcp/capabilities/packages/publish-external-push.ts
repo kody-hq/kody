@@ -32,6 +32,7 @@ import {
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
+	uploadedBuildPersistLimitMessage,
 	isPublishComputeLimitMessage,
 	type RepoCheckStep,
 } from '#worker/repo/isolated-runner-limit-message.ts'
@@ -194,12 +195,16 @@ function isExternalPublishResourceLimitError(error: unknown) {
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
 	step: RepoCheckStep | null = null,
+	uploadedBuild = false,
 ): never | void {
 	if (error instanceof McpCallerError) throw error
 	if (isDurableObjectIsolateResourceLimitResetError(error)) {
-		throw new McpCallerError(externalPublishResourceLimitMessage(step), {
-			cause: error,
-		})
+		throw new McpCallerError(
+			uploadedBuild
+				? uploadedBuildPersistLimitMessage()
+				: externalPublishResourceLimitMessage(step),
+			{ cause: error },
+		)
 	}
 	const message = getErrorMessage(error)
 	// A publish step that hit the limit in its own throwaway isolate: the
@@ -1163,7 +1168,11 @@ async function runExternalPublishAttempt(input: {
 										sentryScope: externalPushRestoreSentryScope,
 									})
 								}
-								throwIfExternalPublishResourceLimit(error, 'rebuild')
+								throwIfExternalPublishResourceLimit(
+									error,
+									'rebuild',
+									input.uploadedBuild != null,
+								)
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
@@ -1419,7 +1428,11 @@ async function runExternalPublishAttempt(input: {
 									sentryScope: externalPushRestoreSentryScope,
 								})
 							}
-							throwIfExternalPublishResourceLimit(error, 'rebuild')
+							throwIfExternalPublishResourceLimit(
+								error,
+								'rebuild',
+								input.uploadedBuild != null,
+							)
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}

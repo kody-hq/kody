@@ -1295,8 +1295,24 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
 `.trim()
 }
 
+/**
+ * Every relative import in `modules`, resolved. One parse per module, shared
+ * by the three collectors below: dependency artifacts are megabytes each.
+ */
+function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
+	const importedPaths: Array<string> = []
+	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
+		for (const node of collectLiteralImportNodes(source)) {
+			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
+			if (resolvedPath) importedPaths.push(resolvedPath)
+		}
+	}
+	return importedPaths
+}
+
 function collectReferencedRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 	options?: {
 		includeDefaultRuntimePath?: boolean
 	},
@@ -1309,12 +1325,9 @@ function collectReferencedRuntimeModulePaths(
 			runtimePaths.add(modulePath)
 		}
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath && isKodyRuntimeModulePath(resolvedPath)) {
-				runtimePaths.add(resolvedPath)
-			}
+	for (const resolvedPath of importedPaths) {
+		if (isKodyRuntimeModulePath(resolvedPath)) {
+			runtimePaths.add(resolvedPath)
 		}
 	}
 	return runtimePaths
@@ -1322,6 +1335,7 @@ function collectReferencedRuntimeModulePaths(
 
 function collectReferencedPackageRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 ) {
 	const packageRuntimePaths = new Map<string, string>()
 	const remember = (modulePath: string) => {
@@ -1336,19 +1350,15 @@ function collectReferencedPackageRuntimeModulePaths(
 	for (const modulePath of Object.keys(modules)) {
 		remember(modulePath)
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath) {
-				remember(resolvedPath)
-			}
-		}
+	for (const resolvedPath of importedPaths) {
+		remember(resolvedPath)
 	}
 	return packageRuntimePaths
 }
 
 function collectReferencedPublicRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 ) {
 	const publicRuntimePaths = new Set<string>()
 	const remember = (modulePath: string) => {
@@ -1360,13 +1370,8 @@ function collectReferencedPublicRuntimeModulePaths(
 	for (const modulePath of Object.keys(modules)) {
 		remember(modulePath)
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath) {
-				remember(resolvedPath)
-			}
-		}
+	for (const resolvedPath of importedPaths) {
+		remember(resolvedPath)
 	}
 	return publicRuntimePaths
 }
@@ -1379,14 +1384,15 @@ export function refreshKodyRuntimeModules(
 ): WorkerLoaderModules {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
+	const importedPaths = collectResolvedLiteralImportPaths(modules)
 	const runtimePaths = new Set(
-		collectReferencedRuntimeModulePaths(modules, options),
+		collectReferencedRuntimeModulePaths(modules, importedPaths, options),
 	)
 	if (includeCanonicalRoot) {
 		runtimePaths.add(runtimeModulePath)
 	}
 	const packageRuntimeEntries = [
-		...collectReferencedPackageRuntimeModulePaths(modules),
+		...collectReferencedPackageRuntimeModulePaths(modules, importedPaths),
 	]
 	for (const [modulePath] of packageRuntimeEntries) {
 		runtimePaths.add(
@@ -1395,7 +1401,10 @@ export function refreshKodyRuntimeModules(
 			),
 		)
 	}
-	const publicRuntimePaths = collectReferencedPublicRuntimeModulePaths(modules)
+	const publicRuntimePaths = collectReferencedPublicRuntimeModulePaths(
+		modules,
+		importedPaths,
+	)
 	for (const modulePath of publicRuntimePaths) {
 		runtimePaths.add(
 			normalizeWorkspaceModulePath(joinPath(dirname(modulePath), 'runtime.js')),

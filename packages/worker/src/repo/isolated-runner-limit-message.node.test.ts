@@ -4,6 +4,7 @@ import {
 	externalPublishResourceLimitMessage,
 	publishComputeLimitMessage,
 	repoCheckStepResourceLimitAdvice,
+	uploadedBuildPersistLimitMessage,
 } from './isolated-runner-limit-message.ts'
 import {
 	authoringChecksResourceLimitMessage,
@@ -141,4 +142,11 @@ test('an in-isolate memory error from an artifact build names the kody:@ cost an
 	expect(
 		artifactBuildFailureMessage('Unexpected token', 'check'),
 	).not.toContain('kody:@')
+})
+
+test('the uploaded-build limit message does not send a local builder back to build locally', () => {
+	const message = uploadedBuildPersistLimitMessage()
+	expect(message).toContain('Your build was not rebuilt')
+	expect(message).not.toContain('--build local')
+	expect(message).not.toContain('--context')
 })
