@@ -133,6 +133,9 @@ export KODY_API_TOKEN='kody_at_…'
 npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; export default async function main() { return await kody.metaGetCurrentUser({}) }'
 ```
 
+`--code` accepts TypeScript, like `execute` on Kody cloud; so do runs routed to
+an execution context.
+
 Use `--file path.ts` the same way when the module lives on disk. Keep `--local`;
 static `kody:@owner/name` imports still run locally (package-graph download +
 CapabilityProxy hops). The CLI posts the `kody:@` imports that still need
