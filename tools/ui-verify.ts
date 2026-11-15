@@ -36,7 +36,8 @@ const run = spawnSync(
 		...(update ? ['--update-snapshots=all'] : []),
 		...passthrough,
 	],
-	{ stdio: 'inherit' },
+	// npx is npx.cmd on Windows, which Node only spawns through a shell.
+	{ stdio: 'inherit', shell: process.platform === 'win32' },
 )
 if (run.status === 0 && update)
 	console.log(
