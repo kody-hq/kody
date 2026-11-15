@@ -1,3 +1,5 @@
+import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+
 export type PackageCapabilityApprovalRow = {
 	id: string
 	package_id: string
@@ -179,4 +181,90 @@ export async function findPackageCapabilityApprovalByFingerprint(
 		.bind(input.packageId, input.ownerUserId, input.fingerprint)
 		.first()
 	return row ? mapRow(row) : null
+}
+
+/**
+ * The approval anonymous visitors run (ADR 0069): the serving commit's own
+ * approval, else the newest approval for a commit that already served. A
+ * published commit that is still building is skipped, so a republish never
+ * reaches visitors before both its build and its approval exist.
+ */
+export async function getServedPackageCapabilityApproval(
+	db: D1Database,
+	input: { packageId: string; ownerUserId: string; sourceId: string },
+): Promise<PackageCapabilityApprovalRecord | null> {
+	const servingCommitSql =
+		'COALESCE(source.serving_commit, source.published_commit)'
+	const row = await db
+		.prepare(
+			`SELECT approval.id, approval.package_id, approval.owner_user_id,
+				approval.published_commit, approval.fingerprint,
+				approval.capability_set_json, approval.dependency_snapshot_json,
+				approval.approved_by_user_id, approval.approved_at, approval.created_at
+			FROM package_capability_approvals AS approval
+			JOIN entity_sources AS source
+				ON source.id = ?
+				AND source.user_id = approval.owner_user_id
+				AND source.published_commit IS NOT NULL${andLiveDeletedAtSql('source')}
+			WHERE approval.package_id = ? AND approval.owner_user_id = ?
+				AND (
+					approval.published_commit = ${servingCommitSql}
+					OR approval.published_commit != source.published_commit
+				)
+			ORDER BY
+				CASE WHEN approval.published_commit = ${servingCommitSql} THEN 0 ELSE 1 END,
+				approval.approved_at DESC
+			LIMIT 1`,
+		)
+		.bind(input.sourceId, input.packageId, input.ownerUserId)
+		.first()
+	return row ? mapRow(row) : null
+}
+
+/**
+ * Insert an approval for `row.published_commit` only while that commit is
+ * still the source's published commit and has no approval yet. Batched with
+ * the serving-pointer advance so both land together or neither does.
+ */
+export function prepareCarriedForwardPackageCapabilityApproval(
+	db: D1Database,
+	row: Omit<PackageCapabilityApprovalRow, 'created_at'> & {
+		source_id: string
+	},
+): D1PreparedStatement {
+	return db
+		.prepare(
+			`INSERT INTO package_capability_approvals (
+				id, package_id, owner_user_id, published_commit, fingerprint,
+				capability_set_json, dependency_snapshot_json,
+				approved_by_user_id, approved_at, created_at
+			)
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			WHERE EXISTS (
+				SELECT 1 FROM entity_sources
+				WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}
+			)
+			AND NOT EXISTS (
+				SELECT 1 FROM package_capability_approvals
+				WHERE package_id = ? AND owner_user_id = ? AND published_commit = ?
+			)`,
+		)
+		.bind(
+			row.id,
+			row.package_id,
+			row.owner_user_id,
+			row.published_commit,
+			row.fingerprint,
+			row.capability_set_json,
+			row.dependency_snapshot_json,
+			row.approved_by_user_id,
+			row.approved_at,
+			row.approved_at,
+			row.source_id,
+			row.owner_user_id,
+			row.published_commit,
+			row.package_id,
+			row.owner_user_id,
+			row.published_commit,
+		)
 }

@@ -29,6 +29,21 @@ import { buildPackageJobId } from './package-job-id.ts'
 import { executeJobOnce } from './service.ts'
 import type { JobRecord } from './types.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 vi.mock('#worker/repo/source-service.ts', async () =>
 	(
 		await import('#worker/test-support/jobs-service-mocks.ts')

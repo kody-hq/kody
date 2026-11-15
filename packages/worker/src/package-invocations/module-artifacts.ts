@@ -1,4 +1,7 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	toPinnedSourceView,
+	toServingSourceView,
+} from '#worker/repo/serving-commit.ts'
 
 import {
 	isUnrepairablePreBindingArtifact,
@@ -146,6 +149,8 @@ export async function loadInvokeManifestBySourceId(input: {
 	env: Env
 	userId: string
 	sourceId: string
+	/** Load this published commit instead of the serving one. */
+	commit?: string | null
 }): Promise<LoadedPackageManifest> {
 	const source = await loadSourceRowWithFreshnessCache({
 		userId: input.userId,
@@ -160,7 +165,9 @@ export async function loadInvokeManifestBySourceId(input: {
 	return await loadPackageManifestForSource({
 		env: input.env,
 		userId: input.userId,
-		source: toServingSourceView(source),
+		source: input.commit
+			? toPinnedSourceView(source, input.commit)
+			: toServingSourceView(source),
 	})
 }
 

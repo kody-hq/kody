@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { createPackageAppSessionCookie } from '#app/package-app-session.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
+import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import { ensureAuditEventsTestSchema } from '#worker/test-support/audit-events-test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
@@ -153,6 +154,24 @@ export async function seedPackageAppAccessFixture() {
 			app.slug,
 			`src-${app.id}`,
 			app.internetVisible,
+			now,
+			now,
+		)
+	}
+	// Anonymous visitors run an approval only against the app's live source.
+	await run(entitySourcesTableSql)
+	for (const app of [publicApp, unapprovedPublicApp]) {
+		await run(
+			`INSERT OR IGNORE INTO entity_sources (
+				id, user_id, entity_kind, entity_id, repo_id, published_commit,
+				serving_commit, manifest_path, source_root, created_at, updated_at
+			) VALUES (?, ?, 'package', ?, ?, ?, ?, 'package.json', '/', ?, ?)`,
+			`src-${app.id}`,
+			orgId,
+			app.id,
+			`repo-${app.id}`,
+			publicApp.approvedCommit,
+			publicApp.approvedCommit,
 			now,
 			now,
 		)

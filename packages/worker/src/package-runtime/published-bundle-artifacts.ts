@@ -34,10 +34,8 @@ import {
 	type PublishedBundleArtifactRecord,
 	updatePublishedBundleArtifactRow,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
-import {
-	advanceEntitySourceServingCommit,
-	listEntitySourcesByIds,
-} from '#worker/repo/entity-sources.ts'
+import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
+import { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
@@ -938,8 +936,9 @@ async function advanceServingCommitAfterCompleteRebuild(input: {
 }) {
 	const publishedCommit = input.source.published_commit
 	if (!publishedCommit) return
-	await advanceEntitySourceServingCommit(input.env.APP_DB, {
-		id: input.source.id,
+	await advanceServingCommit({
+		env: input.env,
+		sourceId: input.source.id,
 		userId: input.source.user_id,
 		commit: publishedCommit,
 	})

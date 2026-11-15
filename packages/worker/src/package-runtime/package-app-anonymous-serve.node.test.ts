@@ -2,26 +2,24 @@ import { expect, test } from 'vitest'
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import { refuseUnapprovedAnonymousServe } from './package-app-anonymous-serve.ts'
 
-test('anonymous visitors only run the approved published commit', async () => {
-	const outcome = (input: {
-		approvedPublishedCommit: string | null | undefined
-		publishedCommit: string | null | undefined
-	}) => {
-		const refusal = refuseUnapprovedAnonymousServe({ visitor: null, ...input })
+test('anonymous visitors are refused only when no commit is approved', async () => {
+	const outcome = (approvedPublishedCommit: string | null | undefined) => {
+		const refusal = refuseUnapprovedAnonymousServe({
+			visitor: null,
+			approvedPublishedCommit,
+		})
 		return refusal ? refusal.status : 'serve'
 	}
 	expect([
-		outcome({ approvedPublishedCommit: 'abc', publishedCommit: 'abc' }),
-		outcome({ approvedPublishedCommit: 'abc', publishedCommit: 'def' }),
-		outcome({ approvedPublishedCommit: null, publishedCommit: 'abc' }),
-		outcome({ approvedPublishedCommit: undefined, publishedCommit: null }),
-		outcome({ approvedPublishedCommit: '', publishedCommit: '' }),
-	]).toEqual(['serve', 403, 403, 403, 403])
+		outcome('abc'),
+		outcome(null),
+		outcome(undefined),
+		outcome(''),
+	]).toEqual(['serve', 403, 403, 403])
 
 	const refusal = refuseUnapprovedAnonymousServe({
 		visitor: null,
-		approvedPublishedCommit: 'abc',
-		publishedCommit: 'def',
+		approvedPublishedCommit: null,
 	})
 	expect(refusal?.headers.get('Cache-Control')).toBe('no-store')
 	await expect(refusal?.text()).resolves.toBe(
@@ -36,7 +34,6 @@ test('signed-in visitors are never held to the approved commit', () => {
 		refuseUnapprovedAnonymousServe({
 			visitor: { userId, username: 'visitor', role: 'member' },
 			approvedPublishedCommit: null,
-			publishedCommit: 'def',
 		}),
 	).toBeNull()
 })

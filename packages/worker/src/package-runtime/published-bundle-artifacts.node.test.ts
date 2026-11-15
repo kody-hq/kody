@@ -9,6 +9,21 @@ import {
 	reusePublishedPackageArtifactIfUnchanged,
 } from './published-bundle-artifacts.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 const mockModule = vi.hoisted(() => ({
 	getEntitySourceById: vi.fn(),
 	getEntitySourceByIdForUser: vi.fn(),

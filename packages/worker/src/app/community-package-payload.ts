@@ -196,7 +196,7 @@ export async function loadCommunityPackagePayload(input: {
 			viewerCanManage: page.viewerCanManage,
 			viewerCanManageAccess: page.viewerCanManageAccess,
 			viewerCanSeeConnectedPeople: page.viewerCanSeeConnectedPeople,
-			repoActions: await buildPackageRepoActionsForPage(page, env, request),
+			repoActions: await buildPackageRepoActionsForPage(page, env),
 			viewerCanPublish: page.viewerCanPublish,
 			viewerCanDelete: page.viewerCanDelete,
 			viewerCanAdoptCommunityFork: page.viewerCanAdoptCommunityFork,
@@ -233,7 +233,6 @@ async function withPackageAppLinks(
 	const viewer = (await readAuthenticatedAppUser(request, env))?.mcpUser ?? null
 	const links = await resolvePackageAppLinks({
 		env,
-		requestUrl: request.url,
 		viewer,
 		...input,
 	})
