@@ -7,6 +7,7 @@ import {
 	getPublishedBundleArtifactByIdentity,
 	insertPublishedBundleArtifactRow,
 	isPublishedBundleArtifactIdentityConflict,
+	listPublishedBundleArtifactProvenance,
 	listPublishedBundleArtifactsByIdentities,
 	listStaticDependentBundleArtifactRows,
 	publishedBundleArtifactIdentityKey,
@@ -28,6 +29,9 @@ function createPublishedBundleArtifactsDb() {
 			kv_key TEXT NOT NULL,
 			dependencies_json TEXT NOT NULL DEFAULT '[]',
 			total_bytes INTEGER,
+			built_in TEXT,
+			built_context_name TEXT,
+			bundle_sha256 TEXT,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
@@ -1114,4 +1118,80 @@ test('upsertPublishedBundleArtifactRow stores total bytes and leaves it null whe
 	expect(
 		(await getPublishedBundleArtifactByIdentity(db, identity))?.totalBytes,
 	).toBe(4096)
+})
+
+test('provenance is stored with the row and listed for one commit only', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const base = {
+		userId: 'user-1',
+		sourceId: 'source-1',
+		artifactKind: 'module',
+		artifactName: null,
+		kvKey: 'kv',
+		dependenciesJson: '[]',
+	}
+	await upsertPublishedBundleArtifactRow(db, {
+		...base,
+		entryPoint: 'src/a.ts',
+		publishedCommit: 'commit-2',
+		builtIn: 'context',
+		builtContextName: 'laptop',
+		bundleSha256: 'aa',
+	})
+	await upsertPublishedBundleArtifactRow(db, {
+		...base,
+		entryPoint: 'src/b.ts',
+		publishedCommit: 'commit-2',
+	})
+	await upsertPublishedBundleArtifactRow(db, {
+		...base,
+		entryPoint: 'src/old.ts',
+		publishedCommit: 'commit-1',
+		builtIn: 'cloud',
+		bundleSha256: 'bb',
+	})
+
+	expect(
+		await listPublishedBundleArtifactProvenance(db, {
+			userId: 'user-1',
+			sourceId: 'source-1',
+			publishedCommit: 'commit-2',
+		}),
+	).toEqual([
+		{
+			artifactKind: 'module',
+			artifactName: null,
+			entryPoint: 'src/a.ts',
+			builtIn: 'context',
+			builtContextName: 'laptop',
+			bundleSha256: 'aa',
+		},
+		{
+			artifactKind: 'module',
+			artifactName: null,
+			entryPoint: 'src/b.ts',
+			builtIn: null,
+			builtContextName: null,
+			bundleSha256: null,
+		},
+	])
+
+	// A cloud rebuild of the same identity replaces the earlier origin.
+	await upsertPublishedBundleArtifactRow(db, {
+		...base,
+		entryPoint: 'src/a.ts',
+		publishedCommit: 'commit-2',
+		builtIn: 'cloud',
+		bundleSha256: 'cc',
+	})
+	const [rebuilt] = await listPublishedBundleArtifactProvenance(db, {
+		userId: 'user-1',
+		sourceId: 'source-1',
+		publishedCommit: 'commit-2',
+	})
+	expect(rebuilt).toMatchObject({
+		builtIn: 'cloud',
+		builtContextName: null,
+		bundleSha256: 'cc',
+	})
 })

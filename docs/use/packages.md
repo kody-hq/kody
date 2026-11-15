@@ -1345,8 +1345,12 @@ publish checks run.
    calls `packagePublishExternalPush` with `publish_build_id`. Kody re-runs the
    cheap checks, verifies the uploaded tree and bundles, and only then serves
    the commit. Successful results include `build_origin` (`cloud`, `cli`, or
-   `context`). Builds outside Kody cloud need the `publish-offload` feature
-   flag. See
+   `context`). `packageGet` also returns `provenance`: for each stored artifact
+   of the published commit, where it was built and a SHA-256 of its modules. It
+   is a record only. Kody does not check that an uploaded build was compiled
+   from the pushed source, and nothing uses the record to allow or refuse a
+   publish or a community listing. Builds outside Kody cloud need the
+   `publish-offload` feature flag. See
    [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
    If the package tip already matched HEAD before this request began, the tool
    returns `already_published` (true no-op tip). That result still runs the

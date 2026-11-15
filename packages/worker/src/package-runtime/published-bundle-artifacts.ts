@@ -54,6 +54,7 @@ import {
 	type PreparedPublishedBundleArtifactPersist,
 	type PublishedPackageArtifactBuilders,
 	buildPublishedPackageArtifactTargetBundle,
+	bundleArtifactSha256,
 	toDbRowInput,
 	toPersistPublishedPackageArtifactInput,
 	upsertPreparedPublishedBundleArtifactRows,
@@ -615,6 +616,14 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 		kvKey,
 		dependencies: loaded.artifact.dependencies,
 		totalBytes: createBundleArtifactManifest(artifact).totalBytes,
+		// Same modules as the earlier commit's artifact, so same build origin.
+		builtIn: loaded.row.builtIn
+			? {
+					origin: loaded.row.builtIn,
+					contextName: loaded.row.builtContextName,
+				}
+			: null,
+		bundleSha256: await bundleArtifactSha256(artifact),
 	})
 	try {
 		await writePublishedBundleArtifact({
@@ -893,7 +902,7 @@ export async function rebuildPublishedPackageArtifacts(
 					buildModuleBundle: input.buildModuleBundle,
 					buildImportableModuleBundle: input.buildImportableModuleBundle,
 				})
-				const prepared = preparePublishedBundleArtifactPersist(
+				const prepared = await preparePublishedBundleArtifactPersist(
 					toPersistPublishedPackageArtifactInput({
 						env: input.env,
 						userId: input.userId,

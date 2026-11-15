@@ -22,6 +22,7 @@ import { buildPackageImportSpecifier } from '#worker/package-registry/package-im
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { getSavedPackageWithCommunityProvenanceById } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { listPublishedBundleArtifactProvenance } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
@@ -136,7 +137,30 @@ export const getPackageCapability = defineDomainCapability(
 						commit: publishedCommit,
 					})
 				: null
+			// Informational only: a failed read must not fail packageGet.
+			const provenanceArtifacts = publishedCommit
+				? await listPublishedBundleArtifactProvenance(ctx.env.APP_DB, {
+						userId: owner.ownerUserId,
+						sourceId: saved.sourceId,
+						publishedCommit,
+					}).catch(() => [])
+				: []
 			return {
+				...(publishedCommit && provenanceArtifacts.length > 0
+					? {
+							provenance: {
+								commit: publishedCommit,
+								artifacts: provenanceArtifacts.map((artifact) => ({
+									kind: artifact.artifactKind,
+									name: artifact.artifactName,
+									entry_point: artifact.entryPoint,
+									built_in: artifact.builtIn,
+									context_name: artifact.builtContextName,
+									bundle_sha256: artifact.bundleSha256,
+								})),
+							},
+						}
+					: {}),
 				...(outsideBuild
 					? {
 							build_origin: {

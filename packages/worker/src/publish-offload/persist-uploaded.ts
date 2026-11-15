@@ -300,6 +300,7 @@ export async function persistUploadedPublishBuild(input: {
 			source: { ...input.source, published_commit: input.publishedCommit },
 			savedPackage: input.savedPackage,
 			targets: input.targets,
+			builtIn: { origin: row.origin, contextName: row.context_name },
 			...createUploadedTargetBuilders(prepared),
 		})
 		endStep('write-artifacts')

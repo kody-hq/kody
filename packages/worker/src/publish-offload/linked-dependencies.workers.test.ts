@@ -106,6 +106,9 @@ async function ensureSchema() {
 		kv_key TEXT NOT NULL,
 		dependencies_json TEXT NOT NULL DEFAULT '[]',
 		total_bytes INTEGER,
+		built_in TEXT,
+		built_context_name TEXT,
+		bundle_sha256 TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)

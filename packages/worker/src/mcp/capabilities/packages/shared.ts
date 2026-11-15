@@ -365,6 +365,24 @@ export const packageDetailSchema =
 			.describe(
 				"Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
 			),
+		provenance: z
+			.object({
+				commit: z.string(),
+				artifacts: z.array(
+					z.object({
+						kind: z.string(),
+						name: z.string().nullable(),
+						entry_point: z.string(),
+						built_in: z.enum(['cloud', 'cli', 'context']).nullable(),
+						context_name: z.string().nullable(),
+						bundle_sha256: z.string().nullable(),
+					}),
+				),
+			})
+			.optional()
+			.describe(
+				"Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing.",
+			),
 		published_commit: z
 			.string()
 			.nullable()
