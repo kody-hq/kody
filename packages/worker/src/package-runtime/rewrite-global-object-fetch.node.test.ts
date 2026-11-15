@@ -18,6 +18,18 @@ test('reads of fetch through the global object use the replacement', async () =>
 	)
 })
 
+test('optional reads of fetch through the global object use the replacement', async () => {
+	expect(await rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
+	expect(await rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
+	expect(await rewrite(`globalThis?.['fetch'](url)`)).toBe(`F(url)`)
+	expect(await rewrite(`globalThis?.fetch(a); globalThis.fetch(b)`)).toBe(
+		`F(a); F(b)`,
+	)
+	expect(await sourceReadsFetchThroughGlobalObject(`self?.fetch(url)`)).toBe(
+		true,
+	)
+})
+
 test('writes, aliases and local bindings are left alone', async () => {
 	for (const source of [
 		`globalThis.fetch = polyfill`,
