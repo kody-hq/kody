@@ -327,7 +327,6 @@ test('app inventory includes an app-only grant without exposing the package link
 			ownerUserId: teamId,
 			hasPackage: true,
 			hasApp: true,
-			requestUrl: 'https://kody.test/@acme/-/apps',
 		}),
 	).resolves.toMatchObject({
 		packageAppHref: '/@acme/packages/secret/open',
