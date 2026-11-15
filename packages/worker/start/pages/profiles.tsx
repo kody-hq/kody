@@ -44,6 +44,7 @@ import { routes } from '#universal/routes.ts'
 import {
 	getSelectCss,
 	primaryLinkCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -1410,14 +1411,14 @@ const segmentedCss: CSSObject = {
 	gap: '0.25rem',
 	padding: '0.2rem',
 	border: `1px solid ${colors.border}`,
-	borderRadius: radius.full,
+	...getSquircleCss('sm'),
 	width: 'fit-content',
 }
 
 function segmentCss(active: boolean): CSSObject {
 	return {
 		padding: '0.3rem 0.85rem',
-		borderRadius: radius.full,
+		...getSquircleCss('xs'),
 		textDecoration: 'none',
 		fontSize: typography.fontSize.sm,
 		color: active ? colors.onPrimary : colors.text,

@@ -147,7 +147,9 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 							}}
 						/>
 					)}
-					<button
+					<Button
+						variant="ghost"
+						size="xs"
 						type="button"
 						aria-label={
 							props.showSecretValue ? 'Hide secret value' : 'Show secret value'
@@ -159,7 +161,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 						css={iconButtonCss}
 					>
 						{props.showSecretValue ? 'Hide' : 'Show'}
-					</button>
+					</Button>
 				</div>
 			</div>
 
@@ -228,24 +230,10 @@ const advancedDetailsCss: CSSObject = {
 const iconButtonCss: CSSObject = {
 	position: 'absolute' as const,
 	right: spacing.sm,
-	top: '50%',
-	transform: 'translateY(-50%)',
-	background: 'none',
-	border: 'none',
-	borderRadius: '999px',
-	padding: spacing.xs,
+	insetBlock: 0,
+	marginBlock: 'auto',
+	height: 'fit-content',
 	width: '3.5rem',
-	height: '2rem',
-	color: colors.text,
-	cursor: 'pointer',
-	display: 'flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	fontSize: '0.75rem',
-	fontWeight: 600,
-	'&:hover': {
-		background: colors.primarySoft,
-	},
 }
 
 const repeatedRowCss: CSSObject = {

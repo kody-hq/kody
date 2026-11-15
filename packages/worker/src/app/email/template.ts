@@ -146,8 +146,8 @@ export function renderTransactionalEmail(
 		? `
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
               <tr>
-                <td align="center" bgcolor="${colors.accent}" style="border-radius: 999px;">
-                  <a href="${escapeHtml(action.url)}" class="kody-button" style="display: inline-block; padding: 14px 28px; font-family: ${fontStack}; font-size: 16px; font-weight: 600; line-height: 1; color: ${colors.accentText}; text-decoration: none; border-radius: 999px;">${escapeHtml(action.label)}</a>
+                <td align="center" bgcolor="${colors.accent}" style="border-radius: 12px;">
+                  <a href="${escapeHtml(action.url)}" class="kody-button" style="display: inline-block; padding: 14px 28px; font-family: ${fontStack}; font-size: 16px; font-weight: 600; line-height: 1; color: ${colors.accentText}; text-decoration: none; border-radius: 12px;">${escapeHtml(action.label)}</a>
                 </td>
               </tr>
             </table>

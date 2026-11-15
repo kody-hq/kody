@@ -24,7 +24,10 @@ import {
 	ForkOutdatedCopyButton,
 } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	visuallyHiddenCss,
+	getSquircleCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	accountDisclosureCss,
 	IdValue,
@@ -764,7 +767,7 @@ const packageLockToggleCss = {
 	height: '1.85rem',
 	padding: 0,
 	border: `1px solid ${colors.border}`,
-	borderRadius: '999px',
+	...getSquircleCss('xs'),
 	backgroundColor: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',

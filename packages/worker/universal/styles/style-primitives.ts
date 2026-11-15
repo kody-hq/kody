@@ -79,6 +79,23 @@ const buttonSizes = {
 	},
 } as const satisfies Record<ButtonSize, Record<string, string>>
 
+/**
+ * Squircle corners: a rounded rectangle everywhere, a superellipse where
+ * `corner-shape` is supported. Buttons get it through `getButtonCss`;
+ * specialized controls that are not buttons (tabs, segmented filters, toggles)
+ * use it directly so no control falls back to the full-radius pill.
+ */
+export function getSquircleCss(size: ButtonSize = 'sm') {
+	const { radius, squircleRadius } = buttonSizes[size]
+	return {
+		borderRadius: radius,
+		'@supports (corner-shape: squircle)': {
+			borderRadius: squircleRadius,
+			cornerShape: 'squircle',
+		},
+	}
+}
+
 const pressTransform = 'translateY(0) scale(0.97)'
 
 function getButtonVariantCss(variant: ButtonVariant) {
@@ -163,14 +180,7 @@ function buildButtonCss(options: ButtonStyleOptions) {
 		textDecoration: 'none',
 		whiteSpace: 'nowrap' as const,
 		cursor: 'pointer',
-		// Squircle corners: a rounded rectangle everywhere, a superellipse where
-		// `corner-shape` is supported. Equal radii keep the curve independent
-		// of the label width; never the full-radius pill.
-		borderRadius: size.radius,
-		'@supports (corner-shape: squircle)': {
-			borderRadius: size.squircleRadius,
-			cornerShape: 'squircle',
-		},
+		...getSquircleCss(options.size),
 		'@media (any-pointer: coarse)': {
 			minHeight: size.coarseHeight,
 			...(options.iconOnly ? { minWidth: size.coarseHeight } : {}),
@@ -209,6 +219,60 @@ export function getButtonCss(options: ButtonStyleOptions = {}) {
 		buttonCssCache.set(key, css)
 	}
 	return css
+}
+
+type StaticCssObject = { [key: string]: string | number | StaticCssObject }
+
+function nestSelector(parent: string, child: string) {
+	const parents = parent.split(',').map((part) => part.trim())
+	return child
+		.split(',')
+		.map((part) => part.trim())
+		.flatMap((part) =>
+			parents.map((outer) =>
+				part.includes('&') ? part.replaceAll('&', outer) : `${outer} ${part}`,
+			),
+		)
+		.join(',')
+}
+
+/** Serializes an Emotion-style object for documents that load no app bundle. */
+export function renderStaticCss(selector: string, styles: object): string {
+	const declarations: Array<string> = []
+	const nested: Array<string> = []
+	for (const [key, value] of Object.entries(styles as StaticCssObject)) {
+		if (typeof value === 'object') {
+			nested.push(
+				key.startsWith('@')
+					? `${key}{${renderStaticCss(selector, value)}}`
+					: renderStaticCss(nestSelector(selector, key), value),
+			)
+		} else {
+			const property = key.startsWith('--')
+				? key
+				: key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+			declarations.push(`${property}:${value}`)
+		}
+	}
+	const own = declarations.length
+		? `${selector}{${declarations.join(';')}}`
+		: ''
+	return own + nested.join('')
+}
+
+/**
+ * The `getButtonCss` look as plain CSS for static documents (the uncaught
+ * error page), keyed by selector, so those buttons cannot drift from
+ * `<Button>`.
+ */
+export function renderButtonStylesheet(
+	rules: Record<string, ButtonStyleOptions>,
+) {
+	return Object.entries(rules)
+		.map(([selector, options]) =>
+			renderStaticCss(selector, getButtonCss(options)),
+		)
+		.join('')
 }
 
 /**

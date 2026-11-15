@@ -46,6 +46,7 @@ import {
 	descriptionCss,
 	hoverMq,
 	mutedLinkCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type ProfileContentProps = {
@@ -589,7 +590,7 @@ const filterNavCss = {
 		minHeight: '1.75rem',
 		backgroundColor: colors.surface,
 		border: `1px solid ${colors.border}`,
-		borderRadius: '999px',
+		...getSquircleCss('xs'),
 		padding: '0.1rem 0.5rem',
 	},
 } satisfies CSSObject
@@ -609,7 +610,7 @@ const filterLinkCss = {
 	justifyContent: 'center',
 	minHeight: '1.75rem',
 	padding: '0.1rem 0.55rem',
-	borderRadius: '999px',
+	...getSquircleCss('xs'),
 	color: colors.textMuted,
 	fontSize: '0.75rem',
 	fontWeight: 650,
