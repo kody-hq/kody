@@ -14,8 +14,9 @@ lastVerified: 2026-11
 
 GitHub has two good lanes:
 
-- **Personal access token** — fastest for many automations; saved as a Kody
-  secret that `@kody/github` reads when you pass its name as `secretName`.
+- **Personal access token** — fastest for many automations; saved as a Kody Key
+  credential with provider `github`, which fills the `github` credential
+  `@kody/github` reads.
 - **Bring-your-own OAuth App** — when you want a durable OAuth connection with
   your own client and rate limits.
 
@@ -81,8 +82,9 @@ already set at GitHub. Fill it only when they want Kody to stop sending the
 token on a chosen date.
 
 The link already lists `api.github.com` under **Where this secret can be sent**.
-Saving stores the token and that host. `githubAccessToken` is the name
-`@kody/github` (and a fork of it) documents for `secretName`.
+Saving stores the token and that host. To use it through `@kody/github` (or a
+fork of it), set the credential's provider to `github` on its credential page,
+so it matches the package's `github` credential.
 
 When they confirm the save, open
 `search({ entity: "guide:provider_github#confirm-the-call" })`.
@@ -314,19 +316,27 @@ community package from the `@kody` org.
 1. Search for `@kody/github`. It wraps REST, GraphQL, pagination, and PR
    helpers.
 2. `communityFork` it into your org (or click **Install** on the listing).
-3. Check the fork's README **Prerequisites / setup**. Pass
-   `secretName: 'githubAccessToken'` (the name [Save the token](#save-the-token)
-   uses) on each call for the saved token. Without `secretName`, helpers use the
-   OAuth integration named `github`, or the one you pass as `integrationName`.
-4. Verify the fork against your credentials from `execute`:
+3. Check the fork's README **Prerequisites / setup**. The package declares one
+   credential named `github` with no kind, so the saved token (provider
+   `github`) or a GitHub OAuth connection can fill it. Helpers take no auth
+   options: `secretName`, `integrationName`, and `account` were removed in
+   `@kody/github` 1.0.0 and throw if passed. When you have more than one GitHub
+   credential, pick one with the execute credentials map:
+   `credentials: { github: 'githubAccessToken' }` next to `code`, or
+   `--credential github=githubAccessToken` with the CLI. A package that imports
+   the fork from a job or webhook needs a default mapping for its `github` need
+   on that package's **Credentials** tab.
+4. Verify the fork against your credentials from `execute`, with
+   `credentials: { github: 'githubAccessToken' }`:
 
 ```ts
 import getViewer from 'kody:@<your-username>/github/get-viewer'
 
 export default async function main() {
-	return getViewer({ secretName: 'githubAccessToken' })
+	return getViewer()
 }
 ```
 
-A successful response returns the GitHub login your token resolves to — proving
-the fork, the secret, and `api.github.com` all line up.
+A successful response returns the GitHub login your token resolves to, and
+`auth` names the credential it used. That proves the fork, the credential, and
+`api.github.com` all line up.
