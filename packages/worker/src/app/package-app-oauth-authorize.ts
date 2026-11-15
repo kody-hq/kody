@@ -1,7 +1,6 @@
-import {
-	getAuthSessionExpiresAtMs,
-	readParsedAuthSession,
-} from '#app/auth-session.ts'
+import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
+import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
+import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
 	loadOrgBindingForPerson,
@@ -29,13 +28,20 @@ import {
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
-import { redirectToLoginWhenUnauthenticated } from '#app/auth-redirect.ts'
+import {
+	redirectToLogin,
+	redirectToLoginWhenUnauthenticated,
+} from '#app/auth-redirect.ts'
+import { loadResolvedRequestAuth } from '#app/request-auth-cache.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import type { PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
-import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import {
+	packageAppOauthLoginAttemptParam,
+	packageAppOauthPaths,
+} from '#universal/package-app-oauth-paths.ts'
 import { isCredentialKind } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
-import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	auditDatabaseFromEnv,
 	getRequestIp,
@@ -165,6 +171,53 @@ async function shouldSkipConsent(input: {
 	})
 }
 
+/**
+ * Ends a sign-in that cannot finish here. Retry starts over on the app host,
+ * which mints fresh PKCE state.
+ */
+async function renderPackageAppSignInError(input: {
+	env: Env
+	request: Request
+	redirectUri: string
+	orgUsername: string
+	kodyId: string
+	destroySession: boolean
+	setCookie?: string
+}) {
+	const retry = new URL(packageAppOauthPaths.login, input.redirectUri)
+	retry.searchParams.set('org', input.orgUsername)
+	retry.searchParams.set('app', input.kodyId)
+	// Custom hostnames serve the app at `/`, the login default.
+	const app = new URL(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
+			appBaseUrl: getAppBaseUrl({
+				env: input.env,
+				requestUrl: input.request.url,
+			}),
+			username: input.orgUsername,
+			kodyId: input.kodyId,
+		}),
+	)
+	if (app.origin === retry.origin) {
+		retry.searchParams.set('return_to', app.pathname)
+	}
+	const href = escapeHtml(retry.toString())
+	const headers = new Headers({
+		'Cache-Control': 'no-store',
+		'Content-Type': 'text/html; charset=utf-8',
+		'Referrer-Policy': 'no-referrer',
+	})
+	const setCookie = input.destroySession
+		? await destroyAuthCookie(isSecureRequest(input.request))
+		: input.setCookie
+	if (setCookie) headers.append('Set-Cookie', setCookie)
+	return new Response(
+		`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign-in did not finish</title></head><body><main><h1>Sign-in did not finish</h1><p>Kody could not confirm your session for this app. Sign in again from the app to continue.</p><p><a href="${href}">Try signing in again</a></p></main></body></html>`,
+		{ status: 400, headers },
+	)
+}
+
 async function issueCodeAndRedirect(input: {
 	env: Env
 	request: Request
@@ -178,9 +231,22 @@ async function issueCodeAndRedirect(input: {
 	state: string | null
 	recordGrant: boolean
 }) {
-	const parsedSession = await readParsedAuthSession(input.request)
-	if (!parsedSession) {
-		return await redirectToLoginWhenUnauthenticated(input.request, input.env)
+	// The session readAuthenticatedAppUser accepted for this request, not a
+	// fresh parse. Without it there is nothing to bind the code to, and
+	// sending the visitor to /login again could loop.
+	const { sessionExpiresAt } = await loadResolvedRequestAuth(
+		input.request,
+		input.env,
+	)
+	if (!sessionExpiresAt) {
+		return await renderPackageAppSignInError({
+			env: input.env,
+			request: input.request,
+			redirectUri: input.redirectUri,
+			orgUsername: input.orgUsername,
+			kodyId: input.kodyId,
+			destroySession: true,
+		})
 	}
 	if (input.recordGrant) {
 		await upsertPackageAppOauthGrant({
@@ -201,10 +267,7 @@ async function issueCodeAndRedirect(input: {
 			redirectUri: input.redirectUri,
 			codeChallenge: input.codeChallenge,
 			scopes: input.scopes,
-			sessionExpiresAt: getAuthSessionExpiresAtMs({
-				rememberMe: parsedSession.session.rememberMe,
-				issuedAt: parsedSession.issuedAt,
-			}),
+			sessionExpiresAt,
 		},
 	})
 	if (!minted) {
@@ -787,7 +850,36 @@ export async function handlePackageAppOauthAuthorizeRequest(
 				})
 			}
 		}
-		return await redirectToLoginWhenUnauthenticated(request, env)
+		const resolved = await loadResolvedRequestAuth(request, env)
+		// A live session that the app gate still refuses would bounce between
+		// /login and here, so it is cleared instead.
+		if (resolved.user) {
+			return await renderPackageAppSignInError({
+				env,
+				request,
+				redirectUri: validated.redirectUri,
+				orgUsername: validated.client.username,
+				kodyId: validated.client.kodyId,
+				destroySession: true,
+			})
+		}
+		if (url.searchParams.has(packageAppOauthLoginAttemptParam)) {
+			return await renderPackageAppSignInError({
+				env,
+				request,
+				redirectUri: validated.redirectUri,
+				orgUsername: validated.client.username,
+				kodyId: validated.client.kodyId,
+				destroySession: false,
+				setCookie: resolved.setCookie,
+			})
+		}
+		const retry = new URL(url)
+		retry.searchParams.set(packageAppOauthLoginAttemptParam, '1')
+		return redirectToLogin(request, {
+			redirectTo: `${retry.pathname}${retry.search}`,
+			setCookie: resolved.setCookie,
+		})
 	}
 
 	if (request.method === 'POST') {
