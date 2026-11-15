@@ -907,12 +907,11 @@ export function createDatabase(
 									entry_point: params[6],
 									kv_key: params[7],
 									dependencies_json: params[8],
-									total_bytes: params[9],
-									built_in: params[10],
-									built_context_name: params[11],
-									bundle_sha256: params[12],
-									created_at: params[13],
-									updated_at: params[14],
+									built_in: params[9],
+									built_context_name: params[10],
+									bundle_sha256: params[11],
+									created_at: params[12],
+									updated_at: params[13],
 								}
 								upsert(
 									'published_bundle_artifacts',
@@ -922,7 +921,7 @@ export function createDatabase(
 								return { meta: { changes: 1, last_row_id: 0 } }
 							}
 							if (query.startsWith('UPDATE published_bundle_artifacts')) {
-								const id = params[13]
+								const id = params[12]
 								const existing = selectOne(
 									'published_bundle_artifacts',
 									(row) => row['id'] === id,
@@ -943,11 +942,10 @@ export function createDatabase(
 										entry_point: params[5],
 										kv_key: params[6],
 										dependencies_json: params[7],
-										total_bytes: params[8],
-										built_in: params[9],
-										built_context_name: params[10],
-										bundle_sha256: params[11],
-										updated_at: params[12],
+										built_in: params[8],
+										built_context_name: params[9],
+										bundle_sha256: params[10],
+										updated_at: params[11],
 									},
 								)
 								return { meta: { changes: 1, last_row_id: 0 } }

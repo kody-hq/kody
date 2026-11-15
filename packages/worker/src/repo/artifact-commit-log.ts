@@ -1,7 +1,7 @@
 import {
 	buildArtifactsGitAuth,
 	buildAuthenticatedArtifactsRemote,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
 import {
@@ -39,7 +39,8 @@ export async function listArtifactCommitsAfter(input: {
 	const repo = await resolveExistingArtifactSourceRepo(input.env, input.repoId)
 	if (!repo) return null
 	const info = await repo.info()
-	if (!info?.remote || isLoopbackArtifactsRemote(info.remote)) return null
+	if (!info?.remote || isSnapshotOnlyArtifactsRemote(input.env, info.remote))
+		return null
 
 	const token = await repo.createToken('read', 300)
 	const remote = buildAuthenticatedArtifactsRemote({

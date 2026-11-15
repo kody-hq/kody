@@ -41,6 +41,7 @@ import {
 	runRecordPlatformInterruptedErrorName,
 	runRecordRetentionDays,
 	runRecordRetentionEmptyBackoffMinMs,
+	runRecordRetentionMinPassIntervalMs,
 	runRecordRetentionEveryNFinishes,
 	runRecordStaleRunningTtlMsBackground,
 	runRecordStaleRunningTtlMsJob,
@@ -66,6 +67,12 @@ type SeedRun = {
 	errorTriage?: 'ignored' | 'resolved' | null
 	idempotencyKey?: string | null
 }
+
+const summarizeStatementPrefix = 'SELECT surface, COUNT(*) AS total'
+const reconcileStatementPrefix =
+	'SELECT id, started_at, surface, idempotency_key, stale_after FROM runs'
+/** Heal-on-read reload of one row (`healStaleRunningRecord`). */
+const healPageStatementPrefix = 'SELECT r.* FROM runs r WHERE r.id = ? LIMIT 1'
 
 const dayMs = 24 * 60 * 60 * 1000
 const iso = (ms: number) => new Date(ms).toISOString()
@@ -1369,9 +1376,12 @@ test('empty over-cap retention backs off; summarize memos; list does not reconci
 			},
 		)
 		await finishOk(userId, 'now-evictable', { name: 'now-evictable' })
+		// Pulled in from the 30s empty backoff to the pass-interval floor.
 		const pulledIn = await getAlarm(userId)
 		expect(pulledIn).toBeTypeOf('number')
-		expect(pulledIn).toBeLessThan(Date.now() + 5_000)
+		expect(pulledIn).toBeLessThan(
+			Date.now() + runRecordRetentionMinPassIntervalMs + 1_000,
+		)
 	}
 
 	// Same-since summarize reuses the isolate memo; list heals page rows only.
@@ -1388,8 +1398,8 @@ test('empty over-cap retention backs off; summarize memos; list does not reconci
 		}
 		const since = iso(startedAtBase - 1_000)
 		const summarizeOp = async () =>
-			(await getSqlBillingStats({ env, userId })).ops.find(
-				(op) => op.op === 'summarize',
+			(await getSqlBillingStats({ env, userId })).statements.find((statement) =>
+				statement.sql.startsWith(summarizeStatementPrefix),
 			)
 		expect((await summarizeRunRecords({ env, userId, since })).total).toBe(3)
 		const summarizeAfterFirst = await summarizeOp()
@@ -1405,9 +1415,11 @@ test('empty over-cap retention backs off; summarize memos; list does not reconci
 			await listRuns(userId)
 		}
 		const afterLists = await getSqlBillingStats({ env, userId })
-		expect(afterLists.ops.some((op) => op.op === 'reconcileStaleRunning')).toBe(
-			false,
-		)
+		expect(
+			afterLists.statements.some((statement) =>
+				statement.sql.startsWith(reconcileStatementPrefix),
+			),
+		).toBe(false)
 
 		await finishOk(userId, 'hot-3', { name: 'hot-3' }, startedAtBase + 3_000)
 		expect((await summarizeRunRecords({ env, userId, since })).total).toBe(4)
@@ -1435,11 +1447,17 @@ test('empty over-cap retention backs off; summarize memos; list does not reconci
 			}),
 		])
 		const stats = await getSqlBillingStats({ env, userId })
-		expect(stats.ops.some((op) => op.op === 'reconcileStaleRunning')).toBe(
-			false,
-		)
 		expect(
-			stats.ops.some((op) => op.op === 'healStaleRunning' && op.calls >= 1),
+			stats.statements.some((statement) =>
+				statement.sql.startsWith(reconcileStatementPrefix),
+			),
+		).toBe(false)
+		expect(
+			stats.statements.some(
+				(statement) =>
+					statement.sql.startsWith(healPageStatementPrefix) &&
+					statement.calls >= 1,
+			),
 		).toBe(true)
 	}
 

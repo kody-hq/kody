@@ -1,9 +1,6 @@
 import { z } from 'zod'
 import { loadAdminUserByTarget } from '#worker/admin/users-data.ts'
-import {
-	inspectRunLogSqlBilling,
-	runLogSqlBillingOps,
-} from '#worker/run-records/service.ts'
+import { inspectRunLogSqlBilling } from '#worker/run-records/service.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -12,13 +9,12 @@ import {
 	stableUserIdSchema,
 } from './admin-shared.ts'
 
-const sqlBillingOpSchema = z.enum(runLogSqlBillingOps)
-
-const billingOpSchema = z.object({
-	op: sqlBillingOpSchema,
+const statementStatsSchema = z.object({
+	sql: z.string(),
 	rowsRead: z.number().int().nonnegative(),
 	rowsWritten: z.number().int().nonnegative(),
 	calls: z.number().int().nonnegative(),
+	maxRowsRead: z.number().int().nonnegative(),
 })
 
 const indexInfoSchema = z.object({
@@ -64,9 +60,10 @@ const reportSchema = z.object({
 	schemaVersion: z.number().int().nullable(),
 	billing: z.object({
 		databaseSize: z.number().int().nonnegative(),
+		since: z.string(),
 		rowsReadTotal: z.number().int().nonnegative(),
 		rowsWrittenTotal: z.number().int().nonnegative(),
-		ops: z.array(billingOpSchema),
+		statements: z.array(statementStatsSchema),
 	}),
 	runLogsIndexes: z.array(indexInfoSchema),
 	runLogsColumns: z.array(columnInfoSchema),
@@ -96,7 +93,7 @@ export const adminRunLogSqlBillingCapability = defineDomainCapability(
 		name: 'adminRunLogSqlBilling',
 		contextRuns: 'deny',
 		description:
-			'Read-only content-free RunLog SQLite billing and schema snapshot for one user: per-op rowsRead/rowsWritten, run_logs PRAGMA index_list/table_info, COUNT(*) for runs/run_logs/ledger/workflow_projections, EXPLAIN QUERY PLAN for run_id DELETE/SELECT, and run_count meta versus COUNT(*) FROM runs. Admin-only; never returns run rows, logs, or other user-authored content. Same as listRuns or getSqlBillingStats: the first RPC on an account that has never used RunLog instantiates that Durable Object and writes the empty schema. Prefer inspecting accounts that already have run history.',
+			'Read-only content-free RunLog SQLite billing and schema snapshot for one user: per-statement rowsRead/rowsWritten since the object last started (SQL text with ? placeholders, highest rows read first), run_logs PRAGMA index_list/table_info, COUNT(*) for runs/run_logs/ledger/workflow_projections, EXPLAIN QUERY PLAN for run_id DELETE/SELECT, and run_count meta versus COUNT(*) FROM runs. Admin-only; never returns run rows, logs, or other user-authored content. Same as listRuns or getSqlBillingStats: the first RPC on an account that has never used RunLog instantiates that Durable Object and writes the empty schema. Prefer inspecting accounts that already have run history.',
 		keywords: [
 			'admin',
 			'run log',
