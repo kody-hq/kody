@@ -56,10 +56,15 @@ Permitted Purposes are limited to the following uses:
 3. nonprofit use, meaning a nonprofit organization's own noncommercial use;
 
 4. classroom use, meaning noncommercial teaching and learning at schools or in
-   courses; and
+   courses;
 
-5. evaluation use, meaning an organization's internal evaluation of the
-   Software for up to 30 days, not in production.
+5. free application use, meaning using the Software to power an application or
+   service you provide to others free of charge, with no paid tiers,
+   advertising, or other commercial advantage; and
+
+6. evaluation use, meaning an organization's internal evaluation of the Software
+   for a single period of up to 30 days, starting when the organization first
+   uses the Software, without using it to process real data or serve real users.
 
 Permitted Purposes include self-hosted deployments, including forks you modify
 and redeploy on infrastructure you control (for example, your own Cloudflare
