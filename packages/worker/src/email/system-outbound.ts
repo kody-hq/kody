@@ -1,5 +1,9 @@
 import { resolveTransactionalSenderReplyTo } from '@kody-internal/shared/transactional-sender-reply-to.ts'
-import { sendCloudflareEmail } from '#app/email/cloudflare-email.ts'
+import {
+	cloudflareCustomHeaderProblem,
+	cloudflareRequestRejectionMessage,
+	sendCloudflareEmail,
+} from '#app/email/cloudflare-email.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { normalizeAddrSpec, normalizeHeaderMailbox } from './address.ts'
 import {
@@ -187,6 +191,8 @@ async function sendReservedEmail(
 	if (!text && !html) {
 		throw new McpCallerError('Email text or HTML body is required.')
 	}
+	const headerProblem = cloudflareCustomHeaderProblem(input.headers)
+	if (headerProblem) throw new McpCallerError(headerProblem)
 	const explicitReplyTo = input.replyTo
 		? normalizeHeaderMailbox(input.replyTo)
 		: null
@@ -261,6 +267,8 @@ async function sendReservedEmail(
 			localPart,
 			now,
 		})
+		const rejection = cloudflareRequestRejectionMessage(result)
+		if (rejection) throw new McpCallerError(rejection)
 		throw new Error(
 			result.skipped
 				? 'System email was skipped because no Cloudflare Email credentials are configured.'

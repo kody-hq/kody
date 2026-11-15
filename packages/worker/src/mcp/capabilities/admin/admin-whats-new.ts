@@ -134,7 +134,12 @@ export const adminWhatsNewEmailSendCapability = defineDomainCapability(
 				subject: z.string().trim().min(1),
 				html: z.string().trim().min(1).optional(),
 				text: z.string().trim().min(1).optional(),
-				headers: z.record(z.string(), z.string()).optional(),
+				headers: z
+					.record(z.string(), z.string())
+					.optional()
+					.describe(
+						'Custom headers Cloudflare Email Sending accepts, such as List-Unsubscribe or X-*. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected.',
+					),
 			})
 			.refine((value) => value.html || value.text, {
 				message: 'Email text or HTML body is required.',

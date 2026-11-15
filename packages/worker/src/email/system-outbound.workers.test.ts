@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:workers'
 import { expect, test, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createMswWorkerServer } from '#worker/test-support/msw-worker-server.ts'
 import { ensureEmailTestSchema } from './test-schema.ts'
@@ -217,6 +218,134 @@ test('newsletter mail respects suppression and refunds provider failures', async
 	).rejects.toThrow('Provider failed')
 	expect(await readSendCounter('news', now)).toBe(0)
 	expect(consoleWarn).toHaveBeenCalled()
+})
+
+test('a Cloudflare 400 invalid-content rejection is a caller error and refunds the newsletter quota', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-15T07:19:37.000Z')
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, () =>
+				HttpResponse.json(
+					{
+						success: false,
+						errors: [
+							{ code: 10202, message: 'email.sending.error.email.invalid' },
+						],
+					},
+					{ status: 400 },
+				),
+			),
+		],
+		mswOptions,
+	)
+	const error = await sendNewsletterEmail({
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		headers: {
+			'List-Unsubscribe': '<https://news.example.com/unsubscribe?t=1>',
+			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+		},
+		now,
+	}).catch((caught: unknown) => caught)
+	expect(isMcpCallerError(error)).toBe(true)
+	expect((error as Error).message).toContain(
+		'HTTP 400, code 10202: email.sending.error.email.invalid',
+	)
+	expect((error as Error).message).toContain('custom header')
+	expect(await readSendCounter('news', now)).toBe(0)
+})
+
+test('Cloudflare auth, throttling, and outage responses stay server failures', async () => {
+	consoleWarn.mockImplementation(() => {})
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-15T07:20:00.000Z')
+	for (const [status, code, message] of [
+		[401, 10101, 'email.sending.error.authentication.unauthorized'],
+		[403, 10203, 'email.sending.error.email.sending_disabled'],
+		[429, 10004, 'email.sending.error.throttled'],
+		[500, 10002, 'email.sending.error.internal_server'],
+	] as const) {
+		using _server = createMswWorkerServer(
+			[
+				http.post(cloudflareEmailApi, () =>
+					HttpResponse.json(
+						{ success: false, errors: [{ code, message }] },
+						{ status },
+					),
+				),
+			],
+			mswOptions,
+		)
+		const error = await send({ localPart: 'support', now }).catch(
+			(caught: unknown) => caught,
+		)
+		expect(error).toBeInstanceOf(Error)
+		expect((error as Error).message).toBe(message)
+		expect(isMcpCallerError(error)).toBe(false)
+	}
+	expect(await readSendCounter('support', now)).toBe(0)
+})
+
+test('custom headers Cloudflare refuses are caller errors before the provider or quota is touched', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-15T07:21:00.000Z')
+	const providerCalls: Array<unknown> = []
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, async ({ request }) => {
+				providerCalls.push(await request.json())
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: 'msg-headers', delivered: [] },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	for (const [headers, expected] of [
+		[{ 'Reply-To': 'kent@kody.example.com' }, 'dedicated reply-to field'],
+		[{ 'message-id': '<a@elsewhere.example>' }, 'Cloudflare generates it'],
+		[{ Subject: 'Other' }, 'dedicated subject field'],
+		[{ 'ARC-Seal': 'i=1' }, 'Cloudflare generates it'],
+		[{ 'Bad Header': 'x' }, 'Header name "Bad Header" is invalid'],
+		[{ 'X-Campaign': ' ' }, 'empty value'],
+		[{ 'X-Campaign': 'a\r\nBcc: x@example.com' }, 'line breaks'],
+	] as const) {
+		const error = await sendNewsletterEmail({
+			env: createSystemEnv(),
+			to: 'reader@example.com',
+			subject: 'Updates',
+			text: 'News',
+			headers,
+			now,
+		}).catch((caught: unknown) => caught)
+		expect(isMcpCallerError(error)).toBe(true)
+		expect((error as Error).message).toContain(expected)
+	}
+	expect(providerCalls).toEqual([])
+	expect(await readSendCounter('news', now)).toBe(0)
+
+	await sendNewsletterEmail({
+		env: createSystemEnv(),
+		to: 'reader@example.com',
+		subject: 'Updates',
+		text: 'News',
+		headers: {
+			'List-Unsubscribe': '<https://news.example.com/unsubscribe?t=1>',
+			'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+			'X-Campaign_Id': 'whats-new',
+		},
+		now,
+	})
+	expect(providerCalls).toHaveLength(1)
+	expect(providerCalls[0]).toMatchObject({
+		reply_to: 'kent@kody.example.com',
+		headers: { 'X-Campaign_Id': 'whats-new' },
+	})
 })
 
 test('sendSystemEmail sends from the reserved system sender to external recipients', async () => {

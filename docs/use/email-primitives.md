@@ -630,6 +630,15 @@ suppression levels); `adminEmailSuppressionList` shows suppressed addresses and
 rows: each send's provider message id, its latest Cloudflare delivery report
 (null until one matches), and the recipient's bounce or suppression state.
 
+Custom `headers` on system sends must be ones Cloudflare Email Sending accepts
+([email headers](https://developers.cloudflare.com/email-service/reference/headers/)).
+A header with its own field (Reply-To, From, To, Cc, Bcc, Subject), one
+Cloudflare generates (Message-ID, Date, and the other platform headers), an
+invalid name, or an empty or multi-line value is refused as a caller error
+before the daily counter is consumed. A Cloudflare HTTP 400 (codes 10001, 10200,
+10201, 10202) is also a caller error naming the code and likely cause, with the
+counter refunded; 401, 403, 429, and 5xx stay server failures.
+
 Outbound system mail is not stored on the dedicated inbound `system_email_*`
 graph, so this topic carries the sent copy (recipients, subject, text, and HTML)
 rather than a metadata-only pointer. Production fan-out is admin-only; synthetic
