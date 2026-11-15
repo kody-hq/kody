@@ -46,6 +46,7 @@ test('the manifest backfill is admin only and writes nothing unless dryRun is fa
 		filledRows: 0,
 		manifestsWritten: 0,
 		unbackfillableRows: 0,
+		readFailedRows: 0,
 		nextCursor: null,
 		problems: [],
 	})

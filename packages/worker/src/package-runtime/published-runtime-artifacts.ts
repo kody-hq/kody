@@ -969,7 +969,7 @@ function parseStoredPublishedBundleArtifactAsStored(
 
 export type StoredBundleArtifactManifestBackfill =
 	| { status: 'written' | 'would_write' | 'already'; totalBytes: number }
-	| { status: 'missing' | 'unusable' }
+	| { status: 'missing' | 'unusable' | 'read_failed' }
 
 /**
  * Adds a manifest to a stored artifact written before manifests existed.
@@ -996,6 +996,14 @@ export async function backfillStoredBundleArtifactManifest(input: {
 	return { status: 'written', totalBytes: result.totalBytes }
 }
 
+function parseJsonOrUndefined(text: string): unknown {
+	try {
+		return JSON.parse(text)
+	} catch {
+		return undefined
+	}
+}
+
 async function backfillManifestAtKey(input: {
 	kv: KVNamespace
 	kvKey: string
@@ -1003,19 +1011,27 @@ async function backfillManifestAtKey(input: {
 }): Promise<
 	| { status: 'would_write' | 'already'; totalBytes: number }
 	| { status: 'written'; totalBytes: number; artifact: PublishedBundleArtifact }
-	| { status: 'missing' | 'unusable' }
+	| { status: 'missing' | 'unusable' | 'read_failed' }
 > {
+	// A KV read that throws says nothing about the artifact: report it apart
+	// from an artifact that was read and cannot be used.
+	let text: string | null
 	let stored: unknown
+	let restored: unknown
+	try {
+		text = await input.kv.get(input.kvKey, 'text')
+		if (text === null) return { status: 'missing' }
+		stored = parseJsonOrUndefined(text)
+		if (stored === undefined) return { status: 'unusable' }
+		restored = await restoreLinkedArtifactGroups({ kv: input.kv, stored })
+	} catch {
+		return { status: 'read_failed' }
+	}
 	let artifact: PublishedBundleArtifact | null
 	let manifest: BundleArtifactManifest
-	// Stored JSON that does not parse, or a module entry that is not a module,
-	// throws. That is one unusable artifact, not a failed page.
+	// A module entry that is not a module throws.
 	try {
-		stored = await input.kv.get(input.kvKey, 'json')
-		if (stored === null) return { status: 'missing' }
-		artifact = parseStoredPublishedBundleArtifactAsStored(
-			await restoreLinkedArtifactGroups({ kv: input.kv, stored }),
-		)
+		artifact = parseStoredPublishedBundleArtifactAsStored(restored)
 		if (!artifact) return { status: 'unusable' }
 		if (artifact.manifest) {
 			return { status: 'already', totalBytes: artifact.manifest.totalBytes }

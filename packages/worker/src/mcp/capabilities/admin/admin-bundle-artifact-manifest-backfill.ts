@@ -70,6 +70,13 @@ const outputSchema = z.object({
 		.describe(
 			'Rows whose stored artifact is missing or unusable. Left untouched.',
 		),
+	readFailedRows: z
+		.number()
+		.int()
+		.nonnegative()
+		.describe(
+			'Rows whose stored artifact could not be read this time. They keep no total, so a later run from the start retries them.',
+		),
 	nextCursor: z.string().nullable(),
 	problems: z
 		.array(
@@ -85,6 +92,7 @@ const outputSchema = z.object({
 					'already',
 					'missing',
 					'unusable',
+					'read_failed',
 					'row_changed',
 				]),
 				totalBytes: z.number().nullable(),
@@ -100,7 +108,7 @@ export const adminBundleArtifactManifestBackfillCapability =
 		name: 'adminBundleArtifactManifestBackfill',
 		contextRuns: 'deny',
 		description:
-			'Manifest backfill for stored published bundle artifacts written before manifests existed (issue 5178). For each published_bundle_artifacts row without total_bytes: adds a manifest (module roles, sizes, owners) to the stored artifact when it has none, then records total_bytes on the row. Changes no module bytes, rebuilds nothing, and leaves rows whose stored artifact is missing or unusable untouched (listed in problems). One page per call; resume with nextCursor until null. dryRun default is true. Safe to repeat.',
+			'Manifest backfill for stored published bundle artifacts written before manifests existed (issue 5178). For each published_bundle_artifacts row without total_bytes: adds a manifest (module roles, sizes, owners) to the stored artifact when it has none, then records total_bytes on the row. Changes no module bytes, rebuilds nothing, and leaves rows whose stored artifact is missing or unusable untouched (listed in problems). A row whose stored artifact could not be read is listed as read_failed, never as unusable; run again from the start to retry those. One page per call; resume with nextCursor until null. dryRun default is true. Safe to repeat.',
 		keywords: [
 			'admin',
 			'package',
@@ -127,7 +135,7 @@ export const adminBundleArtifactManifestBackfillCapability =
 					}),
 				{
 					successReason: (result) =>
-						`dry_run=${result.dryRun};scanned=${result.scannedRows};filled=${result.filledRows};manifests=${result.manifestsWritten};unbackfillable=${result.unbackfillableRows}`,
+						`dry_run=${result.dryRun};scanned=${result.scannedRows};filled=${result.filledRows};manifests=${result.manifestsWritten};unbackfillable=${result.unbackfillableRows};read_failed=${result.readFailedRows}`,
 				},
 			)
 		},

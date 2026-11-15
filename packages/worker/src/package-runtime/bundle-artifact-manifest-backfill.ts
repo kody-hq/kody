@@ -33,6 +33,8 @@ export type BundleArtifactManifestBackfillResult = {
 	manifestsWritten: number
 	/** Rows whose stored artifact is missing or unusable; left untouched. */
 	unbackfillableRows: number
+	/** Rows whose stored artifact could not be read this time; run again. */
+	readFailedRows: number
 	nextCursor: string | null
 	/** Only the rows that could not be filled. */
 	problems: Array<BundleArtifactManifestBackfillOutcome>
@@ -83,6 +85,7 @@ export async function runBundleArtifactManifestBackfill(input: {
 		filledRows: 0,
 		manifestsWritten: 0,
 		unbackfillableRows: 0,
+		readFailedRows: 0,
 		nextCursor: rows.length === limit ? rows.at(-1)!.id : null,
 		problems: [],
 	}
@@ -94,7 +97,9 @@ export async function runBundleArtifactManifestBackfill(input: {
 		})
 		let status: BundleArtifactManifestBackfillOutcome['status'] = stored.status
 		const totalBytes = 'totalBytes' in stored ? stored.totalBytes : null
-		if (totalBytes === null) {
+		if (stored.status === 'read_failed') {
+			result.readFailedRows += 1
+		} else if (totalBytes === null) {
 			result.unbackfillableRows += 1
 		} else {
 			if (stored.status !== 'already') result.manifestsWritten += 1

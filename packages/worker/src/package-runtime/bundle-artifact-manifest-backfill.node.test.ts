@@ -182,3 +182,26 @@ test('pages by row id and can be limited to some owners', async () => {
 	expect(totals()['a']).toBeGreaterThan(0)
 	expect(totals()['c']).toBeGreaterThan(0)
 })
+
+test('a stored artifact that KV fails to read is reported as a failed read, not as unusable', async () => {
+	const { env, totals } = setup([{ id: 'a', stored: storedArtifact() }])
+	;(
+		env as unknown as { BUNDLE_ARTIFACTS_KV: { get: unknown } }
+	).BUNDLE_ARTIFACTS_KV.get = async () => {
+		throw new Error('KV GET failed: 503')
+	}
+
+	const result = await runBundleArtifactManifestBackfill({
+		env,
+		dryRun: false,
+		afterId: null,
+	})
+
+	expect(result).toMatchObject({
+		filledRows: 0,
+		unbackfillableRows: 0,
+		readFailedRows: 1,
+	})
+	expect(result.problems[0]?.status).toBe('read_failed')
+	expect(totals()).toEqual({ a: null })
+})
