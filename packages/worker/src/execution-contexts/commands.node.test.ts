@@ -97,10 +97,17 @@ function setup(input: { commands?: boolean } = {}) {
 		kind = 'execution-context-run',
 		scopes: Array<string> | null = null,
 		profileId: string | null = null,
+		packages?: { entries: Array<string>; all: Array<string> },
 	) =>
 		({
 			env,
-			principal: { kind, ecid: 'ec_mac', runId: 'run_1', scopes },
+			principal: {
+				kind,
+				ecid: 'ec_mac',
+				runId: 'run_1',
+				scopes,
+				...(packages ? { packages } : {}),
+			},
 			callerContext: {
 				user: { userId, username: userId },
 				orgBinding: { org: { id: orgId } },
@@ -180,6 +187,28 @@ test('the operator may run commands on their own context and each start is audit
 			},
 		}),
 	])
+})
+
+test('command_started names the saved packages Kody served to the run, and nothing for ad hoc code', async () => {
+	const s = setup({ commands: true })
+	const entries = Array.from({ length: 10 }, (_, i) => `pkg_entry_${i}`)
+	await authorizeContextCommand(
+		s.runCtx(operator, 'execution-context-run', null, null, {
+			entries,
+			all: [...entries, 'pkg_dep_a', 'pkg_dep_b'],
+		}),
+		s.args,
+	)
+	expect(s.audits[0]?.detail).toMatchObject({
+		commandId: 'cmd_abcdef123',
+		entryPackageIds: entries.slice(0, 8),
+		packageCount: 12,
+	})
+
+	const adHoc = setup({ commands: true })
+	await authorizeContextCommand(adHoc.runCtx(operator), adHoc.args)
+	expect(adHoc.audits[0]?.detail).not.toHaveProperty('entryPackageIds')
+	expect(adHoc.audits[0]?.detail).not.toHaveProperty('packageCount')
 })
 
 test('host commands are operator-only: shares refuse commands and an older command grant confers nothing', async () => {

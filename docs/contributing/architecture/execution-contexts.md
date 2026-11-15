@@ -202,6 +202,13 @@ sequenceDiagram
   stays valid JSON), cwd, env keys, run id, and background flag. Authorization
   requests and audit rows never carry env values; command output can, if the
   command prints them.
+- When a run loads saved packages, origin records them on the run's lease as the
+  package graph is served (`recordRunPackages`, `run-packages.ts`): `entries`
+  (imported directly by the run's code) and `all` (entries plus what they
+  import). `command_started` carries `entryPackageIds` (first 8) and
+  `packageCount`. Code on the machine cannot be trusted to say which package it
+  is, so this set, not the call, is what attribution uses. Ad hoc code has
+  neither field.
 - Saved package code gets the same `kody.command`: the package-bound `kody`
   wrapper (`__kodyCreatePackageBoundKody` in `local-execute-runtime-support.ts`)
   passes `command` through like `mcp`, so the opt-in, grant, and authorize hop
