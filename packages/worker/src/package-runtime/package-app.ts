@@ -3937,14 +3937,6 @@ async function resolvePackageAppBundledArtifact(input: {
 		userId: input.userId,
 		sourceId: input.savedPackage.sourceId,
 	})
-	// A reader pinned to an earlier commit (anonymous visitors of an app whose
-	// newer publish awaits approval, or a serving commit behind a build) must
-	// not save its rebuild as the published commit's bundle.
-	if (
-		persistableSource.published_commit !== input.savedPackage.publishedCommit
-	) {
-		return compiled
-	}
 	await persistPublishedBundleArtifact({
 		env: input.env,
 		userId: input.userId,
