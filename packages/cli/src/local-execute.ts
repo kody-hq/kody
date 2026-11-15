@@ -61,7 +61,10 @@ import {
 	runSecretHeader,
 	type WorkerdPackageModuleFile,
 } from './local-runtime-source.js'
-import { bundleLocalUserModule } from './local-bundle.js'
+import {
+	bundleLocalUserModule,
+	stripLocalUserModuleTypes,
+} from './local-bundle.js'
 import { installMockFetchShimModules } from './mock/install-mock-fetch-shim.js'
 import {
 	resolveMockFetchGateway,
@@ -232,10 +235,21 @@ export async function runLocalExecute(
 			conversationId: input.conversationId,
 		})
 	if (input.signal?.aborted) return cancelledDuringSetup()
-	const code =
-		input.modulePath !== undefined
-			? await bundleLocalUserModule(input.modulePath)
-			: input.code
+	let code: string
+	if (input.modulePath !== undefined) {
+		code = await bundleLocalUserModule(input.modulePath)
+	} else {
+		const stripped = await stripLocalUserModuleTypes(input.code)
+		if ('syntaxError' in stripped) {
+			return buildLocalExecuteResult({
+				sandbox: { error: stripped.syntaxError },
+				startedAt: setupStartedAt,
+				endedAt: new Date(),
+				conversationId: input.conversationId,
+			})
+		}
+		code = stripped.code
+	}
 	const client = {
 		apiUrl: input.apiUrl,
 		token: input.token,
