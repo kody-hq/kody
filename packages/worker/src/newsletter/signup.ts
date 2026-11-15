@@ -7,6 +7,7 @@ import {
 import { renderTransactionalEmail } from '#app/email/template.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
+import { normalizeAddrSpec } from '#worker/email/address.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
@@ -118,7 +119,14 @@ export async function requestNewsletterSignup(input: {
 
 	const rawEmail = input.form.email
 	const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : ''
-	if (!email || email.length > 254 || !emailPattern.test(email)) {
+	// The sender's own address check has the last word: an address it would
+	// refuse must fail here, not report a link that is never sent.
+	if (
+		!email ||
+		email.length > 254 ||
+		!emailPattern.test(email) ||
+		!normalizeAddrSpec(email)
+	) {
 		audit('failure', 'invalid_email')
 		return { ok: false, error: 'invalid_email' }
 	}

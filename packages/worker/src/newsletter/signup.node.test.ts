@@ -196,6 +196,7 @@ test('invalid addresses are rejected without an email', async () => {
 		'a@b',
 		'two@@example.com',
 		'a b@example.com',
+		"o'connor@example.com",
 		`${'x'.repeat(250)}@example.com`,
 	])
 		expect(await signup(email)).toEqual({ ok: false, error: 'invalid_email' })
