@@ -78,6 +78,57 @@ export function findLockfilePeerDrift(
 	)
 }
 
+type WorkspaceDuplicate = {
+	name: string
+	version: string
+	installPaths: Array<string>
+}
+
+const workspaceNestedPackagePattern =
+	/^(?<workspace>(?:[^/]+\/)*?[^/]+)\/node_modules\/(?<name>(?:@[^/]+\/)?[^/]+)$/
+
+/**
+ * Two workspaces that each nest the same package version with no root copy
+ * ship that package twice in any bundle that imports both workspaces. npm
+ * keeps such a lockfile as-is, so `npm install` never repairs it on its own.
+ */
+export function findWorkspaceDuplicates(
+	lock: PackageLock,
+): Array<WorkspaceDuplicate> {
+	const packages = lock.packages ?? {}
+	const installPathsByPackage = new Map<string, Array<string>>()
+	for (const [packagePath, meta] of Object.entries(packages)) {
+		const match = workspaceNestedPackagePattern.exec(packagePath)
+		const workspace = match?.groups?.workspace
+		const name = match?.groups?.name
+		if (!workspace || !name || !meta.version) continue
+		if (workspace.includes('node_modules')) continue
+		if (packages[`node_modules/${name}`]) continue
+		const key = `${name}@${meta.version}`
+		const installPaths = installPathsByPackage.get(key) ?? []
+		installPaths.push(packagePath)
+		installPathsByPackage.set(key, installPaths)
+	}
+
+	const duplicates: Array<WorkspaceDuplicate> = []
+	for (const installPaths of installPathsByPackage.values()) {
+		if (installPaths.length < 2) continue
+		const [firstPath] = installPaths
+		if (!firstPath) continue
+		const name = workspaceNestedPackagePattern.exec(firstPath)?.groups?.name
+		const version = packages[firstPath]?.version
+		if (!name || !version) continue
+		duplicates.push({ name, version, installPaths: installPaths.toSorted() })
+	}
+	return duplicates.toSorted((left, right) =>
+		left.name.localeCompare(right.name),
+	)
+}
+
+function formatWorkspaceDuplicate(duplicate: WorkspaceDuplicate): string {
+	return `${duplicate.name}@${duplicate.version} is installed separately in ${duplicate.installPaths.join(', ')} with no root copy, so bundles ship it more than once. Hoist one copy to node_modules/${duplicate.name} in package-lock.json and run npm install.`
+}
+
 function formatLockfilePeerDrift(drift: LockfilePeerDrift): string {
 	return `${drift.name}@${drift.lockedVersion} is inside ${drift.directRanges.join(', ')} but outside peer ${drift.peerRange} from ${drift.from}. npm install rewrites package-lock.json to satisfy that peer. Run npm install and commit the lockfile.`
 }
@@ -88,7 +139,10 @@ export async function checkLockfilePeerDrift(
 	const lock = JSON.parse(
 		await readFile(packageLockPath, 'utf8'),
 	) as PackageLock
-	return findLockfilePeerDrift(lock).map(formatLockfilePeerDrift)
+	return [
+		...findLockfilePeerDrift(lock).map(formatLockfilePeerDrift),
+		...findWorkspaceDuplicates(lock).map(formatWorkspaceDuplicate),
+	]
 }
 
 function declaredRanges(pkg: LockPackage | undefined): Record<string, string> {
