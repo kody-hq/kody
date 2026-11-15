@@ -96,7 +96,6 @@ import {
 	createPackagePublishLockedMessage,
 } from '#worker/package-registry/package-publish-lock.ts'
 import { buildPackageCapabilityApprovalUrl } from '#worker/package-capabilities/capability-approval-url.ts'
-import { loadPublicVisitorsHeldBack } from '#worker/package-capabilities/public-visitors-held-back.ts'
 import { createCredentialNeedsApprovalMessage } from '#worker/credentials/credential-needs-approval.ts'
 import type { ApprovalViewer } from '#worker/approval-bundles/item-views.ts'
 import {
@@ -104,6 +103,10 @@ import {
 	pausedPublishBundleMessage,
 } from '#worker/approval-bundles/paused-publishes.ts'
 import { optionalApprovalViewerForCaller } from './approval-bundle-shared.ts'
+import {
+	buildPublicVisitorsHeldBackPublishNotice,
+	publicVisitorsHeldBackSchema,
+} from './public-visitors-held-back-publish-notice.ts'
 import {
 	credentialNeedChangeSchema,
 	pendingPackageSecretApprovalsSchema,
@@ -481,23 +484,6 @@ const communityListingBehindHintSchema = z
 	})
 	.describe(
 		'Present when this package has a public community listing whose pinned snapshot is still behind the published commit after promote auto-sync. Rare; a background backfill retries. No manual republish step is required.',
-	)
-
-const publicVisitorsHeldBackSchema = z
-	.object({
-		public_commit: z
-			.string()
-			.describe('The approved commit public visitors still run.'),
-		serving_commit: z
-			.string()
-			.describe('The published commit that waits for capability approval.'),
-		approval_url: z.string(),
-		message: z.string(),
-	})
-	.nullable()
-	.optional()
-	.describe(
-		'Set when this internet-visible app now asks for more capabilities than the version approved for public visitors. Public visitors stay on public_commit until the owner approves at approval_url; members already get the new version. Null/omitted otherwise.',
 	)
 
 const allowedPackagesPublishNoticeSchema = z
@@ -931,42 +917,6 @@ async function getAllowedPackagesPublishNoticeForPublishedPackage(input: {
 	}
 }
 
-async function getPublicVisitorsHeldBackPublishNotice(input: {
-	env: Env
-	baseUrl: string
-	ownerUserId: OwnerId
-	ownerScope: string
-	packageId: string
-	kodyId: string
-}) {
-	// Optional notice only: never fail a completed publish because it rejected.
-	try {
-		const heldBack = await loadPublicVisitorsHeldBack({
-			env: input.env,
-			packageId: input.packageId,
-			ownerUserId: input.ownerUserId,
-		})
-		if (!heldBack) return null
-		const approvalUrl = buildPackageCapabilityApprovalUrl({
-			baseUrl: input.baseUrl,
-			username: input.ownerScope,
-			kodyId: input.kodyId,
-		})
-		return {
-			public_commit: heldBack.publicCommit,
-			serving_commit: heldBack.servingCommit,
-			approval_url: approvalUrl,
-			message: `Public visitors are still on the previous version (${heldBack.publicCommit.slice(0, 7)}) because ${heldBack.servingCommit.slice(0, 7)} asks for more capabilities. Members already get the new version. Approve to update public visitors: ${approvalUrl}`,
-		}
-	} catch (error) {
-		console.warn(
-			`[packagePublishExternalPush] public visitors held back lookup failed for ${input.ownerScope}/${input.kodyId}:`,
-			error instanceof Error ? error.message : error,
-		)
-		return null
-	}
-}
-
 async function getListingBehindPublishHint(input: {
 	env: Env
 	baseUrl: string
@@ -1319,7 +1269,7 @@ async function runExternalPublishAttempt(input: {
 										sourceId: input.source.id,
 									}),
 								public_visitors_held_back:
-									await getPublicVisitorsHeldBackPublishNotice({
+									await buildPublicVisitorsHeldBackPublishNotice({
 										env: input.env,
 										baseUrl: input.baseUrl,
 										ownerUserId: input.ownerUserId,
@@ -1589,7 +1539,7 @@ async function runExternalPublishAttempt(input: {
 									sourceId: input.source.id,
 								}),
 							public_visitors_held_back:
-								await getPublicVisitorsHeldBackPublishNotice({
+								await buildPublicVisitorsHeldBackPublishNotice({
 									env: input.env,
 									baseUrl: input.baseUrl,
 									ownerUserId: input.ownerUserId,
