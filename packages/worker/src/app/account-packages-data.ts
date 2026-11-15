@@ -56,6 +56,10 @@ import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { listArtifactCommitsAfter } from '#worker/repo/artifact-commit-log.ts'
 import { loadAnonymousVisitorExposure } from '#app/account-package-visitor-exposure.ts'
 import {
+	loadPublicVisitorsHeldBack,
+	type PublicVisitorsHeldBack,
+} from '#worker/package-capabilities/public-visitors-held-back.ts'
+import {
 	getSavedPackageWithCommunityProvenanceById,
 	resolveSavedPackageRefWithCommunityProvenance,
 	listSavedPackageCommunityProvenanceByIds,
@@ -656,35 +660,47 @@ async function toDetailWithListingState(input: {
 				}).then(knownUnmappableCredentials)
 			: Promise.resolve([]),
 	])
-	const [listingState, capabilityAllowance, anonymousVisitorExposure] =
-		await Promise.all([
-			loadActiveCommunityListingState({
-				db: input.env.APP_DB,
-				userId: input.userId,
-				packageId: input.record.id,
-				publishedCommit: detailBase.publishedCommit,
-			}),
-			input.username
-				? loadPackageCapabilityAllowanceForOwner({
-						env: input.env,
-						packageId: input.record.id,
-						publishedCommit: detailBase.publishedCommit,
-					})
-				: Promise.resolve(undefined),
-			input.username &&
-			input.record.hasApp &&
-			!input.record.isInternetVisible &&
-			detailBase.publishedCommit
-				? loadAnonymousVisitorExposure({
-						env: input.env,
-						requestUrl: input.requestUrl,
-						record: input.record,
-					})
-				: Promise.resolve(undefined),
-		])
+	const [
+		listingState,
+		capabilityAllowance,
+		anonymousVisitorExposure,
+		publicVisitorsHeldBack,
+	] = await Promise.all([
+		loadActiveCommunityListingState({
+			db: input.env.APP_DB,
+			userId: input.userId,
+			packageId: input.record.id,
+			publishedCommit: detailBase.publishedCommit,
+		}),
+		input.username
+			? loadPackageCapabilityAllowanceForOwner({
+					env: input.env,
+					packageId: input.record.id,
+					publishedCommit: detailBase.publishedCommit,
+				})
+			: Promise.resolve(undefined),
+		input.username &&
+		input.record.hasApp &&
+		!input.record.isInternetVisible &&
+		detailBase.publishedCommit
+			? loadAnonymousVisitorExposure({
+					env: input.env,
+					requestUrl: input.requestUrl,
+					record: input.record,
+				})
+			: Promise.resolve(undefined),
+		input.username && input.record.hasApp && input.record.isInternetVisible
+			? loadPublicVisitorsHeldBackForOwner({
+					env: input.env,
+					packageId: input.record.id,
+					ownerUserId: input.userId,
+				})
+			: Promise.resolve(null),
+	])
 	return {
 		...detailBase,
 		...(anonymousVisitorExposure ? { anonymousVisitorExposure } : {}),
+		...(publicVisitorsHeldBack ? { publicVisitorsHeldBack } : {}),
 		...listingState,
 		ownerIsPersonal,
 		...(capabilityAllowance?.length ? { capabilityAllowance } : {}),
@@ -698,6 +714,19 @@ async function toDetailWithListingState(input: {
 					}),
 				}
 			: {}),
+	}
+}
+
+async function loadPublicVisitorsHeldBackForOwner(input: {
+	env: Env
+	packageId: string
+	ownerUserId: string
+}): Promise<PublicVisitorsHeldBack | null> {
+	try {
+		return await loadPublicVisitorsHeldBack(input)
+	} catch (error) {
+		console.warn('public-visitors-held-back-load-failed', error)
+		return null
 	}
 }
 

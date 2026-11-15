@@ -13,6 +13,7 @@ import {
 } from './capability-set.ts'
 import { insertPackageCapabilityApproval } from './capability-approvals-repo.ts'
 import { emptyDependencySnapshot } from './dependency-snapshot.ts'
+import { loadPublicVisitorsHeldBack } from './public-visitors-held-back.ts'
 import { advanceServingCommit } from './serving-commit-advance.ts'
 
 const compute = vi.hoisted(() => ({
@@ -430,4 +431,60 @@ test('a commit that serves again counts as the most recently served', async () =
 	await serve('commit-a')
 	await serve('commit-c')
 	await expect(site.publicCommit()).resolves.toBe('commit-a')
+})
+
+test('the owner is told public visitors are held back only while a wider republish waits', async () => {
+	const heldBack = (env: Env) =>
+		loadPublicVisitorsHeldBack({ env, packageId, ownerUserId: ownerId })
+
+	const firstTime = await setUp({})
+	await expect(heldBack(firstTime.env)).resolves.toBe(null)
+
+	const same = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage])
+	await same.publish('commit-b')
+	await advanceServingCommit({
+		env: same.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	await expect(heldBack(same.env)).resolves.toBe(null)
+
+	const wider = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await wider.publish('commit-b')
+	// Still building: visitors and members both run commit-a.
+	await expect(heldBack(wider.env)).resolves.toBe(null)
+	await advanceServingCommit({
+		env: wider.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	await expect(heldBack(wider.env)).resolves.toEqual({
+		publicCommit: 'commit-a',
+		servingCommit: 'commit-b',
+	})
+
+	wider.sqlite
+		.prepare('UPDATE saved_packages SET is_internet_visible = 0 WHERE id = ?')
+		.run(packageId)
+	await expect(heldBack(wider.env)).resolves.toBe(null)
+	wider.sqlite
+		.prepare('UPDATE saved_packages SET is_internet_visible = 1 WHERE id = ?')
+		.run(packageId)
+
+	await insertPackageCapabilityApproval(wider.db, {
+		id: 'approval-b',
+		package_id: packageId,
+		owner_user_id: ownerId,
+		published_commit: 'commit-b',
+		fingerprint: 'wider',
+		capability_set_json: '[]',
+		dependency_snapshot_json: '{}',
+		approved_by_user_id: 'person-owner',
+		approved_at: '2026-11-14T00:10:00.000Z',
+	})
+	await expect(heldBack(wider.env)).resolves.toBe(null)
 })
