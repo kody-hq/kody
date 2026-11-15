@@ -208,6 +208,26 @@ test('repoPublishSession tells the agent when public visitors stay on the previo
 	)
 })
 
+test('repoPublishSession still reports a completed publish when the held-back lookup rejects', async () => {
+	resetMocks()
+	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockRejectedValueOnce(
+		new Error('D1 unavailable'),
+	)
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+	const result = await repoPublishSessionCapability.handler(
+		{ session_id: 'session-1' },
+		createCtx(),
+	)
+
+	expect(result).toMatchObject({
+		status: 'ok',
+		published_commit: 'commit-1',
+	})
+	expect(result).not.toHaveProperty('public_visitors_held_back')
+	warn.mockRestore()
+})
+
 test('repoPublishSession keeps the credential notice on a locked publish', async () => {
 	resetMocks()
 	mockModule.getSavedPackageById.mockResolvedValue({

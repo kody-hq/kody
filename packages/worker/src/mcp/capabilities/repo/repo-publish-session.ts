@@ -399,22 +399,31 @@ async function buildPublicVisitorsHeldBackNoticeForSource(input: {
 	ownerScope: string
 	sourceId: string
 }) {
-	const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
-		id: input.sourceId,
-		userId: input.ownerUserId,
-	})
-	if (!source || source.entity_kind !== 'package') return null
-	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
-		userId: input.ownerUserId,
-		packageId: source.entity_id,
-	})
-	if (!savedPackage) return null
-	return buildPublicVisitorsHeldBackPublishNotice({
-		env: input.env,
-		baseUrl: input.baseUrl,
-		ownerUserId: input.ownerUserId,
-		ownerScope: input.ownerScope,
-		packageId: savedPackage.id,
-		kodyId: savedPackage.kodyId,
-	})
+	// Optional notice only: never fail a completed publish because a read rejected.
+	try {
+		const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.ownerUserId,
+		})
+		if (!source || source.entity_kind !== 'package') return null
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: input.ownerUserId,
+			packageId: source.entity_id,
+		})
+		if (!savedPackage) return null
+		return await buildPublicVisitorsHeldBackPublishNotice({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			ownerUserId: input.ownerUserId,
+			ownerScope: input.ownerScope,
+			packageId: savedPackage.id,
+			kodyId: savedPackage.kodyId,
+		})
+	} catch (error) {
+		console.warn(
+			`[publicVisitorsHeldBack] package lookup failed for source ${input.sourceId}:`,
+			error instanceof Error ? error.message : error,
+		)
+		return null
+	}
 }
