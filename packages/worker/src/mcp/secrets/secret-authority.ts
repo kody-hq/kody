@@ -64,6 +64,31 @@ export function getSecretAuthorityScope() {
 }
 
 /**
+ * Marks a call that reached the host from run code over a channel no package
+ * is bound to: the run's shared fetch gateway or its generic capability
+ * dispatchers. Any module in the run can use those channels, so such a call
+ * cannot be attributed to one package's code. Package-bound channels clear
+ * the mark. Host code that acts for a package outside run code never sets it.
+ */
+export type UnboundSandboxCall = { surface: 'hosted' | 'app' }
+
+const unboundSandboxCallStorage = new AsyncLocalStorage<{
+	call: UnboundSandboxCall | null
+}>()
+
+/** `call` null means the channel is bound to a package. */
+export function runAsSandboxCall<T>(
+	call: UnboundSandboxCall | null,
+	fn: () => T,
+): T {
+	return unboundSandboxCallStorage.run({ call }, fn)
+}
+
+export function getUnboundSandboxCall(): UnboundSandboxCall | null {
+	return unboundSandboxCallStorage.getStore()?.call ?? null
+}
+
+/**
  * Pick the package id that may use a secret for this call.
  *
  * A requested (stamp / header / capability) id wins only when it is in the

@@ -134,6 +134,7 @@ import {
 import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityHeaderName,
@@ -2351,8 +2352,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		const invoke = () =>
 			capability.handler(input.args, { env: this.env, callerContext })
 		const grantedPackageIds = new Set(this.ctx.props.packageStorageGrantIds)
-		return await runWithSecretAuthorityScope(grantedPackageIds, () =>
-			runWithCurrentSecretAuthority(boundPackageId, invoke),
+		return await runAsSandboxCall(
+			boundPackageId?.trim() ? null : { surface: 'app' },
+			() =>
+				runWithSecretAuthorityScope(grantedPackageIds, () =>
+					runWithCurrentSecretAuthority(boundPackageId, invoke),
+				),
 		)
 	}
 

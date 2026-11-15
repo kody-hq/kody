@@ -11,11 +11,15 @@ import {
 import {
 	createPackageSecretAccessDeniedBatchMessage,
 	createPackageSecretAccessDeniedMessage,
+	createUnboundLockedSecretUseMessage,
 } from './errors.ts'
 import { findSecret, type FoundSecret } from './service.ts'
 import type { SecretScope } from './types.ts'
 import type { StorageContext } from '#mcp/storage.ts'
-import { resolveCallerSecretAuthority } from './secret-authority.ts'
+import {
+	getUnboundSandboxCall,
+	resolveCallerSecretAuthority,
+} from './secret-authority.ts'
 import { getCommunityForkByForkedPackageId } from '#worker/community/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -31,6 +35,7 @@ import {
 	scheduleAllowedPackagesWouldBlock,
 	type AllowedPackagesWouldBlockAccessKind,
 } from '#worker/credentials/allowed-packages-would-block.ts'
+import { scheduleUnboundUseRefusal } from '#worker/credentials/unbound-use-refusals.ts'
 
 type SecretMountDefinition = {
 	name: string
@@ -221,6 +226,32 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 		storageContext: input.storageContext,
 		authorityPackageId: input.authorityPackageId,
 	})
+	// A locked credential is only usable by the code of a package on its list.
+	// A call over a channel shared by every module in the run cannot be
+	// attributed to one package's code, so it is refused whatever the run
+	// package is.
+	const unboundCall = getUnboundSandboxCall()
+	if (
+		unboundCall &&
+		input.resolved.scope === 'user' &&
+		input.resolved.allowedPackages.length > 0
+	) {
+		const credentialId = input.resolved.credentialId?.trim()
+		if (credentialId) {
+			scheduleUnboundUseRefusal({
+				env: input.env,
+				refusal: {
+					ownerId: String(input.userId),
+					credentialId,
+					surface: unboundCall.surface,
+					runPackageId: input.storageContext?.packageId ?? null,
+				},
+			})
+		}
+		throw new PackageSecretAccessDeniedError(
+			createUnboundLockedSecretUseMessage({ secretName: input.secretName }),
+		)
+	}
 	if (!packageId || input.resolved.scope !== 'user') return
 	if (input.resolved.allowedPackages.includes(packageId)) return
 

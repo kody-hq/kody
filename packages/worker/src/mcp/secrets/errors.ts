@@ -187,6 +187,16 @@ export function createPackageSecretAccessDeniedMessage(input: {
 	return `Secret "${input.secretName}" is not allowed for package "${input.packageName}". If this package should be able to use the secret, ask the user whether to approve that package in the account secrets UI, then retry after they approve that policy change.${approvalSuffix}`
 }
 
+/**
+ * A call that did not come from a package's own bound code asked for a
+ * credential locked to an allowed-packages list.
+ */
+export function createUnboundLockedSecretUseMessage(input: {
+	secretName: string
+}) {
+	return `Secret "${input.secretName}" was refused: it is locked to an allowed-packages list, so it can only be used by the code of a package on that list, and this request did not come from one. Ways to fix it: (1) call an export of a package on the list and let that package make the request; (2) if the request is made by a package, use that package's own fetch or kody:runtime helpers instead of reaching fetch through a shared global, and ask the account owner to add the package to the list if it is not on it; (3) if the package is on the list and was published a while ago, publish it again so it is rebuilt.`
+}
+
 export function createSecretPackageGrantRequiresWebsiteMessage(input: {
 	approvalUrl: string
 }) {

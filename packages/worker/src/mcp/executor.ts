@@ -88,6 +88,7 @@ import {
 } from '#mcp/kody-provider-proxy-source.ts'
 import {
 	grantedSecretAuthorityPackageIdSet,
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityArgName,
@@ -1559,7 +1560,10 @@ export function createToolDispatchers(
 						// stamp. Without grants, a peeled stamp installs an empty
 						// set and resolveCallerSecretAuthority fails closed.
 						const withStamp = () =>
-							runWithCurrentSecretAuthority(requestedPackageId, invoke)
+							runAsSandboxCall(
+								requestedPackageId ? null : { surface: 'hosted' },
+								() => runWithCurrentSecretAuthority(requestedPackageId, invoke),
+							)
 						return capturedGrantedPackageIds
 							? await runWithSecretAuthorityScope(
 									capturedGrantedPackageIds,

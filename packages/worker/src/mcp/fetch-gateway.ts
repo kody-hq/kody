@@ -66,6 +66,8 @@ import {
 	grantedSecretAuthorityPackageIdSet,
 	secretAuthorityHeaderName,
 	storageContextWithSecretAuthority,
+	runAsSandboxCall,
+	type UnboundSandboxCall,
 } from '#mcp/secrets/secret-authority.ts'
 import { verifyPackageSecretRef } from '#mcp/secrets/package-secret-ref.ts'
 import {
@@ -332,13 +334,22 @@ export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 	/** Refusals come back as a marked response; see `sandbox-rpc-outcome.ts`. */
 	async fetch(request: Request) {
 		try {
+			const props = this.ctx.props
+			// Run code reaches this entrypoint. Only the per-package binding
+			// says which package's code is fetching.
+			const unboundCall: UnboundSandboxCall | null =
+				props?.boundPackageId?.trim()
+					? null
+					: { surface: props?.packageAppAuthority ? 'app' : 'hosted' }
 			return withoutForgedGatewayErrorHeader(
-				await executeGatewayFetch({
-					env: this.env,
-					props: this.ctx.props,
-					request,
-					waitUntil: (promise) => this.ctx.waitUntil(promise),
-				}),
+				await runAsSandboxCall(unboundCall, () =>
+					executeGatewayFetch({
+						env: this.env,
+						props,
+						request,
+						waitUntil: (promise) => this.ctx.waitUntil(promise),
+					}),
+				),
 			)
 		} catch (error) {
 			return gatewayErrorResponse(error)
