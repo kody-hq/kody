@@ -42,7 +42,7 @@ export function linkedArtifactCommitKvPrefix(input: {
  * name is the hex chunks `encodePathKeyAsPath` writes. A shorter or longer
  * match only changes how modules are grouped, never where they are restored.
  */
-function linkedArtifactGroupPrefix(modulePath: string) {
+export function linkedArtifactGroupPrefix(modulePath: string) {
 	const markerIndex = `/${modulePath}`.indexOf(`/${linkedArtifactsMarker}`)
 	if (markerIndex === -1) return null
 	const start = markerIndex + linkedArtifactsMarker.length
