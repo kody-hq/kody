@@ -45,7 +45,7 @@ import { ensureCommunityFlowSchema } from './community-flow-test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const mockAccountId = 'cf_account_mock_123'
-const artifactsApiBaseUrl = 'https://artifacts-mock.test'
+const artifactsApiBaseUrl = 'http://127.0.0.1:1'
 const baseUrl = 'https://test.kody.dev'
 
 type TestUser = {
@@ -114,7 +114,7 @@ function createFlowHarness() {
 	// warns that it is experimental.
 	silenceIncidentalRuntimeWarnings()
 	// Default `onUnhandledFrame: 'error'` keeps workerd off the network.
-	// `bypass` attempted real DNS for artifacts-mock.test and flooded the
+	// `bypass` attempted real network calls for the mock Artifacts API and flooded the
 	// Workers suite.
 	const artifactsMock = createMswWorkerServer(
 		createArtifactsMswHandlers({

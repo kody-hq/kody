@@ -1,7 +1,7 @@
 import {
 	buildArtifactsGitAuth,
 	buildAuthenticatedArtifactsRemote,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
 import { readArtifactSourceSnapshot } from './artifact-source-snapshot.ts'
@@ -52,7 +52,7 @@ export async function readFirstArtifactFileAtCommit(input: {
 		throw new Error('Artifact repo remote URL is unavailable.')
 	}
 
-	if (isLoopbackArtifactsRemote(info.remote)) {
+	if (isSnapshotOnlyArtifactsRemote(input.env, info.remote)) {
 		const snapshot = await readArtifactSourceSnapshot({
 			env: input.env,
 			repoId: input.repoId,
@@ -153,7 +153,7 @@ export async function readArtifactTreeAtCommit(input: {
 		throw new Error('Artifact repo remote URL is unavailable.')
 	}
 
-	if (isLoopbackArtifactsRemote(info.remote)) {
+	if (isSnapshotOnlyArtifactsRemote(input.env, info.remote)) {
 		const snapshot = await readArtifactSourceSnapshot({
 			env: input.env,
 			repoId: input.repoId,
