@@ -45,7 +45,9 @@ const claims = {
 }
 
 const expected = { username: claims.username, kodyId: claims.kodyId }
-const sessionExpiresAt = 1_800_000_000_000
+// Relative to the real clock: consume rejects a parent session that has
+// already expired by Date.now().
+const sessionExpiresAt = Date.now() + 24 * 60 * 60 * 1000
 const consumed = { ...claims, sessionExpiresAt }
 
 function mintToken(
