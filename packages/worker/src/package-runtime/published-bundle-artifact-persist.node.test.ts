@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import {
 	bundleArtifactSha256,
 	toDbRowInput,
@@ -27,7 +28,10 @@ test('bundleArtifactSha256 ignores module order and changes with any module cont
 		}),
 	).toBe(hash)
 
-	const variants = [
+	const variants: Array<{
+		mainModule: string
+		modules: WorkerLoaderModules
+	}> = [
 		{ ...base, mainModule: 'dep.js' },
 		{ ...base, modules: { ...base.modules, 'main.js': 'export default 2' } },
 		{
