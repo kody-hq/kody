@@ -3,14 +3,20 @@ import {
 	createBundleArtifactManifest,
 	parseStoredBundleArtifactManifest,
 } from './bundle-artifact-manifest.ts'
+import { linkedArtifactPrefix } from './module-graph-artifacts.ts'
 import {
 	type PublishedBundleArtifact,
 	readPublishedBundleArtifact,
 	writePublishedBundleArtifact,
 } from './published-runtime-artifacts.ts'
 
-const linkedArtifactModule =
-	'.__kody_linked__/artifacts/dep-source/commit-1/dist/index.js'
+const own = { sourceId: 'source-own', publishedCommit: 'commit-1' }
+const dependency = {
+	specifier: 'kody:@u/dep/read',
+	sourceId: 'source-dep',
+	publishedCommit: 'a'.repeat(40),
+}
+const linkedArtifactModule = `${linkedArtifactPrefix(dependency)}/dist/index.js`
 const linkedImportModule = '.__kody_linked__/kody_dep.js'
 
 function artifactWithModules(
@@ -49,6 +55,7 @@ function createKvEnv() {
 
 test('createBundleArtifactManifest records a role and UTF-8 byte size for every module', () => {
 	const manifest = createBundleArtifactManifest({
+		...own,
 		mainModule: 'dist/index.js',
 		modules: {
 			'dist/index.js': 'export default "é"',
@@ -61,12 +68,16 @@ test('createBundleArtifactManifest records a role and UTF-8 byte size for every 
 	})
 
 	expect(manifest.modules).toEqual({
-		'dist/index.js': { role: 'main', bytes: 19 },
-		'dist/chunk.js': { role: 'module', bytes: 18 },
-		'dist/data.bin': { role: 'module', bytes: 3 },
-		'dist/config.json': { role: 'module', bytes: 7 },
-		[linkedArtifactModule]: { role: 'linked-artifact', bytes: 20 },
-		[linkedImportModule]: { role: 'linked-import', bytes: 32 },
+		'dist/index.js': { role: 'main', bytes: 19, owner: own },
+		'dist/chunk.js': { role: 'module', bytes: 18, owner: own },
+		'dist/data.bin': { role: 'module', bytes: 3, owner: own },
+		'dist/config.json': { role: 'module', bytes: 7, owner: own },
+		[linkedArtifactModule]: {
+			role: 'linked-artifact',
+			bytes: 20,
+			owner: dependency,
+		},
+		[linkedImportModule]: { role: 'linked-import', bytes: 32, owner: own },
 	})
 	expect(manifest.totalBytes).toBe(19 + 18 + 3 + 7 + 20 + 32)
 })
@@ -88,6 +99,7 @@ test('a written artifact reads back with a manifest matching its modules', async
 test('writing ignores a manifest carried on the artifact and derives it from the modules written', async () => {
 	const { env } = createKvEnv()
 	const stale = createBundleArtifactManifest({
+		...own,
 		mainModule: 'dist/index.js',
 		modules: { 'dist/index.js': 'x' },
 	})
@@ -120,6 +132,7 @@ test('an artifact stored without a manifest still reads, with no manifest', asyn
 test('a stored manifest that does not describe the stored modules is dropped, not trusted', () => {
 	const modulePaths = ['dist/index.js', 'dist/chunk.js']
 	const valid = createBundleArtifactManifest({
+		...own,
 		mainModule: 'dist/index.js',
 		modules: { 'dist/index.js': 'a', 'dist/chunk.js': 'b' },
 	})
@@ -186,6 +199,7 @@ test('a read-time repair that rewrites module source drops the stored manifest',
 		JSON.stringify({
 			...preBinding,
 			manifest: createBundleArtifactManifest({
+				...own,
 				mainModule: 'dist/index.js',
 				modules,
 			}),
@@ -196,4 +210,74 @@ test('a read-time repair that rewrites module source drops the stored manifest',
 
 	expect(read?.modules['dist/index.js']).not.toBe(modules['dist/index.js'])
 	expect(read?.manifest).toBeUndefined()
+})
+
+test('a module nested under two linked artifacts is owned by the innermost one', () => {
+	const inner = {
+		specifier: 'kody:@u/ai/ask',
+		sourceId: 'source-ai',
+		publishedCommit: 'b'.repeat(40),
+	}
+	const nested = `${linkedArtifactPrefix(dependency)}/${linkedArtifactPrefix(inner)}/bundle.js`
+	const manifest = createBundleArtifactManifest({
+		...own,
+		mainModule: 'dist/index.js',
+		modules: { 'dist/index.js': 'a', [nested]: 'b' },
+	})
+
+	expect(manifest.modules[nested]?.owner).toEqual(inner)
+})
+
+test('a linked artifact path that names no dependency version gets no owner', () => {
+	const unreadable = '.__kody_linked__/artifacts/dep-source/commit-1/index.js'
+	const manifest = createBundleArtifactManifest({
+		...own,
+		mainModule: 'dist/index.js',
+		modules: { 'dist/index.js': 'a', [unreadable]: 'b' },
+	})
+
+	expect(manifest.modules[unreadable]).toEqual({
+		role: 'linked-artifact',
+		bytes: 1,
+	})
+})
+
+test('a manifest written before owners were recorded is still read, and a malformed owner is not', () => {
+	const modules = { 'dist/index.js': { role: 'main', bytes: 1 } }
+	expect(
+		parseStoredBundleArtifactManifest({ version: 1, totalBytes: 1, modules }, [
+			'dist/index.js',
+		]),
+	).not.toBeNull()
+	expect(
+		parseStoredBundleArtifactManifest(
+			{
+				version: 1,
+				totalBytes: 1,
+				modules: {
+					'dist/index.js': { role: 'main', bytes: 1, owner: { sourceId: 1 } },
+				},
+			},
+			['dist/index.js'],
+		),
+	).toBeNull()
+})
+
+test('a hex-named module directory after a key that fills its last path chunk is not read as part of the key', () => {
+	// 48 characters encode to exactly one 96-character path chunk.
+	const exact = {
+		specifier: 'kody',
+		sourceId: 'ab',
+		publishedCommit: 'c'.repeat(40),
+	}
+	const prefix = linkedArtifactPrefix(exact)
+	expect(prefix.split('/').at(-1)).toHaveLength(96)
+	const modulePath = `${prefix}/ab/index.js`
+	const manifest = createBundleArtifactManifest({
+		...own,
+		mainModule: 'dist/index.js',
+		modules: { 'dist/index.js': 'a', [modulePath]: 'b' },
+	})
+
+	expect(manifest.modules[modulePath]?.owner).toEqual(exact)
 })

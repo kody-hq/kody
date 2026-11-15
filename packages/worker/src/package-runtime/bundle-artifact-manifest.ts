@@ -1,5 +1,8 @@
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import { linkedPackageImportPrefix } from './module-graph-paths.ts'
+import {
+	decodePathKey,
+	linkedPackageImportPrefix,
+} from './module-graph-paths.ts'
 
 export const bundleArtifactManifestVersion = 1
 
@@ -19,11 +22,34 @@ export type BundleArtifactModuleRole =
 	| 'linked-import'
 	| 'module'
 
+/**
+ * The published package version a stored module came from. For a
+ * `linked-artifact` module this is the dependency Kody linked in, read from
+ * the path Kody wrote it under (a build cannot upload `.__kody_linked__/`
+ * paths). Every other module belongs to the artifact's own source and commit.
+ * A dependency a cloud build inlined into the bundle is not separable, so its
+ * code counts as the importer's.
+ */
+export type BundleArtifactModuleOwner = {
+	sourceId: string
+	publishedCommit: string
+	/** The `kody:@…` specifier a linked dependency was imported by. */
+	specifier?: string
+}
+
 export type BundleArtifactManifest = {
 	version: typeof bundleArtifactManifestVersion
 	/** Sum of `modules[*].bytes`. */
 	totalBytes: number
-	modules: Record<string, { role: BundleArtifactModuleRole; bytes: number }>
+	modules: Record<
+		string,
+		{
+			role: BundleArtifactModuleRole
+			bytes: number
+			/** Absent on manifests written before owners were recorded. */
+			owner?: BundleArtifactModuleOwner
+		}
+	>
 }
 
 const textEncoder = new TextEncoder()
@@ -56,19 +82,56 @@ function moduleRole(
 	return 'module'
 }
 
+const linkedArtifactKey = /^(.+)#([^#]+)#([0-9a-f]{40})$/
+
+/**
+ * The dependency version a `.__kody_linked__/artifacts/…` path names. The
+ * path does not mark where the encoded key ends, and a module directory can
+ * look like one more piece of it, so this takes the shortest run of segments
+ * that decodes to a whole `specifier#sourceId#commit` key.
+ */
+function linkedArtifactOwner(
+	modulePath: string,
+): BundleArtifactModuleOwner | null {
+	// The innermost group, in case a linked artifact sits under another one.
+	const innermost = `/${modulePath}`.lastIndexOf(`/${linkedArtifactsSegment}`)
+	const segments = modulePath
+		.slice(innermost + linkedArtifactsSegment.length)
+		.split('/')
+	let encoded = ''
+	for (const segment of segments.slice(0, -1)) {
+		encoded += segment
+		const match = linkedArtifactKey.exec(decodePathKey(encoded) ?? '')
+		if (match) {
+			return {
+				specifier: match[1]!,
+				sourceId: match[2]!,
+				publishedCommit: match[3]!,
+			}
+		}
+	}
+	return null
+}
+
 export function createBundleArtifactManifest(input: {
+	sourceId: string
+	publishedCommit: string
 	mainModule: string
 	modules: WorkerLoaderModules
 }): BundleArtifactManifest {
 	const modules: BundleArtifactManifest['modules'] = {}
+	const ownOwner = {
+		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
+	}
 	let totalBytes = 0
 	for (const [modulePath, module] of Object.entries(input.modules)) {
 		const bytes = moduleBytes(module)
 		totalBytes += bytes
-		modules[modulePath] = {
-			role: moduleRole(modulePath, input.mainModule),
-			bytes,
-		}
+		const role = moduleRole(modulePath, input.mainModule)
+		const owner =
+			role === 'linked-artifact' ? linkedArtifactOwner(modulePath) : ownOwner
+		modules[modulePath] = { role, bytes, ...(owner ? { owner } : {}) }
 	}
 	return { version: bundleArtifactManifestVersion, totalBytes, modules }
 }
@@ -79,6 +142,16 @@ const moduleRoles = new Set<string>([
 	'linked-import',
 	'module',
 ])
+
+function isModuleOwner(value: unknown): value is BundleArtifactModuleOwner {
+	if (!value || typeof value !== 'object') return false
+	const owner = value as Record<string, unknown>
+	return (
+		typeof owner.sourceId === 'string' &&
+		typeof owner.publishedCommit === 'string' &&
+		(owner.specifier === undefined || typeof owner.specifier === 'string')
+	)
+}
 
 /**
  * The stored manifest when it describes exactly the stored modules, else
@@ -99,12 +172,13 @@ export function parseStoredBundleArtifactManifest(
 	let moduleBytesSum = 0
 	for (const modulePath of modulePaths) {
 		const entry = (manifest.modules as Record<string, unknown>)[modulePath] as
-			| { role?: unknown; bytes?: unknown }
+			| { role?: unknown; bytes?: unknown; owner?: unknown }
 			| undefined
 		if (!entry || typeof entry !== 'object') return null
 		if (typeof entry.role !== 'string' || !moduleRoles.has(entry.role)) {
 			return null
 		}
+		if (entry.owner !== undefined && !isModuleOwner(entry.owner)) return null
 		const bytes = entry.bytes
 		if (
 			typeof bytes !== 'number' ||
