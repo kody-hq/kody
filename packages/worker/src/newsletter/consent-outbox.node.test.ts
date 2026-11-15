@@ -276,10 +276,20 @@ test('an account with no choice of its own is announced with the public sign-up 
 			`UPDATE users SET email = 'guest@example.com', whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = NULL, whats_new_email_opt_in_source = NULL`,
 		)
 		.run()
-	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	// The address changes after the sign-up was confirmed: the opt-in is dated
+	// when the account took it on, so it is not older than earlier events.
+	const later = new Date('2026-11-16T09:00:00.000Z')
+	await recordWhatsNewVerifiedAccount({
+		env,
+		stableUserId: accountId,
+		now: later,
+	})
 	expect(outbox()).toMatchObject([
 		{ stable_user_id: accountId, opted_in: 1, source: 'newsletter_page' },
 	])
+	expect(
+		sqlite.prepare(`SELECT occurred_at FROM whats_new_consent_outbox`).get(),
+	).toEqual({ occurred_at: later.toISOString() })
 })
 
 test('without a queue binding a change is delivered inline', async () => {

@@ -159,12 +159,16 @@ export async function recordWhatsNewVerifiedAccount(input: {
 				.bind(row.email)
 				.first<{ confirmed_at: string }>()
 			if (signup) {
+				// The account takes the sign-up on now, which may be after an
+				// earlier no-choice event for it; subscribers order by time.
+				const adoptedAt = (input.now ?? new Date()).toISOString()
 				await recordWhatsNewConsentChange({
 					env: input.env,
 					stableUserId: input.stableUserId,
 					optedIn: true,
 					source: 'newsletter_page',
-					occurredAt: signup.confirmed_at,
+					occurredAt:
+						adoptedAt > signup.confirmed_at ? adoptedAt : signup.confirmed_at,
 					now: input.now,
 				})
 				return
