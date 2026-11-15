@@ -15,8 +15,6 @@ export type PublishedBundleArtifactRecord = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
-	/** Stored module bytes; null for a row written before it was recorded. */
-	totalBytes: number | null
 	/** Where the stored artifact was built; null for a row written before it was recorded. */
 	builtIn: PublishedBundleArtifactBuiltIn | null
 	/** Execution context name when `builtIn` is `context`. */
@@ -45,7 +43,6 @@ export type PublishedBundleArtifactUpsertInput = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
-	totalBytes?: number | null
 	builtIn?: PublishedBundleArtifactBuiltIn | null
 	builtContextName?: string | null
 	bundleSha256?: string | null
@@ -84,8 +81,6 @@ function mapRow(row: Record<string, unknown>): PublishedBundleArtifactRecord {
 		entryPoint: String(row['entry_point']),
 		kvKey: String(row['kv_key']),
 		dependenciesJson: String(row['dependencies_json'] ?? '[]'),
-		totalBytes:
-			typeof row['total_bytes'] === 'number' ? row['total_bytes'] : null,
 		builtIn: toBuiltIn(row['built_in']),
 		builtContextName:
 			typeof row['built_context_name'] === 'string'
@@ -595,9 +590,9 @@ function prepareUnguardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, total_bytes, built_in,
-				built_context_name, bundle_sha256, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				entry_point, kv_key, dependencies_json, built_in, built_context_name,
+				bundle_sha256, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -609,7 +604,6 @@ function prepareUnguardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
-			input.totalBytes ?? null,
 			input.builtIn ?? null,
 			input.builtContextName ?? null,
 			input.bundleSha256 ?? null,
@@ -628,10 +622,10 @@ function prepareGuardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, total_bytes, built_in,
-				built_context_name, bundle_sha256, created_at, updated_at
+				entry_point, kv_key, dependencies_json, built_in, built_context_name,
+				bundle_sha256, created_at, updated_at
 			)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			WHERE EXISTS (
 				SELECT 1 FROM entity_sources
 				WHERE id = ?
@@ -650,7 +644,6 @@ function prepareGuardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
-			input.totalBytes ?? null,
 			input.builtIn ?? null,
 			input.builtContextName ?? null,
 			input.bundleSha256 ?? null,
@@ -672,8 +665,8 @@ function prepareUnguardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				total_bytes = ?, built_in = ?, built_context_name = ?,
-				bundle_sha256 = ?, updated_at = ?
+				built_in = ?, built_context_name = ?, bundle_sha256 = ?,
+				updated_at = ?
 			WHERE id = ?`,
 		)
 		.bind(
@@ -685,7 +678,6 @@ function prepareUnguardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
-			input.totalBytes ?? null,
 			input.builtIn ?? null,
 			input.builtContextName ?? null,
 			input.bundleSha256 ?? null,
@@ -704,8 +696,8 @@ function prepareGuardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				total_bytes = ?, built_in = ?, built_context_name = ?,
-				bundle_sha256 = ?, updated_at = ?
+				built_in = ?, built_context_name = ?, bundle_sha256 = ?,
+				updated_at = ?
 			WHERE id = ?
 				AND EXISTS (
 					SELECT 1 FROM entity_sources
@@ -724,7 +716,6 @@ function prepareGuardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
-			input.totalBytes ?? null,
 			input.builtIn ?? null,
 			input.builtContextName ?? null,
 			input.bundleSha256 ?? null,

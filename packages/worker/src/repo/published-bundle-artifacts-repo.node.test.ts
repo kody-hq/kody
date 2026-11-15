@@ -1093,33 +1093,6 @@ test('listPublishedBundleArtifactsByIdentities issues a fixed number of queries 
 	prepareSpy.mockRestore()
 })
 
-test('upsertPublishedBundleArtifactRow stores total bytes and leaves it null when the writer gives none', async () => {
-	const db = createPublishedBundleArtifactsDb()
-	const identity = {
-		userId: 'user-1',
-		sourceId: 'source-1',
-		artifactKind: 'module',
-		artifactName: null,
-		entryPoint: 'src/index.ts',
-	}
-	const row = {
-		...identity,
-		publishedCommit: 'commit-1',
-		kvKey: 'kv-1',
-		dependenciesJson: '[]',
-	}
-
-	await upsertPublishedBundleArtifactRow(db, row)
-	expect(
-		(await getPublishedBundleArtifactByIdentity(db, identity))?.totalBytes,
-	).toBeNull()
-
-	await upsertPublishedBundleArtifactRow(db, { ...row, totalBytes: 4096 })
-	expect(
-		(await getPublishedBundleArtifactByIdentity(db, identity))?.totalBytes,
-	).toBe(4096)
-})
-
 test('provenance is stored with the row and listed for one commit only', async () => {
 	const db = createPublishedBundleArtifactsDb()
 	const base = {

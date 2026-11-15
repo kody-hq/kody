@@ -87,10 +87,7 @@ Important behavior:
 - Kody resolves and bundles saved-package npm dependencies during repo checks
   and publish-time artifact rebuilds.
 - Published bundle artifacts are what package exports, jobs, subscriptions, and
-  apps execute at runtime. Each write persists a versioned module manifest
-  (role, bytes, and owner for linked modules) and a D1 `total_bytes` sum of
-  those module sizes. Loaders use roles when the manifest is present
-  (`packages/worker/src/package-runtime/bundle-artifact-manifest.ts`).
+  apps execute at runtime.
 - External publish flips `published_commit` before the per-target npm bundle
   rebuild finishes. While that rebuild is in flight, invoke may serve the
   previous npm-backed bundle for two minutes, keyed to the published source

@@ -1,4 +1,6 @@
 import {
+	formatBytes,
+	formatHintList,
 	formatPublishSizeHints,
 	type PublishSizeHints,
 } from './publish-size-hints.ts'
@@ -47,6 +49,24 @@ export function publishOutsideCloudAdvice() {
 		`(docs: ${executionContextPublishDocsUrl}). ` +
 		'`kody dev check --build local` checks the same local build before you ' +
 		`publish. More: ${publishLargePackagesDocsUrl}`
+	)
+}
+
+/**
+ * Publish refuses a Kody cloud build before it starts when the package's own
+ * runtime source is over the cloud build size limit.
+ */
+export function cloudBuildRuntimeSourceTooLargeMessage(input: {
+	runtime: PublishSizeHints['runtime']
+	maxBytes: number
+}) {
+	return (
+		`Repo checks stopped before the build: the runtime code reachable from ` +
+		`the entry points is ${formatBytes(input.runtime.bytes)} in ` +
+		`${input.runtime.fileCount} file(s), over the ` +
+		`${formatBytes(input.maxBytes)} limit for a build in Kody cloud. The ` +
+		`largest are ${formatHintList(input.runtime.largest)}. Shrink it, or ` +
+		`build outside Kody cloud. ${publishOutsideCloudAdvice()}`
 	)
 }
 

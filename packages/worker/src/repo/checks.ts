@@ -100,9 +100,11 @@ import {
 	type ResolvedSecretProviderSlots,
 } from '#worker/credentials/secret-provider-slots.ts'
 import {
+	cloudBuildRuntimeSourceTooLargeMessage,
 	isRepoCheckResourceLimitMessage,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
+import { publishSizeHints } from './publish-size-hints.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -256,6 +258,12 @@ const repoChecksSyntheticTsconfigExtendsPath =
  */
 export const repoChecksSourceMaxFiles = 2_000
 export const repoChecksSourceMaxTotalBytes = 15 * 1024 * 1024
+/**
+ * Most runtime source, reachable from the entry points, that Kody cloud will
+ * try to build. Checked before any build step. A build made with
+ * `--build local` or on an execution context is not held to it.
+ */
+export const repoChecksCloudBuildMaxRuntimeSourceBytes = 8 * 1024 * 1024
 
 async function loadWorkerBundlerSnapshotTools() {
 	// Keep the experimental bundler out of the Worker's top-level deploy graph.
@@ -1225,7 +1233,9 @@ const maxAmbientStorageReportedFiles = 5
 function moduleImportsAmbientStorage(source: string, filePath: string) {
 	let parsed: ModuleAstNode
 	try {
-		parsed = parseModuleSource(source, { filePath }) as unknown as ModuleAstNode
+		parsed = parseModuleSource(source, {
+			filePath,
+		}) as unknown as ModuleAstNode
 	} catch {
 		return false
 	}
@@ -1921,6 +1931,26 @@ export async function runRepoChecks(input: {
 				}
 			}
 			collected[path] = content
+		}
+		// Reachable runtime source is at most the whole tree, so most packages
+		// skip the import scan.
+		if (
+			input.typecheckRanOffWorker !== true &&
+			totalBytes > repoChecksCloudBuildMaxRuntimeSourceBytes
+		) {
+			const { runtime } = publishSizeHints({
+				files: collected,
+				runtimeOnly: true,
+			})
+			if (runtime.bytes > repoChecksCloudBuildMaxRuntimeSourceBytes) {
+				return {
+					ok: false as const,
+					message: cloudBuildRuntimeSourceTooLargeMessage({
+						runtime,
+						maxBytes: repoChecksCloudBuildMaxRuntimeSourceBytes,
+					}),
+				}
+			}
 		}
 		return {
 			ok: true as const,

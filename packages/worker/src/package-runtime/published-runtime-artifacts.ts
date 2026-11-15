@@ -3,11 +3,6 @@ import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { repoRelativeSourceFiles } from '#worker/repo/published-source-files.ts'
 import {
-	createBundleArtifactManifest,
-	parseStoredBundleArtifactManifest,
-	type BundleArtifactManifest,
-} from './bundle-artifact-manifest.ts'
-import {
 	restoreLinkedArtifactGroups,
 	storeLinkedArtifactGroups,
 } from './linked-artifact-store.ts'
@@ -171,12 +166,6 @@ export type PublishedBundleArtifact = {
 	 * See `pre-binding-artifact-repair.ts`.
 	 */
 	packageBindingRewrite?: number
-	/**
-	 * Role and size of each stored module, written with the artifact. Absent
-	 * on artifacts stored before the manifest existed, and on an artifact that
-	 * was changed in memory after it was read.
-	 */
-	manifest?: BundleArtifactManifest
 }
 
 type StoredPublishedBundleArtifact = Omit<
@@ -762,8 +751,6 @@ export async function writePublishedBundleArtifact(input: {
 		...input.artifact,
 		modules,
 		...(linkedArtifacts.length > 0 ? { linkedArtifacts } : {}),
-		// Always derived from the modules being written, never carried over.
-		manifest: createBundleArtifactManifest(input.artifact),
 	})
 	await Promise.all([
 		kv.put(kvKey, serialized),
@@ -913,32 +900,12 @@ export async function readPublishedBundleArtifact(input: {
 function parseStoredPublishedBundleArtifact(
 	stored: unknown,
 ): PublishedBundleArtifact | null {
-	const loaded = parseStoredPublishedBundleArtifactAsStored(stored)
-	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
-	// repair imports the shared runtime module, which only resolves inside a
-	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
-	if (!loaded || !isRepairableArtifactKind(loaded.kind)) return loaded
-	const { manifest, ...unrepaired } = loaded
-	const repaired = repairInlinedFacadeBindingsInArtifact(
-		repairPreBindingPublishedArtifact(unrepaired),
-	)
-	// A read-time repair rewrites module source, so the stored sizes no longer
-	// describe what is served.
-	return manifest && repaired.modules === loaded.modules
-		? { ...repaired, manifest }
-		: repaired
-}
-
-/** The artifact exactly as stored, before any read-time repair. */
-function parseStoredPublishedBundleArtifactAsStored(
-	stored: unknown,
-): PublishedBundleArtifact | null {
 	if (!stored || typeof stored !== 'object') return null
 	const artifact = stored as StoredPublishedBundleArtifact
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
 		return null
 	}
-	const loaded = {
+	const loaded: PublishedBundleArtifact = {
 		version: artifact.version,
 		kind: artifact.kind,
 		artifactName: artifact.artifactName,
@@ -959,95 +926,14 @@ function parseStoredPublishedBundleArtifactAsStored(
 		...(artifact.packageBindingRewrite === undefined
 			? {}
 			: { packageBindingRewrite: artifact.packageBindingRewrite }),
-	} satisfies PublishedBundleArtifact
-	const manifest = parseStoredBundleArtifactManifest(
-		(stored as { manifest?: unknown }).manifest,
-		Object.keys(loaded.modules),
+	}
+	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
+	// repair imports the shared runtime module, which only resolves inside a
+	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
+	if (!isRepairableArtifactKind(loaded.kind)) return loaded
+	return repairInlinedFacadeBindingsInArtifact(
+		repairPreBindingPublishedArtifact(loaded),
 	)
-	return manifest ? { ...loaded, manifest } : loaded
-}
-
-export type StoredBundleArtifactManifestBackfill =
-	| { status: 'written' | 'would_write' | 'already'; totalBytes: number }
-	| { status: 'missing' | 'unusable' | 'read_failed' }
-
-/**
- * Adds a manifest to a stored artifact written before manifests existed.
- * Only the manifest is added: the stored modules are written back as read,
- * with no read-time repair. A package app's template copy gets the same
- * manifest.
- */
-export async function backfillStoredBundleArtifactManifest(input: {
-	env: Env
-	kvKey: string
-	dryRun: boolean
-}): Promise<StoredBundleArtifactManifestBackfill> {
-	const kv = getBundleArtifactsKv(input.env)
-	const result = await backfillManifestAtKey({ ...input, kv })
-	if (result.status !== 'written') return result
-	const { artifact } = result
-	if (artifact.kind === 'app' && artifact.artifactName === null) {
-		await backfillManifestAtKey({
-			kv,
-			kvKey: buildPackageAppWorkerTemplateKvKey(artifact),
-			dryRun: false,
-		})
-	}
-	return { status: 'written', totalBytes: result.totalBytes }
-}
-
-function parseJsonOrUndefined(text: string): unknown {
-	try {
-		return JSON.parse(text)
-	} catch {
-		return undefined
-	}
-}
-
-async function backfillManifestAtKey(input: {
-	kv: KVNamespace
-	kvKey: string
-	dryRun: boolean
-}): Promise<
-	| { status: 'would_write' | 'already'; totalBytes: number }
-	| { status: 'written'; totalBytes: number; artifact: PublishedBundleArtifact }
-	| { status: 'missing' | 'unusable' | 'read_failed' }
-> {
-	// A KV read that throws says nothing about the artifact: report it apart
-	// from an artifact that was read and cannot be used.
-	let text: string | null
-	let stored: unknown
-	let restored: unknown
-	try {
-		text = await input.kv.get(input.kvKey, 'text')
-		if (text === null) return { status: 'missing' }
-		stored = parseJsonOrUndefined(text)
-		if (stored === undefined) return { status: 'unusable' }
-		restored = await restoreLinkedArtifactGroups({ kv: input.kv, stored })
-	} catch {
-		return { status: 'read_failed' }
-	}
-	let artifact: PublishedBundleArtifact | null
-	let manifest: BundleArtifactManifest
-	// A module entry that is not a module throws.
-	try {
-		artifact = parseStoredPublishedBundleArtifactAsStored(restored)
-		if (!artifact) return { status: 'unusable' }
-		if (artifact.manifest) {
-			return { status: 'already', totalBytes: artifact.manifest.totalBytes }
-		}
-		manifest = createBundleArtifactManifest(artifact)
-	} catch {
-		return { status: 'unusable' }
-	}
-	if (input.dryRun) {
-		return { status: 'would_write', totalBytes: manifest.totalBytes }
-	}
-	await input.kv.put(
-		input.kvKey,
-		JSON.stringify({ ...(stored as object), manifest }),
-	)
-	return { status: 'written', totalBytes: manifest.totalBytes, artifact }
 }
 
 export async function deletePublishedBundleArtifact(input: {

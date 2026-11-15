@@ -69,7 +69,6 @@ test('toDbRowInput records cloud by default, the context name only for a context
 		entryPoint: 'src/index.ts',
 		kvKey: 'kv-1',
 		dependencies: [],
-		totalBytes: 1,
 		bundleSha256: 'aa',
 	}
 	expect(toDbRowInput(row)).toMatchObject({

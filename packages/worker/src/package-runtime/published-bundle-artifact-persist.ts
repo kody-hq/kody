@@ -18,7 +18,6 @@ import {
 	publishedPackageArtifactBuildKey,
 	type PublishedPackageArtifactBuildTarget,
 } from './package-artifact-targets.ts'
-import { createBundleArtifactManifest } from './bundle-artifact-manifest.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,
@@ -127,7 +126,6 @@ export function toDbRowInput(input: {
 	entryPoint: string
 	kvKey: string
 	dependencies: Array<BundleArtifactDependency>
-	totalBytes: number
 	/** Omitted means Kody cloud; null means not recorded. */
 	builtIn?: BundleArtifactBuiltIn | null
 	bundleSha256: string
@@ -141,7 +139,6 @@ export function toDbRowInput(input: {
 		entryPoint: input.entryPoint,
 		kvKey: input.kvKey,
 		dependenciesJson: JSON.stringify(input.dependencies),
-		totalBytes: input.totalBytes,
 		builtIn: input.builtIn === null ? null : (input.builtIn?.origin ?? 'cloud'),
 		builtContextName:
 			input.builtIn?.origin === 'context'
@@ -230,7 +227,6 @@ export async function preparePublishedBundleArtifactPersist(
 			entryPoint,
 			kvKey,
 			dependencies: input.dependencies,
-			totalBytes: createBundleArtifactManifest(artifact).totalBytes,
 			builtIn: input.builtIn,
 			bundleSha256: await bundleArtifactSha256(artifact),
 		}),
