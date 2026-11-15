@@ -331,7 +331,11 @@ async function inspectPayload(input: {
 	}
 	// Linked dependency modules are stored apart from the payload; evidence
 	// describes the modules the artifact serves.
-	stored = await restoreLinkedArtifactGroups({ kv: input.kv, stored })
+	try {
+		stored = await restoreLinkedArtifactGroups({ kv: input.kv, stored })
+	} catch {
+		return emptyEvidence({ ...base, status: 'kv_unavailable' })
+	}
 	if (stored == null) {
 		return emptyEvidence({
 			...base,

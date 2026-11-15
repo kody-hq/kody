@@ -666,6 +666,30 @@ test('evidence reports missing, malformed, and mismatched payloads explicitly', 
 	})
 	expect(JSON.stringify(outage.targets)).not.toContain(secretMarker)
 
+	// The same holds when the read that fails is a linked dependency's modules.
+	const intactPayload = (await realGet(brokenKey, 'text'))!
+	await t.kv.put(
+		brokenKey,
+		JSON.stringify({
+			...JSON.parse(intactPayload),
+			linkedArtifacts: [
+				{ prefix: '.__kody_linked__/artifacts/ab', sha256: 'x' },
+			],
+		}),
+	)
+	mutableKv.get = (async (k: string, type?: 'text' | 'json') => {
+		if (k.startsWith('linked-artifact:')) throw new Error('kv down')
+		return realGet(k, type as 'text')
+	}) as typeof realGet
+	const linkedOutage = await evidence(t)
+	mutableKv.get = realGet
+	await t.kv.put(brokenKey, intactPayload)
+	expect(
+		linkedOutage.targets.find(
+			(target) => target.key === 'module|.|src/index.ts',
+		),
+	).toMatchObject({ selected: { status: 'kv_unavailable' } })
+
 	// Manifest snapshot missing: never recovered or written on read, and
 	// identity rows and jobs are still reported.
 	await t.kv.delete(t.manifestSnapshotKey)
