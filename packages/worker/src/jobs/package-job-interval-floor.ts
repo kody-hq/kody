@@ -60,9 +60,10 @@ export function assertJobScheduleIntervalFloor(input: {
 }
 
 /**
- * The plan interval-floor refusal publishing these manifest jobs would hit in
- * `syncPackageJobsForPackage`, found without writing anything. Like publish,
- * only new or rescheduled jobs are held to the floor.
+ * The schedule refusal publishing these manifest jobs would hit in
+ * `syncPackageJobsForPackage` (an unreadable schedule, or the plan interval
+ * floor), found without writing anything. Like publish, only new or
+ * rescheduled jobs are held to the floor.
  */
 export async function findPackageJobIntervalFloorViolation(input: {
 	env: Env
@@ -97,8 +98,10 @@ export async function findPackageJobIntervalFloorViolation(input: {
 				timezone,
 			})
 		} catch (error) {
-			// Other schedule errors are the manifest check's to report.
-			if (!isJobIntervalFloorError(error)) continue
+			// Job sync on publish refuses a schedule it cannot read, too.
+			if (!isJobIntervalFloorError(error)) {
+				return `kody.jobs.${jobName}.schedule: ${error instanceof Error ? error.message : String(error)}`
+			}
 			violations.push({
 				jobName,
 				schedule: normalizeJobSchedule(definition.schedule),

@@ -286,9 +286,10 @@ export function prepareCarriedForwardPackageCapabilityApproval(
 }
 
 /**
- * Mark the approvals for `commit` served once it is the source's serving
- * commit. Batched right after the serving-pointer advance, so it marks
- * nothing when the advance lost its compare-and-set.
+ * Stamp the approvals for `commit` served each time it becomes the source's
+ * serving commit, so the fallback's "served most recently" holds. Batched
+ * right after the serving-pointer advance, so it marks nothing when the
+ * advance lost its compare-and-set.
  */
 export function prepareMarkServedPackageCapabilityApprovals(
 	db: D1Database,
@@ -298,7 +299,7 @@ export function prepareMarkServedPackageCapabilityApprovals(
 		.prepare(
 			`UPDATE package_capability_approvals
 			SET served_at = ?
-			WHERE served_at IS NULL AND published_commit = ? AND owner_user_id = ?
+			WHERE published_commit = ? AND owner_user_id = ?
 				AND package_id IN (
 					SELECT id FROM saved_packages WHERE source_id = ?${andLiveDeletedAtSql()}
 				)

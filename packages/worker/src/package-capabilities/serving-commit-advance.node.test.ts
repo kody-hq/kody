@@ -409,3 +409,25 @@ test('approving a first build before it serves does not mark it served', async (
 			.get()?.['served_at'],
 	).toBeNull()
 })
+
+test('a commit that serves again counts as the most recently served', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-a', [storage])
+	compute.entriesByCommit.set('commit-b', [storage])
+	compute.entriesByCommit.set('commit-c', [storage, mailCredential])
+	const serve = async (commit: string) => {
+		await site.publish(commit)
+		await advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit,
+		})
+		expect(site.servingCommit()).toBe(commit)
+	}
+	await serve('commit-b')
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	await serve('commit-a')
+	await serve('commit-c')
+	await expect(site.publicCommit()).resolves.toBe('commit-a')
+})

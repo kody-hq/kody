@@ -129,21 +129,22 @@ function watchRelease({
 					),
 				]),
 		)
-		const newerRun = json([
-			'api',
-			`repos/${repo}/actions/workflows/${watch.workflowFile}/runs?branch=${encodeURIComponent(run.head_branch ?? 'main')}&per_page=20`,
-		]).workflow_runs.find(
-			(other) =>
-				other.id !== run.id &&
-				other.head_repository?.full_name === run.head_repository?.full_name &&
-				other.head_sha !== run.head_sha &&
-				Date.parse(other.created_at) > Date.parse(run.created_at),
-		)
+		const findNewerRun = () =>
+			json([
+				'api',
+				`repos/${repo}/actions/workflows/${watch.workflowFile}/runs?branch=${encodeURIComponent(run.head_branch ?? 'main')}&per_page=20`,
+			]).workflow_runs.find(
+				(other) =>
+					other.id !== run.id &&
+					other.head_repository?.full_name === run.head_repository?.full_name &&
+					other.head_sha !== run.head_sha &&
+					Date.parse(other.created_at) > Date.parse(run.created_at),
+			)
 		const decision = decideRerun({
 			attempt: run.run_attempt,
 			jobs,
 			annotations,
-			newerRun,
+			newerRun: findNewerRun(),
 			watch,
 		})
 		if (decision.action === 'none') {
@@ -159,6 +160,13 @@ function watchRelease({
 			`::warning title=${watch.title} runner shortage::${decision.reason} Waiting ${decision.delayMs / 60_000} min first.`,
 		)
 		sleep(decision.delayMs)
+		// A run that started during the wait replaces this one; re-running this
+		// one would cancel it through the workflow's concurrency group.
+		const newerRun = findNewerRun()
+		if (newerRun) {
+			log(watch.superseded(newerRun))
+			return { action: 'none', attempt: run.run_attempt }
+		}
 		gh(['run', 'rerun', String(runId), '--failed', '--repo', repo])
 		while (
 			json(['api', `repos/${repo}/actions/runs/${runId}`]).run_attempt ===

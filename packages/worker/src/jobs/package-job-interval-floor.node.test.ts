@@ -82,7 +82,7 @@ test('an unchanged published schedule keeps passing, a rescheduled one does not'
 	)
 })
 
-test('an invalid schedule is left to the manifest check', async () => {
+test('an unreadable schedule is reported with its path, as job sync would', async () => {
 	await expect(
 		findPackageJobIntervalFloorViolation({
 			env,
@@ -95,5 +95,5 @@ test('an invalid schedule is left to the manifest check', async () => {
 				},
 			},
 		}),
-	).resolves.toBeNull()
+	).resolves.toMatch(/^kody\.jobs\.poll\.schedule: /)
 })

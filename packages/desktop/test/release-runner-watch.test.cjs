@@ -241,3 +241,53 @@ test('Desktop binaries looks for newer runs on the run’s own branch', () => {
 		),
 	)
 })
+
+test('a newer run that starts during the wait stops the re-run', () => {
+	let slept = false
+	const reruns = []
+	const gh = (args) => {
+		if (args[0] === 'run') {
+			reruns.push(args.join(' '))
+			return ''
+		}
+		if (args[1] === `repos/${repo}/actions/runs/8`)
+			return JSON.stringify({
+				id: 8,
+				head_sha: 'a'.repeat(40),
+				head_branch: 'feature/x',
+				created_at: '2026-11-13T18:45:32Z',
+				status: 'completed',
+				run_attempt: 1,
+				conclusion: 'cancelled',
+			})
+		if (args[1].includes('/attempts/1/jobs'))
+			return JSON.stringify({ jobs: starvedBinaries })
+		if (args[1].startsWith(`repos/${repo}/check-runs/`))
+			return JSON.stringify(noRunner.map((message) => ({ message })))
+		if (args[1].includes('/workflows/desktop-binaries.yml/runs'))
+			return JSON.stringify({
+				workflow_runs: slept
+					? [
+							{
+								id: 9,
+								head_sha: 'b'.repeat(40),
+								created_at: '2026-11-13T18:50:00Z',
+							},
+						]
+					: [],
+			})
+		throw new Error(`unexpected gh ${args.join(' ')}`)
+	}
+	const result = watchRelease({
+		repo,
+		runId: 8,
+		watch: watches.binaries,
+		gh,
+		sleep: () => {
+			slept = true
+		},
+		log: () => {},
+	})
+	assert.deepEqual(result, { action: 'none', attempt: 1 })
+	assert.deepEqual(reruns, [])
+})
