@@ -4021,6 +4021,7 @@ async function buildPackageAppWorkerOptionsUncached(
 		manifest?: AuthoredPackageJson
 		loadSourceFiles?: () => Promise<Record<string, string>>
 		sourceFiles?: Record<string, string>
+		pinnedCommit?: string | null
 		runtime: {
 			callerContext: ReturnType<typeof createMcpCallerContext>
 			servingUsername?: string
