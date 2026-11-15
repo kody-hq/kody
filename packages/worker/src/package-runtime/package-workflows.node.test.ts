@@ -752,20 +752,13 @@ test('workflow steps inherit the request that started the workflow', async () =>
 		}),
 	)
 
-	const { lineage: _lineage, ...legacyPayload } = packageRun.queued
-		.params as DynamicCallableWorkflowPayload
-	await packageRun.run(legacyPayload)
-	expect(invocationMocks.invokePackageExport).toHaveBeenLastCalledWith(
-		expect.objectContaining({
-			token: expect.objectContaining({
-				request: {
-					kind: 'platform-event',
-					sourceId: 'internal:package-workflows',
-				},
-			}),
-		}),
-	)
 	invocationMocks.invokePackageExport.mockReset()
+	const { lineage: _lineage, ...payloadWithoutLineage } = packageRun.queued
+		.params as DynamicCallableWorkflowPayload
+	await expect(packageRun.run(payloadWithoutLineage)).rejects.toThrow(
+		'Dynamic callable workflow payload has no request lineage.',
+	)
+	expect(invocationMocks.invokePackageExport).not.toHaveBeenCalled()
 
 	const inlineRun = await queueWorkflow({
 		code: 'export default async function main(){ return { ok: true }; }',
