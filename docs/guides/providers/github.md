@@ -7,7 +7,7 @@ summary:
   links, and copy-paste smoke tests.
 category: provider
 provider: GitHub
-lastVerified: 2026-08
+lastVerified: 2026-11
 ---
 
 # Connect GitHub
@@ -15,7 +15,7 @@ lastVerified: 2026-08
 GitHub has two good lanes:
 
 - **Personal access token** — fastest for many automations; saved as a Kody
-  secret (and what `@kody/github` reads by default).
+  secret that `@kody/github` reads when you pass its name as `secretName`.
 - **Bring-your-own OAuth App** — when you want a durable OAuth connection with
   your own client and rate limits.
 
@@ -58,9 +58,10 @@ On that page:
 3. Choose **Only select repositories** (or all repositories).
 4. Pick the repository permissions this task needs. Reporting starts with
    **Contents: Read-only** and **Pull requests: Read-only**. A readiness check
-   also wants **Checks: Read-only** and **Commit statuses: Read-only** — see
-   [Pull request readiness](#pull-request-readiness). Add write permissions when
-   the automation mutates.
+   also wants **Commit statuses: Read-only** and **Actions: Read-only**. There
+   is no Checks permission for fine-grained tokens, so they can't read
+   individual check runs; see [Pull request readiness](#pull-request-readiness).
+   Add write permissions when the automation mutates.
 5. Generate the token and copy it once.
 
 When the token is copied, open
@@ -80,8 +81,8 @@ already set at GitHub. Fill it only when they want Kody to stop sending the
 token on a chosen date.
 
 The link already lists `api.github.com` under **Where this secret can be sent**.
-Saving stores the token and that host. The name `githubAccessToken` is what
-`@kody/github` (and a fork of it) reads by default.
+Saving stores the token and that host. `githubAccessToken` is the name
+`@kody/github` (and a fork of it) documents for `secretName`.
 
 When they confirm the save, open
 `search({ entity: "guide:provider_github#confirm-the-call" })`.
@@ -119,21 +120,101 @@ again after they approve it.
 Open this section when writing a readiness package, after the call above
 succeeds.
 
-The pull request page shows one combined list. That list is two APIs plus the
-pull request itself:
+The pull request page shows one combined list: check runs (posted by GitHub
+Actions and other apps), commit statuses, and the pull request itself.
+Fine-grained tokens can't read individual check runs. They have no Checks
+permission, and `GET /repos/{owner}/{repo}/commits/{ref}/check-runs` answers
+`403 Resource not accessible by personal access token`. Read each signal from a
+call a fine-grained token can make:
 
-- **Check runs** — `GET /repos/{owner}/{repo}/commits/{ref}/check-runs`
-  ([list check runs](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference)).
-  Fine-grained permission: **Checks: Read-only**.
-- **Commit statuses** — `GET /repos/{owner}/{repo}/commits/{ref}/status`
+- **CI verdict**: GraphQL
+  `pullRequest.commits(last: 1).nodes.commit.statusCheckRollup.state`
+  ([StatusCheckRollup](https://docs.github.com/en/graphql/reference/objects#statuscheckrollup)).
+  It already combines every check run and commit status on the head commit:
+  `SUCCESS`, `PENDING` or `EXPECTED`, `FAILURE` or `ERROR`. The reporting
+  permissions above cover it. Ask for `contexts { totalCount }`, not
+  `... on CheckRun` fields: each check run node comes back `null` with a
+  `Resource not accessible by personal access token` error.
+- **Commit statuses**: `GET /repos/{owner}/{repo}/commits/{ref}/status`
   ([combined status](https://docs.github.com/en/rest/commits/statuses#get-the-combined-status-for-a-specific-reference)).
-  Fine-grained permission: **Commit statuses: Read-only**.
+  Names each status in its `context` field. Fine-grained permission: **Commit
+  statuses: Read-only**.
+- **GitHub Actions job names**:
+  `GET /repos/{owner}/{repo}/actions/runs?head_sha={sha}`, then
+  `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs` for each run
+  ([workflow runs](https://docs.github.com/en/rest/actions/workflow-runs#list-workflow-runs-for-a-repository),
+  [workflow jobs](https://docs.github.com/en/rest/actions/workflow-jobs#list-jobs-for-a-workflow-run)).
+  Fine-grained permission: **Actions: Read-only**. This names GitHub Actions
+  jobs only. Checks posted by other apps (code review bots, deploy previews)
+  count in the rollup but stay unnamed.
 - **Reviews** and the pull request **`mergeable`** field, from the pull request
   API. Fine-grained permission: **Pull requests: Read-only**.
 
-Read check runs and the combined commit status. A green check-run list can sit
-next to a failing commit status, and the reverse. `mergeable` is its own field
-on the pull request.
+The verdict query, run in `execute`:
+
+```ts
+export default async function main() {
+	const response = await fetch('https://api.github.com/graphql', {
+		method: 'POST',
+		headers: {
+			Authorization: 'Bearer {{secret:githubAccessToken}}',
+			'Content-Type': 'application/json',
+		},
+		body: JSON.stringify({
+			query: `query ($owner: String!, $repo: String!, $number: Int!) {
+				repository(owner: $owner, name: $repo) {
+					pullRequest(number: $number) {
+						commits(last: 1) {
+							nodes {
+								commit {
+									oid
+									statusCheckRollup { state contexts { totalCount } }
+								}
+							}
+						}
+					}
+				}
+			}`,
+			variables: { owner: 'acme', repo: 'api', number: 42 },
+		}),
+	})
+	type Rollup = { state: string; contexts: { totalCount: number } } | null
+	type Commit = { oid: string; statusCheckRollup: Rollup }
+	const body = (await response.json()) as {
+		data?: {
+			repository: {
+				pullRequest: { commits: { nodes: Array<{ commit: Commit }> } }
+			}
+		}
+		errors?: Array<{ message: string }>
+	}
+	if (!response.ok || body.errors?.length) {
+		throw new Error(
+			`GitHub GraphQL failed: ${response.status} ${JSON.stringify(body.errors)}`,
+		)
+	}
+	const commit = body.data!.repository.pullRequest.commits.nodes[0]!.commit
+	return {
+		headSha: commit.oid,
+		state: commit.statusCheckRollup?.state ?? 'NO_CHECKS',
+		totalCount: commit.statusCheckRollup?.contexts.totalCount ?? 0,
+	}
+}
+```
+
+To name every check run, use a credential that can read checks:
+
+- A classic token with the `repo` scope, or a GitHub OAuth App token with `repo`
+  (see [Scopes](#scopes)). `repo` also grants write access to every private
+  repository the account can reach.
+- A GitHub App installation with **Checks: Read-only**.
+
+Those credentials can also call **check runs**:
+`GET /repos/{owner}/{repo}/commits/{ref}/check-runs`
+([list check runs](https://docs.github.com/en/rest/checks/runs#list-check-runs-for-a-git-reference)).
+Read check runs and the combined commit status together: a green check-run list
+can sit next to a failing commit status, and the reverse. The rollup `state`
+already combines both. `mergeable` is its own field on the pull request.
 
 ## Bring-your-own OAuth App
 
@@ -233,18 +314,17 @@ community package from the `@kody` org.
 1. Search for `@kody/github`. It wraps REST, GraphQL, pagination, and PR
    helpers.
 2. `communityFork` it into your org (or click **Install** on the listing).
-3. Check the fork's README **Required setup**: the default `bot` account reads
-   the `githubAccessToken` secret — the exact name
-   [Save the token](#save-the-token) uses, so no adaptation is needed for the
-   saved token. For OAuth, remap the account to the `github` integration name
-   when the package supports that.
+3. Check the fork's README **Prerequisites / setup**. Pass
+   `secretName: 'githubAccessToken'` (the name [Save the token](#save-the-token)
+   uses) on each call for the saved token. Without `secretName`, helpers use the
+   OAuth integration named `github`, or the one you pass as `integrationName`.
 4. Verify the fork against your credentials from `execute`:
 
 ```ts
 import getViewer from 'kody:@<your-username>/github/get-viewer'
 
 export default async function main() {
-	return getViewer({ account: 'bot' })
+	return getViewer({ secretName: 'githubAccessToken' })
 }
 ```
 
