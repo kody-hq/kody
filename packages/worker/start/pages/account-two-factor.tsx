@@ -18,7 +18,6 @@ import {
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountInputCss,
 } from './account-management-components.tsx'
 import {
 	colors,
@@ -35,6 +34,7 @@ import {
 	layoutMaxWidths,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 export type AccountTwoFactorPayload = {
 	ok: true
@@ -290,8 +290,7 @@ export function AccountTwoFactorPage({
 					>
 						<label css={fieldCss}>
 							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+							<Input
 								type="text"
 								name="code"
 								required
@@ -300,7 +299,6 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={disableCode}
-								css={accountInputCss}
 								onInput={updateDisableCode}
 							/>
 						</label>
@@ -374,8 +372,7 @@ export function AccountTwoFactorPage({
 					>
 						<label css={fieldCss}>
 							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+							<Input
 								type="text"
 								name="code"
 								required
@@ -384,7 +381,6 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={confirmCode}
-								css={accountInputCss}
 								onInput={updateConfirmCode}
 							/>
 						</label>

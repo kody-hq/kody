@@ -34,10 +34,9 @@ import {
 	type IntegrationUsageDraft,
 	integrationListId,
 } from './account-integrations-shared.ts'
-import {
-	AccountManagementMessage,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementMessage } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 const addAccountLinkCss: CSSObject = {
 	...primaryLinkCss,
 	justifySelf: 'start',
@@ -114,10 +113,9 @@ export function AddAccountForm(props: {
 		>
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Connection name</span>
-				<input
+				<Input
 					type="text"
 					name="connectionName"
-					data-field-ring
 					required
 					value={name}
 					aria-invalid={nameError ? 'true' : undefined}
@@ -127,7 +125,6 @@ export function AddAccountForm(props: {
 						setEditedName(event.currentTarget.value)
 						setNameError(null)
 					}}
-					css={accountInputCss}
 				/>
 				{nameError ? (
 					<p
@@ -182,8 +179,7 @@ export function ConnectionUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`usage-mode-${connection.name}`}
 					checked={draft.usageMode === 'any'}
 					disabled={saving}
@@ -205,8 +201,7 @@ export function ConnectionUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`usage-mode-${connection.name}`}
 					checked={draft.usageMode === 'packages'}
 					disabled={saving}
@@ -239,8 +234,7 @@ export function ConnectionUsageForm(props: {
 										fontSize: typography.fontSize.sm,
 									}}
 								>
-									<input
-										type="checkbox"
+									<Checkbox
 										checked={checked}
 										disabled={saving}
 										onChange={() =>
@@ -424,30 +418,26 @@ export function RotateCredentialsForm(props: {
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Client ID (optional to keep current)</span>
-					<input
+					<Input
 						type="text"
-						data-field-ring
 						name="oauthAppClientId"
 						value={clientId}
 						{...passwordManagerIgnoreProps}
 						onInput={(event) => {
 							setClientId(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>New client secret</span>
-					<input
+					<Input
 						type="password"
-						data-field-ring
 						name="oauthAppClientSecret"
 						value={clientSecret}
 						{...passwordManagerIgnoreProps}
 						onInput={(event) => {
 							setClientSecret(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
 				</label>
 				<label
@@ -459,8 +449,7 @@ export function RotateCredentialsForm(props: {
 						fontSize: typography.fontSize.sm,
 					}}
 				>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={confirmed}
 						onChange={(event) => {
 							setConfirmed(event.currentTarget.checked)

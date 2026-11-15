@@ -623,6 +623,80 @@ function containsButtonCssCall(node) {
 	return false
 }
 
+const formControlComponentFiles = [
+	'/start/components/input.tsx',
+	'/start/components/choice-controls.tsx',
+]
+const nativeOnlyInputTypes = new Set(['hidden', 'file', 'range', 'color'])
+
+function staticJsxAttribute(node, name) {
+	for (const attribute of node.attributes) {
+		if (
+			attribute.type !== 'JSXAttribute' ||
+			attribute.name.type !== 'JSXIdentifier' ||
+			attribute.name.name !== name
+		) {
+			continue
+		}
+		if (attribute.value?.type === 'Literal') return attribute.value.value
+		if (
+			attribute.value?.type === 'JSXExpressionContainer' &&
+			attribute.value.expression.type === 'Literal'
+		) {
+			return attribute.value.expression.value
+		}
+		return null
+	}
+	return undefined
+}
+
+const noRawFormControlRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Render form controls through the shared library (start/components/input.tsx, choice-controls.tsx) so they share labels, focus rings, and the field look.',
+		},
+		schema: [],
+		messages: {
+			useComponent:
+				'Render <{{component}}> from start/components/{{file}} instead of a raw <{{tag}}>. See docs/contributing/ui-components.md.',
+		},
+	},
+	createOnce(context) {
+		return {
+			JSXOpeningElement(node) {
+				if (node.name.type !== 'JSXIdentifier') return
+				const tag = node.name.name
+				if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return
+				const filename = context.filename
+				if (!/\/packages\/worker\/(start|client)\//.test(filename)) return
+				if (/\.test\.tsx?$/.test(filename)) return
+				if (formControlComponentFiles.some((file) => filename.endsWith(file))) {
+					return
+				}
+				let component = 'Input'
+				let file = 'input.tsx'
+				if (tag === 'select') component = 'Select'
+				if (tag === 'textarea') component = 'Textarea'
+				if (tag === 'input') {
+					const type = staticJsxAttribute(node, 'type')
+					if (typeof type === 'string' && nativeOnlyInputTypes.has(type)) return
+					if (type === 'checkbox' || type === 'radio') {
+						component = type === 'checkbox' ? 'Checkbox' : 'Radio'
+						file = 'choice-controls.tsx'
+					}
+				}
+				context.report({
+					node,
+					messageId: 'useComponent',
+					data: { component, file, tag },
+				})
+			},
+		}
+	},
+}
+
 const noRawButtonStyleRule = {
 	meta: {
 		type: 'problem',
@@ -697,6 +771,7 @@ const plugin = {
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-raw-button-style': noRawButtonStyleRule,
+		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,

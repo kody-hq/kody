@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import {
 	inviteOrganizationMember,
@@ -16,7 +21,6 @@ import {
 	orgRoleLabel,
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -33,10 +37,6 @@ import { UserAvatar } from '../components/user-avatar.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -44,6 +44,7 @@ import {
 } from './account-management-components.tsx'
 import { OrgMembersInviteLinks } from './org-members-invite-links.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { Input, Select } from '../components/input.tsx'
 const memberRoles = ['owner', 'admin', 'member', 'billing'] as const
 const adminLimitsCopy =
 	'Admins can do everything an Owner can, except remove, demote, or change an Owner, make anyone an Owner, or delete the organization.'
@@ -152,7 +153,7 @@ function OrgMembersContent({
 			) : null}
 			<AccountManagementPanel title="People" ariaLabel="Organization members">
 				{data.canManage && !viewerIsOwner ? (
-					<p css={accountFieldNoteCss} data-testid="org-members-role-limits">
+					<p css={fieldDescriptionCss} data-testid="org-members-role-limits">
 						{viewerHasOwnerAuthority
 							? 'As an Admin, you cannot change or remove an Owner, or make anyone an Owner.'
 							: 'Only an Owner or Admin can change or remove an Owner or Admin.'}
@@ -209,7 +210,7 @@ function OrgMembersContent({
 									)}
 									{data.canManage ? (
 										<span css={rowActionsCss}>
-											<select
+											<Select
 												aria-label={`Role for ${memberName(member)}`}
 												value={
 													updatingRole
@@ -241,7 +242,7 @@ function OrgMembersContent({
 														{orgRoleLabel(role)}
 													</option>
 												))}
-											</select>
+											</Select>
 											<Button
 												type="button"
 												disabled={lastOwner || targetLocked || pending}
@@ -314,24 +315,22 @@ function OrgMembersContent({
 								)
 							}}
 						>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Email or username</span>
-								<input
+							<label css={fieldCss}>
+								<span css={fieldLabelCss}>Email or username</span>
+								<Input
 									value={invitee}
 									required
-									data-field-ring
 									autoComplete="off"
-									css={accountInputCss}
 									onChange={(event) => setInvitee(event.currentTarget.value)}
 								/>
-								<p css={accountFieldNoteCss}>
+								<p css={fieldDescriptionCss}>
 									It waits on their Waiting page, or they can paste the invite
 									prompt into their agent.
 								</p>
 							</label>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Role</span>
-								<select
+							<label css={fieldCss}>
+								<span css={fieldLabelCss}>Role</span>
+								<Select
 									value={inviteRole}
 									css={selectCss}
 									onChange={(event) =>
@@ -345,9 +344,9 @@ function OrgMembersContent({
 											{orgRoleLabel(role)}
 										</option>
 									))}
-								</select>
+								</Select>
 								<p
-									css={accountFieldNoteCss}
+									css={fieldDescriptionCss}
 									data-testid="org-invite-admin-note"
 								>
 									{adminLimitsCopy}
@@ -499,7 +498,6 @@ const rowActionsCss: CSSObject = {
 }
 
 const selectCss: CSSObject = {
-	...getSelectCss(),
 	width: 'auto',
 	minWidth: '8rem',
 	[mq.mobile]: {

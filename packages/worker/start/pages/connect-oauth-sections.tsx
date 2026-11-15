@@ -23,7 +23,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAccentCalloutCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	pageDescriptionCss,
@@ -41,6 +40,7 @@ import type {
 	ConnectOauthStatusTone,
 	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
+import { Input } from '../components/input.tsx'
 
 /**
  * True when saving `next` would swap the OAuth app behind a live
@@ -180,11 +180,10 @@ export function renderLiveAppReplaceWarning(input: {
 				>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>New connection name</span>
-						<input
+						<Input
 							name="newConnectionName"
 							required
 							value={state.newName}
-							css={inputCss}
 							aria-invalid={state.nameError ? true : undefined}
 							aria-describedby={
 								state.nameError ? 'connect-new-name-error' : undefined
@@ -331,7 +330,7 @@ export function renderChooser(input: {
 				Pick a service to connect. Saved integrations start from a name alone.
 			</p>
 			{showFilter ? (
-				<input
+				<Input
 					type="text"
 					role="searchbox"
 					inputMode="search"
@@ -339,7 +338,6 @@ export function renderChooser(input: {
 					placeholder="Filter services"
 					aria-label="Filter services"
 					data-testid="connect-oauth-chooser-filter"
-					css={inputCss}
 					value={input.chooserFilter}
 					onChange={(event) => input.onFilterChange(event.currentTarget.value)}
 				/>

@@ -22,7 +22,6 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
@@ -41,6 +40,7 @@ import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { Input } from '../components/input.tsx'
 function buildLoginHref(redirectTo: string | null) {
 	return redirectTo
 		? `/login?redirectTo=${encodeURIComponent(redirectTo)}`
@@ -174,7 +174,7 @@ export function VerifyRoute() {
 				<Honeypot />
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Verification code</span>
-					<input
+					<Input
 						type="text"
 						name="code"
 						required
@@ -184,7 +184,6 @@ export function VerifyRoute() {
 						pattern="[0-9]{6}"
 						placeholder="123456"
 						onChange={() => setFormErrorDismissed(true)}
-						css={inputCss}
 					/>
 				</label>
 				{turnstileSiteKey ? (

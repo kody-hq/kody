@@ -27,8 +27,8 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 	IdValue,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 /**
  * `IdValue` is a flex row (value plus copy control), so the label beside it
  * needs a flex line of its own rather than the default text flow.
@@ -211,8 +211,7 @@ export function AdminCommunityReportsPage({
 
 								<label css={fieldCss}>
 									<span css={fieldLabelCss}>Moderation note</span>
-									<input
-										data-field-ring
+									<Input
 										value={getNote(report.id)}
 										disabled={isMutating}
 										placeholder="Optional note for dismiss, delist, delete, or ban"
@@ -222,7 +221,6 @@ export function AdminCommunityReportsPage({
 												(event.target as HTMLInputElement).value,
 											)
 										}}
-										css={accountInputCss}
 									/>
 								</label>
 

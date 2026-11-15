@@ -15,7 +15,6 @@ import {
 	fieldLabelCss,
 	getAlertCardCss,
 	insetCardCss,
-	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -28,6 +27,7 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
+import { Input } from '../components/input.tsx'
 
 const agentClaimAntiPhishingMessage =
 	'Only continue if you asked an agent to connect Kody and the code matches the one it showed you.'
@@ -210,7 +210,7 @@ function ConsentCard(props: {
 				<input type="hidden" name="claim_attempt_token" value={attemptToken} />
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Code from your agent</span>
-					<input
+					<Input
 						type="text"
 						name="user_code"
 						required
@@ -275,7 +275,6 @@ const actionsCss = {
 	gap: spacing.sm,
 }
 const codeInputCss = {
-	...inputCss,
 	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.lg,
 	letterSpacing: '0.12em',

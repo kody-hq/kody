@@ -385,7 +385,7 @@ test('markdown preserves tables, tight task lists, entities, and reference links
 	expect(html).toContain('<strong>Key</strong>')
 	expect(html).toContain('<code>42</code>')
 	expect(html).toContain('text-align:right')
-	expect(html).toContain('type="checkbox" disabled="" checked=""')
+	expect(html).toMatch(/<input type="checkbox" disabled=""[^>]*checked=""/)
 	expect(html).not.toContain('<li><p>')
 	expect(html).toContain('Fish &amp; chips')
 	expect(html).not.toContain('&amp;amp;')

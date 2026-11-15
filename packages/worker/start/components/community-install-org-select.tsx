@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
 import type { RepositoryOwnerOption } from '#universal/repository-create.ts'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CommunityInstallOrgPicker } from '../use-community-install-org.ts'
+import { Select } from './input.tsx'
 
 export function installOrgOptionLabel(owner: RepositoryOwnerOption) {
 	if (owner.personal) return 'Personal workspace'
@@ -25,10 +25,9 @@ export function CommunityInstallOrgSelect(props: {
 	return (
 		<label css={props.compact ? [fieldCss, compactControlCss] : fieldCss}>
 			<span css={labelCss}>Fork into</span>
-			<select
+			<Select
 				data-testid="community-install-org"
 				disabled={props.disabled}
-				css={getSelectCss()}
 				value={value}
 				onChange={(event) => onSelect(event.currentTarget.value)}
 			>
@@ -37,7 +36,7 @@ export function CommunityInstallOrgSelect(props: {
 						{installOrgOptionLabel(owner)}
 					</option>
 				))}
-			</select>
+			</Select>
 		</label>
 	)
 }

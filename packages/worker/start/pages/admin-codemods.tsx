@@ -35,15 +35,10 @@ import type {
 	AdminCodemodRunListItem,
 	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -54,7 +49,7 @@ import {
 	renderRegisteredCodemodsPanel,
 	RunHistoryPanel,
 } from './admin-codemods-sections.tsx'
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
 export function AdminCodemodsPage(props: {
 	payload: AdminCodemodsLoaderData
 	currentHref: string
@@ -443,8 +438,7 @@ export function AdminCodemodsPage(props: {
 						>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Codemod</span>
-								<select
-									data-field-ring
+								<Select
 									name="codemodId"
 									value={selectedCodemodId}
 									disabled={!canMutate}
@@ -453,19 +447,17 @@ export function AdminCodemodsPage(props: {
 											return
 										setSelectedCodemodId(event.currentTarget.value)
 									}}
-									css={selectCss}
 								>
 									{codemods.map((codemod) => (
 										<option key={codemod.id} value={codemod.id}>
 											{codemod.id}
 										</option>
 									))}
-								</select>
+								</Select>
 							</label>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Mode</span>
-								<select
-									data-field-ring
+								<Select
 									name="mode"
 									value={selectedMode}
 									disabled={!canMutate}
@@ -480,19 +472,17 @@ export function AdminCodemodsPage(props: {
 											}
 										}
 									}}
-									css={selectCss}
 								>
 									{runModes.map((mode) => (
 										<option key={mode} value={mode}>
 											{mode}
 										</option>
 									))}
-								</select>
+								</Select>
 							</label>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>User IDs filter</span>
-								<input
-									data-field-ring
+								<Input
 									name="userIds"
 									type="text"
 									placeholder="comma-separated stable user ids"
@@ -503,13 +493,11 @@ export function AdminCodemodsPage(props: {
 											return
 										setUserIdsFilter(event.currentTarget.value)
 									}}
-									css={accountInputCss}
 								/>
 							</label>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Package IDs filter</span>
-								<input
-									data-field-ring
+								<Input
 									name="packageIds"
 									type="text"
 									placeholder="comma-separated package ids"
@@ -520,15 +508,13 @@ export function AdminCodemodsPage(props: {
 											return
 										setPackageIdsFilter(event.currentTarget.value)
 									}}
-									css={accountInputCss}
 								/>
 							</label>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Credential enforcement scope</span>
-								<select
+								<Select
 									value={enforcementOnly ? 'enforcement' : 'all'}
 									disabled={!canMutate || selectedMode === 'revert'}
-									css={selectCss}
 									onChange={(event) => {
 										setEnforcementOnly(
 											event.currentTarget.value === 'enforcement',
@@ -540,13 +526,12 @@ export function AdminCodemodsPage(props: {
 									<option value="enforcement">
 										Packages subject to credential-need enforcement
 									</option>
-								</select>
+								</Select>
 							</label>
 							{selectedMode === 'revert' ? (
 								<label css={fieldCss}>
 									<span css={fieldLabelCss}>Revert of run ID</span>
-									<input
-										data-field-ring
+									<Input
 										name="revertOfRunId"
 										type="text"
 										required
@@ -558,7 +543,6 @@ export function AdminCodemodsPage(props: {
 												return
 											setRevertOfRunId(event.currentTarget.value)
 										}}
-										css={accountInputCss}
 									/>
 								</label>
 							) : null}

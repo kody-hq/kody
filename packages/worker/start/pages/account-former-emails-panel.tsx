@@ -1,16 +1,16 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import type { AccountFormerEmail } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	AccountManagementPanel,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export type AccountFormerEmailsPanelProps = {
 	formerEmails: Array<AccountFormerEmail>
@@ -98,7 +98,7 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 					))}
 				</ul>
 			) : (
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					No former addresses are listed yet. If you changed email before this
 					list existed, enter that old verified address below to release it.
 				</p>
@@ -114,35 +114,31 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 				}}
 				onSubmit={onReleaseSubmit}
 			>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					We send a confirmation link to the former address. Releasing it does
 					not change this account&apos;s identity.
 				</p>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Former email</span>
-					<input
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Former email</span>
+					<Input
 						type="email"
 						name="former_email"
 						id="account-former-email"
 						data-testid="account-former-email"
-						data-field-ring
 						required
 						autoComplete="off"
 						value={releaseEmail}
-						css={accountInputCss}
 						onInput={onReleaseEmailInput}
 					/>
 				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Current password</span>
-					<input
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Current password</span>
+					<Input
 						type="password"
 						name="password"
-						data-field-ring
 						required
 						{...passwordManagerIgnoreProps}
 						value={releasePassword}
-						css={accountInputCss}
 						onInput={onReleasePasswordInput}
 					/>
 				</label>

@@ -2,7 +2,6 @@
 import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
-import { accountInputCss } from './account-management-components.tsx'
 import type { McpServerListItem } from './account-mcp-servers-shared.tsx'
 import {
 	colors,
@@ -15,6 +14,7 @@ import {
 	fieldCss,
 	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 export type McpServerOAuthClientInput = {
 	clientId: string
@@ -137,15 +137,13 @@ export function McpServerOAuthClientSection({
 				>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Client ID</span>
-						<input
-							data-field-ring
+						<Input
 							name="clientId"
 							value={clientId}
 							disabled={isMutating}
 							required
 							autoComplete="off"
 							spellCheck={false}
-							css={accountInputCss}
 							onChange={(event) => setClientId(event.currentTarget.value)}
 						/>
 					</label>
@@ -164,7 +162,6 @@ export function McpServerOAuthClientSection({
 							data-1p-ignore
 							data-lpignore="true"
 							revealNoun="client secret"
-							css={accountInputCss}
 							onChange={(event) => setClientSecret(event.currentTarget.value)}
 						/>
 					</div>

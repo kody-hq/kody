@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { OrgTeamInviteLinks } from './org-teams-invite-links.tsx'
 import {
@@ -27,12 +32,9 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { Input, Select } from '../components/input.tsx'
 
 function memberLabel(member: {
 	displayName: string | null
@@ -208,7 +210,7 @@ function OrgTeamsContent({
 								)}
 								{data.canManage ? (
 									<div css={addRowCss}>
-										<select
+										<Select
 											aria-label={`Add member to ${team.name}`}
 											value={addByTeam[team.id] ?? ''}
 											css={selectCss}
@@ -232,7 +234,7 @@ function OrgTeamsContent({
 														{memberLabel(member)}
 													</option>
 												))}
-										</select>
+										</Select>
 										<Button
 											type="button"
 											disabled={!addByTeam[team.id] || pending}
@@ -296,38 +298,32 @@ function OrgTeamsContent({
 							)
 						}}
 					>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Handle</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Handle</span>
+							<Input
 								value={createSlug}
 								required
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) => setCreateSlug(event.currentTarget.value)}
 							/>
-							<p css={accountFieldNoteCss}>
+							<p css={fieldDescriptionCss}>
 								Unique inside this organization. Lowercase letters, numbers, and
 								hyphens.
 							</p>
 						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Name</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Name</span>
+							<Input
 								value={createName}
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) => setCreateName(event.currentTarget.value)}
 							/>
 						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Description</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Description</span>
+							<Input
 								value={createDescription}
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) =>
 									setCreateDescription(event.currentTarget.value)
 								}
@@ -426,7 +422,6 @@ const addRowCss: CSSObject = {
 }
 
 const selectCss: CSSObject = {
-	...accountInputCss,
 	width: 'auto',
 	minWidth: '12rem',
 	flex: '1 1 auto',

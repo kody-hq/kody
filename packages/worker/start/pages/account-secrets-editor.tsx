@@ -6,16 +6,11 @@ import type { AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { SecretEditorFields } from './secret-editor-fields.tsx'
 import {
 	MetadataGrid,
 	TimestampValue,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import {
@@ -23,8 +18,7 @@ import {
 	type SecretScope,
 	formatRelativeTtl,
 } from './account-secrets-shared.ts'
-
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
 
 export type SecretEditorProps = {
 	isCreating: boolean
@@ -126,8 +120,7 @@ export function SecretEditor(props: SecretEditorProps) {
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Name</span>
-					<input
-						data-field-ring
+					<Input
 						type="text"
 						required
 						value={editorState.name}
@@ -138,14 +131,12 @@ export function SecretEditor(props: SecretEditorProps) {
 								name: event.currentTarget.value,
 							})
 						}}
-						css={accountInputCss}
 					/>
 				</label>
 
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Scope</span>
-					<select
-						data-field-ring
+					<Select
 						value={editorState.scope}
 						onChange={(event) => {
 							const scope = event.currentTarget.value as SecretScope
@@ -158,13 +149,12 @@ export function SecretEditor(props: SecretEditorProps) {
 										: '',
 							})
 						}}
-						css={selectCss}
 					>
 						<option value="user">User</option>
 						{canCreatePackageSecrets ? (
 							<option value="package">Package</option>
 						) : null}
-					</select>
+					</Select>
 				</label>
 			</div>
 

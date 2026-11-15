@@ -11,6 +11,7 @@ import {
 } from './memory-scenes.tsx'
 import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
 import { FeatureCtaLink } from './feature-cta.tsx'
+import { Textarea } from '../../components/input.tsx'
 const notes: ReadonlyArray<MemoryNote> = [
 	{
 		id: 'writing',
@@ -237,7 +238,7 @@ export function MemoryFeature() {
 							<label htmlFor="ms-save-prompt">
 								In your first connected agent
 							</label>
-							<textarea
+							<Textarea
 								id="ms-save-prompt"
 								readOnly
 								value="Save this in Kody memory: for project updates, lead with the decision and keep it short."
@@ -247,7 +248,7 @@ export function MemoryFeature() {
 							<label htmlFor="ms-lookup-prompt">
 								In another connected agent
 							</label>
-							<textarea
+							<Textarea
 								id="ms-lookup-prompt"
 								readOnly
 								value="Look up my project-update preference in Kody and help me draft an update."

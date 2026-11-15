@@ -1,3 +1,4 @@
+import { Input, Select, Textarea } from '../../components/input.tsx'
 /** @jsxImportSource @emotion/react */
 export type Brief = {
 	id: number
@@ -25,7 +26,7 @@ export function AppsIntake(props: {
 				<label>
 					Project name
 					<br />
-					<input
+					<Input
 						required
 						pattern={String.raw`.*\S.*`}
 						title="Enter a project name."
@@ -43,7 +44,7 @@ export function AppsIntake(props: {
 				<label>
 					Job type
 					<br />
-					<select
+					<Select
 						value={draft.kind}
 						onChange={(event) => {
 							props.onChange({
@@ -55,14 +56,14 @@ export function AppsIntake(props: {
 						{['Website', 'Campaign', 'Internal tool'].map((kind) => (
 							<option key={kind}>{kind}</option>
 						))}
-					</select>
+					</Select>
 				</label>
 			</p>
 			<p>
 				<label>
 					Deadline
 					<br />
-					<select
+					<Select
 						value={draft.deadline}
 						onChange={(event) => {
 							props.onChange({
@@ -74,14 +75,14 @@ export function AppsIntake(props: {
 						{['October 28', 'November 4', 'No deadline'].map((date) => (
 							<option key={date}>{date}</option>
 						))}
-					</select>
+					</Select>
 				</label>
 			</p>
 			<p>
 				<label>
 					Brief
 					<br />
-					<textarea
+					<Textarea
 						value={draft.copy}
 						onChange={(event) => {
 							props.onChange({

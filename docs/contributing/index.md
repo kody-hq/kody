@@ -27,6 +27,8 @@ style, tests, MCP capabilities, and runtime architecture.
   `@kentcdodds/verification-skill-maintain`)
 - [UI verify](./ui-verify.md) (`npm run ui:verify`: gallery and key pages, axe,
   keyboard focus, visual baselines; run before calling UI work done)
+- [UI components](./ui-components.md) (shared Button, Field, form controls; lint
+  rules that keep raw controls out)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
 - [Cursor Cloud Agent notes](./cloud-agents.md)
 - [Nx remote cache](../../packages/nx-cache/readme.md) (self-hosted HTTP cache

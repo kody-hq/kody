@@ -1,7 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import { accountInputCss } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import {
 	colors,
@@ -15,6 +14,7 @@ import {
 	fieldCss,
 	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 export type OauthCallbackSectionProps = {
 	oauthClientOrigin: string
@@ -148,8 +148,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Server name</span>
-				<input
-					data-field-ring
+				<Input
 					name="name"
 					type="text"
 					value={addName}
@@ -160,7 +159,6 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 					onInput={(event) => {
 						onNameInput(event.currentTarget.value)
 					}}
-					css={accountInputCss}
 				/>
 				<span css={descriptionCss}>
 					Lowercase letters, numbers, and dashes. Used as the
@@ -170,8 +168,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Server URL</span>
-				<input
-					data-field-ring
+				<Input
 					name="url"
 					type="url"
 					value={addUrl}
@@ -182,7 +179,6 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 					onInput={(event) => {
 						onUrlInput(event.currentTarget.value)
 					}}
-					css={accountInputCss}
 				/>
 				<span css={descriptionCss}>
 					Use the MCP endpoint path, not the vendor&apos;s marketing site.
@@ -194,8 +190,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 				<span css={fieldLabelCss}>
 					Bearer token <span css={{ color: colors.textMuted }}>(optional)</span>
 				</span>
-				<input
-					data-field-ring
+				<Input
 					name="bearerToken"
 					type="password"
 					value={addBearerToken}
@@ -205,7 +200,6 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 					onInput={(event) => {
 						onBearerTokenInput(event.currentTarget.value)
 					}}
-					css={accountInputCss}
 				/>
 				<span css={descriptionCss}>
 					Sent as Authorization: Bearer &lt;token&gt; on every request. You can

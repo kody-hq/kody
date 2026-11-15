@@ -24,12 +24,12 @@ import { useState, type FormEvent } from 'react'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
 	TimestampValue,
 } from './account-management-components.tsx'
+import { Input, Textarea } from '../components/input.tsx'
 
 type CreatedClient = AccountMcpOauthClientsLoaderData['clients'][number] & {
 	clientSecret: string
@@ -194,8 +194,7 @@ export function AccountMcpOauthClientsPage({
 						>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Label</span>
-								<input
-									data-field-ring
+								<Input
 									type="text"
 									value={labelDraft}
 									maxLength={80}
@@ -205,13 +204,11 @@ export function AccountMcpOauthClientsPage({
 											(event.currentTarget as HTMLInputElement).value,
 										)
 									}}
-									css={accountInputCss}
 								/>
 							</label>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Redirect URIs</span>
-								<textarea
-									data-field-ring
+								<Textarea
 									rows={3}
 									value={redirectUrisDraft}
 									disabled={isBusy}
@@ -222,7 +219,6 @@ export function AccountMcpOauthClientsPage({
 										)
 									}}
 									css={{
-										...accountInputCss,
 										minHeight: '5.5rem',
 										resize: 'vertical',
 									}}
@@ -259,14 +255,12 @@ export function AccountMcpOauthClientsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<input
-										data-field-ring
+									<Input
 										type="text"
 										value={createdClient.clientId}
 										readOnly
 										{...passwordManagerIgnoreProps}
 										css={{
-											...accountInputCss,
 											flex: '1 1 16rem',
 										}}
 									/>
@@ -291,14 +285,12 @@ export function AccountMcpOauthClientsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<input
-										data-field-ring
+									<Input
 										type="password"
 										value={createdClient.clientSecret}
 										readOnly
 										{...passwordManagerIgnoreProps}
 										css={{
-											...accountInputCss,
 											flex: '1 1 16rem',
 										}}
 									/>

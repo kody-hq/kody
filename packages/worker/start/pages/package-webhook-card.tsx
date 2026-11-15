@@ -30,6 +30,7 @@ import {
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input } from '../components/input.tsx'
 
 export type WebhookConfirmation = {
 	armed: boolean
@@ -390,19 +391,14 @@ export function renderPackageWebhookCard(input: {
 						</p>
 						<label css={fieldCss}>
 							<span css={fieldLabelCss}>Instance label</span>
-							<input
+							<Input
+								size="sm"
 								name="instanceLabel"
 								type="text"
 								required
 								maxLength={64}
 								placeholder="staging"
 								disabled={isMutating}
-								css={{
-									padding: `${spacing.xs} ${spacing.sm}`,
-									border: `1px solid ${colors.border}`,
-									borderRadius: '4px',
-									fontFamily: 'inherit',
-								}}
 							/>
 						</label>
 						<div>

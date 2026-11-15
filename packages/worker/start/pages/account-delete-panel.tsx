@@ -12,14 +12,14 @@ import {
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { deleteOwnAccount } from '#start/server/security-mutations'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+	getAccentCalloutCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { accountActionsCss } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 	const [confirmation, setConfirmation] = useState('')
@@ -95,7 +95,7 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 		return (
 			<>
 				<div css={{ display: 'grid', gap: spacing.md, maxWidth: '36rem' }}>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						This permanently deletes your account, packages, jobs, email,
 						secrets, and stored data. Download an export first if you want a
 						copy.
@@ -135,28 +135,26 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 									confirm.
 								</p>
 							</div>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>
+							<label css={fieldCss}>
+								<span css={fieldLabelCss}>
 									Type {accountDeletionConfirmationPhrase}
 								</span>
-								<input
+								<Input
 									type="text"
 									name="confirmation"
 									data-testid="delete-account-confirmation"
-									data-field-ring
 									autoComplete="off"
 									spellCheck={false}
 									required
 									value={confirmation}
-									css={accountInputCss}
 									onInput={updateConfirmation}
 								/>
 							</label>
 							{props.hasUsablePassword ? (
-								<div css={accountFieldCss}>
+								<div css={fieldCss}>
 									<label
 										htmlFor="delete-account-current-password"
-										css={accountFieldLabelCss}
+										css={fieldLabelCss}
 									>
 										Current password
 									</label>
@@ -168,7 +166,6 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 										required
 										{...passwordManagerIgnoreProps}
 										value={password}
-										css={accountInputCss}
 										onInput={updatePassword}
 									/>
 								</div>

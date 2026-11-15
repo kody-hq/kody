@@ -68,7 +68,6 @@ import {
 	cardTitleCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -76,6 +75,8 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input, Textarea } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 const primaryButtonCss = {
 	justifySelf: 'start',
 }
@@ -308,13 +309,12 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-name" css={fieldLabelCss}>
 							Name
 						</label>
-						<input
+						<Input
 							id="connect-credential-name"
 							required
 							pattern="[a-zA-Z0-9._\-]+"
 							value={state.name}
 							placeholder="OPENAI_API_KEY"
-							css={inputCss}
 							onChange={(event) => {
 								setSeededReplaceLocksForId(null)
 								update({
@@ -346,8 +346,7 @@ export function ConnectCredentialRoute({
 								alignItems: 'center',
 							}}
 						>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={state.replaceExisting}
 								data-testid="connect-credential-replace"
 								onChange={(event) => {
@@ -408,7 +407,6 @@ export function ConnectCredentialRoute({
 								onRevealedChange={(next) => {
 									setShowValue(next)
 								}}
-								css={inputCss}
 								onChange={(event) =>
 									update({ value: event.currentTarget.value })
 								}
@@ -423,7 +421,7 @@ export function ConnectCredentialRoute({
 							{isKey ? 'Allowed hosts' : 'Hosts'}{' '}
 							<span css={labelHintCss}>(one per line)</span>
 						</label>
-						<textarea
+						<Textarea
 							id="connect-credential-hosts"
 							rows={2}
 							required={!isKey}
@@ -431,7 +429,6 @@ export function ConnectCredentialRoute({
 							placeholder={
 								isKey ? 'api.example.com' : 'api.example.com or *.example.com'
 							}
-							css={inputCss}
 							onChange={(event) => update({ hosts: event.currentTarget.value })}
 						/>
 						<span css={mutedCss}>{hostsHint(kind)}</span>
@@ -441,11 +438,10 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-provider" css={fieldLabelCss}>
 							Provider <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-provider"
 							value={state.provider}
 							placeholder="openai"
-							css={inputCss}
 							onChange={(event) =>
 								update({ provider: event.currentTarget.value })
 							}
@@ -455,10 +451,9 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-description" css={fieldLabelCss}>
 							Description <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-description"
 							value={state.description}
-							css={inputCss}
 							onChange={(event) =>
 								update({ description: event.currentTarget.value })
 							}
@@ -474,11 +469,10 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-expires" css={fieldLabelCss}>
 							Expires <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-expires"
 							type="date"
 							value={expiresAtDateValue(state.expiresAt)}
-							css={inputCss}
 							onChange={(event) =>
 								update({ expiresAt: event.currentTarget.value })
 							}

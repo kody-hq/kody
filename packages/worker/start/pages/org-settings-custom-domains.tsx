@@ -19,18 +19,20 @@ import { orgBillingPath } from '#universal/org-pages.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementMessage,
-	accountFieldCss,
 	accountActionsCss,
-	accountFieldNoteCss,
-	accountFieldLabelCss,
-	accountInputCss,
 } from './account-management-components.tsx'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	primaryLinkCss,
+	fieldCss,
+	fieldDescriptionCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	CustomDomainRecords,
 	CustomDomainStatusBadge,
 } from '../components/custom-domain-status.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input, Select } from '../components/input.tsx'
 
 /** The organization settings query owns domain state and refreshes after writes. */
 export function OrgSettingsCustomDomains({
@@ -91,7 +93,7 @@ export function OrgSettingsCustomDomains({
 	if (!domains) return null
 	return (
 		<AccountManagementPanel title="Custom domains">
-			<p css={accountFieldNoteCss}>
+			<p css={fieldDescriptionCss}>
 				Add a hostname you own (not under Kody&apos;s own domains), then publish
 				the DNS records shown for it at your DNS provider, set to DNS only. Kody
 				checks pending domains every few minutes and emails org owners when one
@@ -177,7 +179,7 @@ export function OrgSettingsCustomDomains({
 				<p css={mutedCopyCss}>No custom domains yet.</p>
 			)}
 			{data.canManageDomains && !domains.canAdd ? (
-				<p data-testid="org-custom-domains-paid-only" css={accountFieldNoteCss}>
+				<p data-testid="org-custom-domains-paid-only" css={fieldDescriptionCss}>
 					Custom domains need a paid plan.{' '}
 					<a css={primaryLinkCss} href={orgBillingPath(data.org.slug)}>
 						See plans
@@ -207,21 +209,18 @@ export function OrgSettingsCustomDomains({
 						)
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Hostname</span>
-						<input
-							data-field-ring
-							css={accountInputCss}
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Hostname</span>
+						<Input
 							required
 							value={hostname}
 							placeholder="apps.example.com"
 							onChange={(event) => setHostname(event.currentTarget.value)}
 						/>
 					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Binding</span>
-						<select
-							css={accountInputCss}
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Binding</span>
+						<Select
 							value={bindingKind}
 							onChange={(event) =>
 								setBindingKind(
@@ -233,24 +232,21 @@ export function OrgSettingsCustomDomains({
 							<option value="app">
 								App (one public internet-visible app at /)
 							</option>
-						</select>
+						</Select>
 					</label>
 					{bindingKind === 'app' ? (
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Package id</span>
-							<input
-								data-field-ring
-								css={accountInputCss}
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Package id</span>
+							<Input
 								required
 								value={packageId}
 								onChange={(event) => setPackageId(event.currentTarget.value)}
 							/>
 						</label>
 					) : null}
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>SSL method</span>
-						<select
-							css={accountInputCss}
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>SSL method</span>
+						<Select
 							value={sslMethod}
 							onChange={(event) =>
 								setSslMethod(
@@ -260,7 +256,7 @@ export function OrgSettingsCustomDomains({
 						>
 							<option value="txt">TXT (pre-validate)</option>
 							<option value="http">HTTP</option>
-						</select>
+						</Select>
 					</label>
 					<div css={accountActionsCss}>
 						<Button type="submit" variant="primary" disabled={isPending}>

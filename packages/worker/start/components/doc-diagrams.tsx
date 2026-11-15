@@ -9,6 +9,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Checkbox } from './choice-controls.tsx'
 
 /**
  * First-party figures that docs place with `> [!DIAGRAM] <id>`. The
@@ -30,7 +31,7 @@ export function renderDocDiagram(input: {
 	return (
 		<figure key={input.key} data-doc-diagram={input.id} css={figureCss}>
 			<label css={pauseCss}>
-				<input type="checkbox" css={pauseInputCss} />
+				<Checkbox css={pauseInputCss} />
 				Pause animation
 			</label>
 			{draw()}

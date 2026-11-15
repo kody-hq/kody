@@ -17,6 +17,7 @@ import {
 	accountActionsCss,
 } from './account-management-components.tsx'
 import { AdminAccountDeletionSummaryList } from './admin-account-deletion-summary.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AdminAccountDeletionApprovalPage(props: {
 	approvalId: string
@@ -98,8 +99,7 @@ export function AdminAccountDeletionApprovalPage(props: {
 									alignItems: 'flex-start',
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									data-testid="admin-account-deletion-acknowledge"
 									checked={acknowledged}
 									onChange={(event) => {

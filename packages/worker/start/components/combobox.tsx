@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { spacing } from '#universal/styles/tokens.ts'
 import {
 	fieldLabelCss,
-	getSelectCss,
+	getSelectControlCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import { renderIcon } from './icon.tsx'
@@ -92,7 +92,11 @@ export function Combobox(props: ComboboxProps) {
 						id={props.id}
 						aria-labelledby={labelId}
 						data-field-ring
-						css={{ ...getSelectCss(), textAlign: 'left', userSelect: 'none' }}
+						css={{
+							...getSelectControlCss(),
+							textAlign: 'left',
+							userSelect: 'none',
+						}}
 					>
 						<Select.Value placeholder={props.placeholder} />
 					</Select.Trigger>
@@ -141,7 +145,7 @@ export function Combobox(props: ComboboxProps) {
 						id={props.id}
 						data-field-ring
 						placeholder={props.placeholder}
-						css={{ ...getSelectCss(), cursor: 'text' }}
+						css={{ ...getSelectControlCss(), cursor: 'text' }}
 					/>
 					<BaseCombobox.Portal container={portalContainer ?? undefined}>
 						<BaseCombobox.Positioner sideOffset={4} css={overlayPositionerCss}>

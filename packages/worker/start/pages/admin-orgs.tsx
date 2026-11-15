@@ -17,12 +17,7 @@ import {
 } from '#universal/credits.ts'
 import { planNames, type PlanName } from '#universal/plans.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import type {
 	AdminOrgDetail,
@@ -50,9 +45,9 @@ import {
 	RecordTableSearch,
 	RecordTableSelect,
 } from './record-table.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
-const billingInputCss = getAuthInputCss()
-const billingSelectCss = getSelectCss()
 const secondaryButtonCss = {
 	justifySelf: 'start',
 }
@@ -221,8 +216,7 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 		>
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Manual grant</span>
-				<select
-					css={billingSelectCss}
+				<Select
 					value={plan}
 					onChange={(event) => setPlan(event.currentTarget.value as PlanName)}
 					disabled={mutation.isPending}
@@ -232,12 +226,11 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 							{formatAdminPlanLabel(name)}
 						</option>
 					))}
-				</select>
+				</Select>
 			</label>
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Reason</span>
-				<input
-					css={billingInputCss}
+				<Input
 					required
 					value={reason}
 					onChange={(event) => setReason(event.currentTarget.value)}
@@ -329,8 +322,7 @@ function AdminOrgCreditsForms(props: {
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Amount ($)</span>
-					<input
-						css={billingInputCss}
+					<Input
 						inputMode="decimal"
 						required
 						value={amountText}
@@ -340,8 +332,7 @@ function AdminOrgCreditsForms(props: {
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+					<Input
 						required
 						value={grantReason}
 						onChange={(event) => setGrantReason(event.currentTarget.value)}
@@ -388,8 +379,7 @@ function AdminOrgCreditsForms(props: {
 				}}
 			>
 				<label css={{ ...fieldCss, display: 'flex', alignItems: 'center' }}>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={eligible}
 						onChange={(event) => setEligible(event.currentTarget.checked)}
 						disabled={eligibility.isPending}
@@ -398,8 +388,7 @@ function AdminOrgCreditsForms(props: {
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+					<Input
 						required
 						value={eligibilityReason}
 						onChange={(event) =>

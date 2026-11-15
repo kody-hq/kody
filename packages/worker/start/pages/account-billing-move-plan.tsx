@@ -34,6 +34,7 @@ import {
 	AccountPageHeader,
 	MetadataGrid,
 } from './account-management-components.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type Interval = 'month' | 'year'
 
@@ -335,8 +336,7 @@ function PreviewPanel({
 				/>
 			</section>
 			<label css={checkboxRowCss}>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={acknowledged}
 					onChange={(event) => setAcknowledged(event.currentTarget.checked)}
 				/>

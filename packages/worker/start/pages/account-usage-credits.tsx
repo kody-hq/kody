@@ -17,10 +17,6 @@ import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
@@ -54,7 +50,12 @@ import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
 	primaryLinkCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 /** Anchor for `/account/usage#credits` (`accountCreditsPath`). */
 const creditsSectionId = 'credits'
@@ -280,22 +281,21 @@ export function AccountUsageCreditsSection(
 		onInput: (value: string) => void
 	}) {
 		return (
-			<div css={accountFieldCss}>
-				<label htmlFor={input.id} css={accountFieldLabelCss}>
+			<div css={fieldCss}>
+				<label htmlFor={input.id} css={fieldLabelCss}>
 					{input.label}
 				</label>
-				<input
+				<Input
 					id={input.id}
 					type="text"
 					inputMode="decimal"
 					autoComplete="off"
 					value={input.value}
 					disabled={saving}
-					data-field-ring
 					onInput={(event) => {
 						input.onInput((event.currentTarget as HTMLInputElement).value)
 					}}
-					css={{ ...accountInputCss, maxWidth: '10rem' }}
+					css={{ maxWidth: '10rem' }}
 				/>
 			</div>
 		)
@@ -315,8 +315,7 @@ export function AccountUsageCreditsSection(
 					color: colors.text,
 				}}
 			>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={input.checked}
 					disabled={saving}
 					onChange={(event) => {
@@ -414,11 +413,11 @@ export function AccountUsageCreditsSection(
 							alignItems: 'end',
 						}}
 					>
-						<div css={accountFieldCss}>
-							<label htmlFor="credits-custom-amount" css={accountFieldLabelCss}>
+						<div css={fieldCss}>
+							<label htmlFor="credits-custom-amount" css={fieldLabelCss}>
 								Custom amount ($)
 							</label>
-							<input
+							<Input
 								id="credits-custom-amount"
 								type="text"
 								inputMode="decimal"
@@ -426,13 +425,12 @@ export function AccountUsageCreditsSection(
 								placeholder={`${formatWholeDollars(credits.customMinCents)}–${formatWholeDollars(credits.customMaxCents)}`}
 								value={customAmountText}
 								disabled={topUpDisabled}
-								data-field-ring
 								onInput={(event) => {
 									setCustomAmountText(
 										(event.currentTarget as HTMLInputElement).value,
 									)
 								}}
-								css={{ ...accountInputCss, maxWidth: '10rem' }}
+								css={{ maxWidth: '10rem' }}
 							/>
 						</div>
 						<Button
@@ -490,14 +488,14 @@ export function AccountUsageCreditsSection(
 									onInput: (value) => updateDraft({ monthlyCapText: value }),
 								})}
 							</div>
-							<p css={accountFieldNoteCss}>
+							<p css={fieldDescriptionCss}>
 								Threshold at least{' '}
 								{formatWholeDollars(credits.autoRefill.minThresholdCents)}.
 								Refilled this month:{' '}
 								{formatCents(credits.autoRefill.refilledThisMonthCents)}.
 							</p>
 							{!credits.autoRefill.hasPaymentMethod ? (
-								<p css={accountFieldNoteCss}>
+								<p css={fieldDescriptionCss}>
 									Auto-refill starts after your first top-up saves a card.
 								</p>
 							) : null}
@@ -512,7 +510,7 @@ export function AccountUsageCreditsSection(
 							gap: spacing.xs,
 						}}
 					>
-						<legend css={{ ...accountFieldLabelCss, marginBottom: spacing.xs }}>
+						<legend css={{ ...fieldLabelCss, marginBottom: spacing.xs }}>
 							Email me when
 						</legend>
 						{settings.autoRefillEnabled ? (

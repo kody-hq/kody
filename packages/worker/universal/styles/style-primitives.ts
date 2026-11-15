@@ -857,87 +857,90 @@ export const nativeDisclosureCss = {
 
 export const fieldCss = {
 	display: 'grid',
-	gap: spacing.xs,
+	gap: '0.45rem',
 	minWidth: 0,
 }
 
 export const fieldLabelCss = {
-	color: colors.text,
-	fontWeight: typography.fontWeight.medium,
-	fontSize: typography.fontSize.sm,
-}
-
-export const inputCss = {
-	width: '100%',
-	minWidth: 0,
-	maxWidth: '100%',
-	padding: spacing.sm,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.fieldBorder}`,
-	backgroundColor: colors.background,
-	color: colors.text,
-	fontSize: typography.fontSize.base,
-	fontFamily: typography.fontFamily,
-	boxSizing: 'border-box' as const,
-}
-
-/** Label-over-input stack from the redesign's `.field` (login prototype). */
-export const authFieldCss = {
-	display: 'flex',
-	flexDirection: 'column' as const,
-	gap: '0.45rem',
-}
-
-export const authFieldLabelCss = {
 	fontSize: '0.92rem',
 	fontWeight: 600,
 	color: colors.text,
 }
 
-/** Label row with a trailing quiet link ("Forgot password?"). */
-export const authFieldLabelRowCss = {
+/** Label row with a trailing quiet action ("Forgot password?"). */
+export const fieldLabelRowCss = {
 	display: 'flex',
 	alignItems: 'baseline',
 	justifyContent: 'space-between',
 	gap: spacing.md,
 }
 
-type AuthInputCssOptions = {
+export const fieldDescriptionCss = {
+	margin: 0,
+	fontSize: '0.92rem',
+	color: colors.textMuted,
+}
+
+export const fieldErrorCss = {
+	margin: 0,
+	fontSize: '0.92rem',
+	color: colors.error,
+}
+
+export type ControlSize = 'sm' | 'md'
+
+export type FieldControlStyleOptions = {
 	/**
-	 * `canvas` inputs sit on a `surface` panel and read as wells in the page
-	 * ground color (the login panel); `surface` is the default when the input
-	 * sits directly on the canvas.
+	 * `md` (default, 48px) for forms, `sm` (36px) for toolbars, filters, and
+	 * dense rows. Heights line up with the `lg` and `sm` Button sizes.
+	 */
+	size?: ControlSize
+	/**
+	 * `canvas` controls sit on a `surface` panel and read as wells in the page
+	 * ground color; `surface` (default) is for controls on the canvas.
 	 */
 	background?: 'canvas' | 'surface'
 }
 
+const controlSizes = {
+	sm: {
+		font: '0.875rem',
+		lineHeight: 1.5,
+		paddingY: '0.375rem',
+		paddingX: '0.625rem',
+		squircle: 'xs',
+	},
+	md: {
+		font: '1rem',
+		lineHeight: 1.2,
+		paddingY: '0.85rem',
+		paddingX: '1.05rem',
+		squircle: 'lg',
+	},
+} as const satisfies Record<ControlSize, Record<string, string | number>>
+
 /**
- * Individually bordered input from the redesign: the focus ring is drawn on
- * the field itself (green border + soft glow). Markup contract: put
- * `data-field-ring` on the input so the unlayered global `:focus-visible`
- * outline in `public/styles.css` stands down — otherwise it double-rings and
- * forces its 4px radius onto the 12px field.
+ * The bordered text field look shared by `Input`, `Textarea`, and `Select`.
+ * The field draws its own focus ring (green border and soft glow), so the
+ * element carries `data-field-ring` to stand down the global outline.
  */
-export function getAuthInputCss(options: AuthInputCssOptions = {}) {
+export function getFieldControlCss(options: FieldControlStyleOptions = {}) {
+	const size = controlSizes[options.size ?? 'md']
 	return {
-		font: `400 var(--control-font-size, 1rem)/var(--control-line-height, 1.2) ${typography.fontFamilyBody}`,
+		font: `400 ${size.font}/${size.lineHeight} ${typography.fontFamilyBody}`,
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
 		border: `1px solid ${colors.fieldBorder}`,
-		borderRadius: 'var(--control-radius, 12px)',
-		padding:
-			'var(--control-padding-y, 0.85rem) var(--control-padding-x, 1.05rem)',
-		minHeight: 'var(--control-min-height, auto)',
+		...getSquircleCss(size.squircle),
+		padding: `${size.paddingY} ${size.paddingX}`,
 		minWidth: 0,
 		width: '100%',
+		maxWidth: '100%',
 		boxSizing: 'border-box' as const,
 		transition: `border-color 160ms ${transitions.easeOut}`,
-		// Text wider than the field is otherwise sliced through a letter. This
-		// has to sit on the input, not on `::placeholder` — `text-overflow` is
-		// not one of the properties that pseudo-element accepts — and it covers
-		// an overlong value as well as an overlong placeholder. Fields wide
-		// enough for their text never see the ellipsis.
+		// Text wider than the field is otherwise sliced through a letter; this
+		// covers an overlong value as well as an overlong placeholder.
 		textOverflow: 'ellipsis',
 		'&::placeholder': {
 			color: colors.textMuted,
@@ -950,22 +953,26 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 		'&[aria-invalid="true"]': {
 			borderColor: colors.error,
 		},
+		'&:disabled': {
+			cursor: 'not-allowed',
+			opacity: 0.6,
+		},
 	}
 }
 
-/**
- * `<select>` in the redesign's field vocabulary: the same box as
- * `getAuthInputCss` with a small solid caret. The themed background image is
- * inset from the right edge, with an extra 8px gap between text and caret.
- *
- * Markup contract: same as `getAuthInputCss` — put `data-field-ring` on the
- * element so the global `:focus-visible` outline stands down for the field's
- * own green ring.
- */
-export function getSelectCss(options: AuthInputCssOptions = {}) {
-	const caretInset = 'var(--control-padding-x, 1.05rem)'
+export function getTextareaControlCss(options: FieldControlStyleOptions = {}) {
 	return {
-		...getAuthInputCss(options),
+		...getFieldControlCss(options),
+		resize: 'vertical' as const,
+		minHeight: '7rem',
+	}
+}
+
+/** The field look with a small solid caret inset from the right edge. */
+export function getSelectControlCss(options: FieldControlStyleOptions = {}) {
+	const caretInset = controlSizes[options.size ?? 'md'].paddingX
+	return {
+		...getFieldControlCss(options),
 		appearance: 'none' as const,
 		WebkitAppearance: 'none' as const,
 		cursor: 'pointer',
@@ -975,6 +982,17 @@ export function getSelectCss(options: AuthInputCssOptions = {}) {
 		backgroundPosition: `right ${caretInset} center`,
 		backgroundSize: '8px 5px',
 	}
+}
+
+/** Native checkbox and radio: the theme accent at a touch-friendly size. */
+export const choiceControlCss = {
+	flex: 'none',
+	width: '1.125rem',
+	height: '1.125rem',
+	margin: 0,
+	accentColor: colors.primary,
+	cursor: 'pointer',
+	'&:disabled': { cursor: 'not-allowed' },
 }
 
 /**
@@ -1036,12 +1054,6 @@ export const visuallyHiddenUntilFocusedCss = {
 		color: colors.primaryText,
 		fontWeight: typography.fontWeight.semibold,
 	},
-}
-
-export const textareaCss = {
-	...inputCss,
-	resize: 'vertical' as const,
-	minHeight: '7rem',
 }
 
 export const listCss = {

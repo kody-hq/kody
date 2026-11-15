@@ -21,7 +21,6 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
@@ -35,6 +34,7 @@ import { usePublicAuthProtection } from '../components/public-auth-protection.ts
 import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { Input } from '../components/input.tsx'
 export function ResetPasswordRoute() {
 	const hydrated = useHydrated()
 	const [flowSnapshot, , flowActor] = useActor(passwordResetState)
@@ -190,27 +190,25 @@ export function ResetPasswordRoute() {
 				{mode === 'confirm' ? (
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>New password</span>
-						<input
+						<Input
 							type="password"
 							name="password"
 							required
 							{...passwordManagerIgnoreProps}
 							placeholder="At least 8 characters"
 							disabled={!hydrated || isSubmitting}
-							css={inputCss}
 						/>
 					</label>
 				) : (
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Email</span>
-						<input
+						<Input
 							type="email"
 							name="email"
 							required
 							autoComplete="email"
 							placeholder="you@example.com"
 							disabled={!hydrated || isSubmitting}
-							css={inputCss}
 						/>
 					</label>
 				)}

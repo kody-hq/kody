@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -27,11 +32,8 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 type Props = {
 	payload: RepositoryCreateOptions
@@ -166,12 +168,10 @@ function RepositoryCreateForm(props: {
 						{formError}
 					</AccountManagementMessage>
 				) : null}
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Owner</span>
-					<select
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Owner</span>
+					<Select
 						name="owner"
-						data-field-ring
-						css={accountInputCss}
 						value={owner}
 						disabled={mutation.isPending}
 						aria-invalid={serverError?.field === 'owner' || undefined}
@@ -185,17 +185,16 @@ function RepositoryCreateForm(props: {
 								{ownerLabel(option)}
 							</option>
 						))}
-					</select>
+					</Select>
 				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Repository name</span>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Repository name</span>
 					<span css={nameFieldCss}>
 						<span css={namePrefixCss} aria-hidden="true">
 							@{owner}/
 						</span>
-						<input
+						<Input
 							name="name"
-							data-field-ring
 							css={nameInputCss}
 							value={name}
 							required
@@ -227,7 +226,7 @@ function RepositoryCreateForm(props: {
 							{nameError}
 						</span>
 					) : null}
-					<span id={nameNoteId} css={accountFieldNoteCss}>
+					<span id={nameNoteId} css={fieldDescriptionCss}>
 						{repositoryNameHint} New repositories are private.
 					</span>
 				</label>
@@ -315,7 +314,6 @@ const namePrefixCss: CSSObject = {
 }
 
 const nameInputCss: CSSObject = {
-	...accountInputCss,
 	flex: '1 1 auto',
 	minWidth: 0,
 	borderTopLeftRadius: 0,

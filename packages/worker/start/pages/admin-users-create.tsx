@@ -8,10 +8,10 @@ import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import type { AdminCreatedUserSetup } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
-	accountInputCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
 import type { AdminUsersActionState } from './admin-users-detail.tsx'
+import { Input } from '../components/input.tsx'
 export function AdminCreateUserPanel(input: {
 	actionState: AdminUsersActionState
 	createdUser: AdminCreatedUserSetup | null
@@ -39,25 +39,21 @@ export function AdminCreateUserPanel(input: {
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>User email</span>
-					<input
-						data-field-ring
+					<Input
 						name="email"
 						type="email"
 						required
 						placeholder="person@example.com"
 						disabled={input.isMutating}
-						css={accountInputCss}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Username (optional)</span>
-					<input
-						data-field-ring
+					<Input
 						name="username"
 						type="text"
 						placeholder="Auto-generated from email"
 						disabled={input.isMutating}
-						css={accountInputCss}
 					/>
 				</label>
 				<Button type="submit" disabled={input.isMutating} variant="primary">
@@ -69,12 +65,10 @@ export function AdminCreateUserPanel(input: {
 					<p css={{ margin: 0 }}>
 						Setup link for <strong>{input.createdUser.email}</strong>:
 					</p>
-					<input
-						data-field-ring
+					<Input
 						readOnly
 						aria-label="Password setup link"
 						value={input.createdUser.setupLink}
-						css={accountInputCss}
 					/>
 					<SiteLink
 						href={input.createdUser.setupLink}

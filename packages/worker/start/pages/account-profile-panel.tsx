@@ -23,17 +23,17 @@ import {
 	hoverMq,
 	mutedLinkCss,
 	visuallyHiddenCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	accountDisclosureCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-	accountTextareaCss,
 	verifiedPillCss,
 } from './account-management-components.tsx'
+import { Input, Textarea } from '../components/input.tsx'
+import { Radio } from '../components/choice-controls.tsx'
 export type AccountProfilePanelProps = {
 	email: string
 	emailVerified: boolean
@@ -146,8 +146,8 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						</Button>
 					) : null}
 				</div>
-				<div css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Username</span>
+				<div css={fieldCss}>
+					<span css={fieldLabelCss}>Username</span>
 					<p
 						id="account-username"
 						data-testid="account-username"
@@ -156,21 +156,19 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 					>
 						{handleUrlPreview(username)}
 					</p>
-					<p id="account-username-note" css={accountFieldNoteCss}>
+					<p id="account-username-note" css={fieldDescriptionCss}>
 						{handlePermanentNote} Change your display name below to change how
 						you appear.
 					</p>
 				</div>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Display name</span>
-					<input
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Display name</span>
+					<Input
 						type="text"
 						name="displayName"
-						data-field-ring
 						maxLength={50}
 						autoComplete="nickname"
 						value={draftDisplayName}
-						css={accountInputCss}
 						onInput={(event) => {
 							onDraftDisplayNameChange(
 								(event.currentTarget as HTMLInputElement).value,
@@ -178,15 +176,13 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						}}
 					/>
 				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Bio</span>
-					<textarea
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Bio</span>
+					<Textarea
 						name="bio"
-						data-field-ring
 						maxLength={500}
 						rows={3}
 						value={draftBio}
-						css={accountTextareaCss}
 						onInput={(event) => {
 							onDraftBioChange(
 								(event.currentTarget as HTMLTextAreaElement).value,
@@ -195,7 +191,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 					/>
 				</label>
 				<fieldset css={{ margin: 0, padding: 0, border: 'none' }}>
-					<legend css={accountFieldLabelCss}>Profile visibility</legend>
+					<legend css={fieldLabelCss}>Profile visibility</legend>
 					<label
 						css={{
 							display: 'flex',
@@ -204,8 +200,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							marginTop: spacing.sm,
 						}}
 					>
-						<input
-							type="radio"
+						<Radio
 							name="profileVisibility"
 							value="public"
 							checked={draftProfileVisibility === 'public'}
@@ -223,8 +218,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							marginTop: spacing.xs,
 						}}
 					>
-						<input
-							type="radio"
+						<Radio
 							name="profileVisibility"
 							value="private"
 							checked={draftProfileVisibility === 'private'}
@@ -234,12 +228,12 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						/>
 						<span>Private</span>
 					</label>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						Private hides your profile, public package list, and activity from
 						others.
 					</p>
 				</fieldset>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					Email: {email}
 					{emailVerified ? (
 						<span css={verifiedPillCss}>verified</span>
@@ -282,34 +276,32 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						}}
 						onSubmit={onEmailChangeSubmit}
 					>
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							Enter your current password. We will send a verification link to
 							the new address before changing your account email.
 						</p>
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							After you switch, your current verified address stays tied to this
 							account and cannot open a second account unless you release it
 							from Former addresses.
 						</p>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>New email</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>New email</span>
+							<Input
 								type="email"
 								name="email"
 								id="account-new-email"
 								data-testid="account-new-email"
-								data-field-ring
 								required
 								autoComplete="off"
 								value={draftEmail}
-								css={accountInputCss}
 								onInput={onDraftEmailInput}
 							/>
 						</label>
-						<div css={accountFieldCss}>
+						<div css={fieldCss}>
 							<label
 								htmlFor="account-email-change-password"
-								css={accountFieldLabelCss}
+								css={fieldLabelCss}
 							>
 								Current password
 							</label>
@@ -320,7 +312,6 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 								required
 								{...passwordManagerIgnoreProps}
 								value={emailChangePassword}
-								css={accountInputCss}
 								onInput={onEmailChangePasswordInput}
 							/>
 						</div>
@@ -351,7 +342,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 					</form>
 				</details>
 			) : (
-				<p css={{ ...accountFieldNoteCss, marginTop: '0.6rem' }}>
+				<p css={{ ...fieldDescriptionCss, marginTop: '0.6rem' }}>
 					Verify your current email address before changing it.
 				</p>
 			)}

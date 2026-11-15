@@ -22,7 +22,12 @@ import {
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { getButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	getButtonCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -49,11 +54,8 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 type OrgSettingsProps = {
 	data: OrgSettingsLoaderData
@@ -270,29 +272,27 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									)
 								}}
 							>
-								<label css={accountFieldCss}>
-									<span css={accountFieldLabelCss}>Name</span>
-									<input
+								<label css={fieldCss}>
+									<span css={fieldLabelCss}>Name</span>
+									<Input
 										name="displayName"
 										required
 										maxLength={80}
 										value={draftName}
-										data-field-ring
-										css={accountInputCss}
 										onChange={(event) =>
 											setDraftName(event.currentTarget.value)
 										}
 									/>
 								</label>
-								<div css={accountFieldCss}>
-									<span css={accountFieldLabelCss}>Handle</span>
+								<div css={fieldCss}>
+									<span css={fieldLabelCss}>Handle</span>
 									<p
 										aria-describedby="org-settings-handle-note"
 										css={handleValueCss}
 									>
 										{handleUrlPreview(data.org.slug)}
 									</p>
-									<p id="org-settings-handle-note" css={accountFieldNoteCss}>
+									<p id="org-settings-handle-note" css={fieldDescriptionCss}>
 										{handlePermanentNote} Change the name above to change how
 										the organization appears.
 									</p>
@@ -344,7 +344,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 					/>
 					{data.canDelete ? (
 						<AccountManagementPanel title="Delete organization">
-							<p css={accountFieldNoteCss}>
+							<p css={fieldDescriptionCss}>
 								This soft-deletes the organization. Members lose access
 								immediately. Owners can restore it for 30 days from Account →
 								Organizations.
@@ -398,17 +398,15 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									<h3 id="delete-org-title" css={deleteDialogTitleCss}>
 										Delete @{data.org.slug}?
 									</h3>
-									<p css={accountFieldNoteCss}>
+									<p css={fieldDescriptionCss}>
 										Type <strong>{data.org.slug}</strong> or{' '}
 										<strong>DELETE</strong> to confirm.
 									</p>
-									<label css={accountFieldCss}>
-										<span css={accountFieldLabelCss}>Confirmation</span>
-										<input
+									<label css={fieldCss}>
+										<span css={fieldLabelCss}>Confirmation</span>
+										<Input
 											value={confirmation}
-											data-field-ring
 											autoComplete="off"
-											css={accountInputCss}
 											onChange={(event) =>
 												setConfirmation(event.currentTarget.value)
 											}

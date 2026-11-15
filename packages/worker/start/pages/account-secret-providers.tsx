@@ -26,8 +26,8 @@ import {
 	AccountManagementPanel,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 export function AccountSecretProvidersPage({
 	payload,
@@ -336,22 +336,20 @@ export function AccountSecretProvidersPage({
 			<AccountManagementPanel title="Bind a provider">
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Provider id</span>
-					<input
+					<Input
 						onInput={(event) => {
 							setBindProvider(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindProvider}
 						disabled={disabled}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Package</span>
-					<select
+					<Select
 						onChange={(event) => {
 							setBindPackageId(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindPackageId}
 						disabled={disabled}
 					>
@@ -361,15 +359,14 @@ export function AccountSecretProvidersPage({
 								{savedPackage.kodyId}
 							</option>
 						))}
-					</select>
+					</Select>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Door-key secret</span>
-					<select
+					<Select
 						onChange={(event) => {
 							setBindDoorSecret(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindDoorSecret}
 						disabled={disabled}
 					>
@@ -379,17 +376,16 @@ export function AccountSecretProvidersPage({
 								{name}
 							</option>
 						))}
-					</select>
+					</Select>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>
 						Optional config JSON (non-secret, for example a Connect base URL)
 					</span>
-					<input
+					<Input
 						onInput={(event) => {
 							setBindConfig(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindConfig}
 						disabled={disabled}
 					/>

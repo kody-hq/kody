@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useRef, useState, type FormEvent } from 'react'
@@ -26,9 +31,6 @@ import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
@@ -74,6 +76,8 @@ import {
 	unmappableAllowCss,
 	unmappableWarningCss,
 } from './package-collaborators-parts.tsx'
+import { Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function PackageCollaboratorsRoute({
 	payload,
@@ -325,9 +329,9 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addProfile(event, view)}
 					>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Profile</span>
-							<select
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Profile</span>
+							<Select
 								aria-label="Profile"
 								value={profileId}
 								required
@@ -344,7 +348,7 @@ export function PackageCollaboratorsRoute({
 											: profile.name}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						{renderPresetField({
 							label: 'Access for the profile',
@@ -411,8 +415,7 @@ export function PackageCollaboratorsRoute({
 				</span>
 				{canAllow ? (
 					<label css={unmappableAllowCss}>
-						<input
-							type="checkbox"
+						<Checkbox
 							data-testid="package-collaborator-allow-unmappable"
 							checked={collaborator.allowUnmappableCredentialChanges === true}
 							disabled={busy !== null}
@@ -470,7 +473,7 @@ export function PackageCollaboratorsRoute({
 								: `Custom (${collaborator.permissions.length} permissions)`}
 						</span>
 					) : (
-						<select
+						<Select
 							aria-label={`Access for ${name}`}
 							value={collaborator.preset ?? ''}
 							disabled={busy !== null}
@@ -491,7 +494,7 @@ export function PackageCollaboratorsRoute({
 								</option>
 							) : null}
 							{renderPresetOptions(collaborator.preset)}
-						</select>
+						</Select>
 					)}
 					<Button
 						type="button"
@@ -531,9 +534,9 @@ export function PackageCollaboratorsRoute({
 	}) {
 		return (
 			<>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Access</span>
-					<select
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Access</span>
+					<Select
 						aria-label={input.label}
 						value={input.value}
 						css={selectCss}
@@ -544,8 +547,8 @@ export function PackageCollaboratorsRoute({
 						}}
 					>
 						{renderPresetOptions(input.value)}
-					</select>
-					<p css={accountFieldNoteCss}>
+					</Select>
+					<p css={fieldDescriptionCss}>
 						{packageCollaboratorPresetDescription(input.value)}.
 					</p>
 				</label>
@@ -620,9 +623,9 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addTeam(event, view)}
 					>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Team</span>
-							<select
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Team</span>
+							<Select
 								aria-label="Team"
 								value={teamId}
 								required
@@ -638,7 +641,7 @@ export function PackageCollaboratorsRoute({
 										{team.memberCount === 1 ? 'member' : 'members'})
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						{renderPresetField({
 							label: 'Access for the team',
@@ -681,9 +684,9 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addMember(event, view)}
 					>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Member</span>
-							<select
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Member</span>
+							<Select
 								aria-label="Member"
 								value={memberId}
 								required
@@ -699,7 +702,7 @@ export function PackageCollaboratorsRoute({
 										{member.displayName ? ` (${member.displayName})` : ''}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						{renderPresetField({
 							label: 'Access for the member',

@@ -29,15 +29,13 @@ import {
 import {
 	getAccentCalloutCss,
 	hoverMq,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
+import { Input } from '../components/input.tsx'
 
 const packageDeleteCopyTooltip = 'Copy'
 const packageDeleteCopyTooltipId = 'package-delete-copy-name-tooltip'
@@ -155,7 +153,7 @@ export function AccountPackageDeleteDialog(props: {
 				css={{ display: 'grid', gap: spacing.sm }}
 				data-testid="package-delete-controls"
 			>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					Permanently delete this package, its jobs, storage, secrets, tokens,
 					and public listing if it has one. Existing forks keep their copies.
 					This cannot be undone.
@@ -216,21 +214,17 @@ export function AccountPackageDeleteDialog(props: {
 								confirm.
 							</p>
 						</div>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type the name of the package
-							</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Type the name of the package</span>
+							<Input
 								type="text"
 								name="confirmation"
 								data-testid="package-delete-confirmation"
-								data-field-ring
 								autoComplete="off"
 								spellCheck={false}
 								required
 								placeholder={packageName}
 								value={confirmation}
-								css={accountInputCss}
 								onChange={updateConfirmation}
 							/>
 						</label>

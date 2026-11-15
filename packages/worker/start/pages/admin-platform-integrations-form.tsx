@@ -14,16 +14,13 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getLogoWellCss,
-	getSelectCss,
+	getFieldControlCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import type { ChangeEvent, FormEvent } from 'react'
-import {
-	accountInputCss,
-	accountTextareaCss,
-} from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
-const selectCss = getSelectCss()
+import { Input, Select, Textarea } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 export function IntegrationForm(input: {
 	editingApp: AdminPlatformIntegrationApp | null
 	formRevision: number
@@ -152,100 +149,84 @@ export function IntegrationForm(input: {
 								? ' (changing it renames in place — secret, logo, and connections carry over)'
 								: ''}
 						</span>
-						<input
-							data-field-ring
+						<Input
 							name="slug"
 							type="text"
 							required
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.slug ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Provider</span>
-						<input
-							data-field-ring
+						<Input
 							name="provider"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.provider ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Label</span>
-						<input
-							data-field-ring
+						<Input
 							name="label"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.label ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>
 							Description (shown to users before they connect)
 						</span>
-						<textarea
-							data-field-ring
+						<Textarea
 							name="description"
 							rows={3}
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.description ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Client id</span>
-						<input
-							data-field-ring
+						<Input
 							name="clientId"
 							type="text"
 							required
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.clientId ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Client secret</span>
-						<input
-							data-field-ring
+						<Input
 							name="clientSecret"
 							type="password"
 							autoComplete="new-password"
 							placeholder="unchanged when empty"
 							disabled={actionState !== 'idle'}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Flow</span>
-						<select
-							data-field-ring
+						<Select
 							name="flow"
 							defaultValue={editingApp?.flow ?? 'pkce'}
 							required
 							disabled={actionState !== 'idle'}
-							css={selectCss}
 						>
 							<option value="pkce">pkce</option>
 							<option value="confidential">confidential</option>
 							<option value="device">device</option>
-						</select>
+						</Select>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Token exchange style</span>
-						<select
-							data-field-ring
+						<Select
 							name="tokenExchangeStyle"
 							defaultValue={formatTokenExchangeStyle(
 								editingApp?.tokenExchangeStyle ?? null,
 							)}
 							disabled={actionState !== 'idle'}
-							css={selectCss}
 						>
 							{(['default', 'form', 'basic-json', 'basic-form'] as const).map(
 								(style) => (
@@ -254,29 +235,25 @@ export function IntegrationForm(input: {
 									</option>
 								),
 							)}
-						</select>
+						</Select>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Scope separator</span>
-						<input
-							data-field-ring
+						<Input
 							name="scopeSeparator"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.scopeSeparator ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Token URL</span>
-						<input
-							data-field-ring
+						<Input
 							name="tokenUrl"
 							type="url"
 							required
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.tokenUrl ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
@@ -286,88 +263,74 @@ export function IntegrationForm(input: {
 								? ' (optional for device flow)'
 								: ''}
 						</span>
-						<input
-							data-field-ring
+						<Input
 							name="authorizeUrl"
 							type="url"
 							required={(editingApp?.flow ?? 'pkce') !== 'device'}
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.authorizeUrl ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Device authorization URL</span>
-						<input
-							data-field-ring
+						<Input
 							name="deviceAuthorizationUrl"
 							type="url"
 							required={(editingApp?.flow ?? 'pkce') === 'device'}
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.deviceAuthorizationUrl ?? ''}
 							placeholder="Required when flow is device"
-							css={accountInputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>API base URL</span>
-						<input
-							data-field-ring
+						<Input
 							name="apiBaseUrl"
 							type="url"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.apiBaseUrl ?? ''}
-							css={accountInputCss}
 						/>
 					</label>
 				</div>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Allowed scopes</span>
-					<input
-						data-field-ring
+					<Input
 						name="allowedScopes"
 						type="text"
 						disabled={actionState !== 'idle'}
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.allowedScopes ?? [])}
-						css={accountInputCss}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Default scopes</span>
-					<input
-						data-field-ring
+					<Input
 						name="defaultScopes"
 						type="text"
 						disabled={actionState !== 'idle'}
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.defaultScopes ?? [])}
-						css={accountInputCss}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Required hosts</span>
-					<input
-						data-field-ring
+					<Input
 						name="requiredHosts"
 						type="text"
 						disabled={actionState !== 'idle'}
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.requiredHosts ?? [])}
-						css={accountInputCss}
 					/>
 				</label>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Extra authorize params</span>
-					<textarea
-						data-field-ring
+					<Textarea
 						name="extraAuthorizeParams"
 						disabled={actionState !== 'idle'}
 						placeholder="key=value (one per line)"
 						defaultValue={formatExtraAuthorizeParams(
 							editingApp?.extraAuthorizeParams ?? {},
 						)}
-						css={accountTextareaCss}
 					/>
 				</label>
 				<label css={fieldCss}>
@@ -379,7 +342,7 @@ export function IntegrationForm(input: {
 						accept="image/svg+xml,image/png,image/jpeg,image/webp"
 						disabled={actionState !== 'idle'}
 						onChange={input.onLogoFileChange}
-						css={accountInputCss}
+						css={getFieldControlCss()}
 					/>
 				</label>
 				{isEditing && editingApp?.logoPath ? (
@@ -414,9 +377,8 @@ export function IntegrationForm(input: {
 								gap: spacing.sm,
 							}}
 						>
-							<input
+							<Checkbox
 								name="removeLogo"
-								type="checkbox"
 								checked={removeLogoChecked}
 								disabled={actionState !== 'idle'}
 								onChange={(event) => {
@@ -443,9 +405,8 @@ export function IntegrationForm(input: {
 						gap: spacing.sm,
 					}}
 				>
-					<input
+					<Checkbox
 						name="enabled"
-						type="checkbox"
 						defaultChecked={editingApp?.enabled ?? true}
 						disabled={actionState !== 'idle'}
 						css={{

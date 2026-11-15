@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -13,14 +18,11 @@ import {
 	AccountManagementPanel,
 	accountActionsCss,
 	accountDisclosureCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { changePassword } from '#start/server/security-mutations'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
+import { Input } from '../components/input.tsx'
 export function AccountPasswordPanel(props: {
 	hasUsablePassword: boolean
 	onPasswordSet: () => void
@@ -172,52 +174,46 @@ export function AccountPasswordPanel(props: {
 						}}
 						onSubmit={handleSubmit}
 					>
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							{hasUsablePassword
 								? 'Other browser sessions and connected MCP hosts will need to sign in again.'
 								: 'This account signs in with a connected provider or passkey. Setting a password lets you also sign in with email.'}
 						</p>
 						{hasUsablePassword ? (
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Current password</span>
-								<input
+							<label css={fieldCss}>
+								<span css={fieldLabelCss}>Current password</span>
+								<Input
 									type="password"
 									name="currentPassword"
-									data-field-ring
 									required
 									autoComplete="current-password"
 									value={currentPassword}
-									css={accountInputCss}
 									onInput={updateCurrentPassword}
 								/>
 							</label>
 						) : null}
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>New password</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>New password</span>
+							<Input
 								type="password"
 								name="newPassword"
-								data-field-ring
 								required
 								minLength={minPasswordLength}
 								autoComplete="new-password"
 								placeholder={`At least ${minPasswordLength} characters`}
 								value={newPassword}
-								css={accountInputCss}
 								onInput={updateNewPassword}
 							/>
 						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Confirm new password</span>
-							<input
+						<label css={fieldCss}>
+							<span css={fieldLabelCss}>Confirm new password</span>
+							<Input
 								type="password"
 								name="confirmPassword"
-								data-field-ring
 								required
 								minLength={minPasswordLength}
 								autoComplete="new-password"
 								value={confirmPassword}
-								css={accountInputCss}
 								onInput={updateConfirmPassword}
 							/>
 						</label>

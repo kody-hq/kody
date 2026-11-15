@@ -62,7 +62,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	mutedLinkCss,
@@ -100,6 +99,7 @@ import {
 	OAuthAuthorizeGuestConnected,
 	OAuthAuthorizeSignedOutChoices,
 } from './oauth-authorize-guest.tsx'
+import { Input } from '../components/input.tsx'
 type OAuthAuthorizeStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 function oauthAuthorizeAccessLead(
@@ -1023,14 +1023,13 @@ export function OAuthAuthorizeRoute({
 							) : null}
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Email</span>
-								<input
+								<Input
 									type="email"
 									name="email"
 									required
 									autoComplete="email"
 									placeholder="you@example.com"
 									disabled={actionsDisabled}
-									css={inputCss}
 								/>
 							</label>
 							<div css={fieldCss}>
@@ -1044,7 +1043,6 @@ export function OAuthAuthorizeRoute({
 									autoComplete="current-password"
 									placeholder="Enter your password"
 									disabled={actionsDisabled}
-									css={inputCss}
 								/>
 							</div>
 						</>

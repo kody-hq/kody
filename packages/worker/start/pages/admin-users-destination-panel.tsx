@@ -1,21 +1,17 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, useRef, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminDestinationMutationOptions } from '../admin-user-controls-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 export function AdminUserDestinationPanel({
 	stableUserId,
 }: {
@@ -88,8 +84,7 @@ export function AdminUserDestinationPanel({
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Destination email</span>
-					<input
-						data-field-ring
+					<Input
 						type="email"
 						autoComplete="off"
 						disabled={mutation.isPending}
@@ -97,7 +92,6 @@ export function AdminUserDestinationPanel({
 						aria-label="Destination email"
 						placeholder="extra@example.com"
 						onChange={(event) => setEmail(event.currentTarget.value)}
-						css={inputCss}
 					/>
 				</label>
 				<Button
@@ -111,5 +105,3 @@ export function AdminUserDestinationPanel({
 		</AccountManagementPanel>
 	)
 }
-
-const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }

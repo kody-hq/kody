@@ -24,9 +24,8 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 	IdValue,
-	accountInputCss,
-	accountTextareaCss,
 } from './account-management-components.tsx'
+import { Input, Textarea } from '../components/input.tsx'
 type ActionState = 'idle' | 'adding' | 'removing'
 export function AdminReservedUsernamesPage(props: {
 	payload: AdminReservedUsernamesLoaderData
@@ -143,13 +142,11 @@ export function AdminReservedUsernamesPage(props: {
 			>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Usernames</span>
-					<textarea
-						data-field-ring
+					<Textarea
 						name="usernames"
 						rows={4}
 						placeholder="autodiscover, mta-sts"
 						disabled={isMutating}
-						css={accountTextareaCss}
 					/>
 				</label>
 				<Button
@@ -319,8 +316,7 @@ export function AdminReservedUsernamesPage(props: {
 				</p>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Search</span>
-					<input
-						data-field-ring
+					<Input
 						type="text"
 						role="searchbox"
 						inputMode="search"
@@ -330,7 +326,6 @@ export function AdminReservedUsernamesPage(props: {
 							if (!(event.currentTarget instanceof HTMLInputElement)) return
 							setBuiltInQuery(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
 				</label>
 				<p css={{ color: colors.textMuted, margin: 0 }}>

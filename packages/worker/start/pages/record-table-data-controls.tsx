@@ -12,6 +12,10 @@ import {
 	overlayPositionerCss,
 } from '../components/overlay-styles.ts'
 import { colors } from '#universal/styles/tokens.ts'
+import { Select } from '../components/input.tsx'
+import { Button } from '../components/button.tsx'
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
+import { Checkbox } from '../components/choice-controls.tsx'
 type Model = ReturnType<typeof useRecordTableModel>
 const control = {
 	padding: '0.25rem 0.45rem',
@@ -19,7 +23,7 @@ const control = {
 	color: colors.text,
 	background: colors.surface,
 	border: `1px solid ${colors.border}`,
-	borderRadius: '0.25rem',
+	...getSquircleCss('xs'),
 }
 export function RecordSelectionCheckbox({
 	label,
@@ -39,9 +43,8 @@ export function RecordSelectionCheckbox({
 		if (ref.current) ref.current.indeterminate = Boolean(mixed && !checked)
 	}, [mixed, checked])
 	return (
-		<input
+		<Checkbox
 			ref={ref}
-			type="checkbox"
 			aria-label={label}
 			checked={checked}
 			disabled={disabled}
@@ -173,9 +176,9 @@ export function RecordTablePagination({ model }: { model: Model }) {
 			</span>
 			<label>
 				Rows{' '}
-				<select
+				<Select
+					size="sm"
 					aria-label="Rows per page"
-					css={control}
 					value={pageSize}
 					onChange={(event) =>
 						model.setPagination({
@@ -189,29 +192,29 @@ export function RecordTablePagination({ model }: { model: Model }) {
 							{size}
 						</option>
 					))}
-				</select>
+				</Select>
 			</label>
-			<button
-				type="button"
-				css={control}
+			<Button
+				variant="secondary"
+				size="xs"
 				aria-label="Previous page"
 				disabled={!model.getCanPreviousPage()}
 				onClick={() => model.previousPage()}
 			>
 				‹
-			</button>
+			</Button>
 			<span>
 				Page {pageIndex + 1} of {Math.max(1, model.getPageCount())}
 			</span>
-			<button
-				type="button"
-				css={control}
+			<Button
+				variant="secondary"
+				size="xs"
 				aria-label="Next page"
 				disabled={!model.getCanNextPage()}
 				onClick={() => model.nextPage()}
 			>
 				›
-			</button>
+			</Button>
 		</div>
 	)
 }

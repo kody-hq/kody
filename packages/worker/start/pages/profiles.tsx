@@ -42,9 +42,11 @@ import {
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
-	getSelectCss,
 	primaryLinkCss,
 	getSquircleCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -65,11 +67,9 @@ import {
 	MetadataGrid,
 	TimestampValue,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type EnabledData = Extract<ProfilesPageData, { enabled: true }>
 
@@ -701,7 +701,7 @@ function ProfileDetail(props: {
 					) : null}
 				</div>
 				{block && block !== 'inactive' && profile.status === 'active' ? (
-					<p css={accountFieldNoteCss}>{subProfileBlockMessage(block)}</p>
+					<p css={fieldDescriptionCss}>{subProfileBlockMessage(block)}</p>
 				) : null}
 				{editable ? (
 					<ShortenExpiryForm
@@ -711,7 +711,7 @@ function ProfileDetail(props: {
 						onDone={refresh}
 					/>
 				) : profile.actingUserId !== viewer.userId ? (
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						Owners can revoke this profile but not edit it.
 					</p>
 				) : null}
@@ -828,16 +828,15 @@ function ShortenExpiryForm(props: {
 	return (
 		<form onSubmit={submit} noValidate css={{ display: 'grid', gap: '0.5rem' }}>
 			<h3 css={subheadCss}>Expiry</h3>
-			<label css={accountFieldCss}>
-				<span css={accountFieldLabelCss}>Stops working at</span>
-				<input
+			<label css={fieldCss}>
+				<span css={fieldLabelCss}>Stops working at</span>
+				<Input
 					type="datetime-local"
 					value={value}
 					max={toLocalInput(max) || undefined}
 					onChange={(event) => setValue(event.target.value)}
-					css={accountInputCss}
 				/>
-				<span css={accountFieldNoteCss}>
+				<span css={fieldDescriptionCss}>
 					Expiry only moves earlier. A later time, or clearing it, is refused
 					with <code>profile_expiry_extension</code>; create a new profile for
 					more time.
@@ -1089,37 +1088,34 @@ function ProfileTokens(props: {
 					noValidate
 					css={{ display: 'grid', gap: '0.5rem' }}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Token name</span>
-						<input
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Token name</span>
+						<Input
 							value={name}
 							maxLength={100}
 							onChange={(event) => setName(event.target.value)}
-							css={accountInputCss}
 						/>
 					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Lifetime</span>
-						<select
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Lifetime</span>
+						<Select
 							value={lifetime}
 							onChange={(event) =>
 								setLifetime(event.target.value === 'long' ? 'long' : 'short')
 							}
-							css={getSelectCss()}
 						>
 							<option value="short">Short: 1 hour idle, 24 hours max</option>
 							<option value="long">Long: 14 days idle, 3 months max</option>
-						</select>
-						<span css={accountFieldNoteCss}>
+						</Select>
+						<span css={fieldDescriptionCss}>
 							Never outlives the profile chain’s expiry.
 						</span>
 					</label>
 					<fieldset css={fieldsetCss}>
-						<legend css={accountFieldLabelCss}>Scopes</legend>
+						<legend css={fieldLabelCss}>Scopes</legend>
 						{scopeChoices.map((scope) => (
 							<label key={scope} css={checkLabelCss}>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={scopes.has(scope)}
 									onChange={(event) =>
 										setScopes((current) => {
@@ -1263,9 +1259,9 @@ function CreateProfilePanel(props: {
 				data-testid="profile-create"
 				css={{ display: 'grid', gap: spacing.md }}
 			>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Name</span>
-					<input
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Name</span>
+					<Input
 						name="name"
 						required
 						autoFocus
@@ -1273,30 +1269,28 @@ function CreateProfilePanel(props: {
 						maxLength={63}
 						placeholder="release-bot"
 						onChange={(event) => setName(event.target.value.toLowerCase())}
-						css={accountInputCss}
 					/>
-					<span css={accountFieldNoteCss}>
+					<span css={fieldDescriptionCss}>
 						Lowercase letters, digits, and dashes. Unique among your profiles
 						under the same parent.
 					</span>
 				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Expires (optional)</span>
-					<input
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Expires (optional)</span>
+					<Input
 						type="datetime-local"
 						value={expiry}
 						max={toLocalInput(limit) || undefined}
 						onChange={(event) => setExpiry(event.target.value)}
-						css={accountInputCss}
 					/>
-					<span css={accountFieldNoteCss}>
+					<span css={fieldDescriptionCss}>
 						{limit
 							? 'Leave empty to inherit the parent chain’s expiry. It can never be later than that.'
 							: 'Leave empty for no expiry. You can shorten it later, never extend it.'}
 					</span>
 				</label>
 				<fieldset css={fieldsetCss}>
-					<legend css={accountFieldLabelCss}>Grants</legend>
+					<legend css={fieldLabelCss}>Grants</legend>
 					{props.grantOptions.length === 0 ? (
 						<p css={{ margin: 0, color: colors.textMuted }}>
 							{parent
@@ -1321,8 +1315,7 @@ function CreateProfilePanel(props: {
 								>
 									{option.permissions.map((permission) => (
 										<label key={permission} css={checkLabelCss}>
-											<input
-												type="checkbox"
+											<Checkbox
 												checked={
 													picked.get(keyOf(option))?.has(permission) ?? false
 												}
@@ -1345,7 +1338,7 @@ function CreateProfilePanel(props: {
 							</div>
 						))
 					)}
-					<span css={accountFieldNoteCss}>
+					<span css={fieldDescriptionCss}>
 						{parent
 							? 'Only grants every parent still holds are offered. Kody checks again when you save.'
 							: 'Kody refuses any permission you do not hold on that resource.'}

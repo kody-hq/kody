@@ -26,6 +26,7 @@ import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { AccountManagementMessage } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
+import { Select } from '../components/input.tsx'
 
 const saveDelayMs = 600
 
@@ -544,7 +545,7 @@ export function ExecutionChainPanel(props: {
 							}}
 						>
 							<span>Add a context</span>
-							<select
+							<Select
 								value={addId}
 								disabled={full}
 								onChange={(event) => setAddId(event.target.value)}
@@ -556,7 +557,7 @@ export function ExecutionChainPanel(props: {
 										{context.name}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						<Button
 							type="button"

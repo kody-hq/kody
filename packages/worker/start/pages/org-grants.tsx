@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type {
 	OrgGrantsLoaderData,
@@ -29,10 +34,6 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import {
 	grantOrganizationCreateAccess,
@@ -48,6 +49,8 @@ import {
 	type RecordTableColumn,
 	type RecordTableRow,
 } from './record-table.tsx'
+import { Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 export function OrgGrantsPage(props: {
 	data: OrgGrantsLoaderData
 	queryKey: QueryKey
@@ -376,11 +379,10 @@ function GiveAccessPicker({
 			description="Open one person's access page to see everything they can use here, add packages and credentials in one go, or trim what they have."
 		>
 			<div css={formCss} data-testid="org-give-access">
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Person</span>
-					<select
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Person</span>
+					<Select
 						value={userId}
-						data-field-ring
 						data-testid="org-give-access-person"
 						css={selectCss}
 						onChange={(event) => setUserId(event.currentTarget.value)}
@@ -404,8 +406,8 @@ function GiveAccessPicker({
 								))}
 							</optgroup>
 						) : null}
-					</select>
-					<span css={accountFieldNoteCss}>
+					</Select>
+					<span css={fieldDescriptionCss}>
 						Someone new? Invite them on Members first. Owners already have full
 						access.
 					</span>
@@ -559,12 +561,11 @@ function OrgWideAccessForm({
 						)
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Member or team</span>
-						<select
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Member or team</span>
+						<Select
 							name="subject"
 							value={subjectKey}
-							data-field-ring
 							css={selectCss}
 							onChange={(event) => {
 								const next = event.currentTarget.value
@@ -597,8 +598,8 @@ function OrgWideAccessForm({
 									))}
 								</optgroup>
 							) : null}
-						</select>
-						<p css={accountFieldNoteCss}>
+						</Select>
+						<p css={fieldDescriptionCss}>
 							Edits this member or team's own organization grant. Access a
 							member gets through a team is set on that team.
 						</p>
@@ -607,7 +608,7 @@ function OrgWideAccessForm({
 						css={fieldsetCss}
 						disabled={!canEdit || !subject || mutation.isPending}
 					>
-						<legend css={accountFieldLabelCss}>{form.legend}</legend>
+						<legend css={fieldLabelCss}>{form.legend}</legend>
 						{form.options.map((option) => {
 							const checked = selected.includes(option.permission)
 							return (
@@ -617,8 +618,7 @@ function OrgWideAccessForm({
 									data-testid={`${form.testId}-option`}
 									data-permission={option.permission}
 								>
-									<input
-										type="checkbox"
+									<Checkbox
 										name="permissions"
 										value={option.permission}
 										checked={checked}
@@ -635,7 +635,7 @@ function OrgWideAccessForm({
 									/>
 									<span css={checkTextCss}>
 										<span css={checkLabelCss}>{option.label}</span>
-										<span css={accountFieldNoteCss}>{option.description}</span>
+										<span css={fieldDescriptionCss}>{option.description}</span>
 									</span>
 								</label>
 							)
@@ -643,7 +643,7 @@ function OrgWideAccessForm({
 					</fieldset>
 					{!canEdit && form.ownerOnlyNote ? (
 						<p
-							css={accountFieldNoteCss}
+							css={fieldDescriptionCss}
 							data-testid={`${form.testId}-owner-only`}
 						>
 							{form.ownerOnlyNote}
@@ -682,7 +682,6 @@ const formCss = {
 }
 
 const selectCss = {
-	...accountInputCss,
 	padding: '0.55rem 0.7rem',
 }
 
