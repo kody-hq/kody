@@ -95,7 +95,6 @@ export const adminListedPackageFetchBindingScanCapability =
 				async () =>
 					await runListedPackageFetchBindingScan({
 						env: ctx.env,
-						baseUrl: ctx.callerContext.baseUrl,
 						afterId: args.cursor ?? null,
 						limit: args.limit,
 					}),

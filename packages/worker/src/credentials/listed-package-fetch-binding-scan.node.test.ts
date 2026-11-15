@@ -43,3 +43,11 @@ test('reports a possible alias only when the global object is used as a value an
 		}).aliasShapes,
 	).toEqual([])
 })
+
+test('a module that cannot be parsed is reported, not counted as free of such reads', () => {
+	expect(
+		scanModulesForGlobalObjectFetch({
+			'bundle.js': `export const a = () => globalThis.fetch(url) }}} (`,
+		}),
+	).toEqual({ globalReads: true, notParsed: true, aliasShapes: [] })
+})

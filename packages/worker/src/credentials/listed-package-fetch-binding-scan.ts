@@ -8,26 +8,18 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { parseAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import {
-	loadPackageManifestForSource,
-	loadPackageSourceRowForUser,
-	loadServingPackageSourceBySourceId,
-} from '#worker/package-registry/source.ts'
-import { collectPublishedPackageArtifactTargets } from '#worker/package-runtime/package-artifact-targets.ts'
-import {
 	isPlatformRuntimeModulePath,
 	isRepairableArtifactKind,
 	moduleSource,
-	publishedArtifactInlinesOtherPackages,
 } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
-import {
-	loadPublishedBundleArtifactsForPackageTargets,
-	publishedBundleArtifactForPackageTarget,
-} from '#worker/package-runtime/published-bundle-artifacts.ts'
+import { loadPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { listMissingPublishedSourceInstalledDependencies } from '#worker/package-runtime/published-source-dependencies.ts'
 import {
 	collectTopLevelFetchCollisionNames,
 	rewriteGlobalObjectFetchReads,
+	sourceMayReadFetchThroughGlobalObject,
 } from '#worker/package-runtime/rewrite-local-execute-secret-fetch.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -116,9 +108,17 @@ export function scanModulesForGlobalObjectFetch(
 		if (isPlatformRuntimeModulePath(modulePath)) continue
 		const source = moduleSource(module as never)
 		if (source == null || !source.includes('fetch')) continue
-		if (rewriteGlobalObjectFetchReads(source, scanProbeName) !== source) {
+		if (
+			sourceMayReadFetchThroughGlobalObject(source) &&
+			!collectTopLevelFetchCollisionNames(source)
+		) {
+			// Unreadable, so it cannot be shown to have no such read.
 			scanned.globalReads = true
-			if (!collectTopLevelFetchCollisionNames(source)) scanned.notParsed = true
+			scanned.notParsed = true
+		} else if (
+			rewriteGlobalObjectFetchReads(source, scanProbeName) !== source
+		) {
+			scanned.globalReads = true
 		}
 		const asValue = shapesOf(source, globalObjectAsValuePattern)
 		if (asValue.length === 0) continue
@@ -160,9 +160,51 @@ const outcomeRank: Array<ListedPackageFetchBindingOutcome> = [
 	'needs_install_to_rebuild',
 ]
 
+type StoredBundle = {
+	kind?: string | null
+	modules?: Record<string, unknown>
+	dependencies?: Array<{ packageId?: string | null }>
+	packageContext?: { packageId?: string | null } | null
+}
+
+/**
+ * Reads the stored rows and payloads directly. The runtime loaders recover
+ * and save a missing snapshot as they go, and this scan must not write.
+ */
+async function readStoredBundles(input: {
+	env: Env
+	userId: OwnerId
+	sourceId: string
+}): Promise<Array<StoredBundle>> {
+	const kv = (input.env as Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace })
+		.BUNDLE_ARTIFACTS_KV
+	if (!kv) return []
+	const rows = await input.env.APP_DB.prepare(
+		`SELECT kv_key, artifact_kind FROM published_bundle_artifacts
+		 WHERE user_id = ? AND source_id = ?`,
+	)
+		.bind(input.userId, input.sourceId)
+		.all<{ kv_key: string; artifact_kind: string }>()
+	const bundles: Array<StoredBundle> = []
+	for (const row of rows.results ?? []) {
+		if (!isRepairableArtifactKind(row.artifact_kind)) continue
+		const stored = await kv.get<StoredBundle>(row.kv_key, 'json')
+		if (!stored?.modules) continue
+		bundles.push({ ...stored, kind: stored.kind ?? row.artifact_kind })
+	}
+	return bundles
+}
+
+function inlinesOtherPackages(bundle: StoredBundle) {
+	const ownPackageId = bundle.packageContext?.packageId ?? null
+	return (bundle.dependencies ?? []).some(
+		(dependency) =>
+			!dependency.packageId || dependency.packageId !== ownPackageId,
+	)
+}
+
 async function scanPackage(input: {
 	env: Env
-	baseUrl: string
 	packageId: string
 	userId: OwnerId
 	sourceId: string
@@ -174,57 +216,38 @@ async function scanPackage(input: {
 		possibleAlias: false,
 		possibleAliasShapes: [] as Array<string>,
 	}
-	const source = await loadPackageSourceRowForUser({
-		env: input.env,
-		userId: input.userId,
-		sourceId: input.sourceId,
-	})
-	const publishedCommit = source.published_commit?.trim() || null
-	if (!publishedCommit) return { ...base, outcome: 'unpublished' }
-	const { manifest } = await loadPackageManifestForSource({
-		env: input.env,
-		userId: input.userId,
-		source,
-	})
-	const targets = collectPublishedPackageArtifactTargets(manifest).filter(
-		(target) => isRepairableArtifactKind(target.kind),
-	)
-	const loadedByIdentity = targets.length
-		? await loadPublishedBundleArtifactsForPackageTargets({
-				env: input.env,
-				userId: input.userId,
-				sourceId: input.sourceId,
-				targets,
-			})
-		: new Map()
+	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	if (!source || source.user_id !== input.userId) {
+		return { ...base, outcome: 'unpublished' }
+	}
+	if (!source.published_commit?.trim()) {
+		return { ...base, outcome: 'unpublished' }
+	}
+	const bundles = await readStoredBundles(input)
 	let outcome: ListedPackageFetchBindingOutcome = 'no_global_reads'
 	let needsInstall: boolean | null = null
 	const shapes = new Set<string>()
-	for (const target of targets) {
-		const artifact = publishedBundleArtifactForPackageTarget({
-			sourceId: input.sourceId,
-			target,
-			loadedByIdentity,
-		})?.artifact
-		if (!artifact) continue
+	for (const bundle of bundles) {
 		base.bundles += 1
-		const scanned = scanModulesForGlobalObjectFetch(artifact.modules)
+		const scanned = scanModulesForGlobalObjectFetch(bundle.modules ?? {})
 		for (const shape of scanned.aliasShapes) shapes.add(shape)
 		if (!scanned.globalReads) continue
 		base.bundlesWithGlobalReads += 1
 		let bundleOutcome: ListedPackageFetchBindingOutcome = 'bound_in_place'
 		if (scanned.notParsed) {
 			bundleOutcome = 'not_parsed'
-		} else if (publishedArtifactInlinesOtherPackages(artifact)) {
+		} else if (inlinesOtherPackages(bundle)) {
 			if (needsInstall == null) {
-				const packageSource = await loadServingPackageSourceBySourceId({
+				// No saved source snapshot counts as needing an install: the
+				// scan cannot show that the source builds again on its own.
+				const snapshot = await loadPublishedSourceSnapshot({
 					env: input.env,
-					baseUrl: input.baseUrl,
 					userId: input.userId,
-					sourceId: input.sourceId,
+					source,
 				})
 				needsInstall =
-					listMissingPublishedSourceInstalledDependencies(packageSource.files)
+					!snapshot ||
+					listMissingPublishedSourceInstalledDependencies(snapshot.files)
 						.length > 0
 			}
 			bundleOutcome = needsInstall
@@ -246,7 +269,6 @@ async function scanPackage(input: {
 
 export async function runListedPackageFetchBindingScan(input: {
 	env: Env
-	baseUrl: string
 	afterId?: string | null
 	limit?: number
 }): Promise<ListedPackageFetchBindingScanResult> {
@@ -277,7 +299,6 @@ export async function runListedPackageFetchBindingScan(input: {
 			result.packages.push(
 				await scanPackage({
 					env: input.env,
-					baseUrl: input.baseUrl,
 					packageId: savedPackage.id,
 					userId: savedPackage.userId,
 					sourceId: savedPackage.sourceId,
