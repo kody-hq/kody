@@ -34,15 +34,16 @@ the project must follow the same convention; user-scoped tests should exercise
 both the "happy" path and a cross-user denial path.
 
 The deliberate storage exception is **operator-owned system email** for reserved
-platform local parts (`kody`, `support`, `abuse`, `postmaster`, `security`,
-`admin`, and `psl`). The permanent D1 tables are `system_email_threads`,
-`system_email_messages`, `system_email_attachments`, and
-`system_email_delivery_events`. They omit `user_id` because the operator owner
-is implicit. They are the sole live `system:email` graph authority. The reserved
-id is not a login account and must not be conflated with the `kody@example.com`
-fixture or Kent's personal account. Account deletion and export treat these
-tables as platform/operator content in `accountOperatorOwnedD1Surfaces`, with
-guardrail tests.
+platform local parts (`systemEmailLocals` in
+`packages/worker/src/email/system-email.ts`: `kody`, `support`, `abuse`, `dmca`,
+`postmaster`, `security`, `admin`, `psl`, `kent`, and `news`). The permanent D1
+tables are `system_email_threads`, `system_email_messages`,
+`system_email_attachments`, and `system_email_delivery_events`. They omit
+`user_id` because the operator owner is implicit. They are the sole live
+`system:email` graph authority. The reserved id is not a login account and must
+not be conflated with the `kody@example.com` fixture or Kent's personal account.
+Account deletion and export treat these tables as platform/operator content in
+`accountOperatorOwnedD1Surfaces`, with guardrail tests.
 
 Platform feedback remains user-owned and user-scoped in storage, but has a
 narrow cross-user read and triage path. Only feedback the submitting user
@@ -1531,6 +1532,12 @@ on write unless a migration backfills existing rows.
 - `published_bundle_artifacts.dependencies_json` (`0001-squashed-init.sql`)
   stores package dependency pointers queried with SQLite JSON functions in
   `packages/worker/src/repo/published-bundle-artifacts-repo.ts`.
+- `published_bundle_artifacts.total_bytes`
+  (`packages/worker/migrations/0267-published-bundle-artifact-total-bytes.sql`)
+  is the sum of stored module bytes from the artifact's `manifest`
+  (`packages/worker/src/package-runtime/bundle-artifact-manifest.ts`). Writes
+  set it from `createBundleArtifactManifest()`. NULL means the stored blob has
+  no manifest yet.
 - Keyed invocation replay lives in the RunLog Durable Object ledger (see
   [Run records](./run-records.md)). D1 has no `package_invocations` or
   `package_invocation_tokens` table.
@@ -1743,14 +1750,19 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
 - `bundle-artifact:v1:{sourceId}:{commit}:{kind}:{artifactName|_}:{entryPoint}`.
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
-  the new `published_commit` missing artifacts.
+  the new `published_commit` missing artifacts. Stored JSON includes `modules`,
+  a `manifest` (v1: per-module `role`, `bytes`, optional `owner` for linked
+  modules, plus `totalBytes`), and optional `linkedArtifacts` prefixes whose
+  module groups live under `linked-artifact:v1:…` instead of being inlined. New
+  writes always include `manifest`. Blobs without one have NULL
+  `published_bundle_artifacts.total_bytes`.
 - `linked-artifact:v1:{sourceId}:{commit}:{sha256}`. The `kody:@` dependency
   modules an uploaded build links (`.__kody_linked__/artifacts/…`), stored once
   per commit and content hash. The commit's bundle artifacts list them under
   `linkedArtifacts` and get the modules back when they are read. Deleted with
   the commit's artifacts, the source, or the account.
-- `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
-  written or read, still deleted and exported).
+- `community-snapshot:v1:{listingId}` — retained only for deletion, export, and
+  account teardown; live listing trees use the SHA-keyed source snapshot.
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.

@@ -36,13 +36,14 @@ platform-assigned sender address.
   transactional sender (`kody@<apex>`, used for verification, password-reset,
   billing, entitlement warnings, usage-campaign nudges (Kody tips, with an
   unsubscribe footer and `List-Unsubscribe` headers), and platform-feedback
-  resolve/dismiss mail) and the operator-owned system inboxes (`kody`,
-  `support`, `abuse`, `postmaster`, `security`, `admin`, and `psl` at the apex
-  route to Kody's system inbox). `team@<apex>` is an inbound-only alias of
-  `support@` (same inbox; original To kept; not a send-as address). Mail from
-  `kody@<apex>` sets `Reply-To: support@<apex>` unless the caller supplies a
-  different Reply-To, so human replies land at support rather than at the
-  transactional sender. All other apex mail is rejected.
+  resolve/dismiss mail) and the operator-owned system inboxes
+  (`systemEmailLocals` at the apex: `kody`, `support`, `abuse`, `dmca`,
+  `postmaster`, `security`, `admin`, `psl`, `kent`, and `news`) route to Kody's
+  system inbox. `team@<apex>` is an inbound-only alias of `support@` (same
+  inbox; original To kept; not a send-as address). Mail from `kody@<apex>` sets
+  `Reply-To: support@<apex>` unless the caller supplies a different Reply-To, so
+  human replies land at support rather than at the transactional sender. All
+  other apex mail is rejected.
 - Reserved local parts never route to an org inbox and can never be registered
   as usernames or slugs.
 - Outbound user mail sends from `{username}@<platform domain>` of the acting
@@ -252,9 +253,13 @@ Inbound storage is quota-gated per user:
   touched. Reply-all adds the stored message's To and Cc only on threads the
   owner put the inbox on ([Reply-all](#reply-all)). Admins have a separate
   operator channel (`adminSystemEmailSend`) that speaks for the platform rather
-  than for any user account: it sends from a reserved system sender, uses no
-  user mailbox or plan entitlement, is audit-logged, and is capped per sender
-  per UTC day.
+  than for any user account: it sends from a reserved transactional system
+  sender, uses no user mailbox or plan entitlement, is audit-logged, and is
+  capped per sender per UTC day. What's New in Kody mail is a separate channel:
+  `adminWhatsNewEmailSend` sends from `news@` to one recipient, uses a dedicated
+  daily counter, and is not available through `adminSystemEmailSend`. Consent
+  lives on the user (`whats_new_email_opt_in`); only site admins can list
+  recipients, change consent, or send.
 - Outbound sends consume a per-day entitlement. The `max` plan allows 10,000
   send attempts per UTC day.
 - A successful send request has `processing_status: "sent"`. Cloudflare delivery
@@ -565,12 +570,12 @@ do not dispatch after a newer delivery state has already been stored.
 
 ## `email.system-message.received` package subscription (admins)
 
-Mail stored in the operator-owned system inbox (`kody`, `support`, `abuse`,
-`postmaster`, `security`, `admin`, and `psl` at the apex) dispatches the
-separate package subscription topic `email.system-message.received` when the
-message is accepted. It fans out to packages saved by users who hold the admin
-role at dispatch time — a non-admin saving the same subscription never receives
-system mail, and a revoked admin stops receiving immediately.
+Mail stored in the operator-owned system inbox (`systemEmailLocals` at the apex)
+dispatches the separate package subscription topic
+`email.system-message.received` when the message is accepted. It fans out to
+packages saved by users who hold the admin role at dispatch time — a non-admin
+saving the same subscription never receives system mail, and a revoked admin
+stops receiving immediately.
 
 Quarantined system-inbox mail is stored for operators but never dispatches
 `email.system-message.received` (or any other admin package subscription).
@@ -616,10 +621,10 @@ retries do not recreate the message.
 ## `email.system-message.sent` package subscription (admins)
 
 A successful send from a reserved system sender (`adminSystemEmailSend` /
-`sendSystemEmail`) fans `email.system-message.sent` to packages saved by users
-who hold the admin role at dispatch time. Raw capability calls and utility
-wrappers both go through that send path, so archive packages see every operator
-send.
+`sendSystemEmail`, and `adminWhatsNewEmailSend` / `sendNewsletterEmail`) fans
+`email.system-message.sent` to packages saved by users who hold the admin role
+at dispatch time. Raw capability calls and utility wrappers both go through that
+send path, so archive packages see every operator send.
 
 Each send also records one `system_email_sends` row per recipient so Cloudflare
 delivery reports match it. A recipient that hard-bounced repeatedly is refused

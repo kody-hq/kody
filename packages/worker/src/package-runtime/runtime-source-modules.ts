@@ -42,8 +42,7 @@ export function createRuntimeModuleSource() {
 	// globalThis - the per-request runtime value is held inside the ALS, so
 	// concurrent requests do not stomp on each other's view.
 	//
-	// Hydration used to install another full copy of this module under each
-	// published-artifact prefix. Those copies now re-export this root module
+	// Prefixed published-artifact copies of this module re-export this root
 	// so the stamp ALS is created once in this closure. The ALS instance and
 	// stamp runner stay module-local (never hung off Symbol.for / globalThis);
 	// only a read-only current-stamp getter is published for host wrappers.

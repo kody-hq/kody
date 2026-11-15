@@ -43,7 +43,8 @@ capability for full contents.
 
 ## `email.system-message.sent` (admins)
 
-A successful `adminSystemEmailSend` / `sendSystemEmail` fans
+A successful `adminSystemEmailSend` / `sendSystemEmail` or
+`adminWhatsNewEmailSend` / `sendNewsletterEmail` fans
 `email.system-message.sent` to packages saved by users who hold the admin role
 at dispatch time. This includes sends from the `@kentcdodds/system-email`
 utility and raw capability calls. A non-admin package may declare the topic, but

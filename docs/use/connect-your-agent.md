@@ -105,10 +105,10 @@ you only have the MCP URL.
   ChatGPT asks for an icon, use `/images/kody-app-icon.png` (256×256, under
   ChatGPT's 10 KB limit) from the connect page.
 
-  Installed Kody from the public ChatGPT plugin directory before? That listing
-  is outdated and no longer updates. Uninstall it and add Kody as a custom MCP
-  connection instead. If ChatGPT shows only `search` and `execute` (no `api`),
-  use the Kody CLI (`npx @kodycodes/cli api tokenList` / `tokenRevoke`).
+  The public ChatGPT plugin directory listing is unmaintained. Uninstall that
+  plugin and add Kody as a custom MCP server with this deployment’s MCP URL
+  instead. If ChatGPT shows only `search` and `execute` (no `api`), use the Kody
+  CLI (`npx @kodycodes/cli api tokenList` / `tokenRevoke`).
 
 - **Codex**: Add Kody as an MCP server. In the Codex CLI:
 
@@ -185,10 +185,10 @@ you only have the MCP URL.
   chat: that runs in Muse's Linux VM and cannot configure Muse. After OAuth
   succeeds, headless Muse may ask you to paste a localhost URL into the Muse
   chat.
-- **Muse chat**: Muse chat at [muse.ai](https://muse.ai) (formerly
-  agent.meta.ai) has no native MCP settings screen. Pre-register a confidential
-  client at Workspace → Agents → Advanced → MCP OAuth clients with the redirect
-  URIs `https://muse.ai/api/hatch/oauth/callback` and
+- **Muse chat**: Muse chat at [muse.ai](https://muse.ai) has no native MCP
+  settings screen. Pre-register a confidential client at Workspace → Agents →
+  Advanced → MCP OAuth clients with the redirect URIs
+  `https://muse.ai/api/hatch/oauth/callback` and
   `https://agent.meta.ai/api/hatch/oauth/callback`, ask Muse to create a custom
   connector for this deployment's MCP URL, and enter the Client ID and Client
   secret only in Muse's Secure credentials store. See

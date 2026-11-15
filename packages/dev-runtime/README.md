@@ -20,7 +20,7 @@ npx @kodycodes/cli@latest dev
   Cloudflare worker for Artifacts.
 - Local wrangler configs for those workers, with local D1, Durable Objects, KV,
   R2, queues, workflows and worker loaders.
-- The D1 migrations used to set up local state.
+- D1 migrations initialize local database state.
 
 Your package app runs through the same package runtime as hosted Kody:
 `packageStorage` uses the real StorageRunner Durable Object, and `events`,
