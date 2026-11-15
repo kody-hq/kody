@@ -6,6 +6,10 @@ import type {
 	TestCase,
 	TestResult,
 } from '@playwright/test/reporter'
+import {
+	pinnedBrowserEndpoint,
+	visualChecksSkippedNote,
+} from './pinned-browser.ts'
 import { uiVerifyPaths, uiVerifyUpdateCommand } from './paths.ts'
 
 type Entry = {
@@ -76,6 +80,7 @@ export default class UiVerifyReporter implements Reporter {
 			'',
 			`Screenshots (every target, light and dark, desktop and mobile): \`${uiVerifyPaths.screenshots}/\``,
 			'',
+			...(pinnedBrowserEndpoint() ? [] : [`> ${visualChecksSkippedNote}`, '']),
 		]
 		if (failed.length) {
 			lines.push('## Failures', '')

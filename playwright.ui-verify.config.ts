@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 import e2eConfig from './playwright.config.ts'
 import { uiVerifyPaths } from './e2e/ui-verify/paths.ts'
+import { pinnedBrowserEndpoint } from './e2e/ui-verify/pinned-browser.ts'
+
+const wsEndpoint = pinnedBrowserEndpoint()
 
 /**
  * `npm run ui:verify`: the component gallery and key pages in light and dark,
@@ -33,6 +36,10 @@ export default defineConfig({
 		baseURL: e2eConfig.use?.baseURL,
 		trace: 'off',
 		reducedMotion: 'reduce',
+		// The pinned browser reaches the host's E2E server through the client.
+		connectOptions: wsEndpoint
+			? { wsEndpoint, exposeNetwork: '<loopback>' }
+			: undefined,
 	},
 	webServer: e2eConfig.webServer,
 	projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

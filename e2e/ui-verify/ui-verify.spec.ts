@@ -17,6 +17,7 @@ import {
 	sweepFocus,
 } from './checks.ts'
 import { uiVerifyPaths, uiVerifyUpdateCommand } from './paths.ts'
+import { pinnedBrowserEndpoint } from './pinned-browser.ts'
 import {
 	themes,
 	uiVerifyTargets,
@@ -48,6 +49,7 @@ async function openTarget(
 	await page.evaluate(() => document.fonts.ready)
 }
 
+const visualChecks = Boolean(pinnedBrowserEndpoint())
 const baselineHint = `If the change is intended, run \`${uiVerifyUpdateCommand}\` and commit the files under ${uiVerifyPaths.baselines}/.`
 
 for (const target of uiVerifyTargets) {
@@ -81,7 +83,9 @@ for (const target of uiVerifyTargets) {
 					})
 
 					// Visual first: the focus sweep scrolls and leaves focus behind.
-					if (target.visual.kind === 'sections') {
+					if (!visualChecks) {
+						// Skipped: rendering outside the pinned browser never matches.
+					} else if (target.visual.kind === 'sections') {
 						const sections = page.locator('[data-ui-gallery-section]')
 						const ids = await sections.evaluateAll((nodes) =>
 							nodes.map((node) =>
