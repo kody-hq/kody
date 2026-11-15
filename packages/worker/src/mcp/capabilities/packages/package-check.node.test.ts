@@ -31,6 +31,8 @@ vi.mock(
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
 	resolvePackageOwnerContext: (...args: Array<unknown>) =>
 		mockModule.resolvePackageOwnerContext(...args),
+	packageOwnerEntitlementEmail: (input: { ownerEmail: string }) =>
+		input.ownerEmail,
 }))
 
 vi.mock('./resolve-package-source.ts', () => ({
@@ -218,6 +220,37 @@ test('packageCheck refuses a package scope publish would refuse', async () => {
 	const result = await check(files)
 	expect(result.ok).toBe(false)
 	expect(result.checks[0]).toMatchObject({ kind: 'manifest', ok: false })
+})
+
+test('packageCheck reports a job schedule the plan refuses, as publish would', async () => {
+	resetMocks()
+	consoleWarn.mockImplementation(() => {})
+	const files = stampedScopePackageFiles()
+	const manifest = JSON.parse(files['package.json']!)
+	delete manifest.kody.credentials
+	manifest.kody.jobs = {
+		poll: {
+			entry: './src/index.ts',
+			schedule: { type: 'cron', expression: '*/10 * * * *' },
+		},
+	}
+	files['package.json'] = JSON.stringify(manifest)
+	files['src/index.ts'] = 'export default async function poll() {}\n'
+	const result = await check(files)
+	expect(result.ok).toBe(false)
+	expect(result.checks.at(-1)).toEqual({
+		kind: 'manifest',
+		ok: false,
+		message:
+			'kody.jobs.poll.schedule: Your "free" plan cannot run jobs more often than every 15 minutes. Space this job out.',
+	})
+
+	manifest.kody.jobs.poll.schedule.expression = '*/15 * * * *'
+	files['package.json'] = JSON.stringify(manifest)
+	const spaced = await check(files)
+	expect(
+		spaced.checks.some((entry) => entry.message.includes('kody.jobs.poll')),
+	).toBe(false)
 })
 
 test('packageCheck rejects paths outside the package root', async () => {

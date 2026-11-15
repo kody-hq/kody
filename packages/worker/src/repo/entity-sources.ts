@@ -301,7 +301,7 @@ export async function revertEntitySourcePublishedCommit(
  * for it is saved. Succeeds only while `commit` is still the published
  * commit, so a stale rebuild cannot move serving to a superseded commit.
  * `alsoWrite` statements run in the same D1 transaction, before the pointer
- * moves. Publish and rebuild code advance through `advanceServingCommit`
+ * moves; `thenWrite` statements run in it right after. Publish and rebuild code advance through `advanceServingCommit`
  * (package-capabilities), which carries an app's public approval forward.
  */
 export async function advanceEntitySourceServingCommit(
@@ -312,6 +312,7 @@ export async function advanceEntitySourceServingCommit(
 		commit: string
 	},
 	alsoWrite: ReadonlyArray<D1PreparedStatement> = [],
+	thenWrite: ReadonlyArray<D1PreparedStatement> = [],
 ): Promise<boolean> {
 	const advance = db
 		.prepare(
@@ -326,12 +327,14 @@ export async function advanceEntitySourceServingCommit(
 			input.userId,
 			input.commit,
 		)
-	if (alsoWrite.length === 0) {
+	if (alsoWrite.length === 0 && thenWrite.length === 0) {
 		const result = await runD1WithRetry(() => advance.run())
 		return (result.meta.changes ?? 0) > 0
 	}
-	const results = await runD1WithRetry(() => db.batch([...alsoWrite, advance]))
-	return (results.at(-1)?.meta.changes ?? 0) > 0
+	const results = await runD1WithRetry(() =>
+		db.batch([...alsoWrite, advance, ...thenWrite]),
+	)
+	return (results[alsoWrite.length]?.meta.changes ?? 0) > 0
 }
 
 export async function upsertEntitySource(

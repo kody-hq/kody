@@ -48,13 +48,21 @@ export async function insertPackageCapabilityApproval(
 	},
 ): Promise<PackageCapabilityApprovalRecord> {
 	const createdAt = row.created_at ?? row.approved_at
+	// Approving the commit that already serves marks it served now; a commit
+	// still building (including a first build, with no serving pointer yet)
+	// is marked when its serving advance lands.
 	await db
 		.prepare(
 			`INSERT INTO package_capability_approvals (
 				id, package_id, owner_user_id, published_commit, fingerprint,
 				capability_set_json, dependency_snapshot_json,
-				approved_by_user_id, approved_at, created_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				approved_by_user_id, approved_at, created_at, served_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (
+				SELECT ? FROM saved_packages AS package
+				JOIN entity_sources AS source ON source.id = package.source_id
+				WHERE package.id = ? AND source.user_id = ?
+					AND source.serving_commit = ?${andLiveDeletedAtSql('package')}${andLiveDeletedAtSql('source')}
+			))`,
 		)
 		.bind(
 			row.id,
@@ -67,6 +75,10 @@ export async function insertPackageCapabilityApproval(
 			row.approved_by_user_id,
 			row.approved_at,
 			createdAt,
+			row.approved_at,
+			row.package_id,
+			row.owner_user_id,
+			row.published_commit,
 		)
 		.run()
 	return mapRow({ ...row, created_at: createdAt })
@@ -185,9 +197,9 @@ export async function findPackageCapabilityApprovalByFingerprint(
 
 /**
  * The approval anonymous visitors run (ADR 0069): the serving commit's own
- * approval, else the newest approval for a commit that already served. A
- * published commit that is still building is skipped, so a republish never
- * reaches visitors before both its build and its approval exist.
+ * approval, else the approval of the commit that served most recently. Only
+ * approvals marked `served_at` qualify there, so a commit still building, or
+ * one superseded before it served, never reaches visitors.
  */
 export async function getServedPackageCapabilityApproval(
 	db: D1Database,
@@ -209,10 +221,14 @@ export async function getServedPackageCapabilityApproval(
 			WHERE approval.package_id = ? AND approval.owner_user_id = ?
 				AND (
 					approval.published_commit = ${servingCommitSql}
-					OR approval.published_commit != source.published_commit
+					OR (
+						approval.published_commit != source.published_commit
+						AND approval.served_at IS NOT NULL
+					)
 				)
 			ORDER BY
 				CASE WHEN approval.published_commit = ${servingCommitSql} THEN 0 ELSE 1 END,
+				approval.served_at DESC,
 				approval.approved_at DESC
 			LIMIT 1`,
 		)
@@ -266,5 +282,39 @@ export function prepareCarriedForwardPackageCapabilityApproval(
 			row.package_id,
 			row.owner_user_id,
 			row.published_commit,
+		)
+}
+
+/**
+ * Stamp the approvals for `commit` served each time it becomes the source's
+ * serving commit, so the fallback's "served most recently" holds. The time is
+ * taken when the statement runs, so a retried batch never writes an older one. Batched
+ * right after the serving-pointer advance, so it marks nothing when the
+ * advance lost its compare-and-set.
+ */
+export function prepareMarkServedPackageCapabilityApprovals(
+	db: D1Database,
+	input: { sourceId: string; userId: string; commit: string },
+): D1PreparedStatement {
+	return db
+		.prepare(
+			`UPDATE package_capability_approvals
+			SET served_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+			WHERE published_commit = ? AND owner_user_id = ?
+				AND package_id IN (
+					SELECT id FROM saved_packages WHERE source_id = ?${andLiveDeletedAtSql()}
+				)
+				AND EXISTS (
+					SELECT 1 FROM entity_sources
+					WHERE id = ? AND user_id = ? AND serving_commit = ?${andLiveDeletedAtSql()}
+				)`,
+		)
+		.bind(
+			input.commit,
+			input.userId,
+			input.sourceId,
+			input.sourceId,
+			input.userId,
+			input.commit,
 		)
 }

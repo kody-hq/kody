@@ -103,7 +103,6 @@ import {
 import {
 	computeNextRunAt,
 	computeNextRunAtAfterOccurrence,
-	estimateScheduleMinIntervalMs,
 	formatJobError,
 	isJobExpired,
 	normalizeJobExpiresAt,
@@ -116,7 +115,6 @@ import type {
 	JobExecutionResult,
 	JobRepoCheckPolicy,
 	JobRecord,
-	JobSchedule,
 	JobUpdateInput,
 	PersistedJobCallerContext,
 } from './types.ts'
@@ -126,7 +124,6 @@ import {
 	isBudgetLimitError,
 	isComputeOverageLimitError,
 	isEntitlementLimitError,
-	JobIntervalFloorError,
 } from '#worker/entitlements/errors.ts'
 import { orgBudgetForJobExecution } from '#worker/entitlements/budget-gate.ts'
 import {
@@ -140,11 +137,9 @@ import {
 	type OrgRecord,
 } from '#worker/orgs/repo.ts'
 import {
-	resolvePlanLimits,
-	type CreditWalletState,
-	type EntitlementLadder,
-	type PlanName,
-} from '#universal/plans.ts'
+	assertJobScheduleIntervalFloor,
+	packageJobNeedsIntervalFloor,
+} from './package-job-interval-floor.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import {
@@ -892,43 +887,6 @@ export async function syncPackageJobsForPackage(input: {
 			}
 			return schedulerStateChanged
 		},
-	})
-}
-
-function packageJobNeedsIntervalFloor(input: {
-	existingSchedule?: JobSchedule
-	existingTimezone?: string | null
-	schedule: JobSchedule
-	timezone?: string | null
-}) {
-	if (input.existingSchedule === undefined) return true
-	return (
-		JSON.stringify(input.existingSchedule) !== JSON.stringify(input.schedule) ||
-		input.existingTimezone !== input.timezone
-	)
-}
-
-function assertJobScheduleIntervalFloor(input: {
-	plan: PlanName
-	ladder?: EntitlementLadder
-	creditWallet?: CreditWalletState
-	schedule: JobSchedule
-	timezone?: string | null
-}) {
-	const minIntervalMs = resolvePlanLimits(
-		input.plan,
-		input.ladder ?? 'public',
-		input.creditWallet ?? 'none',
-	).minJobIntervalMs
-	if (minIntervalMs <= 0) return
-	const intervalMs = estimateScheduleMinIntervalMs({
-		schedule: input.schedule,
-		timezone: input.timezone,
-	})
-	if (intervalMs == null || intervalMs >= minIntervalMs) return
-	throw new JobIntervalFloorError({
-		plan: input.plan,
-		minIntervalMs,
 	})
 }
 

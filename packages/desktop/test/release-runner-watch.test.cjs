@@ -147,3 +147,158 @@ test('fails loudly after the last starved attempt', () => {
 	)
 	assert.equal(github.state.reruns.length, maxAttempts - 1)
 })
+
+const { watches } = require('../scripts/release-runner-watch.cjs')
+const starvedBinaries = [
+	job(11, 'mac arm64', 'cancelled'),
+	job(12, 'mac x64', 'success'),
+	job(13, 'linux x64', 'success'),
+]
+
+test('Desktop binaries re-runs a starved leg sooner', () => {
+	const decision = decideRerun({
+		attempt: 1,
+		jobs: starvedBinaries,
+		annotations: new Map([[11, noRunner]]),
+		watch: watches.binaries,
+	})
+	assert.equal(decision.action, 'rerun')
+	assert.equal(decision.delayMs, 60_000)
+	assert.match(decision.reason, /mac arm64 got no hosted runner/)
+})
+
+test('Desktop binaries leaves real failures and superseded runs alone', () => {
+	for (const input of [
+		{
+			annotations: new Map([
+				[
+					11,
+					[
+						'Canceling since a higher priority waiting request for desktop-binaries-refs/pull/1/merge exists',
+					],
+				],
+			]),
+		},
+		{
+			annotations: new Map([[11, noRunner]]),
+			newerRun: { id: 9, head_sha: 'c'.repeat(40) },
+		},
+		{ annotations: new Map(), jobs: [job(13, 'linux x64', 'success')] },
+	]) {
+		const decision = decideRerun({
+			attempt: 1,
+			jobs: starvedBinaries,
+			...input,
+			watch: watches.binaries,
+		})
+		assert.equal(decision.action, 'none')
+	}
+})
+
+test('Desktop binaries fails once the starved leg runs out of attempts', () => {
+	const decision = decideRerun({
+		attempt: maxAttempts,
+		jobs: starvedBinaries,
+		annotations: new Map([[11, noRunner]]),
+		watch: watches.binaries,
+	})
+	assert.equal(decision.action, 'fail')
+	assert.match(decision.reason, /mac arm64 got no hosted runner in 4 attempts/)
+})
+
+test('Desktop binaries looks for newer runs on the run’s own branch', () => {
+	const paths = []
+	const gh = (args) => {
+		paths.push(args[1])
+		if (args[1] === `repos/${repo}/actions/runs/7`)
+			return JSON.stringify({
+				id: 7,
+				head_sha: 'a'.repeat(40),
+				head_branch: 'feature/x',
+				created_at: '2026-11-13T18:45:32Z',
+				status: 'completed',
+				run_attempt: 1,
+				conclusion: 'cancelled',
+			})
+		if (args[1].includes('/attempts/1/jobs'))
+			return JSON.stringify({ jobs: [job(13, 'linux x64', 'failure')] })
+		if (args[1].includes('/workflows/desktop-binaries.yml/runs'))
+			return JSON.stringify({ workflow_runs: [] })
+		throw new Error(`unexpected gh ${args.join(' ')}`)
+	}
+	const result = watchRelease({
+		repo,
+		runId: 7,
+		watch: watches.binaries,
+		gh,
+		sleep: () => {},
+		log: () => {},
+	})
+	assert.deepEqual(result, { action: 'none', attempt: 1 })
+	assert.ok(
+		paths.includes(
+			`repos/${repo}/actions/workflows/desktop-binaries.yml/runs?branch=feature%2Fx&per_page=20`,
+		),
+	)
+})
+
+test('a newer run that starts during the wait, even at the same commit, stops the re-run', () => {
+	let slept = false
+	const reruns = []
+	const gh = (args) => {
+		if (args[0] === 'run') {
+			reruns.push(args.join(' '))
+			return ''
+		}
+		if (args[1] === `repos/${repo}/actions/runs/8`)
+			return JSON.stringify({
+				id: 8,
+				head_sha: 'a'.repeat(40),
+				head_branch: 'feature/x',
+				created_at: '2026-11-13T18:45:32Z',
+				status: 'completed',
+				run_attempt: 1,
+				conclusion: 'cancelled',
+			})
+		if (args[1].includes('/attempts/1/jobs'))
+			return JSON.stringify({ jobs: starvedBinaries })
+		if (args[1].startsWith(`repos/${repo}/check-runs/`))
+			return JSON.stringify(noRunner.map((message) => ({ message })))
+		if (args[1].includes('/workflows/desktop-binaries.yml/runs'))
+			return JSON.stringify({
+				workflow_runs: slept
+					? [
+							{
+								id: 9,
+								head_sha: 'a'.repeat(40),
+								created_at: '2026-11-13T18:50:00Z',
+							},
+						]
+					: [],
+			})
+		throw new Error(`unexpected gh ${args.join(' ')}`)
+	}
+	const result = watchRelease({
+		repo,
+		runId: 8,
+		watch: watches.binaries,
+		gh,
+		sleep: () => {
+			slept = true
+		},
+		log: () => {},
+	})
+	assert.deepEqual(result, { action: 'none', attempt: 1 })
+	assert.deepEqual(reruns, [])
+})
+
+test('a newer Desktop binaries run at the same commit supersedes the older one', () => {
+	const decision = decideRerun({
+		attempt: 1,
+		jobs: starvedBinaries,
+		annotations: new Map([[11, noRunner]]),
+		newerRun: { id: 10, head_sha: 'a'.repeat(40) },
+		watch: watches.binaries,
+	})
+	assert.equal(decision.action, 'none')
+})

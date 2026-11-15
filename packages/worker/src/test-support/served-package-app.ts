@@ -102,7 +102,8 @@ async function ensureSchema() {
 		dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
 		approved_by_user_id TEXT NOT NULL,
 		approved_at TEXT NOT NULL,
-		created_at TEXT NOT NULL
+		created_at TEXT NOT NULL,
+		served_at TEXT
 	)`)
 	await runSql(`CREATE TABLE IF NOT EXISTS package_app_rate_limits (
 		bucket_key TEXT PRIMARY KEY,
