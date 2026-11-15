@@ -3,7 +3,11 @@
  *
  * Canonical downloads live on `kody-hq/kody-desktop` releases. `/download` is an
  * unlisted redirect that prefers the visitor's platform installer asset and
- * falls back to the latest release page.
+ * falls back to the latest release page. The latest tag comes from the
+ * releases page redirect rather than the GitHub REST API, whose unauthenticated
+ * limit of 60 requests an hour per IP is exhausted on shared Worker egress.
+ * The release publisher only publishes releases that carry every platform's
+ * installer, so the tag alone names a real asset.
  */
 
 export const desktopReleasesLatestUrl =
@@ -11,9 +15,6 @@ export const desktopReleasesLatestUrl =
 
 export const desktopReleaseDownloadBase =
 	'https://github.com/kody-hq/kody-desktop/releases/download'
-
-export const desktopLatestReleaseApiUrl =
-	'https://api.github.com/repos/kody-hq/kody-desktop/releases/latest'
 
 export type DesktopPlatform = 'mac' | 'win' | 'linux'
 export type DesktopArch = 'arm64' | 'x64'
@@ -26,11 +27,6 @@ export type DesktopDownloadTarget = {
 export type DesktopInstallerAsset = {
 	version: string
 	assetName: string
-}
-
-export type DesktopGithubRelease = {
-	tag_name: string
-	assets: ReadonlyArray<{ name: string }>
 }
 
 /**
@@ -66,15 +62,27 @@ export function versionFromDesktopReleaseTag(tagName: string): string | null {
 	return version
 }
 
-export function pickDesktopInstallerAsset(
-	release: DesktopGithubRelease,
+/**
+ * Reads the tag from the `releases/latest` redirect Location, for example
+ * `https://github.com/kody-hq/kody-desktop/releases/tag/v0.1.83`.
+ */
+export function versionFromDesktopLatestLocation(
+	location: string | null,
+): string | null {
+	if (!location) return null
+	const match = /\/releases\/tag\/([^/?#]+)$/.exec(
+		new URL(location, desktopReleasesLatestUrl).pathname,
+	)
+	return match
+		? versionFromDesktopReleaseTag(decodeURIComponent(match[1]!))
+		: null
+}
+
+export function desktopInstallerAsset(
+	version: string,
 	target: DesktopDownloadTarget,
-): DesktopInstallerAsset | null {
-	const version = versionFromDesktopReleaseTag(release.tag_name)
-	if (!version) return null
-	const assetName = desktopInstallerAssetName(version, target)
-	if (!release.assets.some((asset) => asset.name === assetName)) return null
-	return { version, assetName }
+): DesktopInstallerAsset {
+	return { version, assetName: desktopInstallerAssetName(version, target) }
 }
 
 // Windows installs through the App Installer file, which keeps the MSIX

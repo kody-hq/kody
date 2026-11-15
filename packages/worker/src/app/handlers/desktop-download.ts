@@ -1,12 +1,9 @@
 import {
 	desktopAssetDownloadUrl,
-	desktopLatestReleaseApiUrl,
+	desktopInstallerAsset,
 	desktopReleasesLatestUrl,
 	detectDesktopDownloadTarget,
-	pickDesktopInstallerAsset,
-	type DesktopDownloadTarget,
-	type DesktopGithubRelease,
-	type DesktopInstallerAsset,
+	versionFromDesktopLatestLocation,
 } from '#app/desktop-download.ts'
 
 const assetRedirectHeaders = {
@@ -21,11 +18,11 @@ const fallbackRedirectHeaders = {
 
 export function createDesktopDownloadHandler(
 	options: {
-		fetchLatestRelease?: () => Promise<DesktopGithubRelease | null>
+		fetchLatestVersion?: () => Promise<string | null>
 	} = {},
 ) {
-	const fetchLatestRelease =
-		options.fetchLatestRelease ?? fetchDesktopLatestRelease
+	const fetchLatestVersion =
+		options.fetchLatestVersion ?? fetchDesktopLatestVersion
 	return async ({ request }: { request: Request }) => {
 		if (request.method !== 'GET' && request.method !== 'HEAD') {
 			return new Response('Method not allowed', { status: 405 })
@@ -42,51 +39,25 @@ export function createDesktopDownloadHandler(
 		if (!target) {
 			return redirect(desktopReleasesLatestUrl, fallbackRedirectHeaders)
 		}
-		const asset = await resolveInstallerAsset(target, fetchLatestRelease)
-		if (!asset) {
+		const version = await fetchLatestVersion().catch(() => null)
+		if (!version) {
 			return redirect(desktopReleasesLatestUrl, fallbackRedirectHeaders)
 		}
-		return redirect(desktopAssetDownloadUrl(asset), assetRedirectHeaders)
+		return redirect(
+			desktopAssetDownloadUrl(desktopInstallerAsset(version, target)),
+			assetRedirectHeaders,
+		)
 	}
 }
 
-async function resolveInstallerAsset(
-	target: DesktopDownloadTarget,
-	fetchLatestRelease: () => Promise<DesktopGithubRelease | null>,
-): Promise<DesktopInstallerAsset | null> {
-	try {
-		const release = await fetchLatestRelease()
-		if (!release) return null
-		return pickDesktopInstallerAsset(release, target)
-	} catch {
-		return null
-	}
-}
-
-async function fetchDesktopLatestRelease(): Promise<DesktopGithubRelease | null> {
-	const response = await fetch(desktopLatestReleaseApiUrl, {
-		headers: {
-			Accept: 'application/vnd.github+json',
-			'User-Agent': 'kody.codes-download',
-			'X-GitHub-Api-Version': '2022-11-28',
-		},
-		redirect: 'follow',
+async function fetchDesktopLatestVersion(): Promise<string | null> {
+	const response = await fetch(desktopReleasesLatestUrl, {
+		method: 'HEAD',
+		headers: { 'User-Agent': 'kody.codes-download' },
+		redirect: 'manual',
 		signal: AbortSignal.timeout(5_000),
 	})
-	if (!response.ok) return null
-	const data = (await response.json()) as {
-		tag_name?: unknown
-		assets?: unknown
-	}
-	if (typeof data.tag_name !== 'string' || !Array.isArray(data.assets)) {
-		return null
-	}
-	const assets = data.assets.flatMap((asset) => {
-		if (!asset || typeof asset !== 'object') return []
-		const name = (asset as { name?: unknown }).name
-		return typeof name === 'string' ? [{ name }] : []
-	})
-	return { tag_name: data.tag_name, assets }
+	return versionFromDesktopLatestLocation(response.headers.get('Location'))
 }
 
 function redirect(location: string, headers: Record<string, string>) {
