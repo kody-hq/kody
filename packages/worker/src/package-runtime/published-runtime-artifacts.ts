@@ -1005,16 +1005,25 @@ async function backfillManifestAtKey(input: {
 	| { status: 'written'; totalBytes: number; artifact: PublishedBundleArtifact }
 	| { status: 'missing' | 'unusable' }
 > {
-	const stored = await input.kv.get(input.kvKey, 'json')
-	if (stored === null) return { status: 'missing' }
-	const artifact = parseStoredPublishedBundleArtifactAsStored(
-		await restoreLinkedArtifactGroups({ kv: input.kv, stored }),
-	)
-	if (!artifact) return { status: 'unusable' }
-	if (artifact.manifest) {
-		return { status: 'already', totalBytes: artifact.manifest.totalBytes }
+	let stored: unknown
+	let artifact: PublishedBundleArtifact | null
+	let manifest: BundleArtifactManifest
+	// Stored JSON that does not parse, or a module entry that is not a module,
+	// throws. That is one unusable artifact, not a failed page.
+	try {
+		stored = await input.kv.get(input.kvKey, 'json')
+		if (stored === null) return { status: 'missing' }
+		artifact = parseStoredPublishedBundleArtifactAsStored(
+			await restoreLinkedArtifactGroups({ kv: input.kv, stored }),
+		)
+		if (!artifact) return { status: 'unusable' }
+		if (artifact.manifest) {
+			return { status: 'already', totalBytes: artifact.manifest.totalBytes }
+		}
+		manifest = createBundleArtifactManifest(artifact)
+	} catch {
+		return { status: 'unusable' }
 	}
-	const manifest = createBundleArtifactManifest(artifact)
 	if (input.dryRun) {
 		return { status: 'would_write', totalBytes: manifest.totalBytes }
 	}

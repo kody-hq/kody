@@ -112,10 +112,13 @@ test('a dry run reports what it would write and writes nothing', async () => {
 })
 
 test('a row whose stored artifact is missing or unusable is reported and left untouched', async () => {
-	const { env, totals } = setup([
+	const { env, store, totals } = setup([
 		{ id: 'a' },
 		{ id: 'b', stored: storedArtifact({ version: 0 }) },
+		{ id: 'c', stored: storedArtifact({ modules: { 'index.js': null } }) },
+		{ id: 'd' },
 	])
+	store.set('key-d', '{not json')
 
 	const result = await runBundleArtifactManifestBackfill({
 		env,
@@ -123,14 +126,16 @@ test('a row whose stored artifact is missing or unusable is reported and left un
 		afterId: null,
 	})
 
-	expect(result).toMatchObject({ filledRows: 0, unbackfillableRows: 2 })
+	expect(result).toMatchObject({ filledRows: 0, unbackfillableRows: 4 })
 	expect(
 		result.problems.map((problem) => [problem.rowId, problem.status]),
 	).toEqual([
 		['a', 'missing'],
 		['b', 'unusable'],
+		['c', 'unusable'],
+		['d', 'unusable'],
 	])
-	expect(totals()).toEqual({ a: null, b: null })
+	expect(totals()).toEqual({ a: null, b: null, c: null, d: null })
 })
 
 test("a package app's template copy gains the same manifest", async () => {
