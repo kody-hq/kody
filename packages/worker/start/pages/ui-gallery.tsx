@@ -85,7 +85,7 @@ const uiGallerySections: ReadonlyArray<{
 				<Field label="Disabled">
 					<Input name="gallery-disabled" defaultValue="Read only" disabled />
 				</Field>
-				<Field label="Small" labelAction={<a href="#field">Label action</a>}>
+				<Field label="Small">
 					<Input name="gallery-small" size="sm" placeholder="size=sm" />
 				</Field>
 				<Field label="Canvas background">

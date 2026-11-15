@@ -18,6 +18,14 @@ const h = createElement as (
 	...children: ReactNode[]
 ) => ReactElement
 
+// Emotion streams <style> tags between elements; structure checks skip them.
+function markup(node: ReactNode) {
+	return renderToStaticMarkup(node).replace(
+		/<style\b[^>]*>[\s\S]*?<\/style>/g,
+		'',
+	)
+}
+
 function openingTag(html: string, tag: string) {
 	const match = html.match(new RegExp(`<${tag}\\b[^>]*>`))
 	if (!match) throw new Error(`<${tag}> missing from ${html}`)
@@ -28,62 +36,70 @@ function attribute(tag: string, name: string) {
 	return tag.match(new RegExp(`\\s${name}="([^"]*)"`))?.[1]
 }
 
-test('Field labels its control and announces the description', () => {
-	const html = renderToStaticMarkup(
+function describedByIds(html: string) {
+	return [...html.matchAll(/<p id="([^"]+)"/g)].map((match) => match[1])
+}
+
+test('Field wraps its control in the label and announces the description', () => {
+	const html = markup(
 		h(
 			Field,
-			{ label: 'Email', description: 'We never share it.', controlId: 'email' },
+			{ label: 'Email', description: 'We never share it.' },
 			h(Input, { type: 'email', name: 'email' }),
 		),
 	)
+	expect(html).toMatch(
+		/<label[^>]*><span[^>]*>Email<\/span><input[^>]*><\/label>/,
+	)
 	const input = openingTag(html, 'input')
-	const label = openingTag(html, 'label')
-	expect(attribute(label, 'for')).toBe('email')
-	expect(attribute(input, 'id')).toBe('email')
-	expect(attribute(input, 'aria-describedby')).toBe('email-description')
+	expect(attribute(openingTag(html, 'label'), 'for')).toBeUndefined()
+	expect(attribute(input, 'id')).toBeUndefined()
+	expect(attribute(input, 'aria-describedby')).toBe(
+		describedByIds(html).join(' '),
+	)
 	expect(input).not.toContain('aria-invalid')
 	expect(html).toMatch(
-		/<p id="email-description"[^>]*>We never share it\.<\/p>/,
+		/<p id="[^"]+-description"[^>]*>We never share it\.<\/p>/,
 	)
 })
 
 test('Field error marks the control invalid and announces the message', () => {
-	const html = renderToStaticMarkup(
+	const html = markup(
 		h(
 			Field,
 			{
 				label: 'Name',
 				description: 'Shown on your profile.',
 				error: 'Name is required.',
-				controlId: 'name',
 			},
 			h(Textarea, { name: 'name', 'aria-describedby': 'extra-hint' }),
 		),
 	)
 	const textarea = openingTag(html, 'textarea')
+	const [descriptionId, errorId] = describedByIds(html)
+	expect(errorId).toMatch(/-error$/)
 	expect(attribute(textarea, 'aria-invalid')).toBe('true')
 	expect(attribute(textarea, 'aria-describedby')).toBe(
-		'name-description name-error extra-hint',
+		`${descriptionId} ${errorId} extra-hint`,
 	)
-	expect(html).toMatch(/<p id="name-error"[^>]*>Name is required\.<\/p>/)
+	expect(html).toMatch(/<p id="[^"]+-error"[^>]*>Name is required\.<\/p>/)
 })
 
-test('Field generates a stable id when none is given', () => {
-	const html = renderToStaticMarkup(
+test('Field without description or error renders no ids', () => {
+	const html = markup(
 		h(
 			Field,
 			{ label: 'Plan' },
 			h(Select, { name: 'plan' }, h('option', { value: 'free' }, 'Free')),
 		),
 	)
-	const select = openingTag(html, 'select')
-	const label = openingTag(html, 'label')
-	expect(attribute(select, 'id')).toBeTruthy()
-	expect(attribute(label, 'for')).toBe(attribute(select, 'id'))
+	expect(html).not.toContain(' id=')
+	expect(html).not.toContain('aria-describedby')
+	expect(html).toMatch(/<label[^>]*><span[^>]*>Plan<\/span><select/)
 })
 
 test('controls keep native attributes and explicit ids outside a Field', () => {
-	const html = renderToStaticMarkup(
+	const html = markup(
 		h(Input, {
 			id: 'search',
 			type: 'search',
@@ -101,7 +117,7 @@ test('controls keep native attributes and explicit ids outside a Field', () => {
 })
 
 test('Checkbox and Radio render native inputs with their roles', () => {
-	const html = renderToStaticMarkup(
+	const html = markup(
 		h(
 			Fragment,
 			null,
@@ -124,7 +140,7 @@ test('Checkbox and Radio render native inputs with their roles', () => {
 })
 
 test('a mixed Checkbox is not reported as checked before hydration', () => {
-	const html = renderToStaticMarkup(
+	const html = markup(
 		h(Checkbox, {
 			'aria-label': 'Select all',
 			checked: 'mixed',
@@ -135,14 +151,14 @@ test('a mixed Checkbox is not reported as checked before hydration', () => {
 })
 
 test('Switch is a button with the switch role and checked state', () => {
-	const on = renderToStaticMarkup(
+	const on = markup(
 		h(Switch, {
 			'aria-label': 'Notifications',
 			checked: true,
 			onCheckedChange() {},
 		}),
 	)
-	const off = renderToStaticMarkup(
+	const off = markup(
 		h(Switch, {
 			'aria-label': 'Notifications',
 			checked: false,
@@ -160,13 +176,14 @@ test('Switch is a button with the switch role and checked state', () => {
 })
 
 test('Switch inside a Field is labelled by the field label', () => {
-	const html = renderToStaticMarkup(
+	const html = markup(
 		h(
 			Field,
-			{ label: 'Email me updates', controlId: 'updates' },
+			{ label: 'Email me updates' },
 			h(Switch, { checked: false, onCheckedChange() {} }),
 		),
 	)
-	expect(attribute(openingTag(html, 'button'), 'id')).toBe('updates')
-	expect(attribute(openingTag(html, 'label'), 'for')).toBe('updates')
+	expect(html).toMatch(
+		/<label[^>]*><span[^>]*>Email me updates<\/span><button[^>]*role="switch"/,
+	)
 })

@@ -22,18 +22,6 @@ export const dialogCss: CSSObject = {
 	},
 	'@media (max-width:600px)': { margin: '12px auto', borderRadius: 12 },
 }
-export const inputCss: CSSObject = {
-	flex: 1,
-	minWidth: 0,
-	border: 0,
-	outline: 0,
-	background: 'transparent',
-	color: colors.text,
-	font: 'inherit',
-	fontSize: 17,
-	padding: '4px 0',
-	'&:focus-visible': { boxShadow: `0 2px 0 ${colors.primary}` },
-}
 export const rowCss: CSSObject = {
 	display: 'flex',
 	alignItems: 'center',

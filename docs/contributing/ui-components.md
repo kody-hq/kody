@@ -37,13 +37,12 @@ Every component passes native attributes through. Refs are ordinary props (React
 </Field>
 ```
 
-Renders the label, the control, the description, and the error. The control gets
-an `id` (generated unless you pass `controlId`), `aria-describedby` for the
-description and error, and `aria-invalid` while `error` is set. Ids you pass to
-the control win.
+The label wraps the control, so it is labelled without ids. The description and
+error get ids only when present and reach the control through
+`aria-describedby`; `aria-invalid` is set while `error` is set. Props you pass
+to the control win.
 
-- `label` (required), `labelAction` (trailing link on the label row),
-  `description`, `error`, `controlId`
+- `label` (required), `description`, `error`
 - Custom controls join a field with `useFieldControl(props)` and spread the
   result onto the focusable element.
 

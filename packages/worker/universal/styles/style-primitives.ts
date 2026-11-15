@@ -887,7 +887,7 @@ export const fieldErrorCss = {
 	color: colors.error,
 }
 
-export type ControlSize = 'sm' | 'md'
+type ControlSize = 'sm' | 'md'
 
 export type FieldControlStyleOptions = {
 	/**
