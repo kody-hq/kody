@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { useServerFn } from '@tanstack/react-start'
 import { decidePackageAppOauthConsent } from '#start/server/package-app-oauth'
@@ -12,10 +13,6 @@ import {
 } from './account-management-components.tsx'
 import type { PackageAppOauthConsentLoaderData } from '#universal/loader-data.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -400,7 +397,7 @@ export function PackageAppOauthConsentPage({
 							value={scope}
 						/>
 					))}
-					<button
+					<Button
 						disabled={busy || missingSelectedCredential}
 						type="submit"
 						name="decision"
@@ -411,20 +408,21 @@ export function PackageAppOauthConsentPage({
 								? 'package-app-oauth-allow-blocked'
 								: undefined
 						}
-						css={[getPillButtonCss({ size: 'sm' }), allowBlockedCss]}
+						variant="primary"
+						css={allowBlockedCss}
 					>
 						Allow
-					</button>
-					<button
+					</Button>
+					<Button
 						disabled={busy}
 						type="submit"
 						name="decision"
 						value="deny"
 						data-testid="package-app-oauth-deny"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Cancel
-					</button>
+					</Button>
 				</form>
 				{data.billing ? (
 					<p css={mutedCss} data-testid="package-app-oauth-who-pays">

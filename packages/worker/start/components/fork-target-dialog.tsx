@@ -1,14 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ForkTargetChoice } from '../fork-target.ts'
 import { installOrgOptionLabel } from './community-install-org-select.tsx'
 import { renderIcon } from './icon.tsx'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, shadows, spacing } from '#universal/styles/tokens.ts'
 
 /**
@@ -97,22 +94,22 @@ export function ForkTargetDialog(props: {
 					</select>
 				</div>
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="button"
 						data-testid="fork-target-cancel"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						data-testid="fork-target-confirm"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						{renderIcon('git-fork', { size: '1.05em' })}
 						Fork
-					</button>
+					</Button>
 				</div>
 			</form>
 		</dialog>

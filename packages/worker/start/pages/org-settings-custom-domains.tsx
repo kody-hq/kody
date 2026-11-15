@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	addOrganizationDomain,
 	syncOrganizationDomain,
@@ -24,11 +25,7 @@ import {
 	accountFieldLabelCss,
 	accountInputCss,
 } from './account-management-components.tsx'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	CustomDomainRecords,
 	CustomDomainStatusBadge,
@@ -132,9 +129,9 @@ export function OrgSettingsCustomDomains({
 								</div>
 								{data.canManageDomains ? (
 									<div css={hostnameActionsCss}>
-										<button
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											disabled={isPending}
 											onClick={() =>
 												void submit(
@@ -150,10 +147,10 @@ export function OrgSettingsCustomDomains({
 											{sync.isPending && sync.variables.id === row.id
 												? 'Syncing…'
 												: 'Sync'}
-										</button>
-										<button
+										</Button>
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											disabled={isPending}
 											onClick={() =>
 												void submit(
@@ -169,7 +166,7 @@ export function OrgSettingsCustomDomains({
 											{remove.isPending && remove.variables.id === row.id
 												? 'Removing…'
 												: 'Remove'}
-										</button>
+										</Button>
 									</div>
 								) : null}
 							</li>
@@ -266,13 +263,9 @@ export function OrgSettingsCustomDomains({
 						</select>
 					</label>
 					<div css={accountActionsCss}>
-						<button
-							type="submit"
-							css={getPillButtonCss({ size: 'sm' })}
-							disabled={isPending}
-						>
+						<Button type="submit" variant="primary" disabled={isPending}>
 							{add.isPending ? 'Adding…' : 'Add domain'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : null}

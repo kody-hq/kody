@@ -25,11 +25,8 @@ export type PackageEventsDispatchQueueMessage = {
 	mcp?: true
 	/** ISO time `events.dispatch` accepted the event (MCP occurrence timestamp). */
 	emittedAt?: string
-	/**
-	 * The run that emitted the event; subscriber handlers inherit it. Absent
-	 * on messages enqueued before the field existed.
-	 */
-	lineage?: RequestLineage
+	/** The run that emitted the event; subscriber handlers inherit it. */
+	lineage: RequestLineage
 	/**
 	 * Resource change event chain depth of the emitting run, so a chain that
 	 * passes through a package event keeps counting toward its limit.
@@ -84,6 +81,7 @@ export function parsePackageEventsDispatchQueueMessage(
 	}
 	const emittedAt = record['emittedAt']
 	const lineage = parseRequestLineage(record['lineage'])
+	if (!lineage) return null
 	const resourceEventDepth = record['resourceEventDepth']
 	const deferrals = record['deferrals']
 	const priorAttempts = record['priorAttempts']
@@ -98,7 +96,7 @@ export function parsePackageEventsDispatchQueueMessage(
 		...(typeof emittedAt === 'string' && !Number.isNaN(Date.parse(emittedAt))
 			? { emittedAt }
 			: {}),
-		...(lineage ? { lineage } : {}),
+		lineage,
 		...(typeof resourceEventDepth === 'number' &&
 		Number.isInteger(resourceEventDepth) &&
 		resourceEventDepth > 0

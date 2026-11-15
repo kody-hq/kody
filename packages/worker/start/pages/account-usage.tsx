@@ -33,6 +33,7 @@ import {
 	descriptionCss,
 	hoverMq,
 	primaryLinkCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import { warningOffersCredits } from '#universal/compute-overage.ts'
 import { orgBillingPath, orgUsageCreditsPath } from '#universal/org-pages.ts'
@@ -269,7 +270,7 @@ const usageTipButtonCss: CSSObject = {
 	height: '1.75rem',
 	padding: 0,
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	background: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',

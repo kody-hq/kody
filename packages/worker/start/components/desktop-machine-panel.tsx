@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useServerFn } from '@tanstack/react-start'
@@ -7,16 +8,9 @@ import {
 	runExecutionContextDaemonAction,
 } from '#start/server/execution-contexts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
-import {
-	getPillButtonCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { desktopSetupPanelAction } from '#universal/desktop-setup-stages.ts'
 import type { DesktopMachineMenuCommand } from '../desktop-shell.ts'
 import { oneRunnerCopy, useDesktopMachine } from './desktop-execution.tsx'
-
-const buttonCss = getPillButtonCss({ size: 'sm' })
-const secondaryCss = getGhostButtonCss({ size: 'sm' })
 
 /** `orgSlug`: the team org this page is for, if not the personal workspace. */
 export function DesktopMachinePanel({
@@ -145,14 +139,14 @@ export function DesktopMachinePanel({
 						</p>
 					) : null}
 					{state.contextId ? (
-						<button
+						<Button
 							type="button"
-							css={buttonCss}
+							variant="primary"
 							disabled={state.busy}
 							onClick={() => void machine.toggle()}
 						>
 							{state.running ? 'Pause execution' : 'Resume execution'}
-						</button>
+						</Button>
 					) : null}
 					{pausedInKody ? (
 						<p
@@ -171,9 +165,10 @@ export function DesktopMachinePanel({
 					) : null}
 					{serverContext &&
 					(pausedInKody ? serverContext.canResume : serverContext.canPause) ? (
-						<button
+						<Button
 							type="button"
-							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy || routingBusy}
 							onClick={() => void daemon(pausedInKody ? 'resume' : 'pause')}
 							data-testid="desktop-machine-routing"
@@ -185,40 +180,43 @@ export function DesktopMachinePanel({
 								: pausedInKody
 									? 'Resume routing'
 									: 'Pause routing'}
-						</button>
+						</Button>
 					) : null}
 					{state.contextId && state.runner?.canRestart && machine.restart ? (
-						<button
+						<Button
 							type="button"
-							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy}
 							onClick={() => void machine.restart?.()}
 						>
 							Restart runner
-						</button>
+						</Button>
 					) : null}
 					{serverContext?.canControlDaemon &&
 					serverContext.status === 'online' ? (
-						<button
+						<Button
 							type="button"
-							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy || routingBusy}
 							onClick={() => void daemon('update')}
 							data-testid="desktop-machine-update"
 						>
 							Update runner now
-						</button>
+						</Button>
 					) : null}
 					{serverContext?.canReadDaemonLogs ? (
-						<button
+						<Button
 							type="button"
-							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={routingBusy}
 							onClick={() => void daemon('logs')}
 							data-testid="desktop-machine-logs"
 						>
 							{logLines ? 'Refresh runner log' : 'Show runner log'}
-						</button>
+						</Button>
 					) : null}
 					{notice ? <p role="status">{notice}</p> : null}
 					{logLines ? (
@@ -246,35 +244,38 @@ export function DesktopMachinePanel({
 							{panelAction.reason}
 						</p>
 					) : null}
-					<button
+					<Button
 						type="button"
-						css={{ ...buttonCss, marginLeft: state.contextId ? spacing.sm : 0 }}
+						variant="primary"
+						css={{ marginLeft: state.contextId ? spacing.sm : 0 }}
 						disabled={state.busy || panelAction.kind === 'unavailable'}
 						onClick={() => machine.open(selectedOrgSlug)}
 					>
 						{panelAction.label}
-					</button>
+					</Button>
 					{typeof state.autoUpdate === 'boolean' && machine.autoUpdate ? (
 						<p>
 							Automatic runner updates: {state.autoUpdate ? 'On' : 'Off'}{' '}
-							<button
+							<Button
 								type="button"
-								css={{ ...secondaryCss, marginLeft: spacing.sm }}
+								variant="secondary"
+								css={{ marginLeft: spacing.sm }}
 								disabled={state.busy}
 								onClick={() => void machine.autoUpdate?.(!state.autoUpdate)}
 							>
 								{state.autoUpdate
 									? 'Turn off automatic updates'
 									: 'Turn on automatic updates'}
-							</button>
+							</Button>
 						</p>
 					) : null}
 				</>
 			)}
 			{state?.contextId && state.supported ? (
-				<button
+				<Button
 					type="button"
-					css={{ ...secondaryCss, marginLeft: spacing.sm }}
+					variant="secondary"
+					css={{ marginLeft: spacing.sm }}
 					disabled={state.busy || state.commandsEnabled === null}
 					onClick={() =>
 						void machine.commands(state.commandsEnabled ? 'off' : 'on')
@@ -283,17 +284,18 @@ export function DesktopMachinePanel({
 					{state.commandsEnabled
 						? 'Turn off host commands'
 						: 'Allow host commands'}
-				</button>
+				</Button>
 			) : null}
 			{state?.hasSetup ? (
-				<button
+				<Button
 					type="button"
-					css={{ ...secondaryCss, marginLeft: spacing.sm }}
+					variant="secondary"
+					css={{ marginLeft: spacing.sm }}
 					disabled={state.busy}
 					onClick={machine.forget}
 				>
 					Forget desktop setup
-				</button>
+				</Button>
 			) : null}
 			{machine.error ? <p role="alert">{machine.error}</p> : null}
 			{routingError ? <p role="alert">{routingError}</p> : null}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type {
 	AccountBillingLoaderData,
@@ -19,8 +20,6 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	primaryLinkCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
@@ -249,16 +248,16 @@ export function renderAccountBillingPlans(input: {
 										gap: spacing.sm,
 									}}
 								>
-									<button type="button" disabled css={secondaryButtonCss}>
+									<Button type="button" disabled variant="secondary">
 										{isCurrent ? 'Current plan' : 'Your subscription'}
-									</button>
-									<button
+									</Button>
+									<Button
 										type="button"
 										disabled={checkoutPending !== null}
 										onClick={() =>
 											input.onStartCheckout(paidTier, intervalSwitch)
 										}
-										css={primaryButtonCss}
+										variant="primary"
 									>
 										{checkoutPending?.plan === paidTier
 											? 'Opening Stripe…'
@@ -266,13 +265,13 @@ export function renderAccountBillingPlans(input: {
 													interval: intervalSwitch,
 													onPurchasablePro: true,
 												})}
-									</button>
+									</Button>
 								</div>
 							) : isCurrent || isIncluded ? (
 								<div>
-									<button type="button" disabled css={secondaryButtonCss}>
+									<Button type="button" disabled variant="secondary">
 										{isCurrent ? 'Current plan' : 'Included in your plan'}
-									</button>
+									</Button>
 								</div>
 							) : showSubscribe && paidTier ? (
 								<div
@@ -359,7 +358,7 @@ export function renderAccountBillingPlans(input: {
 										</label>
 									)}
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={checkoutPending !== null}
 											onClick={() =>
@@ -368,7 +367,7 @@ export function renderAccountBillingPlans(input: {
 													selectedIntervalByPlan[paidTier],
 												)
 											}
-											css={primaryButtonCss}
+											variant="primary"
 										>
 											{checkoutPending?.plan === paidTier
 												? activeStripePlan
@@ -382,7 +381,7 @@ export function renderAccountBillingPlans(input: {
 													: selectedIntervalByPlan[paidTier] === 'year'
 														? 'Subscribe annually'
 														: 'Subscribe monthly'}
-										</button>
+										</Button>
 									</div>
 									{input.checkoutError ? (
 										<AccountManagementMessage tone="error">
@@ -402,5 +401,3 @@ export function renderAccountBillingPlans(input: {
 	)
 }
 const promoInputCss = { ...accountInputCss, maxWidth: '16rem' }
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })

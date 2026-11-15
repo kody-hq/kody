@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import {
 	dismissAdminCommunityReport,
@@ -13,8 +14,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
@@ -131,8 +130,6 @@ export function AdminCommunityReportsPage({
 			},
 		)
 	}
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const isMutating = mutation.isPending
 	const pending = false
 	const status: string = 'ready'
@@ -236,16 +233,16 @@ export function AdminCommunityReportsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<button
+									<Button
 										disabled={isMutating}
 										onClick={() =>
 											void submitReportAction(report.id, 'dismiss')
 										}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Dismiss
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -272,13 +269,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'delist')
 											? 'Confirm delist'
 											: 'Delist'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -305,13 +302,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'delete')
 											? 'Confirm delete'
 											: 'Delete'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -338,13 +335,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'ban_reporter')
 											? 'Confirm ban reporter'
 											: 'Ban reporter'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -371,12 +368,12 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'ban_reportee')
 											? 'Confirm ban owner'
 											: 'Ban owner'}
-									</button>
+									</Button>
 								</div>
 							</article>
 						))

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useState, useId } from 'react'
 import type { CSSObject } from '@emotion/react'
@@ -7,10 +8,7 @@ import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import type { AccountPackageSecurityAudit } from '#universal/loader-data.ts'
 import { packageSecurityAuditAnchor } from '#universal/package-security-audit-prompt.ts'
 import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
-import {
-	getGhostButtonCss,
-	hoverMq,
-} from '#universal/styles/style-primitives.ts'
+import { hoverMq } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -151,14 +149,14 @@ export function PackageSecurityAuditField({
 										variant="pill"
 										size="sm"
 									/>
-									<button
+									<Button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={closeDialog}
 									>
 										Close
-									</button>
+									</Button>
 								</div>
 							</>
 						) : (
@@ -181,14 +179,14 @@ export function PackageSecurityAuditField({
 									{audit.summary}
 								</p>
 								<div css={dialogActionsCss}>
-									<button
+									<Button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={closeDialog}
 									>
 										Close
-									</button>
+									</Button>
 								</div>
 							</>
 						)}

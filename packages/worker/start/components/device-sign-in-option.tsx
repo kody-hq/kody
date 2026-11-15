@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { CSSProperties } from 'react'
 import { accountDeviceSignInPath } from '#universal/oauth-paths.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 /**
@@ -31,9 +31,14 @@ export function DeviceSignInOption(props: { target: string; rise?: number }) {
 				sign-in from your phone or computer instead. You get a short code and a
 				QR code.
 			</p>
-			<button type="submit" css={deviceSignInButtonCss}>
+			<Button
+				type="submit"
+				variant="secondary"
+				size="lg"
+				css={deviceSignInButtonCss}
+			>
 				Sign in on another device
-			</button>
+			</Button>
 		</form>
 	)
 }
@@ -71,9 +76,14 @@ export function AccountDeviceSignInOption(props: {
 			<label css={rememberCss}>
 				<input type="checkbox" name="rememberMe" /> Keep this browser signed in
 			</label>
-			<button type="submit" css={deviceSignInButtonCss}>
+			<Button
+				type="submit"
+				variant="secondary"
+				size="lg"
+				css={deviceSignInButtonCss}
+			>
 				Sign in on another device
-			</button>
+			</Button>
 		</form>
 	)
 }
@@ -116,7 +126,6 @@ const rememberCss: CSSObject = {
 }
 
 const deviceSignInButtonCss: CSSObject = {
-	...getGhostButtonCss(),
 	justifySelf: 'start',
 }
 

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useActorRef, useActor } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
@@ -18,9 +19,6 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
@@ -336,14 +334,14 @@ export function AccountPasskeysPage({
 							itself already satisfies multi-factor authentication.
 						</p>
 						<div>
-							<button
+							<Button
 								type="button"
 								disabled={isBusy}
-								css={primaryButtonCss}
+								variant="primary"
 								onClick={handleRegisterPasskey}
 							>
 								{isBusy ? 'Working...' : 'Register a passkey'}
-							</button>
+							</Button>
 						</div>
 					</section>
 
@@ -466,41 +464,41 @@ export function AccountPasskeysPage({
 											>
 												{isRenaming ? (
 													<>
-														<button
+														<Button
 															type="button"
 															disabled={isBusy}
-															css={primaryButtonCss}
+															variant="primary"
 															onClick={() => handleRenamePasskey(passkey.id)}
 														>
 															Save
-														</button>
-														<button
+														</Button>
+														<Button
 															type="button"
 															disabled={isBusy}
-															css={secondaryButtonCss}
+															variant="secondary"
 															onClick={cancelRename}
 														>
 															Cancel
-														</button>
+														</Button>
 													</>
 												) : (
-													<button
+													<Button
 														type="button"
 														disabled={isBusy}
-														css={secondaryButtonCss}
+														variant="secondary"
 														onClick={() => beginRename(passkey)}
 													>
 														Rename
-													</button>
+													</Button>
 												)}
-												<button
+												<Button
 													type="button"
 													disabled={isBusy}
-													css={dangerButtonCss}
+													variant="danger"
 													onClick={() => handleDeletePasskey(passkey.id)}
 												>
 													Delete
-												</button>
+												</Button>
 											</div>
 										</li>
 									)
@@ -519,9 +517,5 @@ export function AccountPasskeysPage({
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 const mutationResources = ['loadAccountSecurity', 'loadAccountPage'] as const

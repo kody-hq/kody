@@ -574,6 +574,119 @@ const noInlineTypeOnlyImportRule = {
 	},
 }
 
+const pillRadiusValues = new Set(['999px', '9999px'])
+const buttonLikeTags = new Set(['button', 'a', 'SiteLink'])
+
+function isPillRadius(value) {
+	if (value.type === 'Literal') return pillRadiusValues.has(value.value)
+	return (
+		value.type === 'MemberExpression' &&
+		value.object.type === 'Identifier' &&
+		value.object.name === 'radius' &&
+		value.property.type === 'Identifier' &&
+		value.property.name === 'full'
+	)
+}
+
+function propertyName(property) {
+	if (property.type !== 'Property') return null
+	if (property.key.type === 'Identifier') return property.key.name
+	if (property.key.type === 'Literal') return String(property.key.value)
+	return null
+}
+
+function containsButtonCssCall(node) {
+	if (!node || typeof node !== 'object') return false
+	if (
+		node.type === 'CallExpression' &&
+		node.callee.type === 'Identifier' &&
+		node.callee.name === 'getButtonCss'
+	) {
+		return true
+	}
+	if (node.type === 'ArrayExpression') {
+		return node.elements.some(containsButtonCssCall)
+	}
+	if (node.type === 'ObjectExpression') {
+		return node.properties.some(
+			(property) =>
+				property.type === 'SpreadElement' &&
+				containsButtonCssCall(property.argument),
+		)
+	}
+	if (node.type === 'ConditionalExpression') {
+		return (
+			containsButtonCssCall(node.consequent) ||
+			containsButtonCssCall(node.alternate)
+		)
+	}
+	return false
+}
+
+const noRawButtonStyleRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Keep buttons on the shared <Button>: no full-radius pill on clickable styles and no getButtonCss on raw button elements.',
+		},
+		schema: [],
+		messages: {
+			pillRadius:
+				'Clickable controls use squircle corners: render <Button> (start/components/button.tsx) or spread getSquircleCss() instead of a full-radius pill.',
+			useButton:
+				'Render <Button> (start/components/button.tsx) instead of putting getButtonCss on a raw <{{tag}}>.',
+		},
+	},
+	createOnce(context) {
+		return {
+			ObjectExpression(node) {
+				let pill = null
+				let clickable = false
+				for (const property of node.properties) {
+					const name = propertyName(property)
+					if (name === 'borderRadius' && isPillRadius(property.value)) {
+						pill = property
+					}
+					if (
+						name === 'cursor' &&
+						property.value.type === 'Literal' &&
+						property.value.value === 'pointer'
+					) {
+						clickable = true
+					}
+				}
+				if (pill && clickable) {
+					context.report({ node: pill, messageId: 'pillRadius' })
+				}
+			},
+			JSXOpeningElement(node) {
+				if (node.name.type !== 'JSXIdentifier') return
+				const tag = node.name.name
+				if (!buttonLikeTags.has(tag)) return
+				if (context.filename.endsWith('/start/components/button.tsx')) return
+				for (const attribute of node.attributes) {
+					if (
+						attribute.type !== 'JSXAttribute' ||
+						attribute.name.type !== 'JSXIdentifier' ||
+						attribute.name.name !== 'css' ||
+						attribute.value?.type !== 'JSXExpressionContainer'
+					) {
+						continue
+					}
+					if (containsButtonCssCall(attribute.value.expression)) {
+						context.report({
+							node: attribute,
+							messageId: 'useButton',
+							data: { tag },
+						})
+					}
+				}
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
@@ -583,6 +696,7 @@ const plugin = {
 		'no-literal-frame-src': noLiteralFrameSrcRule,
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
+		'no-raw-button-style': noRawButtonStyleRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,

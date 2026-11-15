@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useActor } from '@xstate/react'
 import {
@@ -29,10 +30,6 @@ import {
 	userAvatarMaxDimension,
 	userAvatarMinDimension,
 } from '#universal/user-avatar-limits.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -458,15 +455,16 @@ export function AccountAvatarEditor({
 				) : null}
 				{status === 'ready' ? (
 					<div css={editorZoomRowCss}>
-						<button
+						<Button
 							type="button"
 							aria-label="Zoom out"
 							disabled={!canZoom || transform.scale <= cover}
+							variant="secondary"
 							css={editorZoomButtonCss}
 							onClick={() => zoom(transform.scale / zoomStep)}
 						>
 							−
-						</button>
+						</Button>
 						<input
 							type="range"
 							min={cover}
@@ -479,15 +477,16 @@ export function AccountAvatarEditor({
 							css={editorZoomSliderCss}
 							onChange={(event) => zoom(Number(event.currentTarget.value))}
 						/>
-						<button
+						<Button
 							type="button"
 							aria-label="Zoom in"
 							disabled={!canZoom || transform.scale >= maximum}
+							variant="secondary"
 							css={editorZoomButtonCss}
 							onClick={() => zoom(transform.scale * zoomStep)}
 						>
 							+
-						</button>
+						</Button>
 					</div>
 				) : null}
 				{error ? (
@@ -503,22 +502,24 @@ export function AccountAvatarEditor({
 					</p>
 				) : null}
 				<div css={editorActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={status === 'applying'}
+						variant="secondary"
 						css={editorGhostButtonCss}
 						onClick={close}
 					>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={busy || status !== 'ready'}
+						variant="primary"
 						css={editorApplyButtonCss}
 						onClick={() => void apply()}
 					>
 						{status === 'applying' ? 'Preparing…' : 'Use photo'}
-					</button>
+					</Button>
 				</div>
 			</div>
 		</dialog>
@@ -667,17 +668,14 @@ const editorZoomRowCss: CSSObject = {
 	gap: spacing.sm,
 }
 
-const editorZoomButtonCss = [
-	getGhostButtonCss({ size: 'sm' }),
-	{
-		minWidth: '2.75rem',
-		minHeight: '2.75rem',
-		padding: 0,
-		fontSize: '1.25rem',
-		lineHeight: 1,
-		touchAction: 'manipulation',
-	},
-]
+const editorZoomButtonCss = {
+	minWidth: '2.75rem',
+	minHeight: '2.75rem',
+	padding: 0,
+	fontSize: '1.25rem',
+	lineHeight: 1,
+	touchAction: 'manipulation',
+}
 
 const editorZoomSliderCss: CSSObject = {
 	width: '100%',
@@ -710,24 +708,18 @@ const editorActionsCss: CSSObject = {
 	},
 }
 
-const editorGhostButtonCss = [
-	getGhostButtonCss({ size: 'sm' }),
-	{
-		touchAction: 'manipulation',
-		[mq.mobile]: {
-			minHeight: '2.75rem',
-			width: '100%',
-		},
+const editorGhostButtonCss = {
+	touchAction: 'manipulation',
+	[mq.mobile]: {
+		minHeight: '2.75rem',
+		width: '100%',
 	},
-]
+}
 
-const editorApplyButtonCss = [
-	getPillButtonCss({ size: 'sm' }),
-	{
-		touchAction: 'manipulation',
-		[mq.mobile]: {
-			minHeight: '2.75rem',
-			width: '100%',
-		},
+const editorApplyButtonCss = {
+	touchAction: 'manipulation',
+	[mq.mobile]: {
+		minHeight: '2.75rem',
+		width: '100%',
 	},
-]
+}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -21,8 +22,6 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
 	mutedLinkCss,
 } from '#universal/styles/style-primitives.ts'
@@ -352,18 +351,18 @@ function PreviewPanel({
 				</AccountManagementMessage>
 			) : null}
 			<div>
-				<button
+				<Button
 					type="button"
 					disabled={!acknowledged || pending}
 					onClick={() => void confirm()}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 				>
 					{pending
 						? 'Moving plan…'
 						: target.mode === 'checkout'
 							? `Continue to checkout for @${target.slug}`
 							: `Move Pro to @${target.slug}`}
-				</button>
+				</Button>
 			</div>
 		</AccountManagementPanel>
 	)
@@ -484,23 +483,23 @@ function TransferStatusPanel({
 				</AccountManagementMessage>
 			) : null}
 			<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-				<button
+				<Button
 					type="button"
 					disabled={retry.isPending}
 					onClick={() => void run(retry)}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 				>
 					{retry.isPending ? 'Retrying…' : 'Retry now'}
-				</button>
+				</Button>
 				{transfer.cancelable ? (
-					<button
+					<Button
 						type="button"
 						disabled={cancel.isPending}
 						onClick={() => void run(cancel)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Cancel move
-					</button>
+					</Button>
 				) : null}
 			</div>
 		</AccountManagementPanel>

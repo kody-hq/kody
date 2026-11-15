@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	approvePackagePublish,
 	checkPackagePublishCommit,
@@ -21,12 +22,7 @@ import {
 	MetadataGrid,
 	accountDisclosureCss,
 } from './account-management-components.tsx'
-import { SiteLink } from '../components/site-link.tsx'
-import {
-	getAccentCalloutCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type {
 	AccountPackageListingBehindHint,
@@ -240,12 +236,9 @@ export function AccountPackageApprovePublishRoute({
 						<code>{shortCommunityCommit(payload.pendingCommit ?? '')}</code>.
 					</p>
 					{renderListingBehindPrompt({ listing: promotedListing })}
-					<SiteLink
-						href={payload.packageHref}
-						css={getPillButtonCss({ size: 'sm' })}
-					>
+					<Button href={payload.packageHref} variant="primary">
 						Back to package
-					</SiteLink>
+					</Button>
 				</section>
 			) : null}
 			{payload && !promotedListing ? (
@@ -330,23 +323,20 @@ export function AccountPackageApprovePublishRoute({
 						}}
 					>
 						{payload.alreadyPublished || !payload.pendingCommit ? (
-							<SiteLink
+							<Button
 								href={payload.packageHref}
-								css={{
-									...getPillButtonCss({ size: 'sm' }),
-									display: 'inline-flex',
-									textDecoration: 'none',
-								}}
+								variant="primary"
+								css={{ display: 'inline-flex', textDecoration: 'none' }}
 							>
 								Back to package
-							</SiteLink>
+							</Button>
 						) : (
 							<>
-								<button
+								<Button
 									type="button"
 									data-testid="approve-package-publish"
 									disabled={busy || promoteBlocked}
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 									onClick={() => void promoteCommit()}
 								>
 									{busy
@@ -356,29 +346,23 @@ export function AccountPackageApprovePublishRoute({
 										: payload.package.lockedAt
 											? 'Promote this commit'
 											: 'Publish HEAD'}
-								</button>
-								<SiteLink
+								</Button>
+								<Button
 									href={payload.packageHref}
-									css={{
-										...getGhostButtonCss({ size: 'sm' }),
-										display: 'inline-flex',
-										textDecoration: 'none',
-									}}
+									variant="secondary"
+									css={{ display: 'inline-flex', textDecoration: 'none' }}
 								>
 									Cancel
-								</SiteLink>
+								</Button>
 							</>
 						)}
-						<SiteLink
+						<Button
 							href={payload.filesHref}
-							css={{
-								...getGhostButtonCss({ size: 'sm' }),
-								display: 'inline-flex',
-								textDecoration: 'none',
-							}}
+							variant="secondary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Browse published files
-						</SiteLink>
+						</Button>
 					</div>
 					<section
 						data-testid="package-publish-diff"

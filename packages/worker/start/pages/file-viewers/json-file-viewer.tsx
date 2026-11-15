@@ -18,14 +18,17 @@ import type {
 	JsonResponse,
 } from '#universal/json-preview.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	getButtonCss,
+	getSquircleCss,
+} from '#universal/styles/style-primitives.ts'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
 const control = {
-	...getGhostButtonCss(),
+	...getButtonCss({ variant: 'secondary', size: 'lg' }),
 	padding: '4px 8px',
 	minHeight: 28,
 	fontSize: 12,
-	borderRadius: 4,
+	...getSquircleCss('xs'),
 	boxShadow: 'none',
 	'&[aria-pressed=true]': {
 		background: colors.primarySoft,

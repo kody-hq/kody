@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 import {
 	Children,
 	isValidElement,
@@ -185,7 +186,7 @@ const tabsListCss: CSSObject = {
 	minHeight: 'var(--rmx-tabs-height)',
 	padding: 'var(--rmx-tabs-track-padding)',
 	border: 0,
-	borderRadius: '9999px',
+	...getSquircleCss('md'),
 	background:
 		'linear-gradient(180deg, light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08)) 0%, rgba(0, 0, 0, 0) 100%), light-dark(#EBEBEB, #2c2c2c)',
 	boxShadow:
@@ -222,7 +223,7 @@ const tabsTabCss: CSSObject = {
 	paddingBlock: 0,
 	paddingInline: 'var(--rmx-tabs-tab-padding-inline)',
 	border: 0,
-	borderRadius: '999px',
+	...getSquircleCss('xs'),
 	background: 'transparent',
 	boxShadow: 'var(--rmx-tabs-tab-shadow)',
 	color: 'light-dark(#707070, #b3b3b3)',

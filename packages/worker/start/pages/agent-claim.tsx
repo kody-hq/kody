@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -13,8 +14,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	inputCss,
 	mutedLinkCss,
@@ -115,9 +114,15 @@ function renderAgentClaimBody(data: AgentClaimPageData) {
 		case 'email_unverified':
 			return (
 				<section css={cardCss}>
-					<a href="/pending-verification" css={primaryLinkCss}>
+					<Button
+						href="/pending-verification"
+						variant="primary"
+						size="md"
+						reloadDocument
+						css={primaryLinkCss}
+					>
 						Resend verification email
-					</a>
+					</Button>
 				</section>
 			)
 		case 'not_found':
@@ -135,15 +140,24 @@ function SignedOutCard(props: {
 		<section css={cardCss} data-testid="agent-claim-signed-out">
 			<p css={descriptionCss}>{agentClaimAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<a href={buildAuthLink('/login', data.redirectTo)} css={primaryLinkCss}>
+				<Button
+					href={buildAuthLink('/login', data.redirectTo)}
+					variant="primary"
+					size="md"
+					reloadDocument
+					css={primaryLinkCss}
+				>
 					Sign in to continue
-				</a>
-				<a
+				</Button>
+				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
+					variant="secondary"
+					size="md"
+					reloadDocument
 					css={secondaryLinkCss}
 				>
 					Create an account
-				</a>
+				</Button>
 			</div>
 		</section>
 	)
@@ -216,24 +230,26 @@ function ConsentCard(props: {
 					onChange={setOrgSlug}
 				/>
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						css={primaryButtonCss}
+						variant="primary"
+						size="md"
 					>
 						Approve
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary"
+						size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -245,18 +261,11 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const primaryLinkCss = {
-	...primaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }
 const secondaryLinkCss = {
-	...secondaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }

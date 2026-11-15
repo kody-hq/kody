@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { css } from '@emotion/react'
 import { useEffect, useState } from 'react'
 import {
@@ -20,8 +21,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { AccountManagementMessage } from '../pages/account-management-components.tsx'
@@ -284,9 +283,9 @@ export function AutomationExecutionSettings(props: {
 				) : null}
 			</div>
 			<div css={rowCss}>
-				<button
+				<Button
 					type="button"
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 					disabled={saving || !setting.contextRunnable}
 					onClick={() => {
 						const execution = automationExecutionFromForm(form)
@@ -301,16 +300,16 @@ export function AutomationExecutionSettings(props: {
 					}}
 				>
 					{saving ? 'Saving…' : 'Save'}
-				</button>
+				</Button>
 				{setting.override ? (
-					<button
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						disabled={saving}
 						onClick={() => void save(null)}
 					>
 						Use the package setting
-					</button>
+					</Button>
 				) : null}
 			</div>
 			{status ? (

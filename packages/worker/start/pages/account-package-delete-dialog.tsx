@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { deletePackage } from '#start/server/package-mutations'
 import { usePackageMutation } from '../package-mutation.ts'
@@ -27,8 +28,6 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
 	hoverMq,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -162,14 +161,14 @@ export function AccountPackageDeleteDialog(props: {
 					This cannot be undone.
 				</p>
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
 						data-testid="package-delete"
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onClick={openDialog}
 					>
 						Delete package
-					</button>
+					</Button>
 				</div>
 			</div>
 			{open && (
@@ -248,22 +247,22 @@ export function AccountPackageDeleteDialog(props: {
 							</p>
 						) : null}
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="button"
 								disabled={isDeleting}
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								onClick={closeDialog}
 							>
 								Cancel
-							</button>
-							<button
+							</Button>
+							<Button
 								type="submit"
 								disabled={!canSubmit}
 								data-testid="package-delete-confirm"
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 							>
 								{isDeleting ? 'Deleting…' : 'Delete package'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</ModalDialog>

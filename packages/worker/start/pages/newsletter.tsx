@@ -22,7 +22,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
-	getPrimaryButtonCss,
 	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
@@ -36,6 +35,7 @@ import { useActor } from '@xstate/react'
 import { useEffect, type FormEvent } from 'react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { sendUiEvent } from '#client/ui-actor.ts'
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 
 // Keeps the card's grid spacing while letting the no-JavaScript note hide
@@ -235,9 +235,8 @@ function SignupForm(props: {
 						<input type="hidden" name={turnstileResponseFieldName} />
 					</>
 				) : null}
-				<button
+				<Button
 					type="submit"
-					css={primaryButtonCss}
 					aria-disabled={pending || undefined}
 					onClick={(event) => {
 						// A disabled button would cancel the native submission in
@@ -246,7 +245,7 @@ function SignupForm(props: {
 					}}
 				>
 					{pending ? 'Sending confirmation link...' : 'Subscribe'}
-				</button>
+				</Button>
 			</div>
 			<p css={descriptionCss}>
 				We email a confirmation link first. Nothing is sent until you confirm.
@@ -278,16 +277,15 @@ export function NewsletterConfirmRoute(props: { token: string }) {
 					onSubmit={onSubmit}
 				>
 					<input type="hidden" name="token" value={props.token} />
-					<button
+					<Button
 						type="submit"
-						css={primaryButtonCss}
 						aria-disabled={pending || undefined}
 						onClick={(event) => {
 							if (pending) event.preventDefault()
 						}}
 					>
 						{pending ? 'Confirming...' : 'Yes, subscribe me'}
-					</button>
+					</Button>
 					<p css={descriptionCss}>
 						Did not ask for this? Close this page and nothing will be sent.
 					</p>
@@ -307,8 +305,6 @@ const pageCss: CSSObject = {
 	maxWidth: '36rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss()
 
 const statusTextCss: CSSObject = { margin: 0 }
 

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type {
 	OrgGrantRevokeResult,
 	OrgSubjectAccessGrant,
@@ -14,10 +15,6 @@ import {
 	orgTeamGrantAccessPath,
 } from '#universal/org-pages.ts'
 import type { OrgSubjectAccessItem } from '#universal/org-people-mutations.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -461,10 +458,10 @@ function AccessGrantTable(props: {
 								},
 								canSelect: (row) => row.values?.canRevoke === true,
 								actions: (_selected, selectedIds) => (
-									<button
+									<Button
 										type="button"
 										data-testid="access-bulk-remove"
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										disabled={bulk.isPending}
 										onBlur={() => setArmed(false)}
 										onKeyDown={(event) => {
@@ -500,7 +497,7 @@ function AccessGrantTable(props: {
 										{armed
 											? `Confirm remove ${selectedIds.length}`
 											: 'Remove selected'}
-									</button>
+									</Button>
 								),
 							}
 						: undefined,
@@ -681,11 +678,11 @@ function RemoveGrantButton({
 	const [armed, setArmed] = useState(false)
 	const revoke = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
 	return (
-		<button
+		<Button
 			type="button"
 			data-testid="access-grant-remove"
 			aria-label={`${armed ? 'Confirm remove' : 'Remove'} ${grant.resourceLabel}`}
-			css={getDangerPillCss({ size: 'sm' })}
+			variant="danger"
 			disabled={revoke.isPending}
 			onBlur={() => setArmed(false)}
 			onKeyDown={(event) => {
@@ -719,7 +716,7 @@ function RemoveGrantButton({
 		>
 			{renderIcon('close', { size: '1.05rem' })}
 			{armed ? 'Confirm' : 'Remove'}
-		</button>
+		</Button>
 	)
 }
 
@@ -994,11 +991,11 @@ function AddAccessForm({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="access-add-save"
 							disabled={items.length === 0 || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('plus', { size: '1.05rem' })}
 							{mutation.isPending
@@ -1006,7 +1003,7 @@ function AddAccessForm({
 								: items.length > 0
 									? `Give access to ${items.length}`
 									: 'Give access'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

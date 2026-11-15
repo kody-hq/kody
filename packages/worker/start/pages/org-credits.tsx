@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { css } from '@emotion/react'
 import { useInfiniteQuery } from '@tanstack/react-query'
@@ -21,7 +22,6 @@ import type {
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { loadCreditsPage } from '#start/server/org-credits'
@@ -248,11 +248,11 @@ export function OrgCreditsPage({
 						}}
 					>
 						{hasOlder ? (
-							<button
+							<Button
 								type="button"
 								disabled={ledger.isFetchingNextPage}
 								data-org-credits-load-older
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								onClick={() => void ledger.fetchNextPage()}
 							>
 								{ledger.isFetchingNextPage ? (
@@ -260,7 +260,7 @@ export function OrgCreditsPage({
 								) : (
 									'Load older'
 								)}
-							</button>
+							</Button>
 						) : null}
 						<SiteLink
 							href={payload.wallet.whereItWentHref}

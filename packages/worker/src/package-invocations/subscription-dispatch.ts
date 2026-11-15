@@ -326,20 +326,10 @@ export async function deliverPackageEventWithToolFactories(input: {
 	}
 }
 
-/**
- * Messages enqueued before they carried lineage have no person behind them.
- * They reach every enablement of the topic, like a platform event, and each
- * runs as its own enabler.
- */
 function packageEventRequestSource(
 	message: PackageEventsDispatchQueueMessage,
 ): RequestSource {
-	return message.lineage
-		? { kind: 'inherited', lineage: message.lineage }
-		: {
-				kind: 'platform-event',
-				sourceId: `${internalPackageEventSubscriptionTokenId}:${message.source.packageId}`,
-			}
+	return { kind: 'inherited', lineage: message.lineage }
 }
 
 export function createPackageEventToolsWithToolFactories(input: {
@@ -355,7 +345,8 @@ export function createPackageEventToolsWithToolFactories(input: {
 	return {
 		dispatch: async (rawInput) => {
 			const user = input.callerContext.user
-			if (!user?.userId) {
+			const callerRequest = input.callerContext.request
+			if (!user?.userId || !callerRequest) {
 				throw new Error('events.dispatch requires an authenticated user.')
 			}
 			if (!input.packageContext) {
@@ -419,9 +410,7 @@ export function createPackageEventToolsWithToolFactories(input: {
 				invokeDepth: packageInvokeDepth + 1,
 				...(declaredEvent.mcp ? { mcp: true as const } : {}),
 				emittedAt: new Date().toISOString(),
-				...(input.callerContext.request
-					? { lineage: requestLineage(input.callerContext.request) }
-					: {}),
+				lineage: requestLineage(callerRequest),
 				...(input.callerContext.resourceEventDepth
 					? { resourceEventDepth: input.callerContext.resourceEventDepth }
 					: {}),

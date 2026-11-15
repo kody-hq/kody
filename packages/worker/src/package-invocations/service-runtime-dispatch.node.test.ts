@@ -5,6 +5,7 @@ import {
 	consoleError,
 	consoleWarn,
 } from '#worker/test-support/console-spies.ts'
+import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import { deliverPackageEvent } from './service.ts'
 import {
 	packageInvocationsRepoMockModule as repoMockModule,
@@ -310,6 +311,7 @@ test('package event delivery fans out to MCP subscriptions on the same consumer 
 	const message = {
 		userId: ownerIdFromStored('user-123'),
 		topic: messageCreated,
+		lineage: sessionRequestLineage('user-123'),
 		idempotencyKey: 'discord:message-create:mcp-fan-out',
 		payload: { messageId: '123', channelId: '456' },
 		source: { packageId: 'pkg-gateway', kodyId: 'discord-gateway' },
@@ -367,6 +369,7 @@ test('package events deliver with filters, idempotent replay, and retryable fail
 	const baseMessage = {
 		userId: ownerIdFromStored('user-123'),
 		topic: messageCreated,
+		lineage: sessionRequestLineage('user-123'),
 		source: { packageId: 'pkg-gateway', kodyId: 'discord-gateway' },
 		invokeDepth: 1,
 	}

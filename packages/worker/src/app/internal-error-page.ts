@@ -17,7 +17,19 @@ import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
 	layoutMaxWidths,
 	pageGutter,
+	renderButtonStylesheet,
 } from '#universal/styles/style-primitives.ts'
+
+const errorPageButtonStyles = renderButtonStylesheet({
+	'.illustrated-error-page a[data-variant="primary"]': {
+		variant: 'primary',
+		size: 'lg',
+	},
+	'.illustrated-error-page a[data-variant="secondary"]': {
+		variant: 'secondary',
+		size: 'lg',
+	},
+})
 
 /**
  * Minimal first-party HTML for uncaught handler failures. The catch that
@@ -79,25 +91,7 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 							gap: 0.7rem;
 							margin-top: 0.6rem;
 						}
-						.illustrated-error-page a {
-							display: inline-flex;
-							align-items: center;
-							justify-content: center;
-							font: 650 1rem / 1 var(--font-display);
-							border-radius: 999px;
-							padding: 0.95rem 1.7rem;
-							text-decoration: none;
-							white-space: nowrap;
-						}
-						.illustrated-error-page a[data-variant='pill'] {
-							background: var(--color-primary);
-							color: var(--color-on-primary);
-						}
-						.illustrated-error-page a[data-variant='ghost'] {
-							background: transparent;
-							color: var(--color-text);
-							box-shadow: inset 0 0 0 1.5px var(--color-border);
-						}
+						${html.raw`${errorPageButtonStyles}`}
 					</style>
 				</head>
 				<body>
@@ -115,8 +109,10 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 							<h1>${internalErrorPageHeading}</h1>
 							<p>${internalErrorPageCopy}</p>
 							<nav aria-label="What to try next">
-								<a data-variant="pill" href="${retryHref}">Try again</a>
-								<a data-variant="ghost" href="${routes.home.href()}">Go home</a>
+								<a data-variant="primary" href="${retryHref}">Try again</a>
+								<a data-variant="secondary" href="${routes.home.href()}"
+									>Go home</a
+								>
 							</nav>
 							${html.raw`${renderErrorAgentPromptStaticHtml(buildInternalErrorAgentPrompt({ path: retryHref }))}`}
 						</section>

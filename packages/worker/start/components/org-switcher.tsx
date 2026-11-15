@@ -411,6 +411,8 @@ const accountMenuButtonCss = {
 	width: '44px',
 	height: '44px',
 	padding: 0,
+	// Avatar trigger: the circle frames a round avatar.
+	// oxlint-disable-next-line kody-custom/no-raw-button-style
 	borderRadius: radius.full,
 	border: `1.5px solid ${colors.border}`,
 	background: 'transparent',

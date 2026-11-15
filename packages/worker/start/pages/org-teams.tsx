@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { OrgTeamInviteLinks } from './org-teams-invite-links.tsx'
 import {
 	createOrganizationTeam,
@@ -8,10 +9,6 @@ import {
 import type { OrgTeamsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -173,10 +170,10 @@ function OrgTeamsContent({
 															) : null}
 														</span>
 														{data.canRemoveMembers ? (
-															<button
+															<Button
 																type="button"
 																disabled={pending}
-																css={getDangerPillCss({ size: 'sm' })}
+																variant="danger"
 																onBlur={() => setConfirmed(null)}
 																onClick={() => {
 																	if (confirmed !== key) {
@@ -199,7 +196,7 @@ function OrgTeamsContent({
 																{confirmed === key
 																	? 'Confirm remove'
 																	: 'Remove'}
-															</button>
+															</Button>
 														) : null}
 													</div>
 												</li>
@@ -236,10 +233,10 @@ function OrgTeamsContent({
 													</option>
 												))}
 										</select>
-										<button
+										<Button
 											type="button"
 											disabled={!addByTeam[team.id] || pending}
-											css={getPillButtonCss({ size: 'sm' })}
+											variant="primary"
 											onClick={() =>
 												post(
 													() =>
@@ -258,7 +255,7 @@ function OrgTeamsContent({
 											}
 										>
 											{renderIcon('plus', { size: '1.05rem' })}Add
-										</button>
+										</Button>
 									</div>
 								) : null}
 								{data.canCreateInviteLinks ? (
@@ -337,14 +334,14 @@ function OrgTeamsContent({
 							/>
 						</label>
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="submit"
 								disabled={pending || createSlug.trim().length === 0}
-								css={getPillButtonCss({ size: 'sm' })}
+								variant="primary"
 							>
 								{renderIcon('plus', { size: '1.05rem' })}
 								{createMutation.isPending ? 'Creating…' : 'Create team'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</AccountManagementPanel>
