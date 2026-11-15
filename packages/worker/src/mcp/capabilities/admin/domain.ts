@@ -105,6 +105,7 @@ import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admi
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
 import { adminCreatorAccessBackfillCapability } from './admin-creator-access-backfill.ts'
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
+import { adminListedPackageFetchBindingScanCapability } from './admin-listed-package-fetch-binding-scan.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminPackageScopedSecretReportCapability } from './admin-package-scoped-secret-report.ts'
@@ -229,6 +230,7 @@ export const adminDomain = defineDomain({
 		adminPublishedImportableArtifactBackfillCapability,
 		adminPublishFinalizeResumeCapability,
 		adminPreBindingArtifactRebuildCapability,
+		adminListedPackageFetchBindingScanCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,

@@ -121,7 +121,7 @@ function runtimeSpecifierFrom(modulePath: string) {
 	return `${depth > 0 ? '../'.repeat(depth) : './'}${runtimeModulePath}`
 }
 
-function moduleSource(module: WorkerLoaderModules[string]) {
+export function moduleSource(module: WorkerLoaderModules[string]) {
 	if (typeof module === 'string') return module
 	if (module && typeof module === 'object' && typeof module.js === 'string') {
 		return module.js
@@ -137,7 +137,7 @@ function withModuleSource(
 	return { ...module, js: source }
 }
 
-function isPlatformRuntimeModulePath(modulePath: string) {
+export function isPlatformRuntimeModulePath(modulePath: string) {
 	return (
 		isKodyRuntimeModulePath(modulePath) ||
 		isKodyPublicRuntimeModulePath(modulePath) ||

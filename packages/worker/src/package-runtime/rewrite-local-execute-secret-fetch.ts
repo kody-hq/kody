@@ -152,6 +152,126 @@ export async function collectTopLevelFetchCollisionNames(
  * name is free. No-op when the hop is already present or `fetch` is already
  * bound (avoids duplicate-declaration SyntaxError under --local).
  */
+const globalObjectNames = new Set(['globalThis', 'self'])
+
+/**
+ * Replace reads of `globalThis.fetch` / `self.fetch` with `replacement`, so
+ * a package module that reaches fetch through the global object still uses
+ * its own package-bound fetch. Writes (`globalThis.fetch = ...`) are left
+ * alone. A global-object name is only rewritten when every use of that name
+ * in the module is a plain member access, so a local binding or an alias of
+ * the same name is never mistaken for the global object. Returns the source
+ * unchanged when it does not parse.
+ */
+/** Cheap text check that runs before parsing. */
+export function sourceMayReadFetchThroughGlobalObject(source: string) {
+	return /\b(?:globalThis|self)\b/.test(source) && source.includes('fetch')
+}
+
+export async function rewriteGlobalObjectFetchReads(
+	source: string,
+	replacement: string,
+): Promise<string> {
+	if (!sourceMayReadFetchThroughGlobalObject(source)) return source
+	let parsed: ModuleAstNode
+	try {
+		parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
+	} catch {
+		return source
+	}
+	const unsafeNames = new Set<string>()
+	const reads: Array<{ start: number; end: number; name: string }> = []
+	walkAst(parsed, (node, parent) => {
+		if (node.type !== 'Identifier') return
+		const name = (node as { name?: unknown }).name
+		if (typeof name !== 'string' || !globalObjectNames.has(name)) return
+		const member = parent as
+			| (ModuleAstNode & {
+					object?: unknown
+					property?: unknown
+					computed?: boolean
+			  })
+			| undefined
+		const isMember =
+			member?.type === 'MemberExpression' ||
+			member?.type === 'OptionalMemberExpression' ||
+			member?.type === 'StaticMemberExpression' ||
+			member?.type === 'ComputedMemberExpression'
+		if (isMember && member.property === node && member.computed !== true) {
+			return
+		}
+		if (
+			parent &&
+			(parent as { key?: unknown }).key === node &&
+			(parent as { computed?: boolean }).computed !== true &&
+			(parent as { shorthand?: boolean }).shorthand !== true
+		) {
+			return
+		}
+		if (!isMember || member.object !== node) {
+			unsafeNames.add(name)
+			return
+		}
+		const property = member.property as
+			| { type?: string; name?: unknown; value?: unknown }
+			| undefined
+		const propertyName =
+			member.computed === true
+				? typeof property?.value === 'string'
+					? property.value
+					: null
+				: typeof property?.name === 'string'
+					? property.name
+					: null
+		if (propertyName !== 'fetch') return
+		if (typeof member.start !== 'number' || typeof member.end !== 'number') {
+			unsafeNames.add(name)
+			return
+		}
+		reads.push({ start: member.start, end: member.end, name })
+	})
+	const writes = collectMemberWriteStarts(parsed)
+	let next = source
+	for (const read of reads.sort((a, b) => b.start - a.start)) {
+		if (unsafeNames.has(read.name) || writes.has(read.start)) continue
+		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
+	}
+	return next
+}
+
+/**
+ * Starts of every node inside an assignment target: the left side of an
+ * assignment (destructuring patterns included), the operand of `++`, `--`
+ * and `delete`, and the target of a `for (x in/of ...)` loop. Covering the
+ * whole target subtree also covers computed keys and defaults inside a
+ * pattern; leaving those unrewritten is the safe direction.
+ */
+function collectMemberWriteStarts(parsed: ModuleAstNode) {
+	const starts = new Set<number>()
+	const addTarget = (target: unknown) => {
+		walkAst(target, (inner) => {
+			if (typeof inner.start === 'number') starts.add(inner.start)
+		})
+	}
+	walkAst(parsed, (node) => {
+		if (node.type === 'AssignmentExpression') {
+			addTarget((node as { left?: unknown }).left)
+		} else if (
+			node.type === 'UpdateExpression' ||
+			(node.type === 'UnaryExpression' &&
+				(node as { operator?: unknown }).operator === 'delete')
+		) {
+			addTarget((node as { argument?: unknown }).argument)
+		} else if (
+			node.type === 'ForInStatement' ||
+			node.type === 'ForOfStatement'
+		) {
+			addTarget((node as { left?: unknown }).left)
+		}
+	})
+	return starts
+}
+
 export async function injectLocalExecuteGatewayFetchBinding(input: {
 	modulePath: string
 	source: string
