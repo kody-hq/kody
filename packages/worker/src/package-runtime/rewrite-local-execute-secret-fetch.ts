@@ -192,6 +192,7 @@ export function rewriteGlobalObjectFetchReads(
 			| undefined
 		const isMember =
 			member?.type === 'MemberExpression' ||
+			member?.type === 'OptionalMemberExpression' ||
 			member?.type === 'StaticMemberExpression' ||
 			member?.type === 'ComputedMemberExpression'
 		if (isMember && member.property === node && member.computed !== true) {

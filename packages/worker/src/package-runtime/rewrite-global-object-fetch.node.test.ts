@@ -44,3 +44,8 @@ test('a module can read through one global object while aliasing the other', () 
 test('a parenthesized global object is still read as the global object', () => {
 	expect(rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
 })
+
+test('an optional read through the global object is still a read', () => {
+	expect(rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
+	expect(rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
+})
