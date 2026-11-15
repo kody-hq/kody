@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'packages/desktop/**'
+      - '!packages/desktop/**/*.md'
       - 'packages/cli/**'
       - 'packages/shared/**'
       - 'package.json'
