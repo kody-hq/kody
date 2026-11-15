@@ -4,6 +4,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
+import { sessionRequestLineage } from '#worker/test-support/request-context.ts'
 import { parsePackageEventsDispatchQueueMessage } from './dispatch-queue-producer.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -48,6 +49,7 @@ function createMessageBody(overrides: Record<string, unknown> = {}) {
 		payload: { messageId: '123' },
 		source: { packageId: 'pkg-gateway', kodyId: 'discord-gateway' },
 		invokeDepth: 1,
+		lineage: sessionRequestLineage('user-123'),
 		...overrides,
 	}
 }
@@ -159,6 +161,9 @@ test('package events queue message parsing rejects malformed bodies', () => {
 		createMessageBody({ source: { packageId: 'pkg-1' } }),
 		createMessageBody({ invokeDepth: -1 }),
 		createMessageBody({ invokeDepth: 1.5 }),
+		// Subscribers inherit the emitting run, so a message must name it.
+		createMessageBody({ lineage: undefined }),
+		createMessageBody({ lineage: { actor: null } }),
 	]
 	expect(malformed.map(parsePackageEventsDispatchQueueMessage)).toEqual(
 		malformed.map(() => null),
