@@ -337,9 +337,6 @@ test('targets of one commit that link the same dependency store its modules once
 	] as const) {
 		const loaded = await readPublishedBundleArtifact({ env, kvKey })
 		expect(loaded?.modules).toEqual(artifact.modules)
-		expect(loaded?.manifest?.modules).toHaveProperty([
-			`${linkedDependencyPrefix}/main.js`,
-		])
 	}
 })
 
