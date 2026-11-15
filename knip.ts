@@ -17,6 +17,7 @@ export default defineConfig({
 				'tools/markdown-perf/sample-entry.mjs',
 				'e2e/**/*.ts',
 				'vitest*.ts',
+				'playwright*.config.ts',
 			],
 			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
 		},

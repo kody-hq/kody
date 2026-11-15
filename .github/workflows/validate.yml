@@ -793,6 +793,55 @@ jobs:
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # `npm run ui:verify`: component gallery and key pages in light and dark,
+  # desktop and mobile; axe, keyboard focus sweep, and visual diffs against
+  # e2e/ui-verify/baselines. The report and screenshots upload on every run
+  # so reviewers can see the rendering (docs/contributing/ui-verify.md).
+  ui_verify:
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: 🖼️ UI verify
+    timeout-minutes: 25
+    needs: tested_tree
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🧰 Setup
+        uses: ./.github/actions/setup-validate
+        with:
+          playwright: 'true'
+          worker-env: 'true'
+          no_cache: ${{ env.VALIDATE_NO_CACHE }}
+
+      - name: 🖼️ npm run ui:verify
+        run: npm run ui:verify
+
+      - name: 📝 Report summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f .tmp/ui-verify/report.md ]; then
+            cat .tmp/ui-verify/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 📤 Upload UI verify report and screenshots
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-verify
+          path: .tmp/ui-verify
+          if-no-files-found: ignore
+          retention-days: 14
+
   e2e_report:
     runs-on: ubuntu-latest
     name: 🎭 E2E Report
@@ -1099,6 +1148,7 @@ jobs:
       - mcp
       - e2e
       - e2e_report
+      - ui_verify
       - cli
       - cli_windows
       - dev_runtime
