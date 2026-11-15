@@ -242,6 +242,29 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		await remove()
 		return { delivered: 0 }
 	}
+	// Queue retries and concurrent batches can deliver an older change after a
+	// newer one. A change superseded by a later one for the same recipient is
+	// dropped; subscribers also order by `occurred_at`.
+	const newer = await db
+		.prepare(
+			`SELECT 1 AS newer FROM whats_new_consent_outbox
+			 WHERE recipient_id = ? AND id != ?
+				AND (occurred_at > ? OR (occurred_at = ? AND rowid > (
+					SELECT rowid FROM whats_new_consent_outbox WHERE id = ?)))
+			 LIMIT 1`,
+		)
+		.bind(
+			row.stable_user_id,
+			input.outboxId,
+			row.occurred_at,
+			row.occurred_at,
+			input.outboxId,
+		)
+		.first<{ newer: number }>()
+	if (newer) {
+		await remove()
+		return { delivered: 0 }
+	}
 	const responses = await dispatchAdminPackageSubscriptionEvent({
 		env: input.env as Env,
 		baseUrl: getAppBaseUrl({ env: input.env as Env }),

@@ -299,3 +299,44 @@ test('without a queue binding a change is delivered inline', async () => {
 	expect(mocks.dispatchAdminPackageSubscriptionEvent).toHaveBeenCalledTimes(1)
 	expect(outbox()).toEqual([])
 })
+
+test('an older change that arrives late is dropped while a newer one for the same recipient waits', async () => {
+	const { env, outbox } = setup()
+	mocks.dispatchAdminPackageSubscriptionEvent.mockResolvedValue([
+		{ status: 200, body: {} },
+	])
+	await recordWhatsNewConsentChange({
+		env,
+		stableUserId: signupId,
+		optedIn: true,
+		source: 'newsletter_page',
+		occurredAt: '2026-11-15T12:00:00.000Z',
+		now,
+	})
+	await recordWhatsNewConsentChange({
+		env,
+		stableUserId: signupId,
+		optedIn: false,
+		source: 'admin',
+		occurredAt: '2026-11-15T12:05:00.000Z',
+		now,
+	})
+	const [optIn, optOut] = outbox()
+
+	// The opt-in's retry lands first: it is superseded, so nothing is sent.
+	await expect(
+		deliverWhatsNewConsentOutboxRow({ env, outboxId: optIn!.id }),
+	).resolves.toEqual({ delivered: 0 })
+	expect(mocks.dispatchAdminPackageSubscriptionEvent).not.toHaveBeenCalled()
+	expect(outbox().map((row) => row.id)).toEqual([optOut!.id])
+
+	await expect(
+		deliverWhatsNewConsentOutboxRow({ env, outboxId: optOut!.id }),
+	).resolves.toEqual({ delivered: 1 })
+	const dispatch = mocks.dispatchAdminPackageSubscriptionEvent.mock
+		.calls[0]![0] as Dispatch
+	expect(dispatch.getParams()).toMatchObject({
+		consent: { opted_in: false, occurred_at: '2026-11-15T12:05:00.000Z' },
+	})
+	expect(outbox()).toEqual([])
+})
