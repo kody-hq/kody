@@ -543,6 +543,8 @@ const routeDocumentHeads = {
 	withAgent: withAgentHead,
 	support: publicPageHead('support', 'Support'),
 	about: publicPageHead('about', 'About Kody'),
+	newsletter: publicPageHead('newsletter', "What's New in Kody newsletter"),
+	newsletterConfirm: titleOnly('Confirm your subscription'),
 	brandGuide: publicPageHead('brand-guide', 'Brand guide'),
 	contact: publicPageHead('contact', 'Contact Kody'),
 	privacy: publicPageHead('privacy', 'Privacy'),

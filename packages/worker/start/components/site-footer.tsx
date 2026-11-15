@@ -51,6 +51,7 @@ export function SiteFooter(props: SiteFooterProps) {
 					<SiteLink href="/contact">Contact</SiteLink>
 					<SiteLink href="/support">Support</SiteLink>
 					<SiteLink href="/blog">Blog</SiteLink>
+					<SiteLink href="/newsletter">Newsletter</SiteLink>
 					<SiteLink
 						href="https://github.com/kody-hq/kody"
 						target="_blank"

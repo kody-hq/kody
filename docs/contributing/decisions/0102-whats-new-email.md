@@ -42,3 +42,22 @@ provider returned no message ID and matching is unavailable.
 The package owns composition, audience selection, consent checks before sending,
 and signed opt-in/out links and public pages. No platform unsubscribe-token API
 or general bulk-mail primitive is introduced.
+
+## Public sign-up (2026-11-15)
+
+`/newsletter` lets anyone ask for the newsletter without an account. The site
+owns it because consent and the `news@` sender live here and an anonymous
+package app cannot send. A request is a pending `newsletter_signups` row and one
+confirmation email (`whats_new_confirm` kind). The emailed link opens a page
+whose button posts the single-use, 7-day token; only that POST confirms, so link
+scanners cannot subscribe anyone. Tokens are stored hashed.
+
+A confirmed address with no verified account is a recipient under its own 64-hex
+`stable_id`, with source `newsletter_page`. A verified account with the same
+address is opted in instead (stored as `email_link`, reported as
+`newsletter_page` while that confirmation is its latest choice). Pending rows
+are never recipients and the admin setter cannot switch them on. Bot protection
+is a honeypot, per-IP and per-address rate limits, and Turnstile, verified with
+siteverify before any row or email is created. The form therefore needs
+JavaScript; without it a note replaces the fields. Responses do not reveal
+whether an address is already subscribed.
