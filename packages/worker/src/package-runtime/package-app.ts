@@ -2363,7 +2363,11 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		return await runAsSandboxCall(
 			boundPackageId?.trim()
 				? null
-				: { surface: 'app', pattern: 'shared_capability' },
+				: {
+						surface: 'app',
+						pattern: 'shared_capability',
+						loadedPackageIds: [...grantedPackageIds],
+					},
 			() =>
 				runWithSecretAuthorityScope(grantedPackageIds, () =>
 					runWithCurrentSecretAuthority(boundPackageId, invoke),

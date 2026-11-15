@@ -189,12 +189,24 @@ export function createPackageSecretAccessDeniedMessage(input: {
 
 /**
  * A call that did not come from a package's own bound code asked for a
- * credential locked to an allowed-packages list.
+ * credential locked to an allowed-packages list. `listedPackageNameInRun` is
+ * a listed package loaded in the run, when there is one: the call may be
+ * that package's own code reaching fetch through a channel that is not bound.
  */
 export function createUnboundLockedSecretUseMessage(input: {
 	secretName: string
+	lockedPackageNames: ReadonlyArray<string>
+	listedPackageNameInRun?: string | null
 }) {
-	return `Secret "${input.secretName}" was refused: it is locked to an allowed-packages list, so it can only be used by the code of a package on that list, and this request did not come from one. Ways to fix it: (1) call an export of a package on the list and let that package make the request; (2) if the request is made by a package, use that package's own fetch or kody:runtime helpers instead of reaching fetch through a shared global, and ask the account owner to add the package to the list if it is not on it; (3) if the package is on the list and was published a while ago, publish it again so it is rebuilt.`
+	const names = input.lockedPackageNames.map((name) => `"${name}"`).join(', ')
+	const lockedTo = names
+		? `it is locked to ${input.lockedPackageNames.length === 1 ? 'package' : 'packages'} ${names}`
+		: 'it is locked to an allowed-packages list'
+	const why = `Secret "${input.secretName}" was refused: ${lockedTo}, so only the code of a listed package can use it, and this request did not come from one.`
+	if (input.listedPackageNameInRun) {
+		return `${why} Fix: call an export of "${input.listedPackageNameInRun}" and let it make the request. If "${input.listedPackageNameInRun}" itself made this request, it reached fetch in a way that cannot be tied to it (for example through an alias of globalThis): have it call fetch directly, then publish it again.`
+	}
+	return `${why} Fix: call an export of a listed package and let it make the request, or ask the account owner to add the calling package to the list (a package must make the request with its own fetch or kody:runtime helpers).`
 }
 
 export function createSecretPackageGrantRequiresWebsiteMessage(input: {

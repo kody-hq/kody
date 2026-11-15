@@ -4,6 +4,7 @@ import {
 	isUnrepairablePreBindingArtifact,
 	packageBindingRewriteVersion,
 	publishedArtifactNeedsPackageBindingRebuild,
+	repairGlobalObjectFetchReadsInArtifact,
 	repairPreBindingPublishedArtifact,
 } from './pre-binding-artifact-repair.ts'
 
@@ -226,4 +227,69 @@ test('never treats a browser app-client bundle as pre-binding', () => {
 	expect(repairPreBindingPublishedArtifact(app).modules['bundle.js']).toContain(
 		'const fetch = __kodyPreBindingBoundFetch("pkg-own");',
 	)
+})
+
+const globalReadSource = [
+	'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own");',
+	'export const wake = () => globalThis.fetch("https://example.com");',
+].join('\n')
+
+test('binds global-object fetch reads in a single-package bundle built before the builder did', () => {
+	for (const extra of [{}, { packageBindingRewrite: 1 }]) {
+		const repaired = repairGlobalObjectFetchReadsInArtifact(
+			artifact(globalReadSource, extra),
+		)
+		const source = repaired.modules['bundle.js']!
+		expect(source).toContain(
+			'import { __kodyCreatePackageBoundFetch as __kodyPreBindingGlobalReadCreator } from "./.__kody_virtual__/runtime.js";',
+		)
+		expect(source).toContain(
+			'const __kodyPreBindingGlobalReadFetch = __kodyPreBindingGlobalReadCreator("pkg-own");',
+		)
+		expect(source).toContain(
+			'export const wake = () => __kodyPreBindingGlobalReadFetch("https://example.com");',
+		)
+	}
+})
+
+test('leaves current, unowned, multi-package and write-only bundles alone', () => {
+	for (const unchanged of [
+		artifact(globalReadSource, {
+			packageBindingRewrite: packageBindingRewriteVersion,
+		}),
+		artifact(globalReadSource, { packageContext: null }),
+		artifact(globalReadSource, { dependencies: [{ packageId: 'pkg-other' }] }),
+		artifact('globalThis.fetch = polyfill;', { packageBindingRewrite: 1 }),
+		artifact('const g = globalThis; g.fetch(url);', {
+			packageBindingRewrite: 1,
+		}),
+		artifact(globalReadSource, { kind: 'app-client' }),
+	]) {
+		expect(repairGlobalObjectFetchReadsInArtifact(unchanged)).toBe(unchanged)
+	}
+})
+
+test('a multi-package bundle with a global-object fetch read is rebuilt once, to the current version', () => {
+	const mixed = { dependencies: [{ packageId: 'pkg-other' }] }
+	expect(
+		isUnrepairablePreBindingArtifact(
+			artifact(globalReadSource, { ...mixed, packageBindingRewrite: 1 }),
+		),
+	).toBe(true)
+	expect(
+		isUnrepairablePreBindingArtifact(
+			artifact(globalReadSource, {
+				...mixed,
+				packageBindingRewrite: packageBindingRewriteVersion,
+			}),
+		),
+	).toBe(false)
+	expect(
+		isUnrepairablePreBindingArtifact(
+			artifact(
+				'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own"); export const wake = () => __kodyBoundFetch(url);',
+				{ ...mixed, packageBindingRewrite: 1 },
+			),
+		),
+	).toBe(false)
 })

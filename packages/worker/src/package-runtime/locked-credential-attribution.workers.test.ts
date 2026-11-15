@@ -632,7 +632,9 @@ async function refusalRows(userId: string) {
 	return results
 }
 
-const refused = expect.stringContaining('locked to an allowed-packages list')
+const refused = expect.stringMatching(
+	/was refused: it is locked to package "[^"]+", so only the code of a listed package can use it/,
+)
 
 test(
 	'ad hoc code with no imports cannot use a locked credential directly',
@@ -799,7 +801,10 @@ export default { async fetch() {
 		])
 		const rows = await refusalRows(userId)
 		expect(rows).toEqual([
-			expect.objectContaining({ kind: 'run_package_unbound', surface: 'app' }),
+			expect.objectContaining({
+				kind: 'listed_package_unbound',
+				surface: 'app',
+			}),
 		])
 	},
 )
@@ -865,7 +870,7 @@ export default async function main() { return await run() }`,
 		await vi.waitFor(
 			async () => {
 				const { results } = await env.APP_DB.prepare(
-					`SELECT kind, surface, pattern, credential_name, bound_package_id, changed_intrinsics, observations
+					`SELECT kind, surface, pattern, credential_name, run_package_id, bound_package_id, changed_intrinsics, observations
 					 FROM credential_attribution_log WHERE owner_id = ?`,
 				)
 					.bind(userId)
@@ -878,6 +883,8 @@ export default async function main() { return await run() }`,
 					surface: 'hosted',
 					pattern: 'bound_fetch',
 					credential_name: 'locked',
+					// The run is ad hoc code; the listed package made the request.
+					run_package_id: '',
 					bound_package_id: locked.packageId,
 					observations: 2,
 				})

@@ -362,7 +362,11 @@ export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 			// says which package's code is fetching.
 			const unboundCall: UnboundSandboxCall | null = boundPackageId
 				? null
-				: { surface, pattern: 'shared_fetch' }
+				: {
+						surface,
+						pattern: 'shared_fetch',
+						loadedPackageIds: props?.grantedSecretAuthorityPackageIds ?? null,
+					}
 			return withoutForgedGatewayErrorHeader(
 				await runAsSandboxCall(
 					unboundCall,

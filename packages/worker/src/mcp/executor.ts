@@ -1570,7 +1570,13 @@ export function createToolDispatchers(
 							runAsSandboxCall(
 								requestedPackageId
 									? null
-									: { surface: 'hosted', pattern: 'shared_capability' },
+									: {
+											surface: 'hosted',
+											pattern: 'shared_capability',
+											loadedPackageIds: capturedGrantedPackageIds
+												? [...capturedGrantedPackageIds]
+												: null,
+										},
 								() => runWithCurrentSecretAuthority(requestedPackageId, invoke),
 							)
 						return capturedGrantedPackageIds

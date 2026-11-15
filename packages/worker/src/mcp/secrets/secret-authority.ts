@@ -73,6 +73,8 @@ export function getSecretAuthorityScope() {
 export type UnboundSandboxCall = {
 	surface: 'hosted' | 'app'
 	pattern: 'shared_fetch' | 'shared_capability'
+	/** Packages loaded into the run, from the host's own grant set. */
+	loadedPackageIds?: ReadonlyArray<string> | null
 }
 
 /** A package-bound fetch that reported changed shared globals. */

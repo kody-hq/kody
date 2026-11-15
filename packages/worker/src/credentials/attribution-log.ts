@@ -15,7 +15,15 @@ import { waitUntil } from 'cloudflare:workers'
 export type UnboundUseSurface = 'hosted' | 'app'
 /** The shared channel the call arrived on. */
 export type UnboundUsePattern = 'shared_fetch' | 'shared_capability'
-export type UnboundUseKind = 'ad_hoc' | 'run_package_unbound'
+/**
+ * `listed_package_unbound`: a package on the credential's list is part of the
+ * run, so the call may be that package's own code reaching the network
+ * through a channel the bundler could not bind (usually an older bundle).
+ */
+export type UnboundUseKind =
+	| 'ad_hoc'
+	| 'run_package_unbound'
+	| 'listed_package_unbound'
 type RecordKind = UnboundUseKind | 'intrinsics_changed'
 type RecordPattern = UnboundUsePattern | 'bound_fetch'
 
@@ -27,6 +35,8 @@ export type UnboundUseRefusal = {
 	pattern: UnboundUsePattern
 	/** The run's own package, or null for ad hoc code. */
 	runPackageId: string | null
+	/** A package on the credential's list that is loaded in the run, if any. */
+	listedPackageIdInRun?: string | null
 }
 
 export const unboundUseRefusalFlushDelayMs = 1_000
@@ -163,6 +173,7 @@ export function scheduleUnboundUseRefusal(input: {
 	flushDelayMs?: number
 }): void {
 	const runPackageId = input.refusal.runPackageId?.trim() ?? ''
+	const listedPackageId = input.refusal.listedPackageIdInRun?.trim() ?? ''
 	enqueue({
 		env: input.env,
 		now: input.now,
@@ -170,11 +181,15 @@ export function scheduleUnboundUseRefusal(input: {
 		row: {
 			ownerId: input.refusal.ownerId.trim(),
 			credentialId: input.refusal.credentialId.trim(),
-			kind: runPackageId ? 'run_package_unbound' : 'ad_hoc',
+			kind: listedPackageId
+				? 'listed_package_unbound'
+				: runPackageId
+					? 'run_package_unbound'
+					: 'ad_hoc',
 			surface: input.refusal.surface,
 			pattern: input.refusal.pattern,
 			runPackageId,
-			boundPackageId: '',
+			boundPackageId: listedPackageId,
 			changedIntrinsics: '',
 			credentialName: input.refusal.credentialName,
 		},

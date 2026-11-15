@@ -1,7 +1,11 @@
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { runtimeModulePath } from './module-graph-path-basics.ts'
 import { listMissingPublishedSourceInstalledDependencies } from './published-source-dependencies.ts'
-import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
+import {
+	collectTopLevelFetchCollisionNames,
+	rewriteGlobalObjectFetchReads,
+	sourceMayReadFetchThroughGlobalObject,
+} from './rewrite-local-execute-secret-fetch.ts'
 import {
 	isKodyPublicRuntimeModulePath,
 	isKodyRuntimeModulePath,
@@ -20,8 +24,18 @@ import {
  * Bundles built with the lexical rewrite carry this marker. Unmarked bundles
  * that already name a bound creator were built by the fixed builder before
  * the marker existed.
+ *
+ * Version 2 also binds reads of `fetch` through the global object
+ * (`globalThis.fetch`, `self.fetch`) to the reading package. Version 1 bundles
+ * already have lexical identity; only their global-object reads are repaired
+ * (see {@link repairGlobalObjectFetchReadsInArtifact}).
  */
-export const packageBindingRewriteVersion = 1
+export const packageBindingRewriteVersion = 2
+const lexicalBindingRewriteVersion = 1
+
+function hasLexicalBindingMarker(artifact: RepairableArtifact) {
+	return (artifact.packageBindingRewrite ?? 0) >= lexicalBindingRewriteVersion
+}
 
 type RepairableArtifact = {
 	/**
@@ -168,9 +182,7 @@ export function isRepairableArtifactKind(kind: string | null | undefined) {
 /** True for a bundle built before package `fetch` became lexical. */
 export function isPreBindingPublishedArtifact(artifact: RepairableArtifact) {
 	if (!isRepairableArtifactKind(artifact.kind)) return false
-	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
-		return false
-	}
+	if (hasLexicalBindingMarker(artifact)) return false
 	let needsBinding = false
 	for (const [modulePath, module] of Object.entries(artifact.modules)) {
 		if (isPlatformRuntimeModulePath(modulePath)) continue
@@ -283,6 +295,86 @@ export function repairPreBindingPublishedArtifact<
 	return { ...artifact, modules }
 }
 
+const repairGlobalReadFetchName = '__kodyPreBindingGlobalReadFetch'
+const repairGlobalReadCreatorName = '__kodyPreBindingGlobalReadCreator'
+
+function artifactReadsFetchThroughGlobalObject(artifact: RepairableArtifact) {
+	for (const [modulePath, module] of Object.entries(artifact.modules)) {
+		if (isPlatformRuntimeModulePath(modulePath)) continue
+		const source = moduleSource(module)
+		if (source == null || !sourceMayReadFetchThroughGlobalObject(source)) {
+			continue
+		}
+		if (
+			rewriteGlobalObjectFetchReads(source, repairGlobalReadFetchName) !==
+			source
+		) {
+			return true
+		}
+	}
+	return false
+}
+
+/**
+ * Bind reads of `fetch` through the global object in a single-package bundle
+ * built before the builder did so, so a listed package's own requests keep
+ * their identity without a republish. Same identity source and limits as
+ * {@link repairPreBindingPublishedArtifact}. Current bundles have no such
+ * reads left to bind, so they come back unchanged. Bundles that inline other
+ * packages are rebuilt from source instead
+ * ({@link isUnrepairablePreBindingArtifact}).
+ */
+export function repairGlobalObjectFetchReadsInArtifact<
+	Artifact extends RepairableArtifact,
+>(artifact: Artifact): Artifact {
+	if (!isRepairableArtifactKind(artifact.kind)) return artifact
+	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
+		return artifact
+	}
+	const ownPackageId = artifact.packageContext?.packageId?.trim()
+	if (!ownPackageId) return artifact
+	if (publishedArtifactInlinesOtherPackages(artifact)) return artifact
+	let modules: WorkerLoaderModules | null = null
+	for (const [modulePath, module] of Object.entries(artifact.modules)) {
+		if (isPlatformRuntimeModulePath(modulePath)) continue
+		const original = moduleSource(module)
+		if (original == null || !sourceMayReadFetchThroughGlobalObject(original)) {
+			continue
+		}
+		const rewritten = rewriteGlobalObjectFetchReads(
+			original,
+			repairGlobalReadFetchName,
+		)
+		if (rewritten === original) continue
+		const collisions = collectTopLevelFetchCollisionNames(original)
+		if (
+			!collisions ||
+			collisions.has(repairGlobalReadFetchName) ||
+			collisions.has(repairGlobalReadCreatorName)
+		) {
+			warnUnrepairedModule({
+				artifact,
+				modulePath,
+				reason: collisions ? 'creator-name-collision' : 'parse-failed',
+			})
+			continue
+		}
+		modules ??= { ...artifact.modules }
+		modules[modulePath] = withModuleSource(
+			module,
+			[
+				`import { __kodyCreatePackageBoundFetch as ${repairGlobalReadCreatorName} } from ${JSON.stringify(
+					runtimeSpecifierFrom(modulePath),
+				)};`,
+				`const ${repairGlobalReadFetchName} = ${repairGlobalReadCreatorName}(${JSON.stringify(ownPackageId)});`,
+				rewritten,
+			].join('\n'),
+		)
+	}
+	if (!modules) return artifact
+	return { ...artifact, modules }
+}
+
 /**
  * True when any isolate-loaded module already names a lexical package-binding
  * creator. Bundles built after GHSA-5fv3 but before the rewrite marker use
@@ -321,6 +413,11 @@ export function isUnrepairablePreBindingArtifact(artifact: RepairableArtifact) {
 	if (artifact.packageBindingRewrite === packageBindingRewriteVersion) {
 		return false
 	}
+	// Built before global-object fetch reads were bound, and one of its
+	// modules still reaches fetch that way. The modules mix packages, so the
+	// read cannot be bound to one of them in place.
+	if (artifactReadsFetchThroughGlobalObject(artifact)) return true
+	if (hasLexicalBindingMarker(artifact)) return false
 	// Post-fix, pre-marker builds already inlined lexical creators.
 	if (
 		!isPreBindingPublishedArtifact(artifact) &&

@@ -1336,7 +1336,7 @@ test('rebuildPublishedPackageArtifacts rebuilds a refused pre-binding importable
 				kind: 'importable-module',
 				artifactName: './a',
 				publishedCommit: 'commit-1',
-				packageBindingRewrite: 1,
+				packageBindingRewrite: 2,
 			}),
 		}),
 	)

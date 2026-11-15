@@ -161,13 +161,19 @@ const globalObjectNames = new Set(['globalThis', 'self'])
  * the same name is never mistaken for the global object. Returns the source
  * unchanged when it does not parse.
  */
+const globalObjectFetchReadPattern =
+	/\b(?:globalThis|self)\s*(?:\??\.\s*fetch\b|\[\s*['"`]fetch['"`]\s*\])/
+
+/** Cheap text check that runs before parsing. */
+export function sourceMayReadFetchThroughGlobalObject(source: string) {
+	return globalObjectFetchReadPattern.test(source)
+}
+
 export function rewriteGlobalObjectFetchReads(
 	source: string,
 	replacement: string,
 ): string {
-	if (!/\b(?:globalThis|self)\b/.test(source) || !source.includes('fetch')) {
-		return source
-	}
+	if (!sourceMayReadFetchThroughGlobalObject(source)) return source
 	let parsed: ModuleAstNode
 	try {
 		parsed = parseModuleSource(source) as unknown as ModuleAstNode
@@ -233,19 +239,35 @@ export function rewriteGlobalObjectFetchReads(
 	return next
 }
 
+/**
+ * Starts of every node inside an assignment target: the left side of an
+ * assignment (destructuring patterns included), the operand of `++`, `--`
+ * and `delete`, and the target of a `for (x in/of ...)` loop. Covering the
+ * whole target subtree also covers computed keys and defaults inside a
+ * pattern; leaving those unrewritten is the safe direction.
+ */
 function collectMemberWriteStarts(parsed: ModuleAstNode) {
 	const starts = new Set<number>()
+	const addTarget = (target: unknown) => {
+		walkAst(target, (inner) => {
+			if (typeof inner.start === 'number') starts.add(inner.start)
+		})
+	}
 	walkAst(parsed, (node) => {
-		const target =
-			node.type === 'AssignmentExpression'
-				? (node as { left?: unknown }).left
-				: node.type === 'UpdateExpression' ||
-					  (node.type === 'UnaryExpression' &&
-							(node as { operator?: unknown }).operator === 'delete')
-					? (node as { argument?: unknown }).argument
-					: null
-		const start = (target as { start?: unknown } | null)?.start
-		if (typeof start === 'number') starts.add(start)
+		if (node.type === 'AssignmentExpression') {
+			addTarget((node as { left?: unknown }).left)
+		} else if (
+			node.type === 'UpdateExpression' ||
+			(node.type === 'UnaryExpression' &&
+				(node as { operator?: unknown }).operator === 'delete')
+		) {
+			addTarget((node as { argument?: unknown }).argument)
+		} else if (
+			node.type === 'ForInStatement' ||
+			node.type === 'ForOfStatement'
+		) {
+			addTarget((node as { left?: unknown }).left)
+		}
 	})
 	return starts
 }
