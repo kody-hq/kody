@@ -116,8 +116,13 @@ const fileDate = new Intl.DateTimeFormat('en-US', {
 	timeZone: 'UTC',
 })
 
-const compactControl = {
+// Dense explorer rows are a fixed 28px, so touch keeps the same height.
+const compactHeight = {
 	minHeight: 28,
+	'@media (any-pointer: coarse)': { minHeight: 28 },
+}
+const compactControl = {
+	...compactHeight,
 	padding: '3px 9px',
 	...getSquircleCss('xs'),
 	fontSize: typography.fontSize.xs,
@@ -167,7 +172,7 @@ const iconButton = {
 	display: 'inline-grid',
 	placeItems: 'center',
 	width: 28,
-	minHeight: 28,
+	...compactHeight,
 	padding: 0,
 }
 
