@@ -44,8 +44,20 @@ const maxDistinctStatements = 200
 const overflowStatementKey = '(other statements)'
 const topStatementsPerWindow = 10
 
+/** FNV-1a, enough to tell apart long statements that share a prefix. */
+function fnv1aHex(text: string): string {
+	let hash = 0x811c9dc5
+	for (let index = 0; index < text.length; index += 1) {
+		hash ^= text.charCodeAt(index)
+		hash = Math.imul(hash, 0x01000193)
+	}
+	return (hash >>> 0).toString(16).padStart(8, '0')
+}
+
 export function runLogSqlStatementKey(query: string): string {
-	return query.replace(/\s+/g, ' ').trim().slice(0, statementKeyMaxLength)
+	const normalized = query.replace(/\s+/g, ' ').trim()
+	if (normalized.length <= statementKeyMaxLength) return normalized
+	return `${normalized.slice(0, statementKeyMaxLength)}... #${fnv1aHex(normalized)}`
 }
 
 type PendingCursor = {
