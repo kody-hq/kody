@@ -129,7 +129,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-export const runLogSchemaVersion = 21
+export const runLogSchemaVersion = 22
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -1122,6 +1122,13 @@ class RunLogBase extends DurableObject<Env> {
 			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
 			ON run_day_counts(day)`,
 		)
+		// One row per package event delivery in progress for this owner.
+		this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS package_event_slots (
+				id TEXT PRIMARY KEY NOT NULL,
+				expires_at TEXT NOT NULL
+			)
+		`)
 		if (installedVersion != null && installedVersion < 16) {
 			this.migrateRetrieverRunsForV16()
 		}
@@ -2660,6 +2667,48 @@ class RunLogBase extends DurableObject<Env> {
 		if (input.staleAfter) this.holdRunningUntil(input.run.id, input.staleAfter)
 		await this.ensureRetentionAlarm()
 		return { ok: true }
+	}
+
+	/**
+	 * Take one of this owner's package event delivery slots unless `limit`
+	 * other deliveries hold one. A slot expires on its own, so a consumer that
+	 * was killed frees it without a release call. DO RPCs are serialized, so
+	 * count-then-insert is race-free.
+	 */
+	async claimPackageEventSlot(input: {
+		id: string
+		limit: number
+		expiresAt: string
+	}): Promise<{ claimed: boolean; inFlight: number }> {
+		const sql = this.ctx.storage.sql
+		sql.exec(
+			`DELETE FROM package_event_slots WHERE expires_at <= ?`,
+			new Date().toISOString(),
+		)
+		const inFlight =
+			Number(
+				sql
+					.exec<{ count: number }>(
+						`SELECT COUNT(*) AS count FROM package_event_slots WHERE id != ?`,
+						input.id,
+					)
+					.one().count,
+			) || 0
+		if (inFlight >= input.limit) return { claimed: false, inFlight }
+		sql.exec(
+			`INSERT INTO package_event_slots (id, expires_at) VALUES (?, ?)
+			ON CONFLICT(id) DO UPDATE SET expires_at = excluded.expires_at`,
+			input.id,
+			input.expiresAt,
+		)
+		return { claimed: true, inFlight }
+	}
+
+	async releasePackageEventSlot(input: { id: string }): Promise<void> {
+		this.ctx.storage.sql.exec(
+			`DELETE FROM package_event_slots WHERE id = ?`,
+			input.id,
+		)
 	}
 
 	/**
@@ -5437,6 +5486,12 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 		staleAfter: string
 		limit: number
 	}) => Promise<{ started: boolean; inFlight: number }>
+	claimPackageEventSlot: (input: {
+		id: string
+		limit: number
+		expiresAt: string
+	}) => Promise<{ claimed: boolean; inFlight: number }>
+	releasePackageEventSlot: (input: { id: string }) => Promise<void>
 	updateRunningMetadata: (input: {
 		runId: string
 		metadataJson: string

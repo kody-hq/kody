@@ -5,9 +5,26 @@ import {
 	isInboundDeliveryEffectsQueueBody,
 	parseInboundDeliveryEffectsQueueMessage,
 } from '#worker/email/inbound-effects-queue.ts'
-import { parsePackageEventsDispatchQueueMessage } from './dispatch-queue-producer.ts'
+import {
+	claimPackageEventSlot,
+	releasePackageEventSlot,
+} from '#worker/run-records/service.ts'
+import { ownerCapDeferralDelaySeconds } from '#worker/owner-cap-deferral.ts'
+import {
+	parsePackageEventsDispatchQueueMessage,
+	type PackageEventsDispatchQueueMessage,
+} from './dispatch-queue-producer.ts'
 
 const packageEventsDispatchRetryDelaySeconds = 30
+
+/**
+ * How many of one owner's package events are delivered at once. The consumer
+ * runs 16 at a time for everyone, so without this one owner's burst holds
+ * every slot. Matches `webhookAckOwnerStartedLimit`.
+ */
+export const packageEventsOwnerInFlightLimit = 4
+/** A queue consumer invocation ends within 15 minutes; a killed one frees its slot by then. */
+const packageEventSlotTtlMs = 15 * 60 * 1000
 
 export async function handlePackageEventsDispatchQueue(
 	batch: MessageBatch<unknown>,
@@ -96,6 +113,38 @@ async function handlePackageEventsQueueMessages(
 			queueMessage.ack()
 			continue
 		}
+		const { claimed } = await claimPackageEventSlot({
+			env,
+			userId: message.userId,
+			id: queueMessage.id,
+			limit: packageEventsOwnerInFlightLimit,
+			expiresAt: new Date(Date.now() + packageEventSlotTtlMs).toISOString(),
+		})
+		if (!claimed) {
+			// Re-send instead of retry(): a retry counts toward max_retries, so a
+			// long wait behind the owner's own backlog would dead-letter it.
+			const deferrals = message.deferrals ?? 0
+			try {
+				await env.PACKAGE_EVENTS_DISPATCH_QUEUE.send(
+					{
+						...message,
+						deferrals: deferrals + 1,
+					} satisfies PackageEventsDispatchQueueMessage,
+					{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
+				)
+				queueMessage.ack()
+			} catch (error) {
+				console.error('package-events-dispatch-deferral-send-failed', {
+					queueMessageId: queueMessage.id,
+					topic: message.topic,
+					error,
+				})
+				queueMessage.retry({
+					delaySeconds: packageEventsDispatchRetryDelaySeconds,
+				})
+			}
+			continue
+		}
 		try {
 			const result = await deliverPackageEvent({
 				env,
@@ -126,6 +175,12 @@ async function handlePackageEventsQueueMessages(
 			})
 			queueMessage.retry({
 				delaySeconds: packageEventsDispatchRetryDelaySeconds,
+			})
+		} finally {
+			await releasePackageEventSlot({
+				env,
+				userId: message.userId,
+				id: queueMessage.id,
 			})
 		}
 	}

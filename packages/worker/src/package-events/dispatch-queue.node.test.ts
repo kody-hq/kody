@@ -13,6 +13,17 @@ const mocks = vi.hoisted(() => ({
 		>(),
 	processInboundDeliveryEffects:
 		vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
+	claimPackageEventSlot: vi.fn<
+		(input: { id: string }) => Promise<{ claimed: boolean; inFlight: number }>
+	>(async () => ({ claimed: true, inFlight: 0 })),
+	releasePackageEventSlot: vi.fn<(input: { id: string }) => Promise<void>>(
+		async () => {},
+	),
+}))
+
+vi.mock('#worker/run-records/service.ts', () => ({
+	claimPackageEventSlot: mocks.claimPackageEventSlot,
+	releasePackageEventSlot: mocks.releasePackageEventSlot,
 }))
 
 vi.mock('#worker/email/inbound-effects.ts', () => ({
@@ -231,4 +242,49 @@ test('inbound delivery effects run concurrently in the consumer and retry infras
 		'inbound-delivery-effects-message-invalid',
 		expect.objectContaining({ queueMessageId: 'queue-inbound-invalid' }),
 	)
+})
+
+test('an event whose owner is at the cap is put back with a delay instead of delivered or retried', async () => {
+	mocks.deliverPackageEvent.mockClear()
+	mocks.releasePackageEventSlot.mockClear()
+	mocks.deliverPackageEvent.mockResolvedValue({
+		delivered: 1,
+		failed: 0,
+		subscribers: [],
+	})
+	mocks.claimPackageEventSlot
+		.mockResolvedValueOnce({ claimed: false, inFlight: 4 })
+		.mockResolvedValueOnce({ claimed: true, inFlight: 0 })
+	const send =
+		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	const capped = createQueueMessage(
+		'queue-capped',
+		createMessageBody({ deferrals: 2 }),
+	)
+	const other = createQueueMessage(
+		'queue-other-owner',
+		createMessageBody({ userId: ownerIdFromStored('user-456') }),
+	)
+
+	await handlePackageEventsDispatchQueue(
+		createBatch([capped, other]),
+		{ APP_DB: {}, PACKAGE_EVENTS_DISPATCH_QUEUE: { send } } as unknown as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+
+	expect(send).toHaveBeenCalledTimes(1)
+	expect(send.mock.calls[0]?.[0]).toEqual(createMessageBody({ deferrals: 3 }))
+	const delaySeconds = send.mock.calls[0]?.[1]?.delaySeconds ?? 0
+	expect(delaySeconds).toBeGreaterThanOrEqual(10)
+	expect(delaySeconds).toBeLessThanOrEqual(20)
+	expect(capped.ack).toHaveBeenCalledTimes(1)
+	expect(capped.retry).not.toHaveBeenCalled()
+	expect(mocks.deliverPackageEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.releasePackageEventSlot).toHaveBeenCalledTimes(1)
+	expect(mocks.releasePackageEventSlot).toHaveBeenCalledWith(
+		expect.objectContaining({ id: 'queue-other-owner' }),
+	)
+	expect(other.ack).toHaveBeenCalledTimes(1)
 })

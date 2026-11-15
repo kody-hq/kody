@@ -35,6 +35,8 @@ export type PackageEventsDispatchQueueMessage = {
 	 * passes through a package event keeps counting toward its limit.
 	 */
 	resourceEventDepth?: number
+	/** Times the consumer put this event back because its owner was at the cap. */
+	deferrals?: number
 }
 
 export function parsePackageEventsDispatchQueueMessage(
@@ -81,6 +83,7 @@ export function parsePackageEventsDispatchQueueMessage(
 	const emittedAt = record['emittedAt']
 	const lineage = parseRequestLineage(record['lineage'])
 	const resourceEventDepth = record['resourceEventDepth']
+	const deferrals = record['deferrals']
 	return {
 		userId: userId.trim() as OwnerId,
 		topic: topic.trim(),
@@ -97,6 +100,11 @@ export function parsePackageEventsDispatchQueueMessage(
 		Number.isInteger(resourceEventDepth) &&
 		resourceEventDepth > 0
 			? { resourceEventDepth }
+			: {}),
+		...(typeof deferrals === 'number' &&
+		Number.isInteger(deferrals) &&
+		deferrals > 0
+			? { deferrals }
 			: {}),
 	}
 }

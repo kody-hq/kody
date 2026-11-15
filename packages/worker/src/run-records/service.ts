@@ -418,6 +418,45 @@ export async function ensureRunRecordStarted(input: {
 }
 
 /**
+ * Take one of the owner's package event delivery slots. Fails open
+ * (`claimed: true`) when the run log is unavailable, so a run-log outage
+ * never stalls events.
+ */
+export async function claimPackageEventSlot(input: {
+	env: Env
+	userId: OwnerId
+	id: string
+	limit: number
+	expiresAt: string
+}): Promise<{ claimed: boolean; inFlight: number | null }> {
+	if (!runLogBinding(input.env)) return { claimed: true, inFlight: null }
+	try {
+		return await runLogRpc(input).claimPackageEventSlot({
+			id: input.id,
+			limit: input.limit,
+			expiresAt: input.expiresAt,
+		})
+	} catch (error) {
+		console.warn('run-record-package-event-slot-claim-failed', error)
+		return { claimed: true, inFlight: null }
+	}
+}
+
+/** Never throws: an unreleased slot expires on its own. */
+export async function releasePackageEventSlot(input: {
+	env: Env
+	userId: OwnerId
+	id: string
+}) {
+	if (!runLogBinding(input.env)) return
+	try {
+		await runLogRpc(input).releasePackageEventSlot({ id: input.id })
+	} catch (error) {
+		console.warn('run-record-package-event-slot-release-failed', error)
+	}
+}
+
+/**
  * Start a webhook delivery attempt unless `limit` of the owner's other
  * deliveries are already started. Fails open (`started: true`) when the run
  * log is unavailable, so a run-log outage never stalls deliveries.
