@@ -188,3 +188,35 @@ test('createDynamicWorkerBillingId follows only user code, user modules, user, a
 	// Never collides with the LOADER id for the same inputs.
 	expect(first).not.toBe(await mintId())
 })
+
+test('createStableDynamicWorkerId hashes a multi-megabyte module to the same id as hashing its whole JSON', async () => {
+	const chunkChars = 64 * 1024
+	// Escapes, non-ASCII, and a surrogate pair straddling a chunk boundary.
+	const bundle = `${'a'.repeat(chunkChars - 1)}😀${'"\\\n\u2028é'.repeat(chunkChars)}\ud800tail`
+	const input = {
+		userId: 'user-1',
+		storageContext: null,
+		workerOptions: {
+			compatibilityDate: '2026-01-01',
+			compatibilityFlags: ['nodejs_compat'],
+			mainModule: 'executor.js',
+			modules: { 'executor.js': 'export default 1', 'bundle.js': bundle },
+		},
+	}
+	const wholeJson = JSON.stringify({
+		binding: 'LOADER',
+		compatibilityDate: '2026-01-01',
+		compatibilityFlags: ['nodejs_compat'],
+		mainModule: 'executor.js',
+		modules: { 'bundle.js': bundle, 'executor.js': 'export default 1' },
+		storageContext: null,
+		userId: 'user-1',
+		version: dynamicWorkerCacheKeyVersion,
+	})
+	const digest = await crypto.subtle.digest(
+		'SHA-256',
+		new TextEncoder().encode(wholeJson),
+	)
+	const expected = Buffer.from(digest).toString('base64url').slice(0, 43)
+	expect(await createStableDynamicWorkerId(input)).toBe(`kody-${expected}`)
+})
