@@ -223,6 +223,23 @@ export function externalPublishResourceLimitMessage(
 	)
 }
 
+/**
+ * Caller-facing copy when writing an uploaded local or context build hits
+ * the Durable Object limit. Nothing is built in that step, so building
+ * outside Kody cloud is not the way out.
+ */
+export function uploadedBuildPersistLimitMessage() {
+	return (
+		'Kody ran out of CPU time or memory while storing this uploaded build, ' +
+		'so the publish stopped. Your build was not rebuilt, and building it ' +
+		'again locally or on an execution context will not change this. The ' +
+		'step verifies the upload and links the `kody:@` packages it imports, ' +
+		'so importing fewer `kody:@` exports from one entry point may get it ' +
+		'through. This is a Kody limit, not a problem with your package: ' +
+		'report it with `feedbackSubmit` and include this message.'
+	)
+}
+
 const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
 
 /**
