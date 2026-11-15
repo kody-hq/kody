@@ -44,6 +44,7 @@ export type UserOwnedKvKeyScheme = {
 		| 'published_bundle_artifact_kv_key'
 		| 'source_snapshot'
 		| 'source_manifest_snapshot'
+		| 'linked_artifact'
 		| 'community_snapshot'
 		| 'community_icon_derived_cache'
 		| 'identity_icon_derived_cache'
@@ -242,6 +243,13 @@ export const accountUserOwnedKvKeySchemes: ReadonlyArray<UserOwnedKvKeyScheme> =
 			id: 'source_manifest_snapshot',
 			binding: 'BUNDLE_ARTIFACTS_KV',
 			prefixTemplate: 'source-manifest-snapshot:v1:{sourceId}:',
+		},
+		{
+			id: 'linked_artifact',
+			binding: 'BUNDLE_ARTIFACTS_KV',
+			prefixTemplate: 'linked-artifact:v1:{sourceId}:',
+			notes:
+				"Linked dependency modules of an uploaded build, stored once per published commit and content hash and referenced by that commit's bundle artifacts. Deleted with the commit's artifacts.",
 		},
 		{
 			id: 'community_snapshot',

@@ -7,6 +7,10 @@ import {
 	parseStoredBundleArtifactManifest,
 	type BundleArtifactManifest,
 } from './bundle-artifact-manifest.ts'
+import {
+	restoreLinkedArtifactGroups,
+	storeLinkedArtifactGroups,
+} from './linked-artifact-store.ts'
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
@@ -747,13 +751,20 @@ export async function writePublishedBundleArtifact(input: {
 			artifactName: input.artifact.artifactName,
 			entryPoint: input.artifact.entryPoint,
 		})
-	// Always derived from the modules being written, never carried over.
+	const kv = getBundleArtifactsKv(input.env)
+	const { modules, linkedArtifacts } = await storeLinkedArtifactGroups({
+		kv,
+		sourceId: input.artifact.sourceId,
+		publishedCommit: input.artifact.publishedCommit,
+		modules: serializeWorkerLoaderModules(input.artifact.modules),
+	})
 	const serialized = JSON.stringify({
 		...input.artifact,
-		modules: serializeWorkerLoaderModules(input.artifact.modules),
+		modules,
+		...(linkedArtifacts.length > 0 ? { linkedArtifacts } : {}),
+		// Always derived from the modules being written, never carried over.
 		manifest: createBundleArtifactManifest(input.artifact),
 	})
-	const kv = getBundleArtifactsKv(input.env)
 	await Promise.all([
 		kv.put(kvKey, serialized),
 		writePackageAppWorkerTemplatePart({
@@ -856,7 +867,9 @@ export async function readPackageAppWorkerTemplate(input: {
 		publishedCommit: input.publishedCommit,
 	}
 	const [storedApp, storedClient] = await Promise.all([
-		kv.get(buildPackageAppWorkerTemplateKvKey(identity), 'json'),
+		kv
+			.get(buildPackageAppWorkerTemplateKvKey(identity), 'json')
+			.then((stored) => restoreLinkedArtifactGroups({ kv, stored })),
 		input.clientEntry
 			? kv.get(buildPackageAppClientPointerKvKey(identity), 'json')
 			: null,
@@ -888,8 +901,12 @@ export async function readPublishedBundleArtifact(input: {
 	env: Env
 	kvKey: string
 }) {
+	const kv = getBundleArtifactsKv(input.env)
 	return parseStoredPublishedBundleArtifact(
-		await getBundleArtifactsKv(input.env).get(input.kvKey, 'json'),
+		await restoreLinkedArtifactGroups({
+			kv,
+			stored: await kv.get(input.kvKey, 'json'),
+		}),
 	)
 }
 

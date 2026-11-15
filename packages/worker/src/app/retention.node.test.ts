@@ -627,6 +627,43 @@ test('published bundle artifact retention deletes stale rows, KV blobs, and sour
 	])
 })
 
+test("published bundle retention deletes a commit's linked dependency modules with its last artifact", async () => {
+	const { sqlite, db } = createRetentionDb()
+	const stored = new Set([
+		'linked-artifact:v1:source-gone:commit-old:hash-a',
+		'linked-artifact:v1:source-kept:commit-old:hash-b',
+	])
+	const env = {
+		APP_DB: db,
+		BUNDLE_ARTIFACTS_KV: {
+			delete: async (key: string) => void stored.delete(key),
+			list: async ({ prefix }: { prefix: string }) => ({
+				keys: [...stored]
+					.filter((name) => name.startsWith(prefix))
+					.map((name) => ({ name })),
+				list_complete: true,
+			}),
+		},
+		REPO_SESSION_INDEX:
+			createInMemoryRepoSessionIndexEnv(db).REPO_SESSION_INDEX,
+	} as unknown as Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
+	const stale = publishedBundleArtifactRetentionDays + 1
+	insertRows(sqlite, 'published_bundle_artifacts', artifactColumns, [
+		artifactRow('gone', 'source-gone', 'commit-old', stale),
+		artifactRow('kept-old', 'source-kept', 'commit-old', stale),
+		artifactRow('kept-new', 'source-kept', 'commit-old', stale - 1),
+	])
+
+	await prunePublishedBundleArtifactsForRetention({ env, now, batchSize: 10 })
+
+	expect(selectColumn(sqlite, 'published_bundle_artifacts', 'id')).toEqual([
+		'kept-new',
+	])
+	expect([...stored]).toEqual([
+		'linked-artifact:v1:source-kept:commit-old:hash-b',
+	])
+})
+
 test('published bundle retention keeps artifacts while entity_sources are soft-deleted', async () => {
 	const { sqlite, db } = createRetentionDb()
 	const kvDelete = vi.fn(async () => undefined)

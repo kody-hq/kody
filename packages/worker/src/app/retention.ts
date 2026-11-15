@@ -23,6 +23,10 @@ import {
 	buildPublishedCredentialStampKvKey,
 	buildPublishedSourceSnapshotKvKey,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import {
+	deleteLinkedArtifactGroups,
+	linkedArtifactCommitKvPrefix,
+} from '#worker/package-runtime/linked-artifact-store.ts'
 import { hasActiveRepoSessionForSource } from '#worker/repo/repo-sessions.ts'
 import type { RepoSessionIndexEnv } from '#worker/repo/repo-session-index-client.ts'
 
@@ -474,6 +478,31 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 	// active repo session), so the source snapshot KV keys for that commit are
 	// stale too.
 	for (const pair of prunedSnapshotPairs.values()) {
+		try {
+			// A newer artifact of this commit may remain and still reads its
+			// linked modules, so they go only with the commit's last artifact.
+			const remaining = await runD1WithRetry(() =>
+				input.env.APP_DB.prepare(
+					`SELECT 1 FROM published_bundle_artifacts
+					WHERE source_id = ? AND published_commit = ? LIMIT 1`,
+				)
+					.bind(pair.sourceId, pair.publishedCommit)
+					.first(),
+			)
+			if (!remaining) {
+				deletedSnapshotKvKeys += await deleteLinkedArtifactGroups({
+					kv: input.env.BUNDLE_ARTIFACTS_KV,
+					prefix: linkedArtifactCommitKvPrefix(pair),
+				})
+			}
+		} catch (error) {
+			kvDeleteErrors += 1
+			console.warn('retention-linked-artifact-kv-delete-failed', {
+				sourceId: pair.sourceId,
+				publishedCommit: pair.publishedCommit,
+				error,
+			})
+		}
 		for (const kvKey of [
 			buildPublishedSourceSnapshotKvKey(pair),
 			buildPublishedSourceManifestSnapshotKvKey(pair),

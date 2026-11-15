@@ -1,4 +1,5 @@
 import { fileStoreRpc } from '#worker/files/client.ts'
+import { linkedArtifactSourceKvPrefix } from '#worker/package-runtime/linked-artifact-store.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	personalOrgId,
@@ -741,6 +742,7 @@ async function listUserBundleKvKeys(input: {
 	const prefixes = input.sourceSnapshots.flatMap((source) => [
 		`source-snapshot:v1:${source.sourceId}:`,
 		`source-manifest-snapshot:v1:${source.sourceId}:`,
+		linkedArtifactSourceKvPrefix(source.sourceId),
 	])
 	for (const prefix of prefixes) {
 		let cursor: string | undefined
@@ -920,6 +922,7 @@ async function countUserBundleKvKeys(input: {
 			for (const prefix of [
 				`source-snapshot:v1:${source.id}:`,
 				`source-manifest-snapshot:v1:${source.id}:`,
+				linkedArtifactSourceKvPrefix(source.id),
 			]) {
 				const canonical = source.published_commit
 					? `${prefix}${source.published_commit}`

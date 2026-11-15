@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	type BundleArtifactKind,
@@ -279,4 +280,90 @@ test('a same-commit snapshot repair drops the template so cold builds fall back'
 			clientEntry: 'src/client.ts',
 		}),
 	).resolves.toEqual({ app: null, client: undefined })
+})
+
+const linkedDependencyPrefix = `.__kody_linked__/artifacts/${'ab'.repeat(48)}/cd12`
+
+function linkedBuildArtifact(
+	overrides: Partial<PublishedBundleArtifact> = {},
+): PublishedBundleArtifact {
+	return publishedArtifact('app', {
+		kind: 'module',
+		entryPoint: 'src/a.ts',
+		mainModule: 'a.js',
+		modules: {
+			'a.js': 'import "./.__kody_linked__/dep.js"',
+			'.__kody_linked__/dep.js': 'export * from "./artifacts/x"',
+			[`${linkedDependencyPrefix}/main.js`]: 'export const dep = 1',
+			[`${linkedDependencyPrefix}/lib/util.js`]: 'export const util = 2',
+		},
+		...overrides,
+	})
+}
+
+test('targets of one commit that link the same dependency store its modules once and read them back', async () => {
+	const { env, store } = fakeKvEnv()
+	const first = linkedBuildArtifact()
+	const second = linkedBuildArtifact({
+		entryPoint: 'src/b.ts',
+		mainModule: 'b.js',
+		modules: { ...first.modules, 'b.js': 'export {}' },
+	})
+	const firstKey = await writePublishedBundleArtifact({ env, artifact: first })
+	const secondKey = await writePublishedBundleArtifact({
+		env,
+		artifact: second,
+	})
+
+	const linkedKeys = [...store.keys()].filter((key) =>
+		key.startsWith('linked-artifact:v1:source-app:commit-2:'),
+	)
+	expect(linkedKeys).toHaveLength(1)
+	const stored = JSON.parse(store.get(firstKey)!)
+	expect(Object.keys(stored.modules).sort()).toEqual([
+		'.__kody_linked__/dep.js',
+		'a.js',
+	])
+	expect(stored.linkedArtifacts).toEqual([
+		{
+			prefix: linkedDependencyPrefix,
+			sha256: linkedKeys[0]!.split(':').at(-1),
+		},
+	])
+
+	for (const [kvKey, artifact] of [
+		[firstKey, first],
+		[secondKey, second],
+	] as const) {
+		const loaded = await readPublishedBundleArtifact({ env, kvKey })
+		expect(loaded?.modules).toEqual(artifact.modules)
+		expect(loaded?.manifest?.modules).toHaveProperty([
+			`${linkedDependencyPrefix}/main.js`,
+		])
+	}
+})
+
+test('an artifact whose linked dependency modules are gone reads as missing', async () => {
+	const { env, store } = fakeKvEnv()
+	const kvKey = await writePublishedBundleArtifact({
+		env,
+		artifact: linkedBuildArtifact({ publishedCommit: 'commit-gone' }),
+	})
+	for (const key of store.keys()) {
+		if (key.startsWith('linked-artifact:')) store.delete(key)
+	}
+	consoleWarn.mockImplementation(() => {})
+	await expect(readPublishedBundleArtifact({ env, kvKey })).resolves.toBeNull()
+	expect(consoleWarn).toHaveBeenCalledWith(
+		'published-bundle-linked-artifact-missing',
+		expect.objectContaining({ prefix: linkedDependencyPrefix }),
+	)
+})
+
+test('an artifact stored with its linked dependency modules inline still reads', async () => {
+	const { env, store } = fakeKvEnv()
+	const artifact = linkedBuildArtifact()
+	store.set('legacy', JSON.stringify(artifact))
+	const loaded = await readPublishedBundleArtifact({ env, kvKey: 'legacy' })
+	expect(loaded?.modules).toEqual(artifact.modules)
 })
