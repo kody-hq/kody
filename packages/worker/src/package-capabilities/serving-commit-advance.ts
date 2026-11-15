@@ -46,7 +46,6 @@ export async function advanceServingCommit(input: {
 						sourceId: input.sourceId,
 						userId: input.userId,
 						commit: input.commit,
-						servedAt: new Date().toISOString(),
 					}),
 				]
 			: [],

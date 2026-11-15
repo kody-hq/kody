@@ -36,6 +36,9 @@ const watches = {
 		workflowFile: 'desktop-binaries.yml',
 		title: 'Desktop binaries',
 		isLeg: (name) => /^(mac|win|linux) \S+$/.test(name),
+		// A re-run keeps its ref, so it would cancel a newer run on that ref
+		// (such as a dispatch at the same commit) through the concurrency group.
+		sameShaSupersedes: true,
 		// A pull request waits on this check, so retry sooner.
 		rerunDelaysMs: [60_000, 5 * 60_000, 15 * 60_000],
 		failOnRealFailure: false,
@@ -137,7 +140,7 @@ function watchRelease({
 				(other) =>
 					other.id !== run.id &&
 					other.head_repository?.full_name === run.head_repository?.full_name &&
-					other.head_sha !== run.head_sha &&
+					(watch.sameShaSupersedes || other.head_sha !== run.head_sha) &&
 					Date.parse(other.created_at) > Date.parse(run.created_at),
 			)
 		const decision = decideRerun({

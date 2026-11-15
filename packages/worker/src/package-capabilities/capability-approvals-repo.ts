@@ -287,18 +287,19 @@ export function prepareCarriedForwardPackageCapabilityApproval(
 
 /**
  * Stamp the approvals for `commit` served each time it becomes the source's
- * serving commit, so the fallback's "served most recently" holds. Batched
+ * serving commit, so the fallback's "served most recently" holds. The time is
+ * taken when the statement runs, so a retried batch never writes an older one. Batched
  * right after the serving-pointer advance, so it marks nothing when the
  * advance lost its compare-and-set.
  */
 export function prepareMarkServedPackageCapabilityApprovals(
 	db: D1Database,
-	input: { sourceId: string; userId: string; commit: string; servedAt: string },
+	input: { sourceId: string; userId: string; commit: string },
 ): D1PreparedStatement {
 	return db
 		.prepare(
 			`UPDATE package_capability_approvals
-			SET served_at = ?
+			SET served_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
 			WHERE published_commit = ? AND owner_user_id = ?
 				AND package_id IN (
 					SELECT id FROM saved_packages WHERE source_id = ?${andLiveDeletedAtSql()}
@@ -309,7 +310,6 @@ export function prepareMarkServedPackageCapabilityApprovals(
 				)`,
 		)
 		.bind(
-			input.servedAt,
 			input.commit,
 			input.userId,
 			input.sourceId,

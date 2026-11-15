@@ -242,7 +242,7 @@ test('Desktop binaries looks for newer runs on the run’s own branch', () => {
 	)
 })
 
-test('a newer run that starts during the wait stops the re-run', () => {
+test('a newer run that starts during the wait, even at the same commit, stops the re-run', () => {
 	let slept = false
 	const reruns = []
 	const gh = (args) => {
@@ -270,7 +270,7 @@ test('a newer run that starts during the wait stops the re-run', () => {
 					? [
 							{
 								id: 9,
-								head_sha: 'b'.repeat(40),
+								head_sha: 'a'.repeat(40),
 								created_at: '2026-11-13T18:50:00Z',
 							},
 						]
@@ -290,4 +290,15 @@ test('a newer run that starts during the wait stops the re-run', () => {
 	})
 	assert.deepEqual(result, { action: 'none', attempt: 1 })
 	assert.deepEqual(reruns, [])
+})
+
+test('a newer Desktop binaries run at the same commit supersedes the older one', () => {
+	const decision = decideRerun({
+		attempt: 1,
+		jobs: starvedBinaries,
+		annotations: new Map([[11, noRunner]]),
+		newerRun: { id: 10, head_sha: 'a'.repeat(40) },
+		watch: watches.binaries,
+	})
+	assert.equal(decision.action, 'none')
 })
