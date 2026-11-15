@@ -19,6 +19,7 @@
     "@kody-internal/shared": "file:../shared",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
+    "@noble/hashes": "^1.8.0",
     "@resvg/resvg-wasm": "^2.6.2",
     "@sentry/browser": "^10.76.0",
     "@sentry/cloudflare": "^10.76.0",
@@ -65,10 +66,10 @@
     "remix": "3.0.0",
     "satori": "^0.33.5",
     "tldts": "^7.4.16",
+    "xstate": "6.0.0-beta.1",
     "y-prosemirror": "^1.3.7",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33",
-    "xstate": "6.0.0-beta.1",
     "zod": "^4.6.6"
   },
   "imports": {
