@@ -319,9 +319,9 @@ community package from the `@kody` org.
 3. Check the fork's README **Prerequisites / setup**. The package declares one
    credential named `github` with no kind, so the saved token (provider
    `github`) or a GitHub OAuth connection can fill it. Helpers take no auth
-   options: `secretName`, `integrationName`, and `account` were removed in
-   `@kody/github` 1.0.0 and throw if passed. When you have more than one GitHub
-   credential, pick one with the execute credentials map:
+   options: since `@kody/github` 1.0.0, passing `secretName`, `integrationName`,
+   or `account` throws. When you have more than one GitHub credential, pick one
+   with the execute credentials map:
    `credentials: { github: 'githubAccessToken' }` next to `code`, or
    `--credential github=githubAccessToken` with the CLI. A package that imports
    the fork from a job or webhook needs a default mapping for its `github` need
