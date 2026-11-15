@@ -4,7 +4,6 @@ import {
 	reloadOnStaleRouteChunk,
 	shouldSuppressStaleRouteChunkFollowOnError,
 } from '#client/reload-on-stale-route-chunk.ts'
-import { reloadOnUnknownStartRelease } from '#client/reload-on-unknown-start-release.ts'
 import { filterBrowserSentryEvent } from '#client/sentry-browser-filters.ts'
 import type { SentryClientConfig } from '#universal/sentry-config.ts'
 
@@ -61,10 +60,8 @@ export function initBrowserSentry(config: SentryClientConfig) {
 		// ReferenceErrors / `sendScrollEvent`→ `window.webkit.messageHandlers`
 		// TypeErrors, injected unguarded `meta[property='og:type']` probes
 		// from `global code`, optional Shiki `syntax-highlight-core`
-		// dynamic import fetch failures, stale Start release
-		// `Unknown Start release.` after deploy (KODY-9E / issue
-		// 7795797021), TanStack Start serverFn fetch network TypeErrors
-		// (KODY-9Q / issue 7798170337), local Vite / wrangler HMR loopback
+		// dynamic import fetch failures, TanStack Start serverFn fetch
+		// network TypeErrors (KODY-9Q / issue 7798170337), local Vite / wrangler HMR loopback
 		// sessions, and residual Replay onIframeLoad / observeAttachShadow
 		// SecurityError|TypeError after cross-origin iframe Element reads
 		// (KODY-8W; primary mitigation is block:['iframe'] above), and
@@ -75,23 +72,16 @@ export function initBrowserSentry(config: SentryClientConfig) {
 		// KODY-CLOUDFLARE-3X / KODY-CLOUDFLARE-43 / KODY-CLOUDFLARE-46 /
 		// KODY-CLOUDFLARE-4F / KODY-CLOUDFLARE-5C / KODY-CLOUDFLARE-5K /
 		// KODY-CLOUDFLARE-5W / KODY-CLOUDFLARE-5X / KODY-CLOUDFLARE-5Y /
-		// KODY-CLOUDFLARE-64 / KODY-6Z / KODY-8W / KODY-72 / KODY-9E /
-		// KODY-9Q /
+		// KODY-CLOUDFLARE-64 / KODY-6Z / KODY-8W / KODY-72 / KODY-9Q /
 		// issues 7639685398, 7648833360, 7648833403, 7653117289, 7655189301,
 		// 7658961865, 7659616372, 7660258027, 7662064169, 7677729361,
 		// 7682968915, 7687920474, 7689579030, 7690163947, 7696001937,
-		// 7715934699, 7717003182, 7777463624, 7795797021, 7798170337,
-		// 7838313110.
+		// 7715934699, 7717003182, 7777463624, 7798170337, 7838313110.
 		beforeSend(event, hint) {
 			const error =
 				hint.originalException ??
 				event.message ??
 				event.exception?.values?.[0]?.value
-			// Stale Start release after deploy (KODY-9E): recover with one hard
-			// reload even when the SDK (not captureClientException) captured
-			// the error — buffer listeners are gone after ensureSentryLoaded.
-			// One-shot guard lives in the helper; filter still drops the event.
-			reloadOnUnknownStartRelease(error)
 			// Stale hashed route chunk (KODY-5W, KODY-9S, KODY-9V, KODY-9Y):
 			// drop the event only when this call triggered the one-shot reload.
 			// A second failure stays visible. syntax-highlight-core is still

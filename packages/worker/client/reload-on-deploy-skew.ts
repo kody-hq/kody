@@ -1,9 +1,9 @@
 /**
  * One-shot hard navigation when a stale tab's server-fn response advertises a
  * newer `APP_COMMIT_SHA` than the document boot build (KODY-DP / issue
- * 7828247968). Mirrors `reload-on-unknown-start-release.ts`: set a session
- * flag before navigating, clear after a successful boot so a later deploy can
- * recover again. Only one attempt per server-build + target URL.
+ * 7828247968). Set a session flag before navigating, clear after a successful
+ * boot so a later deploy can recover again. Only one attempt per server-build
+ * + target URL.
  */
 
 import {
