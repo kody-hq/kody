@@ -1,4 +1,4 @@
-import { createHash, type Hash } from 'node:crypto'
+import { sha256 } from '@noble/hashes/sha2'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
 import type { StorageContext } from '#mcp/storage.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
@@ -96,49 +96,65 @@ export async function createDynamicWorkerBillingId(input: {
  * import.
  */
 function sha256CanonicalJsonBase64Url(value: unknown) {
-	const hash = createHash('sha256')
-	writeJson(hash, canonicalizeForHash(value, '$'))
-	return bytesToBase64Url(new Uint8Array(hash.digest()))
+	const hash = sha256.create()
+	writeJson(
+		(text) => {
+			let rest = text
+			while (rest.length > 0) {
+				const { read, written } = utf8Encoder.encodeInto(rest, utf8Scratch)
+				hash.update(utf8Scratch.subarray(0, written))
+				rest = rest.slice(read)
+			}
+		},
+		canonicalizeForHash(value, '$'),
+	)
+	return bytesToBase64Url(hash.digest())
 }
+
+const utf8Encoder = new TextEncoder()
+// Hashing is synchronous, so one scratch buffer serves every call.
+const utf8Scratch = new Uint8Array(256 * 1024)
 
 const jsonStringChunkChars = 64 * 1024
 
+type JsonWriter = (text: string) => void
+
 /** Writes exactly the bytes `JSON.stringify` would for a canonical value. */
-function writeJson(hash: Hash, value: unknown) {
+function writeJson(write: JsonWriter, value: unknown) {
 	if (typeof value === 'string') {
-		writeJsonString(hash, value)
+		writeJsonString(write, value)
 		return
 	}
 	if (Array.isArray(value)) {
-		hash.update('[')
+		write('[')
 		value.forEach((entry, index) => {
-			if (index > 0) hash.update(',')
-			writeJson(hash, entry)
+			if (index > 0) write(',')
+			writeJson(write, entry)
 		})
-		hash.update(']')
+		write(']')
 		return
 	}
 	if (value !== null && typeof value === 'object') {
 		const record = value as Record<string, unknown>
-		hash.update('{')
+		write('{')
 		Object.keys(record).forEach((key, index) => {
-			if (index > 0) hash.update(',')
-			writeJsonString(hash, key)
-			hash.update(':')
-			writeJson(hash, record[key])
+			if (index > 0) write(',')
+			writeJsonString(write, key)
+			write(':')
+			writeJson(write, record[key])
 		})
-		hash.update('}')
+		write('}')
 		return
 	}
-	hash.update(JSON.stringify(value))
+	write(JSON.stringify(value))
 }
 
-function writeJsonString(hash: Hash, value: string) {
+function writeJsonString(write: JsonWriter, value: string) {
 	if (value.length <= jsonStringChunkChars) {
-		hash.update(JSON.stringify(value))
+		write(JSON.stringify(value))
 		return
 	}
-	hash.update('"')
+	write('"')
 	let start = 0
 	while (start < value.length) {
 		let end = Math.min(start + jsonStringChunkChars, value.length)
@@ -146,10 +162,10 @@ function writeJsonString(hash: Hash, value: string) {
 		if (end < value.length && isHighSurrogate(value.charCodeAt(end - 1))) {
 			end -= 1
 		}
-		hash.update(JSON.stringify(value.slice(start, end)).slice(1, -1))
+		write(JSON.stringify(value.slice(start, end)).slice(1, -1))
 		start = end
 	}
-	hash.update('"')
+	write('"')
 }
 
 function isHighSurrogate(charCode: number) {
