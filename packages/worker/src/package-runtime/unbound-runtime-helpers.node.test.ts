@@ -45,19 +45,19 @@ async function main() {
 
 type Modules = Parameters<typeof findUnboundRuntimeHelperAccess>[0]['modules']
 
-function find(
+async function find(
 	errorMessage: string,
 	modules: Modules,
 	unboundHelperNames = allOptionalHelperNames,
 ) {
-	return findUnboundRuntimeHelperAccess({
+	return await findUnboundRuntimeHelperAccess({
 		errorMessage,
 		modules,
 		unboundHelperNames,
 	})
 }
 
-test('findUnboundRuntimeHelperAccess matches guard-less reads, calls, aliases, namespaces, and inlined helpers', () => {
+test('findUnboundRuntimeHelperAccess matches guard-less reads, calls, aliases, namespaces, and inlined helpers', async () => {
 	const cases: Array<[string, Modules, string, string]> = [
 		[readSql, storageEntry, 'storage', 'storage.sql'],
 		// Helpers with a `null` absent value fail the same way.
@@ -127,11 +127,14 @@ export default async () => await runtime.oauthClientCredentials({})`,
 		],
 	]
 	for (const [errorMessage, modules, helperName, reference] of cases) {
-		expect(find(errorMessage, modules)).toEqual({ helperName, reference })
+		expect(await find(errorMessage, modules)).toEqual({
+			helperName,
+			reference,
+		})
 	}
 })
 
-test('findUnboundRuntimeHelperAccess leaves unrelated errors and bound helpers unhinted', () => {
+test('findUnboundRuntimeHelperAccess leaves unrelated errors and bound helpers unhinted', async () => {
 	const cases: Array<[string, Modules, Set<string>?]> = [
 		// The helper is bound in this run, so the TypeError is a user-code bug.
 		[readSql, storageEntry, new Set(['email'])],
@@ -166,7 +169,7 @@ async function main() { return (await storage.sql("select 1")).rows }`,
 		['Execution timed out', storageEntry],
 	]
 	for (const [errorMessage, modules, unboundHelperNames] of cases) {
-		expect(find(errorMessage, modules, unboundHelperNames)).toBeNull()
+		expect(await find(errorMessage, modules, unboundHelperNames)).toBeNull()
 	}
 })
 
@@ -189,7 +192,7 @@ test('createUnboundRuntimeHelperMessage round-trips through parseUnboundRuntimeH
 	}
 })
 
-test('rewriteNullPackagesInvokeErrorMessage requires packages.invoke source evidence', () => {
+test('rewriteNullPackagesInvokeErrorMessage requires packages.invoke source evidence', async () => {
 	const bare = "Cannot read properties of null (reading 'invoke')"
 	const packagesInvokeModules = {
 		'entry.js': `import { packages } from 'kody:runtime'
@@ -201,7 +204,7 @@ export default async () => await packages.invoke('kody:@owner/pkg/export', { par
 	return client.invoke()
 }`,
 	}
-	const rewritten = rewriteNullPackagesInvokeErrorMessage({
+	const rewritten = await rewriteNullPackagesInvokeErrorMessage({
 		originalMessage: bare,
 		modules: packagesInvokeModules,
 	})
@@ -209,38 +212,40 @@ export default async () => await packages.invoke('kody:@owner/pkg/export', { par
 	expect(parseUnboundRuntimeHelperMessage(rewritten ?? '')).toBe('packages')
 	expect(rewritten).toContain('packages.invoke')
 	expect(
-		rewriteNullPackagesInvokeErrorMessage({
+		await rewriteNullPackagesInvokeErrorMessage({
 			originalMessage: rewritten ?? '',
 			modules: packagesInvokeModules,
 		}),
 	).toBeNull()
 	expect(
-		rewriteNullPackagesInvokeErrorMessage({
+		await rewriteNullPackagesInvokeErrorMessage({
 			originalMessage: bare,
 			modules: unrelatedInvokeModules,
 		}),
 	).toBeNull()
 	expect(
-		rewriteNullPackagesInvokeErrorMessage({
+		await rewriteNullPackagesInvokeErrorMessage({
 			originalMessage: "Cannot read properties of null (reading 'getMessage')",
 			modules: packagesInvokeModules,
 		}),
 	).toBeNull()
-	expect(modulesContainUnboundPackagesInvokeAccess(packagesInvokeModules)).toBe(
-		true,
-	)
 	expect(
-		modulesContainUnboundPackagesInvokeAccess(unrelatedInvokeModules),
+		await modulesContainUnboundPackagesInvokeAccess(packagesInvokeModules),
+	).toBe(true)
+	expect(
+		await modulesContainUnboundPackagesInvokeAccess(unrelatedInvokeModules),
 	).toBe(false)
 })
 
-test('createNullPackagesInvokeRewriteHostSource mirrors rewrite when enabled', () => {
+test('createNullPackagesInvokeRewriteHostSource mirrors rewrite when enabled', async () => {
 	const packagesInvokeModules = {
 		'entry.js': `import { packages } from 'kody:runtime'
 export default async () => await packages.invoke('kody:@owner/pkg/export', { params: {} })`,
 	}
 	const hostSource = createNullPackagesInvokeRewriteHostSource({
-		enabled: modulesContainUnboundPackagesInvokeAccess(packagesInvokeModules),
+		enabled: await modulesContainUnboundPackagesInvokeAccess(
+			packagesInvokeModules,
+		),
 	})
 	const runner = new Function(
 		'exports',

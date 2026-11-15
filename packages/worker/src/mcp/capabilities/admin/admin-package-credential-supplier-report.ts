@@ -70,8 +70,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return value != null && typeof value === 'object' && !Array.isArray(value)
 }
 
-function readsCredentialVisitorCall(source: string) {
-	const parsed = parseModule(source)
+async function readsCredentialVisitorCall(source: string) {
+	const parsed = await parseModule(source)
 	if (!parsed) return false
 	let found = false
 	walkAst(parsed, (node) => {
@@ -96,14 +96,14 @@ function readsCredentialVisitorCall(source: string) {
 	return found
 }
 
-export function analyzePackageCredentialSupplierSource(input: {
+export async function analyzePackageCredentialSupplierSource(input: {
 	files: Record<string, string>
 	manifestPath: string
 }) {
 	let callsCredentialVisitor = false
-	for (const path of listScannableModulePaths(input.files)) {
+	for (const path of await listScannableModulePaths(input.files)) {
 		const source = input.files[path]
-		if (source && readsCredentialVisitorCall(source)) {
+		if (source && (await readsCredentialVisitorCall(source))) {
 			callsCredentialVisitor = true
 			break
 		}
@@ -135,7 +135,7 @@ export function analyzePackageCredentialSupplierSource(input: {
 
 export function addPackageCredentialSupplierCounts(
 	counts: ReportCounts,
-	analysis: ReturnType<typeof analyzePackageCredentialSupplierSource>,
+	analysis: Awaited<ReturnType<typeof analyzePackageCredentialSupplierSource>>,
 	mappingRows: ReadonlyArray<{ target: string; count: number }> = [],
 ) {
 	if (analysis.callsCredentialVisitor) {
@@ -217,7 +217,7 @@ export async function scanPackageCredentialSupplierReportStep(input: {
 				userId: savedPackage.userId,
 				sourceId: savedPackage.sourceId,
 			})
-			const analysis = analyzePackageCredentialSupplierSource({
+			const analysis = await analyzePackageCredentialSupplierSource({
 				files: loaded.files,
 				manifestPath: loaded.source.manifest_path,
 			})

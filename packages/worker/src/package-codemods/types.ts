@@ -86,9 +86,9 @@ export type PackageCodemod = {
 	detect(
 		files: Record<string, string>,
 		context: PackageCodemodContext,
-	): Array<PackageCodemodFinding>
+	): Array<PackageCodemodFinding> | Promise<Array<PackageCodemodFinding>>
 	transform(
 		files: Record<string, string>,
 		context: PackageCodemodContext,
-	): PackageCodemodTransformResult
+	): PackageCodemodTransformResult | Promise<PackageCodemodTransformResult>
 }

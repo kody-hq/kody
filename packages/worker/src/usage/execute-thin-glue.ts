@@ -65,17 +65,17 @@ function isKodyPackageSpecifier(specifier: string) {
 	return specifier.startsWith('kody:@')
 }
 
-function getProgramBody(source: string) {
-	const parsed = parseModuleSource(source) as unknown as ModuleAstNode
+async function getProgramBody(source: string) {
+	const parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
 	const program = parsed.program as { body?: Array<ModuleAstNode> } | undefined
 	const body =
 		program?.body ?? (parsed.body as Array<ModuleAstNode> | undefined)
 	return Array.isArray(body) ? body : []
 }
 
-function collectImportedLocalNames(source: string) {
+async function collectImportedLocalNames(source: string) {
 	const names = new Set<string>()
-	const body = getProgramBody(source)
+	const body = await getProgramBody(source)
 	for (const statement of body) {
 		if (readNodeType(statement) !== 'ImportDeclaration') continue
 		const specifier = readLiteralSpecifier(
@@ -92,14 +92,14 @@ function collectImportedLocalNames(source: string) {
 	return names
 }
 
-function collectPackageImportCount(source: string) {
+async function collectPackageImportCount(source: string) {
 	const specifiers = new Set<string>()
-	for (const node of collectLiteralImportNodes(source)) {
+	for (const node of await collectLiteralImportNodes(source)) {
 		if (node.kind !== 'static') continue
 		if (!isKodyPackageSpecifier(node.specifier)) continue
 		specifiers.add(node.specifier)
 	}
-	const body = getProgramBody(source)
+	const body = await getProgramBody(source)
 	for (const statement of body) {
 		if (readNodeType(statement) !== 'ExportNamedDeclaration') continue
 		const specifier = readLiteralSpecifier(
@@ -110,7 +110,7 @@ function collectPackageImportCount(source: string) {
 		}
 	}
 	if (specifiers.size > 0) return specifiers.size
-	return collectImportedLocalNames(source).size
+	return (await collectImportedLocalNames(source)).size
 }
 
 function unwrapExpression(node: unknown): unknown {
@@ -204,11 +204,11 @@ function isReexportDefaultFromPackage(statement: ModuleAstNode) {
 	})
 }
 
-function isPassthroughDefaultExport(
+async function isPassthroughDefaultExport(
 	source: string,
 	importedNames: ReadonlySet<string>,
 ) {
-	const body = getProgramBody(source)
+	const body = await getProgramBody(source)
 	for (const statement of body) {
 		if (isReexportDefaultFromPackage(statement)) return true
 		if (readNodeType(statement) !== 'ExportDefaultDeclaration') continue
@@ -230,8 +230,8 @@ function isPassthroughDefaultExport(
  * `thin_single_export` is only the qualifying static `kody:@` import(s) and
  * one passthrough default export. Extra top-level statements are glue.
  */
-function isThinSingleExportProgram(source: string) {
-	const body = getProgramBody(source)
+async function isThinSingleExportProgram(source: string) {
+	const body = await getProgramBody(source)
 	let sawQualifyingExport = false
 	for (const statement of body) {
 		const type = readNodeType(statement)
@@ -263,17 +263,17 @@ function isThinSingleExportProgram(source: string) {
  * Classify one ad-hoc execute module. Returns `null` when the source cannot
  * be parsed — callers omit the field rather than inventing a class.
  */
-export function classifyExecuteThinGlue(
+export async function classifyExecuteThinGlue(
 	source: string,
-): ExecuteThinGlueClass | null {
+): Promise<ExecuteThinGlueClass | null> {
 	try {
-		const packageImportCount = collectPackageImportCount(source)
-		const importedNames = collectImportedLocalNames(source)
-		const passthrough = isPassthroughDefaultExport(source, importedNames)
+		const packageImportCount = await collectPackageImportCount(source)
+		const importedNames = await collectImportedLocalNames(source)
+		const passthrough = await isPassthroughDefaultExport(source, importedNames)
 		if (
 			packageImportCount === 1 &&
 			passthrough &&
-			isThinSingleExportProgram(source)
+			(await isThinSingleExportProgram(source))
 		) {
 			return 'thin_single_export'
 		}

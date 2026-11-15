@@ -48,9 +48,9 @@ function getNodeName(node: AstNode | null | undefined) {
 	return null
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -154,15 +154,15 @@ type RewriteSite = {
 	replacement: string
 }
 
-function collectModuleRewriteSites(
+async function collectModuleRewriteSites(
 	source: string,
 	aliases: Set<string>,
-): {
+): Promise<{
 	sites: Array<RewriteSite>
 	needsManual: boolean
 	hasSnakeMember: boolean
-} {
-	const parsed = parseProgram(source)
+}> {
+	const parsed = await parseProgram(source)
 	if (!parsed) {
 		return {
 			sites: [],
@@ -279,9 +279,9 @@ function hasMarkdownSnakeCase(source: string) {
 	)
 }
 
-function detectSnakeCaseKodyMembers(
+async function detectSnakeCaseKodyMembers(
 	files: Record<string, string>,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const findings: Array<PackageCodemodFinding> = []
 	for (const [path, source] of Object.entries(files)) {
 		if (typeof source !== 'string') continue
@@ -290,7 +290,7 @@ function detectSnakeCaseKodyMembers(
 			continue
 		}
 		if (!scannableModuleFilePattern.test(path)) continue
-		const parsed = parseProgram(source)
+		const parsed = await parseProgram(source)
 		if (!parsed) {
 			if (sourceHasSnakeCaseKodyMember(source) || sourceHasEntityRef(source)) {
 				findings.push({ path, message: parseFailureMessage })
@@ -305,7 +305,7 @@ function detectSnakeCaseKodyMembers(
 		) {
 			continue
 		}
-		const { needsManual, hasSnakeMember } = collectModuleRewriteSites(
+		const { needsManual, hasSnakeMember } = await collectModuleRewriteSites(
 			source,
 			aliases,
 		)
@@ -321,9 +321,9 @@ function detectSnakeCaseKodyMembers(
 	)
 }
 
-function transformSnakeCaseKodyMembers(
+async function transformSnakeCaseKodyMembers(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	const nextFiles: Record<string, string> = { ...files }
 	const changedPaths: Array<string> = []
 	const needsManual: Array<PackageCodemodFinding> = []
@@ -338,7 +338,7 @@ function transformSnakeCaseKodyMembers(
 			continue
 		}
 		if (!scannableModuleFilePattern.test(path)) continue
-		const parsed = parseProgram(source)
+		const parsed = await parseProgram(source)
 		if (!parsed) {
 			if (sourceHasSnakeCaseKodyMember(source) || sourceHasEntityRef(source)) {
 				needsManual.push({ path, message: parseFailureMessage })
@@ -347,7 +347,7 @@ function transformSnakeCaseKodyMembers(
 		}
 		const aliases = collectKodyAliases(getProgramBody(parsed))
 		const { sites, needsManual: computedNeedsManual } =
-			collectModuleRewriteSites(source, aliases)
+			await collectModuleRewriteSites(source, aliases)
 		const rewritten = applyRewriteSites(source, sites)
 		if (rewritten !== source) {
 			nextFiles[path] = rewritten

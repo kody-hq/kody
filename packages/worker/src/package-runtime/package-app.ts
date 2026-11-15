@@ -3908,7 +3908,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	})
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-	if (currentArtifact && !isUnrepairablePreBindingArtifact(currentArtifact)) {
+	if (
+		currentArtifact &&
+		!(await isUnrepairablePreBindingArtifact(currentArtifact))
+	) {
 		return servePublishedArtifact(currentArtifact)
 	}
 	// Only a caller that passes no source at all keeps serving the published
@@ -3927,10 +3930,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	const sourceFiles = await resolvePackageAppSourceFiles(input)
 	if (
 		currentArtifact &&
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: currentArtifact,
 			sourceFiles,
-		})
+		}))
 	) {
 		return servePublishedArtifact(currentArtifact)
 	}
@@ -4163,7 +4166,7 @@ async function buildPackageAppWorkerOptionsUncached(
 			packageBindingIds: packageStorageGrantIds,
 			packageBindingToken,
 			rewriteNullPackagesInvoke:
-				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
+				await modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
 			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
 			packageAppApexHostnames: listPackageAppOrigins({
@@ -4293,7 +4296,7 @@ async function readPublishedPackageAppWorkerTemplate(input: {
 			clientEntry: getPackageAppClientEntryPath(input.manifest),
 		})
 		const app =
-			parts.app && !isUnrepairablePreBindingArtifact(parts.app)
+			parts.app && !(await isUnrepairablePreBindingArtifact(parts.app))
 				? servePublishedAppArtifact(parts.app)
 				: null
 		return { bundled: app, client: parts.client }

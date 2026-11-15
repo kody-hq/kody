@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { heykodyDomainsToKodyCodesCodemod } from './0003-heykody-domains-to-kody-codes.ts'
 
-test('0003 rewrites full legacy origins and preserves boundaries', () => {
+test('0003 rewrites full legacy origins and preserves boundaries', async () => {
 	const files = {
 		'index.ts': [
 			"const site = 'https://heykody.app'",
@@ -12,7 +12,7 @@ test('0003 rewrites full legacy origins and preserves boundaries', () => {
 		'README.md': 'Docs: visit https://heykody.app.\n',
 	}
 
-	const result = heykodyDomainsToKodyCodesCodemod.transform(files)
+	const result = await heykodyDomainsToKodyCodesCodemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['index.ts', 'README.md'])
 	expect(result.files['index.ts']).toBe(
@@ -28,12 +28,12 @@ test('0003 rewrites full legacy origins and preserves boundaries', () => {
 	expect(result.needsManual).toEqual([])
 
 	// Idempotent: a second run changes nothing.
-	const again = heykodyDomainsToKodyCodesCodemod.transform(result.files)
+	const again = await heykodyDomainsToKodyCodesCodemod.transform(result.files)
 	expect(again.changed).toBe(false)
 	expect(again.changedPaths).toEqual([])
 })
 
-test('0003 never rewrites subdomains, emails, bare hostnames, or lookalike hosts', () => {
+test('0003 never rewrites subdomains, emails, bare hostnames, or lookalike hosts', async () => {
 	const boundaryFiles = {
 		'config.ts': [
 			"const status = 'https://status.heykody.dev'",
@@ -45,7 +45,7 @@ test('0003 never rewrites subdomains, emails, bare hostnames, or lookalike hosts
 		].join('\n'),
 	}
 	const boundaryResult =
-		heykodyDomainsToKodyCodesCodemod.transform(boundaryFiles)
+		await heykodyDomainsToKodyCodesCodemod.transform(boundaryFiles)
 	expect(boundaryResult.changed).toBe(false)
 	expect(boundaryResult.files['config.ts']).toBe(boundaryFiles['config.ts'])
 	expect(boundaryResult.needsManual).toEqual([
@@ -56,19 +56,19 @@ test('0003 never rewrites subdomains, emails, bare hostnames, or lookalike hosts
 	])
 })
 
-test('0003 detect reports rewritable origins and skips binary-ish paths', () => {
+test('0003 detect reports rewritable origins and skips binary-ish paths', async () => {
 	const files = {
 		'index.ts': "export const url = 'https://heykody.app/guides'\n",
 		'logo.png': 'https://heykody.app pretend-binary',
 	}
-	const findings = heykodyDomainsToKodyCodesCodemod.detect(files)
+	const findings = await heykodyDomainsToKodyCodesCodemod.detect(files)
 	expect(findings).toEqual([
 		{
 			path: 'index.ts',
 			message: expect.stringContaining('rewrite to https://kody.codes'),
 		},
 	])
-	const result = heykodyDomainsToKodyCodesCodemod.transform(files)
+	const result = await heykodyDomainsToKodyCodesCodemod.transform(files)
 	expect(result.changedPaths).toEqual(['index.ts'])
 	expect(result.files['logo.png']).toBe(files['logo.png'])
 })

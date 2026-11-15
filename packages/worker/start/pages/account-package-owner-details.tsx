@@ -43,6 +43,7 @@ import {
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
 import { PackageCapabilityAllowanceCallout } from './package-capability-allowance-callout.tsx'
 import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
+import { PackagePublicVisitorsHeldBackCallout } from './package-public-visitors-held-back-callout.tsx'
 import { PackageUnmappableCredentialsCallout } from './package-unmappable-credentials-callout.tsx'
 import type {
 	AccountPackageAnonymousVisitorExposure,
@@ -314,6 +315,15 @@ export function AccountPackageOwnerDetails(props: {
 				notice={packageDetail.unmappableCredentialsNotice}
 				collaboratorsHref={collaboratorsHref}
 			/>
+			{props.viewerCanPublish ? (
+				<PackagePublicVisitorsHeldBackCallout
+					heldBack={packageDetail.publicVisitorsHeldBack}
+					approvalHref={routes.communityPackageApproveCapabilities.href({
+						username: props.ownerUsername,
+						kodyId: packageDetail.kodyId,
+					})}
+				/>
+			) : null}
 			{props.viewerCanPublish ? (
 				<PackageCapabilityAllowanceCallout
 					capabilities={packageDetail.capabilityAllowance ?? []}

@@ -200,22 +200,22 @@ function resolveBundlerLocalImportPath(input: {
 /** Bundler specifiers (or the parse error) per module path. */
 type BundlerSpecifiersCache = Map<
 	string,
-	ReturnType<typeof parseBundlerResolvedSpecifiers>
+	Awaited<ReturnType<typeof parseBundlerResolvedSpecifiers>>
 >
 
-function bundlerSpecifiersFor(
+async function bundlerSpecifiersFor(
 	cache: BundlerSpecifiersCache,
 	filePath: string,
 	source: string,
 ) {
 	const cached = cache.get(filePath)
 	if (cached) return cached
-	const result = parseBundlerResolvedSpecifiers(source, { filePath })
+	const result = await parseBundlerResolvedSpecifiers(source, { filePath })
 	cache.set(filePath, result)
 	return result
 }
 
-function collectBundlerReachableSourceFilePaths(input: {
+async function collectBundlerReachableSourceFilePaths(input: {
 	files: Record<string, string>
 	entryPoint: string
 	rootPackage: ReturnType<typeof readRootPackage>
@@ -244,7 +244,11 @@ function collectBundlerReachableSourceFilePaths(input: {
 		if (!isBundlerParsedModuleSourcePath(filePath)) {
 			continue
 		}
-		const parsed = bundlerSpecifiersFor(input.specifiersCache, filePath, source)
+		const parsed = await bundlerSpecifiersFor(
+			input.specifiersCache,
+			filePath,
+			source,
+		)
 		if (!parsed.ok) {
 			unparseableFiles.set(filePath, { path: filePath, ...parsed.error })
 			continue
@@ -296,16 +300,16 @@ function collectBundlerReachableSourceFilePaths(input: {
  * kody.app.client.externals as resolved (left for the page import map).
  * Node builtins and unparseable sources are handled by the validator.
  */
-export function collectUndeclaredBarePackageImports(input: {
+export async function collectUndeclaredBarePackageImports(input: {
 	manifest: AuthoredPackageJson
 	sourceFiles: Record<string, string>
 	entryPoints: ReadonlyArray<PackageBundleImportTarget>
 	declaredDependencies?: ReadonlyArray<string>
-}): {
+}): Promise<{
 	undeclared: Array<UndeclaredBarePackageImport>
 	unparseableFiles: Array<string>
 	parseFailures: Array<BareImportParseFailure>
-} {
+}> {
 	const declaredDependencies =
 		input.declaredDependencies ??
 		parseDeclaredNpmDependencyNames(input.sourceFiles['package.json'] ?? null)
@@ -322,7 +326,7 @@ export function collectUndeclaredBarePackageImports(input: {
 
 	for (const target of input.entryPoints) {
 		const entryPoint = normalizePackageWorkspacePath(target.path)
-		const reachable = collectBundlerReachableSourceFilePaths({
+		const reachable = await collectBundlerReachableSourceFilePaths({
 			files: input.sourceFiles,
 			entryPoint,
 			rootPackage,
@@ -335,7 +339,11 @@ export function collectUndeclaredBarePackageImports(input: {
 			if (!isBundlerParsedModuleSourcePath(filePath)) continue
 			const source = input.sourceFiles[filePath]
 			if (source == null) continue
-			const parsed = bundlerSpecifiersFor(specifiersCache, filePath, source)
+			const parsed = await bundlerSpecifiersFor(
+				specifiersCache,
+				filePath,
+				source,
+			)
 			if (!parsed.ok) {
 				unparseableFiles.set(filePath, { path: filePath, ...parsed.error })
 				continue
@@ -424,14 +432,14 @@ function formatUnparseableBareImportFilesMessage(
 	)
 }
 
-export function validateBarePackageImportDeclarations(input: {
+export async function validateBarePackageImportDeclarations(input: {
 	manifest: AuthoredPackageJson
 	sourceFiles: Record<string, string>
 	entryPoints: ReadonlyArray<PackageBundleImportTarget>
 	declaredDependencies?: ReadonlyArray<string>
 }) {
 	const { undeclared, unparseableFiles, parseFailures } =
-		collectUndeclaredBarePackageImports(input)
+		await collectUndeclaredBarePackageImports(input)
 	if (unparseableFiles.length > 0) {
 		return {
 			ok: false as const,

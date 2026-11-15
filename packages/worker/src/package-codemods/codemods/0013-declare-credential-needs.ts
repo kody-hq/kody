@@ -267,10 +267,10 @@ function scanUnparsedCredentialKeys(source: string, scan: KeyScan) {
 	}
 }
 
-function planDeclarations(
+async function planDeclarations(
 	allFiles: Record<string, string>,
 	context: PackageCodemodContext,
-): Plan {
+): Promise<Plan> {
 	const { manifestKey, files } = locatePackage(allFiles, context)
 	const source = Object.hasOwn(allFiles, manifestKey)
 		? allFiles[manifestKey]
@@ -320,7 +320,7 @@ function planDeclarations(
 		paths.add(path)
 		pathsByName.set(name, paths)
 	}
-	scanModuleCredentialReferences(files, (path, parsed) => ({
+	await scanModuleCredentialReferences(files, (path, parsed) => ({
 		add: () => {},
 		named: (name, kind, via) => {
 			if (!gatewayVias.has(via)) return
@@ -335,7 +335,7 @@ function planDeclarations(
 			if (via === 'placeholder') flag(path, 'vault')
 		},
 	}))
-	forEachScannableModule(files, (path, parsed, constants) => {
+	await forEachScannableModule(files, (path, parsed, constants) => {
 		// A slot's kind decides what credential() can resolve (no kind means
 		// fetch-capable only), and source cannot say which kind a key takes.
 		const scan: KeyScan = {
@@ -392,11 +392,11 @@ function detectJsonIndent(source: string) {
 	return match?.[1] ?? '\t'
 }
 
-function detectDeclareCredentialNeeds(
+async function detectDeclareCredentialNeeds(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Array<PackageCodemodFinding> {
-	const plan = planDeclarations(files, context)
+): Promise<Array<PackageCodemodFinding>> {
+	const plan = await planDeclarations(files, context)
 	return [
 		...(plan.add.length > 0
 			? [
@@ -410,11 +410,11 @@ function detectDeclareCredentialNeeds(
 	]
 }
 
-function transformDeclareCredentialNeeds(
+async function transformDeclareCredentialNeeds(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
-	const plan = planDeclarations(files, context)
+): Promise<PackageCodemodTransformResult> {
+	const plan = await planDeclarations(files, context)
 	if (plan.add.length === 0 || plan.manifest == null || plan.source == null) {
 		return {
 			files: { ...files },

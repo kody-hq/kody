@@ -1746,8 +1746,7 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts. Stored JSON includes `modules`
   and optional `linkedArtifacts` prefixes whose module groups live under
-  `linked-artifact:v1:…` instead of being inlined. Some blobs written in
-  November 2026 also carry a `manifest` field; nothing reads or writes it now.
+  `linked-artifact:v1:…` instead of being inlined.
 - `linked-artifact:v1:{sourceId}:{commit}:{sha256}`. The `kody:@` dependency
   modules an uploaded build links (`.__kody_linked__/artifacts/…`), stored once
   per commit and content hash. The commit's bundle artifacts list them under

@@ -1692,7 +1692,7 @@ test('runRepoChecks offers optional credential types only for placements one fit
 	expect(unfitMessage).not.toContain('Optional, if you want')
 })
 
-test('credentialPatternNoticeForFiles reads repo paths under the source root', () => {
+test('credentialPatternNoticeForFiles reads repo paths under the source root', async () => {
 	const files = {
 		'packages/app/package.json': manifest('rooted', {
 			credentials: {
@@ -1702,12 +1702,14 @@ test('credentialPatternNoticeForFiles reads repo paths under the source root', (
 		'packages/app/src/send.ts': "export const h = { a: '{{secret:T}}' }",
 		'other/src/x.ts': "export const h = { a: '{{secret:X}}' }",
 	}
-	const notice = credentialPatternNoticeForFiles(files, '/packages/app/')
+	const notice = await credentialPatternNoticeForFiles(files, '/packages/app/')
 	expect(notice).toMatch(/Credential stamp/)
 	expect(notice).toMatch(/T/)
 	expect(notice).not.toContain('other/')
 	expect(
-		credentialPatternNoticeForFiles({ 'package.json': manifest('clean') }),
+		await credentialPatternNoticeForFiles({
+			'package.json': manifest('clean'),
+		}),
 	).toMatch(/Credential stamp is empty/)
 })
 

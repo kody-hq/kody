@@ -1,5 +1,5 @@
+import { sha256 } from '@noble/hashes/sha2'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
-import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import type { StorageContext } from '#mcp/storage.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 
@@ -40,18 +40,16 @@ export async function createStableDynamicWorkerId(input: {
 	workerOptions: DynamicWorkerIdOptions
 	cacheKeyVersion?: number
 }) {
-	const hash = await sha256Base64Url(
-		canonicalJsonStringify({
-			version: input.cacheKeyVersion ?? dynamicWorkerCacheKeyVersion,
-			binding: 'LOADER',
-			userId: input.userId,
-			storageContext: input.storageContext,
-			compatibilityDate: input.workerOptions.compatibilityDate,
-			compatibilityFlags: input.workerOptions.compatibilityFlags,
-			mainModule: input.workerOptions.mainModule,
-			modules: input.workerOptions.modules,
-		}),
-	)
+	const hash = sha256CanonicalJsonBase64Url({
+		version: input.cacheKeyVersion ?? dynamicWorkerCacheKeyVersion,
+		binding: 'LOADER',
+		userId: input.userId,
+		storageContext: input.storageContext,
+		compatibilityDate: input.workerOptions.compatibilityDate,
+		compatibilityFlags: input.workerOptions.compatibilityFlags,
+		mainModule: input.workerOptions.mainModule,
+		modules: input.workerOptions.modules,
+	})
 	return `${dynamicWorkerIdPrefix}${hash.slice(0, 43)}`
 }
 
@@ -79,21 +77,100 @@ export async function createDynamicWorkerBillingId(input: {
 	code: string
 	userModules: WorkerLoaderModules
 }) {
-	const hash = await sha256Base64Url(
-		canonicalJsonStringify({
-			version: dynamicWorkerBillingKeyVersion,
-			binding: 'LOADER:billing',
-			userId: input.userId,
-			storageContext: input.storageContext,
-			code: input.code,
-			modules: input.userModules,
-		}),
-	)
+	const hash = sha256CanonicalJsonBase64Url({
+		version: dynamicWorkerBillingKeyVersion,
+		binding: 'LOADER:billing',
+		userId: input.userId,
+		storageContext: input.storageContext,
+		code: input.code,
+		modules: input.userModules,
+	})
 	return `${dynamicWorkerIdPrefix}${hash.slice(0, 43)}`
 }
 
-function canonicalJsonStringify(value: unknown) {
-	return JSON.stringify(canonicalizeForHash(value, '$'))
+/**
+ * SHA-256 of `JSON.stringify` of the canonical form, fed to the hash a piece
+ * at a time. Execute mints these ids in the shared API isolate, and building
+ * the whole JSON string and its UTF-8 bytes cost about three copies of the
+ * module graph per id, enough to reset that isolate on a multi-megabyte
+ * import.
+ */
+function sha256CanonicalJsonBase64Url(value: unknown) {
+	const hash = sha256.create()
+	writeJson(
+		(text) => {
+			let rest = text
+			while (rest.length > 0) {
+				const { read, written } = utf8Encoder.encodeInto(rest, utf8Scratch)
+				hash.update(utf8Scratch.subarray(0, written))
+				rest = rest.slice(read)
+			}
+		},
+		canonicalizeForHash(value, '$'),
+	)
+	return bytesToBase64Url(hash.digest())
+}
+
+const utf8Encoder = new TextEncoder()
+// Hashing is synchronous, so one scratch buffer serves every call.
+const utf8Scratch = new Uint8Array(256 * 1024)
+
+const jsonStringChunkChars = 64 * 1024
+
+type JsonWriter = (text: string) => void
+
+/** Writes exactly the bytes `JSON.stringify` would for a canonical value. */
+function writeJson(write: JsonWriter, value: unknown) {
+	if (typeof value === 'string') {
+		writeJsonString(write, value)
+		return
+	}
+	if (Array.isArray(value)) {
+		write('[')
+		for (let index = 0; index < value.length; index++) {
+			if (index > 0) write(',')
+			// Like JSON.stringify, a hole in a sparse array is written as null.
+			writeJson(write, value[index] ?? null)
+		}
+		write(']')
+		return
+	}
+	if (value !== null && typeof value === 'object') {
+		const record = value as Record<string, unknown>
+		write('{')
+		Object.keys(record).forEach((key, index) => {
+			if (index > 0) write(',')
+			writeJsonString(write, key)
+			write(':')
+			writeJson(write, record[key])
+		})
+		write('}')
+		return
+	}
+	write(JSON.stringify(value))
+}
+
+function writeJsonString(write: JsonWriter, value: string) {
+	if (value.length <= jsonStringChunkChars) {
+		write(JSON.stringify(value))
+		return
+	}
+	write('"')
+	let start = 0
+	while (start < value.length) {
+		let end = Math.min(start + jsonStringChunkChars, value.length)
+		// A pair split across chunks would be escaped as two lone surrogates.
+		if (end < value.length && isHighSurrogate(value.charCodeAt(end - 1))) {
+			end -= 1
+		}
+		write(JSON.stringify(value.slice(start, end)).slice(1, -1))
+		start = end
+	}
+	write('"')
+}
+
+function isHighSurrogate(charCode: number) {
+	return charCode >= 0xd800 && charCode <= 0xdbff
 }
 
 const hashTagKey = '__kodyType'

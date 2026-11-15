@@ -324,12 +324,12 @@ export function emptyPlaceholderCounts(): Record<PlaceholderMatchKind, number> {
 	}
 }
 
-export function scanPackageCredentials(input: {
+export async function scanPackageCredentials(input: {
 	files: Record<string, string>
 	slots: Record<string, PackageCredentialSlot> | undefined
 	/** Record each reference's module path and line (publish warnings). */
 	sites?: boolean
-}): PackageCredentialScan {
+}): Promise<PackageCredentialScan> {
 	const scan: PackageCredentialScan = {
 		placeholders: emptyPlaceholderCounts(),
 		references: [],
@@ -344,7 +344,7 @@ export function scanPackageCredentials(input: {
 		})),
 		unparsedModules: 0,
 	}
-	forEachScannableModule(
+	await forEachScannableModule(
 		input.files,
 		(path, parsed, constants) => {
 			if (parsed) {

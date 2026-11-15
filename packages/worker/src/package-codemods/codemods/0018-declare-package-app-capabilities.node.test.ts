@@ -108,7 +108,7 @@ test('the closure scan follows an imported export, not the whole helper', async 
 test('0018 adds capabilities called through an imported helper', async () => {
 	const files = appFiles(importsHelper)
 	const closure = await closureFor(files)
-	const result = declarePackageAppCapabilitiesCodemod.transform(
+	const result = await declarePackageAppCapabilitiesCodemod.transform(
 		files,
 		context({ closure }),
 	)
@@ -127,7 +127,10 @@ test('0018 adds capabilities called through an imported helper', async () => {
 		},
 	} satisfies DeclarePackageAppCapabilitiesOwnerDetail)
 	expect(
-		declarePackageAppCapabilitiesCodemod.detect(files, context({ closure })),
+		await declarePackageAppCapabilitiesCodemod.detect(
+			files,
+			context({ closure }),
+		),
 	).toEqual([
 		{
 			path: 'package.json',
@@ -136,29 +139,32 @@ test('0018 adds capabilities called through an imported helper', async () => {
 	])
 })
 
-test('0018 is idempotent and keeps existing declarations first', () => {
+test('0018 is idempotent and keeps existing declarations first', async () => {
 	const files = appFiles(
 		"import { kody } from 'kody:runtime'\nexport default async () => [await kody.jobList({}), await kody.secretList({})]\n",
 		['secretList'],
 	)
-	const first = declarePackageAppCapabilitiesCodemod.transform(files, context())
+	const first = await declarePackageAppCapabilitiesCodemod.transform(
+		files,
+		context(),
+	)
 	expect(declared(first.files)).toEqual(['secretList', 'jobList'])
-	const second = declarePackageAppCapabilitiesCodemod.transform(
+	const second = await declarePackageAppCapabilitiesCodemod.transform(
 		first.files,
 		context(),
 	)
 	expect(second.changed).toBe(false)
 	expect(second.ownerDetail).toBeUndefined()
 	expect(
-		declarePackageAppCapabilitiesCodemod.detect(first.files, context()),
+		await declarePackageAppCapabilitiesCodemod.detect(first.files, context()),
 	).toEqual([])
 })
 
-test('0018 gap-fills computed names from the runtime log and still reports them', () => {
+test('0018 gap-fills computed names from the runtime log and still reports them', async () => {
 	const files = appFiles(
 		"import { kody } from 'kody:runtime'\nexport default async (name: string) => kody[name]({})\n",
 	)
-	const unfilled = declarePackageAppCapabilitiesCodemod.transform(
+	const unfilled = await declarePackageAppCapabilitiesCodemod.transform(
 		files,
 		context(),
 	)
@@ -171,7 +177,7 @@ test('0018 gap-fills computed names from the runtime log and still reports them'
 			.unresolved.computedCalls,
 	).toBe(1)
 
-	const filled = declarePackageAppCapabilitiesCodemod.transform(
+	const filled = await declarePackageAppCapabilitiesCodemod.transform(
 		files,
 		context({ observed: { names: ['jobList'], credentialNamedCalls: 0 } }),
 	)
@@ -183,11 +189,11 @@ test('0018 gap-fills computed names from the runtime log and still reports them'
 	})
 })
 
-test('0018 never adds names that are not platform capabilities, and findings never name them', () => {
+test('0018 never adds names that are not platform capabilities, and findings never name them', async () => {
 	const files = appFiles(
 		"import { kody } from 'kody:runtime'\nexport default async () => kody.notAPlatformCall({})\n",
 	)
-	const result = declarePackageAppCapabilitiesCodemod.transform(
+	const result = await declarePackageAppCapabilitiesCodemod.transform(
 		files,
 		context({ observed: { names: ['secretList'], credentialNamedCalls: 2 } }),
 	)
@@ -197,7 +203,7 @@ test('0018 never adds names that are not platform capabilities, and findings nev
 	})
 	const findings = [
 		...result.needsManual,
-		...declarePackageAppCapabilitiesCodemod.detect(files, context()),
+		...(await declarePackageAppCapabilitiesCodemod.detect(files, context())),
 	]
 	for (const finding of findings) {
 		expect(Object.values(declarePackageAppCapabilitiesMessages)).toContain(
@@ -207,7 +213,7 @@ test('0018 never adds names that are not platform capabilities, and findings nev
 	}
 })
 
-test('0018 leaves packages that are not apps alone', () => {
+test('0018 leaves packages that are not apps alone', async () => {
 	const files = {
 		'package.json': JSON.stringify({
 			name: '@example/helper',
@@ -217,7 +223,7 @@ test('0018 leaves packages that are not apps alone', () => {
 		'index.ts':
 			"import { kody } from 'kody:runtime'\nexport default () => kody.secretList({})\n",
 	}
-	const result = declarePackageAppCapabilitiesCodemod.transform(
+	const result = await declarePackageAppCapabilitiesCodemod.transform(
 		files,
 		context(),
 	)

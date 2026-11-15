@@ -28,8 +28,10 @@ const preFixSource = [
 	'export { wake };',
 ].join('\n')
 
-test('binds a pre-fix bundle free fetch and shared kody to its own package', () => {
-	const repaired = repairPreBindingPublishedArtifact(artifact(preFixSource))
+test('binds a pre-fix bundle free fetch and shared kody to its own package', async () => {
+	const repaired = await repairPreBindingPublishedArtifact(
+		artifact(preFixSource),
+	)
 	const source = repaired.modules['bundle.js']!
 	expect(source).toContain(
 		'import { __kodyCreatePackageBoundFetch as __kodyPreBindingBoundFetch, __kodyCreatePackageBoundKody as __kodyPreBindingBoundKody } from "./.__kody_virtual__/runtime.js";',
@@ -44,8 +46,8 @@ test('binds a pre-fix bundle free fetch and shared kody to its own package', () 
 	expect(isPreBindingPublishedArtifact(repaired)).toBe(false)
 })
 
-test('keeps an aliased shared kody import local name', () => {
-	const repaired = repairPreBindingPublishedArtifact(
+test('keeps an aliased shared kody import local name', async () => {
+	const repaired = await repairPreBindingPublishedArtifact(
 		artifact(
 			'import { kody as kody2 } from "./.__kody_virtual__/runtime.js";\nexport const run = () => kody2.secrets.list();',
 		),
@@ -57,51 +59,51 @@ test('keeps an aliased shared kody import local name', () => {
 	expect(source).not.toContain('import { kody as kody2 }')
 })
 
-test('leaves current, marked, unowned, and multi-package bundles unchanged', () => {
+test('leaves current, marked, unowned, and multi-package bundles unchanged', async () => {
 	const current = artifact(
 		'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own");\nexport const run = () => __kodyBoundFetch("https://example.com");',
 	)
-	expect(repairPreBindingPublishedArtifact(current)).toBe(current)
+	expect(await repairPreBindingPublishedArtifact(current)).toBe(current)
 	const marked = artifact(preFixSource, {
 		packageBindingRewrite: packageBindingRewriteVersion,
 	})
-	expect(repairPreBindingPublishedArtifact(marked)).toBe(marked)
+	expect(await repairPreBindingPublishedArtifact(marked)).toBe(marked)
 	const unowned = artifact(preFixSource, { packageContext: null })
-	expect(repairPreBindingPublishedArtifact(unowned)).toBe(unowned)
+	expect(await repairPreBindingPublishedArtifact(unowned)).toBe(unowned)
 	const mixed = artifact(preFixSource, {
 		dependencies: [{ packageId: 'pkg-other' }],
 	})
-	expect(repairPreBindingPublishedArtifact(mixed)).toBe(mixed)
+	expect(await repairPreBindingPublishedArtifact(mixed)).toBe(mixed)
 })
 
-test('does not shadow a module-level fetch declaration', () => {
+test('does not shadow a module-level fetch declaration', async () => {
 	const own = artifact(
 		'const fetch = (url) => globalThis.fetch(url);\nexport const run = () => fetch("https://example.com");',
 	)
-	expect(repairPreBindingPublishedArtifact(own).modules['bundle.js']).toBe(
-		own.modules['bundle.js'],
-	)
+	expect(
+		(await repairPreBindingPublishedArtifact(own)).modules['bundle.js'],
+	).toBe(own.modules['bundle.js'])
 })
 
-test('multi-package pre-fix bundles rebuild only when source needs no npm install', () => {
+test('multi-package pre-fix bundles rebuild only when source needs no npm install', async () => {
 	const mixed = artifact(preFixSource, {
 		dependencies: [{ packageId: 'pkg-other' }],
 	})
 	expect(
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: mixed,
 			sourceFiles: { 'src/index.ts': 'export const wake = () => fetch("x")' },
 		}),
 	).toBe(true)
 	expect(
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: artifact(preFixSource),
 			sourceFiles: {},
 		}),
 	).toBe(false)
 })
 
-test('multi-package unmarked packageStorage-only bundles need a binding rebuild', () => {
+test('multi-package unmarked packageStorage-only bundles need a binding rebuild', async () => {
 	// No free fetch and no shared kody import: the old free-fetch heuristic
 	// treated this as current, so workflow/export load sites and same-commit
 	// publish kept the stale bundle. The inlined callee's packageStorage()
@@ -116,21 +118,21 @@ test('multi-package unmarked packageStorage-only bundles need a binding rebuild'
 		dependencies: [{ packageId: 'pkg-skills' }],
 	})
 	expect(isPreBindingPublishedArtifact(mixed)).toBe(false)
-	expect(isUnrepairablePreBindingArtifact(mixed)).toBe(true)
+	expect(await isUnrepairablePreBindingArtifact(mixed)).toBe(true)
 	expect(
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: mixed,
 			sourceFiles: { 'src/index.ts': storageOnly },
 		}),
 	).toBe(true)
 	expect(
-		isUnrepairablePreBindingArtifact({
+		await isUnrepairablePreBindingArtifact({
 			...mixed,
 			packageBindingRewrite: packageBindingRewriteVersion,
 		}),
 	).toBe(false)
 	expect(
-		isUnrepairablePreBindingArtifact(
+		await isUnrepairablePreBindingArtifact(
 			artifact(
 				'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own");\nexport default async () => packageStorage()',
 				{ dependencies: [{ packageId: 'pkg-skills' }] },
@@ -139,22 +141,22 @@ test('multi-package unmarked packageStorage-only bundles need a binding rebuild'
 	).toBe(false)
 })
 
-test('reports a module the repair cannot bind instead of skipping it silently', () => {
+test('reports a module the repair cannot bind instead of skipping it silently', async () => {
 	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 	try {
 		const unparsable = artifact('export const run = ( => fetch("x")', {
 			sourceId: 'src-own',
 		})
-		expect(repairPreBindingPublishedArtifact(unparsable).modules).toEqual(
-			unparsable.modules,
-		)
+		expect(
+			(await repairPreBindingPublishedArtifact(unparsable)).modules,
+		).toEqual(unparsable.modules)
 		const collision = artifact(
 			'const __kodyPreBindingBoundFetch = 1;\nexport const run = () => fetch("x");',
 			{ sourceId: 'src-own' },
 		)
-		expect(repairPreBindingPublishedArtifact(collision).modules).toEqual(
-			collision.modules,
-		)
+		expect(
+			(await repairPreBindingPublishedArtifact(collision)).modules,
+		).toEqual(collision.modules)
 		const events = warn.mock.calls.map((call) => JSON.parse(String(call[0])))
 		expect(events).toEqual([
 			{
@@ -175,7 +177,7 @@ test('reports a module the repair cannot bind instead of skipping it silently', 
 	}
 })
 
-test('a multi-package pre-fix bundle that needs an npm install to rebuild is reported', () => {
+test('a multi-package pre-fix bundle that needs an npm install to rebuild is reported', async () => {
 	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 	try {
 		const mixed = artifact(preFixSource, {
@@ -183,7 +185,7 @@ test('a multi-package pre-fix bundle that needs an npm install to rebuild is rep
 			sourceId: 'src-own',
 		})
 		expect(
-			publishedArtifactNeedsPackageBindingRebuild({
+			await publishedArtifactNeedsPackageBindingRebuild({
 				artifact: mixed,
 				sourceFiles: {
 					'package.json': JSON.stringify({ dependencies: { marked: '1.0.0' } }),
@@ -203,20 +205,20 @@ test('a multi-package pre-fix bundle that needs an npm install to rebuild is rep
 	}
 })
 
-test('never treats a browser app-client bundle as pre-binding', () => {
+test('never treats a browser app-client bundle as pre-binding', async () => {
 	const clientSource =
 		'const response = await fetch("/api/items");\nconsole.log(await response.json());'
 	const client = artifact(clientSource, { kind: 'app-client' })
 	expect(isPreBindingPublishedArtifact(client)).toBe(false)
-	expect(repairPreBindingPublishedArtifact(client)).toBe(client)
+	expect(await repairPreBindingPublishedArtifact(client)).toBe(client)
 	expect(client.modules['bundle.js']).toBe(clientSource)
 	const mixedClient = artifact(clientSource, {
 		kind: 'app-client',
 		dependencies: [{ packageId: 'pkg-other' }],
 	})
-	expect(isUnrepairablePreBindingArtifact(mixedClient)).toBe(false)
+	expect(await isUnrepairablePreBindingArtifact(mixedClient)).toBe(false)
 	expect(
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: mixedClient,
 			sourceFiles: {},
 		}),
@@ -224,9 +226,9 @@ test('never treats a browser app-client bundle as pre-binding', () => {
 	// Isolate-loaded kinds keep the repair.
 	const app = artifact(clientSource, { kind: 'app' })
 	expect(isPreBindingPublishedArtifact(app)).toBe(true)
-	expect(repairPreBindingPublishedArtifact(app).modules['bundle.js']).toContain(
-		'const fetch = __kodyPreBindingBoundFetch("pkg-own");',
-	)
+	expect(
+		(await repairPreBindingPublishedArtifact(app)).modules['bundle.js'],
+	).toContain('const fetch = __kodyPreBindingBoundFetch("pkg-own");')
 })
 
 const globalReadSource = [
@@ -234,9 +236,9 @@ const globalReadSource = [
 	'export const wake = () => globalThis.fetch("https://example.com");',
 ].join('\n')
 
-test('binds global-object fetch reads in a single-package bundle built before the builder did', () => {
+test('binds global-object fetch reads in a single-package bundle built before the builder did', async () => {
 	for (const extra of [{}, { packageBindingRewrite: 1 }]) {
-		const repaired = repairGlobalObjectFetchReadsInArtifact(
+		const repaired = await repairGlobalObjectFetchReadsInArtifact(
 			artifact(globalReadSource, extra),
 		)
 		const source = repaired.modules['bundle.js']!
@@ -252,7 +254,7 @@ test('binds global-object fetch reads in a single-package bundle built before th
 	}
 })
 
-test('leaves current, unowned, multi-package and write-only bundles alone', () => {
+test('leaves current, unowned, multi-package and write-only bundles alone', async () => {
 	for (const unchanged of [
 		artifact(globalReadSource, {
 			packageBindingRewrite: packageBindingRewriteVersion,
@@ -265,19 +267,21 @@ test('leaves current, unowned, multi-package and write-only bundles alone', () =
 		}),
 		artifact(globalReadSource, { kind: 'app-client' }),
 	]) {
-		expect(repairGlobalObjectFetchReadsInArtifact(unchanged)).toBe(unchanged)
+		expect(await repairGlobalObjectFetchReadsInArtifact(unchanged)).toBe(
+			unchanged,
+		)
 	}
 })
 
-test('a multi-package bundle with a global-object fetch read is rebuilt once, to the current version', () => {
+test('a multi-package bundle with a global-object fetch read is rebuilt once, to the current version', async () => {
 	const mixed = { dependencies: [{ packageId: 'pkg-other' }] }
 	expect(
-		isUnrepairablePreBindingArtifact(
+		await isUnrepairablePreBindingArtifact(
 			artifact(globalReadSource, { ...mixed, packageBindingRewrite: 1 }),
 		),
 	).toBe(true)
 	expect(
-		isUnrepairablePreBindingArtifact(
+		await isUnrepairablePreBindingArtifact(
 			artifact(globalReadSource, {
 				...mixed,
 				packageBindingRewrite: packageBindingRewriteVersion,
@@ -285,7 +289,7 @@ test('a multi-package bundle with a global-object fetch read is rebuilt once, to
 		),
 	).toBe(false)
 	expect(
-		isUnrepairablePreBindingArtifact(
+		await isUnrepairablePreBindingArtifact(
 			artifact(
 				'var __kodyBoundFetch = __kodyCreatePackageBoundFetch("pkg-own"); export const wake = () => __kodyBoundFetch(url);',
 				{ ...mixed, packageBindingRewrite: 1 },

@@ -751,7 +751,7 @@ async function processScanItem(input: {
 	files: Record<string, string>
 	beforeCommit: string | null
 }): Promise<PersistedItemResult> {
-	const findings = input.codemod.detect(input.files, input.context)
+	const findings = await input.codemod.detect(input.files, input.context)
 	const status: PackageCodemodItemStatus =
 		findings.length > 0 ? 'detected' : 'clean'
 	return emptyItemResult({
@@ -792,7 +792,7 @@ async function processTransformGates(input: {
 > {
 	const itemId = crypto.randomUUID()
 	const { context } = input
-	const transformed = input.codemod.transform(input.files, context)
+	const transformed = await input.codemod.transform(input.files, context)
 	if (!transformed.changed && transformed.needsManual.length > 0) {
 		return {
 			kind: 'terminal',
@@ -823,7 +823,7 @@ async function processTransformGates(input: {
 			}),
 		}
 	}
-	const secondPass = input.codemod.transform(transformed.files, context)
+	const secondPass = await input.codemod.transform(transformed.files, context)
 	if (secondPass.changed) {
 		return {
 			kind: 'terminal',

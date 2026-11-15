@@ -1,3 +1,4 @@
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { expect, test } from 'vitest'
 import {
 	buildPackageSearchProjection,
@@ -13,6 +14,8 @@ import {
 	assertKodyDescriptionLength,
 	KODY_DESCRIPTION_MAX_LENGTH,
 } from './types.ts'
+
+const parser = await loadModuleSourceParser()
 
 function parse(
 	name: string,
@@ -829,9 +832,10 @@ test('buildPackageSearchProjection extracts export metadata, referenced types, a
 			},
 		),
 		{
-			'src/index.ts':
-				'export const ignored = "types file should be preferred for metadata"',
-			'src/index.d.ts': `/**
+			files: {
+				'src/index.ts':
+					'export const ignored = "types file should be preferred for metadata"',
+				'src/index.d.ts': `/**
  * Look up the forecast for a city.
  */
 export declare function forecast(city: string): Promise<string>
@@ -841,6 +845,8 @@ export declare function forecast(city: string): Promise<string>
  */
 export declare const celsiusToFahrenheit: (value: number) => number
 `,
+			},
+			parser,
 		},
 	)
 
@@ -884,7 +890,8 @@ export declare const celsiusToFahrenheit: (value: number) => number
 			},
 		),
 		{
-			'src/launch-cursor-cloud-agent.d.ts': `type LaunchCursorCloudAgentInput = {
+			files: {
+				'src/launch-cursor-cloud-agent.d.ts': `type LaunchCursorCloudAgentInput = {
 	prompt: string
 	repository: RepositoryTarget
 	mode?: LaunchMode
@@ -911,6 +918,8 @@ type UnrelatedLocalType = {
  */
 export declare function launch(input: LaunchCursorCloudAgentInput): Promise<Response>
 `,
+			},
+			parser,
 		},
 	)
 
@@ -960,7 +969,8 @@ export declare function launch(input: LaunchCursorCloudAgentInput): Promise<Resp
 			},
 		),
 		{
-			'src/index.ts': `type GenericBound = {
+			files: {
+				'src/index.ts': `type GenericBound = {
 	value: string
 }
 
@@ -984,6 +994,8 @@ export const format = (value: string): string => value.trim()
 
 export const genericFormat = <T extends GenericBound>(input: T): string => input.value
 `,
+			},
+			parser,
 		},
 	)
 
@@ -1015,7 +1027,8 @@ export const genericFormat = <T extends GenericBound>(input: T): string => input
 			},
 		),
 		{
-			'src/index.ts': `type HugeInput = {
+			files: {
+				'src/index.ts': `type HugeInput = {
 ${oversizedFields}
 }
 
@@ -1027,6 +1040,8 @@ export function run(huge: HugeInput, small: SmallInput): string {
 	return small.value
 }
 `,
+			},
+			parser,
 		},
 	)
 	expect(
@@ -1080,13 +1095,14 @@ test('buildPackageSearchProjection follows local default-export bindings and one
 					},
 				},
 			),
-			files,
+			{ files: files, parser },
 		).exports[0]
 
 	const spotifyExport = project(
 		{
 			'src/search.ts': `import type { SearchParams } from '../lib/export-types.ts'
 import { searchCatalog } from '../lib/search-catalog.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 
 /**
  * Search the Spotify catalog.

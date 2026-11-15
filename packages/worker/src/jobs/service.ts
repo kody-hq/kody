@@ -1356,10 +1356,10 @@ async function runRepoBackedJob(input: {
 		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5). Without
 		// this, a scheduled job keeps running the stored bundle and an inlined
 		// dependency's fetch acts as the job's package.
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: loadedArtifact.artifact,
 			sourceFiles: resolved.files,
-		})
+		}))
 	) {
 		return await executeArtifact(loadedArtifact.artifact)
 	}

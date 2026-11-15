@@ -83,7 +83,7 @@ export type PreBindingArtifactRebuildResult = {
 }
 
 /** True when the stored bundle still runs pre-binding package code. */
-export function isStalePreBindingArtifact(artifact: {
+export async function isStalePreBindingArtifact(artifact: {
 	kind?: string
 	modules: Parameters<typeof isPreBindingPublishedArtifact>[0]['modules']
 	dependencies: Array<{ packageId?: string }>
@@ -93,7 +93,7 @@ export function isStalePreBindingArtifact(artifact: {
 	if (!isRepairableArtifactKind(artifact.kind)) return false
 	return (
 		isPreBindingPublishedArtifact(artifact) ||
-		isUnrepairablePreBindingArtifact(artifact)
+		(await isUnrepairablePreBindingArtifact(artifact))
 	)
 }
 
@@ -139,7 +139,7 @@ async function findStaleTargets(input: {
 			otherCommit += 1
 			continue
 		}
-		if (!isStalePreBindingArtifact(artifact)) continue
+		if (!(await isStalePreBindingArtifact(artifact))) continue
 		stale.push(target)
 		if (publishedArtifactInlinesOtherPackages(artifact)) multiPackage += 1
 	}

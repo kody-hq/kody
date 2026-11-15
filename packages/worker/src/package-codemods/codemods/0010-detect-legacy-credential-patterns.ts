@@ -629,11 +629,11 @@ function readDeclaredSlotKinds(manifestSource: string | undefined) {
  * Scan every runtime-reachable module for credential references, in path
  * order. Unparseable modules fall back to a weaker text scan.
  */
-export function scanModuleCredentialReferences(
+export async function scanModuleCredentialReferences(
 	files: Record<string, string>,
 	handlersFor: (path: string, parsed: boolean) => CredentialReferenceHandlers,
 ) {
-	forEachScannableModule(files, (path, parsed, constants) => {
+	await forEachScannableModule(files, (path, parsed, constants) => {
 		const handlers = handlersFor(path, parsed != null)
 		if (parsed) {
 			detectInParsedModule(parsed, { ...handlers, constants })
@@ -646,9 +646,9 @@ export function scanModuleCredentialReferences(
 	})
 }
 
-function detectLegacyCredentialPatterns(
+async function detectLegacyCredentialPatterns(
 	files: Record<string, string>,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const findings: Array<PackageCodemodFinding> = []
 	const manifestSource = Object.hasOwn(files, packageManifestPath)
 		? files[packageManifestPath]
@@ -667,7 +667,7 @@ function detectLegacyCredentialPatterns(
 		const patterns = patternsFor(packageManifestPath)
 		detectInManifest(manifestSource, (pattern) => patterns.add(pattern))
 	}
-	scanModuleCredentialReferences(files, (path) => {
+	await scanModuleCredentialReferences(files, (path) => {
 		const patterns = patternsFor(path)
 		const add = (pattern: LegacyCredentialPattern) => patterns.add(pattern)
 		return {
@@ -704,14 +704,14 @@ function detectLegacyCredentialPatterns(
 	)
 }
 
-function transformLegacyCredentialPatterns(
+async function transformLegacyCredentialPatterns(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	return {
 		files,
 		changed: false,
 		changedPaths: [],
-		needsManual: detectLegacyCredentialPatterns(files),
+		needsManual: await detectLegacyCredentialPatterns(files),
 	}
 }
 

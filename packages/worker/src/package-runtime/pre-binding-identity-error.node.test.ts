@@ -33,9 +33,9 @@ function bundle(
 	}
 }
 
-test('an identity error from an unrebuildable pre-binding bundle gets the republish hint', () => {
+test('an identity error from an unrebuildable pre-binding bundle gets the republish hint', async () => {
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: ownerOnlyMessage,
 			artifact: bundle(),
 		}),
@@ -46,15 +46,15 @@ test('an identity error from an unrebuildable pre-binding bundle gets the republ
 		'Secret "token" exists in package scope and is not visible from this runtime.',
 	]) {
 		expect(
-			describePreBindingIdentityError({ message, artifact: bundle() }),
+			await describePreBindingIdentityError({ message, artifact: bundle() }),
 		).toBe(`${message} ${preBindingRepublishHint}`)
 	}
 })
 
-test('current, single-package, and unrelated failures keep their message', () => {
+test('current, single-package, and unrelated failures keep their message', async () => {
 	// Built with the lexical binding.
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: ownerOnlyMessage,
 			artifact: bundle({
 				source:
@@ -63,34 +63,34 @@ test('current, single-package, and unrelated failures keep their message', () =>
 		}),
 	).toBeNull()
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: ownerOnlyMessage,
 			artifact: bundle({ packageBindingRewrite: packageBindingRewriteVersion }),
 		}),
 	).toBeNull()
 	// Repairable in place: only the bundle's own package.
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: ownerOnlyMessage,
 			artifact: bundle({ dependencies: [{ packageId: 'pkg-workflow' }] }),
 		}),
 	).toBeNull()
 	// Ad hoc code with no package context.
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: ownerOnlyMessage,
 			artifact: bundle({ packageContext: null }),
 		}),
 	).toBeNull()
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: 'Upstream returned 500',
 			artifact: bundle(),
 		}),
 	).toBeNull()
 	// Already hinted (nested runs) is not hinted twice.
 	expect(
-		describePreBindingIdentityError({
+		await describePreBindingIdentityError({
 			message: `${ownerOnlyMessage} ${preBindingRepublishHint}`,
 			artifact: bundle(),
 		}),

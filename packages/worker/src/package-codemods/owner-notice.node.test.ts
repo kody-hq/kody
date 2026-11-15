@@ -451,7 +451,7 @@ test('owners page by cursor in id order', async () => {
 	expect(second.nextCursor).toBeNull()
 })
 
-test('the email lists at most 25 packages and counts the rest', () => {
+test('the email lists at most 25 packages and counts the rest', async () => {
 	const packages = Array.from({ length: 27 }, (_, index) => ({
 		packageId: `pkg-${index}`,
 		kodyId: `@alice/pkg-${index}`,

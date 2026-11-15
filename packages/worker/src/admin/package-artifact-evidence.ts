@@ -518,7 +518,8 @@ async function inspectAppTemplate(input: {
 				clientEntry: input.clientEntry,
 			})
 			servesApp =
-				parts.app != null && !isUnrepairablePreBindingArtifact(parts.app)
+				parts.app != null &&
+				!(await isUnrepairablePreBindingArtifact(parts.app))
 			runtimeClient = parts.client
 		} catch {
 			servesApp = false

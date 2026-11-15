@@ -27,8 +27,8 @@ const previousFiles = {
 	'README.md': 'docs only',
 }
 
-test('collectPublishedPackageArtifactInputPaths includes reachable source and bundler root config, not sibling exports', () => {
-	const aPaths = collectPublishedPackageArtifactInputPaths({
+test('collectPublishedPackageArtifactInputPaths includes reachable source and bundler root config, not sibling exports', async () => {
+	const aPaths = await collectPublishedPackageArtifactInputPaths({
 		files: previousFiles,
 		entryPoint: 'src/a.ts',
 	})
@@ -38,13 +38,13 @@ test('collectPublishedPackageArtifactInputPaths includes reachable source and bu
 		'src/shared.ts',
 	])
 
-	const bPaths = collectPublishedPackageArtifactInputPaths({
+	const bPaths = await collectPublishedPackageArtifactInputPaths({
 		files: previousFiles,
 		entryPoint: 'src/b.ts',
 	})
 	expect([...bPaths].sort()).toEqual(['package.json', 'src/b.ts'])
 
-	const withVendor = collectPublishedPackageArtifactInputPaths({
+	const withVendor = await collectPublishedPackageArtifactInputPaths({
 		files: {
 			...previousFiles,
 			'node_modules/left-pad/index.js': 'export default 1',
@@ -55,27 +55,27 @@ test('collectPublishedPackageArtifactInputPaths includes reachable source and bu
 	expect(withVendor.has('README.md')).toBe(false)
 })
 
-test('publishedPackageArtifactTargetInputsChanged dirties only targets whose reachable inputs changed', () => {
+test('publishedPackageArtifactTargetInputsChanged dirties only targets whose reachable inputs changed', async () => {
 	const nextBOnly = {
 		...previousFiles,
 		'src/b.ts': `export default async function b() { return 'b-changed' }\n`,
 	}
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/a.ts',
 			previousFiles,
 			nextFiles: nextBOnly,
 		}),
 	).toBe(false)
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/b.ts',
 			previousFiles,
 			nextFiles: nextBOnly,
 		}),
 	).toBe(true)
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/c.ts',
 			previousFiles,
 			nextFiles: nextBOnly,
@@ -87,21 +87,21 @@ test('publishedPackageArtifactTargetInputsChanged dirties only targets whose rea
 		'src/shared.ts': `export function shared(label: string) { return label.toUpperCase() }\n`,
 	}
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/a.ts',
 			previousFiles,
 			nextFiles: nextShared,
 		}),
 	).toBe(true)
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/b.ts',
 			previousFiles,
 			nextFiles: nextShared,
 		}),
 	).toBe(false)
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/c.ts',
 			previousFiles,
 			nextFiles: nextShared,
@@ -113,7 +113,7 @@ test('publishedPackageArtifactTargetInputsChanged dirties only targets whose rea
 		'README.md': 'docs changed',
 	}
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/b.ts',
 			previousFiles,
 			nextFiles: nextDocsOnly,
@@ -136,7 +136,7 @@ test('publishedPackageArtifactTargetInputsChanged dirties only targets whose rea
 		}),
 	}
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/b.ts',
 			previousFiles,
 			nextFiles: nextManifest,
@@ -144,16 +144,16 @@ test('publishedPackageArtifactTargetInputsChanged dirties only targets whose rea
 	).toBe(true)
 })
 
-test('publishedPackageArtifactTargetInputsChanged rebuilds when the graph cannot be proven', () => {
+test('publishedPackageArtifactTargetInputsChanged rebuilds when the graph cannot be proven', async () => {
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/missing.ts',
 			previousFiles: {},
 			nextFiles: {},
 		}),
 	).toBe(true)
 	expect(
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: 'src/new.ts',
 			previousFiles,
 			nextFiles: {
@@ -164,17 +164,17 @@ test('publishedPackageArtifactTargetInputsChanged rebuilds when the graph cannot
 	).toBe(true)
 })
 
-test('publishedPackageArtifactTargetInputsChanged parses each source once across targets with a shared cache', () => {
+test('publishedPackageArtifactTargetInputsChanged parses each source once across targets with a shared cache', async () => {
 	const cache: ModuleImportNodesCache = new Map()
 	for (const entryPoint of ['src/a.ts', 'src/b.ts', 'src/c.ts']) {
-		const changed = publishedPackageArtifactTargetInputsChanged({
+		const changed = await publishedPackageArtifactTargetInputsChanged({
 			entryPoint,
 			previousFiles,
 			nextFiles: previousFiles,
 			importNodesCache: cache,
 		})
 		expect(changed).toBe(
-			publishedPackageArtifactTargetInputsChanged({
+			await publishedPackageArtifactTargetInputsChanged({
 				entryPoint,
 				previousFiles,
 				nextFiles: previousFiles,
