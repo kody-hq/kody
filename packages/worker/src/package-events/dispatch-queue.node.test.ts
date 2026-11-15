@@ -52,12 +52,12 @@ function createMessageBody(overrides: Record<string, unknown> = {}) {
 	}
 }
 
-function createQueueMessage(id: string, body: unknown) {
+function createQueueMessage(id: string, body: unknown, attempts = 1) {
 	return {
 		id,
 		timestamp: new Date('2026-08-04T00:01:00.000Z'),
 		body,
-		attempts: 1,
+		attempts,
 		ack: vi.fn<() => void>(),
 		retry: vi.fn<(options?: { delaySeconds?: number }) => void>(),
 	}
@@ -287,4 +287,34 @@ test('an event whose owner is at the cap is put back with a delay instead of del
 		expect.objectContaining({ id: 'queue-other-owner' }),
 	)
 	expect(other.ack).toHaveBeenCalledTimes(1)
+})
+
+test('a capped event that already failed is retried, so its attempt count is not started over', async () => {
+	mocks.deliverPackageEvent.mockClear()
+	mocks.claimPackageEventSlot.mockResolvedValueOnce({
+		claimed: false,
+		inFlight: 4,
+	})
+	const send =
+		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	const failedBefore = createQueueMessage(
+		'queue-failed-before',
+		createMessageBody(),
+		2,
+	)
+
+	await handlePackageEventsDispatchQueue(
+		createBatch([failedBefore]),
+		{ APP_DB: {}, PACKAGE_EVENTS_DISPATCH_QUEUE: { send } } as unknown as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+
+	expect(send).not.toHaveBeenCalled()
+	expect(failedBefore.ack).not.toHaveBeenCalled()
+	expect(failedBefore.retry).toHaveBeenCalledWith({
+		delaySeconds: expect.any(Number),
+	})
+	expect(mocks.deliverPackageEvent).not.toHaveBeenCalled()
 })

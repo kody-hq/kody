@@ -121,28 +121,7 @@ async function handlePackageEventsQueueMessages(
 			expiresAt: new Date(Date.now() + packageEventSlotTtlMs).toISOString(),
 		})
 		if (!claimed) {
-			// Re-send instead of retry(): a retry counts toward max_retries, so a
-			// long wait behind the owner's own backlog would dead-letter it.
-			const deferrals = message.deferrals ?? 0
-			try {
-				await env.PACKAGE_EVENTS_DISPATCH_QUEUE.send(
-					{
-						...message,
-						deferrals: deferrals + 1,
-					} satisfies PackageEventsDispatchQueueMessage,
-					{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
-				)
-				queueMessage.ack()
-			} catch (error) {
-				console.error('package-events-dispatch-deferral-send-failed', {
-					queueMessageId: queueMessage.id,
-					topic: message.topic,
-					error,
-				})
-				queueMessage.retry({
-					delaySeconds: packageEventsDispatchRetryDelaySeconds,
-				})
-			}
+			await deferPackageEvent(queueMessage, message, env)
 			continue
 		}
 		try {
@@ -183,5 +162,44 @@ async function handlePackageEventsQueueMessages(
 				id: queueMessage.id,
 			})
 		}
+	}
+}
+
+/**
+ * Put an event back because its owner is at the cap. A first delivery is
+ * re-sent, because retry() counts toward max_retries and a long wait behind
+ * the owner's own backlog would dead-letter a healthy event. A delivery that
+ * already failed is retried instead: re-sending it would start its attempt
+ * count over, so an event that keeps failing would never dead-letter.
+ */
+async function deferPackageEvent(
+	queueMessage: Message<unknown>,
+	message: PackageEventsDispatchQueueMessage,
+	env: Env,
+) {
+	const deferrals = message.deferrals ?? 0
+	const delaySeconds = ownerCapDeferralDelaySeconds(deferrals)
+	if (queueMessage.attempts > 1) {
+		queueMessage.retry({ delaySeconds })
+		return
+	}
+	try {
+		await env.PACKAGE_EVENTS_DISPATCH_QUEUE.send(
+			{
+				...message,
+				deferrals: deferrals + 1,
+			} satisfies PackageEventsDispatchQueueMessage,
+			{ delaySeconds },
+		)
+		queueMessage.ack()
+	} catch (error) {
+		console.error('package-events-dispatch-deferral-send-failed', {
+			queueMessageId: queueMessage.id,
+			topic: message.topic,
+			error,
+		})
+		queueMessage.retry({
+			delaySeconds: packageEventsDispatchRetryDelaySeconds,
+		})
 	}
 }

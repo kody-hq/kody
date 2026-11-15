@@ -262,8 +262,9 @@ type PackageEventEnvelope = {
   redelivery replays stored results instead of re-running handlers.
 - One account has at most 4 package events being delivered at a time. More than
   that wait and are checked again after a delay that grows from a few seconds up
-  to 5 minutes. Waiting this way does not use up retries, and a burst from one
-  account does not delay other accounts' events.
+  to 5 minutes. Waiting this way does not use up retries unless the event
+  already failed once. A burst from one account does not delay other accounts'
+  events.
 - Infrastructure failures before handler code runs retry via the Queue (3
   attempts, then the `kody-package-events-dispatch-dlq` dead-letter queue).
   Terminal handler failures do not retry — a stored failed invocation replays
