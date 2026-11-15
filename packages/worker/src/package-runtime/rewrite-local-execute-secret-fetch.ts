@@ -170,12 +170,34 @@ export function rewriteGlobalObjectFetchReads(
 	source: string,
 	replacement: string,
 ): string {
-	if (!sourceMayReadFetchThroughGlobalObject(source)) return source
+	const found = collectGlobalObjectFetchReads(source)
+	if (!found) return source
+	let next = source
+	for (const read of found.reads.sort((a, b) => b.start - a.start)) {
+		if (found.unsafeNames.has(read.name)) continue
+		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
+	}
+	return next
+}
+
+/**
+ * True when the source reads `fetch` off the global object anywhere, even
+ * where {@link rewriteGlobalObjectFetchReads} would leave it alone because
+ * the module also uses the global object as a value. A bundle that inlines
+ * several packages is one module, so one package's alias would otherwise
+ * hide another package's plain reads.
+ */
+export function sourceReadsFetchThroughGlobalObject(source: string) {
+	return (collectGlobalObjectFetchReads(source)?.reads.length ?? 0) > 0
+}
+
+function collectGlobalObjectFetchReads(source: string) {
+	if (!sourceMayReadFetchThroughGlobalObject(source)) return null
 	let parsed: ModuleAstNode
 	try {
 		parsed = parseModuleSource(source) as unknown as ModuleAstNode
 	} catch {
-		return source
+		return null
 	}
 	const unsafeNames = new Set<string>()
 	const reads: Array<{ start: number; end: number; name: string }> = []
@@ -228,12 +250,10 @@ export function rewriteGlobalObjectFetchReads(
 		reads.push({ start: member.start, end: member.end, name })
 	})
 	const writes = collectMemberWriteStarts(parsed)
-	let next = source
-	for (const read of reads.sort((a, b) => b.start - a.start)) {
-		if (unsafeNames.has(read.name) || writes.has(read.start)) continue
-		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
+	return {
+		reads: reads.filter((read) => !writes.has(read.start)),
+		unsafeNames,
 	}
-	return next
 }
 
 /**

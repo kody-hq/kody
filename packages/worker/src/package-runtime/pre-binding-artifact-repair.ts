@@ -4,6 +4,7 @@ import { listMissingPublishedSourceInstalledDependencies } from './published-sou
 import {
 	collectTopLevelFetchCollisionNames,
 	rewriteGlobalObjectFetchReads,
+	sourceReadsFetchThroughGlobalObject,
 	sourceMayReadFetchThroughGlobalObject,
 } from './rewrite-local-execute-secret-fetch.ts'
 import {
@@ -305,12 +306,7 @@ function artifactReadsFetchThroughGlobalObject(artifact: RepairableArtifact) {
 		if (source == null || !sourceMayReadFetchThroughGlobalObject(source)) {
 			continue
 		}
-		if (
-			rewriteGlobalObjectFetchReads(source, repairGlobalReadFetchName) !==
-			source
-		) {
-			return true
-		}
+		if (sourceReadsFetchThroughGlobalObject(source)) return true
 	}
 	return false
 }

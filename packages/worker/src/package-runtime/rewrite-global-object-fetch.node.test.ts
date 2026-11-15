@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest'
-import { rewriteGlobalObjectFetchReads } from './rewrite-local-execute-secret-fetch.ts'
+import {
+	rewriteGlobalObjectFetchReads,
+	sourceReadsFetchThroughGlobalObject,
+} from './rewrite-local-execute-secret-fetch.ts'
 
 const rewrite = (source: string) => rewriteGlobalObjectFetchReads(source, 'F')
 
@@ -43,4 +46,17 @@ test('a module can read through one global object while aliasing the other', () 
 
 test('a parenthesized global object is still read as the global object', () => {
 	expect(rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
+})
+
+test('a read is still found where the module also uses the global object as a value', () => {
+	// One package's alias in an inlined bundle must not hide another's read.
+	const source = `const shared = globalThis\nshared.fetch(a)\nglobalThis.fetch(b)`
+	expect(rewrite(source)).toBe(source)
+	expect(sourceReadsFetchThroughGlobalObject(source)).toBe(true)
+	expect(sourceReadsFetchThroughGlobalObject(`const shared = globalThis`)).toBe(
+		false,
+	)
+	expect(
+		sourceReadsFetchThroughGlobalObject(`globalThis.fetch = polyfill`),
+	).toBe(false)
 })
