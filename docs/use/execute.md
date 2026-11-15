@@ -409,10 +409,15 @@ read include. `warning` is a string once the statement examines at least
 after 1,000,000,000 rows examined, with `storage.sql read stopped…`. Narrow with
 `LIMIT` or `WHERE`. The 1,000-row cap limits the response, not the scan.
 
+Pass bindings as one array: `sql(query, [a, b])` binds `a` to the first slot and
+`b` to the second, and `sql(query, [])` binds nothing. A non-array second
+argument binds nothing, so `sql(query, a, b)` does not bind `a` or `b`.
+
 Several `;`-separated statements run in order in one call. Only the last one may
 take bindings, and the result describes the last statement. Bindings are
 positional (named `:name` slots bind in order) and accept strings, numbers,
-booleans (stored as `1` / `0`), and `null`.
+booleans (stored as `1` / `0`), and `null`. An array or object element throws;
+`JSON.stringify` it first to store it as text.
 
 Under `kody execute --target mock` and `kody dev`, `sql(...)` runs on a local
 SQLite file and returns the same fields, row cap, `truncated`, warning, and
