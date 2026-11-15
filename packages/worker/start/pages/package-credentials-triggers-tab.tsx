@@ -44,6 +44,8 @@ const switchTrackCss = {
 	width: '2.75rem',
 	height: '1.55rem',
 	minWidth: '2.75rem',
+	// Toggle switch track, not a button.
+	// oxlint-disable-next-line kody-custom/no-raw-button-style
 	borderRadius: radius.full,
 	border: `1px solid ${colors.border}`,
 	background: colors.surface,

@@ -71,7 +71,10 @@ import {
 	type FileMetadata,
 } from '#universal/files.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSquircleCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	workspaceDirectoryMediaType,
 	isWorkspaceContainer,
@@ -116,7 +119,7 @@ const fileDate = new Intl.DateTimeFormat('en-US', {
 const compactControl = {
 	minHeight: 28,
 	padding: '3px 9px',
-	borderRadius: 5,
+	...getSquircleCss('xs'),
 	fontSize: typography.fontSize.xs,
 }
 const button = {

@@ -66,6 +66,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
+	getSquircleCss,
 	packageDetailPageCss,
 	proseCss,
 } from '#universal/styles/style-primitives.ts'
@@ -1119,7 +1120,7 @@ const openButtonCss = {
 	minHeight: 0,
 	boxSizing: 'border-box',
 	padding: `0 ${spacing.sm}`,
-	borderRadius: radius.sm,
+	...getSquircleCss('xs'),
 	border: 0,
 	boxShadow: 'none',
 	'&:not(:disabled):hover, &:not(:disabled):active': {

@@ -36,10 +36,10 @@ import {
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
 import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import {
-	type ConnectOauthChooserOption,
-	type ConnectOauthStatusTone,
-	type ConnectOauthStep,
+import type {
+	ConnectOauthChooserOption,
+	ConnectOauthStatusTone,
+	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
 
 /**

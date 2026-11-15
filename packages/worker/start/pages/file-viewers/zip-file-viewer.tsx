@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../../components/button.tsx'
 import { WorkspaceEmptyFolder } from '../workspace-empty-folder.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
@@ -14,7 +15,7 @@ const control = {
 	gap: 6,
 	minHeight: 28,
 	padding: '4px 7px',
-	borderRadius: 5,
+	...getSquircleCss('xs'),
 	fontSize: 12,
 	whiteSpace: 'nowrap',
 	textDecoration: 'none',

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../../components/button.tsx'
 import { FileAnchorContext } from '../file-anchor-context.ts'
 import { FileAnchorMarker } from '../file-anchor-markers.tsx'
@@ -24,7 +25,7 @@ const control = {
 	padding: '4px 8px',
 	minHeight: 28,
 	fontSize: 12,
-	borderRadius: 4,
+	...getSquircleCss('xs'),
 	boxShadow: 'none',
 	'&[aria-pressed=true]': {
 		background: colors.primarySoft,
