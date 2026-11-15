@@ -188,7 +188,8 @@ export async function seedPackageAppAccessFixture() {
 			dependency_snapshot_json TEXT NOT NULL DEFAULT '{}',
 			approved_by_user_id TEXT NOT NULL,
 			approved_at TEXT NOT NULL,
-			created_at TEXT NOT NULL
+			created_at TEXT NOT NULL,
+			served_at TEXT
 		)`,
 	)
 	await run(

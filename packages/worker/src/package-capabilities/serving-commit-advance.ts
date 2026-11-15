@@ -9,6 +9,7 @@ import { approvedCommitCache } from './approved-commit-cache.ts'
 import {
 	getServedPackageCapabilityApproval,
 	prepareCarriedForwardPackageCapabilityApproval,
+	prepareMarkServedPackageCapabilityApprovals,
 	type PackageCapabilityApprovalRecord,
 } from './capability-approvals-repo.ts'
 import {
@@ -39,6 +40,14 @@ export async function advanceServingCommit(input: {
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },
 		carryForward ? [carryForward.statement] : [],
+		[
+			prepareMarkServedPackageCapabilityApprovals(input.env.APP_DB, {
+				sourceId: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+				servedAt: new Date().toISOString(),
+			}),
+		],
 	)
 	if (advanced && carryForward) {
 		approvedCommitCache.delete(carryForward.packageId)

@@ -377,8 +377,12 @@ cause), the Desktop release runner watch workflow re-runs the failed jobs, up to
 four attempts with growing waits, until every target builds and the draft
 publishes. A leg that ran and failed is not re-run; the watch fails naming it,
 and also fails naming the starved targets when attempts run out. A newer main
-release run supersedes the watch, since it publishes the next version.
-`packages/desktop/scripts/release-runner-watch.cjs` holds that logic.
+release run supersedes the watch, since it publishes the next version. The
+Desktop binaries runner watch does the same for Desktop binaries runs on pull
+requests and main, sooner (1, 5, then 15 minutes), so a starved leg does not
+leave a green change red. It leaves real failures and runs a newer push on the
+same branch replaced alone. `packages/desktop/scripts/release-runner-watch.cjs`
+holds that logic.
 
 Every release, automatic or dispatched, builds macOS, Windows, and Linux on both
 architectures; a release publishes only with all of them. macOS builds require

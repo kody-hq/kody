@@ -11,6 +11,7 @@ import {
 	buildCapabilitySet,
 	type CapabilitySetEntry,
 } from './capability-set.ts'
+import { insertPackageCapabilityApproval } from './capability-approvals-repo.ts'
 import { emptyDependencySnapshot } from './dependency-snapshot.ts'
 import { advanceServingCommit } from './serving-commit-advance.ts'
 
@@ -105,14 +106,15 @@ async function setUp(input: { approvedEntries?: Array<CapabilitySetEntry> }) {
 				`INSERT INTO package_capability_approvals (
 					id, package_id, owner_user_id, published_commit, fingerprint,
 					capability_set_json, dependency_snapshot_json,
-					approved_by_user_id, approved_at, created_at
-				) VALUES ('approval-a', ?, ?, 'commit-a', ?, ?, '{}', 'person-owner', ?, ?)`,
+					approved_by_user_id, approved_at, created_at, served_at
+				) VALUES ('approval-a', ?, ?, 'commit-a', ?, ?, '{}', 'person-owner', ?, ?, ?)`,
 			)
 			.run(
 				packageId,
 				ownerId,
 				approved.fingerprint,
 				JSON.stringify(approved.entries),
+				now,
 				now,
 				now,
 			)
@@ -154,7 +156,15 @@ async function setUp(input: { approvedEntries?: Array<CapabilitySetEntry> }) {
 		sqlite
 			.prepare('SELECT serving_commit FROM entity_sources WHERE id = ?')
 			.get(sourceId)?.['serving_commit']
-	return { env, sqlite, publicCommit, publish, approvalCommits, servingCommit }
+	return {
+		db,
+		env,
+		sqlite,
+		publicCommit,
+		publish,
+		approvalCommits,
+		servingCommit,
+	}
 }
 
 test('a republish with the same capabilities carries its approval forward with no gap', async () => {
@@ -281,5 +291,96 @@ test('an app approved for the first time keeps today’s behavior', async () => 
 				'person-owner', ?, ?)`,
 		)
 		.run(packageId, ownerId, now, now)
+	await expect(site.publicCommit()).resolves.toBe('commit-b')
+})
+
+test('an approval for a commit superseded before it served never reaches visitors', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage])
+	compute.entriesByCommit.set('commit-c', [storage, mailCredential])
+	const approve = (commit: string, approvedAt: string) =>
+		insertPackageCapabilityApproval(site.db, {
+			id: `approval-${commit}`,
+			package_id: packageId,
+			owner_user_id: ownerId,
+			published_commit: commit,
+			fingerprint: `fingerprint-${commit}`,
+			capability_set_json: '[]',
+			dependency_snapshot_json: '{}',
+			approved_by_user_id: 'person-owner',
+			approved_at: approvedAt,
+		})
+
+	// The owner approves commit-b while it builds, then commit-c (wider and
+	// unapproved) supersedes it before commit-b serves.
+	await site.publish('commit-b')
+	await approve('commit-b', '2026-11-14T00:05:00.000Z')
+	await site.publish('commit-c')
+	await expect(
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit: 'commit-b',
+		}),
+	).resolves.toBe(false)
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-c',
+	})
+	expect(site.servingCommit()).toBe('commit-c')
+	await expect(site.publicCommit()).resolves.toBe('commit-a')
+
+	// Approving the serving commit marks it served at once.
+	await approve('commit-c', '2026-11-14T00:10:00.000Z')
+	await expect(site.publicCommit()).resolves.toBe('commit-c')
+	const servedAt = (id: string) =>
+		site.sqlite
+			.prepare(
+				'SELECT served_at FROM package_capability_approvals WHERE id = ?',
+			)
+			.get(id)?.['served_at']
+	expect(servedAt('approval-commit-b')).toBeNull()
+	expect(servedAt('approval-commit-c')).toBe('2026-11-14T00:10:00.000Z')
+})
+
+test('an approval recorded while its commit builds is marked served when it serves', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await insertPackageCapabilityApproval(site.db, {
+		id: 'approval-b',
+		package_id: packageId,
+		owner_user_id: ownerId,
+		published_commit: 'commit-b',
+		fingerprint: 'wider',
+		capability_set_json: '[]',
+		dependency_snapshot_json: '{}',
+		approved_by_user_id: 'person-owner',
+		approved_at: '2026-11-14T00:05:00.000Z',
+	})
+	// Still building: visitors stay on commit-a.
+	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	await expect(site.publicCommit()).resolves.toBe('commit-b')
+
+	// A later wider republish that serves unapproved falls back to commit-b,
+	// the commit that served most recently.
+	compute.entriesByCommit.set('commit-c', [storage, mailCredential])
+	await site.publish('commit-c')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-c',
+	})
+	expect(site.servingCommit()).toBe('commit-c')
 	await expect(site.publicCommit()).resolves.toBe('commit-b')
 })
