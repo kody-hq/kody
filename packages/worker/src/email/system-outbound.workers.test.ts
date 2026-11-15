@@ -17,8 +17,11 @@ vi.mock('./system-email-sent-package-subscriptions.ts', () => ({
 		mocks.dispatchSystemEmailSentSubscriptionEvent,
 }))
 
-const { sendSystemEmail, sendNewsletterEmail } =
-	await import('./system-outbound.ts')
+const {
+	sendSystemEmail,
+	sendNewsletterEmail,
+	sendNewsletterConfirmationEmail,
+} = await import('./system-outbound.ts')
 
 const cloudflareEmailApi =
 	'https://api.cloudflare.test/client/v4/accounts/account-123/email/sending/send'
@@ -55,6 +58,50 @@ function send(overrides: Partial<Parameters<typeof sendSystemEmail>[0]> = {}) {
 		...overrides,
 	})
 }
+
+test('newsletter confirmation mail uses the news sender with its own send kind', async () => {
+	await ensureEmailTestSchema(env.APP_DB)
+	const now = new Date('2026-11-15T05:06:07.000Z')
+	const payloads: Array<Record<string, unknown>> = []
+	using _server = createMswWorkerServer(
+		[
+			http.post(cloudflareEmailApi, async ({ request }) => {
+				payloads.push((await request.json()) as Record<string, unknown>)
+				return HttpResponse.json({
+					success: true,
+					result: { message_id: 'newsletter-confirm-1' },
+				})
+			}),
+		],
+		mswOptions,
+	)
+	const input = {
+		env: createSystemEnv(),
+		to: 'confirm-reader@example.com',
+		subject: 'Confirm',
+		html: '<p>Confirm</p>',
+		text: 'Confirm',
+		now,
+	}
+	await sendNewsletterConfirmationEmail(input)
+	expect(payloads[0]).toMatchObject({
+		from: { address: 'news@kody.example.com' },
+		to: 'confirm-reader@example.com',
+	})
+	expect(
+		await env.APP_DB.prepare(
+			`SELECT kind, sender FROM system_email_sends WHERE provider_message_id = ?`,
+		)
+			.bind('newsletter-confirm-1')
+			.first(),
+	).toMatchObject({
+		kind: 'whats_new_confirm',
+		sender: 'news@kody.example.com',
+	})
+	await expect(
+		sendNewsletterConfirmationEmail({ ...input, to: 'not an address' }),
+	).rejects.toThrow('recipient')
+})
 
 test('newsletter mail has a dedicated sender, quota, send kind, and one-recipient contract', async () => {
 	await ensureEmailTestSchema(env.APP_DB)
