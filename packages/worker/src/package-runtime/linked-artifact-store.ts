@@ -4,9 +4,9 @@ import { linkedPackageImportPrefix } from './module-graph-paths.ts'
 /**
  * A build uploaded from outside Kody cloud carries each `kody:@` dependency's
  * published artifact as its own modules under `.__kody_linked__/artifacts/…`.
- * Every target of a package that imports the same dependency used to store
- * its own copy. Those module groups are stored here instead, once per
- * published commit and content hash, and the artifact keeps a reference.
+ * Those module groups are stored here, once per published commit and content
+ * hash, and the artifact keeps a reference. Several targets that import the
+ * same dependency share one blob when the hash matches.
  *
  * Keys are scoped to the importing source and commit, so a group is deleted
  * with that commit's artifacts and never needs reference counting.

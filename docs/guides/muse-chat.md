@@ -67,10 +67,9 @@ https://agent.meta.ai/api/hatch/oauth/callback
 
 Copy them exactly. Kody accepts only a redirect URI that matches one saved on
 the client, and a different callback is the most common failure in this setup
-(see Troubleshooting). The `agent.meta.ai` callback is the one this setup was
-first proven with; Muse has since moved to muse.ai, which serves the same
-`/api/hatch/oauth/callback` path. Registering both keeps the client working
-whichever one Muse sends.
+(see Troubleshooting). Muse accepts OAuth callbacks on both `muse.ai` and
+`agent.meta.ai` at `/api/hatch/oauth/callback`. Register both redirect URIs so
+authorize succeeds regardless of which host Muse uses.
 
 Select **Create client**. Kody shows the Client ID and Client secret once under
 **New client credentials** and does not store the secret after you leave the

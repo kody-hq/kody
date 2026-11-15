@@ -204,7 +204,8 @@ its own machine and calls the same Kody capabilities
 ([local execute](../guides/local-execute.md)). To stay on Kody cloud, import
 fewer or smaller packages in one module.
 
-Two more failures name a local path in `errorDetails`:
+Two more failures add a local rerun command in `errorDetails` (`suggestedAction`
+/ `alternativeAction`):
 
 - `kind: "execution_timed_out"` from an ad hoc execute adds
   `alternativeAction: { type: "run_locally", command, requires }` beside its

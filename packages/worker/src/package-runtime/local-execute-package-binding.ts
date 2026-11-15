@@ -3,13 +3,14 @@
  *
  * Hosted runs keep each package's identity in host-built per-package
  * bindings, so sandbox code cannot name another package. Local runs talk to
- * origin through CapabilityProxy, which used to accept a plain package id from
- * the sandbox. Now the package graph mints one signed binding per package it
- * serves, the local runtime shim keeps those bindings module-private and sends
- * them in place of the id, and CapabilityProxy accepts only a binding it
- * signed for the same org and actor. A raw package id is refused. Origin still
- * checks `package:execute` on every use, so a binding is never more than the
- * actor's own access to that package.
+ * origin through CapabilityProxy. The package graph mints one signed binding
+ * per package it serves; the local runtime shim keeps those bindings
+ * module-private and sends them in place of the id; CapabilityProxy accepts
+ * only a binding it signed for the same org and actor. A raw package id is
+ * refused. Origin verifies the binding signature on every call and checks
+ * `package:execute` on each use. For execution-context runs, a passed check is
+ * reused for a bounded window, so a revoked grant can stay effective until
+ * that window ends. Failed checks are not reused.
  */
 import {
 	base64UrlToBytes,
