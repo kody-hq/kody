@@ -53,6 +53,10 @@ import {
 } from '#worker/run-records/service.ts'
 import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
 import {
+	mergeRunPackages,
+	type ExecutionContextRunPackages,
+} from './run-packages.ts'
+import {
 	type ExecuteRequirement,
 	grantRefusal,
 	markQueuedAttemptExpired,
@@ -121,6 +125,12 @@ export type ExecutionContextLease = {
 	 * callbacks; the machine never supplies or changes it.
 	 */
 	credentials?: CredentialCallMapJson | null
+	/**
+	 * Saved packages Kody served to this run through the package graph, held
+	 * here because code on the machine cannot be trusted to say which package
+	 * it is. Absent means the run loaded none (ad hoc code).
+	 */
+	packages?: ExecutionContextRunPackages
 }
 
 export type DispatchOutcome =
@@ -2274,6 +2284,27 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			ok: true,
 			lease: JSON.parse(run.lease_json) as ExecutionContextLease,
 		}
+	}
+
+	/**
+	 * Add the packages a package graph served to a committed run's lease.
+	 * Later graphs for the same run only add.
+	 */
+	async recordRunPackages(input: {
+		runId: string
+		entryPackageIds: Array<string>
+		packageIds: Array<string>
+	}): Promise<{ ok: boolean }> {
+		const run = this.#run(input.runId)
+		if (!run || run.state !== 'committed') return { ok: false }
+		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
+		const packages = mergeRunPackages(lease.packages, input)
+		this.ctx.storage.sql.exec(
+			`UPDATE runs SET lease_json = ? WHERE run_id = ? AND state = 'committed'`,
+			JSON.stringify({ ...lease, packages }),
+			input.runId,
+		)
+		return { ok: true }
 	}
 
 	// ---------- history ----------

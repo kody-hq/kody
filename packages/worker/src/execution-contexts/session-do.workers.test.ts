@@ -225,6 +225,63 @@ test('tickets are single use, a dispatch with no socket is offline, and nothing 
 	first.webSocket!.close()
 })
 
+test('packages served to a committed run are kept on its lease, and refused for a run that is not committed', async () => {
+	const ecid = 'ec_run_packages'
+	const { stub, next, send, key } = await connect(ecid)
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a'],
+		}),
+	).toEqual({ ok: false })
+	const dispatching = stub.dispatch({
+		request: runRequest('run_pkgs'),
+		lease: lease(ecid, 'run_pkgs'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_pkgs' }, { re: request.seq })
+	expect(await dispatching).toEqual({ outcome: 'committed' })
+	await next('run.commit')
+
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a', 'pkg_dep'],
+		}),
+	).toEqual({ ok: true })
+	await stub.recordRunPackages({
+		runId: 'run_pkgs',
+		entryPackageIds: ['pkg_b'],
+		packageIds: ['pkg_b'],
+	})
+
+	const ts = Date.now()
+	const n = crypto.randomUUID().replaceAll('-', '')
+	const bodySha256 = await sha256Base64Url('{}')
+	const s = await signDetached({
+		prefix: ecpHttpSignaturePrefix,
+		message: ['POST', '/v1/capability-proxy', String(ts), n, bodySha256].join(
+			'\n',
+		),
+		privateKey: key,
+	})
+	const authorized = await stub.authorizeRunCall({
+		runId: 'run_pkgs',
+		signature: { ec: ecid, ts, n, s },
+		method: 'POST',
+		pathAndQuery: '/v1/capability-proxy',
+		bodySha256,
+	})
+	expect(authorized.ok && authorized.lease.packages).toEqual({
+		entries: ['pkg_a', 'pkg_b'],
+		all: ['pkg_a', 'pkg_dep', 'pkg_b'],
+	})
+})
+
 test('two-phase dispatch: accept, commit, result, then per-hop authorization ends with the lease', async () => {
 	const ecid = 'ec_two_phase'
 	const { stub, next, send, key } = await connect(ecid)

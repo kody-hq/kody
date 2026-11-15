@@ -7,6 +7,7 @@ import {
 import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
 import type { CapabilityOpenApiPrincipal } from '#mcp/capabilities/types.ts'
 import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
+import type { ExecutionContextRunPackages } from '#worker/execution-contexts/run-packages.ts'
 
 /**
  * Who is calling the Open API.
@@ -46,6 +47,8 @@ export type ApiPrincipal =
 			byOperator: boolean
 			/** The run's credential call map from its lease (never from the machine). */
 			callMap?: CredentialCallMap | null
+			/** Saved packages Kody served to this run; absent for ad hoc code. */
+			packages?: ExecutionContextRunPackages
 	  }
 
 export function toCapabilityOpenApiPrincipal(

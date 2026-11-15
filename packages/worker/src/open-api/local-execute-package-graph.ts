@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import { sessionStub } from '#worker/execution-contexts/store.ts'
 import { serveLocalExecutePackageGraph } from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
 import {
 	LocalExecutePackageGraphError,
@@ -155,7 +156,7 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 				input.code ??
 				synthesizeLocalExecutePackageGraphEntry(input.imports ?? [])
 			try {
-				return await runWithRequestPermissions(
+				const { entryPackageIds, ...graph } = await runWithRequestPermissions(
 					{ env: ctx.env, request: ctx.callerContext.request },
 					() =>
 						serveLocalExecutePackageGraph({
@@ -167,6 +168,19 @@ export const localExecutePackageGraphOperationDefinitions: Record<
 							request: ctx.callerContext.request,
 						}),
 				)
+				const packageIds = Object.keys(graph.packageBindings)
+				if (
+					ctx.principal.kind === 'execution-context-run' &&
+					packageIds.length > 0
+				) {
+					// Before the response: the run cannot load a package Kody has not recorded.
+					await sessionStub(ctx.env, ctx.principal.ecid).recordRunPackages({
+						runId: ctx.principal.runId,
+						entryPackageIds,
+						packageIds,
+					})
+				}
+				return graph
 			} catch (error) {
 				throw toLocalExecutePackageGraphApiError(error)
 			}

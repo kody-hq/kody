@@ -57,6 +57,11 @@ export type LocalExecutePackageGraph = {
 	 * pick the binding for a local package run / facade rewrite.
 	 */
 	packageIdsByImport: Record<string, string>
+	/**
+	 * Saved packages the code imports directly. Origin keeps this for run
+	 * attribution; it is not part of the HTTP response.
+	 */
+	entryPackageIds: Array<string>
 }
 
 /**
@@ -454,6 +459,7 @@ export async function signLocalExecutePackageGraph(input: {
 		warnings: [],
 		packageBindings: Object.fromEntries(packageBindings),
 		packageIdsByImport: { ...graph.packageIdsByImport },
+		entryPackageIds: [...graph.entryPackageIds],
 	}
 }
 
