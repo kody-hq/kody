@@ -20,18 +20,17 @@ import type {
 	JobRunObservabilityRecord,
 	JobRunObservabilityUpsertInput,
 } from './job-run-observability.ts'
-import {
-	type BulkUpdateRunErrorTriageFilter,
-	type BulkUpdateRunErrorTriageResult,
-	type PackageInvocationClaimInput,
-	type PackageInvocationLedgerKey,
-	type PackageInvocationLedgerRecord,
-	type RunLogEntryInput,
-	type RunLogRowInput,
-	type RunLogRpc,
-	type RunLogSqlBillingInspection,
-	type RunLogSqlBillingStats,
-	runLogSqlBillingOps,
+import type {
+	BulkUpdateRunErrorTriageFilter,
+	BulkUpdateRunErrorTriageResult,
+	PackageInvocationClaimInput,
+	PackageInvocationLedgerKey,
+	PackageInvocationLedgerRecord,
+	RunLogEntryInput,
+	RunLogRowInput,
+	RunLogRpc,
+	RunLogSqlBillingInspection,
+	RunLogSqlBillingStats,
 } from './run-log-do.ts'
 import type {
 	WorkflowProjectionRecord,
@@ -66,7 +65,6 @@ import {
 	runStartedByFromRequest,
 } from './run-started-by.ts'
 
-export { runLogSqlBillingOps }
 export type { RunLogSqlBillingInspection, RunLogSqlBillingStats }
 
 const textEncoder = new TextEncoder()

@@ -25,3 +25,9 @@ export const packageInvocationState = setup({
 export type PackageInvocationLedgerStatus = LifecycleStateOf<
 	typeof packageInvocationState
 >
+
+/** Final ledger states; retention prunes only these. */
+export const packageInvocationLedgerTerminalStatuses = [
+	'completed',
+	'failed',
+] as const satisfies ReadonlyArray<PackageInvocationLedgerStatus>
