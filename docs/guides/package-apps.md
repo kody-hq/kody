@@ -718,6 +718,12 @@ files. See
 `--app-base-path /<package-name>` when you need the local proxy to strip the
 same mount and set `packageContext.appBasePath` to match production.
 
+`kody dev --target mock` runs the real local Kody workers, which serve the app
+at `/@<username>/packages/<kody.id>` and render `packageContext.appBasePath` for
+that mount. The proxy uses the same path as its base path, so the printed URL,
+`basePath`, and every rendered link agree. A different `--app-base-path` is
+rejected there.
+
 While it runs, `kody dev`:
 
 - rebuilds on save without dropping requests. A request that arrives during a
