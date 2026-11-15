@@ -145,7 +145,10 @@ export type PackageAppDevOptions = {
 	 * it. Without either, any free port.
 	 */
 	defaultPort?: number
-	/** Public mount path the Node proxy strips (default ''). */
+	/**
+	 * Public mount path the Node proxy strips (default ''). With `localKody`
+	 * the mount is the upstream `appPath`; a different value is rejected.
+	 */
 	appBasePath?: string
 	/** User-owned token org selection (`?org=`), same as execute --local. */
 	org?: string
@@ -296,7 +299,7 @@ export async function startPackageAppDev(
 	assertTokenSafeApiUrl(options.apiUrl)
 
 	const host = options.host ?? defaultDevHost
-	const appBasePath = normalizeBasePath(options.appBasePath ?? '')
+	const appBasePath = resolveDevAppBasePath(options)
 	const root = options.manifest.root
 	const runSecret = randomBytes(32).toString('hex')
 	const emit = (event: DevEvent) => options.onEvent?.(event)
@@ -1526,6 +1529,30 @@ function normalizeBasePath(value: string): string {
 	if (!trimmed || trimmed === '/') return ''
 	const withSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 	return withSlash.replace(/\/+$/, '')
+}
+
+/**
+ * The one mount the proxy strips, reports as `basePath`, and serves under.
+ * With a local Kody upstream the worker renders `packageContext` for its own
+ * `appPath`, so that path is the mount; anything else would make rendered
+ * links and served paths disagree.
+ */
+function resolveDevAppBasePath(options: {
+	appBasePath?: string
+	localKody?: LocalKodyUpstream
+}): string {
+	const requested =
+		options.appBasePath === undefined
+			? undefined
+			: normalizeBasePath(options.appBasePath)
+	if (!options.localKody) return requested ?? ''
+	const mount = normalizeBasePath(options.localKody.appPath)
+	if (requested !== undefined && requested !== mount) {
+		throw new Error(
+			`--app-base-path ${requested || '/'} does not match the local Kody mount ${mount}. kody dev --target mock serves the app where local Kody renders its links; drop --app-base-path or pass ${mount}.`,
+		)
+	}
+	return mount
 }
 
 function stripMount(pathname: string, appBasePath: string): string {
