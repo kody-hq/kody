@@ -12,7 +12,11 @@ import {
 	isRepairableArtifactKind,
 	moduleSource,
 } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
-import { loadPublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
+import {
+	hasPublishedRuntimeArtifacts,
+	loadPublishedSourceSnapshot,
+	readPublishedBundleArtifact,
+} from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { listMissingPublishedSourceInstalledDependencies } from '#worker/package-runtime/published-source-dependencies.ts'
@@ -176,9 +180,7 @@ async function readStoredBundles(input: {
 	userId: OwnerId
 	sourceId: string
 }): Promise<Array<StoredBundle>> {
-	const kv = (input.env as Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace })
-		.BUNDLE_ARTIFACTS_KV
-	if (!kv) return []
+	if (!hasPublishedRuntimeArtifacts(input.env)) return []
 	const rows = await input.env.APP_DB.prepare(
 		`SELECT kv_key, artifact_kind FROM published_bundle_artifacts
 		 WHERE user_id = ? AND source_id = ?`,
@@ -188,7 +190,10 @@ async function readStoredBundles(input: {
 	const bundles: Array<StoredBundle> = []
 	for (const row of rows.results ?? []) {
 		if (!isRepairableArtifactKind(row.artifact_kind)) continue
-		const stored = await kv.get<StoredBundle>(row.kv_key, 'json')
+		const stored = await readPublishedBundleArtifact({
+			env: input.env,
+			kvKey: row.kv_key,
+		})
 		if (!stored?.modules) continue
 		bundles.push({ ...stored, kind: stored.kind ?? row.artifact_kind })
 	}
