@@ -450,7 +450,7 @@ test('an unanswered run offer reads the context offline until its next heartbeat
 	ws.close()
 }, 60_000)
 
-test('a run queued behind an unanswered offer is offered again once heartbeats resume', async () => {
+test('a run queued behind an unanswered offer is rechecked soon and drained once heartbeats resume', async () => {
 	const ecid = 'ec_unanswered_queue'
 	const { stub, next, ws } = await connect(ecid)
 	expect(
@@ -482,6 +482,8 @@ test('a run queued behind an unanswered offer is offered again once heartbeats r
 			timeout: frameWaitMs,
 		})
 		.toBe(true)
+	// The alarm drains only for a live socket. With no context row seeded the
+	// drain ends the run as unavailable; the full redispatch is not covered here.
 	await runInDurableObject(stub, async (instance) => {
 		await instance.alarm()
 	})
