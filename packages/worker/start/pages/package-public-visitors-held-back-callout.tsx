@@ -1,5 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
+import {
+	getAccentCalloutCss,
+	getPillButtonCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
@@ -25,14 +28,13 @@ export function PackagePublicVisitorsHeldBackCallout(props: {
 				Members of this account already see the latest publish. Approve the new
 				capabilities to update public visitors.
 			</p>
-			<p>
-				<SiteLink
-					href={props.approvalHref}
-					data-testid="package-public-visitors-held-back-approve"
-				>
-					Approve to update public visitors
-				</SiteLink>
-			</p>
+			<SiteLink
+				href={props.approvalHref}
+				data-testid="package-public-visitors-held-back-approve"
+				css={approveLinkCss}
+			>
+				Approve to update public visitors
+			</SiteLink>
 		</aside>
 	)
 }
@@ -53,4 +55,11 @@ const calloutCss = {
 		margin: 0,
 		color: colors.text,
 	},
+}
+
+const approveLinkCss = {
+	...getPillButtonCss({ size: 'sm' }),
+	display: 'inline-flex',
+	justifySelf: 'start',
+	textDecoration: 'none',
 }
