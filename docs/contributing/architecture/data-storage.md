@@ -1532,10 +1532,6 @@ on write unless a migration backfills existing rows.
 - `published_bundle_artifacts.dependencies_json` (`0001-squashed-init.sql`)
   stores package dependency pointers queried with SQLite JSON functions in
   `packages/worker/src/repo/published-bundle-artifacts-repo.ts`.
-- `published_bundle_artifacts.total_bytes`
-  (`packages/worker/migrations/0267-published-bundle-artifact-total-bytes.sql`)
-  is unused. Nothing reads or writes it; some rows written in November 2026
-  still hold a value.
 - Keyed invocation replay lives in the RunLog Durable Object ledger (see
   [Run records](./run-records.md)). D1 has no `package_invocations` or
   `package_invocation_tokens` table.
