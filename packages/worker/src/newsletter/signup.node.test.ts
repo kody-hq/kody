@@ -312,6 +312,35 @@ test('the confirmation email states the double opt-in terms and has no em dashes
 	expect(`${message.subject}${message.text}`).not.toContain('\u2014')
 })
 
+test('unsubscribing through either id leaves the list when an address has both a sign-up and an account', async () => {
+	for (const through of ['signup', 'account'] as const) {
+		const { signup, sentToken, confirm, user, recipients, rows, db, sqlite } =
+			setup()
+		await signup('both@example.com')
+		await confirm(sentToken())
+		const signupId = rows()[0]!.stable_id as string
+		const userId = user('both@example.com', 1, '2026-11-16')
+		await setWhatsNewOptIn({
+			db,
+			stable_user_id: through === 'signup' ? signupId : userId,
+			opted_in: false,
+			source: 'email_link',
+		})
+		expect((await recipients()).users).toEqual([])
+		expect(rows()[0]!.status).toBe('unsubscribed')
+		// The old sign-up must not come back if the account's address changes.
+		sqlite.prepare(`UPDATE users SET email = 'moved@example.com'`).run()
+		expect((await recipients()).users).toEqual([])
+		// Opening the same unsubscribe link again is not an error.
+		await setWhatsNewOptIn({
+			db,
+			stable_user_id: signupId,
+			opted_in: false,
+			source: 'email_link',
+		})
+	}
+})
+
 test('the sign-up lifecycle only joins the list through a confirmed link and never returns to pending', async () => {
 	const { canHandle } = await import('@kody-internal/shared/state-machine.ts')
 	const { newsletterSignupState: machine } = await import('./signup-state.ts')

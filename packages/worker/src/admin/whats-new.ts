@@ -1,5 +1,7 @@
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
+import { newsletterSignupState } from '#worker/newsletter/signup-state.ts'
 import type { EmailDeliveryStatus } from '#worker/email/types.ts'
 
 type RecipientRow = {
@@ -167,6 +169,15 @@ export async function listWhatsNewRecipients(input: {
 	}
 }
 
+const signupUnsubscribeGuard = sqlSourcesOf(
+	newsletterSignupState,
+	'UNSUBSCRIBE',
+)
+const signupResubscribeGuard = sqlSourcesOf(
+	newsletterSignupState,
+	'RESUBSCRIBE',
+)
+
 export async function setWhatsNewOptIn(input: {
 	db: D1Database
 	stable_user_id: string
@@ -174,35 +185,66 @@ export async function setWhatsNewOptIn(input: {
 	source: 'email_link' | 'admin'
 }) {
 	const updatedAt = new Date().toISOString()
-	const row =
-		(await input.db
-			.prepare(
-				`UPDATE users SET whats_new_email_opt_in = ?, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = ?
+	const flag = input.opted_in ? 1 : 0
+	const userRow = await input.db
+		.prepare(
+			`UPDATE users SET whats_new_email_opt_in = ?, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = ?
 		 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL
-		 RETURNING stable_user_id`,
-			)
-			.bind(
-				input.opted_in ? 1 : 0,
-				updatedAt,
-				input.source,
-				input.stable_user_id,
-			)
-			.first<{ stable_user_id: string }>()) ??
-		// Account-less recipients: only a sign-up that confirmed at least once
-		// can be switched, so this never bypasses double opt-in.
+		 RETURNING stable_user_id, email`,
+		)
+		.bind(flag, updatedAt, input.source, input.stable_user_id)
+		.first<{ stable_user_id: string; email: string }>()
+	// Account-less recipients: only a sign-up that confirmed at least once
+	// can be switched, so this never bypasses double opt-in.
+	const signupRow = userRow
+		? null
+		: await input.db
+				.prepare(
+					`UPDATE newsletter_signups SET status = ?, source = ?, updated_at = ?
+		 WHERE stable_id = ? AND status IN ${input.opted_in ? signupResubscribeGuard : signupUnsubscribeGuard}
+		 RETURNING stable_id AS stable_user_id, email`,
+				)
+				.bind(
+					input.opted_in ? 'confirmed' : 'unsubscribed',
+					input.source,
+					updatedAt,
+					input.stable_user_id,
+				)
+				.first<{ stable_user_id: string; email: string }>()
+	const row =
+		userRow ??
+		signupRow ??
+		// Repeating the current choice (an unsubscribe link opened twice) is
+		// not an error.
 		(await input.db
 			.prepare(
-				`UPDATE newsletter_signups SET status = ?, source = ?, updated_at = ?
-		 WHERE stable_id = ? AND status IN ('confirmed', 'unsubscribed')
-		 RETURNING stable_id AS stable_user_id`,
+				`SELECT stable_id AS stable_user_id, email FROM newsletter_signups
+		 WHERE stable_id = ? AND status = ?`,
 			)
-			.bind(
-				input.opted_in ? 'confirmed' : 'unsubscribed',
-				input.source,
-				updatedAt,
-				input.stable_user_id,
-			)
-			.first<{ stable_user_id: string }>())
+			.bind(input.stable_user_id, input.opted_in ? 'confirmed' : 'unsubscribed')
+			.first<{ stable_user_id: string; email: string }>())
+	// An address can hold consent in both places (it signed up, then made an
+	// account). Leaving through either id must leave both, or the other record
+	// keeps the address on the list.
+	if (row && !input.opted_in) {
+		if (userRow) {
+			await input.db
+				.prepare(
+					`UPDATE newsletter_signups SET status = 'unsubscribed', source = ?, updated_at = ?
+			 WHERE email = ? AND status IN ${signupUnsubscribeGuard}`,
+				)
+				.bind(input.source, updatedAt, row.email)
+				.run()
+		} else {
+			await input.db
+				.prepare(
+					`UPDATE users SET whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = ?
+			 WHERE email = ? AND email_verified_at IS NOT NULL AND deleted_at IS NULL AND deleting_at IS NULL`,
+				)
+				.bind(updatedAt, input.source, row.email)
+				.run()
+		}
+	}
 	if (!row) throw new McpCallerError('User not found.')
 	return {
 		stable_user_id: row.stable_user_id,
