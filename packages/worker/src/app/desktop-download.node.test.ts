@@ -87,10 +87,20 @@ test('reads the latest tag from the releases page redirect', () => {
 		),
 	).toBeNull()
 	expect(versionFromDesktopLatestLocation(null)).toBeNull()
+})
+
+test('Mac downloads the arch-specific DMG', () => {
 	expect(
-		desktopAssetDownloadUrl(
-			desktopInstallerAsset('0.1.26', { platform: 'mac', arch: 'arm64' }),
-		),
+		desktopInstallerAsset('0.1.26', { platform: 'mac', arch: 'arm64' }),
+	).toEqual({
+		version: '0.1.26',
+		assetName: 'Kody-0.1.26-mac-arm64.dmg',
+	})
+	expect(
+		desktopAssetDownloadUrl({
+			version: '0.1.26',
+			assetName: 'Kody-0.1.26-mac-arm64.dmg',
+		}),
 	).toBe(macArmDmgUrl)
 })
 

@@ -93,7 +93,18 @@ test('a written artifact reads back with a manifest matching its modules', async
 	const read = await readPublishedBundleArtifact({ env, kvKey: 'key' })
 
 	expect(read?.modules).toEqual(artifact.modules)
-	expect(read?.manifest).toEqual(createBundleArtifactManifest(artifact))
+	expect(read?.manifest).toEqual({
+		version: 1,
+		totalBytes: 36,
+		modules: {
+			'dist/index.js': { role: 'main', bytes: 16, owner: own },
+			[linkedArtifactModule]: {
+				role: 'linked-artifact',
+				bytes: 20,
+				owner: dependency,
+			},
+		},
+	})
 })
 
 test('writing ignores a manifest carried on the artifact and derives it from the modules written', async () => {
@@ -131,11 +142,14 @@ test('an artifact stored without a manifest still reads, with no manifest', asyn
 
 test('a stored manifest that does not describe the stored modules is dropped, not trusted', () => {
 	const modulePaths = ['dist/index.js', 'dist/chunk.js']
-	const valid = createBundleArtifactManifest({
-		...own,
-		mainModule: 'dist/index.js',
-		modules: { 'dist/index.js': 'a', 'dist/chunk.js': 'b' },
-	})
+	const valid = {
+		version: 1,
+		totalBytes: 2,
+		modules: {
+			'dist/index.js': { role: 'main', bytes: 1, owner: own },
+			'dist/chunk.js': { role: 'module', bytes: 1, owner: own },
+		},
+	}
 	expect(parseStoredBundleArtifactManifest(valid, modulePaths)).toEqual(valid)
 
 	const rejected: Array<unknown> = [
@@ -248,7 +262,7 @@ test('a manifest written before owners were recorded is still read, and a malfor
 		parseStoredBundleArtifactManifest({ version: 1, totalBytes: 1, modules }, [
 			'dist/index.js',
 		]),
-	).not.toBeNull()
+	).toEqual({ version: 1, totalBytes: 1, modules })
 	expect(
 		parseStoredBundleArtifactManifest(
 			{

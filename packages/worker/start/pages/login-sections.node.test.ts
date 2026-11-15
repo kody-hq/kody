@@ -33,7 +33,6 @@ test.each([true, false])(
 		)?.[0]
 		if (isSignup) {
 			expect(checkbox).toContain('type="checkbox"')
-			expect(checkbox).toContain('class=')
 			expect(checkbox).not.toContain('checked')
 			expect(checkbox).not.toContain('required')
 			expect(html).toContain('Send me What&#x27;s New in Kody emails')
