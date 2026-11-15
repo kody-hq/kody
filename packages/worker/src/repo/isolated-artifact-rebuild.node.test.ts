@@ -106,7 +106,7 @@ test('runner touches staging TTL, fans out one target chunk per throwaway DO, an
 		'search({ entity: "guide:heavy_work_offload" })',
 	)
 	expect(resetOutcome.results).toEqual([
-		expect.objectContaining({ ok: false, resourceLimit: true, target }),
+		expect.objectContaining({ ok: false, target }),
 	])
 
 	// Deploy resets must not be remapped to "package too large" — callers retry.

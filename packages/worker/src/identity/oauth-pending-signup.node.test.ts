@@ -158,9 +158,20 @@ test('completeOauthPendingSignup creates the account once and rejects bad csrf',
 	})
 	expect(countUsers(sqlite)).toBe(1)
 	const user = sqlite
-		.prepare(`SELECT username, email FROM users WHERE email = ?`)
-		.get('pending@example.com') as { username: string; email: string }
+		.prepare(
+			`SELECT username, email, whats_new_email_opt_in, whats_new_email_opt_in_updated_at, whats_new_email_opt_in_source FROM users WHERE email = ?`,
+		)
+		.get('pending@example.com') as {
+		username: string
+		email: string
+		whats_new_email_opt_in: number
+		whats_new_email_opt_in_updated_at: string | null
+		whats_new_email_opt_in_source: string | null
+	}
 	expect(user.username).toBe('chosen-handle')
+	expect(user.whats_new_email_opt_in).toBe(0)
+	expect(user.whats_new_email_opt_in_updated_at).toBeNull()
+	expect(user.whats_new_email_opt_in_source).toBeNull()
 
 	// Pending cookie is cleared (single-use).
 	expect(

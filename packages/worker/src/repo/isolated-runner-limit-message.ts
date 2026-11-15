@@ -39,10 +39,11 @@ export function hasPublishOutsideCloudAdvice(message: string) {
 
 export function publishOutsideCloudAdvice() {
 	return (
-		`${publishOutsideCloudAdviceLead} Build it ` +
-		'on your machine with `kody package publish --build local`, or on an ' +
-		'execution context with `--context <name>`. Both need the Execution ' +
-		`contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
+		`${publishOutsideCloudAdviceLead} Build it on your machine with ` +
+		`\`${publishLocalBuildCommand}\`, or on an execution context with ` +
+		'`--context <name>`. Kody serves that build as is and ' +
+		'does not build it again, so these limits do not apply to it. Both need ' +
+		`the Execution contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
 		`(docs: ${executionContextPublishDocsUrl}). ` +
 		'`kody dev check --build local` checks the same local build before you ' +
 		`publish. More: ${publishLargePackagesDocsUrl}`
@@ -222,6 +223,26 @@ export function externalPublishResourceLimitMessage(
 	)
 }
 
+/**
+ * Caller-facing copy when writing an uploaded local or context build hits
+ * the Durable Object limit. Nothing is built in that step, so building
+ * outside Kody cloud is not the way out.
+ */
+const uploadedBuildPersistLimitPhrase =
+	'Kody ran out of CPU time or memory while storing this uploaded build'
+
+export function uploadedBuildPersistLimitMessage() {
+	return (
+		`${uploadedBuildPersistLimitPhrase}, ` +
+		'so the publish stopped. Your build was not rebuilt, and building it ' +
+		'again locally or on an execution context will not change this. The ' +
+		'step verifies the upload and links the `kody:@` packages it imports, ' +
+		'so importing fewer `kody:@` exports from one entry point may get it ' +
+		'through. This is a Kody limit, not a problem with your package: ' +
+		'report it with `feedbackSubmit` and include this message.'
+	)
+}
+
 const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
 
 /**
@@ -252,6 +273,7 @@ export function publishComputeLimitMessage(
 export function isPublishComputeLimitMessage(message: string) {
 	return (
 		message.includes(publishComputeLimitPhrase) ||
+		message.includes(uploadedBuildPersistLimitPhrase) ||
 		message.includes(
 			'packagePublishExternalPush hit the Durable Object isolate memory or CPU limit',
 		)

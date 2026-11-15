@@ -71,18 +71,68 @@ export function collectLinkedPackageImports(input: {
 	return linked
 }
 
-type LinkedDependencyArtifact = Awaited<
-	ReturnType<typeof resolveCurrentDynamicPackageArtifact>
->
+/** One `kody:@` import, ready to write into any target that references it. */
+type LinkedDependency = {
+	modules: Record<string, string>
+	dependencies: Array<BundleArtifactDependency>
+}
 
 /**
- * One publish's resolved dependency artifacts by `kody:@` specifier, so
- * targets that import the same package load its artifact once.
+ * One publish's linked dependencies by `kody:@` specifier. Linking parses
+ * the whole dependency artifact, and the result is the same for every
+ * target, so targets that import the same package share one.
  */
 export type LinkedDependencyArtifactCache = Map<
 	string,
-	Promise<LinkedDependencyArtifact>
+	Promise<LinkedDependency>
 >
+
+async function linkDependency(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	placeholder: string
+	specifier: string
+}): Promise<LinkedDependency> {
+	const { placeholder, specifier } = input
+	const artifact = await resolveCurrentDynamicPackageArtifact({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		specifier,
+	})
+	const packageId = artifact.packageContext?.packageId
+	if (!packageId) {
+		throw new PublishBuildVerificationError(
+			`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
+		)
+	}
+	const artifactPrefix = linkedArtifactPrefix({
+		specifier,
+		sourceId: artifact.sourceId,
+		publishedCommit: artifact.publishedCommit,
+	})
+	const modules = materializeDependencyArtifactModules({
+		artifactPrefix,
+		modules: artifact.modules,
+		linkedRoot: '',
+	})
+	const mainPath = joinPath(artifactPrefix, artifact.mainModule)
+	const exportNames = collectModuleExportNames({
+		files: modules,
+		modulePath: mainPath,
+	})
+	modules[placeholder] = createMeteredPackageImportProxySource({
+		targetPath: createRelativeImportSpecifier(placeholder, mainPath),
+		runtimeSpecifier: createRelativeImportSpecifier(
+			placeholder,
+			runtimeModulePath,
+		),
+		packageId,
+		exportNames,
+	})
+	return { modules, dependencies: artifact.dependencies }
+}
 
 /**
  * Writes each referenced placeholder: the dependency's published artifact
@@ -108,48 +158,20 @@ export async function linkUploadedPackageImports(input: {
 				`the build imports "${placeholder}", which is not a Kody package this source imports.`,
 			)
 		}
-		let pendingArtifact = input.artifactCache?.get(specifier)
-		if (!pendingArtifact) {
-			pendingArtifact = resolveCurrentDynamicPackageArtifact({
+		let pending = input.artifactCache?.get(specifier)
+		if (!pending) {
+			pending = linkDependency({
 				env: input.env,
 				baseUrl: input.baseUrl,
 				userId: input.userId,
+				placeholder,
 				specifier,
 			})
-			input.artifactCache?.set(specifier, pendingArtifact)
+			input.artifactCache?.set(specifier, pending)
 		}
-		const artifact = await pendingArtifact
-		const packageId = artifact.packageContext?.packageId
-		if (!packageId) {
-			throw new PublishBuildVerificationError(
-				`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
-			)
-		}
-		const artifactPrefix = linkedArtifactPrefix({
-			specifier,
-			sourceId: artifact.sourceId,
-			publishedCommit: artifact.publishedCommit,
-		})
-		const materialized = materializeDependencyArtifactModules({
-			artifactPrefix,
-			modules: artifact.modules,
-			linkedRoot: '',
-		})
-		Object.assign(modules, materialized)
-		const mainPath = joinPath(artifactPrefix, artifact.mainModule)
-		modules[placeholder] = createMeteredPackageImportProxySource({
-			targetPath: createRelativeImportSpecifier(placeholder, mainPath),
-			runtimeSpecifier: createRelativeImportSpecifier(
-				placeholder,
-				runtimeModulePath,
-			),
-			packageId,
-			exportNames: collectModuleExportNames({
-				files: materialized,
-				modulePath: mainPath,
-			}),
-		})
-		publishedArtifactDependencies.push(...artifact.dependencies)
+		const linked = await pending
+		Object.assign(modules, linked.modules)
+		publishedArtifactDependencies.push(...linked.dependencies)
 	}
 	return {
 		modules: stripKodyRuntimeModules(modules),

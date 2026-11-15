@@ -6,6 +6,7 @@ const { join, resolve } = require('node:path')
 
 const { parse } = require('yaml')
 const { version } = require('../package.json')
+const { linuxInstallerNames } = require('../scripts/release-plan.cjs')
 const arch = process.arch
 const platform = process.platform
 assert.ok(['arm64', 'x64'].includes(arch), `Unsupported architecture: ${arch}`)
@@ -17,7 +18,7 @@ const output = process.argv[2]
 let executable
 let resources
 let os
-let extensions
+let installers
 if (platform === 'darwin') {
 	const bundle = join(
 		output,
@@ -27,7 +28,7 @@ if (platform === 'darwin') {
 	executable = join(bundle, 'Contents/MacOS/Kody')
 	resources = join(bundle, 'Contents/Resources')
 	os = 'mac'
-	extensions = ['dmg', 'zip']
+	installers = ['dmg', 'zip'].map((ext) => `Kody-${version}-mac-${arch}.${ext}`)
 } else if (platform === 'win32') {
 	const bundle = join(
 		output,
@@ -36,16 +37,16 @@ if (platform === 'darwin') {
 	executable = join(bundle, 'Kody.exe')
 	resources = join(bundle, 'resources')
 	os = 'win'
-	extensions = ['exe']
+	installers = [`Kody-${version}-win-${arch}.msix`]
 } else if (platform === 'linux') {
 	const bundle = join(
 		output,
 		arch === 'arm64' ? 'linux-arm64-unpacked' : 'linux-unpacked',
 	)
-	executable = join(bundle, 'kody')
+	executable = join(bundle, 'kody-desktop')
 	resources = join(bundle, 'resources')
 	os = 'linux'
-	extensions = ['AppImage']
+	installers = linuxInstallerNames(version, arch)
 } else throw new Error(`Unsupported platform: ${platform}`)
 assert.ok(existsSync(executable), `Missing packaged executable: ${executable}`)
 const env = {
@@ -112,9 +113,7 @@ const sourceDirty =
 	execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], {
 		encoding: 'utf8',
 	}).trim().length > 0
-const files = extensions.map((extension) => {
-	const artifactArch = platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
-	const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
+const files = installers.map((name) => {
 	const bytes = readFileSync(join(output, name))
 	return {
 		name,
@@ -123,14 +122,11 @@ const files = extensions.map((extension) => {
 	}
 })
 const feedPath = join(resources, 'app-update.yml')
-if (process.env.KODY_DESKTOP_RELEASE === '1') {
+// Windows MSIX installs update through App Installer, never electron-updater.
+if (process.env.KODY_DESKTOP_RELEASE === '1' && platform !== 'win32') {
 	// Verify the same architecture-specific manifest the installed updater reads.
 	const suffix =
-		platform === 'darwin'
-			? '-mac'
-			: platform === 'linux'
-				? `-linux${arch === 'x64' ? '' : `-${arch}`}`
-				: ''
+		platform === 'darwin' ? '-mac' : `-linux${arch === 'x64' ? '' : `-${arch}`}`
 	const channel = `latest-${arch}${suffix}.yml`
 	const manifest = parse(readFileSync(join(output, channel), 'utf8'))
 	assert.equal(manifest.version, version)
@@ -156,7 +152,7 @@ if (process.env.KODY_DESKTOP_RELEASE === '1') {
 } else {
 	assert.ok(
 		!existsSync(feedPath),
-		'Unsigned test builds must not contain an update feed.',
+		'Only Mac and Linux release builds contain an update feed.',
 	)
 }
 writeFileSync(

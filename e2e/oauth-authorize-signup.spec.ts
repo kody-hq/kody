@@ -66,7 +66,7 @@ test('a new person signs up from the authorize page and finishes the same OAuth 
 		await expect(page).toHaveURL(signupHref)
 		await waitForClientHydration(page)
 		await page.getByRole('textbox', { name: 'Username' }).fill(username)
-		await page.getByLabel('Email').fill(email)
+		await page.getByLabel('Email', { exact: true }).fill(email)
 		await page.getByLabel('Password', { exact: true }).fill(password)
 		await expect(
 			page.getByRole('status').filter({ hasText: `${username} is available` }),

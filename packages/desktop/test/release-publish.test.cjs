@@ -5,17 +5,20 @@ const { tmpdir } = require('node:os')
 const { basename, join } = require('node:path')
 const { test } = require('node:test')
 const {
+	linuxInstallerNames,
 	releaseAssetNames,
 	releaseNotes,
 } = require('../scripts/release-plan.cjs')
 const { publishRelease } = require('../scripts/release-publish.cjs')
+const { appInstallerXml } = require('../scripts/win-appinstaller.cjs')
 
 const repo = 'kody-hq/kody-desktop'
 const version = '0.1.41'
 const sourceSha = 'c'.repeat(40)
-const notes = releaseNotes(sourceSha, 'mac')
+const notes = releaseNotes(sourceSha)
 
-function feed(arch, files) {
+// electron-updater installs the feed path, the first file listed.
+function feed(files) {
 	return [
 		`version: ${version}`,
 		'files:',
@@ -24,28 +27,46 @@ function feed(arch, files) {
 			`    sha512: ${createHash('sha512').update(body).digest('base64')}`,
 			`    size: ${Buffer.byteLength(body)}`,
 		]),
-		`path: Kody-${version}-mac-${arch}.zip`,
+		`path: ${files[0][0]}`,
 		"releaseDate: '2026-11-08T00:00:00.000Z'",
 		'',
 	].join('\n')
 }
 
-// Builds a full set of fake Mac release files; no secrets or network.
+const appInstaller = (arch, packageVersion = version) =>
+	appInstallerXml({
+		name: 'KodyCodes.Kody',
+		publisher: 'CN=Kody Desktop Sideload',
+		version: packageVersion,
+		arch,
+	})
+
+// Builds a full set of fake release files for every target; no secrets or network.
 function buildAssets() {
 	const contents = new Map()
-	for (const name of releaseAssetNames(version, 'mac'))
+	for (const name of releaseAssetNames(version))
 		if (!name.endsWith('.yml')) contents.set(name, `bytes of ${name}`)
-	for (const arch of ['arm64', 'x64'])
+	for (const arch of ['arm64', 'x64']) {
+		contents.set(`Kody-win-${arch}.appinstaller`, appInstaller(arch))
 		contents.set(
 			`latest-${arch}-mac.yml`,
 			feed(
-				arch,
 				['zip', 'dmg'].map((ext) => {
 					const name = `Kody-${version}-mac-${arch}.${ext}`
 					return [name, contents.get(name)]
 				}),
 			),
 		)
+		contents.set(
+			`latest-${arch}-linux${arch === 'x64' ? '' : `-${arch}`}.yml`,
+			feed(
+				linuxInstallerNames(version, arch).map((name) => [
+					name,
+					contents.get(name),
+				]),
+			),
+		)
+	}
 	return contents
 }
 
@@ -149,7 +170,6 @@ const run = (assetsDir, gh) =>
 		repo,
 		version,
 		sourceSha,
-		scope: 'mac',
 		assetsDir,
 		gh,
 		log: () => {},
@@ -173,7 +193,7 @@ test('a failed target leaves a draft, names the missing target, and never publis
 		(error) => {
 			assert.equal(
 				error.message,
-				`Draft v${version} is missing mac arm64 (latest-arm64-mac.yml, SHA256SUMS-mac-arm64.txt, build-info-mac-arm64.json, Kody-${version}-mac-arm64.dmg, Kody-${version}-mac-arm64.dmg.blockmap, Kody-${version}-mac-arm64.zip, Kody-${version}-mac-arm64.zip.blockmap); it stays a draft until a re-run uploads them.`,
+				`Draft v${version} is missing mac arm64 (latest-arm64-mac.yml, SHA256SUMS-mac-arm64.txt, build-info-mac-arm64.json, Kody-${version}-mac-arm64.dmg, Kody-${version}-mac-arm64.dmg.blockmap, Kody-${version}-mac-arm64.zip, Kody-${version}-mac-arm64.zip.blockmap); win arm64 (SHA256SUMS-win-arm64.txt, build-info-win-arm64.json, Kody-${version}-win-arm64.msix, Kody-win-arm64.appinstaller); linux arm64 (latest-arm64-linux-arm64.yml, SHA256SUMS-linux-arm64.txt, build-info-linux-arm64.json, Kody-${version}-linux-arm64.AppImage, Kody-${version}-linux-arm64.deb); it stays a draft until a re-run uploads them.`,
 			)
 			return true
 		},
@@ -214,6 +234,41 @@ test('a feed whose hash does not match its installer blocks publication', () => 
 	assert.throws(
 		() => run(writeAssets(contents), github.gh),
 		/sha512 for Kody-0\.1\.41-mac-x64\.zip/,
+	)
+	assert.equal(github.state.published, false)
+})
+
+test('a release without its Windows packages stays a draft', () => {
+	const contents = buildAssets()
+	const github = fakeGitHub({ contents })
+	const macOnly = [...contents.keys()].filter((name) => !name.includes('win'))
+	assert.throws(
+		() => run(writeAssets(contents, macOnly), github.gh),
+		/missing win x64 \(SHA256SUMS-win-x64\.txt, build-info-win-x64\.json, Kody-0\.1\.41-win-x64\.msix, Kody-win-x64\.appinstaller, Kody-win-signer\.cer\); win arm64 \(/,
+	)
+	assert.equal(github.state.published, false)
+})
+
+test('a release without its Linux installers stays a draft', () => {
+	const contents = buildAssets()
+	const github = fakeGitHub({ contents })
+	const withoutLinux = [...contents.keys()].filter(
+		(name) => !name.includes('linux'),
+	)
+	assert.throws(
+		() => run(writeAssets(contents, withoutLinux), github.gh),
+		/missing linux x64 \(latest-x64-linux\.yml, SHA256SUMS-linux-x64\.txt, build-info-linux-x64\.json, Kody-0\.1\.41-linux-x86_64\.AppImage, Kody-0\.1\.41-linux-amd64\.deb\); linux arm64 \(/,
+	)
+	assert.equal(github.state.published, false)
+})
+
+test('an App Installer file for another version blocks publication', () => {
+	const contents = buildAssets()
+	contents.set('Kody-win-x64.appinstaller', appInstaller('x64', '0.1.40'))
+	const github = fakeGitHub({ contents })
+	assert.throws(
+		() => run(writeAssets(contents), github.gh),
+		/Kody-win-x64\.appinstaller is for 0\.1\.40\.0, not 0\.1\.41/,
 	)
 	assert.equal(github.state.published, false)
 })

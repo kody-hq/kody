@@ -25,7 +25,7 @@ import {
 
 export { systemEmailOwnerId }
 
-export const systemEmailLocals = [
+export const transactionalSystemEmailLocals = [
 	'kody',
 	'support',
 	'abuse',
@@ -39,6 +39,11 @@ export const systemEmailLocals = [
 	// forwards kent@ straight to Kent; accepting it here keeps a catch-all
 	// fallback that lands in the system inbox if that rule is ever removed.
 	'kent',
+] as const
+
+export const systemEmailLocals = [
+	...transactionalSystemEmailLocals,
+	'news',
 ] as const
 
 export type SystemEmailLocal = (typeof systemEmailLocals)[number]
@@ -64,6 +69,7 @@ export const systemEmailLimits = {
 	maxReceivesPerDay: 1000,
 	/** Per-sender ceiling on operator sends (see `sendSystemEmail`). */
 	maxSendsPerDay: 200,
+	maxNewsletterSendsPerDay: 2000,
 	maxStoredMessages: 5000,
 	retentionDays: 90,
 	pruneBatchSize: 500,

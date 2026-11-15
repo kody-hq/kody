@@ -31,6 +31,7 @@ import { buildPublishTargets } from './builder-entry.ts'
 import {
 	collectLinkedPackageImports,
 	linkUploadedPackageImports,
+	type LinkedDependencyArtifactCache,
 } from './link-dependencies.ts'
 import {
 	hashWorkerLoaderModules,
@@ -104,6 +105,7 @@ async function ensureSchema() {
 		entry_point TEXT NOT NULL,
 		kv_key TEXT NOT NULL,
 		dependencies_json TEXT NOT NULL DEFAULT '[]',
+		total_bytes INTEGER,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
@@ -411,7 +413,8 @@ for (const origin of ['local', 'context'] as const) {
 			expect(uploadedSources).toContain('__kody_linked__')
 			expect(uploadedSources).not.toContain(notes.packageId)
 			expect(uploadedSources).not.toContain('select name from notes')
-			// Kody's own rebuild in linked mode hashes the same (rebuild sample).
+			// The off-worker builder is deterministic: the same tree builds to the
+			// same bytes on Kody.
 			const rebuilt = await buildKodyImportableModuleBundle({
 				env,
 				baseUrl,
@@ -472,6 +475,44 @@ for (const origin of ['local', 'context'] as const) {
 		},
 	)
 }
+
+test(
+	'targets that import the same Kody package link it once per publish',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId, reader } = await setup()
+		const built = await buildOffWorker(userId, reader.packageId)
+		const linkedImports = collectLinkedPackageImports({
+			sourceFiles: importerFiles,
+			entryPoint: built.target.entryPoint,
+		})
+		const { referencedLinkedImports } = await verifyUploadedTargetModules({
+			uploaded: await uploadedEntry(built),
+			modules: built.modules,
+			ownPackageId: reader.packageId,
+			linkedImports,
+		})
+		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		const link = (cache?: LinkedDependencyArtifactCache) =>
+			linkUploadedPackageImports({
+				env,
+				baseUrl,
+				userId,
+				modules: built.modules,
+				linkedImports,
+				referenced: referencedLinkedImports,
+				...(cache ? { artifactCache: cache } : {}),
+			})
+		const first = await link(artifactCache)
+		const linkedOnce = [...artifactCache.values()]
+		const second = await link(artifactCache)
+
+		expect(linkedOnce).toHaveLength(1)
+		expect([...artifactCache.values()]).toEqual(linkedOnce)
+		expect(second).toEqual(first)
+		expect(await link()).toEqual(first)
+	},
+)
 
 test(
 	'an upload that inlines the dependency or binds its id is refused',

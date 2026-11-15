@@ -55,7 +55,7 @@ const publicRoutes: RouteScenario[] = [
 			await expect(
 				page.getByRole('textbox', { name: 'Username' }),
 			).toBeVisible()
-			await expect(page.getByLabel('Email')).toBeVisible()
+			await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
 			await expect(page.getByLabel('Password', { exact: true })).toBeVisible()
 			await expectSubmitSettled(page)
 		},

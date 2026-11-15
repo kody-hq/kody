@@ -27,6 +27,7 @@ function createPublishedBundleArtifactsDb() {
 			entry_point TEXT NOT NULL,
 			kv_key TEXT NOT NULL,
 			dependencies_json TEXT NOT NULL DEFAULT '[]',
+			total_bytes INTEGER,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
@@ -1086,4 +1087,31 @@ test('listPublishedBundleArtifactsByIdentities issues a fixed number of queries 
 		)
 	}
 	prepareSpy.mockRestore()
+})
+
+test('upsertPublishedBundleArtifactRow stores total bytes and leaves it null when the writer gives none', async () => {
+	const db = createPublishedBundleArtifactsDb()
+	const identity = {
+		userId: 'user-1',
+		sourceId: 'source-1',
+		artifactKind: 'module',
+		artifactName: null,
+		entryPoint: 'src/index.ts',
+	}
+	const row = {
+		...identity,
+		publishedCommit: 'commit-1',
+		kvKey: 'kv-1',
+		dependenciesJson: '[]',
+	}
+
+	await upsertPublishedBundleArtifactRow(db, row)
+	expect(
+		(await getPublishedBundleArtifactByIdentity(db, identity))?.totalBytes,
+	).toBeNull()
+
+	await upsertPublishedBundleArtifactRow(db, { ...row, totalBytes: 4096 })
+	expect(
+		(await getPublishedBundleArtifactByIdentity(db, identity))?.totalBytes,
+	).toBe(4096)
 })

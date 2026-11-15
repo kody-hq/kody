@@ -397,28 +397,6 @@ export async function verifyUploadedTargetModules(input: {
 	return { totalBytes, referencedLinkedImports }
 }
 
-/**
- * The server rebuilds a sample and compares hashes. Smallest targets first,
- * so the re-check stays cheap; browser bundles are as good a witness as
- * worker bundles.
- */
-export function pickServerRebuildSample<
-	T extends { uploaded: PublishBuildTargetEntry },
->(matched: ReadonlyArray<T>, size: number) {
-	const bytes = (entry: T) =>
-		Object.values(entry.uploaded.modules).reduce(
-			(total, module) => total + module.size,
-			0,
-		)
-	return [...matched]
-		.sort(
-			(a, b) =>
-				bytes(a) - bytes(b) ||
-				a.uploaded.entryPoint.localeCompare(b.uploaded.entryPoint),
-		)
-		.slice(0, Math.max(0, size))
-}
-
 function moduleHashesKey(entry: PublishBuildTargetEntry) {
 	return JSON.stringify(
 		Object.entries(entry.modules)
@@ -430,8 +408,8 @@ function moduleHashesKey(entry: PublishBuildTargetEntry) {
 /**
  * Targets that build the same bundle (an export and the jobs on its entry
  * file) all serve the upload Kody keeps for that build, so every other upload
- * for it must carry the same bytes. Otherwise the server rebuild sample could
- * check an upload Kody never serves.
+ * for it must carry the same bytes. Otherwise a target could pass its checks
+ * on an upload Kody never serves.
  */
 export function assertSameBuildUploadMatches(input: {
 	kept: PublishBuildTargetEntry
@@ -445,62 +423,4 @@ export function assertSameBuildUploadMatches(input: {
 			`two targets upload different bytes for the same ${input.uploaded.bundleKind} build of "${input.uploaded.entryPoint}", so the upload is not one build of this tree.`,
 		)
 	}
-}
-
-export function assertServerRebuildMatches(input: {
-	uploaded: PublishBuildTargetEntry
-	rebuilt: { mainModule: string; moduleHashes: Record<string, string> }
-}) {
-	const uploadedHashes = Object.fromEntries(
-		Object.entries(input.uploaded.modules)
-			.map(([path, module]) => [path, module.sha256] as const)
-			.sort(([a], [b]) => a.localeCompare(b)),
-	)
-	const rebuiltHashes = Object.fromEntries(
-		Object.entries(input.rebuilt.moduleHashes).sort(([a], [b]) =>
-			a.localeCompare(b),
-		),
-	)
-	if (
-		input.rebuilt.mainModule !== input.uploaded.mainModule ||
-		JSON.stringify(uploadedHashes) !== JSON.stringify(rebuiltHashes)
-	) {
-		fail(
-			`the server rebuilt "${input.uploaded.entryPoint}" from the pushed commit and got different bytes than the upload, so the upload was not built from this tree with this builder.`,
-		)
-	}
-}
-
-export type ServerRebuildSampleResult =
-	| { mainModule: string; moduleHashes: Record<string, string> }
-	| { overCloudLimit: true; message: string }
-	| Error
-
-/**
- * Compares each sampled target Kody rebuilt against its upload. A target the
- * rebuild isolate could not hold (Cloudflare memory or CPU limit) is not
- * compared: the upload was built off cloud so that limit would not apply, and
- * the manifest, identity, and size checks still ran on it.
- */
-export function checkServerRebuildSample(input: {
-	sample: ReadonlyArray<{ uploaded: PublishBuildTargetEntry }>
-	rebuilt: ReadonlyArray<ServerRebuildSampleResult | undefined>
-}) {
-	const overCloudLimit: Array<string> = []
-	let comparedCount = 0
-	for (const [index, entry] of input.sample.entries()) {
-		const result = input.rebuilt[index]
-		if (!result || result instanceof Error) {
-			fail(
-				`the server could not rebuild "${entry.uploaded.entryPoint}" to compare it: ${result ? result.message : 'no result'}.`,
-			)
-		}
-		if ('overCloudLimit' in result) {
-			overCloudLimit.push(entry.uploaded.entryPoint)
-			continue
-		}
-		assertServerRebuildMatches({ uploaded: entry.uploaded, rebuilt: result })
-		comparedCount += 1
-	}
-	return { comparedCount, overCloudLimit }
 }

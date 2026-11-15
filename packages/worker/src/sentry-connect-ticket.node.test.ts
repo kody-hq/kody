@@ -150,3 +150,179 @@ test('deep redaction tolerates cycles', () => {
 		'[redacted]',
 	)
 })
+
+test('deep redaction skips getter-only and frozen props without throwing', () => {
+	const apiToken = `kody_at_${'a'.repeat(20)}_${'B'.repeat(43)}`
+	const withGetterOnly = {
+		authorization: 'Bearer writable-secret',
+		nested: { note: `token ${apiToken}` },
+	}
+	Object.defineProperty(withGetterOnly, '$', {
+		enumerable: true,
+		configurable: false,
+		get() {
+			return { kept: 'accessor-child' }
+		},
+	})
+	const freshSensitiveGetter: Record<string, unknown> = {}
+	Object.defineProperty(freshSensitiveGetter, '$', {
+		enumerable: true,
+		configurable: false,
+		get() {
+			return { authorization: 'Bearer accessor-secret' }
+		},
+	})
+	const getterWithSetter: Record<string, unknown> = {}
+	Object.defineProperty(getterWithSetter, '$', {
+		enumerable: true,
+		configurable: true,
+		get() {
+			return { authorization: 'Bearer getter-setter-secret' }
+		},
+		set(_value: unknown) {},
+	})
+	const frozenSensitive = Object.freeze({
+		authorization: 'Bearer frozen-secret',
+		ok: 'kept-frozen',
+	})
+	const sharedFrozen = Object.freeze({
+		authorization: 'Bearer shared-secret',
+		ok: 'kept-shared',
+	})
+	const frozenQuery = Object.freeze({
+		code: 'frozen-query-code',
+		state: 'kept-query-state',
+	})
+	const frozenArray = Object.freeze([
+		`Bearer array-secret-token`,
+		{ refresh_token: 'rt-in-frozen-array' },
+	])
+
+	const event = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: withGetterOnly,
+		contexts: {
+			frozen: frozenSensitive,
+			fresh: freshSensitiveGetter,
+			getterSetter: getterWithSetter,
+			aliases: { first: sharedFrozen, second: sharedFrozen },
+		},
+		request: { query_string: frozenQuery },
+		breadcrumbs: [{ data: { items: frozenArray } }],
+	})
+	const serialized = JSON.stringify(event)
+	for (const secret of [
+		'writable-secret',
+		apiToken,
+		'frozen-secret',
+		'shared-secret',
+		'accessor-secret',
+		'getter-setter-secret',
+		'frozen-query-code',
+		'array-secret-token',
+		'rt-in-frozen-array',
+	]) {
+		expect(serialized).not.toContain(secret)
+	}
+	expect(serialized).toContain('accessor-child')
+	expect(serialized).toContain('kept-frozen')
+	expect(serialized).toContain('kept-shared')
+	expect(serialized).toContain('kept-query-state')
+	expect((event.extra as Record<string, unknown>).authorization).toBe(
+		'[redacted]',
+	)
+	expect(
+		(event.contexts as { frozen: Record<string, unknown> }).frozen
+			.authorization,
+	).toBe('[redacted]')
+	const aliases = (
+		event.contexts as {
+			aliases: {
+				first: Record<string, unknown>
+				second: Record<string, unknown>
+			}
+		}
+	).aliases
+	expect(aliases.first.authorization).toBe('[redacted]')
+	expect(aliases.second.authorization).toBe('[redacted]')
+	expect(aliases.first).toBe(aliases.second)
+
+	const cyclic: Record<string, unknown> = {
+		child: {} as Record<string, unknown>,
+		authorization: 'Bearer cycle-secret',
+	}
+	;(cyclic.child as Record<string, unknown>).ref = cyclic
+	Object.freeze(cyclic)
+	const cyclicEvent = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: cyclic,
+	})
+	const cyclicExtra = cyclicEvent.extra as {
+		authorization: string
+		child: { ref: { authorization: string } }
+	}
+	expect(cyclicExtra.authorization).toBe('[redacted]')
+	expect(cyclicExtra.child.ref).toBe(cyclicExtra)
+	expect(cyclicExtra.child.ref.authorization).toBe('[redacted]')
+	expect(cyclicExtra).not.toBe(cyclic)
+
+	// Generic walk keeps status `code`; query_string walk must still redact it
+	// when the same frozen object is reused (extra before request key order).
+	const sharedCode = Object.freeze({ code: 'oauth-secret', state: 'kept' })
+	const sharedOrder = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: { cached: sharedCode },
+		request: { query_string: sharedCode },
+	})
+	expect((sharedOrder.extra as { cached: { code: unknown } }).cached.code).toBe(
+		'oauth-secret',
+	)
+	expect(
+		(sharedOrder.request as { query_string: { code: string; state: string } })
+			.query_string,
+	).toEqual({ code: '[redacted]', state: 'kept' })
+
+	const mutableShared: Record<string, unknown> = {
+		code: 404,
+		state: 'kept-mutable',
+	}
+	const mutableOrder = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		extra: { cached: mutableShared },
+		request: { query_string: mutableShared },
+	})
+	expect(
+		(mutableOrder.extra as { cached: Record<string, unknown> }).cached.code,
+	).toBe(404)
+	expect(
+		(mutableOrder.request as { query_string: Record<string, unknown> })
+			.query_string,
+	).toEqual({ code: '[redacted]', state: 'kept-mutable' })
+	expect((mutableOrder.extra as { cached: unknown }).cached).not.toBe(
+		(mutableOrder.request as { query_string: unknown }).query_string,
+	)
+
+	const cyclicQuery: Record<string, unknown> = {
+		code: 'oauth-cycle-secret',
+		state: 'kept-cycle',
+	}
+	cyclicQuery.self = cyclicQuery
+	Object.freeze(cyclicQuery)
+	const cyclicQueryEvent = redactKodyCredentialsInSentryEvent({
+		type: undefined,
+		request: { query_string: cyclicQuery },
+	})
+	const cyclicQueryString = (
+		cyclicQueryEvent.request as {
+			query_string: {
+				code: string
+				state: string
+				self: { code: string }
+			}
+		}
+	).query_string
+	expect(cyclicQueryString.code).toBe('[redacted]')
+	expect(cyclicQueryString.state).toBe('kept-cycle')
+	expect(cyclicQueryString.self).toBe(cyclicQueryString)
+	expect(cyclicQueryString.self.code).toBe('[redacted]')
+})

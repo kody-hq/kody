@@ -15,6 +15,8 @@ export type PublishedBundleArtifactRecord = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
+	/** Stored module bytes; null for a row written before it was recorded. */
+	totalBytes: number | null
 	createdAt: string
 	updatedAt: string
 }
@@ -28,6 +30,7 @@ export type PublishedBundleArtifactUpsertInput = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
+	totalBytes?: number | null
 }
 
 export type StaticDependentBundleArtifactRow = {
@@ -63,6 +66,8 @@ function mapRow(row: Record<string, unknown>): PublishedBundleArtifactRecord {
 		entryPoint: String(row['entry_point']),
 		kvKey: String(row['kv_key']),
 		dependenciesJson: String(row['dependencies_json'] ?? '[]'),
+		totalBytes:
+			typeof row['total_bytes'] === 'number' ? row['total_bytes'] : null,
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
 	}
@@ -526,8 +531,9 @@ function prepareUnguardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				entry_point, kv_key, dependencies_json, total_bytes, created_at,
+				updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -539,6 +545,7 @@ function prepareUnguardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.totalBytes ?? null,
 			now,
 			now,
 		)
@@ -554,9 +561,10 @@ function prepareGuardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, created_at, updated_at
+				entry_point, kv_key, dependencies_json, total_bytes, created_at,
+				updated_at
 			)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			WHERE EXISTS (
 				SELECT 1 FROM entity_sources
 				WHERE id = ?
@@ -575,6 +583,7 @@ function prepareGuardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.totalBytes ?? null,
 			now,
 			now,
 			input.sourceId,
@@ -593,7 +602,7 @@ function prepareUnguardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				updated_at = ?
+				total_bytes = ?, updated_at = ?
 			WHERE id = ?`,
 		)
 		.bind(
@@ -605,6 +614,7 @@ function prepareUnguardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.totalBytes ?? null,
 			now,
 			input.id,
 		)
@@ -620,7 +630,7 @@ function prepareGuardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
-				updated_at = ?
+				total_bytes = ?, updated_at = ?
 			WHERE id = ?
 				AND EXISTS (
 					SELECT 1 FROM entity_sources
@@ -639,6 +649,7 @@ function prepareGuardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.totalBytes ?? null,
 			now,
 			input.id,
 			input.sourceId,

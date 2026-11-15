@@ -60,6 +60,9 @@ test('both signing providers and all release platforms match the pinned builder 
 					config.win.signtoolOptions.publisherName,
 					'test-only-placeholder',
 				)
+				assert.deepEqual(config.win.signtoolOptions.signingHashAlgorithms, [
+					'sha256',
+				])
 				assert.equal(config.win.azureSignOptions, undefined)
 			}
 			if (platform === 'darwin') {
@@ -69,6 +72,21 @@ test('both signing providers and all release platforms match the pinned builder 
 			}
 		}
 	}
+})
+
+test('Windows releases are MSIX packages without an electron-updater feed', () => {
+	const env = {
+		WIN_CSC_LINK: 'test-only-placeholder',
+		WIN_CSC_KEY_PASSWORD: 'test-only-placeholder',
+		KODY_WINDOWS_PUBLISHER: 'test-only-placeholder',
+	}
+	const windows = configuration('win32', env)
+	assert.deepEqual(windows.win.target, ['appx'])
+	assert.equal(windows.appx.artifactName, 'Kody-${version}-win-${arch}.msix')
+	assert.equal(windows.toolsets.winCodeSign, '1.1.0')
+	assert.equal(windows.publish, null)
+	assert.equal(windows.win.verifyUpdateCodeSignature, undefined)
+	assert.equal(configuration('linux', {}).publish.provider, 'github')
 })
 
 test('Mac releases do not require unused Windows Azure settings', async () => {

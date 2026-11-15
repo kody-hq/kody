@@ -467,7 +467,7 @@ test('kody dev check retries the publish checks after a compute limit or respons
 			runPublishChecks: async () => limited,
 		})
 		assert.match(exhausted.stdout, /build outside Kody cloud/)
-		assert.match(exhausted.stdout, /kody package publish --build local/)
+		assert.match(exhausted.stdout, /package publish <package> --build local/)
 		assert.match(exhausted.stdout, /--context <name>/)
 
 		let refusedCalls = 0

@@ -438,6 +438,15 @@ export async function authenticateWebsite({
 					password_hash: passwordHash,
 					...firstTouchAttributionCreateFields(signupAttribution),
 					last_active_at: createdAt,
+					...(typeof body === 'object' &&
+					body !== null &&
+					(body as Record<string, unknown>).whatsNewEmailOptIn === true
+						? {
+								whats_new_email_opt_in: 1,
+								whats_new_email_opt_in_updated_at: createdAt,
+								whats_new_email_opt_in_source: 'signup',
+							}
+						: {}),
 				},
 				{
 					returnRow: true,

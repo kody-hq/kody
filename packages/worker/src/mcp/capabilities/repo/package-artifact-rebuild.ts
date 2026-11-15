@@ -653,11 +653,10 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 	maxTargets?: number
 	/**
 	 * Publish offload: persist this verified upload (every target, checked
-	 * against the tree and a server rebuild sample) instead of building.
+	 * against the tree) instead of building. Nothing is rebuilt on Kody.
 	 */
 	uploadedBuild?: {
 		buildId: string
-		communityListed: boolean
 	}
 }): Promise<RebuildPublishedPackageArtifactsResult> {
 	if (input.uploadedBuild) {
@@ -670,7 +669,6 @@ export async function rebuildPublishedPackageArtifactsViaRepoSession(input: {
 			userId: input.userId,
 			publishedCommit: input.publishedCommit,
 			buildId: input.uploadedBuild.buildId,
-			communityListed: input.uploadedBuild.communityListed,
 			baseUrl: input.baseUrl,
 		})
 		if (!persisted.ok) throw new UserCodeError(persisted.message)
