@@ -246,13 +246,13 @@ export function formatPublishSizeHints(
 	return parts.join(' ')
 }
 
-function formatHintList(hints: Array<LargePathHint>) {
+export function formatHintList(hints: Array<LargePathHint>) {
 	return hints
 		.map((hint) => `\`${hint.path}\` (${formatBytes(hint.bytes)})`)
 		.join(', ')
 }
 
-function formatBytes(bytes: number) {
+export function formatBytes(bytes: number) {
 	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 	return `${Math.max(1, Math.round(bytes / 1024))} KiB`
 }

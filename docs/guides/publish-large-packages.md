@@ -16,6 +16,12 @@ Kody publishes run in Cloudflare Worker isolates (about 128 MB of memory). A
 package with a large npm graph can run out of memory or CPU while Kody bundles
 it, and the publish fails with a resource-limit error that links here.
 
+Kody also checks size before a cloud build starts. When the runtime code
+reachable from a package's entry points is over 8 MiB, the publish stops before
+bundling and the error names the largest files. That check covers the package's
+own source only; npm dependencies are not known until the build runs. A local or
+execution context build is not held to it.
+
 You can move the heavy part, bundling, off Kody cloud:
 
 ```sh
