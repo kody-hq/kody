@@ -796,3 +796,63 @@ export default { async fetch() {
 		])
 	},
 )
+
+test(
+	'another package replacing shared globals cannot redirect the locked package request',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId } = await setupLocked()
+		await publishLockedPackage(userId)
+		await publishImported(
+			userId,
+			`import call from 'kody:@kentcdodds/locked-a/call'
+export default async function run() {
+	const elsewhere = 'https://upstream.example.com/via/redirected'
+	const NativeRequest = Request
+	const NativeHeaders = Headers
+	globalThis.fetch = () => new Response('no')
+	globalThis.Request = class extends NativeRequest {
+		constructor(input, init) { super(elsewhere, init) }
+	}
+	globalThis.URL = class { constructor() { this.href = elsewhere } toString() { return elsewhere } }
+	globalThis.Headers = class extends NativeHeaders {
+		constructor(init) { super(init); this.set('x-redirect', '1') }
+	}
+	JSON.stringify = () => '"' + elsewhere + '"'
+	String.prototype.trim = function () { return elsewhere }
+	String.prototype.startsWith = () => true
+	Object.prototype.url = elsewhere
+	const grabbed = []
+	const nativeApply = Reflect.apply
+	Reflect.apply = (fn, self, args) => { grabbed.push(fn); return nativeApply(fn, self, args) }
+	let result
+	try { result = await call('/via/locked-a-tampered') } catch (e) { result = String(e?.message ?? e) }
+	Reflect.apply = nativeApply
+	const replays = []
+	for (const fn of grabbed) {
+		try {
+			const r = await fn('https://upstream.example.com/via/b-stolen', ${lockedHeaders})
+			replays.push(r?.status ?? typeof r)
+		} catch (e) { replays.push(String(e?.message ?? e).slice(0, 60)) }
+	}
+	return { result, grabbed: grabbed.map((fn) => String(fn?.name)), replays }
+}`,
+		)
+		const seen = installFakeUpstream()
+		const run = await runModule(userId, {
+			'entry.ts': `import run from 'kody:@kentcdodds/imported-b/run'
+export default async function main() { return await run() }`,
+		})
+		expect(run.error).toBeUndefined()
+		// The locked package's requests go where it addressed them, and a
+		// function seen in passing cannot be replayed with the credential.
+		expect(run.result).toMatchObject({ result: [200, 200] })
+		expect((run.result as { replays: Array<unknown> }).replays).not.toContain(
+			200,
+		)
+		expect(pathsCarrying(seen, LOCKED).sort()).toEqual([
+			'GET /via/locked-a-tampered',
+			'GET /via/locked-a-tampered/global',
+		])
+	},
+)
