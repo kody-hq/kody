@@ -1,5 +1,8 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
-import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
+import {
+	collectTopLevelFetchCollisionNames,
+	rewriteGlobalObjectFetchReads,
+} from './rewrite-local-execute-secret-fetch.ts'
 import {
 	loadServingPackageSourceBySourceId,
 	type LoadedPackageSource,
@@ -607,6 +610,8 @@ export function assertNoKodyVirtualModuleReference(
 	throw new Error(buildInternalKodyVirtualImportMessage(label))
 }
 
+const packageOwnFetchName = '__kodyPackageOwnFetch'
+
 async function rewriteKodyImports(input: {
 	state: RewriteState
 	source: string
@@ -633,6 +638,24 @@ async function rewriteKodyImports(input: {
 			boundFetchPrefix = `import { __kodyBoundFetch as fetch } from ${JSON.stringify(
 				createRelativeImportSpecifier(input.modulePath, facadePath),
 			)};\n`
+		}
+	}
+	// Reads of fetch through the global object get the same package-bound
+	// fetch, under a name that cannot clash with the module's own `fetch`.
+	if (input.sourcePackageId && !input.source.includes(packageOwnFetchName)) {
+		const rewritten = rewriteGlobalObjectFetchReads(
+			input.source,
+			packageOwnFetchName,
+		)
+		if (rewritten !== input.source) {
+			const facadePath = ensurePackageRuntimeModule(
+				input.state,
+				input.sourcePackageId,
+			)
+			boundFetchPrefix += `import { __kodyBoundFetch as ${packageOwnFetchName} } from ${JSON.stringify(
+				createRelativeImportSpecifier(input.modulePath, facadePath),
+			)};\n`
+			input = { ...input, source: rewritten }
 		}
 	}
 	const {

@@ -150,6 +150,106 @@ export function collectTopLevelFetchCollisionNames(
  * name is free. No-op when the hop is already present or `fetch` is already
  * bound (avoids duplicate-declaration SyntaxError under --local).
  */
+const globalObjectNames = new Set(['globalThis', 'self'])
+
+/**
+ * Replace reads of `globalThis.fetch` / `self.fetch` with `replacement`, so
+ * a package module that reaches fetch through the global object still uses
+ * its own package-bound fetch. Writes (`globalThis.fetch = ...`) are left
+ * alone. A global-object name is only rewritten when every use of that name
+ * in the module is a plain member access, so a local binding or an alias of
+ * the same name is never mistaken for the global object. Returns the source
+ * unchanged when it does not parse.
+ */
+export function rewriteGlobalObjectFetchReads(
+	source: string,
+	replacement: string,
+): string {
+	if (!/\b(?:globalThis|self)\b/.test(source) || !source.includes('fetch')) {
+		return source
+	}
+	let parsed: ModuleAstNode
+	try {
+		parsed = parseModuleSource(source) as unknown as ModuleAstNode
+	} catch {
+		return source
+	}
+	const unsafeNames = new Set<string>()
+	const reads: Array<{ start: number; end: number; name: string }> = []
+	walkAst(parsed, (node, parent) => {
+		if (node.type !== 'Identifier') return
+		const name = (node as { name?: unknown }).name
+		if (typeof name !== 'string' || !globalObjectNames.has(name)) return
+		const member = parent as
+			| (ModuleAstNode & {
+					object?: unknown
+					property?: unknown
+					computed?: boolean
+			  })
+			| undefined
+		const isMember =
+			member?.type === 'MemberExpression' ||
+			member?.type === 'StaticMemberExpression' ||
+			member?.type === 'ComputedMemberExpression'
+		if (isMember && member.property === node && member.computed !== true) {
+			return
+		}
+		if (
+			parent &&
+			(parent as { key?: unknown }).key === node &&
+			(parent as { computed?: boolean }).computed !== true &&
+			(parent as { shorthand?: boolean }).shorthand !== true
+		) {
+			return
+		}
+		if (!isMember || member.object !== node) {
+			unsafeNames.add(name)
+			return
+		}
+		const property = member.property as
+			| { type?: string; name?: unknown; value?: unknown }
+			| undefined
+		const propertyName =
+			member.computed === true
+				? typeof property?.value === 'string'
+					? property.value
+					: null
+				: typeof property?.name === 'string'
+					? property.name
+					: null
+		if (propertyName !== 'fetch') return
+		if (typeof member.start !== 'number' || typeof member.end !== 'number') {
+			unsafeNames.add(name)
+			return
+		}
+		reads.push({ start: member.start, end: member.end, name })
+	})
+	const writes = collectMemberWriteStarts(parsed)
+	let next = source
+	for (const read of reads.sort((a, b) => b.start - a.start)) {
+		if (unsafeNames.has(read.name) || writes.has(read.start)) continue
+		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
+	}
+	return next
+}
+
+function collectMemberWriteStarts(parsed: ModuleAstNode) {
+	const starts = new Set<number>()
+	walkAst(parsed, (node) => {
+		const target =
+			node.type === 'AssignmentExpression'
+				? (node as { left?: unknown }).left
+				: node.type === 'UpdateExpression' ||
+					  (node.type === 'UnaryExpression' &&
+							(node as { operator?: unknown }).operator === 'delete')
+					? (node as { argument?: unknown }).argument
+					: null
+		const start = (target as { start?: unknown } | null)?.start
+		if (typeof start === 'number') starts.add(start)
+	})
+	return starts
+}
+
 export function injectLocalExecuteGatewayFetchBinding(input: {
 	modulePath: string
 	source: string

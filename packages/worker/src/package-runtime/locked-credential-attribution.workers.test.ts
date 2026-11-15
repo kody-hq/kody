@@ -586,7 +586,8 @@ async function publishLockedPackage(userId: string) {
 			),
 			'src/call.ts': `export default async function call(path = '/via/locked-a') {
 	const r = await fetch('https://upstream.example.com' + path, ${lockedHeaders})
-	return r.status
+	const viaGlobal = await globalThis.fetch('https://upstream.example.com' + path + '/global', ${lockedHeaders})
+	return [r.status, viaGlobal.status]
 }`,
 		},
 		exports: [{ artifactName: './call', entryPoint: 'src/call.ts' }],
@@ -684,10 +685,12 @@ export default async function main() {
 }`,
 		})
 		expect(run.error).toBeUndefined()
-		expect(run.result).toEqual({ direct: 200, viaB: 200 })
+		expect(run.result).toEqual({ direct: [200, 200], viaB: [200, 200] })
 		expect(pathsCarrying(seen, LOCKED).sort()).toEqual([
 			'GET /via/locked-a',
 			'GET /via/locked-a-from-b',
+			'GET /via/locked-a-from-b/global',
+			'GET /via/locked-a/global',
 		])
 	},
 )
@@ -719,14 +722,16 @@ test(
 export default async function main() { return await run() }`,
 		})
 		expect(run.error).toBeUndefined()
-		const notOnList = expect.stringContaining('allowed-packages list')
+		const notOnList = expect.stringContaining('does not include this package')
 		const noStringEvaluation = expect.stringContaining(
 			'Code generation from strings disallowed',
 		)
 		expect(run.result).toEqual({
 			free: notOnList,
+			// This module also aliases globalThis, so its reads through it
+			// are not rebound and stay unbound.
 			global: refused,
-			self: refused,
+			self: notOnList,
 			alias: refused,
 			reflect: refused,
 			// The runtime does not evaluate code from strings at all.
@@ -756,6 +761,7 @@ export default { async fetch() {
 	return Response.json({
 		own: await ${attempt('fetch', '/via/app-own')},
 		ownGlobal: await ${attempt('globalThis.fetch', '/via/app-global')},
+		ownAlias: await ${attempt('[self][0].fetch', '/via/app-alias')},
 		b: await run(),
 	})
 } }`,
@@ -774,10 +780,14 @@ export default { async fetch() {
 		expect(out.status).toBe(200)
 		expect(JSON.parse(out.text)).toEqual({
 			own: 200,
-			ownGlobal: refused,
-			b: refused,
+			ownGlobal: 200,
+			ownAlias: refused,
+			b: expect.stringContaining('does not include this package'),
 		})
-		expect(pathsCarrying(out.seen, LOCKED)).toEqual(['GET /via/app-own'])
+		expect(pathsCarrying(out.seen, LOCKED)).toEqual([
+			'GET /via/app-own',
+			'GET /via/app-global',
+		])
 		const rows = await refusalRows(userId)
 		expect(rows).toEqual([
 			expect.objectContaining({ kind: 'run_package_unbound', surface: 'app' }),
