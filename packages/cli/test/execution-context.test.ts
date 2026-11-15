@@ -938,12 +938,12 @@ export default async function main(p) {
 	const hello = frames.find((frame) => frame.t === 'hello')
 	assert.deepEqual(
 		(hello?.body.capabilities as { features?: unknown }).features,
-		['host-operator-only'],
+		['host-operator-only', 'typescript-source'],
 	)
 	const update = frames.find((frame) => frame.t === 'capabilities.update')
 	assert.deepEqual(
 		(update?.body.capabilities as { features?: unknown }).features,
-		['host-operator-only', 'fs'],
+		['host-operator-only', 'typescript-source', 'fs'],
 	)
 	const result = frames.find((frame) => frame.t === 'run.result')
 	assert.ok(result, 'the daemon never sent run.result')

@@ -43,7 +43,10 @@ declare module '*/node_modules/.kody-generated/postal-mime.mjs' {
 }
 
 declare module '*/node_modules/.kody-generated/codemode-normalize.mjs' {
-	export { normalizeCode } from './mcp/codemode-normalize-module.ts'
+	export {
+		normalizeCode,
+		parseJavaScript,
+	} from './mcp/codemode-normalize-module.ts'
 }
 
 declare module '*/node_modules/.kody-generated/module-source-parser.mjs' {

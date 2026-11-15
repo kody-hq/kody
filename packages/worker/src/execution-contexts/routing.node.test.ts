@@ -517,16 +517,18 @@ test('a paused context is described as paused, not offline', () => {
 	).toContain('laptop: paused')
 })
 
-test('TypeScript skips a daemon too old to run it, with a please update reason', () => {
+test('TypeScript skips a daemon too old to run it, with a please update reason', async () => {
 	const typed = 'export default (params: { n: number }) => params.n * 2'
 	const plain = 'export default async (params) => { await 0; return params?.n }'
-	expect(typeScriptSourceRefusal(typed, {})).toBe('typescript_daemon_outdated')
-	expect(typeScriptSourceRefusal(plain, {})).toBeNull()
-	expect(
+	await expect(typeScriptSourceRefusal(typed, {})).resolves.toBe(
+		'typescript_daemon_outdated',
+	)
+	await expect(typeScriptSourceRefusal(plain, {})).resolves.toBeNull()
+	await expect(
 		typeScriptSourceRefusal(typed, {
 			features: [ecpTypeScriptSourceFeature],
 		}),
-	).toBeNull()
+	).resolves.toBeNull()
 	const text = describeAttempts([
 		{
 			target: 'ec_old',

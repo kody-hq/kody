@@ -1,4 +1,3 @@
-import { parse as parseJavaScript } from 'acorn'
 import {
 	type EcpCancelReason,
 	type EcpCapabilities,
@@ -20,6 +19,7 @@ import {
 	type EffectivePermissions,
 } from '#worker/authorization/authorize.ts'
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
+import { loadJavaScriptParser } from '#worker/codemode-normalize-load.ts'
 import { deriveRequestContext } from '#worker/request-context/request-context.ts'
 import type {
 	OwnerId,
@@ -330,13 +330,14 @@ export function sharedRunHostRefusal(input: {
  * as plain JavaScript, so code that only parses as TypeScript skips it with
  * a "please update" reason instead of failing there with a syntax error.
  */
-export function typeScriptSourceRefusal(
+export async function typeScriptSourceRefusal(
 	code: string,
 	capabilities: EcpCapabilities,
-): string | null {
+): Promise<string | null> {
 	if ((capabilities.features ?? []).includes(ecpTypeScriptSourceFeature)) {
 		return null
 	}
+	const parseJavaScript = await loadJavaScriptParser()
 	try {
 		parseJavaScript(code, { ecmaVersion: 'latest', sourceType: 'module' })
 		return null
@@ -567,7 +568,7 @@ export async function routeExecute(input: {
 		}
 		const sourceRefusal =
 			input.code !== null && !input.publishBuild
-				? typeScriptSourceRefusal(input.code, parseCapabilities(row))
+				? await typeScriptSourceRefusal(input.code, parseCapabilities(row))
 				: null
 		if (sourceRefusal) {
 			skip(sourceRefusal)

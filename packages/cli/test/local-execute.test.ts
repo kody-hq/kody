@@ -953,7 +953,7 @@ test(
 		assert.equal(syntaxError.isError, true)
 		assert.match(
 			String(syntaxError.content[0]?.text),
-			/^Error: Local execute could not load the module \(workerd exit 1\)\n[\s\S]*SyntaxError/,
+			/^Error: Build failed with 1 error:\nentry\.ts:1:22: ERROR: Unexpected end of file$/,
 		)
 	},
 )
