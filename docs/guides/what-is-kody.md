@@ -76,8 +76,10 @@ the things that should not live in one chat window:
 - **An inbox** — every account gets an email address; mail in can start work,
   mail out can tell you it finished.
 
-Kody is Fair Source: the source is available to read, fork, and self-host, and
-each version converts to the Apache License 2.0 after two years. Kody runs no
+Kody is source-available under the Kody License, based on the Functional Source
+License: reading, forking, and self-hosting are free for personal, family,
+nonprofit, and classroom use, and each version converts to the Apache License
+2.0 after two years. For any other use, email support@kody.codes. Kody runs no
 chat-model agent loop and bills no chat tokens. Search and indexing use a small
 embedding model; that is not a chat model and is not billed as inference.
 

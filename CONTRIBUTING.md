@@ -1,8 +1,9 @@
 # Contributing
 
-This repository is Fair Source ([FSL-1.1-ALv2](./LICENSE)). Outside pull
-requests need a signed inbound Contributor License Agreement. You keep
-copyright; the CLA is the license grant that keeps Kody a single-licensor tree.
+This repository is source-available under the [Kody License](./LICENSE), a
+modified Functional Source License 1.1. Outside pull requests need a signed
+inbound Contributor License Agreement. You keep copyright; the CLA is the
+license grant that keeps Kody a single-licensor tree.
 
 - [Inbound contributions](./docs/contributing/inbound-contributions.md) — who
   signs, how to sign, and maintainer steps

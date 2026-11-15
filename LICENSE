@@ -1,12 +1,16 @@
-# Functional Source License, Version 1.1, ALv2 Future License
+# Kody License, based on the Functional Source License, Version 1.1, ALv2 Future License
 
 ## Abbreviation
 
-FSL-1.1-ALv2
+LicenseRef-Kody-FSL-1.1-ALv2-Personal
 
 ## Notice
 
 Copyright 2026 Kent C. Dodds
+
+This license is a modified version of the Functional Source License, Version
+1.1, ALv2 Future License (FSL-1.1-ALv2). It differs from the standard FSL text
+only in the Permitted Purpose section, so it is not FSL-1.1-ALv2.
 
 ## Terms and Conditions
 
@@ -29,9 +33,9 @@ and redistribute the Software for any Permitted Purpose identified below.
 
 ### Permitted Purpose
 
-A Permitted Purpose is any purpose other than a Competing Use. A Competing Use
-means making the Software available to others in a commercial product or
-service that:
+A Permitted Purpose is a use listed below that is not a Competing Use. A
+Competing Use means making the Software available to others in a commercial
+product or service that:
 
 1. substitutes for the Software;
 
@@ -40,16 +44,34 @@ service that:
 
 3. offers the same or substantially similar functionality as the Software.
 
-Permitted Purposes specifically include using the Software:
+Permitted Purposes are limited to the following uses:
 
-1. for your internal use and access;
+1. personal use, meaning use by an individual for their own purposes, not on
+   behalf of an organization and not for commercial advantage or monetary
+   compensation;
 
-2. for non-commercial education;
+2. family use, meaning personal use by an individual for themselves and the
+   members of their family or household;
 
-3. for non-commercial research; and
+3. nonprofit use, meaning a nonprofit organization's own noncommercial use;
 
-4. in connection with professional services that you provide to a licensee
-   using the Software in accordance with these Terms and Conditions.
+4. classroom use, meaning noncommercial teaching and learning at schools or in
+   courses;
+
+5. free application use, meaning using the Software to power an application or
+   service you provide to others free of charge, with no paid tiers,
+   advertising, or other commercial advantage; and
+
+6. evaluation use, meaning an organization's internal evaluation of the Software
+   for a single period of up to 30 days, starting when the organization first
+   uses the Software, without using it to process real data or serve real users.
+
+Permitted Purposes include self-hosted deployments, including forks you modify
+and redeploy on infrastructure you control (for example, your own Cloudflare
+account).
+
+Any other use on behalf of an organization, or any commercial use, requires a
+license from the Licensor. To request one, email support@kody.codes.
 
 ### Patents
 
