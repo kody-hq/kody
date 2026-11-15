@@ -7,7 +7,7 @@ import {
 	packageBoundRuntimeExportNames,
 } from './package-bound-runtime-exports.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
-import { collectLiteralImportNodes } from './import-specifiers.ts'
+import { parse as lexModuleImports } from 'es-module-lexer/js'
 import {
 	decodePathKey,
 	dirname,
@@ -1295,18 +1295,31 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
 }
 
 /**
- * Every relative import in `modules`, resolved. One parse per module, shared
+ * Every relative import in `modules`, resolved. One lex per module, shared
  * by the three collectors below: dependency artifacts are megabytes each.
+ * Worker modules are already plain JavaScript, so a lexer lists their imports.
+ * A Babel AST of a multi-megabyte bundle costs tens of megabytes, and this
+ * runs in the shared API isolate on every execute.
  */
-async function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
+function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
 	const importedPaths: Array<string> = []
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of await collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
+		for (const specifier of lexLiteralImportSpecifiers(source)) {
+			const resolvedPath = resolveRelativeModulePath(modulePath, specifier)
 			if (resolvedPath) importedPaths.push(resolvedPath)
 		}
 	}
 	return importedPaths
+}
+
+function lexLiteralImportSpecifiers(source: string): Array<string> {
+	if (!source.includes('import') && !source.includes('export')) return []
+	try {
+		const [imports] = lexModuleImports(source)
+		return imports.flatMap((entry) => (entry.n == null ? [] : [entry.n]))
+	} catch {
+		return []
+	}
 }
 
 function collectReferencedRuntimeModulePaths(
@@ -1383,7 +1396,7 @@ export async function refreshKodyRuntimeModules(
 ): Promise<WorkerLoaderModules> {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
-	const importedPaths = await collectResolvedLiteralImportPaths(modules)
+	const importedPaths = collectResolvedLiteralImportPaths(modules)
 	const runtimePaths = new Set(
 		collectReferencedRuntimeModulePaths(modules, importedPaths, options),
 	)

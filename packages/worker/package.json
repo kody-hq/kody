@@ -53,6 +53,7 @@
     "d3-shape": "^3.2.0",
     "diff": "^9.0.0",
     "entities": "^9.0.0",
+    "es-module-lexer": "^2.3.2",
     "ignore": "^7.0.5",
     "isomorphic-git": ">=1.40.0 <1.40.8",
     "jszip": "^3.10.1",
