@@ -116,6 +116,8 @@ async function linkDependency(input: {
 		artifactPrefix,
 		modules: artifact.modules,
 		linkedRoot: '',
+		// linkUploadedPackageImports strips runtime modules from the result.
+		omitRuntimeModules: true,
 	})
 	const mainPath = joinPath(artifactPrefix, artifact.mainModule)
 	const exportNames = collectModuleExportNames({

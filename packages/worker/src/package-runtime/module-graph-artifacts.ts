@@ -135,6 +135,12 @@ function materializeArtifactModuleSource(input: {
 export function materializePublishedArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
+	/**
+	 * Skip writing the Kody runtime modules the artifact imports. Finding them
+	 * parses every module, which is wasted when the caller strips runtime
+	 * modules again before storing the result.
+	 */
+	omitRuntimeModules?: boolean
 }) {
 	const materializedModules: Record<string, string> = {}
 	for (const [modulePath, module] of Object.entries(input.modules)) {
@@ -144,6 +150,7 @@ export function materializePublishedArtifactModules(input: {
 				module,
 			})
 	}
+	if (input.omitRuntimeModules) return materializedModules
 	return refreshKodyRuntimeModules(materializedModules, {
 		includeDefaultRuntimePath: false,
 	}) as Record<string, string>
@@ -184,6 +191,7 @@ export function materializeDependencyArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
 	linkedRoot: string
+	omitRuntimeModules?: boolean
 }) {
 	const rootPrefix = input.linkedRoot === '' ? '' : `${input.linkedRoot}/`
 	if (!`${input.artifactPrefix}/`.startsWith(rootPrefix)) {
