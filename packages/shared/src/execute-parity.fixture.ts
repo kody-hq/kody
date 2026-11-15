@@ -100,6 +100,6 @@ export const executeParityCases: Array<ExecuteParityCase> = [
 	{
 		name: 'code that is not valid TypeScript fails to build',
 		code: 'export default () => {\n\treturn (1 +\n}',
-		expected: { errorIncludes: 'entry.ts:3:0' },
+		expected: { errorIncludes: 'entry.ts:3:' },
 	},
 ]

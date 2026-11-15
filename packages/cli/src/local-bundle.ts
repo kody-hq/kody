@@ -192,43 +192,6 @@ const nodeModulesResolutionPlugin: esbuild.Plugin = {
 	},
 }
 
-/** Inline execute code that is not valid TypeScript, worded like Kody cloud's build error. */
-export class ExecuteModuleBuildError extends Error {
-	constructor(message: string) {
-		super(message)
-		this.name = 'ExecuteModuleBuildError'
-	}
-}
-
-/**
- * Inline execute code (`--code`, and every execution context run) as the
- * runnable module: the same TypeScript transform Kody cloud applies to
- * {@link executeModuleEntryFile}. Imports stay as written and nothing is read
- * from this machine's disk.
- */
-export async function prepareExecuteModuleSource(code: string) {
-	try {
-		const result = await esbuild.transform(code, {
-			loader: executeModuleLoader,
-			format: 'esm',
-			target: executeModuleTarget,
-			sourcefile: executeModuleEntryFile,
-			logLevel: 'silent',
-		})
-		return result.code
-	} catch (error) {
-		const errors = (error as { errors?: Array<esbuild.Message> }).errors
-		if (!errors?.length) throw error
-		const lines = errors.map(
-			(item) =>
-				`${item.location ? `${item.location.file}:${item.location.line}:${item.location.column}: ` : ''}ERROR: ${item.text}`,
-		)
-		throw new ExecuteModuleBuildError(
-			`Build failed with ${errors.length} error${errors.length === 1 ? '' : 's'}:\n${lines.join('\n')}`,
-		)
-	}
-}
-
 export type LocalUserBundle = {
 	code: string
 	/** Absolute paths of every non-node_modules input in the graph. */
@@ -275,6 +238,39 @@ export async function bundleLocalUserModule(
 	modulePath: string,
 ): Promise<string> {
 	return (await bundleLocalUserModuleWithInputs(modulePath)).code
+}
+
+/**
+ * Remove TypeScript syntax from `--code` and execution-context run source.
+ * Kody cloud execute accepts TypeScript, so the same code must run here.
+ * `verbatimModuleSyntax` keeps every value import, so side-effect imports of
+ * `kody:` modules survive.
+ * A syntax error is returned, not thrown: it is the run's error.
+ */
+export async function stripLocalUserModuleTypes(
+	code: string,
+): Promise<{ code: string } | { syntaxError: string }> {
+	try {
+		const result = await esbuild.transform(code, {
+			loader: executeModuleLoader,
+			format: 'esm',
+			target: executeModuleTarget,
+			sourcefile: executeModuleEntryFile,
+			logLevel: 'silent',
+			tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
+		})
+		return { code: result.code }
+	} catch (error) {
+		const details = bundleDiagnostics(error, {
+			workingDir: process.cwd(),
+			displayRoot: process.cwd(),
+		})
+			.map(formatBundleDiagnostic)
+			.join('\n')
+		return {
+			syntaxError: `Local execute could not load the module: SyntaxError\n${details || (error instanceof Error ? error.message : String(error))}`,
+		}
+	}
 }
 
 /**

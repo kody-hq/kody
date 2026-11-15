@@ -63,8 +63,7 @@ import {
 } from './local-runtime-source.js'
 import {
 	bundleLocalUserModule,
-	ExecuteModuleBuildError,
-	prepareExecuteModuleSource,
+	stripLocalUserModuleTypes,
 } from './local-bundle.js'
 import { installMockFetchShimModules } from './mock/install-mock-fetch-shim.js'
 import {
@@ -237,19 +236,19 @@ export async function runLocalExecute(
 		})
 	if (input.signal?.aborted) return cancelledDuringSetup()
 	let code: string
-	try {
-		code =
-			input.modulePath !== undefined
-				? await bundleLocalUserModule(input.modulePath)
-				: await prepareExecuteModuleSource(input.code)
-	} catch (error) {
-		if (!(error instanceof ExecuteModuleBuildError)) throw error
-		return buildLocalExecuteResult({
-			sandbox: { error: error.message },
-			startedAt: setupStartedAt,
-			endedAt: new Date(),
-			conversationId: input.conversationId,
-		})
+	if (input.modulePath !== undefined) {
+		code = await bundleLocalUserModule(input.modulePath)
+	} else {
+		const stripped = await stripLocalUserModuleTypes(input.code)
+		if ('syntaxError' in stripped) {
+			return buildLocalExecuteResult({
+				sandbox: { error: stripped.syntaxError },
+				startedAt: setupStartedAt,
+				endedAt: new Date(),
+				conversationId: input.conversationId,
+			})
+		}
+		code = stripped.code
 	}
 	const client = {
 		apiUrl: input.apiUrl,
