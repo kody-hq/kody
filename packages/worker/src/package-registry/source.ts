@@ -1,4 +1,7 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	toPinnedSourceView,
+	toServingSourceView,
+} from '#worker/repo/serving-commit.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import {
 	getEntitySourceById,
@@ -303,14 +306,20 @@ export async function loadPackageSourceBySourceId(input: {
 /**
  * {@link loadPackageSourceBySourceId} at the serving commit: what runtime
  * readers (apps, modules, `kody:@` imports) run while a publish still builds.
+ * `commit` pins an earlier published commit instead.
  */
 export async function loadServingPackageSourceBySourceId(input: {
 	env: Env
 	baseUrl: string
 	userId: string
 	sourceId: string
+	commit?: string | null
 }): Promise<LoadedPackageSource> {
-	return await loadPackageSourceForView(input, toServingSourceView)
+	const { commit } = input
+	return await loadPackageSourceForView(
+		input,
+		commit ? (row) => toPinnedSourceView(row, commit) : toServingSourceView,
+	)
 }
 
 async function loadPackageSourceForView(

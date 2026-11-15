@@ -300,6 +300,9 @@ export async function revertEntitySourcePublishedCommit(
  * Compare-and-set the serving pointer to `commit` once every artifact target
  * for it is saved. Succeeds only while `commit` is still the published
  * commit, so a stale rebuild cannot move serving to a superseded commit.
+ * `alsoWrite` statements run in the same D1 transaction, before the pointer
+ * moves. Publish and rebuild code advance through `advanceServingCommit`
+ * (package-capabilities), which carries an app's public approval forward.
  */
 export async function advanceEntitySourceServingCommit(
 	db: D1Database,
@@ -308,24 +311,27 @@ export async function advanceEntitySourceServingCommit(
 		userId: OwnerId
 		commit: string
 	},
+	alsoWrite: ReadonlyArray<D1PreparedStatement> = [],
 ): Promise<boolean> {
-	const result = await runD1WithRetry(() =>
-		db
-			.prepare(
-				`UPDATE entity_sources
+	const advance = db
+		.prepare(
+			`UPDATE entity_sources
 			SET serving_commit = ?, updated_at = ?
 			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(
-				input.commit,
-				new Date().toISOString(),
-				input.id,
-				input.userId,
-				input.commit,
-			)
-			.run(),
-	)
-	return (result.meta.changes ?? 0) > 0
+		)
+		.bind(
+			input.commit,
+			new Date().toISOString(),
+			input.id,
+			input.userId,
+			input.commit,
+		)
+	if (alsoWrite.length === 0) {
+		const result = await runD1WithRetry(() => advance.run())
+		return (result.meta.changes ?? 0) > 0
+	}
+	const results = await runD1WithRetry(() => db.batch([...alsoWrite, advance]))
+	return (results.at(-1)?.meta.changes ?? 0) > 0
 }
 
 export async function upsertEntitySource(

@@ -131,6 +131,22 @@ export function dedupeCapabilityEntries(
 	)
 }
 
+/**
+ * Whether `entries` asks for nothing beyond `approvedEntries`: the same set or
+ * a narrower one, compared on the fields fingerprints cover.
+ */
+export function capabilityEntriesWithin(
+	entries: ReadonlyArray<CapabilitySetEntry>,
+	approvedEntries: ReadonlyArray<CapabilitySetEntry>,
+): boolean {
+	const approved = new Set(
+		approvedEntries.map((entry) => canonicalKey(toCanonicalEntry(entry))),
+	)
+	return entries.every((entry) =>
+		approved.has(canonicalKey(toCanonicalEntry(entry))),
+	)
+}
+
 export async function fingerprintCapabilityEntries(
 	entries: ReadonlyArray<CapabilitySetEntry>,
 ): Promise<string> {

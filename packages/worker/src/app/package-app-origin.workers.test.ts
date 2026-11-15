@@ -905,6 +905,22 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 			'2026-10-14T00:00:00.000Z',
 		)
 		.run()
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO entity_sources (
+			id, user_id, entity_kind, entity_id, repo_id, published_commit,
+			serving_commit, manifest_path, source_root, created_at, updated_at
+		) VALUES (?, ?, 'package', ?, ?, 'commit-open-site', 'commit-open-site',
+			'package.json', '/', ?, ?)`,
+	)
+		.bind(
+			`src-${openSiteId}`,
+			accessFixture.orgId,
+			openSiteId,
+			`repo-${openSiteId}`,
+			'2026-10-14T00:00:00.000Z',
+			'2026-10-14T00:00:00.000Z',
+		)
+		.run()
 	const openSiteHeaders: Array<HeadersInit> = [{}, { Cookie: outsiderSession }]
 	for (const headers of openSiteHeaders) {
 		const openSite = await workerFetch(

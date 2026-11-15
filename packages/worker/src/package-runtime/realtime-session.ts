@@ -1,3 +1,4 @@
+import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { DurableObject } from 'cloudflare:workers'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -541,8 +542,8 @@ export async function resolvePackageAppWorkerBuildInput(input: {
 }
 
 /**
- * The approved internet-visible commit when it is also the live published
- * commit, else null. Same rule as `refuseUnapprovedAnonymousServe`.
+ * The approved internet-visible commit when it is also the serving commit,
+ * else null. Same rule as `refuseUnapprovedAnonymousServe`.
  */
 export async function resolvePublicRealtimeCommit(input: {
 	env: Env
@@ -557,11 +558,14 @@ export async function resolvePublicRealtimeCommit(input: {
 		resolveInternetVisibleApprovedCommit({
 			env: input.env,
 			lookup: { savedPackage, retired: false },
-			requestUrl: input.binding.baseUrl,
 		}),
 		getEntitySourceById(input.env.APP_DB, savedPackage.sourceId),
 	])
-	if (!approvedCommit || source?.published_commit !== approvedCommit) {
+	if (
+		!approvedCommit ||
+		!source ||
+		servingCommitForSource(source) !== approvedCommit
+	) {
 		return null
 	}
 	return approvedCommit

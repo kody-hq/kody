@@ -2,38 +2,19 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { approvedCommitCache } from '#worker/package-capabilities/approved-commit-cache.ts'
-import {
-	resolveInternetVisibleApprovedCommit,
-	warmInternetVisibleApprovedCommit,
-} from './package-app-internet-visible.ts'
+import { resolveInternetVisibleApprovedCommit } from './package-app-internet-visible.ts'
 
 const mockModule = vi.hoisted(() => ({
-	getLatestPackageCapabilityApproval: vi.fn(),
-	getEntitySourceById: vi.fn(),
-	loadCapabilityApprovalSummary: vi.fn(),
-	approvePackageCapabilitySet: vi.fn(),
+	getServedPackageCapabilityApproval: vi.fn(),
 }))
 
 vi.mock('#worker/package-capabilities/capability-approvals-repo.ts', () => ({
-	getLatestPackageCapabilityApproval: (...args: Array<unknown>) =>
-		mockModule.getLatestPackageCapabilityApproval(...args),
-}))
-
-vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: (...args: Array<unknown>) =>
-		mockModule.getEntitySourceById(...args),
-}))
-
-vi.mock('#worker/package-capabilities/capability-approval-service.ts', () => ({
-	loadCapabilityApprovalSummary: (...args: Array<unknown>) =>
-		mockModule.loadCapabilityApprovalSummary(...args),
-	approvePackageCapabilitySet: (...args: Array<unknown>) =>
-		mockModule.approvePackageCapabilitySet(...args),
+	getServedPackageCapabilityApproval: (...args: Array<unknown>) =>
+		mockModule.getServedPackageCapabilityApproval(...args),
 }))
 
 const ownerUserId = ownerIdFromStored('owner-1')
 const env = { APP_DB: {} } as unknown as Env
-const requestUrl = 'https://kody.run/apps/owner/site'
 
 function createSavedPackage(id: string): SavedPackageRecord {
 	return {
@@ -45,78 +26,37 @@ function createSavedPackage(id: string): SavedPackageRecord {
 	} as SavedPackageRecord
 }
 
-function approvalFor(commit: string) {
-	return {
-		id: `approval-${commit}`,
-		publishedCommit: commit,
-		fingerprint: 'fingerprint-1',
-		approvedByUserId: 'approver-1',
-	}
-}
-
-function liveSource(commit: string) {
-	return { user_id: ownerUserId, published_commit: commit }
-}
-
 async function resolve(savedPackage: SavedPackageRecord) {
 	return await resolveInternetVisibleApprovedCommit({
 		env,
 		lookup: { savedPackage, retired: false },
-		requestUrl,
 	})
 }
 
 beforeEach(() => {
 	vi.clearAllMocks()
-	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
 
-test('serves the approved commit when it is still the live publish', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
+test('anonymous visitors run the commit of the served approval', async () => {
+	mockModule.getServedPackageCapabilityApproval.mockResolvedValue({
+		publishedCommit: 'commit-a',
+	})
 
 	await expect(resolve(createSavedPackage('pkg-current'))).resolves.toBe(
 		'commit-a',
 	)
-	expect(mockModule.loadCapabilityApprovalSummary).not.toHaveBeenCalled()
-})
-
-test('a republish with new capabilities stays pinned to the older approval', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-c'))
-	mockModule.loadCapabilityApprovalSummary.mockResolvedValue({
-		publishedCommit: 'commit-c',
-		matchingApproval: null,
-		capabilitySet: { fingerprint: 'fingerprint-2' },
-	})
-
-	await expect(resolve(createSavedPackage('pkg-new-caps'))).resolves.toBe(
-		'commit-a',
-	)
-	expect(mockModule.approvePackageCapabilitySet).not.toHaveBeenCalled()
-})
-
-test('a failed capability check fails closed to the older approval', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-d'))
-	mockModule.loadCapabilityApprovalSummary.mockRejectedValue(
-		new Error('manifest unavailable'),
-	)
-
-	await expect(resolve(createSavedPackage('pkg-check-fails'))).resolves.toBe(
-		'commit-a',
+	expect(mockModule.getServedPackageCapabilityApproval).toHaveBeenCalledWith(
+		env.APP_DB,
+		{
+			packageId: 'pkg-current',
+			ownerUserId,
+			sourceId: 'source-pkg-current',
+		},
 	)
 })
 
 test('no approval and not internet-visible both resolve to null', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(null)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
+	mockModule.getServedPackageCapabilityApproval.mockResolvedValue(null)
 	await expect(resolve(createSavedPackage('pkg-unapproved'))).resolves.toBe(
 		null,
 	)
@@ -127,83 +67,18 @@ test('no approval and not internet-visible both resolve to null', async () => {
 			isInternetVisible: false,
 		}),
 	).resolves.toBe(null)
-	// Only the internet-visible app reads its source (alongside the approval).
-	expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1)
+	expect(mockModule.getServedPackageCapabilityApproval).toHaveBeenCalledTimes(1)
 })
 
-test('a cold lookup reads the approval and the live source together', async () => {
-	let releaseApproval: (value: unknown) => void = () => {}
-	mockModule.getLatestPackageCapabilityApproval.mockReturnValue(
-		new Promise((resolve) => {
-			releaseApproval = resolve
-		}),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
-
-	const pending = resolve(createSavedPackage('pkg-parallel'))
-	await vi.waitFor(() =>
-		expect(mockModule.getEntitySourceById).toHaveBeenCalledTimes(1),
-	)
-	releaseApproval(approvalFor('commit-a'))
-	await expect(pending).resolves.toBe('commit-a')
-})
-
-test('a failed source read is ignored when there is no approval', async () => {
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(null)
-	mockModule.getEntitySourceById.mockRejectedValue(new Error('d1 down'))
-
-	await expect(resolve(createSavedPackage('pkg-no-approval'))).resolves.toBe(
-		null,
-	)
-})
-
-test('publish-time warm accepts a matching republish so the first request reads the cache', async () => {
-	const savedPackage = createSavedPackage('pkg-warm')
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-b'))
-	mockModule.loadCapabilityApprovalSummary.mockResolvedValue({
-		publishedCommit: 'commit-b',
-		matchingApproval: approvalFor('commit-a'),
-		capabilitySet: { fingerprint: 'fingerprint-1' },
-	})
-	mockModule.approvePackageCapabilitySet.mockResolvedValue({
-		approval: approvalFor('commit-b'),
-	})
-
-	await expect(
-		warmInternetVisibleApprovedCommit({ env, savedPackage, requestUrl }),
-	).resolves.toBe('commit-b')
-	expect(mockModule.approvePackageCapabilitySet).toHaveBeenCalledTimes(1)
-
-	await expect(resolve(savedPackage)).resolves.toBe('commit-b')
-	expect(mockModule.getLatestPackageCapabilityApproval).toHaveBeenCalledTimes(1)
-	expect(mockModule.loadCapabilityApprovalSummary).toHaveBeenCalledTimes(1)
-})
-
-test('publish-time warm skips apps that are not internet-visible', async () => {
-	await expect(
-		warmInternetVisibleApprovedCommit({
-			env,
-			savedPackage: {
-				...createSavedPackage('pkg-warm-private'),
-				isInternetVisible: false,
-			},
-			requestUrl,
-		}),
-	).resolves.toBe(null)
-	expect(mockModule.getLatestPackageCapabilityApproval).not.toHaveBeenCalled()
-})
-
-test('an approval write drops the cached commit', async () => {
+test('the lookup is cached per app until an approval write drops it', async () => {
 	const savedPackage = createSavedPackage('pkg-invalidate')
-	mockModule.getLatestPackageCapabilityApproval.mockResolvedValue(
-		approvalFor('commit-a'),
-	)
-	mockModule.getEntitySourceById.mockResolvedValue(liveSource('commit-a'))
+	mockModule.getServedPackageCapabilityApproval.mockResolvedValue({
+		publishedCommit: 'commit-a',
+	})
 	await expect(resolve(savedPackage)).resolves.toBe('commit-a')
+	await expect(resolve(savedPackage)).resolves.toBe('commit-a')
+	expect(mockModule.getServedPackageCapabilityApproval).toHaveBeenCalledTimes(1)
 	approvedCommitCache.delete(savedPackage.id)
 	await expect(resolve(savedPackage)).resolves.toBe('commit-a')
-	expect(mockModule.getLatestPackageCapabilityApproval).toHaveBeenCalledTimes(2)
+	expect(mockModule.getServedPackageCapabilityApproval).toHaveBeenCalledTimes(2)
 })

@@ -1193,12 +1193,19 @@ async function servePackageAppRequestWithId(input: {
 		}
 	}
 
+	// Anonymous visitors run the commit its owner approved for them (ADR
+	// 0069). It trails the serving commit while a republish that asks for more
+	// awaits approval; members always run the serving commit.
+	const anonymousCommit = visitor
+		? null
+		: (input.approvedPublishedCommit ?? null)
 	const loadSourceFiles = async () => {
 		const packageSource = await loadServingPackageSourceBySourceId({
 			env,
 			baseUrl,
 			userId: owner.userId,
 			sourceId: savedPackage.sourceId,
+			commit: anonymousCommit,
 		})
 		return packageSource.files
 	}
@@ -1220,6 +1227,11 @@ async function servePackageAppRequestWithId(input: {
 			kodyId: urlSlug,
 		})
 		try {
+			const refusal = refuseUnapprovedAnonymousServe({
+				visitor,
+				approvedPublishedCommit: anonymousCommit,
+			})
+			if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 			const packageManifest = await pushServerTiming(
 				serverTiming,
 				'manifest',
@@ -1228,14 +1240,9 @@ async function servePackageAppRequestWithId(input: {
 						env,
 						userId: owner.userId,
 						sourceId: savedPackage.sourceId,
+						commit: anonymousCommit,
 					}),
 			)
-			const refusal = refuseUnapprovedAnonymousServe({
-				visitor,
-				approvedPublishedCommit: input.approvedPublishedCommit,
-				publishedCommit: packageManifest.source.published_commit,
-			})
-			if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 			return attachPackageAppServerTiming(
 				await pushServerTiming(serverTiming, 'assets', () =>
 					servePackageAppAssetRequest({
@@ -1318,12 +1325,18 @@ async function servePackageAppRequestWithId(input: {
 		)
 		// Settled below or abandoned on refusal; never an unhandled rejection.
 		suppliersEnabledPending.catch(() => {})
+		const refusal = refuseUnapprovedAnonymousServe({
+			visitor,
+			approvedPublishedCommit: anonymousCommit,
+		})
+		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 		const [packageManifest, callerContext] = await Promise.all([
 			pushServerTiming(serverTiming, 'manifest', () =>
 				loadInvokeManifestBySourceId({
 					env,
 					userId: owner.userId,
 					sourceId: savedPackage.sourceId,
+					commit: anonymousCommit,
 				}),
 			),
 			pushServerTiming(serverTiming, 'billing', () =>
@@ -1346,12 +1359,6 @@ async function servePackageAppRequestWithId(input: {
 		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
 			packageManifest.manifest,
 		)
-		const refusal = refuseUnapprovedAnonymousServe({
-			visitor,
-			approvedPublishedCommit: input.approvedPublishedCommit,
-			publishedCommit: packageManifest.source.published_commit,
-		})
-		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 		const suppliersEnabled = await suppliersEnabledPending
 		const visitorNeeds = suppliersEnabled
 			? savedCredentialNeeds(
@@ -1360,6 +1367,8 @@ async function servePackageAppRequestWithId(input: {
 							env,
 							userId: owner.userId,
 							sourceId: savedPackage.sourceId,
+							// A pinned visitor gets the needs of the commit they run.
+							...(anonymousCommit ? { source: packageManifest.source } : {}),
 							request: callerContext.request,
 						}),
 					),
@@ -1514,6 +1523,7 @@ async function servePackageAppRequestWithId(input: {
 			source: packageManifest.source,
 			manifest: packageManifest.manifest,
 			loadSourceFiles,
+			pinnedCommit: anonymousCommit,
 			serverTiming,
 			runtime: {
 				callerContext,

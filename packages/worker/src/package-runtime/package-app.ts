@@ -1,4 +1,7 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	servingCommitForSource,
+	toServingSourceView,
+} from '#worker/repo/serving-commit.ts'
 import {
 	kodyDevClockOffsetMs,
 	kodyDevClockShimSource,
@@ -3823,6 +3826,8 @@ async function resolvePackageAppBundledArtifact(input: {
 	}
 	loadSourceFiles?: () => Promise<Record<string, string>>
 	sourceFiles?: Record<string, string>
+	/** The commit `loadSourceFiles` reads when it trails the serving commit. */
+	pinnedCommit?: string | null
 	baseUrl: string
 }) {
 	const appEntry = getPackageAppEntryPath(input.manifest)
@@ -3937,6 +3942,14 @@ async function resolvePackageAppBundledArtifact(input: {
 		userId: input.userId,
 		sourceId: input.savedPackage.sourceId,
 	})
+	// A visitor pinned to an older approved commit must not save its rebuild
+	// as the newer commit's bundle.
+	if (
+		input.pinnedCommit &&
+		input.pinnedCommit !== servingCommitForSource(persistableSource)
+	) {
+		return compiled
+	}
 	await persistPublishedBundleArtifact({
 		env: input.env,
 		userId: input.userId,
@@ -4008,6 +4021,7 @@ async function buildPackageAppWorkerOptionsUncached(
 		manifest?: AuthoredPackageJson
 		loadSourceFiles?: () => Promise<Record<string, string>>
 		sourceFiles?: Record<string, string>
+		pinnedCommit?: string | null
 		runtime: {
 			callerContext: ReturnType<typeof createMcpCallerContext>
 			servingUsername?: string
@@ -4064,6 +4078,7 @@ async function buildPackageAppWorkerOptionsUncached(
 				savedPackage: input.savedPackage,
 				loadSourceFiles: input.loadSourceFiles,
 				sourceFiles: input.sourceFiles,
+				pinnedCommit: input.pinnedCommit,
 			}),
 		published && published.client !== undefined
 			? published.client
@@ -4331,6 +4346,7 @@ export async function buildPackageAppWorker(input: {
 	manifest?: AuthoredPackageJson
 	loadSourceFiles?: () => Promise<Record<string, string>>
 	sourceFiles?: Record<string, string>
+	pinnedCommit?: string | null
 	runtime: {
 		callerContext: ReturnType<typeof createMcpCallerContext>
 		servingUsername?: string

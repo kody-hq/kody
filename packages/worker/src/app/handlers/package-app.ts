@@ -101,7 +101,6 @@ async function handleTaggedPackageAppRequest(
 	const approvedPublishedCommit = await resolveInternetVisibleApprovedCommit({
 		env,
 		lookup: slugLookup,
-		requestUrl: request.url,
 	})
 	// Mirrors the app origin: a signed-in person who cannot run the app is
 	// served anonymously plus identity while they hold a live grant for it.

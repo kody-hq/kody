@@ -58,6 +58,25 @@ step (`security-audit-next-step.ts`): audit, record with
 `published_commit`, and `fingerprint`, then hand the owner the approval link.
 The audit is informational and approves nothing.
 
+## Republishing an approved app
+
+Anonymous visitors run the commit `getServedPackageCapabilityApproval` names:
+the serving commit when it has an approval, else the newest approved commit that
+already served. A publish moves `published_commit` before its build finishes, so
+visitors keep the previous approved commit until `serving_commit` advances.
+
+`advanceServingCommit` (`package-capabilities/serving-commit-advance.ts`) moves
+the serving pointer. For an internet-visible app with an approval, it computes
+the new commit's capability set first. When every entry is already in the
+approval visitors run (the same set or a narrower one), it inserts the carried
+forward approval in the same D1 batch as the pointer move, so no request sees
+the new serving commit without its approval. When the set asks for more, it
+writes nothing: members run the new commit, and anonymous HTTP visitors keep the
+previous approved commit (`toPinnedSourceView`) until the owner approves the new
+set. Anonymous realtime sockets need the approved commit to be the serving
+commit, so they wait for that approval. An app that was never approved keeps
+returning 403 to anonymous visitors.
+
 ## Self-publish
 
 `packageUpdate` (`internet_visible: true`) and the settings toggle approve going

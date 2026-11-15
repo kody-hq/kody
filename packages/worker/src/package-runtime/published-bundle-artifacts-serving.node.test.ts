@@ -3,7 +3,7 @@ import {
 	toServingSourceView,
 } from '#worker/repo/serving-commit.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
@@ -21,6 +21,21 @@ import {
 	rebuildPublishedPackageArtifacts,
 } from './published-bundle-artifacts.ts'
 import { writePublishedSourceSnapshot } from './published-runtime-artifacts.ts'
+
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
 
 const userId = ownerIdFromStored('user-serving')
 const sourceId = 'source-serving'

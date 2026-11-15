@@ -28,6 +28,20 @@ export function toServingSourceView<
 }
 
 /**
+ * The source row pinned to an earlier published `commit` (both pointers),
+ * for readers that must keep running it, such as anonymous visitors of an
+ * internet-visible app whose newer publish still awaits approval. Payloads
+ * are commit-keyed and outlive the pointers moving on.
+ */
+export function toPinnedSourceView<
+	T extends Pick<EntitySourceRow, 'published_commit' | 'serving_commit'>,
+>(source: T, commit: string): T {
+	return source.published_commit === commit && source.serving_commit === commit
+		? source
+		: { ...source, published_commit: commit, serving_commit: commit }
+}
+
+/**
  * The commit runtime readers pin commit-keyed artifact payloads to, or null
  * to read each identity row's newest saved build. Without a serving pointer
  * no complete build is proven at `published_commit` (the backfill leaves it

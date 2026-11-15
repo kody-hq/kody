@@ -1056,6 +1056,12 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
+Republishing an approved internet-visible app does not interrupt public
+visitors. They keep the approved version until the new one finishes building. If
+the new version asks for the same capabilities or fewer, its approval carries
+forward and visitors switch to it right away. If it asks for more, visitors stay
+on the approved version until you approve the new capability set.
+
 When the published version has no [security audit](#security-audit) yet, both
 responses also return the next step for the agent. `packageUpdate` returns
 `security_audit` next to `approval_url`; the settings toggle returns

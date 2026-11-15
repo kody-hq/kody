@@ -6,6 +6,21 @@ import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import type * as RepoSessions from '#worker/repo/repo-sessions.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 const mockModule = vi.hoisted(() => ({
 	getActiveRepoSessionByConversation: vi.fn(),
 	countActiveRepoSessions: vi.fn<typeof RepoSessions.countActiveRepoSessions>(

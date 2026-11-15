@@ -785,7 +785,6 @@ async function handleAppOriginPackageAppPath(input: {
 			resolveInternetVisibleApprovedCommit({
 				env,
 				lookup: slugLookup,
-				requestUrl: request.url,
 			}),
 		),
 		pushServerTiming(serverTiming, 'appUser', () =>
@@ -1124,7 +1123,6 @@ async function serveInternetVisiblePackageApp(input: {
 			resolveInternetVisibleApprovedCommit({
 				env: input.env,
 				lookup,
-				requestUrl: input.request.url,
 			}),
 	)
 	if (!approvedPublishedCommit) return null

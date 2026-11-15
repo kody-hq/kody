@@ -9,7 +9,6 @@ import type * as IdentityIcon from './identity-icon.ts'
 
 const mockModule = vi.hoisted(() => ({
 	getSavedPackageById: vi.fn(async () => null as unknown),
-	warmInternetVisibleApprovedCommit: vi.fn(async () => null),
 	getEntitySourceById: vi.fn(),
 	updateEntitySource: vi.fn<typeof EntitySources.updateEntitySource>(
 		async () => true,
@@ -150,11 +149,6 @@ vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => ({
 	...(await importOriginal<object>()),
 	getSavedPackageById: (...args: Array<unknown>) =>
 		mockModule.getSavedPackageById(...(args as [])),
-}))
-
-vi.mock('#app/package-app-internet-visible.ts', () => ({
-	warmInternetVisibleApprovedCommit: (...args: Array<unknown>) =>
-		mockModule.warmInternetVisibleApprovedCommit(...(args as [])),
 }))
 
 vi.mock('#worker/package-registry/service.ts', () => ({
@@ -1094,29 +1088,4 @@ test('locked package with failing checks answers checks_failed, never locked or 
 	})
 	expect(mockModule.requireCredentialNeedsApproval).not.toHaveBeenCalled()
 	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
-})
-
-test('finalize warms the approved commit of an internet-visible app after a republish', async () => {
-	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(false)
-	mockModule.updateEntitySource.mockResolvedValue(true)
-	mockModule.refreshSavedPackageProjection.mockResolvedValue(undefined)
-	const savedPackage = {
-		id: 'package-1',
-		hasApp: true,
-		isInternetVisible: true,
-	}
-	mockModule.getSavedPackageById.mockResolvedValueOnce(savedPackage)
-	mockModule.warmInternetVisibleApprovedCommit.mockClear()
-
-	await finalizePublishedEntitySource({
-		env: kvEnv,
-		source: source() as ReturnType<typeof source> & { entity_kind: 'package' },
-		publishedCommit: 'commit-new',
-		files: { 'package.json': '{}' },
-		baseUrl: 'https://kody.test',
-	})
-
-	expect(mockModule.warmInternetVisibleApprovedCommit).toHaveBeenCalledWith(
-		expect.objectContaining({ savedPackage }),
-	)
 })
