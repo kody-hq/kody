@@ -22,6 +22,7 @@ import {
 import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
+import { buildPublicVisitorsHeldBackPublishNotice } from '#mcp/capabilities/packages/public-visitors-held-back-publish-notice.ts'
 import {
 	buildPackagePublishApprovalUrl,
 	createPackagePublishLockedMessage,
@@ -149,6 +150,14 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								originCommit: args.absorbed_upstream_commit,
 							})
 						: null
+					const publicVisitorsHeldBack =
+						await buildPublicVisitorsHeldBackNoticeForSource({
+							env: ctx.env,
+							baseUrl: ctx.callerContext.baseUrl,
+							ownerUserId: owner.ownerUserId,
+							ownerScope: owner.ownerScope,
+							sourceId: sessionInfo.source_id,
+						})
 					await reportCapabilityProgress(ctx.reportProgress, {
 						progress: 3,
 						total: progressTotal,
@@ -160,6 +169,9 @@ export const repoPublishSessionCapability = defineDomainCapability(
 						published_commit: result.publishedCommit,
 						message: result.message,
 						...(absorbNotice ? { notice: absorbNotice } : {}),
+						...(publicVisitorsHeldBack
+							? { public_visitors_held_back: publicVisitorsHeldBack }
+							: {}),
 					}
 				}
 				const source = await getEntitySourceByIdForUser(ctx.env.APP_DB, {
@@ -377,5 +389,41 @@ async function absorbForkUpstreamAfterPublish(input: {
 			return null
 		}
 		return `Published, but the behind-upstream banner did not clear: ${getErrorMessage(error)}. Retry repoPublishSession with absorbed_upstream_commit.`
+	}
+}
+
+async function buildPublicVisitorsHeldBackNoticeForSource(input: {
+	env: Env
+	baseUrl: string
+	ownerUserId: OwnerId
+	ownerScope: string
+	sourceId: string
+}) {
+	// Optional notice only: never fail a completed publish because a read rejected.
+	try {
+		const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.ownerUserId,
+		})
+		if (!source || source.entity_kind !== 'package') return null
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: input.ownerUserId,
+			packageId: source.entity_id,
+		})
+		if (!savedPackage) return null
+		return await buildPublicVisitorsHeldBackPublishNotice({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			ownerUserId: input.ownerUserId,
+			ownerScope: input.ownerScope,
+			packageId: savedPackage.id,
+			kodyId: savedPackage.kodyId,
+		})
+	} catch (error) {
+		console.warn(
+			`[publicVisitorsHeldBack] package lookup failed for source ${input.sourceId}:`,
+			error instanceof Error ? error.message : error,
+		)
+		return null
 	}
 }

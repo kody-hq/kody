@@ -45,6 +45,7 @@ const mockModule = vi.hoisted(() => ({
 	deleteEntitySource: vi.fn(),
 	loadPriorPackageManifestContent: vi.fn(),
 	insertSavedPackage: vi.fn(),
+	buildPublicVisitorsHeldBackPublishNotice: vi.fn(),
 	realInsertSavedPackage: null as
 		| null
 		| typeof packageRegistryRepoModule.insertSavedPackage,
@@ -109,7 +110,21 @@ vi.mock(
 	}),
 )
 
+vi.mock(
+	'./public-visitors-held-back-publish-notice.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('./public-visitors-held-back-publish-notice.ts')
+		>()),
+		buildPublicVisitorsHeldBackPublishNotice: (...args: Array<unknown>) =>
+			mockModule.buildPublicVisitorsHeldBackPublishNotice(...args),
+	}),
+)
+
 const { savePackageCapability } = await import('./save-package.ts')
+const realHeldBackNotice = await vi.importActual<
+	typeof import('./public-visitors-held-back-publish-notice.ts')
+>('./public-visitors-held-back-publish-notice.ts')
 
 type Row = Record<string, unknown>
 const now = '2026-04-18T00:00:00.000Z'
@@ -313,9 +328,13 @@ async function setup({
 		mockModule.deleteEntitySource,
 		mockModule.loadPriorPackageManifestContent,
 		mockModule.insertSavedPackage,
+		mockModule.buildPublicVisitorsHeldBackPublishNotice,
 	]) {
 		mock.mockReset()
 	}
+	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockImplementation(
+		realHeldBackNotice.buildPublicVisitorsHeldBackPublishNotice,
+	)
 	mockModule.ensureEntitySource.mockImplementation(async (input) => ({
 		...sourceRow(input),
 		bootstrapAccess: null,
@@ -894,6 +913,29 @@ test('packageSave lists placeholder references from the published files, not onl
 
 	expect(result.next_steps).toContain('Credential stamp publish gate')
 	expect(result.next_steps).toMatch(/missing a description|OLD_KEY/)
+})
+
+test('packageSave reports when public visitors stay on the previous approved version', async () => {
+	const { save } = await setup({ plan: 'max' })
+
+	const plain = await save({ files: buildPackageFiles('plain-package') })
+	expect(plain).not.toHaveProperty('public_visitors_held_back')
+
+	const heldBack = {
+		public_commit: 'approved-commit',
+		serving_commit: 'published-commit-1',
+		approval_url: 'https://example.com/@planned/pkg/approve-capabilities',
+		message:
+			'Public visitors are still on the previous version (approved) because publish asks for more capabilities.',
+	}
+	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockResolvedValueOnce(
+		heldBack,
+	)
+	const held = await save({ files: buildPackageFiles('held-package') })
+	expect(held.public_visitors_held_back).toEqual(heldBack)
+	expect(
+		mockModule.buildPublicVisitorsHeldBackPublishNotice,
+	).toHaveBeenLastCalledWith(expect.objectContaining({ kodyId: 'pkg' }))
 })
 
 const maintainersOrg = { id: 'd'.repeat(64), slug: 'kody', plan: 'max' }
