@@ -31,6 +31,7 @@ import { buildPublishTargets } from './builder-entry.ts'
 import {
 	collectLinkedPackageImports,
 	linkUploadedPackageImports,
+	type LinkedDependencyArtifactCache,
 } from './link-dependencies.ts'
 import {
 	hashWorkerLoaderModules,
@@ -474,6 +475,44 @@ for (const origin of ['local', 'context'] as const) {
 		},
 	)
 }
+
+test(
+	'targets that import the same Kody package link it once per publish',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId, reader } = await setup()
+		const built = await buildOffWorker(userId, reader.packageId)
+		const linkedImports = collectLinkedPackageImports({
+			sourceFiles: importerFiles,
+			entryPoint: built.target.entryPoint,
+		})
+		const { referencedLinkedImports } = await verifyUploadedTargetModules({
+			uploaded: await uploadedEntry(built),
+			modules: built.modules,
+			ownPackageId: reader.packageId,
+			linkedImports,
+		})
+		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		const link = (cache?: LinkedDependencyArtifactCache) =>
+			linkUploadedPackageImports({
+				env,
+				baseUrl,
+				userId,
+				modules: built.modules,
+				linkedImports,
+				referenced: referencedLinkedImports,
+				...(cache ? { artifactCache: cache } : {}),
+			})
+		const first = await link(artifactCache)
+		const linkedOnce = [...artifactCache.values()]
+		const second = await link(artifactCache)
+
+		expect(linkedOnce).toHaveLength(1)
+		expect([...artifactCache.values()]).toEqual(linkedOnce)
+		expect(second).toEqual(first)
+		expect(await link()).toEqual(first)
+	},
+)
 
 test(
 	'an upload that inlines the dependency or binds its id is refused',

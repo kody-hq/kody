@@ -9,7 +9,10 @@ import {
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
-import { publishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	publishComputeLimitMessage,
+	uploadedBuildPersistLimitMessage,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,
@@ -352,6 +355,19 @@ test('toApiError maps a bare deploy reset to a retryable server-restart 503', ()
 		message: serverRestartedMessage,
 		headers: { 'Retry-After': '5' },
 	})
+})
+
+test('toApiError keeps the uploaded-build limit message when its cause is a raw reset', () => {
+	const message = uploadedBuildPersistLimitMessage()
+	const apiError = toApiError(
+		new McpCallerError(message, {
+			cause: new Error(
+				'Durable Object exceeded its CPU time limit and was reset.',
+			),
+		}),
+	)
+	expect(apiError).toMatchObject({ status: 400, code: 'invalid_request' })
+	expect(apiError.message).toBe(message)
 })
 
 test('toApiError surfaces a publish compute-limit caller error as-is even when its cause is a raw reset', () => {
