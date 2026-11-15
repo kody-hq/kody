@@ -33,7 +33,13 @@ function setup() {
 		APP_DB: db,
 		APP_BASE_URL: 'https://kody.example.com',
 		SYSTEM_EMAIL_DOMAIN: 'kody.example.com',
+		TURNSTILE_SITE_KEY: 'site-key',
+		TURNSTILE_SECRET_KEY: 'secret-key',
 	} as unknown as Env
+	const siteverify = vi.fn(async (_url: unknown, _init?: RequestInit) =>
+		Response.json({ success: true, hostname: 'kody.example.com' }),
+	)
+	vi.stubGlobal('fetch', siteverify)
 	let ipCounter = 0
 	function request(ip = `203.0.113.${++ipCounter}`) {
 		return new Request('https://kody.example.com/newsletter', {
@@ -49,7 +55,7 @@ function setup() {
 		return requestNewsletterSignup({
 			env,
 			request: request(ip),
-			form: { email, ...extra },
+			form: { email, turnstileToken: 'turnstile-token', ...extra },
 			now,
 		})
 	}
@@ -76,7 +82,17 @@ function setup() {
 		sqlite.prepare('SELECT * FROM newsletter_signups').all() as Array<
 			Record<string, unknown>
 		>
-	return { sqlite, db, signup, sentToken, confirm, user, recipients, rows }
+	return {
+		sqlite,
+		db,
+		signup,
+		sentToken,
+		confirm,
+		user,
+		recipients,
+		rows,
+		siteverify,
+	}
 }
 
 test('a sign-up only emails a confirmation link; the address joins the list when the link is confirmed, once', async () => {
@@ -351,4 +367,73 @@ test('the sign-up lifecycle only joins the list through a confirmed link and nev
 	expect(canHandle(machine, 'confirmed', 'CONFIRM')).toBe(false)
 	expect(canHandle(machine, 'unsubscribed', 'RESUBSCRIBE')).toBe(true)
 	expect(canHandle(machine, 'unsubscribed', 'CONFIRM')).toBe(true)
+})
+
+test('a sign-up verifies its Turnstile token with siteverify before any email', async () => {
+	const { signup, rows, siteverify } = setup()
+	mocks.sendNewsletterConfirmationEmail.mockClear()
+
+	await expect(signup('reader@example.com')).resolves.toEqual({ ok: true })
+
+	expect(siteverify).toHaveBeenCalledTimes(1)
+	const [url, init] = siteverify.mock.calls[0]!
+	expect(url).toBe('https://challenges.cloudflare.com/turnstile/v0/siteverify')
+	const body = init!.body as URLSearchParams
+	expect(body.get('secret')).toBe('secret-key')
+	expect(body.get('response')).toBe('turnstile-token')
+	expect(rows()).toHaveLength(1)
+	expect(mocks.sendNewsletterConfirmationEmail).toHaveBeenCalledTimes(1)
+})
+
+test('a failed or missing Turnstile check creates no sign-up and sends no email', async () => {
+	const { signup, rows, siteverify } = setup()
+	mocks.sendNewsletterConfirmationEmail.mockClear()
+	const failed = { ok: false, error: 'verification_failed' }
+
+	siteverify.mockResolvedValueOnce(
+		Response.json({
+			success: false,
+			'error-codes': ['invalid-input-response'],
+		}),
+	)
+	await expect(signup('reader@example.com')).resolves.toEqual(failed)
+
+	// A token minted for another hostname is refused too.
+	consoleWarn.mockImplementation(() => {})
+	siteverify.mockResolvedValueOnce(
+		Response.json({ success: true, hostname: 'elsewhere.example.com' }),
+	)
+	await expect(signup('reader@example.com')).resolves.toEqual(failed)
+
+	siteverify.mockRejectedValueOnce(new Error('siteverify is down'))
+	await expect(signup('reader@example.com')).resolves.toEqual(failed)
+
+	siteverify.mockClear()
+	await expect(
+		signup('reader@example.com', { turnstileToken: '' }),
+	).resolves.toEqual(failed)
+	expect(siteverify).not.toHaveBeenCalled()
+
+	expect(rows()).toEqual([])
+	expect(mocks.sendNewsletterConfirmationEmail).not.toHaveBeenCalled()
+})
+
+test('repeating a consent choice reports the stored source and time', async () => {
+	const { signup, sentToken, confirm, db, recipients, rows } = setup()
+	await signup('again@example.com')
+	await confirm(sentToken())
+	const stableId = rows()[0]!.stable_id as string
+	const repeated = await setWhatsNewOptIn({
+		db,
+		stable_user_id: stableId,
+		opted_in: true,
+		source: 'admin',
+	})
+	const [listed] = (await recipients()).users
+	expect(repeated).toEqual({
+		stable_user_id: stableId,
+		opted_in: true,
+		opt_in_updated_at: listed!.opt_in_updated_at,
+		opt_in_source: 'newsletter_page',
+	})
 })

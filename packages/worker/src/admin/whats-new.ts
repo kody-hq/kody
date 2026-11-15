@@ -228,7 +228,7 @@ export async function setWhatsNewOptIn(input: {
 					.first<{
 						stable_user_id: string
 						email: string
-						source: string
+						source: NonNullable<RecipientSource>
 						updated_at: string
 					}>()
 	const row = userRow ?? signupRow ?? unchangedRow

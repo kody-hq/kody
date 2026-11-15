@@ -57,6 +57,7 @@ A confirmed address with no verified account is a recipient under its own 64-hex
 address is opted in instead (stored as `email_link`, reported as
 `newsletter_page` while that confirmation is its latest choice). Pending rows
 are never recipients and the admin setter cannot switch them on. Bot protection
-is a honeypot plus per-IP and per-address rate limits; Turnstile is omitted so
-the form works without JavaScript. Responses do not reveal whether an address is
-already subscribed.
+is a honeypot, per-IP and per-address rate limits, and Turnstile, verified with
+siteverify before any row or email is created. The form therefore needs
+JavaScript; without it a note replaces the fields. Responses do not reveal
+whether an address is already subscribed.

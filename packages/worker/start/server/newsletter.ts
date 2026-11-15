@@ -5,6 +5,7 @@ export type NewsletterPageError =
 	| 'rate_limited'
 	| 'unavailable'
 	| 'invalid_link'
+	| 'verification_failed'
 
 type NewsletterPageStatus = 'sent' | 'confirmed'
 
@@ -12,6 +13,7 @@ export type NewsletterPageData = {
 	status: NewsletterPageStatus | null
 	error: NewsletterPageError | null
 	latest: { slug: string; title: string; description: string } | null
+	turnstileSiteKey: string | null
 }
 
 const pageErrors = new Set<NewsletterPageError>([
@@ -19,6 +21,7 @@ const pageErrors = new Set<NewsletterPageError>([
 	'rate_limited',
 	'unavailable',
 	'invalid_link',
+	'verification_failed',
 ])
 
 export const loadNewsletterPage = createServerFn({ method: 'GET' })
@@ -31,8 +34,17 @@ export const loadNewsletterPage = createServerFn({ method: 'GET' })
 		return search
 	})
 	.handler(async ({ data: search }): Promise<NewsletterPageData> => {
-		const { listBlogCategoryPosts, listBlogPosts } =
-			await import('../../src/blog/catalog.ts')
+		const [
+			{ listBlogCategoryPosts, listBlogPosts },
+			{ env },
+			{ getTurnstileSiteKey },
+			{ getEnv },
+		] = await Promise.all([
+			import('../../src/blog/catalog.ts'),
+			import('cloudflare:workers'),
+			import('../../src/app/public-form-protection.ts'),
+			import('../../src/app/env.ts'),
+		])
 		const params = new URLSearchParams(search)
 		const status = params.get('status')
 		const error = params.get('error')
@@ -47,5 +59,6 @@ export const loadNewsletterPage = createServerFn({ method: 'GET' })
 			latest: post
 				? { slug: post.slug, title: post.title, description: post.description }
 				: null,
+			turnstileSiteKey: getTurnstileSiteKey(getEnv(env)),
 		}
 	})

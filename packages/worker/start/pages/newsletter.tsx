@@ -1,5 +1,12 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
+import {
+	readPublicFormProtection,
+	renderTurnstileWidgets,
+	resetTurnstileWidgets,
+	turnstileResponseFieldName,
+	turnstileWidgetClassName,
+} from '#client/public-form-protection.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -31,6 +38,10 @@ import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { sendUiEvent } from '#client/ui-actor.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
+// Keeps the card's grid spacing while letting the no-JavaScript note hide
+// every control at once.
+const fieldsCss: CSSObject = { display: 'contents' }
+
 function newsletterErrorText(error: NewsletterPageError) {
 	switch (error) {
 		case 'invalid_email':
@@ -39,6 +50,8 @@ function newsletterErrorText(error: NewsletterPageError) {
 			return 'Too many sign-ups from here. Wait a few minutes and try again.'
 		case 'unavailable':
 			return 'Sign-up is not available right now. Please try again later.'
+		case 'verification_failed':
+			return 'We could not confirm you are human. Complete the check and try again.'
 		case 'invalid_link':
 			return 'That confirmation link has expired or was already used. Enter your email to get a new one.'
 		default: {
@@ -81,7 +94,10 @@ export function NewsletterRoute(props: { data: NewsletterPageData }) {
 					</p>
 				</div>
 			) : (
-				<SignupForm error={data.error} />
+				<SignupForm
+					error={data.error}
+					turnstileSiteKey={data.turnstileSiteKey}
+				/>
 			)}
 
 			{data.latest ? (
@@ -124,8 +140,22 @@ function useNativeSubmitGate() {
 	}
 }
 
-function SignupForm(props: { error: NewsletterPageError | null }) {
+function SignupForm(props: {
+	error: NewsletterPageError | null
+	turnstileSiteKey: string | null
+}) {
 	const { pending, onSubmit } = useNativeSubmitGate()
+	const { turnstileSiteKey } = props
+	useEffect(() => {
+		if (!turnstileSiteKey) return
+		void renderTurnstileWidgets(turnstileSiteKey)
+		// A page restored from the back/forward cache holds a spent token.
+		function pageshow(event: PageTransitionEvent) {
+			if (event.persisted) resetTurnstileWidgets()
+		}
+		window.addEventListener('pageshow', pageshow)
+		return () => window.removeEventListener('pageshow', pageshow)
+	}, [turnstileSiteKey])
 	const errorId = 'newsletter-signup-error'
 	const emailInvalid = props.error === 'invalid_email'
 	return (
@@ -135,53 +165,85 @@ function SignupForm(props: { error: NewsletterPageError | null }) {
 			css={cardCss}
 			data-testid="newsletter-signup-form"
 			aria-busy={pending}
-			// The post is a normal form submission, so it works without
-			// JavaScript; with it, the button shows progress until the page
-			// navigates.
-			onSubmit={onSubmit}
+			// The post is a normal form submission; the button shows progress
+			// until the page navigates.
+			onSubmit={(event) => {
+				// The widget lives in a shadow root, which a native form post
+				// does not include, so its token is copied into the form.
+				const form = event.currentTarget
+				const field = form.elements.namedItem(turnstileResponseFieldName)
+				if (field instanceof HTMLInputElement)
+					field.value = readPublicFormProtection(new FormData(form), form)[
+						turnstileResponseFieldName
+					]
+				onSubmit(event)
+			}}
 		>
 			{props.error ? (
 				<p css={getAlertCardCss('error')} role="alert" id={errorId}>
 					{newsletterErrorText(props.error)}
 				</p>
 			) : null}
-			<input
-				type="text"
-				name={honeypotFieldName}
-				tabIndex={-1}
-				aria-hidden="true"
-				defaultValue=""
-				{...passwordManagerIgnoreProps}
-				css={honeypotCss}
-			/>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Email address</span>
+			{turnstileSiteKey ? (
+				// The human check needs JavaScript, so without it the fields
+				// are replaced by this note instead of a form that cannot work.
+				<noscript>
+					<p css={descriptionCss} data-testid="newsletter-no-javascript-note">
+						Signing up needs JavaScript for a quick human check. Turn on
+						JavaScript and reload this page to subscribe.
+					</p>
+					<style
+						dangerouslySetInnerHTML={{
+							__html: '[data-newsletter-fields]{display:none!important}',
+						}}
+					/>
+				</noscript>
+			) : null}
+			<div data-newsletter-fields css={fieldsCss}>
 				<input
-					type="email"
-					name="email"
-					required
-					autoComplete="email"
-					inputMode="email"
-					spellCheck={false}
-					maxLength={254}
-					placeholder="you@example.com"
-					aria-invalid={emailInvalid || undefined}
-					aria-describedby={props.error ? errorId : undefined}
-					css={inputCss}
+					type="text"
+					name={honeypotFieldName}
+					tabIndex={-1}
+					aria-hidden="true"
+					defaultValue=""
+					{...passwordManagerIgnoreProps}
+					css={honeypotCss}
 				/>
-			</label>
-			<button
-				type="submit"
-				css={primaryButtonCss}
-				aria-disabled={pending || undefined}
-				onClick={(event) => {
-					// A disabled button would cancel the native submission in
-					// some browsers, so repeat clicks are ignored instead.
-					if (pending) event.preventDefault()
-				}}
-			>
-				{pending ? 'Sending confirmation link...' : 'Subscribe'}
-			</button>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Email address</span>
+					<input
+						type="email"
+						name="email"
+						required
+						autoComplete="email"
+						inputMode="email"
+						spellCheck={false}
+						maxLength={254}
+						placeholder="you@example.com"
+						aria-invalid={emailInvalid || undefined}
+						aria-describedby={props.error ? errorId : undefined}
+						css={inputCss}
+					/>
+				</label>
+				{turnstileSiteKey ? (
+					<>
+						<div className={turnstileWidgetClassName}></div>
+						<input type="hidden" name={turnstileResponseFieldName} />
+					</>
+				) : null}
+				<button
+					type="submit"
+					css={primaryButtonCss}
+					aria-disabled={pending || undefined}
+					onClick={(event) => {
+						// A disabled button would cancel the native submission in
+						// some browsers, so repeat clicks are ignored instead.
+						if (pending) event.preventDefault()
+					}}
+				>
+					{pending ? 'Sending confirmation link...' : 'Subscribe'}
+				</button>
+			</div>
 			<p css={descriptionCss}>
 				We email a confirmation link first. Nothing is sent until you confirm.
 				See the <SiteLink href="/privacy">privacy policy</SiteLink>.

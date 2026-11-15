@@ -8,6 +8,7 @@ import { renderTransactionalEmail } from '#app/email/template.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
+import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import { normalizeAddrSpec } from '#worker/email/address.ts'
 import { newsletterSignupState } from '#worker/newsletter/signup-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
@@ -34,11 +35,19 @@ const emailPattern = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]{2,}$/
 
 export type NewsletterSignupResult =
 	| { ok: true }
-	| { ok: false; error: 'invalid_email' | 'rate_limited' | 'unavailable' }
+	| {
+			ok: false
+			error:
+				| 'invalid_email'
+				| 'rate_limited'
+				| 'unavailable'
+				| 'verification_failed'
+	  }
 
 type SignupEnv = Parameters<typeof sendNewsletterConfirmationEmail>[0]['env'] &
 	Parameters<typeof resolveTransactionalEmailConfig>[0]['env'] &
-	Parameters<typeof auditDatabaseFromEnv>[0]
+	Parameters<typeof auditDatabaseFromEnv>[0] &
+	Parameters<typeof checkPublicFormProtection>[0]['env']
 
 function randomHex(bytes: number) {
 	return toHex(crypto.getRandomValues(new Uint8Array(bytes)))
@@ -119,6 +128,22 @@ export async function requestNewsletterSignup(input: {
 	if (!ipLimit.allowed) {
 		audit('rate_limited', 'ip')
 		return { ok: false, error: 'rate_limited' }
+	}
+
+	// Human verification comes before any row or email exists, so a failed
+	// or missing Turnstile token never produces a confirmation email.
+	const protection = await checkPublicFormProtection({
+		env,
+		request,
+		body: input.form,
+	})
+	if (!protection.ok) {
+		const unavailable = protection.status === 503
+		audit('failure', unavailable ? 'turnstile_unconfigured' : 'turnstile')
+		return {
+			ok: false,
+			error: unavailable ? 'unavailable' : 'verification_failed',
+		}
 	}
 
 	const rawEmail = input.form.email
