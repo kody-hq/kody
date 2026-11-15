@@ -1,15 +1,18 @@
 /** @jsxImportSource @emotion/react */
-import { getSquircleCss } from '#universal/styles/style-primitives.ts'
-import { Button } from '../../components/button.tsx'
 import { WorkspaceEmptyFolder } from '../workspace-empty-folder.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import { colors } from '#universal/styles/tokens.ts'
+import {
+	getButtonCss,
+	getSquircleCss,
+} from '#universal/styles/style-primitives.ts'
 import { renderIcon } from '../../components/icon.tsx'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
 import { useEffect, useState } from 'react'
 import { zipDirectory } from '#universal/zip-directory.ts'
 
 const control = {
+	...getButtonCss({ variant: 'secondary', size: 'lg' }),
 	display: 'inline-flex',
 	alignItems: 'center',
 	gap: 6,
@@ -111,9 +114,7 @@ export default function ZipFileViewer({
 					overflowX: 'auto',
 				}}
 			>
-				<Button
-					variant="secondary"
-					size="lg"
+				<button
 					css={control}
 					aria-label="Up one level"
 					disabled={!folder}
@@ -124,16 +125,14 @@ export default function ZipFileViewer({
 					}
 				>
 					{renderIcon('chevron-up', { size: '14px' })}
-				</Button>
-				<Button
-					variant="secondary"
-					size="lg"
+				</button>
+				<button
 					css={control}
 					aria-current={!folder ? 'page' : undefined}
 					onClick={() => setFolder('')}
 				>
 					Archive
-				</Button>
+				</button>
 				{parts.map((part, index) => (
 					<span
 						key={index}
@@ -147,18 +146,14 @@ export default function ZipFileViewer({
 						<span aria-hidden css={{ color: colors.textMuted }}>
 							{renderIcon('chevron-right', { size: '12px' })}
 						</span>
-						<Button
-							variant="secondary"
-							size="lg"
-							css={[
-								control,
-								{
-									display: 'block',
-									maxWidth: 180,
-									overflow: 'hidden',
-									textOverflow: 'ellipsis',
-								},
-							]}
+						<button
+							css={{
+								...control,
+								display: 'block',
+								maxWidth: 180,
+								overflow: 'hidden',
+								textOverflow: 'ellipsis',
+							}}
 							title={part}
 							aria-current={index === parts.length - 1 ? 'page' : undefined}
 							onClick={() =>
@@ -166,18 +161,12 @@ export default function ZipFileViewer({
 							}
 						>
 							{part}
-						</Button>
+						</button>
 					</span>
 				))}
-				<Button
-					href={download}
-					variant="secondary"
-					size="lg"
-					reloadDocument
-					css={[control, { marginLeft: 'auto' }]}
-				>
+				<a href={download} css={{ ...control, marginLeft: 'auto' }}>
 					Download ZIP
-				</Button>
+				</a>
 			</nav>
 			{rows.size ? (
 				<table

@@ -356,13 +356,9 @@ function RevokeButton(props: {
 						selectedIds={selectedIds}
 						onChange={(ids) => setSelectedIds(ids)}
 					/>
-					<button
-						type="button"
-						css={secondaryButtonCss}
-						onClick={props.onDisarm}
-					>
+					<Button type="button" variant="secondary" onClick={props.onDisarm}>
 						Cancel
-					</button>
+					</Button>
 				</>
 			) : null}
 		</div>
@@ -396,9 +392,9 @@ function ScopeRevokeButton(props: {
 			>
 				Confirm revoke
 			</Button>
-			<button type="button" css={secondaryButtonCss} onClick={props.onDisarm}>
+			<Button type="button" variant="secondary" onClick={props.onDisarm}>
 				Cancel
-			</button>
+			</Button>
 		</div>
 	) : (
 		<Button
@@ -510,16 +506,6 @@ const scopeRevokeActionsCss: CSSObject = {
 	display: 'grid',
 	justifyItems: 'end',
 	gap: spacing.xs,
-}
-
-const secondaryButtonCss: CSSObject = {
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.sm,
-	padding: `${spacing.xs} ${spacing.sm}`,
-	background: colors.surface,
-	color: colors.text,
-	font: 'inherit',
-	cursor: 'pointer',
 }
 
 const emptyCss: CSSObject = { color: colors.textMuted, margin: 0 }

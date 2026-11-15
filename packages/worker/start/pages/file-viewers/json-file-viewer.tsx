@@ -1,6 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { getSquircleCss } from '#universal/styles/style-primitives.ts'
-import { Button } from '../../components/button.tsx'
 import { FileAnchorContext } from '../file-anchor-context.ts'
 import { FileAnchorMarker } from '../file-anchor-markers.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
@@ -20,8 +18,13 @@ import type {
 	JsonResponse,
 } from '#universal/json-preview.ts'
 import { colors } from '#universal/styles/tokens.ts'
+import {
+	getButtonCss,
+	getSquircleCss,
+} from '#universal/styles/style-primitives.ts'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
 const control = {
+	...getButtonCss({ variant: 'secondary', size: 'lg' }),
 	padding: '4px 8px',
 	minHeight: 28,
 	fontSize: 12,
@@ -285,10 +288,8 @@ export default function JsonFileViewer({
 				}}
 			>
 				{(['tree', 'raw'] as const).map((value) => (
-					<Button
+					<button
 						key={value}
-						variant="secondary"
-						size="lg"
 						css={control}
 						aria-pressed={mode === value}
 						disabled={value === 'tree' && !!invalid}
@@ -298,19 +299,16 @@ export default function JsonFileViewer({
 						}}
 					>
 						{value === 'tree' ? 'Tree' : 'Raw'}
-					</Button>
+					</button>
 				))}
 				<span css={{ flex: 1 }} />
-				<Button
-					variant="secondary"
-					size="lg"
-					reloadDocument
-					css={[control, { textDecoration: 'none' }]}
+				<a
+					css={{ ...control, textDecoration: 'none' }}
 					href={download}
 					download
 				>
 					Download
-				</Button>
+				</a>
 			</div>
 			{invalid && (
 				<p
@@ -392,18 +390,14 @@ export default function JsonFileViewer({
 						const { node, depth, parent, more } = rows[item.index]!
 						if (more)
 							return (
-								<Button
+								<button
 									key={item.key}
-									variant="secondary"
-									size="lg"
-									css={[
-										control,
-										{
-											position: 'absolute',
-											top: item.start,
-											left: depth * 18 + 12,
-										},
-									]}
+									css={{
+										...control,
+										position: 'absolute',
+										top: item.start,
+										left: depth * 18 + 12,
+									}}
 									onClick={() =>
 										load(node.id, children.get(node.id)?.length ?? 0)
 									}
@@ -413,7 +407,7 @@ export default function JsonFileViewer({
 										500,
 										node.count - (children.get(node.id)?.length ?? 0),
 									)}
-								</Button>
+								</button>
 							)
 						const open = expanded.has(node.id)
 						return (

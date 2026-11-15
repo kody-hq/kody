@@ -68,9 +68,9 @@ const buttonSizes = {
 		squircleRadius: '1.125rem',
 	},
 	lg: {
-		paddingBlock: '0.95rem',
-		height: '2.9rem',
-		coarseHeight: '2.9rem',
+		paddingBlock: '1rem',
+		height: '3rem',
+		coarseHeight: '3rem',
 		paddingInline: '1.7rem',
 		gap: '0.5rem',
 		font: '650 1rem/1',

@@ -304,6 +304,19 @@ test('transactional emails escape untrusted content and put action URLs in both 
 	)
 })
 
+test('email action buttons use the squircle fallback radius, not a pill', () => {
+	const email = renderTransactionalEmail({
+		appBaseUrl: 'https://kody.codes',
+		subject: 'Subject',
+		preheader: 'Preheader',
+		heading: 'Heading',
+		body: ['Body'],
+		action: { label: 'Do the thing', url: 'https://kody.codes/x' },
+	})
+	expect(email.html).toMatch(/class="kody-button"[^>]*border-radius: 10px;/)
+	expect(email.html).not.toContain('999px')
+})
+
 test('email-changed security notice masks the new address and keeps the this-wasnt-me path', () => {
 	expect(maskEmailAddressForNotice('new-login@example.com')).toBe(
 		'n***@example.com',
