@@ -84,9 +84,11 @@ export async function findPackageJobIntervalFloorViolation(input: {
 		message: string
 	}> = []
 	for (const [jobName, definition] of entries) {
-		const schedule = normalizeJobSchedule(definition.schedule)
-		const timezone = normalizeJobTimezone(definition.timezone)
+		let schedule: JobSchedule
+		let timezone: string
 		try {
+			schedule = normalizeJobSchedule(definition.schedule)
+			timezone = normalizeJobTimezone(definition.timezone)
 			assertJobScheduleIntervalFloor({
 				plan: entitlement.plan,
 				ladder: entitlement.ladder,
@@ -97,7 +99,12 @@ export async function findPackageJobIntervalFloorViolation(input: {
 		} catch (error) {
 			// Other schedule errors are the manifest check's to report.
 			if (!isJobIntervalFloorError(error)) continue
-			violations.push({ jobName, schedule, timezone, message: error.message })
+			violations.push({
+				jobName,
+				schedule: normalizeJobSchedule(definition.schedule),
+				timezone: normalizeJobTimezone(definition.timezone),
+				message: error.message,
+			})
 		}
 	}
 	if (violations.length === 0) return null

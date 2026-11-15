@@ -28,7 +28,7 @@ jobs:
       github.event.workflow_run.conclusion == 'cancelled') &&
       github.event.workflow_run.triggering_actor.login != 'github-actions[bot]'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v6.0.2
         with:

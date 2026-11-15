@@ -384,3 +384,28 @@ test('an approval recorded while its commit builds is marked served when it serv
 	expect(site.servingCommit()).toBe('commit-c')
 	await expect(site.publicCommit()).resolves.toBe('commit-b')
 })
+
+test('approving a first build before it serves does not mark it served', async () => {
+	const site = await setUp({})
+	site.sqlite
+		.prepare('UPDATE entity_sources SET serving_commit = NULL WHERE id = ?')
+		.run(sourceId)
+	await insertPackageCapabilityApproval(site.db, {
+		id: 'approval-first',
+		package_id: packageId,
+		owner_user_id: ownerId,
+		published_commit: 'commit-a',
+		fingerprint: 'first',
+		capability_set_json: '[]',
+		dependency_snapshot_json: '{}',
+		approved_by_user_id: 'person-owner',
+		approved_at: now,
+	})
+	expect(
+		site.sqlite
+			.prepare(
+				"SELECT served_at FROM package_capability_approvals WHERE id = 'approval-first'",
+			)
+			.get()?.['served_at'],
+	).toBeNull()
+})

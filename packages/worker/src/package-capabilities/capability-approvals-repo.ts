@@ -49,7 +49,8 @@ export async function insertPackageCapabilityApproval(
 ): Promise<PackageCapabilityApprovalRecord> {
 	const createdAt = row.created_at ?? row.approved_at
 	// Approving the commit that already serves marks it served now; a commit
-	// still building is marked when its serving advance lands.
+	// still building (including a first build, with no serving pointer yet)
+	// is marked when its serving advance lands.
 	await db
 		.prepare(
 			`INSERT INTO package_capability_approvals (
@@ -60,7 +61,7 @@ export async function insertPackageCapabilityApproval(
 				SELECT ? FROM saved_packages AS package
 				JOIN entity_sources AS source ON source.id = package.source_id
 				WHERE package.id = ? AND source.user_id = ?
-					AND COALESCE(source.serving_commit, source.published_commit) = ?
+					AND source.serving_commit = ?${andLiveDeletedAtSql('package')}${andLiveDeletedAtSql('source')}
 			))`,
 		)
 		.bind(
@@ -298,10 +299,12 @@ export function prepareMarkServedPackageCapabilityApprovals(
 			`UPDATE package_capability_approvals
 			SET served_at = ?
 			WHERE served_at IS NULL AND published_commit = ? AND owner_user_id = ?
-				AND package_id IN (SELECT id FROM saved_packages WHERE source_id = ?)
+				AND package_id IN (
+					SELECT id FROM saved_packages WHERE source_id = ?${andLiveDeletedAtSql()}
+				)
 				AND EXISTS (
 					SELECT 1 FROM entity_sources
-					WHERE id = ? AND user_id = ? AND serving_commit = ?
+					WHERE id = ? AND user_id = ? AND serving_commit = ?${andLiveDeletedAtSql()}
 				)`,
 		)
 		.bind(

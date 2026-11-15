@@ -81,3 +81,19 @@ test('an unchanged published schedule keeps passing, a rescheduled one does not'
 		/^kody\.jobs\.poll\.schedule: /,
 	)
 })
+
+test('an invalid schedule is left to the manifest check', async () => {
+	await expect(
+		findPackageJobIntervalFloorViolation({
+			env,
+			userId,
+			email: null,
+			jobs: {
+				poll: {
+					entry: './src/poll.ts',
+					schedule: { type: 'cron', expression: 'not a cron' },
+				},
+			},
+		}),
+	).resolves.toBeNull()
+})

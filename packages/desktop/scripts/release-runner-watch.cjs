@@ -135,6 +135,7 @@ function watchRelease({
 		]).workflow_runs.find(
 			(other) =>
 				other.id !== run.id &&
+				other.head_repository?.full_name === run.head_repository?.full_name &&
 				other.head_sha !== run.head_sha &&
 				Date.parse(other.created_at) > Date.parse(run.created_at),
 		)

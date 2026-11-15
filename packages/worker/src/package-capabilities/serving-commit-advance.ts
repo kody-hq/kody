@@ -35,33 +35,43 @@ export async function advanceServingCommit(input: {
 	userId: OwnerId
 	commit: string
 }): Promise<boolean> {
-	const carryForward = await prepareApprovalCarryForward(input)
+	const approvals = await prepareServingApprovals(input)
 	const advanced = await advanceEntitySourceServingCommit(
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },
-		carryForward ? [carryForward.statement] : [],
-		[
-			prepareMarkServedPackageCapabilityApprovals(input.env.APP_DB, {
-				sourceId: input.sourceId,
-				userId: input.userId,
-				commit: input.commit,
-				servedAt: new Date().toISOString(),
-			}),
-		],
+		approvals?.carryForward ? [approvals.carryForward] : [],
+		approvals
+			? [
+					prepareMarkServedPackageCapabilityApprovals(input.env.APP_DB, {
+						sourceId: input.sourceId,
+						userId: input.userId,
+						commit: input.commit,
+						servedAt: new Date().toISOString(),
+					}),
+				]
+			: [],
 	)
-	if (advanced && carryForward) {
-		approvedCommitCache.delete(carryForward.packageId)
+	if (advanced && approvals) {
+		approvedCommitCache.delete(approvals.packageId)
 	}
 	return advanced
 }
 
-async function prepareApprovalCarryForward(input: {
+/**
+ * For a package app: its id (its approvals for `commit` are marked served
+ * with the advance) and the carried-forward approval, when there is one.
+ */
+async function prepareServingApprovals(input: {
 	env: Env
 	sourceId: string
 	userId: OwnerId
 	commit: string
-}) {
+}): Promise<{
+	packageId: string
+	carryForward: D1PreparedStatement | null
+} | null> {
 	const db = input.env.APP_DB
+	let appPackageId: string | null = null
 	try {
 		const source = await getEntitySourceById(db, input.sourceId)
 		if (
@@ -77,14 +87,22 @@ async function prepareApprovalCarryForward(input: {
 			userId: input.userId,
 			packageId: source.entity_id,
 		})
-		if (!savedPackage?.hasApp || !savedPackage.isInternetVisible) return null
+		if (!savedPackage?.hasApp) return null
+		appPackageId = savedPackage.id
+		const withoutCarryForward = {
+			packageId: savedPackage.id,
+			carryForward: null,
+		}
+		if (!savedPackage.isInternetVisible) return withoutCarryForward
 		// An app never approved for the public has nothing to carry forward.
 		const served = await getServedPackageCapabilityApproval(db, {
 			packageId: savedPackage.id,
 			ownerUserId: savedPackage.userId,
 			sourceId: source.id,
 		})
-		if (!served || served.publishedCommit === input.commit) return null
+		if (!served || served.publishedCommit === input.commit) {
+			return withoutCarryForward
+		}
 		const computed = await computePackageCapabilitySet({
 			env: input.env,
 			ownerUserId: savedPackage.userId,
@@ -95,11 +113,11 @@ async function prepareApprovalCarryForward(input: {
 			publishedCommit: input.commit,
 		})
 		if (!capabilitySetWithinApproval(computed.capabilitySet, served)) {
-			return null
+			return withoutCarryForward
 		}
 		return {
 			packageId: savedPackage.id,
-			statement: prepareCarriedForwardPackageCapabilityApproval(db, {
+			carryForward: prepareCarriedForwardPackageCapabilityApproval(db, {
 				id: crypto.randomUUID(),
 				package_id: savedPackage.id,
 				owner_user_id: savedPackage.userId,
@@ -122,7 +140,7 @@ async function prepareApprovalCarryForward(input: {
 			commit: input.commit,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return null
+		return appPackageId ? { packageId: appPackageId, carryForward: null } : null
 	}
 }
 
