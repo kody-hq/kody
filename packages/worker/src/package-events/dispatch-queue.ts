@@ -16,6 +16,8 @@ import {
 } from './dispatch-queue-producer.ts'
 
 const packageEventsDispatchRetryDelaySeconds = 30
+/** Matches this consumer's `max_retries` in wrangler.jsonc. */
+const packageEventsDispatchMaxRetries = 3
 
 /**
  * How many of one owner's package events are delivered at once. The consumer
@@ -113,6 +115,14 @@ async function handlePackageEventsQueueMessages(
 			queueMessage.ack()
 			continue
 		}
+		if (
+			failedAttempts(queueMessage, message) > packageEventsDispatchMaxRetries
+		) {
+			// Out of retries, counting those before it was put back. Only the
+			// Queue can dead-letter, so retry without delivering until it does.
+			queueMessage.retry()
+			continue
+		}
 		const { claimed } = await claimPackageEventSlot({
 			env,
 			userId: message.userId,
@@ -166,11 +176,10 @@ async function handlePackageEventsQueueMessages(
 }
 
 /**
- * Put an event back because its owner is at the cap. A first delivery is
- * re-sent, because retry() counts toward max_retries and a long wait behind
- * the owner's own backlog would dead-letter a healthy event. A delivery that
- * already failed is retried instead: re-sending it would start its attempt
- * count over, so an event that keeps failing would never dead-letter.
+ * Put an event back because its owner is at the cap. It is re-sent, because
+ * retry() counts toward max_retries and a long wait behind the owner's own
+ * backlog would dead-letter a healthy event. The re-sent message starts the
+ * Queue's attempt count over, so it carries the failures so far.
  */
 async function deferPackageEvent(
 	queueMessage: Message<unknown>,
@@ -178,18 +187,15 @@ async function deferPackageEvent(
 	env: Env,
 ) {
 	const deferrals = message.deferrals ?? 0
-	const delaySeconds = ownerCapDeferralDelaySeconds(deferrals)
-	if (queueMessage.attempts > 1) {
-		queueMessage.retry({ delaySeconds })
-		return
-	}
+	const priorAttempts = failedAttempts(queueMessage, message)
 	try {
 		await env.PACKAGE_EVENTS_DISPATCH_QUEUE.send(
 			{
 				...message,
 				deferrals: deferrals + 1,
+				...(priorAttempts > 0 ? { priorAttempts } : {}),
 			} satisfies PackageEventsDispatchQueueMessage,
-			{ delaySeconds },
+			{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
 		)
 		queueMessage.ack()
 	} catch (error) {
@@ -202,4 +208,12 @@ async function deferPackageEvent(
 			delaySeconds: packageEventsDispatchRetryDelaySeconds,
 		})
 	}
+}
+
+/** Deliveries of this event that failed, across every time it was put back. */
+function failedAttempts(
+	queueMessage: Message<unknown>,
+	message: PackageEventsDispatchQueueMessage,
+) {
+	return (message.priorAttempts ?? 0) + queueMessage.attempts - 1
 }

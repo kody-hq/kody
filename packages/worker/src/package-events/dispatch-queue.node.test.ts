@@ -289,32 +289,44 @@ test('an event whose owner is at the cap is put back with a delay instead of del
 	expect(other.ack).toHaveBeenCalledTimes(1)
 })
 
-test('a capped event that already failed is retried, so its attempt count is not started over', async () => {
+test('a capped event that already failed keeps its failure count when it is put back, and dead-letters once that count is spent', async () => {
 	mocks.deliverPackageEvent.mockClear()
+	mocks.claimPackageEventSlot.mockClear()
 	mocks.claimPackageEventSlot.mockResolvedValueOnce({
 		claimed: false,
 		inFlight: 4,
 	})
 	const send =
 		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	// Two failures before an earlier put-back, one more since.
 	const failedBefore = createQueueMessage(
 		'queue-failed-before',
-		createMessageBody(),
+		createMessageBody({ deferrals: 1, priorAttempts: 2 }),
+		2,
+	)
+	// Four failures in total: one more than the consumer's three retries.
+	const spent = createQueueMessage(
+		'queue-spent',
+		createMessageBody({ deferrals: 1, priorAttempts: 3 }),
 		2,
 	)
 
 	await handlePackageEventsDispatchQueue(
-		createBatch([failedBefore]),
+		createBatch([failedBefore, spent]),
 		{ APP_DB: {}, PACKAGE_EVENTS_DISPATCH_QUEUE: { send } } as unknown as Env,
 		{
 			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
 		} as unknown as ExecutionContext,
 	)
 
-	expect(send).not.toHaveBeenCalled()
-	expect(failedBefore.ack).not.toHaveBeenCalled()
-	expect(failedBefore.retry).toHaveBeenCalledWith({
-		delaySeconds: expect.any(Number),
-	})
+	expect(send).toHaveBeenCalledTimes(1)
+	expect(send.mock.calls[0]?.[0]).toEqual(
+		createMessageBody({ deferrals: 2, priorAttempts: 3 }),
+	)
+	expect(failedBefore.ack).toHaveBeenCalledTimes(1)
+	expect(failedBefore.retry).not.toHaveBeenCalled()
+	expect(spent.retry).toHaveBeenCalledWith()
+	expect(spent.ack).not.toHaveBeenCalled()
+	expect(mocks.claimPackageEventSlot).toHaveBeenCalledTimes(1)
 	expect(mocks.deliverPackageEvent).not.toHaveBeenCalled()
 })
