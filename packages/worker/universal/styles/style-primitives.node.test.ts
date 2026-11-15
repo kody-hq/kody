@@ -42,9 +42,9 @@ test('static pages render the same squircle button stylesheet', () => {
 		'a.go': { variant: 'primary', size: 'lg' },
 	})
 	expect(sheet).toContain('a.go{')
-	expect(sheet).toContain('border-radius:0.75rem')
+	expect(sheet).toContain('border-radius:0.625rem')
 	expect(sheet).toContain(
-		'@supports (corner-shape: squircle){a.go{border-radius:1.375rem;corner-shape:squircle}}',
+		'@supports (corner-shape: squircle){a.go{border-radius:1.125rem;corner-shape:squircle}}',
 	)
 	expect(sheet).toContain('a.go:disabled,a.go[aria-disabled="true"]{')
 	expect(sheet).not.toContain('999px')

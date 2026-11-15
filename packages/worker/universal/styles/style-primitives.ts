@@ -68,14 +68,14 @@ const buttonSizes = {
 		squircleRadius: '1.125rem',
 	},
 	lg: {
-		paddingBlock: '0.875rem',
-		height: '3rem',
-		coarseHeight: '3rem',
+		paddingBlock: '0.95rem',
+		height: '2.9rem',
+		coarseHeight: '2.9rem',
 		paddingInline: '1.7rem',
 		gap: '0.5rem',
-		font: '650 1rem/1.25rem',
-		radius: '0.75rem',
-		squircleRadius: '1.375rem',
+		font: '650 1rem/1',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
 	},
 } as const satisfies Record<ButtonSize, Record<string, string>>
 
