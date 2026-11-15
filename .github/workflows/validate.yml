@@ -821,8 +821,21 @@ jobs:
           worker-env: 'true'
           no_cache: ${{ env.VALIDATE_NO_CACHE }}
 
+      # Same workerd / Vite webServer crash retry as the E2E shards; real
+      # check failures never retry.
       - name: 🖼️ npm run ui:verify
-        run: npm run ui:verify
+        run: |
+          set -u
+          npm run ui:verify 2>&1 | tee ui-verify-attempt-1.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if ! node tools/ci/retry-classifiers.ts e2e ui-verify-attempt-1.log; then
+            exit "$status"
+          fi
+          echo "::warning::Playwright webServer died on start or mid-run; retrying ui:verify once with a fresh server."
+          npm run ui:verify
 
       - name: 📝 Report summary
         if: ${{ !cancelled() }}
