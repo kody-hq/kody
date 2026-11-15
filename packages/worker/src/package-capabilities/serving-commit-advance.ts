@@ -4,10 +4,12 @@ import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
 	advanceEntitySourceServingCommit,
 	getEntitySourceById,
+	holdEntitySourceCommit,
 } from '#worker/repo/entity-sources.ts'
 import { approvedCommitCache } from './approved-commit-cache.ts'
 import {
 	getServedPackageCapabilityApproval,
+	hasPackageCapabilityApprovalForCommit,
 	prepareCarriedForwardPackageCapabilityApproval,
 	prepareMarkServedPackageCapabilityApprovals,
 	type PackageCapabilityApprovalRecord,
@@ -21,13 +23,20 @@ import { computePackageCapabilitySet } from './compute-package-capability-set.ts
 import { serializeDependencySnapshot } from './dependency-snapshot.ts'
 
 /**
- * Start serving `commit` once its build is complete. For an internet-visible
- * app this is when anonymous visitors switch versions, so a commit whose
- * capability set stays within the approval visitors run now carries that
- * approval forward in the same D1 transaction as the pointer move: no request
- * sees the new serving commit before its approval exists. A wider set writes
- * nothing, and visitors keep the previous approved commit until the owner
- * approves the new one (ADR 0069).
+ * Start serving `commit` once its build is complete. Every runtime reader
+ * (members, the owner, jobs and anonymous visitors) follows the serving
+ * commit, so this is when everyone switches versions.
+ *
+ * For an internet-visible app with an approved commit that served:
+ * - a commit whose capability set stays within that approval carries it
+ *   forward in the same D1 transaction as the pointer move, so no request
+ *   sees the new serving commit before its approval exists;
+ * - a wider set (or one that could not be checked) does not serve. The
+ *   source records it as `held_commit` and everyone stays on the approved
+ *   commit until the owner approves it (`releaseHeldServingCommit`).
+ *
+ * Other apps and packages advance as soon as the build is complete
+ * (ADR 0069).
  */
 export async function advanceServingCommit(input: {
 	env: Env
@@ -35,12 +44,20 @@ export async function advanceServingCommit(input: {
 	userId: OwnerId
 	commit: string
 }): Promise<boolean> {
-	const approvals = await prepareServingApprovals(input)
+	const decision = await decideServingAdvance(input)
+	if (decision?.hold) {
+		await holdEntitySourceCommit(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.userId,
+			commit: input.commit,
+		})
+		return false
+	}
 	const advanced = await advanceEntitySourceServingCommit(
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },
-		approvals?.carryForward ? [approvals.carryForward] : [],
-		approvals
+		decision?.carryForward ? [decision.carryForward] : [],
+		decision
 			? [
 					prepareMarkServedPackageCapabilityApprovals(input.env.APP_DB, {
 						sourceId: input.sourceId,
@@ -50,25 +67,54 @@ export async function advanceServingCommit(input: {
 				]
 			: [],
 	)
-	if (advanced && approvals) {
-		approvedCommitCache.delete(approvals.packageId)
+	if (advanced && decision) {
+		approvedCommitCache.delete(decision.packageId)
 	}
 	return advanced
 }
 
 /**
- * For a package app: its id (its approvals for `commit` are marked served
- * with the advance) and the carried-forward approval, when there is one.
+ * Serve the source's held commit when it no longer needs to wait: its
+ * capabilities were approved, or its app is no longer internet-visible.
+ * No-op when nothing is held or a newer publish superseded the held commit.
  */
-async function prepareServingApprovals(input: {
+export async function releaseHeldServingCommit(input: {
+	env: Env
+	sourceId: string
+	userId: OwnerId
+}): Promise<boolean> {
+	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	if (
+		!source ||
+		source.user_id !== input.userId ||
+		!source.held_commit ||
+		source.held_commit !== source.published_commit
+	) {
+		return false
+	}
+	return await advanceServingCommit({
+		env: input.env,
+		sourceId: source.id,
+		userId: input.userId,
+		commit: source.held_commit,
+	})
+}
+
+type ServingAdvanceDecision =
+	| { hold: true }
+	| {
+			hold: false
+			/** The package app whose approvals for `commit` are marked served. */
+			packageId: string
+			carryForward: D1PreparedStatement | null
+	  }
+
+async function decideServingAdvance(input: {
 	env: Env
 	sourceId: string
 	userId: OwnerId
 	commit: string
-}): Promise<{
-	packageId: string
-	carryForward: D1PreparedStatement | null
-} | null> {
+}): Promise<ServingAdvanceDecision | null> {
 	const db = input.env.APP_DB
 	let appPackageId: string | null = null
 	try {
@@ -88,20 +134,29 @@ async function prepareServingApprovals(input: {
 		})
 		if (!savedPackage?.hasApp) return null
 		appPackageId = savedPackage.id
-		const withoutCarryForward = {
+		const advance = {
+			hold: false as const,
 			packageId: savedPackage.id,
 			carryForward: null,
 		}
-		if (!savedPackage.isInternetVisible) return withoutCarryForward
+		if (!savedPackage.isInternetVisible) return advance
 		// An app never approved for the public has nothing to carry forward.
 		const served = await getServedPackageCapabilityApproval(db, {
 			packageId: savedPackage.id,
 			ownerUserId: savedPackage.userId,
 			sourceId: source.id,
 		})
-		if (!served || served.publishedCommit === input.commit) {
-			return withoutCarryForward
+		if (!served || served.publishedCommit === input.commit) return advance
+		if (
+			await hasPackageCapabilityApprovalForCommit(db, {
+				packageId: savedPackage.id,
+				ownerUserId: savedPackage.userId,
+				publishedCommit: input.commit,
+			})
+		) {
+			return advance
 		}
+		if (source.held_commit === input.commit) return { hold: true }
 		const computed = await computePackageCapabilitySet({
 			env: input.env,
 			ownerUserId: savedPackage.userId,
@@ -112,10 +167,10 @@ async function prepareServingApprovals(input: {
 			publishedCommit: input.commit,
 		})
 		if (!capabilitySetWithinApproval(computed.capabilitySet, served)) {
-			return withoutCarryForward
+			return { hold: true }
 		}
 		return {
-			packageId: savedPackage.id,
+			...advance,
 			carryForward: prepareCarriedForwardPackageCapabilityApproval(db, {
 				id: crypto.randomUUID(),
 				package_id: savedPackage.id,
@@ -132,14 +187,14 @@ async function prepareServingApprovals(input: {
 			}),
 		}
 	} catch (error) {
-		// Visitors keep the approved commit they run now; the owner can approve
-		// the new one from the approval page.
+		// Everyone keeps the approved commit they run now; the owner can
+		// approve the new one from the approval page.
 		console.warn('approval-carry-forward-failed', {
 			sourceId: input.sourceId,
 			commit: input.commit,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return appPackageId ? { packageId: appPackageId, carryForward: null } : null
+		return appPackageId ? { hold: true } : null
 	}
 }
 

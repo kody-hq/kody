@@ -28,6 +28,7 @@ function mapEntitySourceRow(row: Record<string, unknown>): EntitySourceRow {
 			row['published_commit'] == null ? null : String(row['published_commit']),
 		serving_commit:
 			row['serving_commit'] == null ? null : String(row['serving_commit']),
+		held_commit: row['held_commit'] == null ? null : String(row['held_commit']),
 		indexed_commit:
 			row['indexed_commit'] == null ? null : String(row['indexed_commit']),
 		manifest_path: String(row['manifest_path']),
@@ -317,11 +318,12 @@ export async function advanceEntitySourceServingCommit(
 	const advance = db
 		.prepare(
 			`UPDATE entity_sources
-			SET serving_commit = ?, updated_at = ?
+			SET serving_commit = ?, held_commit = ?, updated_at = ?
 			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
 		)
 		.bind(
 			input.commit,
+			null,
 			new Date().toISOString(),
 			input.id,
 			input.userId,
@@ -335,6 +337,35 @@ export async function advanceEntitySourceServingCommit(
 		db.batch([...alsoWrite, advance, ...thenWrite]),
 	)
 	return (results[alsoWrite.length]?.meta.changes ?? 0) > 0
+}
+
+/**
+ * Record that `commit` (still the published commit) is built but waits for
+ * capability approval, leaving `serving_commit` where it is.
+ */
+export async function holdEntitySourceCommit(
+	db: D1Database,
+	input: { id: string; userId: OwnerId; commit: string },
+): Promise<boolean> {
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE entity_sources
+				SET held_commit = ?, updated_at = ?
+				WHERE id = ? AND user_id = ? AND published_commit = ?
+					AND (held_commit IS NULL OR held_commit != ?)${andLiveDeletedAtSql()}`,
+			)
+			.bind(
+				input.commit,
+				new Date().toISOString(),
+				input.id,
+				input.userId,
+				input.commit,
+				input.commit,
+			)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
 }
 
 export async function upsertEntitySource(

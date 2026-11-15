@@ -1,4 +1,5 @@
 import { approvedCommitCache } from './approved-commit-cache.ts'
+import { releaseHeldServingCommit } from './serving-commit-advance.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -235,6 +236,12 @@ export async function approvePackageCapabilitySet(input: {
 		throw new CapabilityApprovalError('Could not record capability approval.')
 	}
 	approvedCommitCache.delete(input.savedPackage.id)
+	// Approving a held republish moves everyone to it now.
+	await releaseHeldServingCommit({
+		env: input.env,
+		sourceId: input.savedPackage.sourceId,
+		userId: input.ownerUserId,
+	})
 
 	// Going public pauses on the shared approval queue (`went_public`). The
 	// owner Approves that request to flip internet-visible. Re-approving an
@@ -302,6 +309,14 @@ export async function clearInternetVisible(input: {
 			userId: input.actorUserId ?? null,
 		}),
 	})
+	// Only internet-visible apps hold a republish for approval.
+	if (changed) {
+		await releaseHeldServingCommit({
+			env: input.env,
+			sourceId: live.sourceId,
+			userId: live.userId,
+		})
+	}
 	// Package missing → false. Already-off with a superseded pending → true so
 	// MCP/settings can cancel a went_public without requiring the flag on.
 	return changed || pending != null

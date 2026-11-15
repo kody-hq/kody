@@ -22,7 +22,7 @@ import {
 import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
-import { buildPublicVisitorsHeldBackPublishNotice } from '#mcp/capabilities/packages/public-visitors-held-back-publish-notice.ts'
+import { buildHeldForApprovalPublishNotice } from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import {
 	buildPackagePublishApprovalUrl,
 	createPackagePublishLockedMessage,
@@ -150,14 +150,13 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								originCommit: args.absorbed_upstream_commit,
 							})
 						: null
-					const publicVisitorsHeldBack =
-						await buildPublicVisitorsHeldBackNoticeForSource({
-							env: ctx.env,
-							baseUrl: ctx.callerContext.baseUrl,
-							ownerUserId: owner.ownerUserId,
-							ownerScope: owner.ownerScope,
-							sourceId: sessionInfo.source_id,
-						})
+					const heldForApproval = await buildHeldForApprovalNoticeForSource({
+						env: ctx.env,
+						baseUrl: ctx.callerContext.baseUrl,
+						ownerUserId: owner.ownerUserId,
+						ownerScope: owner.ownerScope,
+						sourceId: sessionInfo.source_id,
+					})
 					await reportCapabilityProgress(ctx.reportProgress, {
 						progress: 3,
 						total: progressTotal,
@@ -169,9 +168,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 						published_commit: result.publishedCommit,
 						message: result.message,
 						...(absorbNotice ? { notice: absorbNotice } : {}),
-						...(publicVisitorsHeldBack
-							? { public_visitors_held_back: publicVisitorsHeldBack }
-							: {}),
+						...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
 					}
 				}
 				const source = await getEntitySourceByIdForUser(ctx.env.APP_DB, {
@@ -392,7 +389,7 @@ async function absorbForkUpstreamAfterPublish(input: {
 	}
 }
 
-async function buildPublicVisitorsHeldBackNoticeForSource(input: {
+async function buildHeldForApprovalNoticeForSource(input: {
 	env: Env
 	baseUrl: string
 	ownerUserId: OwnerId
@@ -411,7 +408,7 @@ async function buildPublicVisitorsHeldBackNoticeForSource(input: {
 			packageId: source.entity_id,
 		})
 		if (!savedPackage) return null
-		return await buildPublicVisitorsHeldBackPublishNotice({
+		return await buildHeldForApprovalPublishNotice({
 			env: input.env,
 			baseUrl: input.baseUrl,
 			ownerUserId: input.ownerUserId,
@@ -421,7 +418,7 @@ async function buildPublicVisitorsHeldBackNoticeForSource(input: {
 		})
 	} catch (error) {
 		console.warn(
-			`[publicVisitorsHeldBack] package lookup failed for source ${input.sourceId}:`,
+			`[heldForApproval] package lookup failed for source ${input.sourceId}:`,
 			error instanceof Error ? error.message : error,
 		)
 		return null

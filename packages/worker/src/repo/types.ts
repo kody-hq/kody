@@ -22,6 +22,12 @@ export const entitySourceRowSchema = z.object({
 	 * Runtime readers serve this commit; see `toServingSourceView`.
 	 */
 	serving_commit: z.string().nullable().optional(),
+	/**
+	 * A published commit whose build is complete but that waits for its
+	 * internet-visible app's owner to approve wider capabilities. Everyone
+	 * keeps `serving_commit` until then; see `advanceServingCommit`.
+	 */
+	held_commit: z.string().nullable().optional(),
 	indexed_commit: z.string().nullable(),
 	manifest_path: z.string(),
 	source_root: z.string(),
