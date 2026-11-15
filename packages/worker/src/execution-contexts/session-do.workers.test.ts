@@ -278,7 +278,7 @@ test('packages served to a committed run are kept on its lease, and refused for 
 	})
 	expect(authorized.ok && authorized.lease.packages).toEqual({
 		entries: ['pkg_a', 'pkg_b'],
-		all: ['pkg_a', 'pkg_dep', 'pkg_b'],
+		all: ['pkg_a', 'pkg_b', 'pkg_dep'],
 	})
 })
 

@@ -14,7 +14,7 @@ test('a later package graph only adds to what the run already loaded', () => {
 		}),
 	).toEqual({
 		entries: ['pkg_a', 'pkg_b'],
-		all: ['pkg_a', 'pkg_dep', 'pkg_b'],
+		all: ['pkg_a', 'pkg_b', 'pkg_dep'],
 	})
 })
 
@@ -24,15 +24,31 @@ test('an entry package counts as loaded even when the graph lists no binding for
 	).toEqual({ entries: ['pkg_a'], all: ['pkg_a'] })
 })
 
-test('the recorded set is capped', () => {
-	const many = Array.from(
-		{ length: maxRunPackagesRecorded + 50 },
-		(_, i) => `pkg_${i}`,
+test('past the cap the set is marked truncated and every entry stays in all', () => {
+	const deps = Array.from(
+		{ length: maxRunPackagesRecorded },
+		(_, i) => `pkg_dep_${i}`,
 	)
-	const merged = mergeRunPackages(undefined, {
-		entryPackageIds: many,
-		packageIds: many,
+	const full = mergeRunPackages(undefined, {
+		entryPackageIds: ['pkg_a'],
+		packageIds: deps,
 	})
-	expect(merged.entries).toHaveLength(maxRunPackagesRecorded)
-	expect(merged.all).toHaveLength(maxRunPackagesRecorded)
+	expect(full.truncated).toBe(true)
+	const later = mergeRunPackages(full, {
+		entryPackageIds: ['pkg_late'],
+		packageIds: ['pkg_late'],
+	})
+	expect(later.entries).toEqual(['pkg_a', 'pkg_late'])
+	expect(later.all).toHaveLength(maxRunPackagesRecorded)
+	expect(later.all).toEqual(expect.arrayContaining(later.entries))
+	expect(later.truncated).toBe(true)
+})
+
+test('a set under the cap is not marked truncated', () => {
+	expect(
+		mergeRunPackages(undefined, {
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a', 'pkg_dep'],
+		}),
+	).not.toHaveProperty('truncated')
 })
