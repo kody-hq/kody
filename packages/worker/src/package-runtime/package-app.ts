@@ -4144,7 +4144,7 @@ async function buildPackageAppWorkerOptionsUncached(
 			packageBindingIds: packageStorageGrantIds,
 			packageBindingToken,
 			rewriteNullPackagesInvoke:
-				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
+				await modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
 			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
 			packageAppApexHostnames: listPackageAppOrigins({

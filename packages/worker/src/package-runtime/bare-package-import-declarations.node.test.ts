@@ -18,7 +18,7 @@ vi.mock('./import-specifiers.ts', async (importOriginal) => {
 const { collectUndeclaredBarePackageImports } =
 	await import('./bare-package-import-declarations.ts')
 
-test('many entries sharing modules parse each module once', () => {
+test('many entries sharing modules parse each module once', async () => {
 	const targetCount = 99
 	const sourceFiles: Record<string, string> = {
 		'package.json': JSON.stringify({
@@ -35,7 +35,7 @@ test('many entries sharing modules parse each module once', () => {
 		return { path }
 	})
 	parseCalls.count = 0
-	const result = collectUndeclaredBarePackageImports({
+	const result = await collectUndeclaredBarePackageImports({
 		manifest: { name: '@synthetic/many', kody: {} } as never,
 		sourceFiles,
 		entryPoints: entryPoints as never,

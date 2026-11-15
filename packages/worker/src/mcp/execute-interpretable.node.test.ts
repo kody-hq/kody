@@ -6,7 +6,7 @@ import {
 	recordExecuteInterpretableEvent,
 } from './execute-interpretable.ts'
 
-test('classifies glue-only execute modules and each documented disqualifier', () => {
+test('classifies glue-only execute modules and each documented disqualifier', async () => {
 	const cases: Array<[source: string, reason: string]> = [
 		[
 			`import { kody } from 'kody:runtime'
@@ -123,7 +123,11 @@ export default async function main() {
 			'has_package_import',
 		],
 	]
-	expect(cases.map(([source]) => classifyExecuteInterpretable(source))).toEqual(
+	expect(
+		await Promise.all(
+			cases.map(([source]) => classifyExecuteInterpretable(source)),
+		),
+	).toEqual(
 		cases.map(([, reason]) => ({
 			class: reason === 'glue' ? 'interpretable' : 'non_interpretable',
 			reason,
@@ -131,9 +135,9 @@ export default async function main() {
 	)
 })
 
-test('records a privacy-safe payload and never throws when unavailable or broken', () => {
+test('records a privacy-safe payload and never throws when unavailable or broken', async () => {
 	const writeDataPoint = vi.fn()
-	recordExecuteInterpretableEvent(
+	await recordExecuteInterpretableEvent(
 		{
 			EXECUTE_INTERPRETABLE_EVENTS: {
 				writeDataPoint,
@@ -152,7 +156,7 @@ export default async function main() {
 		doubles: [1],
 	})
 
-	recordExecuteInterpretableEvent(
+	await recordExecuteInterpretableEvent(
 		{
 			EXECUTE_INTERPRETABLE_EVENTS: {
 				writeDataPoint,
@@ -175,7 +179,7 @@ export default async function main() {
 		'super-secret',
 	)
 
-	expect(() =>
+	await expect(
 		recordExecuteInterpretableEvent(
 			{},
 			{
@@ -183,10 +187,10 @@ export default async function main() {
 					"import { kody } from 'kody:runtime'\nexport default async function main() {}",
 			},
 		),
-	).not.toThrow()
+	).resolves.toBeUndefined()
 
 	consoleWarn.mockImplementation(() => {})
-	expect(() =>
+	await expect(
 		recordExecuteInterpretableEvent(
 			{
 				EXECUTE_INTERPRETABLE_EVENTS: {
@@ -197,7 +201,7 @@ export default async function main() {
 			},
 			{ source: 'export default async function main() { return 1 }' },
 		),
-	).not.toThrow()
+	).resolves.toBeUndefined()
 	expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(
 		'execute-interpretable-event-failed',
 		expect.any(Error),

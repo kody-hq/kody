@@ -1295,10 +1295,8 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
 }
 
 /**
- * Every relative import in `modules`, resolved. One parse per module, shared
+ * Every relative import in `modules`, resolved. One lex per module, shared
  * by the three collectors below: dependency artifacts are megabytes each.
- */
-/**
  * Worker modules are already plain JavaScript, so a lexer lists their imports.
  * A Babel AST of a multi-megabyte bundle costs tens of megabytes, and this
  * runs in the shared API isolate on every execute.
@@ -1390,12 +1388,12 @@ function collectReferencedPublicRuntimeModulePaths(
 	return publicRuntimePaths
 }
 
-export function refreshKodyRuntimeModules(
+export async function refreshKodyRuntimeModules(
 	modules: WorkerLoaderModules,
 	options?: {
 		includeDefaultRuntimePath?: boolean
 	},
-): WorkerLoaderModules {
+): Promise<WorkerLoaderModules> {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
 	const importedPaths = collectResolvedLiteralImportPaths(modules)

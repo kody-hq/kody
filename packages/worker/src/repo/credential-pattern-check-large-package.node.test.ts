@@ -13,10 +13,10 @@ vi.mock('#worker/module-source.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof ModuleSource>()
 	return {
 		...actual,
-		parseModuleSource(source: string) {
+		async parseModuleSource(source: string) {
 			heap.parses += 1
 			heap.peak = Math.max(heap.peak, getHeapStatistics().used_heap_size)
-			return actual.parseModuleSource(source)
+			return await actual.parseModuleSource(source)
 		},
 	}
 })
@@ -79,7 +79,7 @@ function generatedPackage() {
 	return files
 }
 
-test('credential publish gate scans a ~3 MB package one module at a time', () => {
+test('credential publish gate scans a ~3 MB package one module at a time', async () => {
 	const files = generatedPackage()
 	const sourceBytes = Object.entries(files)
 		.filter(([path]) => path.endsWith('.ts'))
@@ -89,7 +89,7 @@ test('credential publish gate scans a ~3 MB package one module at a time', () =>
 	const baseline = getHeapStatistics().used_heap_size
 	heap.peak = baseline
 	heap.parses = 0
-	const result = buildCredentialPatternCheck(files)
+	const result = await buildCredentialPatternCheck(files)
 
 	expect(result.ok).toBe(true)
 	expect(result.stampKeys).toEqual(['EXAMPLE_TOKEN'])

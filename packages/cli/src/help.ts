@@ -361,7 +361,10 @@ ${orgBlock}
              \`--ready-file\` JSON reports the same value as \`basePath\`).
              Default is empty (serve at \`/\`). Use
              \`--app-base-path /<package-name>\` to match the
-             hosted app mount while iterating locally.
+             hosted app mount while iterating locally. With
+             \`--target mock\` on the local Kody runtime, the mount is
+             always \`/@<username>/packages/<kody.id>\`, the path local
+             Kody renders links for; a different value is rejected.
 
   --host <addr>
              With \`kody dev serve\`, the address the dev server listens on

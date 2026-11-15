@@ -95,7 +95,7 @@ function resolveLocalImportPath(input: {
 	})
 }
 
-export function collectReachableSourceFilePaths(input: {
+export async function collectReachableSourceFilePaths(input: {
 	files: Record<string, string>
 	entryPoint: string
 	rootPackage: {
@@ -128,13 +128,11 @@ export function collectReachableSourceFilePaths(input: {
 		const source = input.files[filePath]
 		if (source == null) continue
 		reachable.add(filePath)
-		for (const node of collectModuleImportNodesCached(
-			input.importNodesCache,
-			source,
-			{
+		for (const node of (
+			await collectModuleImportNodesCached(input.importNodesCache, source, {
 				includeTypeOnly: input.includeTypeOnly,
 				filePath,
-			},
+			})
 		).literalImports) {
 			if (
 				node.kind === 'static' &&
@@ -198,12 +196,12 @@ function createBundleArtifactDependency(input: {
  * provenance as direct imports. Only files reachable from the imported
  * export count, so a dependency's unrelated exports never widen the set.
  */
-function collectTransitiveKodyDependencies(input: {
+async function collectTransitiveKodyDependencies(input: {
 	directSpecifiers: Array<string>
 	directPackageIds: ReadonlySet<string>
 	rootPackageName: string | undefined
 	loadedPackages: Map<string, LoadedDependencyPackage>
-}): Array<BundleArtifactDependency> {
+}): Promise<Array<BundleArtifactDependency>> {
 	const transitive = new Map<string, BundleArtifactDependency>()
 	const visitedExports = new Set<string>()
 	const pending: Array<{
@@ -245,7 +243,7 @@ function collectTransitiveKodyDependencies(input: {
 				transitive: true,
 			})
 		}
-		const reachable = collectReachableSourceFilePaths({
+		const reachable = await collectReachableSourceFilePaths({
 			files: loaded.files,
 			entryPoint: exportEntryPoint,
 			rootPackage: { manifest: loaded.manifest, prefix: '' },
@@ -255,7 +253,7 @@ function collectTransitiveKodyDependencies(input: {
 				reachable.has(filePath),
 			),
 		)
-		for (const imported of collectStaticKodyPackageImportsFromFiles(
+		for (const imported of await collectStaticKodyPackageImportsFromFiles(
 			reachableFiles,
 		)) {
 			if (imported.packageName === loaded.manifest.name) continue
@@ -287,7 +285,7 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 			files: input.sourceFiles,
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
-	const reachable = collectReachableSourceFilePaths({
+	const reachable = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
@@ -302,7 +300,7 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 	)
 	const importedPackages = new Map<string, string>()
 	const importedSpecifiers = new Set<string>()
-	for (const imported of collectStaticKodyPackageImportsFromFiles(
+	for (const imported of await collectStaticKodyPackageImportsFromFiles(
 		reachableFiles,
 	)) {
 		if (imported.packageName === rootPackage?.manifest.name) continue
@@ -358,7 +356,7 @@ export async function resolveKodyDependenciesForEntryPoint(input: {
 		}),
 	)
 	const transitiveDependencies = input.loadedPackages
-		? collectTransitiveKodyDependencies({
+		? await collectTransitiveKodyDependencies({
 				directSpecifiers: [...importedSpecifiers].sort((left, right) =>
 					left.localeCompare(right),
 				),

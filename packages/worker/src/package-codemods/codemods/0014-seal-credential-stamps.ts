@@ -103,12 +103,12 @@ function remapSealFilesToSnapshot(
 	return next
 }
 
-function detectSealCredentialStamps(
+async function detectSealCredentialStamps(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const located = locatePackage(files, context)
-	const plan = planCredentialStampSeal(located.files)
+	const plan = await planCredentialStampSeal(located.files)
 	const findings: Array<PackageCodemodFinding> = []
 	if (plan.updates.length > 0) {
 		findings.push({
@@ -131,12 +131,12 @@ function detectSealCredentialStamps(
 	return findings
 }
 
-function transformSealCredentialStamps(
+async function transformSealCredentialStamps(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	const located = locatePackage(files, context)
-	const plan = planCredentialStampSeal(located.files)
+	const plan = await planCredentialStampSeal(located.files)
 	const needsManual: Array<PackageCodemodFinding> = []
 	if (plan.blockingFailures.length > 0) {
 		needsManual.push({

@@ -1,9 +1,9 @@
 import { expect, test } from 'vitest'
 import { checkPublishedEntrypointsForRebuild } from './published-entrypoint-checks.ts'
 
-test('a published entrypoint with a narrowly typed required param passes (no typecheck at invocation)', () => {
+test('a published entrypoint with a narrowly typed required param passes (no typecheck at invocation)', async () => {
 	expect(
-		checkPublishedEntrypointsForRebuild({
+		await checkPublishedEntrypointsForRebuild({
 			sourceFiles: {
 				'src/index.ts':
 					'export default async function main(params: { name: string }) { return params.name }',
@@ -13,9 +13,9 @@ test('a published entrypoint with a narrowly typed required param passes (no typ
 	).toEqual({ ok: true })
 })
 
-test('even source with type errors passes; publish owns type checking', () => {
+test('even source with type errors passes; publish owns type checking', async () => {
 	expect(
-		checkPublishedEntrypointsForRebuild({
+		await checkPublishedEntrypointsForRebuild({
 			sourceFiles: {
 				'src/index.ts': 'const n: number = "nope"\nexport default () => n',
 			},
@@ -24,9 +24,9 @@ test('even source with type errors passes; publish owns type checking', () => {
 	).toEqual({ ok: true })
 })
 
-test('a missing entrypoint or default export is reported clearly', () => {
+test('a missing entrypoint or default export is reported clearly', async () => {
 	expect(
-		checkPublishedEntrypointsForRebuild({
+		await checkPublishedEntrypointsForRebuild({
 			sourceFiles: {},
 			entryPoints: [{ path: 'src/gone.ts' }],
 		}),
@@ -35,7 +35,7 @@ test('a missing entrypoint or default export is reported clearly', () => {
 		message:
 			'Package runtime entrypoint(s) are missing from the published source snapshot: "src/gone.ts". Republish the package to restore them.',
 	})
-	const noDefault = checkPublishedEntrypointsForRebuild({
+	const noDefault = await checkPublishedEntrypointsForRebuild({
 		sourceFiles: { 'src/lib.ts': 'export const value = 1' },
 		entryPoints: [{ path: 'src/lib.ts' }],
 	})

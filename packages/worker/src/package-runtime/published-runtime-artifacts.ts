@@ -861,7 +861,7 @@ export async function readPackageAppWorkerTemplate(input: {
 			? kv.get(buildPackageAppClientPointerKvKey(identity), 'json')
 			: null,
 	])
-	const app = parseStoredPublishedBundleArtifact(storedApp)
+	const app = await parseStoredPublishedBundleArtifact(storedApp)
 	const appMatches =
 		app?.kind === 'app' &&
 		app.sourceId === input.sourceId &&
@@ -889,7 +889,7 @@ export async function readPublishedBundleArtifact(input: {
 	kvKey: string
 }) {
 	const kv = getBundleArtifactsKv(input.env)
-	return parseStoredPublishedBundleArtifact(
+	return await parseStoredPublishedBundleArtifact(
 		await restoreLinkedArtifactGroups({
 			kv,
 			stored: await kv.get(input.kvKey, 'json'),
@@ -897,9 +897,9 @@ export async function readPublishedBundleArtifact(input: {
 	)
 }
 
-function parseStoredPublishedBundleArtifact(
+async function parseStoredPublishedBundleArtifact(
 	stored: unknown,
-): PublishedBundleArtifact | null {
+): Promise<PublishedBundleArtifact | null> {
 	if (!stored || typeof stored !== 'object') return null
 	const artifact = stored as StoredPublishedBundleArtifact
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
@@ -932,7 +932,7 @@ function parseStoredPublishedBundleArtifact(
 	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
 	if (!isRepairableArtifactKind(loaded.kind)) return loaded
 	return repairInlinedFacadeBindingsInArtifact(
-		repairPreBindingPublishedArtifact(loaded),
+		await repairPreBindingPublishedArtifact(loaded),
 	)
 }
 

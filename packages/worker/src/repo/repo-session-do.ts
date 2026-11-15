@@ -3133,7 +3133,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			})
 		}
 		if (input.phase === 'credentials') {
-			const check = buildCredentialPatternCheck(
+			const check = await buildCredentialPatternCheck(
 				sourceFiles,
 				input.secretProviders ? { secretProviders: input.secretProviders } : {},
 			)
@@ -3150,10 +3150,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				stampKeys: check.stampKeys,
 				...(check.ok
 					? {
-							requestPlacementHits: findSecretPlaceholderRequestPlacements(
-								check.sourceFiles,
-							),
-							fetchBodyHits: findFetchBodySecretResolutionHits(
+							requestPlacementHits:
+								await findSecretPlaceholderRequestPlacements(check.sourceFiles),
+							fetchBodyHits: await findFetchBodySecretResolutionHits(
 								check.sourceFiles,
 							),
 						}

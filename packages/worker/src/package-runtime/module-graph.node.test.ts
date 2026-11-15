@@ -646,7 +646,7 @@ export default async function main() {
 	)
 })
 
-test('package runtime module paths round-trip stamped package ids', () => {
+test('package runtime module paths round-trip stamped package ids', async () => {
 	const packageId = crypto.randomUUID()
 	const modulePath = buildPackageRuntimeModulePath(packageId)
 	expect(modulePath).toMatch(
@@ -758,12 +758,12 @@ export default async function run() {
 	expect(files['.__kody_root__/entry.ts']).not.toContain('package-runtime/')
 })
 
-test('refreshKodyRuntimeModules evaluates the full runtime once for artifact-only graphs', () => {
+test('refreshKodyRuntimeModules evaluates the full runtime once for artifact-only graphs', async () => {
 	const prefix =
 		'.__kody_packages__/@kentcdodds/example/.__published_bundle__/ab'
 	const primary = `${prefix}/.__kody_virtual__/runtime.js`
 	const nested = `${prefix}/nested/.__kody_virtual__/runtime.js`
-	const refreshed = refreshKodyRuntimeModules(
+	const refreshed = await refreshKodyRuntimeModules(
 		{
 			[`${prefix}/entry.js`]: `import "./.__kody_virtual__/runtime.js";
 import "./nested/.__kody_virtual__/runtime.js";
@@ -779,7 +779,7 @@ export default async function run() { return null }`,
 	expect(refreshed['.__kody_virtual__/runtime.js']).toBeUndefined()
 })
 
-test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle and ignores runtime paths in plain strings', () => {
+test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle and ignores runtime paths in plain strings', async () => {
 	const prefix =
 		'.__kody_packages__/@kentcdodds/example/.__published_bundle__/ab'
 	const primary = `${prefix}/.__kody_virtual__/runtime.js`
@@ -790,7 +790,7 @@ test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle
 		{ length: 60_000 },
 		(_, i) => `\t'row-${i}-${'ab'.repeat(32)}',`,
 	)
-	const refreshed = refreshKodyRuntimeModules(
+	const refreshed = await refreshKodyRuntimeModules(
 		{
 			[`${prefix}/bundle.js`]: `import "./.__kody_virtual__/runtime.js";
 export * from "./exported/.__kody_virtual__/runtime.js";
@@ -814,12 +814,12 @@ export default async function run() {
 	expect(refreshed[mentioned]).toBeUndefined()
 })
 
-test('refreshKodyRuntimeModules regenerates stale per-package runtime modules and their sibling shared runtime', () => {
+test('refreshKodyRuntimeModules regenerates stale per-package runtime modules and their sibling shared runtime', async () => {
 	const packageId = crypto.randomUUID()
 	const nestedPrefix =
 		'.__kody_packages__/@kentcdodds/example-package/.__published_bundle__/2e'
 	const stampedModulePath = `${nestedPrefix}/${buildPackageRuntimeModulePath(packageId)}`
-	const refreshed = refreshKodyRuntimeModules({
+	const refreshed = await refreshKodyRuntimeModules({
 		'entry.js': `import { packageStorage } from './${stampedModulePath}'
 export default async function run() {
 	return packageStorage().id

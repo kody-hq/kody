@@ -99,15 +99,17 @@ const packagesUnboundHelperNames = new Set(['packages'])
  * uses via `findUnboundRuntimeHelperAccess` — do not rewrite from the bare
  * TypeError text alone (unrelated `null.invoke` must stay unhinted).
  */
-export function modulesContainUnboundPackagesInvokeAccess(
+export async function modulesContainUnboundPackagesInvokeAccess(
 	modules: WorkerLoaderModules,
 ) {
 	return (
-		findUnboundRuntimeHelperAccess({
-			errorMessage: "Cannot read properties of null (reading 'invoke')",
-			modules,
-			unboundHelperNames: packagesUnboundHelperNames,
-		})?.helperName === 'packages'
+		(
+			await findUnboundRuntimeHelperAccess({
+				errorMessage: "Cannot read properties of null (reading 'invoke')",
+				modules,
+				unboundHelperNames: packagesUnboundHelperNames,
+			})
+		)?.helperName === 'packages'
 	)
 }
 
@@ -119,14 +121,15 @@ export function modulesContainUnboundPackagesInvokeAccess(
  * without making `packages` truthy. Requires module-graph evidence that the
  * access is the unbound `packages` helper (not any null `.invoke`).
  */
-export function rewriteNullPackagesInvokeErrorMessage(input: {
+export async function rewriteNullPackagesInvokeErrorMessage(input: {
 	originalMessage: string
 	modules: WorkerLoaderModules
-}): string | null {
+}): Promise<string | null> {
 	if (!nullPackagesInvokePropertyPattern.test(input.originalMessage)) {
 		return null
 	}
-	if (!modulesContainUnboundPackagesInvokeAccess(input.modules)) return null
+	if (!(await modulesContainUnboundPackagesInvokeAccess(input.modules)))
+		return null
 	const packagesNextStep = buildUnboundRuntimeHelperNextStep('packages')
 	if (input.originalMessage.includes(packagesNextStep)) return null
 	const unboundHelper =
@@ -206,11 +209,11 @@ function enrichUnboundPackagesInvokeError(error) {
  * produced the error, or `null` when the error does not look like an
  * unbound-helper access (an ordinary user-code bug keeps its bare message).
  */
-export function findUnboundRuntimeHelperAccess(input: {
+export async function findUnboundRuntimeHelperAccess(input: {
 	errorMessage: string
 	modules: WorkerLoaderModules
 	unboundHelperNames: ReadonlySet<string>
-}): UnboundRuntimeHelperAccess | null {
+}): Promise<UnboundRuntimeHelperAccess | null> {
 	if (input.unboundHelperNames.size === 0) return null
 	const lateBoundExport = lateBoundUnavailableExportPattern.exec(
 		input.errorMessage,
@@ -228,7 +231,7 @@ export function findUnboundRuntimeHelperAccess(input: {
 		: (notAFunctionErrorPattern.exec(input.errorMessage)?.[1] ?? null)
 	if (propertyName == null && calledExpression == null) return null
 	for (const source of iterateModuleSourceTexts(input.modules)) {
-		const bindings = collectRuntimeImportBindings(source)
+		const bindings = await collectRuntimeImportBindings(source)
 		if (bindings.length === 0) continue
 		const match = propertyName
 			? findPropertyReadAccess({
@@ -326,9 +329,9 @@ function escapeRegExp(value: string) {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function collectRuntimeImportBindings(
+async function collectRuntimeImportBindings(
 	source: string,
-): Array<RuntimeImportBinding> {
+): Promise<Array<RuntimeImportBinding>> {
 	if (
 		!source.includes('kody:runtime') &&
 		!source.includes('runtime.js') &&
@@ -338,7 +341,7 @@ function collectRuntimeImportBindings(
 	}
 	let program: unknown
 	try {
-		program = parseModuleSource(source)
+		program = await parseModuleSource(source)
 	} catch {
 		return []
 	}

@@ -385,7 +385,7 @@ export async function runCredentialStampFleet(input: {
 				source: loaded.source,
 				files: loaded.files,
 			})
-			const plan = planCredentialStampSeal(packageFiles)
+			const plan = await planCredentialStampSeal(packageFiles)
 			// Seal-plan scan size, not declared package.json slot count. A
 			// package can be outcome "stamped" with stampKeyCount 0 when the
 			// scan misses uses (e.g. cm.mcp?.['home'] before optional/bracket

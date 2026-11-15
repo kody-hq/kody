@@ -99,12 +99,12 @@ export function secretMountsKeptCompatNote(aliases: ReadonlyArray<string>) {
  * bundled source snapshot. Computed aliases set `computed` so callers warn
  * without inventing a name.
  */
-export function bundledPackageSecretMountReads(
+export async function bundledPackageSecretMountReads(
 	files: Record<string, string>,
-): MountRead {
+): Promise<MountRead> {
 	const aliases = new Set<string>()
 	let computed = false
-	scanModuleCredentialReferences(files, () => ({
+	await scanModuleCredentialReferences(files, () => ({
 		add: () => undefined,
 		named: (name, _kind, via) => {
 			if (mountReadVias.has(via)) aliases.add(name)
@@ -304,7 +304,7 @@ async function readsAtCommit(input: {
 	})
 	const read: SnapshotMountRead = snapshot?.files
 		? {
-				...bundledPackageSecretMountReads(snapshot.files),
+				...(await bundledPackageSecretMountReads(snapshot.files)),
 				declaredMounts: declaredMountsFromFiles(
 					snapshot.files,
 					snapshot.manifestPath,

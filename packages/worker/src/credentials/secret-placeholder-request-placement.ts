@@ -64,10 +64,14 @@ export function requestPartOfPlacement(
 	}
 }
 
-export function findSecretPlaceholderRequestPlacements(
+export async function findSecretPlaceholderRequestPlacements(
 	files: Record<string, string>,
-): Array<SecretPlaceholderRequestPlacementHit> {
-	const scan = scanPackageCredentials({ files, slots: undefined, sites: true })
+): Promise<Array<SecretPlaceholderRequestPlacementHit>> {
+	const scan = await scanPackageCredentials({
+		files,
+		slots: undefined,
+		sites: true,
+	})
 	const seen = new Set<string>()
 	const hits: Array<SecretPlaceholderRequestPlacementHit> = []
 	for (const reference of scan.references) {

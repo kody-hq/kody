@@ -232,12 +232,12 @@ async function buildLegacyInlinedRuntimeArtifact(pkg: FixturePackage) {
 		rootPackageId: pkg.id,
 	})
 	const entryPath = joinPath(rootSourcePrefix, '.__kody_import_entry__.js')
-	const files = refreshKodyRuntimeModules({
+	const files = (await refreshKodyRuntimeModules({
 		...prepared.files,
 		[entryPath]: createImportableEntrypointSource({
 			modulePath: `./${prepared.entryPoint}`,
 		}),
-	}) as Record<string, string>
+	})) as Record<string, string>
 	return await bundleVirtualFiles({ files, entryPoint: entryPath })
 }
 

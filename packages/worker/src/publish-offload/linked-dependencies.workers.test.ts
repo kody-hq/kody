@@ -325,7 +325,7 @@ async function commitUploadedTarget(input: {
 	uploaded: PublishBuildTargetEntry
 	modules: WorkerLoaderModules
 }) {
-	const linkedImports = collectLinkedPackageImports({
+	const linkedImports = await collectLinkedPackageImports({
 		sourceFiles: importerFiles,
 		entryPoint: input.uploaded.entryPoint,
 	})
@@ -484,7 +484,7 @@ test(
 	async () => {
 		const { userId, notes, reader } = await setup()
 		const built = await buildOffWorker(userId, reader.packageId)
-		const linkedImports = collectLinkedPackageImports({
+		const linkedImports = await collectLinkedPackageImports({
 			sourceFiles: importerFiles,
 			entryPoint: built.target.entryPoint,
 		})
