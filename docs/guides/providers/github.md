@@ -320,14 +320,15 @@ community package from the `@kody` org.
    credential named `github` with no kind, so the saved token (provider
    `github`) or a GitHub OAuth connection can fill it. Helpers take no auth
    options: since `@kody/github` 1.0.0, passing `secretName`, `integrationName`,
-   or `account` throws. When you have more than one GitHub credential, pick one
-   with the execute credentials map:
-   `credentials: { github: 'githubAccessToken' }` next to `code`, or
-   `--credential github=githubAccessToken` with the CLI. A package that imports
+   or `account` throws. With one GitHub credential, Kody uses it. The execute
+   credentials map is only needed when you have more than one: pass your own
+   credential's name (the token Key you saved, or your GitHub OAuth connection)
+   as `credentials: { github: '<credential-name>' }` next to `code`, or
+   `--credential github=<credential-name>` with the CLI. A package that imports
    the fork from a job or webhook needs a default mapping for its `github` need
    on that package's **Credentials** tab.
-4. Verify the fork against your credentials from `execute`, with
-   `credentials: { github: 'githubAccessToken' }`:
+4. Verify the fork against your credentials from `execute`, adding the
+   credentials map from step 3 if you have more than one GitHub credential:
 
 ```ts
 import getViewer from 'kody:@<your-username>/github/get-viewer'
