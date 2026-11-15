@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 
 import { SiteLink } from '../components/site-link.tsx'
@@ -21,21 +22,8 @@ import {
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
 import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import { packageCredentialsTabHref } from '#universal/package-credentials-page.ts'
-import {
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	mutedLinkCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss, fieldCss, fieldLabelCss, mutedLinkCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 export type WebhookConfirmation = {
 	armed: boolean
@@ -286,14 +274,14 @@ export function renderPackageWebhookCard(input: {
 				>
 					{!webhook.approved ? (
 						webhook.approvalUrl ? (
-							<SiteLink
+							<Button
 								href={webhook.approvalUrl}
 								aria-label={`Approve ${webhookLabel}`}
 								data-testid="package-webhook-approve"
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Approve
-							</SiteLink>
+							</Button>
 						) : (
 							<span css={{ color: colors.textMuted }}>
 								Approve it from this package's Credentials page.
@@ -312,7 +300,7 @@ export function renderPackageWebhookCard(input: {
 							Turn off on Triggers
 						</SiteLink>
 					) : null}
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						aria-label={
@@ -320,12 +308,12 @@ export function renderPackageWebhookCard(input: {
 								? `Confirm rotate URL for ${webhookLabel}`
 								: `Rotate URL for ${webhookLabel}`
 						}
-						css={dangerButtonCss}
+						variant="danger"
 						onClick={rotateCheck.onClick}
 						onBlur={rotateCheck.onBlur}
 					>
 						{rotateCheck.armed ? 'Confirm rotate' : 'Rotate URL'}
-					</button>
+					</Button>
 					<SiteLink href={input.deliveriesHref} css={mutedLinkCss}>
 						Recent deliveries
 					</SiteLink>
@@ -412,15 +400,15 @@ export function renderPackageWebhookCard(input: {
 							/>
 						</label>
 						<div>
-							<button
+							<Button
 								type="submit"
 								disabled={isMutating}
 								aria-label={`Mint another URL for ${webhook.packageKodyId}/${webhook.name}`}
 								data-testid="package-webhook-mint-another-submit"
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Mint another URL
-							</button>
+							</Button>
 						</div>
 					</form>
 				</details>
@@ -447,16 +435,16 @@ function renderUrlSection(input: {
 					export once approved.
 				</p>
 				<div>
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						aria-label={`Mint URL for ${webhook.packageKodyId}/${webhook.name}`}
 						data-testid="package-webhook-mint"
-						css={primaryButtonCss}
+						variant="primary"
 						onClick={() => onIntent({ intent: 'mint' })}
 					>
 						Mint URL
-					</button>
+					</Button>
 				</div>
 			</div>
 		)
@@ -471,15 +459,15 @@ function renderUrlSection(input: {
 					variant="pill"
 				/>
 				<div>
-					<button
+					<Button
 						type="button"
 						aria-label={`Hide URL for ${webhook.packageKodyId}/${webhook.name}`}
 						data-testid="package-webhook-hide-url"
-						css={secondaryButtonCss}
+						variant="secondary"
 						onClick={onHideUrl}
 					>
 						Hide URL
-					</button>
+					</Button>
 				</div>
 			</div>
 		)
@@ -500,16 +488,16 @@ function renderUrlSection(input: {
 				audit log.
 			</p>
 			<div>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					aria-label={`Reveal URL for ${webhook.packageKodyId}/${webhook.name}`}
 					data-testid="package-webhook-reveal"
-					css={secondaryButtonCss}
+					variant="secondary"
 					onClick={() => onIntent({ intent: 'reveal' })}
 				>
 					Reveal URL
-				</button>
+				</Button>
 			</div>
 		</div>
 	)

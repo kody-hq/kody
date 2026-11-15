@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
@@ -43,7 +44,6 @@ import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
@@ -511,17 +511,17 @@ export function LoginPage({
 						css={authOauthCss}
 					>
 						{authProviders.map((provider) => (
-							<button
+							<Button
 								key={provider.id}
 								type="button"
 								disabled={!hydrated || isSubmitting}
 								aria-label={`Continue with ${provider.label}`}
 								data-testid={`social-sign-in-${provider.id}`}
-								css={oauthButtonCss}
+								variant="secondary" size="lg" css={oauthButtonCss}
 								onClick={() => handleProviderSignIn(provider.id)}
 							>
 								<ProviderIcon providerId={provider.id} size="1.4rem" />
-							</button>
+							</Button>
 						))}
 					</div>
 				</>
@@ -605,7 +605,6 @@ const authOauthCss: CSSObject = {
 }
 
 const oauthButtonCss: CSSObject = {
-	...getGhostButtonCss(),
 	flex: '0 0 auto',
 	width: '3rem',
 	height: '3rem',

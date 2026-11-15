@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
 import { matchesSearchQuery } from '#client/search-filter.ts'
@@ -11,14 +12,7 @@ import type {
 import { buildMemoriesExportFilename } from '#universal/memory-export.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -163,9 +157,6 @@ export function AccountMemoriesPage({
 			to: relocateAccountHref(href, currentHref),
 			resetScroll: false,
 		})
-
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -346,13 +337,13 @@ export function AccountMemoriesPage({
 									/>
 									Include deleted
 								</label>
-								<SiteLink
+								<Button
 									href={buildMemoriesExportHref(includeDeleted, orgSlug)}
 									download={buildMemoriesExportFilename()}
-									css={secondaryButtonCss}
+									variant="secondary"
 								>
 									Export
-								</SiteLink>
+								</Button>
 							</>
 						}
 						columns={[
@@ -513,7 +504,7 @@ export function AccountMemoriesPage({
 												alignItems: 'center',
 											}}
 										>
-											<button
+											<Button
 												type="button"
 												disabled={
 													isMutating || detailMemory.status === 'deleted'
@@ -528,15 +519,15 @@ export function AccountMemoriesPage({
 														force: false,
 													})
 												}}
-												css={dangerButtonCss}
+												variant="danger"
 											>
 												{actionState === 'busy' && deleteMode === 'soft'
 													? 'Deleting...'
 													: deleteMode === 'soft'
 														? 'Confirm soft delete'
 														: 'Soft delete'}
-											</button>
-											<button
+											</Button>
+											<Button
 												type="button"
 												disabled={isMutating}
 												onClick={() => {
@@ -549,25 +540,25 @@ export function AccountMemoriesPage({
 														force: true,
 													})
 												}}
-												css={dangerButtonCss}
+												variant="danger"
 											>
 												{actionState === 'busy' && deleteMode === 'hard'
 													? 'Deleting...'
 													: deleteMode === 'hard'
 														? 'Confirm permanent delete'
 														: 'Delete permanently'}
-											</button>
+											</Button>
 											{deleteMode ? (
-												<button
+												<Button
 													type="button"
 													disabled={isMutating}
 													onClick={() => {
 														setDeleteMode(null)
 													}}
-													css={secondaryButtonCss}
+													variant="secondary"
 												>
 													Cancel
-												</button>
+												</Button>
 											) : null}
 										</div>
 									)}

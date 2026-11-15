@@ -1,9 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { AuthLayout } from './auth-layout.tsx'
-import {
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { useState, useSyncExternalStore, type ReactNode } from 'react'
 import type {} from '../desktop-shell.ts'
 const subscribe = () => () => {}
@@ -26,8 +23,8 @@ export function NativeAuth({
 		<AuthLayout
 			title={mode === 'signup' ? 'Create your account' : 'Welcome back'}
 		>
-			<button
-				css={getPrimaryButtonCss()}
+			<Button
+				variant="primary" size="md"
 				disabled={busy}
 				onClick={async () => {
 					setBusy(true)
@@ -44,14 +41,14 @@ export function NativeAuth({
 				}}
 			>
 				{busy ? 'Waiting for your browser…' : 'Continue in your browser'}
-			</button>
+			</Button>
 			{busy && (
-				<button
-					css={getSecondaryButtonCss()}
+				<Button
+					variant="secondary" size="md"
 					onClick={() => void auth.cancel()}
 				>
 					Cancel
-				</button>
+				</Button>
 			)}
 			{error && <p role="alert">{error}</p>}
 		</AuthLayout>

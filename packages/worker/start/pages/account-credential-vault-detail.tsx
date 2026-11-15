@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
@@ -11,13 +11,7 @@ import type {
 	CredentialProviderBindingItem,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const mutedCss = css({ margin: 0, color: colors.textMuted })
@@ -79,12 +73,12 @@ export function renderVaultCredentialDetail(input: {
 			) : null}
 
 			<div>
-				<SiteLink
+				<Button
 					href={orgResourcePath(input.orgSlug, 'secret-providers')}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Manage secret providers
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

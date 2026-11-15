@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	fromDatetimeLocalValue,
 	toDatetimeLocalValue,
@@ -8,13 +9,7 @@ import { useEffect, useRef, useId } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	inputCss,
-	textareaCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss, inputCss, textareaCss } from '#universal/styles/style-primitives.ts'
 import type { FillPlacementDraft } from '#universal/credential-fill-placement.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
 
@@ -193,24 +188,24 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 										css={inputCss}
 									/>
 
-									<button
+									<Button
 										type="button"
 										onClick={() => props.onRemoveAllowedHost(index)}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Remove
-									</button>
+									</Button>
 								</div>
 							))}
 						</div>
 						<div>
-							<button
+							<Button
 								type="button"
 								onClick={() => props.onAddAllowedHost()}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								Add host
-							</button>
+							</Button>
 						</div>
 					</div>
 				</div>
@@ -218,8 +213,6 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 		</>
 	)
 }
-
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const advancedDetailsCss: CSSObject = {
 	...accountDisclosureCss,

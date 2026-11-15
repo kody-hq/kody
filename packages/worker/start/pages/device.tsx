@@ -1,28 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
 import type { DevicePageData, DevicePageError } from '#start/server/device'
-import {
-	cardCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	insetCardCss,
-	inputCss,
-	mutedLinkCss,
-	nativeDisclosureCss,
-	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
-	sectionTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss, fieldCss, fieldLabelCss, getAlertCardCss, insetCardCss, inputCss, mutedLinkCss, nativeDisclosureCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, sectionTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -139,15 +122,15 @@ function SignedOutCard(props: {
 			) : null}
 			<p css={descriptionCss}>{deviceAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<a href={buildAuthLink('/login', data.redirectTo)} css={primaryLinkCss}>
+				<Button href={buildAuthLink('/login', data.redirectTo)} variant="primary" size="md" reloadDocument css={primaryLinkCss}>
 					Sign in to continue
-				</a>
-				<a
+				</Button>
+				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
-					css={secondaryLinkCss}
+					variant="secondary" size="md" reloadDocument css={secondaryLinkCss}
 				>
 					Create an account
-				</a>
+				</Button>
 			</div>
 		</section>
 	)
@@ -187,9 +170,9 @@ function CodeEntryCard(props: {
 						css={codeInputCss}
 					/>
 				</label>
-				<button type="submit" css={primaryButtonCss}>
+				<Button type="submit" variant="primary" size="md">
 					Continue
-				</button>
+				</Button>
 			</form>
 		</>
 	)
@@ -286,24 +269,24 @@ function ConsentCard(props: {
 					/>
 				)}
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						css={primaryButtonCss}
+						variant="primary" size="md"
 					>
 						Approve
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary" size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -406,23 +389,23 @@ function AccountConsentCard(props: {
 					</span>
 				</label>
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
-						css={primaryButtonCss}
+						variant="primary" size="md"
 					>
 						Sign that browser in
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary" size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -434,21 +417,11 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const primaryLinkCss = {
-	...primaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }
 const secondaryLinkCss = {
-	...secondaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }

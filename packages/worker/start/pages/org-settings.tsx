@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	updateOrganizationProfile,
 	deleteOrganization,
@@ -21,11 +22,7 @@ import {
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getButtonCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -214,7 +211,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						</div>
 						{data.canManage ? (
 							<div css={avatarActionsCss}>
-								<label css={getGhostButtonCss({ size: 'sm' })}>
+								<label css={getButtonCss({ variant: 'secondary' })}>
 									{renderIcon('photo', { size: '1.05rem' })}
 									{identity.avatarUrl ? 'Change photo' : 'Add photo'}
 									<input
@@ -230,9 +227,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									/>
 								</label>
 								{identity.avatarUrl ? (
-									<button
+									<Button
 										type="button"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										disabled={isPending}
 										onClick={() =>
 											void submit(
@@ -243,7 +240,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										}
 									>
 										Remove photo
-									</button>
+									</Button>
 								) : null}
 							</div>
 						) : null}
@@ -308,13 +305,13 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									testId="org-settings-visibility"
 								/>
 								<div css={accountActionsCss}>
-									<button
+									<Button
 										type="submit"
 										disabled={isPending}
-										css={getPillButtonCss({ size: 'sm' })}
+										variant="primary"
 									>
 										{profile.isPending ? 'Saving…' : 'Save changes'}
-									</button>
+									</Button>
 								</div>
 							</form>
 						) : (
@@ -357,10 +354,10 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 								Organizations.
 							</p>
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="button"
 									data-testid="delete-org"
-									css={getDangerPillCss({ size: 'sm' })}
+									variant="danger"
 									onClick={() => {
 										setConfirmation('')
 										dialog.current?.showModal()
@@ -368,7 +365,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 								>
 									{renderIcon('warning-triangle', { size: '1.05rem' })}Delete
 									organization
-								</button>
+								</Button>
 							</div>
 							<dialog
 								ref={dialog}
@@ -422,24 +419,24 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										/>
 									</label>
 									<div css={accountActionsCss}>
-										<button
+										<Button
 											type="submit"
 											disabled={
 												(confirmation !== data.org.slug &&
 													confirmation !== 'DELETE') ||
 												isPending
 											}
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 										>
 											{isPending ? 'Deleting…' : 'Delete organization'}
-										</button>
-										<button
+										</Button>
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											onClick={closeDialog}
 										>
 											Cancel
-										</button>
+										</Button>
 									</div>
 								</form>
 							</dialog>

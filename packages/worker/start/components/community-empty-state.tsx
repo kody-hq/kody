@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
 import type { CSSObject } from '@emotion/react'
@@ -14,10 +15,7 @@ import {
 	type CommunityListingSort,
 } from '#universal/community-search.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getButtonCss } from '#universal/styles/style-primitives.ts'
 
 function buildCreatePackagePrompt(query: string) {
 	return `I searched Kody Community for "${query}" and found no published package. Create this package for me. First open search({ entity: ["guide:package_authoring", "guide:package_lifecycle"] }). Then choose a scoped package.json name (@you/leaf) and call packageGetGitRemote({ create: true, kody_id: '@you/leaf' }) to create its repository. Build, test, and publish a useful package that matches my search.`
@@ -44,7 +42,7 @@ export function renderCommunityEmptyState(
 					can ask your agent to create it.
 				</p>
 				<details css={createPackageCss}>
-					<summary css={getPillButtonCss()}>
+					<summary css={getButtonCss({ variant: 'primary', size: 'lg' })}>
 						Ask your agent to create this package
 					</summary>
 					<div css={promptPanelCss}>
@@ -57,12 +55,12 @@ export function renderCommunityEmptyState(
 					</div>
 				</details>
 				<p css={secondaryCtaCss}>
-					<SiteLink
+					<Button
 						href={docHref('package-authoring')}
-						css={getGhostButtonCss()}
+						variant="secondary" size="lg"
 					>
 						Read the package authoring guide
-					</SiteLink>
+					</Button>
 					<SiteLink
 						href={buildCommunityIndexHref({ sort, category, installOrg })}
 						css={secondaryLinkCss}
@@ -83,12 +81,12 @@ export function renderCommunityEmptyState(
 				</h2>
 				<p css={emptyTextCss}>{copy.description}</p>
 				<p css={emptyCtaCss}>
-					<SiteLink
+					<Button
 						href={buildCommunityIndexHref({ sort, installOrg })}
-						css={getGhostButtonCss()}
+						variant="secondary" size="lg"
 					>
 						Browse all packages
-					</SiteLink>
+					</Button>
 				</p>
 			</div>
 		)
@@ -104,9 +102,9 @@ export function renderCommunityEmptyState(
 				something useful — forks keep their own history.
 			</p>
 			<p css={emptyCtaCss}>
-				<SiteLink href={routes.onboarding.href()} css={getPillButtonCss()}>
+				<Button href={routes.onboarding.href()} variant="primary" size="lg">
 					Connect your agent
-				</SiteLink>
+				</Button>
 			</p>
 		</div>
 	)

@@ -20,13 +20,7 @@ import {
 import { renderIcon, type IconName } from './icon.tsx'
 import { ForkTargetDialog } from './fork-target-dialog.tsx'
 import type { ForkTargetChoice } from '../fork-target.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	hoverMq,
-	inlineSpinnerCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { hoverMq, inlineSpinnerCss, visuallyHiddenCss, getButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, typography } from '#universal/styles/tokens.ts'
 
 const OTHER_ACCOUNT_FORK_TOOLTIP =
@@ -522,7 +516,7 @@ const edgeAnchoredTooltipCss = {
  * else. Topic tags and status badges never use these.
  */
 function compactActionCss<
-	T extends ReturnType<typeof getPillButtonCss | typeof getGhostButtonCss>,
+	T extends ReturnType<typeof getButtonCss>,
 >(
 	base: T,
 	ink: {
@@ -559,11 +553,11 @@ function compactActionCss<
 }
 
 const packageActionPrimaryCss = compactActionCss(
-	getPillButtonCss({ size: 'sm' }),
+	getButtonCss({ variant: 'primary' }),
 	{ backgroundColor: colors.primary, color: colors.onPrimary },
 )
 const packageActionSecondaryCss = compactActionCss(
-	getGhostButtonCss({ size: 'sm' }),
+	getButtonCss({ variant: 'secondary' }),
 	{ backgroundColor: 'transparent', color: colors.text },
 )
 

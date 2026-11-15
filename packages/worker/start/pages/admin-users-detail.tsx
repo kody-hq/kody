@@ -1,16 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouteContext } from '@tanstack/react-router'
 import { AdminUserDestinationPanel } from './admin-users-destination-panel.tsx'
 import { useState } from 'react'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss, getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -61,8 +56,6 @@ import {
 	softDeleteRestoreDeadlineIso,
 } from '#worker/soft-delete/window.ts'
 const selectCss = getSelectCss()
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 export type AdminUsersActionState =
 	| 'idle'
 	| 'assigning'
@@ -360,25 +353,25 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 							))}
 						</select>
 					</label>
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => props.onSubmitRoleAction('assign_role')}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						{actionState === 'assigning' ? 'Assigning…' : 'Assign'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={
 							isMutating ||
 							!selectedUser.roles.includes(props.selectedRoleToAssign)
 						}
 						onClick={() => props.onSubmitRoleAction('remove_role')}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{actionState === 'removing' ? 'Removing…' : 'Remove'}
-					</button>
+					</Button>
 				</div>
 			</AccountManagementPanel>
 			{!selectedUser.email_verified ? (
@@ -413,7 +406,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 							flexWrap: 'wrap',
 						}}
 					>
-						<button
+						<Button
 							type="button"
 							disabled={isMutating}
 							onClick={() => {
@@ -425,24 +418,24 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 								props.onSubmitVerificationAction('mark_email_verified')
 							}}
 							onBlur={() => setMarkVerifiedArmed(false)}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{actionState === 'verifying'
 								? 'Working…'
 								: markVerifiedArmed
 									? 'Confirm mark verified'
 									: 'Mark email verified'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={isMutating}
 							onClick={() =>
 								props.onSubmitVerificationAction('mint_verify_url')
 							}
-							css={secondaryButtonCss}
+							variant="secondary"
 						>
 							{actionState === 'verifying' ? 'Working…' : 'Mint verify link'}
-						</button>
+						</Button>
 					</div>
 					{props.mintedVerifyUrl &&
 					props.mintedVerifyUrlForStableUserId === selectedUser.stableUserId ? (

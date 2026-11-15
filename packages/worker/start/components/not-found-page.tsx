@@ -1,14 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import { ErrorAgentPromptButton } from './error-agent-prompt-button.tsx'
 import { buildNotFoundErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { useLocation } from '@tanstack/react-router'
-import { SiteLink } from './site-link.tsx'
 import { routes } from '#universal/routes.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	illustratedErrorActionsCss,
 	illustratedErrorCopyCss,
@@ -42,21 +38,21 @@ export function NotFoundPage() {
 				the package was unpublished.
 			</p>
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
-				<SiteLink href={routes.home.href()} css={getPillButtonCss()}>
+				<Button href={routes.home.href()} variant="primary" size="lg">
 					Go home
-				</SiteLink>
-				<SiteLink
+				</Button>
+				<Button
 					href={routes.docs.href()}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Search the docs
-				</SiteLink>
-				<SiteLink
+				</Button>
+				<Button
 					href={routes.community.href()}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Browse packages
-				</SiteLink>
+				</Button>
 			</nav>
 			<ErrorAgentPromptButton
 				prompt={buildNotFoundErrorAgentPrompt({ path: path })}

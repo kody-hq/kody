@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
@@ -18,15 +19,7 @@ import { plainHighlightedCode } from '#universal/highlighted-code.ts'
 import type { AccountJobDetail } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -41,8 +34,6 @@ import {
 	statusColor,
 	statusLabel,
 } from './account-jobs-shared.ts'
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 function packageValue(
 	username: string,
 	job: Pick<AccountJobDetail, 'packageName' | 'packageKodyId'>,
@@ -377,7 +368,7 @@ export function renderAccountJobDetail(input: {
 					flexWrap: 'wrap',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={() =>
@@ -388,11 +379,11 @@ export function renderAccountJobDetail(input: {
 							failureMessage: 'Unable to run job now.',
 						})
 					}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					Run now
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={() =>
@@ -406,12 +397,12 @@ export function renderAccountJobDetail(input: {
 							failureMessage: 'Unable to update kill switch.',
 						})
 					}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					{detail.killSwitchEnabled
 						? 'Clear kill switch'
 						: 'Enable kill switch'}
-				</button>
+				</Button>
 			</div>
 		</section>
 	)

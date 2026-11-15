@@ -1,14 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { css } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss } from '#universal/styles/style-primitives.ts'
 import type {
 	AdminPlatformFeedbackLoaderData,
 	AdminPlatformFeedbackListItem,
@@ -109,7 +106,6 @@ export function AdminPlatformFeedbackPage({
 	payload: AdminPlatformFeedbackLoaderData
 	currentHref: string
 }) {
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const pending = false
 	const message = null
 	const status: string = 'ready'
@@ -190,7 +186,7 @@ export function AdminPlatformFeedbackPage({
 								))}
 							</RecordTableSelect>
 							{hasActiveFilters ? (
-								<button
+								<Button
 									type="button"
 									onClick={() => {
 										replaceLocation(
@@ -200,10 +196,10 @@ export function AdminPlatformFeedbackPage({
 											}),
 										)
 									}}
-									css={secondaryButtonCss}
+									variant="secondary"
 								>
 									Clear filters
-								</button>
+								</Button>
 							) : null}
 						</>
 					}
@@ -256,15 +252,12 @@ export function AdminPlatformFeedbackPage({
 								}}
 							>
 								{data.page > 1 ? (
-									<SiteLink
+									<Button
 										href={buildPageHref(currentHref, data.page - 1)}
-										css={{
-											...secondaryButtonCss,
-											textDecoration: 'none',
-										}}
+										variant="secondary" css={{ textDecoration: 'none' }}
 									>
 										Previous
-									</SiteLink>
+									</Button>
 								) : null}
 								<span
 									css={{
@@ -275,15 +268,12 @@ export function AdminPlatformFeedbackPage({
 									Page {data.page} of {totalPages}
 								</span>
 								{data.page < totalPages ? (
-									<SiteLink
+									<Button
 										href={buildPageHref(currentHref, data.page + 1)}
-										css={{
-											...secondaryButtonCss,
-											textDecoration: 'none',
-										}}
+										variant="secondary" css={{ textDecoration: 'none' }}
 									>
 										Next
-									</SiteLink>
+									</Button>
 								) : null}
 							</nav>
 						) : null

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startCreditTopUp,
@@ -50,12 +51,7 @@ import type {
 } from '#universal/loader-data.ts'
 import { orgCreditsPath } from '#universal/org-pages.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 
 /** Anchor for `/account/usage#credits` (`accountCreditsPath`). */
 const creditsSectionId = 'credits'
@@ -263,14 +259,14 @@ export function AccountUsageCreditsSection(
 
 	function renderSwitchToProButton(label: string) {
 		return (
-			<button
+			<Button
 				type="button"
 				disabled={switchPending}
 				onClick={() => void switchToPro()}
-				css={primaryButtonCss}
+				variant="primary"
 			>
 				{switchPending ? 'Opening Stripe…' : label}
-			</button>
+			</Button>
 		)
 	}
 
@@ -388,17 +384,17 @@ export function AccountUsageCreditsSection(
 					) : null}
 					<div css={accountActionsCss}>
 						{credits.packsCents.map((cents) => (
-							<button
+							<Button
 								key={cents}
 								type="button"
 								disabled={topUpDisabled}
 								onClick={() => void startTopUp(cents)}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								{topUpPendingCents === cents
 									? 'Opening Stripe…'
 									: formatWholeDollars(cents)}
-							</button>
+							</Button>
 						))}
 					</div>
 					<form
@@ -436,16 +432,16 @@ export function AccountUsageCreditsSection(
 								css={{ ...accountInputCss, maxWidth: '10rem' }}
 							/>
 						</div>
-						<button
+						<Button
 							type="submit"
 							disabled={topUpDisabled || customCents === null}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{topUpPendingCents !== null &&
 							!credits.packsCents.includes(topUpPendingCents)
 								? 'Opening Stripe…'
 								: 'Add'}
-						</button>
+						</Button>
 					</form>
 				</AccountManagementPanel>
 
@@ -538,9 +534,9 @@ export function AccountUsageCreditsSection(
 						)}
 					</fieldset>
 					<div>
-						<button type="submit" disabled={saving} css={primaryButtonCss}>
+						<Button type="submit" disabled={saving} variant="primary">
 							{saving ? 'Saving…' : 'Save'}
-						</button>
+						</Button>
 					</div>
 				</AccountManagementPanel>
 			</>
@@ -731,6 +727,3 @@ export function AccountUsageCreditsSection(
 	if (!credits.eligible) return renderIneligible(credits)
 	return draft ? renderWallet(credits, draft) : null
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })

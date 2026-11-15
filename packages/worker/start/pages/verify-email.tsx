@@ -2,15 +2,7 @@
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	cardCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss, getButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { EmailVerificationOutcome } from '#universal/token-outcomes.ts'
 
@@ -130,7 +122,7 @@ const pageCss = {
 }
 
 const ctaButtonCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
+	...getButtonCss({ variant: 'primary', size: 'md' }),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }

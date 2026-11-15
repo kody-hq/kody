@@ -1,17 +1,12 @@
 import { expect, test } from 'vitest'
-import {
-	getDangerButtonCss,
-	getGhostButtonCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-} from './style-primitives.ts'
+import { getButtonCss } from './style-primitives.ts'
 
 test('filled buttons use the same display font as ghost pills', () => {
-	expect(getGhostButtonCss().font).toContain('var(--font-display)')
+	expect(getButtonCss({ variant: 'secondary', size: 'lg' }).font).toContain('var(--font-display)')
 	for (const css of [
-		getPrimaryButtonCss(),
-		getSecondaryButtonCss(),
-		getDangerButtonCss(),
+		getButtonCss({ variant: 'primary', size: 'md' }),
+		getButtonCss({ variant: 'secondary', size: 'md' }),
+		getButtonCss({ variant: 'danger', size: 'md' }),
 	]) {
 		expect(css.fontFamily).toBe('var(--font-display)')
 	}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	McpServerOAuthClientSection,
 	type McpServerOAuthClientInput,
@@ -24,15 +25,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	type getDangerPillCss,
-	type getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, getButtonCss } from '#universal/styles/style-primitives.ts'
 
 function McpServerUsageForm(props: {
 	server: McpServerListItem
@@ -149,15 +142,15 @@ function McpServerUsageForm(props: {
 					</div>
 				)
 			) : null}
-			<button
+			<Button
 				type="button"
 				data-testid="save-mcp-server-usage"
 				disabled={saving}
 				onClick={onSave}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				{saving ? 'Saving…' : 'Save usage'}
-			</button>
+			</Button>
 		</section>
 	)
 }
@@ -171,9 +164,9 @@ export type McpServerDetailProps = {
 	deleteArmed: boolean
 	onDeleteArm: () => void
 	onDeleteReset: () => void
-	primaryButtonCss: ReturnType<typeof getPillButtonCss>
-	secondaryButtonCss: ReturnType<typeof getGhostButtonCss>
-	dangerButtonCss: ReturnType<typeof getDangerPillCss>
+	primaryButtonCss: ReturnType<typeof getButtonCss>
+	secondaryButtonCss: ReturnType<typeof getButtonCss>
+	dangerButtonCss: ReturnType<typeof getButtonCss>
 	onUsageDraftChange: (draft: McpServerUsageDraft) => void
 	onUsageSave: () => void
 	onReconnect: () => void
@@ -402,10 +395,10 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 				>
 					{server.enabled ? 'Disable' : 'Enable'}
 				</button>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
-					css={dangerButtonCss}
+					variant="danger"
 					onBlur={onDeleteReset}
 					onClick={() => {
 						if (deleteArmed) onDelete()
@@ -413,7 +406,7 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					}}
 				>
 					{deleteArmed ? 'Confirm remove' : 'Remove'}
-				</button>
+				</Button>
 			</div>
 		</section>
 	)

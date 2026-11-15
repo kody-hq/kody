@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -6,14 +7,7 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialLocalReads } from '#start/server/credential-local-reads'
 import type { CredentialLocalReadsView } from '#universal/credentials-list.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const localReadsAnchor = 'local-reads'
@@ -111,19 +105,15 @@ export function CredentialLocalReadsSection(props: {
 				<p css={mutedCss}>{localReadsExplanation(props.vault)}</p>
 				{view.canChange ? (
 					<div>
-						<button
+						<Button
 							type="button"
-							css={
-								toggle.enabled
-									? getGhostButtonCss({ size: 'sm' })
-									: getPillButtonCss({ size: 'sm' })
-							}
+							variant={toggle.enabled ? 'secondary' : 'primary'}
 							disabled={toggle.pending}
 							onClick={() => void toggle.change(!toggle.enabled)}
 							data-testid="local-reads-toggle"
 						>
 							{toggle.enabled ? 'Turn off local reads' : 'Turn on local reads'}
-						</button>
+						</Button>
 					</div>
 				) : view.manageHref ? (
 					<p css={mutedCss}>
@@ -263,15 +253,15 @@ function LocalReadsApprovalForm(props: {
 				</p>
 			) : approval.canChange ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss()}
+						variant="primary" size="lg"
 						disabled={toggle.pending}
 						onClick={() => void toggle.change(true)}
 						data-testid="local-reads-approve"
 					>
 						Turn on local reads
-					</button>
+					</Button>
 				</div>
 			) : (
 				<p css={mutedCss}>
@@ -285,12 +275,12 @@ function LocalReadsApprovalForm(props: {
 				</p>
 			) : null}
 			<div>
-				<SiteLink
+				<Button
 					href={approval.detailHref}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Open the secret&apos;s page
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

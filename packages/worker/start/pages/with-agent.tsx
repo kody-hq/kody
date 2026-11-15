@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import type { CSSProperties } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -8,11 +9,7 @@ import { YouTubeLightPlayer } from '../components/youtube-light-player.tsx'
 import { docHref } from '#universal/docs-nav.ts'
 import { landingHomePrimitives } from '#universal/landing-home-copy.ts'
 import { primitiveFeatureHref } from '#universal/primitive-cards.ts'
-import {
-	getPillButtonCss,
-	pageGutter,
-	pageHeadCss,
-} from '#universal/styles/style-primitives.ts'
+import { pageGutter, pageHeadCss } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import {
 	withAgentHref,
@@ -72,14 +69,14 @@ export function WithAgentRoute({ agent }: { agent: WithAgent }) {
 				)}
 				{agent.primaryAction ? (
 					<div css={primaryActionCss} data-testid="with-agent-primary-action">
-						<SiteLink
+						<Button
 							href={agent.primaryAction.href}
 							target="_blank"
 							rel="noreferrer noopener"
-							css={primaryActionButtonCss}
+							variant="primary" size="lg" css={primaryActionButtonCss}
 						>
 							{agent.primaryAction.label}
-						</SiteLink>
+						</Button>
 						<p>{agent.primaryAction.description}</p>
 					</div>
 				) : null}
@@ -294,7 +291,6 @@ const primaryActionCss = {
 }
 
 const primaryActionButtonCss = {
-	...getPillButtonCss(),
 	textDecoration: 'none',
 }
 

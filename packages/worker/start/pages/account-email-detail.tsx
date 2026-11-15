@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { buildCredentialApprovalHref } from '#universal/credential-contracts.ts'
@@ -20,10 +21,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import type { EmailClassification } from '#universal/email-message-view.ts'
 import type { AccountEmailMessageDetail } from '#universal/loader-data.ts'
 import { EmailTriageBadges } from './email-triage-controls.tsx'
@@ -91,8 +88,6 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 		onDismissBlockOffer,
 		onDelete,
 	} = props
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const isMutating =
 		classifyState !== 'idle' || deleteState !== 'idle' || blockState !== 'idle'
 	const classification = selectedMessage.classification
@@ -158,43 +153,43 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 			>
 				{selectedMessage.direction === 'inbound' &&
 				classification !== 'accepted' ? (
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => {
 							onTriage({ classification: 'accepted' })
 						}}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{classifyState === 'saving' ? 'Updating…' : 'Not spam'}
-					</button>
+					</Button>
 				) : null}
 				{selectedMessage.direction === 'inbound' &&
 				classification !== 'spam' ? (
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => {
 							onTriage({ classification: 'spam' })
 						}}
-						css={dangerButtonCss}
+						variant="danger"
 					>
 						{classifyState === 'saving' ? 'Updating…' : 'Mark as spam'}
-					</button>
+					</Button>
 				) : null}
 				{selectedMessage.direction === 'inbound' ? (
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => {
 							onTriage({ archived: !selectedMessage.archived_at })
 						}}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{selectedMessage.archived_at ? 'Unarchive' : 'Archive'}
-					</button>
+					</Button>
 				) : null}
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					aria-label={
@@ -207,7 +202,7 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 							? 'Click again to permanently delete this message'
 							: 'Delete this message and free a stored-message slot'
 					}
-					css={dangerButtonCss}
+					variant="danger"
 					onBlur={onDeleteReset}
 					onClick={() => {
 						if (deleteArmed) onDelete()
@@ -219,7 +214,7 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 						: deleteArmed
 							? 'Confirm delete'
 							: 'Delete'}
-				</button>
+				</Button>
 			</div>
 			{blockOffer &&
 			classification === 'spam' &&
@@ -244,22 +239,22 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 						</code>
 						?
 					</span>
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={onBlockSender}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{blockState === 'blocking' ? 'Blocking…' : 'Block sender'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={onDismissBlockOffer}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						No thanks
-					</button>
+					</Button>
 				</div>
 			) : null}
 			{selectedMessage.enable_sender ? (
@@ -316,9 +311,9 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 							}}
 						/>
 					)}
-					<button type="submit" css={secondaryButtonCss}>
+					<Button type="submit" variant="secondary">
 						Enable a package for this sender
-					</button>
+					</Button>
 					<SiteLink
 						href={selectedMessage.enable_sender.packages_href}
 						css={{

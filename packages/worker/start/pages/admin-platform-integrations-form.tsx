@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import {
 	formatExtraAuthorizeParams,
@@ -7,17 +8,7 @@ import {
 	type ActionState,
 } from '#client/routes/admin-platform-integrations-shared.ts'
 import type { AdminPlatformIntegrationApp } from '#universal/loader-data.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getLogoWellCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, getLogoWellCss, getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import type { ChangeEvent, FormEvent } from 'react'
 import {
@@ -26,9 +17,6 @@ import {
 } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
 const selectCss = getSelectCss()
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 export function IntegrationForm(input: {
 	editingApp: AdminPlatformIntegrationApp | null
 	formRevision: number
@@ -98,11 +86,11 @@ export function IntegrationForm(input: {
 							gap: spacing.sm,
 						}}
 					>
-						<button
+						<Button
 							type="button"
 							disabled={actionState !== 'idle'}
 							onClick={() => input.onToggleEnabled(editingApp)}
-							css={secondaryButtonCss}
+							variant="secondary"
 						>
 							{actionState === 'toggling-enabled' &&
 							pendingSlug === editingApp.slug
@@ -110,13 +98,13 @@ export function IntegrationForm(input: {
 								: editingApp.enabled
 									? 'Disable'
 									: 'Enable'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={actionState !== 'idle'}
 							data-testid="platform-integration-toggle-visibility"
 							onClick={() => input.onToggleVisibility(editingApp)}
-							css={secondaryButtonCss}
+							variant="secondary"
 						>
 							{actionState === 'toggling-visibility' &&
 							pendingSlug === editingApp.slug
@@ -124,17 +112,17 @@ export function IntegrationForm(input: {
 								: editingApp.visibility === 'published'
 									? 'Move to draft'
 									: 'Publish'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={actionState !== 'idle'}
 							onClick={() => input.onDelete(editingApp)}
-							css={dangerButtonCss}
+							variant="danger"
 						>
 							{actionState === 'deleting' && pendingSlug === editingApp.slug
 								? 'Deleting…'
 								: 'Delete'}
-						</button>
+						</Button>
 					</div>
 				) : null}
 			</div>
@@ -469,35 +457,35 @@ export function IntegrationForm(input: {
 						alignItems: 'center',
 					}}
 				>
-					<button
+					<Button
 						type="submit"
 						disabled={actionState !== 'idle'}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						{actionState === 'saving-form'
 							? 'Saving…'
 							: isEditing
 								? 'Save changes'
 								: 'Create integration'}
-					</button>
+					</Button>
 					{isEditing ? (
-						<button
+						<Button
 							type="button"
 							disabled={actionState !== 'idle'}
 							onClick={input.onCancel}
-							css={secondaryButtonCss}
+							variant="secondary"
 						>
 							Cancel edit
-						</button>
+						</Button>
 					) : (
-						<button
+						<Button
 							type="button"
 							disabled={actionState !== 'idle'}
 							onClick={input.onCancel}
-							css={secondaryButtonCss}
+							variant="secondary"
 						>
 							Cancel
-						</button>
+						</Button>
 					)}
 				</div>
 			</div>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
@@ -6,7 +7,6 @@ import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { scheduledWorkflows as page } from '#universal/acquisition/scheduledWorkflows.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const runs = [
 	{
 		label: 'Report ready',
@@ -60,9 +60,9 @@ export function ScheduledWorkflowsPage() {
 						Get the report working, then give it a schedule. Kody runs the saved
 						code and keeps its progress with the package.
 					</p>
-					<SiteLink href={routes.onboarding.href()} css={getPillButtonCss()}>
+					<Button href={routes.onboarding.href()} variant="primary" size="lg">
 						Build your first scheduled job
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="calendar" aria-label="Example weekly job schedule">
 					<div className="calendar-top">
@@ -249,9 +249,9 @@ export function ScheduledWorkflowsPage() {
 						Connect your agent to Kody and give it this prompt. Review the
 						manual result before enabling the schedule.
 					</p>
-					<SiteLink href={routes.onboarding.href()} css={getPillButtonCss()}>
+					<Button href={routes.onboarding.href()} variant="primary" size="lg">
 						Connect your agent
-					</SiteLink>
+					</Button>
 				</div>
 				<div>
 					<blockquote>{page.prompt}</blockquote>

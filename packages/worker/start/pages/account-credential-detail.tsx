@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 
 import { css } from '@emotion/react'
 import type { ReactNode } from 'react'
@@ -30,13 +30,7 @@ import {
 	credentialKindLabel,
 	credentialStatusLabel,
 } from '#universal/credentials-list.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 const codeCss = css({
 	fontFamily: 'monospace',
@@ -545,12 +539,12 @@ export function renderCredentialDetail(input: {
 			<p css={mutedCss}>Values never appear here.</p>
 
 			<div>
-				<SiteLink
+				<Button
 					href={input.manageHref}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					{editLabel(credential.kind)}
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

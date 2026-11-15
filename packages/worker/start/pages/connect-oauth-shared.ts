@@ -22,15 +22,7 @@ import type { ConnectOauthLoaderData } from '#universal/loader-data.ts'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	insetCardCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, insetCardCss, pageEyebrowCss, pageHeaderCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
 import {
 	type ConnectOauthConfig,
@@ -833,12 +825,4 @@ export const connectOauthRedirectUriValueCss = {
 	fontWeight: typography.fontWeight.medium,
 }
 
-export const connectOauthPrimaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
-export const connectOauthSecondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

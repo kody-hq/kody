@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -43,7 +44,6 @@ import type {
 	AdminUsersLoaderData,
 } from '#universal/loader-data.ts'
 import type { RoleName } from '#universal/permissions.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -448,7 +448,6 @@ export function AdminUsersPage(props: {
 		usersSnapshot.hasMore,
 		usersSnapshot.isLoadingMore,
 	])
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const currentHref = props.currentHref
 	const pending = false
 
@@ -609,18 +608,18 @@ export function AdminUsersPage(props: {
 				footer={
 					hasMore ? (
 						<div ref={sentinelRef}>
-							<button
+							<Button
 								type="button"
 								disabled={isLoadingMore}
 								onClick={() => void loadMoreUsers()}
-								css={{ ...secondaryButtonCss, width: '100%' }}
+								variant="secondary" css={{ width: '100%' }}
 							>
 								{isLoadingMore ? (
 									<LoadingIndicator inline label="Loading more…" />
 								) : (
 									'Load more'
 								)}
-							</button>
+							</Button>
 						</div>
 					) : null
 				}

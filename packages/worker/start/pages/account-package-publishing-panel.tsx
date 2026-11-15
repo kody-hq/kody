@@ -4,10 +4,7 @@ import { css } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { shortCommunityCommit } from '#universal/community-display.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getAccentCalloutCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss, getButtonCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -195,7 +192,7 @@ export function PackagePublishingPanel(input: {
 					data-testid="account-approve-publish"
 					css={css({
 						...(needsAction
-							? getPillButtonCss({ size: 'sm' })
+							? getButtonCss({ variant: 'primary' })
 							: {
 									color: colors.textMuted,
 									fontSize: typography.fontSize.sm,

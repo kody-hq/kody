@@ -1,15 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { continueMcpAuthorization } from '#start/server/account-mutations'
 import type { McpServerAuthorizeLoaderData } from '#universal/loader-data.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import type { McpOAuthClientMode } from '@kody-internal/shared/mcp-servers.ts'
 import { useMutation } from '@tanstack/react-query'
 import type { FormEvent } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	accountActionsCss,
 	AccountManagementMessage,
@@ -156,25 +152,22 @@ export function AccountMcpServerAuthorizePage({
 					/>
 					<p css={noteCss}>{mode.detail}</p>
 					<form css={accountActionsCss} onSubmit={submitContinue}>
-						<button
+						<Button
 							type="submit"
 							disabled={submitting}
 							data-testid="mcp-authorize-continue"
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{submitting
 								? `Opening ${pending.authorizationServerHost}…`
 								: `Continue to ${pending.authorizationServerHost}`}
-						</button>
-						<SiteLink
+						</Button>
+						<Button
 							href={data.serverHref}
-							css={{
-								...getGhostButtonCss({ size: 'sm' }),
-								textDecoration: 'none',
-							}}
+							variant="secondary" css={{ textDecoration: 'none' }}
 						>
 							Cancel
-						</SiteLink>
+						</Button>
 					</form>
 				</AccountManagementPanel>
 			) : (
@@ -184,15 +177,12 @@ export function AccountMcpServerAuthorizePage({
 						click Reconnect to start a new authorization.
 					</p>
 					<div css={accountActionsCss}>
-						<SiteLink
+						<Button
 							href={data.serverHref}
-							css={{
-								...getPillButtonCss({ size: 'sm' }),
-								textDecoration: 'none',
-							}}
+							variant="primary" css={{ textDecoration: 'none' }}
 						>
 							Open {data.serverName}
-						</SiteLink>
+						</Button>
 					</div>
 				</AccountManagementPanel>
 			)}

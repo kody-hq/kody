@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { Menu } from '@base-ui/react/menu'
 import {
 	overlayItemCss,
@@ -64,11 +65,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	packageDetailPageCss,
-	proseCss,
-} from '#universal/styles/style-primitives.ts'
+import { packageDetailPageCss, proseCss } from '#universal/styles/style-primitives.ts'
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`
@@ -287,14 +284,14 @@ function PackageFilesExplorerContent({
 				}
 				viewAction={
 					canOpen && !fullView ? (
-						<button
+						<Button
 							ref={viewToggle}
 							type="button"
-							css={openButtonCss}
+							variant="secondary" css={[rawLinkCss, openButtonCss]}
 							onClick={() => setFullPath(data.selectedPath)}
 						>
 							Open
-						</button>
+						</Button>
 					) : undefined
 				}
 			/>
@@ -673,7 +670,7 @@ function FileContent({
 							{data.rawHref ? (
 								<ControlTooltip
 									trigger={
-										<a
+										<Button
 											href={data.rawHref}
 											download={
 												data.rawHref.startsWith('data:')
@@ -682,10 +679,10 @@ function FileContent({
 											}
 											data-testid="package-files-raw-link"
 											aria-label={`View raw ${heading}`}
-											css={rawLinkCss}
+											variant="secondary" reloadDocument css={rawLinkCss}
 										>
 											{renderIcon('arrow-up-right', { size: '14' })}
-										</a>
+										</Button>
 									}
 								>
 									Open raw file
@@ -1108,12 +1105,10 @@ const contentActionsCss = {
 } satisfies CSSObject
 
 const rawLinkCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	textDecoration: 'none',
 }
 
 const openButtonCss = {
-	...rawLinkCss,
 	height: '2rem',
 	minHeight: 0,
 	boxSizing: 'border-box',

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -8,10 +9,6 @@ import type {
 	GuestClaimPageError,
 	GuestComesWithCounts,
 } from '#start/server/guest-claim'
-import {
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -82,9 +79,9 @@ export function GuestClaimRoute(props: { data: GuestClaimPageData }) {
 				title="This claim link is not active"
 				description="The guest account was already claimed or has been deleted."
 			>
-				<SiteLink href="/login" css={primaryLinkCss}>
+				<Button href="/login" variant="primary" size="md" css={[primaryButtonCss, primaryLinkCss]}>
 					Log in
-				</SiteLink>
+				</Button>
 			</AuthLayout>
 		)
 	}
@@ -127,9 +124,9 @@ function GuestClaimed(props: {
 						</li>
 					)}
 				</ul>
-				<SiteLink href="/account" css={primaryLinkCss}>
+				<Button href="/account" variant="primary" size="md" css={[primaryButtonCss, primaryLinkCss]}>
 					Go to your account
-				</SiteLink>
+				</Button>
 			</div>
 		</AuthLayout>
 	)
@@ -177,9 +174,9 @@ function GuestClaimForms(props: {
 								defaultValue={data.devCode ?? ''}
 							/>
 						</label>
-						<button type="submit" css={primaryButtonCss}>
+						<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
 							Finish claiming
-						</button>
+						</Button>
 						<SiteLink href={action} css={mutedLinkCss}>
 							Use a different email
 						</SiteLink>
@@ -196,9 +193,9 @@ function GuestClaimForms(props: {
 									Packages, memories, jobs, and run history move into your
 									account. Name clashes get a new name.
 								</p>
-								<button type="submit" css={primaryButtonCss}>
+								<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
 									Move everything into this account
-								</button>
+								</Button>
 							</form>
 						) : null}
 						<section css={cardCss} aria-labelledby="claim-new">
@@ -227,9 +224,9 @@ function GuestClaimForms(props: {
 										css={inputCss}
 									/>
 								</label>
-								<button type="submit" css={primaryButtonCss}>
+								<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
 									Email me a code
-								</button>
+								</Button>
 							</form>
 							<ProviderButtons action={action} providers={data.providers} />
 						</section>
@@ -250,9 +247,9 @@ function GuestClaimForms(props: {
 										css={inputCss}
 									/>
 								</label>
-								<button type="submit" css={secondaryButtonCss}>
+								<Button type="submit" variant="secondary" size="md" css={secondaryButtonCss}>
 									Email me a code
-								</button>
+								</Button>
 							</form>
 							<ProviderButtons action={action} providers={data.providers} />
 						</section>
@@ -282,9 +279,9 @@ function ProviderButtons(props: {
 				<form key={provider} method="post" action={props.action}>
 					<input type="hidden" name="action" value="provider" />
 					<input type="hidden" name="provider" value={provider} />
-					<button type="submit" css={providerButtonCss}>
+					<Button type="submit" variant="secondary" size="md" css={providerButtonCss}>
 						Continue with {label}
-					</button>
+					</Button>
 				</form>
 			))}
 		</div>
@@ -292,16 +289,13 @@ function ProviderButtons(props: {
 }
 
 const primaryButtonCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	width: '100%',
 }
 const secondaryButtonCss = {
-	...getSecondaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	width: '100%',
 }
-const providerButtonCss = { ...getSecondaryButtonCss(), width: '100%' }
+const providerButtonCss = { width: '100%' }
 const primaryLinkCss: CSSObject = {
-	...primaryButtonCss,
 	display: 'inline-flex',
 	justifyContent: 'center',
 	textDecoration: 'none',

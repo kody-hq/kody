@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { FileGlyph } from '../components/file-glyph.tsx'
 import { WorkspaceFileStatus } from './workspace-file-status.tsx'
 import { workspaceProse, workspaceMarkdownCss } from './workspace-prose.ts'
@@ -70,11 +71,7 @@ import {
 	type FileMetadata,
 } from '#universal/files.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getSelectCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	workspaceDirectoryMediaType,
 	isWorkspaceContainer,
@@ -123,7 +120,6 @@ const compactControl = {
 	fontSize: typography.fontSize.xs,
 }
 const button = {
-	...getGhostButtonCss(),
 	...compactControl,
 	boxShadow: 'none',
 	'@media (hover: hover)': {
@@ -132,7 +128,7 @@ const button = {
 		},
 	},
 }
-const primary = { ...getPillButtonCss(), ...compactControl }
+const primary = { ...compactControl }
 const hover = `color-mix(in srgb, ${colors.text} 7%, transparent)`
 
 const iconPaths = {
@@ -165,7 +161,6 @@ function WorkspaceIcon({ name }: { name: keyof typeof iconPaths }) {
 }
 
 const iconButton = {
-	...button,
 	display: 'inline-grid',
 	placeItems: 'center',
 	width: 28,
@@ -1239,25 +1234,15 @@ export function FilesPage({
 									padding: '2px 1px',
 								}}
 							>
-								<SiteLink
+								<Button
 									href={`/@${data.orgSlug}/-/files`}
 									aria-label="Files"
 									title="Open root finder"
-									css={{
-										...iconButton,
-										display: 'inline-flex',
-										alignItems: 'center',
-										whiteSpace: 'nowrap',
-										width: 'auto',
-										gap: 6,
-										paddingInline: 6,
-										fontSize: 13,
-										textDecoration: 'none',
-									}}
+									variant="secondary" size="lg" css={[button, iconButton, { display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', width: 'auto', gap: 6, paddingInline: 6, fontSize: 13, textDecoration: 'none' }]}
 								>
 									<FileGlyph mediaType={workspaceDirectoryMediaType} />
 									Files
-								</SiteLink>
+								</Button>
 								<WorkspaceCreateMenu
 									canManageStorage={
 										data.canManageStorage && data.collaborationEnabled
@@ -1305,21 +1290,11 @@ export function FilesPage({
 									onChange={(event) => setSearch(event.target.value)}
 								/>
 								{search && (
-									<button
+									<Button
 										type="button"
 										aria-label="Clear file search"
 										title="Clear file search"
-										css={{
-											...button,
-											position: 'absolute',
-											insetInlineEnd: 3,
-											top: 2,
-											padding: 0,
-											minHeight: 24,
-											width: 24,
-											display: 'grid',
-											placeItems: 'center',
-										}}
+										variant="secondary" size="lg" css={[button, { position: 'absolute', insetInlineEnd: 3, top: 2, padding: 0, minHeight: 24, width: 24, display: 'grid', placeItems: 'center' }]}
 										onClick={() => {
 											setSearch('')
 											explorerSearch.current?.focus()
@@ -1337,7 +1312,7 @@ export function FilesPage({
 										>
 											<path d="m4 4 8 8m0-8-8 8" />
 										</svg>
-									</button>
+									</Button>
 								)}
 							</div>
 							<div css={{ minHeight: 0, flex: 1, overflowY: 'auto' }}>
@@ -1357,8 +1332,8 @@ export function FilesPage({
 											'&:hover': { background: hover },
 										}}
 									>
-										<button
-											css={{ ...iconButton, width: 20, flexShrink: 0 }}
+										<Button
+											variant="secondary" size="lg" css={[button, iconButton, { width: 20, flexShrink: 0 }]}
 											aria-label={`${packagesExpanded ? 'Collapse' : 'Expand'} Apps & Packages`}
 											aria-expanded={packagesExpanded}
 											onClick={() => setPackagesExpanded(!packagesExpanded)}
@@ -1366,7 +1341,7 @@ export function FilesPage({
 											<WorkspaceIcon
 												name={packagesExpanded ? 'down' : 'right'}
 											/>
-										</button>
+										</Button>
 										<SiteLink
 											href={packagesDirectoryHref(data.orgSlug)}
 											aria-current={showPackages ? 'page' : undefined}
@@ -1435,8 +1410,8 @@ export function FilesPage({
 										>
 											{hasChildren ||
 											file.mediaType === workspaceDirectoryMediaType ? (
-												<button
-													css={{ ...iconButton, width: 20, flexShrink: 0 }}
+												<Button
+													variant="secondary" size="lg" css={[button, iconButton, { width: 20, flexShrink: 0 }]}
 													aria-label={`${collapsed.has(file.id) ? 'Expand' : 'Collapse'} ${file.name}`}
 													aria-expanded={!collapsed.has(file.id)}
 													onClick={() => onToggleBranch(file.id)}
@@ -1444,7 +1419,7 @@ export function FilesPage({
 													<WorkspaceIcon
 														name={collapsed.has(file.id) ? 'right' : 'down'}
 													/>
-												</button>
+												</Button>
 											) : (
 												<span css={{ width: 20, flexShrink: 0 }} />
 											)}
@@ -1516,19 +1491,14 @@ export function FilesPage({
 												data.can_create &&
 												data.writes_enabled &&
 												file.access.write && (
-													<SiteLink
-														css={{
-															...iconButton,
-															flexShrink: 0,
-															opacity: 0,
-															'div:hover > &, &:focus-visible': { opacity: 1 },
-														}}
+													<Button
+														variant="secondary" size="lg" css={[button, iconButton, { flexShrink: 0, opacity: 0, 'div:hover > &, &:focus-visible': { opacity: 1 } }]}
 														aria-label={`New subpage in ${file.name}`}
 														title="New subpage"
 														href={`/@${data.orgSlug}/-/files?new=page&parent=${file.id}`}
 													>
 														<WorkspaceIcon name="add" />
-													</SiteLink>
+													</Button>
 												)}
 										</div>
 									))}
@@ -1540,18 +1510,10 @@ export function FilesPage({
 										/>
 									)}
 								</nav>
-								<SiteLink
+								<Button
 									href={`/@${data.orgSlug}/-/files?trash=1`}
 									aria-current={showTrash ? 'page' : undefined}
-									css={{
-										...button,
-										display: 'flex',
-										alignItems: 'center',
-										gap: 7,
-										textDecoration: 'none',
-										marginTop: 16,
-										background: showTrash ? hover : 'transparent',
-									}}
+									variant="secondary" size="lg" css={[button, { display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none', marginTop: 16, background: showTrash ? hover : 'transparent' }]}
 								>
 									<svg
 										aria-hidden="true"
@@ -1565,7 +1527,7 @@ export function FilesPage({
 										<path d="M2 4h12M6 2h4M4 4l.5 10h7L12 4M6.5 6v5.5M9.5 6v5.5" />
 									</svg>
 									Trash
-								</SiteLink>
+								</Button>
 							</div>
 						</>
 					}
@@ -1770,8 +1732,8 @@ export function FilesPage({
 												(!nativeKind ||
 													nativeKind === 'json' ||
 													currentType === 'image/svg+xml') && (
-													<button
-														css={button}
+													<Button
+														variant="secondary" size="lg" css={button}
 														aria-pressed={preview}
 														onClick={() => setPreview(!preview)}
 													>
@@ -1780,7 +1742,7 @@ export function FilesPage({
 																? 'Edit'
 																: 'Source'
 															: 'Preview'}
-													</button>
+													</Button>
 												)}
 
 											{!collaboration &&
@@ -1810,20 +1772,20 @@ export function FilesPage({
 														if (event.key === 'Escape') setActionsOpen(false)
 													}}
 												>
-													<button
-														css={iconButton}
+													<Button
+														variant="secondary" size="lg" css={[button, iconButton]}
 														aria-label="More actions"
 														title="More actions"
 														aria-expanded={actionsOpen}
 														onClick={() => setActionsOpen(!actionsOpen)}
 													>
 														<WorkspaceIcon name="more" />
-													</button>
+													</Button>
 													{actionsOpen && (
 														<div css={menuCss}>
 															{binary && editable && !historical && (
-																<button
-																	css={button}
+																<Button
+																	variant="secondary" size="lg" css={button}
 																	disabled={busy}
 																	onClick={() => {
 																		setActionsOpen(false)
@@ -1831,12 +1793,12 @@ export function FilesPage({
 																	}}
 																>
 																	Replace file
-																</button>
+																</Button>
 															)}
 															{selected.access.write && (
 																<>
-																	<button
-																		css={button}
+																	<Button
+																		variant="secondary" size="lg" css={button}
 																		disabled={busy || dirty}
 																		onClick={() => {
 																			setActionsOpen(false)
@@ -1850,9 +1812,9 @@ export function FilesPage({
 																		}}
 																	>
 																		Rename
-																	</button>
-																	<button
-																		css={button}
+																	</Button>
+																	<Button
+																		variant="secondary" size="lg" css={button}
 																		disabled={busy || dirty}
 																		onClick={() => {
 																			setActionsOpen(false)
@@ -1866,20 +1828,20 @@ export function FilesPage({
 																		}}
 																	>
 																		Move to…
-																	</button>
+																	</Button>
 																</>
 															)}
-															<button
-																css={button}
+															<Button
+																variant="secondary" size="lg" css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	setHistoryOpen(!historyOpen)
 																}}
 															>
 																Version history
-															</button>
-															<button
-																css={button}
+															</Button>
+															<Button
+																variant="secondary" size="lg" css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	setContextAction({
@@ -1892,10 +1854,10 @@ export function FilesPage({
 																}}
 															>
 																Details &amp; permissions
-															</button>
+															</Button>
 															{isPage && (
-																<button
-																	css={button}
+																<Button
+																	variant="secondary" size="lg" css={button}
 																	onClick={() => {
 																		setActionsOpen(false)
 																		exportMarkdown({
@@ -1905,20 +1867,20 @@ export function FilesPage({
 																	}}
 																>
 																	Export Markdown
-																</button>
+																</Button>
 															)}
-															<button
-																css={button}
+															<Button
+																variant="secondary" size="lg" css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	download()
 																}}
 															>
 																{isPage ? 'Download JSON' : 'Download'}
-															</button>
+															</Button>
 															{selected.access.delete && (
-																<button
-																	css={{ ...button, color: colors.danger }}
+																<Button
+																	variant="secondary" size="lg" css={[button, { color: colors.danger }]}
 																	disabled={busy || dirty}
 																	onClick={() => {
 																		setActionsOpen(false)
@@ -1932,7 +1894,7 @@ export function FilesPage({
 																	}}
 																>
 																	Move to trash
-																</button>
+																</Button>
 															)}
 														</div>
 													)}
@@ -1955,8 +1917,8 @@ export function FilesPage({
 											{editable &&
 												(!isPage || !!message || !!conflict || historical) &&
 												(creating || dirty || historical) && (
-													<button
-														css={primary}
+													<Button
+														variant="primary" size="lg" css={primary}
 														disabled={busy || (!dirty && !historical)}
 														onClick={() =>
 															void save(historical?.content ?? draft)
@@ -1967,7 +1929,7 @@ export function FilesPage({
 															: historical
 																? 'Restore version'
 																: 'Save'}
-													</button>
+													</Button>
 												)}
 										</WorkspaceHeader>
 									</div>
@@ -2045,8 +2007,8 @@ export function FilesPage({
 												</select>
 											</label>
 											{historyCursor && (
-												<button
-													css={button}
+												<Button
+													variant="secondary" size="lg" css={button}
 													disabled={busy}
 													onClick={async () => {
 														if (!selected) return
@@ -2078,7 +2040,7 @@ export function FilesPage({
 													}}
 												>
 													Load older versions
-												</button>
+												</Button>
 											)}
 										</section>
 									)}
@@ -2107,12 +2069,8 @@ export function FilesPage({
 												Your draft is still here. Choose which version to keep.
 											</p>
 											{binary ? (
-												<a
-													css={{
-														...button,
-														justifySelf: 'start',
-														textDecoration: 'none',
-													}}
+												<Button
+													variant="secondary" size="lg" reloadDocument css={[button, { justifySelf: 'start', textDecoration: 'none' }]}
 													href={fileAssetUrl(
 														data.orgSlug,
 														fileId,
@@ -2121,7 +2079,7 @@ export function FilesPage({
 													)}
 												>
 													Download latest version
-												</a>
+												</Button>
 											) : (
 												<pre
 													role="region"
@@ -2144,8 +2102,8 @@ export function FilesPage({
 												</pre>
 											)}
 											<div css={row}>
-												<button
-													css={button}
+												<Button
+													variant="secondary" size="lg" css={button}
 													onClick={() => {
 														setDraft(binary ? '' : conflict.content)
 														setSaved(binary ? '' : conflict.content)
@@ -2156,9 +2114,9 @@ export function FilesPage({
 													}}
 												>
 													Load latest
-												</button>
-												<button
-													css={primary}
+												</Button>
+												<Button
+													variant="primary" size="lg" css={primary}
 													disabled={busy}
 													onClick={() =>
 														void save(
@@ -2168,7 +2126,7 @@ export function FilesPage({
 													}
 												>
 													Save my version
-												</button>
+												</Button>
 											</div>
 										</section>
 									)}
@@ -2511,14 +2469,14 @@ function TrashView({
 							{file.name}
 						</span>
 						{file.access.delete && (
-							<button
-								css={button}
+							<Button
+								variant="secondary" size="lg" css={button}
 								aria-label={`Restore ${file.name}`}
 								disabled={busy}
 								onClick={() => onRestore(file)}
 							>
 								Restore
-							</button>
+							</Button>
 						)}
 					</li>
 				))}
@@ -2741,8 +2699,8 @@ function WorkspaceRepoBrowser({
 					actions: selectedRepo && (
 						<>
 							{selectedRepo.hasApp && (
-								<SiteLink
-									css={button}
+								<Button
+									variant="secondary" size="lg" css={button}
 									reloadDocument
 									href={buildPackageAppOpenPath({
 										username: owner,
@@ -2750,10 +2708,10 @@ function WorkspaceRepoBrowser({
 									})}
 								>
 									Open app
-								</SiteLink>
+								</Button>
 							)}
-							<SiteLink
-								css={button}
+							<Button
+								variant="secondary" size="lg" css={button}
 								href={routes.communityPackage.href({
 									username: owner,
 									kodyId: selectedRepo.kodyId,
@@ -2762,7 +2720,7 @@ function WorkspaceRepoBrowser({
 								{selectedRepo.hasPackage
 									? 'Package details'
 									: 'Repository details'}
-							</SiteLink>
+							</Button>
 						</>
 					),
 					renderPreview: (file) => {
@@ -2790,19 +2748,13 @@ function WorkspaceRepoBrowser({
 
 function WorkspaceOpenFile({ href }: { href: string }) {
 	return (
-		<SiteLink
+		<Button
 			href={href}
-			css={{
-				...button,
-				display: 'inline-flex',
-				alignItems: 'center',
-				gap: 6,
-				textDecoration: 'none',
-			}}
+			variant="secondary" size="lg" css={[button, { display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }]}
 		>
 			<WorkspaceIcon name="open" />
 			Open
-		</SiteLink>
+		</Button>
 	)
 }
 

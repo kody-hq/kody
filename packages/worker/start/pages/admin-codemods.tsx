@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
@@ -34,14 +35,7 @@ import type {
 	AdminCodemodRunListItem,
 	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss, getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -389,9 +383,6 @@ export function AdminCodemodsPage(props: {
 			codemodId: selectedCodemodId,
 		})
 	}
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const currentHref = props.currentHref
 	const pending = false
 	const status: string = 'ready'
@@ -577,7 +568,7 @@ export function AdminCodemodsPage(props: {
 							}}
 						>
 							{selectedMode === 'apply' ? (
-								<button
+								<Button
 									type="button"
 									disabled={!canMutate || !selectedCodemodId}
 									{...{
@@ -608,16 +599,16 @@ export function AdminCodemodsPage(props: {
 											})()
 										},
 									}}
-									css={dangerButtonCss}
+									variant="danger"
 								>
 									{isRunning
 										? 'Running…'
 										: applyConfirmActive
 											? 'Confirm apply'
 											: 'Apply'}
-								</button>
+								</Button>
 							) : selectedMode === 'revert' ? (
-								<button
+								<Button
 									type="button"
 									disabled={
 										!canMutate || !selectedCodemodId || !revertOfRunId.trim()
@@ -651,34 +642,34 @@ export function AdminCodemodsPage(props: {
 											})()
 										},
 									}}
-									css={dangerButtonCss}
+									variant="danger"
 								>
 									{isRunning
 										? 'Running…'
 										: revertFormConfirmActive
 											? 'Confirm revert'
 											: 'Revert'}
-								</button>
+								</Button>
 							) : (
-								<button
+								<Button
 									type="submit"
 									disabled={!canMutate || !selectedCodemodId}
-									css={primaryButtonCss}
+									variant="primary"
 								>
 									{isRunning ? 'Running…' : 'Run'}
-								</button>
+								</Button>
 							)}
 							{isRunning ? (
-								<button
+								<Button
 									type="button"
 									disabled={stopRequested}
 									onClick={() => {
 										requestStop()
 									}}
-									css={secondaryButtonCss}
+									variant="secondary"
 								>
 									{stopRequested ? 'Stopping…' : 'Stop'}
-								</button>
+								</Button>
 							) : null}
 							{liveRunId ? (
 								<p css={{ margin: 0, color: colors.textMuted }}>

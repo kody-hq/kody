@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	getHandleFormatError,
 	handleFormatHint,
@@ -59,11 +60,7 @@ import {
 	accountFieldNoteCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
-import {
-	getPillButtonCss,
-	getGhostButtonCss,
-	hoverMq,
-} from '#universal/styles/style-primitives.ts'
+import { hoverMq } from '#universal/styles/style-primitives.ts'
 export function OrganizationsPage({
 	data,
 }: {
@@ -79,13 +76,13 @@ export function OrganizationsPage({
 				description="Each organization has its own repositories, secrets, and members. Open one to work in it, or switch from your avatar menu. Deleted organizations you owned can be restored here for 30 days."
 				currentHref={pageLocation.href}
 				actions={
-					<SiteLink
+					<Button
 						href={routes.accountOrganizationsNew.href()}
 						data-testid="account-organizations-create"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						{renderIcon('plus', { size: '1.05rem' })}Create organization
-					</SiteLink>
+					</Button>
 				}
 			/>
 			<AccountManagementPanel
@@ -129,19 +126,19 @@ export function OrganizationsPage({
 								pills: [{ label: 'Deleted', tone: 'quiet' }],
 								testId: 'restorable-organization',
 								trailing: (
-									<button
+									<Button
 										type="button"
 										data-testid="restore-organization"
 										aria-label={`Restore @${org.slug}`}
 										disabled={restore.isPending}
-										css={getPillButtonCss({ size: 'sm' })}
+										variant="primary"
 										onClick={() => restore.submit(org.slug)}
 									>
 										{restore.isPending &&
 										restore.variables?.orgSlug === org.slug
 											? 'Restoring…'
 											: 'Restore'}
-									</button>
+									</Button>
 								),
 							}),
 						)}
@@ -254,14 +251,14 @@ function CreateOrganizationForm() {
 			) : null}
 			{restorableSlug ? (
 				<div css={accountActionsCss} data-testid="create-org-restore">
-					<button
+					<Button
 						type="button"
 						disabled={restore.isPending || mutation.isPending}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={() => restore.submit(restorableSlug)}
 					>
 						{restore.isPending ? 'Restoring…' : `Restore @${restorableSlug}`}
-					</button>
+					</Button>
 				</div>
 			) : null}
 			<AccountManagementPanel title="Details">
@@ -405,23 +402,23 @@ function CreateOrganizationForm() {
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{mutation.isPending
 								? 'Creating…'
 								: confirming
 									? 'Yes, create organization'
 									: 'Create organization'}
-						</button>
-						<SiteLink
+						</Button>
+						<Button
 							href="/account/organizations"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Cancel
-						</SiteLink>
+						</Button>
 					</div>
 				</form>
 			</AccountManagementPanel>

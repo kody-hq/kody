@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
@@ -24,11 +25,7 @@ import {
 	putDesktopExecutionFirst,
 } from '#start/server/execution-contexts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
-import {
-	getPillButtonCss,
-	getGhostButtonCss,
-	inputCss,
-} from '#universal/styles/style-primitives.ts'
+import { inputCss } from '#universal/styles/style-primitives.ts'
 import {
 	chainIsFull,
 	type ExecutionContextsPageData,
@@ -65,8 +62,6 @@ export const oneRunnerCopy =
 	'One runner per machine: this app and the kody CLI share this machine’s registration and its runner.'
 
 type SetupData = Extract<ExecutionContextsPageData, { enabled: true }>
-const buttonCss = getPillButtonCss({ size: 'sm' })
-const secondaryCss = getGhostButtonCss({ size: 'sm' })
 
 function SetupStageList({
 	stages,
@@ -569,9 +564,9 @@ export function DesktopExecutionProvider({
 								and chain entry stay on the website. Revoke the device there to
 								remove access.
 							</p>
-							<button
+							<Button
 								type="button"
-								css={buttonCss}
+								variant="primary"
 								disabled={busy}
 								onClick={() =>
 									void run(async () => {
@@ -585,15 +580,15 @@ export function DesktopExecutionProvider({
 								}
 							>
 								Forget desktop setup
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								css={{ ...secondaryCss, marginLeft: spacing.sm }}
+								variant="secondary" css={{ marginLeft: spacing.sm }}
 								disabled={busy}
 								onClick={() => setOpened(false)}
 							>
 								Cancel
-							</button>
+							</Button>
 						</>
 					) : step === 'overview' ? (
 						<>
@@ -609,9 +604,9 @@ export function DesktopExecutionProvider({
 								folders require separate permission. Your cloud credentials stay
 								in Kody cloud.
 							</p>
-							<button
+							<Button
 								type="button"
-								css={buttonCss}
+								variant="primary"
 								disabled={busy}
 								onClick={() => void prepare()}
 							>
@@ -626,7 +621,7 @@ export function DesktopExecutionProvider({
 										: bridge?.approvesInApp
 											? 'Continue to approve'
 											: 'Continue in browser'}
-							</button>
+							</Button>
 						</>
 					) : step === 'register' ? (
 						<>
@@ -694,9 +689,9 @@ export function DesktopExecutionProvider({
 									</select>
 								</label>
 							) : null}
-							<button
+							<Button
 								type="button"
-								css={buttonCss}
+								variant="primary"
 								disabled={
 									busy ||
 									(!machine.data?.contextId &&
@@ -714,7 +709,7 @@ export function DesktopExecutionProvider({
 												? 'Continue'
 												: 'Enable this machine'
 											: 'Register this device'}
-							</button>
+							</Button>
 						</>
 					) : step === 'attach' && target ? (
 						<>
@@ -745,14 +740,14 @@ export function DesktopExecutionProvider({
 									</select>
 								</label>
 							) : null}
-							<button
+							<Button
 								type="button"
-								css={buttonCss}
+								variant="primary"
 								disabled={busy || (!!needsReplacement && !replace)}
 								onClick={() => void attachMachine()}
 							>
 								{busy ? 'Adding…' : `Make available to @${target}`}
-							</button>
+							</Button>
 						</>
 					) : (
 						<>
@@ -761,25 +756,25 @@ export function DesktopExecutionProvider({
 								{target ? ` in @${target}` : ''} and its runner is connected.
 								You can pause or resume it from Execution contexts.
 							</p>
-							<button
+							<Button
 								type="button"
-								css={buttonCss}
+								variant="primary"
 								onClick={() => setOpened(false)}
 							>
 								Done
-							</button>
+							</Button>
 						</>
 					)}
 					{error ? <p role="alert">{error}</p> : null}
 					{step !== 'done' && step !== 'forget' ? (
-						<button
+						<Button
 							type="button"
-							css={{ ...secondaryCss, marginLeft: spacing.sm }}
+							variant="secondary" css={{ marginLeft: spacing.sm }}
 							disabled={busy}
 							onClick={() => void close()}
 						>
 							Not now
-						</button>
+						</Button>
 					) : null}
 				</dialog>
 			) : null}

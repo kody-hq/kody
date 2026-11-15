@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useState, type FormEvent } from 'react'
@@ -27,11 +28,6 @@ import {
 	type PackageCollaboratorPreset,
 	packageCollaboratorPresetDescription,
 } from '#universal/package-collaborators.ts'
-
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -271,14 +267,14 @@ function PackageInviteLinksContent({
 					</span>
 				</span>
 				<span css={rowActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={busy !== null}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onClick={() => revoke(link.id)}
 					>
 						{busy === `revoke:${link.id}` ? 'Revoking…' : 'Revoke'}
-					</button>
+					</Button>
 				</span>
 			</li>
 		)
@@ -344,15 +340,15 @@ function PackageInviteLinksContent({
 					/>
 				</label>
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="submit"
 						disabled={busy !== null}
 						data-testid="package-invite-link-create"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						{renderIcon('link', { size: '1.05rem' })}
 						{busy === 'create' ? 'Creating…' : 'Create invite link'}
-					</button>
+					</Button>
 				</div>
 			</form>
 			{warnings.map((warning) => (
@@ -376,14 +372,14 @@ function PackageInviteLinksContent({
 			{createdUrl ? (
 				<div css={createdCss} data-testid="package-invite-link-url">
 					<code css={createdCodeCss}>{createdUrl}</code>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={() => void copyAgain()}
 					>
 						{renderIcon('copy', { size: '1.05rem' })}
 						Copy again
-					</button>
+					</Button>
 				</div>
 			) : null}
 			{loadError ? (

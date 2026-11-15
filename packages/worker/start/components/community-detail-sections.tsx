@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { FormFlowState } from '#client/ui-actor.ts'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
@@ -8,13 +9,7 @@ import { CopyTextButton } from './copy-text-button.tsx'
 import { routes } from '#universal/routes.ts'
 
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getSurfaceCardCss,
-	packageDetailPageCss,
-	proseCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSurfaceCardCss, packageDetailPageCss, proseCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import type { CommunityInstallOutcome } from '../community-types.ts'
 
 export function renderMissingListing(title: string, message: string) {
@@ -143,10 +138,10 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 					: 'Featuring offers this listing during onboarding. Featured is editorial placement, not a safety review.'}
 			</p>
 			<div css={sectionActionCss}>
-				<button
+				<Button
 					disabled={props.featureState.status === 'submitting'}
 					aria-busy={props.featureState.status === 'submitting'}
-					css={smallGhostButtonCss}
+					variant="secondary"
 					onClick={props.onToggleFeature}
 				>
 					{props.featureState.status === 'submitting'
@@ -154,7 +149,7 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 						: props.featured
 							? 'Remove from onboarding'
 							: 'Feature in onboarding'}
-				</button>
+				</Button>
 			</div>
 			{('message' in props.featureState ? props.featureState.message : null) ? (
 				<p css={errorTextCss} role="alert">
@@ -192,19 +187,19 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 							}
 						/>
 					</label>
-					<button
+					<Button
 						disabled={
 							props.reportState.status === 'submitting' ||
 							!props.reportReason.trim()
 						}
-						css={smallGhostButtonCss}
+						variant="secondary"
 						onClick={props.onSubmitReport}
 						aria-busy={props.reportState.status === 'submitting'}
 					>
 						{props.reportState.status === 'submitting'
 							? 'Submitting…'
 							: 'Submit report'}
-					</button>
+					</Button>
 					{(
 						'message' in props.reportState ? props.reportState.message : null
 					) ? (
@@ -301,8 +296,6 @@ const installStripCss = {
 	display: 'grid',
 	gap: '0.75rem',
 } satisfies CSSObject
-
-const smallGhostButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const nextStepsCardCss = mergeCss(getSurfaceCardCss(), {
 	marginTop: '1.2rem',

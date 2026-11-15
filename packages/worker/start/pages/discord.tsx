@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
@@ -18,17 +19,7 @@ import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import type { DiscordPageLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	descriptionCss,
-	getGhostButtonCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 
@@ -231,17 +222,14 @@ export function DiscordPage({
 							.
 						</p>
 						{page.canSyncDiscordRoles ? (
-							<button
+							<Button
 								type="button"
 								disabled={busy}
-								css={{
-									...getGhostButtonCss(),
-									justifySelf: 'start',
-								}}
+								variant="secondary" size="lg" css={{ justifySelf: 'start' }}
 								onClick={handleSyncRoles}
 							>
 								Sync Discord roles
-							</button>
+							</Button>
 						) : null}
 					</>
 				) : null}
@@ -292,20 +280,20 @@ export function DiscordPage({
 						{turnstileSiteKey ? (
 							<div className={turnstileWidgetClassName}></div>
 						) : null}
-						<button type="submit" disabled={busy} css={connectButtonCss}>
+						<Button type="submit" disabled={busy} variant="primary" size="md" css={connectButtonCss}>
 							Connect Discord
-						</button>
+						</Button>
 					</form>
 				) : null}
 				{showConnect && page?.signedIn ? (
-					<button
+					<Button
 						type="button"
 						disabled={busy}
-						css={connectButtonCss}
+						variant="primary" size="md" css={connectButtonCss}
 						onClick={handleConnectDiscord}
 					>
 						Connect Discord
-					</button>
+					</Button>
 				) : null}
 			</section>
 		</section>
@@ -326,7 +314,6 @@ const titleCss: CSSObject = {
 }
 
 const connectButtonCss: CSSObject = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	justifySelf: 'start' as const,
 }
 

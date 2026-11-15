@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { formatFindings } from '#client/routes/admin-codemods-shared.ts'
 import type {
@@ -6,11 +7,7 @@ import type {
 	AdminCodemodRunItemListItem,
 	AdminCodemodRunListItem,
 } from '#universal/loader-data.ts'
-import {
-	descriptionCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { css } from '@emotion/react'
 import type { ButtonHTMLAttributes } from 'react'
@@ -36,8 +33,6 @@ const codemodItemColumns: Array<RecordTableColumn> = [
 	{ key: 'error', label: 'error' },
 ]
 const clampedCellCss = css(recordCellClamp(24))
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 type CodemodItemDisplay = {
 	id: string
 	kodyId: string
@@ -215,22 +210,22 @@ export function RunHistoryPanel(input: {
 											flexWrap: 'wrap',
 										}}
 									>
-										<button
+										<Button
 											type="button"
 											disabled={historyLoading}
 											onClick={() => {
 												input.onShowDetails(run.id)
 											}}
-											css={secondaryButtonCss}
+											variant="secondary"
 										>
 											{selectedHistoryRunId === run.id && historyLoading ? (
 												<LoadingIndicator inline label="Loading details" />
 											) : (
 												'Details'
 											)}
-										</button>
+										</Button>
 										{canRevert ? (
-											<button
+											<Button
 												type="button"
 												disabled={!canMutate}
 												{...input.getDestructiveButtonProps(
@@ -240,10 +235,10 @@ export function RunHistoryPanel(input: {
 														input.onRevert(run)
 													},
 												)}
-												css={dangerButtonCss}
+												variant="danger"
 											>
 												{revertConfirmActive ? 'Confirm revert' : 'Revert'}
-											</button>
+											</Button>
 										) : null}
 									</span>
 								),
@@ -278,20 +273,20 @@ export function RunHistoryPanel(input: {
 									</p>
 								) : null}
 								{historyNextAfterId ? (
-									<button
+									<Button
 										type="button"
 										disabled={historyLoading}
 										onClick={() => {
 											input.onLoadMore()
 										}}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										{historyLoading ? (
 											<LoadingIndicator inline label="Loading…" />
 										) : (
 											'Load more'
 										)}
-									</button>
+									</Button>
 								) : null}
 							</div>
 						) : null

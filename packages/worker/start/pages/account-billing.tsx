@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { sendCancellationFeedback } from '#start/server/billing-mutations'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
@@ -49,15 +50,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	layoutMaxWidths,
-	mutedLinkCss,
-	primaryLinkCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss, layoutMaxWidths, mutedLinkCss, primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 
 type SubscriptionStatusTone = 'ok' | 'warn' | 'action' | 'muted'
 
@@ -442,7 +435,7 @@ export function AccountBillingPage({
 								<p css={descriptionCss}>Credits are available on Pro.</p>
 								{canSwitchToPro ? (
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={checkoutPending !== null}
 											onClick={() =>
@@ -452,10 +445,10 @@ export function AccountBillingPage({
 													'page',
 												)
 											}
-											css={primaryButtonCss}
+											variant="primary"
 										>
 											{checkoutPending ? 'Opening Stripe…' : 'Switch to Pro'}
-										</button>
+										</Button>
 									</div>
 								) : null}
 							</>
@@ -616,16 +609,16 @@ export function AccountBillingPage({
 										</AccountManagementMessage>
 									) : null}
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={cancellationFeedbackPending}
 											onClick={() => void submitCancellationFeedback()}
-											css={secondaryButtonCss}
+											variant="secondary"
 										>
 											{cancellationFeedbackPending
 												? 'Sending…'
 												: 'Send feedback'}
-										</button>
+										</Button>
 									</div>
 								</div>
 							)}
@@ -645,7 +638,7 @@ export function AccountBillingPage({
 									alignItems: 'center',
 								}}
 							>
-								<button
+								<Button
 									type="button"
 									disabled={portalPending}
 									onClick={async () => {
@@ -668,17 +661,10 @@ export function AccountBillingPage({
 											)
 										}
 									}}
-									css={{
-										...(statusInfo?.tone === 'action'
-											? primaryButtonCss
-											: secondaryButtonCss),
-										display: 'inline-block',
-										textDecoration: 'none',
-										textAlign: 'center',
-									}}
+									variant={statusInfo?.tone === 'action' ? 'primary' : 'secondary'} css={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}
 								>
 									Manage subscription
-								</button>
+								</Button>
 								{billing.creditsEligible &&
 								billing.manualPlan === 'free' &&
 								billing.stripePlan === 'pro' &&
@@ -733,6 +719,3 @@ export function AccountBillingPage({
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })

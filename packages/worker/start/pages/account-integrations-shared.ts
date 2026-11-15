@@ -5,7 +5,6 @@ import type {
 	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { orgResourcePath, relocateAccountHref } from '#universal/org-pages.ts'
-import { getDangerPillCss } from '#universal/styles/style-primitives.ts'
 
 export const integrationsRoute = createListDetailLinks('/account/integrations')
 
@@ -151,7 +150,6 @@ export function filterOauthApps(
 	)
 }
 
-export const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 export function formatList(values: Array<string> | null | undefined) {
 	if (!values || values.length === 0) return 'None'

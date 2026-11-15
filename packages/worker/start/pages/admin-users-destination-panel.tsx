@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, useRef, type FormEvent } from 'react'
@@ -6,12 +7,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminDestinationMutationOptions } from '../admin-user-controls-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss, getAuthInputCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -100,17 +96,16 @@ export function AdminUserDestinationPanel({
 						css={inputCss}
 					/>
 				</label>
-				<button
+				<Button
 					type="submit"
 					disabled={mutation.isPending || !email.trim()}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					{mutation.isPending ? 'Working…' : 'Mark destination verified'}
-				</button>
+				</Button>
 			</form>
 		</AccountManagementPanel>
 	)
 }
 
 const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }
-const primaryButtonCss: CSSObject = getPillButtonCss({ size: 'sm' })

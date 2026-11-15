@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import { publicAsset } from '../../public-assets.ts'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { claudeIntegrations as page } from '#universal/acquisition/claudeIntegrations.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const clients = ['Claude', 'Claude Code', 'Another MCP agent'] as const
 const methods = [
 	{
@@ -51,9 +51,9 @@ export function ClaudeIntegrationsPage() {
 						Start in Claude, then use what you built from your other agents,
 						too. Kody keeps your saved tools, accounts, and facts in one place.
 					</p>
-					<SiteLink href="/onboarding" css={getPillButtonCss()}>
+					<Button href="/onboarding" variant="primary" size="lg">
 						Connect Claude to Kody ↗
-					</SiteLink>
+					</Button>
 					<SiteLink className="quiet-link" href="#choose">
 						Find the right connection ↓
 					</SiteLink>
@@ -233,9 +233,9 @@ export function ClaudeIntegrationsPage() {
 				<div>
 					<h2>Give Claude a starting point.</h2>
 					<p>Use this prompt after connecting your account.</p>
-					<SiteLink href="/onboarding" css={getPillButtonCss()}>
+					<Button href="/onboarding" variant="primary" size="lg">
 						Set up Kody ↗
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="prompt">
 					<blockquote>{page.prompt}</blockquote>

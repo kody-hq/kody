@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { PackageCustomDomainsSection } from '../components/custom-domain-status.tsx'
 import {
 	setPackageVisibility,
@@ -23,11 +24,7 @@ import {
 	ForkOutdatedCopyButton,
 } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import {
 	accountDisclosureCss,
 	IdValue,
@@ -413,7 +410,7 @@ export function AccountPackageOwnerDetails(props: {
 											gap: spacing.xs,
 										}}
 									>
-										<button
+										<Button
 											type="button"
 											disabled={
 												internetVisibleState === 'submitting' ||
@@ -424,7 +421,7 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-internet-visible-off'
 													: 'package-internet-visible-on'
 											}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											onClick={() =>
 												void submitInternetVisible(
 													packageDetail,
@@ -437,21 +434,17 @@ export function AccountPackageOwnerDetails(props: {
 												: packageDetail.isInternetVisible
 													? 'Turn off internet-visible'
 													: 'Make internet-visible'}
-										</button>
-										<SiteLink
+										</Button>
+										<Button
 											href={routes.communityPackageApproveCapabilities.href({
 												username: props.ownerUsername,
 												kodyId: packageDetail.kodyId,
 											})}
 											data-testid="package-approve-capabilities-link"
-											css={{
-												...getPillButtonCss({ size: 'sm' }),
-												display: 'inline-flex',
-												textDecoration: 'none',
-											}}
+											variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
 										>
 											Review credentials
-										</SiteLink>
+										</Button>
 									</div>
 									{internetVisibleMessage ? (
 										<p css={{ margin: 0, color: colors.danger }} role="alert">
@@ -532,7 +525,7 @@ export function AccountPackageOwnerDetails(props: {
 											}}
 										/>
 									</label>
-									<button
+									<Button
 										type="button"
 										disabled={visibilityPending}
 										data-testid={
@@ -540,7 +533,7 @@ export function AccountPackageOwnerDetails(props: {
 												? 'package-make-public'
 												: 'package-make-private'
 										}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={() =>
 											void submitVisibility(
 												packageDetail,
@@ -553,7 +546,7 @@ export function AccountPackageOwnerDetails(props: {
 											: packageDetail.isPrivate
 												? 'Make public on the community'
 												: 'Make private'}
-									</button>
+									</Button>
 									{visibilityMessage ? (
 										<p css={{ margin: 0, color: colors.danger }} role="alert">
 											{visibilityMessage}

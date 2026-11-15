@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useEffect } from 'react'
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
@@ -12,11 +13,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { WorkspaceAppsEmptyState } from '../components/workspace-apps-empty-state.tsx'
 import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	inputCss,
-} from '#universal/styles/style-primitives.ts'
+import { inputCss } from '#universal/styles/style-primitives.ts'
 import { IdentityIconMark } from '../components/identity-icon-mark.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { filterWorkspaceApps } from '#universal/workspace-apps.ts'
@@ -266,23 +263,23 @@ function Page() {
 									)}
 									<div css={linksCss}>
 										{app.appHref && (
-											<a
+											<Button
 												href={app.appHref}
-												css={getPillButtonCss({ size: 'sm' })}
+												variant="primary" reloadDocument
 											>
 												Open app
-											</a>
+											</Button>
 										)}
 										{app.canOpenDetail !== false && (
-											<SiteLink
-												css={getGhostButtonCss({ size: 'sm' })}
+											<Button
+												variant="secondary"
 												href={routes.communityPackage.href({
 													username: data.username,
 													kodyId: app.kodyId,
 												})}
 											>
 												Package
-											</SiteLink>
+											</Button>
 										)}
 									</div>
 								</div>

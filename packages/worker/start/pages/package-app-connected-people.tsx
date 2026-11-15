@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -15,10 +16,6 @@ import {
 	fallbackDefaultBranchName,
 	getPackageTreeHref,
 } from '#universal/package-files.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { detailArticleCss } from '../components/community-detail-sections.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -139,10 +136,10 @@ export function PackageAppConnectedPeopleRoute({
 					</ul>
 				</span>
 				<span css={rowActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={busy != null}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						aria-label={
 							isArmed
 								? `Confirm sign out ${name}`
@@ -164,7 +161,7 @@ export function PackageAppConnectedPeopleRoute({
 							: isArmed
 								? 'Confirm sign out'
 								: 'Sign out'}
-					</button>
+					</Button>
 				</span>
 			</li>
 		)
@@ -182,12 +179,12 @@ export function PackageAppConnectedPeopleRoute({
 				css={pagerCss}
 			>
 				{view.page > 1 ? (
-					<SiteLink
+					<Button
 						href={pageHref(Math.min(view.page - 1, pageCount))}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Newer
-					</SiteLink>
+					</Button>
 				) : null}
 				{outOfRange ? null : (
 					<span css={mutedCopyCss}>
@@ -195,12 +192,12 @@ export function PackageAppConnectedPeopleRoute({
 					</span>
 				)}
 				{view.page < pageCount ? (
-					<SiteLink
+					<Button
 						href={pageHref(view.page + 1)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Older
-					</SiteLink>
+					</Button>
 				) : null}
 			</nav>
 		)

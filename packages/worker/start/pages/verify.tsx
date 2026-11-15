@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useState, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -17,18 +18,7 @@ import {
 	normalizeRedirectTo,
 	resolvePostAuthLandingPath,
 } from '#universal/safe-redirect.ts'
-import {
-	cardCss,
-	fieldCss,
-	fieldLabelCss,
-	getPrimaryButtonCss,
-	inputCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, fieldCss, fieldLabelCss, inputCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
@@ -193,9 +183,9 @@ export function VerifyRoute() {
 						data-sitekey={turnstileSiteKey}
 					></div>
 				) : null}
-				<button type="submit" disabled={isSubmitting} css={primaryButtonCss}>
+				<Button type="submit" disabled={isSubmitting} variant="primary" size="md">
 					{isSubmitting ? 'Verifying...' : 'Verify'}
-				</button>
+				</Button>
 				{(message ?? formErrorMessage) ? (
 					<p
 						aria-live="polite"
@@ -238,8 +228,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

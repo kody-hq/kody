@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import { ErrorAgentPromptButton } from './error-agent-prompt-button.tsx'
 import { buildInternalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
-import { SiteLink } from './site-link.tsx'
 import { routes } from '#universal/routes.ts'
 import {
 	internalErrorPageCopy,
@@ -11,10 +11,6 @@ import {
 	internalErrorPageImageSrc,
 } from '#universal/internal-error-page.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	illustratedErrorActionsCss,
 	illustratedErrorCopyCss,
@@ -46,15 +42,15 @@ export function InternalErrorPage() {
 			<h1 css={illustratedErrorHeadingCss}>{internalErrorPageHeading}</h1>
 			<p css={illustratedErrorCopyCss}>{internalErrorPageCopy}</p>
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
-				<a href={retryHref} css={getPillButtonCss()}>
+				<Button href={retryHref} variant="primary" size="lg" reloadDocument>
 					Try again
-				</a>
-				<SiteLink
+				</Button>
+				<Button
 					href={routes.home.href()}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Go home
-				</SiteLink>
+				</Button>
 			</nav>
 			<ErrorAgentPromptButton
 				prompt={buildInternalErrorAgentPrompt({ path: retryHref })}

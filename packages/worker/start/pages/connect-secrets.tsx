@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { connectSecretsInput } from '../connect-input.ts'
 import {
 	approveSecretAccess,
@@ -15,7 +16,6 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { connectSecretsQuery } from '../connect-approval-queries.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import { ConnectSecretsPlacementApproval } from './connect-secrets-placement.tsx'
 
@@ -28,17 +28,7 @@ import {
 } from '#client/routes/account-approval-shared.ts'
 
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	getAccentCalloutCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 
 const connectSecretsPageCss: CSSObject = {
 	...stackedPageCss,
@@ -51,16 +41,6 @@ const connectSecretsHeaderCss: CSSObject = {
 	justifyItems: 'center',
 	textAlign: 'center' as const,
 }
-
-const connectSecretsPrimaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-
-const connectSecretsSecondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
 export function ConnectSecretsRoute({
 	initialData,
@@ -304,12 +284,12 @@ export function ConnectSecretsRoute({
 						) : null}
 					</div>
 					{showBackToSecrets ? (
-						<SiteLink
+						<Button
 							href={routes.accountCredentials.href()}
-							css={connectSecretsSecondaryButtonCss}
+							variant="secondary" size="md"
 						>
 							Back to credentials
-						</SiteLink>
+						</Button>
 					) : (
 						<div
 							css={{
@@ -319,29 +299,29 @@ export function ConnectSecretsRoute({
 							}}
 						>
 							{hosts.length > 0 && completed !== 'approve' ? (
-								<button
+								<Button
 									type="button"
 									disabled={submittingAction != null}
 									onClick={() => {
 										void submitApproval('approve')
 									}}
-									css={connectSecretsPrimaryButtonCss}
+									variant="primary" size="md"
 								>
 									{submittingAction === 'approve'
 										? 'Allowing access…'
 										: allowHostsButtonLabel(hosts.length, rejectedHosts.length)}
-								</button>
+								</Button>
 							) : null}
-							<button
+							<Button
 								type="button"
 								disabled={submittingAction != null}
 								onClick={() => {
 									void submitApproval('reject')
 								}}
-								css={connectSecretsSecondaryButtonCss}
+								variant="secondary" size="md"
 							>
 								Reject
-							</button>
+							</Button>
 						</div>
 					)}
 				</section>

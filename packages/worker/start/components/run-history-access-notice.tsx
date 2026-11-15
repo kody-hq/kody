@@ -1,10 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { orgGrantsPath } from '#universal/org-pages.ts'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { renderIcon } from './icon.tsx'
-import { SiteLink } from './site-link.tsx'
 
 /**
  * Shown in place of org run history (Activity, Overview runs and charts) when
@@ -49,12 +48,12 @@ export function RunHistoryAccessNotice({
 				page. It's read-only: you won't be able to run, change, or triage
 				anything.
 			</p>
-			<SiteLink
+			<Button
 				href={orgGrantsPath(orgSlug)}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				Open Grants
-			</SiteLink>
+			</Button>
 		</section>
 	)
 }

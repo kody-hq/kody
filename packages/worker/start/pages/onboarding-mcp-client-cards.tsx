@@ -1,16 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import {
-	getAccentCalloutCss,
-	getPillButtonCss,
-	mutedLinkCss,
-	nativeDisclosureCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss, mutedLinkCss, nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
 import {
 	highlightSnippetKey,
@@ -226,15 +222,15 @@ export function PrimaryActionLink(props: {
 }) {
 	return (
 		<div css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				target={props.external ? '_blank' : undefined}
 				rel={props.external ? 'noreferrer noopener' : undefined}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary" size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 		</div>
 	)
 }
@@ -245,13 +241,13 @@ export function InstallDeepLink(props: {
 }) {
 	return (
 		<div css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary" size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 			<small css={deepLinkNoteCss}>
 				Your client will still ask you to authorize access afterwards.
 			</small>
@@ -267,13 +263,13 @@ export function PluginPrimaryInstall(props: {
 }) {
 	return (
 		<div data-testid="onboarding-mcp-plugin-primary" css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary" size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 			{props.alternativeValue ? (
 				<p
 					data-testid="onboarding-mcp-plugin-alternative"
@@ -301,8 +297,6 @@ const deepLinkCss: CSSObject = {
 	gap: '0.45rem',
 	justifyItems: 'start',
 }
-
-const deepLinkButtonCss = getPillButtonCss()
 
 const deepLinkNoteCss: CSSObject = {
 	color: colors.textMuted,

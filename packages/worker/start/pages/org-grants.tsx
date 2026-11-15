@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type {
 	OrgGrantsLoaderData,
 	OrgGrantView,
@@ -16,13 +17,11 @@ import {
 	orgWideManageAccessOptions,
 	orgWideManagePermissionsFor,
 } from '#universal/org-wide-manage-access.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import type { QueryKey } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	AccountManagementMessage,
@@ -413,23 +412,23 @@ function GiveAccessPicker({
 				</label>
 				<div css={accountActionsCss}>
 					{userId ? (
-						<SiteLink
+						<Button
 							href={orgGrantAccessPath(orgSlug, userId)}
 							data-testid="org-give-access-open"
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('key', { size: '1.05rem' })}
 							Open access page
-						</SiteLink>
+						</Button>
 					) : (
-						<button
+						<Button
 							type="button"
 							disabled
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('key', { size: '1.05rem' })}
 							Open access page
-						</button>
+						</Button>
 					)}
 				</div>
 			</div>
@@ -660,15 +659,15 @@ function OrgWideAccessForm({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid={`${form.testId}-save`}
 							disabled={!canEdit || !subject || unchanged || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('check', { size: '1.05rem' })}
 							{mutation.isPending ? 'Saving…' : form.save}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

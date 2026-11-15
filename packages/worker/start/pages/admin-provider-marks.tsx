@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { publicAsset } from '../public-assets.ts'
 import type { ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
@@ -31,16 +32,7 @@ import type {
 	AdminProviderMark,
 	AdminProviderMarksLoaderData,
 } from '#universal/loader-data.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getLogoWellCss,
-	getPillButtonCss,
-	hoverMq,
-	nativeDisclosureCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss, getLogoWellCss, hoverMq, nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -172,10 +164,6 @@ export function AdminProviderMarksRoute({
 			return next
 		})
 	}
-
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const ghostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function resetFormState() {
 		setPendingLogoBase64(undefined)
@@ -436,13 +424,13 @@ export function AdminProviderMarksRoute({
 						flexWrap: 'wrap',
 					}}
 				>
-					<button type="submit" disabled={isMutating} css={primaryButtonCss}>
+					<Button type="submit" disabled={isMutating} variant="primary">
 						{actionState === 'saving' ? 'Saving…' : 'Save mark'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={isMutating}
-						css={ghostButtonCss}
+						variant="secondary"
 						onClick={() => {
 							setCreating(false)
 							setSelectedSlug(null)
@@ -450,12 +438,12 @@ export function AdminProviderMarksRoute({
 						}}
 					>
 						Cancel
-					</button>
+					</Button>
 					{editingMark ? (
-						<button
+						<Button
 							type="button"
 							disabled={isMutating}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={() => setDeleteConfirmed(false)}
 							onClick={() => {
 								if (deleteConfirmed) handleDelete(editingMark)
@@ -467,7 +455,7 @@ export function AdminProviderMarksRoute({
 								: actionState === 'deleting'
 									? 'Deleting…'
 									: 'Delete'}
-						</button>
+						</Button>
 					) : null}
 				</div>
 			</form>

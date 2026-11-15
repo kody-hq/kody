@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -13,11 +14,7 @@ import type {
 	AccountConnectedAppsLoaderData,
 	AccountConnectedAppView,
 } from '#universal/loader-data.ts'
-import {
-	getDangerPillCss,
-	getLogoWellCss,
-	getSwapLabelCss,
-} from '#universal/styles/style-primitives.ts'
+import { getLogoWellCss, getSwapLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -319,12 +316,12 @@ function RevokeButton(props: {
 	)
 	return (
 		<div css={revokeActionsCss}>
-			<button
+			<Button
 				type="button"
 				aria-label={
 					props.armed ? `Confirm revoke ${props.name}` : `Revoke ${props.name}`
 				}
-				css={dangerButtonCss}
+				variant="danger" css={dangerButtonCss}
 				onClick={() => {
 					if (props.armed) props.onConfirm([...selectedIds])
 					else {
@@ -347,7 +344,7 @@ function RevokeButton(props: {
 				>
 					Confirm revoke
 				</span>
-			</button>
+			</Button>
 			{props.armed ? (
 				<>
 					<AccountConnectedAppDisconnectOptions
@@ -386,30 +383,30 @@ function ScopeRevokeButton(props: {
 				selectedIds={selectedIds}
 				onChange={(ids) => setSelectedIds(ids)}
 			/>
-			<button
+			<Button
 				type="button"
 				aria-label={`Confirm revoke ${props.label}`}
-				css={dangerButtonCss}
+				variant="danger" css={dangerButtonCss}
 				onClick={() => props.onConfirm([...selectedIds])}
 			>
 				Confirm revoke
-			</button>
+			</Button>
 			<button type="button" css={secondaryButtonCss} onClick={props.onDisarm}>
 				Cancel
 			</button>
 		</div>
 	) : (
-		<button
+		<Button
 			type="button"
 			aria-label={`Revoke ${props.label}`}
-			css={dangerButtonCss}
+			variant="danger" css={dangerButtonCss}
 			onClick={() => {
 				setSelectedIds(new Set())
 				props.onArm()
 			}}
 		>
 			Revoke
-		</button>
+		</Button>
 	)
 }
 
@@ -528,4 +525,4 @@ const markImageCss: CSSObject = {
 	objectFit: 'contain',
 }
 
-const dangerButtonCss = [getDangerPillCss({ size: 'sm' }), getSwapLabelCss()]
+const dangerButtonCss = getSwapLabelCss()

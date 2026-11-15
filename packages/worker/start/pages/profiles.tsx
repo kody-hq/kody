@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	type FormEvent,
@@ -40,13 +41,7 @@ import {
 } from '#universal/profiles.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -162,13 +157,13 @@ function EnabledPage(props: { payload: EnabledData; currentHref: string }) {
 				currentHref={currentHref}
 				actions={
 					payload.listError ? null : (
-						<button
+						<Button
 							type="button"
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 							onClick={() => setComposer({ parentId: null })}
 						>
 							New profile
-						</button>
+						</Button>
 					)
 				}
 			/>
@@ -292,13 +287,13 @@ function EmptyState(props: { allMembers: boolean; onCreate: () => void }) {
 					<li>Revoke it, and every sub-profile below stops working too.</li>
 				</ul>
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={props.onCreate}
 					>
 						Create your first profile
-					</button>
+					</Button>
 					<SiteLink
 						href={routes.docDetail.href({ slug: 'profiles' })}
 						css={primaryLinkCss}
@@ -688,13 +683,13 @@ function ProfileDetail(props: {
 				<GrantsList grants={profile.grants} />
 				<div css={accountActionsCss}>
 					{block === null ? (
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={props.onAddSubProfile}
 						>
 							Add sub-profile
-						</button>
+						</Button>
 					) : null}
 					{canRevokeProfile(profile, viewer) ? (
 						<RevokeProfileButton
@@ -849,13 +844,13 @@ function ShortenExpiryForm(props: {
 				</span>
 			</label>
 			<div css={accountActionsCss}>
-				<button
+				<Button
 					type="submit"
 					disabled={pending}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					{pending ? 'Saving…' : 'Shorten expiry'}
-				</button>
+				</Button>
 			</div>
 			{message ? (
 				<AccountManagementMessage tone="error">
@@ -896,13 +891,13 @@ function RevokeProfileButton(props: {
 
 	return (
 		<>
-			<button
+			<Button
 				type="button"
-				css={getDangerPillCss({ size: 'sm' })}
+				variant="danger"
 				onClick={() => dialog.current?.showModal()}
 			>
 				Revoke
-			</button>
+			</Button>
 			<dialog
 				ref={dialog}
 				aria-labelledby={`revoke-${props.profile.id}`}
@@ -928,21 +923,21 @@ function RevokeProfileButton(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={pending}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onClick={() => void confirm()}
 					>
 						{pending ? 'Revoking…' : 'Revoke for good'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			</dialog>
 		</>
@@ -1058,14 +1053,14 @@ function ProfileTokens(props: {
 								</td>
 								<td>
 									{token.status === 'active' ? (
-										<button
+										<Button
 											type="button"
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 											onClick={() => void revoke(token.id)}
 											aria-label={`Revoke token ${token.name}`}
 										>
 											Revoke
-										</button>
+										</Button>
 									) : null}
 								</td>
 							</tr>
@@ -1083,13 +1078,13 @@ function ProfileTokens(props: {
 							variant="secondary"
 							idleLabel="Copy token"
 						/>
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={() => setSecret(null)}
 						>
 							Done
-						</button>
+						</Button>
 					</div>
 				</div>
 			) : profile.status === 'active' ? (
@@ -1144,13 +1139,13 @@ function ProfileTokens(props: {
 						))}
 					</fieldset>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={pending}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							{pending ? 'Creating…' : 'Create profile token'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : null}
@@ -1370,24 +1365,24 @@ function CreateProfilePanel(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="submit"
 						disabled={pending}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						{pending
 							? 'Creating…'
 							: parent
 								? 'Create sub-profile'
 								: 'Create profile'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={props.onCancel}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			</div>
 		</AccountManagementPanel>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useInviteHandoff } from '../use-invite-handoff.ts'
 import {
 	useMutation,
@@ -19,10 +20,6 @@ import type {
 	OrgTeamView,
 	ScopedInviteLinkView,
 } from '#universal/loader-data.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -151,16 +148,16 @@ export function OrgTeamInviteLinks({
 					Invite link: whoever accepts joins this team, and the organization as
 					Member if they are not in it yet.
 				</span>
-				<button
+				<Button
 					type="button"
 					disabled={busy !== null}
 					data-testid="org-team-invite-link-create"
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 					onClick={() => void createLink()}
 				>
 					{renderIcon('link', { size: '1.05rem' })}
 					{busy === `create:${team.id}` ? 'Creating…' : 'Copy invite link'}
-				</button>
+				</Button>
 			</div>
 			{createdUrl ? (
 				<div css={createdCss} data-testid="org-team-invite-link-url">
@@ -180,14 +177,14 @@ export function OrgTeamInviteLinks({
 									]}
 								/>
 							</span>
-							<button
+							<Button
 								type="button"
 								disabled={busy !== null}
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 								onClick={() => void revokeLink(link.id)}
 							>
 								{busy === `revoke:${link.id}` ? 'Revoking…' : 'Revoke'}
-							</button>
+							</Button>
 						</li>
 					))}
 				</ul>

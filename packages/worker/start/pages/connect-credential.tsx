@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { SaveSecretInput } from '#universal/secret-mutations.ts'
 import { saveSecret } from '#start/server/account-mutations'
 import { readAccountSecretsSaveWarning } from './account-secrets-shared.ts'
@@ -62,33 +63,11 @@ import {
 	credentialKindLabel,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
-import {
-	cardCss,
-	cardTitleCss,
-	fieldCss,
-	fieldLabelCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	inputCss,
-	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, cardTitleCss, fieldCss, fieldLabelCss, inputCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 const primaryButtonCss = {
-	...getPrimaryButtonCss({
-		size: 'lg',
-		weight: 'semibold',
-		mobileFullWidth: true,
-	}),
 	justifySelf: 'start',
 }
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const mutedCss = { margin: 0, color: colors.textMuted }
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
@@ -290,16 +269,16 @@ export function ConnectCredentialRoute({
 						</p>
 					) : null}
 					{saved ? (
-						<SiteLink
+						<Button
 							href={orgResourcePath(
 								input.orgSlug,
 								'credentials',
 								encodeURIComponent(saved.id),
 							)}
-							css={secondaryButtonCss}
+							variant="secondary" size="md"
 						>
 							View credential
-						</SiteLink>
+						</Button>
 					) : null}
 				</section>
 			)
@@ -531,16 +510,16 @@ export function ConnectCredentialRoute({
 							/>
 						</div>
 					) : null}
-					<button
+					<Button
 						type="submit"
 						disabled={
 							saving || input.linkProblem !== null || kindConflict !== null
 						}
 						data-testid="connect-credential-save"
-						css={primaryButtonCss}
+						variant="primary" size="md" mobileFullWidth css={primaryButtonCss}
 					>
 						{saving ? 'Saving…' : isKey ? 'Save key' : 'Save credential'}
-					</button>
+					</Button>
 				</form>
 			</section>
 		)
@@ -637,14 +616,14 @@ export function ConnectCredentialRoute({
 								idleLabel="Copy prompt"
 								variant="primary"
 							/>
-							<button
+							<Button
 								type="button"
-								css={secondaryButtonCss}
+								variant="secondary" size="md"
 								data-testid="connect-credential-manual"
 								onClick={() => setManual(true)}
 							>
 								Create one manually
-							</button>
+							</Button>
 						</div>
 					</section>
 				) : (
@@ -727,13 +706,13 @@ function renderKindBody(input: {
 							: 'Add the server’s URL. Kody connects to it and asks you to sign in when the server needs it.'}
 					</p>
 
-					<SiteLink
+					<Button
 						href={credentialCreateHandoffHref({
 							kind,
 							search: input.search,
 							orgSlug: input.orgSlug,
 						})}
-						css={primaryButtonCss}
+						variant="primary" size="md" mobileFullWidth css={primaryButtonCss}
 						data-testid="connect-credential-continue"
 						onClick={() => {
 							if (kind === 'oauth') persistConnectOauthOrgSlug(input.orgSlug)
@@ -742,7 +721,7 @@ function renderKindBody(input: {
 						{kind === 'oauth'
 							? 'Continue to connect'
 							: 'Continue to add server'}
-					</SiteLink>
+					</Button>
 				</section>
 			)
 		}

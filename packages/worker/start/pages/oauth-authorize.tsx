@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -53,27 +54,7 @@ import {
 } from '#universal/oauth-authorize-client-failure.ts'
 import type { OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import {
-	cardCss,
-	descriptionCss,
-	detailItemCss,
-	detailLabelCss,
-	fieldCss,
-	fieldLabelCss,
-	getAlertCardCss,
-	getDangerButtonCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	inputCss,
-	insetCardCss,
-	listCss,
-	mutedLinkCss,
-	nativeDisclosureCss,
-	pageDescriptionCss,
-	sectionTitleCss,
-	stackedPageCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss, detailItemCss, detailLabelCss, fieldCss, fieldLabelCss, getAlertCardCss, inputCss, insetCardCss, listCss, mutedLinkCss, nativeDisclosureCss, pageDescriptionCss, sectionTitleCss, stackedPageCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -196,13 +177,13 @@ function OAuthAuthorizeClientFailureCard(props: {
 				</div>
 			</dl>
 			<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-				<a
+				<Button
 					href={props.retryHref}
 					data-testid="oauth-authorize-retry"
-					css={retryLinkCss}
+					variant="primary" size="md" reloadDocument css={retryLinkCss}
 				>
 					Retry
-				</a>
+				</Button>
 			</div>
 			{failure.client === 'codex' ? (
 				<div css={{ display: 'grid', gap: spacing.sm }}>
@@ -895,7 +876,7 @@ export function OAuthAuthorizeRoute({
 			) : null}
 			{needsEmailVerification && !resetCompleted ? (
 				<div css={{ marginBottom: spacing.md }}>
-					<button
+					<Button
 						type="button"
 						data-testid="oauth-authorize-email-verify-deny"
 						disabled={oauthAuthorizeEmailVerificationDenyDisabled({
@@ -908,10 +889,10 @@ export function OAuthAuthorizeRoute({
 							label: 'Deny',
 						})}
 						onClick={() => submitDecision('deny')}
-						css={secondaryButtonCss}
+						variant="secondary" size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			) : null}
 			{clientFailure ? (
@@ -944,14 +925,14 @@ export function OAuthAuthorizeRoute({
 						stay in place.
 					</p>
 					{isLoggedIn ? (
-						<button
+						<Button
 							type="button"
 							disabled={resetClientDisabled}
 							onClick={() => submitDecision('reset-client')}
-							css={dangerButtonCss}
+							variant="danger" size="md"
 						>
 							{resetClientLabel}
-						</button>
+						</Button>
 					) : isSessionReady ? (
 						<p css={descriptionCss}>
 							Sign in first, then reset this connection.
@@ -1061,30 +1042,30 @@ export function OAuthAuthorizeRoute({
 										}}
 									>
 										{authProviders.providers.map((provider) => (
-											<button
+											<Button
 												key={provider.id}
 												type="button"
 												disabled={actionsDisabled}
 												aria-label={`Continue with ${provider.label}`}
 												data-testid={`social-sign-in-${provider.id}`}
-												css={secondaryButtonCss}
+												variant="secondary" size="md"
 												onClick={() => void signIn(provider.id)}
 											>
 												<ProviderIcon providerId={provider.id} size="1.4rem" />
-											</button>
+											</Button>
 										))}
 									</div>
 								</>
 							) : null}
-							<button
+							<Button
 								type="button"
 								disabled={actionsDisabled}
 								data-testid="oauth-authorize-passkey"
-								css={secondaryButtonCss}
+								variant="secondary" size="md"
 								onClick={() => void signIn()}
 							>
 								Sign in with a passkey
-							</button>
+							</Button>
 							{!sessionEmail ? (
 								<p css={descriptionCss}>
 									<SiteLink
@@ -1101,16 +1082,16 @@ export function OAuthAuthorizeRoute({
 						<div className={turnstileWidgetClassName}></div>
 					) : null}
 					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-						<button
+						<Button
 							type="submit"
 							data-testid="oauth-authorize-approve"
 							disabled={actionsDisabled}
 							aria-label={approveAriaLabel}
-							css={primaryButtonCss}
+							variant="primary" size="md"
 						>
 							{authorizeLabel}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={actionsDisabled}
 							aria-label={oauthAuthorizeApproveAriaLabel({
@@ -1118,10 +1099,10 @@ export function OAuthAuthorizeRoute({
 								label: 'Deny',
 							})}
 							onClick={() => submitDecision('deny')}
-							css={secondaryButtonCss}
+							variant="secondary" size="md"
 						>
 							Deny
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : null}
@@ -1165,23 +1146,10 @@ const failureDetailsCss = {
 	gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
 	gap: spacing.md,
 }
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const retryLinkCss = {
-	...primaryButtonCss,
 	textDecoration: 'none',
 	'&:hover': { textDecoration: 'none' },
 }
-const dangerButtonCss = getDangerButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
 const mutationResources = [
 	'loadAccountPage',

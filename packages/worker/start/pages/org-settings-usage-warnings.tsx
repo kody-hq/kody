@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { updateOrganizationUsageWarnings } from '#start/server/org-settings-mutations'
 import {
 	useMutation,
@@ -9,11 +10,7 @@ import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgUsagePath } from '#universal/org-pages.ts'
-import {
-	getPillButtonCss,
-	primaryLinkCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
@@ -140,15 +137,15 @@ export function OrgSettingsUsageWarnings({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="org-settings-usage-warnings-save"
 							disabled={unchanged || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('check', { size: '1.05rem' })}
 							{mutation.isPending ? 'Saving…' : 'Save usage warnings'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : (

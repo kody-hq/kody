@@ -13,7 +13,7 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getPillButtonCss,
+	type getButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type OauthCallbackSectionProps = {
@@ -106,7 +106,7 @@ export type AddMcpServerFormProps = {
 	addBearerToken: string
 	isMutating: boolean
 	isBusy: boolean
-	primaryButtonCss: ReturnType<typeof getPillButtonCss>
+	primaryButtonCss: ReturnType<typeof getButtonCss>
 	onSubmit: (form: HTMLFormElement) => void
 	onNameInput: (value: string) => void
 	onUrlInput: (value: string) => void

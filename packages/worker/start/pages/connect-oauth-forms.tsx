@@ -34,8 +34,6 @@ import { renderProviderInstructions } from './connect-oauth-detail.tsx'
 import { renderReplaceConfirmation } from './connect-oauth-sections.tsx'
 import {
 	connectOauthAdvancedDetailsCss,
-	connectOauthPrimaryButtonCss,
-	connectOauthSecondaryButtonCss,
 } from './connect-oauth-shared.ts'
 
 function renderScopePicker(input: {

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
 import {
@@ -18,13 +19,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	hoverMq,
-	mutedLinkCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { hoverMq, mutedLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	accountDisclosureCss,
@@ -135,16 +130,16 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						<span css={visuallyHiddenCss}>Change avatar</span>
 					</label>
 					{avatarUrl ? (
-						<button
+						<Button
 							type="button"
 							disabled={avatarStatus !== 'idle' || isSaving}
-							css={compactGhostButtonCss}
+							variant="secondary"
 							onClick={() => {
 								void onRemoveAvatar()
 							}}
 						>
 							{avatarStatus === 'removing' ? 'Removing...' : 'Remove avatar'}
-						</button>
+						</Button>
 					) : null}
 				</div>
 				<div css={accountFieldCss}>
@@ -254,13 +249,13 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 					</SiteLink>
 				</p>
 				<div>
-					<button
+					<Button
 						type="submit"
 						disabled={isSaving || profileUnchanged}
-						css={compactPillButtonCss}
+						variant="primary"
 					>
 						{isSaving ? 'Saving...' : 'Save profile'}
-					</button>
+					</Button>
 				</div>
 			</form>
 			{emailVerified ? (
@@ -326,16 +321,16 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							/>
 						</div>
 						<div>
-							<button
+							<Button
 								type="submit"
 								disabled={
 									isSendingEmailChange ||
 									normalizedDraftEmail === email.trim().toLowerCase()
 								}
-								css={compactGhostButtonCss}
+								variant="secondary"
 							>
 								{isSendingEmailChange ? 'Sending...' : 'Send verification link'}
-							</button>
+							</Button>
 						</div>
 						{emailChangeMessage ? (
 							<p
@@ -359,10 +354,6 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 		</AccountManagementPanel>
 	)
 }
-/* `.account-form .button` / `.account-actions .button` — the prototype's
- * compact pill sizing for in-section actions. */
-const compactPillButtonCss = getPillButtonCss({ size: 'sm' })
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
 const accountAvatarSize = 128
 const avatarSectionCss = {
 	display: 'grid',

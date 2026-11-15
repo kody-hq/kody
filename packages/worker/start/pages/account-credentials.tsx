@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { validateCredentialSearch } from '../credentials-query.ts'
 import { docHref } from '#universal/docs-nav.ts'
-import { SiteLink } from '../components/site-link.tsx'
 
 import { css } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
@@ -45,10 +45,6 @@ import {
 	writeCredentialListQuery,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 const clampedCellCss = css(recordCellClamp(26))
 
@@ -335,26 +331,26 @@ export function AccountCredentialsRoute({
 					<div css={headerActionsCss}>
 						{orgSlug ? (
 							<>
-								<SiteLink
+								<Button
 									href={orgCredentialCreatePath(orgSlug)}
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 								>
 									Add credential
-								</SiteLink>
-								<SiteLink
+								</Button>
+								<Button
 									href={orgResourcePath(orgSlug, 'secret-providers')}
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 								>
 									Secret providers
-								</SiteLink>
+								</Button>
 							</>
 						) : null}
-						<SiteLink
+						<Button
 							href={docHref('credentials')}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							How credentials work
-						</SiteLink>
+						</Button>
 					</div>
 				}
 			/>
@@ -400,20 +396,20 @@ export function AccountCredentialsRoute({
 				emptyAction={
 					credentials.length === 0 && orgSlug ? (
 						<>
-							<SiteLink
+							<Button
 								href={orgCredentialCreatePath(orgSlug)}
-								css={getPillButtonCss({ size: 'sm' })}
+								variant="primary"
 								data-testid="credentials-empty-add"
 							>
 								Add credential
-							</SiteLink>
-							<SiteLink
+							</Button>
+							<Button
 								href={buildCredentialCreateHref({ orgSlug, kind: 'mcp' })}
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								data-testid="credentials-empty-connect-mcp"
 							>
 								Connect a remote MCP server
-							</SiteLink>
+							</Button>
 						</>
 					) : undefined
 				}

@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	type ApprovalAction,
 	type ApprovalView,
@@ -20,19 +20,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	getAccentCalloutCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
 
 export function renderSecretApprovalCard(props: {
@@ -222,25 +210,25 @@ export function renderSecretApprovalCard(props: {
 			</div>
 			<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
 				{approvalCard.requestedPackageId || hosts.length > 0 ? (
-					<button
+					<Button
 						type="button"
 						disabled={disabled}
 						onClick={() => onSubmit('approve')}
-						css={secretApprovalPrimaryButtonCss}
+						variant="primary"
 					>
 						{approvalCard.requestedPackageId
 							? allowPackagesButtonLabel(approvalCard.names.length)
 							: allowHostsButtonLabel(hosts.length, rejectedHosts.length)}
-					</button>
+					</Button>
 				) : null}
-				<button
+				<Button
 					type="button"
 					disabled={disabled}
 					onClick={() => onSubmit('reject')}
-					css={secretApprovalSecondaryButtonCss}
+					variant="secondary"
 				>
 					Reject
-				</button>
+				</Button>
 			</div>
 		</section>
 	)
@@ -305,9 +293,6 @@ const secretPackageIdentityCss: CSSObject = {
 	},
 }
 
-const secretApprovalPrimaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secretApprovalSecondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-
 const secretApprovalAdvancedCss: CSSObject = {
 	...accountDisclosureCss,
 	color: colors.textMuted,
@@ -325,16 +310,6 @@ const packageApprovalHeaderCss: CSSObject = {
 	justifyItems: 'center',
 	textAlign: 'center' as const,
 }
-
-const packageApprovalPrimaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-
-const packageApprovalSecondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
 export function isPackageSecretApprovalAlreadyGranted(input: {
 	secrets: AccountSecretsLoaderData['secrets']
@@ -496,12 +471,12 @@ export function renderPackageSecretApprovalPage(props: {
 						</div>
 					</div>
 					{view.showBackToSecrets ? (
-						<SiteLink
+						<Button
 							href={relocateAccountHref('/account/secrets', props.currentHref)}
-							css={packageApprovalSecondaryButtonCss}
+							variant="secondary" size="md"
 						>
 							Back to secrets
-						</SiteLink>
+						</Button>
 					) : (
 						<div
 							css={{
@@ -511,30 +486,30 @@ export function renderPackageSecretApprovalPage(props: {
 							}}
 						>
 							{completed !== 'approve' ? (
-								<button
+								<Button
 									type="button"
 									disabled={submittingAction != null}
 									onClick={() => {
 										onSubmit('approve')
 									}}
-									css={packageApprovalPrimaryButtonCss}
+									variant="primary" size="md"
 									data-testid="allow-secret-package"
 								>
 									{submittingAction === 'approve'
 										? 'Allowing access…'
 										: allowPackagesButtonLabel(names.length)}
-								</button>
+								</Button>
 							) : null}
-							<button
+							<Button
 								type="button"
 								disabled={submittingAction != null}
 								onClick={() => {
 									onSubmit('reject')
 								}}
-								css={packageApprovalSecondaryButtonCss}
+								variant="secondary" size="md"
 							>
 								Reject
-							</button>
+							</Button>
 						</div>
 					)}
 				</section>

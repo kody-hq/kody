@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { colors } from '#universal/styles/tokens.ts'
-import { getSecondaryButtonCss } from '#universal/styles/style-primitives.ts'
 
 export function WorkspaceFileStatus({
 	message,
@@ -10,7 +10,6 @@ export function WorkspaceFileStatus({
 	action?: { label: string; href: string } | { label: string; run: () => void }
 }) {
 	const control = {
-		...getSecondaryButtonCss(),
 		fontSize: 12,
 		minHeight: 28,
 		padding: '4px 10px',
@@ -33,13 +32,13 @@ export function WorkspaceFileStatus({
 			</p>
 			{action &&
 				('href' in action ? (
-					<a css={control} href={action.href}>
+					<Button variant="secondary" size="md" reloadDocument css={control} href={action.href}>
 						{action.label}
-					</a>
+					</Button>
 				) : (
-					<button type="button" css={control} onClick={action.run}>
+					<Button type="button" variant="secondary" size="md" css={control} onClick={action.run}>
 						{action.label}
-					</button>
+					</Button>
 				))}
 		</div>
 	)

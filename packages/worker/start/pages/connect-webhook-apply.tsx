@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { connectWebhookInput } from '../connect-input.ts'
 import { approveWebhookApply, rejectWebhookApply } from '#start/server/connect'
@@ -15,17 +16,7 @@ import { connectWebhookApplyQuery } from '../connect-approval-queries.ts'
 import type { ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
 
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	cardCss,
-	getAccentCalloutCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	pageDescriptionCss,
-	pageEyebrowCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 
 const pageCss: CSSObject = {
 	...stackedPageCss,
@@ -38,16 +29,6 @@ const headerCss: CSSObject = {
 	justifyItems: 'center',
 	textAlign: 'center' as const,
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
 const metaListCss: CSSObject = {
 	display: 'grid',
@@ -232,28 +213,28 @@ export function ConnectWebhookApplyRoute({
 								marginTop: spacing.md,
 							}}
 						>
-							<button
+							<Button
 								type="button"
 								disabled={submitting != null}
 								data-testid="connect-webhook-apply-allow"
 								onClick={() => {
 									void submit('approve')
 								}}
-								css={primaryButtonCss}
+								variant="primary" size="md"
 							>
 								{submitting === 'approve' ? 'Approving…' : 'Allow destination'}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
 								disabled={submitting != null}
 								data-testid="connect-webhook-apply-reject"
 								onClick={() => {
 									void submit('reject')
 								}}
-								css={secondaryButtonCss}
+								variant="secondary" size="md"
 							>
 								{submitting === 'reject' ? 'Rejecting…' : 'Reject'}
-							</button>
+							</Button>
 						</div>
 					)}
 				</section>

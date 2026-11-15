@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	approvePackageCapabilities,
 	approvePackageCapabilitiesAndGoPublic,
@@ -35,7 +36,6 @@ import type { CSSObject } from '@emotion/react'
 import { useRouter } from '@tanstack/react-router'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -48,11 +48,7 @@ import type {
 	AccountPackagePendingApproval,
 	AccountPackageApproveCapabilitiesLoaderData,
 } from '#universal/loader-data.ts'
-import {
-	getAccentCalloutCss,
-	getGhostButtonCss,
-	getPrimaryButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -410,11 +406,11 @@ export function AccountPackageApproveCapabilitiesRoute({
 								</details>
 								{approval.approveAction ? (
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={busy}
 											data-testid="package-pending-approval-approve"
-											css={getPrimaryButtonCss()}
+											variant="primary" size="md"
 											onClick={() => void approvePending(approval)}
 										>
 											{approvingRequestId === approval.id
@@ -422,7 +418,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 												: approval.reason === 'went_public'
 													? 'Approve and make internet-visible'
 													: 'Approve and publish'}
-										</button>
+										</Button>
 									</div>
 								) : null}
 							</li>
@@ -659,11 +655,11 @@ export function AccountPackageApproveCapabilitiesRoute({
 					) : null}
 					<div css={approveActionRowCss}>
 						{pageCopy.mentionInternet ? (
-							<button
+							<Button
 								type="button"
 								disabled={busy || !payload.publishedCommit}
 								data-testid="package-approve-capabilities"
-								css={[getPrimaryButtonCss(), approveActionControlCss]}
+								variant="primary" size="md" css={approveActionControlCss}
 								onClick={() => void approveCapabilities()}
 							>
 								{equalActionLabel(
@@ -671,14 +667,11 @@ export function AccountPackageApproveCapabilitiesRoute({
 									restingApproveLabel,
 									backToSettingsLabel,
 								)}
-							</button>
+							</Button>
 						) : null}
-						<SiteLink
+						<Button
 							href={payload.settingsHref}
-							css={[
-								getGhostButtonCss(),
-								pageCopy.mentionInternet && approveActionControlCss,
-							]}
+							variant="secondary" size="lg" css={pageCopy.mentionInternet && approveActionControlCss}
 							data-testid="package-approve-capabilities-back"
 						>
 							{pageCopy.mentionInternet
@@ -688,7 +681,7 @@ export function AccountPackageApproveCapabilitiesRoute({
 										backToSettingsLabel,
 									)
 								: backToSettingsLabel}
-						</SiteLink>
+						</Button>
 					</div>
 					<details
 						data-testid="package-approve-capabilities-details"

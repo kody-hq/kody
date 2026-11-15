@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { automation } from '#universal/acquisition/automation.ts'
 import { acquisitionPageMeta } from '#universal/acquisition/metadata.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const examples = [
 	{
 		name: 'Release digest',
@@ -125,9 +125,9 @@ export function AutomationPage() {
 						memory, and background work. Decide where each workflow needs
 						judgment and where it just needs to run.
 					</p>
-					<SiteLink href="#try-it" css={getPillButtonCss()}>
+					<Button href="#try-it" variant="primary" size="lg">
 						Build your first workflow ↗
-					</SiteLink>
+					</Button>
 				</div>
 			</header>
 			<section className="anatomy" aria-label="Interactive workflow examples">
@@ -234,9 +234,9 @@ export function AutomationPage() {
 						Connect the required accounts, try a manual preview, and test
 						failures and repeated runs before adding a schedule.
 					</p>
-					<SiteLink href="/onboarding" css={getPillButtonCss()}>
+					<Button href="/onboarding" variant="primary" size="lg">
 						Get started with Kody ↗
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="prompt">
 					<h3>Copy this prompt to your agent</h3>

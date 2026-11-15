@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { AuthLayout } from '../components/auth-layout.tsx'
-import { getPrimaryButtonCss } from '#universal/styles/style-primitives.ts'
 import { parseDesktopAuthRequest } from '#app/desktop-auth-request.ts'
 import { createFileRoute } from '@tanstack/react-router'
 import { useHydrated } from '../components/use-hydrated.ts'
@@ -34,8 +34,8 @@ function DesktopLogin() {
 				<>
 					<p>Continue as {email}</p>
 					<p>Only continue if you opened sign-in from Kody on this computer.</p>
-					<button
-						css={getPrimaryButtonCss()}
+					<Button
+						variant="primary" size="md"
 						disabled={busy || !hydrated}
 						onClick={async () => {
 							setBusy(true)
@@ -62,7 +62,7 @@ function DesktopLogin() {
 						}}
 					>
 						{busy ? 'Connecting…' : 'Continue to Kody desktop'}
-					</button>
+					</Button>
 					{error && <p role="alert">{error}</p>}
 				</>
 			)}

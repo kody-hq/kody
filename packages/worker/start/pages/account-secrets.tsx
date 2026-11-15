@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { connectSecretsInput } from '../connect-input.ts'
@@ -20,7 +21,6 @@ import {
 import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -767,17 +767,17 @@ export function AccountSecretsPage({
 				description="Passwords and tokens Kody can use for you."
 				currentHref={currentHref}
 				actions={
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => {
 							if (isMutating) return
 							navigate(buildNewSecretHref(getCurrentSearch()))
 						}}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						New secret
-					</button>
+					</Button>
 				}
 			/>
 
@@ -955,8 +955,6 @@ export function AccountSecretsPage({
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 
 const mutationResources = [
 	'loadSecretsPage',

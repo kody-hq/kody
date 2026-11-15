@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback } from '#client/ui-feedback.ts'
@@ -23,7 +24,6 @@ import type {
 	AccountEmailMessageDetail,
 } from '#universal/loader-data.ts'
 import { orgGrantsPath, relocateAccountHref } from '#universal/org-pages.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useMutation,
@@ -33,7 +33,6 @@ import {
 import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useShellData } from '../routes/__root.tsx'
 import { invalidateShellQueries } from '../shell-query.ts'
@@ -118,12 +117,12 @@ export function AccountEmailMissingGrant({
 					inbox. An org Owner can grant it org-wide on the Grants page.
 				</AccountManagementMessage>
 				<p css={{ margin: 0 }}>
-					<SiteLink
+					<Button
 						href={orgGrantsPath(orgSlug)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Open Grants
-					</SiteLink>
+					</Button>
 				</p>
 			</div>
 		</AccountManagementShell>
@@ -188,8 +187,6 @@ export function AccountEmailPage({
 			to: relocateAccountHref(href, currentHref),
 			resetScroll: false,
 		})
-
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -497,9 +494,9 @@ export function AccountEmailPage({
 								Resume once the destination can receive mail from kody.codes
 								again.
 							</p>
-							<button
+							<Button
 								type="button"
-								css={secondaryButtonCss}
+								variant="secondary"
 								disabled={resumeMutation.isPending}
 								data-testid="resume-outbound-email"
 								onClick={() => void resumeOutbound()}
@@ -507,7 +504,7 @@ export function AccountEmailPage({
 								{resumeMutation.isPending
 									? 'Resuming…'
 									: 'Resume outbound email'}
-							</button>
+							</Button>
 						</div>
 					) : null}
 					{data.usage || data.inboxAddress ? (
@@ -683,16 +680,16 @@ export function AccountEmailPage({
 										justifyContent: 'center',
 									}}
 								>
-									<button
+									<Button
 										type="button"
 										disabled={currentPage <= 1}
 										onClick={() => {
 											updateFilters({ pageDelta: -1 })
 										}}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Previous
-									</button>
+									</Button>
 									<p
 										css={{
 											margin: 0,
@@ -702,16 +699,16 @@ export function AccountEmailPage({
 									>
 										Page {currentPage} of {totalPages}
 									</p>
-									<button
+									<Button
 										type="button"
 										disabled={currentPage >= totalPages}
 										onClick={() => {
 											updateFilters({ pageDelta: 1 })
 										}}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Next
-									</button>
+									</Button>
 								</div>
 							) : null
 						}

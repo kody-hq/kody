@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { accountInputCss } from './account-management-components.tsx'
@@ -13,9 +14,7 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getDangerPillCss,
-	type getGhostButtonCss,
-	type getPillButtonCss,
+	type getButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type McpServerOAuthClientInput = {
@@ -33,9 +32,9 @@ export function McpServerOAuthClientSection({
 }: {
 	server: McpServerListItem
 	isMutating: boolean
-	primaryButtonCss: ReturnType<typeof getPillButtonCss>
-	secondaryButtonCss: ReturnType<typeof getGhostButtonCss>
-	dangerButtonCss: ReturnType<typeof getDangerPillCss>
+	primaryButtonCss: ReturnType<typeof getButtonCss>
+	secondaryButtonCss: ReturnType<typeof getButtonCss>
+	dangerButtonCss: ReturnType<typeof getButtonCss>
 	onSave: (client: McpServerOAuthClientInput) => Promise<boolean>
 	onRemove: () => void
 }) {
@@ -110,10 +109,10 @@ export function McpServerOAuthClientSection({
 							>
 								Replace
 							</button>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={dangerButtonCss}
+								variant="danger"
 								onBlur={() => setRemoveArmed(false)}
 								onClick={() => {
 									if (removeArmed) {
@@ -123,7 +122,7 @@ export function McpServerOAuthClientSection({
 								}}
 							>
 								{removeArmed ? 'Confirm remove OAuth client' : 'Remove'}
-							</button>
+							</Button>
 						</div>
 					) : null}
 				</div>

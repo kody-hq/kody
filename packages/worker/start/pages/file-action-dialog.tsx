@@ -1,15 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useState } from 'react'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { accountInputCss } from './account-management-components.tsx'
-import {
-	getGhostButtonCss,
-	getDangerPillCss,
-	getSelectCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { readFileMovePreview } from '#start/server/file-collaboration'
 
 export function FileActionDialog({
@@ -157,16 +153,16 @@ export function FileActionDialog({
 								<p role="status" css={{ margin: 0, color: colors.danger }}>
 									{previewError}
 								</p>
-								<button
+								<Button
 									type="button"
-									css={getGhostButtonCss()}
+									variant="secondary" size="lg"
 									onClick={() => {
 										setPreviewError('')
 										setPreviewAttempt((attempt) => attempt + 1)
 									}}
 								>
 									Try again
-								</button>
+								</Button>
 							</>
 						) : !movePreview ? (
 							<p role="status" css={{ margin: 0 }}>
@@ -197,10 +193,10 @@ export function FileActionDialog({
 					</p>
 				)}
 				<div css={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-					<button type="button" css={getGhostButtonCss()} onClick={onClose}>
+					<Button type="button" variant="secondary" size="lg" onClick={onClose}>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						disabled={
 							busy ||
 							(action === 'move' &&
@@ -208,10 +204,10 @@ export function FileActionDialog({
 									(collaborationEnabled && !movePreview))) ||
 							(action === 'rename' && !name.trim())
 						}
-						css={action === 'trash' ? getDangerPillCss() : getPillButtonCss()}
+						variant={action === 'trash' ? 'danger' : 'primary'} size="lg"
 					>
 						{action === 'move' ? 'Move' : title}
-					</button>
+					</Button>
 				</div>
 			</form>
 		</ModalDialog>

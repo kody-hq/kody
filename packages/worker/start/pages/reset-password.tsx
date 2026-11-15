@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -16,19 +17,7 @@ import {
 	confirmWebsitePasswordReset,
 	requestWebsitePasswordReset,
 } from '#start/server/auth-mutations'
-import {
-	cardCss,
-	fieldCss,
-	fieldLabelCss,
-	getPrimaryButtonCss,
-	inputCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	primaryLinkCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, fieldCss, fieldLabelCss, inputCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, primaryLinkCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
@@ -217,17 +206,17 @@ export function ResetPasswordRoute() {
 				{turnstileSiteKey ? (
 					<div className={turnstileWidgetClassName}></div>
 				) : null}
-				<button
+				<Button
 					type="submit"
 					disabled={!hydrated || isSubmitting}
-					css={primaryButtonCss}
+					variant="primary" size="md"
 				>
 					{isSubmitting
 						? 'Submitting...'
 						: mode === 'confirm'
 							? 'Update password'
 							: 'Send reset link'}
-				</button>
+				</Button>
 				{message ? (
 					<p
 						aria-live="polite"
@@ -257,8 +246,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

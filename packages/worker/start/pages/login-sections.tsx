@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -15,18 +16,7 @@ import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { turnstileWidgetClassName } from '#client/public-form-protection.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import {
-	authFieldCss,
-	authFieldLabelCss,
-	authFieldLabelRowCss,
-	getAuthInputCss,
-	getGhostButtonCss,
-	getLanternGlowCss,
-	getPillButtonCss,
-	getSwapLabelCss,
-	hoverMq,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { authFieldCss, authFieldLabelCss, authFieldLabelRowCss, getAuthInputCss, getLanternGlowCss, getSwapLabelCss, hoverMq, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import {
 	UsernameChoiceField,
 	type UsernameAvailabilityView,
@@ -303,12 +293,12 @@ export function AuthForm(
 			 * to `/login` as plain HTML (ADR 0094). Sign-up has no plain HTML
 			 * handler, so it waits for the page JavaScript.
 			 */}
-			<button
+			<Button
 				type="submit"
 				disabled={
 					props.isSubmitting || (props.isSignup && !props.isInteractive)
 				}
-				css={authSubmitCss}
+				variant="primary" size="lg" css={authSubmitCss}
 			>
 				<span
 					data-swap-label
@@ -324,7 +314,7 @@ export function AuthForm(
 				>
 					{props.submitBusyLabel}
 				</span>
-			</button>
+			</Button>
 			{props.isSignup ? (
 				<p css={signupConsentCss}>
 					By creating an account you agree to the{' '}
@@ -333,15 +323,15 @@ export function AuthForm(
 				</p>
 			) : null}
 			{!props.isSignup ? (
-				<button
+				<Button
 					type="button"
 					disabled={!props.isInteractive || props.isSubmitting}
-					css={ghostButtonCss}
+					variant="secondary" size="lg"
 					onClick={props.onPasskeySignIn}
 				>
 					{renderIcon('key', { size: '17' })}
 					Sign in with a passkey
-				</button>
+				</Button>
 			) : null}
 		</form>
 	)
@@ -530,7 +520,6 @@ export const formMessageCss: CSSObject = {
 }
 
 const authSubmitCss = [
-	getPillButtonCss(),
 	getSwapLabelCss(),
 	{
 		marginTop: '0.3rem',
@@ -547,5 +536,3 @@ const authSubmitCss = [
 		},
 	},
 ]
-
-const ghostButtonCss = getGhostButtonCss()

@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from '@tanstack/react-router'
-import { SiteLink } from '../components/site-link.tsx'
 import { settleConnectionResources } from '../connection-resource-settlement.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -13,14 +13,8 @@ import type {
 	OrgAppMemberConnectionsData,
 } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
+import { descriptionCss, insetCardCss, sectionTitleCss } from '#universal/styles/style-primitives.ts'
 import {
-	descriptionCss,
-	getPillButtonCss,
-	insetCardCss,
-	sectionTitleCss,
-} from '#universal/styles/style-primitives.ts'
-import {
-	dangerButtonCss,
 	oauthAppTitle,
 } from './account-integrations-shared.ts'
 import {
@@ -111,10 +105,10 @@ export function OrgAppMemberConnections(props: {
 		const verb = connection.yours ? 'Disconnect' : 'Revoke'
 		const confirming = armed === connection.credentialId
 		return (
-			<button
+			<Button
 				type="button"
 				data-testid="revoke-member-connection"
-				css={dangerButtonCss}
+				variant="danger"
 				disabled={revoking === connection.credentialId}
 				onBlur={() => setArmed(null)}
 				onClick={() => void revoke(connection)}
@@ -125,7 +119,7 @@ export function OrgAppMemberConnections(props: {
 					: confirming
 						? `Confirm ${verb.toLowerCase()}`
 						: verb}
-			</button>
+			</Button>
 		)
 	}
 
@@ -178,22 +172,17 @@ export function OrgAppMemberConnections(props: {
 					{row(data.own)}
 				</ul>
 			) : data.canConnectOwn ? (
-				<SiteLink
+				<Button
 					href={buildConnectOauthHref({
 						name: appSlug,
 						appSlug,
 						orgSlug,
 						mode: 'personal',
 					})}
-					css={{
-						...getPillButtonCss({ size: 'sm' }),
-						display: 'inline-flex',
-						justifySelf: 'start',
-						textDecoration: 'none',
-					}}
+					variant="primary" css={{ display: 'inline-flex', justifySelf: 'start', textDecoration: 'none' }}
 				>
 					Connect your own account
-				</SiteLink>
+				</Button>
 			) : null}
 			{data.canManage ? (
 				others.length === 0 ? (

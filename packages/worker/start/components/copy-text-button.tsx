@@ -16,14 +16,7 @@ import {
 import { renderIcon } from './icon.tsx'
 import type { CSSObject } from '@emotion/react'
 import { writeClipboardText } from '#client/clipboard.ts'
-import {
-	getChipButtonCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	getSwapLabelCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSwapLabelCss, getButtonCss } from '#universal/styles/style-primitives.ts'
 export const onboardingCopiedConnectActionEvent =
 	'kody-onboarding-connect-copied'
 
@@ -74,18 +67,18 @@ const visuallyHiddenCss = {
 // css() is static after hydration, so all variants are prebuilt and the
 // dynamic state flows through data attributes on the labels, never through
 // swapped style objects.
-const primaryCopyButtonCss = [getPrimaryButtonCss(), getSwapLabelCss()]
-const secondaryCopyButtonCss = [getSecondaryButtonCss(), getSwapLabelCss()]
-const pillCopyButtonCss = [getPillButtonCss(), getSwapLabelCss()]
-const ghostCopyButtonCss = [getGhostButtonCss(), getSwapLabelCss()]
-const chipCopyButtonCss = [getChipButtonCss(), getSwapLabelCss()]
+const primaryCopyButtonCss = [getButtonCss({ variant: 'primary', size: 'md' }), getSwapLabelCss()]
+const secondaryCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'md' }), getSwapLabelCss()]
+const pillCopyButtonCss = [getButtonCss({ variant: 'primary', size: 'lg' }), getSwapLabelCss()]
+const ghostCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'lg' }), getSwapLabelCss()]
+const chipCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'xs' }), getSwapLabelCss()]
 
 const smallPillCopyButtonCss = [
-	getPillButtonCss({ size: 'sm' }),
+	getButtonCss({ variant: 'primary' }),
 	getSwapLabelCss(),
 ]
 const smallGhostCopyButtonCss = [
-	getGhostButtonCss({ size: 'sm' }),
+	getButtonCss({ variant: 'secondary' }),
 	getSwapLabelCss(),
 ]
 
@@ -205,7 +198,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			css={
 				props.iconOnly
 					? {
-							...getChipButtonCss(),
+							...getButtonCss({ variant: 'secondary', size: 'xs' }),
 							width: '1.75rem',
 							height: '1.75rem',
 							minHeight: 0,

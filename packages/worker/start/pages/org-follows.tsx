@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	useIsMutating,
 	useMutation,
@@ -23,11 +24,7 @@ import {
 	type OrgFollowsLoaderData,
 } from '#universal/follows.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	nativeDisclosureCss,
-} from '#universal/styles/style-primitives.ts'
+import { nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -269,22 +266,22 @@ function FollowRow({
 				</span>
 				<span css={rowActionsCss}>
 					{follow.status === 'paused' ? (
-						<button
+						<Button
 							type="button"
 							data-testid="org-follow-resume"
 							disabled={busy}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={onResume}
 						>
 							{renderIcon('play', { size: '1.05rem' })}
 							Resume
-						</button>
+						</Button>
 					) : null}
-					<button
+					<Button
 						type="button"
 						data-testid="org-follow-unfollow"
 						disabled={busy}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onBlur={() => setArmed(false)}
 						onClick={() => {
 							if (!armed) {
@@ -297,7 +294,7 @@ function FollowRow({
 					>
 						{renderIcon('close', { size: '1.05rem' })}
 						{armed ? 'Confirm unfollow' : 'Unfollow'}
-					</button>
+					</Button>
 				</span>
 			</div>
 			<details

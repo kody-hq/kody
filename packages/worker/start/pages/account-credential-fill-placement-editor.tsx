@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
 import {
@@ -17,10 +18,6 @@ import {
 	accountActionsCss,
 	accountFieldNoteCss,
 } from './account-management-components.tsx'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 type Props = {
@@ -127,13 +124,13 @@ export function CredentialFillPlacementEditor(props: Props) {
 					refuses a fill anywhere else.
 				</p>
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={startEditing}
 					>
 						Edit fill placement
-					</button>
+					</Button>
 				</div>
 			</div>
 		)
@@ -153,21 +150,21 @@ export function CredentialFillPlacementEditor(props: Props) {
 			/>
 			{error ? <p css={errorCss}>{error}</p> : null}
 			<div css={accountActionsCss}>
-				<button
+				<Button
 					type="submit"
 					disabled={saving}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 				>
 					{saving ? 'Saving…' : 'Save'}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={saving}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 					onClick={cancel}
 				>
 					Cancel
-				</button>
+				</Button>
 			</div>
 		</form>
 	)

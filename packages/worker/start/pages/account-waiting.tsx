@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	usePendingInviteActions,
 	renderPendingInviteActions,
@@ -11,10 +12,7 @@ import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 
 import type { AccountWaitingLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
-import {
-	getAccentCalloutCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import type { WaitingSeverity } from '#universal/waiting.ts'
 import {
@@ -169,7 +167,7 @@ function renderWaitingBody(
 					>
 						{item.why}
 					</p>
-					<SiteLink
+					<Button
 						href={relocateAccountHref(item.href, currentHref)}
 						onClick={() => {
 							void recordWaitingClick({
@@ -179,14 +177,10 @@ function renderWaitingBody(
 								},
 							}).catch(() => {})
 						}}
-						css={{
-							...getPillButtonCss({ size: 'sm' }),
-							width: 'fit-content',
-							textDecoration: 'none',
-						}}
+						variant="primary" css={{ width: 'fit-content', textDecoration: 'none' }}
 					>
 						{item.doLabel}
-					</SiteLink>
+					</Button>
 				</section>
 			))}
 		</div>

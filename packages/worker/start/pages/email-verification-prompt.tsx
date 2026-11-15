@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useServerFn } from '@tanstack/react-start'
 import { resendWebsiteVerification } from '#start/server/auth-mutations'
 import {
@@ -7,14 +8,7 @@ import {
 	type EmailVerificationDeliveryIndicator,
 } from '#universal/email-verification-delivery.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import {
-	cardCss,
-	cardTitleCss,
-	descriptionCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	mutedLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, cardTitleCss, descriptionCss, mutedLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
@@ -144,14 +138,6 @@ export function renderEmailVerificationPrompt(
 	const promptTitle = delivery.headline ?? title
 	const promptDescription = delivery.detail ?? options.description
 	const canResend = delivery.canResend
-	const primaryButtonCss = getPrimaryButtonCss({
-		size: 'md',
-		weight: 'semibold',
-	})
-	const secondaryButtonCss = getSecondaryButtonCss({
-		size: 'md',
-		weight: 'semibold',
-	})
 
 	return (
 		<section
@@ -188,13 +174,13 @@ export function renderEmailVerificationPrompt(
 					alignItems: 'center',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={
 						!canResend || options.resendStatus === 'sending' || options.checking
 					}
 					aria-busy={options.resendStatus === 'sending'}
-					css={primaryButtonCss}
+					variant="primary" size="md"
 					onClick={options.onResend}
 				>
 					{options.resendStatus === 'sending'
@@ -202,17 +188,17 @@ export function renderEmailVerificationPrompt(
 						: canResend
 							? 'Resend verification email'
 							: 'Resend unavailable'}
-				</button>
+				</Button>
 				{options.continueLabel && options.onContinue ? (
-					<button
+					<Button
 						type="button"
-						css={secondaryButtonCss}
+						variant="secondary" size="md"
 						disabled={options.resendStatus === 'sending' || options.checking}
 						aria-busy={options.checking ?? false}
 						onClick={options.onContinue}
 					>
 						{options.continueLabel}
-					</button>
+					</Button>
 				) : null}
 				{options.secondaryHref && options.secondaryLabel ? (
 					<SiteLink href={options.secondaryHref} css={mutedLinkCss}>

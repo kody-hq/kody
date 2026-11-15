@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { updateOrganizationMemberCreation } from '#start/server/org-settings-mutations'
 import {
 	useMutation,
@@ -9,11 +10,7 @@ import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
-import {
-	getPillButtonCss,
-	primaryLinkCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -167,15 +164,15 @@ export function OrgSettingsMemberCreation({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="org-settings-member-creation-save"
 							disabled={unchanged || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('check', { size: '1.05rem' })}
 							{mutation.isPending ? 'Saving…' : 'Save member permissions'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : (

@@ -1,17 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	getGhostButtonCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const onboardingPath = '/onboarding'
@@ -38,9 +30,9 @@ export function AccountBillingSuccessPage({
 				</header>
 				<div css={cardCss}>
 					<div css={ctaRowCss}>
-						<SiteLink href={billingPath} css={primaryCtaCss}>
+						<Button href={billingPath} variant="primary" size="md" css={primaryCtaCss}>
 							View billing
-						</SiteLink>
+						</Button>
 					</div>
 				</div>
 			</section>
@@ -60,13 +52,13 @@ export function AccountBillingSuccessPage({
 					Thanks for paying for the volume you actually use.
 				</p>
 				<div css={ctaRowCss}>
-					<SiteLink href={kodyDiscordInviteUrl} css={primaryCtaCss}>
+					<Button href={kodyDiscordInviteUrl} variant="primary" size="md" css={primaryCtaCss}>
 						Join the Kody Discord
-					</SiteLink>
+					</Button>
 					{data.needsOnboarding ? (
-						<SiteLink href={onboardingPath} css={secondaryCtaCss}>
+						<Button href={onboardingPath} variant="secondary" size="lg" css={secondaryCtaCss}>
 							Connect your agent
-						</SiteLink>
+						</Button>
 					) : null}
 					<SiteLink href={billingPath} css={mutedLinkCss}>
 						Manage billing
@@ -97,13 +89,11 @@ const ctaRowCss = {
 }
 
 const primaryCtaCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }
 
 const secondaryCtaCss = {
-	...getGhostButtonCss(),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
 import { toast } from '#client/toast.ts'
@@ -17,11 +18,7 @@ import {
 	setMcpServerOAuthClient,
 	removeMcpServerOAuthClient,
 } from '#start/server/account-mutations'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -174,9 +171,9 @@ export function AccountMcpServersPage({
 			clearOnboardingMcpOAuthReturnCookie()
 	}, [])
 
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
+	const primaryButtonCss = getButtonCss({ variant: 'primary' })
+	const secondaryButtonCss = getButtonCss({ variant: 'secondary' })
+	const dangerButtonCss = getButtonCss({ variant: 'danger' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -354,7 +351,7 @@ export function AccountMcpServersPage({
 				description="Connect remote MCP servers so their tools are available to Kody as kody.mcp capabilities. Use a bearer token for static Authorization, or complete OAuth when the server requires it."
 				currentHref={currentHref}
 				actions={
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						onClick={() => {
@@ -365,10 +362,10 @@ export function AccountMcpServersPage({
 								mcpServersRoute.buildNewHref(getCurrentSearch(), currentHref),
 							)
 						}}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						Add server
-					</button>
+					</Button>
 				}
 			/>
 

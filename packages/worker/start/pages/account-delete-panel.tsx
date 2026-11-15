@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
@@ -11,11 +12,7 @@ import {
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { deleteOwnAccount } from '#start/server/security-mutations'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	accountActionsCss,
 	accountFieldCss,
@@ -104,14 +101,14 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 						copy.
 					</p>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="button"
 							data-testid="delete-account"
-							css={getDangerPillCss({ size: 'sm' })}
+							variant="danger"
 							onClick={openDialog}
 						>
 							Delete account
-						</button>
+						</Button>
 					</div>
 				</div>
 				{open && (
@@ -189,22 +186,22 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 								</p>
 							) : null}
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="button"
 									disabled={isDeleting}
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									onClick={closeDialog}
 								>
 									Cancel
-								</button>
-								<button
+								</Button>
+								<Button
 									type="submit"
 									disabled={!canSubmit}
 									data-testid="delete-account-confirm"
-									css={getDangerPillCss({ size: 'sm' })}
+									variant="danger"
 								>
 									{isDeleting ? 'Deleting…' : 'Delete account'}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</ModalDialog>

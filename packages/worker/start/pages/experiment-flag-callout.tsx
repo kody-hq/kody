@@ -1,15 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { ReactNode } from 'react'
 import { ExperimentOptIn } from '../components/experiment-opt-in.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 import type { selfServeExperiments } from '#universal/feature-flags/experiments.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getAccentCalloutCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 /**
@@ -48,13 +45,13 @@ export function renderExperimentFlagCallout(input: {
 				</ExperimentOptIn>
 			) : (
 				<p css={actionCss}>
-					<SiteLink
+					<Button
 						href={loginHref}
 						data-testid={`${experiment.id}-flag-login`}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						Log in to try it
-					</SiteLink>
+					</Button>
 				</p>
 			)}
 		</aside>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import { FileAnchorContext } from '../file-anchor-context.ts'
 import { FileAnchorMarker } from '../file-anchor-markers.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
@@ -18,10 +19,8 @@ import type {
 	JsonResponse,
 } from '#universal/json-preview.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
 const control = {
-	...getGhostButtonCss(),
 	padding: '4px 8px',
 	minHeight: 28,
 	fontSize: 12,
@@ -285,9 +284,9 @@ export default function JsonFileViewer({
 				}}
 			>
 				{(['tree', 'raw'] as const).map((value) => (
-					<button
+					<Button
 						key={value}
-						css={control}
+						variant="secondary" size="lg" css={control}
 						aria-pressed={mode === value}
 						disabled={value === 'tree' && !!invalid}
 						onClick={() => {
@@ -296,16 +295,16 @@ export default function JsonFileViewer({
 						}}
 					>
 						{value === 'tree' ? 'Tree' : 'Raw'}
-					</button>
+					</Button>
 				))}
 				<span css={{ flex: 1 }} />
-				<a
-					css={{ ...control, textDecoration: 'none' }}
+				<Button
+					variant="secondary" size="lg" reloadDocument css={[control, { textDecoration: 'none' }]}
 					href={download}
 					download
 				>
 					Download
-				</a>
+				</Button>
 			</div>
 			{invalid && (
 				<p
@@ -387,14 +386,9 @@ export default function JsonFileViewer({
 						const { node, depth, parent, more } = rows[item.index]!
 						if (more)
 							return (
-								<button
+								<Button
 									key={item.key}
-									css={{
-										...control,
-										position: 'absolute',
-										top: item.start,
-										left: depth * 18 + 12,
-									}}
+									variant="secondary" size="lg" css={[control, { position: 'absolute', top: item.start, left: depth * 18 + 12 }]}
 									onClick={() =>
 										load(node.id, children.get(node.id)?.length ?? 0)
 									}
@@ -404,7 +398,7 @@ export default function JsonFileViewer({
 										500,
 										node.count - (children.get(node.id)?.length ?? 0),
 									)}
-								</button>
+								</Button>
 							)
 						const open = expanded.has(node.id)
 						return (

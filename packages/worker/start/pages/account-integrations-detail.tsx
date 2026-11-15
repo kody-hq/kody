@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import type {
 	AccountIntegrationListItem,
@@ -33,21 +34,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	detailGridCss,
-	detailItemCss,
-	detailLabelCss,
-	detailValueCss,
-	getAccentCalloutCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	hoverMq,
-	insetCardCss,
-	primaryLinkCss,
-	sectionTitleCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, detailGridCss, detailItemCss, detailLabelCss, detailValueCss, getAccentCalloutCss, hoverMq, insetCardCss, primaryLinkCss, sectionTitleCss } from '#universal/styles/style-primitives.ts'
 import {
 	type IntegrationUsageDraft,
 	accountsConnectedCopy,
@@ -55,7 +42,6 @@ import {
 	connectionLabel,
 	connectionStatusLabel,
 	credentialsConnectionsHref,
-	dangerButtonCss,
 	shouldShowReconnectAction,
 	formatList,
 	formatOptional,
@@ -356,7 +342,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 						{accountsConnectedCopy(selectedApp.connections.length)}
 					</p>
 					{isBuiltInApp(selectedApp) ? null : (
-						<button
+						<Button
 							type="button"
 							data-testid="delete-integration"
 							aria-label={
@@ -369,7 +355,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 									? `Click again to delete "${oauthAppTitle(selectedApp)}" and every connected account`
 									: `Delete "${oauthAppTitle(selectedApp)}" and every connected account`
 							}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={deleteAppConfirmation.reset}
 							onClick={() => {
 								if (deleteAppConfirmation.armed)
@@ -380,7 +366,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 							{deleteAppConfirmation.armed
 								? 'Confirm delete'
 								: 'Delete integration'}
-						</button>
+						</Button>
 					)}
 				</div>
 			</header>
@@ -399,20 +385,16 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 						}}
 					>
 						<p css={descriptionCss}>No accounts connected yet.</p>
-						<SiteLink
+						<Button
 							href={buildConnectOauthHref({
 								name: selectedApp.slug,
 								appSlug: selectedApp.slug,
 								orgSlug,
 							})}
-							css={{
-								...getPillButtonCss({ size: 'sm' }),
-								display: 'inline-flex',
-								textDecoration: 'none',
-							}}
+							variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Connect
-						</SiteLink>
+						</Button>
 					</div>
 				) : (
 					<div
@@ -550,31 +532,25 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 										}}
 									>
 										{showReconnect ? (
-											<SiteLink
+											<Button
 												href={connectHref}
-												css={{
-													...getPillButtonCss({
-														size: 'sm',
-													}),
-													display: 'inline-flex',
-													textDecoration: 'none',
-												}}
+												variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
 											>
 												{connectActionLabel(status)}
-											</SiteLink>
+											</Button>
 										) : null}
 										{orgSlug ? (
-											<SiteLink
+											<Button
 												href={credentialsConnectionsHref(
 													orgSlug,
 													connectionRef.name,
 												)}
-												css={getGhostButtonCss({ size: 'sm' })}
+												variant="secondary"
 											>
 												Open in Credentials
-											</SiteLink>
+											</Button>
 										) : null}
-										<button
+										<Button
 											type="button"
 											data-testid="disconnect-connection"
 											aria-label={
@@ -587,7 +563,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 													? `Click again to disconnect ${disconnectLabel}`
 													: `Disconnect ${disconnectLabel}`
 											}
-											css={dangerButtonCss}
+											variant="danger"
 											onBlur={disconnectConfirmation.reset}
 											onClick={() => {
 												if (disconnectConfirmation.armed)
@@ -598,7 +574,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 											{confirmingDisconnect
 												? 'Confirm disconnect'
 												: 'Disconnect'}
-										</button>
+										</Button>
 									</div>
 								</article>
 							)

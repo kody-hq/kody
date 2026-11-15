@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useQuery } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import { connectionUsageQuery } from '../connection-usage-query.ts'
@@ -35,10 +36,6 @@ import {
 	onboardingAgentLabel,
 } from '#universal/onboarding-mcp-clients.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const connectYourAgentDocHref = docHref('connect-your-agent')
@@ -128,13 +125,13 @@ function renderReadyView(input: {
 				<>
 					{input.connectedAgents.render({
 						actions: (
-							<SiteLink
+							<Button
 								href={accountConnectionsNewHref(null, input.currentHref)}
 								data-testid="account-connections-add"
-								css={primaryButtonCss}
+								variant="primary" css={primaryButtonCss}
 							>
 								Connect an agent
-							</SiteLink>
+							</Button>
 						),
 					})}
 					<ConnectionUsageSummaryPanel
@@ -189,12 +186,12 @@ function renderAdvancedPanel() {
 			description="Optional tools for hosts that cannot finish dynamic OAuth on their own. This is not the list of agents already connected to your account."
 		>
 			<div css={accountActionsCss}>
-				<SiteLink
+				<Button
 					href={routes.accountMcpOauthClients.href()}
-					css={compactGhostButtonCss}
+					variant="secondary"
 				>
 					MCP OAuth clients
-				</SiteLink>
+				</Button>
 			</div>
 		</AccountManagementPanel>
 	)
@@ -233,9 +230,9 @@ function renderMcpUrlPanel(input: { mcpServerUrl: string }) {
 				renderVerifyNote()
 			)}
 			<div css={accountActionsCss}>
-				<SiteLink href={connectYourAgentDocHref} css={compactGhostButtonCss}>
+				<Button href={connectYourAgentDocHref} variant="secondary">
 					Connect your agent docs
-				</SiteLink>
+				</Button>
 			</div>
 		</AccountManagementPanel>
 	)
@@ -308,13 +305,13 @@ function renderAgentInstructions(input: {
 			ariaLabel={`Connect ${label}`}
 		>
 			<div css={accountActionsCss}>
-				<SiteLink
+				<Button
 					href={accountConnectionsNewHref(null, input.currentHref)}
 					data-testid="account-connections-change-agent"
-					css={compactGhostButtonCss}
+					variant="secondary"
 				>
 					Change agent
-				</SiteLink>
+				</Button>
 			</div>
 			{input.mcpServerUrl ? (
 				<div
@@ -341,21 +338,18 @@ function renderUnknownAgent(currentHref: string) {
 			description="That agent is not one Kody knows how to connect. Pick one from the list, or use the MCP URL with any host that speaks MCP."
 		>
 			<div css={accountActionsCss}>
-				<SiteLink
+				<Button
 					href={accountConnectionsNewHref(null, currentHref)}
-					css={compactGhostButtonCss}
+					variant="secondary"
 				>
 					Choose an agent
-				</SiteLink>
+				</Button>
 			</div>
 		</AccountManagementPanel>
 	)
 }
 
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-
 const primaryButtonCss: CSSObject = {
-	...getPillButtonCss({ size: 'sm' }),
 	textDecoration: 'none',
 	width: 'fit-content',
 }

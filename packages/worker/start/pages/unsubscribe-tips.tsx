@@ -1,14 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
-import {
-	cardCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
-	pageDescriptionCss,
-	pageHeaderCss,
-	pageTitleCss,
-	stackedPageCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { TipsUnsubscribeOutcome } from '#universal/token-outcomes.ts'
 
@@ -41,9 +34,9 @@ export function UnsubscribeTipsRoute({
 					{data.ok ? data.message : data.error}
 				</p>
 				{data.ok ? (
-					<SiteLink href="/account" css={ctaButtonCss}>
+					<Button href="/account" variant="primary" size="md" css={ctaButtonCss}>
 						Go to account
-					</SiteLink>
+					</Button>
 				) : (
 					<SiteLink href="/account" css={mutedLinkCss}>
 						Go to account
@@ -62,7 +55,6 @@ const pageCss = {
 }
 
 const ctaButtonCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }

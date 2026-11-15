@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
@@ -18,13 +19,7 @@ import type {
 	AccountWorkflowsLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	cardTitleCss,
-	descriptionCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardTitleCss, descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useIsMutating,
@@ -205,9 +200,6 @@ export function AccountWorkflowsPage({
 
 	const isMutating = useIsMutating({ mutationKey }) > 0
 	const router = useRouter()
-
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -545,10 +537,10 @@ export function AccountWorkflowsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<button
+									<Button
 										type="button"
 										disabled={isMutating}
-										css={dangerButtonCss}
+										variant="danger"
 										onBlur={() => setCancelArmed(false)}
 										onClick={() => {
 											if (!cancelArmed) {
@@ -566,18 +558,18 @@ export function AccountWorkflowsPage({
 										}}
 									>
 										{cancelArmed ? 'Confirm cancel' : 'Cancel run'}
-									</button>
+									</Button>
 									{cancelArmed ? (
-										<button
+										<Button
 											type="button"
 											disabled={isMutating}
 											onClick={() => {
 												setCancelArmed(false)
 											}}
-											css={secondaryButtonCss}
+											variant="secondary"
 										>
 											Keep running
-										</button>
+										</Button>
 									) : null}
 								</div>
 							) : null}
