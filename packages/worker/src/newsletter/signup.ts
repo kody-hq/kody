@@ -7,7 +7,9 @@ import {
 import { renderTransactionalEmail } from '#app/email/template.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
+import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { normalizeAddrSpec } from '#worker/email/address.ts'
+import { newsletterSignupState } from '#worker/newsletter/signup-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
@@ -25,6 +27,8 @@ export const newsletterSignupEmailRateLimit: RateLimitConfig = {
 }
 
 export const newsletterConfirmTokenExpiryMs = 7 * 24 * 60 * 60 * 1000
+
+const confirmGuard = sqlSourcesOf(newsletterSignupState, 'CONFIRM')
 
 const emailPattern = /^[^\s@<>(),;:"]+@[^\s@<>(),;:"]+\.[^\s@<>(),;:"]{2,}$/
 
@@ -243,7 +247,7 @@ export async function confirmNewsletterSignup(input: {
 				.prepare(
 					`UPDATE newsletter_signups
 					 SET status = 'confirmed', source = 'newsletter_page', confirmed_at = ?, updated_at = ?, token_hash = NULL, token_expires_at = NULL
-					 WHERE token_hash = ? AND token_expires_at > ?
+					 WHERE token_hash = ? AND token_expires_at > ? AND status IN ${confirmGuard}
 					 RETURNING email`,
 				)
 				.bind(nowIso, nowIso, await hashToken(token), now.getTime())

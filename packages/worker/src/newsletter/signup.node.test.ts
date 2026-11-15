@@ -311,3 +311,15 @@ test('the confirmation email states the double opt-in terms and has no em dashes
 	)
 	expect(`${message.subject}${message.text}`).not.toContain('\u2014')
 })
+
+test('the sign-up lifecycle only joins the list through a confirmed link and never returns to pending', async () => {
+	const { canHandle } = await import('@kody-internal/shared/state-machine.ts')
+	const { newsletterSignupState: machine } = await import('./signup-state.ts')
+	expect(canHandle(machine, 'pending', 'CONFIRM')).toBe(true)
+	expect(canHandle(machine, 'pending', 'RESUBSCRIBE')).toBe(false)
+	expect(canHandle(machine, 'pending', 'UNSUBSCRIBE')).toBe(false)
+	expect(canHandle(machine, 'confirmed', 'UNSUBSCRIBE')).toBe(true)
+	expect(canHandle(machine, 'confirmed', 'CONFIRM')).toBe(false)
+	expect(canHandle(machine, 'unsubscribed', 'RESUBSCRIBE')).toBe(true)
+	expect(canHandle(machine, 'unsubscribed', 'CONFIRM')).toBe(true)
+})
