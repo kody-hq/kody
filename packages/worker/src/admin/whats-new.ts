@@ -211,18 +211,27 @@ export async function setWhatsNewOptIn(input: {
 					input.stable_user_id,
 				)
 				.first<{ stable_user_id: string; email: string }>()
-	const row =
-		userRow ??
-		signupRow ??
-		// Repeating the current choice (an unsubscribe link opened twice) is
-		// not an error.
-		(await input.db
-			.prepare(
-				`SELECT stable_id AS stable_user_id, email FROM newsletter_signups
+	// Repeating the current choice (an unsubscribe link opened twice) is not
+	// an error, and reports the choice as stored: nothing was written.
+	const unchangedRow =
+		userRow || signupRow
+			? null
+			: await input.db
+					.prepare(
+						`SELECT stable_id AS stable_user_id, email, source, updated_at FROM newsletter_signups
 		 WHERE stable_id = ? AND status = ?`,
-			)
-			.bind(input.stable_user_id, input.opted_in ? 'confirmed' : 'unsubscribed')
-			.first<{ stable_user_id: string; email: string }>())
+					)
+					.bind(
+						input.stable_user_id,
+						input.opted_in ? 'confirmed' : 'unsubscribed',
+					)
+					.first<{
+						stable_user_id: string
+						email: string
+						source: string
+						updated_at: string
+					}>()
+	const row = userRow ?? signupRow ?? unchangedRow
 	// An address can hold consent in both places (it signed up, then made an
 	// account). Leaving through either id must leave both, or the other record
 	// keeps the address on the list.
@@ -249,7 +258,7 @@ export async function setWhatsNewOptIn(input: {
 	return {
 		stable_user_id: row.stable_user_id,
 		opted_in: input.opted_in,
-		opt_in_updated_at: updatedAt,
-		opt_in_source: input.source,
+		opt_in_updated_at: unchangedRow?.updated_at ?? updatedAt,
+		opt_in_source: unchangedRow?.source ?? input.source,
 	}
 }
