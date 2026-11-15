@@ -4,7 +4,7 @@ import { expect, test, vi } from 'vitest'
 const mockModule = vi.hoisted(() => ({
 	getArtifactsBinding: vi.fn(),
 	isArtifactRepoNotFoundError: vi.fn(),
-	isLoopbackArtifactsRemote: vi.fn(),
+	isSnapshotOnlyArtifactsRemote: vi.fn(),
 	resolveArtifactSourceHead: vi.fn(),
 	resolveExistingArtifactSourceRepo: vi.fn(),
 	readArtifactFileAtCommit: vi.fn(),
@@ -20,8 +20,8 @@ vi.mock('./artifacts.ts', () => ({
 		mockModule.getArtifactsBinding(...args),
 	isArtifactRepoNotFoundError: (...args: Array<unknown>) =>
 		mockModule.isArtifactRepoNotFoundError(...args),
-	isLoopbackArtifactsRemote: (...args: Array<unknown>) =>
-		mockModule.isLoopbackArtifactsRemote(...args),
+	isSnapshotOnlyArtifactsRemote: (...args: Array<unknown>) =>
+		mockModule.isSnapshotOnlyArtifactsRemote(...args),
 	resolveArtifactSourceHead: (...args: Array<unknown>) =>
 		mockModule.resolveArtifactSourceHead(...args),
 	resolveExistingArtifactSourceRepo: (...args: Array<unknown>) =>
@@ -81,7 +81,7 @@ function mockDestRemote(remote: string, headCommit?: string | null) {
 	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue({
 		info: async () => ({ remote }),
 	})
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(
 		remote.startsWith('http://127.0.0.1'),
 	)
 	if (headCommit !== undefined) {

@@ -1683,12 +1683,20 @@ test('getSqlBillingStats and inspectRunLogSqlBilling report listRuns/finishRun c
 	const stats = await getSqlBillingStats({ env, userId })
 	expect(stats.databaseSize).toBeGreaterThan(0)
 	expect(stats.rowsReadTotal).toBeGreaterThan(0)
-	expect(stats.ops.some((op) => op.op === 'listRuns' && op.calls >= 1)).toBe(
-		true,
-	)
-	expect(stats.ops.some((op) => op.op === 'finishRun' && op.calls >= 1)).toBe(
-		true,
-	)
+	expect(
+		stats.statements.some(
+			(statement) =>
+				statement.sql.includes('ORDER BY r.started_at DESC, r.id DESC') &&
+				statement.calls >= 1,
+		),
+	).toBe(true)
+	expect(
+		stats.statements.some(
+			(statement) =>
+				statement.sql.startsWith('INSERT INTO run_logs') &&
+				statement.rowsWritten >= 2,
+		),
+	).toBe(true)
 
 	const inspection = await inspectRunLogSqlBilling({ env, userId })
 	expect(inspection.schemaVersion).toBeGreaterThan(0)

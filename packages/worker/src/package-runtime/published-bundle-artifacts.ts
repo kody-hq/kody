@@ -1,4 +1,3 @@
-import { createBundleArtifactManifest } from './bundle-artifact-manifest.ts'
 import {
 	deleteLinkedArtifactGroups,
 	linkedArtifactSourceKvPrefix,
@@ -613,7 +612,6 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 		entryPoint,
 		kvKey,
 		dependencies: loaded.artifact.dependencies,
-		totalBytes: createBundleArtifactManifest(artifact).totalBytes,
 		// Same modules as the earlier commit's artifact, so same build origin.
 		builtIn: loaded.row.builtIn
 			? {

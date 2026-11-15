@@ -1532,12 +1532,6 @@ on write unless a migration backfills existing rows.
 - `published_bundle_artifacts.dependencies_json` (`0001-squashed-init.sql`)
   stores package dependency pointers queried with SQLite JSON functions in
   `packages/worker/src/repo/published-bundle-artifacts-repo.ts`.
-- `published_bundle_artifacts.total_bytes`
-  (`packages/worker/migrations/0267-published-bundle-artifact-total-bytes.sql`)
-  is the sum of stored module bytes from the artifact's `manifest`
-  (`packages/worker/src/package-runtime/bundle-artifact-manifest.ts`). Writes
-  set it from `createBundleArtifactManifest()`. NULL means the stored blob has
-  no manifest yet.
 - Keyed invocation replay lives in the RunLog Durable Object ledger (see
   [Run records](./run-records.md)). D1 has no `package_invocations` or
   `package_invocation_tokens` table.
@@ -1750,12 +1744,10 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
 - `bundle-artifact:v1:{sourceId}:{commit}:{kind}:{artifactName|_}:{entryPoint}`.
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
-  the new `published_commit` missing artifacts. Stored JSON includes `modules`,
-  a `manifest` (v1: per-module `role`, `bytes`, optional `owner` for linked
-  modules, plus `totalBytes`), and optional `linkedArtifacts` prefixes whose
-  module groups live under `linked-artifact:v1:…` instead of being inlined. New
-  writes always include `manifest`. Blobs without one have NULL
-  `published_bundle_artifacts.total_bytes`.
+  the new `published_commit` missing artifacts. Stored JSON includes `modules`
+  and optional `linkedArtifacts` prefixes whose module groups live under
+  `linked-artifact:v1:…` instead of being inlined. Some blobs written in
+  November 2026 also carry a `manifest` field; nothing reads or writes it now.
 - `linked-artifact:v1:{sourceId}:{commit}:{sha256}`. The `kody:@` dependency
   modules an uploaded build links (`.__kody_linked__/artifacts/…`), stored once
   per commit and content hash. The commit's bundle artifacts list them under

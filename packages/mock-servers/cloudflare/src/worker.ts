@@ -788,6 +788,26 @@ async function handleArtifactsFork(
 		scope: 'write',
 		ttl: 3600,
 	})
+	const gitBackendUrl = env.MOCK_GIT_BACKEND_URL?.trim()
+	if (gitBackendUrl) {
+		const copied = await fetch(
+			new URL(
+				`/fork/${encodeURIComponent(input.namespace)}/${encodeURIComponent(source.name)}.git/${encodeURIComponent(forked.name)}.git`,
+				gitBackendUrl,
+			),
+			{
+				method: 'POST',
+				headers: { Authorization: `Bearer ${token.plaintext}` },
+			},
+		)
+		if (!copied.ok) {
+			return errorEnvelope(
+				500,
+				1000,
+				`mock git backend fork failed (${copied.status})`,
+			)
+		}
+	}
 	return envelope(
 		{
 			id: forked.id,

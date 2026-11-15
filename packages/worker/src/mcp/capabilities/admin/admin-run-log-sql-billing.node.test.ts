@@ -48,10 +48,17 @@ function inspectionFixture() {
 		schemaVersion: 11,
 		billing: {
 			databaseSize: 4096,
+			since: '2026-11-15T00:00:00.000Z',
 			rowsReadTotal: 12,
 			rowsWrittenTotal: 3,
-			ops: [
-				{ op: 'listRuns' as const, rowsRead: 12, rowsWritten: 0, calls: 1 },
+			statements: [
+				{
+					sql: 'SELECT r.* FROM runs r WHERE r.id = ? LIMIT 1',
+					rowsRead: 12,
+					rowsWritten: 0,
+					calls: 1,
+					maxRowsRead: 12,
+				},
 			],
 		},
 		runLogsIndexes: [

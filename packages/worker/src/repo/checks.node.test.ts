@@ -33,6 +33,7 @@ import {
 	createSnapshotFilesWorkspace,
 	isolatedCredentialScanMinSourceBytes,
 	repoChecksSourceMaxFiles,
+	repoChecksCloudBuildMaxRuntimeSourceBytes,
 	repoChecksSourceMaxTotalBytes,
 	runRepoChecks,
 	runRepoSourceWalkChecks,
@@ -226,6 +227,49 @@ test('runRepoChecks fails when the source root exceeds publish file-count, total
 	expect(bundleCheck?.ok).toBe(false)
 	expect(bundleCheck?.message).toContain('"assets/dataset.csv"')
 	expect(bundleCheck?.message).toContain('per-file limit')
+})
+
+test('runRepoChecks refuses a cloud build before it starts when reachable runtime source is over the cloud build limit', async () => {
+	const half = `export const data = '${'x'.repeat(repoChecksCloudBuildMaxRuntimeSourceBytes / 2)}'\n`
+	const index = `import './a.ts'\nimport './b.ts'\n${ready}`
+	const tooLarge = () =>
+		packageFiles(manifest('big-runtime'), {
+			'src/index.ts': index,
+			'src/a.ts': half,
+			'src/b.ts': half,
+		})
+
+	const cloud = await runChecks(tooLarge())
+	expect(cloud.result.ok).toBe(false)
+	expect(cloud.result.sourceFiles).toEqual({})
+	expect(cloud.result.results).toEqual([
+		expect.objectContaining({ kind: 'manifest', ok: true }),
+		expect.objectContaining({ kind: 'bundle', ok: false }),
+	])
+	const message = findCheck(cloud.result, 'bundle')?.message ?? ''
+	expect(message).toContain('stopped before the build')
+	expect(message).toContain('8.0 MiB limit for a build in Kody cloud')
+	expect(message).toContain('`src/a.ts`')
+	expect(message).toContain('--build local')
+	expect(message).toContain('--context <name>')
+
+	// A local or execution-context build is not held to the cloud limit.
+	const uploaded = await runChecks(tooLarge(), { typecheckRanOffWorker: true })
+	expect(findCheck(uploaded.result, 'bundle')?.message ?? '').not.toContain(
+		'stopped before the build',
+	)
+	expect(Object.keys(uploaded.result.sourceFiles)).toContain('src/a.ts')
+
+	// Files the entry points never import do not count.
+	const unreachable = await runChecks(
+		packageFiles(manifest('big-assets'), {
+			'data/a.ts': half,
+			'data/b.ts': half,
+		}),
+	)
+	expect(findCheck(unreachable.result, 'bundle')?.message ?? '').not.toContain(
+		'stopped before the build',
+	)
 })
 
 test('runRepoChecks keeps non-code source files for publish snapshots while excluding git internals', async () => {

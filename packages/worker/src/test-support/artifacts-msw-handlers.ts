@@ -18,8 +18,6 @@ type StoredSnapshot = {
 	files: Record<string, string>
 }
 
-const loopbackRemoteOrigin = 'http://127.0.0.1:1'
-
 function envelope<T>(result: T, status = 200) {
 	return HttpResponse.json(
 		{
@@ -57,9 +55,10 @@ export function createArtifactsMswHandlers(input: {
 	const reposPath = `${namespacePath}/repos`
 
 	return [
-		// Mock repo remotes point at a closed loopback port: git over HTTP
-		// fails like a refused connection instead of reaching a real server.
-		http.all(`${loopbackRemoteOrigin}/git/*`, () => HttpResponse.error()),
+		// Like the local Cloudflare API stand-in, remotes live on the API origin
+		// and serve no git, so they take the snapshot lane. Git over HTTP fails
+		// like a refused connection instead of reaching a real server.
+		http.all(`${apiOrigin}/git/*`, () => HttpResponse.error()),
 		http.post(`${apiOrigin}${namespacePath}/tokens`, async ({ request }) => {
 			const body = (await request.json()) as {
 				repo?: string
@@ -110,7 +109,7 @@ export function createArtifactsMswHandlers(input: {
 				last_push_at: null,
 				source: null,
 				read_only: body.read_only === true,
-				remote: `${loopbackRemoteOrigin}/git/${namespace}/${repoName}.git`,
+				remote: `${apiOrigin}/git/${namespace}/${repoName}.git`,
 			}
 			repos.set(repoName, repo)
 			return envelope({
@@ -164,7 +163,7 @@ export function createArtifactsMswHandlers(input: {
 					last_push_at: source.last_push_at,
 					source: source.name,
 					read_only: body.read_only === true,
-					remote: `${loopbackRemoteOrigin}/git/${namespace}/${targetName}.git`,
+					remote: `${apiOrigin}/git/${namespace}/${targetName}.git`,
 				}
 				repos.set(targetName, repo)
 				const sourceSnapshot = snapshots.get(sourceName)

@@ -3,7 +3,10 @@ import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
-import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
+import {
+	CredentialLocalReadsSection,
+	CredentialLocalReadsUnavailable,
+} from './account-credential-local-reads.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import type {
@@ -27,6 +30,8 @@ export function renderVaultCredentialDetail(input: {
 	packageName: string
 	orgSlug: string
 	localReads?: CredentialLocalReadsView | null
+	/** The binding id whose local reads failed to load, if any. */
+	localReadsUnavailableFor?: string | null
 }) {
 	const { binding } = input
 	const name = binding.provider ?? binding.providerId
@@ -75,6 +80,8 @@ export function renderVaultCredentialDetail(input: {
 					orgSlug={input.orgSlug}
 					vault
 				/>
+			) : input.localReadsUnavailableFor === binding.id ? (
+				<CredentialLocalReadsUnavailable />
 			) : null}
 
 			<div>

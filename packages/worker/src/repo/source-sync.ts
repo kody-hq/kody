@@ -2,7 +2,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	hasArtifactsAccess,
 	type ArtifactBootstrapAccess,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
 import {
@@ -179,11 +179,13 @@ async function writePublishedSnapshotWithRevert(input: {
 	}
 }
 
-async function hasLoopbackSourceRemote(env: Env, repoId: string) {
+async function hasSnapshotOnlySourceRemote(env: Env, repoId: string) {
 	if (!hasArtifactSourceSnapshotApi(env)) return false
 	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
 	const remote = (await repo?.info())?.remote
-	return typeof remote === 'string' && isLoopbackArtifactsRemote(remote)
+	return (
+		typeof remote === 'string' && isSnapshotOnlyArtifactsRemote(env, remote)
+	)
 }
 
 export async function syncArtifactSourceSnapshot(
@@ -214,7 +216,7 @@ export async function syncArtifactSourceSnapshot(
 		path,
 		content,
 	}))
-	// Local dev: a loopback Artifacts remote has no git history to open a
+	// Local dev without a git backend: a snapshot-only remote has no git to open a
 	// session on, so every publish (first or update) writes a mock snapshot.
 	const publishThroughLoopbackSnapshot = () =>
 		pushServerTiming(input.serverTiming, 'mock-artifact-snapshot', async () => {
@@ -337,7 +339,10 @@ export async function syncArtifactSourceSnapshot(
 			}
 			if (
 				input.bootstrapAccess?.remote &&
-				isLoopbackArtifactsRemote(input.bootstrapAccess.remote) &&
+				isSnapshotOnlyArtifactsRemote(
+					input.env,
+					input.bootstrapAccess.remote,
+				) &&
 				input.existingHeadCommit == null
 			) {
 				return await publishThroughLoopbackSnapshot()
@@ -408,7 +413,7 @@ export async function syncArtifactSourceSnapshot(
 		}
 		if (
 			input.existingHeadCommit == null &&
-			(await hasLoopbackSourceRemote(input.env, source.repo_id))
+			(await hasSnapshotOnlySourceRemote(input.env, source.repo_id))
 		) {
 			return await publishThroughLoopbackSnapshot()
 		}

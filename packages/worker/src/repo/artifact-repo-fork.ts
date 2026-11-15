@@ -12,7 +12,7 @@ import { writeArtifactSourceSnapshot } from './artifact-source-snapshot.ts'
 import {
 	getArtifactsBinding,
 	isArtifactRepoNotFoundError,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveArtifactSourceHead,
 	resolveExistingArtifactSourceRepo,
 	type ArtifactBootstrapAccess,
@@ -86,7 +86,7 @@ export async function persistForkedArtifactRepoContents(input: {
 		input.source.repo_id,
 	)
 	const info = destRepo ? await destRepo.info() : null
-	if (info?.remote && isLoopbackArtifactsRemote(info.remote)) {
+	if (info?.remote && isSnapshotOnlyArtifactsRemote(input.env, info.remote)) {
 		return await pushServerTiming(
 			input.serverTiming,
 			'fork-loopback-snapshot',

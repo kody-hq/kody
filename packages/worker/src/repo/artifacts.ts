@@ -991,10 +991,25 @@ export function isLoopbackHostname(hostname: string) {
 	)
 }
 
-export function isLoopbackArtifactsRemote(remote: string) {
+/**
+ * Local dev without a git backend: the Cloudflare API stand-in hands out
+ * remotes on its own origin, which serves no git, so these repos only hold
+ * mock source snapshots. A loopback remote on any other origin is real git
+ * (`tools/mock-artifacts-git-server.ts`) and takes the production lanes.
+ */
+export function isSnapshotOnlyArtifactsRemote(
+	env: Pick<Env, 'CLOUDFLARE_API_BASE_URL'>,
+	remote: string,
+) {
+	const apiBaseUrl = env.CLOUDFLARE_API_BASE_URL?.trim()
+	if (!apiBaseUrl) return false
 	try {
 		const url = new URL(remote)
-		return url.protocol === 'http:' && isLoopbackHostname(url.hostname)
+		return (
+			url.protocol === 'http:' &&
+			isLoopbackHostname(url.hostname) &&
+			url.origin === new URL(apiBaseUrl).origin
+		)
 	} catch {
 		return false
 	}
