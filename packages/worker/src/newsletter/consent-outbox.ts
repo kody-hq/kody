@@ -159,16 +159,14 @@ export async function recordWhatsNewVerifiedAccount(input: {
 				.bind(row.email)
 				.first<{ confirmed_at: string }>()
 			if (signup) {
-				// The account takes the sign-up on now, which may be after an
-				// earlier no-choice event for it; subscribers order by time.
-				const adoptedAt = (input.now ?? new Date()).toISOString()
 				await recordWhatsNewConsentChange({
 					env: input.env,
 					stableUserId: input.stableUserId,
 					optedIn: true,
 					source: 'newsletter_page',
-					occurredAt:
-						adoptedAt > signup.confirmed_at ? adoptedAt : signup.confirmed_at,
+					// Dated when the choice was made, so any later choice on the
+					// account still wins.
+					occurredAt: signup.confirmed_at,
 					now: input.now,
 				})
 				return
@@ -247,12 +245,13 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		return { delivered: 0 }
 	}
 	// Queue retries and concurrent batches can deliver an older change after a
-	// newer one. A change superseded by a later one for the same recipient is
-	// dropped; subscribers also order by `occurred_at`.
+	// newer one. A change superseded by a later choice for the same recipient
+	// is dropped; subscribers also order by `occurred_at`. A no-choice row
+	// carries no consent, so it never supersedes a choice.
 	const newer = await db
 		.prepare(
 			`SELECT 1 AS newer FROM whats_new_consent_outbox
-			 WHERE recipient_id = ? AND id != ?
+			 WHERE recipient_id = ? AND id != ? AND opted_in IS NOT NULL
 				AND (occurred_at > ? OR (occurred_at = ? AND rowid > (
 					SELECT rowid FROM whats_new_consent_outbox WHERE id = ?)))
 			 LIMIT 1`,

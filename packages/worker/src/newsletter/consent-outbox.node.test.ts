@@ -276,20 +276,34 @@ test('an account with no choice of its own is announced with the public sign-up 
 			`UPDATE users SET email = 'guest@example.com', whats_new_email_opt_in = 0, whats_new_email_opt_in_updated_at = NULL, whats_new_email_opt_in_source = NULL`,
 		)
 		.run()
-	// The address changes after the sign-up was confirmed: the opt-in is dated
-	// when the account took it on, so it is not older than earlier events.
-	const later = new Date('2026-11-16T09:00:00.000Z')
-	await recordWhatsNewVerifiedAccount({
+	// The account's own no-choice event is newer than the sign-up it carries.
+	await recordWhatsNewConsentChange({
 		env,
 		stableUserId: accountId,
-		now: later,
+		optedIn: null,
+		source: null,
+		occurredAt: '2026-11-16T09:00:00.000Z',
+		now,
 	})
-	expect(outbox()).toMatchObject([
-		{ stable_user_id: accountId, opted_in: 1, source: 'newsletter_page' },
-	])
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: accountId, now })
+	const carried = outbox().find((row) => row.opted_in === 1)
+	expect(carried).toMatchObject({
+		stable_user_id: accountId,
+		source: 'newsletter_page',
+	})
 	expect(
-		sqlite.prepare(`SELECT occurred_at FROM whats_new_consent_outbox`).get(),
-	).toEqual({ occurred_at: later.toISOString() })
+		sqlite
+			.prepare(`SELECT occurred_at FROM whats_new_consent_outbox WHERE id = ?`)
+			.get(carried!.id),
+	).toEqual({ occurred_at: now.toISOString() })
+
+	// The newer no-choice row carries no consent, so the opt-in is still sent.
+	mocks.dispatchAdminPackageSubscriptionEvent.mockResolvedValue([
+		{ status: 200, body: {} },
+	])
+	await expect(
+		deliverWhatsNewConsentOutboxRow({ env, outboxId: carried!.id }),
+	).resolves.toEqual({ delivered: 1 })
 })
 
 test('without a queue binding a change is delivered inline', async () => {
