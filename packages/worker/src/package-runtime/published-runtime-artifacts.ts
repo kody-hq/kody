@@ -913,6 +913,26 @@ export async function readPublishedBundleArtifact(input: {
 function parseStoredPublishedBundleArtifact(
 	stored: unknown,
 ): PublishedBundleArtifact | null {
+	const loaded = parseStoredPublishedBundleArtifactAsStored(stored)
+	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
+	// repair imports the shared runtime module, which only resolves inside a
+	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
+	if (!loaded || !isRepairableArtifactKind(loaded.kind)) return loaded
+	const { manifest, ...unrepaired } = loaded
+	const repaired = repairInlinedFacadeBindingsInArtifact(
+		repairPreBindingPublishedArtifact(unrepaired),
+	)
+	// A read-time repair rewrites module source, so the stored sizes no longer
+	// describe what is served.
+	return manifest && repaired.modules === loaded.modules
+		? { ...repaired, manifest }
+		: repaired
+}
+
+/** The artifact exactly as stored, before any read-time repair. */
+function parseStoredPublishedBundleArtifactAsStored(
+	stored: unknown,
+): PublishedBundleArtifact | null {
 	if (!stored || typeof stored !== 'object') return null
 	const artifact = stored as StoredPublishedBundleArtifact
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
@@ -944,20 +964,65 @@ function parseStoredPublishedBundleArtifact(
 		(stored as { manifest?: unknown }).manifest,
 		Object.keys(loaded.modules),
 	)
-	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
-	// repair imports the shared runtime module, which only resolves inside a
-	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
-	if (!isRepairableArtifactKind(loaded.kind)) {
-		return manifest ? { ...loaded, manifest } : loaded
+	return manifest ? { ...loaded, manifest } : loaded
+}
+
+export type StoredBundleArtifactManifestBackfill =
+	| { status: 'written' | 'would_write' | 'already'; totalBytes: number }
+	| { status: 'missing' | 'unusable' }
+
+/**
+ * Adds a manifest to a stored artifact written before manifests existed.
+ * Only the manifest is added: the stored modules are written back as read,
+ * with no read-time repair. A package app's template copy gets the same
+ * manifest.
+ */
+export async function backfillStoredBundleArtifactManifest(input: {
+	env: Env
+	kvKey: string
+	dryRun: boolean
+}): Promise<StoredBundleArtifactManifestBackfill> {
+	const kv = getBundleArtifactsKv(input.env)
+	const result = await backfillManifestAtKey({ ...input, kv })
+	if (result.status !== 'written') return result
+	const { artifact } = result
+	if (artifact.kind === 'app' && artifact.artifactName === null) {
+		await backfillManifestAtKey({
+			kv,
+			kvKey: buildPackageAppWorkerTemplateKvKey(artifact),
+			dryRun: false,
+		})
 	}
-	const repaired = repairInlinedFacadeBindingsInArtifact(
-		repairPreBindingPublishedArtifact(loaded),
+	return { status: 'written', totalBytes: result.totalBytes }
+}
+
+async function backfillManifestAtKey(input: {
+	kv: KVNamespace
+	kvKey: string
+	dryRun: boolean
+}): Promise<
+	| { status: 'would_write' | 'already'; totalBytes: number }
+	| { status: 'written'; totalBytes: number; artifact: PublishedBundleArtifact }
+	| { status: 'missing' | 'unusable' }
+> {
+	const stored = await input.kv.get(input.kvKey, 'json')
+	if (stored === null) return { status: 'missing' }
+	const artifact = parseStoredPublishedBundleArtifactAsStored(
+		await restoreLinkedArtifactGroups({ kv: input.kv, stored }),
 	)
-	// A read-time repair rewrites module source, so the stored sizes no longer
-	// describe what is served.
-	return manifest && repaired.modules === loaded.modules
-		? { ...repaired, manifest }
-		: repaired
+	if (!artifact) return { status: 'unusable' }
+	if (artifact.manifest) {
+		return { status: 'already', totalBytes: artifact.manifest.totalBytes }
+	}
+	const manifest = createBundleArtifactManifest(artifact)
+	if (input.dryRun) {
+		return { status: 'would_write', totalBytes: manifest.totalBytes }
+	}
+	await input.kv.put(
+		input.kvKey,
+		JSON.stringify({ ...(stored as object), manifest }),
+	)
+	return { status: 'written', totalBytes: manifest.totalBytes, artifact }
 }
 
 export async function deletePublishedBundleArtifact(input: {
