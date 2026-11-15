@@ -142,7 +142,8 @@ function scanPackageFiles(input: {
 				manifest[field],
 				entries,
 				packageFiles,
-				runtimeOnly,
+				// Under `kody`, `types` can be the name of a job or another entry.
+				runtimeOnly && field !== 'kody',
 			)
 		}
 	} catch {

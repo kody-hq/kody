@@ -103,8 +103,10 @@ test('publishSizeHints follows an extensionless entry and can leave out type-onl
 		'package.json': JSON.stringify({
 			name: '@example/demo',
 			exports: { '.': { types: './src/api.d.ts', default: './src/index' } },
+			kody: { jobs: { types: { entry: './src/job.ts' } } },
 		}),
 		'src/api.d.ts': 'export type Api = string\n',
+		'src/job.ts': 'export default async () => null\n',
 		'src/index.ts': [
 			"import type { Shape } from './shape.ts'",
 			'import {',
@@ -122,10 +124,16 @@ test('publishSizeHints follows an extensionless entry and can leave out type-onl
 		publishSizeHints({ files })
 			.runtime.largest.map((hint) => hint.path)
 			.sort(),
-	).toEqual(['src/api.d.ts', 'src/index.ts', 'src/shape.ts', 'src/value.ts'])
+	).toEqual([
+		'src/api.d.ts',
+		'src/index.ts',
+		'src/job.ts',
+		'src/shape.ts',
+		'src/value.ts',
+	])
 	expect(
 		publishSizeHints({ files, runtimeOnly: true })
 			.runtime.largest.map((hint) => hint.path)
 			.sort(),
-	).toEqual(['src/index.ts', 'src/value.ts'])
+	).toEqual(['src/index.ts', 'src/job.ts', 'src/value.ts'])
 })
