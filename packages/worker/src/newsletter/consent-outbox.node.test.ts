@@ -268,3 +268,21 @@ test('a change is kept, uncounted, while no admin package subscribes', async () 
 	).resolves.toEqual({ delivered: 0 })
 	expect(outbox()).toMatchObject([{ id: row!.id, attempts: 0 }])
 })
+
+test('without a queue binding a change is delivered inline', async () => {
+	const { env, outbox } = setup()
+	delete (env as Partial<Env>).PACKAGE_EVENTS_DISPATCH_QUEUE
+	mocks.dispatchAdminPackageSubscriptionEvent.mockResolvedValue([
+		{ status: 200, body: {} },
+	])
+	await recordWhatsNewConsentChange({
+		env,
+		stableUserId: signupId,
+		optedIn: true,
+		source: 'newsletter_page',
+		occurredAt: now.toISOString(),
+		now,
+	})
+	expect(mocks.dispatchAdminPackageSubscriptionEvent).toHaveBeenCalledTimes(1)
+	expect(outbox()).toEqual([])
+})

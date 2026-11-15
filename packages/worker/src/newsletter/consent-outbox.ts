@@ -17,7 +17,7 @@ export type WhatsNewConsentOutboxQueueMessage = {
 	outboxId: string
 }
 
-type OutboxEnv = Pick<Env, 'APP_DB'> &
+type OutboxEnv = Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'> &
 	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
 
 /** Rows older than this were not delivered by their own queue message. */
@@ -53,12 +53,17 @@ export function parseWhatsNewConsentOutboxQueueMessage(
 
 async function enqueueOutboxIds(env: OutboxEnv, outboxIds: Array<string>) {
 	const queue = env.PACKAGE_EVENTS_DISPATCH_QUEUE
-	if (!queue) return
 	for (const outboxId of outboxIds) {
-		await queue.send({
-			kind: whatsNewConsentOutboxQueueMessageKind,
-			outboxId,
-		} satisfies WhatsNewConsentOutboxQueueMessage)
+		if (queue) {
+			await queue.send({
+				kind: whatsNewConsentOutboxQueueMessageKind,
+				outboxId,
+			} satisfies WhatsNewConsentOutboxQueueMessage)
+			continue
+		}
+		// No Queue binding (local dev / preview): deliver inline with the
+		// consumer's code path so subscribers still hear about the change.
+		await deliverWhatsNewConsentOutboxRow({ env, outboxId })
 	}
 }
 
@@ -185,7 +190,7 @@ async function loadSubscriber(db: D1Database, stableUserId: string) {
  * remaining recipient is dropped.
  */
 export async function deliverWhatsNewConsentOutboxRow(input: {
-	env: Env
+	env: OutboxEnv
 	outboxId: string
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
@@ -216,8 +221,8 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		return { delivered: 0 }
 	}
 	const responses = await dispatchAdminPackageSubscriptionEvent({
-		env: input.env,
-		baseUrl: getAppBaseUrl({ env: input.env }),
+		env: input.env as Env,
+		baseUrl: getAppBaseUrl({ env: input.env as Env }),
 		topic: whatsNewConsentChangedTopic,
 		getParams: () => ({
 			event: whatsNewConsentChangedTopic,
