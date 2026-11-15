@@ -29,6 +29,7 @@ test('a signed-out visitor reaches an internet-visible app; a private app still 
 	}
 	for (const app of Object.values(apps)) {
 		const packageId = crypto.randomUUID()
+		const sourceId = crypto.randomUUID()
 		executeE2eD1Command(
 			`INSERT INTO saved_packages (
 				id, user_id, name, kody_id, description, tags_json, search_text,
@@ -42,7 +43,7 @@ test('a signed-out visitor reaches an internet-visible app; a private app still 
 				${quoteSqlString('Internet-visible serving E2E')},
 				'[]',
 				NULL,
-				${quoteSqlString(crypto.randomUUID())},
+				${quoteSqlString(sourceId)},
 				1,
 				0,
 				1,
@@ -52,6 +53,25 @@ test('a signed-out visitor reaches an internet-visible app; a private app still 
 			)`,
 		)
 		if (app.internetVisible) {
+			// Visitors run an approval only against the app's live source.
+			executeE2eD1Command(
+				`INSERT INTO entity_sources (
+					id, user_id, entity_kind, entity_id, repo_id, published_commit,
+					serving_commit, manifest_path, source_root, created_at, updated_at
+				) VALUES (
+					${quoteSqlString(sourceId)},
+					${ownerIdSql},
+					'package',
+					${quoteSqlString(packageId)},
+					${quoteSqlString(`repo-${packageId}`)},
+					'approved-commit',
+					'approved-commit',
+					'package.json',
+					'/',
+					${quoteSqlString(now)},
+					${quoteSqlString(now)}
+				)`,
+			)
 			executeE2eD1Command(
 				`INSERT INTO package_capability_approvals (
 					id, package_id, owner_user_id, published_commit, fingerprint,
