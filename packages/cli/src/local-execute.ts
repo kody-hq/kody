@@ -455,7 +455,10 @@ export async function runLocalExecute(
 		}
 		await writeFile(
 			join(workDir, files.entry),
-			createLocalEntrySource({ sideEffectModules: gatewayFetchShimModules }),
+			createLocalEntrySource({
+				sideEffectModules: gatewayFetchShimModules,
+				...(hostFs ? { hostFsModule: hostFsShimModules[1].name } : {}),
+			}),
 		)
 		await writeFile(join(workDir, files.user), code)
 		await writeFile(
