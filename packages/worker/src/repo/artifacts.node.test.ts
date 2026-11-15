@@ -810,7 +810,7 @@ test('isSnapshotOnlyArtifactsRemote only matches remotes on the Cloudflare API s
 	).toBe(false)
 	expect(
 		isSnapshotOnlyArtifactsRemote(
-			{},
+			{ CLOUDFLARE_API_BASE_URL: undefined },
 			'http://127.0.0.1:8787/git/default/package-1.git',
 		),
 	).toBe(false)
