@@ -16,6 +16,7 @@ import {
 	verifyEmailChangeToken,
 } from '#app/email-change.ts'
 import { waitUntil } from 'cloudflare:workers'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 
 function getRequestCountry(request: Request) {
 	const cf = (request as Request & { cf?: { country?: string } }).cf
@@ -100,6 +101,11 @@ export async function executeVerifyEmailChange({
 					isSecureRequest(request),
 				)
 			: null
+
+	// Newsletter subscribers keep their choice; the ledger learns the new address.
+	waitUntil(
+		recordWhatsNewVerifiedAccount({ env, stableUserId: result.stableUserId }),
+	)
 
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),

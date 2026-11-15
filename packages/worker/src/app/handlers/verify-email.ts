@@ -1,3 +1,4 @@
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 import type { EmailVerificationResult } from '#universal/token-outcomes.ts'
 import {
 	auditDatabaseFromEnv,
@@ -82,6 +83,10 @@ export async function executeVerifyEmail({
 		})
 	}
 	if (result.newlyVerified) {
+		// The sign-up checkbox only makes a recipient once the address is verified.
+		waitUntil(
+			recordWhatsNewVerifiedAccount({ env, stableUserId: result.stableUserId }),
+		)
 		// Kent's welcome goes out now; the connect-agent tip waits for the
 		// usage campaign sweep's first-send dwell (about a day) so the two
 		// do not land seconds apart.

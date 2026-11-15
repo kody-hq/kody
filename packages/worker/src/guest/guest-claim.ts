@@ -1,3 +1,4 @@
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
@@ -260,6 +261,7 @@ export async function convertGuestInPlace(
 		email: input.email,
 		stableUserId: guest.personId,
 	})
+	await recordWhatsNewVerifiedAccount({ env, stableUserId: guest.personId })
 	return {
 		mode: 'new',
 		username,

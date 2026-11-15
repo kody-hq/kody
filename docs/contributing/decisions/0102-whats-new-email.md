@@ -61,3 +61,12 @@ is a honeypot, per-IP and per-address rate limits, and Turnstile, verified with
 siteverify before any row or email is created. The form therefore needs
 JavaScript; without it a note replaces the fields. Responses do not reveal
 whether an address is already subscribed.
+
+Consent moves between the site and the newsletter package at the moment it
+changes, not on a schedule. Site changes (a confirmed sign-up, a verified
+account's sign-up choice, an admin change) go out as the admin-only
+`whats_new.consent.changed` event from a `whats_new_consent_outbox` row, so a
+failed delivery is retried and never blocks the confirm. The package writes its
+own opt-ins and unsubscribes back with `adminWhatsNewOptInSet` (source
+`email_link`), which is not echoed. See
+[admin events](../../guides/admin-events.md).
