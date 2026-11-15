@@ -150,7 +150,6 @@ export function filterOauthApps(
 	)
 }
 
-
 export function formatList(values: Array<string> | null | undefined) {
 	if (!values || values.length === 0) return 'None'
 	return values.join(', ')

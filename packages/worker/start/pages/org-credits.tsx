@@ -20,7 +20,10 @@ import type {
 	OrgCreditsLoaderData,
 } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { loadCreditsPage } from '#start/server/org-credits'
 
 /**

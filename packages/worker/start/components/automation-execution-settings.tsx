@@ -16,7 +16,12 @@ import {
 	automationQueueMaxMinutes,
 	describeAutomationExecution,
 } from '#universal/automation-execution.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { AccountManagementMessage } from '../pages/account-management-components.tsx'
 import { selectCss } from '../pages/package-collaborators-parts.tsx'

@@ -51,7 +51,10 @@ import type {
 } from '#universal/loader-data.ts'
 import { orgCreditsPath } from '#universal/org-pages.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 
 /** Anchor for `/account/usage#credits` (`accountCreditsPath`). */
 const creditsSectionId = 'credits'

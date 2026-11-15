@@ -32,11 +32,23 @@ export function WorkspaceFileStatus({
 			</p>
 			{action &&
 				('href' in action ? (
-					<Button variant="secondary" size="md" reloadDocument css={control} href={action.href}>
+					<Button
+						variant="secondary"
+						size="md"
+						reloadDocument
+						css={control}
+						href={action.href}
+					>
 						{action.label}
 					</Button>
 				) : (
-					<Button type="button" variant="secondary" size="md" css={control} onClick={action.run}>
+					<Button
+						type="button"
+						variant="secondary"
+						size="md"
+						css={control}
+						onClick={action.run}
+					>
 						{action.label}
 					</Button>
 				))}

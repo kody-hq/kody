@@ -19,7 +19,11 @@ import type {
 	AccountWorkflowsLoaderData,
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import { cardTitleCss, descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useIsMutating,

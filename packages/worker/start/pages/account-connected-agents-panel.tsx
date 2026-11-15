@@ -37,7 +37,10 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getLogoWellCss, getSwapLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	getLogoWellCss,
+	getSwapLabelCss,
+} from '#universal/styles/style-primitives.ts'
 
 export function useAccountConnectedAgents(
 	initialPayload: AccountConnectedAgentsLoaderData,
@@ -224,7 +227,8 @@ export function useAccountConnectedAgents(
 																	? `Confirm revoke ${revokeName}`
 																	: `Revoke ${revokeName}`
 															}
-															variant="danger" css={dangerButtonCss}
+															variant="danger"
+															css={dangerButtonCss}
 															onBlur={() => setRevokeArmed(null)}
 															onClick={() => {
 																if (revokeIsArmed) {

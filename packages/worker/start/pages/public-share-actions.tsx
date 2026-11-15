@@ -173,7 +173,9 @@ export function PublicShareActions({
 			<Button
 				ref={trigger}
 				disabled={!hydrated}
-				variant="primary" size="lg" css={{ fontSize: 13, padding: '7px 13px', whiteSpace: 'nowrap' }}
+				variant="primary"
+				size="lg"
+				css={{ fontSize: 13, padding: '7px 13px', whiteSpace: 'nowrap' }}
 				onClick={() => {
 					setMessage('')
 					setOpen(true)
@@ -229,7 +231,8 @@ export function PublicShareActions({
 								</p>
 								<Button
 									href={`/@${plan.destination}/-/files?file=${plan.fileId}`}
-									variant="primary" size="lg"
+									variant="primary"
+									size="lg"
 								>
 									Open copy in Kody <ShareIcon kind="arrow" />
 								</Button>
@@ -260,13 +263,15 @@ export function PublicShareActions({
 									) : !session.data ? (
 										<Button
 											href={`/login?redirectTo=${encodeURIComponent(`${currentHref()}&use=true`)}`}
-											variant="primary" size="lg"
+											variant="primary"
+											size="lg"
 										>
 											Sign in to save a copy
 										</Button>
 									) : (
 										<Button
-											variant="primary" size="lg"
+											variant="primary"
+											size="lg"
 											disabled={busy}
 											onClick={() => void save()}
 										>

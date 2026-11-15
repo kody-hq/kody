@@ -19,7 +19,15 @@ import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import type { DiscordPageLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { cardCss, descriptionCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 
@@ -225,7 +233,9 @@ export function DiscordPage({
 							<Button
 								type="button"
 								disabled={busy}
-								variant="secondary" size="lg" css={{ justifySelf: 'start' }}
+								variant="secondary"
+								size="lg"
+								css={{ justifySelf: 'start' }}
 								onClick={handleSyncRoles}
 							>
 								Sync Discord roles
@@ -280,7 +290,13 @@ export function DiscordPage({
 						{turnstileSiteKey ? (
 							<div className={turnstileWidgetClassName}></div>
 						) : null}
-						<Button type="submit" disabled={busy} variant="primary" size="md" css={connectButtonCss}>
+						<Button
+							type="submit"
+							disabled={busy}
+							variant="primary"
+							size="md"
+							css={connectButtonCss}
+						>
 							Connect Discord
 						</Button>
 					</form>
@@ -289,7 +305,9 @@ export function DiscordPage({
 					<Button
 						type="button"
 						disabled={busy}
-						variant="primary" size="md" css={connectButtonCss}
+						variant="primary"
+						size="md"
+						css={connectButtonCss}
 						onClick={handleConnectDiscord}
 					>
 						Connect Discord

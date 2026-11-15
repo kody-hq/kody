@@ -35,7 +35,11 @@ import type {
 	AdminCodemodRunListItem,
 	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
-import { fieldCss, fieldLabelCss, getSelectCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {

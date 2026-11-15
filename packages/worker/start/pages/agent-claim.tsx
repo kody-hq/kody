@@ -8,7 +8,22 @@ import type {
 	AgentClaimPageData,
 	AgentClaimPageError,
 } from '#start/server/agent-claim'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss, getAlertCardCss, insetCardCss, inputCss, mutedLinkCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, sectionTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	getAlertCardCss,
+	insetCardCss,
+	inputCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	sectionTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -99,7 +114,13 @@ function renderAgentClaimBody(data: AgentClaimPageData) {
 		case 'email_unverified':
 			return (
 				<section css={cardCss}>
-					<Button href="/pending-verification" variant="primary" size="md" reloadDocument css={primaryLinkCss}>
+					<Button
+						href="/pending-verification"
+						variant="primary"
+						size="md"
+						reloadDocument
+						css={primaryLinkCss}
+					>
 						Resend verification email
 					</Button>
 				</section>
@@ -119,12 +140,21 @@ function SignedOutCard(props: {
 		<section css={cardCss} data-testid="agent-claim-signed-out">
 			<p css={descriptionCss}>{agentClaimAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<Button href={buildAuthLink('/login', data.redirectTo)} variant="primary" size="md" reloadDocument css={primaryLinkCss}>
+				<Button
+					href={buildAuthLink('/login', data.redirectTo)}
+					variant="primary"
+					size="md"
+					reloadDocument
+					css={primaryLinkCss}
+				>
 					Sign in to continue
 				</Button>
 				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
-					variant="secondary" size="md" reloadDocument css={secondaryLinkCss}
+					variant="secondary"
+					size="md"
+					reloadDocument
+					css={secondaryLinkCss}
 				>
 					Create an account
 				</Button>
@@ -205,7 +235,8 @@ function ConsentCard(props: {
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						variant="primary" size="md"
+						variant="primary"
+						size="md"
 					>
 						Approve
 					</Button>
@@ -214,7 +245,8 @@ function ConsentCard(props: {
 						name="decision"
 						value="deny"
 						formNoValidate
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 					>
 						Deny
 					</Button>

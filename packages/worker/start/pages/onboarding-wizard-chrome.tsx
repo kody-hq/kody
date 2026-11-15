@@ -17,7 +17,11 @@ import {
 	transitions,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { hoverMq, inlineSpinnerCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	hoverMq,
+	inlineSpinnerCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 
 export type OnboardingCelebrationState = {
 	seenIncomplete: boolean
@@ -423,7 +427,9 @@ export function WizardNavigation(props: {
 			<Button
 				type="button"
 				disabled={!onBack && previousStep == null}
-				variant="secondary" size="lg" css={wizardBackButtonCss}
+				variant="secondary"
+				size="lg"
+				css={wizardBackButtonCss}
 				onClick={() => {
 					if (onBack) onBack()
 					else if (previousStep) props.onSelectStep(previousStep)
@@ -435,7 +441,9 @@ export function WizardNavigation(props: {
 				{onSkip && skipLabel ? (
 					<Button
 						type="button"
-						variant="secondary" size="lg" css={wizardSkipButtonCss}
+						variant="secondary"
+						size="lg"
+						css={wizardSkipButtonCss}
 						onClick={onSkip}
 						data-testid="onboarding-wizard-skip"
 					>
@@ -455,7 +463,9 @@ export function WizardNavigation(props: {
 					<Button
 						href={lastStep.exploreHref}
 						data-testid="onboarding-wizard-explore-packages"
-						variant="secondary" size="lg" css={wizardExploreLinkCss}
+						variant="secondary"
+						size="lg"
+						css={wizardExploreLinkCss}
 					>
 						{onboardingExplorePackagesLabel}
 					</Button>
@@ -464,7 +474,9 @@ export function WizardNavigation(props: {
 						type="button"
 						disabled={!onNext && nextStep == null}
 						aria-label={nextLabels.full}
-						variant="primary" size="lg" css={wizardNextButtonCss}
+						variant="primary"
+						size="lg"
+						css={wizardNextButtonCss}
 						onBlur={() => setConfirmed(false)}
 						onClick={() => {
 							if (requiresConnectionConfirmation && !confirmed)

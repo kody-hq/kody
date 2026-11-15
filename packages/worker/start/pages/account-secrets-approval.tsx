@@ -20,7 +20,15 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	getAccentCalloutCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
 
 export function renderSecretApprovalCard(props: {
@@ -473,7 +481,8 @@ export function renderPackageSecretApprovalPage(props: {
 					{view.showBackToSecrets ? (
 						<Button
 							href={relocateAccountHref('/account/secrets', props.currentHref)}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 						>
 							Back to secrets
 						</Button>
@@ -492,7 +501,8 @@ export function renderPackageSecretApprovalPage(props: {
 									onClick={() => {
 										onSubmit('approve')
 									}}
-									variant="primary" size="md"
+									variant="primary"
+									size="md"
 									data-testid="allow-secret-package"
 								>
 									{submittingAction === 'approve'
@@ -506,7 +516,8 @@ export function renderPackageSecretApprovalPage(props: {
 								onClick={() => {
 									onSubmit('reject')
 								}}
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 							>
 								Reject
 							</Button>

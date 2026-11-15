@@ -408,7 +408,8 @@ export function PackageAppOauthConsentPage({
 								? 'package-app-oauth-allow-blocked'
 								: undefined
 						}
-						variant="primary" css={allowBlockedCss}
+						variant="primary"
+						css={allowBlockedCss}
 					>
 						Allow
 					</Button>

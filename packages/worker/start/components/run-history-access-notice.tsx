@@ -48,10 +48,7 @@ export function RunHistoryAccessNotice({
 				page. It's read-only: you won't be able to run, change, or triage
 				anything.
 			</p>
-			<Button
-				href={orgGrantsPath(orgSlug)}
-				variant="primary"
-			>
+			<Button href={orgGrantsPath(orgSlug)} variant="primary">
 				Open Grants
 			</Button>
 		</section>

@@ -3,7 +3,14 @@ import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
-import { cardCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const onboardingPath = '/onboarding'
@@ -30,7 +37,12 @@ export function AccountBillingSuccessPage({
 				</header>
 				<div css={cardCss}>
 					<div css={ctaRowCss}>
-						<Button href={billingPath} variant="primary" size="md" css={primaryCtaCss}>
+						<Button
+							href={billingPath}
+							variant="primary"
+							size="md"
+							css={primaryCtaCss}
+						>
 							View billing
 						</Button>
 					</div>
@@ -52,11 +64,21 @@ export function AccountBillingSuccessPage({
 					Thanks for paying for the volume you actually use.
 				</p>
 				<div css={ctaRowCss}>
-					<Button href={kodyDiscordInviteUrl} variant="primary" size="md" css={primaryCtaCss}>
+					<Button
+						href={kodyDiscordInviteUrl}
+						variant="primary"
+						size="md"
+						css={primaryCtaCss}
+					>
 						Join the Kody Discord
 					</Button>
 					{data.needsOnboarding ? (
-						<Button href={onboardingPath} variant="secondary" size="lg" css={secondaryCtaCss}>
+						<Button
+							href={onboardingPath}
+							variant="secondary"
+							size="lg"
+							css={secondaryCtaCss}
+						>
 							Connect your agent
 						</Button>
 					) : null}

@@ -1,8 +1,16 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { SiteLink } from '../components/site-link.tsx'
-import { cardCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss, getButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { EmailVerificationOutcome } from '#universal/token-outcomes.ts'
 
@@ -97,12 +105,15 @@ export function VerifyEmailRoute({ data }: { data: EmailVerificationOutcome }) {
 						flexWrap: 'wrap',
 					}}
 				>
-					<SiteLink
-						href={ctaHref}
-						css={data.ok || isEmailDestination ? ctaButtonCss : mutedLinkCss}
-					>
-						{ctaLabel}
-					</SiteLink>
+					{data.ok || isEmailDestination ? (
+						<Button href={ctaHref} variant="primary" size="md">
+							{ctaLabel}
+						</Button>
+					) : (
+						<SiteLink href={ctaHref} css={mutedLinkCss}>
+							{ctaLabel}
+						</SiteLink>
+					)}
 					{ctaHref === '/account' ? null : (
 						<SiteLink href="/account" css={mutedLinkCss}>
 							Account
@@ -119,10 +130,4 @@ const pageCss = {
 	maxWidth: '36rem',
 	margin: '0 auto',
 	gap: spacing.lg,
-}
-
-const ctaButtonCss = {
-	...getButtonCss({ variant: 'primary', size: 'md' }),
-	display: 'inline-flex',
-	textDecoration: 'none',
 }

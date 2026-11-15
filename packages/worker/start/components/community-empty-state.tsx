@@ -57,7 +57,8 @@ export function renderCommunityEmptyState(
 				<p css={secondaryCtaCss}>
 					<Button
 						href={docHref('package-authoring')}
-						variant="secondary" size="lg"
+						variant="secondary"
+						size="lg"
 					>
 						Read the package authoring guide
 					</Button>
@@ -83,7 +84,8 @@ export function renderCommunityEmptyState(
 				<p css={emptyCtaCss}>
 					<Button
 						href={buildCommunityIndexHref({ sort, installOrg })}
-						variant="secondary" size="lg"
+						variant="secondary"
+						size="lg"
 					>
 						Browse all packages
 					</Button>

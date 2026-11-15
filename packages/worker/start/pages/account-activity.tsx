@@ -455,7 +455,8 @@ export function AccountActivityPage({
 									type="button"
 									disabled={loadingMore}
 									onClick={() => void loadMoreRuns()}
-									variant="secondary" css={{ width: '100%' }}
+									variant="secondary"
+									css={{ width: '100%' }}
 								>
 									{loadingMore ? (
 										<LoadingIndicator inline label="Loading more…" />

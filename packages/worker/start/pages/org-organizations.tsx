@@ -413,10 +413,7 @@ function CreateOrganizationForm() {
 									? 'Yes, create organization'
 									: 'Create organization'}
 						</Button>
-						<Button
-							href="/account/organizations"
-							variant="secondary"
-						>
+						<Button href="/account/organizations" variant="secondary">
 							Cancel
 						</Button>
 					</div>

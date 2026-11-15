@@ -16,7 +16,11 @@ import {
 import { renderIcon } from './icon.tsx'
 import type { CSSObject } from '@emotion/react'
 import { writeClipboardText } from '#client/clipboard.ts'
-import { getSwapLabelCss, getButtonCss } from '#universal/styles/style-primitives.ts'
+import { Button } from './button.tsx'
+import {
+	getSwapLabelCss,
+	type ButtonStyleOptions,
+} from '#universal/styles/style-primitives.ts'
 export const onboardingCopiedConnectActionEvent =
 	'kody-onboarding-connect-copied'
 
@@ -64,46 +68,30 @@ const visuallyHiddenCss = {
 	border: 0,
 } satisfies CSSObject
 
-// css() is static after hydration, so all variants are prebuilt and the
-// dynamic state flows through data attributes on the labels, never through
-// swapped style objects.
-const primaryCopyButtonCss = [getButtonCss({ variant: 'primary', size: 'md' }), getSwapLabelCss()]
-const secondaryCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'md' }), getSwapLabelCss()]
-const pillCopyButtonCss = [getButtonCss({ variant: 'primary', size: 'lg' }), getSwapLabelCss()]
-const ghostCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'lg' }), getSwapLabelCss()]
-const chipCopyButtonCss = [getButtonCss({ variant: 'secondary', size: 'xs' }), getSwapLabelCss()]
+const copyButtonStyleByVariant = {
+	primary: { variant: 'primary', size: 'md' },
+	secondary: { variant: 'secondary', size: 'md' },
+	pill: { variant: 'primary', size: 'lg' },
+	ghost: { variant: 'secondary', size: 'lg' },
+	chip: { variant: 'secondary', size: 'xs' },
+} as const satisfies Record<
+	NonNullable<CopyTextButtonProps['variant']>,
+	ButtonStyleOptions
+>
 
-const smallPillCopyButtonCss = [
-	getButtonCss({ variant: 'primary' }),
-	getSwapLabelCss(),
-]
-const smallGhostCopyButtonCss = [
-	getButtonCss({ variant: 'secondary' }),
-	getSwapLabelCss(),
-]
-
-const copyButtonCssByVariant = {
-	primary: primaryCopyButtonCss,
-	secondary: secondaryCopyButtonCss,
-	pill: pillCopyButtonCss,
-	ghost: ghostCopyButtonCss,
-	chip: chipCopyButtonCss,
-} as const
-
-const smallCopyButtonCssByVariant = {
-	pill: smallPillCopyButtonCss,
-	ghost: smallGhostCopyButtonCss,
-} as const
-
-function getCopyButtonCss(
-	variant: NonNullable<CopyTextButtonProps['variant']>,
-	size: CopyTextButtonProps['size'],
-) {
-	if (size === 'sm' && (variant === 'pill' || variant === 'ghost')) {
-		return smallCopyButtonCssByVariant[variant]
+function getCopyButtonStyle(
+	props: Pick<CopyTextButtonProps, 'variant' | 'size' | 'iconOnly'>,
+): ButtonStyleOptions {
+	if (props.iconOnly)
+		return { variant: 'secondary', size: 'xs', iconOnly: true }
+	const variant = props.variant ?? 'primary'
+	if (props.size === 'sm' && (variant === 'pill' || variant === 'ghost')) {
+		return { variant: copyButtonStyleByVariant[variant].variant, size: 'sm' }
 	}
-	return copyButtonCssByVariant[variant]
+	return copyButtonStyleByVariant[variant]
 }
+
+const swapLabelCss = getSwapLabelCss()
 
 /**
  * Button that copies `value` to the clipboard and shows transient
@@ -185,7 +173,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 	}
 
 	const button = (
-		<button
+		<Button
 			aria-busy={copyFlow.status === 'copying'}
 			disabled={copyFlow.status === 'copying'}
 			type="button"
@@ -195,19 +183,8 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 				props.title ??
 				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
 			}
-			css={
-				props.iconOnly
-					? {
-							...getButtonCss({ variant: 'secondary', size: 'xs' }),
-							width: '1.75rem',
-							height: '1.75rem',
-							minHeight: 0,
-							padding: '0.35rem',
-							display: 'grid',
-							placeItems: 'center',
-						}
-					: getCopyButtonCss(props.variant ?? 'primary', props.size)
-			}
+			{...getCopyButtonStyle(props)}
+			css={props.iconOnly ? undefined : swapLabelCss}
 			onClick={(event) => {
 				const source = event.currentTarget
 				void copyValue(source instanceof EventTarget ? source : null)
@@ -231,7 +208,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 						? 'Copy failed'
 						: ''}
 			</span>
-		</button>
+		</Button>
 	)
 	return props.wrapButton ? props.wrapButton(button) : button
 }

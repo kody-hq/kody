@@ -7,7 +7,12 @@ import {
 	removeAdminReservedUsernames,
 } from '#start/server/admin-mutations'
 import type { AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -150,7 +155,8 @@ export function AdminReservedUsernamesPage(props: {
 				<Button
 					type="submit"
 					disabled={isMutating}
-					variant="primary" css={{ justifySelf: 'start' }}
+					variant="primary"
+					css={{ justifySelf: 'start' }}
 				>
 					{actionState === 'adding' ? 'Adding…' : 'Add'}
 				</Button>

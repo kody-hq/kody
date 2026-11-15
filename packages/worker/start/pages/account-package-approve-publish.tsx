@@ -236,10 +236,7 @@ export function AccountPackageApprovePublishRoute({
 						<code>{shortCommunityCommit(payload.pendingCommit ?? '')}</code>.
 					</p>
 					{renderListingBehindPrompt({ listing: promotedListing })}
-					<Button
-						href={payload.packageHref}
-						variant="primary"
-					>
+					<Button href={payload.packageHref} variant="primary">
 						Back to package
 					</Button>
 				</section>
@@ -328,7 +325,8 @@ export function AccountPackageApprovePublishRoute({
 						{payload.alreadyPublished || !payload.pendingCommit ? (
 							<Button
 								href={payload.packageHref}
-								variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+								variant="primary"
+								css={{ display: 'inline-flex', textDecoration: 'none' }}
 							>
 								Back to package
 							</Button>
@@ -351,7 +349,8 @@ export function AccountPackageApprovePublishRoute({
 								</Button>
 								<Button
 									href={payload.packageHref}
-									variant="secondary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+									variant="secondary"
+									css={{ display: 'inline-flex', textDecoration: 'none' }}
 								>
 									Cancel
 								</Button>
@@ -359,7 +358,8 @@ export function AccountPackageApprovePublishRoute({
 						)}
 						<Button
 							href={payload.filesHref}
-							variant="secondary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+							variant="secondary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Browse published files
 						</Button>

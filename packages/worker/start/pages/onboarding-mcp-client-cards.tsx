@@ -6,7 +6,11 @@ import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import { getAccentCalloutCss, mutedLinkCss, nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
+import {
+	getAccentCalloutCss,
+	mutedLinkCss,
+	nativeDisclosureCss,
+} from '#universal/styles/style-primitives.ts'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
 import {
 	highlightSnippetKey,
@@ -227,7 +231,8 @@ export function PrimaryActionLink(props: {
 				target={props.external ? '_blank' : undefined}
 				rel={props.external ? 'noreferrer noopener' : undefined}
 				data-onboarding-connect-action="true"
-				variant="primary" size="lg"
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
 			</Button>
@@ -244,7 +249,8 @@ export function InstallDeepLink(props: {
 			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				variant="primary" size="lg"
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
 			</Button>
@@ -266,7 +272,8 @@ export function PluginPrimaryInstall(props: {
 			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				variant="primary" size="lg"
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
 			</Button>

@@ -79,7 +79,12 @@ export function GuestClaimRoute(props: { data: GuestClaimPageData }) {
 				title="This claim link is not active"
 				description="The guest account was already claimed or has been deleted."
 			>
-				<Button href="/login" variant="primary" size="md" css={[primaryButtonCss, primaryLinkCss]}>
+				<Button
+					href="/login"
+					variant="primary"
+					size="md"
+					css={[primaryButtonCss, primaryLinkCss]}
+				>
 					Log in
 				</Button>
 			</AuthLayout>
@@ -124,7 +129,12 @@ function GuestClaimed(props: {
 						</li>
 					)}
 				</ul>
-				<Button href="/account" variant="primary" size="md" css={[primaryButtonCss, primaryLinkCss]}>
+				<Button
+					href="/account"
+					variant="primary"
+					size="md"
+					css={[primaryButtonCss, primaryLinkCss]}
+				>
 					Go to your account
 				</Button>
 			</div>
@@ -174,7 +184,12 @@ function GuestClaimForms(props: {
 								defaultValue={data.devCode ?? ''}
 							/>
 						</label>
-						<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
+						<Button
+							type="submit"
+							variant="primary"
+							size="md"
+							css={primaryButtonCss}
+						>
 							Finish claiming
 						</Button>
 						<SiteLink href={action} css={mutedLinkCss}>
@@ -193,7 +208,12 @@ function GuestClaimForms(props: {
 									Packages, memories, jobs, and run history move into your
 									account. Name clashes get a new name.
 								</p>
-								<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
+								<Button
+									type="submit"
+									variant="primary"
+									size="md"
+									css={primaryButtonCss}
+								>
 									Move everything into this account
 								</Button>
 							</form>
@@ -224,7 +244,12 @@ function GuestClaimForms(props: {
 										css={inputCss}
 									/>
 								</label>
-								<Button type="submit" variant="primary" size="md" css={primaryButtonCss}>
+								<Button
+									type="submit"
+									variant="primary"
+									size="md"
+									css={primaryButtonCss}
+								>
 									Email me a code
 								</Button>
 							</form>
@@ -247,7 +272,12 @@ function GuestClaimForms(props: {
 										css={inputCss}
 									/>
 								</label>
-								<Button type="submit" variant="secondary" size="md" css={secondaryButtonCss}>
+								<Button
+									type="submit"
+									variant="secondary"
+									size="md"
+									css={secondaryButtonCss}
+								>
 									Email me a code
 								</Button>
 							</form>
@@ -279,7 +309,12 @@ function ProviderButtons(props: {
 				<form key={provider} method="post" action={props.action}>
 					<input type="hidden" name="action" value="provider" />
 					<input type="hidden" name="provider" value={provider} />
-					<Button type="submit" variant="secondary" size="md" css={providerButtonCss}>
+					<Button
+						type="submit"
+						variant="secondary"
+						size="md"
+						css={providerButtonCss}
+					>
 						Continue with {label}
 					</Button>
 				</form>

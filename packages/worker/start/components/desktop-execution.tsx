@@ -583,7 +583,8 @@ export function DesktopExecutionProvider({
 							</Button>
 							<Button
 								type="button"
-								variant="secondary" css={{ marginLeft: spacing.sm }}
+								variant="secondary"
+								css={{ marginLeft: spacing.sm }}
 								disabled={busy}
 								onClick={() => setOpened(false)}
 							>
@@ -769,7 +770,8 @@ export function DesktopExecutionProvider({
 					{step !== 'done' && step !== 'forget' ? (
 						<Button
 							type="button"
-							variant="secondary" css={{ marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={busy}
 							onClick={() => void close()}
 						>

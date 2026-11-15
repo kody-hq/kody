@@ -421,11 +421,7 @@ function GiveAccessPicker({
 							Open access page
 						</Button>
 					) : (
-						<Button
-							type="button"
-							disabled
-							variant="primary"
-						>
+						<Button type="button" disabled variant="primary">
 							{renderIcon('key', { size: '1.05rem' })}
 							Open access page
 						</Button>

@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type { ComponentProps } from 'react'
+import type { ComponentProps, JSX } from 'react'
 import { SiteLink } from './site-link.tsx'
 import {
 	getButtonCss,
@@ -19,6 +19,8 @@ export type ButtonProps = ButtonElementProps | ButtonLinkProps
  * (pass `reloadDocument` for a plain document navigation). Extra `css`
  * composes after the shared look, for layout only.
  */
+export function Button(props: ButtonLinkProps): JSX.Element
+export function Button(props: ButtonElementProps): JSX.Element
 export function Button(props: ButtonProps) {
 	if (props.href !== undefined) {
 		const { variant, size, iconOnly, mobileFullWidth, ...linkProps } = props

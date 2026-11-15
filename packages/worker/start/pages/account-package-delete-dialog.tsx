@@ -26,7 +26,10 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getAccentCalloutCss, hoverMq } from '#universal/styles/style-primitives.ts'
+import {
+	getAccentCalloutCss,
+	hoverMq,
+} from '#universal/styles/style-primitives.ts'
 import {
 	accountActionsCss,
 	accountFieldCss,

@@ -14,7 +14,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type McpServerOAuthClientInput = {
@@ -24,17 +23,11 @@ export type McpServerOAuthClientInput = {
 export function McpServerOAuthClientSection({
 	server,
 	isMutating,
-	primaryButtonCss,
-	secondaryButtonCss,
-	dangerButtonCss,
 	onSave,
 	onRemove,
 }: {
 	server: McpServerListItem
 	isMutating: boolean
-	primaryButtonCss: ReturnType<typeof getButtonCss>
-	secondaryButtonCss: ReturnType<typeof getButtonCss>
-	dangerButtonCss: ReturnType<typeof getButtonCss>
 	onSave: (client: McpServerOAuthClientInput) => Promise<boolean>
 	onRemove: () => void
 }) {
@@ -96,10 +89,10 @@ export function McpServerOAuthClientSection({
 					</p>
 					{!editing ? (
 						<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={() => {
 									setEditing(true)
 									setClientId(server.oauthClientId ?? '')
@@ -108,7 +101,7 @@ export function McpServerOAuthClientSection({
 								}}
 							>
 								Replace
-							</button>
+							</Button>
 							<Button
 								type="button"
 								disabled={isMutating}
@@ -176,26 +169,26 @@ export function McpServerOAuthClientSection({
 						/>
 					</div>
 					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-						<button
+						<Button
 							type="submit"
 							disabled={isMutating || !clientId.trim() || !clientSecret.trim()}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{isMutating
 								? 'Saving…'
 								: configured
 									? 'Replace OAuth client'
 									: 'Save OAuth client'}
-						</button>
+						</Button>
 						{editing ? (
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={reset}
 							>
 								Cancel
-							</button>
+							</Button>
 						) : null}
 					</div>
 				</form>

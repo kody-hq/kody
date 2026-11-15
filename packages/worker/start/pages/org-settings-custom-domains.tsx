@@ -263,11 +263,7 @@ export function OrgSettingsCustomDomains({
 						</select>
 					</label>
 					<div css={accountActionsCss}>
-						<Button
-							type="submit"
-							variant="primary"
-							disabled={isPending}
-						>
+						<Button type="submit" variant="primary" disabled={isPending}>
 							{add.isPending ? 'Adding…' : 'Add domain'}
 						</Button>
 					</div>

@@ -1238,7 +1238,22 @@ export function FilesPage({
 									href={`/@${data.orgSlug}/-/files`}
 									aria-label="Files"
 									title="Open root finder"
-									variant="secondary" size="lg" css={[button, iconButton, { display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', width: 'auto', gap: 6, paddingInline: 6, fontSize: 13, textDecoration: 'none' }]}
+									variant="secondary"
+									size="lg"
+									css={[
+										button,
+										iconButton,
+										{
+											display: 'inline-flex',
+											alignItems: 'center',
+											whiteSpace: 'nowrap',
+											width: 'auto',
+											gap: 6,
+											paddingInline: 6,
+											fontSize: 13,
+											textDecoration: 'none',
+										},
+									]}
 								>
 									<FileGlyph mediaType={workspaceDirectoryMediaType} />
 									Files
@@ -1294,7 +1309,21 @@ export function FilesPage({
 										type="button"
 										aria-label="Clear file search"
 										title="Clear file search"
-										variant="secondary" size="lg" css={[button, { position: 'absolute', insetInlineEnd: 3, top: 2, padding: 0, minHeight: 24, width: 24, display: 'grid', placeItems: 'center' }]}
+										variant="secondary"
+										size="lg"
+										css={[
+											button,
+											{
+												position: 'absolute',
+												insetInlineEnd: 3,
+												top: 2,
+												padding: 0,
+												minHeight: 24,
+												width: 24,
+												display: 'grid',
+												placeItems: 'center',
+											},
+										]}
 										onClick={() => {
 											setSearch('')
 											explorerSearch.current?.focus()
@@ -1333,7 +1362,9 @@ export function FilesPage({
 										}}
 									>
 										<Button
-											variant="secondary" size="lg" css={[button, iconButton, { width: 20, flexShrink: 0 }]}
+											variant="secondary"
+											size="lg"
+											css={[button, iconButton, { width: 20, flexShrink: 0 }]}
 											aria-label={`${packagesExpanded ? 'Collapse' : 'Expand'} Apps & Packages`}
 											aria-expanded={packagesExpanded}
 											onClick={() => setPackagesExpanded(!packagesExpanded)}
@@ -1411,7 +1442,13 @@ export function FilesPage({
 											{hasChildren ||
 											file.mediaType === workspaceDirectoryMediaType ? (
 												<Button
-													variant="secondary" size="lg" css={[button, iconButton, { width: 20, flexShrink: 0 }]}
+													variant="secondary"
+													size="lg"
+													css={[
+														button,
+														iconButton,
+														{ width: 20, flexShrink: 0 },
+													]}
 													aria-label={`${collapsed.has(file.id) ? 'Expand' : 'Collapse'} ${file.name}`}
 													aria-expanded={!collapsed.has(file.id)}
 													onClick={() => onToggleBranch(file.id)}
@@ -1492,7 +1529,19 @@ export function FilesPage({
 												data.writes_enabled &&
 												file.access.write && (
 													<Button
-														variant="secondary" size="lg" css={[button, iconButton, { flexShrink: 0, opacity: 0, 'div:hover > &, &:focus-visible': { opacity: 1 } }]}
+														variant="secondary"
+														size="lg"
+														css={[
+															button,
+															iconButton,
+															{
+																flexShrink: 0,
+																opacity: 0,
+																'div:hover > &, &:focus-visible': {
+																	opacity: 1,
+																},
+															},
+														]}
 														aria-label={`New subpage in ${file.name}`}
 														title="New subpage"
 														href={`/@${data.orgSlug}/-/files?new=page&parent=${file.id}`}
@@ -1513,7 +1562,19 @@ export function FilesPage({
 								<Button
 									href={`/@${data.orgSlug}/-/files?trash=1`}
 									aria-current={showTrash ? 'page' : undefined}
-									variant="secondary" size="lg" css={[button, { display: 'flex', alignItems: 'center', gap: 7, textDecoration: 'none', marginTop: 16, background: showTrash ? hover : 'transparent' }]}
+									variant="secondary"
+									size="lg"
+									css={[
+										button,
+										{
+											display: 'flex',
+											alignItems: 'center',
+											gap: 7,
+											textDecoration: 'none',
+											marginTop: 16,
+											background: showTrash ? hover : 'transparent',
+										},
+									]}
 								>
 									<svg
 										aria-hidden="true"
@@ -1733,7 +1794,9 @@ export function FilesPage({
 													nativeKind === 'json' ||
 													currentType === 'image/svg+xml') && (
 													<Button
-														variant="secondary" size="lg" css={button}
+														variant="secondary"
+														size="lg"
+														css={button}
 														aria-pressed={preview}
 														onClick={() => setPreview(!preview)}
 													>
@@ -1773,7 +1836,9 @@ export function FilesPage({
 													}}
 												>
 													<Button
-														variant="secondary" size="lg" css={[button, iconButton]}
+														variant="secondary"
+														size="lg"
+														css={[button, iconButton]}
 														aria-label="More actions"
 														title="More actions"
 														aria-expanded={actionsOpen}
@@ -1785,7 +1850,9 @@ export function FilesPage({
 														<div css={menuCss}>
 															{binary && editable && !historical && (
 																<Button
-																	variant="secondary" size="lg" css={button}
+																	variant="secondary"
+																	size="lg"
+																	css={button}
 																	disabled={busy}
 																	onClick={() => {
 																		setActionsOpen(false)
@@ -1798,7 +1865,9 @@ export function FilesPage({
 															{selected.access.write && (
 																<>
 																	<Button
-																		variant="secondary" size="lg" css={button}
+																		variant="secondary"
+																		size="lg"
+																		css={button}
 																		disabled={busy || dirty}
 																		onClick={() => {
 																			setActionsOpen(false)
@@ -1814,7 +1883,9 @@ export function FilesPage({
 																		Rename
 																	</Button>
 																	<Button
-																		variant="secondary" size="lg" css={button}
+																		variant="secondary"
+																		size="lg"
+																		css={button}
 																		disabled={busy || dirty}
 																		onClick={() => {
 																			setActionsOpen(false)
@@ -1832,7 +1903,9 @@ export function FilesPage({
 																</>
 															)}
 															<Button
-																variant="secondary" size="lg" css={button}
+																variant="secondary"
+																size="lg"
+																css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	setHistoryOpen(!historyOpen)
@@ -1841,7 +1914,9 @@ export function FilesPage({
 																Version history
 															</Button>
 															<Button
-																variant="secondary" size="lg" css={button}
+																variant="secondary"
+																size="lg"
+																css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	setContextAction({
@@ -1857,7 +1932,9 @@ export function FilesPage({
 															</Button>
 															{isPage && (
 																<Button
-																	variant="secondary" size="lg" css={button}
+																	variant="secondary"
+																	size="lg"
+																	css={button}
 																	onClick={() => {
 																		setActionsOpen(false)
 																		exportMarkdown({
@@ -1870,7 +1947,9 @@ export function FilesPage({
 																</Button>
 															)}
 															<Button
-																variant="secondary" size="lg" css={button}
+																variant="secondary"
+																size="lg"
+																css={button}
 																onClick={() => {
 																	setActionsOpen(false)
 																	download()
@@ -1880,7 +1959,9 @@ export function FilesPage({
 															</Button>
 															{selected.access.delete && (
 																<Button
-																	variant="secondary" size="lg" css={[button, { color: colors.danger }]}
+																	variant="secondary"
+																	size="lg"
+																	css={[button, { color: colors.danger }]}
 																	disabled={busy || dirty}
 																	onClick={() => {
 																		setActionsOpen(false)
@@ -1918,7 +1999,9 @@ export function FilesPage({
 												(!isPage || !!message || !!conflict || historical) &&
 												(creating || dirty || historical) && (
 													<Button
-														variant="primary" size="lg" css={primary}
+														variant="primary"
+														size="lg"
+														css={primary}
 														disabled={busy || (!dirty && !historical)}
 														onClick={() =>
 															void save(historical?.content ?? draft)
@@ -2008,7 +2091,9 @@ export function FilesPage({
 											</label>
 											{historyCursor && (
 												<Button
-													variant="secondary" size="lg" css={button}
+													variant="secondary"
+													size="lg"
+													css={button}
 													disabled={busy}
 													onClick={async () => {
 														if (!selected) return
@@ -2070,7 +2155,13 @@ export function FilesPage({
 											</p>
 											{binary ? (
 												<Button
-													variant="secondary" size="lg" reloadDocument css={[button, { justifySelf: 'start', textDecoration: 'none' }]}
+													variant="secondary"
+													size="lg"
+													reloadDocument
+													css={[
+														button,
+														{ justifySelf: 'start', textDecoration: 'none' },
+													]}
 													href={fileAssetUrl(
 														data.orgSlug,
 														fileId,
@@ -2103,7 +2194,9 @@ export function FilesPage({
 											)}
 											<div css={row}>
 												<Button
-													variant="secondary" size="lg" css={button}
+													variant="secondary"
+													size="lg"
+													css={button}
 													onClick={() => {
 														setDraft(binary ? '' : conflict.content)
 														setSaved(binary ? '' : conflict.content)
@@ -2116,7 +2209,9 @@ export function FilesPage({
 													Load latest
 												</Button>
 												<Button
-													variant="primary" size="lg" css={primary}
+													variant="primary"
+													size="lg"
+													css={primary}
 													disabled={busy}
 													onClick={() =>
 														void save(
@@ -2470,7 +2565,9 @@ function TrashView({
 						</span>
 						{file.access.delete && (
 							<Button
-								variant="secondary" size="lg" css={button}
+								variant="secondary"
+								size="lg"
+								css={button}
 								aria-label={`Restore ${file.name}`}
 								disabled={busy}
 								onClick={() => onRestore(file)}
@@ -2700,7 +2797,9 @@ function WorkspaceRepoBrowser({
 						<>
 							{selectedRepo.hasApp && (
 								<Button
-									variant="secondary" size="lg" css={button}
+									variant="secondary"
+									size="lg"
+									css={button}
 									reloadDocument
 									href={buildPackageAppOpenPath({
 										username: owner,
@@ -2711,7 +2810,9 @@ function WorkspaceRepoBrowser({
 								</Button>
 							)}
 							<Button
-								variant="secondary" size="lg" css={button}
+								variant="secondary"
+								size="lg"
+								css={button}
 								href={routes.communityPackage.href({
 									username: owner,
 									kodyId: selectedRepo.kodyId,
@@ -2750,7 +2851,17 @@ function WorkspaceOpenFile({ href }: { href: string }) {
 	return (
 		<Button
 			href={href}
-			variant="secondary" size="lg" css={[button, { display: 'inline-flex', alignItems: 'center', gap: 6, textDecoration: 'none' }]}
+			variant="secondary"
+			size="lg"
+			css={[
+				button,
+				{
+					display: 'inline-flex',
+					alignItems: 'center',
+					gap: 6,
+					textDecoration: 'none',
+				},
+			]}
 		>
 			<WorkspaceIcon name="open" />
 			Open

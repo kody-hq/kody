@@ -177,7 +177,8 @@ function renderWaitingBody(
 								},
 							}).catch(() => {})
 						}}
-						variant="primary" css={{ width: 'fit-content', textDecoration: 'none' }}
+						variant="primary"
+						css={{ width: 'fit-content', textDecoration: 'none' }}
 					>
 						{item.doLabel}
 					</Button>

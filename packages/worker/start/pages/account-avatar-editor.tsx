@@ -459,7 +459,8 @@ export function AccountAvatarEditor({
 							type="button"
 							aria-label="Zoom out"
 							disabled={!canZoom || transform.scale <= cover}
-							variant="secondary" css={editorZoomButtonCss}
+							variant="secondary"
+							css={editorZoomButtonCss}
 							onClick={() => zoom(transform.scale / zoomStep)}
 						>
 							−
@@ -480,7 +481,8 @@ export function AccountAvatarEditor({
 							type="button"
 							aria-label="Zoom in"
 							disabled={!canZoom || transform.scale >= maximum}
-							variant="secondary" css={editorZoomButtonCss}
+							variant="secondary"
+							css={editorZoomButtonCss}
 							onClick={() => zoom(transform.scale * zoomStep)}
 						>
 							+
@@ -503,7 +505,8 @@ export function AccountAvatarEditor({
 					<Button
 						type="button"
 						disabled={status === 'applying'}
-						variant="secondary" css={editorGhostButtonCss}
+						variant="secondary"
+						css={editorGhostButtonCss}
 						onClick={close}
 					>
 						Cancel
@@ -511,7 +514,8 @@ export function AccountAvatarEditor({
 					<Button
 						type="button"
 						disabled={busy || status !== 'ready'}
-						variant="primary" css={editorApplyButtonCss}
+						variant="primary"
+						css={editorApplyButtonCss}
 						onClick={() => void apply()}
 					>
 						{status === 'applying' ? 'Preparing…' : 'Use photo'}
@@ -665,13 +669,13 @@ const editorZoomRowCss: CSSObject = {
 }
 
 const editorZoomButtonCss = {
-		minWidth: '2.75rem',
-		minHeight: '2.75rem',
-		padding: 0,
-		fontSize: '1.25rem',
-		lineHeight: 1,
-		touchAction: 'manipulation',
-	}
+	minWidth: '2.75rem',
+	minHeight: '2.75rem',
+	padding: 0,
+	fontSize: '1.25rem',
+	lineHeight: 1,
+	touchAction: 'manipulation',
+}
 
 const editorZoomSliderCss: CSSObject = {
 	width: '100%',
@@ -705,17 +709,17 @@ const editorActionsCss: CSSObject = {
 }
 
 const editorGhostButtonCss = {
-		touchAction: 'manipulation',
-		[mq.mobile]: {
-			minHeight: '2.75rem',
-			width: '100%',
-		},
-	}
+	touchAction: 'manipulation',
+	[mq.mobile]: {
+		minHeight: '2.75rem',
+		width: '100%',
+	},
+}
 
 const editorApplyButtonCss = {
-		touchAction: 'manipulation',
-		[mq.mobile]: {
-			minHeight: '2.75rem',
-			width: '100%',
-		},
-	}
+	touchAction: 'manipulation',
+	[mq.mobile]: {
+		minHeight: '2.75rem',
+		width: '100%',
+	},
+}

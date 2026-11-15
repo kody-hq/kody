@@ -11,7 +11,12 @@ import type {
 	CredentialProviderBindingItem,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const mutedCss = css({ margin: 0, color: colors.textMuted })

@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { ReactNode } from 'react'
 import { css } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { shortCommunityCommit } from '#universal/community-display.ts'
 import { routes } from '#universal/routes.ts'
-import { getAccentCalloutCss, getButtonCss } from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -187,24 +188,28 @@ export function PackagePublishingPanel(input: {
 					alignItems: 'center',
 				})}
 			>
-				<SiteLink
-					href={approveHref}
-					data-testid="account-approve-publish"
-					css={css({
-						...(needsAction
-							? getButtonCss({ variant: 'primary' })
-							: {
-									color: colors.textMuted,
-									fontSize: typography.fontSize.sm,
-									textDecoration: 'underline',
-									textUnderlineOffset: '0.15em',
-								}),
-						display: 'inline-flex',
-						textDecoration: needsAction ? 'none' : 'underline',
-					})}
-				>
-					{primaryPublishLabel(packageDetail)}
-				</SiteLink>
+				{needsAction ? (
+					<Button
+						href={approveHref}
+						data-testid="account-approve-publish"
+						variant="primary"
+					>
+						{primaryPublishLabel(packageDetail)}
+					</Button>
+				) : (
+					<SiteLink
+						href={approveHref}
+						data-testid="account-approve-publish"
+						css={css({
+							color: colors.textMuted,
+							fontSize: typography.fontSize.sm,
+							textDecoration: 'underline',
+							textUnderlineOffset: '0.15em',
+						})}
+					>
+						{primaryPublishLabel(packageDetail)}
+					</SiteLink>
+				)}
 			</div>
 			{pickerCommits.length > 0 ? (
 				<details data-testid="package-release-commit-picker" css={pickerCss}>

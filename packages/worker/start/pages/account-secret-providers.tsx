@@ -8,7 +8,12 @@ import {
 } from '#start/server/account-mutations'
 import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
-import { fieldCss, fieldLabelCss, getAccentCalloutCss, pageDescriptionCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getAccentCalloutCss,
+	pageDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -210,7 +215,8 @@ export function AccountSecretProvidersPage({
 									relocateAccountHref('/account/secret-providers', currentHref),
 								)
 							}}
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 						>
 							Allow
 						</Button>
@@ -258,7 +264,8 @@ export function AccountSecretProvidersPage({
 											),
 										)
 									}}
-									variant="secondary" size="md"
+									variant="secondary"
+									size="md"
 								>
 									Unbind
 								</Button>
@@ -426,7 +433,10 @@ export function AccountSecretProvidersPage({
 							relocateAccountHref('/account/secret-providers', currentHref),
 						)
 					}}
-					variant="primary" size="md" mobileFullWidth css={{ justifySelf: 'start' }}
+					variant="primary"
+					size="md"
+					mobileFullWidth
+					css={{ justifySelf: 'start' }}
 				>
 					Bind provider
 				</Button>

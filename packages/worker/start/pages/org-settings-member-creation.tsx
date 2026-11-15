@@ -10,7 +10,10 @@ import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
-import { primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	primaryLinkCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,

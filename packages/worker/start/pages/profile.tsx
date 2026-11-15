@@ -107,10 +107,7 @@ export function ProfileRoute({
 						filters={filters}
 					/>
 				</label>
-				<Button
-					type="submit"
-					variant="primary" css={{ alignSelf: 'end' }}
-				>
+				<Button type="submit" variant="primary" css={{ alignSelf: 'end' }}>
 					Search
 				</Button>
 			</form>

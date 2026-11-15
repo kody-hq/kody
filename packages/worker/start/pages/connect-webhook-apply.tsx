@@ -16,7 +16,15 @@ import { connectWebhookApplyQuery } from '../connect-approval-queries.ts'
 import type { ConnectWebhookApplyLoaderData } from '#universal/loader-data.ts'
 
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	getAccentCalloutCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 
 const pageCss: CSSObject = {
 	...stackedPageCss,
@@ -220,7 +228,8 @@ export function ConnectWebhookApplyRoute({
 								onClick={() => {
 									void submit('approve')
 								}}
-								variant="primary" size="md"
+								variant="primary"
+								size="md"
 							>
 								{submitting === 'approve' ? 'Approving…' : 'Allow destination'}
 							</Button>
@@ -231,7 +240,8 @@ export function ConnectWebhookApplyRoute({
 								onClick={() => {
 									void submit('reject')
 								}}
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 							>
 								{submitting === 'reject' ? 'Rejecting…' : 'Reject'}
 							</Button>

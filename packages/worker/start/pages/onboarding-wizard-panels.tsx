@@ -561,7 +561,8 @@ function renderConnectAgentStatus(props: {
 			<Button
 				href={buildAuthLink(routes.login.href(), resumeHref)}
 				data-testid="onboarding-agent-login"
-				variant="primary" css={agentLoginCss}
+				variant="primary"
+				css={agentLoginCss}
 			>
 				{props.selectedAgentLabel
 					? `Log in to connect ${props.selectedAgentLabel}`

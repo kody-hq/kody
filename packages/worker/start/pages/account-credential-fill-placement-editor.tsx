@@ -124,11 +124,7 @@ export function CredentialFillPlacementEditor(props: Props) {
 					refuses a fill anywhere else.
 				</p>
 				<div css={accountActionsCss}>
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={startEditing}
-					>
+					<Button type="button" variant="secondary" onClick={startEditing}>
 						Edit fill placement
 					</Button>
 				</div>
@@ -150,11 +146,7 @@ export function CredentialFillPlacementEditor(props: Props) {
 			/>
 			{error ? <p css={errorCss}>{error}</p> : null}
 			<div css={accountActionsCss}>
-				<Button
-					type="submit"
-					disabled={saving}
-					variant="primary"
-				>
+				<Button type="submit" disabled={saving} variant="primary">
 					{saving ? 'Saving…' : 'Save'}
 				</Button>
 				<Button

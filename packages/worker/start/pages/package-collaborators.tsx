@@ -592,11 +592,7 @@ export function PackageCollaboratorsRoute({
 							},
 						})}
 						<div css={accountActionsCss}>
-							<Button
-								type="submit"
-								disabled={busy !== null}
-								variant="primary"
-							>
+							<Button type="submit" disabled={busy !== null} variant="primary">
 								{renderIcon('plus', { size: '1.05rem' })}
 								{busy === 'add-everyone'
 									? 'Adding…'

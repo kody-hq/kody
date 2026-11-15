@@ -73,7 +73,9 @@ export function WithAgentRoute({ agent }: { agent: WithAgent }) {
 							href={agent.primaryAction.href}
 							target="_blank"
 							rel="noreferrer noopener"
-							variant="primary" size="lg" css={primaryActionButtonCss}
+							variant="primary"
+							size="lg"
+							css={primaryActionButtonCss}
 						>
 							{agent.primaryAction.label}
 						</Button>

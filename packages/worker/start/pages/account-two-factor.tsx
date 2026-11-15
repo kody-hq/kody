@@ -26,7 +26,15 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardCss, cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, layoutMaxWidths, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	layoutMaxWidths,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 
 export type AccountTwoFactorPayload = {
 	ok: true

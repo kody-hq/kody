@@ -12,7 +12,12 @@ import type {
 import { buildMemoriesExportFilename } from '#universal/memory-export.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,

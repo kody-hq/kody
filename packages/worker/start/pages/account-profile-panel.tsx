@@ -19,7 +19,11 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { hoverMq, mutedLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	hoverMq,
+	mutedLinkCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	accountDisclosureCss,

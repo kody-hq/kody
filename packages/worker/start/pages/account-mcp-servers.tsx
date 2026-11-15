@@ -18,7 +18,6 @@ import {
 	setMcpServerOAuthClient,
 	removeMcpServerOAuthClient,
 } from '#start/server/account-mutations'
-import { getButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -170,10 +169,6 @@ export function AccountMcpServersPage({
 		if (!closeOnboardingMcpOAuthPopupIfOpened())
 			clearOnboardingMcpOAuthReturnCookie()
 	}, [])
-
-	const primaryButtonCss = getButtonCss({ variant: 'primary' })
-	const secondaryButtonCss = getButtonCss({ variant: 'secondary' })
-	const dangerButtonCss = getButtonCss({ variant: 'danger' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -472,7 +467,6 @@ export function AccountMcpServersPage({
 								addBearerToken,
 								isMutating,
 								isBusy: actionState === 'busy',
-								primaryButtonCss,
 								onSubmit: (form) => {
 									void addServer(form)
 								},
@@ -498,9 +492,6 @@ export function AccountMcpServersPage({
 								deleteArmed,
 								onDeleteArm: () => setDeleteArmed(true),
 								onDeleteReset: () => setDeleteArmed(false),
-								primaryButtonCss,
-								secondaryButtonCss,
-								dangerButtonCss,
 								onUsageDraftChange: (draft) => {
 									setUsageDrafts((current) =>
 										new Map(current).set(server.id, draft),

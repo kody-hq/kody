@@ -22,7 +22,13 @@ import {
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
 import type { PackageWebhookListItem } from '#universal/loader-data.ts'
 import { packageCredentialsTabHref } from '#universal/package-credentials-page.ts'
-import { descriptionCss, fieldCss, fieldLabelCss, mutedLinkCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	mutedLinkCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 export type WebhookConfirmation = {

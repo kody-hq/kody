@@ -13,10 +13,12 @@ import type {
 	OrgAppMemberConnectionsData,
 } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { descriptionCss, insetCardCss, sectionTitleCss } from '#universal/styles/style-primitives.ts'
 import {
-	oauthAppTitle,
-} from './account-integrations-shared.ts'
+	descriptionCss,
+	insetCardCss,
+	sectionTitleCss,
+} from '#universal/styles/style-primitives.ts'
+import { oauthAppTitle } from './account-integrations-shared.ts'
 import {
 	loadOrgAppMemberConnectionsFn,
 	revokeOrgAppMemberConnectionFn,
@@ -179,7 +181,12 @@ export function OrgAppMemberConnections(props: {
 						orgSlug,
 						mode: 'personal',
 					})}
-					variant="primary" css={{ display: 'inline-flex', justifySelf: 'start', textDecoration: 'none' }}
+					variant="primary"
+					css={{
+						display: 'inline-flex',
+						justifySelf: 'start',
+						textDecoration: 'none',
+					}}
 				>
 					Connect your own account
 				</Button>

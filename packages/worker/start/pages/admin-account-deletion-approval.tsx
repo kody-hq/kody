@@ -117,10 +117,7 @@ export function AdminAccountDeletionApprovalPage(props: {
 							</AccountManagementMessage>
 						) : null}
 						<div css={accountActionsCss}>
-							<Button
-								href={routes.adminUsers.href()}
-								variant="secondary"
-							>
+							<Button href={routes.adminUsers.href()} variant="secondary">
 								Cancel
 							</Button>
 							<Button

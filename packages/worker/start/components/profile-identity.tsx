@@ -97,10 +97,7 @@ export function renderProfileIdentity(
 						>
 							Workspace
 						</Button>
-						<Button
-							href={routes.account.href()}
-							variant="secondary"
-						>
+						<Button href={routes.account.href()} variant="secondary">
 							Account settings
 						</Button>
 					</div>
@@ -163,13 +160,15 @@ function renderProfileLoggedOutCtas(returnTo: string) {
 			<p css={guestCtaActionsCss}>
 				<Button
 					href={buildAuthLink(routes.login.href(), returnTo)}
-					variant="secondary" size="lg"
+					variant="secondary"
+					size="lg"
 				>
 					Log in
 				</Button>
 				<Button
 					href={buildAuthLink(routes.signup.href(), returnTo)}
-					variant="primary" size="lg"
+					variant="primary"
+					size="lg"
 				>
 					Sign up
 				</Button>

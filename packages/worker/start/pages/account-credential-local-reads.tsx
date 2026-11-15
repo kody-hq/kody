@@ -7,7 +7,12 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialLocalReads } from '#start/server/credential-local-reads'
 import type { CredentialLocalReadsView } from '#universal/credentials-list.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const localReadsAnchor = 'local-reads'
@@ -255,7 +260,8 @@ function LocalReadsApprovalForm(props: {
 				<div>
 					<Button
 						type="button"
-						variant="primary" size="lg"
+						variant="primary"
+						size="lg"
 						disabled={toggle.pending}
 						onClick={() => void toggle.change(true)}
 						data-testid="local-reads-approve"
@@ -275,10 +281,7 @@ function LocalReadsApprovalForm(props: {
 				</p>
 			) : null}
 			<div>
-				<Button
-					href={approval.detailHref}
-					variant="secondary"
-				>
+				<Button href={approval.detailHref} variant="secondary">
 					Open the secret&apos;s page
 				</Button>
 			</div>

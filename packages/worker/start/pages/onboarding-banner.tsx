@@ -84,7 +84,9 @@ export function renderOnboardingBanner(options?: OnboardingBannerOptions) {
 			</div>
 			<Button
 				href={onboardingPath}
-				variant="primary" size="lg" css={{ flex: 'none', fontSize: '0.95rem', padding: '0.8rem 1.35rem' }}
+				variant="primary"
+				size="lg"
+				css={{ flex: 'none', fontSize: '0.95rem', padding: '0.8rem 1.35rem' }}
 			>
 				{showChecklistProgress ? 'Continue onboarding' : 'Connect your agent'}
 			</Button>

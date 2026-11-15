@@ -65,7 +65,10 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { packageDetailPageCss, proseCss } from '#universal/styles/style-primitives.ts'
+import {
+	packageDetailPageCss,
+	proseCss,
+} from '#universal/styles/style-primitives.ts'
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`
@@ -287,7 +290,8 @@ function PackageFilesExplorerContent({
 						<Button
 							ref={viewToggle}
 							type="button"
-							variant="secondary" css={[rawLinkCss, openButtonCss]}
+							variant="secondary"
+							css={[rawLinkCss, openButtonCss]}
 							onClick={() => setFullPath(data.selectedPath)}
 						>
 							Open
@@ -679,7 +683,9 @@ function FileContent({
 											}
 											data-testid="package-files-raw-link"
 											aria-label={`View raw ${heading}`}
-											variant="secondary" reloadDocument css={rawLinkCss}
+											variant="secondary"
+											reloadDocument
+											css={rawLinkCss}
 										>
 											{renderIcon('arrow-up-right', { size: '14' })}
 										</Button>

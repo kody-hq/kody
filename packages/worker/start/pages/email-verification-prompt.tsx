@@ -8,7 +8,12 @@ import {
 	type EmailVerificationDeliveryIndicator,
 } from '#universal/email-verification-delivery.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { cardCss, cardTitleCss, descriptionCss, mutedLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	descriptionCss,
+	mutedLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
 
@@ -180,7 +185,8 @@ export function renderEmailVerificationPrompt(
 						!canResend || options.resendStatus === 'sending' || options.checking
 					}
 					aria-busy={options.resendStatus === 'sending'}
-					variant="primary" size="md"
+					variant="primary"
+					size="md"
 					onClick={options.onResend}
 				>
 					{options.resendStatus === 'sending'
@@ -192,7 +198,8 @@ export function renderEmailVerificationPrompt(
 				{options.continueLabel && options.onContinue ? (
 					<Button
 						type="button"
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 						disabled={options.resendStatus === 'sending' || options.checking}
 						aria-busy={options.checking ?? false}
 						onClick={options.onContinue}

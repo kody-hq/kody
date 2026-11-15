@@ -128,7 +128,8 @@ function renderReadyView(input: {
 							<Button
 								href={accountConnectionsNewHref(null, input.currentHref)}
 								data-testid="account-connections-add"
-								variant="primary" css={primaryButtonCss}
+								variant="primary"
+								css={primaryButtonCss}
 							>
 								Connect an agent
 							</Button>
@@ -186,10 +187,7 @@ function renderAdvancedPanel() {
 			description="Optional tools for hosts that cannot finish dynamic OAuth on their own. This is not the list of agents already connected to your account."
 		>
 			<div css={accountActionsCss}>
-				<Button
-					href={routes.accountMcpOauthClients.href()}
-					variant="secondary"
-				>
+				<Button href={routes.accountMcpOauthClients.href()} variant="secondary">
 					MCP OAuth clients
 				</Button>
 			</div>

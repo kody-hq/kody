@@ -441,7 +441,8 @@ export function AccountPackageOwnerDetails(props: {
 												kodyId: packageDetail.kodyId,
 											})}
 											data-testid="package-approve-capabilities-link"
-											variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+											variant="primary"
+											css={{ display: 'inline-flex', textDecoration: 'none' }}
 										>
 											Review credentials
 										</Button>

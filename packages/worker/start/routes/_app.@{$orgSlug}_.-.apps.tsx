@@ -265,7 +265,8 @@ function Page() {
 										{app.appHref && (
 											<Button
 												href={app.appHref}
-												variant="primary" reloadDocument
+												variant="primary"
+												reloadDocument
 											>
 												Open app
 											</Button>

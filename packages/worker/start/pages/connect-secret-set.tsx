@@ -30,7 +30,17 @@ import {
 } from './account-secrets-shared.ts'
 import { getNewSecretValueAutofocusKey } from '#client/routes/new-secret-query.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { cardCss, fieldCss, fieldLabelCss, inputCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	fieldCss,
+	fieldLabelCss,
+	inputCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
@@ -369,7 +379,8 @@ export function ConnectSecretSetRoute({
 							type="submit"
 							disabled={saving}
 							data-testid="connect-secret-set-save"
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 						>
 							{saving ? 'Saving…' : 'Save secret'}
 						</Button>
@@ -396,7 +407,8 @@ export function ConnectSecretSetRoute({
 					</div>
 					<Button
 						href={routes.accountCredentials.href()}
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 						data-testid="connect-secret-set-back"
 					>
 						Back to credentials
@@ -405,7 +417,8 @@ export function ConnectSecretSetRoute({
 			) : view.showBackToSecrets ? (
 				<Button
 					href={routes.accountCredentials.href()}
-					variant="secondary" size="md"
+					variant="secondary"
+					size="md"
 					data-testid="connect-secret-set-back"
 				>
 					Back to credentials

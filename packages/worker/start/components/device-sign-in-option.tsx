@@ -31,7 +31,12 @@ export function DeviceSignInOption(props: { target: string; rise?: number }) {
 				sign-in from your phone or computer instead. You get a short code and a
 				QR code.
 			</p>
-			<Button type="submit" variant="secondary" size="lg" css={deviceSignInButtonCss}>
+			<Button
+				type="submit"
+				variant="secondary"
+				size="lg"
+				css={deviceSignInButtonCss}
+			>
 				Sign in on another device
 			</Button>
 		</form>
@@ -71,7 +76,12 @@ export function AccountDeviceSignInOption(props: {
 			<label css={rememberCss}>
 				<input type="checkbox" name="rememberMe" /> Keep this browser signed in
 			</label>
-			<Button type="submit" variant="secondary" size="lg" css={deviceSignInButtonCss}>
+			<Button
+				type="submit"
+				variant="secondary"
+				size="lg"
+				css={deviceSignInButtonCss}
+			>
 				Sign in on another device
 			</Button>
 		</form>

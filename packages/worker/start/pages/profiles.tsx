@@ -41,7 +41,10 @@ import {
 } from '#universal/profiles.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { getSelectCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSelectCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -287,11 +290,7 @@ function EmptyState(props: { allMembers: boolean; onCreate: () => void }) {
 					<li>Revoke it, and every sub-profile below stops working too.</li>
 				</ul>
 				<div css={accountActionsCss}>
-					<Button
-						type="button"
-						variant="primary"
-						onClick={props.onCreate}
-					>
+					<Button type="button" variant="primary" onClick={props.onCreate}>
 						Create your first profile
 					</Button>
 					<SiteLink
@@ -844,11 +843,7 @@ function ShortenExpiryForm(props: {
 				</span>
 			</label>
 			<div css={accountActionsCss}>
-				<Button
-					type="submit"
-					disabled={pending}
-					variant="secondary"
-				>
+				<Button type="submit" disabled={pending} variant="secondary">
 					{pending ? 'Saving…' : 'Shorten expiry'}
 				</Button>
 			</div>
@@ -1139,11 +1134,7 @@ function ProfileTokens(props: {
 						))}
 					</fieldset>
 					<div css={accountActionsCss}>
-						<Button
-							type="submit"
-							disabled={pending}
-							variant="secondary"
-						>
+						<Button type="submit" disabled={pending} variant="secondary">
 							{pending ? 'Creating…' : 'Create profile token'}
 						</Button>
 					</div>
@@ -1365,22 +1356,14 @@ function CreateProfilePanel(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={accountActionsCss}>
-					<Button
-						type="submit"
-						disabled={pending}
-						variant="primary"
-					>
+					<Button type="submit" disabled={pending} variant="primary">
 						{pending
 							? 'Creating…'
 							: parent
 								? 'Create sub-profile'
 								: 'Create profile'}
 					</Button>
-					<Button
-						type="button"
-						variant="secondary"
-						onClick={props.onCancel}
-					>
+					<Button type="button" variant="secondary" onClick={props.onCancel}>
 						Cancel
 					</Button>
 				</div>

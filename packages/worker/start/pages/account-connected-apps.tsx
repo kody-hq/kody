@@ -14,7 +14,10 @@ import type {
 	AccountConnectedAppsLoaderData,
 	AccountConnectedAppView,
 } from '#universal/loader-data.ts'
-import { getLogoWellCss, getSwapLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	getLogoWellCss,
+	getSwapLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -321,7 +324,8 @@ function RevokeButton(props: {
 				aria-label={
 					props.armed ? `Confirm revoke ${props.name}` : `Revoke ${props.name}`
 				}
-				variant="danger" css={dangerButtonCss}
+				variant="danger"
+				css={dangerButtonCss}
 				onClick={() => {
 					if (props.armed) props.onConfirm([...selectedIds])
 					else {
@@ -386,7 +390,8 @@ function ScopeRevokeButton(props: {
 			<Button
 				type="button"
 				aria-label={`Confirm revoke ${props.label}`}
-				variant="danger" css={dangerButtonCss}
+				variant="danger"
+				css={dangerButtonCss}
 				onClick={() => props.onConfirm([...selectedIds])}
 			>
 				Confirm revoke
@@ -399,7 +404,8 @@ function ScopeRevokeButton(props: {
 		<Button
 			type="button"
 			aria-label={`Revoke ${props.label}`}
-			variant="danger" css={dangerButtonCss}
+			variant="danger"
+			css={dangerButtonCss}
 			onClick={() => {
 				setSelectedIds(new Set())
 				props.onArm()

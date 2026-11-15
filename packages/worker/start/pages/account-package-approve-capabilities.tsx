@@ -410,7 +410,8 @@ export function AccountPackageApproveCapabilitiesRoute({
 											type="button"
 											disabled={busy}
 											data-testid="package-pending-approval-approve"
-											variant="primary" size="md"
+											variant="primary"
+											size="md"
 											onClick={() => void approvePending(approval)}
 										>
 											{approvingRequestId === approval.id
@@ -659,7 +660,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 								type="button"
 								disabled={busy || !payload.publishedCommit}
 								data-testid="package-approve-capabilities"
-								variant="primary" size="md" css={approveActionControlCss}
+								variant="primary"
+								size="md"
+								css={approveActionControlCss}
 								onClick={() => void approveCapabilities()}
 							>
 								{equalActionLabel(
@@ -671,7 +674,9 @@ export function AccountPackageApproveCapabilitiesRoute({
 						) : null}
 						<Button
 							href={payload.settingsHref}
-							variant="secondary" size="lg" css={pageCopy.mentionInternet && approveActionControlCss}
+							variant="secondary"
+							size="lg"
+							css={pageCopy.mentionInternet && approveActionControlCss}
 							data-testid="package-approve-capabilities-back"
 						>
 							{pageCopy.mentionInternet

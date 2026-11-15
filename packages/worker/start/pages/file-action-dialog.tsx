@@ -155,7 +155,8 @@ export function FileActionDialog({
 								</p>
 								<Button
 									type="button"
-									variant="secondary" size="lg"
+									variant="secondary"
+									size="lg"
 									onClick={() => {
 										setPreviewError('')
 										setPreviewAttempt((attempt) => attempt + 1)
@@ -204,7 +205,8 @@ export function FileActionDialog({
 									(collaborationEnabled && !movePreview))) ||
 							(action === 'rename' && !name.trim())
 						}
-						variant={action === 'trash' ? 'danger' : 'primary'} size="lg"
+						variant={action === 'trash' ? 'danger' : 'primary'}
+						size="lg"
 					>
 						{action === 'move' ? 'Move' : title}
 					</Button>

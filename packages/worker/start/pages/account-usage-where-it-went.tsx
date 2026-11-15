@@ -21,7 +21,10 @@ import {
 } from '#universal/credit-attribution.ts'
 import { formatOnCreditsMicroUsd } from '#universal/usage-presentation.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { descriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 
 /**
  * "Where it went" on `/account/usage`: ranked packages + Ad hoc for this

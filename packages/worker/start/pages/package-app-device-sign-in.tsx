@@ -5,7 +5,18 @@ import { Button } from '../components/button.tsx'
 // oxlint-disable-next-line import/consistent-type-specifier-style
 import type { PackageAppDeviceSignInView } from '#start/server/package-app-device'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
-import { cardCss, descriptionCss, fieldLabelCss, getAlertCardCss, insetCardCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldLabelCss,
+	getAlertCardCss,
+	insetCardCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -73,7 +84,10 @@ function renderBody(data: PackageAppDeviceSignInView) {
 				<div css={actionsCss}>
 					<Button
 						href={data.startAgainUrl}
-						variant="primary" size="md" reloadDocument css={primaryLinkCss}
+						variant="primary"
+						size="md"
+						reloadDocument
+						css={primaryLinkCss}
 						data-testid="package-app-device-start-again"
 					>
 						Start again
@@ -141,7 +155,10 @@ function PendingCard(props: {
 				<div css={actionsCss}>
 					<Button
 						href={packageAppOauthPaths.device}
-						variant="secondary" size="md" reloadDocument css={secondaryLinkCss}
+						variant="secondary"
+						size="md"
+						reloadDocument
+						css={secondaryLinkCss}
 						data-testid="package-app-device-check-now"
 					>
 						Check now

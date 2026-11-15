@@ -254,7 +254,8 @@ export function AdminPlatformFeedbackPage({
 								{data.page > 1 ? (
 									<Button
 										href={buildPageHref(currentHref, data.page - 1)}
-										variant="secondary" css={{ textDecoration: 'none' }}
+										variant="secondary"
+										css={{ textDecoration: 'none' }}
 									>
 										Previous
 									</Button>
@@ -270,7 +271,8 @@ export function AdminPlatformFeedbackPage({
 								{data.page < totalPages ? (
 									<Button
 										href={buildPageHref(currentHref, data.page + 1)}
-										variant="secondary" css={{ textDecoration: 'none' }}
+										variant="secondary"
+										css={{ textDecoration: 'none' }}
 									>
 										Next
 									</Button>

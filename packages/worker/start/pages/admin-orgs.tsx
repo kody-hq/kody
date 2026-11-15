@@ -17,7 +17,12 @@ import {
 } from '#universal/credits.ts'
 import { planNames, type PlanName } from '#universal/plans.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss, getAuthInputCss, getSelectCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getAuthInputCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import type {
 	AdminOrgDetail,
@@ -117,7 +122,8 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 			)}
 			<Button
 				type="button"
-				variant="secondary" css={secondaryButtonCss}
+				variant="secondary"
+				css={secondaryButtonCss}
 				disabled={stripe.isPending}
 				onClick={() => stripe.mutate(0)}
 			>
@@ -238,11 +244,7 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 					disabled={mutation.isPending}
 				/>
 			</label>
-			<Button
-				type="submit"
-				variant="primary"
-				disabled={mutation.isPending}
-			>
+			<Button type="submit" variant="primary" disabled={mutation.isPending}>
 				{mutation.isPending ? 'Saving…' : 'Save'}
 			</Button>
 			{message ? (

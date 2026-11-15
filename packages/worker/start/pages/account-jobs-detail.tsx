@@ -19,7 +19,13 @@ import { plainHighlightedCode } from '#universal/highlighted-code.ts'
 import type { AccountJobDetail } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,

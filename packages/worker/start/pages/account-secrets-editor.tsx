@@ -6,7 +6,11 @@ import type { AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss, getSelectCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import { SecretEditorFields } from './secret-editor-fields.tsx'
 import {
 	MetadataGrid,

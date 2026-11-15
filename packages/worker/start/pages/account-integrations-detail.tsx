@@ -34,7 +34,19 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardTitleCss, descriptionCss, detailGridCss, detailItemCss, detailLabelCss, detailValueCss, getAccentCalloutCss, hoverMq, insetCardCss, primaryLinkCss, sectionTitleCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	detailGridCss,
+	detailItemCss,
+	detailLabelCss,
+	detailValueCss,
+	getAccentCalloutCss,
+	hoverMq,
+	insetCardCss,
+	primaryLinkCss,
+	sectionTitleCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	type IntegrationUsageDraft,
 	accountsConnectedCopy,
@@ -391,7 +403,8 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 								appSlug: selectedApp.slug,
 								orgSlug,
 							})}
-							variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+							variant="primary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Connect
 						</Button>
@@ -534,7 +547,8 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 										{showReconnect ? (
 											<Button
 												href={connectHref}
-												variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+												variant="primary"
+												css={{ display: 'inline-flex', textDecoration: 'none' }}
 											>
 												{connectActionLabel(status)}
 											</Button>

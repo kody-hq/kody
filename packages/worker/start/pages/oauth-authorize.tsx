@@ -54,7 +54,24 @@ import {
 } from '#universal/oauth-authorize-client-failure.ts'
 import type { OAuthAuthorizeLoaderData } from '#universal/loader-data.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { cardCss, descriptionCss, detailItemCss, detailLabelCss, fieldCss, fieldLabelCss, getAlertCardCss, inputCss, insetCardCss, listCss, mutedLinkCss, nativeDisclosureCss, pageDescriptionCss, sectionTitleCss, stackedPageCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	detailItemCss,
+	detailLabelCss,
+	fieldCss,
+	fieldLabelCss,
+	getAlertCardCss,
+	inputCss,
+	insetCardCss,
+	listCss,
+	mutedLinkCss,
+	nativeDisclosureCss,
+	pageDescriptionCss,
+	sectionTitleCss,
+	stackedPageCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -180,7 +197,10 @@ function OAuthAuthorizeClientFailureCard(props: {
 				<Button
 					href={props.retryHref}
 					data-testid="oauth-authorize-retry"
-					variant="primary" size="md" reloadDocument css={retryLinkCss}
+					variant="primary"
+					size="md"
+					reloadDocument
+					css={retryLinkCss}
 				>
 					Retry
 				</Button>
@@ -889,7 +909,8 @@ export function OAuthAuthorizeRoute({
 							label: 'Deny',
 						})}
 						onClick={() => submitDecision('deny')}
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 					>
 						Deny
 					</Button>
@@ -929,7 +950,8 @@ export function OAuthAuthorizeRoute({
 							type="button"
 							disabled={resetClientDisabled}
 							onClick={() => submitDecision('reset-client')}
-							variant="danger" size="md"
+							variant="danger"
+							size="md"
 						>
 							{resetClientLabel}
 						</Button>
@@ -1048,7 +1070,8 @@ export function OAuthAuthorizeRoute({
 												disabled={actionsDisabled}
 												aria-label={`Continue with ${provider.label}`}
 												data-testid={`social-sign-in-${provider.id}`}
-												variant="secondary" size="md"
+												variant="secondary"
+												size="md"
 												onClick={() => void signIn(provider.id)}
 											>
 												<ProviderIcon providerId={provider.id} size="1.4rem" />
@@ -1061,7 +1084,8 @@ export function OAuthAuthorizeRoute({
 								type="button"
 								disabled={actionsDisabled}
 								data-testid="oauth-authorize-passkey"
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 								onClick={() => void signIn()}
 							>
 								Sign in with a passkey
@@ -1087,7 +1111,8 @@ export function OAuthAuthorizeRoute({
 							data-testid="oauth-authorize-approve"
 							disabled={actionsDisabled}
 							aria-label={approveAriaLabel}
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 						>
 							{authorizeLabel}
 						</Button>
@@ -1099,7 +1124,8 @@ export function OAuthAuthorizeRoute({
 								label: 'Deny',
 							})}
 							onClick={() => submitDecision('deny')}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 						>
 							Deny
 						</Button>

@@ -28,7 +28,15 @@ import {
 } from '#client/routes/account-approval-shared.ts'
 
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	getAccentCalloutCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 
 const connectSecretsPageCss: CSSObject = {
 	...stackedPageCss,
@@ -286,7 +294,8 @@ export function ConnectSecretsRoute({
 					{showBackToSecrets ? (
 						<Button
 							href={routes.accountCredentials.href()}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 						>
 							Back to credentials
 						</Button>
@@ -305,7 +314,8 @@ export function ConnectSecretsRoute({
 									onClick={() => {
 										void submitApproval('approve')
 									}}
-									variant="primary" size="md"
+									variant="primary"
+									size="md"
 								>
 									{submittingAction === 'approve'
 										? 'Allowing access…'
@@ -318,7 +328,8 @@ export function ConnectSecretsRoute({
 								onClick={() => {
 									void submitApproval('reject')
 								}}
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 							>
 								Reject
 							</Button>

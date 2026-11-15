@@ -34,7 +34,16 @@ import {
 } from '#universal/package-credential-approval-page.ts'
 import { describeTrigger } from '#universal/package-credentials-page.ts'
 import { routes } from '#universal/routes.ts'
-import { cardCss, cardTitleCss, insetCardCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	insetCardCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 const mutedCss = { margin: 0, color: colors.textMuted }
 const listCss = {
@@ -511,14 +520,17 @@ export function PackageCredentialApprovalRoute({
 							type="button"
 							data-testid="credential-approval-approve"
 							disabled={!view.canApprove || approving}
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 							onClick={() => void approve(path, view)}
 						>
 							{approving ? 'Approving…' : approvalSummary(view)}
 						</Button>
 						<Button
 							href={credentialsHref}
-							variant="secondary" size="md" css={{ display: 'inline-flex', textDecoration: 'none' }}
+							variant="secondary"
+							size="md"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Cancel
 						</Button>

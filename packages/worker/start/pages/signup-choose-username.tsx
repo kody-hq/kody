@@ -267,7 +267,9 @@ export function SignupChooseUsernamePage(props: {
 						<Button
 							type="submit"
 							disabled={!hydrated || isSubmitting || !canSubmit}
-							variant="primary" size="lg" css={authSubmitCss}
+							variant="primary"
+							size="lg"
+							css={authSubmitCss}
 						>
 							<span
 								data-swap-label

@@ -17,7 +17,15 @@ import { UserAvatar } from '../components/user-avatar.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import { cardCss, nativeDisclosureCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	nativeDisclosureCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { permissionsMutationOptions } from '../permissions-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -157,7 +165,12 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 				) : null}
 				{data.alreadyMember ? (
 					<p css={footerCss}>
-						<Button href={copy.openHref} variant="primary" size="md" css={linkButtonCss}>
+						<Button
+							href={copy.openHref}
+							variant="primary"
+							size="md"
+							css={linkButtonCss}
+						>
 							{copy.openLabel}
 						</Button>
 					</p>
@@ -167,7 +180,9 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 							type="button"
 							disabled={mutation.isPending || mutation.isSuccess}
 							data-testid="org-invite-join-confirm"
-							variant="primary" size="md" css={iconButtonCss}
+							variant="primary"
+							size="md"
+							css={iconButtonCss}
 							onClick={() => {
 								const active = capture()
 								mutation.mutate(
@@ -196,7 +211,8 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 							type="button"
 							disabled={mutation.isPending || mutation.isSuccess}
 							data-testid="org-invite-join-decline"
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 							onClick={() => {
 								const active = capture()
 								mutation.mutate(
@@ -217,10 +233,20 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 					</div>
 				) : (
 					<div css={actionsCss}>
-						<Button href={loginHref} variant="primary" size="md" css={linkButtonCss}>
+						<Button
+							href={loginHref}
+							variant="primary"
+							size="md"
+							css={linkButtonCss}
+						>
 							Sign in to accept
 						</Button>
-						<Button href={signupHref} variant="secondary" size="md" css={linkSecondaryButtonCss}>
+						<Button
+							href={signupHref}
+							variant="secondary"
+							size="md"
+							css={linkSecondaryButtonCss}
+						>
 							Create an account
 						</Button>
 					</div>

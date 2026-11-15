@@ -18,7 +18,17 @@ import {
 	normalizeRedirectTo,
 	resolvePostAuthLandingPath,
 } from '#universal/safe-redirect.ts'
-import { cardCss, fieldCss, fieldLabelCss, inputCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	fieldCss,
+	fieldLabelCss,
+	inputCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
@@ -183,7 +193,12 @@ export function VerifyRoute() {
 						data-sitekey={turnstileSiteKey}
 					></div>
 				) : null}
-				<Button type="submit" disabled={isSubmitting} variant="primary" size="md">
+				<Button
+					type="submit"
+					disabled={isSubmitting}
+					variant="primary"
+					size="md"
+				>
 					{isSubmitting ? 'Verifying...' : 'Verify'}
 				</Button>
 				{(message ?? formErrorMessage) ? (

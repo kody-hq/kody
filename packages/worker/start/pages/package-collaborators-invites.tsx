@@ -239,7 +239,8 @@ export function PackageCollaboratorInvites({
 						<div css={calloutActionsCss}>
 							<Button
 								href={routes.accountOrganizationsNew.href()}
-								variant="secondary" css={calloutButtonCss}
+								variant="secondary"
+								css={calloutButtonCss}
 							>
 								{renderIcon('plus', { size: '1.05rem' })}Create a team
 								organization

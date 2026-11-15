@@ -612,7 +612,8 @@ export function AdminUsersPage(props: {
 								type="button"
 								disabled={isLoadingMore}
 								onClick={() => void loadMoreUsers()}
-								variant="secondary" css={{ width: '100%' }}
+								variant="secondary"
+								css={{ width: '100%' }}
 							>
 								{isLoadingMore ? (
 									<LoadingIndicator inline label="Loading more…" />

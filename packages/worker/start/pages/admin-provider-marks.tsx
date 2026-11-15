@@ -32,7 +32,13 @@ import type {
 	AdminProviderMark,
 	AdminProviderMarksLoaderData,
 } from '#universal/loader-data.ts'
-import { fieldCss, fieldLabelCss, getLogoWellCss, hoverMq, nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getLogoWellCss,
+	hoverMq,
+	nativeDisclosureCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,

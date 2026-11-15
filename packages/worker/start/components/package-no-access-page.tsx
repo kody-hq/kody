@@ -67,7 +67,8 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 					<Button
 						href={packageAppHref}
 						data-testid="package-app-origin-link"
-						variant="primary" size="lg"
+						variant="primary"
+						size="lg"
 					>
 						Open the app
 					</Button>
@@ -82,10 +83,7 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 				<Button href={sharingDocsHref} variant="primary">
 					How sharing works
 				</Button>
-				<Button
-					href={routes.home.href()}
-					variant="secondary"
-				>
+				<Button href={routes.home.href()} variant="secondary">
 					Go home
 				</Button>
 			</nav>

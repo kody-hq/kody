@@ -9,7 +9,12 @@ import { BuildWithAgentButton } from '../../components/build-with-agent-button.t
  */
 export function FeatureCtaLink(props: { href: string; children: ReactNode }) {
 	return (
-		<Button className="feature-cta" href={props.href} variant="primary" size="lg">
+		<Button
+			className="feature-cta"
+			href={props.href}
+			variant="primary"
+			size="lg"
+		>
 			{props.children}
 		</Button>
 	)

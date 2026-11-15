@@ -1,6 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { descriptionCss, pageEyebrowCss, pageTitleCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	pageEyebrowCss,
+	pageTitleCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -73,14 +77,18 @@ export function OAuthAuthorizeSignedOutChoices(props: {
 		<section css={choicesCss} data-testid="oauth-authorize-choices">
 			<Button
 				href={props.loginHref}
-				variant="primary" size="md" css={primaryLinkCss}
+				variant="primary"
+				size="md"
+				css={primaryLinkCss}
 				data-testid="oauth-authorize-login"
 			>
 				Log in
 			</Button>
 			<Button
 				href={props.signupHref}
-				variant="secondary" size="md" css={secondaryLinkCss}
+				variant="secondary"
+				size="md"
+				css={secondaryLinkCss}
 				data-testid="oauth-authorize-signup"
 			>
 				Sign up
@@ -94,7 +102,9 @@ export function OAuthAuthorizeSignedOutChoices(props: {
 					data-testid="oauth-authorize-try-it-out"
 					disabled={props.disabled}
 					onClick={props.onTryItOut}
-					variant="secondary" size="md" css={tryButtonCss}
+					variant="secondary"
+					size="md"
+					css={tryButtonCss}
 				>
 					{props.tryingOut ? 'Setting up...' : 'Try it out'}
 				</Button>
@@ -127,7 +137,10 @@ export function OAuthAuthorizeGuestConnected(props: {
 			<h1 css={titleCss}>You're connected</h1>
 			<Button
 				href={props.connection.redirectTo}
-				variant="primary" size="md" reloadDocument css={primaryLinkCss}
+				variant="primary"
+				size="md"
+				reloadDocument
+				css={primaryLinkCss}
 				data-testid="oauth-authorize-guest-return"
 			>
 				Return to {props.clientLabel}

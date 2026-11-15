@@ -60,11 +60,7 @@ export function AdminCreateUserPanel(input: {
 						css={accountInputCss}
 					/>
 				</label>
-				<Button
-					type="submit"
-					disabled={input.isMutating}
-					variant="primary"
-				>
+				<Button type="submit" disabled={input.isMutating} variant="primary">
 					{input.actionState === 'creatingUser' ? 'Creating…' : 'Create user'}
 				</Button>
 			</div>

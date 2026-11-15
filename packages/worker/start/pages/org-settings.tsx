@@ -305,11 +305,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									testId="org-settings-visibility"
 								/>
 								<div css={accountActionsCss}>
-									<Button
-										type="submit"
-										disabled={isPending}
-										variant="primary"
-									>
+									<Button type="submit" disabled={isPending} variant="primary">
 										{profile.isPending ? 'Saving…' : 'Save changes'}
 									</Button>
 								</div>

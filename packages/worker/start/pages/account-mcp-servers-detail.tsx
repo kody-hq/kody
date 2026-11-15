@@ -4,7 +4,6 @@ import {
 	McpServerOAuthClientSection,
 	type McpServerOAuthClientInput,
 } from './account-mcp-servers-oauth-client.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
 import {
 	AccountManagementMessage,
@@ -25,7 +24,12 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, getButtonCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 
 function McpServerUsageForm(props: {
 	server: McpServerListItem
@@ -164,9 +168,6 @@ export type McpServerDetailProps = {
 	deleteArmed: boolean
 	onDeleteArm: () => void
 	onDeleteReset: () => void
-	primaryButtonCss: ReturnType<typeof getButtonCss>
-	secondaryButtonCss: ReturnType<typeof getButtonCss>
-	dangerButtonCss: ReturnType<typeof getButtonCss>
 	onUsageDraftChange: (draft: McpServerUsageDraft) => void
 	onUsageSave: () => void
 	onReconnect: () => void
@@ -187,9 +188,6 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 		deleteArmed,
 		onDeleteArm,
 		onDeleteReset,
-		primaryButtonCss,
-		secondaryButtonCss,
-		dangerButtonCss,
 		onUsageDraftChange,
 		onUsageSave,
 		onReconnect,
@@ -301,17 +299,14 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 						become available.
 					</span>
 					<div>
-						<SiteLink
+						<Button
 							href={server.authUrl}
 							rel="noopener noreferrer"
-							css={{
-								...primaryButtonCss,
-								display: 'inline-block',
-								textDecoration: 'none',
-							}}
+							variant="primary"
+							css={{ display: 'inline-block', textDecoration: 'none' }}
 						>
 							Authorize {server.name}
-						</SiteLink>
+						</Button>
 					</div>
 				</div>
 			) : null}
@@ -329,9 +324,6 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 				key={server.id}
 				server={server}
 				isMutating={isMutating}
-				primaryButtonCss={primaryButtonCss}
-				secondaryButtonCss={secondaryButtonCss}
-				dangerButtonCss={dangerButtonCss}
 				onSave={onOAuthClientSave}
 				onRemove={onOAuthClientRemove}
 			/>
@@ -371,30 +363,30 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					flexWrap: 'wrap',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onReconnect}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					Reconnect
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onRefresh}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					Refresh tools
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onToggleEnabled}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					{server.enabled ? 'Disable' : 'Enable'}
-				</button>
+				</Button>
 				<Button
 					type="button"
 					disabled={isMutating}

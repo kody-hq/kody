@@ -16,7 +16,16 @@ import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { turnstileWidgetClassName } from '#client/public-form-protection.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import { authFieldCss, authFieldLabelCss, authFieldLabelRowCss, getAuthInputCss, getLanternGlowCss, getSwapLabelCss, hoverMq, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	authFieldCss,
+	authFieldLabelCss,
+	authFieldLabelRowCss,
+	getAuthInputCss,
+	getLanternGlowCss,
+	getSwapLabelCss,
+	hoverMq,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	UsernameChoiceField,
 	type UsernameAvailabilityView,
@@ -298,7 +307,9 @@ export function AuthForm(
 				disabled={
 					props.isSubmitting || (props.isSignup && !props.isInteractive)
 				}
-				variant="primary" size="lg" css={authSubmitCss}
+				variant="primary"
+				size="lg"
+				css={authSubmitCss}
 			>
 				<span
 					data-swap-label
@@ -326,7 +337,8 @@ export function AuthForm(
 				<Button
 					type="button"
 					disabled={!props.isInteractive || props.isSubmitting}
-					variant="secondary" size="lg"
+					variant="secondary"
+					size="lg"
 					onClick={props.onPasskeySignIn}
 				>
 					{renderIcon('key', { size: '17' })}

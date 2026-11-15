@@ -152,7 +152,9 @@ function buildButtonCss(options: ButtonStyleOptions) {
 		justifyContent: 'center',
 		gap: size.gap,
 		minHeight: size.height,
-		padding: options.iconOnly ? 0 : `${size.paddingBlock} ${size.paddingInline}`,
+		padding: options.iconOnly
+			? 0
+			: `${size.paddingBlock} ${size.paddingInline}`,
 		...(options.iconOnly ? { minWidth: size.height, flex: 'none' } : {}),
 		margin: 0,
 		border: 'none',

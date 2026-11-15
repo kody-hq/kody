@@ -63,7 +63,18 @@ import {
 	credentialKindLabel,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath, orgSlugFromPathname } from '#universal/org-pages.ts'
-import { cardCss, cardTitleCss, fieldCss, fieldLabelCss, inputCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	fieldCss,
+	fieldLabelCss,
+	inputCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 const primaryButtonCss = {
 	justifySelf: 'start',
@@ -275,7 +286,8 @@ export function ConnectCredentialRoute({
 								'credentials',
 								encodeURIComponent(saved.id),
 							)}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 						>
 							View credential
 						</Button>
@@ -516,7 +528,10 @@ export function ConnectCredentialRoute({
 							saving || input.linkProblem !== null || kindConflict !== null
 						}
 						data-testid="connect-credential-save"
-						variant="primary" size="md" mobileFullWidth css={primaryButtonCss}
+						variant="primary"
+						size="md"
+						mobileFullWidth
+						css={primaryButtonCss}
 					>
 						{saving ? 'Saving…' : isKey ? 'Save key' : 'Save credential'}
 					</Button>
@@ -618,7 +633,8 @@ export function ConnectCredentialRoute({
 							/>
 							<Button
 								type="button"
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 								data-testid="connect-credential-manual"
 								onClick={() => setManual(true)}
 							>
@@ -712,7 +728,10 @@ function renderKindBody(input: {
 							search: input.search,
 							orgSlug: input.orgSlug,
 						})}
-						variant="primary" size="md" mobileFullWidth css={primaryButtonCss}
+						variant="primary"
+						size="md"
+						mobileFullWidth
+						css={primaryButtonCss}
 						data-testid="connect-credential-continue"
 						onClick={() => {
 							if (kind === 'oauth') persistConnectOauthOrgSlug(input.orgSlug)

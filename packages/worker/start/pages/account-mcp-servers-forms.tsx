@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { accountInputCss } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
@@ -13,7 +14,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type OauthCallbackSectionProps = {
@@ -106,7 +106,6 @@ export type AddMcpServerFormProps = {
 	addBearerToken: string
 	isMutating: boolean
 	isBusy: boolean
-	primaryButtonCss: ReturnType<typeof getButtonCss>
 	onSubmit: (form: HTMLFormElement) => void
 	onNameInput: (value: string) => void
 	onUrlInput: (value: string) => void
@@ -120,7 +119,6 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 		addBearerToken,
 		isMutating,
 		isBusy,
-		primaryButtonCss,
 		onSubmit,
 		onNameInput,
 		onUrlInput,
@@ -219,9 +217,9 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 			</label>
 
 			<div>
-				<button type="submit" disabled={isMutating} css={primaryButtonCss}>
+				<Button type="submit" disabled={isMutating} variant="primary">
 					{isBusy ? 'Adding...' : 'Add server'}
-				</button>
+				</Button>
 			</div>
 		</form>
 	)

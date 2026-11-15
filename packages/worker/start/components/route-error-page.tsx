@@ -68,25 +68,16 @@ export function PermissionDeniedPage({
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
 				{orgSlug ? (
 					permission ? (
-						<Button
-							href={orgGrantsPath(orgSlug)}
-							variant="primary"
-						>
+						<Button href={orgGrantsPath(orgSlug)} variant="primary">
 							Open Grants
 						</Button>
 					) : (
-						<Button
-							href={orgMembersPath(orgSlug)}
-							variant="primary"
-						>
+						<Button href={orgMembersPath(orgSlug)} variant="primary">
 							See members
 						</Button>
 					)
 				) : null}
-				<Button
-					href={routes.home.href()}
-					variant="secondary"
-				>
+				<Button href={routes.home.href()} variant="secondary">
 					Go home
 				</Button>
 			</nav>

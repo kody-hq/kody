@@ -17,7 +17,18 @@ import {
 	confirmWebsitePasswordReset,
 	requestWebsitePasswordReset,
 } from '#start/server/auth-mutations'
-import { cardCss, fieldCss, fieldLabelCss, inputCss, mutedLinkCss, pageDescriptionCss, pageHeaderCss, pageTitleCss, primaryLinkCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	fieldCss,
+	fieldLabelCss,
+	inputCss,
+	mutedLinkCss,
+	pageDescriptionCss,
+	pageHeaderCss,
+	pageTitleCss,
+	primaryLinkCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
@@ -209,7 +220,8 @@ export function ResetPasswordRoute() {
 				<Button
 					type="submit"
 					disabled={!hydrated || isSubmitting}
-					variant="primary" size="md"
+					variant="primary"
+					size="md"
 				>
 					{isSubmitting
 						? 'Submitting...'

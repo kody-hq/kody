@@ -35,7 +35,8 @@ function DesktopLogin() {
 					<p>Continue as {email}</p>
 					<p>Only continue if you opened sign-in from Kody on this computer.</p>
 					<Button
-						variant="primary" size="md"
+						variant="primary"
+						size="md"
 						disabled={busy || !hydrated}
 						onClick={async () => {
 							setBusy(true)

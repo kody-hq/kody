@@ -17,7 +17,11 @@ import {
 	transitions,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getSurfaceCardCss, pageHeadCss, proseCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSurfaceCardCss,
+	pageHeadCss,
+	proseCss,
+} from '#universal/styles/style-primitives.ts'
 import { renderMarkdownNodes } from '../components/markdown-view.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { BlogPostList, blogCategoryLabel } from './blog-parts.tsx'
@@ -135,7 +139,12 @@ export function BlogPostRoute({ post }: { post: BlogPostLoaderData }) {
 								Give your assistant a home of its own. Create a free account and
 								start saving packages.
 							</p>
-							<Button href={signedOutCta.href} variant="primary" size="lg" css={postCtaButtonCss}>
+							<Button
+								href={signedOutCta.href}
+								variant="primary"
+								size="lg"
+								css={postCtaButtonCss}
+							>
 								{signedOutCta.label}
 							</Button>
 						</div>

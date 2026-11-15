@@ -9,7 +9,12 @@ import { useEffect, useRef, useId } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
-import { fieldCss, fieldLabelCss, inputCss, textareaCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	inputCss,
+	textareaCss,
+} from '#universal/styles/style-primitives.ts'
 import type { FillPlacementDraft } from '#universal/credential-fill-placement.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
 

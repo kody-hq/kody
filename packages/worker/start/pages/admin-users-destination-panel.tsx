@@ -7,7 +7,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminDestinationMutationOptions } from '../admin-user-controls-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { mq, spacing } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss, getAuthInputCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getAuthInputCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,

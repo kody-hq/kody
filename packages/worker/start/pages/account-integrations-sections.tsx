@@ -24,7 +24,13 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardCss, cardTitleCss, descriptionCss, primaryLinkCss, sectionTitleCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	descriptionCss,
+	primaryLinkCss,
+	sectionTitleCss,
+} from '#universal/styles/style-primitives.ts'
 import { advancedDetailsCss } from './account-integrations-detail.tsx'
 
 const providerCatalogGridCss: CSSObject = {
@@ -102,7 +108,8 @@ export function renderApprovalCard(props: {
 							'/account/integrations',
 							props.currentHref,
 						)}
-						variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+						variant="primary"
+						css={{ display: 'inline-flex', textDecoration: 'none' }}
 					>
 						Back to integrations
 					</Button>
@@ -122,7 +129,8 @@ export function renderApprovalCard(props: {
 								'/account/integrations',
 								props.currentHref,
 							)}
-							variant="primary" css={{ display: 'inline-flex', textDecoration: 'none' }}
+							variant="primary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Cancel
 						</Button>

@@ -45,10 +45,7 @@ export function InternalErrorPage() {
 				<Button href={retryHref} variant="primary" size="lg" reloadDocument>
 					Try again
 				</Button>
-				<Button
-					href={routes.home.href()}
-					variant="secondary"
-				>
+				<Button href={routes.home.href()} variant="secondary">
 					Go home
 				</Button>
 			</nav>

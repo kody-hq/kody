@@ -232,17 +232,10 @@ function RepositoryCreateForm(props: {
 					</span>
 				</label>
 				<div css={accountActionsCss}>
-					<Button
-						type="submit"
-						disabled={mutation.isPending}
-						variant="primary"
-					>
+					<Button type="submit" disabled={mutation.isPending} variant="primary">
 						{mutation.isPending ? 'Creating…' : 'Create repository'}
 					</Button>
-					<Button
-						href={props.repositoriesHref}
-						variant="secondary"
-					>
+					<Button href={props.repositoriesHref} variant="secondary">
 						Cancel
 					</Button>
 				</div>
@@ -278,10 +271,7 @@ function RepositoryCreatedView(props: {
 						copiedLabel="Copied"
 						ariaLabel="Copy prompt"
 					/>
-					<Button
-						href={created.repositoryHref}
-						variant="secondary"
-					>
+					<Button href={created.repositoryHref} variant="secondary">
 						Open repository
 					</Button>
 					<Button

@@ -9,7 +9,12 @@ import {
 	banAdminReportOwner,
 } from '#start/server/admin-mutations'
 import type { AdminCommunityReportsLoaderData } from '#universal/loader-data.ts'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
 import { useState, type MouseEvent } from 'react'

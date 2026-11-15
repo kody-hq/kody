@@ -167,7 +167,8 @@ export function DesktopMachinePanel({
 					(pausedInKody ? serverContext.canResume : serverContext.canPause) ? (
 						<Button
 							type="button"
-							variant="secondary" css={{ marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy || routingBusy}
 							onClick={() => void daemon(pausedInKody ? 'resume' : 'pause')}
 							data-testid="desktop-machine-routing"
@@ -184,7 +185,8 @@ export function DesktopMachinePanel({
 					{state.contextId && state.runner?.canRestart && machine.restart ? (
 						<Button
 							type="button"
-							variant="secondary" css={{ marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy}
 							onClick={() => void machine.restart?.()}
 						>
@@ -195,7 +197,8 @@ export function DesktopMachinePanel({
 					serverContext.status === 'online' ? (
 						<Button
 							type="button"
-							variant="secondary" css={{ marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={state.busy || routingBusy}
 							onClick={() => void daemon('update')}
 							data-testid="desktop-machine-update"
@@ -206,7 +209,8 @@ export function DesktopMachinePanel({
 					{serverContext?.canReadDaemonLogs ? (
 						<Button
 							type="button"
-							variant="secondary" css={{ marginLeft: spacing.sm }}
+							variant="secondary"
+							css={{ marginLeft: spacing.sm }}
 							disabled={routingBusy}
 							onClick={() => void daemon('logs')}
 							data-testid="desktop-machine-logs"
@@ -242,7 +246,8 @@ export function DesktopMachinePanel({
 					) : null}
 					<Button
 						type="button"
-						variant="primary" css={{ marginLeft: state.contextId ? spacing.sm : 0 }}
+						variant="primary"
+						css={{ marginLeft: state.contextId ? spacing.sm : 0 }}
 						disabled={state.busy || panelAction.kind === 'unavailable'}
 						onClick={() => machine.open(selectedOrgSlug)}
 					>
@@ -253,7 +258,8 @@ export function DesktopMachinePanel({
 							Automatic runner updates: {state.autoUpdate ? 'On' : 'Off'}{' '}
 							<Button
 								type="button"
-								variant="secondary" css={{ marginLeft: spacing.sm }}
+								variant="secondary"
+								css={{ marginLeft: spacing.sm }}
 								disabled={state.busy}
 								onClick={() => void machine.autoUpdate?.(!state.autoUpdate)}
 							>
@@ -268,7 +274,8 @@ export function DesktopMachinePanel({
 			{state?.contextId && state.supported ? (
 				<Button
 					type="button"
-					variant="secondary" css={{ marginLeft: spacing.sm }}
+					variant="secondary"
+					css={{ marginLeft: spacing.sm }}
 					disabled={state.busy || state.commandsEnabled === null}
 					onClick={() =>
 						void machine.commands(state.commandsEnabled ? 'off' : 'on')
@@ -282,7 +289,8 @@ export function DesktopMachinePanel({
 			{state?.hasSetup ? (
 				<Button
 					type="button"
-					variant="secondary" css={{ marginLeft: spacing.sm }}
+					variant="secondary"
+					css={{ marginLeft: spacing.sm }}
 					disabled={state.busy}
 					onClick={machine.forget}
 				>

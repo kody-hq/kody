@@ -175,7 +175,9 @@ export function renderAccountEmailDestinationsPanel(
 					<Button
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}
-						variant="primary" mobileFullWidth css={{ justifySelf: 'start' }}
+						variant="primary"
+						mobileFullWidth
+						css={{ justifySelf: 'start' }}
 					>
 						{isSending && pendingId === null
 							? 'Sending…'

@@ -9,7 +9,12 @@ import { CopyTextButton } from './copy-text-button.tsx'
 import { routes } from '#universal/routes.ts'
 
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
-import { getSurfaceCardCss, packageDetailPageCss, proseCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSurfaceCardCss,
+	packageDetailPageCss,
+	proseCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import type { CommunityInstallOutcome } from '../community-types.ts'
 
 export function renderMissingListing(title: string, message: string) {

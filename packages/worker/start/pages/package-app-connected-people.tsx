@@ -192,10 +192,7 @@ export function PackageAppConnectedPeopleRoute({
 					</span>
 				)}
 				{view.page < pageCount ? (
-					<Button
-						href={pageHref(view.page + 1)}
-						variant="secondary"
-					>
+					<Button href={pageHref(view.page + 1)} variant="secondary">
 						Older
 					</Button>
 				) : null}

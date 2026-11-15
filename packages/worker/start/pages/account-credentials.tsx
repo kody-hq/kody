@@ -345,10 +345,7 @@ export function AccountCredentialsRoute({
 								</Button>
 							</>
 						) : null}
-						<Button
-							href={docHref('credentials')}
-							variant="secondary"
-						>
+						<Button href={docHref('credentials')} variant="secondary">
 							How credentials work
 						</Button>
 					</div>

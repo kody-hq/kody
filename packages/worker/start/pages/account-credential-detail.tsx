@@ -30,7 +30,12 @@ import {
 	credentialKindLabel,
 	credentialStatusLabel,
 } from '#universal/credentials-list.ts'
-import { cardTitleCss, descriptionCss, fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 const codeCss = css({
 	fontFamily: 'monospace',
@@ -539,10 +544,7 @@ export function renderCredentialDetail(input: {
 			<p css={mutedCss}>Values never appear here.</p>
 
 			<div>
-				<Button
-					href={input.manageHref}
-					variant="secondary"
-				>
+				<Button href={input.manageHref} variant="secondary">
 					{editLabel(credential.kind)}
 				</Button>
 			</div>

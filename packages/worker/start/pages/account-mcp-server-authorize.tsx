@@ -164,7 +164,8 @@ export function AccountMcpServerAuthorizePage({
 						</Button>
 						<Button
 							href={data.serverHref}
-							variant="secondary" css={{ textDecoration: 'none' }}
+							variant="secondary"
+							css={{ textDecoration: 'none' }}
 						>
 							Cancel
 						</Button>
@@ -179,7 +180,8 @@ export function AccountMcpServerAuthorizePage({
 					<div css={accountActionsCss}>
 						<Button
 							href={data.serverHref}
-							variant="primary" css={{ textDecoration: 'none' }}
+							variant="primary"
+							css={{ textDecoration: 'none' }}
 						>
 							Open {data.serverName}
 						</Button>

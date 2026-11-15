@@ -15,7 +15,13 @@ import {
 	webauthnRegistrationOptions as webauthnRegistrationOptionsFn,
 	webauthnRegistrationVerify,
 } from '#start/server/auth-mutations'
-import { cardCss, cardTitleCss, descriptionCss, layoutMaxWidths, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	descriptionCss,
+	layoutMaxWidths,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	startRegistration,

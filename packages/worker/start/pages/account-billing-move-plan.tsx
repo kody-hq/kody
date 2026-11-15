@@ -20,7 +20,11 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { descriptionCss, layoutMaxWidths, mutedLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	layoutMaxWidths,
+	mutedLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {

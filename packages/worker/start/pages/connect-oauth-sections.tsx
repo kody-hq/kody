@@ -17,7 +17,18 @@ import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 
 import { ProviderMark } from '../components/provider-icons.tsx'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss, getAccentCalloutCss, inputCss, insetCardCss, listCss, pageDescriptionCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	getAccentCalloutCss,
+	inputCss,
+	insetCardCss,
+	listCss,
+	pageDescriptionCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	connectOauthChooserFilterMinOptions,
 	connectOauthChooserListMaxHeight,
@@ -134,7 +145,8 @@ export function renderLiveAppReplaceWarning(input: {
 					<Button
 						type="button"
 						disabled={input.submitting}
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 						onClick={input.onReplace}
 						data-testid="connect-live-replace-confirm"
 					>
@@ -143,7 +155,8 @@ export function renderLiveAppReplaceWarning(input: {
 					<Button
 						type="button"
 						disabled={input.submitting}
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 						onClick={input.onChooseNewName}
 						data-testid="connect-live-replace-save-new"
 					>
@@ -152,7 +165,8 @@ export function renderLiveAppReplaceWarning(input: {
 					<Button
 						type="button"
 						disabled={input.submitting}
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 						onClick={input.onCancel}
 					>
 						Cancel
@@ -203,7 +217,8 @@ export function renderLiveAppReplaceWarning(input: {
 						<Button
 							type="submit"
 							disabled={input.submitting}
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 							data-testid="connect-live-replace-new-submit"
 						>
 							Save as new connection
@@ -211,7 +226,8 @@ export function renderLiveAppReplaceWarning(input: {
 						<Button
 							type="button"
 							disabled={input.submitting}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 							onClick={input.onCancel}
 						>
 							Cancel
@@ -272,7 +288,8 @@ export function renderReplaceConfirmation(input: {
 				<Button
 					type="button"
 					disabled={input.submitting}
-					variant="secondary" size="md"
+					variant="secondary"
+					size="md"
 					onClick={() => {
 						input.onConfirm()
 					}}

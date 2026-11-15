@@ -5,7 +5,18 @@ import { Button } from '../components/button.tsx'
 // oxlint-disable-next-line import/consistent-type-specifier-style
 import type { AccountDeviceSignInView } from '#start/server/account-device'
 import { accountDeviceSignInPath } from '#universal/oauth-paths.ts'
-import { cardCss, descriptionCss, fieldLabelCss, getAlertCardCss, insetCardCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldLabelCss,
+	getAlertCardCss,
+	insetCardCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -72,7 +83,10 @@ function renderBody(data: AccountDeviceSignInView) {
 				<div css={actionsCss}>
 					<Button
 						href={data.startAgainUrl}
-						variant="primary" size="md" reloadDocument css={primaryLinkCss}
+						variant="primary"
+						size="md"
+						reloadDocument
+						css={primaryLinkCss}
 						data-testid="account-device-start-again"
 					>
 						Start again
@@ -82,7 +96,13 @@ function renderBody(data: AccountDeviceSignInView) {
 		case 'none':
 			return (
 				<div css={actionsCss}>
-					<Button href="/login" variant="primary" size="md" reloadDocument css={primaryLinkCss}>
+					<Button
+						href="/login"
+						variant="primary"
+						size="md"
+						reloadDocument
+						css={primaryLinkCss}
+					>
 						Go to sign in
 					</Button>
 				</div>
@@ -143,7 +163,10 @@ function PendingCard(props: {
 				<div css={actionsCss}>
 					<Button
 						href={accountDeviceSignInPath}
-						variant="secondary" size="md" reloadDocument css={secondaryLinkCss}
+						variant="secondary"
+						size="md"
+						reloadDocument
+						css={secondaryLinkCss}
 						data-testid="account-device-check-now"
 					>
 						Check now

@@ -75,7 +75,8 @@ function ToastCard({ item }: { item: ToastRecord }) {
 					type="button"
 					aria-label="Dismiss notification"
 					data-testid="toast-dismiss"
-					variant="secondary" css={toastDismissButtonCss}
+					variant="secondary"
+					css={toastDismissButtonCss}
 					onClick={() => toast.dismiss(item.id)}
 				>
 					×

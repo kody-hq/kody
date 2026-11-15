@@ -8,7 +8,15 @@ import {
 	revokeMcpOauthClient,
 } from '#start/server/account-mutations'
 import type { AccountMcpOauthClientsLoaderData } from '#universal/loader-data.ts'
-import { cardCss, cardTitleCss, descriptionCss, fieldCss, fieldLabelCss, getAccentCalloutCss, layoutMaxWidths } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	getAccentCalloutCss,
+	layoutMaxWidths,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'

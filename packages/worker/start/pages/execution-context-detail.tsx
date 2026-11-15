@@ -313,7 +313,8 @@ function DeleteControls(props: {
 				<Button
 					type="button"
 					data-testid="context-delete-open"
-					variant="danger" css={target}
+					variant="danger"
+					css={target}
 					onClick={() => {
 						setError(null)
 						dialog.current?.showModal()
@@ -344,7 +345,8 @@ function DeleteControls(props: {
 				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
 					<Button
 						type="button"
-						variant="secondary" css={target}
+						variant="secondary"
+						css={target}
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
@@ -352,7 +354,8 @@ function DeleteControls(props: {
 					<Button
 						type="button"
 						data-testid="context-delete-confirm"
-						variant="danger" css={target}
+						variant="danger"
+						css={target}
 						disabled={busy}
 						onClick={() => void remove()}
 					>
@@ -446,7 +449,8 @@ function NoticesPanel(props: {
 					</ul>
 					<Button
 						type="button"
-						variant="primary" css={target}
+						variant="primary"
+						css={target}
 						disabled={busy}
 						onClick={() => void dismiss(elevation.fingerprint)}
 					>
@@ -641,7 +645,8 @@ function DaemonPanel(props: {
 					</label>
 					<Button
 						type="button"
-						variant="danger" css={target}
+						variant="danger"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => void run('pause')}
 						data-testid="context-daemon-pause-confirm"
@@ -650,7 +655,8 @@ function DaemonPanel(props: {
 					</Button>
 					<Button
 						type="button"
-						variant="secondary" css={target}
+						variant="secondary"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => setConfirmingPause(false)}
 					>
@@ -662,7 +668,8 @@ function DaemonPanel(props: {
 					{paused && canResume ? (
 						<Button
 							type="button"
-							variant="primary" css={target}
+							variant="primary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => void run('resume')}
 							data-testid="context-daemon-resume"
@@ -673,7 +680,8 @@ function DaemonPanel(props: {
 					{!paused && canPause ? (
 						<Button
 							type="button"
-							variant="secondary" css={target}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => setConfirmingPause(true)}
 							data-testid="context-daemon-pause"
@@ -685,7 +693,8 @@ function DaemonPanel(props: {
 						<>
 							<Button
 								type="button"
-								variant="secondary" css={target}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online || !serviceManaged}
 								title={
 									!online
@@ -701,7 +710,8 @@ function DaemonPanel(props: {
 							</Button>
 							<Button
 								type="button"
-								variant="secondary" css={target}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online}
 								title={!online ? 'The daemon is offline' : undefined}
 								onClick={() => void run('update')}
@@ -720,7 +730,8 @@ function DaemonPanel(props: {
 					<div css={rowCss}>
 						<Button
 							type="button"
-							variant="secondary" css={target}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null || !online}
 							title={!online ? 'The daemon is offline' : undefined}
 							onClick={() => void run('logs')}
@@ -907,7 +918,8 @@ function CommandsPanel(props: {
 						</span>
 						<Button
 							type="button"
-							variant="danger" css={target}
+							variant="danger"
+							css={target}
 							disabled={busy}
 							onClick={() => void turnOff()}
 							data-testid="context-commands-off-confirm"
@@ -916,7 +928,8 @@ function CommandsPanel(props: {
 						</Button>
 						<Button
 							type="button"
-							variant="secondary" css={target}
+							variant="secondary"
+							css={target}
 							disabled={busy}
 							onClick={() => setConfirming(false)}
 						>
@@ -927,7 +940,8 @@ function CommandsPanel(props: {
 					<div>
 						<Button
 							type="button"
-							variant="danger" css={target}
+							variant="danger"
+							css={target}
 							onClick={() => setConfirming(true)}
 							data-testid="context-commands-off"
 						>
@@ -1057,14 +1071,16 @@ function OptInControls(props: {
 							</span>
 							<Button
 								type="button"
-								variant="danger" css={target}
+								variant="danger"
+								css={target}
 								onClick={optOut}
 							>
 								Confirm leave
 							</Button>
 							<Button
 								type="button"
-								variant="secondary" css={target}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmLeave(false)}
 							>
 								Cancel
@@ -1073,7 +1089,8 @@ function OptInControls(props: {
 					) : (
 						<Button
 							type="button"
-							variant="secondary" css={target}
+							variant="secondary"
+							css={target}
 							onClick={() => (inChain ? setConfirmLeave(true) : optOut())}
 						>
 							Leave
@@ -1089,7 +1106,8 @@ function OptInControls(props: {
 					<Button
 						type="button"
 						data-testid="context-opt-in"
-						variant="primary" css={target}
+						variant="primary"
+						css={target}
 						onClick={() => {
 							setAddToChain(false)
 							setError(null)
@@ -1139,14 +1157,16 @@ function OptInControls(props: {
 				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
 					<Button
 						type="button"
-						variant="secondary" css={target}
+						variant="secondary"
+						css={target}
 						onClick={() => dialog.current?.close()}
 					>
 						Cancel
 					</Button>
 					<Button
 						type="button"
-						variant="primary" css={target}
+						variant="primary"
+						css={target}
 						disabled={busy}
 						onClick={() => void optIn()}
 					>
@@ -1357,14 +1377,16 @@ function SharingPanel(props: {
 							</span>{' '}
 							<Button
 								type="button"
-								variant="danger" css={target}
+								variant="danger"
+								css={target}
 								onClick={() => void stopSharingWithEveryone()}
 							>
 								Stop sharing
 							</Button>{' '}
 							<Button
 								type="button"
-								variant="secondary" css={target}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmRemove(null)}
 							>
 								Cancel
@@ -1373,7 +1395,8 @@ function SharingPanel(props: {
 					) : (
 						<Button
 							type="button"
-							variant="secondary" css={target}
+							variant="secondary"
+							css={target}
 							onClick={() => setConfirmRemove(allMembersKey)}
 						>
 							Remove
@@ -1401,14 +1424,16 @@ function SharingPanel(props: {
 									</span>{' '}
 									<Button
 										type="button"
-										variant="danger" css={target}
+										variant="danger"
+										css={target}
 										onClick={() => void remove(grant.grantId)}
 									>
 										Stop sharing
 									</Button>{' '}
 									<Button
 										type="button"
-										variant="secondary" css={target}
+										variant="secondary"
+										css={target}
 										onClick={() => setConfirmRemove(null)}
 									>
 										Cancel
@@ -1417,7 +1442,8 @@ function SharingPanel(props: {
 							) : (
 								<Button
 									type="button"
-									variant="secondary" css={target}
+									variant="secondary"
+									css={target}
 									onClick={() => setConfirmRemove(grant.grantId)}
 								>
 									Remove
@@ -1494,7 +1520,8 @@ function SharingPanel(props: {
 						</label>
 						<Button
 							type="submit"
-							variant="primary" css={target}
+							variant="primary"
+							css={target}
 							disabled={busy}
 						>
 							{excessWarning === `${kind}:${value}` ? 'Share anyway' : 'Share'}
@@ -1712,7 +1739,8 @@ function RunHistory(props: {
 				<div>
 					<Button
 						type="button"
-						variant="secondary" css={target}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}
@@ -1740,14 +1768,16 @@ export function RunCancelControl(props: {
 			<>
 				<Button
 					type="button"
-					variant="secondary" css={target}
+					variant="secondary"
+					css={target}
 					onClick={props.onConfirm}
 				>
 					Stop run
 				</Button>
 				<Button
 					type="button"
-					variant="secondary" css={target}
+					variant="secondary"
+					css={target}
 					onClick={props.onKeep}
 				>
 					Keep running
@@ -1758,7 +1788,8 @@ export function RunCancelControl(props: {
 	return (
 		<Button
 			type="button"
-			variant="secondary" css={target}
+			variant="secondary"
+			css={target}
 			aria-label={`Cancel run ${props.runId}`}
 			onClick={props.onAsk}
 		>
@@ -1850,7 +1881,8 @@ function AuditLog(props: {
 				<div>
 					<Button
 						type="button"
-						variant="secondary" css={target}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}

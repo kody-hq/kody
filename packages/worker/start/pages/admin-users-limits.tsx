@@ -23,7 +23,11 @@ import {
 	type LimitOverrideValue,
 } from '#universal/plans.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss, getAuthInputCss } from '#universal/styles/style-primitives.ts'
+import {
+	fieldCss,
+	fieldLabelCss,
+	getAuthInputCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -159,7 +163,8 @@ export function AdminOrgLimitsPanel({
 							<Button
 								type="button"
 								disabled={saving}
-								variant="secondary" css={removeButtonCss}
+								variant="secondary"
+								css={removeButtonCss}
 								onClick={() =>
 									void save({ key: row.key, value: null, expiresAt: null })
 								}

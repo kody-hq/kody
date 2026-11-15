@@ -356,7 +356,8 @@ export function OnboardingRoute({
 			>
 				<Button
 					href={routes.discord.href()}
-					variant="secondary" css={discordInviteLinkCss}
+					variant="secondary"
+					css={discordInviteLinkCss}
 					data-testid="onboarding-join-discord"
 				>
 					<ProviderIcon providerId="discord" size="1.1em" />

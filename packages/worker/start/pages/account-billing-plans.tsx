@@ -18,7 +18,11 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { descriptionCss, primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	primaryLinkCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 export type PaidTier = 'pro'
 type PlanTier = 'free' | PaidTier
 export type { BillingInterval }

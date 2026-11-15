@@ -22,7 +22,12 @@ import {
 import { docHref } from '#universal/docs-nav.ts'
 import { orgBillingPath } from '#universal/org-pages.ts'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import { getSurfaceCardCss, layoutMaxWidths, pageHeadCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	getSurfaceCardCss,
+	layoutMaxWidths,
+	pageHeadCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 
 /**
  * Pricing page, ported from the redesign prototype (`landing/pricing.html`).
@@ -162,11 +167,21 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 						minutes.
 					</p>
 					{isSignedIn ? (
-						<Button href="/account" variant="primary" size="lg" css={planPillButtonCss}>
+						<Button
+							href="/account"
+							variant="primary"
+							size="lg"
+							css={planPillButtonCss}
+						>
 							Open your account
 						</Button>
 					) : (
-						<Button href={signedOutCta.href} variant="primary" size="lg" css={planPillButtonCss}>
+						<Button
+							href={signedOutCta.href}
+							variant="primary"
+							size="lg"
+							css={planPillButtonCss}
+						>
 							{signedOutCta.label}
 						</Button>
 					)}
@@ -215,7 +230,12 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 							we&rsquo;re shaping that offering and want to hear your needs.
 						</p>
 					</div>
-					<Button href="mailto:kody@kody.codes" variant="secondary" size="lg" css={teamsInviteButtonCss}>
+					<Button
+						href="mailto:kody@kody.codes"
+						variant="secondary"
+						size="lg"
+						css={teamsInviteButtonCss}
+					>
 						Email us
 					</Button>
 				</section>
@@ -338,13 +358,23 @@ function renderPaidPlanCta(
 ) {
 	if (isSignedIn) {
 		return (
-			<Button href={signedInBillingHref} variant="secondary" size="lg" css={planGhostButtonCss}>
+			<Button
+				href={signedInBillingHref}
+				variant="secondary"
+				size="lg"
+				css={planGhostButtonCss}
+			>
 				Upgrade in billing
 			</Button>
 		)
 	}
 	return (
-		<Button href={signedOutCta.href} variant="secondary" size="lg" css={planGhostButtonCss}>
+		<Button
+			href={signedOutCta.href}
+			variant="secondary"
+			size="lg"
+			css={planGhostButtonCss}
+		>
 			{signedOutCta.label}
 		</Button>
 	)

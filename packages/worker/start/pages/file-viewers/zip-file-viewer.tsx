@@ -111,7 +111,9 @@ export default function ZipFileViewer({
 				}}
 			>
 				<Button
-					variant="secondary" size="lg" css={control}
+					variant="secondary"
+					size="lg"
+					css={control}
 					aria-label="Up one level"
 					disabled={!folder}
 					onClick={() =>
@@ -123,7 +125,9 @@ export default function ZipFileViewer({
 					{renderIcon('chevron-up', { size: '14px' })}
 				</Button>
 				<Button
-					variant="secondary" size="lg" css={control}
+					variant="secondary"
+					size="lg"
+					css={control}
 					aria-current={!folder ? 'page' : undefined}
 					onClick={() => setFolder('')}
 				>
@@ -143,7 +147,17 @@ export default function ZipFileViewer({
 							{renderIcon('chevron-right', { size: '12px' })}
 						</span>
 						<Button
-							variant="secondary" size="lg" css={[control, { display: 'block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }]}
+							variant="secondary"
+							size="lg"
+							css={[
+								control,
+								{
+									display: 'block',
+									maxWidth: 180,
+									overflow: 'hidden',
+									textOverflow: 'ellipsis',
+								},
+							]}
 							title={part}
 							aria-current={index === parts.length - 1 ? 'page' : undefined}
 							onClick={() =>
@@ -154,7 +168,13 @@ export default function ZipFileViewer({
 						</Button>
 					</span>
 				))}
-				<Button href={download} variant="secondary" size="lg" reloadDocument css={[control, { marginLeft: 'auto' }]}>
+				<Button
+					href={download}
+					variant="secondary"
+					size="lg"
+					reloadDocument
+					css={[control, { marginLeft: 'auto' }]}
+				>
 					Download ZIP
 				</Button>
 			</nav>

@@ -5,7 +5,23 @@ import { buildAuthLink } from '#client/auth-links.ts'
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
 import type { DevicePageData, DevicePageError } from '#start/server/device'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss, getAlertCardCss, insetCardCss, inputCss, mutedLinkCss, nativeDisclosureCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, sectionTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	getAlertCardCss,
+	insetCardCss,
+	inputCss,
+	mutedLinkCss,
+	nativeDisclosureCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	sectionTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -122,12 +138,21 @@ function SignedOutCard(props: {
 			) : null}
 			<p css={descriptionCss}>{deviceAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<Button href={buildAuthLink('/login', data.redirectTo)} variant="primary" size="md" reloadDocument css={primaryLinkCss}>
+				<Button
+					href={buildAuthLink('/login', data.redirectTo)}
+					variant="primary"
+					size="md"
+					reloadDocument
+					css={primaryLinkCss}
+				>
 					Sign in to continue
 				</Button>
 				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
-					variant="secondary" size="md" reloadDocument css={secondaryLinkCss}
+					variant="secondary"
+					size="md"
+					reloadDocument
+					css={secondaryLinkCss}
 				>
 					Create an account
 				</Button>
@@ -274,7 +299,8 @@ function ConsentCard(props: {
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						variant="primary" size="md"
+						variant="primary"
+						size="md"
 					>
 						Approve
 					</Button>
@@ -283,7 +309,8 @@ function ConsentCard(props: {
 						name="decision"
 						value="deny"
 						formNoValidate
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 					>
 						Deny
 					</Button>
@@ -393,7 +420,8 @@ function AccountConsentCard(props: {
 						type="submit"
 						name="decision"
 						value="approve"
-						variant="primary" size="md"
+						variant="primary"
+						size="md"
 					>
 						Sign that browser in
 					</Button>
@@ -402,7 +430,8 @@ function AccountConsentCard(props: {
 						name="decision"
 						value="deny"
 						formNoValidate
-						variant="secondary" size="md"
+						variant="secondary"
+						size="md"
 					>
 						Deny
 					</Button>

@@ -32,7 +32,16 @@ import {
 	type ApprovalItemStatus,
 	type ApprovalItemView,
 } from '#universal/approval-bundles.ts'
-import { cardCss, cardTitleCss, insetCardCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	cardTitleCss,
+	insetCardCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -400,7 +409,8 @@ export function ApprovalBundleRoute({
 							type="button"
 							data-testid="approval-bundle-approve"
 							disabled={locked}
-							variant="primary" size="md"
+							variant="primary"
+							size="md"
 							onClick={() => void decide(path, item, 'approve')}
 						>
 							{isBusy ? 'Working…' : 'Approve'}
@@ -413,7 +423,8 @@ export function ApprovalBundleRoute({
 									type="button"
 									data-testid="approval-bundle-deny-confirm"
 									disabled={locked}
-									variant="danger" size="md"
+									variant="danger"
+									size="md"
 									onClick={() => {
 										setConfirmingDeny(null)
 										void decide(path, item, 'deny')
@@ -424,7 +435,8 @@ export function ApprovalBundleRoute({
 								<Button
 									type="button"
 									disabled={locked}
-									variant="secondary" size="md"
+									variant="secondary"
+									size="md"
 									onClick={() => {
 										setConfirmingDeny(null)
 									}}
@@ -437,7 +449,8 @@ export function ApprovalBundleRoute({
 								type="button"
 								data-testid="approval-bundle-deny"
 								disabled={locked}
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 								onClick={() => {
 									setConfirmingDeny(item.key)
 								}}
@@ -568,7 +581,8 @@ export function ApprovalBundleRoute({
 						type="button"
 						data-testid="approval-bundle-approve-all"
 						disabled={ready === 0 || approveAll !== null}
-						variant="primary" size="md"
+						variant="primary"
+						size="md"
 						onClick={() => void runApproveAll(path, view)}
 					>
 						{approveAll

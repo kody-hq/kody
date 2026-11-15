@@ -517,7 +517,9 @@ export function LoginPage({
 								disabled={!hydrated || isSubmitting}
 								aria-label={`Continue with ${provider.label}`}
 								data-testid={`social-sign-in-${provider.id}`}
-								variant="secondary" size="lg" css={oauthButtonCss}
+								variant="secondary"
+								size="lg"
+								css={oauthButtonCss}
 								onClick={() => handleProviderSignIn(provider.id)}
 							>
 								<ProviderIcon providerId={provider.id} size="1.4rem" />

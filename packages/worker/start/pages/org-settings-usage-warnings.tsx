@@ -10,7 +10,10 @@ import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgUsagePath } from '#universal/org-pages.ts'
-import { primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	primaryLinkCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'

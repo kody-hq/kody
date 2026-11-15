@@ -41,16 +41,10 @@ export function NotFoundPage() {
 				<Button href={routes.home.href()} variant="primary" size="lg">
 					Go home
 				</Button>
-				<Button
-					href={routes.docs.href()}
-					variant="secondary"
-				>
+				<Button href={routes.docs.href()} variant="secondary">
 					Search the docs
 				</Button>
-				<Button
-					href={routes.community.href()}
-					variant="secondary"
-				>
+				<Button href={routes.community.href()} variant="secondary">
 					Browse packages
 				</Button>
 			</nav>

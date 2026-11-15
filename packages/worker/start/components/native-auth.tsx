@@ -24,7 +24,8 @@ export function NativeAuth({
 			title={mode === 'signup' ? 'Create your account' : 'Welcome back'}
 		>
 			<Button
-				variant="primary" size="md"
+				variant="primary"
+				size="md"
 				disabled={busy}
 				onClick={async () => {
 					setBusy(true)
@@ -44,7 +45,8 @@ export function NativeAuth({
 			</Button>
 			{busy && (
 				<Button
-					variant="secondary" size="md"
+					variant="secondary"
+					size="md"
 					onClick={() => void auth.cancel()}
 				>
 					Cancel

@@ -18,7 +18,13 @@ import type {
 	AdminFeatureFlag,
 	AdminFeatureFlagsLoaderData,
 } from '#universal/loader-data.ts'
-import { cardCss, descriptionCss, fieldCss, fieldLabelCss, getSelectCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	getSelectCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
 import { renderAdminFeatureFlagAudienceField } from '../components/admin-feature-flag-audience-field.tsx'
@@ -518,11 +524,7 @@ export function AdminFeatureFlagsPage({
 										css={accountInputCss}
 									/>
 								</label>
-								<Button
-									type="submit"
-									disabled={isMutating}
-									variant="primary"
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-global' ? 'Saving…' : 'Save'}
 								</Button>
 							</div>
@@ -707,11 +709,7 @@ export function AdminFeatureFlagsPage({
 										css={accountInputCss}
 									/>
 								</label>
-								<Button
-									type="submit"
-									disabled={isMutating}
-									variant="primary"
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-org-override'
 										? 'Adding…'
 										: 'Add org override'}
@@ -820,11 +818,7 @@ export function AdminFeatureFlagsPage({
 										<option value="false">Off</option>
 									</select>
 								</label>
-								<Button
-									type="submit"
-									disabled={isMutating}
-									variant="primary"
-								>
+								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-override'
 										? 'Adding…'
 										: 'Add override'}

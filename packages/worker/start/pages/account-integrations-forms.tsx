@@ -15,7 +15,12 @@ import type {
 	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { buildConnectOauthHref } from '#universal/oauth-connect.ts'
-import { descriptionCss, fieldCss, fieldLabelCss, primaryLinkCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+	primaryLinkCss,
+} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
@@ -138,10 +143,7 @@ export function AddAccountForm(props: {
 					</p>
 				) : null}
 			</label>
-			<Button
-				type="submit"
-				variant="primary" css={{ display: 'inline-flex' }}
-			>
+			<Button type="submit" variant="primary" css={{ display: 'inline-flex' }}>
 				Connect
 			</Button>
 		</form>

@@ -286,7 +286,9 @@ export default function JsonFileViewer({
 				{(['tree', 'raw'] as const).map((value) => (
 					<Button
 						key={value}
-						variant="secondary" size="lg" css={control}
+						variant="secondary"
+						size="lg"
+						css={control}
 						aria-pressed={mode === value}
 						disabled={value === 'tree' && !!invalid}
 						onClick={() => {
@@ -299,7 +301,10 @@ export default function JsonFileViewer({
 				))}
 				<span css={{ flex: 1 }} />
 				<Button
-					variant="secondary" size="lg" reloadDocument css={[control, { textDecoration: 'none' }]}
+					variant="secondary"
+					size="lg"
+					reloadDocument
+					css={[control, { textDecoration: 'none' }]}
 					href={download}
 					download
 				>
@@ -388,7 +393,16 @@ export default function JsonFileViewer({
 							return (
 								<Button
 									key={item.key}
-									variant="secondary" size="lg" css={[control, { position: 'absolute', top: item.start, left: depth * 18 + 12 }]}
+									variant="secondary"
+									size="lg"
+									css={[
+										control,
+										{
+											position: 'absolute',
+											top: item.start,
+											left: depth * 18 + 12,
+										},
+									]}
 									onClick={() =>
 										load(node.id, children.get(node.id)?.length ?? 0)
 									}

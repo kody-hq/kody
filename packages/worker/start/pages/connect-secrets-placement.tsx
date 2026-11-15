@@ -30,7 +30,15 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { cardCss, getAccentCalloutCss, pageDescriptionCss, pageEyebrowCss, pageHeaderCss, pageTitleCss, stackedPageCss } from '#universal/styles/style-primitives.ts'
+import {
+	cardCss,
+	getAccentCalloutCss,
+	pageDescriptionCss,
+	pageEyebrowCss,
+	pageHeaderCss,
+	pageTitleCss,
+	stackedPageCss,
+} from '#universal/styles/style-primitives.ts'
 
 const pageCss: CSSObject = {
 	...stackedPageCss,
@@ -432,7 +440,8 @@ export function ConnectSecretsPlacementApproval({
 								onClick={() => {
 									void approve()
 								}}
-								variant="primary" size="md"
+								variant="primary"
+								size="md"
 								data-testid="connect-secrets-placement-approve"
 							>
 								{submitting
@@ -449,7 +458,8 @@ export function ConnectSecretsPlacementApproval({
 									setMessage(null)
 									setCompleted('reject')
 								}}
-								variant="secondary" size="md"
+								variant="secondary"
+								size="md"
 							>
 								Decline
 							</Button>
@@ -457,7 +467,8 @@ export function ConnectSecretsPlacementApproval({
 					) : (
 						<Button
 							href={routes.accountCredentials.href()}
-							variant="secondary" size="md"
+							variant="secondary"
+							size="md"
 						>
 							Back to credentials
 						</Button>

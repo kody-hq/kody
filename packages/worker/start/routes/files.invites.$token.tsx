@@ -44,7 +44,8 @@ function Page() {
 						<SiteLink href={offer.href}>Open file</SiteLink>
 					) : (
 						<Button
-							variant="primary" size="lg"
+							variant="primary"
+							size="lg"
 							disabled={busy}
 							onClick={async () => {
 								setBusy(true)

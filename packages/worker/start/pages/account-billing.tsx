@@ -50,7 +50,13 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { descriptionCss, layoutMaxWidths, mutedLinkCss, primaryLinkCss, visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	layoutMaxWidths,
+	mutedLinkCss,
+	primaryLinkCss,
+	visuallyHiddenCss,
+} from '#universal/styles/style-primitives.ts'
 
 type SubscriptionStatusTone = 'ok' | 'warn' | 'action' | 'muted'
 
@@ -661,7 +667,14 @@ export function AccountBillingPage({
 											)
 										}
 									}}
-									variant={statusInfo?.tone === 'action' ? 'primary' : 'secondary'} css={{ display: 'inline-block', textDecoration: 'none', textAlign: 'center' }}
+									variant={
+										statusInfo?.tone === 'action' ? 'primary' : 'secondary'
+									}
+									css={{
+										display: 'inline-block',
+										textDecoration: 'none',
+										textAlign: 'center',
+									}}
 								>
 									Manage subscription
 								</Button>
