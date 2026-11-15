@@ -12,7 +12,6 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const {
 	assertDraft,
-	assertFeedCoverage,
 	releaseAssetNames,
 	releaseNotes,
 	releasePlan,
@@ -116,7 +115,6 @@ function publishRelease({
 	repo,
 	version,
 	sourceSha,
-	scope,
 	assetsDir,
 	gh = defaultGh,
 	log = (line) => process.stderr.write(`${line}\n`),
@@ -134,10 +132,6 @@ function publishRelease({
 		if (!/HTTP 404/.test(error.output ?? '')) throw error
 	}
 	if (latest) {
-		assertFeedCoverage(
-			scope,
-			latest.assets.map((asset) => asset.name),
-		)
 		const published = latest.tag_name.match(/^v(\d+)\.(\d+)\.(\d+)$/)
 		if (!published) throw new Error('Unexpected published desktop tag.')
 		const next = version.split('.').map(Number)
@@ -147,8 +141,8 @@ function publishRelease({
 		if (!(order > 0))
 			throw new Error('Bump the desktop version above the published release.')
 	}
-	const notes = releaseNotes(sourceSha, scope)
-	const expected = releaseAssetNames(version, scope)
+	const notes = releaseNotes(sourceSha)
+	const expected = releaseAssetNames(version)
 	const findDraft = () =>
 		json(['api', '--paginate', '--slurp', `repos/${repo}/releases`])
 			.flat()
@@ -180,12 +174,7 @@ function publishRelease({
 			release = findDraft()
 		}
 	}
-	assertDraft(
-		{ ...release, isDraft: release.draft },
-		sourceSha,
-		scope,
-		expected,
-	)
+	assertDraft({ ...release, isDraft: release.draft }, sourceSha, expected)
 
 	const local = new Map(
 		readdirSync(assetsDir).map((name) => [name, join(assetsDir, name)]),
@@ -214,14 +203,9 @@ function publishRelease({
 	}
 
 	release = json(['api', `repos/${repo}/releases/${release.id}`])
-	assertDraft(
-		{ ...release, isDraft: release.draft },
-		sourceSha,
-		scope,
-		expected,
-	)
+	assertDraft({ ...release, isDraft: release.draft }, sourceSha, expected)
 	const uploaded = uploadedAssetNames(release)
-	const missing = releasePlan(scope, {})
+	const missing = releasePlan({})
 		.matrix.include.map((target) => ({
 			target,
 			names: targetAssetNames(version, target).filter(
@@ -318,7 +302,6 @@ if (require.main === module) {
 			repo: process.env.GH_REPO,
 			version: process.env.RELEASE_VERSION,
 			sourceSha: process.env.SOURCE_SHA,
-			scope: process.env.RELEASE_PLATFORMS || 'mac-win',
 			assetsDir: process.argv[2] ?? 'release-assets',
 		})
 	} catch (error) {

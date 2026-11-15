@@ -107,6 +107,40 @@ test('Windows downloads the App Installer file that keeps the MSIX updated', () 
 	).toBeNull()
 })
 
+test('Linux downloads the AppImage for its architecture', async () => {
+	const release = {
+		tag_name: 'v0.1.83',
+		assets: [
+			{ name: 'Kody-0.1.83-linux-x86_64.AppImage' },
+			{ name: 'Kody-0.1.83-linux-amd64.deb' },
+			{ name: 'Kody-0.1.83-linux-arm64.AppImage' },
+			{ name: 'Kody-0.1.83-linux-arm64.deb' },
+			{ name: 'latest-x64-linux.yml' },
+		],
+	}
+	expect(
+		pickDesktopInstallerAsset(release, { platform: 'linux', arch: 'arm64' }),
+	).toEqual({
+		version: '0.1.83',
+		assetName: 'Kody-0.1.83-linux-arm64.AppImage',
+	})
+	const handler = createDesktopDownloadHandler({
+		fetchLatestRelease: async () => release,
+	})
+	const response = await handler({
+		request: new Request('https://kody.codes/download', {
+			headers: {
+				'user-agent':
+					'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0',
+			},
+		}),
+	})
+	expect(response.status).toBe(302)
+	expect(response.headers.get('Location')).toBe(
+		'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.83/Kody-0.1.83-linux-x86_64.AppImage',
+	)
+})
+
 test('download handler redirects to the matched installer or the releases page', async () => {
 	const handler = createDesktopDownloadHandler({
 		fetchLatestRelease: async () => macRelease,

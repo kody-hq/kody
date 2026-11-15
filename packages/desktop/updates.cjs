@@ -1,4 +1,4 @@
-const { existsSync } = require('node:fs')
+const { existsSync, readFileSync } = require('node:fs')
 const { join } = require('node:path')
 const { setup, types, createActor } = require('xstate')
 
@@ -56,6 +56,18 @@ const updateCheckState = setup({
 	},
 })
 
+// electron-builder marks .deb installs with resources/package-type. Those
+// update by downloading the new .deb; electron-updater updates AppImages.
+function isDebInstall(resourcesPath = process.resourcesPath) {
+	try {
+		return (
+			readFileSync(join(resourcesPath, 'package-type'), 'utf8').trim() === 'deb'
+		)
+	} catch {
+		return false
+	}
+}
+
 // Updates stay in the main process. Quitting is owned by main.cjs so the
 // execution runner always finishes shutting down before replacing the app.
 function startUpdates({
@@ -69,8 +81,9 @@ function startUpdates({
 	// MSIX installs update through App Installer; electron-updater cannot
 	// replace a package install.
 	isMsix = process.windowsStore === true,
+	isDeb = isDebInstall(),
 }) {
-	if (!app.isPackaged || !hasUpdateFeed || isMsix) return null
+	if (!app.isPackaged || !hasUpdateFeed || isMsix || isDeb) return null
 	const readiness = createActor(updateReadinessState).start()
 	const checking = createActor(updateCheckState).start()
 	updater.autoDownload = true
@@ -135,6 +148,7 @@ async function finishQuit({ runner, updates, app, restart = false }) {
 	if (!restart || !updates?.install()) app.quit()
 }
 module.exports = {
+	isDebInstall,
 	startUpdates,
 	finishQuit,
 	updateReadinessState,

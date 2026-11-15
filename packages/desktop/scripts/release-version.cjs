@@ -1,8 +1,6 @@
 const { appendFileSync, readFileSync, writeFileSync } = require('node:fs')
 const { spawnSync } = require('node:child_process')
 const {
-	assertFeedCoverage,
-	servesLinux,
 	releaseNotes,
 	releaseAssetNames,
 	assertDraft,
@@ -63,7 +61,6 @@ function planVersion({
 	current,
 	latest,
 	sha,
-	platforms,
 	drafts = [],
 	releases = [],
 	isAncestor = isPublishedSourceAncestor,
@@ -86,19 +83,6 @@ function planVersion({
 		)
 			latest = release
 	}
-	const assets = latest?.assets.map((asset) => asset.name) || []
-	// Releases before Windows recorded `mac`; they now continue as mac-win.
-	const recordedPlatforms = latest?.body?.match(
-		/\nPlatforms: (mac|mac-win|all)$/,
-	)?.[1]
-	const scope =
-		platforms ||
-		(recordedPlatforms === 'all' || servesLinux(assets) ? 'all' : 'mac-win')
-	if (scope !== 'all' && recordedPlatforms === 'all')
-		throw new Error(
-			'Choose all platforms to preserve the recorded desktop release scope.',
-		)
-	assertFeedCoverage(scope, assets)
 	let version = current
 	if (latest) {
 		const published = versionFromTag(latest.tag_name)
@@ -107,12 +91,8 @@ function planVersion({
 		)?.[1]
 		if (!source)
 			throw new Error('Published desktop release has no valid source commit')
-		if (latest.body === releaseNotes(sha, scope) || !isAncestor(source, sha))
-			return {
-				version: latest.tag_name.slice(1),
-				platforms: scope,
-				release: false,
-			}
+		if (latest.body === releaseNotes(sha) || !isAncestor(source, sha))
+			return { version: latest.tag_name.slice(1), release: false }
 		version =
 			compareVersions(current, published) > 0 ? current : nextPatch(published)
 	}
@@ -126,8 +106,7 @@ function planVersion({
 			assertDraft(
 				{ ...draft, isDraft: draft.draft },
 				sha,
-				scope,
-				releaseAssetNames(reservedVersion, scope),
+				releaseAssetNames(reservedVersion),
 			)
 			version = reservedVersion
 		} catch {
@@ -135,7 +114,7 @@ function planVersion({
 		}
 	}
 	stableVersion(version)
-	return { version, platforms: scope, release: true }
+	return { version, release: true }
 }
 
 function applyVersion(version) {
@@ -160,7 +139,6 @@ if (require.main === module) {
 					? JSON.parse(readFileSync(process.argv[3], 'utf8')).flat()
 					: [],
 			sha: process.env.SOURCE_SHA,
-			platforms: process.env.RELEASE_PLATFORMS,
 		})
 		appendFileSync(
 			process.env.GITHUB_OUTPUT,

@@ -8,13 +8,7 @@ const targets = [
 	{ platform: 'linux', arch: 'x64', runner: 'ubuntu-24.04' },
 	{ platform: 'linux', arch: 'arm64', runner: 'ubuntu-24.04-arm' },
 ]
-const scopes = ['mac-win', 'all']
-function assertScope(scope) {
-	if (!scopes.includes(scope))
-		throw new Error('Choose mac-win or all release platforms.')
-}
-function releasePlan(scope, env) {
-	assertScope(scope)
+function releasePlan(env) {
 	const provider = env.DESKTOP_WINDOWS_SIGNING_PROVIDER || 'certificate'
 	if (!['certificate', 'azure'].includes(provider))
 		throw new Error('Unsupported Windows signing provider')
@@ -41,11 +35,7 @@ function releasePlan(scope, env) {
 				]),
 	]
 	return {
-		matrix: {
-			include: targets.filter(
-				(target) => scope === 'all' || target.platform !== 'linux',
-			),
-		},
+		matrix: { include: targets },
 		missing: required.filter((name) => !env[name]),
 	}
 }
@@ -69,23 +59,33 @@ function targetAssetNames(version, { platform, arch }) {
 			windowsAppInstallerName(arch),
 			windowsSignerCertificate,
 		]
-	const suffix =
-		platform === 'mac' ? '-mac' : `-linux${arch === 'x64' ? '' : `-${arch}`}`
-	const artifactArch = platform === 'linux' && arch === 'x64' ? 'x86_64' : arch
-	const extensions = platform === 'mac' ? ['dmg', 'zip'] : ['AppImage']
+	if (platform === 'linux')
+		return [
+			`latest-${arch}-linux${arch === 'x64' ? '' : `-${arch}`}.yml`,
+			...checks,
+			...linuxInstallerNames(version, arch),
+		]
 	return [
-		`latest-${arch}${suffix}.yml`,
+		`latest-${arch}-mac.yml`,
 		...checks,
-		...extensions.flatMap((extension) => {
-			const name = `Kody-${version}-${os}-${artifactArch}.${extension}`
+		...['dmg', 'zip'].flatMap((extension) => {
+			const name = `Kody-${version}-mac-${arch}.${extension}`
 			return [name, `${name}.blockmap`]
 		}),
 	]
 }
-function releaseAssetNames(version, scope) {
+// AppImages embed their blockmap and are the electron-updater install. The
+// .deb is listed in the same feed but updates by downloading it again.
+function linuxInstallerNames(version, arch) {
+	return [
+		`Kody-${version}-linux-${arch === 'x64' ? 'x86_64' : arch}.AppImage`,
+		`Kody-${version}-linux-${arch === 'x64' ? 'amd64' : arch}.deb`,
+	]
+}
+function releaseAssetNames(version) {
 	return [
 		...new Set(
-			releasePlan(scope, {}).matrix.include.flatMap((target) =>
+			releasePlan({}).matrix.include.flatMap((target) =>
 				targetAssetNames(version, target),
 			),
 		),
@@ -100,7 +100,7 @@ function uploadedAssetNames(release) {
 }
 // A matching draft already holds every asset of some targets when an earlier
 // attempt failed after they uploaded. Build only the rest.
-function pendingTargets({ include, version, sha, scope, releases = [] }) {
+function pendingTargets({ include, version, sha, releases = [] }) {
 	const draft = releases.find(
 		(release) => release.draft && release.tag_name === `v${version}`,
 	)
@@ -109,8 +109,7 @@ function pendingTargets({ include, version, sha, scope, releases = [] }) {
 		assertDraft(
 			{ ...draft, isDraft: draft.draft },
 			sha,
-			scope,
-			releaseAssetNames(version, scope),
+			releaseAssetNames(version),
 		)
 	} catch {
 		return include
@@ -123,30 +122,16 @@ function pendingTargets({ include, version, sha, scope, releases = [] }) {
 			),
 	)
 }
-function servesLinux(assets) {
-	return assets.some(
-		(name) =>
-			name.startsWith('latest-') &&
-			name.endsWith('.yml') &&
-			name.includes('-linux'),
-	)
+function releaseNotes(sha) {
+	return `Source: https://github.com/kody-hq/kody/commit/${sha}
+Platforms: all`
 }
-function assertFeedCoverage(scope, assets) {
-	assertScope(scope)
-	if (scope === 'mac-win' && servesLinux(assets))
-		throw new Error(
-			'This feed already serves Linux. Choose all platforms to keep its update feeds available.',
-		)
-}
-function releaseNotes(sha, scope) {
-	return `Source: https://github.com/kody-hq/kody/commit/${sha}\nPlatforms: ${scope}`
-}
-function assertDraft(draft, sha, scope, assetNames) {
+function assertDraft(draft, sha, assetNames) {
 	if (!draft.isDraft)
 		throw new Error(
 			'Version already published. Bump the desktop version first.',
 		)
-	if (draft.body !== releaseNotes(sha, scope))
+	if (draft.body !== releaseNotes(sha))
 		throw new Error(
 			'Draft source or platforms differ. Use a new version or remove the stale draft before retrying.',
 		)
@@ -156,29 +141,20 @@ function assertDraft(draft, sha, scope, assetNames) {
 		)
 }
 if (require.main === module) {
-	const scope = process.env.RELEASE_PLATFORMS || 'mac-win'
 	if (process.argv.includes('--check-draft')) {
 		assertDraft(
 			JSON.parse(readFileSync(0, 'utf8')),
 			process.env.SOURCE_SHA,
-			scope,
-			releaseAssetNames(process.env.RELEASE_VERSION, scope),
+			releaseAssetNames(process.env.RELEASE_VERSION),
 		)
 	} else if (process.argv.includes('--notes')) {
-		process.stdout.write(releaseNotes(process.env.SOURCE_SHA, scope))
-	} else if (process.argv.includes('--check-feed')) {
-		const latest = JSON.parse(readFileSync(0, 'utf8'))
-		assertFeedCoverage(
-			scope,
-			latest.assets.map((asset) => asset.name),
-		)
+		process.stdout.write(releaseNotes(process.env.SOURCE_SHA))
 	} else {
-		const plan = releasePlan(scope, process.env)
+		const plan = releasePlan(process.env)
 		const include = pendingTargets({
 			include: plan.matrix.include,
 			version: process.env.RELEASE_VERSION,
 			sha: process.env.SOURCE_SHA,
-			scope,
 			releases: process.env.RELEASES_FILE
 				? JSON.parse(readFileSync(process.env.RELEASES_FILE, 'utf8')).flat()
 				: [],
@@ -202,10 +178,9 @@ if (require.main === module) {
 }
 module.exports = {
 	releasePlan,
-	servesLinux,
+	linuxInstallerNames,
 	windowsAppInstallerName,
 	windowsSignerCertificate,
-	assertFeedCoverage,
 	releaseNotes,
 	assertDraft,
 	targetAssetNames,
