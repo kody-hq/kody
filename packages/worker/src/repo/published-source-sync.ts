@@ -5,7 +5,7 @@ import {
 	buildArtifactsGitAuth,
 	buildAuthenticatedArtifactsRemote,
 	hasArtifactsAccess,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveArtifactSourceRepo,
 } from './artifacts.ts'
 import { writeArtifactSourceSnapshot } from './artifact-source-snapshot.ts'
@@ -410,7 +410,7 @@ export async function syncPublishedSourceSnapshotOnly(
 		repoId: source.repo_id,
 	})
 
-	if (isLoopbackArtifactsRemote(access.remote)) {
+	if (isSnapshotOnlyArtifactsRemote(input.env, access.remote)) {
 		const snapshot = await writeArtifactSourceSnapshot({
 			env: input.env,
 			repoId: source.repo_id,

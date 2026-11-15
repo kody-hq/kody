@@ -5,7 +5,7 @@ import { PromiseLruCache } from '#worker/package-registry/published-package-cach
 import {
 	buildArtifactsGitAuth,
 	buildAuthenticatedArtifactsRemote,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveExistingArtifactSourceRepo,
 } from '#worker/repo/artifacts.ts'
 import { runArtifactsGitWithRetry } from '#worker/repo/artifacts-git-retry.ts'
@@ -106,7 +106,7 @@ async function walkOriginRepoAncestry(input: {
 	if (!repo) return null
 	const info = await repo.info()
 	if (!info?.remote) return null
-	if (isLoopbackArtifactsRemote(info.remote)) return null
+	if (isSnapshotOnlyArtifactsRemote(input.env, info.remote)) return null
 
 	const token = await repo.createToken('read', 300)
 	const remote = buildAuthenticatedArtifactsRemote({

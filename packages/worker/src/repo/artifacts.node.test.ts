@@ -23,6 +23,7 @@ const {
 	getArtifactsBinding,
 	getArtifactsNamespace,
 	isArtifactRepoNotFoundError,
+	isSnapshotOnlyArtifactsRemote,
 	parseArtifactTokenSecret,
 	resolveArtifactDefaultBranchHead,
 	resolveArtifactSourceHead,
@@ -789,6 +790,36 @@ test('artifacts REST client forks a repo without sending file contents', async (
 		name: 'package-dest',
 		token: 'art_v1_fork?expires=1760000000',
 	})
+})
+
+test('isSnapshotOnlyArtifactsRemote only matches remotes on the Cloudflare API stand-in', () => {
+	const env = { CLOUDFLARE_API_BASE_URL: 'http://127.0.0.1:8787/client/v4' }
+	// No git backend: the stand-in hands out remotes on its own origin.
+	expect(
+		isSnapshotOnlyArtifactsRemote(
+			env,
+			'http://127.0.0.1:8787/git/default/package-1.git',
+		),
+	).toBe(true)
+	// MOCK_GIT_BACKEND_URL set: the remote is real git on another loopback port.
+	expect(
+		isSnapshotOnlyArtifactsRemote(
+			env,
+			'http://127.0.0.1:9911/git/default/package-1.git',
+		),
+	).toBe(false)
+	expect(
+		isSnapshotOnlyArtifactsRemote(
+			{},
+			'http://127.0.0.1:8787/git/default/package-1.git',
+		),
+	).toBe(false)
+	expect(
+		isSnapshotOnlyArtifactsRemote(
+			{ CLOUDFLARE_API_BASE_URL: 'https://api.cloudflare.com/client/v4' },
+			'https://acct.artifacts.cloudflare.net/git/default/package-1.git',
+		),
+	).toBe(false)
 })
 
 test('isArtifactRepoNotFoundError matches repo-scoped messages only', () => {

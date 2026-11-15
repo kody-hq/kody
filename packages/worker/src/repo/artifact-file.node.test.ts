@@ -14,9 +14,9 @@ const mocks = vi.hoisted(() => ({
 	walk: vi.fn(),
 	TREE: vi.fn((input?: Parameters<typeof git.TREE>[0]) => input),
 	resolveExistingArtifactSourceRepo: vi.fn(),
-	isLoopbackArtifactsRemote: vi.fn<typeof Artifacts.isLoopbackArtifactsRemote>(
-		() => false,
-	),
+	isSnapshotOnlyArtifactsRemote: vi.fn<
+		typeof Artifacts.isSnapshotOnlyArtifactsRemote
+	>(() => false),
 	readArtifactSourceSnapshot: vi.fn(),
 }))
 
@@ -39,9 +39,9 @@ vi.mock('./artifacts.ts', () => {
 		buildArtifactsGitAuth: () => ({ username: 'x', password: 'token' }),
 		buildAuthenticatedArtifactsRemote: ({ remote }: { remote: string }) =>
 			remote,
-		isLoopbackArtifactsRemote: (
-			...args: Parameters<typeof Artifacts.isLoopbackArtifactsRemote>
-		) => mocks.isLoopbackArtifactsRemote(...args),
+		isSnapshotOnlyArtifactsRemote: (
+			...args: Parameters<typeof Artifacts.isSnapshotOnlyArtifactsRemote>
+		) => mocks.isSnapshotOnlyArtifactsRemote(...args),
 		resolveExistingArtifactSourceRepo: (...args: Array<unknown>) =>
 			mocks.resolveExistingArtifactSourceRepo(...args),
 	}
@@ -201,7 +201,7 @@ test('readArtifactTreeAtCommit walks the fetched commit tree', async () => {
 })
 
 test('readArtifactTreeAtCommit returns null when a loopback snapshot is missing', async () => {
-	mocks.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mocks.isSnapshotOnlyArtifactsRemote.mockReturnValue(true)
 	mockArtifactRepo('http://127.0.0.1/package.git')
 	mocks.readArtifactSourceSnapshot.mockResolvedValueOnce(null)
 	await expect(readTree()).resolves.toBeNull()

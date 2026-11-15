@@ -467,7 +467,8 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   automation). Mock repo remotes are real git: `cli.ts` serves them from bare
   repos under `.wrangler/state/mock-artifacts-git`
   (`tools/mock-artifacts-git-server.ts`), so plain repos (`repoCreate`, push
-  through `repoGetGitRemote`, then `repoOpenSession`) exercise RepoSession
-  locally. Saved packages still use mock source snapshots, so a package repo
-  session needs a preview. Production and preview keep the real binding; use a
-  PR preview only when you need that remote Artifacts namespace.
+  through `repoGetGitRemote`, then `repoOpenSession`) and saved packages
+  (`packageSave`, publish, then `repoOpenSession` with a package target)
+  exercise RepoSession locally. Only MCP E2E, which starts no git server, keeps
+  the mock source-snapshot lane. Production and preview keep the real binding;
+  use a PR preview only when you need that remote Artifacts namespace.

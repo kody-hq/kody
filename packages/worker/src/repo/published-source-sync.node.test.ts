@@ -65,7 +65,8 @@ vi.mock('./artifacts.ts', async (importOriginal) => {
 	return {
 		...actual,
 		hasArtifactsAccess: () => mockModule.hasArtifactsAccess(),
-		isLoopbackArtifactsRemote: (_remote?: string) => mockModule.loopback,
+		isSnapshotOnlyArtifactsRemote: (_env?: unknown, _remote?: string) =>
+			mockModule.loopback,
 		resolveArtifactSourceRepo: (...args: Array<unknown>) =>
 			mockModule.resolveArtifactSourceRepo(...args),
 		buildArtifactsGitAuth: () => ({ username: 'x', password: 'token' }),
