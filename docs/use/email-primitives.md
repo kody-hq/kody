@@ -39,11 +39,13 @@ platform-assigned sender address.
   resolve/dismiss mail) and the operator-owned system inboxes
   (`systemEmailLocals` at the apex: `kody`, `support`, `abuse`, `dmca`,
   `postmaster`, `security`, `admin`, `psl`, `kent`, and `news`) route to Kody's
-  system inbox. `team@<apex>` is an inbound-only alias of `support@` (same
-  inbox; original To kept; not a send-as address). Mail from `kody@<apex>` sets
-  `Reply-To: support@<apex>` unless the caller supplies a different Reply-To, so
-  human replies land at support rather than at the transactional sender. All
-  other apex mail is rejected.
+  system inbox. `kent@` is the exception: a zone Email Routing rule forwards it
+  straight to Kent, and the Worker stores it in the system inbox only as a
+  fallback if that rule is removed. `team@<apex>` is an inbound-only alias of
+  `support@` (same inbox; original To kept; not a send-as address). Mail from
+  `kody@<apex>` sets `Reply-To: support@<apex>` unless the caller supplies a
+  different Reply-To, so human replies land at support rather than at the
+  transactional sender. All other apex mail is rejected.
 - Reserved local parts never route to an org inbox and can never be registered
   as usernames or slugs.
 - Outbound user mail sends from `{username}@<platform domain>` of the acting
@@ -624,7 +626,9 @@ A successful send from a reserved system sender (`adminSystemEmailSend` /
 `sendSystemEmail`, and `adminWhatsNewEmailSend` / `sendNewsletterEmail`) fans
 `email.system-message.sent` to packages saved by users who hold the admin role
 at dispatch time. Raw capability calls and utility wrappers both go through that
-send path, so archive packages see every operator send.
+send path. Dispatch is best-effort after the provider send already succeeded: a
+failed invoke is logged and does not fail the send, so archives can miss a
+message and the inbound system-mail graph does not retain its contents.
 
 Each send also records one `system_email_sends` row per recipient so Cloudflare
 delivery reports match it. A recipient that hard-bounced repeatedly is refused

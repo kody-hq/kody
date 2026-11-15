@@ -7,8 +7,10 @@
  * per package it serves; the local runtime shim keeps those bindings
  * module-private and sends them in place of the id; CapabilityProxy accepts
  * only a binding it signed for the same org and actor. A raw package id is
- * refused. Origin still checks `package:execute` on every use, so a binding is
- * never more than the actor's own access to that package.
+ * refused. Origin verifies the binding signature on every call and checks
+ * `package:execute` on each use. For execution-context runs, a passed check is
+ * reused for a bounded window, so a revoked grant can stay effective until
+ * that window ends. Failed checks are not reused.
  */
 import {
 	base64UrlToBytes,

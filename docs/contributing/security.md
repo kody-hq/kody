@@ -862,9 +862,11 @@ change to these decisions here so future agents do not relitigate them.
   (`enabler_scopes_json`, `enabler_profile_id`), and scheduled, webhook,
   inbound-email, and subscription runs derive their request with them
   (`automation()` in `request-context.ts`). A package app visit ticket carries
-  the visitor credential's scopes and profile the same way. Enablements without
-  `enabler_scopes_json` / `enabler_profile_id` snapshots store none and do not
-  narrow scoped automation runs.
+  the visitor credential's scopes and profile the same way. Each snapshot is
+  stored independently. Only enablements that store neither
+  `enabler_scopes_json` nor `enabler_profile_id` leave scoped automation runs
+  unnarrowed. An enablement with scopes and no profile still narrows its run to
+  those scopes.
 - **Site-admin tools run from automation only for a site admin, and are
   audited.** Background package runs resolve the owner's roles with a short
   cache (`packages/worker/src/identity/background-mcp-user.ts`), so a triggered
