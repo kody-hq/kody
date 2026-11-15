@@ -14,5 +14,9 @@ deb="$PWD/artifacts/desktop/Kody-$version-linux-$deb_arch.deb"
 chmod +x "$appimage"
 xvfb-run -a npm run test:smoke --workspace @kodycodes/desktop -- "$appimage"
 sudo apt-get install -y "$deb"
-test "$(cat /opt/Kody/resources/package-type)" = deb
+# Only release builds have an update feed, which is when electron-builder
+# writes the marker that keeps .deb installs off electron-updater.
+if [ "${KODY_DESKTOP_RELEASE:-}" = 1 ]; then
+  test "$(cat /opt/Kody/resources/package-type)" = deb
+fi
 xvfb-run -a npm run test:smoke --workspace @kodycodes/desktop -- /opt/Kody/kody-desktop
