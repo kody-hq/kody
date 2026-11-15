@@ -57,9 +57,10 @@ export function credentialPlaceholder(credential: CredentialListItem) {
 }
 
 async function listGrants(db: D1Database, credentialId: string) {
-	// Personal-org detail always loads grants (`ownedByViewer`). Soft-fail so a
-	// D1 blip cannot 500 the whole credentials pane (and often never reaches
-	// http-entry Sentry when Start renders InternalErrorPage instead).
+	// Personal-org detail always loads grants (`ownedByViewer`). Soft-fail to
+	// null (unavailable, not "none") so a D1 blip cannot 500 the whole
+	// credentials pane (and often never reaches http-entry Sentry when Start
+	// renders InternalErrorPage instead).
 	try {
 		const result = await db
 			.prepare(
@@ -81,7 +82,7 @@ async function listGrants(db: D1Database, credentialId: string) {
 			tags: { scope: 'credentials.detail.grants' },
 			extra: { credentialId },
 		})
-		return []
+		return null
 	}
 }
 
@@ -330,7 +331,8 @@ export async function loadCredentialDetail(input: {
 	return {
 		id: input.credential.id,
 		placeholder: credentialPlaceholder(input.credential),
-		grants,
+		grants: grants ?? [],
+		grantsUnavailable: grants === null,
 		usage: usage.usage,
 		usageTruncated:
 			!input.credential.packageId && reachable.length > checked.length,
