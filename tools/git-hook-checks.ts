@@ -131,14 +131,26 @@ export function hookScripts(plan: GitHookCheckPlan) {
 	return scripts
 }
 
+export type HookPathListing =
+	| { paths: ReadonlyArray<string>; unlistedReason: null }
+	| { paths: null; unlistedReason: string }
+
 export function listHookPaths(input: {
 	hook: GitHookName
 	git: GitRunner
 	stdin?: string | null
 }): ReadonlyArray<string> | null {
+	return listHookPathListing(input).paths
+}
+
+export function listHookPathListing(input: {
+	hook: GitHookName
+	git: GitRunner
+	stdin?: string | null
+}): HookPathListing {
 	switch (input.hook) {
 		case 'pre-commit':
-			return listDiffPaths(input.git, [
+			return listDiffPathListing(input.git, [
 				'diff',
 				'--cached',
 				'--name-only',
@@ -517,13 +529,17 @@ export async function runGitHookChecks(input: {
 	const now = input.now ?? Date.now
 	const progressIntervalMs =
 		input.progressIntervalMs ?? gitHookProgressIntervalMs
-	const paths = listHookPaths({
+	const listing = listHookPathListing({
 		hook: input.hook,
 		git,
 		stdin: input.stdin,
 	})
+	const paths = listing.paths
 	const plan = planGitHookChecks({ hook: input.hook, paths })
 	log(plan.summary)
+	if (listing.unlistedReason !== null) {
+		log(`${input.hook}: could not list paths: ${listing.unlistedReason}`)
+	}
 
 	let scripts = hookScripts(plan)
 	let relatedPaths: ReadonlyArray<string> | null = null
@@ -572,9 +588,9 @@ export async function runGitHookChecks(input: {
 		) {
 			const listed = listPushedPaths(git, input.stdin ?? null, true)
 			const nonDeleted =
-				listed === null
+				listed.paths === null
 					? null
-					: listed.filter((path) => testPaths.includes(path))
+					: listed.paths.filter((path) => testPaths.includes(path))
 			if (nonDeleted !== null) {
 				relatedPaths = relatedHookTestPaths(nonDeleted)
 				if (
@@ -600,8 +616,8 @@ export async function runGitHookChecks(input: {
 			}
 			if (scripts.includes('test:push')) {
 				log(
-					nonDeleted === null
-						? 'pre-push: full test:push because pushed paths could not be listed'
+					listed.unlistedReason !== null
+						? `pre-push: full test:push because pushed paths could not be listed (${listed.unlistedReason})`
 						: 'pre-push: full test:push because no pushed path is JS/TS source with related tests',
 				)
 			}
@@ -865,9 +881,17 @@ function listPushedPaths(
 	git: GitRunner,
 	stdin: string | null,
 	nonDeleted = false,
-): ReadonlyArray<string> | null {
+): HookPathListing {
 	const updates = parsePrePushUpdates(stdin)
-	if (updates === null) return null
+	if (updates === null) {
+		return {
+			paths: null,
+			unlistedReason:
+				stdin === null
+					? 'git sent no pre-push stdin'
+					: 'pre-push stdin has a line that is not `<local ref> <sha> <remote ref> <sha>`',
+		}
+	}
 
 	const paths = new Set<string>()
 	for (const update of updates) {
@@ -875,8 +899,13 @@ function listPushedPaths(
 		const from = isZeroSha(update.remoteSha)
 			? resolveNewRefBase(git, update.localRef, update.localSha)
 			: update.remoteSha
-		if (from === null) return null
-		const diff = listDiffPaths(git, [
+		if (from === null) {
+			return {
+				paths: null,
+				unlistedReason: `new branch ${update.localRef} has no ${newRefBaseCandidates.join(', ')} ref to diff against`,
+			}
+		}
+		const diff = listDiffPathListing(git, [
 			'diff',
 			'--name-only',
 			'--no-renames',
@@ -885,10 +914,10 @@ function listPushedPaths(
 			from,
 			update.localSha,
 		])
-		if (diff === null) return null
-		for (const path of diff) paths.add(path)
+		if (diff.paths === null) return diff
+		for (const path of diff.paths) paths.add(path)
 	}
-	return [...paths].sort()
+	return { paths: [...paths].sort(), unlistedReason: null }
 }
 
 export function parsePrePushUpdates(
@@ -910,6 +939,12 @@ export function parsePrePushUpdates(
 	return updates
 }
 
+/**
+ * A new branch diffs from its merge-base with mainline. A shallow clone
+ * (Cloud Agent VMs) that later fetched main shares no commit with it, so
+ * `git merge-base` finds nothing; diff against the mainline tip then (#4775).
+ * That can over-list main drift, which only widens the related tests.
+ */
 function resolveNewRefBase(
 	git: GitRunner,
 	localRef: string,
@@ -928,9 +963,8 @@ function resolveNewRefBase(
 		])
 		if (resolved.status !== 0) continue
 		const base = git(['merge-base', candidate, localSha])
-		if (base.status !== 0) continue
-		const sha = base.stdout.trim()
-		if (/^[0-9a-f]{40}$/i.test(sha)) return sha
+		const sha = base.status === 0 ? base.stdout.trim() : ''
+		return /^[0-9a-f]{40}$/i.test(sha) ? sha : candidate
 	}
 	return null
 }
@@ -939,13 +973,27 @@ function listDiffPaths(
 	git: GitRunner,
 	args: ReadonlyArray<string>,
 ): ReadonlyArray<string> | null {
+	return listDiffPathListing(git, args).paths
+}
+
+function listDiffPathListing(
+	git: GitRunner,
+	args: ReadonlyArray<string>,
+): HookPathListing {
 	const result = git(args)
-	if (result.status !== 0) return null
+	if (result.status !== 0) {
+		const detail =
+			result.stderr.trim().split('\n')[0] || `exit ${result.status}`
+		return {
+			paths: null,
+			unlistedReason: `git ${args.join(' ')} failed (${detail})`,
+		}
+	}
 	const paths = result.stdout
 		.split('\0')
 		.map((path) => normalizeHookPath(path))
 		.filter((path) => path.length > 0)
-	return [...new Set(paths)].sort()
+	return { paths: [...new Set(paths)].sort(), unlistedReason: null }
 }
 
 function isZeroSha(sha: string) {
