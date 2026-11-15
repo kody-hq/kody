@@ -42,7 +42,7 @@ const inputSchema = z
 			.record(z.string(), z.string())
 			.optional()
 			.describe(
-				'Optional extra MIME headers. Use for campaign previews that need List-Unsubscribe.',
+				'Optional extra MIME headers, for example List-Unsubscribe on campaign previews. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected.',
 			),
 	})
 	.refine((value) => value.text || value.html, {
