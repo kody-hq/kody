@@ -129,7 +129,9 @@ non-library caller to find which of our modules imported it.
    path from `repo/` inlines the module). Same pattern as oauth-provider and
    local-execute-runtime-support. postal-mime (`postal-mime-load.ts`) and
    codemode's acorn-backed `normalizeCode` (`codemode-normalize-load.ts`) use
-   the same lane. `patches/acorn+8.17.0.patch` marks acorn side-effect free so
+   the same lane, and so does `@babel/parser`: `module-source.ts` loads
+   `module-source-parser.mjs` through `loadModuleSourceParser()`, and callers
+   await the parse helpers or pass the loaded parser down. `patches/acorn+8.17.0.patch` marks acorn side-effect free so
    esbuild drops it once `normalizeCode` is off the graph; refresh that patch
    when codemode bumps acorn.
 8. **Type deferred packages with `typeof import(...)` queries.** With
