@@ -166,6 +166,28 @@ export async function sendNewsletterEmail(
 	)
 }
 
+/**
+ * Double opt-in confirmation for a public newsletter sign-up. It shares the
+ * newsletter sender and quota so abuse of the public form cannot spend
+ * transactional reputation, but records its own kind so it never appears in
+ * newsletter delivery listings.
+ */
+export async function sendNewsletterConfirmationEmail(
+	input: Omit<SystemEmailInput, 'localPart' | 'replyTo' | 'kind' | 'to'> & {
+		to: string
+	},
+): Promise<SystemOutboundResult> {
+	if (typeof input.to !== 'string' || !normalizeAddrSpec(input.to)) {
+		throw new McpCallerError(
+			'One newsletter recipient email address is required.',
+		)
+	}
+	return sendReservedEmail(
+		{ ...input, localPart: 'news', kind: 'whats_new_confirm' },
+		true,
+	)
+}
+
 async function sendReservedEmail(
 	input: SystemEmailInput,
 	newsletter: boolean,
