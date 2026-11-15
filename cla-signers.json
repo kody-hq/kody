@@ -39,6 +39,11 @@
 			"github": "hypercubed-machine",
 			"signedAt": "2026-10-28",
 			"cla": "individual"
+		},
+		{
+			"github": "DanielJomphe",
+			"signedAt": "2026-11-14",
+			"cla": "individual"
 		}
 	]
 }
