@@ -805,7 +805,9 @@ export default async function run() {
 		},
 		{ includeDefaultRuntimePath: false },
 	)
-	expect(refreshed[`${prefix}/bundle.js`]!.length).toBeGreaterThan(4_000_000)
+	expect(String(refreshed[`${prefix}/bundle.js`]).length).toBeGreaterThan(
+		4_000_000,
+	)
 	expect(refreshed[primary]).toContain('__kodyCreateRuntimeObjectProxy')
 	expect(refreshed[exported]).toContain('export * from')
 	expect(refreshed[dynamic]).toContain('export * from')
