@@ -5,9 +5,28 @@ import {
 	isInboundDeliveryEffectsQueueBody,
 	parseInboundDeliveryEffectsQueueMessage,
 } from '#worker/email/inbound-effects-queue.ts'
-import { parsePackageEventsDispatchQueueMessage } from './dispatch-queue-producer.ts'
+import {
+	claimPackageEventSlot,
+	releasePackageEventSlot,
+} from '#worker/run-records/service.ts'
+import { ownerCapDeferralDelaySeconds } from '#worker/owner-cap-deferral.ts'
+import {
+	parsePackageEventsDispatchQueueMessage,
+	type PackageEventsDispatchQueueMessage,
+} from './dispatch-queue-producer.ts'
 
 const packageEventsDispatchRetryDelaySeconds = 30
+/** Matches this consumer's `max_retries` in wrangler.jsonc. */
+const packageEventsDispatchMaxRetries = 3
+
+/**
+ * How many of one owner's package events are delivered at once. The consumer
+ * runs 16 at a time for everyone, so without this one owner's burst holds
+ * every slot. Matches `webhookAckOwnerStartedLimit`.
+ */
+export const packageEventsOwnerInFlightLimit = 4
+/** A queue consumer invocation ends within 15 minutes; a killed one frees its slot by then. */
+const packageEventSlotTtlMs = 15 * 60 * 1000
 
 export async function handlePackageEventsDispatchQueue(
 	batch: MessageBatch<unknown>,
@@ -96,6 +115,25 @@ async function handlePackageEventsQueueMessages(
 			queueMessage.ack()
 			continue
 		}
+		if (
+			failedAttempts(queueMessage, message) > packageEventsDispatchMaxRetries
+		) {
+			// Out of retries, counting those before it was put back. Only the
+			// Queue can dead-letter, so retry without delivering until it does.
+			queueMessage.retry()
+			continue
+		}
+		const { claimed } = await claimPackageEventSlot({
+			env,
+			userId: message.userId,
+			id: queueMessage.id,
+			limit: packageEventsOwnerInFlightLimit,
+			expiresAt: new Date(Date.now() + packageEventSlotTtlMs).toISOString(),
+		})
+		if (!claimed) {
+			await deferPackageEvent(queueMessage, message, env)
+			continue
+		}
 		try {
 			const result = await deliverPackageEvent({
 				env,
@@ -127,6 +165,55 @@ async function handlePackageEventsQueueMessages(
 			queueMessage.retry({
 				delaySeconds: packageEventsDispatchRetryDelaySeconds,
 			})
+		} finally {
+			await releasePackageEventSlot({
+				env,
+				userId: message.userId,
+				id: queueMessage.id,
+			})
 		}
 	}
+}
+
+/**
+ * Put an event back because its owner is at the cap. It is re-sent, because
+ * retry() counts toward max_retries and a long wait behind the owner's own
+ * backlog would dead-letter a healthy event. The re-sent message starts the
+ * Queue's attempt count over, so it carries the failures so far.
+ */
+async function deferPackageEvent(
+	queueMessage: Message<unknown>,
+	message: PackageEventsDispatchQueueMessage,
+	env: Env,
+) {
+	const deferrals = message.deferrals ?? 0
+	const priorAttempts = failedAttempts(queueMessage, message)
+	try {
+		await env.PACKAGE_EVENTS_DISPATCH_QUEUE.send(
+			{
+				...message,
+				deferrals: deferrals + 1,
+				...(priorAttempts > 0 ? { priorAttempts } : {}),
+			} satisfies PackageEventsDispatchQueueMessage,
+			{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
+		)
+		queueMessage.ack()
+	} catch (error) {
+		console.error('package-events-dispatch-deferral-send-failed', {
+			queueMessageId: queueMessage.id,
+			topic: message.topic,
+			error,
+		})
+		queueMessage.retry({
+			delaySeconds: packageEventsDispatchRetryDelaySeconds,
+		})
+	}
+}
+
+/** Deliveries of this event that failed, across every time it was put back. */
+function failedAttempts(
+	queueMessage: Message<unknown>,
+	message: PackageEventsDispatchQueueMessage,
+) {
+	return (message.priorAttempts ?? 0) + queueMessage.attempts - 1
 }

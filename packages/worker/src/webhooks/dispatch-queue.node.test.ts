@@ -3,10 +3,10 @@ import {
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { ownerCapDeferralDelaySeconds } from '#worker/owner-cap-deferral.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	handleWebhookDispatchQueue,
-	webhookDispatchDeferralDelaySeconds,
 	processWebhookDispatch,
 	webhookDispatchMaxRetries,
 } from './dispatch-queue.ts'
@@ -720,7 +720,7 @@ test('a deferral that cannot be re-sent retries the original message so the deli
 
 test('deferral delay doubles per deferral and stops at five minutes', () => {
 	const longest = (deferrals: number) =>
-		webhookDispatchDeferralDelaySeconds(deferrals, () => 1)
+		ownerCapDeferralDelaySeconds(deferrals, () => 1)
 	expect([0, 1, 2, 6, 50].map(longest)).toEqual([5, 10, 20, 300, 300])
-	expect(webhookDispatchDeferralDelaySeconds(6, () => 0)).toBe(150)
+	expect(ownerCapDeferralDelaySeconds(6, () => 0)).toBe(150)
 })

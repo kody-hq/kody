@@ -13,6 +13,17 @@ const mocks = vi.hoisted(() => ({
 		>(),
 	processInboundDeliveryEffects:
 		vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
+	claimPackageEventSlot: vi.fn<
+		(input: { id: string }) => Promise<{ claimed: boolean; inFlight: number }>
+	>(async () => ({ claimed: true, inFlight: 0 })),
+	releasePackageEventSlot: vi.fn<(input: { id: string }) => Promise<void>>(
+		async () => {},
+	),
+}))
+
+vi.mock('#worker/run-records/service.ts', () => ({
+	claimPackageEventSlot: mocks.claimPackageEventSlot,
+	releasePackageEventSlot: mocks.releasePackageEventSlot,
 }))
 
 vi.mock('#worker/email/inbound-effects.ts', () => ({
@@ -41,12 +52,12 @@ function createMessageBody(overrides: Record<string, unknown> = {}) {
 	}
 }
 
-function createQueueMessage(id: string, body: unknown) {
+function createQueueMessage(id: string, body: unknown, attempts = 1) {
 	return {
 		id,
 		timestamp: new Date('2026-08-04T00:01:00.000Z'),
 		body,
-		attempts: 1,
+		attempts,
 		ack: vi.fn<() => void>(),
 		retry: vi.fn<(options?: { delaySeconds?: number }) => void>(),
 	}
@@ -231,4 +242,91 @@ test('inbound delivery effects run concurrently in the consumer and retry infras
 		'inbound-delivery-effects-message-invalid',
 		expect.objectContaining({ queueMessageId: 'queue-inbound-invalid' }),
 	)
+})
+
+test('an event whose owner is at the cap is put back with a delay instead of delivered or retried', async () => {
+	mocks.deliverPackageEvent.mockClear()
+	mocks.releasePackageEventSlot.mockClear()
+	mocks.deliverPackageEvent.mockResolvedValue({
+		delivered: 1,
+		failed: 0,
+		subscribers: [],
+	})
+	mocks.claimPackageEventSlot
+		.mockResolvedValueOnce({ claimed: false, inFlight: 4 })
+		.mockResolvedValueOnce({ claimed: true, inFlight: 0 })
+	const send =
+		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	const capped = createQueueMessage(
+		'queue-capped',
+		createMessageBody({ deferrals: 2 }),
+	)
+	const other = createQueueMessage(
+		'queue-other-owner',
+		createMessageBody({ userId: ownerIdFromStored('user-456') }),
+	)
+
+	await handlePackageEventsDispatchQueue(
+		createBatch([capped, other]),
+		{ APP_DB: {}, PACKAGE_EVENTS_DISPATCH_QUEUE: { send } } as unknown as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+
+	expect(send).toHaveBeenCalledTimes(1)
+	expect(send.mock.calls[0]?.[0]).toEqual(createMessageBody({ deferrals: 3 }))
+	const delaySeconds = send.mock.calls[0]?.[1]?.delaySeconds ?? 0
+	expect(delaySeconds).toBeGreaterThanOrEqual(10)
+	expect(delaySeconds).toBeLessThanOrEqual(20)
+	expect(capped.ack).toHaveBeenCalledTimes(1)
+	expect(capped.retry).not.toHaveBeenCalled()
+	expect(mocks.deliverPackageEvent).toHaveBeenCalledTimes(1)
+	expect(mocks.releasePackageEventSlot).toHaveBeenCalledTimes(1)
+	expect(mocks.releasePackageEventSlot).toHaveBeenCalledWith(
+		expect.objectContaining({ id: 'queue-other-owner' }),
+	)
+	expect(other.ack).toHaveBeenCalledTimes(1)
+})
+
+test('a capped event that already failed keeps its failure count when it is put back, and dead-letters once that count is spent', async () => {
+	mocks.deliverPackageEvent.mockClear()
+	mocks.claimPackageEventSlot.mockClear()
+	mocks.claimPackageEventSlot.mockResolvedValueOnce({
+		claimed: false,
+		inFlight: 4,
+	})
+	const send =
+		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	// Two failures before an earlier put-back, one more since.
+	const failedBefore = createQueueMessage(
+		'queue-failed-before',
+		createMessageBody({ deferrals: 1, priorAttempts: 2 }),
+		2,
+	)
+	// Four failures in total: one more than the consumer's three retries.
+	const spent = createQueueMessage(
+		'queue-spent',
+		createMessageBody({ deferrals: 1, priorAttempts: 3 }),
+		2,
+	)
+
+	await handlePackageEventsDispatchQueue(
+		createBatch([failedBefore, spent]),
+		{ APP_DB: {}, PACKAGE_EVENTS_DISPATCH_QUEUE: { send } } as unknown as Env,
+		{
+			waitUntil: vi.fn<(promise: Promise<unknown>) => void>(),
+		} as unknown as ExecutionContext,
+	)
+
+	expect(send).toHaveBeenCalledTimes(1)
+	expect(send.mock.calls[0]?.[0]).toEqual(
+		createMessageBody({ deferrals: 2, priorAttempts: 3 }),
+	)
+	expect(failedBefore.ack).toHaveBeenCalledTimes(1)
+	expect(failedBefore.retry).not.toHaveBeenCalled()
+	expect(spent.retry).toHaveBeenCalledWith()
+	expect(spent.ack).not.toHaveBeenCalled()
+	expect(mocks.claimPackageEventSlot).toHaveBeenCalledTimes(1)
+	expect(mocks.deliverPackageEvent).not.toHaveBeenCalled()
 })

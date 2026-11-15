@@ -20,6 +20,7 @@ import {
 	deleteWebhookDispatchPayload,
 	hydrateWebhookDispatchQueueMessage,
 } from './dispatch-payload-store.ts'
+import { ownerCapDeferralDelaySeconds } from '#worker/owner-cap-deferral.ts'
 import { webhookDispatchQueueName } from './dispatch-queue-names.ts'
 import {
 	parseWebhookDispatchQueueMessage,
@@ -34,25 +35,6 @@ import { stripUntrustedWebhookSyntheticFields } from './synthetic.ts'
 const webhookDispatchRetryDelaySeconds = 30
 /** Matches `kody-webhook-dispatch` consumer `max_retries` in wrangler.jsonc. */
 export const webhookDispatchMaxRetries = 10
-
-const webhookDispatchDeferralBaseSeconds = 5
-const webhookDispatchDeferralMaxSeconds = 300
-
-/**
- * How long a delivery waits before the consumer looks at it again after its
- * owner was at the started limit. Doubles per deferral, with jitter so one
- * owner's backlog does not come back all at once.
- */
-export function webhookDispatchDeferralDelaySeconds(
-	deferrals: number,
-	random: () => number = Math.random,
-) {
-	const base = Math.min(
-		webhookDispatchDeferralMaxSeconds,
-		webhookDispatchDeferralBaseSeconds * 2 ** Math.min(deferrals, 10),
-	)
-	return Math.ceil(base / 2 + random() * (base / 2))
-}
 
 function resolveWebhookDispatchInvocation(
 	message: WebhookDispatchQueueMessage,
@@ -273,7 +255,7 @@ export async function handleWebhookDispatchQueue(
 						deferrals: deferrals + 1,
 						priorAttempts: attempts - 1,
 					} satisfies WebhookDispatchQueueMessage,
-					{ delaySeconds: webhookDispatchDeferralDelaySeconds(deferrals) },
+					{ delaySeconds: ownerCapDeferralDelaySeconds(deferrals) },
 				)
 			} catch (error) {
 				console.error('webhook-dispatch-deferral-send-failed', {
