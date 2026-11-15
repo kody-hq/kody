@@ -46,13 +46,24 @@ export async function advanceServingCommit(input: {
 }): Promise<boolean> {
 	const decision = await decideServingAdvance(input)
 	if (decision?.hold) {
-		await holdEntitySourceCommit(input.env.APP_DB, {
+		const held = await holdEntitySourceCommit(input.env.APP_DB, {
 			id: input.sourceId,
 			userId: input.userId,
 			commit: input.commit,
 		})
-		return false
+		if (held) return false
+		// An approval or visibility change landed while deciding: decide again.
+		const again = await decideServingAdvance(input)
+		if (again?.hold) return false
+		return await advanceToServing(input, again)
 	}
+	return await advanceToServing(input, decision)
+}
+
+async function advanceToServing(
+	input: { env: Env; sourceId: string; userId: OwnerId; commit: string },
+	decision: Exclude<ServingAdvanceDecision, { hold: true }> | null,
+): Promise<boolean> {
 	const advanced = await advanceEntitySourceServingCommit(
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },

@@ -347,20 +347,33 @@ export async function holdEntitySourceCommit(
 	db: D1Database,
 	input: { id: string; userId: OwnerId; commit: string },
 ): Promise<boolean> {
+	// The guard re-checks what the hold decision read, so an approval or a
+	// visibility change that lands while the decision runs is never lost.
 	const result = await runD1WithRetry(() =>
 		db
 			.prepare(
 				`UPDATE entity_sources
 				SET held_commit = ?, updated_at = ?
-				WHERE id = ? AND user_id = ? AND published_commit = ?
-					AND (held_commit IS NULL OR held_commit != ?)${andLiveDeletedAtSql()}`,
+				WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}
+					AND EXISTS (
+						SELECT 1 FROM saved_packages AS package
+						WHERE package.source_id = entity_sources.id
+							AND package.is_internet_visible = 1${andLiveDeletedAtSql('package')}
+					)
+					AND NOT EXISTS (
+						SELECT 1 FROM saved_packages AS package
+						JOIN package_capability_approvals AS approval
+							ON approval.package_id = package.id
+							AND approval.owner_user_id = entity_sources.user_id
+						WHERE package.source_id = entity_sources.id
+							AND approval.published_commit = entity_sources.published_commit
+					)`,
 			)
 			.bind(
 				input.commit,
 				new Date().toISOString(),
 				input.id,
 				input.userId,
-				input.commit,
 				input.commit,
 			)
 			.run(),

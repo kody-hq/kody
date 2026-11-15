@@ -22,6 +22,7 @@ import {
 
 const compute = vi.hoisted(() => ({
 	entriesByCommit: new Map<string, Array<unknown>>(),
+	onCompute: undefined as undefined | ((commit: string) => Promise<void>),
 }))
 
 vi.mock('./compute-package-capability-set.ts', () => ({
@@ -31,6 +32,7 @@ vi.mock('./compute-package-capability-set.ts', () => ({
 		sourceId: string
 		publishedCommit: string
 	}) => {
+		await compute.onCompute?.(input.publishedCommit)
 		const entries = compute.entriesByCommit.get(input.publishedCommit)
 		if (!entries)
 			throw new Error(`no capability set for ${input.publishedCommit}`)
@@ -79,6 +81,7 @@ const mailCredential: CapabilitySetEntry = {
 
 beforeEach(() => {
 	compute.entriesByCommit.clear()
+	compute.onCompute = undefined
 	approvedCommitCache.delete(packageId)
 	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -272,6 +275,29 @@ test('a wider republish holds everyone on the approved version until it is appro
 	// Approving releases everyone to commit-b at once.
 	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
 	await site.approveLive()
+	await site.expectEveryoneOn('commit-b')
+	expect(site.heldCommit()).toBeNull()
+})
+
+test('an approval that lands while a wider build is being checked still releases it', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	let approving = false
+	compute.onCompute = async () => {
+		if (approving) return
+		approving = true
+		await site.approveLive()
+	}
+
+	await expect(
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit: 'commit-b',
+		}),
+	).resolves.toBe(true)
 	await site.expectEveryoneOn('commit-b')
 	expect(site.heldCommit()).toBeNull()
 })
