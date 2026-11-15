@@ -288,7 +288,7 @@ test('sendCloudflareEmail defaults Reply-To to support@ when From is kody@ unles
 	])
 })
 
-test('sendCloudflareEmail retries one retryable transport failure', async () => {
+test('sendCloudflareEmail preserves one retry for transactional transport failures by default', async () => {
 	consoleWarn.mockImplementation(() => {})
 	const lost = () =>
 		Object.assign(new Error('Network connection lost.'), { retryable: true })
@@ -318,3 +318,29 @@ test('sendCloudflareEmail retries one retryable transport failure', async () => 
 		fetchSpy.mockRestore()
 	}
 })
+
+test.each([true, false])(
+	'sendCloudflareEmail disables transport retries when requested (retryable=%s)',
+	async (retryable) => {
+		consoleWarn.mockImplementation(() => {})
+		const lost = Object.assign(new Error('Network connection lost.'), {
+			retryable,
+		})
+		const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(lost)
+		try {
+			expect(
+				await sendCloudflareEmail(
+					{ ...testApiConfig, retryTransportErrors: false },
+					message('Newsletter', { from: 'news@kody.dev' }),
+				),
+			).toEqual({ ok: false, error: 'Network connection lost.' })
+			expect(fetchSpy).toHaveBeenCalledTimes(1)
+			expect(consoleWarn).toHaveBeenCalledExactlyOnceWith(
+				'cloudflare-email-api-request-failed',
+				lost,
+			)
+		} finally {
+			fetchSpy.mockRestore()
+		}
+	},
+)
