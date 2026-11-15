@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
@@ -161,8 +162,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 						you appear.
 					</p>
 				</div>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Display name</span>
+				<Field label="Display name">
 					<Input
 						type="text"
 						name="displayName"
@@ -175,9 +175,8 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							)
 						}}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Bio</span>
+				</Field>
+				<Field label="Bio">
 					<Textarea
 						name="bio"
 						maxLength={500}
@@ -189,7 +188,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							)
 						}}
 					/>
-				</label>
+				</Field>
 				<fieldset css={{ margin: 0, padding: 0, border: 'none' }}>
 					<legend css={fieldLabelCss}>Profile visibility</legend>
 					<label
@@ -285,8 +284,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 							account and cannot open a second account unless you release it
 							from Former addresses.
 						</p>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>New email</span>
+						<Field label="New email">
 							<Input
 								type="email"
 								name="email"
@@ -297,7 +295,7 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 								value={draftEmail}
 								onInput={onDraftEmailInput}
 							/>
-						</label>
+						</Field>
 						<div css={fieldCss}>
 							<label
 								htmlFor="account-email-change-password"

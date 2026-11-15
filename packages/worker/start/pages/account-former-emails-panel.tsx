@@ -1,9 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
@@ -118,8 +115,7 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 					We send a confirmation link to the former address. Releasing it does
 					not change this account&apos;s identity.
 				</p>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Former email</span>
+				<Field label="Former email">
 					<Input
 						type="email"
 						name="former_email"
@@ -130,9 +126,8 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 						value={releaseEmail}
 						onInput={onReleaseEmailInput}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Current password</span>
+				</Field>
+				<Field label="Current password">
 					<Input
 						type="password"
 						name="password"
@@ -141,7 +136,7 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 						value={releasePassword}
 						onInput={onReleasePasswordInput}
 					/>
-				</label>
+				</Field>
 				<div>
 					<Button
 						type="submit"

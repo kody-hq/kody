@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { publicAsset } from '../public-assets.ts'
@@ -337,8 +338,7 @@ export function AdminProviderMarksRoute({
 				<h2 css={{ margin: 0, fontSize: typography.fontSize.lg }}>
 					{editingMark ? `Edit ${editingMark.slug}` : 'New provider mark'}
 				</h2>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Slug</span>
+				<Field label="Slug">
 					<Input
 						name="slug"
 						required
@@ -346,16 +346,15 @@ export function AdminProviderMarksRoute({
 						defaultValue={editingMark?.slug ?? ''}
 						placeholder="google"
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Label</span>
+				</Field>
+				<Field label="Label">
 					<Input
 						name="label"
 						disabled={isMutating}
 						defaultValue={editingMark?.label ?? ''}
 						placeholder="Google"
 					/>
-				</label>
+				</Field>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>
 						Aliases (provider keys and authorize hosts)

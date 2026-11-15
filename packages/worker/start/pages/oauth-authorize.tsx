@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
@@ -1021,8 +1022,7 @@ export function OAuthAuthorizeRoute({
 									, then you'll come right back here to finish connecting.
 								</p>
 							) : null}
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Email</span>
+							<Field label="Email">
 								<Input
 									type="email"
 									name="email"
@@ -1031,7 +1031,7 @@ export function OAuthAuthorizeRoute({
 									placeholder="you@example.com"
 									disabled={actionsDisabled}
 								/>
-							</label>
+							</Field>
 							<div css={fieldCss}>
 								<label htmlFor="oauth-authorize-password" css={fieldLabelCss}>
 									Password

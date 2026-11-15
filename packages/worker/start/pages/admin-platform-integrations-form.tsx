@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import {
@@ -142,13 +143,16 @@ export function IntegrationForm(input: {
 						},
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>
-							Slug
-							{isEditing
-								? ' (changing it renames in place — secret, logo, and connections carry over)'
-								: ''}
-						</span>
+					<Field
+						label={
+							<>
+								Slug
+								{isEditing
+									? ' (changing it renames in place — secret, logo, and connections carry over)'
+									: ''}
+							</>
+						}
+					>
 						<Input
 							name="slug"
 							type="text"
@@ -156,38 +160,32 @@ export function IntegrationForm(input: {
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.slug ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Provider</span>
+					</Field>
+					<Field label="Provider">
 						<Input
 							name="provider"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.provider ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Label</span>
+					</Field>
+					<Field label="Label">
 						<Input
 							name="label"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.label ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>
-							Description (shown to users before they connect)
-						</span>
+					</Field>
+					<Field label="Description (shown to users before they connect)">
 						<Textarea
 							name="description"
 							rows={3}
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.description ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Client id</span>
+					</Field>
+					<Field label="Client id">
 						<Input
 							name="clientId"
 							type="text"
@@ -195,9 +193,8 @@ export function IntegrationForm(input: {
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.clientId ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Client secret</span>
+					</Field>
+					<Field label="Client secret">
 						<Input
 							name="clientSecret"
 							type="password"
@@ -205,9 +202,8 @@ export function IntegrationForm(input: {
 							placeholder="unchanged when empty"
 							disabled={actionState !== 'idle'}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Flow</span>
+					</Field>
+					<Field label="Flow">
 						<Select
 							name="flow"
 							defaultValue={editingApp?.flow ?? 'pkce'}
@@ -218,9 +214,8 @@ export function IntegrationForm(input: {
 							<option value="confidential">confidential</option>
 							<option value="device">device</option>
 						</Select>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Token exchange style</span>
+					</Field>
+					<Field label="Token exchange style">
 						<Select
 							name="tokenExchangeStyle"
 							defaultValue={formatTokenExchangeStyle(
@@ -236,18 +231,16 @@ export function IntegrationForm(input: {
 								),
 							)}
 						</Select>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Scope separator</span>
+					</Field>
+					<Field label="Scope separator">
 						<Input
 							name="scopeSeparator"
 							type="text"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.scopeSeparator ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Token URL</span>
+					</Field>
+					<Field label="Token URL">
 						<Input
 							name="tokenUrl"
 							type="url"
@@ -255,14 +248,17 @@ export function IntegrationForm(input: {
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.tokenUrl ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>
-							Authorize URL
-							{(editingApp?.flow ?? 'pkce') === 'device'
-								? ' (optional for device flow)'
-								: ''}
-						</span>
+					</Field>
+					<Field
+						label={
+							<>
+								Authorize URL
+								{(editingApp?.flow ?? 'pkce') === 'device'
+									? ' (optional for device flow)'
+									: ''}
+							</>
+						}
+					>
 						<Input
 							name="authorizeUrl"
 							type="url"
@@ -270,9 +266,8 @@ export function IntegrationForm(input: {
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.authorizeUrl ?? ''}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Device authorization URL</span>
+					</Field>
+					<Field label="Device authorization URL">
 						<Input
 							name="deviceAuthorizationUrl"
 							type="url"
@@ -281,19 +276,17 @@ export function IntegrationForm(input: {
 							defaultValue={editingApp?.deviceAuthorizationUrl ?? ''}
 							placeholder="Required when flow is device"
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>API base URL</span>
+					</Field>
+					<Field label="API base URL">
 						<Input
 							name="apiBaseUrl"
 							type="url"
 							disabled={actionState !== 'idle'}
 							defaultValue={editingApp?.apiBaseUrl ?? ''}
 						/>
-					</label>
+					</Field>
 				</div>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Allowed scopes</span>
+				<Field label="Allowed scopes">
 					<Input
 						name="allowedScopes"
 						type="text"
@@ -301,9 +294,8 @@ export function IntegrationForm(input: {
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.allowedScopes ?? [])}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Default scopes</span>
+				</Field>
+				<Field label="Default scopes">
 					<Input
 						name="defaultScopes"
 						type="text"
@@ -311,9 +303,8 @@ export function IntegrationForm(input: {
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.defaultScopes ?? [])}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Required hosts</span>
+				</Field>
+				<Field label="Required hosts">
 					<Input
 						name="requiredHosts"
 						type="text"
@@ -321,9 +312,8 @@ export function IntegrationForm(input: {
 						placeholder="Comma or whitespace separated"
 						defaultValue={joinList(editingApp?.requiredHosts ?? [])}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Extra authorize params</span>
+				</Field>
+				<Field label="Extra authorize params">
 					<Textarea
 						name="extraAuthorizeParams"
 						disabled={actionState !== 'idle'}
@@ -332,7 +322,7 @@ export function IntegrationForm(input: {
 							editingApp?.extraAuthorizeParams ?? {},
 						)}
 					/>
-				</label>
+				</Field>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Logo</span>
 					<input

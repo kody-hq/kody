@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import { Field } from './field.tsx'
 import {
 	defaultFeatureFlagAudience,
 	type FeatureFlagAudience,
@@ -11,12 +11,11 @@ export function renderAdminFeatureFlagAudienceField(input: {
 }) {
 	const audience = input.audience ?? defaultFeatureFlagAudience
 	return (
-		<label css={fieldCss}>
-			<span css={fieldLabelCss}>Audience</span>
+		<Field label="Audience">
 			<Select name="audience" disabled={input.disabled} defaultValue={audience}>
 				<option value="everyone">Everyone</option>
 				<option value="experiments_opt_in">Experiments opt-in</option>
 			</Select>
-		</label>
+		</Field>
 	)
 }

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
 	oauthAuthorizeOrgField,
 	type OAuthAuthorizeConsentOrg,
@@ -46,8 +47,7 @@ export function AuthorizeOrgField(props: {
 					value={field.slug}
 					data-testid="oauth-authorize-org"
 				/>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Organization</span>
+				<Field label="Organization">
 					<Select
 						value={field.slug}
 						disabled
@@ -56,7 +56,7 @@ export function AuthorizeOrgField(props: {
 					>
 						<option value={field.slug}>{label}</option>
 					</Select>
-				</label>
+				</Field>
 				<p
 					css={{
 						...descriptionCss,

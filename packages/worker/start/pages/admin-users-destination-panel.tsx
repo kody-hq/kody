@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useState, useRef, type FormEvent } from 'react'
@@ -6,7 +7,6 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { adminDestinationMutationOptions } from '../admin-user-controls-query.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { mq, spacing } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -82,8 +82,7 @@ export function AdminUserDestinationPanel({
 					[mq.mobile]: { gridTemplateColumns: '1fr' },
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Destination email</span>
+				<Field label="Destination email">
 					<Input
 						type="email"
 						autoComplete="off"
@@ -93,7 +92,7 @@ export function AdminUserDestinationPanel({
 						placeholder="extra@example.com"
 						onChange={(event) => setEmail(event.currentTarget.value)}
 					/>
-				</label>
+				</Field>
 				<Button
 					type="submit"
 					disabled={mutation.isPending || !email.trim()}

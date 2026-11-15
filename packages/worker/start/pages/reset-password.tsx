@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, type FormEvent } from 'react'
@@ -19,8 +20,6 @@ import {
 } from '#start/server/auth-mutations'
 import {
 	cardCss,
-	fieldCss,
-	fieldLabelCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
@@ -188,8 +187,7 @@ export function ResetPasswordRoute() {
 			>
 				<Honeypot />
 				{mode === 'confirm' ? (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>New password</span>
+					<Field label="New password">
 						<Input
 							type="password"
 							name="password"
@@ -198,10 +196,9 @@ export function ResetPasswordRoute() {
 							placeholder="At least 8 characters"
 							disabled={!hydrated || isSubmitting}
 						/>
-					</label>
+					</Field>
 				) : (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Email</span>
+					<Field label="Email">
 						<Input
 							type="email"
 							name="email"
@@ -210,7 +207,7 @@ export function ResetPasswordRoute() {
 							placeholder="you@example.com"
 							disabled={!hydrated || isSubmitting}
 						/>
-					</label>
+					</Field>
 				)}
 				{turnstileSiteKey ? (
 					<div className={turnstileWidgetClassName}></div>

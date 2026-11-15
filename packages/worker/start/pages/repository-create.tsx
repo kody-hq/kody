@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
 	fieldCss,
 	fieldLabelCss,
@@ -168,8 +169,7 @@ function RepositoryCreateForm(props: {
 						{formError}
 					</AccountManagementMessage>
 				) : null}
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Owner</span>
+				<Field label="Owner">
 					<Select
 						name="owner"
 						value={owner}
@@ -186,7 +186,7 @@ function RepositoryCreateForm(props: {
 							</option>
 						))}
 					</Select>
-				</label>
+				</Field>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Repository name</span>
 					<span css={nameFieldCss}>

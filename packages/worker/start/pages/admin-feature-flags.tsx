@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -486,8 +487,7 @@ export function AdminFeatureFlagsPage({
 										}}
 									/>
 								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Rollout %</span>
+								<Field label="Rollout %">
 									<Input
 										name="rolloutPercent"
 										type="number"
@@ -502,14 +502,13 @@ export function AdminFeatureFlagsPage({
 										}
 										disabled={isMutating}
 									/>
-								</label>
+								</Field>
 								{renderAdminFeatureFlagAudienceField({
 									audience:
 										flag.global?.audience ?? flag.defaultAudience ?? undefined,
 									disabled: isMutating,
 								})}
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Note</span>
+								<Field label="Note">
 									<Input
 										name="note"
 										type="text"
@@ -517,7 +516,7 @@ export function AdminFeatureFlagsPage({
 										defaultValue={flag.global?.note ?? ''}
 										disabled={isMutating}
 									/>
-								</label>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-global' ? 'Saving…' : 'Save'}
 								</Button>
@@ -666,8 +665,7 @@ export function AdminFeatureFlagsPage({
 									},
 								}}
 							>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Organization handle</span>
+								<Field label="Organization handle">
 									<Input
 										name="orgSlug"
 										type="text"
@@ -675,9 +673,8 @@ export function AdminFeatureFlagsPage({
 										placeholder="org-handle"
 										disabled={isMutating}
 									/>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>State</span>
+								</Field>
+								<Field label="State">
 									<Select
 										name="enabled"
 										defaultValue="true"
@@ -686,9 +683,8 @@ export function AdminFeatureFlagsPage({
 										<option value="true">On</option>
 										<option value="false">Off</option>
 									</Select>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Note</span>
+								</Field>
+								<Field label="Note">
 									<Input
 										name="note"
 										type="text"
@@ -696,7 +692,7 @@ export function AdminFeatureFlagsPage({
 										placeholder="Why this org has the flag"
 										disabled={isMutating}
 									/>
-								</label>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-org-override'
 										? 'Adding…'
@@ -781,8 +777,7 @@ export function AdminFeatureFlagsPage({
 									},
 								}}
 							>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Username</span>
+								<Field label="Username">
 									<Input
 										name="username"
 										type="text"
@@ -790,9 +785,8 @@ export function AdminFeatureFlagsPage({
 										placeholder="username"
 										disabled={isMutating}
 									/>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>State</span>
+								</Field>
+								<Field label="State">
 									<Select
 										name="enabled"
 										defaultValue="true"
@@ -801,7 +795,7 @@ export function AdminFeatureFlagsPage({
 										<option value="true">On</option>
 										<option value="false">Off</option>
 									</Select>
-								</label>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-override'
 										? 'Adding…'

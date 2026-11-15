@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	readPublicFormProtection,
@@ -19,8 +20,6 @@ import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAlertCardCss,
 	mutedLinkCss,
 	pageDescriptionCss,
@@ -213,8 +212,7 @@ function SignupForm(props: {
 					{...passwordManagerIgnoreProps}
 					css={honeypotCss}
 				/>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Email address</span>
+				<Field label="Email address">
 					<Input
 						type="email"
 						name="email"
@@ -227,7 +225,7 @@ function SignupForm(props: {
 						aria-invalid={emailInvalid || undefined}
 						aria-describedby={props.error ? errorId : undefined}
 					/>
-				</label>
+				</Field>
 				{turnstileSiteKey ? (
 					<>
 						<div className={turnstileWidgetClassName}></div>

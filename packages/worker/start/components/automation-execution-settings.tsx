@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from './field.tsx'
 import { Button } from './button.tsx'
 import { css } from '@emotion/react'
 import { useEffect, useState } from 'react'
@@ -160,8 +161,7 @@ export function AutomationExecutionSettings(props: {
 					Its handler is not a package export, so it can only run on Kody cloud.
 				</AccountManagementMessage>
 			)}
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Run on</span>
+			<Field label="Run on">
 				<Select
 					css={selectCss}
 					value={form.mode}
@@ -178,11 +178,10 @@ export function AutomationExecutionSettings(props: {
 					<option value="context">One context</option>
 					<option value="chain">Its own chain</option>
 				</Select>
-			</label>
+			</Field>
 			{form.mode === 'context' ? (
 				<div css={rowCss}>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Context</span>
+					<Field label="Context">
 						<Select
 							css={selectCss}
 							value={form.context}
@@ -191,7 +190,7 @@ export function AutomationExecutionSettings(props: {
 							<option value="">Choose a context</option>
 							{contextOptions}
 						</Select>
-					</label>
+					</Field>
 					<label css={rowCss}>
 						<Checkbox
 							checked={form.fallbackToChain}
@@ -251,8 +250,7 @@ export function AutomationExecutionSettings(props: {
 				))}
 			</fieldset>
 			<div css={rowCss}>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>When offline</span>
+				<Field label="When offline">
 					<Select
 						css={selectCss}
 						value={form.whenOffline}
@@ -265,10 +263,9 @@ export function AutomationExecutionSettings(props: {
 						<option value="fail">Fail the run</option>
 						<option value="queue">Queue until it reconnects</option>
 					</Select>
-				</label>
+				</Field>
 				{form.whenOffline === 'queue' ? (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Queue for (minutes)</span>
+					<Field label="Queue for (minutes)">
 						<Input
 							type="number"
 							min={1}
@@ -278,7 +275,7 @@ export function AutomationExecutionSettings(props: {
 								update({ queueMinutes: Number(event.target.value) || 1 })
 							}
 						/>
-					</label>
+					</Field>
 				) : null}
 			</div>
 			<div css={rowCss}>

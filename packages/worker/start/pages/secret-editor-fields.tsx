@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	fromDatetimeLocalValue,
@@ -53,8 +54,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 
 	return (
 		<>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Description</span>
+			<Field label="Description">
 				<Textarea
 					value={props.description}
 					rows={3}
@@ -63,7 +63,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 						props.onDescriptionChange(event.currentTarget.value)
 					}}
 				/>
-			</label>
+			</Field>
 
 			<CredentialFillPlacementFields
 				draft={props.fillPlacement}

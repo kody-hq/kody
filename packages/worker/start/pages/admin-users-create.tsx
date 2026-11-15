@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import type { AdminCreatedUserSetup } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
@@ -37,8 +37,7 @@ export function AdminCreateUserPanel(input: {
 					},
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>User email</span>
+				<Field label="User email">
 					<Input
 						name="email"
 						type="email"
@@ -46,16 +45,15 @@ export function AdminCreateUserPanel(input: {
 						placeholder="person@example.com"
 						disabled={input.isMutating}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Username (optional)</span>
+				</Field>
+				<Field label="Username (optional)">
 					<Input
 						name="username"
 						type="text"
 						placeholder="Auto-generated from email"
 						disabled={input.isMutating}
 					/>
-				</label>
+				</Field>
 				<Button type="submit" disabled={input.isMutating} variant="primary">
 					{input.actionState === 'creatingUser' ? 'Creating…' : 'Create user'}
 				</Button>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
@@ -35,7 +36,6 @@ import type {
 	AdminCodemodRunListItem,
 	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -436,8 +436,7 @@ export function AdminCodemodsPage(props: {
 								},
 							}}
 						>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Codemod</span>
+							<Field label="Codemod">
 								<Select
 									name="codemodId"
 									value={selectedCodemodId}
@@ -454,9 +453,8 @@ export function AdminCodemodsPage(props: {
 										</option>
 									))}
 								</Select>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Mode</span>
+							</Field>
+							<Field label="Mode">
 								<Select
 									name="mode"
 									value={selectedMode}
@@ -479,9 +477,8 @@ export function AdminCodemodsPage(props: {
 										</option>
 									))}
 								</Select>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>User IDs filter</span>
+							</Field>
+							<Field label="User IDs filter">
 								<Input
 									name="userIds"
 									type="text"
@@ -494,9 +491,8 @@ export function AdminCodemodsPage(props: {
 										setUserIdsFilter(event.currentTarget.value)
 									}}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Package IDs filter</span>
+							</Field>
+							<Field label="Package IDs filter">
 								<Input
 									name="packageIds"
 									type="text"
@@ -509,9 +505,8 @@ export function AdminCodemodsPage(props: {
 										setPackageIdsFilter(event.currentTarget.value)
 									}}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Credential enforcement scope</span>
+							</Field>
+							<Field label="Credential enforcement scope">
 								<Select
 									value={enforcementOnly ? 'enforcement' : 'all'}
 									disabled={!canMutate || selectedMode === 'revert'}
@@ -527,10 +522,9 @@ export function AdminCodemodsPage(props: {
 										Packages subject to credential-need enforcement
 									</option>
 								</Select>
-							</label>
+							</Field>
 							{selectedMode === 'revert' ? (
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Revert of run ID</span>
+								<Field label="Revert of run ID">
 									<Input
 										name="revertOfRunId"
 										type="text"
@@ -544,7 +538,7 @@ export function AdminCodemodsPage(props: {
 											setRevertOfRunId(event.currentTarget.value)
 										}}
 									/>
-								</label>
+								</Field>
 							) : null}
 						</div>
 						<div

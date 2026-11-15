@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { deletePackage } from '#start/server/package-mutations'
@@ -29,8 +30,6 @@ import {
 import {
 	getAccentCalloutCss,
 	hoverMq,
-	fieldCss,
-	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import { accountActionsCss } from './account-management-components.tsx'
@@ -214,8 +213,7 @@ export function AccountPackageDeleteDialog(props: {
 								confirm.
 							</p>
 						</div>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Type the name of the package</span>
+						<Field label="Type the name of the package">
 							<Input
 								type="text"
 								name="confirmation"
@@ -227,7 +225,7 @@ export function AccountPackageDeleteDialog(props: {
 								value={confirmation}
 								onChange={updateConfirmation}
 							/>
-						</label>
+						</Field>
 						{error ? (
 							<p
 								role="alert"

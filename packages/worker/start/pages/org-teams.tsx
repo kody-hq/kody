@@ -1,9 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { OrgTeamInviteLinks } from './org-teams-invite-links.tsx'
 import {
@@ -298,29 +294,25 @@ function OrgTeamsContent({
 							)
 						}}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Handle</span>
+						<Field
+							label="Handle"
+							description="Unique inside this organization. Lowercase letters, numbers, and hyphens."
+						>
 							<Input
 								value={createSlug}
 								required
 								autoComplete="off"
 								onChange={(event) => setCreateSlug(event.currentTarget.value)}
 							/>
-							<p css={fieldDescriptionCss}>
-								Unique inside this organization. Lowercase letters, numbers, and
-								hyphens.
-							</p>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Name</span>
+						</Field>
+						<Field label="Name">
 							<Input
 								value={createName}
 								autoComplete="off"
 								onChange={(event) => setCreateName(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Description</span>
+						</Field>
+						<Field label="Description">
 							<Input
 								value={createDescription}
 								autoComplete="off"
@@ -328,7 +320,7 @@ function OrgTeamsContent({
 									setCreateDescription(event.currentTarget.value)
 								}
 							/>
-						</label>
+						</Field>
 						<div css={accountActionsCss}>
 							<Button
 								type="submit"

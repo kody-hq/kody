@@ -1,9 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useRef, useState, type FormEvent } from 'react'
@@ -329,8 +325,7 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addProfile(event, view)}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Profile</span>
+						<Field label="Profile">
 							<Select
 								aria-label="Profile"
 								value={profileId}
@@ -349,7 +344,7 @@ export function PackageCollaboratorsRoute({
 									</option>
 								))}
 							</Select>
-						</label>
+						</Field>
 						{renderPresetField({
 							label: 'Access for the profile',
 							value: profilePreset,
@@ -534,8 +529,12 @@ export function PackageCollaboratorsRoute({
 	}) {
 		return (
 			<>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Access</span>
+				<Field
+					label="Access"
+					description={
+						<>{packageCollaboratorPresetDescription(input.value)}.</>
+					}
+				>
 					<Select
 						aria-label={input.label}
 						value={input.value}
@@ -548,10 +547,7 @@ export function PackageCollaboratorsRoute({
 					>
 						{renderPresetOptions(input.value)}
 					</Select>
-					<p css={fieldDescriptionCss}>
-						{packageCollaboratorPresetDescription(input.value)}.
-					</p>
-				</label>
+				</Field>
 				{input.advanced ? (
 					<AdvancedPermissionsField
 						value={input.advanced.permissions}
@@ -623,8 +619,7 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addTeam(event, view)}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Team</span>
+						<Field label="Team">
 							<Select
 								aria-label="Team"
 								value={teamId}
@@ -642,7 +637,7 @@ export function PackageCollaboratorsRoute({
 									</option>
 								))}
 							</Select>
-						</label>
+						</Field>
 						{renderPresetField({
 							label: 'Access for the team',
 							value: teamPreset,
@@ -684,8 +679,7 @@ export function PackageCollaboratorsRoute({
 						css={formCss}
 						onSubmit={(event) => void addMember(event, view)}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Member</span>
+						<Field label="Member">
 							<Select
 								aria-label="Member"
 								value={memberId}
@@ -703,7 +697,7 @@ export function PackageCollaboratorsRoute({
 									</option>
 								))}
 							</Select>
-						</label>
+						</Field>
 						{renderPresetField({
 							label: 'Access for the member',
 							value: memberPreset,

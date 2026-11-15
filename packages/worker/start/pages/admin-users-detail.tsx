@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouteContext } from '@tanstack/react-router'
 import { AdminUserDestinationPanel } from './admin-users-destination-panel.tsx'
 import { useState } from 'react'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -332,8 +332,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 						[mq.mobile]: { gridTemplateColumns: '1fr' },
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Role</span>
+					<Field label="Role">
 						<Select
 							value={props.selectedRoleToAssign}
 							disabled={isMutating}
@@ -350,7 +349,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 								</option>
 							))}
 						</Select>
-					</label>
+					</Field>
 					<Button
 						type="button"
 						disabled={isMutating}
@@ -437,8 +436,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					</div>
 					{props.mintedVerifyUrl &&
 					props.mintedVerifyUrlForStableUserId === selectedUser.stableUserId ? (
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>One-time verify URL</span>
+						<Field label="One-time verify URL">
 							<Input
 								readOnly
 								value={props.mintedVerifyUrl}
@@ -448,7 +446,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 									fontFamily: typography.fontFamilyMono,
 								}}
 							/>
-						</label>
+						</Field>
 					) : null}
 				</AccountManagementPanel>
 			) : null}

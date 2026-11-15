@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -29,8 +30,6 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	layoutMaxWidths,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
@@ -288,8 +287,7 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleDisable}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
+						<Field label="Verification code">
 							<Input
 								type="text"
 								name="code"
@@ -301,7 +299,7 @@ export function AccountTwoFactorPage({
 								value={disableCode}
 								onInput={updateDisableCode}
 							/>
-						</label>
+						</Field>
 						<div>
 							<Button type="submit" disabled={isBusy} variant="danger">
 								{isBusy ? 'Working...' : 'Disable 2FA'}
@@ -370,8 +368,7 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleConfirmSetup}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
+						<Field label="Verification code">
 							<Input
 								type="text"
 								name="code"
@@ -383,7 +380,7 @@ export function AccountTwoFactorPage({
 								value={confirmCode}
 								onInput={updateConfirmCode}
 							/>
-						</label>
+						</Field>
 						<div css={{ display: 'flex', gap: spacing.sm }}>
 							<Button type="submit" disabled={isBusy} variant="primary">
 								{isBusy ? 'Working...' : 'Confirm'}

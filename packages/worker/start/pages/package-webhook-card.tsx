@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 
@@ -389,8 +390,7 @@ export function renderPackageWebhookCard(input: {
 							Creates another URL under <code>{webhook.name}</code> with its own
 							Approve. Give it a short label so you can tell them apart.
 						</p>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Instance label</span>
+						<Field label="Instance label">
 							<Input
 								size="sm"
 								name="instanceLabel"
@@ -400,7 +400,7 @@ export function renderPackageWebhookCard(input: {
 								placeholder="staging"
 								disabled={isMutating}
 							/>
-						</label>
+						</Field>
 						<div>
 							<Button
 								type="submit"

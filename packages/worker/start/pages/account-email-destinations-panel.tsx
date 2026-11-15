@@ -1,9 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { FormEvent } from 'react'
@@ -157,8 +154,16 @@ export function renderAccountEmailDestinationsPanel(
 						gap: spacing.md,
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Add an address</span>
+					<Field
+						label="Add an address"
+						description={
+							<>
+								Up to {additionalLimit}extras besides your account email. We
+								send a verification link before emailSend can use this address.
+								New accounts can request that link 24 hours after signup.
+							</>
+						}
+					>
 						<Input
 							type="email"
 							name="email"
@@ -168,12 +173,7 @@ export function renderAccountEmailDestinationsPanel(
 							onInput={onDraftEmailInput}
 							css={{ maxWidth: '28rem' }}
 						/>
-						<span css={fieldDescriptionCss}>
-							Up to {additionalLimit} extras besides your account email. We send
-							a verification link before emailSend can use this address. New
-							accounts can request that link 24 hours after signup.
-						</span>
-					</label>
+					</Field>
 					<Button
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}

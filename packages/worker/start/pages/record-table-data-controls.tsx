@@ -1,5 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef } from 'react'
 import type {
 	useRecordTableModel,
 	RecordTableOptions,
@@ -28,23 +27,16 @@ const control = {
 export function RecordSelectionCheckbox({
 	label,
 	checked,
-	mixed,
 	disabled,
 	onChange,
 }: {
 	label: string
-	checked: boolean
-	mixed?: boolean
+	checked: boolean | 'mixed'
 	disabled?: boolean
 	onChange: (value: boolean) => void
 }) {
-	const ref = useRef<HTMLInputElement>(null)
-	useEffect(() => {
-		if (ref.current) ref.current.indeterminate = Boolean(mixed && !checked)
-	}, [mixed, checked])
 	return (
 		<Checkbox
-			ref={ref}
 			aria-label={label}
 			checked={checked}
 			disabled={disabled}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -135,10 +136,7 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 									confirm.
 								</p>
 							</div>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>
-									Type {accountDeletionConfirmationPhrase}
-								</span>
+							<Field label={<>Type {accountDeletionConfirmationPhrase}</>}>
 								<Input
 									type="text"
 									name="confirmation"
@@ -149,7 +147,7 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 									value={confirmation}
 									onInput={updateConfirmation}
 								/>
-							</label>
+							</Field>
 							{props.hasUsablePassword ? (
 								<div css={fieldCss}>
 									<label

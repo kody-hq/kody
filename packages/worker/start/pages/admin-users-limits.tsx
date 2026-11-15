@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -23,7 +24,6 @@ import {
 	type LimitOverrideValue,
 } from '#universal/plans.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -241,8 +241,7 @@ export function AdminOrgLimitsPanel({
 						}}
 						onSubmit={submit}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Limit</span>
+						<Field label="Limit">
 							<Select
 								value={key}
 								disabled={saving}
@@ -256,9 +255,8 @@ export function AdminOrgLimitsPanel({
 									</option>
 								))}
 							</Select>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Value (or "unlimited")</span>
+						</Field>
+						<Field label={<>Value (or "unlimited")</>}>
 							<Input
 								type="text"
 								autoComplete="off"
@@ -266,18 +264,16 @@ export function AdminOrgLimitsPanel({
 								disabled={saving}
 								onChange={(event) => setValueText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Expires (optional)</span>
+						</Field>
+						<Field label="Expires (optional)">
 							<Input
 								type="datetime-local"
 								value={expiresText}
 								disabled={saving}
 								onChange={(event) => setExpiresText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Reason (required)</span>
+						</Field>
+						<Field label="Reason (required)">
 							<Input
 								type="text"
 								autoComplete="off"
@@ -286,7 +282,7 @@ export function AdminOrgLimitsPanel({
 								disabled={saving}
 								onChange={(event) => setReasonText(event.currentTarget.value)}
 							/>
-						</label>
+						</Field>
 						<Button
 							type="submit"
 							disabled={saving || valueText.trim() === ''}

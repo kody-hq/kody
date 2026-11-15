@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	updateOrganizationProfile,
@@ -272,8 +273,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									)
 								}}
 							>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Name</span>
+								<Field label="Name">
 									<Input
 										name="displayName"
 										required
@@ -283,7 +283,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 											setDraftName(event.currentTarget.value)
 										}
 									/>
-								</label>
+								</Field>
 								<div css={fieldCss}>
 									<span css={fieldLabelCss}>Handle</span>
 									<p
@@ -402,8 +402,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										Type <strong>{data.org.slug}</strong> or{' '}
 										<strong>DELETE</strong> to confirm.
 									</p>
-									<label css={fieldCss}>
-										<span css={fieldLabelCss}>Confirmation</span>
+									<Field label="Confirmation">
 										<Input
 											value={confirmation}
 											autoComplete="off"
@@ -411,7 +410,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 												setConfirmation(event.currentTarget.value)
 											}
 										/>
-									</label>
+									</Field>
 									<div css={accountActionsCss}>
 										<Button
 											type="submit"

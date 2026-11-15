@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
-	fieldCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -379,8 +379,10 @@ function GiveAccessPicker({
 			description="Open one person's access page to see everything they can use here, add packages and credentials in one go, or trim what they have."
 		>
 			<div css={formCss} data-testid="org-give-access">
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Person</span>
+				<Field
+					label="Person"
+					description="Someone new? Invite them on Members first. Owners already have full access."
+				>
 					<Select
 						value={userId}
 						data-testid="org-give-access-person"
@@ -407,11 +409,7 @@ function GiveAccessPicker({
 							</optgroup>
 						) : null}
 					</Select>
-					<span css={fieldDescriptionCss}>
-						Someone new? Invite them on Members first. Owners already have full
-						access.
-					</span>
-				</label>
+				</Field>
 				<div css={accountActionsCss}>
 					{userId ? (
 						<Button
@@ -561,8 +559,10 @@ function OrgWideAccessForm({
 						)
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Member or team</span>
+					<Field
+						label="Member or team"
+						description="Edits this member or team's own organization grant. Access a member gets through a team is set on that team."
+					>
 						<Select
 							name="subject"
 							value={subjectKey}
@@ -599,11 +599,7 @@ function OrgWideAccessForm({
 								</optgroup>
 							) : null}
 						</Select>
-						<p css={fieldDescriptionCss}>
-							Edits this member or team's own organization grant. Access a
-							member gets through a team is set on that team.
-						</p>
-					</label>
+					</Field>
 					<fieldset
 						css={fieldsetCss}
 						disabled={!canEdit || !subject || mutation.isPending}

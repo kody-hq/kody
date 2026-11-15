@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	getHandleFormatError,
@@ -313,8 +314,10 @@ function CreateOrganizationForm() {
 					}}
 					css={formCss}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Name</span>
+					<Field
+						label="Name"
+						description="Shown in the header and to members. You can change it later."
+					>
 						<Input
 							name="displayName"
 							aria-invalid={clientError?.field === 'displayName' || undefined}
@@ -337,10 +340,7 @@ function CreateOrganizationForm() {
 								}
 							}}
 						/>
-						<p css={fieldDescriptionCss}>
-							Shown in the header and to members. You can change it later.
-						</p>
-					</label>
+					</Field>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Handle</span>
 						<span css={slugFieldCss}>

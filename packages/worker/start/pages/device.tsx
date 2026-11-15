@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
@@ -8,7 +9,6 @@ import type { DevicePageData, DevicePageError } from '#start/server/device'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
 	insetCardCss,
@@ -180,8 +180,7 @@ function CodeEntryCard(props: {
 				css={cardCss}
 				data-testid="device-code-form"
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Device code</span>
+				<Field label="Device code">
 					<Input
 						type="text"
 						name="user_code"
@@ -195,7 +194,7 @@ function CodeEntryCard(props: {
 						placeholder="BCDF-GHJK"
 						css={codeInputCss}
 					/>
-				</label>
+				</Field>
 				<Button type="submit" variant="primary" size="md">
 					Continue
 				</Button>

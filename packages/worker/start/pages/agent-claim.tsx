@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
@@ -11,8 +12,6 @@ import type {
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAlertCardCss,
 	insetCardCss,
 	mutedLinkCss,
@@ -208,8 +207,7 @@ function ConsentCard(props: {
 				data-testid="agent-claim-form"
 			>
 				<input type="hidden" name="claim_attempt_token" value={attemptToken} />
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Code from your agent</span>
+				<Field label="Code from your agent">
 					<Input
 						type="text"
 						name="user_code"
@@ -222,7 +220,7 @@ function ConsentCard(props: {
 						placeholder="BCDF-GHJK"
 						css={codeInputCss}
 					/>
-				</label>
+				</Field>
 				<AuthorizeOrgField
 					orgs={request.orgs}
 					selectedOrgSlug={orgSlug}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
@@ -6,7 +7,7 @@ import type { AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
+import { fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { SecretEditorFields } from './secret-editor-fields.tsx'
 import {
 	MetadataGrid,
@@ -118,8 +119,7 @@ export function SecretEditor(props: SecretEditorProps) {
 					},
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Name</span>
+				<Field label="Name">
 					<Input
 						type="text"
 						required
@@ -132,10 +132,9 @@ export function SecretEditor(props: SecretEditorProps) {
 							})
 						}}
 					/>
-				</label>
+				</Field>
 
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Scope</span>
+				<Field label="Scope">
 					<Select
 						value={editorState.scope}
 						onChange={(event) => {
@@ -155,7 +154,7 @@ export function SecretEditor(props: SecretEditorProps) {
 							<option value="package">Package</option>
 						) : null}
 					</Select>
-				</label>
+				</Field>
 			</div>
 
 			{editorState.scope === 'package' ? (

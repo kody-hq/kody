@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
@@ -135,8 +136,7 @@ export function McpServerOAuthClientSection({
 						if (saved) reset()
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Client ID</span>
+					<Field label="Client ID">
 						<Input
 							name="clientId"
 							value={clientId}
@@ -146,7 +146,7 @@ export function McpServerOAuthClientSection({
 							spellCheck={false}
 							onChange={(event) => setClientId(event.currentTarget.value)}
 						/>
-					</label>
+					</Field>
 					<div css={fieldCss}>
 						<label htmlFor={secretId} css={fieldLabelCss}>
 							Client secret

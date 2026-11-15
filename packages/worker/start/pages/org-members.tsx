@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
 	fieldCss,
 	fieldLabelCss,
@@ -315,19 +316,17 @@ function OrgMembersContent({
 								)
 							}}
 						>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Email or username</span>
+							<Field
+								label="Email or username"
+								description="It waits on their Waiting page, or they can paste the invite prompt into their agent."
+							>
 								<Input
 									value={invitee}
 									required
 									autoComplete="off"
 									onChange={(event) => setInvitee(event.currentTarget.value)}
 								/>
-								<p css={fieldDescriptionCss}>
-									It waits on their Waiting page, or they can paste the invite
-									prompt into their agent.
-								</p>
-							</label>
+							</Field>
 							<label css={fieldCss}>
 								<span css={fieldLabelCss}>Role</span>
 								<Select

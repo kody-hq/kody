@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -416,8 +417,7 @@ export function RotateCredentialsForm(props: {
 					marginTop: spacing.sm,
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Client ID (optional to keep current)</span>
+				<Field label="Client ID (optional to keep current)">
 					<Input
 						type="text"
 						name="oauthAppClientId"
@@ -427,9 +427,8 @@ export function RotateCredentialsForm(props: {
 							setClientId(event.currentTarget.value)
 						}}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>New client secret</span>
+				</Field>
+				<Field label="New client secret">
 					<Input
 						type="password"
 						name="oauthAppClientSecret"
@@ -439,7 +438,7 @@ export function RotateCredentialsForm(props: {
 							setClientSecret(event.currentTarget.value)
 						}}
 					/>
-				</label>
+				</Field>
 				<label
 					css={{
 						display: 'flex',

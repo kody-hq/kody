@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
@@ -44,7 +45,6 @@ import { routes } from '#universal/routes.ts'
 import {
 	primaryLinkCss,
 	getSquircleCss,
-	fieldCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -828,20 +828,23 @@ function ShortenExpiryForm(props: {
 	return (
 		<form onSubmit={submit} noValidate css={{ display: 'grid', gap: '0.5rem' }}>
 			<h3 css={subheadCss}>Expiry</h3>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Stops working at</span>
+			<Field
+				label="Stops working at"
+				description={
+					<>
+						Expiry only moves earlier. A later time, or clearing it, is refused
+						with <code>profile_expiry_extension</code>; create a new profile for
+						more time.
+					</>
+				}
+			>
 				<Input
 					type="datetime-local"
 					value={value}
 					max={toLocalInput(max) || undefined}
 					onChange={(event) => setValue(event.target.value)}
 				/>
-				<span css={fieldDescriptionCss}>
-					Expiry only moves earlier. A later time, or clearing it, is refused
-					with <code>profile_expiry_extension</code>; create a new profile for
-					more time.
-				</span>
-			</label>
+			</Field>
 			<div css={accountActionsCss}>
 				<Button type="submit" disabled={pending} variant="secondary">
 					{pending ? 'Saving…' : 'Shorten expiry'}
@@ -1088,16 +1091,17 @@ function ProfileTokens(props: {
 					noValidate
 					css={{ display: 'grid', gap: '0.5rem' }}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Token name</span>
+					<Field label="Token name">
 						<Input
 							value={name}
 							maxLength={100}
 							onChange={(event) => setName(event.target.value)}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Lifetime</span>
+					</Field>
+					<Field
+						label="Lifetime"
+						description="Never outlives the profile chain’s expiry."
+					>
 						<Select
 							value={lifetime}
 							onChange={(event) =>
@@ -1107,10 +1111,7 @@ function ProfileTokens(props: {
 							<option value="short">Short: 1 hour idle, 24 hours max</option>
 							<option value="long">Long: 14 days idle, 3 months max</option>
 						</Select>
-						<span css={fieldDescriptionCss}>
-							Never outlives the profile chain’s expiry.
-						</span>
-					</label>
+					</Field>
 					<fieldset css={fieldsetCss}>
 						<legend css={fieldLabelCss}>Scopes</legend>
 						{scopeChoices.map((scope) => (
@@ -1259,8 +1260,10 @@ function CreateProfilePanel(props: {
 				data-testid="profile-create"
 				css={{ display: 'grid', gap: spacing.md }}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Name</span>
+				<Field
+					label="Name"
+					description="Lowercase letters, digits, and dashes. Unique among your profiles under the same parent."
+				>
 					<Input
 						name="name"
 						required
@@ -1270,25 +1273,24 @@ function CreateProfilePanel(props: {
 						placeholder="release-bot"
 						onChange={(event) => setName(event.target.value.toLowerCase())}
 					/>
-					<span css={fieldDescriptionCss}>
-						Lowercase letters, digits, and dashes. Unique among your profiles
-						under the same parent.
-					</span>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Expires (optional)</span>
+				</Field>
+				<Field
+					label="Expires (optional)"
+					description={
+						<>
+							{limit
+								? 'Leave empty to inherit the parent chain’s expiry. It can never be later than that.'
+								: 'Leave empty for no expiry. You can shorten it later, never extend it.'}
+						</>
+					}
+				>
 					<Input
 						type="datetime-local"
 						value={expiry}
 						max={toLocalInput(limit) || undefined}
 						onChange={(event) => setExpiry(event.target.value)}
 					/>
-					<span css={fieldDescriptionCss}>
-						{limit
-							? 'Leave empty to inherit the parent chain’s expiry. It can never be later than that.'
-							: 'Leave empty for no expiry. You can shorten it later, never extend it.'}
-					</span>
-				</label>
+				</Field>
 				<fieldset css={fieldsetCss}>
 					<legend css={fieldLabelCss}>Grants</legend>
 					{props.grantOptions.length === 0 ? (

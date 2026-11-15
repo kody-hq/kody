@@ -562,8 +562,13 @@ export function RecordTable(props: RecordTableProps) {
 							<th css={headCellCss} scope="col">
 								<RecordSelectionCheckbox
 									label="Select this page"
-									checked={model.getIsAllPageRowsSelected()}
-									mixed={model.getIsSomePageRowsSelected()}
+									checked={
+										model.getIsAllPageRowsSelected()
+											? true
+											: model.getIsSomePageRowsSelected()
+												? 'mixed'
+												: false
+									}
 									onChange={(value) => model.toggleAllPageRowsSelected(value)}
 								/>
 							</th>

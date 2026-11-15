@@ -1,9 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -180,8 +177,7 @@ export function AccountPasswordPanel(props: {
 								: 'This account signs in with a connected provider or passkey. Setting a password lets you also sign in with email.'}
 						</p>
 						{hasUsablePassword ? (
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Current password</span>
+							<Field label="Current password">
 								<Input
 									type="password"
 									name="currentPassword"
@@ -190,10 +186,9 @@ export function AccountPasswordPanel(props: {
 									value={currentPassword}
 									onInput={updateCurrentPassword}
 								/>
-							</label>
+							</Field>
 						) : null}
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>New password</span>
+						<Field label="New password">
 							<Input
 								type="password"
 								name="newPassword"
@@ -204,9 +199,8 @@ export function AccountPasswordPanel(props: {
 								value={newPassword}
 								onInput={updateNewPassword}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Confirm new password</span>
+						</Field>
+						<Field label="Confirm new password">
 							<Input
 								type="password"
 								name="confirmPassword"
@@ -216,7 +210,7 @@ export function AccountPasswordPanel(props: {
 								value={confirmPassword}
 								onInput={updateConfirmPassword}
 							/>
-						</label>
+						</Field>
 						<div>
 							<Button
 								type="submit"

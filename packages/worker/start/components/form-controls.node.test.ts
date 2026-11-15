@@ -1,9 +1,22 @@
-import { createElement as h, Fragment } from 'react'
+import {
+	createElement,
+	Fragment,
+	type ElementType,
+	type ReactElement,
+	type ReactNode,
+} from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import { Checkbox, Radio, Switch } from './choice-controls.tsx'
 import { Field } from './field.tsx'
 import { Input, Select, Textarea } from './input.tsx'
+
+// Loosely typed so props can carry children and data-* attributes like JSX.
+const h = createElement as (
+	type: ElementType,
+	props?: Record<string, unknown> | null,
+	...children: ReactNode[]
+) => ReactElement
 
 function openingTag(html: string, tag: string) {
 	const match = html.match(new RegExp(`<${tag}\\b[^>]*>`))

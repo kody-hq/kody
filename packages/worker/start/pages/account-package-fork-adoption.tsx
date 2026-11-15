@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { adoptPackageFork } from '#start/server/package-mutations'
 import type { CSSObject } from '@emotion/react'
@@ -17,8 +18,6 @@ import type {
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	fieldCss,
-	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -103,8 +102,7 @@ export function AccountPackageForkAdoption(props: {
 						read and use your user secrets like a package you wrote. Review the
 						source first. Agents cannot adopt for you.
 					</p>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>What you reviewed</span>
+					<Field label="What you reviewed">
 						<Textarea
 							name="reviewNote"
 							data-testid="community-fork-adoption-note"
@@ -119,7 +117,7 @@ export function AccountPackageForkAdoption(props: {
 								setReviewNote(event.currentTarget.value)
 							}}
 						/>
-					</label>
+					</Field>
 					{error ? (
 						<p role="alert" css={errorTextCss}>
 							{error}

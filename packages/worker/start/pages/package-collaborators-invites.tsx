@@ -1,9 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useState, type FormEvent } from 'react'
 import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
@@ -133,8 +129,10 @@ export function PackageCollaboratorInvites({
 					css={formCss}
 					onSubmit={(event) => void submit(event)}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Email or username</span>
+					<Field
+						label="Email or username"
+						description="They need a Kody account with this email or username to accept."
+					>
 						<Input
 							value={invitee}
 							required
@@ -142,10 +140,7 @@ export function PackageCollaboratorInvites({
 							placeholder="jesse@example.com or @jesse"
 							onChange={(event) => setInvitee(event.currentTarget.value)}
 						/>
-						<p css={fieldDescriptionCss}>
-							They need a Kody account with this email or username to accept.
-						</p>
-					</label>
+					</Field>
 					<fieldset css={fieldsetCss}>
 						<legend css={legendCss}>What they can do</legend>
 						{packageCollaboratorPresets.map((option) => (

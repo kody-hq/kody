@@ -1,9 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import {
-	fieldCss,
-	fieldLabelCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -296,8 +292,10 @@ function PackageInviteLinksContent({
 				css={formCss}
 				onSubmit={create}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Access</span>
+				<Field
+					label="Access"
+					description={<>{packageCollaboratorPresetDescription(preset)}.</>}
+				>
 					<Select
 						aria-label="Access for the invite link"
 						value={preset}
@@ -309,12 +307,11 @@ function PackageInviteLinksContent({
 					>
 						{renderPresetOptions(preset)}
 					</Select>
-					<p css={fieldDescriptionCss}>
-						{packageCollaboratorPresetDescription(preset)}.
-					</p>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Max uses</span>
+				</Field>
+				<Field
+					label="Max uses"
+					description="One person per use. Leave blank to let anyone with the link accept."
+				>
 					<Input
 						value={maxUses}
 						inputMode="numeric"
@@ -323,12 +320,8 @@ function PackageInviteLinksContent({
 						aria-label="Max uses"
 						onChange={(event) => setMaxUses(event.currentTarget.value)}
 					/>
-					<p css={fieldDescriptionCss}>
-						One person per use. Leave blank to let anyone with the link accept.
-					</p>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Expires in days</span>
+				</Field>
+				<Field label="Expires in days">
 					<Input
 						value={expiresInDays}
 						inputMode="numeric"
@@ -336,7 +329,7 @@ function PackageInviteLinksContent({
 						aria-label="Expires in days"
 						onChange={(event) => setExpiresInDays(event.currentTarget.value)}
 					/>
-				</label>
+				</Field>
 				<div css={accountActionsCss}>
 					<Button
 						type="submit"

@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
-	fieldCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -835,18 +835,20 @@ function AddAccessForm({
 						)
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Organization</span>
+					<Field
+						label="Organization"
+						description={
+							<>
+								Access is granted inside @{data.org.slug}. Credentials are not
+								moved or copied to another organization.
+							</>
+						}
+					>
 						<Select disabled value={data.org.slug} css={selectCss}>
 							<option value={data.org.slug}>@{data.org.slug}</option>
 						</Select>
-						<span css={fieldDescriptionCss}>
-							Access is granted inside @{data.org.slug}. Credentials are not
-							moved or copied to another organization.
-						</span>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Filter</span>
+					</Field>
+					<Field label="Filter">
 						<Input
 							type="search"
 							value={filter}
@@ -854,7 +856,7 @@ function AddAccessForm({
 							data-testid="access-add-filter"
 							onChange={(event) => setFilter(event.currentTarget.value)}
 						/>
-					</label>
+					</Field>
 					{options.packages.length > 0 ? (
 						<fieldset css={fieldsetCss} disabled={mutation.isPending}>
 							<legend css={fieldLabelCss}>Packages</legend>
@@ -906,8 +908,15 @@ function AddAccessForm({
 									)
 								})}
 							</div>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Package access</span>
+							<Field
+								label="Package access"
+								description={
+									<>
+										Packages run with {label}'s own credential access. Add the
+										credentials those packages read too.
+									</>
+								}
+							>
 								<Select
 									value={packagePreset}
 									data-testid="access-add-package-preset"
@@ -922,11 +931,7 @@ function AddAccessForm({
 										</option>
 									))}
 								</Select>
-								<span css={fieldDescriptionCss}>
-									Packages run with {label}'s own credential access. Add the
-									credentials those packages read too.
-								</span>
-							</label>
+							</Field>
 						</fieldset>
 					) : null}
 					{options.credentials.length > 0 ? (
@@ -957,8 +962,7 @@ function AddAccessForm({
 									</label>
 								))}
 							</div>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Credential access</span>
+							<Field label="Credential access">
 								<Select
 									value={credentialPreset}
 									data-testid="access-add-credential-preset"
@@ -973,7 +977,7 @@ function AddAccessForm({
 										</option>
 									))}
 								</Select>
-							</label>
+							</Field>
 						</fieldset>
 					) : null}
 					{message ? (

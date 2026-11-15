@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	addOrganizationDomain,
@@ -23,9 +24,7 @@ import {
 } from './account-management-components.tsx'
 import {
 	primaryLinkCss,
-	fieldCss,
 	fieldDescriptionCss,
-	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	CustomDomainRecords,
@@ -209,17 +208,15 @@ export function OrgSettingsCustomDomains({
 						)
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Hostname</span>
+					<Field label="Hostname">
 						<Input
 							required
 							value={hostname}
 							placeholder="apps.example.com"
 							onChange={(event) => setHostname(event.currentTarget.value)}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Binding</span>
+					</Field>
+					<Field label="Binding">
 						<Select
 							value={bindingKind}
 							onChange={(event) =>
@@ -233,19 +230,17 @@ export function OrgSettingsCustomDomains({
 								App (one public internet-visible app at /)
 							</option>
 						</Select>
-					</label>
+					</Field>
 					{bindingKind === 'app' ? (
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Package id</span>
+						<Field label="Package id">
 							<Input
 								required
 								value={packageId}
 								onChange={(event) => setPackageId(event.currentTarget.value)}
 							/>
-						</label>
+						</Field>
 					) : null}
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>SSL method</span>
+					<Field label="SSL method">
 						<Select
 							value={sslMethod}
 							onChange={(event) =>
@@ -257,7 +252,7 @@ export function OrgSettingsCustomDomains({
 							<option value="txt">TXT (pre-validate)</option>
 							<option value="http">HTTP</option>
 						</Select>
-					</label>
+					</Field>
 					<div css={accountActionsCss}>
 						<Button type="submit" variant="primary" disabled={isPending}>
 							{add.isPending ? 'Adding…' : 'Add domain'}

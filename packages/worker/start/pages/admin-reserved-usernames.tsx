@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -7,12 +8,7 @@ import {
 	removeAdminReservedUsernames,
 } from '#start/server/admin-mutations'
 import type { AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -140,15 +136,14 @@ export function AdminReservedUsernamesPage(props: {
 				asForm
 				onSubmit={handleAddSubmit}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Usernames</span>
+				<Field label="Usernames">
 					<Textarea
 						name="usernames"
 						rows={4}
 						placeholder="autodiscover, mta-sts"
 						disabled={isMutating}
 					/>
-				</label>
+				</Field>
 				<Button
 					type="submit"
 					disabled={isMutating}
@@ -314,8 +309,7 @@ export function AdminReservedUsernamesPage(props: {
 					Code-defined denylist. Search to filter. These stay reserved unless
 					moved to Unreserved built-ins.
 				</p>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Search</span>
+				<Field label="Search">
 					<Input
 						type="text"
 						role="searchbox"
@@ -327,7 +321,7 @@ export function AdminReservedUsernamesPage(props: {
 							setBuiltInQuery(event.currentTarget.value)
 						}}
 					/>
-				</label>
+				</Field>
 				<p css={{ color: colors.textMuted, margin: 0 }}>
 					{visibleBuiltIn.length} of {builtIn.length} names
 				</p>

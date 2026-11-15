@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -20,8 +21,6 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAccentCalloutCss,
 	insetCardCss,
 	listCss,
@@ -178,8 +177,7 @@ export function renderLiveAppReplaceWarning(input: {
 					onSubmit={input.onSaveAsNew}
 					data-testid="connect-live-replace-new-form"
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>New connection name</span>
+					<Field label="New connection name">
 						<Input
 							name="newConnectionName"
 							required
@@ -192,7 +190,7 @@ export function renderLiveAppReplaceWarning(input: {
 								input.onNewNameInput(event.currentTarget.value)
 							}}
 						/>
-					</label>
+					</Field>
 					{state.nameError ? (
 						<p
 							id="connect-new-name-error"

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { writeClipboardText } from '#client/clipboard.ts'
@@ -192,8 +193,7 @@ export function AccountMcpOauthClientsPage({
 								gap: spacing.md,
 							}}
 						>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Label</span>
+							<Field label="Label">
 								<Input
 									type="text"
 									value={labelDraft}
@@ -205,9 +205,8 @@ export function AccountMcpOauthClientsPage({
 										)
 									}}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Redirect URIs</span>
+							</Field>
+							<Field label="Redirect URIs">
 								<Textarea
 									rows={3}
 									value={redirectUrisDraft}
@@ -223,7 +222,7 @@ export function AccountMcpOauthClientsPage({
 										resize: 'vertical',
 									}}
 								/>
-							</label>
+							</Field>
 							<div>
 								<Button type="submit" disabled={isBusy} variant="primary">
 									{isBusy ? 'Working…' : 'Create client'}

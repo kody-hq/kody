@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import {
@@ -9,12 +10,7 @@ import {
 	banAdminReportOwner,
 } from '#start/server/admin-mutations'
 import type { AdminCommunityReportsLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
 import { useState, type MouseEvent } from 'react'
@@ -209,8 +205,7 @@ export function AdminCommunityReportsPage({
 								</p>
 								<p css={descriptionCss}>{report.reason}</p>
 
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Moderation note</span>
+								<Field label="Moderation note">
 									<Input
 										value={getNote(report.id)}
 										disabled={isMutating}
@@ -222,7 +217,7 @@ export function AdminCommunityReportsPage({
 											)
 										}}
 									/>
-								</label>
+								</Field>
 
 								<div
 									css={{

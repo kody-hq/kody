@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useState, type FormEvent } from 'react'
@@ -20,8 +21,6 @@ import {
 } from '#universal/safe-redirect.ts'
 import {
 	cardCss,
-	fieldCss,
-	fieldLabelCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
@@ -172,8 +171,7 @@ export function VerifyRoute() {
 				onSubmit={handleSubmit}
 			>
 				<Honeypot />
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Verification code</span>
+				<Field label="Verification code">
 					<Input
 						type="text"
 						name="code"
@@ -185,7 +183,7 @@ export function VerifyRoute() {
 						placeholder="123456"
 						onChange={() => setFormErrorDismissed(true)}
 					/>
-				</label>
+				</Field>
 				{turnstileSiteKey ? (
 					<div
 						className={turnstileWidgetClassName}

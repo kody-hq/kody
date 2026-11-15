@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import {
 	fieldCss,
 	fieldLabelCss,
@@ -263,8 +264,10 @@ export function OrgMembersInviteLinks({
 						void createLink()
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Role</span>
+					<Field
+						label="Role"
+						description="Anyone with the link joins as this role. Owner cannot be granted through a link."
+					>
 						<Select
 							value={role}
 							aria-label="Invite link role"
@@ -279,23 +282,18 @@ export function OrgMembersInviteLinks({
 								</option>
 							))}
 						</Select>
-						<p css={fieldDescriptionCss}>
-							Anyone with the link joins as this role. Owner cannot be granted
-							through a link.
-						</p>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Label (optional)</span>
+					</Field>
+					<Field
+						label="Label (optional)"
+						description="Helps you tell your links apart. Only admins see it."
+					>
 						<Input
 							value={label}
 							autoComplete="off"
 							placeholder="Engineering onboarding"
 							onChange={(event) => setLabel(event.currentTarget.value)}
 						/>
-						<p css={fieldDescriptionCss}>
-							Helps you tell your links apart. Only admins see it.
-						</p>
-					</label>
+					</Field>
 					{teams.length > 0 ? (
 						<fieldset css={teamFieldsetCss}>
 							<span css={fieldLabelCss}>Default teams (optional)</span>
@@ -320,21 +318,18 @@ export function OrgMembersInviteLinks({
 							</ul>
 						</fieldset>
 					) : null}
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Allowed email domains (optional)</span>
+					<Field
+						label="Allowed email domains (optional)"
+						description="Leave blank to allow any verified email. Domains check the account’s verified email."
+					>
 						<Input
 							value={domains}
 							autoComplete="off"
 							placeholder="example.com, partner.org"
 							onChange={(event) => setDomains(event.currentTarget.value)}
 						/>
-						<p css={fieldDescriptionCss}>
-							Leave blank to allow any verified email. Domains check the
-							account’s verified email.
-						</p>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Max uses (optional)</span>
+					</Field>
+					<Field label="Max uses (optional)">
 						<Input
 							value={maxUses}
 							inputMode="numeric"
@@ -342,19 +337,18 @@ export function OrgMembersInviteLinks({
 							placeholder="Unlimited"
 							onChange={(event) => setMaxUses(event.currentTarget.value)}
 						/>
-					</label>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Expires in days</span>
+					</Field>
+					<Field
+						label="Expires in days"
+						description="Links expire after 7 days by default (up to 365)."
+					>
 						<Input
 							value={days}
 							inputMode="numeric"
 							autoComplete="off"
 							onChange={(event) => setDays(event.currentTarget.value)}
 						/>
-						<p css={fieldDescriptionCss}>
-							Links expire after 7 days by default (up to 365).
-						</p>
-					</label>
+					</Field>
 					<p css={fieldDescriptionCss}>
 						Copy the link now. Kody only stores a hash, so you can&apos;t see it
 						again later.

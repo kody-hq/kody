@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	bindSecretProvider,
@@ -9,8 +10,6 @@ import {
 import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import {
-	fieldCss,
-	fieldLabelCss,
 	getAccentCalloutCss,
 	pageDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -334,8 +333,7 @@ export function AccountSecretProvidersPage({
 				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Bind a provider">
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Provider id</span>
+				<Field label="Provider id">
 					<Input
 						onInput={(event) => {
 							setBindProvider(event.currentTarget.value)
@@ -343,9 +341,8 @@ export function AccountSecretProvidersPage({
 						value={bindProvider}
 						disabled={disabled}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Package</span>
+				</Field>
+				<Field label="Package">
 					<Select
 						onChange={(event) => {
 							setBindPackageId(event.currentTarget.value)
@@ -360,9 +357,8 @@ export function AccountSecretProvidersPage({
 							</option>
 						))}
 					</Select>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Door-key secret</span>
+				</Field>
+				<Field label="Door-key secret">
 					<Select
 						onChange={(event) => {
 							setBindDoorSecret(event.currentTarget.value)
@@ -377,11 +373,8 @@ export function AccountSecretProvidersPage({
 							</option>
 						))}
 					</Select>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>
-						Optional config JSON (non-secret, for example a Connect base URL)
-					</span>
+				</Field>
+				<Field label="Optional config JSON (non-secret, for example a Connect base URL)">
 					<Input
 						onInput={(event) => {
 							setBindConfig(event.currentTarget.value)
@@ -389,7 +382,7 @@ export function AccountSecretProvidersPage({
 						value={bindConfig}
 						disabled={disabled}
 					/>
-				</label>
+				</Field>
 				<Button
 					type="button"
 					disabled={disabled}
