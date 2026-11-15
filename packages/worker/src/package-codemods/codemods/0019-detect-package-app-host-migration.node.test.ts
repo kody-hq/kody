@@ -47,7 +47,7 @@ test('0019 reports old absolute URLs for this app, including in docs', async () 
 			'README.md': 'Open https://acme.kody.run/notes/ to start.',
 			'app.ts': 'const legacy = "https://acme.kody.run/packages/notes/admin"',
 			'other.ts':
-				'const a = "https://acme.kody.run/notes-archive"; const b = "https://other.kody.run/notes"',
+				'const a = "https://acme.kody.run/notes-archive"; const b = "https://other.kody.run/notes"; const c = "https://notacme.kody.run/notes"; const d = "https://notes--acme.kody.run/notes"',
 		}),
 	).toEqual(['app.ts: old app url', 'README.md: old app url'])
 })
@@ -139,13 +139,19 @@ test('0019 skips tests, node_modules, and lockfiles', async () => {
 	).toEqual([])
 })
 
-test('0019 reads the manifest of a nested package', async () => {
+test('0019 scans only the files of a nested package', async () => {
 	const findings = await detectPackageAppHostMigrationCodemod.detect(
 		{
 			'apps/notes/package.json': manifest(),
 			'apps/notes/app.ts': 'localStorage.getItem("a")',
+			'apps/other/app.ts': 'indexedDB.open("other")',
+			'package.json': '{"name":"root"}',
 		},
-		{ ...packageContext, manifestPath: 'apps/notes/package.json' },
+		{
+			...packageContext,
+			manifestPath: 'apps/notes/package.json',
+			sourceRoot: 'apps/notes',
+		},
 	)
 	expect(findings).toEqual([
 		{

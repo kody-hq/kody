@@ -4,6 +4,7 @@ import type {
 	PackageCodemodFinding,
 	PackageCodemodTransformResult,
 } from '../types.ts'
+import { locatePackage } from './0013-declare-credential-needs.ts'
 import { readPackageAppManifest } from './0017-detect-package-app-visitor-authority.ts'
 
 export const detectPackageAppHostMigrationCodemodId =
@@ -84,7 +85,6 @@ export function packageAppHostMigrationPatternFromMessage(
 	return null
 }
 
-const packageManifestPath = 'package.json'
 const textFilePattern =
 	/\.(?:[cm]?[jt]s|[jt]sx|json|jsonc|md|mdx|txt|html|css|ya?ml|toml|vue|svelte|astro|webmanifest)$/
 const codeFilePattern =
@@ -110,18 +110,6 @@ function readIdentity(context: PackageCodemodContext): Identity | null {
 	return { owner, leaf }
 }
 
-function readManifestSource(
-	files: Record<string, string>,
-	context: PackageCodemodContext,
-) {
-	for (const path of [context.manifestPath, packageManifestPath]) {
-		if (path == null) continue
-		const key = path.replace(/^\/+/, '')
-		if (Object.hasOwn(files, key)) return files[key]
-	}
-	return undefined
-}
-
 type Matchers = Array<{
 	pattern: PackageAppHostMigrationPattern
 	test: (path: string, source: string) => boolean
@@ -132,7 +120,7 @@ const leafEnd = '(?![a-z0-9-])'
 
 function buildMatchers({ owner, leaf }: Identity): Matchers {
 	const oldUrl = new RegExp(
-		`${owner}\\.kody\\.run/(?:packages/)?${leaf}${leafEnd}`,
+		`(?<![a-z0-9.-])${owner}\\.kody\\.run/(?:packages/)?${leaf}${leafEnd}`,
 		'i',
 	)
 	const mountLiteral = new RegExp(`${quote}/${leaf}${leafEnd}`)
@@ -252,16 +240,21 @@ function detectPackageAppHostMigration(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
 ): Array<PackageCodemodFinding> {
-	if (!readPackageAppManifest(readManifestSource(files, context))) return []
+	const located = locatePackage(files, context)
+	const ownFiles = located.files
+	const manifestSource = Object.hasOwn(ownFiles, located.manifestKey)
+		? ownFiles[located.manifestKey]
+		: undefined
+	if (!readPackageAppManifest(manifestSource)) return []
 	const identity = readIdentity(context)
 	if (!identity) return []
 	const matchers = buildMatchers(identity)
 	const findings: Array<PackageCodemodFinding> = []
-	const paths = Object.keys(files).sort((left, right) =>
+	const paths = Object.keys(ownFiles).sort((left, right) =>
 		left.localeCompare(right),
 	)
 	for (const path of paths) {
-		const source = files[path]
+		const source = ownFiles[path]
 		if (typeof source !== 'string') continue
 		if (!textFilePattern.test(path)) continue
 		if (ignoredFilePattern.test(path) || testFilePattern.test(path)) continue
