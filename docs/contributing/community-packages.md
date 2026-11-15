@@ -168,9 +168,11 @@ the listing version read it when the published-commit snapshot and Artifacts
 miss. Community icons read Artifacts at the icon commit.
 
 `community-snapshot:v1:{listingId}` is retained only for unpublish, hard delete,
-account export, and account deletion. Live listing trees use the SHA-keyed
-source snapshot (`packages/worker/src/community/snapshot.ts`). Leftover `/files`
-URLs 301 to `/tree/{defaultBranch}`.
+account export, and account deletion. Unpublish and hard delete remove it before
+the listing row, because the row is the only handle a retry or export has on the
+key. Live listing trees use the SHA-keyed source snapshot
+(`packages/worker/src/community/snapshot.ts`). Leftover `/files` URLs 301 to
+`/tree/{defaultBranch}`.
 
 ### Community icon cache
 
