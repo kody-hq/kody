@@ -321,7 +321,8 @@ test('an older change that arrives late is dropped while a newer one for the sam
 		occurredAt: '2026-11-15T12:05:00.000Z',
 		now,
 	})
-	const [optIn, optOut] = outbox()
+	const optIn = outbox().find((row) => row.opted_in === 1)
+	const optOut = outbox().find((row) => row.opted_in === 0)
 
 	// The opt-in's retry lands first: it is superseded, so nothing is sent.
 	await expect(
