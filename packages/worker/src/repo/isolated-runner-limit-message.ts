@@ -228,9 +228,12 @@ export function externalPublishResourceLimitMessage(
  * the Durable Object limit. Nothing is built in that step, so building
  * outside Kody cloud is not the way out.
  */
+const uploadedBuildPersistLimitPhrase =
+	'Kody ran out of CPU time or memory while storing this uploaded build'
+
 export function uploadedBuildPersistLimitMessage() {
 	return (
-		'Kody ran out of CPU time or memory while storing this uploaded build, ' +
+		`${uploadedBuildPersistLimitPhrase}, ` +
 		'so the publish stopped. Your build was not rebuilt, and building it ' +
 		'again locally or on an execution context will not change this. The ' +
 		'step verifies the upload and links the `kody:@` packages it imports, ' +
@@ -270,6 +273,7 @@ export function publishComputeLimitMessage(
 export function isPublishComputeLimitMessage(message: string) {
 	return (
 		message.includes(publishComputeLimitPhrase) ||
+		message.includes(uploadedBuildPersistLimitPhrase) ||
 		message.includes(
 			'packagePublishExternalPush hit the Durable Object isolate memory or CPU limit',
 		)
