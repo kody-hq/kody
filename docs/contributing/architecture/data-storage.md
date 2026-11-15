@@ -1744,6 +1744,11 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
   the new `published_commit` missing artifacts.
+- `linked-artifact:v1:{sourceId}:{commit}:{sha256}`. The `kody:@` dependency
+  modules an uploaded build links (`.__kody_linked__/artifacts/…`), stored once
+  per commit and content hash. The commit's bundle artifacts list them under
+  `linkedArtifacts` and get the modules back when they are read. Deleted with
+  the commit's artifacts, the source, or the account.
 - `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
   written or read, still deleted and exported).
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
@@ -1979,9 +1984,10 @@ Current retention policies:
   `community_listings` row pins that commit (`pinned_commit`), and there is no
   active repo session for the source. When a row is pruned, the matching
   `source-snapshot:v1:{sourceId}:{commit}` and
-  `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys are deleted under
-  the same safety conditions, so per-commit snapshots do not accumulate
-  indefinitely. Ambiguous publish/edit cases are intentionally kept.
+  `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys, and every
+  `linked-artifact:v1:{sourceId}:{commit}:` key, are deleted under the same
+  safety conditions, so per-commit snapshots do not accumulate indefinitely.
+  Ambiguous publish/edit cases are intentionally kept.
 - Mailbox `email_delivery_events`: USER events keep 90 days under the per-owner
   DO alarm/admin RPC. System email is governed by the dedicated system-email
   retention job, which prunes messages, external attachment objects, raw-MIME

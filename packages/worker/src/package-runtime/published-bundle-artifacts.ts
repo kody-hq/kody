@@ -1,5 +1,9 @@
 import { createBundleArtifactManifest } from './bundle-artifact-manifest.ts'
 import {
+	deleteLinkedArtifactGroups,
+	linkedArtifactSourceKvPrefix,
+} from './linked-artifact-store.ts'
+import {
 	isPublishedArtifactRefusedByLoadSites,
 	isUnrepairablePreBindingArtifact,
 } from './pre-binding-artifact-repair.ts'
@@ -960,6 +964,10 @@ export async function deletePublishedArtifactsForSource(input: {
 				})
 			}),
 		)
+		await deleteLinkedArtifactGroups({
+			kv: input.env.BUNDLE_ARTIFACTS_KV,
+			prefix: linkedArtifactSourceKvPrefix(input.sourceId),
+		})
 	}
 	await deletePublishedBundleArtifactRowsBySourceId(
 		input.env.APP_DB,
