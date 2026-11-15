@@ -1,11 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import type { ReferredByState } from '#universal/referral-program.ts'
 import { spacing } from '#universal/styles/tokens.ts'
-import {
-	descriptionCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
 import { requestAddReferrer } from '../billing-checkout.ts'
 import {
 	accountFieldCss,
@@ -104,13 +102,13 @@ export function ReferredByPanel(props: {
 							css={{ ...accountInputCss, flex: '1 1 16rem' }}
 							onChange={(event) => setReferrer(event.currentTarget.value)}
 						/>
-						<button
+						<Button
 							type="submit"
 							disabled={pending || !referrer.trim()}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{pending ? 'Saving…' : 'Save referrer'}
-						</button>
+						</Button>
 					</div>
 				</div>
 				{error ? (

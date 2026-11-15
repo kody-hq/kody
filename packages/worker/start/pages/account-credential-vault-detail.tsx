@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import {
@@ -19,7 +19,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
@@ -86,12 +85,12 @@ export function renderVaultCredentialDetail(input: {
 			) : null}
 
 			<div>
-				<SiteLink
+				<Button
 					href={orgResourcePath(input.orgSlug, 'secret-providers')}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Manage secret providers
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

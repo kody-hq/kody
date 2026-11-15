@@ -58,7 +58,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							args.path === '@tanstack/react-start'
 								? 'export const useServerFn = fn => fn;'
 								: args.path === '@tanstack/react-router'
-									? 'export const useRouter = () => ({invalidate: async()=>{}});'
+									? 'export const useRouter = () => ({invalidate: async()=>{}}); export const createLink = (Component) => Component; export const useRouterState = ({ select }) => select({ location: { pathname: "/@jane", search: "", hash: "" } });'
 									: args.path === 'onboarding'
 										? 'export const onboardingQuery = () => ({queryKey:["onboarding"],queryFn:async()=>({payload:{needsOnboarding:window.fixture.needsOnboarding}})});'
 										: args.path.endsWith('experiment-opt-in')

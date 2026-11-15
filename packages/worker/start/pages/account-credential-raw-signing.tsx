@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -6,12 +7,7 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialRawSigning } from '#start/server/credential-raw-signing'
 import type { CredentialRawSigningView } from '#universal/credentials-list.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 
 const rawSigningAnchor = 'raw-signing'
@@ -137,15 +133,15 @@ export function CredentialRawSigningSection(props: {
 				{view.canChange ? (
 					toggle.enabled ? (
 						<div>
-							<button
+							<Button
 								type="button"
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								disabled={toggle.pending}
 								onClick={() => void toggle.change(false)}
 								data-testid="raw-signing-toggle"
 							>
 								Turn off raw signing
-							</button>
+							</Button>
 						</div>
 					) : (
 						<div css={{ display: 'grid', gap: spacing.xs }}>
@@ -168,15 +164,15 @@ export function CredentialRawSigningSection(props: {
 								</span>
 							</label>
 							<div>
-								<button
+								<Button
 									type="button"
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 									disabled={toggle.pending || !confirming}
 									onClick={() => void toggle.change(true)}
 									data-testid="raw-signing-toggle"
 								>
 									Turn on raw signing
-								</button>
+								</Button>
 							</div>
 						</div>
 					)

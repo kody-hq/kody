@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import type { AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
 import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts'
@@ -27,7 +28,6 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	getPillButtonCss,
 	primaryLinkCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
@@ -103,43 +103,37 @@ export function renderApprovalCard(props: {
 				}}
 			>
 				{approval.alreadyGranted ? (
-					<SiteLink
+					<Button
 						href={relocateAccountHref(
 							'/account/integrations',
 							props.currentHref,
 						)}
-						css={{
-							...getPillButtonCss({ size: 'sm' }),
-							display: 'inline-flex',
-							textDecoration: 'none',
-						}}
+						variant="primary"
+						css={{ display: 'inline-flex', textDecoration: 'none' }}
 					>
 						Back to integrations
-					</SiteLink>
+					</Button>
 				) : (
 					<>
-						<button
+						<Button
 							type="button"
 							data-testid="approve-integration-package"
 							disabled={submitting}
 							onClick={onApprove}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{submitting ? 'Approving…' : 'Approve'}
-						</button>
-						<SiteLink
+						</Button>
+						<Button
 							href={relocateAccountHref(
 								'/account/integrations',
 								props.currentHref,
 							)}
-							css={{
-								...getPillButtonCss({ size: 'sm' }),
-								display: 'inline-flex',
-								textDecoration: 'none',
-							}}
+							variant="primary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Cancel
-						</SiteLink>
+						</Button>
 					</>
 				)}
 			</div>

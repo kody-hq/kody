@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useContext, type ReactNode } from 'react'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
 import {
@@ -28,7 +29,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 /**
  * Main column of a non-personal organization's home. Repositories,
  * connections, secrets, jobs, and the other org sections read that org.
@@ -85,12 +85,12 @@ function renderOrgHomeMain(input: {
 							title: 'Use what was shared with you',
 							body: `${input.handle} shared specific resources with you. To use them, connect an agent and choose ${input.handle} on the approval screen.`,
 							action: (
-								<SiteLink
+								<Button
 									href={orgResourcePath(input.slug, 'agents')}
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 								>
 									Connect an agent
-								</SiteLink>
+								</Button>
 							),
 						})
 					: input.role === 'owner' || input.role === 'admin'
@@ -100,18 +100,18 @@ function renderOrgHomeMain(input: {
 								body: `Add people to ${input.handle} and choose their role. You can also update the organization's profile.`,
 								action: (
 									<div css={stepActionsCss}>
-										<SiteLink
+										<Button
 											href={orgMembersPath(input.slug)}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											Members
-										</SiteLink>
-										<SiteLink
+										</Button>
+										<Button
 											href={orgSettingsPath(input.slug)}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											Settings
-										</SiteLink>
+										</Button>
 									</div>
 								),
 							})
@@ -121,18 +121,18 @@ function renderOrgHomeMain(input: {
 								body: `See who is in ${input.handle} and open the organization's profile. Only an Owner can invite people or edit settings.`,
 								action: (
 									<div css={stepActionsCss}>
-										<SiteLink
+										<Button
 											href={orgMembersPath(input.slug)}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											Members
-										</SiteLink>
-										<SiteLink
+										</Button>
+										<Button
 											href={orgSettingsPath(input.slug)}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											Settings
-										</SiteLink>
+										</Button>
 									</div>
 								),
 							})}
@@ -142,13 +142,13 @@ function renderOrgHomeMain(input: {
 							title: 'Billing and seats',
 							body: `Subscribe ${input.handle} to Kody Pro, billed per seat: every owner and member is one. Invoices and the payment method live there too.`,
 							action: (
-								<SiteLink
+								<Button
 									href={orgBillingPath(input.slug)}
 									data-testid="org-home-billing"
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 								>
 									Open billing
-								</SiteLink>
+								</Button>
 							),
 						})
 					: null}
@@ -163,30 +163,30 @@ function renderOrgHomeMain(input: {
 							body: `${input.handle} has its own repositories, connected agents, credentials, and jobs, separate from your personal account.`,
 							action: (
 								<div css={stepActionsCss}>
-									<SiteLink
+									<Button
 										href={orgResourcePath(input.slug, 'repositories')}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 									>
 										Repositories
-									</SiteLink>
-									<SiteLink
+									</Button>
+									<Button
 										href={orgResourcePath(input.slug, 'jobs')}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 									>
 										Jobs
-									</SiteLink>
-									<SiteLink
+									</Button>
+									<Button
 										href={orgResourcePath(input.slug, 'agents')}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 									>
 										Agents
-									</SiteLink>
-									<SiteLink
+									</Button>
+									<Button
 										href={orgResourcePath(input.slug, 'credentials')}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 									>
 										Credentials
-									</SiteLink>
+									</Button>
 								</div>
 							),
 						})}

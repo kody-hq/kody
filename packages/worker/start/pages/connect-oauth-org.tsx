@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { orgIdentity, type OrganizationSummary } from '#universal/org-pages.ts'
 import {
@@ -7,7 +8,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -132,9 +132,9 @@ export function ConnectOauthOrgPicker(props: {
 				</select>
 			</label>
 			<div>
-				<button type="submit" css={getPrimaryButtonCss()}>
+				<Button type="submit" variant="primary" size="md">
 					Continue
-				</button>
+				</Button>
 			</div>
 		</form>
 	)

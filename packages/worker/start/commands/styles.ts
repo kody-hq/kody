@@ -1,5 +1,6 @@
 import type { CSSObject } from '@emotion/react'
 import { colors, typography } from '#universal/styles/tokens.ts'
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 export const dialogCss: CSSObject = {
 	padding: 0,
 	width: 'min(720px, calc(100vw - 24px))',
@@ -57,19 +58,22 @@ export const footerCss: CSSObject = {
 	color: colors.textMuted,
 	flexWrap: 'wrap',
 }
-export const smallButtonCss: CSSObject = {
+export const compactSelectCss: CSSObject = {
+	...getSquircleCss('xs'),
 	border: `1px solid ${colors.border}`,
-	borderRadius: 6,
 	padding: '5px 8px',
 	background: 'transparent',
 	color: 'inherit',
 	font: 'inherit',
 	fontSize: 12,
 	cursor: 'pointer',
+	maxWidth: 230,
 	'&:hover': { background: colors.primarySoft },
+}
+
+export const pressedCss: CSSObject = {
 	'&[aria-pressed="true"]': {
 		background: colors.primarySoft,
 		color: colors.primaryText,
 	},
-	'&:disabled': { opacity: 0.5, cursor: 'default' },
 }

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createFileRoute } from '@tanstack/react-router'
 import { createPageQuery, loadPageQuery, usePageQuery } from '../page-query.ts'
 import { loadOrgRepositories } from '#start/server/org-management'
@@ -7,12 +8,7 @@ import {
 	AccountPageHeader,
 } from '../pages/account-management-components.tsx'
 import { ProfileRoute } from '../pages/profile.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { routes } from '#universal/routes.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 const pageQuery = createPageQuery('loadOrgRepositories', loadOrgRepositories, {
 	freshAuthorization: true,
 })
@@ -68,22 +64,22 @@ function Page() {
 				currentHref={href}
 				actions={
 					<>
-						<SiteLink
+						<Button
 							href={routes.community.href(null, {
 								searchParams: new URLSearchParams({ org: orgSlug }),
 							})}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							data-testid="repositories-browse-community"
 						>
 							Fork a community package
-						</SiteLink>
-						<SiteLink
+						</Button>
+						<Button
 							href={routes.orgRepositoryNew.href({ orgSlug })}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 							data-testid="repositories-new"
 						>
 							New repository
-						</SiteLink>
+						</Button>
 					</>
 				}
 			/>

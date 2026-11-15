@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter, useRouteContext } from '@tanstack/react-router'
 import {
@@ -8,10 +9,6 @@ import {
 	declinePendingInviteLink,
 } from '#start/server/account-invites'
 import type { AccountPendingInvite } from '#universal/loader-data.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { spacing } from '#universal/styles/tokens.ts'
 import { permissionsMutationOptions } from '../permissions-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -93,24 +90,24 @@ export function renderPendingInviteActions(
 				flexShrink: 0,
 			}}
 		>
-			<button
+			<Button
 				type="button"
 				disabled={actions.busyKey !== null}
 				data-testid="pending-invite-accept"
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 				onClick={() => actions.accept(invite)}
 			>
 				{busy ? 'Working…' : 'Accept'}
-			</button>
-			<button
+			</Button>
+			<Button
 				type="button"
 				disabled={actions.busyKey !== null}
 				data-testid="pending-invite-decline"
-				css={getGhostButtonCss({ size: 'sm' })}
+				variant="secondary"
 				onClick={() => actions.decline(invite)}
 			>
 				Decline
-			</button>
+			</Button>
 		</span>
 	)
 }

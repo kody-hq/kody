@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -11,8 +12,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
@@ -109,8 +108,6 @@ export function AdminReservedUsernamesPage(props: {
 		)
 		if (saved) form.reset()
 	}
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const currentHref = props.currentHref
 	const pending = false
 	const status: string = 'ready'
@@ -155,13 +152,14 @@ export function AdminReservedUsernamesPage(props: {
 						css={accountTextareaCss}
 					/>
 				</label>
-				<button
+				<Button
 					type="submit"
 					disabled={isMutating}
-					css={{ ...primaryButtonCss, justifySelf: 'start' }}
+					variant="primary"
+					css={{ justifySelf: 'start' }}
 				>
 					{actionState === 'adding' ? 'Adding…' : 'Add'}
-				</button>
+				</Button>
 			</AccountManagementPanel>
 			<section css={cardCss}>
 				<h2
@@ -230,7 +228,7 @@ export function AdminReservedUsernamesPage(props: {
 							}}
 						>
 							<code>{username}</code>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								onClick={() =>
@@ -244,10 +242,10 @@ export function AdminReservedUsernamesPage(props: {
 										'removing',
 									)
 								}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								{actionState === 'removing' ? 'Removing…' : 'Remove'}
-							</button>
+							</Button>
 						</div>
 					))}
 				</div>
@@ -283,7 +281,7 @@ export function AdminReservedUsernamesPage(props: {
 							}}
 						>
 							<code>{username}</code>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								onClick={() =>
@@ -297,10 +295,10 @@ export function AdminReservedUsernamesPage(props: {
 										'adding',
 									)
 								}
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Restore
-							</button>
+							</Button>
 						</div>
 					))}
 				</div>

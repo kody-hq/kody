@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { adoptPackageFork } from '#start/server/package-mutations'
 import type { CSSObject } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
@@ -14,10 +15,7 @@ import type {
 	AccountPackageDetail,
 } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getAccentCalloutCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import {
 	TimestampValue,
 	accountActionsCss,
@@ -128,7 +126,7 @@ export function AccountPackageForkAdoption(props: {
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="community-fork-adopt"
 							disabled={
@@ -136,10 +134,10 @@ export function AccountPackageForkAdoption(props: {
 								reviewNote.trim().length <
 									communityForkAdoptionReviewNoteMinLength
 							}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{submitting ? 'Adopting…' : 'Adopt fork'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

@@ -88,7 +88,6 @@ function layout(
 	--font-body: 'Wix Madefor Text', system-ui, sans-serif;
 	--font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 	--radius-card: 14px;
-	--radius-full: 999px;
 	--danger-bg: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
 	--accent: ${accent};
 }
@@ -178,13 +177,16 @@ button, .button {
 	border: 1px solid transparent;
 	background: var(--color-primary);
 	color: var(--color-on-primary);
-	border-radius: var(--radius-full);
+	border-radius: 0.625rem;
 	padding: 0.5rem 0.95rem;
 	font: inherit;
 	font-weight: 600;
 	cursor: pointer;
 	text-decoration: none;
 	display: inline-block;
+}
+@supports (corner-shape: squircle) {
+	button, .button { border-radius: 1.125rem; corner-shape: squircle; }
 }
 button:hover, .button:hover { background: var(--color-primary-hover); }
 button.danger, .button.danger {

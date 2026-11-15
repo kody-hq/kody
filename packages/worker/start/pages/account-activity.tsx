@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
@@ -51,7 +52,6 @@ import {
 	type AccountActivityViewFilter,
 } from '#universal/account-activity-filters.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 
 const clampedCellCss = recordCellClamp(30)
 
@@ -115,8 +115,6 @@ export function AccountActivityPage({
 		void router.navigate({ to: href, resetScroll: false })
 	const replaceLocation = (href: string) =>
 		void router.navigate({ to: href, replace: true, resetScroll: false })
-
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -453,18 +451,19 @@ export function AccountActivityPage({
 						})}
 						footer={
 							nextCursor ? (
-								<button
+								<Button
 									type="button"
 									disabled={loadingMore}
 									onClick={() => void loadMoreRuns()}
-									css={{ ...secondaryButtonCss, width: '100%' }}
+									variant="secondary"
+									css={{ width: '100%' }}
 								>
 									{loadingMore ? (
 										<LoadingIndicator inline label="Loading more…" />
 									) : (
 										'Load more'
 									)}
-								</button>
+								</Button>
 							) : null
 						}
 						record={detail ? renderActivityRunDetail(detail) : null}

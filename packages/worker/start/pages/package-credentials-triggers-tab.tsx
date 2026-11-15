@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -20,11 +21,7 @@ import {
 	triggerStateLabel,
 	withheldTriggerMappingsNote,
 } from '#universal/package-credentials-page.ts'
-import {
-	cardCss,
-	cardTitleCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, cardTitleCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -42,13 +39,13 @@ import {
 	tableCss,
 } from './package-credentials-tabs.tsx'
 
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-
 const switchTrackCss = {
 	appearance: 'none' as const,
 	width: '2.75rem',
 	height: '1.55rem',
 	minWidth: '2.75rem',
+	// Toggle switch track, not a button.
+	// oxlint-disable-next-line kody-custom/no-raw-button-style
 	borderRadius: radius.full,
 	border: `1px solid ${colors.border}`,
 	background: colors.surface,
@@ -439,10 +436,10 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 												mapping on its card (saving one need at a time never
 												mints a second copy).
 											</p>
-											<button
+											<Button
 												type="button"
 												disabled={Boolean(context.enablementBusyKey)}
-												css={secondaryButtonCss}
+												variant="secondary"
 												onClick={() => {
 													context.setTriggerEnablement?.({
 														trigger: trigger.trigger,
@@ -452,7 +449,7 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 												}}
 											>
 												Add another instance
-											</button>
+											</Button>
 										</>
 									)}
 								</div>

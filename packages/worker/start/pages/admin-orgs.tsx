@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
@@ -20,8 +21,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAuthInputCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
@@ -54,9 +53,7 @@ import {
 
 const billingInputCss = getAuthInputCss()
 const billingSelectCss = getSelectCss()
-const billingButtonCss = getPillButtonCss({ size: 'sm' })
 const secondaryButtonCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	justifySelf: 'start',
 }
 
@@ -123,14 +120,15 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 			) : (
 				<LoadingIndicator label="Loading seat changes…" />
 			)}
-			<button
+			<Button
 				type="button"
+				variant="secondary"
 				css={secondaryButtonCss}
 				disabled={stripe.isPending}
 				onClick={() => stripe.mutate(0)}
 			>
 				{stripe.isPending ? 'Comparing…' : 'Compare with Stripe'}
-			</button>
+			</Button>
 			{stripe.isError ? (
 				<AccountManagementMessage tone="error">
 					{stripe.error.message}
@@ -165,14 +163,14 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 						}))}
 					/>
 					{stripeReport.nextOffset !== null ? (
-						<button
+						<Button
 							type="button"
-							css={billingButtonCss}
+							variant="primary"
 							disabled={stripe.isPending}
 							onClick={() => stripe.mutate(stripeReport.nextOffset!)}
 						>
 							Next page
-						</button>
+						</Button>
 					) : null}
 				</>
 			) : null}
@@ -246,13 +244,9 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 					disabled={mutation.isPending}
 				/>
 			</label>
-			<button
-				type="submit"
-				css={billingButtonCss}
-				disabled={mutation.isPending}
-			>
+			<Button type="submit" variant="primary" disabled={mutation.isPending}>
 				{mutation.isPending ? 'Saving…' : 'Save'}
-			</button>
+			</Button>
 			{message ? (
 				<div css={{ gridColumn: '1 / -1' }}>
 					<AccountManagementMessage tone={mutation.isError ? 'error' : 'info'}>
@@ -354,9 +348,9 @@ function AdminOrgCreditsForms(props: {
 						disabled={grant.isPending}
 					/>
 				</label>
-				<button type="submit" css={billingButtonCss} disabled={grant.isPending}>
+				<Button type="submit" variant="primary" disabled={grant.isPending}>
 					{grant.isPending ? 'Granting…' : 'Grant'}
-				</button>
+				</Button>
 				{grantMessage ? (
 					<div css={{ gridColumn: '1 / -1' }}>
 						<AccountManagementMessage
@@ -414,13 +408,13 @@ function AdminOrgCreditsForms(props: {
 						disabled={eligibility.isPending}
 					/>
 				</label>
-				<button
+				<Button
 					type="submit"
-					css={billingButtonCss}
+					variant="primary"
 					disabled={eligibility.isPending}
 				>
 					{eligibility.isPending ? 'Saving…' : 'Save eligibility'}
-				</button>
+				</Button>
 				{eligibilityMessage ? (
 					<div css={{ gridColumn: '1 / -1' }}>
 						<AccountManagementMessage

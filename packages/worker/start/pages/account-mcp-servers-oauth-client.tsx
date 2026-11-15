@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import { accountInputCss } from './account-management-components.tsx'
@@ -13,9 +14,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	type getDangerPillCss,
-	type getGhostButtonCss,
-	type getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type McpServerOAuthClientInput = {
@@ -25,17 +23,11 @@ export type McpServerOAuthClientInput = {
 export function McpServerOAuthClientSection({
 	server,
 	isMutating,
-	primaryButtonCss,
-	secondaryButtonCss,
-	dangerButtonCss,
 	onSave,
 	onRemove,
 }: {
 	server: McpServerListItem
 	isMutating: boolean
-	primaryButtonCss: ReturnType<typeof getPillButtonCss>
-	secondaryButtonCss: ReturnType<typeof getGhostButtonCss>
-	dangerButtonCss: ReturnType<typeof getDangerPillCss>
 	onSave: (client: McpServerOAuthClientInput) => Promise<boolean>
 	onRemove: () => void
 }) {
@@ -97,10 +89,10 @@ export function McpServerOAuthClientSection({
 					</p>
 					{!editing ? (
 						<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={() => {
 									setEditing(true)
 									setClientId(server.oauthClientId ?? '')
@@ -109,11 +101,11 @@ export function McpServerOAuthClientSection({
 								}}
 							>
 								Replace
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={dangerButtonCss}
+								variant="danger"
 								onBlur={() => setRemoveArmed(false)}
 								onClick={() => {
 									if (removeArmed) {
@@ -123,7 +115,7 @@ export function McpServerOAuthClientSection({
 								}}
 							>
 								{removeArmed ? 'Confirm remove OAuth client' : 'Remove'}
-							</button>
+							</Button>
 						</div>
 					) : null}
 				</div>
@@ -177,26 +169,26 @@ export function McpServerOAuthClientSection({
 						/>
 					</div>
 					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-						<button
+						<Button
 							type="submit"
 							disabled={isMutating || !clientId.trim() || !clientSecret.trim()}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{isMutating
 								? 'Saving…'
 								: configured
 									? 'Replace OAuth client'
 									: 'Save OAuth client'}
-						</button>
+						</Button>
 						{editing ? (
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={reset}
 							>
 								Cancel
-							</button>
+							</Button>
 						) : null}
 					</div>
 				</form>

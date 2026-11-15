@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	IdValue,
 	MetadataGrid,
@@ -34,9 +35,6 @@ import {
 import {
 	cardCss,
 	cardTitleCss,
-	getDangerButtonCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -50,14 +48,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-
-const approveAllButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const approveButtonCss = getPrimaryButtonCss({ size: 'md' })
-const denyButtonCss = getSecondaryButtonCss({ size: 'md' })
-const denyConfirmButtonCss = getDangerButtonCss({ size: 'md' })
 const mutedCss = { margin: 0, color: colors.textMuted }
 const smallMutedCss = { ...mutedCss, fontSize: typography.fontSize.sm }
 const listCss: CSSObject = {
@@ -415,54 +405,58 @@ export function ApprovalBundleRoute({
 					}}
 				>
 					{!decided && item.canApprove ? (
-						<button
+						<Button
 							type="button"
 							data-testid="approval-bundle-approve"
 							disabled={locked}
-							css={approveButtonCss}
+							variant="primary"
+							size="md"
 							onClick={() => void decide(path, item, 'approve')}
 						>
 							{isBusy ? 'Working…' : 'Approve'}
-						</button>
+						</Button>
 					) : null}
 					{!decided && item.canDeny ? (
 						confirmingDeny === item.key ? (
 							<>
-								<button
+								<Button
 									type="button"
 									data-testid="approval-bundle-deny-confirm"
 									disabled={locked}
-									css={denyConfirmButtonCss}
+									variant="danger"
+									size="md"
 									onClick={() => {
 										setConfirmingDeny(null)
 										void decide(path, item, 'deny')
 									}}
 								>
 									{item.type === 'publish' ? 'Deny and drop it' : 'Deny'}
-								</button>
-								<button
+								</Button>
+								<Button
 									type="button"
 									disabled={locked}
-									css={denyButtonCss}
+									variant="secondary"
+									size="md"
 									onClick={() => {
 										setConfirmingDeny(null)
 									}}
 								>
 									Keep
-								</button>
+								</Button>
 							</>
 						) : (
-							<button
+							<Button
 								type="button"
 								data-testid="approval-bundle-deny"
 								disabled={locked}
-								css={denyButtonCss}
+								variant="secondary"
+								size="md"
 								onClick={() => {
 									setConfirmingDeny(item.key)
 								}}
 							>
 								Deny
-							</button>
+							</Button>
 						)
 					) : null}
 					{item.reviewHref ? (
@@ -583,17 +577,18 @@ export function ApprovalBundleRoute({
 						justifyItems: 'start',
 					}}
 				>
-					<button
+					<Button
 						type="button"
 						data-testid="approval-bundle-approve-all"
 						disabled={ready === 0 || approveAll !== null}
-						css={approveAllButtonCss}
+						variant="primary"
+						size="md"
 						onClick={() => void runApproveAll(path, view)}
 					>
 						{approveAll
 							? `Approving ${Math.min(approveAll.done + 1, approveAll.total)} of ${approveAll.total}…`
 							: approveAllLabel(ready, remaining)}
-					</button>
+					</Button>
 					{approveAll ? (
 						<p css={smallMutedCss}>
 							Publishes can take a moment each. Keep this page open.

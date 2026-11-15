@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { FormEvent } from 'react'
@@ -22,7 +23,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAccentCalloutCss,
-	getSecondaryButtonCss,
 	inputCss,
 	insetCardCss,
 	listCss,
@@ -36,12 +36,10 @@ import {
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
 import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import {
-	type ConnectOauthChooserOption,
-	type ConnectOauthStatusTone,
-	type ConnectOauthStep,
-	connectOauthPrimaryButtonCss,
-	connectOauthSecondaryButtonCss,
+import type {
+	ConnectOauthChooserOption,
+	ConnectOauthStatusTone,
+	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
 
 /**
@@ -144,32 +142,35 @@ export function renderLiveAppReplaceWarning(input: {
 						alignItems: 'center',
 					}}
 				>
-					<button
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onReplace}
 						data-testid="connect-live-replace-confirm"
 					>
 						Replace this app
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onChooseNewName}
 						data-testid="connect-live-replace-save-new"
 					>
 						Save as a new connection
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onCancel}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			) : (
 				<form
@@ -213,22 +214,24 @@ export function renderLiveAppReplaceWarning(input: {
 							alignItems: 'center',
 						}}
 					>
-						<button
+						<Button
 							type="submit"
 							disabled={input.submitting}
-							css={connectOauthPrimaryButtonCss}
+							variant="primary"
+							size="md"
 							data-testid="connect-live-replace-new-submit"
 						>
 							Save as new connection
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={input.submitting}
-							css={connectOauthSecondaryButtonCss}
+							variant="secondary"
+							size="md"
 							onClick={input.onCancel}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}
@@ -282,17 +285,18 @@ export function renderReplaceConfirmation(input: {
 					alignItems: 'center',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={input.submitting}
-					css={getSecondaryButtonCss()}
+					variant="secondary"
+					size="md"
 					onClick={() => {
 						input.onConfirm()
 					}}
 					data-testid="connect-replace-confirm"
 				>
 					Replace {input.config.providerKey}
-				</button>
+				</Button>
 			</div>
 		</div>
 	)

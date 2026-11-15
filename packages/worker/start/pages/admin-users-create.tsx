@@ -1,13 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import type { AdminCreatedUserSetup } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
@@ -15,7 +12,6 @@ import {
 	noticeCardCss,
 } from './account-management-components.tsx'
 import type { AdminUsersActionState } from './admin-users-detail.tsx'
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 export function AdminCreateUserPanel(input: {
 	actionState: AdminUsersActionState
 	createdUser: AdminCreatedUserSetup | null
@@ -64,13 +60,9 @@ export function AdminCreateUserPanel(input: {
 						css={accountInputCss}
 					/>
 				</label>
-				<button
-					type="submit"
-					disabled={input.isMutating}
-					css={primaryButtonCss}
-				>
+				<Button type="submit" disabled={input.isMutating} variant="primary">
 					{input.actionState === 'creatingUser' ? 'Creating…' : 'Create user'}
-				</button>
+				</Button>
 			</div>
 			{input.createdUser ? (
 				<div css={noticeCardCss}>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
 import {
@@ -9,10 +10,6 @@ import {
 import { saveCredentialHosts } from '#start/server/credential-hosts'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import type { CredentialHostSettings } from '#universal/credentials-list.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 type CredentialHostsEditorProps = {
 	credentialId: string
@@ -154,14 +151,14 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 		return (
 			<div css={css({ display: 'grid', gap: spacing.xs })}>
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="credential-hosts-edit"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={startEditing}
 					>
 						Edit hosts
-					</button>
+					</Button>
 				</div>
 				{status ? (
 					<p role="status" css={css(accountFieldNoteCss)}>
@@ -191,14 +188,14 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 				{draft.map((host) => (
 					<li key={host} css={rowCss}>
 						<span css={hostCss}>{host}</span>
-						<button
+						<Button
 							type="button"
 							aria-label={`Remove ${host}`}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={() => remove(host)}
 						>
 							Remove
-						</button>
+						</Button>
 					</li>
 				))}
 			</ul>
@@ -216,9 +213,9 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 					css={inputCss}
 					onChange={(event) => setTyped(event.currentTarget.value)}
 				/>
-				<button type="submit" css={css(getGhostButtonCss({ size: 'sm' }))}>
+				<Button type="submit" variant="secondary">
 					Add host
-				</button>
+				</Button>
 			</form>
 			{error ? (
 				<p role="alert" css={errorCss}>
@@ -226,23 +223,23 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 				</p>
 			) : null}
 			<div css={css(accountActionsCss)}>
-				<button
+				<Button
 					type="button"
 					data-testid="credential-hosts-save"
 					disabled={saving}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 					onClick={() => void save()}
 				>
 					{saving ? 'Saving…' : 'Save hosts'}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={saving}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 					onClick={cancel}
 				>
 					Cancel
-				</button>
+				</Button>
 			</div>
 		</div>
 	)

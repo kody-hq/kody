@@ -1,12 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import type { AccountFormerEmail } from '#universal/loader-data.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementPanel,
 	accountFieldCss,
@@ -43,8 +40,6 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 		onUseAgainAsLogin,
 		onReleaseListed,
 	} = props
-	const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const compactPillButtonCss = getPillButtonCss({ size: 'sm' })
 	const isSending = releaseStatus === 'sending'
 
 	return (
@@ -78,26 +73,26 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 									gap: spacing.sm,
 								}}
 							>
-								<button
+								<Button
 									type="button"
 									disabled={isSending}
-									css={compactPillButtonCss}
+									variant="primary"
 									onClick={() => {
 										onReleaseListed(claim.email)
 									}}
 								>
 									Release
-								</button>
-								<button
+								</Button>
+								<Button
 									type="button"
 									disabled={isSending}
-									css={compactGhostButtonCss}
+									variant="secondary"
 									onClick={() => {
 										onUseAgainAsLogin(claim.email)
 									}}
 								>
 									Use again as login
-								</button>
+								</Button>
 							</div>
 						</li>
 					))}
@@ -152,13 +147,13 @@ export function AccountFormerEmailsPanel(props: AccountFormerEmailsPanelProps) {
 					/>
 				</label>
 				<div>
-					<button
+					<Button
 						type="submit"
 						disabled={isSending || !releaseEmail.trim() || !releasePassword}
-						css={compactGhostButtonCss}
+						variant="secondary"
 					>
 						{isSending ? 'Sending...' : 'Send release link'}
-					</button>
+					</Button>
 				</div>
 				{releaseMessage ? (
 					<p

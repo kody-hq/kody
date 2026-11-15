@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import {
 	loadFileInvitation,
 	acceptFileInvitation,
 } from '#start/server/file-invitations'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { AccountManagementShell } from '../pages/account-management-components.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 export const Route = createFileRoute('/files/invites/$token')({
@@ -43,8 +43,9 @@ function Page() {
 					{offer.accepted ? (
 						<SiteLink href={offer.href}>Open file</SiteLink>
 					) : (
-						<button
-							css={getPillButtonCss()}
+						<Button
+							variant="primary"
+							size="lg"
 							disabled={busy}
 							onClick={async () => {
 								setBusy(true)
@@ -60,7 +61,7 @@ function Page() {
 							}}
 						>
 							{busy ? 'Accepting…' : 'Accept invitation'}
-						</button>
+						</Button>
 					)}
 				</>
 			) : (

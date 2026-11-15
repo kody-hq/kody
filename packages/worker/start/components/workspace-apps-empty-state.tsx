@@ -1,14 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { css } from '@emotion/react'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
 } from '../pages/account-management-components.tsx'
-import { SiteLink } from './site-link.tsx'
 import { CopyTextButton } from './copy-text-button.tsx'
 import { buildCommunityIndexHref } from '#universal/community-search.ts'
 import { workspaceAppsAgentPrompt } from '#universal/workspace-apps-agent-prompt.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 
 /**
  * First-use panel when a workspace has no hosted apps yet. Copying the
@@ -35,13 +34,13 @@ export function WorkspaceAppsEmptyState(props: { orgSlug: string }) {
 						copiedLabel="Copied"
 						ariaLabel="Copy a prompt for my agent"
 					/>
-					<SiteLink
+					<Button
 						href={exploreHref}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						data-testid="workspace-apps-explore-forks"
 					>
 						Explore apps you can fork
-					</SiteLink>
+					</Button>
 				</div>
 			</div>
 		</AccountManagementPanel>

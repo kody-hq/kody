@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -18,7 +19,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getPillButtonCss,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -32,7 +32,6 @@ import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	type IntegrationUsageDraft,
-	dangerButtonCss,
 	integrationListId,
 } from './account-integrations-shared.ts'
 import {
@@ -144,15 +143,9 @@ export function AddAccountForm(props: {
 					</p>
 				) : null}
 			</label>
-			<button
-				type="submit"
-				css={{
-					...getPillButtonCss({ size: 'sm' }),
-					display: 'inline-flex',
-				}}
-			>
+			<Button type="submit" variant="primary" css={{ display: 'inline-flex' }}>
 				Connect
-			</button>
+			</Button>
 		</form>
 	)
 }
@@ -268,15 +261,15 @@ export function ConnectionUsageForm(props: {
 					</div>
 				)
 			) : null}
-			<button
+			<Button
 				type="button"
 				data-testid="save-integration-usage"
 				disabled={saving}
 				onClick={onSave}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				{saving ? 'Saving…' : 'Save usage'}
-			</button>
+			</Button>
 		</section>
 	)
 }
@@ -484,13 +477,13 @@ export function RotateCredentialsForm(props: {
 					</span>
 				</label>
 				<div>
-					<button
+					<Button
 						type="submit"
 						disabled={status === 'saving' || !confirmed}
-						css={dangerButtonCss}
+						variant="danger"
 					>
 						{status === 'saving' ? 'Rotating...' : 'Rotate credentials'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>

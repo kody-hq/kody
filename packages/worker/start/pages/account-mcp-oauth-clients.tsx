@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { writeClipboardText } from '#client/clipboard.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
@@ -14,9 +15,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -80,10 +78,6 @@ export function AccountMcpOauthClientsPage({
 	})
 
 	const [revokeArmed, setRevokeArmed] = useState<string | null>(null)
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-
-	const ghostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	async function handleCreate(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -235,9 +229,9 @@ export function AccountMcpOauthClientsPage({
 								/>
 							</label>
 							<div>
-								<button type="submit" disabled={isBusy} css={primaryButtonCss}>
+								<Button type="submit" disabled={isBusy} variant="primary">
 									{isBusy ? 'Working…' : 'Create client'}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</section>
@@ -276,15 +270,15 @@ export function AccountMcpOauthClientsPage({
 											flex: '1 1 16rem',
 										}}
 									/>
-									<button
+									<Button
 										type="button"
 										onClick={() => {
 											void copyValue(createdClient!.clientId, 'client ID')
 										}}
-										css={ghostButtonCss}
+										variant="secondary"
 									>
 										Copy
-									</button>
+									</Button>
 								</div>
 							</label>
 							<label css={fieldCss}>
@@ -308,7 +302,7 @@ export function AccountMcpOauthClientsPage({
 											flex: '1 1 16rem',
 										}}
 									/>
-									<button
+									<Button
 										type="button"
 										onClick={() => {
 											void copyValue(
@@ -316,10 +310,10 @@ export function AccountMcpOauthClientsPage({
 												'client secret',
 											)
 										}}
-										css={ghostButtonCss}
+										variant="secondary"
 									>
 										Copy
-									</button>
+									</Button>
 								</div>
 							</label>
 						</section>
@@ -404,10 +398,10 @@ export function AccountMcpOauthClientsPage({
 											</p>
 										</div>
 										{client.revokedAt ? null : (
-											<button
+											<Button
 												type="button"
 												disabled={isBusy}
-												css={dangerButtonCss}
+												variant="danger"
 												onBlur={() => setRevokeArmed(null)}
 												onClick={() => {
 													if (revokeArmed === client.id) {
@@ -417,7 +411,7 @@ export function AccountMcpOauthClientsPage({
 												}}
 											>
 												{revokeArmed === client.id ? 'Revoke now' : 'Revoke'}
-											</button>
+											</Button>
 										)}
 									</li>
 								))}

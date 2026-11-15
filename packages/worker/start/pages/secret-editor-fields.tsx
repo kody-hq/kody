@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	fromDatetimeLocalValue,
 	toDatetimeLocalValue,
@@ -11,7 +12,6 @@ import { accountDisclosureCss } from './account-management-components.tsx'
 import {
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
 	inputCss,
 	textareaCss,
 } from '#universal/styles/style-primitives.ts'
@@ -147,7 +147,9 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 							}}
 						/>
 					)}
-					<button
+					<Button
+						variant="ghost"
+						size="xs"
 						type="button"
 						aria-label={
 							props.showSecretValue ? 'Hide secret value' : 'Show secret value'
@@ -159,7 +161,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 						css={iconButtonCss}
 					>
 						{props.showSecretValue ? 'Hide' : 'Show'}
-					</button>
+					</Button>
 				</div>
 			</div>
 
@@ -193,24 +195,24 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 										css={inputCss}
 									/>
 
-									<button
+									<Button
 										type="button"
 										onClick={() => props.onRemoveAllowedHost(index)}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Remove
-									</button>
+									</Button>
 								</div>
 							))}
 						</div>
 						<div>
-							<button
+							<Button
 								type="button"
 								onClick={() => props.onAddAllowedHost()}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								Add host
-							</button>
+							</Button>
 						</div>
 					</div>
 				</div>
@@ -218,8 +220,6 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 		</>
 	)
 }
-
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const advancedDetailsCss: CSSObject = {
 	...accountDisclosureCss,
@@ -230,24 +230,10 @@ const advancedDetailsCss: CSSObject = {
 const iconButtonCss: CSSObject = {
 	position: 'absolute' as const,
 	right: spacing.sm,
-	top: '50%',
-	transform: 'translateY(-50%)',
-	background: 'none',
-	border: 'none',
-	borderRadius: '999px',
-	padding: spacing.xs,
+	insetBlock: 0,
+	marginBlock: 'auto',
+	height: 'fit-content',
 	width: '3.5rem',
-	height: '2rem',
-	color: colors.text,
-	cursor: 'pointer',
-	display: 'flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	fontSize: '0.75rem',
-	fontWeight: 600,
-	'&:hover': {
-		background: colors.primarySoft,
-	},
 }
 
 const repeatedRowCss: CSSObject = {
