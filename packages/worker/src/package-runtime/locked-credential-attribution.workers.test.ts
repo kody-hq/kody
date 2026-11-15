@@ -15,6 +15,8 @@ import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
+import { executeJobOnce } from '#worker/jobs/service.ts'
+import type { JobRecord } from '#worker/jobs/types.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
 import {
@@ -1302,6 +1304,187 @@ export default { async fetch() {
 			expect.objectContaining({
 				kind: 'listed_package_unbound',
 				surface: 'app',
+			}),
+		])
+	},
+)
+
+async function publishJobPackage(input: {
+	userId: string
+	kodyId: string
+	jobSource: string
+	dependencies?: Record<string, string>
+}) {
+	const unique = crypto.randomUUID()
+	const packageId = `pkg-${unique}`
+	const sourceId = `source-${unique}`
+	const publishedCommit = `commit-${unique}`
+	const name = `@kentcdodds/${input.kodyId}`
+	const source = await insertSavedPackage({
+		userId: input.userId,
+		packageId,
+		kodyId: input.kodyId,
+		name,
+		sourceId,
+		publishedCommit,
+	})
+	await persistPublishedSourceSnapshot({
+		env,
+		userId: input.userId,
+		source,
+		snapshot: {
+			files: {
+				'package.json': manifest(
+					name,
+					{
+						id: input.kodyId,
+						description: 'Runs a job with the locked credential',
+						...(input.dependencies ? { dependencies: input.dependencies } : {}),
+						jobs: {
+							sweep: {
+								entry: './src/job.ts',
+								schedule: { type: 'interval', every: '1h' },
+							},
+						},
+					},
+					{ exports: { '.': './src/job.ts' } },
+				),
+				'src/job.ts': input.jobSource,
+			},
+		},
+	})
+	await setSecretAllowedPackages({
+		env,
+		userId: ownerIdFromStored(input.userId),
+		scope: 'user',
+		name: 'locked',
+		allowedPackages: [packageId],
+		storageContext: null,
+		audit: null,
+	})
+	const now = new Date().toISOString()
+	const job: JobRecord = {
+		version: 1,
+		id: `job-${unique}`,
+		name: 'sweep',
+		userId: ownerIdFromStored(input.userId),
+		sourceId,
+		publishedCommit,
+		storageId: `job:job-${unique}`,
+		schedule: { type: 'interval', every: '1h' },
+		timezone: 'UTC',
+		enabled: true,
+		killSwitchEnabled: false,
+		expiresAt: null,
+		createdAt: now,
+		updatedAt: now,
+		nextRunAt: now,
+		runCount: 0,
+		successCount: 0,
+		errorCount: 0,
+	}
+	return { job, packageId, sourceId }
+}
+
+async function runJob(userId: string, job: JobRecord) {
+	const seen = installFakeUpstream()
+	const { source: _source, ...callerContext } = createCallerContext(userId)
+	const outcome = await executeJobOnce({
+		env,
+		job,
+		callerContext: callerContext as Parameters<
+			typeof executeJobOnce
+		>[0]['callerContext'],
+		// A scheduled tick runs under the owner's enablement.
+		source: {
+			kind: 'schedule',
+			jobId: job.id,
+			enablement: {
+				id: `enablement-${job.id}`,
+				enabler: { userId: personIdFromStored(userId) },
+				role: 'owner',
+			},
+		},
+	})
+	return { seen, execution: outcome.execution }
+}
+
+test(
+	'a job stored as an older bundle keeps its own global-object fetch read, and a sibling it imports is refused',
+	{ timeout: 180_000 },
+	async () => {
+		const { userId } = await setupLocked()
+
+		// A job with no imports: its older bundle is bound when it is read.
+		const alone = await publishJobPackage({
+			userId,
+			kodyId: 'job-alone',
+			jobSource: `export default async function sweep() {
+	return { own: await ${attempt('globalThis.fetch', '/job-older/alone')} }
+}`,
+		})
+		// The first run builds and stores the job bundle.
+		expect((await runJob(userId, alone.job)).execution).toMatchObject({
+			ok: true,
+			result: { own: 200 },
+		})
+		expect(
+			await storeAsOlderBundle(alone.sourceId, {
+				'/job-older/alone': 'globalThis.fetch',
+			}),
+		).toBe(1)
+		const aloneRun = await runJob(userId, alone.job)
+		expect(aloneRun.execution).toMatchObject({
+			ok: true,
+			result: { own: 200 },
+		})
+		expect(pathsCarrying(aloneRun.seen, LOCKED)).toEqual([
+			'GET /job-older/alone',
+		])
+		expect(await storedBindingMarkers(alone.sourceId)).toEqual([1])
+
+		// A job that imports a sibling: its older bundle is built again.
+		await publishImported(
+			userId,
+			`export default async function run() {
+	const shared = globalThis
+	return await ${attempt('shared.fetch', '/job-older/sibling')}
+}`,
+		)
+		const withSibling = await publishJobPackage({
+			userId,
+			kodyId: 'job-with-sibling',
+			dependencies: { '@kentcdodds/imported-b': '*' },
+			jobSource: `import run from 'kody:@kentcdodds/imported-b/run'
+export default async function sweep() {
+	return {
+		own: await ${attempt('globalThis.fetch', '/job-older/own')},
+		sibling: await run(),
+	}
+}`,
+		})
+		expect((await runJob(userId, withSibling.job)).execution.ok).toBe(true)
+		await env.APP_DB.prepare(
+			`DELETE FROM credential_attribution_log WHERE owner_id = ?`,
+		)
+			.bind(userId)
+			.run()
+		expect(
+			await storeAsOlderBundle(withSibling.sourceId, {
+				'/job-older/own': 'globalThis.fetch',
+			}),
+		).toBe(1)
+		const run = await runJob(userId, withSibling.job)
+		expect(run.execution).toMatchObject({
+			ok: true,
+			result: { own: 200, sibling: refused },
+		})
+		expect(pathsCarrying(run.seen, LOCKED)).toEqual(['GET /job-older/own'])
+		expect(await storedBindingMarkers(withSibling.sourceId)).toEqual([2])
+		expect(await refusalRows(userId)).toEqual([
+			expect.objectContaining({
+				kind: 'listed_package_unbound',
+				run_package_id: withSibling.packageId,
 			}),
 		])
 	},
