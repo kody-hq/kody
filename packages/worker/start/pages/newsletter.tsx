@@ -172,10 +172,14 @@ function SignupForm(props: {
 				// does not include, so its token is copied into the form.
 				const form = event.currentTarget
 				const field = form.elements.namedItem(turnstileResponseFieldName)
-				if (field instanceof HTMLInputElement)
+				if (field instanceof HTMLInputElement) {
+					// Cleared first so a token left by an earlier submit never
+					// outranks the widget's current one.
+					field.value = ''
 					field.value = readPublicFormProtection(new FormData(form), form)[
 						turnstileResponseFieldName
 					]
+				}
 				onSubmit(event)
 			}}
 		>
