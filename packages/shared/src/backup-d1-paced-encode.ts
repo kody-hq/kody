@@ -150,6 +150,34 @@ export function parsePacedD1IndexLine(line: string): PacedD1IndexEntry {
 	return { h, k }
 }
 
+export class PacedD1IndexOrderError extends Error {
+	constructor(label: string, previous: string, next: string) {
+		super(
+			`paced D1 index for ${label} is not strictly increasing: ${next} follows ${previous}`,
+		)
+		this.name = 'PacedD1IndexOrderError'
+	}
+}
+
+/**
+ * A table index holds one line per live row in rowid order. A repeated or
+ * out-of-order key means two walks wrote the same table, and a delta
+ * merge-join over such an index emits delete lines for live rows.
+ */
+export function createPacedD1IndexOrderCheck(label: string) {
+	let previous: PacedD1IndexEntry['k'] | null = null
+	return (entry: PacedD1IndexEntry) => {
+		if (previous && comparePacedD1Key(previous, entry.k) >= 0) {
+			throw new PacedD1IndexOrderError(
+				label,
+				JSON.stringify(previous),
+				JSON.stringify(entry.k),
+			)
+		}
+		previous = entry.k
+	}
+}
+
 export type PacedD1DataUpsertLine = {
 	kind: 'U'
 	h: string
