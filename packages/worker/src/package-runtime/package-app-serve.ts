@@ -74,6 +74,7 @@ import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	getPackageAppAnonymousRealtimeMode,
 	getPackageAppClientReadableCookieNames,
+	getPackageAppEntryPath,
 } from '#worker/package-registry/manifest.ts'
 import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
@@ -1028,6 +1029,9 @@ async function servePackageAppRequestWithId(input: {
 				slug: kodyId,
 			}),
 	)
+	// `hasApp` projects the published commit, and publish moves it before the
+	// serving commit advances, so it only rules packages out. The manifest at
+	// the commit actually served decides below whether an app answers.
 	if (!slugLookup || !slugLookup.savedPackage.hasApp) {
 		return attachPackageAppServerTiming(
 			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
@@ -1244,6 +1248,12 @@ async function servePackageAppRequestWithId(input: {
 						commit: anonymousCommit,
 					}),
 			)
+			if (!getPackageAppEntryPath(packageManifest.manifest)) {
+				return attachPackageAppServerTiming(
+					new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+					serverTiming,
+				)
+			}
 			return attachPackageAppServerTiming(
 				await pushServerTiming(serverTiming, 'assets', () =>
 					servePackageAppAssetRequest({
@@ -1357,6 +1367,12 @@ async function servePackageAppRequestWithId(input: {
 				}),
 			),
 		])
+		if (!getPackageAppEntryPath(packageManifest.manifest)) {
+			return attachPackageAppServerTiming(
+				new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+				serverTiming,
+			)
+		}
 		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
 			packageManifest.manifest,
 		)
