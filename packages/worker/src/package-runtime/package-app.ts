@@ -39,7 +39,11 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { packageAppWarmCpuSampleRate } from '#universal/package-app-cpu-samples.ts'
+import { packageInvocationClientDisconnectedErrorName } from '#worker/caller-disconnect.ts'
 import {
+	packageAppCallerDisconnectGraceExpiredLog,
+	packageAppCallerDisconnectGraceExpiredMessage,
+	packageAppCallerDisconnectGraceMs,
 	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -1270,6 +1274,46 @@ function finishRuntimeRun(runtimeBridge, executionCtx, input) {
 	);
 }
 
+// When the caller disconnects, the runtime cancels this invocation and only
+// waitUntil work keeps running. Holding the handler in waitUntil lets it
+// finish and record its outcome. A handler still running after the grace is
+// reported instead of leaving the run without an outcome.
+function serveThroughCallerDisconnect(executionCtx, request, input) {
+	const startedAt = Date.now();
+	const handled = input.handle();
+	let settled = false;
+	const done = handled.then(
+		() => {
+			settled = true;
+		},
+		() => {
+			settled = true;
+		},
+	);
+	executionCtx.waitUntil(done);
+	const onDisconnect = () => {
+		if (settled) return;
+		input.onDisconnect(Date.now() - startedAt);
+		let graceTimer;
+		const grace = new Promise((resolve) => {
+			graceTimer = setTimeout(resolve, input.graceMs);
+		});
+		executionCtx.waitUntil(
+			Promise.race([done, grace]).then(() => {
+				clearTimeout(graceTimer);
+				if (!settled) input.onGraceExpired();
+			}),
+		);
+	};
+	const signal = request.signal;
+	if (signal?.aborted) {
+		onDisconnect();
+	} else {
+		signal?.addEventListener('abort', onDisconnect, { once: true });
+	}
+	return handled;
+}
+
 function resolveRealtimeHandler(userModule, facetName) {
 	const facetExportName = buildFacetClassExportName(facetName);
 	if (typeof userModule[facetExportName] === 'function') {
@@ -1386,6 +1430,38 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			${mcpServerNamesExpr},
 			identityOnlyVisitor,
 		);
+		let runFinished = false;
+		const finishRun = (finish) => {
+			if (runFinished) return;
+			runFinished = true;
+			finishRuntimeRun(runtimeBridge, this.ctx, {
+				run: runtimeRun,
+				...finish,
+				logs: consoleCapture.logs,
+			});
+		};
+		return await serveThroughCallerDisconnect(this.ctx, request, {
+			graceMs: ${packageAppCallerDisconnectGraceMs},
+			onDisconnect: (elapsedMs) => {
+				console.warn(
+					'package-app-caller-disconnected ' +
+						JSON.stringify({
+							elapsedMs,
+							graceMs: ${packageAppCallerDisconnectGraceMs},
+						}),
+				);
+			},
+			onGraceExpired: () => {
+				console.error(${JSON.stringify(packageAppCallerDisconnectGraceExpiredLog)});
+				finishRun({
+					status: 'error',
+					error: {
+						name: ${JSON.stringify(packageInvocationClientDisconnectedErrorName)},
+						message: ${JSON.stringify(packageAppCallerDisconnectGraceExpiredMessage)},
+					},
+				});
+			},
+			handle: async () => {
 		try {
 			consoleCapture.install();
 			const response = await __kodyVisitStorage.run({ ticket: visitTicket }, async () => await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
@@ -1442,24 +1518,20 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 				});
 				outgoing = tagPackageAppRuntimeRun(outgoing, runtimeRunId);
 			}
-			finishRuntimeRun(runtimeBridge, this.ctx, {
-				run: runtimeRun,
+			finishRun({
 				status: 'success',
 				metadata: {
 					httpStatus: response.status,
 				},
-				logs: consoleCapture.logs,
 			});
 			return outgoing;
 		} catch (error) {
 			const enrichedError = enrichUnboundPackagesInvokeError(error);
 			const runtimeRunId = await readRuntimeRunId(runtimeRun);
 			console.error('package-app-runtime-threw', { runtimeRunId });
-			finishRuntimeRun(runtimeBridge, this.ctx, {
-				run: runtimeRun,
+			finishRun({
 				status: 'error',
 				error: serializeRuntimeError(enrichedError),
-				logs: consoleCapture.logs,
 			});
 			// Dynamic Worker fetch does not preserve custom Error properties.
 			// Return a tagged 500 so the serve path can log runtimeRunId and
@@ -1474,6 +1546,8 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		} finally {
 			consoleCapture.restore();
 		}
+			},
+		});
 	}
 
 	async handleRealtimeEvent(payload) {
