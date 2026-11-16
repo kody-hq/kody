@@ -41,11 +41,30 @@ test('parseArgs refuses password login against production and reads flags', () =
 		'5',
 		'--mcp-args',
 		'{"repoName":"x"}',
+		'--concurrency',
+		'3',
 	])
 	expect(options).toMatchObject({
 		origin: 'https://kody.codes',
 		token: 'abc',
 		n: 5,
+		concurrency: 3,
 		mcpArgs: { repoName: 'x' },
 	})
+})
+
+test('parseArgs rejects a concurrency below one', () => {
+	expect(() => parseArgs(['--concurrency', '0'])).toThrow(/--concurrency/)
+})
+
+test('summarizePath keeps failure counts only when a sample failed', () => {
+	expect(complete).not.toHaveProperty('failures')
+	expect(
+		summarizePath({
+			cold: null,
+			warm: [{ wallMs: 70 }],
+			errors: 2,
+			failures: { 'too large to bundle': 2 },
+		}).failures,
+	).toEqual({ 'too large to bundle': 2 })
 })

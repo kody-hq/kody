@@ -27,6 +27,16 @@ Paths (each records one cold sample, then `--n` warm samples, p50/p95/p99):
 | `direct-fetch`           | the `--fetch-url` fetched directly from the bench process                       |
 | `direct-mcp-tool`        | the `--mcp-direct-url` tool called directly over a persistent MCP client        |
 
+`--concurrency <k>` runs the warm samples in batches of `k` concurrent calls,
+which is how an isolate memory limit shows up. Failed samples are counted per
+error message in `failures`, so a report gives an out-of-memory rate directly:
+
+```bash
+npm run latency-bench -- --origin https://kody.codes --token <test-account-token> \
+  --paths execute-package-export --package-import @org-test/big-pkg/drive \
+  --n 12 --concurrency 3 --json --out big-import.json
+```
+
 Execute paths also report the server-side `timing.durationMs` (tool handler
 only) and the `serverTiming` phases execute returns (`bundle`, `hydrate`,
 `provider-assembly`, `sandbox`, `run`). `wall − tool` is therefore the auth,
