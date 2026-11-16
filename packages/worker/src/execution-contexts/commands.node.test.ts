@@ -1204,18 +1204,32 @@ test('the whole local network is an entry: use is logged for anyone who can run,
 		detail: { wholeNetwork: true, notOperator: true },
 	})
 
-	// Machines do not ask yet, so the tool saves no list; the check is ready.
-	await expect(
+	// A machine on a CLI that does not ask Kody would ignore the list, so
+	// Kody saves one only once the machine reports a CLI that asks.
+	const setClient = (name: string | null, version: string | null) =>
+		s.sqlite
+			.prepare(
+				`UPDATE execution_contexts SET client_name = ?, client_version = ? WHERE id = 'ec_mac'`,
+			)
+			.run(name, version)
+	const setList = () =>
 		setMachineAccessPackages(owner, 'ec_mac', {
 			...target,
 			packageIds: ['pkg_listed'],
-		}),
-	).rejects.toMatchObject({ code: 'invalid_request' })
-	s.sqlite
-		.prepare(
-			`UPDATE machine_capabilities SET allowed_packages_json = ? WHERE kind = 'lan' AND name = '*'`,
-		)
-		.run(JSON.stringify(['pkg_listed']))
+		})
+	await expect(setList()).rejects.toMatchObject({
+		code: 'daemon_outdated',
+		message: expect.stringContaining('has not reported its version'),
+	})
+	setClient('kody-cli', '3.43.9')
+	await expect(setList()).rejects.toMatchObject({
+		code: 'daemon_outdated',
+		message: expect.stringContaining('Kody CLI 3.43.9'),
+	})
+	setClient('something-else', '9.0.0')
+	await expect(setList()).rejects.toMatchObject({ code: 'daemon_outdated' })
+	setClient('kody-cli', '3.44.0')
+	await setList()
 	await expect(run(operator, ['pkg_listed'])).resolves.toEqual({ ok: true })
 	await expect(run(operator, ['pkg_other'])).rejects.toMatchObject({
 		code: 'machine_capability_package_not_allowed',

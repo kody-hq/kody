@@ -286,8 +286,10 @@ data model exists so far; nothing reads it at run time yet.
   port, and blocks the request on a refusal. Parallel first requests to one
   address ask once. Any other host name that resolves to a local address is not
   asked about. `kody execute --local --allow-private-network` never asks.
-  `setMachineAccessPackages` still refuses a list for it, since machines on an
-  older CLI do not ask.
+  `setMachineAccessPackages` saves a list for it only when the context's last
+  reported client is Kody CLI 3.44.0 or newer (`wholeNetworkAskCliVersion`), and
+  refuses with `daemon_outdated` otherwise, since an older machine does not ask.
+  A machine downgraded after the list is saved stops asking.
 - The operator sets an entry's package list with
   `executionContextMachineAccessPackagesSet` (`setMachineAccessPackages`,
   `shell`, `command`, `lan` and `fs` kinds, saved package ids, at most 50,

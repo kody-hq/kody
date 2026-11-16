@@ -521,7 +521,7 @@ export const executionContextMachineAccessPackagesSetCapability =
 		contextRuns: 'deny',
 		orgPermission: 'execution_context:manage_access',
 		description:
-			'Choose which saved packages may use one named command, local network destination or host folder of your execution context. The unrestricted shell is kind "shell", name "shell"; the whole local network is kind "lan", name "*", which is listed but takes no package list yet. Pass the full list of package ids; it replaces the old one. With packages listed, only runs whose loaded packages are all on the list may use the entry, and code that is not a saved package may not. An empty list lifts the limit: your own code and packages your org wrote or adopted pass again. Operator only. This never shares the entry with anyone; it narrows which code uses it.',
+			'Choose which saved packages may use one named command, local network destination or host folder of your execution context. The unrestricted shell is kind "shell", name "shell"; the whole local network is kind "lan", name "*", which takes a package list only when the machine runs Kody CLI 3.44.0 or newer. Pass the full list of package ids; it replaces the old one. With packages listed, only runs whose loaded packages are all on the list may use the entry, and code that is not a saved package may not. An empty list lifts the limit: your own code and packages your org wrote or adopted pass again. Operator only. This never shares the entry with anyone; it narrows which code uses it.',
 		keywords: ['execution context', 'machine access', 'packages', 'allow'],
 		readOnly: false,
 		idempotent: true,
