@@ -80,6 +80,13 @@ test('apply fails closed on a changed file that is not UTF-8 text', () => {
 			after: { ...before, 'data.bin': 'a\0c' },
 		}),
 	).toThrow(/not UTF-8 text \(data\.bin\)/)
+	const lossy = new TextDecoder().decode(new Uint8Array([0x61, 0xff, 0x62]))
+	expect(() =>
+		planCodemodApplyWrites({
+			before: { ...before, 'notes.dat': lossy },
+			after: { ...before, 'notes.dat': `${lossy} https://new` },
+		}),
+	).toThrow(/not UTF-8 text \(notes\.dat\)/)
 })
 
 test('apply fails closed on removed files and on writes the codemod did not report', () => {

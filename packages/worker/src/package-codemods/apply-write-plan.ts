@@ -14,7 +14,12 @@ export class CodemodApplyWritePlanError extends Error {
  * so writing such a string back turns every byte >= 0x80 into two bytes.
  */
 export function isBinarySnapshotFile(path: string, content: string) {
-	return content.includes('\0') || shouldStoreArtifactBlobAsLatin1(path)
+	return (
+		content.includes('\0') ||
+		// A blob that was not valid UTF-8 decodes with replacement characters.
+		content.includes('\uFFFD') ||
+		shouldStoreArtifactBlobAsLatin1(path)
+	)
 }
 
 /**
