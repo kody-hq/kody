@@ -1,10 +1,12 @@
 import { compareVersions } from './auto-update.js'
 import { execFileSync } from 'node:child_process'
+import type { ConnectionState } from './health.js'
 import {
 	existsSync,
 	mkdirSync,
 	readFileSync,
 	realpathSync,
+	renameSync,
 	rmSync,
 	writeFileSync,
 } from 'node:fs'
@@ -497,6 +499,8 @@ export type ServiceRuntimeState = {
 	version: string
 	service: ServiceManager | null
 	startedAt: string
+	/** Rewritten every 30s while the daemon runs (`kody daemon health`). */
+	connection?: ConnectionState
 }
 
 type StoppedState = { reason: string; at: string }
@@ -511,7 +515,16 @@ function readJson<T>(path: string): T | null {
 
 export function writeJson(path: string, value: unknown) {
 	mkdirSync(dirname(path), { recursive: true, mode: 0o700 })
-	writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+	// Renamed into place, so a reader never sees a half-written file.
+	const temp = `${path}.${process.pid}.tmp`
+	writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+	try {
+		renameSync(temp, path)
+	} catch {
+		// Windows refuses to replace a file another process has open.
+		rmSync(temp, { force: true })
+		writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 })
+	}
 }
 
 type ServiceProblem = {

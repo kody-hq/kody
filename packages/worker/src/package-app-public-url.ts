@@ -1,8 +1,11 @@
 import {
 	buildPackageAppCustomHostnameUrl,
+	buildPackageAppRootOrigin,
 	buildPackageAppSubdomainPath,
+	isProfilePackage,
 	buildPackageAppSubdomainUrl,
 } from '@kody-internal/shared/public-urls.ts'
+import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
 
@@ -12,7 +15,9 @@ import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-c
  *
  * A verified app-level custom hostname wins (both hostname and certificate
  * active; lexicographically smallest when several qualify). Pending hostnames
- * never win. Otherwise this is the per-user `kody.run` subdomain. Org-level
+ * never win. A profile package (`@{slug}/{slug}`) owns the root of the owner's
+ * `kody.run` subdomain, and the owner's other apps are then only reachable on
+ * their own `{leaf}--{handle}` hosts. Otherwise this is the per-user `kody.run` subdomain. Org-level
  * custom hostnames are session-gated and are not a public origin. Returns null
  * when this deployment serves package apps inline on the app origin (no
  * `PACKAGE_APP_BASE_URL`).
@@ -40,6 +45,24 @@ export async function resolvePublicPackageAppLocation(input: {
 		return {
 			hostedUrl: buildPackageAppCustomHostnameUrl({
 				origin: customOrigin,
+				restPath: input.restPath,
+			}),
+			appBasePath: '',
+		}
+	}
+	const rootOrigin =
+		isProfilePackage(input) ||
+		(await hasProfilePackageApp({ env: input.env, username: input.username }))
+			? buildPackageAppRootOrigin({
+					packageAppOrigin: packageAppBaseUrl,
+					username: input.username,
+					kodyId: input.kodyId,
+				})
+			: null
+	if (rootOrigin) {
+		return {
+			hostedUrl: buildPackageAppCustomHostnameUrl({
+				origin: rootOrigin,
 				restPath: input.restPath,
 			}),
 			appBasePath: '',

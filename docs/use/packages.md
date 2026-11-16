@@ -1056,15 +1056,26 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
-Republishing an approved internet-visible app does not interrupt public
-visitors. They keep the approved version until the new one finishes building. If
-the new version asks for the same capabilities or fewer, its approval carries
-forward and visitors switch to it right away. If it asks for more, visitors stay
-on the approved version until you approve the new capability set. While they
-wait, the package page shows **Public visitors are still on the previous
-version** with an **Approve to update public visitors** link, and the publish
-response includes `public_visitors_held_back` with the commit visitors still
-run, the new commit, and `approval_url`.
+Republishing an approved internet-visible app does not interrupt anyone.
+Everyone keeps the approved version until the new one finishes building. If the
+new version asks for the same capabilities or fewer, its approval carries
+forward and everyone switches to it right away. If it asks for more, everyone,
+including you and other members of the account, stays on the approved version
+until you approve the new capability set; members and public visitors never run
+different versions. While they wait, the package page shows **Everyone is still
+on the previous version** with an **Approve to update everyone** link, and the
+publish response includes `held_for_approval` with the commit everyone still
+runs (`serving_commit`), the new commit (`held_commit`), and `approval_url`.
+Approving moves everyone to the new version. Jobs, subscriptions, webhooks,
+events, and skills stay on the approved version too: a job the new version
+removes keeps running as it was, a job it adds starts only after you approve
+(enabled as you), and no job runs the new code until then. The **Public
+release** panel shows the commit everyone is on and the published commit that
+waits for approval. To try the new version before you approve it, use local dev
+or a dev check.
+
+Apps that are not internet-visible switch to each new version as soon as it
+finishes building.
 
 When the published version has no [security audit](#security-audit) yet, both
 responses also return the next step for the agent. `packageUpdate` returns
@@ -1222,6 +1233,13 @@ publish also counts the rest of the checked-out repo toward the 32 MiB cap.
 | Any single file                           | 10 MiB                      |
 | Checked-out tree for `git push` publishes | 32 MiB                      |
 | JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
+| Code the credential stamp scan reads      | 450,000 syntax nodes        |
+
+The credential stamp scan parses every JS/TS module the runtime can import,
+committed build output included, and its cost grows with the amount of code in
+them. Past the limit the scan stops before it reads the rest and names the
+heaviest modules. Import less from the server entry points, or list code the
+runtime never imports in `.kodyignore`.
 
 Each check isolate also has a fixed memory and CPU budget. When a step runs out,
 the error names the step (cloning, staging the package files, reading the source

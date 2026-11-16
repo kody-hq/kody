@@ -432,6 +432,9 @@ export function BrandContextMenu({ children }: BrandContextMenuProps) {
 				<div
 					ref={menuRef}
 					id={menuId}
+					// Hand-built on purpose: opens from the keyboard and lays
+					// download rows out as a grid, which the shared Menu does not.
+					// oxlint-disable-next-line kody-custom/no-raw-overlay
 					role="menu"
 					aria-label="Kody brand"
 					popover="manual"

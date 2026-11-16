@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
@@ -65,7 +65,7 @@ export default function FileStorageSettings({
 		'&:disabled': { opacity: 0.5 },
 	}
 	return (
-		<ModalDialog label="File storage" onClose={onClose} width={480}>
+		<Dialog open aria-label="File storage" onClose={onClose} size="md">
 			<form
 				onSubmit={async (event) => {
 					event.preventDefault()
@@ -268,6 +268,6 @@ export default function FileStorageSettings({
 					</p>
 				)}
 			</form>
-		</ModalDialog>
+		</Dialog>
 	)
 }

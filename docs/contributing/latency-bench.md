@@ -9,7 +9,7 @@ npm run latency-bench -- --origin http://localhost:3742 --n 30
 npm run latency-bench -- --origin <preview> --email me@kentcdodds.com --password ilikecode \
   --fetch-url https://example.com/ --secret-name benchToken \
   --mcp-server bench --mcp-tool ping --mcp-direct-url https://bench-mcp.example/mcp \
-  --package-import @user-me/bench-pkg --json --out latency-bench.json
+  --package-import kody:@user-me/bench-pkg --json --out latency-bench.json
 ```
 
 Paths (each records one cold sample, then `--n` warm samples, p50/p95/p99):
@@ -26,6 +26,16 @@ Paths (each records one cold sample, then `--n` warm samples, p50/p95/p99):
 | `search`                 | the `search` tool                                                               |
 | `direct-fetch`           | the `--fetch-url` fetched directly from the bench process                       |
 | `direct-mcp-tool`        | the `--mcp-direct-url` tool called directly over a persistent MCP client        |
+
+`--concurrency <k>` runs the warm samples in batches of `k` concurrent calls,
+which is how an isolate memory limit shows up. Failed samples are counted per
+error message in `failures`, so a report gives an out-of-memory rate directly:
+
+```bash
+npm run latency-bench -- --origin https://kody.codes --token <test-account-token> \
+  --paths execute-package-export --package-import kody:@org-test/big-pkg/drive \
+  --n 12 --concurrency 3 --json --out big-import.json
+```
 
 Execute paths also report the server-side `timing.durationMs` (tool handler
 only) and the `serverTiming` phases execute returns (`bundle`, `hydrate`,

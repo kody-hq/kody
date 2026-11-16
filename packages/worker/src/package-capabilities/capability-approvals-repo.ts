@@ -292,6 +292,21 @@ export function prepareCarriedForwardPackageCapabilityApproval(
  * right after the serving-pointer advance, so it marks nothing when the
  * advance lost its compare-and-set.
  */
+export async function hasPackageCapabilityApprovalForCommit(
+	db: D1Database,
+	input: { packageId: string; ownerUserId: string; publishedCommit: string },
+): Promise<boolean> {
+	const row = await db
+		.prepare(
+			`SELECT 1 FROM package_capability_approvals
+			WHERE package_id = ? AND owner_user_id = ? AND published_commit = ?
+			LIMIT 1`,
+		)
+		.bind(input.packageId, input.ownerUserId, input.publishedCommit)
+		.first()
+	return row != null
+}
+
 export function prepareMarkServedPackageCapabilityApprovals(
 	db: D1Database,
 	input: { sourceId: string; userId: string; commit: string },

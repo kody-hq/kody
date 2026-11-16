@@ -22,5 +22,6 @@ export const entitySourcesTableSql = `CREATE TABLE IF NOT EXISTS entity_sources 
 	deleting_at TEXT,
 	serving_commit TEXT,
 	external_check_failed_commit TEXT,
-	external_check_failed_at TEXT
+	external_check_failed_at TEXT,
+	held_commit TEXT
 )`

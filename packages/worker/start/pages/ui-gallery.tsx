@@ -2,9 +2,26 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from '../components/button.tsx'
 import { Checkbox, Radio, Switch } from '../components/choice-controls.tsx'
+import {
+	Dialog,
+	DialogActions,
+	type DialogProps,
+} from '../components/dialog.tsx'
 import { Field } from '../components/field.tsx'
 import { Input, Select, Textarea } from '../components/input.tsx'
 import { renderIcon } from '../components/icon.tsx'
+import {
+	Menu,
+	MenuCheckboxItem,
+	MenuContent,
+	MenuGroup,
+	MenuItem,
+	MenuLinkItem,
+	MenuSeparator,
+	MenuTrigger,
+} from '../components/menu.tsx'
+import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
+import { Tooltip } from '../components/tooltip.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	visuallyHiddenCss,
@@ -116,7 +133,187 @@ const uiGallerySections: ReadonlyArray<{
 		title: 'Checkbox, Radio, Switch',
 		render: () => <ChoiceControlsDemo />,
 	},
+	{
+		id: 'dialog',
+		title: 'Dialog',
+		render: () => (
+			<GalleryRow label="open">
+				<DialogDemo
+					trigger="Rename file"
+					title="Rename file"
+					description="Names must be unique in this folder."
+				>
+					<Field label="Name">
+						<Input name="gallery-dialog-name" defaultValue="notes.md" />
+					</Field>
+				</DialogDemo>
+				<DialogDemo
+					trigger="Quick look"
+					aria-label="Quick look"
+					dismissOnOutsideClick
+				>
+					<p css={{ margin: 0 }}>Click outside or press Escape to close.</p>
+				</DialogDemo>
+				<DialogDemo
+					trigger="Delete file"
+					role="alertdialog"
+					title="Delete notes.md?"
+					description="This can't be undone."
+					confirm="Delete"
+				/>
+				<DialogDemo
+					trigger="Side panel"
+					placement="side"
+					size="md"
+					title="Details"
+				>
+					<p css={{ margin: 0 }}>Slides in from the inline end.</p>
+				</DialogDemo>
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'menu',
+		title: 'Menu',
+		render: () => (
+			<GalleryRow label="actions">
+				<MenuDemo />
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'tooltip',
+		title: 'Tooltip',
+		render: () => (
+			<GalleryRow label="hover or focus">
+				<Button
+					type="button"
+					variant="secondary"
+					aria-describedby="gallery-tooltip-top"
+				>
+					Above
+					<Tooltip id="gallery-tooltip-top">Shows on hover and focus.</Tooltip>
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					iconOnly
+					aria-label="Help"
+					aria-describedby="gallery-tooltip-bottom"
+				>
+					{renderIcon('information')}
+					<Tooltip id="gallery-tooltip-bottom" side="bottom" align="start">
+						Escape hides it until focus leaves.
+					</Tooltip>
+				</Button>
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'tabs',
+		title: 'Tabs',
+		render: () => (
+			<>
+				<GalleryRow label="segmented">
+					<Tabs defaultActiveTab="html">
+						<TabList aria-label="Email body">
+							<Tab name="html">HTML</Tab>
+							<Tab name="text">Text</Tab>
+							<Tab name="source" disabled>
+								Source
+							</Tab>
+						</TabList>
+						<TabPanel name="html">Rendered HTML body.</TabPanel>
+						<TabPanel name="text">Plain text body.</TabPanel>
+						<TabPanel name="source">Raw source.</TabPanel>
+					</Tabs>
+				</GalleryRow>
+				<GalleryRow label="underline">
+					<Tabs variant="underline" defaultActiveTab="sharing">
+						<TabList aria-label="File settings">
+							<Tab name="sharing">Sharing</Tab>
+							<Tab name="details">Details</Tab>
+						</TabList>
+						<TabPanel name="sharing" css={{ paddingBlock: spacing.sm }}>
+							People and teams with access.
+						</TabPanel>
+						<TabPanel name="details" css={{ paddingBlock: spacing.sm }}>
+							Type, modified date, and location.
+						</TabPanel>
+					</Tabs>
+				</GalleryRow>
+			</>
+		),
+	},
 ]
+
+function MenuDemo() {
+	const [wrap, setWrap] = useState(true)
+	const [last, setLast] = useState('Nothing chosen yet.')
+	return (
+		<>
+			<Menu>
+				<MenuTrigger render={<Button type="button" variant="secondary" />}>
+					File actions
+				</MenuTrigger>
+				<MenuContent aria-label="File actions">
+					<MenuGroup label="Edit">
+						<MenuItem onClick={() => setLast('Renamed.')}>Rename</MenuItem>
+						<MenuItem onClick={() => setLast('Duplicated.')}>
+							Duplicate
+						</MenuItem>
+						<MenuItem disabled>Move (no other folders)</MenuItem>
+					</MenuGroup>
+					<MenuSeparator />
+					<MenuCheckboxItem checked={wrap} onCheckedChange={setWrap}>
+						Wrap lines
+					</MenuCheckboxItem>
+					<MenuLinkItem href="/docs">Open docs</MenuLinkItem>
+					<MenuSeparator />
+					<MenuItem tone="danger" onClick={() => setLast('Deleted.')}>
+						Delete
+					</MenuItem>
+				</MenuContent>
+			</Menu>
+			<span role="status" css={{ color: colors.textMuted }}>
+				{last}
+			</span>
+		</>
+	)
+}
+
+type DialogDemoProps = Omit<DialogProps, 'open' | 'onClose' | 'children'> & {
+	trigger: string
+	confirm?: string
+	children?: ReactNode
+}
+
+function DialogDemo({ trigger, confirm, children, ...props }: DialogDemoProps) {
+	const [open, setOpen] = useState(false)
+	const close = () => setOpen(false)
+	return (
+		<>
+			<Button type="button" variant="secondary" onClick={() => setOpen(true)}>
+				{trigger}
+			</Button>
+			<Dialog {...(props as DialogProps)} open={open} onClose={close}>
+				{children}
+				<DialogActions>
+					<Button type="button" variant="secondary" onClick={close}>
+						Cancel
+					</Button>
+					<Button
+						type="button"
+						variant={props.role === 'alertdialog' ? 'danger' : 'primary'}
+						onClick={close}
+					>
+						{confirm ?? 'Save'}
+					</Button>
+				</DialogActions>
+			</Dialog>
+		</>
+	)
+}
 
 function ChoiceControlsDemo() {
 	const [items, setItems] = useState([true, false])

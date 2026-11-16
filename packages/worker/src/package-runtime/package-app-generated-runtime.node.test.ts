@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { expect, test, vi } from 'vitest'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
+import { packageAppCallerDisconnectGraceMs } from '#worker/package-runtime/package-app-diagnostics.ts'
 
 const packageAppSourceText = await readFile(
 	new URL('./package-app.ts', import.meta.url),
@@ -63,8 +64,18 @@ function createRuntimeRunHelpersForTest() {
 		`${extractGeneratedSource(
 			'async function startRuntimeRun(runtimeBridge, input) {',
 			'\nfunction resolveRealtimeHandler',
-		)}; return { startRuntimeRun, finishRuntimeRun };`,
+		)}; return { startRuntimeRun, finishRuntimeRun, serveThroughCallerDisconnect };`,
 	)() as {
+		serveThroughCallerDisconnect: (
+			executionCtx: { waitUntil: (promise: Promise<unknown>) => void },
+			request: { signal?: AbortSignal },
+			input: {
+				graceMs: number
+				handle: () => Promise<unknown>
+				onDisconnect: (elapsedMs: number) => void
+				onGraceExpired: () => void
+			},
+		) => Promise<unknown>
 		startRuntimeRun: (
 			runtimeBridge: {
 				packageRuntimeRunStart: (input: unknown) => Promise<unknown>
@@ -120,6 +131,82 @@ test('package app run-record finish waits for begin inside waitUntil, not on the
 	expect(finishCalls).toEqual([
 		{ run: { id: 'run-1' }, status: 'success', metadata: { httpStatus: 200 } },
 	])
+})
+
+function serveDisconnectingRequestForTest() {
+	const { serveThroughCallerDisconnect } = createRuntimeRunHelpersForTest()
+	const caller = new AbortController()
+	const waitUntilTasks: Array<Promise<unknown>> = []
+	const events: Array<string> = []
+	let respond: ((value: string) => void) | undefined
+	const served = serveThroughCallerDisconnect(
+		{ waitUntil: (promise) => void waitUntilTasks.push(promise) },
+		{ signal: caller.signal },
+		{
+			graceMs: packageAppCallerDisconnectGraceMs,
+			handle: () =>
+				new Promise<string>((resolve) => {
+					respond = resolve
+				}),
+			onDisconnect: (elapsedMs) => void events.push(`disconnect:${elapsedMs}`),
+			onGraceExpired: () => void events.push('grace-expired'),
+		},
+	)
+	return {
+		caller,
+		waitUntilTasks,
+		events,
+		served,
+		respond: (value: string) => respond?.(value),
+	}
+}
+
+test('package app fetch keeps the handler in waitUntil so a caller disconnect does not cancel it', async () => {
+	vi.useFakeTimers()
+	try {
+		const attempt = serveDisconnectingRequestForTest()
+		// Held before any disconnect: the runtime only keeps waitUntil work.
+		expect(attempt.waitUntilTasks).toHaveLength(1)
+
+		await vi.advanceTimersByTimeAsync(4_000)
+		attempt.caller.abort()
+		expect(attempt.events).toEqual(['disconnect:4000'])
+
+		await vi.advanceTimersByTimeAsync(10_000)
+		attempt.respond('pixel')
+		await expect(attempt.served).resolves.toBe('pixel')
+		await Promise.all(attempt.waitUntilTasks)
+		await vi.advanceTimersByTimeAsync(packageAppCallerDisconnectGraceMs)
+		expect(attempt.events).toEqual(['disconnect:4000'])
+		expect(vi.getTimerCount()).toBe(0)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('package app fetch reports a handler still running when the caller disconnect grace ends', async () => {
+	vi.useFakeTimers()
+	try {
+		const attempt = serveDisconnectingRequestForTest()
+		attempt.caller.abort()
+		await vi.advanceTimersByTimeAsync(packageAppCallerDisconnectGraceMs - 1)
+		expect(attempt.events).toEqual(['disconnect:0'])
+
+		await vi.advanceTimersByTimeAsync(1)
+		expect(attempt.events).toEqual(['disconnect:0', 'grace-expired'])
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('package app fetch ignores a caller abort that arrives after the handler responded', async () => {
+	const attempt = serveDisconnectingRequestForTest()
+	attempt.respond('done')
+	await attempt.served
+	await Promise.all(attempt.waitUntilTasks)
+	attempt.caller.abort()
+	expect(attempt.events).toEqual([])
+	expect(attempt.waitUntilTasks).toHaveLength(1)
 })
 
 test('package app kody.mcp supports calls, advertises connected servers, and dedupes ownKeys', async () => {

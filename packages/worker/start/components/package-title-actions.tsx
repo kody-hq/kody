@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Tooltip } from './tooltip.tsx'
 import { Button } from './button.tsx'
 /** @jsxRuntime automatic */
 import {
@@ -15,7 +16,6 @@ import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
 import {
 	FORK_AHEAD_TOOLTIP,
 	FORK_OUTDATED_COPY_TOOLTIP,
-	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
 import { ForkTargetDialog } from './fork-target-dialog.tsx'
@@ -87,14 +87,10 @@ export function renderPackageRepoActions(
 				>
 					{renderIcon('arrow-up-right', { size: actionIconSize })}
 					<span>Publish changes</span>
-					<span
-						id="package-repo-publish-tooltip"
-						role="tooltip"
-						aria-hidden="true"
-					>
+					<Tooltip id="package-repo-publish-tooltip" {...edgeTooltipProps}>
 						Default-branch HEAD is newer than the live version. Review the
 						changes, then publish them.
-					</span>
+					</Tooltip>
 				</Button>
 			) : null}
 			{actions.follow ? renderFollowControl(actions.follow) : null}
@@ -109,13 +105,9 @@ export function renderPackageRepoActions(
 				>
 					{renderIcon('git-fork', { size: actionIconSize })}
 					<span>Fork ahead</span>
-					<span
-						id="package-repo-fork-ahead-tooltip"
-						role="tooltip"
-						aria-hidden="true"
-					>
+					<Tooltip id="package-repo-fork-ahead-tooltip" {...edgeTooltipProps}>
 						{FORK_AHEAD_TOOLTIP}
-					</span>
+					</Tooltip>
 				</Button>
 			) : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
@@ -187,9 +179,9 @@ function FollowControl({ follow }: { follow: PackageRepoFollowAction }) {
 				size: actionIconSize,
 			})}
 			<span>{label}</span>
-			<span id="package-follow-tooltip" role="tooltip" aria-hidden="true">
+			<Tooltip id="package-follow-tooltip" {...edgeTooltipProps}>
 				{tooltip}
-			</span>
+			</Tooltip>
 		</Button>
 	)
 }
@@ -337,14 +329,9 @@ function InstallControl({
 			</span>
 			<span data-title-status-spinner hidden={!spinning} css={spinnerCss} />
 			<span data-title-status-label>{label}</span>
-			<span
-				id={statusTooltipId}
-				role="tooltip"
-				data-title-status-tooltip
-				aria-hidden="true"
-			>
+			<Tooltip id={statusTooltipId} {...edgeTooltipProps}>
 				{tooltip}
-			</span>
+			</Tooltip>
 			<span data-title-status-live aria-live="polite" css={visuallyHiddenCss}>
 				{inProgress ? FORK_IN_PROGRESS_TOOLTIP : ''}
 			</span>
@@ -462,9 +449,9 @@ function IconControl({
 		<>
 			{renderIcon(input.icon, { size: actionIconSize })}
 			<span>{input.label}</span>
-			<span id={tooltipId} role="tooltip" aria-hidden="true">
+			<Tooltip id={tooltipId} {...edgeTooltipProps}>
 				{feedback ?? input.tooltip}
-			</span>
+			</Tooltip>
 			<span role="status" css={visuallyHiddenCss}>
 				{feedback ?? ''}
 			</span>
@@ -503,28 +490,16 @@ function IconControl({
  * the left gutter, so they open rightward instead. Centered tooltips ran off
  * the viewport in both places.
  */
-const edgeAnchoredTooltipCss = {
-	'& [role="tooltip"]': {
-		...copyPromptTooltipCss['& [role="tooltip"]'],
-		left: 'auto',
-		right: 0,
-		transform: 'none',
+const edgeTooltipProps = {
+	align: 'end',
+	css: {
 		[mq.mobile]: {
 			left: 0,
 			right: 'auto',
+			'&::after': { left: '1rem', right: 'auto' },
 		},
 	},
-	'& [role="tooltip"]::after': {
-		...copyPromptTooltipCss['& [role="tooltip"]::after'],
-		left: 'auto',
-		right: '1rem',
-		transform: 'none',
-		[mq.mobile]: {
-			left: '1rem',
-			right: 'auto',
-		},
-	},
-}
+} as const
 
 /**
  * Repo actions use the shared Button at tab-row height: one primary for the
@@ -532,8 +507,6 @@ const edgeAnchoredTooltipCss = {
  * status badges never use these.
  */
 const packageActionCss = {
-	...copyPromptTooltipCss,
-	...edgeAnchoredTooltipCss,
 	position: 'relative' as const,
 	minHeight: '1.875rem',
 	padding: '0.5rem 0.95rem',

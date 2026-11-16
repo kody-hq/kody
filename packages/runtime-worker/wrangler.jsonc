@@ -325,6 +325,9 @@
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
 				"ARTIFACTS_NAMESPACE": "production",
 				"PACKAGE_APP_BASE_URL": "https://kody.run",
+				// Same value as the kody Worker: with no queue binding, a consent change
+				// recorded here is delivered inline.
+				"WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS": "aa90d35a58288ab2f2335d601c7c171737ce161cc7ecb1676bd010e3b5a3c499",
 			},
 		},
 		"preview": {

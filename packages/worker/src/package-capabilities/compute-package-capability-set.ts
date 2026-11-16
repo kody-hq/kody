@@ -178,6 +178,7 @@ export async function computePackageCapabilitySet(input: {
 		env: input.env,
 		ownerUserId: input.ownerUserId,
 		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
 		baseUrl,
 		via: viaRoot,
 		entries,
@@ -261,6 +262,7 @@ async function resolveDependencySnapshot(input: {
 		baseUrl: input.baseUrl,
 		userId: input.ownerUserId,
 		sourceId: input.sourceId,
+		commit: input.publishedCommit,
 	})
 	const hasApp = Boolean(rootManifest.manifest.kody.app?.entry?.trim())
 	const fromArtifact = await loadDependenciesFromPublishedArtifact({
@@ -283,6 +285,7 @@ async function resolveDependencySnapshot(input: {
 		env: input.env,
 		ownerUserId: input.ownerUserId,
 		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit,
 		baseUrl: input.baseUrl,
 		rootPackageName: rootManifest.manifest.name,
 	})
@@ -348,6 +351,7 @@ async function walkDeclaredKodyDependencies(input: {
 	env: Env
 	ownerUserId: OwnerId
 	sourceId: string
+	publishedCommit: string
 	baseUrl: string
 	rootPackageName: string
 }): Promise<Array<BundleArtifactDependency>> {
@@ -365,6 +369,9 @@ async function walkDeclaredKodyDependencies(input: {
 			baseUrl: input.baseUrl,
 			userId: input.ownerUserId,
 			sourceId: next.sourceId,
+			...(next.sourceId === input.sourceId
+				? { commit: input.publishedCommit }
+				: {}),
 		})
 		const names = listKodyPackageDependencyNames(
 			loaded.manifest.kody.dependencies,
@@ -420,6 +427,7 @@ async function appendAnonymousRealtimeEntry(input: {
 	env: Env
 	ownerUserId: OwnerId
 	sourceId: string
+	publishedCommit: string
 	baseUrl: string
 	via: Array<string>
 	entries: Array<CapabilitySetEntry>
@@ -429,6 +437,7 @@ async function appendAnonymousRealtimeEntry(input: {
 		baseUrl: input.baseUrl,
 		userId: input.ownerUserId,
 		sourceId: input.sourceId,
+		commit: input.publishedCommit,
 	})
 	if (!loaded.manifest.kody.app?.entry?.trim()) return
 	const mode = getPackageAppAnonymousRealtimeMode(loaded.manifest)
@@ -463,6 +472,7 @@ async function appendPackageCapabilityEntries(input: {
 			baseUrl: input.baseUrl,
 			userId: input.ownerUserId,
 			sourceId: input.sourceId,
+			commit: input.publishedCommit,
 		}),
 		publishedPackageUsesStorage({
 			env: input.env,

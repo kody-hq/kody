@@ -1194,8 +1194,9 @@ async function servePackageAppRequestWithId(input: {
 	}
 
 	// Anonymous visitors run the commit its owner approved for them (ADR
-	// 0069). It trails the serving commit while a republish that asks for more
-	// awaits approval; members always run the serving commit.
+	// 0069). A republish that asks for more is held, so that is the commit
+	// members run too; the pin only covers a cached approval that trails a
+	// serving advance.
 	const anonymousCommit = visitor
 		? null
 		: (input.approvedPublishedCommit ?? null)

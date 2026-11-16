@@ -5,6 +5,7 @@ import {
 	createPublishedPackageCacheKey,
 	createPublishedPackagePromiseCache,
 } from '#worker/package-registry/published-package-cache.ts'
+import { servingArtifactCommitForSource } from '#worker/repo/serving-commit.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { importWorkerBundler } from '#worker/worker-bundler-modules.ts'
 import type { RuntimeBundle } from './runtime-bundle-types.ts'
@@ -24,6 +25,7 @@ import {
 	collectDynamicPackageImportProxyModules,
 	getOrPrepareKodyGraphFiles,
 	mergePublishedArtifactDependencies,
+	type PreparedKodyGraph,
 	type PreparedKodyGraphCache,
 } from './module-graph-import-rewriting.ts'
 import { moduleSourceDeclaresDefaultExport } from './module-export-names.ts'
@@ -130,11 +132,82 @@ const kodyLinkedPackageImportsPlugin = {
 	},
 }
 
+/**
+ * Keep imports of attached published artifact modules out of the esbuild
+ * graph. Those modules are added to the dynamic worker unchanged, so an
+ * import of one stays a root-relative import of its module key.
+ */
+function createAttachedModulesExternalsPlugin(
+	attachedModulePaths: ReadonlySet<string>,
+) {
+	return {
+		name: 'kody-attached-published-artifacts',
+		setup(build: EsbuildRuntimePluginBuild) {
+			build.onResolve({ filter: /__published_bundle__\// }, (args) => {
+				if (args.kind === 'entry-point') return
+				const resolved = resolveRelativeModulePath(
+					args.resolveDir
+						? `${normalizeWorkspaceModulePath(args.resolveDir)}/__importer__`
+						: '__importer__',
+					args.path,
+				)
+				if (resolved == null || !attachedModulePaths.has(resolved)) return
+				return { path: `./${resolved}`, external: true }
+			})
+		},
+	}
+}
+
+/**
+ * The bundle needs package source rebuilt from a fallback (an import with no
+ * usable published artifact) or an npm install. Thrown before esbuild runs
+ * when the caller asked to build from published artifacts only.
+ */
+export class PublishedImportsNeedSourceBuildError extends Error {
+	constructor() {
+		super('Bundle needs a package source build.')
+		this.name = 'PublishedImportsNeedSourceBuildError'
+	}
+}
+
+function preparedGraphNeedsSourceBuild(prepared: PreparedKodyGraph) {
+	if (prepared.hasTypedPublishedArtifactModules) return true
+	for (const role of prepared.moduleRoles.values()) {
+		if (role === 'package-source' || role === 'root-dependency') return true
+	}
+	return false
+}
+
+/**
+ * Split a prepared graph into the files esbuild bundles and the published
+ * artifact modules attached to the dynamic worker as they are. Runtime
+ * modules inside an artifact are dropped; hydration installs the one shared
+ * runtime.
+ */
+function splitAttachedPublishedArtifactModules(
+	files: Record<string, string>,
+	moduleRoles: PreparedKodyGraph['moduleRoles'],
+) {
+	const bundlerFiles: Record<string, string> = {}
+	const attachedModules: Record<string, string> = {}
+	for (const [modulePath, source] of Object.entries(files)) {
+		if (moduleRoles.get(modulePath) !== 'published-artifact') {
+			bundlerFiles[modulePath] = source
+			continue
+		}
+		const normalized = normalizeWorkspaceModulePath(modulePath)
+		if (isKodyRuntimeModulePath(normalized)) continue
+		attachedModules[normalized] = source
+	}
+	return { bundlerFiles, attachedModules }
+}
+
 async function createWorkerBundle(input: {
 	files: Record<string, string>
 	entryPoint: string
 	sourceFiles?: Record<string, string>
 	linkKodyPackageImports?: boolean
+	attachedModulePaths?: ReadonlySet<string>
 }) {
 	const snapshotFiles = input.sourceFiles ?? input.files
 	assertNoPlatformSuppliedNodeModules({
@@ -152,6 +225,9 @@ async function createWorkerBundle(input: {
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			kodyRuntimeExternalsPlugin,
 			...(input.linkKodyPackageImports ? [kodyLinkedPackageImportsPlugin] : []),
+			...(input.attachedModulePaths?.size
+				? [createAttachedModulesExternalsPlugin(input.attachedModulePaths)]
+				: []),
 			createNodeModulesResolutionPlugin(input.files),
 		],
 	})
@@ -172,17 +248,31 @@ async function createModuleBundleCacheKey(input: {
 	userId: string
 	entryPoint: string
 	files: Record<string, string>
+	packages: PreparedKodyGraph['packages']
+	publishedArtifactVersions: PreparedKodyGraph['publishedArtifactVersions']
 }) {
-	// Digest prepared files (not raw source) so package republishes that change
-	// rewritten graph contents invalidate the cache without a staleness window.
+	// Digest the bundled prepared files (not raw source) so rewritten graph
+	// contents invalidate the cache. Attached artifacts are not digested: each
+	// loaded package's serving and published commits name the artifact loaded.
 	const filesDigest = await sha256Base64Url(
 		serializePreparedFilesRecord(input.files),
 	)
+	const packageCommits = [...input.packages.values()]
+		.map((loaded) => [
+			loaded.row.sourceId,
+			servingArtifactCommitForSource(loaded.source),
+			// Without a serving pointer readers load the newest build, so the
+			// published commit is what changes on a republish.
+			loaded.source.published_commit,
+		])
+		.sort(([left], [right]) => String(left).localeCompare(String(right)))
 	return JSON.stringify([
 		'module-bundle',
 		input.userId,
 		input.entryPoint,
 		filesDigest,
+		packageCommits,
+		[...input.publishedArtifactVersions].sort(),
 	])
 }
 
@@ -223,6 +313,13 @@ export async function buildKodyModuleBundle(input: {
 	 * `dependencies` is empty; Kody resolves both when it commits the upload.
 	 */
 	linkKodyPackageImports?: boolean
+	/**
+	 * Ad hoc execute: add each imported published artifact to the bundle as
+	 * its own modules, unchanged, and bundle only the rest of the graph.
+	 */
+	attachPublishedArtifacts?: boolean
+	/** Throw {@link PublishedImportsNeedSourceBuildError} instead of building package source or npm dependencies. */
+	requirePublishedImports?: boolean
 }) {
 	const prepared = await getOrPrepareKodyGraphFiles({
 		env: input.env,
@@ -234,7 +331,23 @@ export async function buildKodyModuleBundle(input: {
 		prepareCache: input.prepareCache,
 		linkKodyPackageImports: input.linkKodyPackageImports,
 	})
-	const files = clonePreparedGraphFiles(prepared.files)
+	if (
+		input.requirePublishedImports &&
+		preparedGraphNeedsSourceBuild(prepared)
+	) {
+		throw new PublishedImportsNeedSourceBuildError()
+	}
+	const { bundlerFiles: files, attachedModules } =
+		input.attachPublishedArtifacts
+			? splitAttachedPublishedArtifactModules(
+					prepared.files,
+					prepared.moduleRoles,
+				)
+			: {
+					bundlerFiles: clonePreparedGraphFiles(prepared.files),
+					attachedModules: {},
+				}
+	const attachedModulePaths = new Set(Object.keys(attachedModules))
 	const { packages, publishedArtifactDependencies } = prepared
 	const entryPoint = prepared.entryPoint
 	const normalizedEntrypoint = joinPath(rootSourcePrefix, entryPoint)
@@ -256,16 +369,24 @@ export async function buildKodyModuleBundle(input: {
 			entryPoint: bootstrapPath,
 			sourceFiles: input.sourceFiles,
 			linkKodyPackageImports: input.linkKodyPackageImports,
+			attachedModulePaths,
 		})
-		const modules = {
-			...stripKodyRuntimeModules(bundle.modules as WorkerLoaderModules),
-			...collectDynamicPackageImportProxyModules(
-				files,
-				bundle.modules as WorkerLoaderModules,
-			),
+		const emittedModules: WorkerLoaderModules = {
+			...(bundle.modules as WorkerLoaderModules),
+			...attachedModules,
 		}
+		const modules = {
+			...stripKodyRuntimeModules(emittedModules),
+			...collectDynamicPackageImportProxyModules(files, emittedModules),
+		}
+		// Attached artifacts were checked when they were published, and
+		// parsing them again would cost far more memory than bundling.
 		await assertBundleHasNoUnresolvedBareImports({
-			modules,
+			modules: Object.fromEntries(
+				Object.entries(modules).filter(
+					([modulePath]) => !attachedModulePaths.has(modulePath),
+				),
+			),
 			bundleLabel:
 				input.bundleContext === 'ad-hoc-execute'
 					? 'Ad hoc execute module bundle'
@@ -303,11 +424,26 @@ export async function buildKodyModuleBundle(input: {
 		userId: input.userId,
 		entryPoint,
 		files,
+		packages,
+		publishedArtifactVersions: prepared.publishedArtifactVersions,
 	})
+	let built = false
 	const cached = await moduleBundleCache.getOrCreate({
 		cacheKey,
-		create: assembleBundle,
+		create: async () => {
+			built = true
+			return await assembleBundle()
+		},
 	})
+	console.info(
+		JSON.stringify({
+			event: 'module_bundle_cache',
+			outcome: built ? 'miss' : 'hit',
+			bundleContext: input.bundleContext ?? null,
+			moduleCount: Object.keys(cached.modules).length,
+			attachedModuleCount: attachedModulePaths.size,
+		}),
+	)
 	return cloneRuntimeBundle(cached)
 }
 

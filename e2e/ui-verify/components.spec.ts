@@ -1,4 +1,10 @@
+import path from 'node:path'
+import { waitForAnimationsToSettle } from '../page-settle.ts'
 import { expect, test, waitForClientHydration } from '../playwright-utils.ts'
+import { findAxeViolations } from './checks.ts'
+import { uiVerifyPaths, uiVerifyUpdateCommand } from './paths.ts'
+import { pinnedBrowserEndpoint } from './pinned-browser.ts'
+import { themes } from './targets.ts'
 
 // Keyboard and ARIA behavior of the shared controls, driven through the
 // /dev/ui gallery so each component is tested the way pages render it.
@@ -66,5 +72,268 @@ test.describe('shared form controls', () => {
 		const disabled = page.getByRole('switch', { name: 'Disabled on' })
 		await expect(disabled).toBeDisabled()
 		await expect(disabled).toHaveAttribute('aria-checked', 'true')
+	})
+})
+
+test.describe('Dialog', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' })
+		await page.goto('/dev/ui#dialog')
+		await waitForClientHydration(page)
+	})
+
+	test('moves focus in, traps Tab, ignores outside clicks, and restores focus on Escape', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'Rename file' })
+		await trigger.click()
+		const dialog = page.getByRole('dialog', { name: 'Rename file' })
+		await expect(dialog).toHaveAccessibleDescription(
+			'Names must be unique in this folder.',
+		)
+		const name = dialog.getByRole('textbox', { name: 'Name' })
+		const save = dialog.getByRole('button', { name: 'Save' })
+		await expect(name).toBeFocused()
+		await page.keyboard.press('Tab')
+		await page.keyboard.press('Tab')
+		await expect(save).toBeFocused()
+		await page.keyboard.press('Tab')
+		await expect(name).toBeFocused()
+		await page.keyboard.press('Shift+Tab')
+		await expect(save).toBeFocused()
+		await page.mouse.click(5, 5)
+		await expect(dialog).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(dialog).toBeHidden()
+		await expect(trigger).toBeFocused()
+	})
+
+	test('dismissOnOutsideClick closes on an outside click and restores focus', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'Quick look' })
+		await trigger.click()
+		const dialog = page.getByRole('dialog', { name: 'Quick look' })
+		await expect(dialog).toBeVisible()
+		await page.mouse.click(5, 5)
+		await expect(dialog).toBeHidden()
+		await expect(trigger).toBeFocused()
+	})
+
+	test('alertdialog closes only from Escape or its buttons', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'Delete file' })
+		await trigger.click()
+		const dialog = page.getByRole('alertdialog', { name: 'Delete notes.md?' })
+		await expect(dialog).toHaveAccessibleDescription("This can't be undone.")
+		await page.mouse.click(5, 5)
+		await expect(dialog).toBeVisible()
+		await dialog.getByRole('button', { name: 'Cancel' }).click()
+		await expect(dialog).toBeHidden()
+		await expect(trigger).toBeFocused()
+	})
+
+	for (const theme of themes) {
+		test(`open dialogs pass axe and match baselines (${theme})`, async ({
+			page,
+		}) => {
+			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			for (const [trigger, role] of [
+				['Rename file', 'dialog'],
+				['Delete file', 'alertdialog'],
+				['Side panel', 'dialog'],
+			] as const) {
+				await page.getByRole('button', { name: trigger }).click()
+				const dialog = page.getByRole(role)
+				await expect(dialog).toBeVisible()
+				await waitForAnimationsToSettle(page)
+				const slug = trigger.toLowerCase().replaceAll(' ', '-')
+				await page.screenshot({
+					path: path.join(
+						uiVerifyPaths.screenshots,
+						`gallery-dialog-${slug}-${theme}.png`,
+					),
+					animations: 'disabled',
+					caret: 'hide',
+				})
+				if (pinnedBrowserEndpoint()) {
+					await expect
+						.soft(
+							page,
+							`visual: open "${trigger}" dialog (${theme}) no longer matches its baseline. If the change is intended, run \`${uiVerifyUpdateCommand}\` and commit the files under ${uiVerifyPaths.baselines}/.`,
+						)
+						.toHaveScreenshot(`gallery-dialog-${slug}-${theme}.png`)
+				}
+				expect
+					.soft(
+						await findAxeViolations(page),
+						`axe: open "${trigger}" dialog (${theme}) has blocking accessibility violations.`,
+					)
+					.toEqual([])
+				await page.keyboard.press('Escape')
+				await expect(dialog).toBeHidden()
+			}
+		})
+	}
+})
+
+test.describe('Menu', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' })
+		await page.goto('/dev/ui#menu')
+		await waitForClientHydration(page)
+	})
+
+	test('opens from the keyboard, announces disabled items, and restores focus', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'File actions' })
+		await expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+		await trigger.focus()
+		await page.keyboard.press('ArrowDown')
+		const menu = page.getByRole('menu', { name: 'File actions' })
+		await expect(menu).toBeVisible()
+		await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+		const rename = menu.getByRole('menuitem', { name: 'Rename' })
+		await expect(rename).toBeFocused()
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		const move = menu.getByRole('menuitem', { name: 'Move (no other folders)' })
+		await expect(move).toBeFocused()
+		await expect(move).toHaveAttribute('aria-disabled', 'true')
+		await page.keyboard.press('Enter')
+		await expect(menu).toBeVisible()
+		await page.keyboard.press('ArrowDown')
+		await expect(
+			menu.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),
+		).toBeFocused()
+		await page.keyboard.press('Space')
+		await expect(
+			menu.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),
+		).toHaveAttribute('aria-checked', 'false')
+		await page.keyboard.press('Escape')
+		await expect(menu).toBeHidden()
+		await expect(trigger).toBeFocused()
+	})
+
+	test('Enter runs an item and closes the menu', async ({ page }) => {
+		const trigger = page.getByRole('button', { name: 'File actions' })
+		await trigger.focus()
+		await page.keyboard.press('Enter')
+		const menu = page.getByRole('menu', { name: 'File actions' })
+		await expect(menu.getByRole('menuitem', { name: 'Rename' })).toBeFocused()
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('Enter')
+		await expect(menu).toBeHidden()
+		await expect(
+			page.getByRole('status').getByText('Duplicated.'),
+		).toBeVisible()
+		await expect(trigger).toBeFocused()
+	})
+
+	for (const theme of themes) {
+		test(`open menu passes axe and matches its baseline (${theme})`, async ({
+			page,
+		}) => {
+			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			const trigger = page.getByRole('button', { name: 'File actions' })
+			await trigger.click()
+			const menu = page.getByRole('menu', { name: 'File actions' })
+			await expect(menu).toBeVisible()
+			await waitForAnimationsToSettle(page)
+			const shot = `gallery-menu-open-${theme}.png`
+			await menu.screenshot({
+				path: path.join(uiVerifyPaths.screenshots, shot),
+				animations: 'disabled',
+			})
+			if (pinnedBrowserEndpoint()) {
+				await expect
+					.soft(
+						menu,
+						`visual: open menu (${theme}) no longer matches its baseline. If the change is intended, run \`${uiVerifyUpdateCommand}\` and commit the files under ${uiVerifyPaths.baselines}/.`,
+					)
+					.toHaveScreenshot(shot)
+			}
+			expect
+				.soft(
+					await findAxeViolations(page),
+					`axe: open menu (${theme}) has blocking accessibility violations.`,
+				)
+				.toEqual([])
+		})
+	}
+})
+
+test.describe('Tooltip', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/dev/ui#tooltip')
+		await waitForClientHydration(page)
+	})
+
+	test('describes its trigger, shows on focus and hover, and Escape hides it', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'Above' })
+		const tip = page.getByText('Shows on hover and focus.')
+		await expect(trigger).toHaveAccessibleDescription(
+			'Shows on hover and focus.',
+		)
+		await expect(tip).toBeHidden()
+		await trigger.focus()
+		await page.keyboard.press('Shift+Tab')
+		await page.keyboard.press('Tab')
+		await expect(tip).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(tip).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await page.keyboard.press('Tab')
+		await page.mouse.move(0, 0)
+		await trigger.hover()
+		await expect(tip).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(tip).toBeHidden()
+	})
+})
+
+test.describe('Tabs', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/dev/ui#tabs')
+		await waitForClientHydration(page)
+	})
+
+	test('arrow keys, Home, and End select tabs and skip disabled ones', async ({
+		page,
+	}) => {
+		const list = page.getByRole('tablist', { name: 'Email body' })
+		const html = list.getByRole('tab', { name: 'HTML' })
+		const text = list.getByRole('tab', { name: 'Text' })
+		await expect(html).toHaveAttribute('aria-selected', 'true')
+		await expect(page.getByRole('tabpanel', { name: 'HTML' })).toHaveText(
+			'Rendered HTML body.',
+		)
+		await html.focus()
+		await page.keyboard.press('ArrowRight')
+		await expect(text).toBeFocused()
+		await expect(text).toHaveAttribute('aria-selected', 'true')
+		await expect(page.getByRole('tabpanel', { name: 'Text' })).toBeVisible()
+		await expect(page.getByText('Rendered HTML body.')).toBeHidden()
+		await page.keyboard.press('ArrowRight')
+		await expect(html).toBeFocused()
+		await page.keyboard.press('End')
+		await expect(text).toBeFocused()
+		await page.keyboard.press('Home')
+		await expect(html).toBeFocused()
+		await expect(list.getByRole('tab', { name: 'Source' })).toBeDisabled()
+		await page.keyboard.press('Tab')
+		await expect(page.getByRole('tabpanel', { name: 'HTML' })).toBeFocused()
+	})
+
+	test('underline tabs select on click', async ({ page }) => {
+		const list = page.getByRole('tablist', { name: 'File settings' })
+		await list.getByRole('tab', { name: 'Details' }).click()
+		await expect(page.getByRole('tabpanel', { name: 'Details' })).toHaveText(
+			'Type, modified date, and location.',
+		)
 	})
 })

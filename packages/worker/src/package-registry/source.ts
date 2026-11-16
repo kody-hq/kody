@@ -1,6 +1,7 @@
 import {
 	toPinnedSourceView,
 	toServingSourceView,
+	toUnheldSourceView,
 } from '#worker/repo/serving-commit.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import {
@@ -365,11 +366,18 @@ async function loadPackageSourceForView(
 	})
 }
 
+/**
+ * The manifest an app's definitions follow: the published commit, or the
+ * serving commit while the published one is held for approval
+ * (`toUnheldSourceView`). `commit` pins one published commit instead, for
+ * code that inspects that exact commit (such as its capability approval).
+ */
 export async function loadPackageManifestBySourceId(input: {
 	env: Env
 	baseUrl: string
 	userId: string
 	sourceId: string
+	commit?: string | null
 }): Promise<LoadedPackageManifest> {
 	if (!canResolveRepoBackedPackageSource(input.env)) {
 		throw new Error('Saved package source bindings are not available.')
@@ -379,10 +387,13 @@ export async function loadPackageManifestBySourceId(input: {
 		userId: input.userId,
 		sourceId: input.sourceId,
 	})
+	const { commit } = input
 	return await loadPackageManifestForSource({
 		env: input.env,
 		userId: input.userId,
-		source,
+		source: commit
+			? toPinnedSourceView(source, commit)
+			: toUnheldSourceView(source),
 	})
 }
 

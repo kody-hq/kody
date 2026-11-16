@@ -31,6 +31,7 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 
 import {
 	createSnapshotFilesWorkspace,
+	isolatedCredentialScanChunkAstNodes,
 	isolatedCredentialScanMinSourceBytes,
 	repoChecksSourceMaxFiles,
 	repoChecksCloudBuildMaxRuntimeSourceBytes,
@@ -40,8 +41,12 @@ import {
 } from './checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 import {
+	buildCredentialPatternCheck,
+	type CredentialTreeChunkRequest,
 	credentialPatternFindingsNotice,
 	credentialPatternNoticeForFiles,
+	planCredentialTreeScan,
+	scanCredentialTreeChunk,
 } from './credential-pattern-check.ts'
 import {
 	createMalformedPackageSkillsFixtureFiles,
@@ -1198,114 +1203,177 @@ test('an isolate reset during a check phase becomes a failed check, not a crash'
 	)
 })
 
-test('large source trees run the credential stamp scan in its own isolate', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+/** Enough modules and syntax nodes for the credential scan to need chunks. */
+function largeCredentialScanTree(indexSource: string) {
+	const statements = Array.from(
+		{ length: 400 },
+		(_, index) => `export const value${index} = [${index}, ${index + 1}]`,
+	).join('\n')
+	const moduleCount = Math.max(
+		Math.ceil(isolatedCredentialScanMinSourceBytes / statements.length),
+		Math.ceil((isolatedCredentialScanChunkAstNodes * 3) / (400 * 6)),
+	)
+	return {
+		'src/index.ts': indexSource,
+		...Object.fromEntries(
+			Array.from({ length: moduleCount }, (_, index) => [
+				`src/generated/filler-${String(index).padStart(3, '0')}.ts`,
+				`${statements}\n`,
+			]),
 		),
+	}
+}
+
+/** Runs the credential scan phases for real over the tree the run staged. */
+function credentialScanPhases(
+	kv: { put: { mock: { calls: Array<[string, string, unknown]> } } },
+	request: Record<string, unknown>,
+) {
+	const staged = kv.put.mock.calls.find(([key]) => key === request.stagingKey)
+	const { sourceFiles } = JSON.parse(staged![1]) as {
+		sourceFiles: Record<string, string>
+	}
+	if (request.phase === 'credentials-plan') {
+		return planCredentialTreeScan(
+			sourceFiles,
+			request.maxChunkAstNodes as number,
+		).then((credentialPlan) => ({ ok: true, message: '', credentialPlan }))
+	}
+	if (request.phase === 'credentials-chunk') {
+		return scanCredentialTreeChunk(
+			sourceFiles,
+			request.chunk as CredentialTreeChunkRequest,
+		).then((credentialChunk) => ({ ok: true, message: '', credentialChunk }))
+	}
+	return null
+}
+
+test('large source trees run the credential stamp scan in chunks, each in its own isolate', async () => {
+	const tree = largeCredentialScanTree(
+		[
+			"import { credential } from 'kody:runtime'",
+			'export default async function main() {',
+			'\treturn await credential("BILLING")',
+			'}',
+		].join('\n'),
+	)
+	const files = packageFiles(
+		manifest('large-tree-package', {
+			credentials: { BILLING: { description: 'Billing API key.' } },
+		}),
+		tree,
 	)
 	const phaseRequests: Array<Record<string, unknown>> = []
-	const { env } = isolatedEnv(async (request) => {
+	const { env, kv, namespace } = isolatedEnv(async (request) => {
 		phaseRequests.push(request)
-		if (request.phase === 'credentials') {
-			return {
+		return (
+			(await credentialScanPhases(kv, request)) ?? {
 				ok: true,
-				message: 'credentials ok (isolated)',
-				changedFiles: { 'src/index.ts': '// stamped\n' },
-				stampKeys: [],
+				message: 'ok (isolated)',
 			}
-		}
-		return { ok: true, message: 'ok (isolated)' }
+		)
 	})
-	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
-		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
-	)
+	const { result } = await runChecks(files, {
+		env,
+		baseUrl: '/',
+		userId: ownerIdFromStored('user-123'),
+	})
 
-	expect(phaseRequests.map((request) => request.phase)).toContain('credentials')
+	const chunks = phaseRequests
+		.filter((request) => request.phase === 'credentials-chunk')
+		.map((request) => (request.chunk as CredentialTreeChunkRequest).visit)
+	expect(
+		phaseRequests.filter((request) => request.phase === 'credentials-plan'),
+	).toHaveLength(1)
+	expect(chunks.length).toBeGreaterThanOrEqual(3)
+	for (const chunk of chunks) {
+		expect(
+			chunk.reduce((sum, module) => sum + module.astNodes, 0),
+		).toBeLessThanOrEqual(isolatedCredentialScanChunkAstNodes)
+	}
+	expect(chunks.flat().map((module) => module.path)).toEqual(
+		Object.keys(tree).sort(),
+	)
+	// One throwaway isolate per phase call.
+	expect(
+		new Set(namespace.idFromName.mock.calls.map(([name]) => name)).size,
+	).toBe(phaseRequests.length)
+
+	const inProcess = await buildCredentialPatternCheck(Object.fromEntries(files))
 	expect(findCheck(result, 'credentials')).toMatchObject({
 		ok: true,
-		message: 'credentials ok (isolated)',
+		message: inProcess.message,
 	})
-	expect(result.sourceFiles['src/index.ts']).toBe('// stamped\n')
+	expect(inProcess.stampKeys).toEqual(['BILLING'])
 })
 
-test('an isolate reset during the credential scan names that step', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
-		),
-	)
-	const { env } = isolatedEnv(async (request) => {
-		if (request.phase === 'credentials') {
+test('an isolate reset during one credential scan chunk names that step', async () => {
+	const { env, kv } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials-chunk') {
 			throw new Error(
-				"Durable Object's isolate exceeded its memory limit and was reset.",
+				'Durable Object exceeded its CPU time limit and was reset.',
 			)
 		}
-		return { ok: true, message: 'ok (isolated)' }
+		return (
+			(await credentialScanPhases(kv, request)) ?? {
+				ok: true,
+				message: 'ok (isolated)',
+			}
+		)
 	})
 	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
+		packageFiles(
+			manifest('large-tree-package'),
+			largeCredentialScanTree(
+				`export default async function main() {\n\treturn 'ok'\n}\n`,
+			),
+		),
 		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
 	)
 
 	expect(result.ok).toBe(false)
 	const credentials = findCheck(result, 'credentials')
 	expect(credentials?.ok).toBe(false)
-	expect(credentials?.message).toContain('credential stamp scan')
+	expect(credentials?.message).toContain('The credential stamp scan of')
+	expect(credentials?.message).toContain("exceeded the isolated check runner's")
 })
 
-test('the request-placement scan comes from the isolated credentials phase, not this isolate', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
-		),
-	)
-	const { env } = isolatedEnv(async (request) => {
-		if (request.phase === 'credentials') {
-			return {
-				ok: true,
-				message: 'Credential stamp ok (isolated).',
-				changedFiles: {},
-				stampKeys: [],
-				requestPlacementHits: [
-					{
-						path: 'src/index.ts',
-						line: 2,
-						nameKind: 'secret',
-						name: 'apiKey',
-						part: 'query',
-					},
-				],
-				fetchBodyHits: [],
-			}
+test('the request-placement scan comes from the isolated credential chunks, not this isolate', async () => {
+	const placement =
+		"export default async function main() {\n\treturn await fetch('https://api.example.com/items?key={{secret:apiKey}}')\n}\n"
+	const { env, kv } = isolatedEnv(async (request) => {
+		const answer = await credentialScanPhases(kv, request)
+		if (request.phase !== 'credentials-chunk' || !answer) {
+			return answer ?? { ok: true, message: 'ok (isolated)' }
 		}
-		return { ok: true, message: 'ok (isolated)' }
+		// Only the chunk isolates see a placement: the staged tree has none.
+		const chunk = request.chunk as CredentialTreeChunkRequest
+		return {
+			ok: true,
+			message: '',
+			credentialChunk: await scanCredentialTreeChunk(
+				{
+					...Object.fromEntries(
+						chunk.visit.map((module) => [module.path, 'export {}\n']),
+					),
+					'package.json': manifest('large-tree-package', {
+						credentials: { apiKey: { description: 'API key.' } },
+					}),
+					'src/index.ts': placement,
+				},
+				chunk,
+			),
+		}
 	})
-	// The source itself has no placement: only the phase's hits can fail it.
 	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
+		packageFiles(
+			manifest('large-tree-package', {
+				credentials: { apiKey: { description: 'API key.' } },
+			}),
+			largeCredentialScanTree(
+				`export default async function main() {\n\treturn 'ok'\n}\n`,
+			),
+		),
 		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
 	)
 	const credentials = findCheck(result, 'credentials')

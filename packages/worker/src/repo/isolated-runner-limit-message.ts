@@ -2,6 +2,7 @@ import {
 	formatBytes,
 	formatHintList,
 	formatPublishSizeHints,
+	type LargePathHint,
 	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
@@ -108,11 +109,44 @@ export function artifactBuildFailureMessage(
 	)
 }
 
-/** True for a check result that only says the check runner hit its limits. */
+const credentialScanSizeLimitPhrase =
+	'more source than the credential stamp scan reads in one publish'
+
+/**
+ * The credential stamp scan refused a tree before walking it. Its CPU time
+ * grows with the syntax nodes it walks, so past the limit the runner would
+ * be reset part way through, with nothing to say what it was reading.
+ */
+export function credentialScanSizeLimitMessage(input: {
+	moduleCount: number
+	maxAstNodes: number
+	/** The heaviest modules read before the scan stopped. */
+	largest: Array<LargePathHint>
+}) {
+	return (
+		`The credential stamp scan stopped early: this package has ` +
+		`${credentialScanSizeLimitPhrase}. It parses every JavaScript and ` +
+		`TypeScript module the package's runtime can import ` +
+		`(${input.moduleCount} here, committed build output included), and its ` +
+		`cost grows with the amount of code in them. ` +
+		`The limit is ${input.maxAstNodes.toLocaleString('en-US')} syntax ` +
+		`nodes across those modules. The heaviest it read before stopping are ` +
+		`${formatHintList(input.largest)}. Import less from the server entry ` +
+		'points, drop bundled dependencies the runtime does not need, or list ' +
+		'code the runtime never imports in a `.kodyignore` file next to ' +
+		'package.json, then run `kody dev check` again.'
+	)
+}
+
+/**
+ * True for a check result that only says the check could not run within
+ * the check runner's limits, so it found nothing either way.
+ */
 export function isRepoCheckResourceLimitMessage(message: string) {
 	return (
 		message.includes(isolatedCheckRunnerLimitPhrase) ||
-		message.includes(authoringCheckRunnerLimitPhrase)
+		message.includes(authoringCheckRunnerLimitPhrase) ||
+		message.includes(credentialScanSizeLimitPhrase)
 	)
 }
 

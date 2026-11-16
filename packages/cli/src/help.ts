@@ -86,6 +86,7 @@ Usage:
   kody daemon [--context <ec id>] [--max-concurrent <n>]
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
   kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart | start | stop
+  kody daemon health [--context <ec id>] [--max-age <seconds>] [--json]
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update

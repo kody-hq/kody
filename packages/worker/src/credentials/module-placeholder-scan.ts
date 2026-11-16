@@ -857,6 +857,63 @@ type ScannableModuleIndex = {
 	sources: ReadonlyMap<string, string>
 	modulePaths: ReadonlyArray<string>
 	readConstants: (path: string) => ReadonlyMap<string, string>
+	/** Syntax nodes across every module that parsed: what one walk costs. */
+	astNodes: number
+	/** Syntax nodes per module, in `modulePaths` order. */
+	moduleAstNodes: ReadonlyArray<{ path: string; astNodes: number }>
+	/**
+	 * Set by {@link adoptScannableModulePlan}: the only modules a walk visits.
+	 * Unset, a walk visits every module.
+	 */
+	visitPaths?: ReadonlySet<string>
+}
+
+/**
+ * What a walk of one file map needs, as plain data, so the modules can be
+ * split across isolates: each one adopts the plan for the modules it visits
+ * and never parses the rest of the tree to rebuild the index.
+ */
+export type ScannableModulePlan = {
+	/** Every scannable module, in {@link listScannableModulePaths} order. */
+	modulePaths: Array<string>
+	/** The modules this walk visits, with their resolved constants. */
+	visit: Array<{
+		path: string
+		astNodes: number
+		constants: Array<[string, string]>
+	}>
+}
+
+/**
+ * Thrown by {@link scannableModuleIndex} when the modules hold more syntax
+ * nodes than the caller allows. `modules` lists the ones parsed so far.
+ */
+export class ScannableModuleAstLimitError extends Error {
+	readonly maxAstNodes: number
+	readonly moduleCount: number
+	readonly modules: ReadonlyArray<{ path: string; astNodes: number }>
+
+	constructor(
+		maxAstNodes: number,
+		moduleCount: number,
+		modules: ReadonlyArray<{ path: string; astNodes: number }>,
+	) {
+		super(`Scannable modules exceed ${maxAstNodes} syntax nodes.`)
+		this.name = 'ScannableModuleAstLimitError'
+		this.maxAstNodes = maxAstNodes
+		this.moduleCount = moduleCount
+		this.modules = modules
+	}
+}
+
+function countAstNodes(parsed: AstNode | null) {
+	let count = 0
+	if (parsed) {
+		walkAst(parsed, () => {
+			count += 1
+		})
+	}
+	return count
 }
 
 const scannableModuleIndexes = new WeakMap<
@@ -885,50 +942,266 @@ function indexStillMatches(
  */
 export async function scannableModuleIndex(
 	files: Record<string, string>,
+	options: {
+		/**
+		 * Stop with {@link ScannableModuleAstLimitError} once the modules hold
+		 * more syntax nodes than this. Scan time grows with the node count, so
+		 * a caller with a CPU limit can refuse a tree before walking it.
+		 */
+		maxAstNodes?: number
+	} = {},
 ): Promise<ScannableModuleIndex> {
 	const cached = scannableModuleIndexes.get(files)
-	if (cached && indexStillMatches(cached, files)) return cached
+	const maxAstNodes = options.maxAstNodes ?? Number.POSITIVE_INFINITY
+	if (
+		cached &&
+		cached.astNodes <= maxAstNodes &&
+		indexStillMatches(cached, files)
+	) {
+		return cached
+	}
 	const modulePaths = await listScannableModulePaths(files)
 	const modulePathSet = new Set(modulePaths)
 	const summaries = new Map<string, ModuleConstantsSummary>()
+	const moduleAstNodes: Array<{ path: string; astNodes: number }> = []
+	let astNodes = 0
 	for (const path of modulePaths) {
-		summaries.set(
-			path,
-			readModuleConstantsSummary(
-				path,
-				await parseModule(files[path]!),
-				modulePathSet,
-			),
-		)
+		const parsed = await parseModule(files[path]!)
+		const count = countAstNodes(parsed)
+		astNodes += count
+		moduleAstNodes.push({ path, astNodes: count })
+		if (astNodes > maxAstNodes) {
+			throw new ScannableModuleAstLimitError(
+				maxAstNodes,
+				modulePaths.length,
+				moduleAstNodes,
+			)
+		}
+		summaries.set(path, readModuleConstantsSummary(path, parsed, modulePathSet))
 	}
 	const index: ScannableModuleIndex = {
 		sources: new Map(Object.entries(files)),
 		modulePaths,
 		readConstants: createModuleConstantsReader(summaries),
+		astNodes,
+		moduleAstNodes,
 	}
 	scannableModuleIndexes.set(files, index)
 	return index
+}
+
+/** The plan for a walk that visits every scannable module of `files`. */
+export async function planScannableModules(
+	files: Record<string, string>,
+	options: { maxAstNodes?: number } = {},
+): Promise<ScannableModulePlan> {
+	const index = await scannableModuleIndex(files, options)
+	return {
+		modulePaths: [...index.modulePaths],
+		visit: index.moduleAstNodes.map(({ path, astNodes }) => ({
+			path,
+			astNodes,
+			constants: [...index.readConstants(path)],
+		})),
+	}
+}
+
+/**
+ * Make walks of `files` follow `plan`: they visit only `plan.visit`, with the
+ * constants the plan resolved over the whole tree. `files` must hold the same
+ * modules the plan was made from.
+ */
+export function adoptScannableModulePlan(
+	files: Record<string, string>,
+	plan: ScannableModulePlan,
+) {
+	const constants = new Map(
+		plan.visit.map((module) => [module.path, new Map(module.constants)]),
+	)
+	scannableModuleIndexes.set(files, {
+		sources: new Map(Object.entries(files)),
+		modulePaths: plan.modulePaths,
+		readConstants: (path) => constants.get(path) ?? new Map(),
+		astNodes: plan.visit.reduce((sum, module) => sum + module.astNodes, 0),
+		moduleAstNodes: plan.visit.map(({ path, astNodes }) => ({
+			path,
+			astNodes,
+		})),
+		visitPaths: new Set(plan.visit.map((module) => module.path)),
+	})
+}
+
+/**
+ * Which modules a walk of `files` lists and which of them it visits. A scan
+ * that also reads modules the walk does not list uses this to cover each one
+ * exactly once when the modules are split across walks.
+ */
+export async function scannableModuleWalk(files: Record<string, string>) {
+	const index = await scannableModuleIndex(files)
+	const listed = new Set(index.modulePaths)
+	const { visitPaths } = index
+	return {
+		listed,
+		visits: (path: string) => visitPaths?.has(path) ?? true,
+	}
+}
+
+function visitedModulePaths(index: ScannableModuleIndex) {
+	const { visitPaths } = index
+	return visitPaths
+		? index.modulePaths.filter((path) => visitPaths.has(path))
+		: index.modulePaths
+}
+
+type ModuleVisit = (
+	path: string,
+	parsed: AstNode | null,
+	constants: ReadonlyMap<string, string>,
+) => void | Promise<void>
+
+type SharedModulePassWaiter = {
+	visit: ModuleVisit
+	/** Set when this visitor threw; it sees no more modules. */
+	failure: { error: unknown } | null
+	resolve: () => void
+	reject: (error: unknown) => void
+}
+
+type SharedModulePass = {
+	/** Scans that are running, not parked on a walk and not finished. */
+	active: number
+	waiters: Array<SharedModulePassWaiter>
+}
+
+const sharedModulePasses = new WeakMap<
+	Record<string, string>,
+	SharedModulePass
+>()
+
+async function visitModulesOnce(
+	files: Record<string, string>,
+	paths: ReadonlyArray<string>,
+	readConstants: (path: string) => ReadonlyMap<string, string>,
+	waiters: ReadonlyArray<SharedModulePassWaiter>,
+) {
+	for (const path of paths) {
+		const parsed = await parseModule(files[path]!)
+		const constants = readConstants(path)
+		for (const waiter of waiters) {
+			if (waiter.failure) continue
+			try {
+				await waiter.visit(path, parsed, constants)
+			} catch (error) {
+				waiter.failure = { error }
+			}
+		}
+	}
+}
+
+async function runSharedModulePass(
+	files: Record<string, string>,
+	pass: SharedModulePass,
+) {
+	while (pass.active === 0 && pass.waiters.length > 0) {
+		const waiters = pass.waiters
+		pass.waiters = []
+		// Hold the pass open while it walks, so nothing starts a second walk.
+		pass.active = 1
+		try {
+			const index = await scannableModuleIndex(files)
+			await visitModulesOnce(
+				files,
+				[...visitedModulePaths(index)].sort(),
+				index.readConstants,
+				waiters,
+			)
+		} catch (error) {
+			for (const waiter of waiters) waiter.failure ??= { error }
+		}
+		// Every parked scan resumes only now, so none can finish mid-walk.
+		pass.active = waiters.length
+		for (const waiter of waiters) {
+			if (waiter.failure) waiter.reject(waiter.failure.error)
+			else waiter.resolve()
+		}
+	}
+}
+
+/**
+ * Run several scans of the same `files` map so their
+ * {@link forEachScannableModule} walks share one parse of each module. Each
+ * scan parks at its walk; once every scan is parked or done, the modules are
+ * parsed once each, in sorted path order, and every parked visitor sees each
+ * AST in turn. Without this, ten scans cost ten parses of every module, which
+ * ran publish out of CPU time on packages that commit their build output.
+ *
+ * Scans must not depend on each other's results, and a scan walks the
+ * modules one walk at a time. A scan may itself call `shareModulePasses` for
+ * the same map; its scans join the running pass. Results come back in
+ * `scans` order.
+ */
+export async function shareModulePasses<
+	const Scans extends ReadonlyArray<() => unknown>,
+>(
+	files: Record<string, string>,
+	scans: Scans,
+): Promise<{ [Index in keyof Scans]: Awaited<ReturnType<Scans[Index]>> }> {
+	const joined = sharedModulePasses.get(files)
+	const pass = joined ?? { active: 0, waiters: [] }
+	if (!joined) sharedModulePasses.set(files, pass)
+	// A joining scan is blocked on its own scans until they all finish.
+	pass.active += scans.length - (joined ? 1 : 0)
+	const settled = await Promise.allSettled(
+		scans.map(async (scan) => {
+			try {
+				return await scan()
+			} finally {
+				pass.active -= 1
+				void runSharedModulePass(files, pass)
+			}
+		}),
+	)
+	if (joined) pass.active += 1
+	else sharedModulePasses.delete(files)
+	const results: Array<unknown> = []
+	for (const result of settled) {
+		if (result.status === 'rejected') throw result.reason
+		results.push(result.value)
+	}
+	return results as {
+		[Index in keyof Scans]: Awaited<ReturnType<Scans[Index]>>
+	}
 }
 
 /**
  * Visit every scannable module (in {@link listScannableModulePaths} order, or
  * sorted) with its AST, or null when it does not parse, and its resolved
  * module constants. Only one AST is alive at a time; keep only small results
- * from each visit, never the AST.
+ * from each visit, never the AST. Inside {@link shareModulePasses} the walk
+ * is shared with the other scans of the same map and always sorted.
  */
 export async function forEachScannableModule(
 	files: Record<string, string>,
-	visit: (
-		path: string,
-		parsed: AstNode | null,
-		constants: ReadonlyMap<string, string>,
-	) => void | Promise<void>,
+	visit: ModuleVisit,
 	options: { sorted?: boolean } = {},
 ) {
+	const pass = sharedModulePasses.get(files)
+	if (pass) {
+		await new Promise<void>((resolve, reject) => {
+			pass.waiters.push({
+				visit,
+				failure: null,
+				resolve,
+				reject,
+			})
+			pass.active -= 1
+			void runSharedModulePass(files, pass)
+		})
+		return
+	}
 	const index = await scannableModuleIndex(files)
-	const paths = options.sorted
-		? [...index.modulePaths].sort()
-		: index.modulePaths
+	const visited = visitedModulePaths(index)
+	const paths = options.sorted ? [...visited].sort() : visited
 	for (const path of paths) {
 		await visit(
 			path,

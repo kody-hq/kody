@@ -321,6 +321,7 @@ test('updateJob updates package-owned job metadata without force-publishing the 
 		baseUrl: callerContext.baseUrl,
 		packageId,
 		sourceId,
+		publishedCommit: 'package-published-commit',
 		manifest: parseAuthoredPackageJson({
 			content: JSON.stringify({
 				name: '@owner/personal-history',

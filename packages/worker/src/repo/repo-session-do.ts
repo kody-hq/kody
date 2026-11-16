@@ -96,14 +96,15 @@ import {
 	runPackageTypecheckLanguageService,
 	runRepoSourceWalkChecks,
 	validatePackageBundles,
-	findFetchBodySecretResolutionHits,
 } from './checks.ts'
-import { findSecretPlaceholderRequestPlacements } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
-import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
+import {
+	planCredentialTreeScan,
+	scanCredentialTreeChunk,
+} from './credential-pattern-check.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { pausedSessionMovedMessage } from '#worker/credentials/credential-needs-approval.ts'
 import {
@@ -3135,31 +3136,24 @@ class RepoSessionBase extends DurableObject<Env> {
 				targets: input.typecheckTargets,
 			})
 		}
-		if (input.phase === 'credentials') {
-			const check = await buildCredentialPatternCheck(
-				sourceFiles,
-				input.secretProviders ? { secretProviders: input.secretProviders } : {},
-			)
-			const changedFiles: Record<string, string> = {}
-			for (const [path, content] of Object.entries(check.sourceFiles)) {
-				if (sourceFiles[path] !== content) changedFiles[path] = content
-			}
-			// Same isolate as the stamp scan, so the checks run never parses
-			// the whole tree again for these.
+		if (input.phase === 'credentials-plan') {
 			return {
-				ok: check.ok,
-				message: check.message,
-				changedFiles,
-				stampKeys: check.stampKeys,
-				...(check.ok
-					? {
-							requestPlacementHits:
-								await findSecretPlaceholderRequestPlacements(check.sourceFiles),
-							fetchBodyHits: await findFetchBodySecretResolutionHits(
-								check.sourceFiles,
-							),
-						}
-					: {}),
+				ok: true,
+				message: '',
+				credentialPlan: await planCredentialTreeScan(
+					sourceFiles,
+					input.maxChunkAstNodes,
+				),
+			}
+		}
+		if (input.phase === 'credentials-chunk') {
+			return {
+				ok: true,
+				message: '',
+				credentialChunk: await scanCredentialTreeChunk(
+					sourceFiles,
+					input.chunk,
+				),
 			}
 		}
 		const exhaustive: never = input

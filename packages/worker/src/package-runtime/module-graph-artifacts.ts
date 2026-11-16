@@ -23,6 +23,7 @@ import {
 	collectLiteralImportSpecifiers,
 	getBarePackageNameFromSpecifier,
 	isBarePackageImportSpecifier,
+	isKodyVirtualImportSpecifier,
 } from './import-specifiers.ts'
 import {
 	createPackageSpecifierFromProxyPath,
@@ -48,10 +49,15 @@ export function includeDynamicDependenciesWhenPresent(
 	return dynamicDependencies.length > 0 ? { dynamicDependencies } : {}
 }
 
-async function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
+async function collectUnresolvedImports(modules: WorkerLoaderModules) {
 	const unresolved = new Map<string, Set<string>>()
+	const kodyVirtual = new Set<string>()
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
 		for (const specifier of await collectLiteralImportSpecifiers(source)) {
+			if (isKodyVirtualImportSpecifier(specifier)) {
+				kodyVirtual.add(`${modulePath}: "${specifier}"`)
+				continue
+			}
 			if (!isBarePackageImportSpecifier(specifier)) continue
 			// Match the pre-bundle check: unprefixed Node builtins stay external
 			// under nodejs_compat (e.g. fflate's `import … from "module"`). Prefixed
@@ -66,12 +72,15 @@ async function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
 			existing.add(specifier)
 		}
 	}
-	return [...unresolved.entries()].map(([modulePath, specifiers]) => ({
-		modulePath,
-		specifiers: [...specifiers].sort((left, right) =>
-			left.localeCompare(right),
-		),
-	}))
+	return {
+		kodyVirtual: [...kodyVirtual].sort(),
+		bare: [...unresolved.entries()].map(([modulePath, specifiers]) => ({
+			modulePath,
+			specifiers: [...specifiers].sort((left, right) =>
+				left.localeCompare(right),
+			),
+		})),
+	}
 }
 
 export async function assertBundleHasNoUnresolvedBareImports(input: {
@@ -86,7 +95,15 @@ export async function assertBundleHasNoUnresolvedBareImports(input: {
 	 */
 	sourceFiles?: Record<string, string>
 }) {
-	const unresolved = await collectUnresolvedBareImports(input.modules)
+	const { kodyVirtual, bare: unresolved } = await collectUnresolvedImports(
+		input.modules,
+	)
+	if (kodyVirtual.length > 0) {
+		// Not caller-fixable: the build should have rewritten these.
+		throw new Error(
+			`${input.bundleLabel} still imports Kody virtual modules after bundling (${kodyVirtual.join('; ')}). The build did not rewrite them to modules Kody supplies at load time, so the bundle would fail to load.`,
+		)
+	}
 	if (unresolved.length === 0) return
 	const details = unresolved
 		.map(

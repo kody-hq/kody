@@ -585,6 +585,46 @@ async function resolveJobRuntimeCallerContext(input: {
 	}
 }
 
+/**
+ * Sync a package's jobs to one commit's manifest: the commit about to serve
+ * (`commit`), or the serving commit. Jobs follow the code everyone runs, so a
+ * build still running or held for approval never adds, removes, or rewrites
+ * them.
+ */
+export async function syncPublishedPackageJobs(input: {
+	env: Env
+	userId: OwnerId
+	baseUrl: string
+	packageId: string
+	sourceId: string
+	commit?: string
+	actorUserId?: PersonId
+	actorCredential?: EnablerCredential | null
+}) {
+	const {
+		loadPackageManifestBySourceId,
+		loadServingPackageManifestBySourceId,
+	} = await import('#worker/package-registry/source.ts')
+	const loaded = input.commit
+		? await loadPackageManifestBySourceId({ ...input, commit: input.commit })
+		: await loadServingPackageManifestBySourceId(input)
+	const changed = await syncPackageJobsForPackage({
+		env: input.env,
+		userId: input.userId,
+		baseUrl: input.baseUrl,
+		packageId: input.packageId,
+		sourceId: input.sourceId,
+		manifest: loaded.manifest,
+		publishedCommit: loaded.source.published_commit,
+		actorUserId: input.actorUserId,
+		actorCredential: input.actorCredential ?? null,
+	})
+	if (changed) {
+		await syncJobManagerAlarm({ env: input.env, userId: input.userId })
+	}
+	return changed
+}
+
 export async function syncPackageJobsForPackage(input: {
 	env: Env
 	userId: OwnerId
@@ -592,6 +632,8 @@ export async function syncPackageJobsForPackage(input: {
 	packageId: string
 	sourceId: string
 	manifest: Awaited<ReturnType<typeof parseAuthoredPackageJson>>
+	/** The commit `manifest` was read at; package jobs record it. */
+	publishedCommit: string | null
 	/** Publishing person when known; preferred enabler over earliest Owner. */
 	actorUserId?: PersonId
 	/** The publishing person's credential; their job runs stay within it. */
@@ -613,21 +655,15 @@ export async function syncPackageJobsForPackage(input: {
 			if (Object.keys(desiredJobs).length === 0 && packageRows.length === 0) {
 				return false
 			}
-			const [callerContext, source] = await Promise.all([
-				createPackageJobCallerContext({
-					env: input.env,
-					db: input.env.APP_DB,
-					baseUrl: input.baseUrl,
-					userId: input.userId,
-					packageId: input.packageId,
-				}),
-				getEntitySourceByIdForUser(input.env.APP_DB, {
-					id: input.sourceId,
-					userId: input.userId,
-				}),
-			])
+			const callerContext = await createPackageJobCallerContext({
+				env: input.env,
+				db: input.env.APP_DB,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				packageId: input.packageId,
+			})
 			const callerContextJson = serializeCallerContext(callerContext)
-			const publishedCommit = source?.published_commit ?? null
+			const { publishedCommit } = input
 			const existingByName = new Map(
 				packageRows.map((row) => [row.name, row] as const),
 			)

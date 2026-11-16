@@ -1,11 +1,18 @@
 import {
 	checkPermission,
+	checkProfileChain,
 	computeEffectivePermissions,
 } from '#worker/authorization/authorize.ts'
+import { implicitUserSecretReadAccessKind } from '#mcp/secrets/package-access.ts'
+import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
+import {
+	type MachineCapabilityRow,
+	machineCapabilityUsePermission,
+} from './machine-capabilities.ts'
 import type { ExecutionContextRunPackages } from './run-packages.ts'
 import {
 	executionContextCommandPermission,
@@ -51,6 +58,21 @@ export function commandNotGrantedError(contextName: string) {
 	})
 }
 
+export function machineCapabilityOffError(
+	contextName: string,
+	name: string,
+	kind: 'command' | 'lan' = 'command',
+) {
+	return new ExecutionContextError({
+		status: 403,
+		code: 'machine_capability_off',
+		message:
+			kind === 'lan'
+				? `${contextName} defines no local network destination named "${name}". The machine's owner defines one on that machine with \`kody context capability add lan <file.json>\`; \`kody context capability list\` shows what it defines.`
+				: `${contextName} defines no command named "${name}". The machine's owner defines one on that machine with \`kody context capability add command <file.json>\`; \`kody context capability list\` shows what it defines.`,
+	})
+}
+
 const lifecycleCalls = new Set(['status', 'output', 'kill', 'list'])
 
 type AuthorizeArgs = {
@@ -60,6 +82,9 @@ type AuthorizeArgs = {
 	cwd?: unknown
 	envKeys?: unknown
 	background?: unknown
+	/** A command the machine defines by name. Absent for the shell. */
+	capability?: unknown
+	args?: unknown
 }
 
 export async function authorizeContextCommand(
@@ -83,8 +108,24 @@ export async function authorizeContextCommand(
 				'kody.command.authorize lifecycle must be status, output, kill or list.',
 		})
 	}
+	const capability = args.capability
+	if (
+		capability !== undefined &&
+		(typeof capability !== 'string' || capability.length === 0)
+	) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'kody.command.authorize capability must be the name of a command the machine defines.',
+		})
+	}
+	const assertAccess = async () =>
+		capability === undefined
+			? { ...(await assertCommandAccess(ctx, principal)), capabilityId: null }
+			: await assertNamedCapabilityAccess(ctx, principal, 'command', capability)
 	if (lifecycle) {
-		await assertCommandAccess(ctx, principal)
+		await assertAccess()
 		return { ok: true as const }
 	}
 	if (
@@ -104,7 +145,11 @@ export async function authorizeContextCommand(
 			message: 'kody.command.authorize needs the command text.',
 		})
 	}
-	const { env, row, user, orgId } = await assertCommandAccess(ctx, principal)
+	const { env, row, user, orgId, capabilityId } = await assertAccess()
+	const wouldBlock =
+		capability === undefined
+			? await packagesNotAllowed(ctx, principal.packages, [])
+			: []
 	const rawEnvKeys = Array.isArray(args.envKeys)
 		? args.envKeys.filter((key): key is string => typeof key === 'string')
 		: []
@@ -126,11 +171,73 @@ export async function authorizeContextCommand(
 			cwd: rawCwd ? rawCwd.slice(0, 512) : null,
 			envKeys,
 			background: args.background === true,
+			...(capabilityId ? { capability, capabilityId } : {}),
 			...runPackagesAuditDetail(principal.packages),
+			...(wouldBlock.length > 0
+				? {
+						wouldBlockPackageIds: wouldBlock.slice(0, maxAuditedEntryPackages),
+					}
+				: {}),
 			...(cut ? { truncated: true as const } : {}),
 		}),
 	})
 	return { ok: true as const, commandId: args.commandId }
+}
+
+const maxLanHostChars = 64
+
+/**
+ * The daemon's hop before a run reaches a local network destination the
+ * machine defines by name. The machine matches the address and port against
+ * its own definition; Kody checks who and which packages, and records it.
+ */
+export async function authorizeContextLan(
+	ctx: ApiInvocationContext,
+	rawArgs: unknown,
+) {
+	const principal = ctx.principal
+	if (principal.kind !== 'execution-context-run') {
+		throw commandRequiresContextError()
+	}
+	const args = (rawArgs ?? {}) as {
+		capability?: unknown
+		host?: unknown
+		port?: unknown
+	}
+	if (
+		typeof args.capability !== 'string' ||
+		args.capability.length === 0 ||
+		typeof args.host !== 'string' ||
+		args.host.length === 0 ||
+		args.host.length > maxLanHostChars ||
+		typeof args.port !== 'number' ||
+		!Number.isInteger(args.port) ||
+		args.port < 1 ||
+		args.port > 65535
+	) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'kody.lan.authorize needs the name of a local network destination the machine defines, the address and the port.',
+		})
+	}
+	const { env, row, user, orgId, capabilityId } =
+		await assertNamedCapabilityAccess(ctx, principal, 'lan', args.capability)
+	await sessionStub(env, row.id).recordAudit({
+		event: 'lan_used',
+		actor: { userId: user.userId, handle: user.username ?? null },
+		orgId,
+		detail: {
+			runId: principal.runId,
+			capability: args.capability,
+			capabilityId,
+			host: args.host,
+			port: args.port,
+			...runPackagesAuditDetail(principal.packages),
+		},
+	})
+	return { ok: true as const }
 }
 
 type ContextRunPrincipal = Extract<
@@ -138,8 +245,132 @@ type ContextRunPrincipal = Extract<
 	{ kind: 'execution-context-run' }
 >
 
-/** Grant on, caller has execution_context:command, and token scopes allow it. */
-async function assertCommandAccess(
+/**
+ * The run's entry packages that the package rule refuses (copies a
+ * credential's `allowed_packages`): a non-empty list is enforced for every
+ * entry package and for ad hoc code; an empty one passes ad hoc code and
+ * packages the caller's org wrote or adopted. Checked against the packages
+ * Kody served to the run, never against what the run says it is.
+ */
+async function packagesNotAllowed(
+	ctx: ApiInvocationContext,
+	packages: ExecutionContextRunPackages | undefined,
+	allowedPackages: ReadonlyArray<string>,
+) {
+	const entries = packages?.entries ?? []
+	if (allowedPackages.length > 0) {
+		return entries.filter((id) => !allowedPackages.includes(id))
+	}
+	const userId = ownerIdFromCaller(ctx.callerContext)
+	const kinds = await Promise.all(
+		entries.map((packageId) =>
+			implicitUserSecretReadAccessKind({ env: ctx.env, userId, packageId }),
+		),
+	)
+	return entries.filter((_, index) => kinds[index] === null)
+}
+
+function parseAllowedPackages(row: MachineCapabilityRow) {
+	try {
+		const parsed: unknown = JSON.parse(row.allowed_packages_json)
+		return Array.isArray(parsed)
+			? parsed.filter((id): id is string => typeof id === 'string')
+			: []
+	} catch {
+		return []
+	}
+}
+
+/**
+ * A named command (`machine_capability` of kind `command`): the machine
+ * defines it, the operator may use it, and the run's packages pass the
+ * package rule. It does not need the shell opt-in. Sharing one with other
+ * people is not built yet, so everyone else is refused.
+ */
+async function assertNamedCapabilityAccess(
+	ctx: ApiInvocationContext,
+	principal: ContextRunPrincipal,
+	kind: 'command' | 'lan',
+	name: string,
+) {
+	const { env, row, user, orgId } = await loadCommandContext(ctx, principal)
+	const capability = await env.APP_DB.prepare(
+		`SELECT * FROM machine_capabilities
+		 WHERE context_id = ? AND kind = ? AND name = ? AND removed_at IS NULL`,
+	)
+		.bind(row.id, kind, name)
+		.first<MachineCapabilityRow>()
+	if (!capability) throw machineCapabilityOffError(row.name, name, kind)
+	const label =
+		kind === 'lan'
+			? `local network destination "${name}" on ${row.name}`
+			: `command "${name}" on ${row.name}`
+	const things = kind === 'lan' ? 'local network destinations' : 'commands'
+	const access = await loadContextAccess(env.APP_DB, row, {
+		userId: user.userId,
+		orgId,
+	})
+	if (!access.isOperator) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_not_granted',
+			message: `You are not granted ${label} (${machineCapabilityUsePermission}). Only the machine's operator can use its named ${things} for now.`,
+		})
+	}
+	const request = ctx.callerContext.request
+	if (request?.credential.profileId) {
+		const decision = checkProfileChain(
+			await computeEffectivePermissions({ env, request }),
+			machineCapabilityUsePermission,
+			{
+				type: 'machine_capability',
+				id: capability.id,
+				orgId: row.org_id as OwnerId,
+				label,
+			},
+		)
+		if (!decision.allowed) {
+			throw new ExecutionContextError({
+				status: 403,
+				code: 'machine_capability_not_granted',
+				message: `The profile this run acts as, or a parent profile, was not granted ${label} (${machineCapabilityUsePermission}).`,
+			})
+		}
+	}
+	if (
+		Array.isArray(principal.scopes) &&
+		!principal.scopes.includes(machineCapabilityUsePermission)
+	) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_not_granted',
+			message: `This run's credential (token scopes) does not include ${machineCapabilityUsePermission}, so it cannot use ${label}. Use a credential with that scope.`,
+		})
+	}
+	const allowedPackages = parseAllowedPackages(capability)
+	const refused = principal.packages?.truncated
+		? (principal.packages.entries ?? [])
+		: await packagesNotAllowed(ctx, principal.packages, allowedPackages)
+	const adHocRefused =
+		allowedPackages.length > 0 &&
+		(principal.packages?.entries.length ?? 0) === 0
+	if (principal.packages?.truncated || refused.length > 0 || adHocRefused) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_package_not_allowed',
+			message: principal.packages?.truncated
+				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
+				: adHocRefused
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}. A package from someone else needs to be adopted by the machine's operator before it can use the machine's ${things}.`,
+			details: { capability: name, packageIds: refused },
+		})
+	}
+	return { env, row, user, orgId, capabilityId: capability.id }
+}
+
+/** The run's context, usable (not revoked or paused), with the caller. */
+async function loadCommandContext(
 	ctx: ApiInvocationContext,
 	principal: ContextRunPrincipal,
 ) {
@@ -159,10 +390,19 @@ async function assertCommandAccess(
 			message: `${row.name} is paused, so it runs no host commands. Resume it with \`kody daemon resume --context ${row.name}\` or executionContextResume.`,
 		})
 	}
-	if (parseGrant(row).commands?.enabled !== true)
-		throw commandsOffError(row.name)
 	const user = ctx.callerContext.user
 	const orgId = ctx.callerContext.orgBinding?.org.id ?? row.org_id
+	return { env, row, user, orgId }
+}
+
+/** Grant on, caller has execution_context:command, and token scopes allow it. */
+async function assertCommandAccess(
+	ctx: ApiInvocationContext,
+	principal: ContextRunPrincipal,
+) {
+	const { env, row, user, orgId } = await loadCommandContext(ctx, principal)
+	if (parseGrant(row).commands?.enabled !== true)
+		throw commandsOffError(row.name)
 	const access = await loadContextAccess(env.APP_DB, row, {
 		userId: user.userId,
 		orgId,
@@ -204,8 +444,12 @@ type CommandStartedDetail = {
 	cwd: string | null
 	envKeys: Array<string>
 	background: boolean
+	capability?: string
+	capabilityId?: string
 	entryPackageIds?: Array<string>
 	packageCount?: number
+	/** Entry packages a shell package rule would refuse. Logged only. */
+	wouldBlockPackageIds?: Array<string>
 	truncated?: true
 }
 

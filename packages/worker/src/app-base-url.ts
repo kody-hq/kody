@@ -1,6 +1,7 @@
 import { getDomain } from 'tldts'
 import {
 	buildPackageAppHostOrigin,
+	buildPackageAppRootOrigin,
 	buildPackageAppSubdomainOrigin,
 	isDnsSafeUsername,
 	parsePackageAppHostLabel,
@@ -455,7 +456,7 @@ export function getPackageAppLegacySubdomainRedirect(input: {
 
 	const canonical =
 		input.requestHost.kind === 'app-subdomain'
-			? buildPackageAppHostOrigin({
+			? buildPackageAppRootOrigin({
 					packageAppOrigin,
 					username: input.requestHost.username,
 					kodyId: input.requestHost.kodyId,

@@ -664,3 +664,56 @@ test('a lock whose pid now belongs to another process, or predates boot, is take
 		}
 	}
 })
+
+test('the updater logs a check that found nothing newer, once, and a skipped bad version', async () => {
+	const store = freshStore()
+	const lines: Array<string> = []
+	const updater = update.startDaemonUpdater({
+		selfVersion: '3.11.0',
+		setting: async () => ({ enabled: true, source: 'default' }),
+		busy: () => ({ runs: 0, background: 0 }),
+		log: (line) => lines.push(line),
+		onReady: () => {},
+		store,
+		fetchFn: registry({ version: '3.11.0' }),
+		deps,
+		firstDelayMs: 3_600_000,
+	})
+	assert.equal((await updater.checkNow()).kind, 'up-to-date')
+	assert.equal((await updater.checkNow()).kind, 'up-to-date')
+	updater.stop()
+	assert.equal(
+		lines.filter((line) =>
+			line.includes('checked npm; kody 3.11.0 is current (latest is 3.11.0)'),
+		).length,
+		1,
+		lines.join('\n'),
+	)
+
+	writeFileSync(
+		join(store, 'update-state.json'),
+		JSON.stringify({ bad: ['3.12.0'] }),
+	)
+	const skipped: Array<string> = []
+	const next = update.startDaemonUpdater({
+		selfVersion: '3.11.0',
+		setting: async () => ({ enabled: true, source: 'default' }),
+		busy: () => ({ runs: 0, background: 0 }),
+		log: (line) => skipped.push(line),
+		onReady: () => {},
+		store,
+		fetchFn: registry({ version: '3.12.0' }),
+		deps,
+		firstDelayMs: 3_600_000,
+	})
+	assert.deepEqual(await next.checkNow(), {
+		kind: 'up-to-date',
+		latest: '3.12.0',
+		skippedBad: true,
+	})
+	next.stop()
+	assert.match(
+		skipped.join('\n'),
+		/kody 3\.12\.0 failed to start on this machine before, so it is skipped/,
+	)
+})

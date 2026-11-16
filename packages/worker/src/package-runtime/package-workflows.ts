@@ -2318,6 +2318,15 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			context: {
 				surface: 'workflow',
 				name: payload.workflowName,
+				// A failed run must name its package and commit on its own: the
+				// workflow projection that also holds them is pruned separately.
+				...(payload.packageContext
+					? {
+							packageId: payload.packageContext.packageId,
+							kodyId: payload.packageContext.kodyId,
+							sourceId: payload.packageContext.sourceId ?? null,
+						}
+					: {}),
 				workflowId: instanceId,
 				storageId: null,
 				idempotencyKey: payload.idempotencyKey,
@@ -2326,6 +2335,9 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					sourceType: 'inline',
 					...(stepCtx?.attempt != null
 						? { workflow_step_attempt: stepCtx.attempt }
+						: {}),
+					...(payload.enqueuedCommit
+						? { enqueued_commit: payload.enqueuedCommit }
 						: {}),
 				},
 			},

@@ -80,6 +80,17 @@ invocations write `package invocation started: …` in the claim RPC, before
 sandbox work, so an isolate killed before finish still leaves a diagnostic line
 when reconciliation later marks `platform_interrupted`.
 
+Package app `app_fetch` runs survive a caller disconnect. The runtime cancels an
+invocation when its caller goes away (mail proxies do this to open-tracking
+pixels on a cold isolate), and only `waitUntil` work keeps running, so the app
+entrypoint holds the handler in `waitUntil` and the run finishes with its real
+outcome. `request.signal` aborts on disconnect (`enable_request_signal` on the
+Dynamic Worker): the entrypoint logs `package-app-caller-disconnected`, and a
+handler still running 25 seconds later is finished as
+`errorName=client_disconnected` with
+`package-app-caller-disconnect-grace-expired` in Workers Logs instead of waiting
+for reconciliation.
+
 ## Begin / finish contract
 
 ```ts

@@ -291,6 +291,29 @@ export function parseMachineLanDefinition(
 }
 
 /** Parses the `capabilities` entry of the local policy file. Absent means none. */
+/** Whether the named local network entry covers this IP address and port. */
+export function machineLanCovers(
+	lan: ReadonlyArray<MachineLanDefinition>,
+	input: { capability: string; host: string; port: number },
+) {
+	const entry = lan.find((candidate) => candidate.name === input.capability)
+	if (!entry || !entry.ports.includes(input.port)) return false
+	let address = input.host.replace(/^\[|\]$/g, '')
+	const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address)
+	if (mapped?.[1]) address = mapped[1]
+	const family = isIP(address)
+	if (family === 0) return false
+	const type = family === 4 ? 'ipv4' : 'ipv6'
+	const list = new BlockList()
+	for (const host of entry.hosts) {
+		const [base = '', prefix] = host.split('/')
+		const hostType = isIP(base) === 4 ? 'ipv4' : 'ipv6'
+		if (prefix === undefined) list.addAddress(base, hostType)
+		else list.addSubnet(base, Number(prefix), hostType)
+	}
+	return list.check(address, type)
+}
+
 export function parseMachineCapabilities(
 	value: unknown,
 ): MachineCapabilitiesPolicy {

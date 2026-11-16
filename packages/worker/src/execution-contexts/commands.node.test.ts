@@ -5,7 +5,7 @@ import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { authorizeContextCommand } from './commands.ts'
+import { authorizeContextCommand, authorizeContextLan } from './commands.ts'
 import {
 	type ExecutionContextCaller,
 	setSharing,
@@ -428,4 +428,291 @@ test('a run acting as a profile needs execution_context:command granted to every
 		),
 	).resolves.toMatchObject({ ok: true })
 	profileAccess.current = null
+})
+
+function defineCommand(
+	s: ReturnType<typeof setup>,
+	input: { allowedPackages?: Array<string>; removed?: boolean } = {},
+) {
+	s.sqlite
+		.prepare(
+			`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name,
+				allowed_packages_json, created_at, updated_at, removed_at)
+			 VALUES ('mcap_kdocker', 'ec_mac', ?, ?, 'command', 'kdocker', ?, ?, ?, ?)`,
+		)
+		.run(
+			orgId,
+			operator,
+			JSON.stringify(input.allowedPackages ?? []),
+			now,
+			now,
+			input.removed ? now : null,
+		)
+}
+
+function savePackage(s: ReturnType<typeof setup>, id: string, owner: string) {
+	s.sqlite
+		.prepare(
+			`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id)
+			 VALUES (?, ?, ?, ?, '', ?)`,
+		)
+		.run(id, owner, id, id, `source-${id}`)
+}
+
+/** A run in the context's org, so package lookups use that org. */
+function orgRun(
+	s: ReturnType<typeof setup>,
+	userId: string,
+	input: {
+		scopes?: Array<string> | null
+		packages?: { entries: Array<string>; all: Array<string>; truncated?: true }
+	} = {},
+) {
+	const ctx = s.runCtx(
+		userId,
+		'execution-context-run',
+		input.scopes ?? null,
+		null,
+		input.packages,
+	)
+	return {
+		...ctx,
+		callerContext: {
+			...ctx.callerContext,
+			request: {
+				actor: { userId, username: userId },
+				org: { id: orgId, slug: 'acme' },
+				credential: { kind: 'session', id: null },
+			},
+		},
+	} as unknown as ApiInvocationContext
+}
+
+const namedArgs = {
+	commandId: 'cmd_abcdef123',
+	capability: 'kdocker',
+	args: ['restart', 'plex'],
+	command: 'kdocker restart plex',
+	cwd: '',
+	envKeys: [],
+	background: false,
+}
+
+test('the operator runs a named command with the shell off, and the audit row names it', async () => {
+	const s = setup()
+	defineCommand(s)
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), namedArgs),
+	).resolves.toEqual({ ok: true, commandId: 'cmd_abcdef123' })
+	expect(s.audits[0]).toMatchObject({
+		event: 'command_started',
+		detail: {
+			command: 'kdocker restart plex',
+			capability: 'kdocker',
+			capabilityId: 'mcap_kdocker',
+			cwd: null,
+		},
+	})
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), {
+			lifecycle: 'status',
+			capability: 'kdocker',
+		}),
+	).resolves.toEqual({ ok: true })
+	// The shell stays off.
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), s.args),
+	).rejects.toMatchObject({ code: 'execution_context_commands_off' })
+})
+
+test('a named command the machine does not define, or removed, is refused by name', async () => {
+	const missing = setup({ commands: true })
+	await expect(
+		authorizeContextCommand(orgRun(missing, operator), namedArgs),
+	).rejects.toMatchObject({
+		code: 'machine_capability_off',
+		message: expect.stringContaining('kody context capability add command'),
+	})
+	const removed = setup({ commands: true })
+	defineCommand(removed, { removed: true })
+	await expect(
+		authorizeContextCommand(orgRun(removed, operator), namedArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+	expect(removed.audits).toHaveLength(0)
+})
+
+test('a named command is refused for other people and for a token without the scope', async () => {
+	const s = setup()
+	defineCommand(s)
+	await setSharing(s.callerFor(operator), 'ec_mac', { allMembers: true })
+	await expect(
+		authorizeContextCommand(orgRun(s, 'user_friend'), namedArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextCommand(
+			orgRun(s, operator, { scopes: ['execution_context:command'] }),
+			namedArgs,
+		),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextCommand(
+			orgRun(s, operator, { scopes: ['machine_capability:use'] }),
+			namedArgs,
+		),
+	).resolves.toMatchObject({ ok: true })
+})
+
+test('a named command checks the packages Kody served to the run', async () => {
+	const s = setup()
+	defineCommand(s)
+	savePackage(s, 'pkg_own', orgId)
+	savePackage(s, 'pkg_other', 'org_someone_else')
+	const run = (entries: Array<string>, truncated?: true) =>
+		authorizeContextCommand(
+			orgRun(s, operator, {
+				packages: {
+					entries,
+					all: entries,
+					...(truncated ? { truncated } : {}),
+				},
+			}),
+			namedArgs,
+		)
+	await expect(run(['pkg_own'])).resolves.toMatchObject({ ok: true })
+	await expect(run(['pkg_own', 'pkg_other'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('pkg_other'),
+		details: { capability: 'kdocker', packageIds: ['pkg_other'] },
+	})
+	await expect(run(['pkg_own'], true)).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+
+	const listed = setup()
+	defineCommand(listed, { allowedPackages: ['pkg_listed'] })
+	savePackage(listed, 'pkg_own', orgId)
+	const listedRun = (entries: Array<string>) =>
+		authorizeContextCommand(
+			orgRun(listed, operator, { packages: { entries, all: entries } }),
+			namedArgs,
+		)
+	await expect(listedRun(['pkg_listed'])).resolves.toMatchObject({ ok: true })
+	await expect(listedRun(['pkg_own'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+	// Ad hoc code is refused once the command is limited to listed packages.
+	await expect(
+		authorizeContextCommand(orgRun(listed, operator), namedArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
+})
+
+test('a shell command logs the packages a package rule would refuse, and still runs', async () => {
+	const s = setup({ commands: true })
+	savePackage(s, 'pkg_own', orgId)
+	await authorizeContextCommand(
+		orgRun(s, operator, {
+			packages: {
+				entries: ['pkg_own', 'pkg_other'],
+				all: ['pkg_own', 'pkg_other'],
+			},
+		}),
+		s.args,
+	)
+	expect(s.audits[0]?.detail).toMatchObject({
+		wouldBlockPackageIds: ['pkg_other'],
+	})
+})
+
+function defineLan(
+	s: ReturnType<typeof setup>,
+	input: { allowedPackages?: Array<string> } = {},
+) {
+	s.sqlite
+		.prepare(
+			`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name,
+				allowed_packages_json, created_at, updated_at)
+			 VALUES ('mcap_nas', 'ec_mac', ?, ?, 'lan', 'nas', ?, ?, ?)`,
+		)
+		.run(orgId, operator, JSON.stringify(input.allowedPackages ?? []), now, now)
+}
+
+const lanArgs = { capability: 'nas', host: '192.168.1.10', port: 5001 }
+
+test('the operator reaches a named local network destination, and the audit row names it and the address', async () => {
+	const s = setup()
+	defineLan(s)
+	savePackage(s, 'pkg_own', orgId)
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_own'], all: ['pkg_own'] },
+			}),
+			lanArgs,
+		),
+	).resolves.toEqual({ ok: true })
+	expect(s.audits[0]).toMatchObject({
+		event: 'lan_used',
+		detail: {
+			capability: 'nas',
+			capabilityId: 'mcap_nas',
+			host: '192.168.1.10',
+			port: 5001,
+			entryPackageIds: ['pkg_own'],
+		},
+	})
+})
+
+test('a named local network destination is refused when undefined, for other people, without the scope, and for packages not allowed', async () => {
+	const missing = setup()
+	// A command of the same name is not a local network destination.
+	defineCommand(missing)
+	await expect(
+		authorizeContextLan(orgRun(missing, operator), {
+			...lanArgs,
+			capability: 'kdocker',
+		}),
+	).rejects.toMatchObject({
+		code: 'machine_capability_off',
+		message: expect.stringContaining('kody context capability add lan'),
+	})
+
+	const s = setup()
+	defineLan(s)
+	await setSharing(s.callerFor(operator), 'ec_mac', { allMembers: true })
+	await expect(
+		authorizeContextLan(orgRun(s, 'user_friend'), lanArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, { scopes: ['execution_context:command'] }),
+			lanArgs,
+		),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	savePackage(s, 'pkg_other', 'org_someone_else')
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_other'], all: ['pkg_other'] },
+			}),
+			lanArgs,
+		),
+	).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('local network destination "nas"'),
+	})
+	for (const bad of [
+		{ ...lanArgs, port: 0 },
+		{ ...lanArgs, host: '' },
+		{ host: '192.168.1.10', port: 80 },
+	]) {
+		await expect(
+			authorizeContextLan(orgRun(s, operator), bad),
+		).rejects.toMatchObject({ code: 'invalid_request' })
+	}
+	expect(s.audits.filter((audit) => audit.event === 'lan_used')).toEqual([])
+	await expect(
+		authorizeContextLan(s.runCtx(operator, 'user'), lanArgs),
+	).rejects.toMatchObject({
+		code: 'execution_context_command_requires_context',
+	})
 })

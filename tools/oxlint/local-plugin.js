@@ -697,6 +697,92 @@ const noRawFormControlRule = {
 	},
 }
 
+const noRawDialogRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Render modal dialogs through <Dialog> (start/components/dialog.tsx) so focus trapping, restoration, and dismissal stay consistent.',
+		},
+		schema: [],
+		messages: {
+			useDialog:
+				'Render <Dialog> from start/components/dialog.tsx instead of a raw <dialog>. See docs/contributing/ui-components.md.',
+		},
+	},
+	createOnce(context) {
+		return {
+			JSXOpeningElement(node) {
+				if (node.name.type !== 'JSXIdentifier' || node.name.name !== 'dialog') {
+					return
+				}
+				const filename = context.filename
+				if (!/\/packages\/worker\/(start|client)\//.test(filename)) return
+				if (/\.test\.tsx?$/.test(filename)) return
+				context.report({ node, messageId: 'useDialog' })
+			},
+		}
+	},
+}
+
+const overlayRoleOwners = {
+	menu: 'menu',
+	menubar: 'menu',
+	menuitem: 'menu',
+	menuitemcheckbox: 'menu',
+	menuitemradio: 'menu',
+	tooltip: 'tooltip',
+	tablist: 'tabs',
+	tab: 'tabs',
+	tabpanel: 'tabs',
+}
+const overlayModuleOwners = {
+	'@base-ui/react/menu': 'menu',
+	'@base-ui/react/context-menu': 'menu',
+	'@base-ui/react/menubar': 'menu',
+	'@base-ui/react/tooltip': 'tooltip',
+	'@base-ui/react/tabs': 'tabs',
+}
+
+const noRawOverlayRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Build menus, tooltips, and tabs from the shared components so keyboard support, roles, and styling stay consistent.',
+		},
+		schema: [],
+		messages: {
+			useShared:
+				'Use the shared {{owner}} component from start/components/{{owner}}.tsx instead of a raw {{what}}. See docs/contributing/ui-components.md.',
+		},
+	},
+	createOnce(context) {
+		function check(node, owner, what) {
+			const filename = context.filename
+			if (!/\/packages\/worker\/(start|client)\//.test(filename)) return
+			if (/\.test\.tsx?$/.test(filename)) return
+			if (filename.endsWith(`/start/components/${owner}.tsx`)) return
+			context.report({ node, messageId: 'useShared', data: { owner, what } })
+		}
+		return {
+			ImportDeclaration(node) {
+				const owner = overlayModuleOwners[node.source.value]
+				if (owner) check(node, owner, `${node.source.value} import`)
+			},
+			JSXAttribute(node) {
+				if (node.name.type !== 'JSXIdentifier' || node.name.name !== 'role') {
+					return
+				}
+				const value = node.value
+				if (!value || value.type !== 'Literal') return
+				const owner = overlayRoleOwners[value.value]
+				if (owner) check(node, owner, `role="${value.value}"`)
+			},
+		}
+	},
+}
+
 const noRawButtonStyleRule = {
 	meta: {
 		type: 'problem',
@@ -771,6 +857,8 @@ const plugin = {
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-raw-button-style': noRawButtonStyleRule,
+		'no-raw-dialog': noRawDialogRule,
+		'no-raw-overlay': noRawOverlayRule,
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,

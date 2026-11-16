@@ -1,12 +1,12 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from './button.tsx'
+import { Dialog } from './dialog.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
 	createContext,
 	useContext,
 	useEffect,
-	useRef,
 	useState,
 	type ReactNode,
 } from 'react'
@@ -24,7 +24,7 @@ import {
 	loadExecutionContextsPage,
 	putDesktopExecutionFirst,
 } from '#start/server/execution-contexts'
-import { colors, radius, spacing } from '#universal/styles/tokens.ts'
+import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	chainIsFull,
 	type ExecutionContextsPageData,
@@ -159,7 +159,6 @@ export function DesktopExecutionProvider({
 	)
 	const busy = operation.status === 'running'
 	const error = operation.status === 'error' ? operation.message : null
-	const dialog = useRef<HTMLDialogElement>(null)
 	const client = useQueryClient()
 	const router = useRouter()
 	const enable = useServerFn(setExperiment)
@@ -218,11 +217,6 @@ export function DesktopExecutionProvider({
 		)
 			setOpened(true)
 	}, [bridge, username, pathname, onboarding.data, machine.data])
-	useEffect(() => {
-		if (!dialog.current) return
-		if (opened && !dialog.current.open) dialog.current.showModal()
-		if (!opened && dialog.current.open) dialog.current.close()
-	}, [opened])
 	async function refresh() {
 		await client.invalidateQueries({ queryKey: ['desktop-machine', actorKey] })
 	}
@@ -528,32 +522,17 @@ export function DesktopExecutionProvider({
 		<DesktopMachineContext value={value}>
 			{children}
 			{bridge && username ? (
-				<dialog
+				<Dialog
+					open={opened}
 					aria-busy={busy}
-					ref={dialog}
-					aria-labelledby="desktop-execution-title"
-					onCancel={(event) => {
-						event.preventDefault()
+					size="md"
+					title={title}
+					onClose={() => {
 						if (step === 'forget') {
 							if (getOperation().status !== 'running') setOpened(false)
 						} else void close()
 					}}
-					css={{
-						width: 'min(480px, calc(100vw - 32px))',
-						maxHeight: 'calc(100dvh - 32px)',
-						overflowY: 'auto',
-						boxSizing: 'border-box',
-						border: `1px solid ${colors.border}`,
-						borderRadius: radius.lg,
-						padding: spacing.xl,
-						color: colors.text,
-						background: colors.surface,
-						'&::backdrop': { background: '#0006' },
-					}}
 				>
-					<h2 id="desktop-execution-title" css={{ marginTop: 0 }}>
-						{title}
-					</h2>
 					{step !== 'forget' && step !== 'done' ? (
 						<SetupStageList stages={stages} />
 					) : null}
@@ -775,7 +754,7 @@ export function DesktopExecutionProvider({
 							Not now
 						</Button>
 					) : null}
-				</dialog>
+				</Dialog>
 			) : null}
 		</DesktopMachineContext>
 	)

@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
+import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { colors } from '#universal/styles/tokens.ts'
@@ -283,11 +284,13 @@ export default function FilePermissionsPanel({
 		? `${link.replace('/shared-files/', '/shared-file-assets/')}/${item.id}?asset=1`
 		: ''
 	return (
-		<ModalDialog
-			label={`Details and permissions for ${item.name}`}
+		<Dialog
+			open
+			aria-label={`Details and permissions for ${item.name}`}
 			onClose={onClose}
-			width={480}
-			sidePanel
+			size="md"
+			placement="side"
+			flush
 		>
 			<header
 				css={{
@@ -317,509 +320,614 @@ export default function FilePermissionsPanel({
 					</svg>
 				</button>
 			</header>
-			<div
-				role="tablist"
-				aria-label="File settings"
+			<Tabs
+				variant="underline"
+				activeTab={tab}
+				onActiveTabChange={(next) => setTab(next as typeof tab)}
 				css={{
 					display: 'flex',
-					gap: 20,
-					paddingInline: 20,
-					borderBottom: `1px solid ${colors.border}`,
-					flexShrink: 0,
-				}}
-			>
-				{(['sharing', 'details'] as const).map((value) => (
-					<button
-						key={value}
-						type="button"
-						role="tab"
-						aria-selected={tab === value}
-						aria-controls={`file-${value}`}
-						id={`file-${value}-tab`}
-						onClick={() => setTab(value)}
-						onKeyDown={(event) => {
-							if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-								event.preventDefault()
-								const next = value === 'sharing' ? 'details' : 'sharing'
-								setTab(next)
-								document.getElementById(`file-${next}-tab`)?.focus()
-							}
-						}}
-						tabIndex={tab === value ? 0 : -1}
-						css={{
-							...button,
-							borderRadius: 0,
-							padding: '12px 0',
-							borderBottom: `2px solid ${tab === value ? colors.primary : 'transparent'}`,
-							color: tab === value ? colors.text : colors.textMuted,
-						}}
-					>
-						{value === 'sharing' ? 'Sharing' : 'Details'}
-					</button>
-				))}
-			</div>
-			<div
-				role="tabpanel"
-				id={`file-${tab}`}
-				aria-labelledby={`file-${tab}-tab`}
-				css={{
-					overflowY: 'auto',
-					minHeight: 0,
+					flexDirection: 'column',
 					flex: 1,
-					padding: 20,
-					display: 'grid',
-					alignContent: 'start',
-					gap: 18,
-					fontSize: 13,
-					'& h3': { margin: '0 0 12px', fontSize: 13, fontWeight: 650 },
-					'& p': {
-						margin: '8px 0',
-						color: colors.textMuted,
-						fontSize: 12,
-						lineHeight: 1.5,
-					},
+					minHeight: 0,
 				}}
 			>
-				{query.isPending ? (
-					<LoadingIndicator label="Loading permissions" />
-				) : query.isError ? (
-					<div role="alert">
-						Could not load permissions.{' '}
-						<button css={button} onClick={() => void query.refetch()}>
-							Retry
-						</button>
-					</div>
-				) : (
-					data && (
-						<>
-							<section aria-label="File details" hidden={tab !== 'details'}>
-								<dl
-									css={{
-										margin: 0,
-										display: 'grid',
-										gridTemplateColumns: '90px 1fr',
-										gap: '8px 12px',
-										'& dt': { color: colors.textMuted },
-										'& dd': { margin: 0, overflowWrap: 'anywhere' },
-									}}
-								>
-									<dt>Type</dt>
-									<dd>
-										{item.mediaType === workspacePageMediaType
-											? 'Page'
-											: item.mediaType === workspaceDirectoryMediaType
-												? 'Folder'
-												: item.name.includes('.')
-													? `${item.name.split('.').at(-1)!.toUpperCase()} file`
-													: 'File'}
-									</dd>
-									<dt>Modified</dt>
-									<dd>{new Date(data.file.updatedAt).toLocaleString()}</dd>
-									<dt>Location</dt>
-									<dd>
-										{data.ancestors.length ? (
+				<TabList
+					aria-label="File settings"
+					css={{ paddingInline: 20, flexShrink: 0 }}
+				>
+					<Tab name="sharing">Sharing</Tab>
+					<Tab name="details">Details</Tab>
+				</TabList>
+				{/* One panel: both tabs share the loading, error, and saving states. */}
+				<TabPanel
+					name={tab}
+					css={{
+						overflowY: 'auto',
+						minHeight: 0,
+						flex: 1,
+						padding: 20,
+						display: 'grid',
+						alignContent: 'start',
+						gap: 18,
+						fontSize: 13,
+						'& h3': { margin: '0 0 12px', fontSize: 13, fontWeight: 650 },
+						'& p': {
+							margin: '8px 0',
+							color: colors.textMuted,
+							fontSize: 12,
+							lineHeight: 1.5,
+						},
+					}}
+				>
+					{query.isPending ? (
+						<LoadingIndicator label="Loading permissions" />
+					) : query.isError ? (
+						<div role="alert">
+							Could not load permissions.{' '}
+							<button css={button} onClick={() => void query.refetch()}>
+								Retry
+							</button>
+						</div>
+					) : (
+						data && (
+							<>
+								<section aria-label="File details" hidden={tab !== 'details'}>
+									<dl
+										css={{
+											margin: 0,
+											display: 'grid',
+											gridTemplateColumns: '90px 1fr',
+											gap: '8px 12px',
+											'& dt': { color: colors.textMuted },
+											'& dd': { margin: 0, overflowWrap: 'anywhere' },
+										}}
+									>
+										<dt>Type</dt>
+										<dd>
+											{item.mediaType === workspacePageMediaType
+												? 'Page'
+												: item.mediaType === workspaceDirectoryMediaType
+													? 'Folder'
+													: item.name.includes('.')
+														? `${item.name.split('.').at(-1)!.toUpperCase()} file`
+														: 'File'}
+										</dd>
+										<dt>Modified</dt>
+										<dd>{new Date(data.file.updatedAt).toLocaleString()}</dd>
+										<dt>Location</dt>
+										<dd>
+											{data.ancestors.length ? (
+												<SiteLink
+													href={`/@${orgSlug}/-/files?file=${data.ancestors[0]!.id}`}
+													onClick={onClose}
+												>
+													{data.ancestors[0]!.name}
+												</SiteLink>
+											) : (
+												'Files'
+											)}
+										</dd>
+									</dl>
+								</section>
+
+								{data.access.manage && (
+									<section
+										aria-label="People and teams"
+										hidden={tab !== 'sharing'}
+										css={{
+											borderBottom: `1px solid ${colors.border}`,
+											paddingBottom: 20,
+										}}
+									>
+										<h3>People &amp; teams</h3>
+										{data.direct?.collaborators.map((person) => (
+											<div
+												key={person.grantId}
+												css={{
+													display: 'grid',
+													gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+													alignItems: 'center',
+													gap: 8,
+													paddingBlock: 7,
+												}}
+											>
+												<div
+													css={{
+														display: 'flex',
+														alignItems: 'center',
+														gap: 10,
+														minWidth: 0,
+													}}
+												>
+													<UserAvatar
+														displayName={person.displayName || person.label}
+														avatarUrl={null}
+														size={30}
+													/>
+													<div css={{ minWidth: 0 }}>
+														<div>{person.displayName || person.label}</div>
+														<span
+															css={{ color: colors.textMuted, fontSize: 11 }}
+														>
+															{person.kind === 'team'
+																? 'Team'
+																: person.kind === 'org'
+																	? 'Organization'
+																	: person.kind === 'outside'
+																		? 'Outside collaborator'
+																		: 'Member'}
+															{person.expiresAt &&
+																` · ${new Date(person.expiresAt).getTime() <= Date.now() ? 'Expired' : `Expires ${new Date(person.expiresAt).toLocaleDateString()}`}`}
+														</span>
+													</div>
+												</div>
+												<AccessSelect
+													label={`Access for ${person.label}`}
+													value={
+														person.preset === 'use'
+															? 'read'
+															: (person.preset ?? 'custom')
+													}
+													disabled={busy}
+													onChange={(next) =>
+														void mutate(() =>
+															changeFileCollaborator({
+																data: {
+																	orgSlug,
+																	fileId: item.id,
+																	subjectType: person.subjectType as
+																		| 'org'
+																		| 'team'
+																		| 'user',
+																	subjectId: person.subjectId,
+																	preset: next,
+																},
+															}),
+														)
+													}
+												/>
+												<button
+													css={button}
+													disabled={busy}
+													aria-label={`Remove access for ${person.label}`}
+													onClick={() =>
+														void mutate(() =>
+															changeFileCollaborator({
+																data: {
+																	orgSlug,
+																	fileId: item.id,
+																	subjectType: person.subjectType as
+																		| 'org'
+																		| 'team'
+																		| 'user',
+																	subjectId: person.subjectId,
+																	preset: 'read',
+																	remove: true,
+																	grantId: person.grantId,
+																},
+															}),
+														)
+													}
+												>
+													×
+												</button>
+												<CustomAccess
+													key={person.grantId + person.permissions.join(',')}
+													label={person.label}
+													permissions={person.permissions}
+													disabled={busy}
+													onSave={(permissions) =>
+														void mutate(() =>
+															changeFileCollaborator({
+																data: {
+																	orgSlug,
+																	fileId: item.id,
+																	subjectType: person.subjectType as
+																		| 'user'
+																		| 'team'
+																		| 'org',
+																	subjectId: person.subjectId,
+																	permissions,
+																},
+															}),
+														)
+													}
+												/>
+											</div>
+										))}
+										<form
+											onSubmit={(event) => {
+												event.preventDefault()
+												void mutate(async () => {
+													if (recipient.includes(':')) {
+														const [subjectType, subjectId] =
+															recipient.split(':')
+														await changeFileCollaborator({
+															data: {
+																orgSlug,
+																fileId: item.id,
+																subjectType: subjectType as
+																	| 'user'
+																	| 'team'
+																	| 'org',
+																subjectId: subjectId!,
+																preset,
+															},
+														})
+													} else {
+														const result = await shareFile({
+															data: {
+																orgSlug,
+																fileId: item.id,
+																email: inviteEmail,
+																preset,
+															},
+														})
+														if (!result.ok) throw new Error(result.message)
+														setInviteLink(result.href)
+													}
+													setRecipient('')
+													setInviteEmail('')
+												})
+											}}
+											css={{ marginTop: 12, display: 'grid', gap: 8 }}
+										>
+											{recipientOptions.length > 1 && (
+												<Combobox
+													id="file-permission-recipient"
+													label="Person or team"
+													hideLabel
+													placeholder="Find people or teams"
+													value={recipient}
+													options={recipientOptions}
+													disabled={busy}
+													onChange={(value) =>
+														setRecipient(value === 'email' ? '' : value)
+													}
+												/>
+											)}
+											{!recipient && (
+												<Input
+													aria-label="Collaborator email"
+													type="email"
+													placeholder="Email address"
+													value={inviteEmail}
+													disabled={busy}
+													onChange={(event) =>
+														setInviteEmail(event.target.value)
+													}
+													required
+												/>
+											)}
+											<div css={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+												<AccessSelect
+													label="New collaborator access"
+													value={preset}
+													disabled={busy}
+													onChange={setPreset}
+												/>
+												<button
+													css={{
+														...button,
+														marginLeft: 'auto',
+														background: colors.primarySoft,
+													}}
+													disabled={busy || (!recipient && !inviteEmail.trim())}
+													type="submit"
+												>
+													{recipient ? 'Add' : 'Create invite'}
+												</button>
+											</div>
+										</form>
+										{inviteLink && (
+											<div css={{ marginTop: 12 }}>
+												<div css={linkField}>
+													<Input
+														aria-label="Invitation link"
+														readOnly
+														value={new URL(inviteLink, location.origin).href}
+														css={linkInput}
+													/>
+													<button
+														css={button}
+														onClick={() => void copy(inviteLink)}
+													>
+														{copied === inviteLink
+															? 'Copied'
+															: 'Copy invitation link'}
+													</button>
+												</div>
+												<p
+													css={{
+														margin: '6px 0 0',
+														color: colors.textMuted,
+														fontSize: 12,
+													}}
+												>
+													Send this link to the invited person. They must accept
+													before receiving access.
+												</p>
+											</div>
+										)}
+										{data.invites.map((invite) => (
+											<div
+												key={invite.id}
+												css={{
+													display: 'flex',
+													alignItems: 'center',
+													gap: 8,
+													paddingTop: 12,
+												}}
+											>
+												<div css={{ flex: 1 }}>
+													{invite.invitee_email || invite.invitee_username}
+													<div css={{ fontSize: 11, color: colors.textMuted }}>
+														Pending invitation
+													</div>
+												</div>
+												<button
+													css={button}
+													disabled={busy}
+													onClick={() =>
+														void mutate(() =>
+															revokeFileInvitation({
+																data: {
+																	orgSlug,
+																	fileId: item.id,
+																	inviteId: invite.id,
+																},
+															}),
+														)
+													}
+												>
+													Revoke
+												</button>
+											</div>
+										))}
+									</section>
+								)}
+								<section aria-label="General access" hidden={tab !== 'sharing'}>
+									<h3>General access</h3>
+									<Select
+										aria-label="General access"
+										disabled={busy || !data.access.manage}
+										value={data.file.accessMode ?? 'inherit'}
+										css={{ width: '100%' }}
+										onChange={(event) =>
+											void mutate(async () => {
+												const result = await manageWorkspaceFile({
+													data: {
+														orgSlug,
+														input: {
+															file_id: item.id,
+															action: 'access',
+															access_mode: event.target.value as
+																| 'inherit'
+																| 'restricted',
+															expected_version: data.file.metadataVersion ?? 0,
+															operation_id: crypto.randomUUID(),
+														},
+													},
+												})
+												if (!result.ok) throw new Error(result.message)
+											})
+										}
+									>
+										<option value="inherit">Inherit access</option>
+										<option value="restricted">
+											Only added people and teams
+										</option>
+									</Select>
+									<p>
+										{data.file.accessMode === 'restricted'
+											? 'Only added people and teams can access this item and its contents.'
+											: data.personal
+												? data.file.parentId
+													? 'Parent access and direct grants apply.'
+													: 'Only you and people you add have access.'
+												: 'Organization members can view by default. Parent grants also apply.'}{' '}
+										{!data.personal &&
+											data.file.accessMode === 'restricted' &&
+											' Owners retain access.'}
+									</p>
+									{restrictedParent && (
+										<p role="note">
+											Access is also limited by{' '}
 											<SiteLink
-												href={`/@${orgSlug}/-/files?file=${data.ancestors[0]!.id}`}
+												href={`/@${orgSlug}/-/files?file=${restrictedParent.id}`}
 												onClick={onClose}
 											>
-												{data.ancestors[0]!.name}
+												{restrictedParent.name}
 											</SiteLink>
-										) : (
-											'Files'
-										)}
-									</dd>
-								</dl>
-							</section>
-
-							{data.access.manage && (
-								<section
-									aria-label="People and teams"
-									hidden={tab !== 'sharing'}
-									css={{
-										borderBottom: `1px solid ${colors.border}`,
-										paddingBottom: 20,
-									}}
-								>
-									<h3>People &amp; teams</h3>
-									{data.direct?.collaborators.map((person) => (
-										<div
-											key={person.grantId}
-											css={{
-												display: 'grid',
-												gridTemplateColumns: 'minmax(0, 1fr) auto auto',
-												alignItems: 'center',
-												gap: 8,
-												paddingBlock: 7,
-											}}
+											. A grant here cannot bypass that folder’s restrictions.
+										</p>
+									)}
+								</section>
+								{data.access.manage &&
+									data.ancestors.some((parent) => parent.grants.length > 0) && (
+										<section
+											aria-label="Inherited access"
+											hidden={tab !== 'sharing'}
 										>
+											<h3>Inherited access</h3>
+											{data.ancestors
+												.filter((parent) => parent.grants.length)
+												.map((parent) => (
+													<div key={parent.id} css={{ marginTop: 10 }}>
+														<SiteLink
+															href={`/@${orgSlug}/-/files?file=${parent.id}`}
+															onClick={onClose}
+														>
+															{parent.name}
+														</SiteLink>
+														<p>
+															{parent.grants
+																.map(
+																	(person) =>
+																		`${person.label} (${person.preset ?? 'custom'})`,
+																)
+																.join(', ')}
+														</p>
+													</div>
+												))}
+											<p>
+												Change inherited access on its source. Restrictions
+												above and below still apply.
+											</p>
+										</section>
+									)}
+								{data.access.manage && (
+									<section
+										aria-label="Public link"
+										hidden={tab !== 'sharing'}
+										css={{
+											borderTop: `1px solid ${colors.border}`,
+											paddingTop: 20,
+										}}
+									>
+										<h3>Public link</h3>
+										<div
+											css={{ display: 'flex', alignItems: 'center', gap: 8 }}
+										>
+											<span css={{ flex: 1 }}>
+												{restrictedParent
+													? 'Blocked by parent'
+													: data.publicLinkEnabled
+														? 'Anyone with the link'
+														: data.publicVia
+															? 'Shared by parent'
+															: 'Not public'}
+											</span>
+											<button
+												css={button}
+												hidden={!!link}
+												disabled={busy || !!restrictedParent}
+												onClick={() =>
+													data.publicLinkEnabled
+														? setConfirmRotate(true)
+														: void mutate(async () => {
+																const result = await setFilePublicLink({
+																	data: {
+																		orgSlug,
+																		fileId: item.id,
+																		enabled: true,
+																	},
+																})
+																setPublicLink(result.href ?? '')
+															})
+												}
+											>
+												{data.publicLinkEnabled
+													? 'Replace link'
+													: 'Create public link'}
+											</button>
+											{data.publicLinkEnabled && (
+												<button
+													css={button}
+													disabled={busy}
+													onClick={() =>
+														void mutate(async () => {
+															await setFilePublicLink({
+																data: {
+																	orgSlug,
+																	fileId: item.id,
+																	enabled: false,
+																},
+															})
+															setPublicLink('')
+														})
+													}
+												>
+													Revoke
+												</button>
+											)}
+										</div>
+										<p>
+											{restrictedParent
+												? 'Public access is limited by the parent folder.'
+												: 'Visitors can view and download without signing in.'}
+											{data.publicLinkEnabled && !link
+												? ' Creating a replacement disables the old link.'
+												: ''}
+										</p>
+										{data.publicVia && (
+											<p>
+												Also accessible through{' '}
+												<SiteLink
+													href={`/@${orgSlug}/-/files?file=${data.publicVia.id}`}
+													onClick={onClose}
+												>
+													{data.publicVia.name}
+												</SiteLink>
+												’s public link.
+											</p>
+										)}
+										{link && (
+											<div css={linkField}>
+												<Input
+													aria-label="Public link URL"
+													readOnly
+													value={new URL(link, location.origin).href}
+													css={linkInput}
+												/>
+												<button css={button} onClick={() => void copy(link)}>
+													{copied === link ? 'Copied' : 'Copy public link'}
+												</button>
+											</div>
+										)}
+										{link && (
 											<div
 												css={{
 													display: 'flex',
 													alignItems: 'center',
-													gap: 10,
-													minWidth: 0,
+													gap: 8,
+													marginTop: 8,
 												}}
 											>
-												<UserAvatar
-													displayName={person.displayName || person.label}
-													avatarUrl={null}
-													size={30}
-												/>
-												<div css={{ minWidth: 0 }}>
-													<div>{person.displayName || person.label}</div>
-													<span css={{ color: colors.textMuted, fontSize: 11 }}>
-														{person.kind === 'team'
-															? 'Team'
-															: person.kind === 'org'
-																? 'Organization'
-																: person.kind === 'outside'
-																	? 'Outside collaborator'
-																	: 'Member'}
-														{person.expiresAt &&
-															` · ${new Date(person.expiresAt).getTime() <= Date.now() ? 'Expired' : `Expires ${new Date(person.expiresAt).toLocaleDateString()}`}`}
-													</span>
-												</div>
+												<SiteLink
+													href={link}
+													target="_blank"
+													rel="noreferrer"
+													css={button}
+												>
+													Preview public view ↗
+												</SiteLink>
+												<ContextMenuSurface
+													resolve={() => [
+														{
+															id: 'replace',
+															label: 'Replace public link',
+															disabled: busy,
+															run: () => setConfirmRotate(true),
+														},
+													]}
+												>
+													<ContextMenuButton
+														label="Public link settings"
+														css={button}
+													>
+														•••
+													</ContextMenuButton>
+												</ContextMenuSurface>
 											</div>
-											<AccessSelect
-												label={`Access for ${person.label}`}
-												value={
-													person.preset === 'use'
-														? 'read'
-														: (person.preset ?? 'custom')
-												}
-												disabled={busy}
-												onChange={(next) =>
-													void mutate(() =>
-														changeFileCollaborator({
-															data: {
-																orgSlug,
-																fileId: item.id,
-																subjectType: person.subjectType as
-																	| 'org'
-																	| 'team'
-																	| 'user',
-																subjectId: person.subjectId,
-																preset: next,
-															},
-														}),
-													)
-												}
-											/>
-											<button
-												css={button}
-												disabled={busy}
-												aria-label={`Remove access for ${person.label}`}
-												onClick={() =>
-													void mutate(() =>
-														changeFileCollaborator({
-															data: {
-																orgSlug,
-																fileId: item.id,
-																subjectType: person.subjectType as
-																	| 'org'
-																	| 'team'
-																	| 'user',
-																subjectId: person.subjectId,
-																preset: 'read',
-																remove: true,
-																grantId: person.grantId,
-															},
-														}),
-													)
-												}
-											>
-												×
-											</button>
-											<CustomAccess
-												key={person.grantId + person.permissions.join(',')}
-												label={person.label}
-												permissions={person.permissions}
-												disabled={busy}
-												onSave={(permissions) =>
-													void mutate(() =>
-														changeFileCollaborator({
-															data: {
-																orgSlug,
-																fileId: item.id,
-																subjectType: person.subjectType as
-																	| 'user'
-																	| 'team'
-																	| 'org',
-																subjectId: person.subjectId,
-																permissions,
-															},
-														}),
-													)
-												}
-											/>
-										</div>
-									))}
-									<form
-										onSubmit={(event) => {
-											event.preventDefault()
-											void mutate(async () => {
-												if (recipient.includes(':')) {
-													const [subjectType, subjectId] = recipient.split(':')
-													await changeFileCollaborator({
-														data: {
-															orgSlug,
-															fileId: item.id,
-															subjectType: subjectType as
-																| 'user'
-																| 'team'
-																| 'org',
-															subjectId: subjectId!,
-															preset,
-														},
-													})
-												} else {
-													const result = await shareFile({
-														data: {
-															orgSlug,
-															fileId: item.id,
-															email: inviteEmail,
-															preset,
-														},
-													})
-													if (!result.ok) throw new Error(result.message)
-													setInviteLink(result.href)
-												}
-												setRecipient('')
-												setInviteEmail('')
-											})
-										}}
-										css={{ marginTop: 12, display: 'grid', gap: 8 }}
-									>
-										{recipientOptions.length > 1 && (
-											<Combobox
-												id="file-permission-recipient"
-												label="Person or team"
-												hideLabel
-												placeholder="Find people or teams"
-												value={recipient}
-												options={recipientOptions}
-												disabled={busy}
-												onChange={(value) =>
-													setRecipient(value === 'email' ? '' : value)
-												}
-											/>
 										)}
-										{!recipient && (
-											<Input
-												aria-label="Collaborator email"
-												type="email"
-												placeholder="Email address"
-												value={inviteEmail}
-												disabled={busy}
-												onChange={(event) => setInviteEmail(event.target.value)}
-												required
-											/>
-										)}
-										<div css={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-											<AccessSelect
-												label="New collaborator access"
-												value={preset}
-												disabled={busy}
-												onChange={setPreset}
-											/>
-											<button
+										{confirmRotate && (
+											<div
+												role="group"
+												aria-label="Replace public link"
 												css={{
-													...button,
-													marginLeft: 'auto',
-													background: colors.primarySoft,
+													padding: 12,
+													background: colors.background,
+													borderRadius: 6,
+													marginTop: 10,
 												}}
-												disabled={busy || (!recipient && !inviteEmail.trim())}
-												type="submit"
 											>
-												{recipient ? 'Add' : 'Create invite'}
-											</button>
-										</div>
-									</form>
-									{inviteLink && (
-										<div css={{ marginTop: 12 }}>
-											<div css={linkField}>
-												<Input
-													aria-label="Invitation link"
-													readOnly
-													value={new URL(inviteLink, location.origin).href}
-													css={linkInput}
-												/>
+												<p>The existing link will stop working.</p>
 												<button
 													css={button}
-													onClick={() => void copy(inviteLink)}
-												>
-													{copied === inviteLink
-														? 'Copied'
-														: 'Copy invitation link'}
-												</button>
-											</div>
-											<p
-												css={{
-													margin: '6px 0 0',
-													color: colors.textMuted,
-													fontSize: 12,
-												}}
-											>
-												Send this link to the invited person. They must accept
-												before receiving access.
-											</p>
-										</div>
-									)}
-									{data.invites.map((invite) => (
-										<div
-											key={invite.id}
-											css={{
-												display: 'flex',
-												alignItems: 'center',
-												gap: 8,
-												paddingTop: 12,
-											}}
-										>
-											<div css={{ flex: 1 }}>
-												{invite.invitee_email || invite.invitee_username}
-												<div css={{ fontSize: 11, color: colors.textMuted }}>
-													Pending invitation
-												</div>
-											</div>
-											<button
-												css={button}
-												disabled={busy}
-												onClick={() =>
-													void mutate(() =>
-														revokeFileInvitation({
-															data: {
-																orgSlug,
-																fileId: item.id,
-																inviteId: invite.id,
-															},
-														}),
-													)
-												}
-											>
-												Revoke
-											</button>
-										</div>
-									))}
-								</section>
-							)}
-							<section aria-label="General access" hidden={tab !== 'sharing'}>
-								<h3>General access</h3>
-								<Select
-									aria-label="General access"
-									disabled={busy || !data.access.manage}
-									value={data.file.accessMode ?? 'inherit'}
-									css={{ width: '100%' }}
-									onChange={(event) =>
-										void mutate(async () => {
-											const result = await manageWorkspaceFile({
-												data: {
-													orgSlug,
-													input: {
-														file_id: item.id,
-														action: 'access',
-														access_mode: event.target.value as
-															| 'inherit'
-															| 'restricted',
-														expected_version: data.file.metadataVersion ?? 0,
-														operation_id: crypto.randomUUID(),
-													},
-												},
-											})
-											if (!result.ok) throw new Error(result.message)
-										})
-									}
-								>
-									<option value="inherit">Inherit access</option>
-									<option value="restricted">
-										Only added people and teams
-									</option>
-								</Select>
-								<p>
-									{data.file.accessMode === 'restricted'
-										? 'Only added people and teams can access this item and its contents.'
-										: data.personal
-											? data.file.parentId
-												? 'Parent access and direct grants apply.'
-												: 'Only you and people you add have access.'
-											: 'Organization members can view by default. Parent grants also apply.'}{' '}
-									{!data.personal &&
-										data.file.accessMode === 'restricted' &&
-										' Owners retain access.'}
-								</p>
-								{restrictedParent && (
-									<p role="note">
-										Access is also limited by{' '}
-										<SiteLink
-											href={`/@${orgSlug}/-/files?file=${restrictedParent.id}`}
-											onClick={onClose}
-										>
-											{restrictedParent.name}
-										</SiteLink>
-										. A grant here cannot bypass that folder’s restrictions.
-									</p>
-								)}
-							</section>
-							{data.access.manage &&
-								data.ancestors.some((parent) => parent.grants.length > 0) && (
-									<section
-										aria-label="Inherited access"
-										hidden={tab !== 'sharing'}
-									>
-										<h3>Inherited access</h3>
-										{data.ancestors
-											.filter((parent) => parent.grants.length)
-											.map((parent) => (
-												<div key={parent.id} css={{ marginTop: 10 }}>
-													<SiteLink
-														href={`/@${orgSlug}/-/files?file=${parent.id}`}
-														onClick={onClose}
-													>
-														{parent.name}
-													</SiteLink>
-													<p>
-														{parent.grants
-															.map(
-																(person) =>
-																	`${person.label} (${person.preset ?? 'custom'})`,
-															)
-															.join(', ')}
-													</p>
-												</div>
-											))}
-										<p>
-											Change inherited access on its source. Restrictions above
-											and below still apply.
-										</p>
-									</section>
-								)}
-							{data.access.manage && (
-								<section
-									aria-label="Public link"
-									hidden={tab !== 'sharing'}
-									css={{
-										borderTop: `1px solid ${colors.border}`,
-										paddingTop: 20,
-									}}
-								>
-									<h3>Public link</h3>
-									<div css={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-										<span css={{ flex: 1 }}>
-											{restrictedParent
-												? 'Blocked by parent'
-												: data.publicLinkEnabled
-													? 'Anyone with the link'
-													: data.publicVia
-														? 'Shared by parent'
-														: 'Not public'}
-										</span>
-										<button
-											css={button}
-											hidden={!!link}
-											disabled={busy || !!restrictedParent}
-											onClick={() =>
-												data.publicLinkEnabled
-													? setConfirmRotate(true)
-													: void mutate(async () => {
+													disabled={busy}
+													onClick={() =>
+														void mutate(async () => {
 															const result = await setFilePublicLink({
 																data: {
 																	orgSlug,
@@ -828,317 +936,209 @@ export default function FilePermissionsPanel({
 																},
 															})
 															setPublicLink(result.href ?? '')
+															setConfirmRotate(false)
 														})
-											}
-										>
-											{data.publicLinkEnabled
-												? 'Replace link'
-												: 'Create public link'}
-										</button>
-										{data.publicLinkEnabled && (
-											<button
-												css={button}
-												disabled={busy}
-												onClick={() =>
-													void mutate(async () => {
-														await setFilePublicLink({
-															data: {
-																orgSlug,
-																fileId: item.id,
-																enabled: false,
-															},
-														})
-														setPublicLink('')
-													})
-												}
-											>
-												Revoke
-											</button>
-										)}
-									</div>
-									<p>
-										{restrictedParent
-											? 'Public access is limited by the parent folder.'
-											: 'Visitors can view and download without signing in.'}
-										{data.publicLinkEnabled && !link
-											? ' Creating a replacement disables the old link.'
-											: ''}
-									</p>
-									{data.publicVia && (
-										<p>
-											Also accessible through{' '}
-											<SiteLink
-												href={`/@${orgSlug}/-/files?file=${data.publicVia.id}`}
-												onClick={onClose}
-											>
-												{data.publicVia.name}
-											</SiteLink>
-											’s public link.
-										</p>
-									)}
-									{link && (
-										<div css={linkField}>
-											<Input
-												aria-label="Public link URL"
-												readOnly
-												value={new URL(link, location.origin).href}
-												css={linkInput}
-											/>
-											<button css={button} onClick={() => void copy(link)}>
-												{copied === link ? 'Copied' : 'Copy public link'}
-											</button>
-										</div>
-									)}
-									{link && (
-										<div
-											css={{
-												display: 'flex',
-												alignItems: 'center',
-												gap: 8,
-												marginTop: 8,
-											}}
-										>
-											<SiteLink
-												href={link}
-												target="_blank"
-												rel="noreferrer"
-												css={button}
-											>
-												Preview public view ↗
-											</SiteLink>
-											<ContextMenuSurface
-												resolve={() => [
-													{
-														id: 'replace',
-														label: 'Replace public link',
-														disabled: busy,
-														run: () => setConfirmRotate(true),
-													},
-												]}
-											>
-												<ContextMenuButton
-													label="Public link settings"
-													css={button}
+													}
 												>
-													•••
-												</ContextMenuButton>
-											</ContextMenuSurface>
-										</div>
-									)}
-									{confirmRotate && (
-										<div
-											role="group"
-											aria-label="Replace public link"
-											css={{
-												padding: 12,
-												background: colors.background,
-												borderRadius: 6,
-												marginTop: 10,
-											}}
-										>
-											<p>The existing link will stop working.</p>
-											<button
-												css={button}
-												disabled={busy}
-												onClick={() =>
-													void mutate(async () => {
-														const result = await setFilePublicLink({
-															data: { orgSlug, fileId: item.id, enabled: true },
-														})
-														setPublicLink(result.href ?? '')
-														setConfirmRotate(false)
-													})
-												}
-											>
-												Replace link
-											</button>
-											<button
-												css={button}
-												onClick={() => setConfirmRotate(false)}
-											>
-												Cancel
-											</button>
-										</div>
-									)}
-								</section>
-							)}
-							{data.access.manage &&
-								item.mediaType !== workspaceDirectoryMediaType &&
-								item.mediaType !== workspacePageMediaType && (
-									<section
-										aria-label="Asset URLs"
-										hidden={tab !== 'sharing'}
-										css={{
-											borderTop: `1px solid ${colors.border}`,
-											paddingTop: 20,
-										}}
-									>
-										<h3>Asset URLs</h3>
-										{assetSettings.cacheControl !== 'no-store' && (
-											<p css={{ color: colors.textMuted }}>
-												Cached copies can remain available until their cache
-												expires.
-											</p>
-										)}
-										{publicAssetLink ? (
-											<div css={linkField}>
-												<Input
-													css={linkInput}
-													aria-label="Public asset URL"
-													readOnly
-													value={new URL(publicAssetLink, location.origin).href}
-												/>
-												<button
-													css={button}
-													onClick={() => void copy(publicAssetLink)}
-												>
-													{copied === publicAssetLink
-														? 'Copied'
-														: 'Copy asset URL'}
+													Replace link
 												</button>
-											</div>
-										) : (
-											<p>Create a public link to get a public asset URL.</p>
-										)}
-										<form
-											css={linkField}
-											onSubmit={(event) => {
-												event.preventDefault()
-												void mutate(() =>
-													configureFileAsset({
-														data: {
-															orgSlug,
-															fileId: item.id,
-															...assetSettings,
-															...assetDraft,
-														},
-													}),
-												)
-											}}
-										>
-											<label>
-												Public cache lifetime
-												<Select
-													name="cacheControl"
-													disabled={busy}
-													value={
-														assetDraft.cacheControl ??
-														assetSettings.cacheControl
-													}
-													onChange={(event) => {
-														const value = event.currentTarget.value
-														const cacheControl = assetCacheControls.find(
-															(entry) => entry === value,
-														)
-														if (cacheControl)
-															setAssetDraft((draft) => ({
-																...draft,
-																cacheControl,
-															}))
-													}}
-												>
-													<option value="no-store">Do not cache</option>
-													<option value="public, max-age=60">1 minute</option>
-													<option value="public, max-age=300">5 minutes</option>
-													<option value="public, max-age=3600">1 hour</option>
-												</Select>
-											</label>
-											<label>
-												Content disposition
-												<Select
-													name="disposition"
-													disabled={busy}
-													value={
-														assetDraft.disposition ?? assetSettings.disposition
-													}
-													onChange={(event) => {
-														const disposition = event.currentTarget.value
-														if (
-															disposition === 'inline' ||
-															disposition === 'attachment'
-														)
-															setAssetDraft((draft) => ({
-																...draft,
-																disposition,
-															}))
-													}}
-												>
-													<option value="inline">Display when supported</option>
-													<option value="attachment">Download</option>
-												</Select>
-											</label>
-											<button css={button} disabled={busy}>
-												Save asset settings
-											</button>
-										</form>
-										<form
-											css={linkField}
-											onSubmit={(event) => {
-												event.preventDefault()
-												const minutes = Number(
-													new FormData(event.currentTarget).get('minutes'),
-												)
-												void mutate(async () => {
-													const result = await createSignedFileAsset({
-														data: { orgSlug, fileId: item.id, minutes },
-													})
-													setSignedAssetLink(result.href)
-												})
-											}}
-										>
-											<label>
-												Signed URL expires in
-												<Select
-													name="minutes"
-													disabled={busy}
-													defaultValue="60"
-												>
-													<option value="15">15 minutes</option>
-													<option value="60">1 hour</option>
-													<option value="1440">24 hours</option>
-												</Select>
-											</label>
-											<button css={button} disabled={busy}>
-												Create signed URL
-											</button>
-										</form>
-										{signedAssetLink && (
-											<div css={linkField}>
-												<Input
-													css={linkInput}
-													aria-label="Signed asset URL"
-													readOnly
-													value={new URL(signedAssetLink, location.origin).href}
-												/>
 												<button
 													css={button}
-													onClick={() => void copy(signedAssetLink)}
+													onClick={() => setConfirmRotate(false)}
 												>
-													{copied === signedAssetLink
-														? 'Copied'
-														: 'Copy signed URL'}
+													Cancel
 												</button>
 											</div>
 										)}
 									</section>
 								)}
-						</>
-					)
-				)}
-				{error && (
-					<p
-						role="alert"
-						css={{
-							color: colors.danger,
-							overflowWrap: 'anywhere',
-							margin: '12px 0 0',
-						}}
-					>
-						{error}
-					</p>
-				)}
-				{busy && <LoadingIndicator inline label="Saving permissions" />}
-			</div>
+								{data.access.manage &&
+									item.mediaType !== workspaceDirectoryMediaType &&
+									item.mediaType !== workspacePageMediaType && (
+										<section
+											aria-label="Asset URLs"
+											hidden={tab !== 'sharing'}
+											css={{
+												borderTop: `1px solid ${colors.border}`,
+												paddingTop: 20,
+											}}
+										>
+											<h3>Asset URLs</h3>
+											{assetSettings.cacheControl !== 'no-store' && (
+												<p css={{ color: colors.textMuted }}>
+													Cached copies can remain available until their cache
+													expires.
+												</p>
+											)}
+											{publicAssetLink ? (
+												<div css={linkField}>
+													<Input
+														css={linkInput}
+														aria-label="Public asset URL"
+														readOnly
+														value={
+															new URL(publicAssetLink, location.origin).href
+														}
+													/>
+													<button
+														css={button}
+														onClick={() => void copy(publicAssetLink)}
+													>
+														{copied === publicAssetLink
+															? 'Copied'
+															: 'Copy asset URL'}
+													</button>
+												</div>
+											) : (
+												<p>Create a public link to get a public asset URL.</p>
+											)}
+											<form
+												css={linkField}
+												onSubmit={(event) => {
+													event.preventDefault()
+													void mutate(() =>
+														configureFileAsset({
+															data: {
+																orgSlug,
+																fileId: item.id,
+																...assetSettings,
+																...assetDraft,
+															},
+														}),
+													)
+												}}
+											>
+												<label>
+													Public cache lifetime
+													<Select
+														name="cacheControl"
+														disabled={busy}
+														value={
+															assetDraft.cacheControl ??
+															assetSettings.cacheControl
+														}
+														onChange={(event) => {
+															const value = event.currentTarget.value
+															const cacheControl = assetCacheControls.find(
+																(entry) => entry === value,
+															)
+															if (cacheControl)
+																setAssetDraft((draft) => ({
+																	...draft,
+																	cacheControl,
+																}))
+														}}
+													>
+														<option value="no-store">Do not cache</option>
+														<option value="public, max-age=60">1 minute</option>
+														<option value="public, max-age=300">
+															5 minutes
+														</option>
+														<option value="public, max-age=3600">1 hour</option>
+													</Select>
+												</label>
+												<label>
+													Content disposition
+													<Select
+														name="disposition"
+														disabled={busy}
+														value={
+															assetDraft.disposition ??
+															assetSettings.disposition
+														}
+														onChange={(event) => {
+															const disposition = event.currentTarget.value
+															if (
+																disposition === 'inline' ||
+																disposition === 'attachment'
+															)
+																setAssetDraft((draft) => ({
+																	...draft,
+																	disposition,
+																}))
+														}}
+													>
+														<option value="inline">
+															Display when supported
+														</option>
+														<option value="attachment">Download</option>
+													</Select>
+												</label>
+												<button css={button} disabled={busy}>
+													Save asset settings
+												</button>
+											</form>
+											<form
+												css={linkField}
+												onSubmit={(event) => {
+													event.preventDefault()
+													const minutes = Number(
+														new FormData(event.currentTarget).get('minutes'),
+													)
+													void mutate(async () => {
+														const result = await createSignedFileAsset({
+															data: { orgSlug, fileId: item.id, minutes },
+														})
+														setSignedAssetLink(result.href)
+													})
+												}}
+											>
+												<label>
+													Signed URL expires in
+													<Select
+														name="minutes"
+														disabled={busy}
+														defaultValue="60"
+													>
+														<option value="15">15 minutes</option>
+														<option value="60">1 hour</option>
+														<option value="1440">24 hours</option>
+													</Select>
+												</label>
+												<button css={button} disabled={busy}>
+													Create signed URL
+												</button>
+											</form>
+											{signedAssetLink && (
+												<div css={linkField}>
+													<Input
+														css={linkInput}
+														aria-label="Signed asset URL"
+														readOnly
+														value={
+															new URL(signedAssetLink, location.origin).href
+														}
+													/>
+													<button
+														css={button}
+														onClick={() => void copy(signedAssetLink)}
+													>
+														{copied === signedAssetLink
+															? 'Copied'
+															: 'Copy signed URL'}
+													</button>
+												</div>
+											)}
+										</section>
+									)}
+							</>
+						)
+					)}
+					{error && (
+						<p
+							role="alert"
+							css={{
+								color: colors.danger,
+								overflowWrap: 'anywhere',
+								margin: '12px 0 0',
+							}}
+						>
+							{error}
+						</p>
+					)}
+					{busy && <LoadingIndicator inline label="Saving permissions" />}
+				</TabPanel>
+			</Tabs>
 			<footer
 				css={{
 					display: 'flex',
@@ -1169,6 +1169,6 @@ export default function FilePermissionsPanel({
 					Done
 				</button>
 			</footer>
-		</ModalDialog>
+		</Dialog>
 	)
 }

@@ -424,3 +424,12 @@ export function getBarePackageNameFromSpecifier(specifier: string) {
 	}
 	return specifier.split('/', 2)[0] ?? specifier
 }
+
+/**
+ * `kody:runtime` and `kody:@owner/package` exist only in source. A build
+ * rewrites every one to a module the loader supplies, so one left in a
+ * bundle is an import the loader cannot provide.
+ */
+export function isKodyVirtualImportSpecifier(specifier: string) {
+	return specifier.startsWith('kody:')
+}

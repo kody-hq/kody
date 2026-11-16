@@ -1,4 +1,3 @@
-import type { SecretPlaceholderRequestPlacementHit } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
@@ -8,7 +7,11 @@ import type {
 	RepoCheckKind,
 	RepoCheckResult,
 } from './checks.ts'
-import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type {
+	CredentialTreeChunk,
+	CredentialTreeChunkRequest,
+	CredentialTreeScanPlan,
+} from './credential-pattern-check.ts'
 import {
 	isRepoCheckStep,
 	repoCheckStepLabel,
@@ -79,10 +82,17 @@ export type IsolatedCheckPhaseRequest =
 			typecheckTargets: Array<PackageTypecheckTarget>
 	  }
 	| {
-			phase: 'credentials'
+			phase: 'credentials-plan'
 			stagingKey: string
 			userId: string
-			secretProviders?: ResolvedSecretProviderSlots
+			/** Most syntax nodes the modules of one chunk hold. */
+			maxChunkAstNodes: number
+	  }
+	| {
+			phase: 'credentials-chunk'
+			stagingKey: string
+			userId: string
+			chunk: CredentialTreeChunkRequest
 	  }
 
 /**
@@ -108,14 +118,10 @@ export type IsolatedCheckPhaseOutcome = {
 	message: string
 	/** Staging expired or missing: a Kody failure, not an authored one. */
 	failureOrigin?: 'platform'
-	/** `credentials` phase only: staged files the stamp merge rewrote. */
-	changedFiles?: Record<string, string>
-	/** `credentials` phase only. */
-	stampKeys?: Array<string>
-	/** `credentials` phase only: fetches putting a placeholder in a request part. */
-	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
-	/** `credentials` phase only: fetch bodies the gateway would still scan. */
-	fetchBodyHits?: Array<{ path: string; line: number }>
+	/** `credentials-plan` phase only. */
+	credentialPlan?: CredentialTreeScanPlan
+	/** `credentials-chunk` phase only. */
+	credentialChunk?: CredentialTreeChunk
 }
 
 type IsolatedCheckPhaseStub = {
@@ -173,7 +179,8 @@ function phaseStep(request: IsolatedCheckPhaseRequest): RepoCheckStep {
 			return 'bundle'
 		case 'typecheck':
 			return 'typecheck'
-		case 'credentials':
+		case 'credentials-plan':
+		case 'credentials-chunk':
 			return 'credentials'
 		default: {
 			const exhaustive: never = request
@@ -190,8 +197,10 @@ function phaseLabel(request: IsolatedCheckPhaseRequest) {
 				.join(', ')}`
 		case 'typecheck':
 			return 'The TypeScript typecheck'
-		case 'credentials':
-			return 'The credential stamp scan'
+		case 'credentials-plan':
+			return 'Planning the credential stamp scan'
+		case 'credentials-chunk':
+			return `The credential stamp scan of ${request.chunk.visit.length} module(s) starting at "${request.chunk.visit[0]?.path ?? ''}"`
 		default: {
 			const exhaustive: never = request
 			throw new Error(`Unexpected check phase: ${JSON.stringify(exhaustive)}`)

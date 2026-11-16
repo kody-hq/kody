@@ -364,6 +364,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			.getByRole('button', { name: 'Forget desktop setup', exact: true })
 			.click()
 		await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+		await expect(page.getByRole('dialog')).toHaveCount(0)
 		assert.equal(await page.evaluate(() => window.fixture.state.hasSetup), true)
 		await page
 			.getByRole('button', { name: 'Forget desktop setup', exact: true })

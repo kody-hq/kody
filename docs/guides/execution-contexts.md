@@ -149,19 +149,20 @@ the context, so the daemon starts at login or boot and restarts after a crash:
   hidden and restarts the daemon after a crash. Windows on Arm runs the x64
   runtime under emulation.
 
-| Command                                        | What it does                                         |
-| ---------------------------------------------- | ---------------------------------------------------- |
-| `kody daemon status` (`--json`)                | Names each problem with the command that fixes it    |
-| `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
-| `kody daemon restart`                          | Restarts after runs in flight finish                 |
-| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
-| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere     |
-| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)  |
-| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere       |
-| `kody daemon install`                          | Installs the service, or repairs it                  |
-| `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
-| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
-| `kody update`                                  | Installs the latest CLI and moves services onto it   |
+| Command                                        | What it does                                           |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| `kody daemon status` (`--json`)                | Names each problem with the command that fixes it      |
+| `kody daemon health` (`--max-age <s>`)         | Exits 0 only while connected: a container health check |
+| `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                   |
+| `kody daemon restart`                          | Restarts after runs in flight finish                   |
+| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)    |
+| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere       |
+| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)    |
+| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere         |
+| `kody daemon install`                          | Installs the service, or repairs it                    |
+| `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context   |
+| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine    |
+| `kody update`                                  | Installs the latest CLI and moves services onto it     |
 
 Install the CLI globally (`npm install -g @kodycodes/cli`). The service refuses
 to run from `npx`, `pnpm dlx`, or `bunx`, because those copies are deleted.

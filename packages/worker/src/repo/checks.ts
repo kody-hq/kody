@@ -65,6 +65,7 @@ import {
 	isolatedBundleChunkConcurrency,
 	isolatedBundleChunkSize,
 	isolatedTypecheckChunkSize,
+	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRunner,
 } from './isolated-check-phases.ts'
 import {
@@ -94,6 +95,7 @@ import {
 import {
 	buildCredentialPatternCheck,
 	type CredentialPatternCheckResult,
+	type CredentialTreeScanner,
 } from './credential-pattern-check.ts'
 import {
 	resolveSecretProviderSlots,
@@ -1664,12 +1666,23 @@ async function buildCredentialNeedsCheck(input: {
 }
 
 /**
- * Above this much JS/TS source, the credential stamp scan runs in its own
- * throwaway isolate (like bundle chunks and typecheck) so its parse heap
- * never stacks on the caller's. Publish and `kody dev check` both take the
+ * Above this much JS/TS source, the credential stamp scan runs in throwaway
+ * isolates (like bundle chunks and typecheck) so its parse heap and CPU time
+ * never stack on the caller's. Publish and `kody dev check` both take the
  * same branch for the same tree, so a dev check pass predicts publish.
  */
 export const isolatedCredentialScanMinSourceBytes = 256 * 1024
+
+/**
+ * Most syntax nodes one isolate walks for the credential scan. The walk's
+ * CPU time grows with the node count: one isolate walking a 370,000 node
+ * tree used 17 to 30 seconds of its 32 second CPU limit and ran out on some
+ * attempts. A chunk this size stays several times under the limit.
+ */
+export const isolatedCredentialScanChunkAstNodes = 60_000
+
+/** Chunks are short walks, so a few at a time keep the scan's wall time low. */
+const isolatedCredentialScanChunkConcurrency = 4
 
 const credentialScanSourcePattern = /\.(?:[cm]?[jt]sx?)$/i
 const credentialScanTextEncoder = new TextEncoder()
@@ -1684,12 +1697,65 @@ function credentialScanSourceBytes(sourceFiles: Record<string, string>) {
 	return bytes
 }
 
+/** An isolated credential scan phase that did not return its result. */
+class IsolatedCredentialScanFailure extends Error {
+	readonly outcome: IsolatedCheckPhaseOutcome
+
+	constructor(outcome: IsolatedCheckPhaseOutcome) {
+		super(outcome.message)
+		this.name = 'IsolatedCredentialScanFailure'
+		this.outcome = outcome
+	}
+}
+
+function isolatedCredentialTreeScanner(input: {
+	runner: IsolatedCheckPhaseRunner
+	stagingKey: string
+	userId: string
+}): CredentialTreeScanner {
+	const { runner, stagingKey, userId } = input
+	return {
+		async plan() {
+			const outcome = await runner.run({
+				phase: 'credentials-plan',
+				stagingKey,
+				userId,
+				maxChunkAstNodes: isolatedCredentialScanChunkAstNodes,
+			})
+			if (!outcome.credentialPlan) {
+				throw new IsolatedCredentialScanFailure(outcome)
+			}
+			return outcome.credentialPlan
+		},
+		chunks: (requests) =>
+			mapPool(
+				requests,
+				isolatedCredentialScanChunkConcurrency,
+				async (chunk) => {
+					const outcome = await runner.run({
+						phase: 'credentials-chunk',
+						stagingKey,
+						userId,
+						chunk,
+					})
+					if (!outcome.credentialChunk) {
+						throw new IsolatedCredentialScanFailure(outcome)
+					}
+					return outcome.credentialChunk
+				},
+			),
+	}
+}
+
 async function runCredentialPatternCheck(input: {
 	sourceFiles: Record<string, string>
 	env?: Env
 	userId?: string
 	secretProviders?: ResolvedSecretProviderSlots
 }): Promise<CredentialPatternCheckResult> {
+	const options = input.secretProviders
+		? { secretProviders: input.secretProviders }
+		: {}
 	const runner =
 		input.env &&
 		input.userId &&
@@ -1698,40 +1764,30 @@ async function runCredentialPatternCheck(input: {
 			? createIsolatedCheckPhaseRunner(input.env)
 			: null
 	if (!runner || !input.userId) {
-		return await buildCredentialPatternCheck(
-			input.sourceFiles,
-			input.secretProviders ? { secretProviders: input.secretProviders } : {},
-		)
+		return await buildCredentialPatternCheck(input.sourceFiles, options)
 	}
 	const stagingKey = await runner.stage({
 		userId: input.userId,
 		sourceFiles: input.sourceFiles,
 	})
 	try {
-		const outcome = await runner.run({
-			phase: 'credentials',
-			stagingKey,
-			userId: input.userId,
-			...(input.secretProviders
-				? { secretProviders: input.secretProviders }
-				: {}),
+		return await buildCredentialPatternCheck(input.sourceFiles, {
+			...options,
+			scanner: isolatedCredentialTreeScanner({
+				runner,
+				stagingKey,
+				userId: input.userId,
+			}),
 		})
+	} catch (error) {
+		if (!(error instanceof IsolatedCredentialScanFailure)) throw error
 		return {
 			kind: 'credentials',
-			ok: outcome.ok,
-			message: outcome.message,
-			...platformFailureOrigin([outcome]),
-			sourceFiles:
-				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
-					? { ...input.sourceFiles, ...outcome.changedFiles }
-					: input.sourceFiles,
-			stampKeys: outcome.stampKeys ?? [],
-			...(outcome.requestPlacementHits
-				? { requestPlacementHits: outcome.requestPlacementHits }
-				: {}),
-			...(outcome.fetchBodyHits
-				? { fetchBodyHits: outcome.fetchBodyHits }
-				: {}),
+			ok: false,
+			message: error.outcome.message,
+			...platformFailureOrigin([error.outcome]),
+			sourceFiles: input.sourceFiles,
+			stampKeys: [],
 		}
 	} finally {
 		await runner.discard(stagingKey)

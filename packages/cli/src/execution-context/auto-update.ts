@@ -775,7 +775,7 @@ export function backoffMs(failures: number) {
 
 export type CheckResult =
 	| { kind: 'disabled' }
-	| { kind: 'up-to-date'; latest: string }
+	| { kind: 'up-to-date'; latest: string; skippedBad?: true }
 	| { kind: 'busy' }
 	| { kind: 'backoff'; version: string; until: string }
 	| { kind: 'ready'; current: CurrentVersion }
@@ -828,7 +828,7 @@ export async function checkForUpdate(input: {
 	}
 	const state = readUpdateState(store)
 	if (state.bad?.includes(published.version)) {
-		return { kind: 'up-to-date', latest: published.version }
+		return { kind: 'up-to-date', latest: published.version, skippedBad: true }
 	}
 	const failure = state.failures?.[published.version]
 	if (failure && Date.parse(failure.nextAttemptAt) > now()) {
@@ -1076,7 +1076,13 @@ export function startDaemonUpdater(input: {
 				? `Auto-update: could not update to ${result.version}: ${result.error}. Staying on ${input.selfVersion}; retrying later.`
 				: result.kind === 'backoff'
 					? `Auto-update: ${result.version} failed before; next try after ${result.until}.`
-					: ''
+					: result.kind === 'busy'
+						? `Auto-update: another kody process is installing an update. Checking again later.`
+						: result.kind === 'up-to-date' && result.skippedBad
+							? `Auto-update: kody ${result.latest} failed to start on this machine before, so it is skipped. Staying on ${input.selfVersion} until a newer release.`
+							: result.kind === 'up-to-date'
+								? `Auto-update: checked npm; kody ${input.selfVersion} is current (latest is ${result.latest}).`
+								: ''
 		if (line && line !== reported) input.log(line)
 		reported = line
 		return result

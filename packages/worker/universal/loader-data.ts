@@ -2476,11 +2476,11 @@ export type AccountPackageDetail = AccountPackageListItem & {
 	 */
 	anonymousVisitorExposure?: AccountPackageAnonymousVisitorExposure
 	/**
-	 * The serving version asks for more capabilities than the approved one,
-	 * so anonymous visitors still run `publicCommit` until the owner approves
-	 * (owner view, internet-visible apps only). Absent otherwise.
+	 * The latest publish asks for more capabilities than the approved version,
+	 * so everyone still runs `servingCommit` until the owner approves
+	 * `heldCommit` (owner view, internet-visible apps only). Absent otherwise.
 	 */
-	publicVisitorsHeldBack?: { publicCommit: string; servingCommit: string }
+	heldForApproval?: { servingCommit: string; heldCommit: string }
 	/**
 	 * Capabilities the published version may call without declaring them,
 	 * which the next publish must add to `kody.app.capabilities` (owner view

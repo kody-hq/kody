@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Tooltip } from './tooltip.tsx'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
@@ -89,9 +90,7 @@ function CopyPromptPill(input: CopyPromptPillInput) {
 	const children = (
 		<>
 			{input.label}
-			<span id={tooltipId} role="tooltip" aria-hidden="true">
-				{feedback ?? input.tooltip}
-			</span>
+			<Tooltip id={tooltipId}>{feedback ?? input.tooltip}</Tooltip>
 			<span
 				role="status"
 				style={{
@@ -164,55 +163,6 @@ export function renderForkAheadPill(input: { href: string; testId: string }) {
 	)
 }
 
-export const copyPromptTooltipCss = {
-	'& [role="tooltip"]': {
-		position: 'absolute' as const,
-		left: '50%',
-		bottom: 'calc(100% + 0.45rem)',
-		transform: 'translateX(-50%)',
-		width: 'max-content',
-		maxWidth: 'min(16rem, calc(100vw - 2rem))',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderRadius: radius.md,
-		backgroundColor: colors.surface,
-		color: colors.text,
-		fontSize: typography.fontSize.sm,
-		fontWeight: 400,
-		lineHeight: 1.4,
-		textAlign: 'left' as const,
-		boxShadow: shadows.md,
-		border: `1px solid ${colors.border}`,
-		pointerEvents: 'none' as const,
-		opacity: 0,
-		visibility: 'hidden' as const,
-		zIndex: 2,
-		whiteSpace: 'normal' as const,
-	},
-	'& [role="tooltip"]::after': {
-		content: '""',
-		position: 'absolute' as const,
-		top: '100%',
-		left: '50%',
-		transform: 'translateX(-50%)',
-		border: '6px solid transparent',
-		borderTopColor: colors.surface,
-	},
-	[hoverMq]: {
-		'&:hover [role="tooltip"]': {
-			opacity: 1,
-			visibility: 'visible' as const,
-		},
-	},
-	'&:focus-visible [role="tooltip"]': {
-		opacity: 1,
-		visibility: 'visible' as const,
-	},
-	'&[data-tooltip-dismissed] [role="tooltip"]': {
-		opacity: 0,
-		visibility: 'hidden' as const,
-	},
-} satisfies CSSObject
-
 const copyPromptButtonBaseCss = {
 	...communityStatusPillBoxCss,
 	position: 'relative' as const,
@@ -220,7 +170,6 @@ const copyPromptButtonBaseCss = {
 	appearance: 'none' as const,
 	cursor: 'pointer',
 	textDecoration: 'none',
-	...copyPromptTooltipCss,
 } satisfies CSSObject
 
 /*
