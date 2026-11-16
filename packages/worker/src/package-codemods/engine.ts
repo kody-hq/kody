@@ -1,6 +1,7 @@
 import { nextState } from '@kody-internal/shared/state-machine.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { listOwnerIdsPendingDeletion } from '#worker/account/owner-deletion-state.ts'
 import {
 	credentialNeedEnforcementScope,
@@ -400,8 +401,8 @@ async function reconcileRunFilters(
 		const stored = parseStoredFiltersJson(current.filtersJson)
 		if (normalizeFiltersJson(stored) === input.requestedJson) return current
 		if (!widensExclusionsOnly(stored, input.requested)) {
-			throw new Error(
-				`Package codemod run "${current.id}" filters do not match the requested filters.`,
+			throw new McpCallerError(
+				`Package codemod run "${current.id}" filters do not match the requested filters: the run stored ${normalizeFiltersJson(stored)}, this step sent ${input.requestedJson}. Continue with the stored filters (or omit filters and packageIds to inherit them), or omit runId and cursor to start a new run for different packages. A continuation may only add excludePackageIds.`,
 			)
 		}
 		const changed = await updatePackageCodemodRunFilters(db, {
@@ -439,20 +440,22 @@ async function ensureRun(input: {
 			input.runId,
 		)
 		if (!existing) {
-			throw new Error(`Package codemod run "${input.runId}" was not found.`)
+			throw new McpCallerError(
+				`Package codemod run "${input.runId}" was not found.`,
+			)
 		}
 		if (existing.codemodId !== input.codemodId) {
-			throw new Error(
+			throw new McpCallerError(
 				`Package codemod run "${input.runId}" belongs to codemod "${existing.codemodId}", not "${input.codemodId}".`,
 			)
 		}
 		if (existing.mode !== input.mode) {
-			throw new Error(
+			throw new McpCallerError(
 				`Package codemod run "${input.runId}" is mode "${existing.mode}", not "${input.mode}".`,
 			)
 		}
 		if (existing.scopeUserId !== scopeUserId) {
-			throw new Error(
+			throw new McpCallerError(
 				`Package codemod run "${input.runId}" scope does not match the requested scope.`,
 			)
 		}
@@ -462,7 +465,7 @@ async function ensureRun(input: {
 			input.revertOfRunId != null &&
 			(existing.revertOfRunId ?? null) !== input.revertOfRunId
 		) {
-			throw new Error(
+			throw new McpCallerError(
 				`Package codemod run "${input.runId}" revertOfRunId does not match the requested value.`,
 			)
 		}
@@ -1748,7 +1751,7 @@ export async function runPackageCodemodStep(input: {
 }): Promise<PackageCodemodRunStepResult> {
 	const codemod = getPackageCodemodById(input.codemodId)
 	if (!codemod) {
-		throw new Error(`Unknown package codemod "${input.codemodId}".`)
+		throw new McpCallerError(`Unknown package codemod "${input.codemodId}".`)
 	}
 	switch (input.mode) {
 		case 'scan':
@@ -1763,12 +1766,14 @@ export async function runPackageCodemodStep(input: {
 	}
 	const limit = resolveStepLimit(input.mode, input.limit)
 	if (input.mode === 'revert' && !input.revertOfRunId && !input.runId) {
-		throw new Error('revert mode requires revertOfRunId.')
+		throw new McpCallerError('revert mode requires revertOfRunId.')
 	}
 	// A cursor is only meaningful when continuing an existing run; accepting
 	// one on a fresh run would silently skip everything before the cursor.
 	if (input.cursor != null && !input.runId) {
-		throw new Error('cursor requires runId to continue an existing run.')
+		throw new McpCallerError(
+			'cursor requires runId to continue an existing run.',
+		)
 	}
 	const run = await ensureRun({
 		env: input.env,

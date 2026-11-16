@@ -86,7 +86,9 @@ export const packageCodemodStepInputSchema = z.object({
 	packageIds: z
 		.array(z.string().min(1))
 		.optional()
-		.describe('Optional saved package ids to limit this step.'),
+		.describe(
+			"Optional saved package ids to limit the run (same as filters.packageIds). A continuation inherits the run's ids; different ids are rejected, so omit runId and cursor to start a new run for other packages.",
+		),
 	runId: z
 		.string()
 		.min(1)

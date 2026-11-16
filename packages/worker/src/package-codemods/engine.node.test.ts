@@ -2,6 +2,7 @@ import { isolatedCheckRunnerLimitMessage } from '#worker/repo/isolated-runner-li
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import type * as RepoChecks from '#worker/repo/checks.ts'
@@ -758,9 +759,14 @@ test('package codemod engine rejects resume steps with mismatched filters or a c
 	expect(first.runId).toBeTruthy()
 	const resume = { initiatedByUserId: 'admin-2', runId: first.runId }
 
-	await expect(
-		step(env, { ...resume, filters: { packageIds: ['pkg-other'] } }),
-	).rejects.toThrow(/filters do not match/i)
+	const mismatch = step(env, {
+		...resume,
+		filters: { packageIds: ['pkg-other'] },
+	})
+	await expect(mismatch).rejects.toBeInstanceOf(McpCallerError)
+	await expect(mismatch).rejects.toThrow(
+		'the run stored {"packageIds":["pkg-a","pkg-b"]}, this step sent {"packageIds":["pkg-other"]}',
+	)
 	expect(
 		(
 			await step(env, {
