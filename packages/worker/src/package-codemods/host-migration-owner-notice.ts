@@ -151,7 +151,7 @@ async function loadPackageNames(db: D1Database, packageIds: Array<string>) {
 		const chunk = packageIds.slice(index, index + packageNameLookupChunk)
 		const { results } = await db
 			.prepare(
-				`SELECT id, name FROM saved_packages WHERE id IN (${chunk.map(() => '?').join(', ')})`,
+				`SELECT id, name FROM saved_packages WHERE id IN (${chunk.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
 			)
 			.bind(...chunk)
 			.all<{ id: string; name: string }>()
