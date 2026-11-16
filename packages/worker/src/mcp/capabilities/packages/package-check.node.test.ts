@@ -3,7 +3,6 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { runAuthoringPublishChecks } from '#worker/repo/authoring-publish-checks.ts'
