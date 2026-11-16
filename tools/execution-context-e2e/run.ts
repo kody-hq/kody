@@ -259,6 +259,41 @@ async function main() {
 		})
 		await cli(env, ['context', 'commands', 'on', '--context', name, '--json'])
 		log('host commands turned on locally')
+		const lanFile = join(folder, 'lan.json')
+		writeFileSync(
+			lanFile,
+			JSON.stringify({ name: 'e2e-lan', hosts: ['192.0.2.10'], ports: [443] }),
+		)
+		const defined = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'lan',
+				lanFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		const told = defined.contexts.find((context) => context.id === ecid)
+		if (!told || told.error) {
+			throw new Error(
+				`Kody did not accept this machine's capability report: ${told?.error ?? 'context not reported'}`,
+			)
+		}
+		const removed = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'remove',
+				'lan',
+				'e2e-lan',
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (removed.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the capability removal.')
+		}
+		log('machine access definition reported to Kody and removed')
 
 		const daemon = fork(
 			join(import.meta.dirname, 'daemon-host.cjs'),

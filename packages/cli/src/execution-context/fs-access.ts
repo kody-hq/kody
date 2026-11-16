@@ -371,12 +371,13 @@ export async function setLocalCapability(input: {
 	const replaced = others.length !== capabilities[key].length
 	const next: LocalFsPolicy = {
 		...current,
-		capabilities: {
+		// Parsed as a whole, so a set the next read would refuse is never written.
+		capabilities: parseMachineCapabilities({
 			...capabilities,
 			[key]: [...others, input.definition].sort((a, b) =>
 				a.name.localeCompare(b.name),
 			),
-		},
+		}),
 	}
 	await writeLocalPolicy(policyPath, next)
 	return { policy: next, replaced }

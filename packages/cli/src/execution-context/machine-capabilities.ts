@@ -41,6 +41,35 @@ const defaultTimeoutMs = 120_000
 const maxTimeoutMs = 3_600_000
 const maxArgLength = 4096
 const maxPatternLength = 200
+// Kody refuses a report past these, so a definition past them is refused here first.
+const maxDefinitions = 100
+const maxSummaryJsonLength = 4096
+
+function commandSummary(command: MachineCommandDefinition) {
+	return {
+		args: command.args,
+		background: command.background,
+		timeoutMs: command.timeoutMs,
+	}
+}
+
+function lanSummary(entry: MachineLanDefinition) {
+	return { hosts: entry.hosts, ports: entry.ports }
+}
+
+function withinSummaryLimit<Definition>(
+	definition: Definition,
+	summary: (definition: Definition) => Record<string, unknown>,
+	what: string,
+	fields: string,
+) {
+	if (JSON.stringify(summary(definition)).length > maxSummaryJsonLength) {
+		invalid(
+			`${what} has too much in ${fields}: together they can be at most ${maxSummaryJsonLength} characters as JSON.`,
+		)
+	}
+	return definition
+}
 
 export class MachineCapabilityError extends Error {
 	readonly code: 'machine_capability_invalid' | 'machine_command_args_refused'
@@ -184,17 +213,22 @@ export function parseMachineCommandDefinition(
 	if (unknown.length > 0) {
 		invalid(`${what} has unknown field(s): ${unknown.join(', ')}.`)
 	}
-	return {
-		name,
-		description: parseDescription(value.description, what),
-		exec: [...(exec as Array<string>)],
-		args: (args as Array<Array<unknown>>).map((shape) =>
-			shape.map((rule) => parseArgRule(rule, what)),
-		),
-		...(typeof cwd === 'string' ? { cwd } : {}),
-		background,
-		timeoutMs,
-	}
+	return withinSummaryLimit(
+		{
+			name,
+			description: parseDescription(value.description, what),
+			exec: [...(exec as Array<string>)],
+			args: (args as Array<Array<unknown>>).map((shape) =>
+				shape.map((rule) => parseArgRule(rule, what)),
+			),
+			...(typeof cwd === 'string' ? { cwd } : {}),
+			background,
+			timeoutMs,
+		},
+		commandSummary,
+		what,
+		'"args"',
+	)
 }
 
 function isHostRule(host: unknown): host is string {
@@ -243,12 +277,17 @@ export function parseMachineLanDefinition(
 	if (unknown.length > 0) {
 		invalid(`${what} has unknown field(s): ${unknown.join(', ')}.`)
 	}
-	return {
-		name,
-		description: parseDescription(value.description, what),
-		hosts: [...new Set(hosts as Array<string>)],
-		ports: [...new Set(ports as Array<number>)].sort((a, b) => a - b),
-	}
+	return withinSummaryLimit(
+		{
+			name,
+			description: parseDescription(value.description, what),
+			hosts: [...new Set(hosts as Array<string>)],
+			ports: [...new Set(ports as Array<number>)].sort((a, b) => a - b),
+		},
+		lanSummary,
+		what,
+		'"hosts" and "ports"',
+	)
 }
 
 /** Parses the `capabilities` entry of the local policy file. Absent means none. */
@@ -266,6 +305,11 @@ export function parseMachineCapabilities(
 	}
 	const commands = list('commands').map(parseMachineCommandDefinition)
 	const lan = list('lan').map(parseMachineLanDefinition)
+	if (commands.length + lan.length > maxDefinitions) {
+		invalid(
+			`A machine can define at most ${maxDefinitions} named commands and local network destinations.`,
+		)
+	}
 	for (const [kind, names] of [
 		['command', commands.map((entry) => entry.name)],
 		['local network', lan.map((entry) => entry.name)],
@@ -337,4 +381,31 @@ export function resolveMachineCommand(
 		background: definition.background,
 		timeoutMs: definition.timeoutMs,
 	}
+}
+
+/** What this machine tells Kody about one definition. Executable paths and cwd stay here. */
+export type AdvertisedMachineCapability = {
+	kind: 'command' | 'lan'
+	name: string
+	description: string
+	summary: Record<string, unknown>
+}
+
+export function advertisedMachineCapabilities(
+	policy: MachineCapabilitiesPolicy | undefined,
+): Array<AdvertisedMachineCapability> {
+	return [
+		...(policy?.commands ?? []).map((command) => ({
+			kind: 'command' as const,
+			name: command.name,
+			description: command.description,
+			summary: commandSummary(command),
+		})),
+		...(policy?.lan ?? []).map((entry) => ({
+			kind: 'lan' as const,
+			name: entry.name,
+			description: entry.description,
+			summary: lanSummary(entry),
+		})),
+	]
 }

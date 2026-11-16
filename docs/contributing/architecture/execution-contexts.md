@@ -257,8 +257,18 @@ data model exists so far; nothing reads it at run time yet.
   allowed argument shapes (exact words, or a pattern the whole argument must
   match); `resolveMachineCommand` returns the `execFile` call or refuses with
   `machine_command_args_refused`. A local network entry is IP addresses or CIDR
-  ranges plus ports. Executable paths stay on the machine. Nothing sends these
-  to Kody or runs them yet.
+  ranges plus ports. Executable paths stay on the machine. No run can use these
+  yet.
+- The machine reports its definitions to Kody with
+  `POST /v1/execution-contexts/capabilities`, signed with the context key like
+  the host commands opt-in, so only the machine can add or widen one. It sends
+  the full set (kind, name, description, and a summary: argument shapes, or
+  hosts and ports); `syncMachineDefinedCapabilities` upserts `command` and `lan`
+  rows, and a definition the machine dropped is marked `removed_at`, its grants
+  are soft-deleted and its package list is cleared.
+  `kody context capability add|remove` reports right away, and the daemon
+  reports when it starts and when the policy file changes. Changes are audited
+  as `machine_capabilities_changed`.
 
   ```json
   {

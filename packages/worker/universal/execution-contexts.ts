@@ -907,6 +907,8 @@ const executionContextAuditLabels: Record<string, string> = {
 	chain_removed: 'Removed from a chain',
 	commands_enabled: 'Commands turned on (on the machine)',
 	commands_disabled: 'Commands turned off',
+	machine_capabilities_changed:
+		'Machine access definitions changed (on the machine)',
 	command_started: 'Command started',
 	command_finished: 'Command finished',
 	run_cancelled: 'Run cancelled',
