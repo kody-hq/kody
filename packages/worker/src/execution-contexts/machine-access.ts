@@ -10,6 +10,7 @@ import { softDeleteGrant, upsertGrant } from '#worker/orgs/access-writes.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { grantResourceToProfile } from '#worker/profiles/package-grants.ts'
+import { isOlderCliVersion } from '#universal/execution-contexts.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
 	type MachineCapabilityRow,
@@ -464,6 +465,20 @@ export async function revokeMachineAccess(
 	}
 }
 
+/** First Kody CLI whose machines ask Kody before a run uses the whole local network. */
+export const wholeNetworkAskCliVersion = '3.44.0'
+
+function asksBeforeWholeNetwork(row: {
+	client_name: string | null
+	client_version: string | null
+}) {
+	return (
+		(row.client_name === 'kody-cli' || row.client_name === '@kodycodes/cli') &&
+		Boolean(row.client_version) &&
+		!isOlderCliVersion(row.client_version!, wholeNetworkAskCliVersion)
+	)
+}
+
 /**
  * Limit one named command, local network destination or host folder to
  * listed packages, or lift the limit with an empty list. Operator only: the
@@ -518,14 +533,15 @@ export async function setMachineAccessPackages(
 	if (
 		input.kind === 'lan' &&
 		input.name === networkCapabilityName &&
-		input.packageIds.length > 0
+		input.packageIds.length > 0 &&
+		!asksBeforeWholeNetwork(row)
 	) {
-		// Machines do not ask Kody before using the whole local network yet, so a
-		// list here would look like a limit and limit nothing.
+		// An older machine does not ask Kody before using the whole local
+		// network, so a list here would look like a limit and limit nothing.
 		throw new ExecutionContextError({
-			status: 400,
-			code: 'invalid_request',
-			message: `Machines do not check a package list for the whole local network yet, so Kody will not save one for ${row.name}. Limit a named local network destination instead.`,
+			status: 409,
+			code: 'daemon_outdated',
+			message: `${row.name} runs ${row.client_version ? `Kody CLI ${row.client_version}` : 'a Kody CLI that has not reported its version'}, which does not check a package list for the whole local network, so Kody will not save one. Update the machine to Kody CLI ${wholeNetworkAskCliVersion} or newer with \`kody update\` and let it reconnect, or limit a named local network destination instead.`,
 		})
 	}
 	if (!capability && input.kind === 'shell') {
