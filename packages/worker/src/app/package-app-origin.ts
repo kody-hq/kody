@@ -1,3 +1,4 @@
+import { hasProfilePackageApp } from '#app/package-app-profile-host.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	RuntimePackageAppIdentity,
@@ -8,7 +9,8 @@ import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { createHtmlResponse } from 'remix/response/html'
 import {
 	buildPackageAppCustomHostnameUrl,
-	buildPackageAppHostOrigin,
+	buildPackageAppRootOrigin,
+	isProfilePackage,
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
@@ -263,7 +265,7 @@ async function buildHandoffHostedTarget(input: {
 	const appHostOrigin = input.url.searchParams.has(
 		packageAppHostEntryQueryParam,
 	)
-		? buildPackageAppHostOrigin({
+		? buildPackageAppRootOrigin({
 				packageAppOrigin: input.packageAppOrigin,
 				username: input.packagePath.username,
 				kodyId: input.kodyId,
@@ -340,9 +342,16 @@ function buildAppOriginEntryUrl(input: {
 		})}`,
 	)
 	entry.search = withoutHandoffToken(input.url).search
+	// Root-mounted on a package-app host: the app's own host, or the owner's
+	// bare host when this is their profile package.
+	const hostKind = parsePackageAppRequestHost({
+		env: input.env,
+		url: input.url,
+	})?.kind
 	if (
-		parsePackageAppRequestHost({ env: input.env, url: input.url })?.kind ===
-		'app-subdomain'
+		hostKind === 'app-subdomain' ||
+		(hostKind === 'user-subdomain' &&
+			input.packagePath.mount === 'custom-hostname')
 	) {
 		entry.searchParams.set(packageAppHostEntryQueryParam, '1')
 	}
@@ -1772,7 +1781,7 @@ async function handleAppSubdomainRequest(input: {
 				url,
 				packagePath,
 				buildLocation: (currentSlug) => {
-					const origin = buildPackageAppHostOrigin({
+					const origin = buildPackageAppRootOrigin({
 						packageAppOrigin,
 						username,
 						kodyId: currentSlug,
@@ -1962,6 +1971,21 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 					requestHost,
 				})
 				if (legacyRedirect) return legacyRedirect
+				if (
+					url.pathname !== packageAppHostHealthPath &&
+					(await pushServerTiming(packageAppServerTiming(), 'profileApp', () =>
+						hasProfilePackageApp({ env, username: requestHost.username }),
+					))
+				) {
+					return await handleAppSubdomainRequest({
+						request,
+						env,
+						url,
+						username: requestHost.username,
+						kodyId: requestHost.username,
+						packageAppOrigin,
+					})
+				}
 				return await handleUserSubdomainRequest({
 					request,
 					env,
@@ -1976,6 +2000,19 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 					requestHost,
 				})
 				if (legacyRedirect) return legacyRedirect
+				// A profile package has one origin: the owner's bare host.
+				if (isProfilePackage(requestHost)) {
+					const profileOrigin = buildPackageAppRootOrigin({
+						packageAppOrigin,
+						username: requestHost.username,
+						kodyId: requestHost.kodyId,
+					})
+					if (!profileOrigin) return createUnmatchedPackageAppPathResponse()
+					return redirectResponse({
+						location: `${profileOrigin}${url.pathname}${url.search}`,
+						status: 308,
+					})
+				}
 				return await handleAppSubdomainRequest({
 					request,
 					env,

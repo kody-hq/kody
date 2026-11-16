@@ -5,9 +5,11 @@ import {
 	buildPackageAppHostOrigin,
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
+	buildPackageAppRootOrigin,
 	buildPackageAppSubdomainPath,
 	buildPackagePagePath,
 	parsePackageAppHostLabel,
+	resolveHostedPackageAppUrl,
 } from './public-urls.ts'
 
 test('saved-package pages and hosted package-app mounts use different paths', () => {
@@ -88,4 +90,39 @@ test('per-app host labels split into leaf and handle, and build the app origin',
 			kodyId: 'hn_pulse',
 		}),
 	).toBeNull()
+})
+
+test('a profile package is addressed at the root of its owner host', () => {
+	expect(
+		buildPackageAppRootOrigin({
+			packageAppOrigin: 'https://kody.run',
+			username: 'Kody',
+			kodyId: 'kody',
+		}),
+	).toBe('https://kody.kody.run')
+	expect(
+		buildPackageAppRootOrigin({
+			packageAppOrigin: 'https://kody.run',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}),
+	).toBe('https://newsletter--kody.kody.run')
+	expect(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: 'http://localhost:8788',
+			appBaseUrl: 'http://localhost:3742',
+			username: 'kody',
+			kodyId: 'kody',
+			restPath: '/newsletter/unsubscribe',
+		}),
+	).toBe('http://kody.localhost:8788/newsletter/unsubscribe')
+	// Other packages keep the owner-subdomain path until the links flip.
+	expect(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: 'https://kody.run',
+			appBaseUrl: 'https://kody.codes',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}),
+	).toBe('https://kody.kody.run/newsletter')
 })

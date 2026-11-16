@@ -1,3 +1,4 @@
+import { hasProfilePackageApp } from '#app/package-app-profile-host.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { isSecureRequest } from '#app/auth-session.ts'
 import {
@@ -194,6 +195,14 @@ async function resolveLogoutAppSlug(input: {
 	)
 	if (requestHost?.kind === 'app-subdomain') return requestHost.kodyId
 	if (requestHost?.kind === 'user-subdomain') {
+		if (
+			await hasProfilePackageApp({
+				env: input.env,
+				username: requestHost.username,
+			})
+		) {
+			return requestHost.username
+		}
 		return fromReferer ?? null
 	}
 
@@ -248,7 +257,13 @@ async function resolveHostApp(input: {
 		return resolved ? { ...resolved, useConfiguredAppOrigin: false } : null
 	}
 	if (requestHost?.kind === 'user-subdomain') {
-		const app = readAppSlugParam(input.url)
+		// A profile package owns the whole host, so `?app=` cannot pick a sibling.
+		const app = (await hasProfilePackageApp({
+			env: input.env,
+			username: requestHost.username,
+		}))
+			? requestHost.username
+			: readAppSlugParam(input.url)
 		if (!app) return null
 		const resolved = await resolveVerifiedHostApp({
 			env: input.env,
