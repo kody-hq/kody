@@ -9,7 +9,11 @@ import { renderStartPage } from '../test-support/render-start-page.ts'
 import { createElement } from 'react'
 import type { ExecutionContextsPageData } from '#universal/execution-contexts.ts'
 import { ExecutionContextsRoute } from './execution-contexts.tsx'
-import { RunCancelControl } from './execution-context-detail.tsx'
+import {
+	ContextOptInForm,
+	RunCancelControl,
+} from './execution-context-detail.tsx'
+import { optInCopy } from '#universal/execution-context-trust-copy.ts'
 
 function route(
 	payload: ExecutionContextsPageData,
@@ -120,7 +124,27 @@ test('strict chain with nothing usable warns that runs will fail', async () => {
 	expect(text(html)).toContain('Add Kody cloud back')
 })
 
-test('detail for a shared context shows opt-in trust copy and own-runs scope', async () => {
+function renderOptIn(chainFull: boolean) {
+	return renderStartPage(
+		createElement(ContextOptInForm, {
+			copy: optInCopy({
+				name: sharedBuildbox.name,
+				operator: sharedBuildbox.operator.handle,
+				grant: sharedBuildbox.grantSummary,
+			}),
+			chainFull,
+			addToChain: false,
+			onAddToChainChange: () => {},
+			busy: false,
+			error: null,
+			onCancel: () => {},
+			onConfirm: () => {},
+		}),
+		`${href}/ec_buildbox`,
+	)
+}
+
+test('detail for a shared context offers opt-in and shows own-runs scope', async () => {
 	const html = await renderStartPage(
 		route(
 			pageFixture({ selected: sharedBuildbox }),
@@ -131,30 +155,22 @@ test('detail for a shared context shows opt-in trust copy and own-runs scope', a
 	)
 	const body = text(html)
 	expect(html).toContain('data-testid="execution-context-detail"')
-	expect(body).toContain('Opt into buildbox?')
-	expect(body).toContain('@sam can see the code, inputs, logs and results')
-	expect(body).toContain('Local network access is on')
-	expect(body).toContain('Add it to the end of my fallback chain')
-	expect(html).toMatch(/type="checkbox"(?![^>]*checked)/)
+	expect(html).toContain('data-testid="context-opt-in"')
 	expect(body).toContain('Runs')
 	expect(body).toContain('Audit log')
 })
 
+test('the opt-in dialog shows trust copy and an unchecked chain checkbox', async () => {
+	const html = await renderOptIn(false)
+	const body = text(html)
+	expect(body).toContain('@sam can see the code, inputs, logs and results')
+	expect(body).toContain('Local network access is on')
+	expect(body).toContain('Add it to the end of my fallback chain')
+	expect(html).toMatch(/type="checkbox"(?![^>]*checked)/)
+})
+
 test('opt-in checkbox is disabled when the chain is full', async () => {
-	const full = chainFixture([
-		{ kind: 'context', id: 'ec_a', usable: true },
-		{ kind: 'context', id: 'ec_b', usable: false, unusableReason: 'revoked' },
-		{ kind: 'context', id: 'ec_c', usable: true },
-		{ kind: 'cloud' },
-	])
-	const html = await renderStartPage(
-		route(
-			pageFixture({ chain: full, selected: sharedBuildbox }),
-			'ec_buildbox',
-			`${href}/ec_buildbox`,
-		),
-		`${href}/ec_buildbox`,
-	)
+	const html = await renderOptIn(true)
 	expect(html).toMatch(/type="checkbox"[^>]*disabled/)
 	expect(text(html)).toContain(
 		'Your chain is full, so this context will not be added to it.',

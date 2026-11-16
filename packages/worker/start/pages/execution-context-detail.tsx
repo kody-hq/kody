@@ -1111,51 +1111,16 @@ function OptInControls(props: {
 				title={copy.title}
 				data-testid="opt-in-dialog"
 			>
-				{copy.paragraphs.map((paragraph) => (
-					<p key={paragraph}>{paragraph}</p>
-				))}
-				{copy.lan ? <p data-testid="opt-in-lan">{copy.lan}</p> : null}
-				<p css={mutedCss}>{copy.managersNote}</p>
-				<label
-					css={{
-						display: 'flex',
-						gap: spacing.sm,
-						alignItems: 'center',
-						minHeight: 44,
-					}}
-				>
-					<Checkbox
-						checked={addToChain && !full}
-						disabled={full}
-						onChange={(event) => setAddToChain(event.target.checked)}
-					/>
-					{copy.checkboxLabel}
-				</label>
-				{full ? <p css={mutedCss}>{copy.chainFullNote}</p> : null}
-				{error ? (
-					<AccountManagementMessage tone="error">
-						{error}
-					</AccountManagementMessage>
-				) : null}
-				<DialogActions>
-					<Button
-						type="button"
-						variant="secondary"
-						css={target}
-						onClick={() => setDialogOpen(false)}
-					>
-						Cancel
-					</Button>
-					<Button
-						type="button"
-						variant="primary"
-						css={target}
-						disabled={busy}
-						onClick={() => void optIn()}
-					>
-						{busy ? 'Opting in…' : 'Opt in'}
-					</Button>
-				</DialogActions>
+				<ContextOptInForm
+					copy={copy}
+					chainFull={full}
+					addToChain={addToChain}
+					onAddToChainChange={setAddToChain}
+					busy={busy}
+					error={error}
+					onCancel={() => setDialogOpen(false)}
+					onConfirm={() => void optIn()}
+				/>
 			</Dialog>
 			{undoable.pending ? (
 				<UndoToast
@@ -1890,3 +1855,66 @@ const hintCss = css({
 	marginTop: spacing.xs,
 	color: colors.textMuted,
 })
+
+export function ContextOptInForm(props: {
+	copy: ReturnType<typeof optInCopy>
+	chainFull: boolean
+	addToChain: boolean
+	onAddToChainChange: (next: boolean) => void
+	busy: boolean
+	error: string | null
+	onCancel: () => void
+	onConfirm: () => void
+}) {
+	return (
+		<>
+			{props.copy.paragraphs.map((paragraph) => (
+				<p key={paragraph}>{paragraph}</p>
+			))}
+			{props.copy.lan ? <p data-testid="opt-in-lan">{props.copy.lan}</p> : null}
+			<p css={mutedCss}>{props.copy.managersNote}</p>
+			<label
+				css={{
+					display: 'flex',
+					gap: spacing.sm,
+					alignItems: 'center',
+					minHeight: 44,
+				}}
+			>
+				<Checkbox
+					checked={props.addToChain && !props.chainFull}
+					disabled={props.chainFull}
+					onChange={(event) => props.onAddToChainChange(event.target.checked)}
+				/>
+				{props.copy.checkboxLabel}
+			</label>
+			{props.chainFull ? (
+				<p css={mutedCss}>{props.copy.chainFullNote}</p>
+			) : null}
+			{props.error ? (
+				<AccountManagementMessage tone="error">
+					{props.error}
+				</AccountManagementMessage>
+			) : null}
+			<DialogActions>
+				<Button
+					type="button"
+					variant="secondary"
+					css={target}
+					onClick={props.onCancel}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					variant="primary"
+					css={target}
+					disabled={props.busy}
+					onClick={props.onConfirm}
+				>
+					{props.busy ? 'Opting in…' : 'Opt in'}
+				</Button>
+			</DialogActions>
+		</>
+	)
+}

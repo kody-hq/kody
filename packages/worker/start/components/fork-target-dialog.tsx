@@ -19,7 +19,6 @@ export function ForkTargetDialog(props: {
 	onConfirm: (slug: string) => void
 	onDismiss: () => void
 }) {
-	const [selected, setSelected] = useState(props.choice.selected)
 	return (
 		<Dialog
 			open
@@ -29,48 +28,59 @@ export function ForkTargetDialog(props: {
 			description="The fork runs and bills in the workspace you pick."
 			data-testid="fork-target-dialog"
 		>
-			<form
-				css={formCss}
-				onSubmit={(event) => {
-					event.preventDefault()
-					props.onConfirm(selected)
-					props.onDismiss()
-				}}
-			>
-				<Field label="Workspace">
-					<Select
-						data-testid="fork-target-org"
-						autoFocus
-						value={selected}
-						onChange={(event) => setSelected(event.currentTarget.value)}
-					>
-						{props.choice.owners.map((owner) => (
-							<option key={owner.slug} value={owner.slug}>
-								{installOrgOptionLabel(owner)}
-							</option>
-						))}
-					</Select>
-				</Field>
-				<DialogActions>
-					<Button
-						type="button"
-						data-testid="fork-target-cancel"
-						variant="secondary"
-						onClick={props.onDismiss}
-					>
-						Cancel
-					</Button>
-					<Button
-						type="submit"
-						data-testid="fork-target-confirm"
-						variant="primary"
-					>
-						{renderIcon('git-fork', { size: '1.05em' })}
-						Fork
-					</Button>
-				</DialogActions>
-			</form>
+			<ForkTargetForm {...props} />
 		</Dialog>
+	)
+}
+
+export function ForkTargetForm(props: {
+	choice: ForkTargetChoice
+	onConfirm: (slug: string) => void
+	onDismiss: () => void
+}) {
+	const [selected, setSelected] = useState(props.choice.selected)
+	return (
+		<form
+			css={formCss}
+			onSubmit={(event) => {
+				event.preventDefault()
+				props.onConfirm(selected)
+				props.onDismiss()
+			}}
+		>
+			<Field label="Workspace">
+				<Select
+					data-testid="fork-target-org"
+					autoFocus
+					value={selected}
+					onChange={(event) => setSelected(event.currentTarget.value)}
+				>
+					{props.choice.owners.map((owner) => (
+						<option key={owner.slug} value={owner.slug}>
+							{installOrgOptionLabel(owner)}
+						</option>
+					))}
+				</Select>
+			</Field>
+			<DialogActions>
+				<Button
+					type="button"
+					data-testid="fork-target-cancel"
+					variant="secondary"
+					onClick={props.onDismiss}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="submit"
+					data-testid="fork-target-confirm"
+					variant="primary"
+				>
+					{renderIcon('git-fork', { size: '1.05em' })}
+					Fork
+				</Button>
+			</DialogActions>
+		</form>
 	)
 }
 
