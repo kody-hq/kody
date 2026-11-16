@@ -396,6 +396,9 @@ export async function runListedPackageFetchBindingScan(input: {
 				possibleAliasShapes: [],
 				error: getErrorMessage(error).slice(0, 200),
 			})
+			// How many bundles were read before the failure is unknown, so the
+			// page ends here instead of reading more than its share.
+			budget = 0
 		}
 		previousId = savedPackage.id
 	}

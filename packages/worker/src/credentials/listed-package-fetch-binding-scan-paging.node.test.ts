@@ -3,6 +3,7 @@ import { expect, test, vi } from 'vitest'
 const stored = vi.hoisted(() => ({
 	rowsBySource: {} as Record<string, Array<string>>,
 	packages: [] as Array<{ id: string; userId: string; sourceId: string }>,
+	failingSourceId: null as string | null,
 }))
 
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
@@ -18,11 +19,10 @@ vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	}),
 }))
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	getEntitySourceById: async (_db: unknown, id: string) => ({
-		id,
-		user_id: 'owner',
-		published_commit: 'commit',
-	}),
+	getEntitySourceById: async (_db: unknown, id: string) => {
+		if (id === stored.failingSourceId) throw new Error('read failed')
+		return { id, user_id: 'owner', published_commit: 'commit' }
+	},
 }))
 vi.mock(
 	'#worker/package-runtime/published-importable-artifact-backfill.ts',
@@ -123,4 +123,25 @@ test('a package with more bundles than one call reads spans pages without losing
 		c: { bundles: 1, reads: 0 },
 	})
 	expect(cursors).toEqual(['a~1', 'a~4', 'b', null])
+})
+
+test('a package that fails ends the page so later packages are not read on the same call', async () => {
+	stored.packages = ['a', 'b', 'c'].map((id) => ({
+		id,
+		userId: 'owner',
+		sourceId: `source-${id}`,
+	}))
+	stored.rowsBySource = { 'source-b': ['b-1'], 'source-c': ['c-1'] }
+	stored.failingSourceId = 'source-a'
+	const env = makeEnv()
+	const first = await runListedPackageFetchBindingScan({ env, limit: 3 })
+	expect(first.packages.map((entry) => entry.outcome)).toEqual(['failed'])
+	expect(first.nextCursor).toBe('a')
+	const second = await runListedPackageFetchBindingScan({
+		env,
+		cursor: first.nextCursor,
+		limit: 3,
+	})
+	expect(second.packages.map((entry) => entry.packageId)).toEqual(['b', 'c'])
+	expect(second.nextCursor).toBeNull()
 })
