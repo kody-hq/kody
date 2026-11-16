@@ -358,15 +358,15 @@ ${orgBlock}
              before the command.
 
   --app-base-path <path>
-             With \`kody dev\`, public mount path the Node proxy strips
-             before workerd (also \`packageContext.appBasePath\`; the
-             \`--ready-file\` JSON reports the same value as \`basePath\`).
-             Default is empty (serve at \`/\`). Use
-             \`--app-base-path /<package-name>\` to match the
-             hosted app mount while iterating locally. With
-             \`--target mock\` on the local Kody runtime, the mount is
-             always \`/@<username>/packages/<kody.id>\`, the path local
-             Kody renders links for; a different value is rejected.
+             With \`kody dev\`, serve the old path address instead of the
+             app's own origin. By default the app is at the root of
+             \`http://<package-name>--<scope>.localhost:<port>/\` with an
+             empty \`packageContext.appBasePath\`. With
+             \`--app-base-path /<package-name>\` it is under that path on
+             \`http://<scope>.localhost:<port>\`, like the hosted path
+             address (the \`--ready-file\` JSON reports it as
+             \`basePath\`). With \`--target mock\` that is the only path
+             accepted.
 
   --host <addr>
              With \`kody dev serve\`, the address the dev server listens on

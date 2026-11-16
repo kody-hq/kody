@@ -539,11 +539,10 @@ cookies, layout, redirects, and websocket facets.
 
 **When Node ≥22 and `@kodycodes/cli` are available**, start here for unpublished
 apps. From the package directory the CLI serves `kody.app.entry` on localhost
-via workerd with hot reload. The path is mount-stripped the same way as
-production; `packageContext.hostedUrl` and `appBasePath` point at localhost.
-Bundling reuses the same esbuild path as publish. If the agent cannot run a
-local CLI, skip this section and use `repoRunChecks` + post-publish
-`packageAppFetch` instead.
+via workerd with hot reload, at the root of its own `*.localhost` origin like
+the hosted app; `packageContext.hostedUrl` is that local origin. Bundling reuses
+the same esbuild path as publish. If the agent cannot run a local CLI, skip this
+section and use `repoRunChecks` + post-publish `packageAppFetch` instead.
 
 ```bash
 cd ./my-package
@@ -731,16 +730,29 @@ publish entrypoint) and is ignored on `--target prod`; git-tracked files under
 files. See
 [Package lifecycle → Mock outbound fetch](./package-lifecycle.md#mock-outbound-fetch-with-.kody-mocks.ts).
 
-`kody dev` serves at base path `''` by default (`--ready-file` reports
-`basePath`). Hosted apps mount at `/<package-name>`. Pass
-`--app-base-path /<package-name>` when you need the local proxy to strip the
-same mount and set `packageContext.appBasePath` to match production.
+`kody dev` serves the app at the root of its own local origin,
+`http://<package-name>--<scope>.localhost:<port>/`, the local form of the hosted
+`https://<package-name>--<username>.kody.run/`. `<scope>` is the package scope
+(`dev` for an unscoped package). `packageContext.hostedUrl` is that origin and
+`appBasePath` is `''`, so links, cookies (host-only, `Path=/`) and same-origin
+checks behave as they do when hosted. A profile package (`@<name>/<name>`) is
+served at `http://<name>.localhost:<port>/`.
 
-`kody dev --target mock` runs the real local Kody workers, which serve the app
-at `/@<username>/packages/<kody.id>` and render `packageContext.appBasePath` for
-that mount. The proxy uses the same path as its base path, so the printed URL,
-`basePath`, and every rendered link agree. A different `--app-base-path` is
-rejected there.
+Browsers resolve `*.localhost` to this machine on their own. Node's `fetch` may
+not on every platform, so `kody dev` also answers on `http://127.0.0.1:<port>/`
+(printed as `local:`, and `localUrl` in the `--ready-file` JSON). It is the same
+app. Use that address from scripts.
+
+With `--host` and `--target mock`, another device reaches the app on the LAN
+address, but `packageContext.hostedUrl` (and absolute URLs built from it,
+including the client module URL) still names the `*.localhost` origin, which
+only resolves on this machine. Relative links work everywhere.
+
+`--app-base-path /<package-name>` serves the old path address instead: the app
+under `/<package-name>` on `http://<scope>.localhost:<port>`, with
+`packageContext.appBasePath` set to match. Use it only to test code that must
+keep working on the old address until it stops serving. With `--target mock`
+that is the only path accepted.
 
 While it runs, `kody dev`:
 

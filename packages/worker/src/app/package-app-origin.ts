@@ -16,6 +16,7 @@ import {
 	buildPackageAppSubdomainPath,
 	buildPackageAppSubdomainUrl,
 	buildPackagePagePath,
+	packageAppHostEntryQueryParam,
 } from '@kody-internal/shared/public-urls.ts'
 import {
 	isPackageAppHostProbePath,
@@ -191,15 +192,6 @@ function withoutHandoffToken(url: URL) {
 	cleaned.searchParams.delete(packageAppHandoffQueryParam)
 	return cleaned
 }
-
-/**
- * Marks an app-origin entry URL that came from the app's own
- * `{leaf}--{handle}` host, so the handoff returns there instead of the
- * owner's shared subdomain. Both hosts serve the same app until the old
- * address stops serving, when every handoff targets the app host and this
- * marker goes away.
- */
-const packageAppHostEntryQueryParam = '__kody_app_host'
 
 function withoutAppHostEntryMarker(url: URL) {
 	const cleaned = new URL(url)

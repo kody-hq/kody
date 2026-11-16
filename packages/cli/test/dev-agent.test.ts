@@ -119,7 +119,11 @@ test('kody dev --json emits NDJSON events and --ready-file is written before rea
 		assert.deepEqual(types, ['rebuild_start', 'rebuild_ok', 'ready'])
 		for (const event of lines) assert.equal(typeof event.ts, 'string')
 		const ready = lines.at(-1)!
-		assert.match(String(ready.url), /^http:\/\/127\.0\.0\.1:\d+\/$/)
+		assert.match(
+			String(ready.url),
+			/^http:\/\/sample-dev-package--local\.localhost:\d+\/$/,
+		)
+		assert.match(String(ready.localUrl), /^http:\/\/127\.0\.0\.1:\d+\/$/)
 		assert.equal(typeof ready.port, 'number')
 		assert.equal(ready.basePath, '')
 		assert.equal(ready.pid, process.pid)
@@ -179,7 +183,7 @@ test('kody dev fetch attaches to the running server for the same package and tar
 	await withDevServer(async ({ server, root, writeMessage }) => {
 		await writeDevRegistration({
 			pid: process.pid,
-			origin: server.hostedUrl,
+			origin: server.localUrl,
 			port: server.port,
 			basePath: server.appBasePath,
 			target: 'mock',

@@ -52,6 +52,13 @@ export type StartDevRuntimeInput = {
 	 * `.kody/mocks.ts` gateway.
 	 */
 	outboundUrl?: string
+	/**
+	 * Port package apps are reached on. Each app is then served at the root of
+	 * its own origin, `http://{leaf}--{handle}.localhost:<port>`, the local
+	 * form of the hosted `{leaf}--{handle}` app host. Without it apps are
+	 * served inline on the origin at `/@{handle}/packages/{leaf}`.
+	 */
+	packageAppPort?: number
 }
 
 export type DevRuntimeSimulation = {
@@ -398,6 +405,11 @@ export async function startDevRuntime(
 					? { KODY_DEV_OUTBOUND_URL: input.outboundUrl }
 					: {}),
 				APP_BASE_URL: origin,
+				...(input.packageAppPort
+					? {
+							PACKAGE_APP_BASE_URL: `http://localhost:${input.packageAppPort}`,
+						}
+					: {}),
 				COOKIE_SECRET: state.cookieSecret,
 				SECRET_STORE_KEY: state.secretStoreKey,
 				OIDC_SIGNING_KEY_ID: 'kody-dev-local',
