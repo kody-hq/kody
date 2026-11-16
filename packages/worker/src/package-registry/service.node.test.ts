@@ -28,7 +28,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		refreshPackageSubscriptionTopicMap: vi.fn(),
 		deleteJobRow: vi.fn(),
 		deleteEntitySource: vi.fn(),
-		getEntitySourceByIdForUser: vi.fn(async () => null),
+		getEntitySourceByIdForUser: vi.fn(async (): Promise<unknown> => null),
 		deleteSavedPackage: vi.fn(),
 		deletePackageAppRateLimits: vi.fn(),
 		deleteSavedPackageVector: vi.fn(),
