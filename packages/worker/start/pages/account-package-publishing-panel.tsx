@@ -136,7 +136,27 @@ export function PackagePublishingPanel(input: {
 					css={css({ margin: 0, color: colors.text })}
 					data-testid="package-publishing-live"
 				>
-					{packageDetail.publishedCommit ? (
+					{packageDetail.heldForApproval ? (
+						<>
+							{'Live for everyone: commit '}
+							<code
+								data-testid="package-serving-commit"
+								title={packageDetail.heldForApproval.servingCommit}
+							>
+								{shortCommunityCommit(
+									packageDetail.heldForApproval.servingCommit,
+								)}
+							</code>
+							{'. Published commit '}
+							<code
+								data-testid="package-held-commit"
+								title={packageDetail.heldForApproval.heldCommit}
+							>
+								{shortCommunityCommit(packageDetail.heldForApproval.heldCommit)}
+							</code>
+							{' is waiting for you to approve its new capabilities.'}
+						</>
+					) : packageDetail.publishedCommit ? (
 						<>
 							{`Live: ${packageDetail.publishedVersion ? `${packageDetail.publishedVersion}, ` : ''}published commit `}
 							<code
