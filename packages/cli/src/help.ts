@@ -164,10 +164,11 @@ ${orgBlock}
 
   auth bootstrap
              Agents on Kody MCP: call the MCP \`api\` tool with operationId
-             \`cliCredentialBootstrap\` and params \`{ lifetime: "short",
-             scopes: [...] }\` (\`execute\` is refused) and run the returned
-             \`cli_command\`
-             (never ask a human to paste a token). Humans: \`kody login\`.
+             \`cliCredentialBootstrap\` with no params (\`execute\` is
+             refused) and run the returned \`cli_command\` (never ask a
+             human to paste a token). \`lifetime: "short"\` has no refresh
+             and expires mid-task in waiting loops such as ship-pr.
+             Humans: \`kody login\`.
              This command redeems a one-shot \`kody_bc_…\` (POST
              /v1/tokens/bootstrap/redeem, no Authorization header).
              Saves the same credential \`kody login\` saves (every scope
