@@ -61,6 +61,59 @@ test('a waiter recovers from an orphaned in-flight entry that never settles', as
 	expect(after).not.toHaveBeenCalled()
 })
 
+test("a waiter rebuilds when another request's in-flight entry rejects as ended", async () => {
+	// With handle_cross_request_promise_resolution, awaiting a promise whose
+	// request ended rejects the waiter, and the ended request never runs its
+	// own eviction. Before, every later request got the same rejection until
+	// the entry expired (Sentry 7850695233).
+	const cache = new PromiseLruCache<string>({ inFlightWaitMs: 60_000 })
+	const ended = new Error(
+		'This promise was created by a request that has since ended, so it can never settle.',
+	)
+	let rejectOrphan!: (error: unknown) => void
+	void cache.set(
+		'k',
+		new Promise<string>((_resolve, reject) => {
+			rejectOrphan = reject
+		}),
+	)
+	expect(cache.get('k')).toBeNull()
+	const rebuild = vi.fn(async () => 'rebuilt')
+	const waiter = cache.getOrCreate({ cacheKey: 'k', create: rebuild })
+	rejectOrphan(ended)
+	await expect(waiter).resolves.toBe('rebuilt')
+	expect(rebuild).toHaveBeenCalledTimes(1)
+	const after = vi.fn(async () => 'unused')
+	await expect(
+		cache.getOrCreate({ cacheKey: 'k', create: after }),
+	).resolves.toBe('rebuilt')
+	expect(after).not.toHaveBeenCalled()
+	await expect(cache.get('k')).resolves.toBe('rebuilt')
+})
+
+test("a waiter retries another request's failed create once, then reports its own failure", async () => {
+	const cache = new PromiseLruCache<string>({ inFlightWaitMs: 60_000 })
+	let rejectFirst!: (error: unknown) => void
+	const first = cache.getOrCreate({
+		cacheKey: 'k',
+		create: () =>
+			new Promise<string>((_resolve, reject) => {
+				rejectFirst = reject
+			}),
+	})
+	const retry = vi.fn(async () => {
+		throw new Error('still broken')
+	})
+	const waiter = cache.getOrCreate({ cacheKey: 'k', create: retry })
+	rejectFirst(new Error('boom'))
+	await expect(first).rejects.toThrow('boom')
+	await expect(waiter).rejects.toThrow('still broken')
+	expect(retry).toHaveBeenCalledTimes(1)
+	await expect(
+		cache.getOrCreate({ cacheKey: 'k', create: async () => 'ok' }),
+	).resolves.toBe('ok')
+})
+
 test('a rejected create is evicted so the next call retries', async () => {
 	const cache = new PromiseLruCache<string>()
 	await expect(

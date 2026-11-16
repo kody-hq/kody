@@ -451,10 +451,6 @@ export async function loadPackageManifestForSource(input: {
 			}),
 		}) as LoadedPackageManifest
 	}
-	const cachedManifest = packageManifestCache.get(cacheKey)
-	if (cachedManifest) {
-		return await cachedManifest
-	}
 	return await packageManifestCache.getOrCreate({
 		cacheKey,
 		create: async () => {
