@@ -707,7 +707,10 @@ enough that a second page in the same sandbox typically exceeds the workflow
 observer (5-minute sandbox budget, under the Cloudflare Workflow step timeout).
 Those modes take one page per execute or workflow sandbox. When `nextCursor` is
 set, start a new `execute` or `workflows.create` with that `runId` and cursor.
-Omitted filters inherit from the stored run. Capability results include a
+Omitted filters inherit from the stored run. A continuation that sends different
+filters (including a different top-level `packageIds`) is rejected as a caller
+error; only added `excludePackageIds` are accepted. To target other packages,
+omit `runId` and `cursor` to start a new run. Capability results include a
 `nextStep` string that restates this. Scan pages are cheaper and can often
 continue in the same sandbox.
 
