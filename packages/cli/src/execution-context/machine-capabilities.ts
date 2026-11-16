@@ -338,3 +338,34 @@ export function resolveMachineCommand(
 		timeoutMs: definition.timeoutMs,
 	}
 }
+
+/** What this machine tells Kody about one definition. Executable paths and cwd stay here. */
+export type AdvertisedMachineCapability = {
+	kind: 'command' | 'lan'
+	name: string
+	description: string
+	summary: Record<string, unknown>
+}
+
+export function advertisedMachineCapabilities(
+	policy: MachineCapabilitiesPolicy | undefined,
+): Array<AdvertisedMachineCapability> {
+	return [
+		...(policy?.commands ?? []).map((command) => ({
+			kind: 'command' as const,
+			name: command.name,
+			description: command.description,
+			summary: {
+				args: command.args,
+				background: command.background,
+				timeoutMs: command.timeoutMs,
+			},
+		})),
+		...(policy?.lan ?? []).map((entry) => ({
+			kind: 'lan' as const,
+			name: entry.name,
+			description: entry.description,
+			summary: { hosts: entry.hosts, ports: entry.ports },
+		})),
+	]
+}

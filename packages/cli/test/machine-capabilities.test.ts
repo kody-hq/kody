@@ -4,6 +4,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import {
+	ecpSignatureHeader,
+	importEd25519PublicKey,
+	parseEcpSignatureHeader,
+	verifyEcpHttpSignature,
+} from '@kody-internal/shared/execution-context-protocol/index.ts'
+import {
+	generateContextKey,
+	importContextKey,
+	syncContextCapabilities,
+} from '../src/execution-context/client.js'
+import {
 	allowLocalPath,
 	readLocalPolicy,
 	removeLocalCapability,
@@ -15,6 +26,7 @@ import {
 	parseMachineCommandDefinition,
 	parseMachineLanDefinition,
 	resolveMachineCommand,
+	advertisedMachineCapabilities,
 } from '../src/execution-context/machine-capabilities.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 
@@ -330,4 +342,70 @@ test('kody context capability adds, lists and removes definitions on this machin
 			else process.env[key] = value
 		}
 	}
+})
+
+test('the machine tells Kody names and argument shapes, never executable paths, signed with its key', async () => {
+	const capabilities = advertisedMachineCapabilities({
+		commands: [
+			parseMachineCommandDefinition({ ...kdocker, cwd: '/volume1/docker' }),
+		],
+		lan: [
+			parseMachineLanDefinition({
+				name: 'nas-admin',
+				hosts: ['192.168.1.10'],
+				ports: [5001],
+			}),
+		],
+	})
+	assert.deepEqual(
+		capabilities.map((entry) => [entry.kind, entry.name]),
+		[
+			['command', 'kdocker'],
+			['lan', 'nas-admin'],
+		],
+	)
+	assert.deepEqual(Object.keys(capabilities[0]!.summary).sort(), [
+		'args',
+		'background',
+		'timeoutMs',
+	])
+	assert.doesNotMatch(JSON.stringify(capabilities), /volume1|kdocker\.mjs/)
+
+	const { publicKeyJwk, privateKeyJwk } = await generateContextKey()
+	const seen: Array<{ request: Request; body: string }> = []
+	const result = await syncContextCapabilities({
+		apiUrl: 'https://api.kody.test',
+		ecid: 'ec_test',
+		privateKey: await importContextKey(privateKeyJwk),
+		capabilities,
+		fetchFn: (async (
+			resource: Parameters<typeof fetch>[0],
+			init?: RequestInit,
+		) => {
+			const request = new Request(resource, init)
+			seen.push({ request, body: await request.clone().text() })
+			return Response.json({
+				id: 'ec_test',
+				name: 'family-vault',
+				capabilities: [],
+				changes: { added: ['command:kdocker'], changed: [], removed: [] },
+			})
+		}) as typeof fetch,
+	})
+	assert.deepEqual(result.changes?.added, ['command:kdocker'])
+	const [{ request, body }] = seen as [{ request: Request; body: string }]
+	assert.deepEqual(JSON.parse(body), { capabilities })
+	const signature = parseEcpSignatureHeader(
+		request.headers.get(ecpSignatureHeader),
+	)
+	assert.equal(
+		await verifyEcpHttpSignature({
+			signature: signature!,
+			method: 'POST',
+			pathAndQuery: '/v1/execution-contexts/capabilities',
+			body,
+			publicKey: await importEd25519PublicKey(publicKeyJwk),
+		}),
+		'ok',
+	)
 })

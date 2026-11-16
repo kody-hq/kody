@@ -19,6 +19,7 @@ import {
 	registerContext,
 	checkContextLogin,
 	setContextCommands,
+	syncContextCapabilities,
 	experimentOffError,
 	isExperimentOffError,
 } from './client.js'
@@ -73,6 +74,7 @@ import {
 	describeMachineCommandArgs,
 	parseMachineCommandDefinition,
 	parseMachineLanDefinition,
+	advertisedMachineCapabilities,
 } from './machine-capabilities.js'
 import {
 	contextWorkersDir,
@@ -880,6 +882,52 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			}
 		}
 		void checkLogin()
+		// Last set of machine access definitions Kody accepted, as JSON.
+		let reportedCapabilities: string | null = null
+		let capabilitiesRetry: ReturnType<typeof setTimeout> | undefined
+		let capabilitiesRetryMs = 60_000
+		const reportCapabilities = async () => {
+			try {
+				const capabilities = advertisedMachineCapabilities(
+					(await readLocalPolicy()).capabilities,
+				)
+				const next = JSON.stringify(capabilities)
+				if (next === reportedCapabilities) return
+				const result = await syncContextCapabilities({
+					apiUrl: input.apiUrl,
+					ecid: context.ecid,
+					privateKey,
+					capabilities,
+					...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+				})
+				reportedCapabilities = next
+				const changes = result.changes
+				if (
+					changes &&
+					changes.added.length + changes.changed.length + changes.removed.length
+				) {
+					log(
+						`Told Kody about this machine's named commands and local network destinations (${changes.added.length} added, ${changes.changed.length} changed, ${changes.removed.length} removed).`,
+					)
+				}
+			} catch (error) {
+				log(
+					`Could not tell Kody about this machine's named commands and local network destinations (will retry): ${error instanceof Error ? error.message : String(error)}`,
+				)
+				// E.g. the daemon started offline. Backs off from a minute to an hour.
+				clearTimeout(capabilitiesRetry)
+				capabilitiesRetry = setTimeout(
+					() => void reportCapabilities(),
+					capabilitiesRetryMs,
+				)
+				capabilitiesRetry.unref()
+				capabilitiesRetryMs = Math.min(capabilitiesRetryMs * 2, 60 * 60_000)
+				return
+			}
+			clearTimeout(capabilitiesRetry)
+			capabilitiesRetryMs = 60_000
+		}
+		void reportCapabilities()
 		const loginTimer = setInterval(
 			() => void checkLogin(),
 			loginCheckIntervalMs,
@@ -930,8 +978,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					},
 					onChange: (listener) => {
 						const path = localPolicyPath()
-						watchFile(path, { interval: 2000 }, listener)
-						return () => unwatchFile(path, listener)
+						const onEdit = () => {
+							listener()
+							void reportCapabilities()
+						}
+						watchFile(path, { interval: 2000 }, onEdit)
+						return () => unwatchFile(path, onEdit)
 					},
 				},
 				log,
@@ -1059,6 +1111,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			})
 		} finally {
 			clearInterval(loginTimer)
+			clearTimeout(capabilitiesRetry)
 			updater.stop()
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
 			// Background commands are the daemon's children: they stop with it.
@@ -1294,6 +1347,49 @@ async function runCommandsOptInCommand(
 	return contexts.some((context) => context.error) ? 1 : 0
 }
 
+/**
+ * Tells Kody what this machine defines now, once per context registered here.
+ * The daemon repeats it when it starts and when the policy file changes, so a
+ * failure here (offline) only delays it.
+ */
+async function reportCapabilitiesToKody(
+	input: Pick<ExecutionContextCommandInput, 'apiUrl' | 'fetchFn'>,
+	capabilities: Awaited<ReturnType<typeof readLocalPolicy>>['capabilities'],
+) {
+	const reported: Array<{ id: string; name: string; error?: string }> = []
+	for (const ecid of storedContextIds(input.apiUrl)) {
+		try {
+			const { context, privateJwk } = await loadContext({
+				apiUrl: input.apiUrl,
+				ecid,
+				wrapping: wrappingKeyForStoredContext({ apiUrl: input.apiUrl, ecid }),
+			})
+			const result = await syncContextCapabilities({
+				apiUrl: input.apiUrl,
+				ecid: context.ecid,
+				privateKey: await importContextKey(privateJwk),
+				capabilities: advertisedMachineCapabilities(capabilities),
+				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+			})
+			reported.push({ id: result.id, name: result.name })
+		} catch (error) {
+			reported.push({
+				id: ecid,
+				name: ecid,
+				error: error instanceof Error ? error.message : String(error),
+			})
+		}
+	}
+	return {
+		reported,
+		lines: reported.map((context) =>
+			context.error
+				? `  ${context.name}: could not tell Kody (${context.error}). The daemon reports it when it next starts.`
+				: `  ${context.name}: Kody knows about it.`,
+		),
+	}
+}
+
 const capabilityUsage =
 	'Usage: kody context capability [list] | kody context capability add command|lan <file.json> | kody context capability remove command|lan <name> [--json]'
 
@@ -1324,7 +1420,7 @@ async function runCapabilityCommand(
 				(entry) =>
 					`  lan ${entry.name}${entry.description ? `: ${entry.description}` : ''} (${entry.hosts.join(', ')} ports ${entry.ports.join(', ')})`,
 			),
-			'Defining these does not let any run use them yet.',
+			'Kody knows these by name. No run can use them yet.',
 		].join('\n')
 	}
 	if (action === 'list') {
@@ -1354,10 +1450,24 @@ async function runCapabilityCommand(
 			name: target,
 			policyPath: file,
 		})
+		const kody = removed
+			? await reportCapabilitiesToKody(input, policy.capabilities)
+			: { reported: [], lines: [] }
 		out(
 			input,
-			{ path: file, removed, capabilities: policy.capabilities },
-			`${removed ? `Removed ${kind} "${target}".` : `No ${kind} named "${target}" is defined.`}\n${describe(policy.capabilities)}`,
+			{
+				path: file,
+				removed,
+				capabilities: policy.capabilities,
+				contexts: kody.reported,
+			},
+			[
+				removed
+					? `Removed ${kind} "${target}". Anyone granted it in Kody loses it.`
+					: `No ${kind} named "${target}" is defined.`,
+				...kody.lines,
+				describe(policy.capabilities),
+			].join('\n'),
 		)
 		return removed ? 0 : 1
 	}
@@ -1378,10 +1488,20 @@ async function runCapabilityCommand(
 		definition,
 		policyPath: file,
 	})
+	const kody = await reportCapabilitiesToKody(input, policy.capabilities)
 	out(
 		input,
-		{ path: file, replaced, capabilities: policy.capabilities },
-		`${replaced ? 'Replaced' : 'Added'} ${kind} "${definition.name}".\n${describe(policy.capabilities)}`,
+		{
+			path: file,
+			replaced,
+			capabilities: policy.capabilities,
+			contexts: kody.reported,
+		},
+		[
+			`${replaced ? 'Replaced' : 'Added'} ${kind} "${definition.name}".`,
+			...kody.lines,
+			describe(policy.capabilities),
+		].join('\n'),
 	)
 	return 0
 }

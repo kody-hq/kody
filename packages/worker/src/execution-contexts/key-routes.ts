@@ -18,6 +18,11 @@ import { authenticateApiRequest } from '#worker/open-api/authenticate.ts'
 import { ApiError, invalidRequest } from '#worker/open-api/errors.ts'
 import { readRequestBodyUpTo } from '#worker/read-request-body-up-to.ts'
 import { registrationAuthorizationError } from './errors.ts'
+import {
+	listMachineDefinedCapabilities,
+	parseMachineDefinedCapabilities,
+	syncMachineDefinedCapabilities,
+} from './machine-capabilities.ts'
 import productionServerKeys from './server-keys.production.json'
 import testServerKeys from './server-keys.local.json'
 import {
@@ -47,6 +52,7 @@ export function isExecutionContextKeyRoute(method: string, pathname: string) {
 		pathname === `${executionContextsBasePath}/connect-ticket` ||
 		pathname === `${executionContextsBasePath}/connect` ||
 		pathname === `${executionContextsBasePath}/commands` ||
+		pathname === `${executionContextsBasePath}/capabilities` ||
 		pathname === `${executionContextsBasePath}/login` ||
 		pathname === `${executionContextsBasePath}/server-keys`
 	)
@@ -224,6 +230,10 @@ export async function handleExecutionContextKeyRoute(input: {
 	if (path === `${executionContextsBasePath}/commands`) {
 		if (request.method !== 'POST') throw methodNotAllowed('POST')
 		return json(await setCommandsFromMachine({ request, url, env }))
+	}
+	if (path === `${executionContextsBasePath}/capabilities`) {
+		if (request.method !== 'POST') throw methodNotAllowed('POST')
+		return json(await syncCapabilitiesFromMachine({ request, url, env }))
 	}
 
 	const api = await authenticateApiRequest({
@@ -487,12 +497,8 @@ async function recordLoginFromMachine(input: {
 	}
 }
 
-/**
- * Host commands opt-in (ADR 0093). Signed with the context key, so only the
- * machine itself can turn commands on; it may also turn them off. Website and
- * API callers can only turn them off (executionContextUpdate).
- */
-async function setCommandsFromMachine(input: {
+/** A request signed with the context key: only the machine itself can send it. */
+async function readMachineRequest(input: {
 	request: Request
 	url: URL
 	env: Env
@@ -527,6 +533,79 @@ async function setCommandsFromMachine(input: {
 	} catch {
 		parsed = null
 	}
+	return { row, signature, session, parsed }
+}
+
+/**
+ * Machine access: the machine reports the named commands and local network
+ * destinations its local policy defines, signed with the context key, so only
+ * the machine can add or widen one. Send `{}` to read what Kody has.
+ */
+async function syncCapabilitiesFromMachine(input: {
+	request: Request
+	url: URL
+	env: Env
+}) {
+	const { row, signature, session, parsed } = await readMachineRequest(input)
+	const view = async (changes?: {
+		added: Array<string>
+		changed: Array<string>
+		removed: Array<string>
+	}) => ({
+		id: row.id,
+		name: row.name,
+		capabilities: (
+			await listMachineDefinedCapabilities(input.env.APP_DB, row.id)
+		).map((capability) => ({
+			id: capability.id,
+			kind: capability.kind,
+			name: capability.name,
+			description: capability.description,
+		})),
+		...(changes ? { changes } : {}),
+	})
+	const reported = (parsed as { capabilities?: unknown } | null)?.capabilities
+	if (reported === undefined && parsed && typeof parsed === 'object') {
+		return await view()
+	}
+	const defined = parseMachineDefinedCapabilities(reported)
+	if (typeof defined === 'string') {
+		throw new ApiError({
+			status: 400,
+			code: 'invalid_request',
+			message: defined,
+		})
+	}
+	const nonce = await session.consumeMachineNonce({ nonce: signature.n })
+	if (!nonce.ok) throw signatureError(nonce.code)
+	const changes = await syncMachineDefinedCapabilities(
+		input.env.APP_DB,
+		row,
+		defined,
+	)
+	if (changes.added.length + changes.changed.length + changes.removed.length) {
+		await session.recordAudit({
+			event: 'machine_capabilities_changed',
+			actor: { userId: row.operator_user_id, handle: null },
+			orgId: row.org_id,
+			detail: { source: 'machine', ...changes },
+		})
+	}
+	return await view(changes)
+}
+
+/**
+ * Host commands opt-in (ADR 0093). Signed with the context key, so only the
+ * machine itself can turn commands on; it may also turn them off. Website and
+ * API callers can only turn them off (executionContextUpdate).
+ */
+async function setCommandsFromMachine(input: {
+	request: Request
+	url: URL
+	env: Env
+}) {
+	const { env } = input
+	const { row, signature, session, parsed } = await readMachineRequest(input)
 	const enabled = (parsed as { enabled?: unknown } | null)?.enabled
 	if (enabled === undefined && parsed && typeof parsed === 'object') {
 		const commands = parseGrant(row).commands ?? { enabled: false }

@@ -64,10 +64,10 @@ Execution contexts are an experiment. Turn them on at
   `kody daemon auto-update [on | off | status]` (on by default), `kody update`,
   `kody context policy allow <path> [--mode ro|rw]`,
   `kody context capability [list] | add command|lan <file.json> | remove command|lan <name>`
-  (defines named commands and local network destinations on this machine; no run
-  can use them yet), `kody daemon [--max-concurrent <n>]`
-  (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8, default 2),
-  `kody chain show | add | remove`,
+  (defines named commands and local network destinations on this machine and
+  tells Kody their names; no run can use them yet),
+  `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
+  default 2), `kody chain show | add | remove`,
   `kody context commands [status | on | off] [--context <name>] [--json]`,
   `kody context cancel-run <name> <run id>`.
 - Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
