@@ -185,7 +185,7 @@ test.describe('Menu', () => {
 		await waitForClientHydration(page)
 	})
 
-	test('opens from the keyboard, skips disabled items, and restores focus', async ({
+	test('opens from the keyboard, announces disabled items, and restores focus', async ({
 		page,
 	}) => {
 		const trigger = page.getByRole('button', { name: 'File actions' })
@@ -198,6 +198,12 @@ test.describe('Menu', () => {
 		const rename = menu.getByRole('menuitem', { name: 'Rename' })
 		await expect(rename).toBeFocused()
 		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		const move = menu.getByRole('menuitem', { name: 'Move (no other folders)' })
+		await expect(move).toBeFocused()
+		await expect(move).toHaveAttribute('aria-disabled', 'true')
+		await page.keyboard.press('Enter')
+		await expect(menu).toBeVisible()
 		await page.keyboard.press('ArrowDown')
 		await expect(
 			menu.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),

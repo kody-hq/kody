@@ -100,11 +100,12 @@ const tooltipCss = {
 		position: 'absolute' as const,
 		border: '6px solid transparent',
 	},
-	[hoverMq]: { ':hover > &': shownCss },
-	':focus-visible > &': shownCss,
+	// A leading `*` stops Emotion from reading `:` as a pseudo of `&`.
+	[hoverMq]: { '*:hover > &': shownCss },
+	'*:focus-visible > &': shownCss,
 	'[data-tooltip-dismissed] > &': { opacity: 0, visibility: 'hidden' as const },
 	// Anchor to the trigger without outranking a trigger's own `position`.
-	':where(:has(> &))': { position: 'relative' as const },
+	'*:where(:has(> &))': { position: 'relative' as const },
 }
 
 const sideCss = {

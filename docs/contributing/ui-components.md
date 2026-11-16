@@ -2,9 +2,9 @@
 
 Shared UI primitives live in `packages/worker/start/components`. Render these
 instead of raw elements or copied style objects.
-`kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`, and
-`kody-custom/no-raw-dialog` reject the raw forms in `packages/worker/start` and
-`packages/worker/client`.
+`kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`,
+`kody-custom/no-raw-dialog`, and `kody-custom/no-raw-overlay` reject the raw
+forms in `packages/worker/start` and `packages/worker/client`.
 
 Every component passes native attributes through. Refs are ordinary props (React
 19), so `ref` reaches the underlying element. Pass `css` to adjust layout
@@ -124,6 +124,89 @@ is inert and does not scroll.
 - `flush`: drop the padding when the content draws its own sections.
 - `DialogActions`: right-aligned, wrapping row for the buttons.
 
+## Menu
+
+`start/components/menu.tsx`
+
+```tsx
+<Menu>
+	<MenuTrigger render={<Button variant="secondary" />}>Actions</MenuTrigger>
+	<MenuContent aria-label="File actions">
+		<MenuItem onClick={rename}>Rename</MenuItem>
+		<MenuCheckboxItem checked={wrap} onCheckedChange={setWrap}>
+			Wrap lines
+		</MenuCheckboxItem>
+		<MenuLinkItem href="/docs">Open docs</MenuLinkItem>
+		<MenuSeparator />
+		<MenuItem tone="danger" onClick={remove}>
+			Delete
+		</MenuItem>
+	</MenuContent>
+</Menu>
+```
+
+Built on Base UI (WAI-ARIA menu button). Enter, Space, or ArrowDown opens it and
+focuses the first item, arrows and typing move the highlight, disabled items are
+skipped, and Escape or an outside click closes it and returns focus to the
+trigger. It is non-modal, so the page keeps scrolling.
+
+- `MenuTrigger` takes `render` to draw as a `Button`.
+- `MenuContent` requires `aria-label`. `align`, `side`, and `sideOffset` place
+  it; `anchor` and `container` open it at a point (context menus).
+- `MenuItem` runs an action; `tone="danger"` for destructive ones.
+- `MenuLinkItem` navigates through `SiteLink`; pass `render` for a custom row.
+- `MenuCheckboxItem`, `MenuGroup` (with `label`), `MenuSeparator`.
+- `MenuActions` is the type for `actionsRef` (close from code).
+
+## Tooltip
+
+`start/components/tooltip.tsx`
+
+```tsx
+<Button aria-describedby="copy-tooltip" aria-label="Copy">
+	{renderIcon('copy')}
+	<Tooltip id="copy-tooltip">Copy the prompt</Tooltip>
+</Button>
+```
+
+A short hint on hover and keyboard focus. Render it as the last child of its
+trigger and point the trigger's `aria-describedby` at `id`. It is in the server
+HTML, so it works before hydration, never takes pointer events, and Escape hides
+it until the pointer or focus leaves.
+
+- `id` is required and must be a fixed string, not `useId`.
+- `side`: `top` (default) | `bottom`
+- `align`: `center` (default) | `start` | `end` for triggers near an edge.
+- Never put the only copy of essential information in a tooltip; touch screens
+  never show it.
+- `CopyTextButton` takes `tooltip={{ id, text }}` instead.
+
+## Tabs
+
+`start/components/tabs.tsx`
+
+```tsx
+<Tabs defaultActiveTab="html">
+	<TabList aria-label="Email body">
+		<Tab name="html">HTML</Tab>
+		<Tab name="text">Text</Tab>
+	</TabList>
+	<TabPanel name="html">...</TabPanel>
+	<TabPanel name="text">...</TabPanel>
+</Tabs>
+```
+
+WAI-ARIA tabs with automatic activation: ArrowLeft, ArrowRight, Home, and End
+move focus and select, skipping disabled tabs. Only the selected tab is in the
+Tab order, and Tab moves on into its panel.
+
+- Uncontrolled with `defaultActiveTab` (or the first enabled tab), controlled
+  with `activeTab` plus `onActiveTabChange`.
+- `variant`: `segmented` (default, a pill track; `size` `md` | `lg`) |
+  `underline` (a quiet row for sections of a panel).
+- `TabList` requires `aria-label` or `aria-labelledby`.
+- `disabled` on `Tabs` disables the whole list; on `Tab`, one tab.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a
@@ -140,3 +223,8 @@ Keep those raw with a reason:
 Full-screen viewers (image, video), the command palette, and the avatar crop
 editor keep a native `<dialog>` with a `kody-custom/no-raw-dialog` exemption:
 they draw their own chrome and capture keys that a standard dialog would not.
+
+The brand mark's context menu stays hand-built with a
+`kody-custom/no-raw-overlay` exemption: it opens from the keyboard and lays its
+download rows out as a grid. Everything else with a menu, tooltip, or tab role
+uses the components above.
