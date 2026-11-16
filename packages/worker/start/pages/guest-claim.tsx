@@ -3,7 +3,8 @@ import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { SiteLink } from '../components/site-link.tsx'
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type {
 	GuestClaimPageData,
 	GuestClaimPageError,
@@ -161,9 +162,9 @@ function GuestClaimForms(props: {
 					</p>
 				) : null}
 				{data.error ? (
-					<p role="alert" css={errorCss}>
+					<Alert tone="error" role="alert">
 						{errorCopy[data.error]}
-					</p>
+					</Alert>
 				) : null}
 				<ComesWithYou counts={data.comesWith} />
 				{data.step === 'code' ? (
@@ -192,9 +193,13 @@ function GuestClaimForms(props: {
 						>
 							Finish claiming
 						</Button>
-						<SiteLink href={action} css={mutedLinkCss}>
+						<TextLink
+							tone="muted"
+							href={action}
+							css={{ justifySelf: 'center', lineHeight: 1.5 }}
+						>
 							Use a different email
-						</SiteLink>
+						</TextLink>
 					</form>
 				) : (
 					<>
@@ -355,18 +360,6 @@ const mutedCss: CSSObject = {
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
 	lineHeight: 1.5,
-}
-const mutedLinkCss: CSSObject = {
-	...mutedCss,
-	justifySelf: 'center',
-}
-const errorCss: CSSObject = {
-	margin: 0,
-	padding: spacing.md,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.danger}`,
-	color: colors.danger,
-	fontSize: typography.fontSize.sm,
 }
 const holdNoticeCss: CSSObject = {
 	margin: 0,

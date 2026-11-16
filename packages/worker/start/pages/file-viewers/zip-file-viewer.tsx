@@ -169,6 +169,7 @@ export default function ZipFileViewer({
 				</a>
 			</nav>
 			{rows.size ? (
+				// oxlint-disable-next-line kody-custom/no-raw-table -- dense archive listing with full-row buttons.
 				<table
 					css={{
 						width: '100%',

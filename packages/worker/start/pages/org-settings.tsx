@@ -33,7 +33,7 @@ import {
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { AccountAvatarEditor } from './account-avatar-editor.tsx'
@@ -171,13 +171,13 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						<p css={mutedCopyCss}>
 							This is your personal organization. Your name, photo, and handle
 							come from your{' '}
-							<SiteLink href={routes.account.href()} css={inlineLinkCss}>
+							<TextLink tone="prose" href={routes.account.href()}>
 								account profile
-							</SiteLink>
+							</TextLink>
 							. To delete your account, use{' '}
-							<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
+							<TextLink tone="prose" href={routes.accountData.href()}>
 								Account → Data &amp; deletion
-							</SiteLink>
+							</TextLink>
 							.
 						</p>
 					</AccountManagementPanel>
@@ -431,10 +431,6 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 const mutedCopyCss: CSSObject = {
 	margin: 0,
 	color: colors.textMuted,
-}
-
-const inlineLinkCss: CSSObject = {
-	color: colors.primaryText,
 }
 
 const formCss: CSSObject = {

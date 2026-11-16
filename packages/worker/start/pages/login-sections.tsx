@@ -6,6 +6,7 @@ import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, FormEvent } from 'react'
 import { KodyMark } from '../components/kody-mark.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	fieldErrorProps,
 	invalidFieldsForMessage,
@@ -246,9 +247,9 @@ export function AuthForm(
 						<label htmlFor={`${props.handleId}-password`} css={fieldLabelCss}>
 							Password
 						</label>
-						<SiteLink href="/reset-password" css={fieldAsideCss}>
+						<TextLink tone="prose" href="/reset-password" css={fieldAsideCss}>
 							Forgot password?
-						</SiteLink>
+						</TextLink>
 					</div>
 				)}
 				<PasswordRevealInput
@@ -450,15 +451,7 @@ const authFormCss: CSSObject = {
    as wells in both themes. */
 const authInputCss = getFieldControlCss({ background: 'canvas' })
 
-const inlineLinkCss: CSSObject = {
-	color: colors.primaryText,
-	textDecorationThickness: '1.5px',
-	textUnderlineOffset: '3px',
-	'&:hover': { color: colors.text },
-}
-
 const fieldAsideCss: CSSObject = {
-	...inlineLinkCss,
 	fontSize: '0.88rem',
 }
 

@@ -725,6 +725,34 @@ const noRawDialogRule = {
 	},
 }
 
+const noRawTableRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Render data tables through <Table> (start/components/table.tsx) so cell padding, row rules, and header styling stay consistent.',
+		},
+		schema: [],
+		messages: {
+			useTable:
+				'Render <Table> from start/components/table.tsx instead of a raw <table>. See docs/contributing/ui-components.md.',
+		},
+	},
+	createOnce(context) {
+		return {
+			JSXOpeningElement(node) {
+				if (node.name.type !== 'JSXIdentifier' || node.name.name !== 'table') {
+					return
+				}
+				const filename = context.filename
+				if (!/\/packages\/worker\/(start|client)\//.test(filename)) return
+				if (/\.test\.tsx?$/.test(filename)) return
+				context.report({ node, messageId: 'useTable' })
+			},
+		}
+	},
+}
+
 const overlayRoleOwners = {
 	menu: 'menu',
 	menubar: 'menu',
@@ -859,6 +887,7 @@ const plugin = {
 		'no-raw-button-style': noRawButtonStyleRule,
 		'no-raw-dialog': noRawDialogRule,
 		'no-raw-overlay': noRawOverlayRule,
+		'no-raw-table': noRawTableRule,
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,

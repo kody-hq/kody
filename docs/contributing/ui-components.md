@@ -3,8 +3,9 @@
 Shared UI primitives live in `packages/worker/start/components`. Render these
 instead of raw elements or copied style objects.
 `kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`,
-`kody-custom/no-raw-dialog`, and `kody-custom/no-raw-overlay` reject the raw
-forms in `packages/worker/start` and `packages/worker/client`.
+`kody-custom/no-raw-dialog`, `kody-custom/no-raw-overlay`, and
+`kody-custom/no-raw-table` reject the raw forms in `packages/worker/start` and
+`packages/worker/client`.
 
 Every component passes native attributes through. Refs are ordinary props (React
 19), so `ref` reaches the underlying element. Pass `css` to adjust layout
@@ -214,6 +215,7 @@ Tab order, and Tab moves on into its panel.
 ```tsx
 <TextLink href="/docs">Read the docs</TextLink>
 <TextLink tone="muted" href="/privacy">Privacy</TextLink>
+<p>Read the <TextLink tone="prose" href="/terms">terms</TextLink> first.</p>
 ```
 
 An inline text link over `SiteLink`, so internal paths navigate on the client
@@ -221,7 +223,9 @@ and external paths, downloads, and `reloadDocument` load a new document. It
 takes every `SiteLink` prop. Underlines on hover and shows the shared focus ring
 on keyboard focus.
 
-- `tone`: `primary` (default) | `muted` (smaller, secondary text).
+- `tone`: `primary` (default) | `muted` (smaller, secondary text) | `prose`
+  (always underlined, for a link inside a sentence so it does not rely on color
+  alone).
 - A link styled as a button is `<Button href>`, not `TextLink`.
 
 ## Badge
@@ -283,7 +287,9 @@ A native `table` with the shared cell padding, row rules, and muted column
 headers. Compose it from native table elements so screen readers keep row and
 column navigation. Name it with a `caption`, `aria-label`, or `aria-labelledby`,
 and give header cells a `scope`. Wrap a wide table in an `overflowX: 'auto'`
-box. `RecordTable` stays the sortable, paged list for records.
+box. The cell defaults have zero specificity, so a cell's own `css` (numeric
+alignment, a sticky first column) always wins. `RecordTable` stays the sortable,
+paged list for records.
 
 ## Toasts
 
@@ -335,3 +341,8 @@ The brand mark's context menu stays hand-built with a
 `kody-custom/no-raw-overlay` exemption: it opens from the keyboard and lays its
 download rows out as a grid. Everything else with a menu, tooltip, or tab role
 uses the components above.
+
+`RecordTable`, file previews (CSV, zip), the pricing comparison, the landing
+page comparison, and authored markdown or page editor tables keep a native
+`<table>` with a `kody-custom/no-raw-table` exemption: each has its own layout
+or renders user content with the prose stylesheet.

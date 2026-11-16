@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -210,14 +211,7 @@ export function AdminOrgLimitsPanel({
 			{limits ? (
 				<>
 					<div css={{ overflowX: 'auto' }}>
-						<table
-							aria-label="Org limits"
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table aria-label="Org limits">
 							<thead>
 								<tr>
 									<th css={headCss}>Limit</th>
@@ -227,7 +221,7 @@ export function AdminOrgLimitsPanel({
 								</tr>
 							</thead>
 							<tbody>{limits.limits.map(renderRow)}</tbody>
-						</table>
+						</Table>
 					</div>
 					<form
 						noValidate

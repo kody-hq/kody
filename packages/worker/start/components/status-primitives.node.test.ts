@@ -62,3 +62,17 @@ test('Table renders a native table so captions and header scopes work', () => {
 		/^<table aria-label="Records" class="[^"]+"><caption>DNS<\/caption><\/table>$/,
 	)
 })
+
+test('Table cell defaults never beat a cell that sets its own alignment', () => {
+	const styles = [
+		...renderToStaticMarkup(createElement(Table)).matchAll(
+			/<style\b[^>]*>([\s\S]*?)<\/style>/g,
+		),
+	]
+		.map((match) => match[1])
+		.join('')
+	const tableClass = /\.(css-[\w-]+)/.exec(styles)?.[1]
+	expect(tableClass).toBeTruthy()
+	expect(styles).toContain(`:where(.${tableClass}) :where(th, td){`)
+	expect(styles).not.toMatch(/\.css-[\w-]+ (th|td)\b/)
+})

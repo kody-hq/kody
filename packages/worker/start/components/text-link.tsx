@@ -3,7 +3,7 @@ import type { ComponentProps } from 'react'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
 import { SiteLink } from './site-link.tsx'
 
-type TextLinkTone = 'primary' | 'muted'
+type TextLinkTone = 'primary' | 'muted' | 'prose'
 
 export type TextLinkProps = ComponentProps<typeof SiteLink> & {
 	tone?: TextLinkTone
@@ -27,6 +27,13 @@ const toneCss = {
 	muted: {
 		color: colors.textMuted,
 		fontSize: typography.fontSize.sm,
+	},
+	prose: {
+		color: colors.primaryText,
+		textDecoration: 'underline',
+		textDecorationThickness: '1.5px',
+		textUnderlineOffset: '3px',
+		'&:hover': { color: colors.text },
 	},
 } satisfies Record<TextLinkTone, object>
 

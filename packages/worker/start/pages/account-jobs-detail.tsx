@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { TextLink } from '../components/text-link.tsx'
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
@@ -219,13 +220,7 @@ export function renderAccountJobDetail(input: {
 							borderRadius: radius.md,
 						}}
 					>
-						<table
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table>
 							<thead>
 								<tr>
 									{[
@@ -330,7 +325,7 @@ export function renderAccountJobDetail(input: {
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					</div>
 				)}
 			</div>

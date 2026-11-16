@@ -8,17 +8,18 @@ const tableCss = {
 	borderCollapse: 'collapse',
 	fontSize: typography.fontSize.sm,
 	color: colors.text,
-	'& th, & td': {
+	// Zero specificity so a cell's own css always wins over these defaults.
+	':where(&) :where(th, td)': {
 		textAlign: 'start',
 		verticalAlign: 'top',
 		padding: `${spacing.xs} ${spacing.sm}`,
 		borderBottom: `1px solid ${colors.border}`,
 	},
-	'& thead th': {
+	':where(&) :where(thead th)': {
 		color: colors.textMuted,
 		fontWeight: typography.fontWeight.semibold,
 	},
-	'& caption': {
+	':where(&) :where(caption)': {
 		captionSide: 'top',
 		textAlign: 'start',
 		color: colors.textMuted,
@@ -34,5 +35,6 @@ export type TableProps = ComponentProps<'table'>
  * with a `caption`, `aria-label`, or `aria-labelledby`.
  */
 export function Table(props: TableProps) {
+	// oxlint-disable-next-line kody-custom/no-raw-table -- this is the shared Table.
 	return <table {...props} css={tableCss} />
 }

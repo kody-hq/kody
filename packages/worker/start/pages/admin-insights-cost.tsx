@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 
 import { SiteLink } from '../components/site-link.tsx'
+import { Table } from '../components/table.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import {
@@ -102,14 +103,7 @@ function renderCostVsPayTable(input: {
 	}
 	return (
 		<TableScroller>
-			<table
-				aria-label={input.ariaLabel}
-				css={{
-					width: '100%',
-					borderCollapse: 'collapse',
-					fontSize: typography.fontSize.sm,
-				}}
-			>
+			<Table aria-label={input.ariaLabel}>
 				<thead>
 					<tr>
 						<th
@@ -175,7 +169,7 @@ function renderCostVsPayTable(input: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 		</TableScroller>
 	)
 }

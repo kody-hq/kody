@@ -5,6 +5,7 @@ import type { BlogSeriesLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	BlogPostList,
 	blogBackLinkCss,
@@ -29,12 +30,13 @@ export function BlogSeriesRoute({ data }: { data: BlogSeriesLoaderData }) {
 					{data.description}
 				</p>
 				{first ? (
-					<SiteLink
+					<TextLink
+						tone="prose"
 						href={routes.blogPost.href({ slug: first.slug })}
 						css={blogInlineLinkCss}
 					>
 						Start with part 1 →
-					</SiteLink>
+					</TextLink>
 				) : null}
 			</header>
 			<div css={listCss}>

@@ -548,6 +548,7 @@ export function RecordTable(props: RecordTableProps) {
 		)
 
 		const table = (
+			// oxlint-disable-next-line kody-custom/no-raw-table -- RecordTable owns its responsive card layout, sorting, and row selection.
 			<table
 				aria-label={props.ariaLabel}
 				aria-rowcount={virtualMode ? rows.length + 1 : undefined}

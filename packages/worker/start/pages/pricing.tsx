@@ -246,6 +246,7 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 					Here&rsquo;s what you get
 				</h2>
 				<div css={limitsScrollCss}>
+					{/* oxlint-disable-next-line kody-custom/no-raw-table -- the pricing comparison has its own marketing typography and column widths. */}
 					<table css={limitsTableCss}>
 						<thead>
 							<tr>

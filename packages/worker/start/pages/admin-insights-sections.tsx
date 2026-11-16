@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { FunnelChart } from '../charts/funnel-chart.tsx'
+import { Table } from '../components/table.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import type { CSSObject } from '@emotion/react'
 import type { ReactNode } from 'react'
@@ -55,14 +56,7 @@ function renderConsumerTable(input: {
 		return <p css={{ margin: 0, color: colors.textMuted }}>{input.emptyText}</p>
 	}
 	return (
-		<table
-			aria-label={input.ariaLabel}
-			css={{
-				width: '100%',
-				borderCollapse: 'collapse',
-				fontSize: typography.fontSize.sm,
-			}}
-		>
+		<Table aria-label={input.ariaLabel}>
 			<thead>
 				<tr>
 					<th scope="col" css={{ ...tableHeadCellCss, textAlign: 'left' }}>
@@ -103,7 +97,7 @@ function renderConsumerTable(input: {
 					</tr>
 				))}
 			</tbody>
-		</table>
+		</Table>
 	)
 }
 
@@ -390,13 +384,7 @@ export function renderPackageErrorRate(rate: AdminInsightsPackageErrorRate) {
 						})
 					: null}
 			</div>
-			<table
-				css={{
-					width: '100%',
-					borderCollapse: 'collapse',
-					fontSize: typography.fontSize.sm,
-				}}
-			>
+			<Table>
 				<caption
 					css={{
 						captionSide: 'top',
@@ -472,7 +460,7 @@ export function renderPackageErrorRate(rate: AdminInsightsPackageErrorRate) {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			{rate.concentration ? (
 				<p css={{ margin: 0 }}>
 					{formatFleetPackageErrorRateConcentration(rate.concentration)}

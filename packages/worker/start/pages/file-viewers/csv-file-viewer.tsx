@@ -32,6 +32,7 @@ export function CsvPreview({ content }: { content: string }) {
 				borderRadius: 6,
 			}}
 		>
+			{/* oxlint-disable-next-line kody-custom/no-raw-table -- dense file preview with a sticky header and hover rows. */}
 			<table
 				aria-label="CSV preview"
 				css={{

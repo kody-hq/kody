@@ -287,6 +287,13 @@ const uiGallerySections: ReadonlyArray<{
 				<TextLink tone="muted" href="/privacy">
 					Privacy
 				</TextLink>
+				<p>
+					Read the{' '}
+					<TextLink tone="prose" href="/terms">
+						terms
+					</TextLink>{' '}
+					first.
+				</p>
 			</GalleryRow>
 		),
 	},
