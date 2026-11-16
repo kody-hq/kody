@@ -5,7 +5,7 @@ import {
 	isProfilePackage,
 	buildPackageAppSubdomainUrl,
 } from '@kody-internal/shared/public-urls.ts'
-import { hasProfilePackageApp } from '#app/package-app-profile-host.ts'
+import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
 

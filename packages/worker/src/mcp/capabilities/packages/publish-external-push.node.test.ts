@@ -9,6 +9,11 @@ import type * as PublishedRuntimeArtifactsModule from '#worker/package-runtime/p
 
 import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
 
+// These fixtures have no owner or package rows, so no profile package exists.
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
+}))
+
 vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
 	const { advanceEntitySourceServingCommit } =
 		await import('#worker/repo/entity-sources.ts')

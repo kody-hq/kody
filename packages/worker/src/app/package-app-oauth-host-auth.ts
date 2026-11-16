@@ -1,4 +1,4 @@
-import { hasProfilePackageApp } from '#app/package-app-profile-host.ts'
+import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { isSecureRequest } from '#app/auth-session.ts'
 import {

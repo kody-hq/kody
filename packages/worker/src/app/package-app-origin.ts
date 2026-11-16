@@ -1,4 +1,4 @@
-import { hasProfilePackageApp } from '#app/package-app-profile-host.ts'
+import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	RuntimePackageAppIdentity,
