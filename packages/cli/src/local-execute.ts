@@ -357,6 +357,17 @@ export async function runLocalExecute(
 				if (
 					call.path.length === 3 &&
 					call.path[0] === 'kody' &&
+					call.path[1] === 'lan' &&
+					call.path[2] === 'authorize'
+				) {
+					// Only the egress gate's hop (authorizeLan below) may authorize.
+					throw new Error(
+						'kody.lan.authorize is internal; fetch the address and Kody is asked for you. (invalid_request)',
+					)
+				}
+				if (
+					call.path.length === 3 &&
+					call.path[0] === 'kody' &&
 					call.path[1] === 'command' &&
 					call.path[2] === 'authorize'
 				) {
@@ -407,6 +418,23 @@ export async function runLocalExecute(
 					signal,
 				})
 			},
+			...(input.egress?.lan?.length
+				? {
+						authorizeLan: async (lan: {
+							capability: string
+							host: string
+							port: number
+						}) => {
+							await callCapabilityProxy({
+								...client,
+								path: ['kody', 'lan', 'authorize'],
+								args: [lan],
+								conversationId: input.conversationId,
+								signal: input.signal,
+							})
+						},
+					}
+				: {}),
 			...(hostFs
 				? {
 						forwardHostFs: async (body: unknown) =>

@@ -911,6 +911,7 @@ const executionContextAuditLabels: Record<string, string> = {
 		'Machine access definitions changed (on the machine)',
 	command_started: 'Command started',
 	command_finished: 'Command finished',
+	lan_used: 'Local network destination used',
 	run_cancelled: 'Run cancelled',
 	paused: 'Paused',
 	resumed: 'Resumed',

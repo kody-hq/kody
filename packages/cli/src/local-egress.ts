@@ -6,10 +6,23 @@
  */
 type LocalEgressMode = 'public' | 'public-and-lan' | 'allowlist' | 'none'
 
+/** A local network destination the machine defines by name: IP literals or CIDR ranges, plus ports. */
+export type LocalLanRule = {
+	name: string
+	hosts: Array<string>
+	ports: Array<number>
+}
+
 export type LocalEgressPolicy = {
 	mode: LocalEgressMode
 	hosts?: Array<string>
 	ports?: Array<number>
+	/**
+	 * Named destinations a request the mode refuses may still reach, once Kody
+	 * authorizes the run for that name. Matched by address, never by host name,
+	 * so a public name that resolves to a local address is still refused.
+	 */
+	lan?: Array<LocalLanRule>
 	/** Whose setting refused it, e.g. "this execution context's network setting". */
 	setting: string
 	/** How to change it; `{host}` is replaced with the blocked host. */
@@ -24,11 +37,20 @@ export const egressGateModuleName = '__kody_egress_gate.js'
 /** Bridge route the egress gate asks why an HTTPS fetch failed. */
 export const localBridgeTlsCheckPath = '/tls-check'
 
-export function egressPolicyFromGrant(egress: {
-	mode: string
-	hosts?: Array<string>
-	ports?: Array<number>
-}): LocalEgressPolicy {
+/** Bridge route the egress gate asks Kody through before using a named local network destination. */
+export const localBridgeLanAuthorizePath = '/lan-authorize'
+
+/** workerd network service that reaches local addresses; only the egress gate is bound to it. */
+export const lanNetworkServiceName = 'lan'
+
+export function egressPolicyFromGrant(
+	egress: {
+		mode: string
+		hosts?: Array<string>
+		ports?: Array<number>
+	},
+	lan: ReadonlyArray<LocalLanRule> = [],
+): LocalEgressPolicy {
 	const mode: LocalEgressMode =
 		egress.mode === 'public-and-lan' ||
 		egress.mode === 'allowlist' ||
@@ -39,6 +61,11 @@ export function egressPolicyFromGrant(egress: {
 		mode,
 		...(egress.hosts?.length ? { hosts: egress.hosts } : {}),
 		...(egress.ports?.length ? { ports: egress.ports } : {}),
+		...(lan.length
+			? {
+					lan: lan.map(({ name, hosts, ports }) => ({ name, hosts, ports })),
+				}
+			: {}),
 		setting: "this execution context's network setting",
 		hint: 'This is the server grant, not local policy. Anyone with Contribute or Manage on the context can turn the local network on with `kody context grant lan on --context <name>`, or set executionContextUpdate grant.egress to an allowlist that includes {host}.',
 	}
@@ -87,6 +114,66 @@ function hostAllowed(hosts, host) {
 	});
 }
 
+function v4Bytes(text) {
+	const match = text.match(/^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$/);
+	if (!match) return null;
+	const bytes = match.slice(1).map(Number);
+	return bytes.every((byte) => byte <= 255) ? bytes : null;
+}
+
+function v6Bytes(text) {
+	if (!text.includes(':')) return null;
+	const lastColon = text.lastIndexOf(':');
+	const v4 = v4Bytes(text.slice(lastColon + 1));
+	const halves = (v4 ? text.slice(0, lastColon + 1) + '0:0' : text).split('::');
+	if (halves.length > 2) return null;
+	const groupsOf = (part) => (part === '' ? [] : part.split(':'));
+	const head = groupsOf(halves[0]);
+	const rest = halves.length === 2 ? groupsOf(halves[1]) : [];
+	const missing = 8 - head.length - rest.length;
+	if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+	const bytes = [];
+	for (const group of [...head, ...Array(missing).fill('0'), ...rest]) {
+		if (!/^[0-9a-f]{1,4}$/i.test(group)) return null;
+		const value = parseInt(group, 16);
+		bytes.push(value >> 8, value & 255);
+	}
+	if (v4) bytes.splice(12, 4, ...v4);
+	return bytes;
+}
+
+// An address as 4 or 16 bytes plus how many leading bits count. IPv4-mapped IPv6 is IPv4.
+function addressBits(text, prefixText) {
+	const v4 = v4Bytes(text);
+	const bytes = v4 ?? v6Bytes(text);
+	if (!bytes) return null;
+	const prefix = prefixText === undefined ? bytes.length * 8 : Number(prefixText);
+	if (!Number.isInteger(prefix) || prefix < 0 || prefix > bytes.length * 8) return null;
+	const mapped = !v4 && bytes.slice(0, 10).every((byte) => byte === 0) && bytes[10] === 255 && bytes[11] === 255;
+	if (mapped && prefix >= 96) return { bytes: bytes.slice(12), prefix: prefix - 96 };
+	return { bytes, prefix };
+}
+
+function addressInRule(rule, address) {
+	const [base, prefixText, ...extra] = String(rule).split('/');
+	const range = extra.length === 0 ? addressBits(base, prefixText) : null;
+	if (!range || range.bytes.length !== address.bytes.length) return false;
+	for (let bit = 0; bit < range.prefix; bit += 8) {
+		const mask = (0xff << (8 - Math.min(8, range.prefix - bit))) & 0xff;
+		if ((range.bytes[bit >> 3] & mask) !== (address.bytes[bit >> 3] & mask)) return false;
+	}
+	return true;
+}
+
+// The named destination that covers this address and port, or one that covers only the address.
+function lanMatch(rules, host, port) {
+	const address = addressBits(host);
+	if (!address) return null;
+	const covering = rules.filter((rule) => rule.hosts.some((entry) => addressInRule(entry, address)));
+	const rule = covering.find((entry) => entry.ports.includes(port));
+	return rule ? { rule } : covering[0] ? { portMiss: covering[0] } : null;
+}
+
 function modeText(policy) {
 	switch (policy.mode) {
 		case 'none': return 'this context allows no network access (egress mode "none")';
@@ -109,14 +196,45 @@ export default {
 			{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
 		);
 		if (policy.mode === 'none') return block('');
-		if (policy.mode === 'allowlist' && !hostAllowed(policy.hosts ?? [], host)) {
-			return block(host + ' is not on the list');
-		}
-		if (policy.ports?.length && !policy.ports.includes(port)) {
-			return block('port ' + port + ' is not one of the allowed ports (' + policy.ports.join(', ') + ')');
-		}
-		if (policy.mode === 'public' && isPrivateHost(host)) {
-			return block(host + ' is a private or local network address');
+		// IPv4-mapped IPv6 (::ffff:7f00:1) is the IPv4 address it carries.
+		const literal = addressBits(host);
+		const refusal =
+			policy.mode === 'allowlist' && !hostAllowed(policy.hosts ?? [], host)
+				? host + ' is not on the list'
+				: policy.ports?.length && !policy.ports.includes(port)
+					? 'port ' + port + ' is not one of the allowed ports (' + policy.ports.join(', ') + ')'
+					: policy.mode === 'public' && isPrivateHost(literal?.bytes.length === 4 ? literal.bytes.join('.') : host)
+						? host + ' is a private or local network address'
+						: null;
+		if (refusal !== null) {
+			const lan = policy.lan?.length ? lanMatch(policy.lan, host, port) : null;
+			if (!lan?.rule) {
+				return block(refusal + (lan?.portMiss
+					? ' (this machine\\'s local network destination "' + lan.portMiss.name + '" covers that address on ' +
+						(lan.portMiss.ports.length === 1 ? 'port ' : 'ports ') + lan.portMiss.ports.join(', ') + ' only)'
+					: ''));
+			}
+			const refuse = (message) => new Response(
+				'Blocked: the request to ' + host + ':' + port + ' needs this machine\\'s local network destination "' +
+					lan.rule.name + '", and Kody refused it. ' + message,
+				{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
+			);
+			let verdict;
+			try {
+				const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
+					method: 'POST',
+					headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
+					body: JSON.stringify({ capability: lan.rule.name, host, port }),
+				});
+				verdict = await reply.json();
+			} catch (error) {
+				return refuse('Kody could not be asked: ' + (error instanceof Error ? error.message : String(error)));
+			}
+			if (verdict?.ok !== true) {
+				return refuse(typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.');
+			}
+			// Redirects go back to the run, so each hop is checked here again.
+			return await env.KODY_LAN.fetch(new Request(request, { redirect: 'manual' }));
 		}
 		try {
 			return await fetch(request);

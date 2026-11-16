@@ -960,9 +960,15 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 					!forcedUpdate &&
 					hostCommands.runningBackground() > 0,
 				hostCommands,
-				execute: (run) =>
+				execute: async (run) =>
 					runContextRun({
 						...run,
+						// Named local network destinations are for the operator's own runs only.
+						lan:
+							run.request.sharedRun === true
+								? []
+								: ((await readLocalPolicy().catch(() => undefined))
+										?.capabilities?.lan ?? []),
 						apiUrl: input.apiUrl,
 						workerTracker,
 						packageGraphCache,
@@ -1424,7 +1430,7 @@ async function runCapabilityCommand(
 				(entry) =>
 					`  lan ${entry.name}${entry.description ? `: ${entry.description}` : ''} (${entry.hosts.join(', ')} ports ${entry.ports.join(', ')})`,
 			),
-			'Kody knows these by name. Your runs use a command with kody.command.run({ capability: "<name>", args: [...] }). Local network destinations are not used by runs yet.',
+			'Kody knows these by name. Your runs use a command with kody.command.run({ capability: "<name>", args: [...] }). They reach a local network destination with a plain fetch to one of its addresses and ports.',
 		].join('\n')
 	}
 	if (action === 'list') {

@@ -182,6 +182,18 @@ before(async () => {
 				})
 				return
 			}
+			if (
+				path.join('.') === 'kody.lan.authorize' &&
+				(args[0] as { capability?: string }).capability === 'refused'
+			) {
+				send(403, {
+					error: {
+						code: 'machine_capability_not_granted',
+						message: 'You are not granted this local network destination.',
+					},
+				})
+				return
+			}
 			send(200, { result: { echoed: path.join('.'), args } })
 			return
 		}
@@ -1456,6 +1468,118 @@ test(
 				/port \d+ is not one of the allowed ports \(443\)/,
 			)
 			assert.equal(await run({ mode: 'public-and-lan' }, lanUrl), 'ok: lan ok')
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'a named local network destination lets a run reach that address and port only, after Kody authorizes it',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((request, response) => {
+			if (request.url === '/redirect') {
+				response.writeHead(302, { location: 'http://127.0.0.2:9/' }).end()
+				return
+			}
+			response.end('lan ok')
+		})
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const port = (lan.address() as AddressInfo).port
+		const code = `export default async function main({ url }) {
+	try {
+		const response = await fetch(url)
+		return 'ok: ' + (await response.text())
+	} catch (error) {
+		return String(error?.message ?? error)
+	}
+}`
+		const run = async (
+			rules: Parameters<typeof egressPolicyFromGrant>[1],
+			url: string,
+			mode = 'public',
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode }, rules),
+			})
+			assert.equal(result.isError, false)
+			return String((result.structuredContent as { result: unknown }).result)
+		}
+		const authorizations = () =>
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.lan.authorize' ? [body.args] : []
+			})
+		try {
+			const nas = { name: 'nas', hosts: ['127.0.0.0/30'], ports: [port] }
+			assert.equal(await run([nas], `http://127.0.0.1:${port}/`), 'ok: lan ok')
+			assert.deepEqual(authorizations(), [
+				[{ capability: 'nas', host: '127.0.0.1', port }],
+			])
+			assert.equal(
+				await run([nas], `http://[::ffff:127.0.0.1]:${port}/`),
+				'ok: lan ok',
+			)
+
+			proxyRequests.length = 0
+			assert.match(
+				await run([nas], `http://127.0.0.1:${port + 1}/`),
+				new RegExp(
+					`127\\.0\\.0\\.1 is a private or local network address \\(this machine's local network destination "nas" covers that address on port ${port} only\\)`,
+				),
+			)
+			assert.match(
+				await run([nas], `http://127.0.0.9:${port}/`),
+				/127\.0\.0\.9 is a private or local network address\. /,
+			)
+			// A name is never matched, even one that resolves to a covered address.
+			assert.match(
+				await run([nas], `http://localhost:${port}/`),
+				/localhost is a private or local network address/,
+			)
+			// The redirect comes back to the run, whose next hop is checked again.
+			assert.match(
+				await run(
+					[{ ...nas, hosts: ['127.0.0.1'] }],
+					`http://127.0.0.1:${port}/redirect`,
+				),
+				/127\.0\.0\.2:9 was refused/,
+			)
+			assert.match(
+				await run([nas], `http://127.0.0.1:${port}/`, 'none'),
+				/allows no network access/,
+			)
+
+			proxyRequests.length = 0
+			assert.match(
+				await run([{ ...nas, name: 'refused' }], `http://127.0.0.1:${port}/`),
+				new RegExp(
+					`^Blocked: the request to 127\\.0\\.0\\.1:${port} needs this machine's local network destination "refused", and Kody refused it\\. .*You are not granted this local network destination\\.`,
+				),
+			)
+			assert.equal(authorizations().length, 1)
+
+			proxyRequests.length = 0
+			const direct = await runLocalExecute({
+				code: `import { kody } from 'kody:runtime'
+export default async () => {
+	try { return await kody.lan.authorize({ capability: 'nas', host: '127.0.0.1', port: 1 }) } catch (error) { return error.message }
+}`,
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [nas]),
+			})
+			assert.match(
+				String((direct.structuredContent as { result: unknown }).result),
+				/kody\.lan\.authorize is internal/,
+			)
+			assert.equal(authorizations().length, 0)
 		} finally {
 			await new Promise((resolve) => lan.close(resolve))
 		}
