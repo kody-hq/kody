@@ -6,15 +6,9 @@ import { SiteLink } from './site-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useState, useRef, useEffect } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
-import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
+import { getBadgeCss } from './badge.tsx'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	shadows,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors } from '#universal/styles/tokens.ts'
 export const FORK_OUTDATED_COPY_TOOLTIP = 'Click to copy an update prompt'
 export const FORKED_COPY_TOOLTIP =
 	'Click to copy a prompt to finish adapting this fork'
@@ -164,7 +158,6 @@ export function renderForkAheadPill(input: { href: string; testId: string }) {
 }
 
 const copyPromptButtonBaseCss = {
-	...communityStatusPillBoxCss,
 	position: 'relative' as const,
 	zIndex: 1,
 	appearance: 'none' as const,
@@ -179,41 +172,43 @@ const copyPromptButtonBaseCss = {
  * `z-index` lifts the control above a listing card's stretched name-link
  * overlay so the click hits the button instead of the card.
  */
-const forkOutdatedCopyButtonCss = mergeCss(copyPromptButtonBaseCss, {
-	color: 'oklch(0.48 0.12 85)',
-	backgroundColor: 'oklch(0.88 0.12 95 / 0.92)',
-	[hoverMq]: {
-		'&:hover': {
-			backgroundColor: 'oklch(0.84 0.13 95)',
+const forkOutdatedCopyButtonCss = mergeCss(
+	getBadgeCss('warning'),
+	copyPromptButtonBaseCss,
+	{
+		[hoverMq]: {
+			'&:hover': {
+				backgroundColor:
+					'color-mix(in srgb, var(--color-warning) 28%, transparent)',
+			},
+		},
+		'&:focus-visible': {
+			outline: `2px solid ${colors.warning}`,
+			outlineOffset: '2px',
 		},
 	},
-	'&:focus-visible': {
-		outline: `2px solid oklch(0.7 0.14 90)`,
-		outlineOffset: '2px',
-	},
-})
+)
 
-const badgeCopyPromptButtonCss = mergeCss(copyPromptButtonBaseCss, {
-	color: colors.primaryText,
-	backgroundColor: `oklch(from ${colors.primary} l c h / 0.13)`,
-	[hoverMq]: {
-		'&:hover': {
-			backgroundColor: `oklch(from ${colors.primary} l c h / 0.2)`,
+const badgeCopyPromptButtonCss = mergeCss(
+	getBadgeCss('accent'),
+	copyPromptButtonBaseCss,
+	{
+		[hoverMq]: {
+			'&:hover': {
+				backgroundColor: `oklch(from ${colors.primary} l c h / 0.2)`,
+			},
+		},
+		'&:focus-visible': {
+			outline: `2px solid ${colors.primary}`,
+			outlineOffset: '2px',
 		},
 	},
-	'&:focus-visible': {
-		outline: `2px solid ${colors.primary}`,
-		outlineOffset: '2px',
-	},
-})
+)
 
-const forkAheadLinkCss = mergeCss(communityStatusPillBoxCss, {
+const forkAheadLinkCss = mergeCss(getBadgeCss('neutral'), {
 	position: 'relative' as const,
 	zIndex: 1,
 	textDecoration: 'none',
-	color: colors.textMuted,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
 	[hoverMq]: {
 		'&:hover': {
 			color: colors.text,
@@ -221,7 +216,7 @@ const forkAheadLinkCss = mergeCss(communityStatusPillBoxCss, {
 		},
 	},
 	'&:focus-visible': {
-		outline: `2px solid ${colors.border}`,
+		outline: `2px solid ${colors.primary}`,
 		outlineOffset: '2px',
 	},
 })

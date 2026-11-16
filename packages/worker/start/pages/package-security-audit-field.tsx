@@ -7,7 +7,7 @@ import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import type { AccountPackageSecurityAudit } from '#universal/loader-data.ts'
 import { packageSecurityAuditAnchor } from '#universal/package-security-audit-prompt.ts'
-import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
+import { Badge } from '../components/badge.tsx'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -80,12 +80,12 @@ export function PackageSecurityAuditField({
 				</button>
 			) : (
 				<p css={auditedRowCss}>
-					<span
+					<Badge
 						data-testid="package-security-audit-verdict"
-						css={audit.verdict === 'pass' ? passPillCss : concernsPillCss}
+						tone={audit.verdict === 'pass' ? 'accent' : 'warning'}
 					>
 						{audit.verdict === 'pass' ? 'Pass' : 'Concerns'}
-					</span>
+					</Badge>
 					<a
 						href={`#${packageSecurityAuditAnchor}`}
 						data-testid="package-security-audit-open"
@@ -260,18 +260,6 @@ const auditedRowCss: CSSObject = {
 	alignItems: 'center',
 	gap: spacing.sm,
 	minWidth: 0,
-}
-
-const passPillCss: CSSObject = {
-	...communityStatusPillBoxCss,
-	color: colors.primaryText,
-	backgroundColor: colors.primarySoft,
-}
-
-const concernsPillCss: CSSObject = {
-	...communityStatusPillBoxCss,
-	color: colors.warningText,
-	backgroundColor: 'color-mix(in srgb, var(--color-warning) 18%, transparent)',
 }
 
 const dialogBodyCss: CSSObject = {

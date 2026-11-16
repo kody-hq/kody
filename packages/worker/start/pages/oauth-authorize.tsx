@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
@@ -63,7 +64,6 @@ import {
 	detailLabelCss,
 	fieldCss,
 	fieldLabelCss,
-	getAlertCardCss,
 	insetCardCss,
 	listCss,
 	nativeDisclosureCss,
@@ -924,12 +924,12 @@ export function OAuthAuthorizeRoute({
 				/>
 			) : null}
 			{message && !clientFailure ? (
-				<p
+				<Alert
 					role={message.type === 'error' ? 'alert' : undefined}
-					css={getAlertCardCss(message.type)}
+					tone={message.type}
 				>
 					{message.text}
-				</p>
+				</Alert>
 			) : null}
 			{message?.type === 'error' && !clientFailure ? (
 				<ErrorAgentPromptButton

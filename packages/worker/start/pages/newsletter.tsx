@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -21,7 +22,6 @@ import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import {
 	cardCss,
 	descriptionCss,
-	getAlertCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -76,22 +76,22 @@ export function NewsletterRoute(props: { data: NewsletterPageData }) {
 			</header>
 
 			{data.status === 'confirmed' ? (
-				<div css={getAlertCardCss('info')} role="status">
+				<Alert tone="info" role="status">
 					<h2 css={sectionTitleCss}>You are subscribed</h2>
 					<p css={statusTextCss}>
 						Thanks for confirming. What&apos;s New in Kody will show up in your
 						inbox every other week.
 					</p>
-				</div>
+				</Alert>
 			) : data.status === 'sent' ? (
-				<div css={getAlertCardCss('info')} role="status">
+				<Alert tone="info" role="status">
 					<h2 css={sectionTitleCss}>Check your inbox</h2>
 					<p css={statusTextCss}>
 						If that address can get the newsletter, a confirmation link is on
 						its way. You are not subscribed until you open it and confirm. The
 						link works for 7 days.
 					</p>
-				</div>
+				</Alert>
 			) : (
 				<SignupForm
 					error={data.error}
@@ -183,9 +183,9 @@ function SignupForm(props: {
 			}}
 		>
 			{props.error ? (
-				<p css={getAlertCardCss('error')} role="alert" id={errorId}>
+				<Alert tone="error" role="alert" id={errorId}>
 					{newsletterErrorText(props.error)}
-				</p>
+				</Alert>
 			) : null}
 			{turnstileSiteKey ? (
 				// The human check needs JavaScript, so without it the fields
@@ -288,10 +288,10 @@ export function NewsletterConfirmRoute(props: { token: string }) {
 					</p>
 				</form>
 			) : (
-				<p css={getAlertCardCss('error')} role="alert">
+				<Alert tone="error" role="alert">
 					This confirmation link is incomplete.{' '}
 					<SiteLink href="/newsletter">Get a new link</SiteLink>.
-				</p>
+				</Alert>
 			)}
 		</section>
 	)

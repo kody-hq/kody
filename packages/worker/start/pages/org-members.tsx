@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { Field } from '../components/field.tsx'
 import {
 	fieldCss,
@@ -274,7 +275,7 @@ function OrgMembersContent({
 										</span>
 									) : (
 										<span css={rowActionsCss}>
-											<span css={quietPillCss}>{member.roleLabel}</span>
+											<Badge>{member.roleLabel}</Badge>
 										</span>
 									)}
 								</div>
@@ -506,17 +507,6 @@ const selectCss: CSSObject = {
 		minWidth: 'min(100%, 8rem)',
 		maxWidth: '100%',
 	},
-}
-
-const quietPillCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	fontSize: '0.8rem',
-	fontWeight: 600,
-	borderRadius: radius.full,
-	padding: '0.1rem 0.6rem',
-	color: colors.textMuted,
-	boxShadow: `inset 0 0 0 1px ${colors.border}`,
 }
 
 const formCss: CSSObject = {

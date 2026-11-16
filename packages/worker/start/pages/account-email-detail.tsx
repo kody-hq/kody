@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -29,7 +30,6 @@ import {
 	type DeleteState,
 	directionLabel,
 	messageDate,
-	senderBadgeCss,
 	senderClassificationLabel,
 } from './account-email-shared.ts'
 import { Input, Select } from '../components/input.tsx'
@@ -121,12 +121,11 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 						archivedAt={selectedMessage.archived_at}
 					/>
 					{senderClassificationLabel(selectedMessage.sender_classification) ? (
-						<span
+						<Badge
 							title={selectedMessage.sender_classification_reason ?? undefined}
-							css={senderBadgeCss}
 						>
 							{senderClassificationLabel(selectedMessage.sender_classification)}
-						</span>
+						</Badge>
 					) : null}
 				</div>
 				<p css={{ margin: 0, color: colors.textMuted }}>

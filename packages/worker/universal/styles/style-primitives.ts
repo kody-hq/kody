@@ -1095,21 +1095,6 @@ export const detailValueCss = {
 	whiteSpace: 'normal',
 }
 
-export function getAlertCardCss(type: 'error' | 'info' = 'info') {
-	return {
-		margin: 0,
-		padding: spacing.md,
-		borderRadius: radius.md,
-		border: `1px solid ${type === 'error' ? colors.error : colors.primary}`,
-		backgroundColor:
-			type === 'error'
-				? 'color-mix(in srgb, var(--color-danger) 8%, var(--color-surface))'
-				: colors.primarySoftest,
-		color: type === 'error' ? colors.error : colors.text,
-		fontSize: typography.fontSize.sm,
-	}
-}
-
 /**
  * Rounded plate behind uploaded or third-party logos. Always white (and
  * dark ink for `currentColor` marks) so logos that were authored for a

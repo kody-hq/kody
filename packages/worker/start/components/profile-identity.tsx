@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { pageDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { Badge } from '../components/badge.tsx'
 import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 
@@ -7,13 +9,8 @@ import { buildAuthLink } from '#client/auth-links.ts'
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
 import type { ProfileShellLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
-import { pageDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+
 import { UserAvatar } from './user-avatar.tsx'
 
 const profilePagePath = (username: string) => routes.profile.href({ username })
@@ -46,14 +43,14 @@ export function renderProfileIdentity(
 						{shell.displayName}
 					</h1>
 					{shell.isSelf && shell.visibility === 'private' ? (
-						<span css={badgeCss} data-testid="profile-private-badge">
+						<Badge tone="accent" data-testid="profile-private-badge">
 							Private
-						</span>
+						</Badge>
 					) : null}
 					{isOrg ? (
-						<span css={badgeCss} data-testid="profile-org-badge">
+						<Badge tone="accent" data-testid="profile-org-badge">
 							Organization
-						</span>
+						</Badge>
 					) : null}
 				</div>
 				<p css={usernameCss} data-testid="profile-username">
@@ -132,9 +129,9 @@ export function renderOrgIdentity(input: {
 			<div css={identityCopyCss}>
 				<div css={nameRowCss}>
 					<h1 css={displayNameCss}>{input.name}</h1>
-					<span css={badgeCss} data-testid="org-role">
+					<Badge tone="accent" data-testid="org-role">
 						{input.role}
-					</span>
+					</Badge>
 				</div>
 				<p css={usernameCss}>{input.handle}</p>
 				{input.publicPageHref ? (
@@ -230,15 +227,6 @@ const joinedCss = {
 	margin: 0,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
-} satisfies CSSObject
-
-const badgeCss = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	backgroundColor: colors.primarySoftest,
-	color: colors.primaryText,
-	fontSize: typography.fontSize.sm,
-	fontWeight: typography.fontWeight.medium,
 } satisfies CSSObject
 
 const actionsCss = {

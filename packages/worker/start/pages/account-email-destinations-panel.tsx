@@ -1,15 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { Field } from '../components/field.tsx'
 import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
-import type { CSSObject } from '@emotion/react'
+
 import type { FormEvent } from 'react'
 import type { EmailNotificationDestination } from '#universal/email-destinations.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	AccountManagementPanel,
-	verifiedPillCss,
-} from './account-management-components.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
 import { Input } from '../components/input.tsx'
 
 export type AccountEmailDestinationsPanelProps = {
@@ -81,15 +79,13 @@ export function renderAccountEmailDestinationsPanel(
 						>
 							<p css={{ margin: 0 }}>{destination.email}</p>
 							{destination.kind === 'identity' ? (
-								<span css={badgeCss}>Account email</span>
+								<Badge>Account email</Badge>
 							) : null}
-							{destination.isDefault ? (
-								<span css={badgeCss}>Default</span>
-							) : null}
+							{destination.isDefault ? <Badge>Default</Badge> : null}
 							{destination.verified ? (
-								<span css={verifiedPillCss}>Verified</span>
+								<Badge tone="accent">Verified</Badge>
 							) : (
-								<span css={pendingBadgeCss}>Unverified</span>
+								<Badge tone="warning">Unverified</Badge>
 							)}
 						</div>
 						<div
@@ -205,16 +201,4 @@ export function renderAccountEmailDestinationsPanel(
 			) : null}
 		</AccountManagementPanel>
 	)
-}
-
-const badgeCss: CSSObject = {
-	...verifiedPillCss,
-	backgroundColor: colors.primarySoftest,
-	color: colors.textMuted,
-}
-
-const pendingBadgeCss: CSSObject = {
-	...verifiedPillCss,
-	backgroundColor: colors.primarySoftest,
-	color: colors.warningText,
 }

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge, type BadgeTone } from '../components/badge.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -137,31 +138,12 @@ function describeSubscriptionStatus(status: string): {
 	}
 }
 
-function subscriptionStatusBadgeCss(tone: SubscriptionStatusTone) {
-	const accent =
-		tone === 'action'
-			? colors.error
-			: tone === 'warn'
-				? colors.primaryText
-				: tone === 'ok'
-					? colors.primary
-					: colors.textMuted
-	return {
-		display: 'inline-flex',
-		alignItems: 'center',
-		padding: `0.2rem ${spacing.sm}`,
-		borderRadius: radius.md,
-		border: `1px solid ${accent}`,
-		backgroundColor:
-			tone === 'action'
-				? 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))'
-				: colors.surface,
-		color: accent,
-		fontSize: typography.fontSize.xs,
-		fontWeight: typography.fontWeight.semibold,
-		textTransform: 'capitalize' as const,
-	}
-}
+const subscriptionStatusBadgeTone = {
+	action: 'danger',
+	warn: 'warning',
+	ok: 'accent',
+	muted: 'neutral',
+} satisfies Record<SubscriptionStatusTone, BadgeTone>
 
 export function AccountBillingPage({
 	payload,
@@ -398,9 +380,12 @@ export function AccountBillingPage({
 								{formatPlanLabel(billing.effectivePlan, 'Free')}
 							</p>
 							{statusInfo ? (
-								<span css={subscriptionStatusBadgeCss(statusInfo.tone)}>
+								<Badge
+									tone={subscriptionStatusBadgeTone[statusInfo.tone]}
+									css={{ textTransform: 'capitalize' }}
+								>
 									{statusInfo.label}
-								</span>
+								</Badge>
 							) : null}
 							<TextLink
 								tone="muted"

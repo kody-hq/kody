@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
@@ -13,7 +14,6 @@ import type {
 import {
 	cardCss,
 	descriptionCss,
-	getAlertCardCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -180,21 +180,17 @@ function ConsentCard(props: {
 					not connect an MCP host.
 				</p>
 			</section>
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="agent-claim-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="agent-claim-anti-phishing">
 				{agentClaimAntiPhishingMessage}
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"

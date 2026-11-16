@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
@@ -30,7 +31,6 @@ import {
 import {
 	AccountManagementPanel,
 	accountDisclosureCss,
-	verifiedPillCss,
 } from './account-management-components.tsx'
 import { Input, Textarea } from '../components/input.tsx'
 import { Radio } from '../components/choice-controls.tsx'
@@ -234,7 +234,9 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 				<p css={fieldDescriptionCss}>
 					Email: {email}
 					{emailVerified ? (
-						<span css={verifiedPillCss}>verified</span>
+						<Badge tone="accent" css={{ marginLeft: '0.3rem' }}>
+							verified
+						</Badge>
 					) : (
 						' (unverified)'
 					)}

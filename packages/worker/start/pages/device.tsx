@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
@@ -11,7 +12,6 @@ import {
 	cardCss,
 	descriptionCss,
 	fieldLabelCss,
-	getAlertCardCss,
 	insetCardCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
@@ -167,9 +167,9 @@ function CodeEntryCard(props: {
 	return (
 		<>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="get"
@@ -248,26 +248,22 @@ function ConsentCard(props: {
 					</details>
 				) : null}
 			</section>
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="device-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="device-anti-phishing">
 				{deviceAntiPhishingMessage}
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{orgUnavailableMessage ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{orgUnavailableMessage}
-				</p>
+				</Alert>
 			) : null}
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"
@@ -366,32 +362,28 @@ function AccountConsentCard(props: {
 				</p>
 			</section>
 			{request.differentCountry ? (
-				<p
+				<Alert
 					role="alert"
-					css={getAlertCardCss('error')}
+					tone="error"
 					data-testid="account-device-different-country"
 				>
 					That browser looks like it is in a different country from you. If you
 					are not holding it right now, deny.
-				</p>
+				</Alert>
 			) : null}
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="device-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="device-anti-phishing">
 				Only approve a browser you are holding right now. Kody never asks you to
 				approve a code someone sent you, read to you, or showed you on a
 				website.
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"

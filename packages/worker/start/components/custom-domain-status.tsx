@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from './badge.tsx'
 import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import type {
@@ -6,12 +7,7 @@ import type {
 	PackageAppCustomDomainStatus,
 	PackageAppCustomDomainView,
 } from '#universal/package-app-custom-domain-status.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const stateLabels: Record<PackageAppCustomDomainStatus['state'], string> = {
 	pending: 'Pending',
@@ -24,16 +20,16 @@ export function CustomDomainStatusBadge({
 }: {
 	status: PackageAppCustomDomainStatus
 }) {
-	const css =
+	const tone =
 		status.state === 'active'
-			? activeBadgeCss
+			? 'accent'
 			: status.state === 'needs_attention'
-				? attentionBadgeCss
-				: pendingBadgeCss
+				? 'warning'
+				: 'neutral'
 	return (
-		<span css={css} data-custom-domain-state={status.state}>
+		<Badge tone={tone} data-custom-domain-state={status.state}>
 			{stateLabels[status.state]}
-		</span>
+		</Badge>
 	)
 }
 
@@ -178,35 +174,6 @@ export function PackageCustomDomainsSection({
 			</p>
 		</section>
 	)
-}
-
-const badgeBaseCss: CSSObject = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.semibold,
-	whiteSpace: 'nowrap',
-}
-
-const pendingBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontWeight: typography.fontWeight.medium,
-}
-
-const activeBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.primarySoft,
-	color: colors.primaryText,
-}
-
-const attentionBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.primarySoftest,
-	border: `1px solid ${colors.warning}`,
-	color: colors.warningText,
 }
 
 const sectionCss: CSSObject = { display: 'grid', gap: spacing.md }
