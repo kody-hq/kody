@@ -22,6 +22,8 @@ export type PathSummary = {
 		phases?: Record<string, Percentiles>
 	}
 	errors: number
+	/** Error count per message (first 160 characters), when any sample failed. */
+	failures?: Record<string, number>
 }
 
 export type OverheadSummary = {
@@ -57,6 +59,7 @@ export function summarizePath(input: {
 	cold: PhaseSample | null
 	warm: Array<PhaseSample>
 	errors: number
+	failures?: Record<string, number>
 }): PathSummary {
 	const walls = input.warm.map((sample) => sample.wallMs)
 	const tools = input.warm
@@ -81,6 +84,9 @@ export function summarizePath(input: {
 			...(phaseNames.size ? { phases } : {}),
 		},
 		errors: input.errors,
+		...(input.failures && Object.keys(input.failures).length
+			? { failures: input.failures }
+			: {}),
 	}
 }
 

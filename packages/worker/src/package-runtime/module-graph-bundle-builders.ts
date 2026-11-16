@@ -304,10 +304,22 @@ export async function buildKodyModuleBundle(input: {
 		entryPoint,
 		files,
 	})
+	let built = false
 	const cached = await moduleBundleCache.getOrCreate({
 		cacheKey,
-		create: assembleBundle,
+		create: async () => {
+			built = true
+			return await assembleBundle()
+		},
 	})
+	console.info(
+		JSON.stringify({
+			event: 'module_bundle_cache',
+			outcome: built ? 'miss' : 'hit',
+			bundleContext: input.bundleContext ?? null,
+			moduleCount: Object.keys(cached.modules).length,
+		}),
+	)
 	return cloneRuntimeBundle(cached)
 }
 
