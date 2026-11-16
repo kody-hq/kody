@@ -20,7 +20,7 @@ export const accountExportSectionCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'org:read',
 		description:
-			'Read a paged section of the signed-in user account export. Use accountExportManifest first for section counts and warnings. Secret values are never exported.',
+			'Read a paged section of the signed-in user account export. Use accountExportManifest first for section counts, warnings, and each manifest section\'s `discovery`: the exact section, table, or kind arguments to pass here. Only "d1.<table>" manifest keys are D1 tables; every other manifest section (for example artifact_repos, kv_keys, oauth_grants) is read with its own section value. Secret values are never exported.',
 		keywords: ['account', 'export', 'chunk', 'backup', 'migration'],
 		readOnly: true,
 		idempotent: true,
@@ -31,12 +31,16 @@ export const accountExportSectionCapability = defineDomainCapability(
 				.string()
 				.min(1)
 				.optional()
-				.describe('Required when section is d1_table.'),
+				.describe(
+					'Required when section is d1_table: the table name from a "d1.<table>" manifest key, without the "d1." prefix.',
+				),
 			storage_id: z
 				.string()
 				.min(1)
 				.optional()
-				.describe('Required when section is storage_runner.'),
+				.describe(
+					'Required when section is storage_runner. List storage ids with section "durable_object_summaries" and kind "storage_runner".',
+				),
 			kind: z
 				.enum(['storage_runner', 'job_manager'])
 				.optional()
