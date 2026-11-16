@@ -6,6 +6,11 @@ import {
 	parseInboundDeliveryEffectsQueueMessage,
 } from '#worker/email/inbound-effects-queue.ts'
 import {
+	deliverWhatsNewConsentOutboxRow,
+	isWhatsNewConsentOutboxQueueBody,
+	parseWhatsNewConsentOutboxQueueMessage,
+} from '#worker/newsletter/consent-outbox.ts'
+import {
 	claimPackageEventSlot,
 	releasePackageEventSlot,
 } from '#worker/run-records/service.ts'
@@ -34,10 +39,13 @@ export async function handlePackageEventsDispatchQueue(
 	ctx: ExecutionContext,
 ) {
 	const inboundEffects: Array<Message<unknown>> = []
+	const consentOutbox: Array<Message<unknown>> = []
 	const packageEvents: Array<Message<unknown>> = []
 	for (const queueMessage of batch.messages) {
 		if (isInboundDeliveryEffectsQueueBody(queueMessage.body)) {
 			inboundEffects.push(queueMessage)
+		} else if (isWhatsNewConsentOutboxQueueBody(queueMessage.body)) {
+			consentOutbox.push(queueMessage)
 		} else {
 			packageEvents.push(queueMessage)
 		}
@@ -56,8 +64,45 @@ export async function handlePackageEventsDispatchQueue(
 					),
 			),
 		),
+		handleWhatsNewConsentOutboxQueueMessages(consentOutbox, env, ctx),
 		handlePackageEventsQueueMessages(packageEvents, env, ctx),
 	])
+}
+
+// One at a time and in order: two changes for one recipient must reach the
+// subscriber in the order they happened.
+async function handleWhatsNewConsentOutboxQueueMessages(
+	messages: Array<Message<unknown>>,
+	env: Env,
+	ctx: ExecutionContext,
+) {
+	for (const queueMessage of messages) {
+		const message = parseWhatsNewConsentOutboxQueueMessage(queueMessage.body)
+		if (!message) {
+			console.error('whats-new-consent-outbox-message-invalid', {
+				queueMessageId: queueMessage.id,
+			})
+			queueMessage.ack()
+			continue
+		}
+		try {
+			await deliverWhatsNewConsentOutboxRow({
+				env,
+				outboxId: message.outboxId,
+				waitUntil: (promise) => ctx.waitUntil(promise),
+			})
+			queueMessage.ack()
+		} catch (error) {
+			console.error('whats-new-consent-outbox-queue-processing-failed', {
+				queueMessageId: queueMessage.id,
+				outboxId: message.outboxId,
+				error,
+			})
+			queueMessage.retry({
+				delaySeconds: packageEventsDispatchRetryDelaySeconds,
+			})
+		}
+	}
 }
 
 async function handleInboundDeliveryEffectsQueueMessage(

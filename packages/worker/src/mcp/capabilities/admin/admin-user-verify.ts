@@ -1,3 +1,4 @@
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 import { z } from 'zod'
 import {
 	AdminEmailVerificationError,
@@ -84,6 +85,10 @@ export const adminUserVerifyCapability = defineDomainCapability(
 								ctx.env.APP_DB,
 								target,
 							)
+							await recordWhatsNewVerifiedAccount({
+								env: ctx.env,
+								stableUserId: user.stableUserId,
+							})
 							return { user, verifyUrl: null, expiresAt: null }
 						}
 						const minted = await mintAdminEmailVerificationUrl({

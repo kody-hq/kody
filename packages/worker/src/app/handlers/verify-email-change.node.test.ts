@@ -33,6 +33,10 @@ async function flushDeferredWork() {
 	await Promise.all(deferredWork.splice(0))
 }
 
+vi.mock('#worker/newsletter/consent-outbox.ts', () => ({
+	recordWhatsNewVerifiedAccount: vi.fn(async () => {}),
+}))
+
 vi.mock('#app/email/cloudflare-email.ts', () => ({
 	sendCloudflareEmail: (
 		...args: Parameters<typeof CloudflareEmail.sendCloudflareEmail>
@@ -260,7 +264,7 @@ test('a stalled security notice send does not hold up the success response', asy
 	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
 		email: newEmail,
 	})
-	expect(deferredWork).toHaveLength(1)
+	expect(deferredWork).toHaveLength(2)
 	deferredWork.splice(0)
 })
 

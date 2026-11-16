@@ -10,6 +10,7 @@ import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.t
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import { normalizeAddrSpec } from '#worker/email/address.ts'
+import { recordWhatsNewConsentChange } from '#worker/newsletter/consent-outbox.ts'
 import { newsletterSignupState } from '#worker/newsletter/signup-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
@@ -257,7 +258,9 @@ export type NewsletterConfirmResult =
  * address to the newsletter list. Tokens are single use.
  */
 export async function confirmNewsletterSignup(input: {
-	env: Pick<SignupEnv, 'APP_DB'> & Parameters<typeof auditDatabaseFromEnv>[0]
+	env: Pick<SignupEnv, 'APP_DB'> &
+		Parameters<typeof auditDatabaseFromEnv>[0] &
+		Parameters<typeof recordWhatsNewConsentChange>[0]['env']
 	request: Request
 	token: string | null
 	now?: Date
@@ -273,10 +276,10 @@ export async function confirmNewsletterSignup(input: {
 					`UPDATE newsletter_signups
 					 SET status = 'confirmed', source = 'newsletter_page', confirmed_at = ?, updated_at = ?, token_hash = NULL, token_expires_at = NULL
 					 WHERE token_hash = ? AND token_expires_at > ? AND status IN ${confirmGuard}
-					 RETURNING email`,
+					 RETURNING email, stable_id`,
 				)
 				.bind(nowIso, nowIso, await hashToken(token), now.getTime())
-				.first<{ email: string }>()
+				.first<{ email: string; stable_id: string }>()
 		: null
 	if (!row) {
 		void logAuditEvent({
@@ -292,13 +295,23 @@ export async function confirmNewsletterSignup(input: {
 	}
 	// An address that already has a verified account keeps its consent on the
 	// account, which is what account settings and exports read.
-	await db
+	const account = await db
 		.prepare(
 			`UPDATE users SET whats_new_email_opt_in = 1, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = 'email_link'
-			 WHERE email = ? AND deleted_at IS NULL AND deleting_at IS NULL AND email_verified_at IS NOT NULL`,
+			 WHERE email = ? AND deleted_at IS NULL AND deleting_at IS NULL AND email_verified_at IS NOT NULL
+			 RETURNING stable_user_id`,
 		)
 		.bind(nowIso, row.email)
-		.run()
+		.first<{ stable_user_id: string }>()
+	// The page already confirmed; telling subscribers never fails the confirm.
+	await recordWhatsNewConsentChange({
+		env: input.env,
+		stableUserId: account?.stable_user_id ?? row.stable_id,
+		optedIn: true,
+		source: 'newsletter_page',
+		occurredAt: nowIso,
+		now,
+	})
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(input.env),
 		category: 'account',

@@ -22,6 +22,10 @@ vi.mock('cloudflare:workers', async (importOriginal) => {
 	}
 })
 
+vi.mock('#worker/newsletter/consent-outbox.ts', () => ({
+	recordWhatsNewVerifiedAccount: vi.fn(async () => {}),
+}))
+
 vi.mock('#app/email-verification.ts', () => ({
 	verifyEmailToken: vi.fn(),
 }))
