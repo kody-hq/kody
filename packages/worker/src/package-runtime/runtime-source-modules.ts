@@ -7,7 +7,6 @@ import {
 	packageBoundRuntimeExportNames,
 } from './package-bound-runtime-exports.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
-import { parse as lexModuleImports } from 'es-module-lexer/js'
 import {
 	decodePathKey,
 	dirname,
@@ -1295,16 +1294,18 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
 }
 
 /**
- * Every relative import in `modules`, resolved. One lex per module, shared
- * by the three collectors below: dependency artifacts are megabytes each.
- * Worker modules are already plain JavaScript, so a lexer lists their imports.
- * A Babel AST of a multi-megabyte bundle costs tens of megabytes, and this
- * runs in the shared API isolate on every execute.
+ * Resolved paths of the runtime modules that `modules` import. Only
+ * specifiers naming a runtime module matter, so this checks each quoted path
+ * that mentions `runtime` instead of parsing whole modules: dependency
+ * artifacts are megabytes each, and this runs in the shared API isolate on
+ * every execute. A parser's AST or a lexer's buffer for such a bundle costs
+ * tens of megabytes. A match inside a comment or a nested string only adds an
+ * unused runtime module.
  */
-function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
+function collectResolvedRuntimeImportPaths(modules: WorkerLoaderModules) {
 	const importedPaths: Array<string> = []
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const specifier of lexLiteralImportSpecifiers(source)) {
+		for (const specifier of findRuntimeImportSpecifiers(source)) {
 			const resolvedPath = resolveRelativeModulePath(modulePath, specifier)
 			if (resolvedPath) importedPaths.push(resolvedPath)
 		}
@@ -1312,13 +1313,69 @@ function collectResolvedLiteralImportPaths(modules: WorkerLoaderModules) {
 	return importedPaths
 }
 
-function lexLiteralImportSpecifiers(source: string): Array<string> {
-	if (!source.includes('import') && !source.includes('export')) return []
-	try {
-		const [imports] = lexModuleImports(source)
-		return imports.flatMap((entry) => (entry.n == null ? [] : [entry.n]))
-	} catch {
-		return []
+const runtimeSpecifierNeedle = 'runtime'
+const specifierCharacterPattern = /[\w./@+~-]/
+const identifierCharacterPattern = /[\w$]/
+const whitespacePattern = /\s/
+
+function findRuntimeImportSpecifiers(source: string): Array<string> {
+	const specifiers: Array<string> = []
+	let index = source.indexOf(runtimeSpecifierNeedle)
+	while (index !== -1) {
+		let start = index - 1
+		while (start >= 0 && specifierCharacterPattern.test(source[start]!)) {
+			start--
+		}
+		let end = index + runtimeSpecifierNeedle.length
+		while (
+			end < source.length &&
+			specifierCharacterPattern.test(source[end]!)
+		) {
+			end++
+		}
+		const quote = source[start]
+		if (
+			(quote === '"' || quote === "'" || quote === '`') &&
+			source[end] === quote &&
+			followsImportKeyword(source, start)
+		) {
+			specifiers.push(source.slice(start + 1, end))
+		}
+		index = source.indexOf(runtimeSpecifierNeedle, end)
+	}
+	return specifiers
+}
+
+/**
+ * True when the string literal opening at `quoteIndex` is an import source:
+ * `from "x"`, `import "x"`, or `import("x")`.
+ */
+function followsImportKeyword(source: string, quoteIndex: number) {
+	let index = skipTriviaBackward(source, quoteIndex - 1)
+	let openParens = 0
+	while (index >= 0 && source[index] === '(') {
+		openParens++
+		index = skipTriviaBackward(source, index - 1)
+	}
+	const keywords = openParens > 0 ? ['import'] : ['from', 'import']
+	return keywords.some((keyword) => {
+		const keywordStart = index + 1 - keyword.length
+		return (
+			keywordStart >= 0 &&
+			source.startsWith(keyword, keywordStart) &&
+			!identifierCharacterPattern.test(source[keywordStart - 1] ?? '')
+		)
+	})
+}
+
+/** Steps back over whitespace and block comments. */
+function skipTriviaBackward(source: string, index: number) {
+	for (;;) {
+		while (index >= 0 && whitespacePattern.test(source[index]!)) index--
+		if (source[index] !== '/' || source[index - 1] !== '*') return index
+		const commentStart = source.lastIndexOf('/*', index - 2)
+		if (commentStart === -1) return index
+		index = commentStart - 1
 	}
 }
 
@@ -1396,7 +1453,7 @@ export async function refreshKodyRuntimeModules(
 ): Promise<WorkerLoaderModules> {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
-	const importedPaths = collectResolvedLiteralImportPaths(modules)
+	const importedPaths = collectResolvedRuntimeImportPaths(modules)
 	const runtimePaths = new Set(
 		collectReferencedRuntimeModulePaths(modules, importedPaths, options),
 	)
