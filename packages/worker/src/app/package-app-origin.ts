@@ -875,11 +875,16 @@ async function handleAppOriginPackageAppPath(input: {
 		})
 	}
 
-	const customHandoff = await buildCustomHostnameHandoffTarget({
-		env,
-		packagePath,
-		url,
-	})
+	// A visitor who started on the app's own host returns there, even when the
+	// app also has a custom hostname: each host holds its own session.
+	const fromAppHost = url.searchParams.has(packageAppHostEntryQueryParam)
+	const customHandoff = fromAppHost
+		? null
+		: await buildCustomHostnameHandoffTarget({
+				env,
+				packagePath,
+				url,
+			})
 	// Org-level custom hostnames serve only session-gated apps, so an
 	// internet-visible app keeps its app-level hostname or the subdomain.
 	const usableCustomHandoff =

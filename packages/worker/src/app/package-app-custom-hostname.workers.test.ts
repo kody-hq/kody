@@ -252,6 +252,17 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	expect(new URL(ownerResponse.headers.get('Location') ?? '').origin).toBe(
 		customOrigin,
 	)
+
+	// A visitor who started on the app's own host returns there: the custom
+	// hostname would hold the session and leave the app host signed out.
+	const appHostResponse = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo/open?__kody_app_host=1`,
+		{ headers: { Cookie: sessionCookie } },
+	)
+	expect(appHostResponse.status).toBe(302)
+	expect(new URL(appHostResponse.headers.get('Location') ?? '').origin).toBe(
+		`https://demo--${ownerUsername}.packages.isolated.test`,
+	)
 })
 
 test('a verified app custom hostname serves at / behind the same host-only handoff', async () => {
