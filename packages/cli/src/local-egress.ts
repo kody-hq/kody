@@ -255,7 +255,7 @@ export default {
 					}
 				} catch {}
 			}
-			if (policy.mode === 'public' && /internal error/i.test(message)) {
+			if (refusal === null && policy.mode === 'public' && /internal error/i.test(message)) {
 				return block(host + ' resolves to a private or local network address (or could not be reached)');
 			}
 			throw error;

@@ -1522,10 +1522,12 @@ test(
 			assert.deepEqual(authorizations(), [
 				[{ capability: 'nas', host: '127.0.0.1', port }],
 			])
-			assert.equal(
-				await run([nas], `http://[::ffff:127.0.0.1]:${port}/`),
-				'ok: lan ok',
-			)
+			// An IPv4-mapped address is matched as the IPv4 address it carries.
+			// Windows does not connect a mapped address to an IPv4 listener.
+			const mapped = await run([nas], `http://[::ffff:127.0.0.1]:${port}/`)
+			if (process.platform === 'win32') assert.doesNotMatch(mapped, /^Blocked/)
+			else assert.equal(mapped, 'ok: lan ok')
+			assert.equal(authorizations().length, 2)
 
 			proxyRequests.length = 0
 			assert.match(
