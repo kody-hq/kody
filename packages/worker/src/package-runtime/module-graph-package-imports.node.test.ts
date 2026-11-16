@@ -953,13 +953,11 @@ export default () => callable()`,
 }
 
 test('ad hoc execute attaches published artifact modules unchanged and bundles only the caller code', async () => {
-	mockModule.createWorker.mockImplementation(
-		async (input: { files: Record<string, string>; entryPoint: string }) => ({
-			mainModule: 'bundle.js',
-			modules: { 'bundle.js': 'export default () => "caller"' },
-			dependencies: [],
-		}),
-	)
+	mockModule.createWorker.mockImplementation(async () => ({
+		mainModule: 'bundle.js',
+		modules: { 'bundle.js': 'export default () => "caller"' },
+		dependencies: [],
+	}))
 	await setUpCallableArtifact()
 
 	const bundle = await buildAdHoc()
