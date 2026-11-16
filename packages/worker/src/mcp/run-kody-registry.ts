@@ -1,3 +1,4 @@
+import { executeModuleEntryFile } from '@kody-internal/shared/execute-module.ts'
 import {
 	createPackageSecretRefKey,
 	issuePackageSecretRef,
@@ -272,7 +273,7 @@ export type PackageContextOptions = {
 } | null
 
 export async function createAdHocExecuteSourceFiles(code: string) {
-	const sourceFiles: Record<string, string> = { 'entry.ts': code }
+	const sourceFiles: Record<string, string> = { [executeModuleEntryFile]: code }
 	// Most execute modules have no imports. Avoid parsing those entirely so the
 	// existing one-file fast path stays unchanged.
 	if (!code.includes('import') && !code.includes(' from ')) return sourceFiles

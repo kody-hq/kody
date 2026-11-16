@@ -1,3 +1,4 @@
+import { executeModuleTarget } from '@kody-internal/shared/execute-module.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import { normalizePackageWorkspacePath } from '#worker/package-registry/manifest.ts'
 import {
@@ -146,6 +147,7 @@ async function createWorkerBundle(input: {
 	return await createWorker({
 		files: input.files,
 		entryPoint: input.entryPoint,
+		target: executeModuleTarget,
 		...createPackageAppJsxBundleOptions(snapshotFiles),
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			kodyRuntimeExternalsPlugin,
