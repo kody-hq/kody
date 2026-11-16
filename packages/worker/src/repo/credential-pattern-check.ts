@@ -1,6 +1,10 @@
+import { findFetchBodiesMissingSecretResolution } from '#worker/credentials/fetch-body-secret-resolution.ts'
 import {
+	adoptScannableModulePlan,
+	planScannableModules,
 	ScannableModuleAstLimitError,
 	scannableModuleIndex,
+	type ScannableModulePlan,
 	shareModulePasses,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
@@ -15,12 +19,18 @@ import {
 	legacyCredentialPatternFromMessage,
 } from '#worker/package-codemods/codemods/0010-detect-legacy-credential-patterns.ts'
 import {
+	collectCredentialStampPasses,
+	collectServerRuntimeModulePaths,
+	type CredentialStampPasses,
 	credentialStampConversionFixGuidance,
 	mergeCredentialStampIntoManifestFiles,
+	mergeCredentialStampPasses,
+	mergeLegacyCredentialFindings,
 	omitOversizedCredentialStampModules,
-	scanCredentialStamp,
+	sealCredentialStamp,
 } from '#worker/credentials/credential-stamp.ts'
 import {
+	mergePackageCredentialScans,
 	scanPackageCredentials,
 	type CredentialReference,
 	type PackageCredentialScan,
@@ -35,6 +45,7 @@ import {
 	secretMountsKeptCompatNote,
 } from '#worker/package-runtime/secret-mount-compat.ts'
 import { credentialScanSizeLimitMessage } from './isolated-runner-limit-message.ts'
+import type { PackageCodemodFinding } from '#worker/package-codemods/types.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
 
 const credentialPatternCheckLabel = `codemod ${detectLegacyCredentialPatternsCodemodId}`
@@ -252,7 +263,7 @@ export type CredentialPatternCheckResult = {
 	stampKeys: Array<string>
 	/** Absent only from an isolated scan that hit its runner limit. */
 	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
-	/** Set by the isolated scan, which also runs the fetch-body scan. */
+	/** Fetch bodies the gateway would still scan. Absent like the hits above. */
 	fetchBodyHits?: Array<{ path: string; line: number }>
 }
 
@@ -300,6 +311,203 @@ async function credentialScanSizeLimitFailure(
 }
 
 /**
+ * The modules one part of a credential scan reads: the walk's modules, plus
+ * server-reachable modules the walk does not list (stamp view only).
+ */
+type CredentialTreeViewPlan = {
+	modulePaths: Array<string>
+	serverPaths: Array<string>
+	/** Disjoint parts in sorted module order; never empty. */
+	chunks: Array<ScannableModulePlan['visit']>
+}
+
+/**
+ * How one tree is scanned. `stamp` is the tree without oversized modules,
+ * which the stamp seals; `full` is set only when some were left out, for the
+ * findings that cover every module.
+ */
+export type CredentialTreeScanPlan =
+	| { sizeLimitMessage: string }
+	| { stamp: CredentialTreeViewPlan; full: CredentialTreeViewPlan | null }
+
+export type CredentialTreeChunkRequest = {
+	view: 'stamp' | 'full'
+	modulePaths: Array<string>
+	serverPaths: Array<string>
+	visit: ScannableModulePlan['visit']
+	/** Also list the fetch bodies the gateway would still scan. */
+	fetchBodies: boolean
+	/** A package.json to scan in place of the tree's own. */
+	manifest?: string
+}
+
+export type CredentialTreeChunk = {
+	/** `stamp` view. */
+	stamp: CredentialStampPasses | null
+	/** `full` view. */
+	full: {
+		inventory: PackageCredentialScan
+		legacyFindings: Array<PackageCodemodFinding>
+	} | null
+	fetchBodyHits: Array<{ path: string; line: number }>
+}
+
+/**
+ * Where the module walks of a credential check run. The check plans the tree
+ * once, then asks for each chunk of modules; the answers merge into the scan
+ * of the whole tree. In process there is one chunk; publish checks of larger
+ * trees give each chunk its own isolate so no walk nears the CPU limit.
+ */
+export type CredentialTreeScanner = {
+	plan(): Promise<CredentialTreeScanPlan>
+	/** Results in `requests` order. */
+	chunks(
+		requests: ReadonlyArray<CredentialTreeChunkRequest>,
+	): Promise<Array<CredentialTreeChunk>>
+}
+
+/** A rough node count for a module the index did not parse. */
+const sourceCharactersPerAstNode = 4
+
+async function planCredentialTreeView(
+	files: Record<string, string>,
+	serverPaths: ReadonlyArray<string>,
+	maxChunkAstNodes: number,
+): Promise<CredentialTreeViewPlan> {
+	const plan = await planScannableModules(files)
+	const listed = new Set(plan.modulePaths)
+	const units = [
+		...plan.visit,
+		...serverPaths
+			.filter((path) => !listed.has(path) && files[path] != null)
+			.map((path) => ({
+				path,
+				astNodes: Math.ceil(files[path]!.length / sourceCharactersPerAstNode),
+				constants: [],
+			})),
+	].sort((left, right) =>
+		left.path < right.path ? -1 : left.path > right.path ? 1 : 0,
+	)
+	const chunks: Array<ScannableModulePlan['visit']> = [[]]
+	let chunkAstNodes = 0
+	for (const unit of units) {
+		const chunk = chunks.at(-1)!
+		if (chunk.length > 0 && chunkAstNodes + unit.astNodes > maxChunkAstNodes) {
+			chunks.push([unit])
+			chunkAstNodes = unit.astNodes
+		} else {
+			chunk.push(unit)
+			chunkAstNodes += unit.astNodes
+		}
+	}
+	return {
+		modulePaths: plan.modulePaths,
+		serverPaths: [...serverPaths],
+		chunks,
+	}
+}
+
+/**
+ * Plan the credential scan of `files`: refuse an oversized tree, else split
+ * its modules into chunks of at most `maxChunkAstNodes` syntax nodes (one
+ * module larger than that is a chunk of its own).
+ */
+export async function planCredentialTreeScan(
+	files: Record<string, string>,
+	maxChunkAstNodes = Number.POSITIVE_INFINITY,
+): Promise<CredentialTreeScanPlan> {
+	const sizeLimitMessage = await credentialScanSizeLimitFailure(files)
+	if (sizeLimitMessage) return { sizeLimitMessage }
+	const stampFiles = omitOversizedCredentialStampModules(files)
+	return {
+		stamp: await planCredentialTreeView(
+			stampFiles,
+			[...(await collectServerRuntimeModulePaths(stampFiles))].sort(),
+			maxChunkAstNodes,
+		),
+		// The stamp scan left oversized modules out, so the findings that
+		// cover every module need their own walk of the full tree.
+		full:
+			stampFiles === files
+				? null
+				: await planCredentialTreeView(files, [], maxChunkAstNodes),
+	}
+}
+
+/** Walk one chunk of a planned credential scan of `files`. */
+export async function scanCredentialTreeChunk(
+	files: Record<string, string>,
+	request: CredentialTreeChunkRequest,
+): Promise<CredentialTreeChunk> {
+	const tree =
+		request.manifest == null
+			? files
+			: { ...files, 'package.json': request.manifest }
+	const viewFiles =
+		request.view === 'stamp' ? omitOversizedCredentialStampModules(tree) : tree
+	adoptScannableModulePlan(viewFiles, {
+		modulePaths: request.modulePaths,
+		visit: request.visit,
+	})
+	const fetchBodyHits: CredentialTreeChunk['fetchBodyHits'] = []
+	if (request.fetchBodies) {
+		const listed = new Set(request.modulePaths)
+		for (const { path } of request.visit) {
+			const source = viewFiles[path]
+			if (!listed.has(path) || typeof source !== 'string') continue
+			for (const hit of findFetchBodiesMissingSecretResolution(source)) {
+				fetchBodyHits.push({ path, line: hit.line })
+			}
+		}
+	}
+	if (request.view === 'stamp') {
+		return {
+			stamp: await collectCredentialStampPasses(
+				viewFiles,
+				new Set(request.serverPaths),
+			),
+			full: null,
+			fetchBodyHits,
+		}
+	}
+	const [inventory, legacyFindings] = await shareModulePasses(viewFiles, [
+		() =>
+			scanPackageCredentials({
+				files: viewFiles,
+				slots: undefined,
+				sites: true,
+			}),
+		() =>
+			detectLegacyCredentialPatternsCodemod.detect(viewFiles, {
+				packageName: readPackageName(viewFiles),
+			}),
+	])
+	return { stamp: null, full: { inventory, legacyFindings }, fetchBodyHits }
+}
+
+function inProcessCredentialTreeScanner(
+	files: Record<string, string>,
+): CredentialTreeScanner {
+	return {
+		plan: () => planCredentialTreeScan(files),
+		async chunks(requests) {
+			const results: Array<CredentialTreeChunk> = []
+			for (const request of requests) {
+				results.push(await scanCredentialTreeChunk(files, request))
+			}
+			return results
+		},
+	}
+}
+
+function requireChunkPart<Part>(part: Part | null): Part {
+	if (part == null) {
+		throw new Error('Credential scan chunk did not answer the view asked for.')
+	}
+	return part
+}
+
+/**
  * Credential stamp publish gate: fail closed on non-literal / unstampable
  * credential patterns and on eval / new Function / non-literal import() in
  * server-runtime entry graphs. Auto-writes missing `kody.credentials` keys
@@ -307,38 +515,81 @@ async function credentialScanSizeLimitFailure(
  */
 export async function buildCredentialPatternCheck(
 	sourceFiles: Record<string, string>,
-	options: { secretProviders?: ResolvedSecretProviderSlots } = {},
+	options: {
+		secretProviders?: ResolvedSecretProviderSlots
+		/** Defaults to walking every module in this process. */
+		scanner?: CredentialTreeScanner
+	} = {},
 ): Promise<CredentialPatternCheckResult> {
-	const sizeLimitMessage = await credentialScanSizeLimitFailure(sourceFiles)
-	if (sizeLimitMessage) {
+	const scanner = options.scanner ?? inProcessCredentialTreeScanner(sourceFiles)
+	const plan = await scanner.plan()
+	if ('sizeLimitMessage' in plan) {
 		return {
 			kind: 'credentials',
 			ok: false,
-			message: sizeLimitMessage,
+			message: plan.sizeLimitMessage,
 			sourceFiles,
 			stampKeys: [],
 		}
 	}
-	const scanTree = async (files: Record<string, string>) => {
-		const stamp = await scanCredentialStamp(files, options)
-		// The stamp scan already walked every module for these, unless it left
-		// oversized modules out. Then one more shared walk covers the full tree.
-		const [inventory, legacyFindings] =
-			omitOversizedCredentialStampModules(files) === files
-				? [stamp.scan, stamp.legacyFindings]
-				: await shareModulePasses(files, [
-						() =>
-							scanPackageCredentials({ files, slots: undefined, sites: true }),
-						() =>
-							detectLegacyCredentialPatternsCodemod.detect(files, {
-								packageName: readPackageName(files),
-							}),
-					])
+	const scanView = (
+		view: CredentialTreeChunkRequest['view'],
+		viewPlan: CredentialTreeViewPlan,
+		manifest: string | undefined,
+	) =>
+		scanner.chunks(
+			viewPlan.chunks.map((visit) => ({
+				view,
+				modulePaths: viewPlan.modulePaths,
+				serverPaths: viewPlan.serverPaths,
+				visit,
+				fetchBodies: view === 'full' || plan.full == null,
+				...(manifest == null ? {} : { manifest }),
+			})),
+		)
+	/** `manifest` is set when `files` differs from the planned tree by it. */
+	const scanTree = async (files: Record<string, string>, manifest?: string) => {
+		const stampChunks = await scanView('stamp', plan.stamp, manifest)
+		const stamp = sealCredentialStamp(
+			files['package.json'],
+			mergeCredentialStampPasses(
+				stampChunks.map((chunk) => requireChunkPart(chunk.stamp)),
+			),
+			options.secretProviders
+				? { secretProviders: options.secretProviders }
+				: {},
+		)
+		// The stamp walk already covers every module for these, unless it left
+		// oversized modules out. Then the full view's walk covers the tree.
+		const fullChunks = plan.full
+			? await scanView('full', plan.full, manifest)
+			: null
+		const fullParts = fullChunks?.map((chunk) => requireChunkPart(chunk.full))
+		const inventory = fullParts
+			? mergePackageCredentialScans(fullParts.map((part) => part.inventory))
+			: stamp.scan
+		const legacyFindings = fullParts
+			? mergeLegacyCredentialFindings(
+					fullParts.map((part) => part.legacyFindings),
+				)
+			: stamp.legacyFindings
+		const moduleOrder = new Map(
+			(plan.full ?? plan.stamp).modulePaths.map((path, index) => [path, index]),
+		)
 		return {
 			stamp,
 			legacyFindings,
 			typeHintLines: credentialTypeHintLines(files, inventory),
 			requestPlacementHits: secretPlaceholderRequestPlacementsOf(inventory),
+			// Chunks answer in sorted module order; the notice lists modules
+			// in walk order. The sort is stable, so lines keep their order.
+			fetchBodyHits: (fullChunks ?? stampChunks)
+				.flatMap((chunk) => chunk.fetchBodyHits)
+				.sort(
+					(left, right) =>
+						(moduleOrder.get(left.path) ?? 0) -
+						(moduleOrder.get(right.path) ?? 0),
+				),
 		}
 	}
 	const preliminary = await scanTree(sourceFiles)
@@ -348,8 +599,16 @@ export async function buildCredentialPatternCheck(
 	)
 	// Merge only rewrites package.json when it adds missing stamp keys, so
 	// the first scan stands whenever the file set is unchanged.
-	const { stamp, legacyFindings, typeHintLines, requestPlacementHits } =
-		merged.addedKeys.length === 0 ? preliminary : await scanTree(merged.files)
+	const {
+		stamp,
+		legacyFindings,
+		typeHintLines,
+		requestPlacementHits,
+		fetchBodyHits,
+	} =
+		merged.addedKeys.length === 0
+			? preliminary
+			: await scanTree(merged.files, merged.files['package.json'])
 	const patternsByPath = new Map<string, Array<string>>()
 	for (const finding of legacyFindings) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
@@ -389,6 +648,7 @@ export async function buildCredentialPatternCheck(
 			sourceFiles: merged.files,
 			stampKeys: stamp.keys,
 			requestPlacementHits,
+			fetchBodyHits,
 		}
 	}
 
@@ -413,6 +673,7 @@ export async function buildCredentialPatternCheck(
 			sourceFiles: merged.files,
 			stampKeys: stamp.keys,
 			requestPlacementHits,
+			fetchBodyHits,
 		}
 	}
 
@@ -450,6 +711,7 @@ export async function buildCredentialPatternCheck(
 		sourceFiles: merged.files,
 		stampKeys: stamp.keys,
 		requestPlacementHits,
+		fetchBodyHits,
 	}
 }
 

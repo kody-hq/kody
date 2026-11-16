@@ -859,6 +859,29 @@ type ScannableModuleIndex = {
 	readConstants: (path: string) => ReadonlyMap<string, string>
 	/** Syntax nodes across every module that parsed: what one walk costs. */
 	astNodes: number
+	/** Syntax nodes per module, in `modulePaths` order. */
+	moduleAstNodes: ReadonlyArray<{ path: string; astNodes: number }>
+	/**
+	 * Set by {@link adoptScannableModulePlan}: the only modules a walk visits.
+	 * Unset, a walk visits every module.
+	 */
+	visitPaths?: ReadonlySet<string>
+}
+
+/**
+ * What a walk of one file map needs, as plain data, so the modules can be
+ * split across isolates: each one adopts the plan for the modules it visits
+ * and never parses the rest of the tree to rebuild the index.
+ */
+export type ScannableModulePlan = {
+	/** Every scannable module, in {@link listScannableModulePaths} order. */
+	modulePaths: Array<string>
+	/** The modules this walk visits, with their resolved constants. */
+	visit: Array<{
+		path: string
+		astNodes: number
+		constants: Array<[string, string]>
+	}>
 }
 
 /**
@@ -961,9 +984,73 @@ export async function scannableModuleIndex(
 		modulePaths,
 		readConstants: createModuleConstantsReader(summaries),
 		astNodes,
+		moduleAstNodes,
 	}
 	scannableModuleIndexes.set(files, index)
 	return index
+}
+
+/** The plan for a walk that visits every scannable module of `files`. */
+export async function planScannableModules(
+	files: Record<string, string>,
+	options: { maxAstNodes?: number } = {},
+): Promise<ScannableModulePlan> {
+	const index = await scannableModuleIndex(files, options)
+	return {
+		modulePaths: [...index.modulePaths],
+		visit: index.moduleAstNodes.map(({ path, astNodes }) => ({
+			path,
+			astNodes,
+			constants: [...index.readConstants(path)],
+		})),
+	}
+}
+
+/**
+ * Make walks of `files` follow `plan`: they visit only `plan.visit`, with the
+ * constants the plan resolved over the whole tree. `files` must hold the same
+ * modules the plan was made from.
+ */
+export function adoptScannableModulePlan(
+	files: Record<string, string>,
+	plan: ScannableModulePlan,
+) {
+	const constants = new Map(
+		plan.visit.map((module) => [module.path, new Map(module.constants)]),
+	)
+	scannableModuleIndexes.set(files, {
+		sources: new Map(Object.entries(files)),
+		modulePaths: plan.modulePaths,
+		readConstants: (path) => constants.get(path) ?? new Map(),
+		astNodes: plan.visit.reduce((sum, module) => sum + module.astNodes, 0),
+		moduleAstNodes: plan.visit.map(({ path, astNodes }) => ({
+			path,
+			astNodes,
+		})),
+		visitPaths: new Set(plan.visit.map((module) => module.path)),
+	})
+}
+
+/**
+ * Which modules a walk of `files` lists and which of them it visits. A scan
+ * that also reads modules the walk does not list uses this to cover each one
+ * exactly once when the modules are split across walks.
+ */
+export async function scannableModuleWalk(files: Record<string, string>) {
+	const index = await scannableModuleIndex(files)
+	const listed = new Set(index.modulePaths)
+	const { visitPaths } = index
+	return {
+		listed,
+		visits: (path: string) => visitPaths?.has(path) ?? true,
+	}
+}
+
+function visitedModulePaths(index: ScannableModuleIndex) {
+	const { visitPaths } = index
+	return visitPaths
+		? index.modulePaths.filter((path) => visitPaths.has(path))
+		: index.modulePaths
 }
 
 type ModuleVisit = (
@@ -1024,7 +1111,7 @@ async function runSharedModulePass(
 			const index = await scannableModuleIndex(files)
 			await visitModulesOnce(
 				files,
-				[...index.modulePaths].sort(),
+				[...visitedModulePaths(index)].sort(),
 				index.readConstants,
 				waiters,
 			)
@@ -1113,9 +1200,8 @@ export async function forEachScannableModule(
 		return
 	}
 	const index = await scannableModuleIndex(files)
-	const paths = options.sorted
-		? [...index.modulePaths].sort()
-		: index.modulePaths
+	const visited = visitedModulePaths(index)
+	const paths = options.sorted ? [...visited].sort() : visited
 	for (const path of paths) {
 		await visit(
 			path,
