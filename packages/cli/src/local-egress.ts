@@ -23,6 +23,13 @@ export type LocalEgressPolicy = {
 	 * so a public name that resolves to a local address is still refused.
 	 */
 	lan?: Array<LocalLanRule>
+	/**
+	 * In `public-and-lan` mode, ask Kody before the run's first request to each
+	 * local address or local name (`localhost`, `.local`) and port. Set for
+	 * execution context runs, whose machine wide switch is a Kody entry;
+	 * `kody execute --local` leaves it off.
+	 */
+	askWholeLan?: boolean
 	/** Whose setting refused it, e.g. "this execution context's network setting". */
 	setting: string
 	/** How to change it; `{host}` is replaced with the blocked host. */
@@ -36,6 +43,9 @@ export const egressGateModuleName = '__kody_egress_gate.js'
 
 /** Bridge route the egress gate asks why an HTTPS fetch failed. */
 export const localBridgeTlsCheckPath = '/tls-check'
+
+/** The name Kody gives the machine wide local network switch's entry. */
+export const wholeLanCapabilityName = '*'
 
 /** Bridge route the egress gate asks Kody through before using a named local network destination. */
 export const localBridgeLanAuthorizePath = '/lan-authorize'
@@ -66,6 +76,7 @@ export function egressPolicyFromGrant(
 					lan: lan.map(({ name, hosts, ports }) => ({ name, hosts, ports })),
 				}
 			: {}),
+		...(mode === 'public-and-lan' ? { askWholeLan: true } : {}),
 		setting: "this execution context's network setting",
 		hint: 'This is the server grant, not local policy. Anyone with Contribute or Manage on the context can turn the local network on with `kody context grant lan on --context <name>`, or set executionContextUpdate grant.egress to an allowlist that includes {host}.',
 	}
@@ -183,6 +194,11 @@ function modeText(policy) {
 	}
 }
 
+// Addresses Kody already allowed this run under the machine wide switch.
+const wholeLanAllowed = new Set();
+// Questions still on their way to Kody, so parallel first requests to one address ask once.
+const wholeLanAsking = new Map();
+
 export default {
 	async fetch(request, env) {
 		const policy = env.KODY_EGRESS_POLICY;
@@ -239,6 +255,41 @@ export default {
 				return new Response(
 					'Blocked: the request to ' + host + ':' + port + ' needs this machine\\'s local network destination "' +
 						refused.rule.name + '", and Kody refused it. ' + refused.message,
+					{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
+				);
+			}
+		}
+		const privateTarget = isPrivateHost(literal?.bytes.length === 4 ? literal.bytes.join('.') : host);
+		if (refusal === null && policy.askWholeLan && policy.mode === 'public-and-lan' && privateTarget && !wholeLanAllowed.has(host + ' ' + port)) {
+			// The machine wide switch is a Kody entry too: Kody records the use and may refuse the run's packages.
+			const key = host + ' ' + port;
+			let asking = wholeLanAsking.get(key);
+			if (!asking) {
+				asking = (async () => {
+					try {
+						const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
+							method: 'POST',
+							headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
+							body: JSON.stringify({ capability: ${JSON.stringify(wholeLanCapabilityName)}, host, port }),
+						});
+						const verdict = await reply.json();
+						if (verdict?.ok === true) {
+							wholeLanAllowed.add(key);
+							return null;
+						}
+						return typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.';
+					} catch (error) {
+						return 'Kody could not be asked: ' + (error instanceof Error ? error.message : String(error));
+					} finally {
+						wholeLanAsking.delete(key);
+					}
+				})();
+				wholeLanAsking.set(key, asking);
+			}
+			const message = await asking;
+			if (message !== null) {
+				return new Response(
+					'Blocked: the request to ' + host + ':' + port + ' uses this machine\\'s whole local network, and Kody refused it. ' + message,
 					{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
 				);
 			}

@@ -4,6 +4,7 @@ import {
 	egressGateModuleName,
 	egressNeedsPrivateNetwork,
 	localExecuteEgressPolicy,
+	wholeLanCapabilityName,
 	type LocalEgressPolicy,
 } from './local-egress.js'
 import { randomBytes } from 'node:crypto'
@@ -476,14 +477,18 @@ export async function runLocalExecute(
 					signal,
 				})
 			},
-			...(input.egress?.lan?.length
+			...(input.egress?.lan?.length || input.egress?.askWholeLan
 				? {
 						authorizeLan: async (lan: {
 							capability: string
 							host: string
 							port: number
 						}) => {
-							if (input.lanStillCovers && !(await input.lanStillCovers(lan))) {
+							if (
+								lan.capability !== wholeLanCapabilityName &&
+								input.lanStillCovers &&
+								!(await input.lanStillCovers(lan))
+							) {
 								throw new Error(
 									`This machine no longer allows ${lan.host}:${lan.port} for local network destination "${lan.capability}". (machine_capability_off)`,
 								)
