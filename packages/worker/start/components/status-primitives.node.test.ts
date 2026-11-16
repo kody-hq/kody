@@ -1,0 +1,50 @@
+import { createElement, type ReactNode } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { expect, test } from 'vitest'
+import { Alert } from './alert.tsx'
+import { Badge, getBadgeCss } from './badge.tsx'
+
+function markup(node: ReactNode) {
+	return renderToStaticMarkup(node).replace(
+		/<style\b[^>]*>[\s\S]*?<\/style>/g,
+		'',
+	)
+}
+
+test('Badge renders a span and forwards native attributes', () => {
+	const html = markup(
+		createElement(
+			Badge,
+			{ tone: 'accent', title: 'Reviewed', 'data-testid': 'badge' } as never,
+			'Trusted',
+		),
+	)
+	expect(html).toMatch(/^<span [^>]*title="Reviewed"[^>]*>Trusted<\/span>$/)
+	expect(html).toContain('data-testid="badge"')
+	expect(html).not.toContain('role=')
+})
+
+test('every Badge tone shares one box so adjacent badges line up', () => {
+	const box = (css: Record<string, unknown>) => ({
+		fontSize: css.fontSize,
+		padding: css.padding,
+		lineHeight: css.lineHeight,
+		borderRadius: css.borderRadius,
+	})
+	const neutral = box(getBadgeCss('neutral'))
+	for (const tone of ['accent', 'warning', 'danger'] as const) {
+		expect(box(getBadgeCss(tone))).toEqual(neutral)
+	}
+	expect(getBadgeCss()).toEqual(getBadgeCss('neutral'))
+})
+
+test('Alert sets no role unless the caller asks for one', () => {
+	expect(markup(createElement(Alert, null, 'Saved'))).toMatch(
+		/^<div class="[^"]+">Saved<\/div>$/,
+	)
+	const error = markup(
+		createElement(Alert, { tone: 'error', role: 'alert', id: 'err' }, 'Failed'),
+	)
+	expect(error).toContain('role="alert"')
+	expect(error).toContain('id="err"')
+})

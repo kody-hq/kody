@@ -207,6 +207,61 @@ Tab order, and Tab moves on into its panel.
 - `TabList` requires `aria-label` or `aria-labelledby`.
 - `disabled` on `Tabs` disables the whole list; on `Tab`, one tab.
 
+## TextLink
+
+`start/components/text-link.tsx`
+
+```tsx
+<TextLink href="/docs">Read the docs</TextLink>
+<TextLink tone="muted" href="/privacy">Privacy</TextLink>
+```
+
+An inline text link over `SiteLink`, so internal paths navigate on the client
+and external paths, downloads, and `reloadDocument` load a new document. It
+takes every `SiteLink` prop. Underlines on hover and shows the shared focus ring
+on keyboard focus.
+
+- `tone`: `primary` (default) | `muted` (smaller, secondary text).
+- A link styled as a button is `<Button href>`, not `TextLink`.
+
+## Badge
+
+`start/components/badge.tsx`
+
+```tsx
+<Badge tone="accent">Trusted</Badge>
+```
+
+A short, non-interactive status label on a `span`. Badges are the one place a
+fully rounded pill is right: they are never pressed, so they should not look
+like a Button.
+
+- `tone`: `neutral` (default) | `accent` | `warning` | `danger`. Every tone
+  shares one box, so badges in a row line up.
+- Forwards native `span` attributes. It adds no role: put any live region on the
+  surrounding text.
+- `getBadgeCss(tone)` gives the same box to an element that must stay a link or
+  button (for example the fork "outdated" control). Keep its focus ring.
+
+## Alert
+
+`start/components/alert.tsx`
+
+```tsx
+<Alert tone="error" role="alert">
+	That code expired. Request a new one.
+</Alert>
+```
+
+A boxed message on a `div`. It sets no role on purpose, because the right one
+depends on timing:
+
+- `role="alert"` for an error that appears after a user action.
+- `role="status"` for a polite update, such as "Saved".
+- No role for a message that is part of the page when it loads.
+
+`tone`: `info` (default) | `error`. Forwards native `div` attributes.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a
