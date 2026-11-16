@@ -486,7 +486,7 @@ test('kody dev refuses to start a second server for the same package unless --po
 	await withDevServer(async ({ server, root }) => {
 		await writeDevRegistration({
 			pid: process.pid,
-			origin: server.hostedUrl,
+			origin: server.localUrl,
 			port: server.port,
 			basePath: server.appBasePath,
 			target: 'mock',
@@ -506,7 +506,7 @@ test('kody dev refuses to start a second server for the same package unless --po
 				assert.match(
 					error.message,
 					new RegExp(
-						`already running .* at ${server.hostedUrl}/ \\(pid ${process.pid}\\)`,
+						`already running .* at ${server.localUrl}/ \\(pid ${process.pid}\\)`,
 					),
 				)
 				assert.match(error.message, /kody dev fetch/)
@@ -522,7 +522,7 @@ test('kody dev --port leaves the primary attach registry alone', async () => {
 		// second server cannot delete it via removeDevRegistration's pid check.
 		await writeDevRegistration({
 			pid: process.ppid,
-			origin: server.hostedUrl,
+			origin: server.localUrl,
 			port: server.port,
 			basePath: server.appBasePath,
 			target: 'mock',

@@ -418,7 +418,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					['--port <n>', 'Exact port (0 = any; default is stable per package)'],
 					[
 						'--app-base-path <path>',
-						'Public mount path stripped before workerd',
+						"Serve the old path address (/<package-name> on the scope host) instead of the app's own origin",
 					],
 					[
 						'--allow-private-network',

@@ -85,9 +85,10 @@ function lanRank(address: string): number {
 
 export type DevListenPlan = {
 	/**
-	 * Primary public origin (packageContext.hostedUrl, printed URL). For a
-	 * wildcard bind this is the first LAN address, so client bundle URLs work
-	 * on other devices too.
+	 * Primary public origin (packageContext.hostedUrl, printed URL). On a
+	 * loopback bind it is the app's own `*.localhost` origin when there is
+	 * one. For a wildcard bind this is the first LAN address, so client bundle
+	 * URLs work on other devices too.
 	 */
 	hostedUrl: string
 	/** Origin this machine uses to reach the server (attach registry, fetch). */
@@ -101,17 +102,25 @@ export type DevListenPlan = {
 export function planDevListen(input: {
 	bindHost: string
 	port: number
+	/** The app's own `*.localhost` origin on this port, when it has one. */
+	appOrigin?: string | null
 	interfaces?: () => InterfaceMap
 }): DevListenPlan {
 	const { bindHost, port } = input
 	const readInterfaces = input.interfaces ?? networkInterfaces
 	const origin = (host: string) => `http://${formatUrlHost(host)}:${port}`
+	const appHosts = input.appOrigin ? [new URL(input.appOrigin).host] : []
 	if (isLoopbackDevHost(bindHost)) {
 		const url = origin(bindHost)
 		return {
-			hostedUrl: url,
+			hostedUrl: input.appOrigin ?? url,
 			localUrl: url,
-			extraAllowedHosts: () => [],
+			// The app origin is not a loopback name, so the loopback addresses
+			// it resolves to are listed here.
+			extraAllowedHosts: () =>
+				input.appOrigin
+					? [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]
+					: [],
 			networkUrls: [],
 		}
 	}
@@ -131,6 +140,7 @@ export function planDevListen(input: {
 		localUrl,
 		// Re-read per request: Wi-Fi changes and DHCP renewals move addresses.
 		extraAllowedHosts: () => [
+			...appHosts,
 			`127.0.0.1:${port}`,
 			`localhost:${port}`,
 			`[::1]:${port}`,

@@ -1801,10 +1801,11 @@ async function dispatch(
 								: {}),
 							...(target === 'mock' && process.env.KODY_DEV_STUB_RUNTIME !== '1'
 								? {
-										startLocalKody: async (manifest) => {
+										startLocalKody: async (manifest, packageAppPort) => {
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
+												packageAppPort,
 												passthroughHosts,
 												allowPrivateNetwork,
 												simulation: local.parseDevSimulation({

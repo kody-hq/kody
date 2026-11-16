@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync } from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -24,6 +24,11 @@ import { readPackageVersion } from '../package-info.js'
 import { StructuredCliError } from '../structured-error.js'
 import { userCacheDir } from '../workerd-binary.js'
 import type { LocalKodyUpstream } from '../package-app-dev.js'
+import {
+	buildPackageAppOpenPath,
+	packageAppHostEntryQueryParam,
+} from '@kody-internal/shared/public-urls.ts'
+import { localUsernameFor } from './dev-app-origin.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
 
@@ -33,6 +38,7 @@ export type DevRuntimeModule = {
 		stateDir: string
 		port?: number
 		username: string
+		packageAppPort?: number
 		simulation?: {
 			storageLatencyMs?: number
 			coldIsolates?: boolean
@@ -184,14 +190,12 @@ async function npmInstall(
 	})
 }
 
-/** Local account username: the package scope when there is one. */
-export function localUsernameFor(manifest: Pick<KodyPackageManifest, 'name'>) {
-	const scope = /^@([a-z0-9][a-z0-9-]*)\//i.exec(manifest.name)?.[1]
-	return (scope ?? 'dev').toLowerCase()
-}
+export { localUsernameFor }
 
 export async function startLocalKody(input: {
 	manifest: KodyPackageManifest
+	/** Port package apps are reached on (the `kody dev` proxy port). */
+	packageAppPort: number
 	env?: NodeJS.ProcessEnv
 	simulation?: Parameters<DevRuntimeModule['startDevRuntime']>[0]['simulation']
 	passthroughHosts?: ReadonlyArray<string>
@@ -228,6 +232,7 @@ export async function startLocalKody(input: {
 		const kody = await runtime.startDevRuntime({
 			stateDir,
 			username: localUsernameFor(input.manifest),
+			packageAppPort: input.packageAppPort,
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
 			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
@@ -282,6 +287,29 @@ async function startOutboundGateway(gateway: MockFetchGateway) {
 				server.close(() => resolve())
 			}),
 	}
+}
+
+/**
+ * `name=value` of each cookie local Kody sets for `host`. node:http because
+ * fetch cannot send a Host other than the address it connects to.
+ */
+function readSetCookies(input: { origin: string; host: string; path: string }) {
+	return new Promise<Array<string>>((resolve, reject) => {
+		const request = httpRequest(
+			new URL(input.path, input.origin),
+			{ headers: { host: input.host } },
+			(response) => {
+				response.resume()
+				resolve(
+					(response.headers['set-cookie'] ?? [])
+						.map((cookie) => cookie.split(';')[0]!.trim())
+						.filter((pair) => !pair.endsWith('=')),
+				)
+			},
+		)
+		request.on('error', reject)
+		request.end()
+	})
 }
 
 /** Saves the working tree into local Kody through the real packageSave route. */
@@ -342,8 +370,38 @@ export function createLocalKodyUpstream(input: {
 	}
 	return {
 		origin: input.kody.origin,
-		appPath: `/@${input.kody.username}/packages/${input.manifest.kodyId}`,
-		cookie: input.kody.sessionCookie,
+		username: input.kody.username,
+		appSessionCookie: async ({ rootMounted }) => {
+			// The sign-in a browser does: Kody hands its session off to the app's
+			// host, which answers with that host's own session cookie.
+			const open = new URL(
+				buildPackageAppOpenPath({
+					username: input.kody.username,
+					kodyId: input.manifest.kodyId,
+				}),
+				input.kody.origin,
+			)
+			if (rootMounted) open.searchParams.set(packageAppHostEntryQueryParam, '1')
+			const handoff = await fetchFn(open, {
+				redirect: 'manual',
+				headers: { cookie: input.kody.sessionCookie },
+			})
+			const location = handoff.headers.get('location')
+			const target = location ? new URL(location, open) : null
+			const cookies = target
+				? await readSetCookies({
+						origin: input.kody.origin,
+						host: target.host,
+						path: `${target.pathname}${target.search}`,
+					})
+				: []
+			if (cookies.length === 0) {
+				throw new Error(
+					`Local Kody did not sign in to the app${target ? ` at ${target.origin}` : ''} (HTTP ${handoff.status}).`,
+				)
+			}
+			return cookies.join('; ')
+		},
 		listOutbox: () => input.kody.listOutbox(),
 		packageId: () => packageId,
 		call,
