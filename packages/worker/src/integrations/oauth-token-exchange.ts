@@ -193,13 +193,20 @@ export function normalizeOAuthTokenExchangePayload(
 }
 
 /**
- * Slack reports token-endpoint failures as `{ ok: false, error }` with
- * HTTP 200, so a status check alone misses them.
+ * Providers report token-endpoint failures with HTTP 200 in two shapes:
+ * Slack sends `{ ok: false, error }` and GitHub sends `{ error }`, so a status
+ * check alone misses them.
  */
 export function isOAuthTokenExchangeSoftFailure(
 	payload: Record<string, unknown>,
 ): boolean {
-	return payload.ok === false
+	if (payload.ok === false) return true
+	return (
+		readTrimmedString(payload.error) !== null &&
+		readTrimmedString(
+			normalizeOAuthTokenExchangePayload(payload).access_token,
+		) === null
+	)
 }
 
 /**
@@ -210,27 +217,49 @@ export function oauthTokenExchangeFailureHttpStatus(): number {
 	return 502
 }
 
+const providerErrorCodeMaxLength = 100
+const providerErrorDescriptionMaxLength = 300
+
+function readTrimmedString(value: unknown): string | null {
+	return typeof value === 'string' && value.trim() ? value.trim() : null
+}
+
+/**
+ * `error` is the message the connect page shows, so it carries the provider's
+ * own reason. Without one it names the HTTP status and whether the body was
+ * JSON, which is all that is known. The provider's raw body is never echoed.
+ */
 export function buildOAuthTokenExchangeFailurePayload(input: {
 	providerStatus: number
 	payload: Record<string, unknown> | null
 }): {
 	ok: false
 	error: string
+	providerError?: string
 	error_description?: string
 	providerStatus: number
 } {
-	const error =
-		typeof input.payload?.error === 'string' && input.payload.error.trim()
-			? input.payload.error.trim()
-			: 'Token exchange failed.'
+	const providerError =
+		readTrimmedString(input.payload?.error)?.slice(
+			0,
+			providerErrorCodeMaxLength,
+		) ?? null
 	const errorDescription =
-		typeof input.payload?.error_description === 'string' &&
-		input.payload.error_description.trim()
-			? input.payload.error_description.trim()
-			: null
+		readTrimmedString(input.payload?.error_description)?.slice(
+			0,
+			providerErrorDescriptionMaxLength,
+		) ?? null
+	const reason = providerError
+		? errorDescription
+			? `${providerError} (${errorDescription})`
+			: providerError
+		: `the provider returned HTTP ${input.providerStatus} with ${
+				input.payload ? 'no error reason' : 'a response that was not JSON'
+			}`
 	return {
 		ok: false,
-		error,
+		error: `Token exchange failed: ${reason}`,
+		...(providerError ? { providerError } : {}),
 		...(errorDescription ? { error_description: errorDescription } : {}),
 		providerStatus: input.providerStatus,
 	}

@@ -1132,32 +1132,27 @@ async function exchangeOAuthToken(input: {
 		payload && typeof payload === 'object' && !Array.isArray(payload)
 			? (payload as Record<string, unknown>)
 			: null
-	if (!response.ok) {
-		return operationResult(
-			buildOAuthTokenExchangeFailurePayload({
-				providerStatus: response.status,
-				payload: payloadRecord,
+	if (
+		!response.ok ||
+		!payloadRecord ||
+		isOAuthTokenExchangeSoftFailure(payloadRecord)
+	) {
+		const failure = buildOAuthTokenExchangeFailurePayload({
+			providerStatus: response.status,
+			payload: payloadRecord,
+		})
+		// The only record of why a provider refused an exchange.
+		console.warn(
+			'oauth-token-exchange-failed',
+			JSON.stringify({
+				tokenHost: safeParseHost(input.tokenUrl),
+				providerStatus: failure.providerStatus,
+				providerError: failure.providerError ?? null,
+				providerErrorDescription: failure.error_description ?? null,
+				contentType: response.headers.get('content-type'),
 			}),
-			oauthTokenExchangeFailureHttpStatus(),
 		)
-	}
-	if (!payloadRecord) {
-		return operationResult(
-			buildOAuthTokenExchangeFailurePayload({
-				providerStatus: response.status,
-				payload: null,
-			}),
-			oauthTokenExchangeFailureHttpStatus(),
-		)
-	}
-	if (isOAuthTokenExchangeSoftFailure(payloadRecord)) {
-		return operationResult(
-			buildOAuthTokenExchangeFailurePayload({
-				providerStatus: response.status,
-				payload: payloadRecord,
-			}),
-			oauthTokenExchangeFailureHttpStatus(),
-		)
+		return operationResult(failure, oauthTokenExchangeFailureHttpStatus())
 	}
 	return operationResult(
 		z

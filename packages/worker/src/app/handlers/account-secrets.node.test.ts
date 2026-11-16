@@ -1,3 +1,4 @@
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as authenticatedUserModule from '#app/authenticated-user.ts'
 import type * as AllowedHosts from '#mcp/secrets/allowed-hosts.ts'
 import type * as HostApproval from '#mcp/secrets/host-approval.ts'
@@ -1457,6 +1458,7 @@ test('oauth_exchange maps provider failures and forwards exchange styles', async
 			401,
 		),
 	)
+	consoleWarn.mockImplementation(() => {})
 	const notionFailure = await exchange(
 		notionTokenUrl,
 		{ client_id: 'notion-client-id', code: 'bad-code' },
@@ -1466,11 +1468,16 @@ test('oauth_exchange maps provider failures and forwards exchange styles', async
 	const notionFailureBody = JSON.stringify(notionFailure.data)
 	expect(JSON.parse(notionFailureBody)).toEqual({
 		ok: false,
-		error: 'invalid_client',
+		error:
+			'Token exchange failed: invalid_client (Client authentication failed)',
+		providerError: 'invalid_client',
 		error_description: 'Client authentication failed',
 		providerStatus: 401,
 	})
 	expect(notionFailureBody).not.toContain('notion-client-secret')
+	expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain(
+		'notion-client-secret',
+	)
 
 	vi.unstubAllGlobals()
 })
@@ -1557,6 +1564,96 @@ const publishedGithubPlatformApp = {
 	createdAt: epoch,
 	updatedAt: epoch,
 }
+
+test('platform oauth exchange reports the reason the provider gave and logs it without the secret', async () => {
+	const fetchMock = vi.fn()
+	vi.stubGlobal('fetch', fetchMock)
+	consoleWarn.mockImplementation(() => {})
+	mockModule.getAvailablePlatformApp.mockResolvedValue(
+		publishedGithubPlatformApp,
+	)
+	mockModule.getPlatformOauthAppClientSecret.mockResolvedValue(
+		'shared-platform-secret',
+	)
+	const call = createHandler()
+	const exchange = () =>
+		call(
+			postRequest({
+				action: 'oauth_exchange',
+				platformAppSlug: 'github-platform',
+				params: new URLSearchParams({
+					grant_type: 'authorization_code',
+					code: 'auth-code',
+					redirect_uri: 'https://example.com/connect/oauth',
+				}).toString(),
+			}),
+		)
+
+	// GitHub refuses with HTTP 200 and an OAuth error body.
+	fetchMock.mockResolvedValueOnce(
+		new Response(
+			JSON.stringify({
+				error: 'incorrect_client_credentials',
+				error_description:
+					'The client_id and/or client_secret passed are incorrect.',
+				error_uri: 'https://docs.github.com/',
+			}),
+			{ status: 200, headers: { 'Content-Type': 'application/json' } },
+		),
+	)
+	const refused = await exchange()
+	expect(refused.status).toBe(502)
+	expect(refused.data).toEqual({
+		ok: false,
+		error:
+			'Token exchange failed: incorrect_client_credentials (The client_id and/or client_secret passed are incorrect.)',
+		providerError: 'incorrect_client_credentials',
+		error_description:
+			'The client_id and/or client_secret passed are incorrect.',
+		providerStatus: 200,
+	})
+
+	fetchMock.mockResolvedValueOnce(
+		new Response('<html>Too many requests shared-platform-secret</html>', {
+			status: 429,
+			headers: { 'Content-Type': 'text/html' },
+		}),
+	)
+	const notJson = await exchange()
+	expect(notJson.status).toBe(502)
+	expect(notJson.data).toEqual({
+		ok: false,
+		error:
+			'Token exchange failed: the provider returned HTTP 429 with a response that was not JSON',
+		providerStatus: 429,
+	})
+
+	const logged = consoleWarn.mock.calls
+		.filter(([label]) => label === 'oauth-token-exchange-failed')
+		.map(([, detail]) => JSON.parse(String(detail)))
+	expect(logged).toEqual([
+		{
+			tokenHost: 'github.com',
+			providerStatus: 200,
+			providerError: 'incorrect_client_credentials',
+			providerErrorDescription:
+				'The client_id and/or client_secret passed are incorrect.',
+			contentType: 'application/json',
+		},
+		{
+			tokenHost: 'github.com',
+			providerStatus: 429,
+			providerError: null,
+			providerErrorDescription: null,
+			contentType: 'text/html',
+		},
+	])
+	expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain(
+		'shared-platform-secret',
+	)
+
+	vi.unstubAllGlobals()
+})
 
 test('platform-lane oauth exchange and connect reject apps that are not discoverable', async () => {
 	const fetchMock = vi.fn()
