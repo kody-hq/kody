@@ -41,6 +41,10 @@ cloud runs out of room. Agents and CI get these commands instead of a prompt.
 > switch covers `--build local`, `--context`, and package bindings. See
 > [try publishing from a context](./execution-contexts.md#try-publishing-from-a-context).
 
+To try the build before you publish, run `kody dev check --build local`. It runs
+the same build on your machine over the working tree, uploads nothing, and works
+without the experiment.
+
 ## Where a publish builds
 
 With the experiment on, Kody picks where each publish builds, in this order:
