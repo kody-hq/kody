@@ -69,6 +69,7 @@ import {
 	publishedBundleArtifactForPackageTarget,
 	persistPublishedPackageArtifactTarget,
 	persistPublishedPackageArtifactTargets,
+	publishedPackageArtifactTargetsReusableForFiles,
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
@@ -110,6 +111,8 @@ import {
 	isolatedArtifactRebuildStagingKeyForUser,
 	isolatedArtifactRebuildStagingTtlSeconds,
 	type IsolatedArtifactBuildCheckRequest,
+	type IsolatedArtifactReuseScanOutcome,
+	type IsolatedArtifactReuseScanRequest,
 	type IsolatedArtifactRebuildOutcome,
 	type IsolatedArtifactRebuildRequest,
 	type IsolatedArtifactRebuildTargetResult,
@@ -3974,6 +3977,51 @@ class RepoSessionBase extends DurableObject<Env> {
 					? 'Package artifacts built.'
 					: failed.map((result) => result.message).join('; '),
 			results,
+		}
+	}
+
+	/**
+	 * `packageCheck`'s unchanged-artifact scan for the staged files, in this
+	 * throwaway isolate: it holds every current artifact, the published
+	 * snapshot, and the parsed imports of both trees at once.
+	 */
+	async runIsolatedArtifactReuseScan(
+		input: IsolatedArtifactReuseScanRequest,
+	): Promise<IsolatedArtifactReuseScanOutcome> {
+		if (
+			!isolatedArtifactRebuildStagingKeyBelongsToUser({
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+			})
+		) {
+			return {
+				ok: false,
+				message:
+					'Isolated artifact reuse scan staging key does not belong to the requesting user.',
+			}
+		}
+		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
+			sourceFiles?: Record<string, string>
+		}>(input.stagingKey, 'json')
+		if (!staged?.sourceFiles) {
+			return {
+				ok: false,
+				message:
+					'Isolated artifact reuse scan staging data expired or is missing; run the check again.',
+			}
+		}
+		const reusable = await publishedPackageArtifactTargetsReusableForFiles({
+			env: this.env,
+			userId: input.userId,
+			source: input.source,
+			targets: input.targets,
+			files: staged.sourceFiles,
+		})
+		return {
+			ok: true,
+			reusableIndexes: input.targets.flatMap((target, index) =>
+				reusable.has(target) ? [index] : [],
+			),
 		}
 	}
 

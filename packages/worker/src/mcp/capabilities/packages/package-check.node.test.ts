@@ -15,18 +15,7 @@ import {
 const mockModule = vi.hoisted(() => ({
 	resolvePackageOwnerContext: vi.fn(),
 	resolveOwnedPackageSource: vi.fn(),
-	reusableTargets: vi.fn(),
 }))
-
-vi.mock(
-	'#worker/package-runtime/published-bundle-artifacts.ts',
-	async (importOriginal) => ({
-		...(await importOriginal<typeof PublishedBundleArtifactsModule>()),
-		publishedPackageArtifactTargetsReusableForFiles: (
-			...args: Array<unknown>
-		) => mockModule.reusableTargets(...args),
-	}),
-)
 
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
 	resolvePackageOwnerContext: (...args: Array<unknown>) =>
@@ -351,6 +340,11 @@ function isolatedCheckEnv(
 	) => unknown = async () => {
 		throw new Error('unexpected artifact build check')
 	},
+	runIsolatedArtifactReuseScan: (
+		request: Record<string, unknown>,
+	) => unknown = async () => {
+		throw new Error('unexpected artifact reuse scan')
+	},
 ) {
 	const kv = {
 		get: vi.fn(async (_key: string, _type: string) => null),
@@ -362,6 +356,7 @@ function isolatedCheckEnv(
 		get: vi.fn(() => ({
 			runIsolatedAuthoringChecks,
 			runIsolatedArtifactBuildCheck,
+			runIsolatedArtifactReuseScan,
 		})),
 	}
 	return {
@@ -626,11 +621,15 @@ test('packageCheck skips the targets publish would copy from the published commi
 		hasApp: false,
 		source,
 	})
-	mockModule.reusableTargets.mockImplementation(
-		async (input: { targets: Array<{ entryPoint: string }> }) =>
-			new Set(
-				input.targets.filter((target) => !target.entryPoint.includes('/a.ts')),
+	const runIsolatedArtifactReuseScan = vi.fn(
+		async (request: Record<string, unknown>) => ({
+			ok: true,
+			reusableIndexes: (
+				request.targets as Array<{ entryPoint: string }>
+			).flatMap((target, index) =>
+				target.entryPoint.includes('/a.ts') ? [] : [index],
 			),
+		}),
 	)
 	const runIsolatedArtifactBuildCheck = vi.fn(
 		async (request: Record<string, unknown>) => {
@@ -645,15 +644,24 @@ test('packageCheck skips the targets publish would copy from the published commi
 	const isolated = isolatedCheckEnv(
 		async () => ({ ok: true, results: [deferredBundle] }),
 		runIsolatedArtifactBuildCheck,
+		runIsolatedArtifactReuseScan,
 	)
 	const result = (await packageCheckCapability.handler(
 		{ files: multiExportPackageFiles() },
 		{ env: isolated.env, callerContext: callerContext() },
 	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
 	expect(result.ok).toBe(true)
-	expect(mockModule.reusableTargets).toHaveBeenCalledWith(
+	// The scan loads every artifact and parses both trees: it runs in a
+	// throwaway isolate on the staged files, not in the request isolate.
+	expect(runIsolatedArtifactReuseScan).toHaveBeenCalledTimes(1)
+	const [scan] = runIsolatedArtifactReuseScan.mock.calls[0]!
+	expect(scan).toEqual(
 		expect.objectContaining({ source, userId: owner.ownerUserId }),
 	)
+	expect(scan.stagingKey).toBe(
+		runIsolatedArtifactBuildCheck.mock.calls[0]![0].stagingKey,
+	)
+	expect(isolated.kv.delete).toHaveBeenCalledWith(scan.stagingKey)
 	const built = runIsolatedArtifactBuildCheck.mock.calls.flatMap(
 		([request]) => request.targets as Array<{ entryPoint: string }>,
 	)
@@ -664,5 +672,39 @@ test('packageCheck skips the targets publish would copy from the published commi
 	expect(result.checks[0]!.message).toMatch(
 		/more are unchanged since the published commit, so publish copies them/,
 	)
-	mockModule.reusableTargets.mockReset()
+})
+
+test('packageCheck reports a reuse scan that exceeds its isolate as a failed bundle check', async () => {
+	resetMocks()
+	mockModule.resolveOwnedPackageSource.mockResolvedValue({
+		packageId: 'pkg-1',
+		userId: owner.ownerUserId,
+		kodyId: 'many',
+		name: '@acme/many',
+		hasApp: false,
+		source: { id: 'source-1', manifest_path: 'package.json', source_root: '/' },
+	})
+	const runIsolatedArtifactBuildCheck = vi.fn()
+	const isolated = isolatedCheckEnv(
+		async () => ({ ok: true, results: [deferredBundle] }),
+		runIsolatedArtifactBuildCheck,
+		async () => {
+			throw new Error(
+				"Durable Object's isolate exceeded its memory limit and was reset.",
+			)
+		},
+	)
+	const result = (await packageCheckCapability.handler(
+		{ files: multiExportPackageFiles() },
+		{ env: isolated.env, callerContext: callerContext() },
+	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
+	expect(result.ok).toBe(false)
+	expect(result.checks[0]).toEqual(
+		expect.objectContaining({ kind: 'bundle', ok: false }),
+	)
+	expect(result.checks[0]!.message).toMatch(
+		/with the published commit exceeded the isolated runner's memory or CPU limits/,
+	)
+	expect(runIsolatedArtifactBuildCheck).not.toHaveBeenCalled()
+	expect(isolated.kv.delete).toHaveBeenCalled()
 })

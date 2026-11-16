@@ -4,6 +4,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { publishedPackageArtifactBuildKey } from '#worker/package-runtime/package-artifact-targets.ts'
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { isDurableObjectIsolateResourceLimitResetMessage } from '#worker/sentry-options.ts'
+import type { EntitySourceRow } from './types.ts'
 import {
 	isolatedRunnerResourceLimitAdvice,
 	publishOutsideCloudAdvice,
@@ -83,6 +84,23 @@ export type IsolatedArtifactBuildCheckRequest = {
 }
 
 /**
+ * `packageCheck`'s unchanged-artifact scan: which of `targets` the publish
+ * rebuild would copy from the current artifact instead of building. It loads
+ * every current artifact, the published snapshot, and parses both trees, so
+ * it runs in a throwaway isolate, never in the shared request isolate.
+ */
+export type IsolatedArtifactReuseScanRequest = {
+	stagingKey: string
+	userId: OwnerId
+	source: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
+	targets: Array<PublishedPackageArtifactBuildTarget>
+}
+
+export type IsolatedArtifactReuseScanOutcome =
+	| { ok: true; reusableIndexes: Array<number> }
+	| { ok: false; message: string }
+
+/**
  * Staged snapshots are user-owned content, so the staging key is namespaced
  * by `userId` and the consuming Durable Object verifies the key belongs to
  * the requesting user before reading it.
@@ -127,6 +145,9 @@ type IsolatedArtifactRebuildStub = {
 	runIsolatedArtifactBuildCheck(
 		input: IsolatedArtifactBuildCheckRequest,
 	): Promise<IsolatedArtifactRebuildOutcome>
+	runIsolatedArtifactReuseScan(
+		input: IsolatedArtifactReuseScanRequest,
+	): Promise<IsolatedArtifactReuseScanOutcome>
 }
 
 export type IsolatedArtifactRebuildRunner = {
@@ -146,6 +167,10 @@ export type IsolatedArtifactRebuildRunner = {
 	buildCheck(
 		request: IsolatedArtifactBuildCheckRequest,
 	): Promise<IsolatedArtifactRebuildOutcome>
+	/** The staged targets publish would copy instead of building. */
+	reuseScan(
+		request: IsolatedArtifactReuseScanRequest,
+	): Promise<IsolatedArtifactReuseScanOutcome>
 	discard(stagingKey: string): Promise<void>
 }
 
@@ -188,6 +213,16 @@ export function createIsolatedArtifactRebuildRunner(
 		env as (Env & { BUNDLE_ARTIFACTS_KV?: KVNamespace }) | undefined
 	)?.BUNDLE_ARTIFACTS_KV
 	if (!namespace || !stagingKv) return null
+	function throwawayStub(userId: OwnerId) {
+		// A fresh, user-namespaced id per call puts every heavy step in its own
+		// isolate. The instance never touches its Durable Object storage, so
+		// nothing persists for the random name.
+		return namespace!.get(
+			namespace!.idFromName(
+				`isolated-artifact-rebuild-${userId}-${crypto.randomUUID()}`,
+			),
+		) as unknown as IsolatedArtifactRebuildStub
+	}
 	async function runInThrowawayIsolate(
 		request: {
 			userId: OwnerId
@@ -197,14 +232,7 @@ export function createIsolatedArtifactRebuildRunner(
 			stub: IsolatedArtifactRebuildStub,
 		) => Promise<IsolatedArtifactRebuildOutcome>,
 	): Promise<IsolatedArtifactRebuildOutcome> {
-		// A fresh, user-namespaced id per chunk puts every heavy rebuild wave
-		// in its own isolate. The instance never touches its Durable Object
-		// storage, so nothing persists for the random name.
-		const stub = namespace!.get(
-			namespace!.idFromName(
-				`isolated-artifact-rebuild-${request.userId}-${crypto.randomUUID()}`,
-			),
-		) as unknown as IsolatedArtifactRebuildStub
+		const stub = throwawayStub(request.userId)
 		try {
 			return await call(stub)
 		} catch (error) {
@@ -252,6 +280,24 @@ export function createIsolatedArtifactRebuildRunner(
 			return await runInThrowawayIsolate(request, (stub) =>
 				stub.runIsolatedArtifactBuildCheck(request),
 			)
+		},
+		async reuseScan(request) {
+			try {
+				return await throwawayStub(request.userId).runIsolatedArtifactReuseScan(
+					request,
+				)
+			} catch (error) {
+				if (isDurableObjectResourceLimitResetError(error)) {
+					return {
+						ok: false,
+						message:
+							`Comparing ${request.targets.length} runtime artifact(s) with ` +
+							"the published commit exceeded the isolated runner's memory " +
+							`or CPU limits. ${isolatedRunnerResourceLimitAdvice()} ${publishOutsideCloudAdvice()}`,
+					}
+				}
+				throw error
+			}
 		},
 		async discard(stagingKey) {
 			try {
