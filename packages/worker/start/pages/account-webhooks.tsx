@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	AccountManagementShell,
 	AccountPageHeader,
@@ -15,7 +15,6 @@ import {
 	webhooksDocHref,
 } from '#client/routes/webhooks-shared.ts'
 import type { AccountWebhooksLoaderData } from '#universal/loader-data.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const clampedCellCss = recordCellClamp(28)
@@ -96,9 +95,7 @@ export function AccountWebhooksPage({
 					Webhooks are declared in <code>package.json#kody.webhooks</code>; each
 					name binds one export and its URL is managed from the owning package's
 					settings.{' '}
-					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
-						Inbound webhooks docs
-					</SiteLink>
+					<TextLink href={webhooksDocHref}>Inbound webhooks docs</TextLink>
 				</p>
 			}
 		</AccountManagementShell>

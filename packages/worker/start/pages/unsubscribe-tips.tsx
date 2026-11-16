@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -50,9 +49,9 @@ export function UnsubscribeTipsRoute({
 						Go to account
 					</Button>
 				) : (
-					<SiteLink href="/account" css={mutedLinkCss}>
+					<TextLink tone="muted" href="/account">
 						Go to account
-					</SiteLink>
+					</TextLink>
 				)}
 			</div>
 		</section>

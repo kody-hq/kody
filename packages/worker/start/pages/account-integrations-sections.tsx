@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import type { AccountIntegrationsLoaderData } from '#universal/loader-data.ts'
@@ -6,7 +7,6 @@ import type { PlatformIntegrationCatalogItem } from '#universal/oauth-connect.ts
 import { routes } from '#universal/routes.ts'
 import { docHref } from '#universal/docs-nav.ts'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderIcon } from '../components/provider-icons.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -28,7 +28,6 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	primaryLinkCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import { advancedDetailsCss } from './account-integrations-detail.tsx'
@@ -228,12 +227,9 @@ export function renderIntegrationsSetupSections(
 												fontSize: typography.fontSize.sm,
 											}}
 										>
-											<SiteLink
-												href={docHref(provider.guideSlug)}
-												css={primaryLinkCss}
-											>
+											<TextLink href={docHref(provider.guideSlug)}>
 												Setup guide
-											</SiteLink>
+											</TextLink>
 										</p>
 									) : null}
 								</div>

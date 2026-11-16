@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -23,7 +24,6 @@ import {
 	fieldLabelCss,
 	insetCardCss,
 	listCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import type {
 	ConnectOauthConfig,
@@ -365,14 +365,14 @@ export function renderDeviceStep(input: {
 							: 'Checking authorization status…'}{' '}
 						Code expires in {expiryLabel}.
 					</p>
-					<a
+					<TextLink
+						reloadDocument
 						href={verificationHref}
 						target="_blank"
 						rel="noreferrer noopener"
-						css={primaryLinkCss}
 					>
 						Open {input.config.provider} to enter the code
-					</a>
+					</TextLink>
 					<Button
 						type="button"
 						variant="secondary"
@@ -414,9 +414,7 @@ export function renderSuccessCard(input: {
 					copyLabel="Copy prompt"
 				/>
 			</div>
-			<SiteLink href={input.connectionHref} css={primaryLinkCss}>
-				View this connection
-			</SiteLink>
+			<TextLink href={input.connectionHref}>View this connection</TextLink>
 		</section>
 	)
 }

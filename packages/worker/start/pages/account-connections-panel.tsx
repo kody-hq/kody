@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	disconnectAccountProvider,
@@ -8,7 +9,6 @@ import type { loadAccountPage } from '#start/server/account-page'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountConnectionsLoaderData } from '#universal/loader-data.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
-import { mutedLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useIsMutating,
@@ -18,7 +18,6 @@ import {
 import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ProviderIcon } from '../components/provider-icons.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	settleAccountMutation,
@@ -299,14 +298,14 @@ export function useAccountConnections(
 												: 'Connected'}
 										</span>
 										{connection.provider === 'discord' ? (
-											<SiteLink
+											<TextLink
+												tone="muted"
 												href={kodyDiscordInviteUrl}
 												target="_blank"
 												rel="noreferrer"
-												css={mutedLinkCss}
 											>
 												Join the Kody Discord
-											</SiteLink>
+											</TextLink>
 										) : null}
 									</span>
 									<span

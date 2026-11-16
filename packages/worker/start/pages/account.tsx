@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { listenForAvatarFileDrop } from '#client/listen-for-avatar-file-drop.ts'
@@ -11,7 +12,6 @@ import { shouldShowOnboardingChecklist } from '#universal/onboarding-checklist.t
 import { toast } from '#client/toast.ts'
 import { saveProfile, updateAvatar } from '#start/server/account-mutations'
 import type { ProfileVisibility } from '#universal/loader-data.ts'
-import { mutedLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -32,7 +32,6 @@ import {
 	useState,
 	type FormEvent,
 } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { usePendingProfile } from './account-profile-query.ts'
@@ -557,13 +556,13 @@ export function AccountPage({
 				</div>
 			) : null}
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/privacy" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/privacy">
 					Privacy
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/terms" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/terms">
 					Terms
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)

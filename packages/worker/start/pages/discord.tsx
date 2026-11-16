@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useEffect, useState } from 'react'
 import { useSocialSignIn } from '../social-sign-in.ts'
@@ -22,7 +22,6 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -225,9 +224,9 @@ export function DiscordPage({
 							Your Kody account is already connected
 							{page.discordDisplayName ? ` as ${page.discordDisplayName}` : ''}.
 							You can manage connections from{' '}
-							<SiteLink href={routes.account.href()} css={mutedLinkCss}>
+							<TextLink tone="muted" href={routes.account.href()}>
 								your account
-							</SiteLink>
+							</TextLink>
 							.
 						</p>
 						{page.canSyncDiscordRoles ? (

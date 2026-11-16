@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { useActorRef, useActor } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -20,7 +21,6 @@ import {
 	cardTitleCss,
 	descriptionCss,
 	layoutMaxWidths,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -36,7 +36,6 @@ import {
 	formatNullableTimestamp,
 	formatTimestamp,
 } from '../components/local-timestamp.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { passkeyMutationOptions } from '../passkey-mutation.ts'
@@ -508,9 +507,7 @@ export function AccountPasskeysPage({
 			}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/account" css={primaryLinkCss}>
-					Back to account
-				</SiteLink>
+				<TextLink href="/account">Back to account</TextLink>
 			</p>
 		</AccountManagementShell>
 	)

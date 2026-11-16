@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { updateOrganizationUsageWarnings } from '#start/server/org-settings-mutations'
 import {
@@ -11,11 +12,9 @@ import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgUsagePath } from '#universal/org-pages.ts'
 import {
-	primaryLinkCss,
 	visuallyHiddenCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -70,9 +69,7 @@ export function OrgSettingsUsageWarnings({
 	)
 	const unchanged = draft === saved
 	const usageLink = (
-		<SiteLink css={primaryLinkCss} href={orgUsagePath(data.org.slug)}>
-			Usage
-		</SiteLink>
+		<TextLink href={orgUsagePath(data.org.slug)}>Usage</TextLink>
 	)
 	return (
 		<AccountManagementPanel

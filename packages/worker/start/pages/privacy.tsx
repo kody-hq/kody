@@ -1,12 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -35,9 +34,9 @@ export function PrivacyRoute() {
 				<p css={descriptionCss}>
 					Kent C. Dodds, operator of Kody at kody.codes, is the data controller
 					for the hosted service. You can reach the operator at{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					. A separately operated Kody deployment has its own operator and data
 					controller.
 				</p>
@@ -398,9 +397,9 @@ export function PrivacyRoute() {
 					modal, and to re-enter your password when the account has one. You can
 					also ask to access, correct, delete, restrict, or receive your
 					personal data, or object to its processing, by emailing{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					. Which rights apply depends on where you live. We may need to verify
 					your identity before acting on a request.
 				</p>
@@ -426,17 +425,17 @@ export function PrivacyRoute() {
 			</section>
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/pricing" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/pricing">
 					Pricing
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/terms" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/terms">
 					Terms
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/">
 					Back home
-				</SiteLink>
+				</TextLink>
 			</p>
 		</section>
 	)

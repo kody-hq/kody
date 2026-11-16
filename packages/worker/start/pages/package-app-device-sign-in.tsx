@@ -87,7 +87,6 @@ function renderBody(data: PackageAppDeviceSignInView) {
 						variant="primary"
 						size="md"
 						reloadDocument
-						css={primaryLinkCss}
 						data-testid="package-app-device-start-again"
 					>
 						Start again
@@ -158,7 +157,6 @@ function PendingCard(props: {
 						variant="secondary"
 						size="md"
 						reloadDocument
-						css={secondaryLinkCss}
 						data-testid="package-app-device-check-now"
 					>
 						Check now
@@ -187,14 +185,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

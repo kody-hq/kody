@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { useDesktopMachine } from '../components/desktop-execution.tsx'
 import { DesktopMachinePanel } from '../components/desktop-machine-panel.tsx'
 import { css } from '@emotion/react'
@@ -19,9 +20,7 @@ import { orgResourcePath } from '#universal/org-pages.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ExperimentOptIn } from '../components/experiment-opt-in.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { routes } from '#universal/routes.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import {
 	AccountManagementMessage,
@@ -117,19 +116,15 @@ export function ExecutionContextsRoute(props: {
 							</p>
 							<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
 								Read the{' '}
-								<SiteLink
+								<TextLink
 									href={routes.docDetail.href({ slug: 'execution-contexts' })}
-									css={primaryLinkCss}
 								>
 									execution contexts guide
-								</SiteLink>
+								</TextLink>
 								, or manage every experiment on{' '}
-								<SiteLink
-									href={routes.accountExperiments.href()}
-									css={primaryLinkCss}
-								>
+								<TextLink href={routes.accountExperiments.href()}>
 									Experiments
-								</SiteLink>
+								</TextLink>
 								.
 							</p>
 							<ExperimentOptIn experiment="execution-contexts">

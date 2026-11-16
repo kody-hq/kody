@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -23,7 +24,6 @@ import {
 import {
 	descriptionCss,
 	layoutMaxWidths,
-	mutedLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -124,9 +124,9 @@ export function AccountBillingMovePlanPage({
 				</>
 			) : null}
 			<p css={descriptionCss}>
-				<SiteLink href={orgBillingPath(payload.source.slug)} css={mutedLinkCss}>
+				<TextLink tone="muted" href={orgBillingPath(payload.source.slug)}>
 					Back to billing
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)
@@ -143,9 +143,9 @@ function TargetPicker({
 				title="Choose where the plan goes"
 				description="You can only move a plan to another organization you own. Create one, or ask an owner of an existing organization to make you an owner."
 			>
-				<SiteLink href="/account/organizations" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/account/organizations">
 					Manage organizations
-				</SiteLink>
+				</TextLink>
 			</AccountManagementPanel>
 		)
 	}
@@ -380,12 +380,12 @@ function IntervalSwitch({
 	const other: Interval = current === 'year' ? 'month' : 'year'
 	return (
 		<p css={paragraphCss}>
-			<SiteLink
+			<TextLink
+				tone="muted"
 				href={movePlanHref(sourceSlug, { to: targetSlug, interval: other })}
-				css={mutedLinkCss}
 			>
 				Bill @{targetSlug} {intervalLabel(other)} instead
-			</SiteLink>
+			</TextLink>
 		</p>
 	)
 }
@@ -444,12 +444,12 @@ function TransferStatusPanel({
 						? ` ${credit} of unused value was credited to ${target}.`
 						: ''}
 				</p>
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href={orgBillingPath(transfer.targetSlug ?? sourceSlug)}
-					css={mutedLinkCss}
 				>
 					Open billing for {target}
-				</SiteLink>
+				</TextLink>
 			</AccountManagementPanel>
 		)
 	}

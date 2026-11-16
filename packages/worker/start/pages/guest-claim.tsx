@@ -84,7 +84,7 @@ export function GuestClaimRoute(props: { data: GuestClaimPageData }) {
 					href="/login"
 					variant="primary"
 					size="md"
-					css={[primaryButtonCss, primaryLinkCss]}
+					css={primaryButtonCss}
 				>
 					Log in
 				</Button>
@@ -134,7 +134,7 @@ function GuestClaimed(props: {
 					href="/account"
 					variant="primary"
 					size="md"
-					css={[primaryButtonCss, primaryLinkCss]}
+					css={primaryButtonCss}
 				>
 					Go to your account
 				</Button>
@@ -323,11 +323,6 @@ const secondaryButtonCss = {
 	width: '100%',
 }
 const providerButtonCss = { width: '100%' }
-const primaryLinkCss: CSSObject = {
-	display: 'inline-flex',
-	justifyContent: 'center',
-	textDecoration: 'none',
-}
 const stackCss: CSSObject = { display: 'grid', gap: spacing.lg }
 const formCss: CSSObject = { display: 'grid', gap: spacing.sm }
 const cardCss: CSSObject = {

@@ -1,15 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { updateExperiments } from '#start/server/account-mutations'
 import { setExperiment } from '#start/server/experiment-opt-in'
 import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
 import {
-	primaryLinkCss,
 	fieldCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import type { AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
@@ -292,9 +291,7 @@ function ExperimentCatalog({
 								{experiment.choice === 'kody' && enabled
 									? 'Kody turned this on for you. '
 									: null}
-								<SiteLink href={experiment.docsPath} css={primaryLinkCss}>
-									Read the guide
-								</SiteLink>
+								<TextLink href={experiment.docsPath}>Read the guide</TextLink>
 							</p>
 						</div>
 					</li>

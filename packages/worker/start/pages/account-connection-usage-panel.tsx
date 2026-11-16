@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementPanel,
 	TimestampValue,
@@ -28,10 +28,7 @@ import {
 	formatConnectionUsageQuantity,
 } from '#universal/connection-usage-presentation.ts'
 import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
-import {
-	descriptionCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 type Agents = Array<ConnectedMcpAgent>
 const summaryRowLimit = 6
@@ -140,9 +137,7 @@ function UsageTable(props: {
 							<th scope="row">
 								<span css={rowHeaderCss}>
 									{row.href ? (
-										<SiteLink href={row.href} css={primaryLinkCss}>
-											{row.name}
-										</SiteLink>
+										<TextLink href={row.href}>{row.name}</TextLink>
 									) : (
 										<span>{row.name}</span>
 									)}
@@ -284,13 +279,12 @@ export function ConnectionUsageSummaryPanel(props: {
 					)
 				})}
 				<p css={{ margin: 0 }}>
-					<SiteLink
+					<TextLink
 						href={accountConnectionsUsageHref(props.pathname)}
 						data-testid="connection-usage-details-link"
-						css={primaryLinkCss}
 					>
 						View usage details
-					</SiteLink>
+					</TextLink>
 				</p>
 			</div>
 		</AccountManagementPanel>
@@ -342,13 +336,12 @@ export function ConnectionUsageDetails(props: {
 					{renderUpdated(usage)}
 					{focus ? (
 						<p css={{ margin: 0 }}>
-							<SiteLink
+							<TextLink
 								href={accountConnectionsUsageHref(props.pathname)}
 								data-testid="connection-usage-show-all"
-								css={primaryLinkCss}
 							>
 								Show all connections
-							</SiteLink>
+							</TextLink>
 						</p>
 					) : null}
 					{focusMissing ? (

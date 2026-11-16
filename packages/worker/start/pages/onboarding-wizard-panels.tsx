@@ -1,9 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, RefCallback } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { routes } from '#universal/routes.ts'
 import {
@@ -51,7 +51,6 @@ import {
 	connectStatusCss,
 } from './onboarding-wizard-chrome.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 
 type StepNavigationProps = {
 	activeStep: OnboardingWizardStepNumber
@@ -312,9 +311,9 @@ export function renderSecondAgentPanel(
 						data-testid="onboarding-portability-guide-pointer"
 					>
 						Depth lives in the{' '}
-						<SiteLink href={portabilityGuideHref} css={guideLinkCss}>
+						<TextLink href={portabilityGuideHref} css={guideLinkCss}>
 							portability guide
-						</SiteLink>
+						</TextLink>
 						. The prompt tells your agent to retrieve it.
 					</p>
 				</div>
@@ -374,14 +373,14 @@ function renderAgentPanelHead(props: {
 				>
 					<div css={changeSelectionSlotCss}>
 						{props.selectedAgent ? (
-							<SiteLink
+							<TextLink
 								href={props.changeHref}
 								data-testid="onboarding-agent-change"
 								resetScroll={false}
 								css={changeSelectionCss}
 							>
 								Change selection
-							</SiteLink>
+							</TextLink>
 						) : null}
 					</div>
 				</div>
@@ -635,7 +634,6 @@ const changeSelectionSlotCss: CSSObject = {
 }
 
 const changeSelectionCss: CSSObject = {
-	...primaryLinkCss,
 	display: 'inline-block',
 	fontSize: typography.fontSize.sm,
 }
@@ -693,7 +691,6 @@ const guidePointerCss: CSSObject = {
 }
 
 const guideLinkCss: CSSObject = {
-	...primaryLinkCss,
 	fontWeight: 600,
 }
 

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
@@ -21,7 +22,6 @@ import {
 	cardCss,
 	descriptionCss,
 	getAlertCardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -108,9 +108,9 @@ export function NewsletterRoute(props: { data: NewsletterPageData }) {
 						</SiteLink>
 					</h2>
 					<p css={descriptionCss}>{data.latest.description}</p>
-					<SiteLink href="/blog" css={mutedLinkCss}>
+					<TextLink tone="muted" href="/blog">
 						All posts
-					</SiteLink>
+					</TextLink>
 				</article>
 			) : null}
 		</section>

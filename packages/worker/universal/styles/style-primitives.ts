@@ -1095,24 +1095,6 @@ export const detailValueCss = {
 	whiteSpace: 'normal',
 }
 
-export const primaryLinkCss = {
-	color: colors.primaryText,
-	fontWeight: typography.fontWeight.medium,
-	textDecoration: 'none',
-	'&:hover': {
-		textDecoration: 'underline',
-	},
-}
-
-export const mutedLinkCss = {
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
-	textDecoration: 'none',
-	'&:hover': {
-		textDecoration: 'underline',
-	},
-}
-
 export function getAlertCardCss(type: 'error' | 'info' = 'info') {
 	return {
 		margin: 0,

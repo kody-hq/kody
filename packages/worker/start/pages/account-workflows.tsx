@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
@@ -22,7 +23,6 @@ import { routes } from '#universal/routes.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -33,7 +33,6 @@ import {
 import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { workflowCancellationMutationOptions } from '../workflow-cancellation-mutation.ts'
 import { collectionSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -120,9 +119,7 @@ function packageValue(
 	})
 	if (!scope) return '—'
 	return (
-		<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
-			{workflow.kodyId}
-		</SiteLink>
+		<TextLink href={packageHrefFromScope(scope)}>{workflow.kodyId}</TextLink>
 	)
 }
 

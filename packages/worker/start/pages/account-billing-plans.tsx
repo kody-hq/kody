@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import type {
 	AccountBillingLoaderData,
 	AdminPlanName,
@@ -19,7 +19,6 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	primaryLinkCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import { Input } from '../components/input.tsx'
@@ -236,9 +235,9 @@ export function renderAccountBillingPlans(input: {
 							) : null}
 							{billing.usageHref ? (
 								<p css={{ margin: 0 }}>
-									<SiteLink href={billing.usageHref} css={primaryLinkCss}>
+									<TextLink href={billing.usageHref}>
 										See your current usage
-									</SiteLink>
+									</TextLink>
 								</p>
 							) : null}
 							{intervalSwitch && paidTier ? (

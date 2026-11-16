@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
 import {
 	handlePermanentNote,
@@ -22,7 +22,6 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	hoverMq,
-	mutedLinkCss,
 	visuallyHiddenCss,
 	fieldCss,
 	fieldLabelCss,
@@ -241,9 +240,9 @@ export function AccountProfilePanel(props: AccountProfilePanelProps) {
 					)}
 				</p>
 				<p css={{ margin: 0 }}>
-					<SiteLink href={routes.profile.href({ username })} css={mutedLinkCss}>
+					<TextLink tone="muted" href={routes.profile.href({ username })}>
 						View public profile
-					</SiteLink>
+					</TextLink>
 				</p>
 				<div>
 					<Button

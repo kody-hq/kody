@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	setIntegrationUsage,
@@ -29,7 +30,6 @@ import type {
 	AccountOauthAppListItem,
 } from '#universal/loader-data.ts'
 import { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import {
@@ -38,7 +38,6 @@ import {
 	AccountPageHeader,
 } from './account-management-components.tsx'
 import { RecordTable, RecordTableSearch } from './record-table.tsx'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	type IntegrationUsageDraft,
 	buildIntegrationHref,
@@ -569,9 +568,7 @@ export function AccountIntegrationsPage({
 			{renderIntegrationsSetupSections(setupIntro, platformCatalog)}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/account" css={primaryLinkCss}>
-					Back to account
-				</SiteLink>
+				<TextLink href="/account">Back to account</TextLink>
 			</p>
 			{undoable.pending ? (
 				<UndoToast

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
@@ -12,7 +13,6 @@ import {
 	fieldLabelCss,
 	getAlertCardCss,
 	insetCardCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -23,7 +23,6 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
 import { Input } from '../components/input.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
@@ -64,9 +63,9 @@ export function DeviceRoute(props: { data: DevicePageData }) {
 				<p css={pageDescriptionCss}>{deviceLead(data)}</p>
 			</header>
 			{renderDeviceBody(data)}
-			<SiteLink href="/" css={mutedLinkCss}>
+			<TextLink tone="muted" href="/">
 				Back home
-			</SiteLink>
+			</TextLink>
 		</section>
 	)
 }
@@ -144,7 +143,6 @@ function SignedOutCard(props: {
 					variant="primary"
 					size="md"
 					reloadDocument
-					css={primaryLinkCss}
 				>
 					Sign in to continue
 				</Button>
@@ -153,7 +151,6 @@ function SignedOutCard(props: {
 					variant="secondary"
 					size="md"
 					reloadDocument
-					css={secondaryLinkCss}
 				>
 					Create an account
 				</Button>
@@ -444,14 +441,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '28rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

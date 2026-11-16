@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
-
-import { SiteLink } from '../components/site-link.tsx'
 
 import {
 	AccountManagementMessage,
@@ -27,8 +26,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	mutedLinkCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Input } from '../components/input.tsx'
@@ -297,16 +294,16 @@ export function renderPackageWebhookCard(input: {
 						)
 					) : null}
 					{webhook.approved ? (
-						<SiteLink
+						<TextLink
+							tone="muted"
 							href={packageCredentialsTabHref({
 								username,
 								kodyId,
 								tab: 'triggers',
 							})}
-							css={mutedLinkCss}
 						>
 							Turn off on Triggers
-						</SiteLink>
+						</TextLink>
 					) : null}
 					<Button
 						type="button"
@@ -322,9 +319,9 @@ export function renderPackageWebhookCard(input: {
 					>
 						{rotateCheck.armed ? 'Confirm rotate' : 'Rotate URL'}
 					</Button>
-					<SiteLink href={input.deliveriesHref} css={mutedLinkCss}>
+					<TextLink tone="muted" href={input.deliveriesHref}>
 						Recent deliveries
-					</SiteLink>
+					</TextLink>
 				</div>
 			) : null}
 
@@ -348,9 +345,7 @@ export function renderPackageWebhookCard(input: {
 					Turning it off on Triggers makes this URL answer 404. Turn it back on
 					by Approving the same URL. Removing the declaration from the package
 					manifest retires the ingress.{' '}
-					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
-						Inbound webhooks docs
-					</SiteLink>
+					<TextLink href={webhooksDocHref}>Inbound webhooks docs</TextLink>
 				</p>
 			) : null}
 

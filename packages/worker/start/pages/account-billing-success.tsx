@@ -1,11 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -82,9 +81,9 @@ export function AccountBillingSuccessPage({
 							Connect your agent
 						</Button>
 					) : null}
-					<SiteLink href={billingPath} css={mutedLinkCss}>
+					<TextLink tone="muted" href={billingPath}>
 						Manage billing
-					</SiteLink>
+					</TextLink>
 				</div>
 			</div>
 		</section>

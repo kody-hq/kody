@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -32,9 +31,9 @@ export function OAuthCallbackRoute() {
 			</header>
 			{detail ? <pre css={detailCardCss}>{detail}</pre> : null}
 			{state ? <p css={pageDescriptionCss}>State: {state}</p> : null}
-			<SiteLink href="/" css={mutedLinkCss}>
+			<TextLink tone="muted" href="/">
 				Back home
-			</SiteLink>
+			</TextLink>
 		</section>
 	)
 }

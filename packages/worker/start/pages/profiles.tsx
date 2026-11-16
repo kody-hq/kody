@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { Dialog, DialogActions } from '../components/dialog.tsx'
@@ -44,7 +45,6 @@ import {
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
-	primaryLinkCss,
 	getSquircleCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
@@ -106,19 +106,13 @@ export function ProfilesRoute(props: {
 						</p>
 						<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
 							Read the{' '}
-							<SiteLink
-								href={routes.docDetail.href({ slug: 'profiles' })}
-								css={primaryLinkCss}
-							>
+							<TextLink href={routes.docDetail.href({ slug: 'profiles' })}>
 								profiles guide
-							</SiteLink>
+							</TextLink>
 							, or manage every experiment on{' '}
-							<SiteLink
-								href={routes.accountExperiments.href()}
-								css={primaryLinkCss}
-							>
+							<TextLink href={routes.accountExperiments.href()}>
 								Experiments
-							</SiteLink>
+							</TextLink>
 							.
 						</p>
 						<ExperimentOptIn experiment="profiles">
@@ -295,12 +289,9 @@ function EmptyState(props: { allMembers: boolean; onCreate: () => void }) {
 					<Button type="button" variant="primary" onClick={props.onCreate}>
 						Create your first profile
 					</Button>
-					<SiteLink
-						href={routes.docDetail.href({ slug: 'profiles' })}
-						css={primaryLinkCss}
-					>
+					<TextLink href={routes.docDetail.href({ slug: 'profiles' })}>
 						How profiles work
-					</SiteLink>
+					</TextLink>
 				</div>
 			</div>
 		</AccountManagementPanel>
@@ -759,9 +750,9 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 							<tr key={`${grant.resourceType}:${grant.resourceId}`}>
 								<td>
 									{grant.href ? (
-										<SiteLink href={grant.href} css={primaryLinkCss}>
+										<TextLink href={grant.href}>
 											{grant.label ?? grant.resourceId}
-										</SiteLink>
+										</TextLink>
 									) : (
 										(grant.label ?? <code>{grant.resourceId}</code>)
 									)}

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
@@ -65,7 +66,6 @@ import {
 	getAlertCardCss,
 	insetCardCss,
 	listCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
 	sectionTitleCss,
@@ -1090,12 +1090,12 @@ export function OAuthAuthorizeRoute({
 							</Button>
 							{!sessionEmail ? (
 								<p css={descriptionCss}>
-									<SiteLink
+									<TextLink
+										tone="muted"
 										href={buildAuthLink('/login', readOAuthResumeTarget())}
-										css={mutedLinkCss}
 									>
 										Use the full sign-in page
-									</SiteLink>
+									</TextLink>
 								</p>
 							) : null}
 						</>

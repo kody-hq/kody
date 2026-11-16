@@ -86,7 +86,6 @@ function renderBody(data: AccountDeviceSignInView) {
 						variant="primary"
 						size="md"
 						reloadDocument
-						css={primaryLinkCss}
 						data-testid="account-device-start-again"
 					>
 						Start again
@@ -96,13 +95,7 @@ function renderBody(data: AccountDeviceSignInView) {
 		case 'none':
 			return (
 				<div css={actionsCss}>
-					<Button
-						href="/login"
-						variant="primary"
-						size="md"
-						reloadDocument
-						css={primaryLinkCss}
-					>
+					<Button href="/login" variant="primary" size="md" reloadDocument>
 						Go to sign in
 					</Button>
 				</div>
@@ -166,7 +159,6 @@ function PendingCard(props: {
 						variant="secondary"
 						size="md"
 						reloadDocument
-						css={secondaryLinkCss}
 						data-testid="account-device-check-now"
 					>
 						Check now
@@ -195,14 +187,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

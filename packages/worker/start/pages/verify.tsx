@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
@@ -21,7 +22,6 @@ import {
 } from '#universal/safe-redirect.ts'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -37,7 +37,6 @@ import {
 } from '../components/device-sign-in-option.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { Input } from '../components/input.tsx'
 function buildLoginHref(redirectTo: string | null) {
@@ -227,9 +226,9 @@ export function VerifyRoute() {
 				}
 			/>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
-				<SiteLink href={buildLoginHref(getRedirectTo())} css={mutedLinkCss}>
+				<TextLink tone="muted" href={buildLoginHref(getRedirectTo())}>
 					Back to login
-				</SiteLink>
+				</TextLink>
 			</div>
 		</section>
 	)

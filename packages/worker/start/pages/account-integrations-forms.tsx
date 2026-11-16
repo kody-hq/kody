@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
@@ -20,14 +21,12 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -39,7 +38,6 @@ import { AccountManagementMessage } from './account-management-components.tsx'
 import { Input } from '../components/input.tsx'
 import { Checkbox, Radio } from '../components/choice-controls.tsx'
 const addAccountLinkCss: CSSObject = {
-	...primaryLinkCss,
 	justifySelf: 'start',
 	width: 'fit-content',
 }
@@ -76,14 +74,14 @@ export function AddAccountForm(props: {
 	const name = editedName ?? suggested
 	if (!props.open) {
 		return (
-			<SiteLink
+			<TextLink
 				href={props.openHref}
 				data-testid="add-account-open"
 				resetScroll={false}
 				css={addAccountLinkCss}
 			>
 				Add another account
-			</SiteLink>
+			</TextLink>
 		)
 	}
 	return (

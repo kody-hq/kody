@@ -1,11 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -110,14 +109,14 @@ export function VerifyEmailRoute({ data }: { data: EmailVerificationOutcome }) {
 							{ctaLabel}
 						</Button>
 					) : (
-						<SiteLink href={ctaHref} css={mutedLinkCss}>
+						<TextLink tone="muted" href={ctaHref}>
 							{ctaLabel}
-						</SiteLink>
+						</TextLink>
 					)}
 					{ctaHref === '/account' ? null : (
-						<SiteLink href="/account" css={mutedLinkCss}>
+						<TextLink tone="muted" href="/account">
 							Account
-						</SiteLink>
+						</TextLink>
 					)}
 				</div>
 			</div>

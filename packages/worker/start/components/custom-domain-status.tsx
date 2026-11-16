@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import type {
 	PackageAppCustomDomainRecordView,
 	PackageAppCustomDomainStatus,
 	PackageAppCustomDomainView,
 } from '#universal/package-app-custom-domain-status.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -110,14 +110,15 @@ function CustomDomainSummary({
 		<li css={domainRowCss} data-testid={`custom-domain-${domain.id}`}>
 			<div css={domainHeadCss}>
 				{active ? (
-					<a
-						css={[primaryLinkCss, hostnameCss]}
+					<TextLink
+						reloadDocument
+						css={hostnameCss}
 						href={`https://${domain.hostname}/`}
 						target="_blank"
 						rel="noreferrer"
 					>
 						{domain.hostname}
-					</a>
+					</TextLink>
 				) : (
 					<span css={hostnameCss}>{domain.hostname}</span>
 				)}
@@ -170,9 +171,9 @@ export function PackageCustomDomainsSection({
 				Kody checks pending domains every few minutes and emails the owners when
 				one goes live.{' '}
 				{manageHref ? (
-					<a css={primaryLinkCss} href={manageHref}>
+					<TextLink reloadDocument href={manageHref}>
 						Manage custom domains
-					</a>
+					</TextLink>
 				) : null}
 			</p>
 		</section>

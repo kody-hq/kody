@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { sendCancellationFeedback } from '#start/server/billing-mutations'
@@ -13,7 +14,6 @@ import {
 	orgIdentity,
 	orgOverviewPath,
 } from '#universal/org-pages.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import type {
@@ -50,8 +50,6 @@ import {
 import {
 	descriptionCss,
 	layoutMaxWidths,
-	mutedLinkCss,
-	primaryLinkCss,
 	visuallyHiddenCss,
 	fieldCss,
 	fieldLabelCss,
@@ -404,12 +402,12 @@ export function AccountBillingPage({
 									{statusInfo.label}
 								</span>
 							) : null}
-							<SiteLink
+							<TextLink
+								tone="muted"
 								href={billing.usageHref ?? orgOverviewPath(billing.org.slug)}
-								css={mutedLinkCss}
 							>
 								view usage
-							</SiteLink>
+							</TextLink>
 						</div>
 						{statusInfo && statusInfo.tone !== 'action' ? (
 							<p css={descriptionCss}>{statusInfo.detail}</p>
@@ -431,9 +429,7 @@ export function AccountBillingPage({
 						) : null}
 						{billing.creditsEligible && billing.creditsHref ? (
 							<p css={{ margin: 0 }}>
-								<SiteLink href={billing.creditsHref} css={primaryLinkCss}>
-									Manage credits
-								</SiteLink>
+								<TextLink href={billing.creditsHref}>Manage credits</TextLink>
 							</p>
 						) : null}
 						{retiredPlan ? (
@@ -677,12 +673,12 @@ export function AccountBillingPage({
 								billing.manualPlan === 'free' &&
 								billing.stripePlan === 'pro' &&
 								!billing.cancelAt ? (
-									<SiteLink
+									<TextLink
+										tone="muted"
 										href={`${orgBillingPath(payload.org.slug)}/move-plan`}
-										css={mutedLinkCss}
 									>
 										Move this plan to another organization
-									</SiteLink>
+									</TextLink>
 								) : null}
 							</div>
 						</AccountManagementPanel>
@@ -713,16 +709,15 @@ export function AccountBillingPage({
 			) : null}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink
+				<TextLink
 					href={
 						payload.org.personal
 							? '/account'
 							: orgOverviewPath(payload.org.slug)
 					}
-					css={primaryLinkCss}
 				>
 					{payload.org.personal ? 'Back to account' : `Back to ${orgName}`}
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)

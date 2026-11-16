@@ -1,8 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { whereItWentSectionId } from '#universal/org-pages.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useState } from 'react'
 import { AreaChart } from '../charts/area-chart.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
@@ -18,10 +18,7 @@ import {
 } from '#universal/credit-attribution.ts'
 import { formatOnCreditsMicroUsd } from '#universal/usage-presentation.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	descriptionCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
 import { Input } from '../components/input.tsx'
 
 /**
@@ -165,9 +162,7 @@ export function WhereItWentPanel({
 											) : null}
 											{row.href ? (
 												<p css={{ margin: 0 }}>
-													<SiteLink href={row.href} css={primaryLinkCss}>
-														Open package
-													</SiteLink>
+													<TextLink href={row.href}>Open package</TextLink>
 												</p>
 											) : null}
 										</>
