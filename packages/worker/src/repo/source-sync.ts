@@ -42,6 +42,14 @@ type SyncArtifactSourceInput = {
 	baseUrl: string
 	sourceId: string | null
 	files: Record<string, string>
+	/**
+	 * Publishing an existing source writes only these paths from `files`
+	 * instead of every file. `files` stays the full tree. Write edits encode
+	 * content as UTF-8, so callers holding a loaded snapshot (where binary
+	 * files are byte-for-byte strings) must not write files they did not
+	 * change.
+	 */
+	editPaths?: ReadonlyArray<string>
 	bootstrapAccess?: ArtifactBootstrapAccess | null
 	/**
 	 * First-publish a storage-layer fork from dest HEAD. Applies `files` on
@@ -211,11 +219,14 @@ export async function syncArtifactSourceSnapshot(
 	}
 	const sessionId = buildSyncSessionId(source.id)
 	const session = repoSessionRpc(input.env, sessionId)
-	const edits = Object.entries(input.files).map(([path, content]) => ({
-		kind: 'write' as const,
-		path,
-		content,
-	}))
+	const editPaths = input.editPaths ? new Set(input.editPaths) : null
+	const edits = Object.entries(input.files)
+		.filter(([path]) => editPaths == null || editPaths.has(path))
+		.map(([path, content]) => ({
+			kind: 'write' as const,
+			path,
+			content,
+		}))
 	// Local dev without a git backend: a snapshot-only remote has no git to open a
 	// session on, so every publish (first or update) writes a mock snapshot.
 	const publishThroughLoopbackSnapshot = () =>

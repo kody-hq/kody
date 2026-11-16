@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { bytesToSnapshotString } from '#universal/package-file-media.ts'
 import { isolatedCheckRunnerLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
@@ -740,6 +742,53 @@ test('fleet apply on a locked package commits HEAD without promoting published_c
 			promotePublished: false,
 		}),
 	)
+})
+
+test('apply writes only changed files on top of the current commit, never the whole tree', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	const pkg = savedPackage('pkg-binary')
+	const png = bytesToSnapshotString(
+		new Uint8Array(
+			readFileSync(new URL('./fixtures/icon.png', import.meta.url)),
+		),
+		'public/icon.png',
+	)
+	const woff2 = bytesToSnapshotString(
+		new Uint8Array(
+			readFileSync(new URL('./fixtures/font.woff2', import.meta.url)),
+		),
+		'public/font.woff2',
+	)
+	mocks.listSavedPackagesByUserId.mockResolvedValue([pkg])
+	mocks.loadPackageSourceBySourceId.mockResolvedValue(
+		loadedSource({
+			files: {
+				...ambientFiles(),
+				'public/icon.png': png,
+				'public/font.woff2': woff2,
+			},
+			publishedCommit: `commit-repo-${pkg.kodyId}`,
+			repoId: `repo-${pkg.kodyId}`,
+			sourceId: pkg.sourceId,
+			userId: pkg.userId,
+		}),
+	)
+
+	const apply = await step(env, { mode: 'apply' })
+	expect(apply.items[0]).toMatchObject({ status: 'applied' })
+	const call = mocks.syncArtifactSourceSnapshot.mock.calls.at(-1)![0] as {
+		files: Record<string, string>
+		editPaths: Array<string>
+		destructiveOverwriteConfirmed?: boolean
+	}
+	expect(call.editPaths).toEqual(apply.items[0]!.changedPaths)
+	expect(call.editPaths).not.toContain('public/icon.png')
+	expect(call.editPaths).not.toContain('public/font.woff2')
+	expect(call.files['public/icon.png']).toBe(png)
+	expect(call.files['public/font.woff2']).toBe(woff2)
+	// A destructive overwrite replaces history with a parentless commit.
+	expect(call.destructiveOverwriteConfirmed).toBeUndefined()
 })
 
 test('package codemod engine rejects resume steps with mismatched filters or a cursor without a runId', async () => {
