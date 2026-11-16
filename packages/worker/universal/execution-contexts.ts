@@ -107,7 +107,7 @@ export type ExecutionContextMachineAccessSubject =
 
 export type ExecutionContextMachineAccessEntry = {
 	id: string
-	kind: 'command' | 'lan' | 'fs'
+	kind: 'shell' | 'command' | 'lan' | 'fs'
 	name: string
 	description: string | null
 	/** Host folders are never shared. */
@@ -136,6 +136,7 @@ export const machineAccessKindLabels: Record<
 	ExecutionContextMachineAccessEntry['kind'],
 	string
 > = {
+	shell: 'Unrestricted shell',
 	command: 'Named commands',
 	lan: 'Local network destinations',
 	fs: 'Host folders',

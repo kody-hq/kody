@@ -12,6 +12,7 @@ import { ExecutionContextError } from './errors.ts'
 import {
 	type MachineCapabilityRow,
 	machineCapabilityUsePermission,
+	shellCapabilityName,
 } from './machine-capabilities.ts'
 import { hasMachineAccessGrant } from './machine-access.ts'
 import { packagesNotDeclaring, undeclaredNeedMessage } from './machine-needs.ts'
@@ -152,7 +153,7 @@ export async function authorizeContextCommand(
 	const { env, row, user, orgId, capabilityId } = await assertAccess()
 	const wouldBlock =
 		capability === undefined
-			? await packagesNotAllowed(ctx, principal.packages, [])
+			? await shellPackagesWouldBlock(ctx, principal, row)
 			: []
 	const rawEnvKeys = Array.isArray(args.envKeys)
 		? args.envKeys.filter((key): key is string => typeof key === 'string')
@@ -186,6 +187,47 @@ export async function authorizeContextCommand(
 		}),
 	})
 	return { ok: true as const, commandId: args.commandId }
+}
+
+/**
+ * The shell's package rule. A list the operator set is enforced; the default
+ * rule is only logged until existing machines are migrated.
+ */
+async function shellPackagesWouldBlock(
+	ctx: ApiInvocationContext,
+	principal: ContextRunPrincipal,
+	row: { id: string; name: string },
+) {
+	const shell = await ctx.env.APP_DB.prepare(
+		`SELECT * FROM machine_capabilities
+		 WHERE context_id = ? AND kind = 'shell' AND name = ? AND removed_at IS NULL`,
+	)
+		.bind(row.id, shellCapabilityName)
+		.first<MachineCapabilityRow>()
+	const allowedPackages = shell ? parseAllowedPackages(shell) : []
+	const entries = principal.packages?.entries ?? []
+	const refused = principal.packages?.truncated
+		? entries
+		: await packagesNotAllowed(ctx, principal.packages, allowedPackages)
+	if (allowedPackages.length === 0) return refused
+	if (
+		principal.packages?.truncated ||
+		refused.length > 0 ||
+		entries.length === 0
+	) {
+		const label = `the shell on ${row.name}`
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_package_not_allowed',
+			message: principal.packages?.truncated
+				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
+				: entries.length === 0
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.${packagesSetHint}`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}.${packagesSetHint}`,
+			details: { capability: shellCapabilityName, packageIds: refused },
+		})
+	}
+	return []
 }
 
 const maxLanHostChars = 64

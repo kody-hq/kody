@@ -1504,7 +1504,7 @@ function SharingPanel(props: {
 
 type MachineAccessSubjectKind = 'user' | 'team' | 'org' | 'profile'
 
-const machineAccessKinds = ['command', 'lan', 'fs'] as const
+const machineAccessKinds = ['shell', 'command', 'lan', 'fs'] as const
 
 function MachineAccessPanel(props: {
 	orgSlug: string
@@ -1563,6 +1563,12 @@ function MachineAccessPanel(props: {
 				return (
 					<div key={kind} css={{ display: 'grid', gap: spacing.sm }}>
 						<h4 css={{ margin: 0 }}>{machineAccessKindLabels[kind]}</h4>
+						{kind === 'shell' ? (
+							<p css={mutedCss}>
+								Any command, as the machine's user. It is for the operator's
+								runs only and is never shared.
+							</p>
+						) : null}
 						{kind === 'fs' ? (
 							<p css={mutedCss}>
 								Host folders are for the operator's runs only and are never
@@ -1697,7 +1703,7 @@ function MachineAccessGrantForm(props: {
 	const [profileId, setProfileId] = useState(access.profiles[0]?.id ?? '')
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
-	if (kinds.length === 0 || entry.kind === 'fs') return null
+	if (kinds.length === 0 || !entry.shareable) return null
 	const capability = { kind: entry.kind, name: entry.name }
 
 	async function grant() {
