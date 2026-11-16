@@ -20,11 +20,12 @@ import {
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { listCandidatePackages } from '#worker/package-runtime/published-importable-artifact-backfill.ts'
 import { listMissingPublishedSourceInstalledDependencies } from '#worker/package-runtime/published-source-dependencies.ts'
+import { rewriteGlobalObjectFetchReads } from '#worker/package-runtime/rewrite-local-execute-secret-fetch.ts'
+import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import {
-	collectTopLevelFetchCollisionNames,
-	rewriteGlobalObjectFetchReads,
-	sourceMayReadFetchThroughGlobalObject,
-} from '#worker/package-runtime/rewrite-local-execute-secret-fetch.ts'
+	analyzeGlobalObjectFetchReads,
+	type GlobalObjectFetchReadAnalysis,
+} from './global-object-fetch-read-analysis.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const listedPackageFetchBindingScanLimitDefault = 20
@@ -34,11 +35,12 @@ export const listedPackageFetchBindingScanLimitMax = 50
  * publish, so one package alone can hold more than a request can parse.
  */
 export const listedPackageFetchBindingScanBundlesPerCall = 25
-const shapeLengthMax = 60
-const shapesPerPackageMax = 6
+const shapesPerPackageMax = 8
 
 /**
  * Where a package's stored bundles land, worst bundle first:
+ * - `unbound_reads`: a bundle reads fetch from the global object in a way
+ *   the on-load bind does not cover (another name for the global object).
  * - `needs_install_to_rebuild`: a bundle inlines other packages, has such a
  *   read, and its source needs an npm install to build again.
  * - `not_parsed`: a bundle has such a read but its module could not be parsed.
@@ -48,6 +50,7 @@ const shapesPerPackageMax = 6
  * - `no_global_reads`: no bundle has such a read.
  */
 export type ListedPackageFetchBindingOutcome =
+	| 'unbound_reads'
 	| 'needs_install_to_rebuild'
 	| 'not_parsed'
 	| 'rebuild_from_source'
@@ -62,14 +65,21 @@ export type ListedPackageFetchBindingPackage = {
 	outcome: ListedPackageFetchBindingOutcome
 	bundles: number
 	bundlesWithGlobalReads: number
+	/** Short code shapes of the reads behind `unbound_reads`. */
+	unboundReadShapes: Array<string>
 	/**
-	 * Upper bound, not a finding: a module both uses the global object as a
-	 * value and reads `.fetch` from some other name, so it may reach fetch
-	 * through an alias. Most matches are ordinary option objects.
+	 * Upper bound, not a finding: a module has a read of `.fetch`, or a
+	 * computed read from the global object, that could not be shown to come
+	 * from somewhere other than the global object.
 	 */
-	possibleAlias: boolean
-	/** Matched text only (names and punctuation), for a possible alias. */
-	possibleAliasShapes: Array<string>
+	unresolved: boolean
+	/** Short code shapes (names and punctuation) of the unresolved reads. */
+	unresolvedShapes: Array<string>
+	/**
+	 * Bundles reading `window.fetch` or `global.fetch`. Neither name is
+	 * defined in the package runtime, so these are reported and not counted.
+	 */
+	bundlesWithUndefinedGlobalReads: number
 	/**
 	 * True when this call stopped part way through the package's bundles. The
 	 * next page reports the same package again for the rest: add the counts
@@ -91,24 +101,15 @@ export type ListedPackageFetchBindingScanResult = {
 }
 
 const scanProbeName = '__kodyListedPackageScanFetch'
-const globalObjectAsValuePattern =
-	/(?:[=(,?:]|\breturn)\s*(?:globalThis|self)\s*(?=[;,)\n}]|\|\||\?\?|$)/g
-const otherFetchReadPattern =
-	/(?<![\w$.])(?!globalThis\b|self\b|this\b)[A-Za-z_$][\w$]*\s*\??\.\s*fetch\b/g
-
-function shapesOf(source: string, pattern: RegExp) {
-	const shapes = new Set<string>()
-	for (const match of source.matchAll(pattern)) {
-		shapes.add(match[0].replace(/\s+/g, ' ').trim().slice(0, shapeLengthMax))
-		if (shapes.size >= shapesPerPackageMax) break
-	}
-	return [...shapes]
-}
+const analysisPrecheckPattern =
+	/\b(?:globalThis|self|window|global)\b|return this|\beval\b/
 
 type ScannedModules = {
 	globalReads: boolean
 	notParsed: boolean
-	aliasShapes: Array<string>
+	unboundShapes: Array<string>
+	unresolvedShapes: Array<string>
+	undefinedGlobalReads: number
 }
 
 export async function scanModulesForGlobalObjectFetch(
@@ -117,34 +118,44 @@ export async function scanModulesForGlobalObjectFetch(
 	const scanned: ScannedModules = {
 		globalReads: false,
 		notParsed: false,
-		aliasShapes: [],
+		unboundShapes: [],
+		unresolvedShapes: [],
+		undefinedGlobalReads: 0,
 	}
+	const unbound = new Set<string>()
+	const unresolved = new Set<string>()
 	for (const [modulePath, module] of Object.entries(modules)) {
 		if (isPlatformRuntimeModulePath(modulePath)) continue
 		const source = moduleSource(module as never)
 		if (source == null || !source.includes('fetch')) continue
-		if (
-			sourceMayReadFetchThroughGlobalObject(source) &&
-			!(await collectTopLevelFetchCollisionNames(source))
-		) {
+		if (!analysisPrecheckPattern.test(source)) continue
+		let analysis: GlobalObjectFetchReadAnalysis
+		try {
+			analysis = analyzeGlobalObjectFetchReads(
+				(await parseModuleSource(source)) as unknown as ModuleAstNode,
+				source,
+			)
+		} catch {
 			// Unreadable, so it cannot be shown to have no such read.
 			scanned.globalReads = true
 			scanned.notParsed = true
-		} else if (
-			(await rewriteGlobalObjectFetchReads(source, scanProbeName)) !== source
-		) {
-			scanned.globalReads = true
+			continue
 		}
-		const asValue = shapesOf(source, globalObjectAsValuePattern)
-		if (asValue.length === 0) continue
-		const otherReads = shapesOf(source, otherFetchReadPattern)
-		if (otherReads.length === 0) continue
-		scanned.aliasShapes.push(...asValue, ...otherReads)
+		scanned.undefinedGlobalReads += analysis.undefinedGlobalReads
+		for (const shape of analysis.aliasReadShapes) unbound.add(shape)
+		for (const shape of analysis.unresolvedReadShapes) unresolved.add(shape)
+		if (analysis.directReads === 0) continue
+		scanned.globalReads = true
+		const bound =
+			(await rewriteGlobalObjectFetchReads(source, scanProbeName)).split(
+				scanProbeName,
+			).length - 1
+		if (bound < analysis.directReads) {
+			unbound.add('globalThis.fetch or self.fetch that the bind leaves alone')
+		}
 	}
-	scanned.aliasShapes = [...new Set(scanned.aliasShapes)].slice(
-		0,
-		shapesPerPackageMax,
-	)
+	scanned.unboundShapes = [...unbound].slice(0, shapesPerPackageMax)
+	scanned.unresolvedShapes = [...unresolved].slice(0, shapesPerPackageMax)
 	return scanned
 }
 
@@ -173,6 +184,7 @@ const outcomeRank: Array<ListedPackageFetchBindingOutcome> = [
 	'rebuild_from_source',
 	'not_parsed',
 	'needs_install_to_rebuild',
+	'unbound_reads',
 ]
 
 type StoredBundle = {
@@ -243,8 +255,10 @@ async function scanPackage(input: {
 		packageId: input.packageId,
 		bundles: 0,
 		bundlesWithGlobalReads: 0,
-		possibleAlias: false,
-		possibleAliasShapes: [] as Array<string>,
+		unboundReadShapes: [] as Array<string>,
+		unresolved: false,
+		unresolvedShapes: [] as Array<string>,
+		bundlesWithUndefinedGlobalReads: 0,
 	}
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
 	if (!source || source.user_id !== input.userId) {
@@ -265,15 +279,22 @@ async function scanPackage(input: {
 	const partial = more || input.offset > 0 ? { partial: true } : {}
 	let outcome: ListedPackageFetchBindingOutcome = 'no_global_reads'
 	let needsInstall: boolean | null = null
-	const shapes = new Set<string>()
+	const unbound = new Set<string>()
+	const unresolved = new Set<string>()
 	for (const bundle of bundles) {
 		base.bundles += 1
 		const scanned = await scanModulesForGlobalObjectFetch(bundle.modules ?? {})
-		for (const shape of scanned.aliasShapes) shapes.add(shape)
-		if (!scanned.globalReads) continue
+		for (const shape of scanned.unboundShapes) unbound.add(shape)
+		for (const shape of scanned.unresolvedShapes) unresolved.add(shape)
+		if (scanned.undefinedGlobalReads > 0) {
+			base.bundlesWithUndefinedGlobalReads += 1
+		}
+		if (!scanned.globalReads && scanned.unboundShapes.length === 0) continue
 		base.bundlesWithGlobalReads += 1
 		let bundleOutcome: ListedPackageFetchBindingOutcome = 'bound_in_place'
-		if (scanned.notParsed) {
+		if (scanned.unboundShapes.length > 0) {
+			bundleOutcome = 'unbound_reads'
+		} else if (scanned.notParsed) {
 			bundleOutcome = 'not_parsed'
 		} else if (inlinesOtherPackages(bundle)) {
 			if (needsInstall == null) {
@@ -309,8 +330,9 @@ async function scanPackage(input: {
 			...base,
 			...partial,
 			outcome,
-			possibleAlias: shapes.size > 0,
-			possibleAliasShapes: [...shapes].slice(0, shapesPerPackageMax),
+			unboundReadShapes: [...unbound].slice(0, shapesPerPackageMax),
+			unresolved: unresolved.size > 0,
+			unresolvedShapes: [...unresolved].slice(0, shapesPerPackageMax),
 		},
 		rows,
 		more,
@@ -392,8 +414,10 @@ export async function runListedPackageFetchBindingScan(input: {
 				outcome: 'failed',
 				bundles: 0,
 				bundlesWithGlobalReads: 0,
-				possibleAlias: false,
-				possibleAliasShapes: [],
+				unboundReadShapes: [],
+				unresolved: false,
+				unresolvedShapes: [],
+				bundlesWithUndefinedGlobalReads: 0,
 				error: getErrorMessage(error).slice(0, 200),
 			})
 			// How many bundles were read before the failure is unknown, so the
