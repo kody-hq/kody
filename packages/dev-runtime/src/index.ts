@@ -181,7 +181,8 @@ export async function getFreePort(): Promise<number> {
 		const ipv6Free = await listenOnce(port, '::1').then(
 			() => true,
 			(error: NodeJS.ErrnoException) => {
-				if (error.code === 'EADDRINUSE') return false
+				// Windows reports EACCES for excluded or exclusively bound ports.
+				if (error.code === 'EADDRINUSE' || error.code === 'EACCES') return false
 				// Hosts without an IPv6 loopback reject ::1 with these codes.
 				if (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT') {
 					return true
