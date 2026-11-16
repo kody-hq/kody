@@ -17,14 +17,16 @@ const manualOriginCheckMessage =
 	'Names this app at its old address in a file that also compares origins or hostnames. A rewrite could break that check on the old address, so update the URL by hand.'
 
 const manualOtherFormMessage =
-	'Names this app at its old address without https:// (or with http://). Only full https:// URLs are rewritten; update this mention by hand to {leaf}--{user}.kody.run.'
+	'Names this app at its old address in a form that is not rewritten (no https://, http://, or a path in another letter case). Update this mention by hand to {leaf}--{user}.kody.run.'
 
 const textFilePattern =
 	/\.(?:[cm]?[jt]s|[jt]sx|json|jsonc|md|mdx|txt|html|css|ya?ml|toml|vue|svelte|astro|webmanifest)$/
 const ignoredFilePattern =
 	/(?:^|\/)node_modules\/|(?:^|\/)(?:package-lock|npm-shrinkwrap)\.json$/
+// Broad on purpose: any file that talks about origins or hostnames may compare
+// one against the URL, directly or through a variable.
 const originCheckPattern =
-	/\blocation\s*\.\s*(?:origin|host|hostname)\b|\.get\(\s*["'`]origin["'`]\s*\)|access-control-allow-origin|\ballowedOrigins?\b|\bevent\.origin\b|\.hostname\b|\.origin\s*[!=]==?/i
+	/origin|hostname|\blocation\s*\.\s*host\b|\.host\s*[!=]==?/i
 
 type Target = {
 	/** Full `https://` URLs of this app on the owner's host, either path form. */
@@ -51,10 +53,12 @@ function readTarget(context: PackageCodemodContext): Target | null {
 	const label = `${leaf}--${owner}`
 	const parsed = parsePackageAppHostLabel(label)
 	if (!parsed || parsed.leaf !== leaf || parsed.handle !== owner) return null
-	const oldPath = `${escapeRegExp(owner)}\\.kody\\.run/(?:packages/)?${escapeRegExp(leaf)}(?![a-z0-9-])`
+	const oldHost = `${escapeRegExp(owner)}\\.kody\\.run`
+	const oldPath = `/(?:packages/)?${escapeRegExp(leaf)}(?![A-Za-z0-9-])`
 	return {
-		rewritable: new RegExp(`https://${oldPath}`, 'g'),
-		mention: new RegExp(`(?<![a-z0-9.-])${oldPath}`, 'i'),
+		// Scheme and host are case-insensitive; the path is not.
+		rewritable: new RegExp(`(?:(?i:https://${oldHost}))${oldPath}`, 'g'),
+		mention: new RegExp(`(?<![a-z0-9.-])${oldHost}${oldPath}`, 'i'),
 		host: `https://${label}.kody.run`,
 	}
 }

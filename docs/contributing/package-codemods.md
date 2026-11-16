@@ -680,11 +680,12 @@ while both still serve.
 - Only the package's own owner and leaf match. URLs of sibling apps, other
   owners, longer leaves (`/notes-archive`), and template fallbacks
   (`https://{user}.kody.run${appBasePath}`) are left alone.
-- A file that also compares origins or hostnames is not rewritten; it is
-  reported as `needsManual`, because the rewrite could break that check on the
-  old address.
-- Mentions without `https://` (display labels, `http://`) are reported as
-  `needsManual` and left as written.
+- A file that mentions origins or hostnames at all is not rewritten; it is
+  reported as `needsManual`, because the rewrite could break a check on the old
+  address. The guard is per file: a URL constant compared in a different file is
+  still rewritten, so read the dry-run diff before applying.
+- Mentions in any other form (no `https://`, `http://`, a path in another letter
+  case) are reported as `needsManual` and left as written.
 - Packages with no app, profile packages (`@{slug}/{slug}`, which keep the
   owner's bare host), and names with no valid `{leaf}--{handle}` label are
   unchanged.
