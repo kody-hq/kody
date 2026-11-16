@@ -437,6 +437,7 @@ export function ImageViewer({ src, name }: { src: string; name: string }) {
 	)
 	return (
 		<>
+			{/* oxlint-disable-next-line kody-custom/no-raw-dialog -- full-screen image viewer owns its own chrome and keyboard paging. */}
 			<dialog
 				ref={dialog}
 				aria-label={`Image viewer: ${name}`}

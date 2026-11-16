@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
@@ -78,15 +79,6 @@ const dlCss = css({
 	margin: 0,
 	'& dd': { margin: 0, overflowWrap: 'anywhere' },
 	'@container (max-width: 480px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
-})
-const dialogCss = css({
-	maxWidth: 'min(36rem, calc(100vw - 2rem))',
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	background: colors.surface,
-	color: colors.text,
-	padding: spacing.lg,
-	'&::backdrop': { background: 'rgba(0, 0, 0, 0.45)' },
 })
 const tableCss = css({
 	width: '100%',
@@ -271,7 +263,7 @@ function DeleteControls(props: {
 }) {
 	const { context } = props
 	const router = useRouter()
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [dialogOpen, setDialogOpen] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const ownedHere = context.ownerOrg.slug === props.orgSlug
@@ -287,7 +279,7 @@ function DeleteControls(props: {
 		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		setBusy(false)
 		if (!result.ok) return setError(failureText(result))
-		dialog.current?.close()
+		setDialogOpen(false)
 		await router.navigate({
 			to: orgResourcePath(props.orgSlug, 'execution-contexts'),
 			resetScroll: false,
@@ -316,21 +308,20 @@ function DeleteControls(props: {
 					css={target}
 					onClick={() => {
 						setError(null)
-						dialog.current?.showModal()
+						setDialogOpen(true)
 					}}
 				>
 					Delete context
 				</Button>
 			</div>
-			<dialog
-				ref={dialog}
-				css={dialogCss}
-				aria-labelledby="context-delete-dialog-title"
+			<Dialog
+				open={dialogOpen}
+				onClose={() => setDialogOpen(false)}
+				role="alertdialog"
+				size="lg"
+				title={`Delete ${context.name}?`}
 				data-testid="context-delete-dialog"
 			>
-				<h2 id="context-delete-dialog-title" css={{ marginTop: 0 }}>
-					Delete {context.name}?
-				</h2>
 				<p>
 					This permanently deletes {context.name} and removes it from every
 					chain, share and org it was in. You cannot undo this. Past runs still
@@ -341,12 +332,12 @@ function DeleteControls(props: {
 						{error}
 					</AccountManagementMessage>
 				) : null}
-				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
+				<DialogActions>
 					<Button
 						type="button"
 						variant="secondary"
 						css={target}
-						onClick={() => dialog.current?.close()}
+						onClick={() => setDialogOpen(false)}
 					>
 						Cancel
 					</Button>
@@ -360,8 +351,8 @@ function DeleteControls(props: {
 					>
 						{busy ? 'Deleting…' : 'Delete permanently'}
 					</Button>
-				</div>
-			</dialog>
+				</DialogActions>
+			</Dialog>
 		</section>
 	)
 }
@@ -956,7 +947,7 @@ function OptInControls(props: {
 	onChanged: () => void
 }) {
 	const { context } = props
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [dialogOpen, setDialogOpen] = useState(false)
 	const [addToChain, setAddToChain] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -1015,7 +1006,7 @@ function OptInControls(props: {
 				return
 			}
 		}
-		dialog.current?.close()
+		setDialogOpen(false)
 		props.onChanged()
 	}
 
@@ -1106,22 +1097,20 @@ function OptInControls(props: {
 						onClick={() => {
 							setAddToChain(false)
 							setError(null)
-							dialog.current?.showModal()
+							setDialogOpen(true)
 						}}
 					>
 						Opt in
 					</Button>
 				</div>
 			) : null}
-			<dialog
-				ref={dialog}
-				css={dialogCss}
-				aria-labelledby="opt-in-title"
+			<Dialog
+				open={dialogOpen}
+				onClose={() => setDialogOpen(false)}
+				size="lg"
+				title={copy.title}
 				data-testid="opt-in-dialog"
 			>
-				<h2 id="opt-in-title" css={{ marginTop: 0 }}>
-					{copy.title}
-				</h2>
 				{copy.paragraphs.map((paragraph) => (
 					<p key={paragraph}>{paragraph}</p>
 				))}
@@ -1148,12 +1137,12 @@ function OptInControls(props: {
 						{error}
 					</AccountManagementMessage>
 				) : null}
-				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
+				<DialogActions>
 					<Button
 						type="button"
 						variant="secondary"
 						css={target}
-						onClick={() => dialog.current?.close()}
+						onClick={() => setDialogOpen(false)}
 					>
 						Cancel
 					</Button>
@@ -1166,8 +1155,8 @@ function OptInControls(props: {
 					>
 						{busy ? 'Opting in…' : 'Opt in'}
 					</Button>
-				</div>
-			</dialog>
+				</DialogActions>
+			</Dialog>
 			{undoable.pending ? (
 				<UndoToast
 					message={undoable.pending.message}

@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	type FormEvent,
@@ -865,7 +866,7 @@ function RevokeProfileButton(props: {
 	descendants: number
 	onDone: () => Promise<unknown>
 }) {
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [open, setOpen] = useState(false)
 	const [message, setMessage] = useState<string | null>(null)
 	const [pending, setPending] = useState(false)
 
@@ -877,7 +878,7 @@ function RevokeProfileButton(props: {
 			})) as MutationResult
 			setMessage(failureText(result))
 			if (result.ok) {
-				dialog.current?.close()
+				setOpen(false)
 				await props.onDone()
 			}
 		} catch (error) {
@@ -889,24 +890,15 @@ function RevokeProfileButton(props: {
 
 	return (
 		<>
-			<Button
-				type="button"
-				variant="danger"
-				onClick={() => dialog.current?.showModal()}
-			>
+			<Button type="button" variant="danger" onClick={() => setOpen(true)}>
 				Revoke
 			</Button>
-			<dialog
-				ref={dialog}
-				aria-labelledby={`revoke-${props.profile.id}`}
-				css={dialogCss}
+			<Dialog
+				open={open}
+				onClose={() => setOpen(false)}
+				role="alertdialog"
+				title={`Revoke ${props.profile.name}?`}
 			>
-				<h2
-					id={`revoke-${props.profile.id}`}
-					css={{ margin: 0, fontSize: typography.fontSize.lg }}
-				>
-					Revoke {props.profile.name}?
-				</h2>
 				<p css={{ margin: 0 }}>
 					Revoking is final and cannot be undone. Requests and tokens acting as
 					this profile stop working right away
@@ -920,7 +912,7 @@ function RevokeProfileButton(props: {
 						{message}
 					</AccountManagementMessage>
 				) : null}
-				<div css={accountActionsCss}>
+				<DialogActions>
 					<Button
 						type="button"
 						disabled={pending}
@@ -932,12 +924,12 @@ function RevokeProfileButton(props: {
 					<Button
 						type="button"
 						variant="secondary"
-						onClick={() => dialog.current?.close()}
+						onClick={() => setOpen(false)}
 					>
 						Cancel
 					</Button>
-				</div>
-			</dialog>
+				</DialogActions>
+			</Dialog>
 		</>
 	)
 }
@@ -1550,17 +1542,6 @@ const secretCss: CSSObject = {
 	borderRadius: radius.md,
 	border: `1px solid ${colors.warning}`,
 	backgroundColor: `color-mix(in srgb, ${colors.warning} 10%, transparent)`,
-}
-
-const dialogCss: CSSObject = {
-	maxWidth: '28rem',
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	padding: spacing.lg,
-	backgroundColor: colors.surface,
-	color: colors.text,
-	'&[open]': { display: 'grid', gap: spacing.md },
-	'&::backdrop': { backgroundColor: 'rgba(0, 0, 0, 0.45)' },
 }
 
 const hintsCss: CSSObject = {

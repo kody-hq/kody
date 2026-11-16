@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import {
 	updateOrganizationProfile,
 	deleteOrganization,
@@ -8,7 +9,7 @@ import {
 	saveOrganizationAvatar,
 } from '#start/server/org-settings-mutations'
 import type { CSSObject } from '@emotion/react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
 	hashKey,
 	useMutation,
@@ -29,13 +30,7 @@ import {
 	fieldLabelCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	shadows,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -82,7 +77,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 		text: string
 		tone: 'info' | 'error'
 	} | null>(null)
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [deleteOpen, setDeleteOpen] = useState(false)
 	const identity = orgIdentity(data.org, { displayName: '', avatarUrl: null })
 	const profile = useMutation(
 		orgSettingsMutationOptions(
@@ -151,7 +146,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 		)
 	}
 	const closeDialog = () => {
-		dialog.current?.close()
+		setDeleteOpen(false)
 		setConfirmation('')
 	}
 	return (
@@ -356,28 +351,27 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									variant="danger"
 									onClick={() => {
 										setConfirmation('')
-										dialog.current?.showModal()
+										setDeleteOpen(true)
 									}}
 								>
 									{renderIcon('warning-triangle', { size: '1.05rem' })}Delete
 									organization
 								</Button>
 							</div>
-							<dialog
-								ref={dialog}
-								aria-labelledby="delete-org-title"
+							<Dialog
+								open={deleteOpen}
+								onClose={closeDialog}
+								dismissOnOutsideClick
+								title={`Delete @${data.org.slug}?`}
+								description={
+									<>
+										Type <strong>{data.org.slug}</strong> or{' '}
+										<strong>DELETE</strong> to confirm.
+									</>
+								}
 								data-testid="delete-org-dialog"
-								css={deleteDialogCss}
-								onCancel={(event) => {
-									event.preventDefault()
-									closeDialog()
-								}}
-								onClick={(event) => {
-									if (event.target === event.currentTarget) closeDialog()
-								}}
 							>
 								<form
-									method="dialog"
 									css={deleteDialogFormCss}
 									onSubmit={(event) => {
 										event.preventDefault()
@@ -388,20 +382,13 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 													confirmation,
 												}),
 											async (result) => {
-												dialog.current?.close()
+												setDeleteOpen(false)
 												await router.navigate({ href: result.redirectTo })
 											},
 											data.canDelete,
 										)
 									}}
 								>
-									<h3 id="delete-org-title" css={deleteDialogTitleCss}>
-										Delete @{data.org.slug}?
-									</h3>
-									<p css={fieldDescriptionCss}>
-										Type <strong>{data.org.slug}</strong> or{' '}
-										<strong>DELETE</strong> to confirm.
-									</p>
 									<Field label="Confirmation">
 										<Input
 											value={confirmation}
@@ -411,7 +398,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 											}
 										/>
 									</Field>
-									<div css={accountActionsCss}>
+									<DialogActions>
 										<Button
 											type="submit"
 											disabled={
@@ -430,9 +417,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										>
 											Cancel
 										</Button>
-									</div>
+									</DialogActions>
 								</form>
-							</dialog>
+							</Dialog>
 						</AccountManagementPanel>
 					) : null}
 				</>
@@ -490,27 +477,7 @@ const avatarActionsCss: CSSObject = {
 	marginTop: spacing.md,
 }
 
-const deleteDialogCss: CSSObject = {
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	padding: spacing.lg,
-	maxWidth: '28rem',
-	width: 'calc(100% - 2rem)',
-	backgroundColor: colors.surface,
-	boxShadow: shadows.md,
-	color: colors.text,
-	'&::backdrop': {
-		backgroundColor: 'rgba(15, 18, 16, 0.45)',
-	},
-}
-
 const deleteDialogFormCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.md,
-}
-
-const deleteDialogTitleCss: CSSObject = {
-	margin: 0,
-	fontSize: '1.2rem',
-	fontWeight: 700,
 }

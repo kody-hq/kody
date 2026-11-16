@@ -14,7 +14,7 @@ import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ControlTooltip } from './packages/worker/start/components/control-tooltip.tsx'
 import { CopyTextButton } from './packages/worker/start/components/copy-text-button.tsx'
-import { ModalDialog } from './packages/worker/start/components/modal-dialog.tsx'
+import { Dialog } from './packages/worker/start/components/dialog.tsx'
 
 function Fixture() {
 	const [open, setOpen] = useState(false)
@@ -22,9 +22,9 @@ function Fixture() {
 		<CopyTextButton iconOnly title="" value="source" ariaLabel="Copy index.ts"
 			wrapButton={button => <ControlTooltip trigger={button}>Copy source</ControlTooltip>} />
 		<button onClick={() => setOpen(true)}>Delete package</button>
-		{open && <ModalDialog label="Delete example" alert width={420} onClose={() => setOpen(false)}>
+		<Dialog open={open} aria-label="Delete example" role="alertdialog" onClose={() => setOpen(false)}>
 			<button onClick={() => setOpen(false)}>Cancel</button>
-		</ModalDialog>}
+		</Dialog>
 	</>
 }
 createRoot(document.getElementById('root')).render(<Fixture />)

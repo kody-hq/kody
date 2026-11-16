@@ -697,6 +697,34 @@ const noRawFormControlRule = {
 	},
 }
 
+const noRawDialogRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Render modal dialogs through <Dialog> (start/components/dialog.tsx) so focus trapping, restoration, and dismissal stay consistent.',
+		},
+		schema: [],
+		messages: {
+			useDialog:
+				'Render <Dialog> from start/components/dialog.tsx instead of a raw <dialog>. See docs/contributing/ui-components.md.',
+		},
+	},
+	createOnce(context) {
+		return {
+			JSXOpeningElement(node) {
+				if (node.name.type !== 'JSXIdentifier' || node.name.name !== 'dialog') {
+					return
+				}
+				const filename = context.filename
+				if (!/\/packages\/worker\/(start|client)\//.test(filename)) return
+				if (/\.test\.tsx?$/.test(filename)) return
+				context.report({ node, messageId: 'useDialog' })
+			},
+		}
+	},
+}
+
 const noRawButtonStyleRule = {
 	meta: {
 		type: 'problem',
@@ -771,6 +799,7 @@ const plugin = {
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-raw-button-style': noRawButtonStyleRule,
+		'no-raw-dialog': noRawDialogRule,
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,

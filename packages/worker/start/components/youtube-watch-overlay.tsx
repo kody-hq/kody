@@ -42,6 +42,7 @@ export function YouTubeWatchOverlay({
 	}
 	if (!videoId || !allowed) return null
 	return (
+		// oxlint-disable-next-line kody-custom/no-raw-dialog -- full-screen video player owns its own chrome.
 		<dialog
 			ref={dialog}
 			aria-labelledby={titleId}

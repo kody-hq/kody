@@ -2,6 +2,11 @@
 import { useState, type ReactNode } from 'react'
 import { Button } from '../components/button.tsx'
 import { Checkbox, Radio, Switch } from '../components/choice-controls.tsx'
+import {
+	Dialog,
+	DialogActions,
+	type DialogProps,
+} from '../components/dialog.tsx'
 import { Field } from '../components/field.tsx'
 import { Input, Select, Textarea } from '../components/input.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -116,7 +121,79 @@ const uiGallerySections: ReadonlyArray<{
 		title: 'Checkbox, Radio, Switch',
 		render: () => <ChoiceControlsDemo />,
 	},
+	{
+		id: 'dialog',
+		title: 'Dialog',
+		render: () => (
+			<GalleryRow label="open">
+				<DialogDemo
+					trigger="Rename file"
+					title="Rename file"
+					description="Names must be unique in this folder."
+				>
+					<Field label="Name">
+						<Input name="gallery-dialog-name" defaultValue="notes.md" />
+					</Field>
+				</DialogDemo>
+				<DialogDemo
+					trigger="Quick look"
+					aria-label="Quick look"
+					dismissOnOutsideClick
+				>
+					<p css={{ margin: 0 }}>Click outside or press Escape to close.</p>
+				</DialogDemo>
+				<DialogDemo
+					trigger="Delete file"
+					role="alertdialog"
+					title="Delete notes.md?"
+					description="This can't be undone."
+					confirm="Delete"
+				/>
+				<DialogDemo
+					trigger="Side panel"
+					placement="side"
+					size="md"
+					title="Details"
+				>
+					<p css={{ margin: 0 }}>Slides in from the inline end.</p>
+				</DialogDemo>
+			</GalleryRow>
+		),
+	},
 ]
+
+type DialogDemoProps = Omit<DialogProps, 'open' | 'onClose' | 'children'> & {
+	trigger: string
+	confirm?: string
+	children?: ReactNode
+}
+
+function DialogDemo({ trigger, confirm, children, ...props }: DialogDemoProps) {
+	const [open, setOpen] = useState(false)
+	const close = () => setOpen(false)
+	return (
+		<>
+			<Button type="button" variant="secondary" onClick={() => setOpen(true)}>
+				{trigger}
+			</Button>
+			<Dialog {...(props as DialogProps)} open={open} onClose={close}>
+				{children}
+				<DialogActions>
+					<Button type="button" variant="secondary" onClick={close}>
+						Cancel
+					</Button>
+					<Button
+						type="button"
+						variant={props.role === 'alertdialog' ? 'danger' : 'primary'}
+						onClick={close}
+					>
+						{confirm ?? 'Save'}
+					</Button>
+				</DialogActions>
+			</Dialog>
+		</>
+	)
+}
 
 function ChoiceControlsDemo() {
 	const [items, setItems] = useState([true, false])

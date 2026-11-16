@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { readWebsiteSessionInfo } from '#start/server/session-info'
@@ -184,9 +184,10 @@ export function PublicShareActions({
 				Use in Kody <ShareIcon kind="arrow" />
 			</Button>
 			{open && (
-				<ModalDialog
-					label="Use in Kody"
-					width={440}
+				<Dialog
+					open
+					aria-label="Use in Kody"
+					size="sm"
 					flush
 					onClose={closeDialog}
 				>
@@ -345,7 +346,7 @@ export function PublicShareActions({
 							</span>
 						)}
 					</div>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)

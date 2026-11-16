@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -113,12 +113,13 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 					</div>
 				</div>
 				{open && (
-					<ModalDialog
-						alert
+					<Dialog
+						open
+						role="alertdialog"
 						flush
-						label="Delete your Kody account?"
-						width={512}
-						testId="delete-account-dialog"
+						aria-label="Delete your Kody account?"
+						size="md"
+						data-testid="delete-account-dialog"
 						onClose={closeDialog}
 					>
 						<form css={deleteDialogFormCss} onSubmit={handleDeleteSubmit}>
@@ -199,7 +200,7 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 								</Button>
 							</div>
 						</form>
-					</ModalDialog>
+					</Dialog>
 				)}
 			</>
 		)
