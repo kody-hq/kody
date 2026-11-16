@@ -31,16 +31,19 @@ export function createPublishedPackageCacheKey(input: {
  * How long a request waits on another request's in-flight entry before it
  * starts its own `create()`. A Workers isolate serves many requests, and a
  * promise created by one request never settles once that request ends or is
- * canceled (for example when its client disconnects). A request that awaits
- * such a promise has no I/O of its own, so the runtime cancels it as hung
- * ("error code: 1101"). The timer keeps the waiter alive and lets it recover.
+ * canceled (for example when its client disconnects). Awaiting it either
+ * hangs the waiter ("error code: 1101") or, with the runtime's
+ * `handle_cross_request_promise_resolution` behavior, rejects it with "This
+ * promise was created by a request that has since ended". The timer covers
+ * the hang; a rejection makes the waiter rebuild in its own request.
  */
 export const promiseLruCacheInFlightWaitMs = 5_000
 
 type PromiseLruCacheEntry<T> = {
 	expiresAt: number
 	pending: Promise<T>
-	settled: boolean
+	/** Set once `pending` resolves; hits are served from it, not `pending`. */
+	settled: { value: T } | null
 	bytes: number
 	lastUsed: number
 }
@@ -218,15 +221,20 @@ export class PromiseLruCache<T> {
 		return cached
 	}
 
+	/**
+	 * A settled value, as a promise owned by the caller's request. Never
+	 * another request's in-flight promise: use `getOrCreate` to wait on one.
+	 */
 	get(key: string) {
-		return this.getEntry(key)?.pending ?? null
+		const settled = this.getEntry(key)?.settled
+		return settled ? Promise.resolve(settled.value) : null
 	}
 
 	set(key: string, pending: Promise<T>) {
 		const entry: PromiseLruCacheEntry<T> = {
 			expiresAt: Date.now() + this.ttlMs,
 			pending,
-			settled: false,
+			settled: null,
 			bytes: 0,
 			lastUsed: 0,
 		}
@@ -235,7 +243,7 @@ export class PromiseLruCache<T> {
 		this.touch(entry)
 		void pending.then(
 			(value) => {
-				entry.settled = true
+				entry.settled = { value }
 				this.recordSize(key, entry, value)
 			},
 			() => {},
@@ -247,10 +255,10 @@ export class PromiseLruCache<T> {
 	getOrCreate(input: { cacheKey: string; create: () => Promise<T> }) {
 		const cached = this.getEntry(input.cacheKey)
 		if (cached?.settled) {
-			return cached.pending
+			return Promise.resolve(cached.settled.value)
 		}
 		if (cached) {
-			return this.waitForInFlight(cached, input)
+			return this.waitForInFlight(cached, input, { retried: false })
 		}
 		return this.createEntry(input)
 	}
@@ -296,18 +304,19 @@ export class PromiseLruCache<T> {
 
 	/**
 	 * Await an entry another request may own. If it has not settled within
-	 * `inFlightWaitMs`, treat it as orphaned: replace it (when it is still the
-	 * cached entry) and run `create()` in this request.
+	 * `inFlightWaitMs`, or it rejects, treat it as orphaned: replace it (when
+	 * it is still the cached entry) and run `create()` in this request. The
+	 * owner may have ended, and its failure is not this request's, so a
+	 * waiter rebuilds once before it reports a rejection.
 	 */
 	private waitForInFlight(
 		entry: PromiseLruCacheEntry<T>,
 		input: { cacheKey: string; create: () => Promise<T> },
+		options: { retried: boolean },
 	) {
 		return new Promise<T>((resolve, reject) => {
 			let done = false
-			const timer = setTimeout(() => {
-				if (done) return
-				done = true
+			const takeOver = () => {
 				if (this.cache.get(input.cacheKey) === entry) {
 					this.delete(input.cacheKey)
 				}
@@ -317,9 +326,14 @@ export class PromiseLruCache<T> {
 				const next = !current
 					? this.createEntry(input)
 					: current.settled
-						? current.pending
-						: this.waitForInFlight(current, input)
+						? Promise.resolve(current.settled.value)
+						: this.waitForInFlight(current, input, { retried: true })
 				next.then(resolve, reject)
+			}
+			const timer = setTimeout(() => {
+				if (done) return
+				done = true
+				takeOver()
 			}, this.inFlightWaitMs)
 			entry.pending.then(
 				(value) => {
@@ -332,7 +346,11 @@ export class PromiseLruCache<T> {
 					if (done) return
 					done = true
 					clearTimeout(timer)
-					reject(error)
+					if (options.retried) {
+						reject(error)
+						return
+					}
+					takeOver()
 				},
 			)
 		})
