@@ -366,7 +366,8 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   package may not use it. An empty list lifts the limit. This is also how you
   let a package from someone else use an entry without adopting it. The list
   never shares the entry with another person. A machine with the whole local
-  network turned on also lists it, as kind `lan`, name `*`. It cannot be shared
+  network turned on also lists it, as kind `lan`, name `*`, and each run's first
+  use of a local address and port is audited as `lan_used`. It cannot be shared
   or limited to packages yet; define named destinations for that.
 - In the app: a context's detail page has a Machine access section that lists
   its named commands, local network destinations and host folders with who holds

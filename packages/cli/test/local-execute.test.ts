@@ -17,7 +17,10 @@ import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
-import { egressPolicyFromGrant } from '../src/local-egress.js'
+import {
+	egressPolicyFromGrant,
+	localExecuteEgressPolicy,
+} from '../src/local-egress.js'
 import { startSelfSignedHttps } from './self-signed-https.js'
 import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
@@ -184,7 +187,10 @@ before(async () => {
 			}
 			if (
 				path.join('.') === 'kody.lan.authorize' &&
-				(args[0] as { capability?: string }).capability === 'refused'
+				((args[0] as { capability?: string }).capability === 'refused' ||
+					// The whole local network, refused for one address.
+					((args[0] as { capability?: string }).capability === '*' &&
+						(args[0] as { host?: string }).host === '127.0.0.2'))
 			) {
 				send(403, {
 					error: {
@@ -1632,6 +1638,73 @@ export default async () => {
 					`This machine no longer allows 127\\.0\\.0\\.1:${port} for local network destination "nas"\\. \\(machine_capability_off\\)`,
 				),
 			)
+			assert.equal(authorizations().length, 0)
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'with the whole local network on, a context run asks Kody once per address and port, and a refusal blocks the request',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((_request, response) => response.end('lan ok'))
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const port = (lan.address() as AddressInfo).port
+		const code = `export default async function main({ urls }) {
+	const out = []
+	for (const url of urls) {
+		try {
+			out.push('ok: ' + (await (await fetch(url)).text()))
+		} catch (error) {
+			out.push(String(error?.message ?? error))
+		}
+	}
+	return out
+}`
+		const run = async (
+			egress: Parameters<typeof runLocalExecute>[0]['egress'],
+			urls: Array<string>,
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { urls },
+				token: goodToken,
+				apiUrl,
+				...(egress ? { egress } : {}),
+			})
+			assert.equal(result.isError, false)
+			return (result.structuredContent as { result: Array<string> }).result
+		}
+		const authorizations = () =>
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.lan.authorize' ? [body.args] : []
+			})
+		try {
+			const url = `http://127.0.0.1:${port}/`
+			const out = await run(egressPolicyFromGrant({ mode: 'public-and-lan' }), [
+				url,
+				url,
+				`http://127.0.0.2:${port}/`,
+			])
+			assert.deepEqual(out.slice(0, 2), ['ok: lan ok', 'ok: lan ok'])
+			assert.match(
+				out[2]!,
+				/uses this machine's whole local network, and Kody refused it\. .*not granted/,
+			)
+			assert.deepEqual(authorizations(), [
+				[{ capability: '*', host: '127.0.0.1', port }],
+				[{ capability: '*', host: '127.0.0.2', port }],
+			])
+
+			// kody execute --local --allow-private-network is not a Kody entry.
+			proxyRequests.length = 0
+			assert.deepEqual(await run(localExecuteEgressPolicy(true), [url]), [
+				'ok: lan ok',
+			])
 			assert.equal(authorizations().length, 0)
 		} finally {
 			await new Promise((resolve) => lan.close(resolve))
