@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest'
-import { rewriteGlobalObjectFetchReads } from './rewrite-local-execute-secret-fetch.ts'
+import {
+	rewriteGlobalObjectFetchReads,
+	sourceReadsFetchThroughGlobalObject,
+} from './rewrite-local-execute-secret-fetch.ts'
 
 const rewrite = (source: string) => rewriteGlobalObjectFetchReads(source, 'F')
 
@@ -12,6 +15,18 @@ test('reads of fetch through the global object use the replacement', async () =>
 	).toBe(`new Sdk({ fetch: F.bind(globalThis) })`)
 	expect(await rewrite(`new Sdk({ fetch: globalThis.fetch, self: 1 })`)).toBe(
 		`new Sdk({ fetch: F, self: 1 })`,
+	)
+})
+
+test('optional reads of fetch through the global object use the replacement', async () => {
+	expect(await rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
+	expect(await rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
+	expect(await rewrite(`globalThis?.['fetch'](url)`)).toBe(`F(url)`)
+	expect(await rewrite(`globalThis?.fetch(a); globalThis.fetch(b)`)).toBe(
+		`F(a); F(b)`,
+	)
+	expect(await sourceReadsFetchThroughGlobalObject(`self?.fetch(url)`)).toBe(
+		true,
 	)
 })
 
@@ -71,7 +86,17 @@ test('a parenthesized global object is still read as the global object', async (
 	expect(await rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
 })
 
-test('an optional read through the global object is still a read', async () => {
-	expect(await rewrite(`globalThis?.fetch(url)`)).toBe(`F(url)`)
-	expect(await rewrite(`self?.fetch?.(url)`)).toBe(`F?.(url)`)
+test('a read is still found where the module also uses the global object as a value', async () => {
+	// One package's alias in an inlined bundle must not hide another's read.
+	const source = `const shared = globalThis\nshared.fetch(a)\nglobalThis.fetch(b)`
+	expect(await rewrite(source)).toBe(
+		`const shared = globalThis\nshared.fetch(a)\nF(b)`,
+	)
+	expect(await sourceReadsFetchThroughGlobalObject(source)).toBe(true)
+	expect(
+		await sourceReadsFetchThroughGlobalObject(`const shared = globalThis`),
+	).toBe(false)
+	expect(
+		await sourceReadsFetchThroughGlobalObject(`globalThis.fetch = polyfill`),
+	).toBe(false)
 })

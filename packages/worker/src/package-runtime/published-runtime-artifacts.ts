@@ -9,6 +9,7 @@ import {
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
+	repairGlobalObjectFetchReadsInArtifact,
 	repairPreBindingPublishedArtifact,
 } from './pre-binding-artifact-repair.ts'
 
@@ -932,7 +933,9 @@ async function parseStoredPublishedBundleArtifact(
 	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
 	if (!isRepairableArtifactKind(loaded.kind)) return loaded
 	return repairInlinedFacadeBindingsInArtifact(
-		await repairPreBindingPublishedArtifact(loaded),
+		await repairGlobalObjectFetchReadsInArtifact(
+			await repairPreBindingPublishedArtifact(loaded),
+		),
 	)
 }
 

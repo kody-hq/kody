@@ -187,6 +187,28 @@ export function createPackageSecretAccessDeniedMessage(input: {
 	return `Secret "${input.secretName}" is not allowed for package "${input.packageName}". If this package should be able to use the secret, ask the user whether to approve that package in the account secrets UI, then retry after they approve that policy change.${approvalSuffix}`
 }
 
+/**
+ * A call that did not come from a package's own bound code asked for a
+ * credential locked to an allowed-packages list. `listedPackageNameInRun` is
+ * a listed package loaded in the run, when there is one: the call may be
+ * that package's own code reaching fetch through a channel that is not bound.
+ */
+export function createUnboundLockedSecretUseMessage(input: {
+	secretName: string
+	lockedPackageNames: ReadonlyArray<string>
+	listedPackageNameInRun?: string | null
+}) {
+	const names = input.lockedPackageNames.map((name) => `"${name}"`).join(', ')
+	const lockedTo = names
+		? `it is locked to ${input.lockedPackageNames.length === 1 ? 'package' : 'packages'} ${names}`
+		: 'it is locked to an allowed-packages list'
+	const why = `Secret "${input.secretName}" was refused: ${lockedTo}, so only the code of a listed package can use it, and this request did not come from one.`
+	if (input.listedPackageNameInRun) {
+		return `${why} Fix: call an export of "${input.listedPackageNameInRun}" and let it make the request. If "${input.listedPackageNameInRun}" itself made this request, it reached fetch in a way that cannot be tied to it (for example through an alias of globalThis): have it call fetch directly, then publish it again.`
+	}
+	return `${why} Fix: call an export of a listed package and let it make the request, or ask the account owner to add the calling package to the list (a package must make the request with its own fetch or kody:runtime helpers).`
+}
+
 export function createSecretPackageGrantRequiresWebsiteMessage(input: {
 	approvalUrl: string
 }) {

@@ -1856,7 +1856,7 @@ ${runtimeHelperRuntimePropertySource}
 				})) ??
 				// A stored pre-fix bundle the load site could not rebuild runs an
 				// inlined package as the caller; say so and how to fix it.
-				describePreBindingIdentityError({
+				(await describePreBindingIdentityError({
 					message: getErrorMessage(result.error),
 					artifact: {
 						modules: bundle.modules,
@@ -1868,7 +1868,7 @@ ${runtimeHelperRuntimePropertySource}
 									packageBindingRewrite: bundle.packageBindingRewrite,
 								}),
 					},
-				})
+				}))
 			const finalResult = rewrittenMessage
 				? {
 						...sanitizedResult,

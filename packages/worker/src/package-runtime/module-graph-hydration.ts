@@ -87,10 +87,10 @@ export async function resolveCurrentDynamicPackageArtifact(input: {
 	})
 	if (
 		loadedArtifact?.artifact &&
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: loadedArtifact.artifact,
 			sourceFiles: loaded.files,
-		})
+		}))
 	) {
 		return loadedArtifact.artifact
 	}

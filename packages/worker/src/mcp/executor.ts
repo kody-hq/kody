@@ -1,3 +1,4 @@
+import { createIntrinsicChangeDetectorSource } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
 import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	sanitizeToolName,
@@ -88,6 +89,7 @@ import {
 } from '#mcp/kody-provider-proxy-source.ts'
 import {
 	grantedSecretAuthorityPackageIdSet,
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityArgName,
@@ -1235,6 +1237,10 @@ function createPackageBindingSandboxSource() {
 		'      fetch: async (input, init) => {',
 		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
 		'        await recordFetch();',
+		'        const changed = __kodyChangedIntrinsics();',
+		'        if (changed.length > 0) {',
+		'          return await __kodyUnwrapGatewayResponse(await fetcher.fetchWithChangedIntrinsics(new __kodyRequestCaptured(input, init), changed));',
+		'        }',
 		'        return await __kodyUnwrapGatewayResponse(await fetcher.fetch(input, init));',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
@@ -1330,6 +1336,7 @@ function createExecutorModule(input: {
 		'const __kodyErrorCaptured = Error;',
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
 		'const __kodyStringCaptured = String;',
+		'const __kodyRequestCaptured = Request;',
 		...createPackageBindingSandboxSource(),
 		createGatewayResponseUnwrapSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
@@ -1344,6 +1351,7 @@ function createExecutorModule(input: {
 		'  };',
 		'  globalThis[__kodyEvaluateFetchPatchedSymbol] = true;',
 		'}',
+		createIntrinsicChangeDetectorSource(),
 		'const __kodyEvaluateConsoleStorage =',
 		'  globalThis[__kodyEvaluateConsoleStorageSymbol] ??',
 		'  (globalThis[__kodyEvaluateConsoleStorageSymbol] = new AsyncLocalStorage());',
@@ -1559,7 +1567,18 @@ export function createToolDispatchers(
 						// stamp. Without grants, a peeled stamp installs an empty
 						// set and resolveCallerSecretAuthority fails closed.
 						const withStamp = () =>
-							runWithCurrentSecretAuthority(requestedPackageId, invoke)
+							runAsSandboxCall(
+								requestedPackageId
+									? null
+									: {
+											surface: 'hosted',
+											pattern: 'shared_capability',
+											loadedPackageIds: capturedGrantedPackageIds
+												? [...capturedGrantedPackageIds]
+												: null,
+										},
+								() => runWithCurrentSecretAuthority(requestedPackageId, invoke),
+							)
 						return capturedGrantedPackageIds
 							? await runWithSecretAuthorityScope(
 									capturedGrantedPackageIds,

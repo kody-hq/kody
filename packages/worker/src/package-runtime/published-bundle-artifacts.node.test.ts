@@ -489,16 +489,16 @@ test('rebuildPublishedPackageArtifacts bundles declared subscription handlers', 
 	expect(buildImportableModuleBundle).toHaveBeenCalledWith({
 		entryPoint: 'src/index.ts',
 	})
+	// Targets build two at a time, so the order rows land in is not fixed.
 	expect(
-		mockModule.insertPublishedBundleArtifactRow.mock.calls.map((call) => [
-			call[1].artifactKind,
-			call[1].artifactName,
-		]),
+		mockModule.insertPublishedBundleArtifactRow.mock.calls
+			.map((call) => `${call[1].artifactKind} ${call[1].artifactName}`)
+			.sort(),
 	).toEqual([
-		['module', '.'],
-		['importable-module', '.'],
-		['module', 'subscription:email.message.quarantined'],
-		['module', 'subscription:email.message.received'],
+		'importable-module .',
+		'module .',
+		'module subscription:email.message.quarantined',
+		'module subscription:email.message.received',
 	])
 })
 
@@ -1336,7 +1336,7 @@ test('rebuildPublishedPackageArtifacts rebuilds a refused pre-binding importable
 				kind: 'importable-module',
 				artifactName: './a',
 				publishedCommit: 'commit-1',
-				packageBindingRewrite: 1,
+				packageBindingRewrite: 2,
 			}),
 		}),
 	)

@@ -421,7 +421,7 @@ export async function isPublishedPackageArtifactBuiltForCommit(input: {
 	// packages) is a gap. Local execute has no source fallback and reports it
 	// as a missing importable artifact, so publish repair must rebuild it.
 	if (
-		isPublishedArtifactRefusedByLoadSites({
+		await isPublishedArtifactRefusedByLoadSites({
 			artifact: loaded.artifact,
 			sourceFiles: snapshot?.files ?? null,
 		})
@@ -557,7 +557,7 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	// commit. A pre-binding bundle that inlines other packages cannot be bound
 	// in place, so copying it forward would keep the gap at every later
 	// commit. Rebuild it from source instead.
-	if (isUnrepairablePreBindingArtifact(loaded.artifact)) {
+	if (await isUnrepairablePreBindingArtifact(loaded.artifact)) {
 		return false
 	}
 	const [previousSnapshot, nextSnapshot] = await Promise.all([
@@ -689,7 +689,7 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 		if (!loaded?.artifact) continue
 		const priorCommit = loaded.artifact.publishedCommit
 		if (loaded.row.publishedCommit !== priorCommit) continue
-		if (isUnrepairablePreBindingArtifact(loaded.artifact)) continue
+		if (await isUnrepairablePreBindingArtifact(loaded.artifact)) continue
 		const previousSnapshot = await readPublishedSourceSnapshotCached({
 			env: input.env,
 			sourceId: input.source.id,

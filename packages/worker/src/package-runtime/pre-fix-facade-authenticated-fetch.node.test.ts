@@ -343,7 +343,7 @@ test('a pre-fix mixed bundle that needs npm install is served bound', async () =
 	// Rebuilding would need an npm install, so load sites serve this bundle.
 	consoleWarn.mockImplementation(() => {})
 	expect(
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact,
 			sourceFiles: {
 				'package.json': JSON.stringify({ dependencies: { 'date-fns': '4' } }),

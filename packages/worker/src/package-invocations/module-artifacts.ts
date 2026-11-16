@@ -241,7 +241,8 @@ async function ensureModuleArtifactUncached(input: {
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
 	const mayNeedBindingRebuild =
-		currentArtifact != null && isUnrepairablePreBindingArtifact(currentArtifact)
+		currentArtifact != null &&
+		(await isUnrepairablePreBindingArtifact(currentArtifact))
 	if (currentArtifact && !mayNeedBindingRebuild) {
 		return {
 			artifact: currentArtifact,
@@ -456,10 +457,10 @@ async function rebuildModuleArtifact(
 	})
 	if (
 		currentArtifact &&
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: currentArtifact,
 			sourceFiles: packageSource.files,
-		})
+		}))
 	) {
 		return { serve: 'current', artifact: currentArtifact }
 	}

@@ -1,4 +1,8 @@
 import {
+	createIntrinsicChangeDetectorSource,
+	normalizeChangedIntrinsicNames,
+} from '#worker/package-runtime/intrinsic-change-detector-source.ts'
+import {
 	servingCommitForSource,
 	toServingSourceView,
 } from '#worker/repo/serving-commit.ts'
@@ -138,6 +142,7 @@ import {
 import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityHeaderName,
@@ -544,6 +549,7 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 						packageId,
 						new __kodyRequestCaptured(requestInput, init),
 						__kodyCurrentVisitTicket(),
+						__kodyChangedIntrinsics(),
 					),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
@@ -630,6 +636,7 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 	};
 	globalThis[__kodyEvaluateFetchPatchedSymbol] = true;
 }
+${createIntrinsicChangeDetectorSource()}
 
 function buildFacetName(rawFacetName) {
 	return typeof rawFacetName === 'string' && rawFacetName.trim().length > 0
@@ -2249,6 +2256,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageId: string,
 		request: Request,
 		visitTicket?: string | null,
+		changedIntrinsics?: unknown,
 	) {
 		const boundPackageId = await this.assertPackageBindingCapability(
 			token,
@@ -2273,6 +2281,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							null)
 						: null,
 					credentialClientBinding: this.credentialBindingFor(visit),
+					changedIntrinsics: normalizeChangedIntrinsicNames(changedIntrinsics),
 				},
 			})
 			.fetch(forwarded)
@@ -2425,8 +2434,18 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		const invoke = () =>
 			capability.handler(input.args, { env: this.env, callerContext })
 		const grantedPackageIds = new Set(this.ctx.props.packageStorageGrantIds)
-		return await runWithSecretAuthorityScope(grantedPackageIds, () =>
-			runWithCurrentSecretAuthority(boundPackageId, invoke),
+		return await runAsSandboxCall(
+			boundPackageId?.trim()
+				? null
+				: {
+						surface: 'app',
+						pattern: 'shared_capability',
+						loadedPackageIds: [...grantedPackageIds],
+					},
+			() =>
+				runWithSecretAuthorityScope(grantedPackageIds, () =>
+					runWithCurrentSecretAuthority(boundPackageId, invoke),
+				),
 		)
 	}
 
@@ -3963,7 +3982,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	})
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-	if (currentArtifact && !isUnrepairablePreBindingArtifact(currentArtifact)) {
+	if (
+		currentArtifact &&
+		!(await isUnrepairablePreBindingArtifact(currentArtifact))
+	) {
 		return servePublishedArtifact(currentArtifact)
 	}
 	// Only a caller that passes no source at all keeps serving the published
@@ -3982,10 +4004,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	const sourceFiles = await resolvePackageAppSourceFiles(input)
 	if (
 		currentArtifact &&
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: currentArtifact,
 			sourceFiles,
-		})
+		}))
 	) {
 		return servePublishedArtifact(currentArtifact)
 	}
@@ -4348,7 +4370,7 @@ async function readPublishedPackageAppWorkerTemplate(input: {
 			clientEntry: getPackageAppClientEntryPath(input.manifest),
 		})
 		const app =
-			parts.app && !isUnrepairablePreBindingArtifact(parts.app)
+			parts.app && !(await isUnrepairablePreBindingArtifact(parts.app))
 				? servePublishedAppArtifact(parts.app)
 				: null
 		return { bundled: app, client: parts.client }
