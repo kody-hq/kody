@@ -286,6 +286,42 @@ test('a publish by an id that is no member, with nobody noted for that commit, f
 	})
 })
 
+test('overlapping publishes of one package each record the person who asked for their commit', async () => {
+	const t = await setup()
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-a',
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit: 'commit-b',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-a',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.member,
+		source: 'publisher',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-b',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.owner,
+		source: 'publisher',
+	})
+})
+
 test('an Owner republishing keeps the runs-as person they chose', async () => {
 	const t = await setup()
 	await setPackageAppRunsAsPerson({
