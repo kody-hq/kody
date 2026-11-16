@@ -310,7 +310,10 @@ function OrgMembersContent({
 										}),
 									'Invite created. Send this prompt to them.',
 									(result) => {
-										setInvitee('')
+										// The list refetch settles first; keep anything typed meanwhile.
+										setInvitee((current) =>
+											current === invitee ? '' : current,
+										)
 										setInvitePrompt(result.invite?.prompt ?? null)
 									},
 								)
