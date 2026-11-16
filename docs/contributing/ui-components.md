@@ -2,8 +2,9 @@
 
 Shared UI primitives live in `packages/worker/start/components`. Render these
 instead of raw elements or copied style objects.
-`kody-custom/no-raw-button-style` and `kody-custom/no-raw-form-control` reject
-the raw forms in `packages/worker/start` and `packages/worker/client`.
+`kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`, and
+`kody-custom/no-raw-dialog` reject the raw forms in `packages/worker/start` and
+`packages/worker/client`.
 
 Every component passes native attributes through. Refs are ordinary props (React
 19), so `ref` reaches the underlying element. Pass `css` to adjust layout
@@ -83,6 +84,46 @@ to the control win.
   it with `aria-label`, `aria-labelledby`, or a `Field`. Use `Checkbox` for
   values submitted with a form.
 
+## Dialog
+
+`start/components/dialog.tsx`
+
+```tsx
+<Dialog
+	open={open}
+	onClose={() => setOpen(false)}
+	title="Rename file"
+	description="Names must be unique."
+>
+	<Field label="Name">
+		<Input name="name" />
+	</Field>
+	<DialogActions>
+		<Button variant="secondary" onClick={() => setOpen(false)}>
+			Cancel
+		</Button>
+		<Button onClick={save}>Save</Button>
+	</DialogActions>
+</Dialog>
+```
+
+Built on Base UI. Focus moves to the first focusable element on open, Tab stays
+inside, Escape closes, and focus returns to the opener on close. The page behind
+is inert and does not scroll.
+
+- Name it with `title` (rendered as the heading, plus optional `description`) or
+  with `aria-label` when the content draws its own heading. Not both.
+- `role="alertdialog"` for destructive or irreversible confirmations: an outside
+  click never closes it. Otherwise outside clicks are ignored unless
+  `dismissOnOutsideClick` is set.
+- `open` is controlled. `onClose` runs on Escape or an outside click; the dialog
+  closes when you set `open` to `false`, so a pending action can keep it open.
+- `size`: `sm` (default, 448px) | `md` (512px) | `lg` (640px)
+- `placement`: `center` (default) | `side` (full-height panel from the inline
+  end)
+- `flush`: drop the padding when the content draws its own sections.
+- `DialogActions`: right-aligned, wrapping row for the buttons.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a
@@ -95,3 +136,7 @@ Keep those raw with a reason:
 }
 ;<textarea css={sourceCss} aria-label="Document text" />
 ```
+
+Full-screen viewers (image, video), the command palette, and the avatar crop
+editor keep a native `<dialog>` with a `kody-custom/no-raw-dialog` exemption:
+they draw their own chrome and capture keys that a standard dialog would not.

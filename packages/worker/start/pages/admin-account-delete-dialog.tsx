@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSObject } from '@emotion/react'
@@ -144,12 +144,13 @@ export function AdminUserAccountModeration(props: {
 				) : null}
 			</div>
 			{open && (
-				<ModalDialog
-					alert
+				<Dialog
+					open
+					role="alertdialog"
 					flush
-					label="Delete account"
-					width={640}
-					testId="admin-delete-account-dialog"
+					aria-label="Delete account"
+					size="lg"
+					data-testid="admin-delete-account-dialog"
 					onClose={closeDialog}
 				>
 					<form
@@ -242,7 +243,7 @@ export function AdminUserAccountModeration(props: {
 							</Button>
 						</div>
 					</form>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)

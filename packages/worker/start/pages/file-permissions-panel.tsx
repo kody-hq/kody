@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { colors } from '#universal/styles/tokens.ts'
@@ -283,11 +283,13 @@ export default function FilePermissionsPanel({
 		? `${link.replace('/shared-files/', '/shared-file-assets/')}/${item.id}?asset=1`
 		: ''
 	return (
-		<ModalDialog
-			label={`Details and permissions for ${item.name}`}
+		<Dialog
+			open
+			aria-label={`Details and permissions for ${item.name}`}
 			onClose={onClose}
-			width={480}
-			sidePanel
+			size="md"
+			placement="side"
+			flush
 		>
 			<header
 				css={{
@@ -1169,6 +1171,6 @@ export default function FilePermissionsPanel({
 					Done
 				</button>
 			</footer>
-		</ModalDialog>
+		</Dialog>
 	)
 }

@@ -4,6 +4,7 @@ import {
 	PackageInstallContext,
 	renderPackageRepoActions,
 } from '../components/package-title-actions.tsx'
+import { ForkTargetForm } from '../components/fork-target-dialog.tsx'
 import { renderStartPage } from '../test-support/render-start-page.ts'
 import { type ForkTargetChoice, pressFork } from '../fork-target.ts'
 
@@ -121,20 +122,19 @@ test('the title row shows only the Fork button, never an inline org picker', asy
 	expect(await render({})).not.toContain('aria-haspopup')
 })
 
-test('the open chooser is a labelled dialog listing creatable orgs', async () => {
-	const html = await render({
-		choosesForkTarget: true,
-		forkTarget: { owners, selected: 'viewer' },
-	})
-	const dialog = html.slice(html.indexOf('<dialog'))
-	expect(dialog).toMatch(/<dialog[^>]*aria-labelledby="([^"]+)"/)
-	const titleId = /aria-labelledby="([^"]+)"/.exec(dialog)?.[1]
-	expect(dialog).toContain(`id="${titleId}"`)
-	expect(dialog).toMatch(/<h2[^>]*>Fork into<\/h2>/)
-	expect(dialog).toMatch(
+test('the chooser form lists creatable orgs with the pick preselected', async () => {
+	const html = await renderStartPage(
+		jsx(ForkTargetForm, {
+			choice: { owners, selected: 'viewer' },
+			onConfirm: () => {},
+			onDismiss: () => {},
+		}),
+	)
+	expect(html).toMatch(/<label[^>]*>[\s\S]*Workspace[\s\S]*<select/)
+	expect(html).toMatch(
 		/<option value="viewer" selected[^>]*>Personal workspace</,
 	)
-	expect(dialog).toMatch(/<option value="example-team"[^>]*>Example Team</)
-	expect(dialog).toContain('data-testid="fork-target-cancel"')
-	expect(dialog).toContain('data-testid="fork-target-confirm"')
+	expect(html).toMatch(/<option value="example-team"[^>]*>Example Team</)
+	expect(html).toContain('data-testid="fork-target-cancel"')
+	expect(html).toContain('data-testid="fork-target-confirm"')
 })

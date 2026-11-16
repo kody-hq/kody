@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useState, useId } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -112,16 +112,17 @@ export function PackageSecurityAuditField({
 					: 'Informational only. Have your agent review this version before you approve. It never approves anything for you.'}
 			</p>
 			{open && audit.status !== 'unpublished' && (
-				<ModalDialog
-					label={
+				<Dialog
+					open
+					aria-label={
 						audit.status === 'not_audited'
 							? 'Ask your agent for a security audit'
 							: 'Security audit summary'
 					}
-					testId="package-security-audit-dialog"
-					width={640}
+					data-testid="package-security-audit-dialog"
+					size="lg"
 					flush
-					dismissOnOutside
+					dismissOnOutsideClick
 					onClose={closeDialog}
 				>
 					<div css={dialogBodyCss}>
@@ -191,7 +192,7 @@ export function PackageSecurityAuditField({
 							</>
 						)}
 					</div>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</section>
 	)

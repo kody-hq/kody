@@ -381,6 +381,7 @@ export function AccountAvatarEditor({
 	const canZoom = maximum - cover > 0.001
 	const busy = status === 'decoding' || status === 'applying'
 	return (
+		// oxlint-disable-next-line kody-custom/no-raw-dialog -- crop editor captures arrow and zoom keys on the dialog itself.
 		<dialog
 			aria-busy={busy}
 			ref={dialog}

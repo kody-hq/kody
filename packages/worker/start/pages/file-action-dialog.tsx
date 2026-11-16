@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useState } from 'react'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
@@ -67,7 +67,12 @@ export function FileActionDialog({
 				? 'Move to'
 				: 'Move to trash'
 	return (
-		<ModalDialog label={`${title} ${item.name}`} onClose={onClose} width={420}>
+		<Dialog
+			open
+			aria-label={`${title} ${item.name}`}
+			onClose={onClose}
+			size="sm"
+		>
 			<form
 				onSubmit={async (event) => {
 					event.preventDefault()
@@ -209,6 +214,6 @@ export function FileActionDialog({
 					</Button>
 				</div>
 			</form>
-		</ModalDialog>
+		</Dialog>
 	)
 }

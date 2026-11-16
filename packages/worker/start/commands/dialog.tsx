@@ -461,6 +461,7 @@ export function CommandDialog({
 			?.scrollIntoView({ block: 'nearest' })
 	}, [index, selectionId])
 	return (
+		// oxlint-disable-next-line kody-custom/no-raw-dialog -- command palette owns its own combobox focus model.
 		<dialog
 			ref={dialog}
 			aria-label="Search and commands"

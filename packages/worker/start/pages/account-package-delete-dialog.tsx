@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { deletePackage } from '#start/server/package-mutations'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -169,12 +169,13 @@ export function AccountPackageDeleteDialog(props: {
 				</div>
 			</div>
 			{open && (
-				<ModalDialog
-					alert
+				<Dialog
+					open
+					role="alertdialog"
 					flush
-					label={`Delete ${packageName}`}
-					width={512}
-					testId="package-delete-dialog"
+					aria-label={`Delete ${packageName}`}
+					size="md"
+					data-testid="package-delete-dialog"
 					onClose={closeDialog}
 				>
 					<form css={deleteDialogFormCss} onSubmit={handleDeleteSubmit}>
@@ -257,7 +258,7 @@ export function AccountPackageDeleteDialog(props: {
 							</Button>
 						</div>
 					</form>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)
