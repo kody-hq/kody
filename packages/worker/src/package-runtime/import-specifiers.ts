@@ -1,7 +1,7 @@
 import {
 	describeModuleSourceParseError,
+	loadModuleSourceParser,
 	moduleSourceParserPlugins,
-	parseModuleSource,
 	type ModuleAstNode,
 	type ModuleSourceParseError,
 } from '#worker/module-source.ts'
@@ -209,11 +209,10 @@ export async function collectModuleImportNodes(
 		}
 	}
 
+	// A parser that fails to load is a broken build, not unparseable source.
+	const parser = await loadModuleSourceParser()
 	try {
-		const program = await parseModuleSource(source, {
-			filePath: options?.filePath,
-		})
-		visit(program)
+		visit(parser.parseModuleSource(source, { filePath: options?.filePath }))
 	} catch {
 		return { literalImports: [], dynamicImportExpressions: [] }
 	}
@@ -321,9 +320,10 @@ export async function parseBundlerResolvedSpecifiers(
 	| { ok: true; specifiers: Array<string> }
 	| { ok: false; error: ModuleSourceParseError }
 > {
+	const parser = await loadModuleSourceParser()
 	let program: unknown
 	try {
-		program = await parseModuleSource(source, { filePath: options?.filePath })
+		program = parser.parseModuleSource(source, { filePath: options?.filePath })
 	} catch (error) {
 		return { ok: false, error: describeModuleSourceParseError(error) }
 	}

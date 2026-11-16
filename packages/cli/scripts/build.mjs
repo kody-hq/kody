@@ -47,7 +47,16 @@ await build({
 const workerGeneratedModules = {
 	'worker-bundler': '@cloudflare/worker-bundler',
 	'worker-bundler-typescript': '@cloudflare/worker-bundler/typescript',
+	'module-source-parser': './src/module-source-parser-module.ts',
 }
+// Loaded only by worker features the publish builder never runs.
+const builderUnusedGeneratedModules = new Set([
+	'codemode-normalize',
+	'disposable-email-domains',
+	'isomorphic-git',
+	'oauth-provider',
+	'postal-mime',
+])
 const builderWasmDir = 'dist/publish-builder-wasm'
 mkdirSync(builderWasmDir, { recursive: true })
 await build({
@@ -94,7 +103,14 @@ await build({
 							.replace(/^.*\.kody-generated\//, '')
 							.replace(/\.mjs$/, '')
 						const target = workerGeneratedModules[name]
-						if (!target) return { path: args.path, external: true }
+						if (builderUnusedGeneratedModules.has(name)) {
+							return { path: args.path, external: true }
+						}
+						if (!target) {
+							throw new Error(
+								`The publish builder imports ${args.path}, which has no entry in workerGeneratedModules. Add one so the builder bundles it.`,
+							)
+						}
 						return await pluginBuild.resolve(target, {
 							kind: args.kind,
 							resolveDir: '../worker',

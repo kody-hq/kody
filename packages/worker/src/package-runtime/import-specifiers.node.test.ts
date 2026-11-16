@@ -55,7 +55,8 @@ test('collectModuleImportNodes parses once for literal and dynamic import sites'
 		'const value = await import("./dynamic.ts")',
 		'export { helper, value }',
 	].join('\n')
-	const parseSpy = vi.spyOn(moduleSource, 'parseModuleSource')
+	const parser = await moduleSource.loadModuleSourceParser()
+	const parseSpy = vi.spyOn(parser, 'parseModuleSource')
 	parseSpy.mockClear()
 
 	const nodes = await collectModuleImportNodes(source)

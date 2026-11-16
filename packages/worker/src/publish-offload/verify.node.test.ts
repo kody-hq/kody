@@ -312,6 +312,14 @@ for (const [label, modules, message] of [
 		/linked by Kody and cannot come from a build/,
 	],
 	[
+		'a Kody package import the builder did not link',
+		{
+			'index.js':
+				'import list from "kody:@them/notes/list";\nexport default list;',
+		},
+		/imports "kody:@them\/notes\/list" unlinked/,
+	],
+	[
 		'a forged metered proxy',
 		{
 			'index.js':

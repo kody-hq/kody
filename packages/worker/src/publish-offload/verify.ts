@@ -286,6 +286,11 @@ async function assertImportsStayInPackage(input: {
 		fail(`${input.label} does not parse as a module.`)
 	}
 	for (const specifier of specifiers) {
+		if (specifier.startsWith('kody:@')) {
+			fail(
+				`${input.label} imports "${specifier}" unlinked. A build made outside Kody cloud must turn each Kody package import into a linked placeholder for Kody to fill. Update the Kody CLI (or the execution context daemon) and build again.`,
+			)
+		}
 		if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
 		const resolved = resolveRelativeModulePath(input.path, specifier)
 		if (resolved && linkedPathPattern.test(resolved)) {
