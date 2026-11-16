@@ -291,6 +291,8 @@ export const detectPackageAppHostMigrationCodemod: PackageCodemod = {
 	id: detectPackageAppHostMigrationCodemodId,
 	description:
 		'Scan only: inventory package app source tied to the {user}.kody.run/{leaf} address (old URLs, hardcoded mount paths, build-time bases, external callbacks, browser storage, cookie scope, origin checks, PWA scope) before the move to {leaf}--{user}.kody.run.',
+	// The published tree is what the app serves, so drifted apps are scanned too.
+	applyMode: 'published-only',
 	detect: detectPackageAppHostMigration,
 	transform: transformPackageAppHostMigration,
 }
