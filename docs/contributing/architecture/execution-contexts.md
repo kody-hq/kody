@@ -283,6 +283,13 @@ data model exists so far; nothing reads it at run time yet.
   during a run stops working. Host names are never matched, so DNS rebinding
   cannot widen an entry. The machine wide `grant.egress` LAN switch is unchanged
   until the migration.
+- Origin also accepts `fs` entries in a machine's report (one per host folder,
+  summary: path and mode) and `kody.fs.authorize` with a folder's name
+  (`authorizeContextFolder`). Folders predate machine capabilities, so that hop
+  requires a live `fs` row and the operator, records `fs_used`, and only logs
+  the packages the default rule would refuse (`wouldBlockPackageIds`); a
+  non-empty `allowed_packages` list is enforced. It asks for no new token scope.
+  No released CLI reports folders or sends that hop yet.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends

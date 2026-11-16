@@ -61,15 +61,17 @@ export function commandNotGrantedError(contextName: string) {
 export function machineCapabilityOffError(
 	contextName: string,
 	name: string,
-	kind: 'command' | 'lan' = 'command',
+	kind: 'command' | 'lan' | 'fs' = 'command',
 ) {
 	return new ExecutionContextError({
 		status: 403,
 		code: 'machine_capability_off',
 		message:
-			kind === 'lan'
-				? `${contextName} defines no local network destination named "${name}". The machine's owner defines one on that machine with \`kody context capability add lan <file.json>\`; \`kody context capability list\` shows what it defines.`
-				: `${contextName} defines no command named "${name}". The machine's owner defines one on that machine with \`kody context capability add command <file.json>\`; \`kody context capability list\` shows what it defines.`,
+			kind === 'fs'
+				? `${contextName} allows no host folder named "${name}". The machine's owner allows one on that machine with \`kody context policy allow <folder>\`; \`kody context policy show\` lists what it allows.`
+				: kind === 'lan'
+					? `${contextName} defines no local network destination named "${name}". The machine's owner defines one on that machine with \`kody context capability add lan <file.json>\`; \`kody context capability list\` shows what it defines.`
+					: `${contextName} defines no command named "${name}". The machine's owner defines one on that machine with \`kody context capability add command <file.json>\`; \`kody context capability list\` shows what it defines.`,
 	})
 }
 
@@ -235,6 +237,89 @@ export async function authorizeContextLan(
 			host: args.host,
 			port: args.port,
 			...runPackagesAuditDetail(principal.packages),
+		},
+	})
+	return { ok: true as const }
+}
+
+/**
+ * The daemon's hop the first time a run touches a host folder the machine
+ * allows. Folders predate machine capabilities, so the default package rule
+ * is only logged (`wouldBlockPackageIds`) until existing machines are
+ * migrated; a list the operator set is enforced.
+ */
+export async function authorizeContextFolder(
+	ctx: ApiInvocationContext,
+	rawArgs: unknown,
+) {
+	const principal = ctx.principal
+	if (principal.kind !== 'execution-context-run') {
+		throw commandRequiresContextError()
+	}
+	const args = (rawArgs ?? {}) as { capability?: unknown }
+	if (typeof args.capability !== 'string' || args.capability.length === 0) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'kody.fs.authorize needs the name of a host folder the machine allows.',
+		})
+	}
+	const name = args.capability
+	const { env, row, user, orgId } = await loadCommandContext(ctx, principal)
+	const capability = await env.APP_DB.prepare(
+		`SELECT * FROM machine_capabilities
+		 WHERE context_id = ? AND kind = 'fs' AND name = ? AND removed_at IS NULL`,
+	)
+		.bind(row.id, name)
+		.first<MachineCapabilityRow>()
+	if (!capability) throw machineCapabilityOffError(row.name, name, 'fs')
+	const label = `host folder "${name}" on ${row.name}`
+	const access = await loadContextAccess(env.APP_DB, row, {
+		userId: user.userId,
+		orgId,
+	})
+	if (!access.isOperator) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_not_granted',
+			message: `You are not granted ${label}. Host folders are only for the operator's own runs.`,
+		})
+	}
+	const allowedPackages = parseAllowedPackages(capability)
+	const entries = principal.packages?.entries ?? []
+	const refused = principal.packages?.truncated
+		? entries
+		: await packagesNotAllowed(ctx, principal.packages, allowedPackages)
+	if (
+		allowedPackages.length > 0 &&
+		(principal.packages?.truncated ||
+			refused.length > 0 ||
+			entries.length === 0)
+	) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_package_not_allowed',
+			message: principal.packages?.truncated
+				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
+				: entries.length === 0
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}.`,
+			details: { capability: name, packageIds: refused },
+		})
+	}
+	await sessionStub(env, row.id).recordAudit({
+		event: 'fs_used',
+		actor: { userId: user.userId, handle: user.username ?? null },
+		orgId,
+		detail: {
+			runId: principal.runId,
+			capability: name,
+			capabilityId: capability.id,
+			...runPackagesAuditDetail(principal.packages),
+			...(refused.length > 0
+				? { wouldBlockPackageIds: refused.slice(0, maxAuditedEntryPackages) }
+				: {}),
 		},
 	})
 	return { ok: true as const }
