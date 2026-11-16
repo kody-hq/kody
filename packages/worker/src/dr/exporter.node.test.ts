@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
+import { createHash } from 'node:crypto'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
@@ -83,6 +84,22 @@ vi.mock('#worker/storage-buckets/service.ts', () => ({
 	listUserStorageBucketIds: vi.fn(async () => []),
 	registerStorageBucket: vi.fn(),
 }))
+
+// Node has no `crypto.DigestStream` (a Workers runtime extension).
+class NodeDigestStream extends WritableStream<Uint8Array> {
+	readonly digest: Promise<ArrayBuffer>
+
+	constructor() {
+		const hash = createHash('sha256')
+		const done = Promise.withResolvers<ArrayBuffer>()
+		super({
+			write: (chunk) => void hash.update(chunk),
+			close: () => done.resolve(new Uint8Array(hash.digest()).buffer),
+		})
+		this.digest = done.promise
+	}
+}
+Object.assign(crypto as object, { DigestStream: NodeDigestStream })
 
 const day = '2026-07-23'
 const progressKey = `staging/${day}/exporter/progress.json`
@@ -231,6 +248,27 @@ function createR2(...pages: Array<Record<string, Uint8Array>>) {
 	}
 }
 
+/**
+ * Published source snapshots by KV key. Records every read with its type and
+ * the most snapshots that were buffered (`arrayBuffer`) at the same time.
+ */
+function createSnapshotKv(snapshots: Record<string, string>) {
+	const reads: Array<{ key: string; type: string }> = []
+	return {
+		reads,
+		async get(key: string, type?: string) {
+			reads.push({ key, type: type ?? 'text' })
+			const snapshot = snapshots[key]
+			if (snapshot === undefined) return null
+			if (type === 'stream') return new Blob([snapshot]).stream()
+			if (type === 'arrayBuffer') return encode(snapshot).buffer
+			// A text read plus re-encode held each snapshot twice and OOMed
+			// the shared isolate.
+			throw new Error(`artifact snapshot read as ${type ?? 'text'}`)
+		},
+	}
+}
+
 const s3Env = {
 	DR_EXPORT_ENABLED: 'true',
 	DR_BACKUP_ACCOUNT_ID: 'acct',
@@ -360,18 +398,9 @@ test('exporter progresses phases with mocked bindings and S3, writing summary la
 			],
 		}),
 		EMAIL_BLOBS: createR2({ 'raw/one': blobBytes }),
-		BUNDLE_ARTIFACTS_KV: {
-			// Snapshots must be read as raw bytes; a text read plus re-encode
-			// held each snapshot twice and OOMed the shared isolate.
-			get: async (key: string, type?: string) => {
-				if (type !== 'arrayBuffer') {
-					throw new Error(`artifact snapshot read as ${type ?? 'text'}`)
-				}
-				return key === 'source-snapshot:v1:src-1:commit-1'
-					? encode(kvSnapshot).buffer
-					: null
-			},
-		},
+		BUNDLE_ARTIFACTS_KV: createSnapshotKv({
+			'source-snapshot:v1:src-1:commit-1': kvSnapshot,
+		}),
 	})
 
 	const first = await runDrExportTick({
@@ -1395,6 +1424,177 @@ test('R2 export reuses unchanged objects from the latest sealed index', async ()
 			sha256: await sha256Hex(changedBytes),
 		}),
 	])
+})
+
+test('artifact snapshots are settled in waves and only a new blob is buffered', async () => {
+	const count = 20
+	const pad = (index: number) => String(index).padStart(2, '0')
+	const snapshotFor = (index: number) =>
+		JSON.stringify({ version: 1, files: { 'a.ts': `export default ${index}` } })
+	const kvKeyFor = (index: number) =>
+		`source-snapshot:v1:src-${pad(index)}:commit-${pad(index)}`
+	const newIndex = 5
+	const missingIndex = 11
+	const { client, readText } = createMemoryS3()
+	const snapshots: Record<string, string> = {}
+	for (let index = 0; index < count; index += 1) {
+		if (index === missingIndex) continue
+		snapshots[kvKeyFor(index)] = snapshotFor(index)
+		// Every blob but one is already stored from an earlier night.
+		if (index === newIndex) continue
+		const bytes = encode(snapshotFor(index))
+		await client.put(backupBlobKey(await sha256Hex(bytes)), bytes)
+	}
+	const kv = createSnapshotKv(snapshots)
+	let headsInFlight = 0
+	let mostHeadsInFlight = 0
+	const originalHead = client.head.bind(client)
+	client.head = async (key) => {
+		headsInFlight += 1
+		mostHeadsInFlight = Math.max(mostHeadsInFlight, headsInFlight)
+		await new Promise((resolve) => setTimeout(resolve, 1))
+		try {
+			return await originalHead(key)
+		} finally {
+			headsInFlight -= 1
+		}
+	}
+	let artifactProgressPuts = 0
+	const originalPut = client.put.bind(client)
+	client.put = async (key, body, options) => {
+		if (
+			key === progressKey &&
+			typeof body === 'string' &&
+			(JSON.parse(body) as { phase: string }).phase === 'artifacts'
+		) {
+			artifactProgressPuts += 1
+		}
+		return originalPut(key, body, options)
+	}
+	const env = createEnv({
+		APP_DB: createDb({
+			artifacts: Array.from({ length: count }, (_, index) => ({
+				sourceId: `src-${pad(index)}`,
+				userId: ownerIdFromStored('user-a'),
+				entityKind: 'package',
+				entityId: `pkg-${pad(index)}`,
+				publishedCommit: `commit-${pad(index)}`,
+			})),
+		}),
+		BUNDLE_ARTIFACTS_KV: kv,
+	})
+
+	const result = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+
+	expect(result).toMatchObject({
+		summaryWritten: true,
+		artifactsProcessed: count,
+		blobsWritten: 1,
+		blobsReused: count - 2,
+		warnings: 1,
+	})
+	// Serial export persisted progress once per snapshot (20 here). Waves of
+	// 8 persist three times, plus the transition into the phase.
+	expect(artifactProgressPuts).toBeLessThanOrEqual(4)
+	expect(mostHeadsInFlight).toBeGreaterThan(1)
+	// Stored snapshots are hashed as a stream; only the new one is buffered.
+	expect(kv.reads.filter((read) => read.type === 'arrayBuffer')).toEqual([
+		{ key: kvKeyFor(newIndex), type: 'arrayBuffer' },
+	])
+	const newBlob = await client.getBytes(
+		backupBlobKey(await sha256Hex(encode(snapshotFor(newIndex)))),
+	)
+	expect(newBlob && new TextDecoder().decode(newBlob)).toBe(
+		snapshotFor(newIndex),
+	)
+	const index = JSON.parse(await readText(stagingArtifactsIndexKey(day))) as {
+		entries: Array<{ sourceId: string; snapshotSha256: string }>
+	}
+	const expectedEntries = []
+	for (let position = 0; position < count; position += 1) {
+		if (position === missingIndex) continue
+		expectedEntries.push({
+			sourceId: `src-${pad(position)}`,
+			snapshotSha256: await sha256Hex(encode(snapshotFor(position))),
+		})
+	}
+	expect(
+		index.entries.map(({ sourceId, snapshotSha256 }) => ({
+			sourceId,
+			snapshotSha256,
+		})),
+	).toEqual(expectedEntries)
+	const summary = JSON.parse(await readText(stagingSummaryKey(day))) as {
+		warnings: Array<string>
+	}
+	expect(summary.warnings).toEqual([
+		`Missing source snapshot KV key ${kvKeyFor(missingIndex)} for source src-${pad(missingIndex)}`,
+	])
+})
+
+test('artifact export resumes at the next wave after the tick budget runs out', async () => {
+	const count = 20
+	const pad = (index: number) => String(index).padStart(2, '0')
+	const snapshots: Record<string, string> = {}
+	for (let index = 0; index < count; index += 1) {
+		snapshots[`source-snapshot:v1:src-${pad(index)}:commit-1`] =
+			`snapshot-${index}`
+	}
+	const { client, readText } = createMemoryS3()
+	const kv = createSnapshotKv(snapshots)
+	const env = createEnv({
+		APP_DB: createDb({
+			artifacts: Array.from({ length: count }, (_, index) => ({
+				sourceId: `src-${pad(index)}`,
+				userId: ownerIdFromStored('user-a'),
+				entityKind: 'package',
+				entityId: `pkg-${pad(index)}`,
+				publishedCommit: 'commit-1',
+			})),
+		}),
+		BUNDLE_ARTIFACTS_KV: kv,
+	})
+	{
+		// The first wave's progress write spends the whole tick budget.
+		using _clock = useBudgetClock(
+			client,
+			(key, body) =>
+				key === progressKey &&
+				typeof body === 'string' &&
+				(JSON.parse(body) as { artifactsIndex: number }).artifactsIndex === 8,
+		)
+		const first = await runDrExportTick({
+			env,
+			now: at('01:00'),
+			timeBudgetMs: 45_000,
+			s3: client,
+		})
+		expect(first).toMatchObject({
+			phase: 'artifacts',
+			timeBudgetExhausted: true,
+			artifactsProcessed: 8,
+			summaryWritten: false,
+		})
+	}
+	const second = await runDrExportTick({
+		env,
+		now: at('01:05'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(second).toMatchObject({ summaryWritten: true, artifactsProcessed: 12 })
+	const index = JSON.parse(await readText(stagingArtifactsIndexKey(day))) as {
+		entries: Array<{ sourceId: string }>
+	}
+	expect(index.entries.map((entry) => entry.sourceId)).toEqual(
+		Array.from({ length: count }, (_, position) => `src-${pad(position)}`),
+	)
+	expect(kv.reads.filter((read) => read.type === 'stream')).toHaveLength(count)
 })
 
 test('DR inventory includes registry storage and excludes deleting owners', async () => {
