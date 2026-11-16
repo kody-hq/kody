@@ -122,3 +122,26 @@ test('resolvePackageAppWorkerCacheKey encodes binding identity and published com
 		]),
 	)
 })
+
+test('resolvePackageAppWorkerCacheKey keys a held app on the commit everyone runs', async () => {
+	mockModule.getEntitySourceById.mockReset()
+	mockModule.getEntitySourceById.mockResolvedValue({
+		id: 'source-1',
+		user_id: ownerIdFromStored('user-1'),
+		entity_kind: 'package',
+		entity_id: 'package-1',
+		repo_id: 'repo-1',
+		published_commit: 'held-commit',
+		serving_commit: 'served-commit',
+		held_commit: 'held-commit',
+		manifest_path: 'package.json',
+		source_root: '/',
+	})
+
+	const cacheKey = await resolvePackageAppWorkerCacheKey({
+		env: { APP_DB: {} as D1Database } as Env,
+		binding,
+	})
+
+	expect(JSON.parse(cacheKey).at(-1)).toBe('served-commit')
+})

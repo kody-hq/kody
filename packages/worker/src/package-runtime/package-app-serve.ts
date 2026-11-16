@@ -1384,8 +1384,8 @@ async function servePackageAppRequestWithId(input: {
 							env,
 							userId: owner.userId,
 							sourceId: savedPackage.sourceId,
-							// A pinned visitor gets the needs of the commit they run.
-							...(anonymousCommit ? { source: packageManifest.source } : {}),
+							// Every visitor gets the needs of the commit they run.
+							source: packageManifest.source,
 							request: callerContext.request,
 						}),
 					),
