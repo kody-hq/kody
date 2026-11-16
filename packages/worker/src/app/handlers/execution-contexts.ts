@@ -904,6 +904,16 @@ function normalizeMachineAccessEntry(
 				? entry.description
 				: null,
 		shareable: entry.shareable === true,
+		...(Array.isArray(entry.allowedPackages)
+			? {
+					allowedPackages: (
+						entry.allowedPackages as Array<{ id: string; name: string }>
+					).filter(
+						(item) =>
+							typeof item?.id === 'string' && typeof item.name === 'string',
+					),
+				}
+			: {}),
 		grants: Array.isArray(entry.grants)
 			? (entry.grants as ExecutionContextMachineAccessEntry['grants']).filter(
 					(grant) =>

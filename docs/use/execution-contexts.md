@@ -355,11 +355,22 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   only pass an entry down to its own sub-profiles.
   `executionContextMachineAccessList` shows you the grants on your own profiles
   when you do not manage the machine.
+- Packages: by default your own code and packages your org wrote or adopted may
+  use an entry. To limit a named command, local network destination or host
+  folder to chosen packages, the operator passes the full list of package ids to
+  `executionContextMachineAccessPackagesSet`
+  (`{ id, kind: "command" | "lan" | "fs", name, package_ids }`). With packages
+  listed, a run may use the entry only when every saved package it loaded
+  directly is on the list, and code that is not a saved package may not use it.
+  An empty list lifts the limit. This is also how you let a package from someone
+  else use an entry without adopting it. The list never shares the entry with
+  another person.
 - In the app: a context's detail page has a Machine access section that lists
   its named commands, local network destinations and host folders with who holds
-  each one. The operator gives or takes back access there. Someone the machine
-  is shared with sees the entries their own profiles hold and can give one of
-  their profiles an entry. Host folders are listed as operator only.
+  each one, and any package limit. The operator gives or takes back access
+  there. Someone the machine is shared with sees the entries their own profiles
+  hold and can give one of their profiles an entry. Host folders are listed as
+  operator only.
 - A saved package the run loaded directly must declare each named command and
   local network destination it uses in
   [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call

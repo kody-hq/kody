@@ -269,6 +269,12 @@ data model exists so far; nothing reads it at run time yet.
   the shell opt-in, and turning the shell off leaves named-command jobs running.
   Shell commands only log the packages that rule would refuse
   (`wouldBlockPackageIds` on `command_started`).
+- The operator sets an entry's package list with
+  `executionContextMachineAccessPackagesSet` (`setMachineAccessPackages`,
+  `command`, `lan` and `fs` kinds, saved package ids, at most 50, audited as
+  `machine_access_packages_changed`). The list lives in
+  `machine_capabilities.allowed_packages_json`, survives the machine's reports
+  and is cleared when the machine removes the entry.
 - Someone other than the operator needs the context shared with them
   (`access.usable`) and a live `machine_capability` grant holding
   `machine_capability:use` that reaches them as a user, a team member, or an org

@@ -112,6 +112,8 @@ export type ExecutionContextMachineAccessEntry = {
 	description: string | null
 	/** Host folders are never shared. */
 	shareable: boolean
+	/** Set for people who manage the machine. Empty means no package limit. */
+	allowedPackages?: Array<{ id: string; name: string }>
 	grants: Array<{
 		grantId: string
 		subject: ExecutionContextMachineAccessSubject
@@ -966,6 +968,7 @@ const executionContextAuditLabels: Record<string, string> = {
 	fs_used: 'Host folder used',
 	machine_access_granted: 'Machine access shared',
 	machine_access_revoked: 'Machine access taken back',
+	machine_access_packages_changed: 'Machine access packages changed',
 	run_cancelled: 'Run cancelled',
 	paused: 'Paused',
 	resumed: 'Resumed',
