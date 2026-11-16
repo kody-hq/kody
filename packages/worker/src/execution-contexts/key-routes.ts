@@ -536,6 +536,18 @@ async function readMachineRequest(input: {
 	return { row, signature, session, parsed }
 }
 
+const maxAuditNames = 8
+
+function auditNames(key: string, names: ReadonlyArray<string>) {
+	if (names.length === 0) return {}
+	return {
+		[key]: names.slice(0, maxAuditNames),
+		...(names.length > maxAuditNames
+			? { [`${key}More`]: names.length - maxAuditNames }
+			: {}),
+	}
+}
+
 /**
  * Machine access: the machine reports the named commands and local network
  * destinations its local policy defines, signed with the context key, so only
@@ -588,7 +600,13 @@ async function syncCapabilitiesFromMachine(input: {
 			event: 'machine_capabilities_changed',
 			actor: { userId: row.operator_user_id, handle: null },
 			orgId: row.org_id,
-			detail: { source: 'machine', ...changes },
+			// Audit detail is cut at 2048 characters, so long lists are counted, not listed.
+			detail: {
+				source: 'machine',
+				...auditNames('added', changes.added),
+				...auditNames('changed', changes.changed),
+				...auditNames('removed', changes.removed),
+			},
 		})
 	}
 	return await view(changes)
