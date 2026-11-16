@@ -194,6 +194,25 @@ before(async () => {
 				})
 				return
 			}
+			if (path.join('.') === 'kody.fs.authorize') {
+				const folder = (args[0] as { capability?: string }).capability
+				if (folder === 'refused' || folder === 'unreported') {
+					send(403, {
+						error:
+							folder === 'refused'
+								? {
+										code: 'machine_capability_package_not_allowed',
+										message: 'Host folder "refused" is not allowed for pkg.',
+									}
+								: {
+										code: 'machine_capability_off',
+										message:
+											'This machine allows no host folder named "unreported".',
+									},
+					})
+					return
+				}
+			}
 			send(200, { result: { echoed: path.join('.'), args } })
 			return
 		}
@@ -1795,6 +1814,68 @@ export default async function main(p) {
 		)
 		assert.equal(readFileSync(join(root, 'first.txt'), 'utf8'), 'ok')
 		assert.equal(existsSync(join(root, 'second.txt')), false)
+	},
+)
+
+test(
+	'runLocalExecute asks Kody once per host folder a run touches, and a refusal keeps the run out of that folder',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-host-fs-')),
+		)
+		const folders = ['granted', 'refused', 'unreported', 'untouched'].map(
+			(name) => ({ path: join(root, name), mode: 'rw' as const }),
+		)
+		for (const folder of folders) mkdirSync(folder.path)
+		const hostFs = await effectiveFs(folders, folders)
+		const result = await runLocalExecute({
+			code: `import { promises as fsp } from 'node:fs'
+import { kody } from 'kody:runtime'
+const attempt = async (fn) => { try { return await fn() } catch (error) { return (error.code ?? '') + ': ' + error.message } }
+export default async function main(p) {
+	await fsp.writeFile(p.root + '/granted/a.txt', 'one')
+	await fsp.writeFile(p.root + '/granted/b.txt', 'two')
+	return {
+		refused: await attempt(() => fsp.writeFile(p.root + '/refused/a.txt', 'nope')),
+		refusedAgain: await attempt(() => fsp.readdir(p.root + '/refused')),
+		unreported: await attempt(() => fsp.writeFile(p.root + '/unreported/a.txt', 'kept')),
+		direct: await attempt(() => kody.fs.authorize({ capability: 'refused' })),
+	}
+}`,
+			params: { root },
+			token: goodToken,
+			apiUrl,
+			hostFs: () => hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const out = (result.structuredContent as { result: Record<string, string> })
+			.result
+		assert.match(out.refused!, /^EACCES: Host folder "refused" is not allowed/)
+		assert.match(out.refusedAgain!, /^EACCES: Host folder "refused"/)
+		assert.equal(existsSync(join(root, 'refused', 'a.txt')), false)
+		// A folder Kody has no entry for yet still works: nothing to enforce.
+		assert.equal(out.unreported, undefined)
+		assert.equal(
+			readFileSync(join(root, 'unreported', 'a.txt'), 'utf8'),
+			'kept',
+		)
+		assert.match(out.direct!, /kody\.fs\.authorize is internal/)
+		assert.deepEqual(
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.fs.authorize' ? [body.args] : []
+			}),
+			[
+				[{ capability: 'granted' }],
+				[{ capability: 'refused' }],
+				[{ capability: 'refused' }],
+				[{ capability: 'unreported' }],
+			],
+		)
 	},
 )
 

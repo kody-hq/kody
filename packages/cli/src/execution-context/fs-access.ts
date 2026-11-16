@@ -17,6 +17,7 @@ import {
 	win32,
 } from 'node:path'
 import { homedir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { normalizeServiceEnv } from './service-env-keys.js'
 import {
 	parseMachineCapabilities,
@@ -42,7 +43,8 @@ export type LocalFsPolicy = {
 	/** Named commands and local network destinations this machine offers. */
 	capabilities?: MachineCapabilitiesPolicy
 }
-type FsMount = { path: string; mode: FsMode }
+/** `name` is the allowed folder's name in Kody (see `folderCapabilityNames`). */
+export type FsMount = { path: string; mode: FsMode; name: string }
 type FsRefusal = { path: string; layer: FsLayer; reason: string }
 /**
  * Host folders one run may touch: the server grant intersected with this
@@ -54,6 +56,8 @@ export type EffectiveFs = {
 	grantRoots: Array<string>
 	/** Credential paths runs never touch, even inside a mount. */
 	denied: Array<string>
+	/** Asks Kody before a run's call uses a mount; a throw refuses the call. */
+	authorize?: (mount: FsMount) => Promise<void>
 }
 
 export const emptyEffectiveFs: EffectiveFs = {
@@ -456,6 +460,31 @@ export async function removeLocalPath(input: {
 }
 
 /**
+ * The name Kody knows each allowed folder by, in policy order: the folder's
+ * own name in lowercase, with a hash of the path added when an earlier folder
+ * already took it, so allowing another folder never renames an existing one.
+ */
+export function folderCapabilityNames(
+	policy: ReadonlyArray<FsRule>,
+): Array<string> {
+	const taken = new Set<string>()
+	return policy.map((rule) => {
+		const slug = basename(plainPath(rule.path))
+			.toLowerCase()
+			.replace(/[^a-z0-9_-]+/g, '-')
+			.replace(/^[-_]+/, '')
+			.slice(0, 50)
+			.replace(/-+$/, '')
+		let name = slug || 'folder'
+		if (taken.has(name)) {
+			name = `${name}-${createHash('sha256').update(rule.path).digest('hex').slice(0, 8)}`
+		}
+		taken.add(name)
+		return name
+	})
+}
+
+/**
  * A folder is mounted only where both layers allow it, at the narrower mode.
  * Both sides are canonicalized, so a symlinked grant path is judged by where
  * it really points.
@@ -466,10 +495,12 @@ export async function effectiveFs(
 	denylist: ReadonlyArray<string> = credentialDenylist(),
 ): Promise<EffectiveFs> {
 	const denied = await deniedRoots(denylist)
-	const rules: Array<FsRule> = []
-	for (const rule of policy) {
+	const names = folderCapabilityNames(policy)
+	const rules: Array<FsMount> = []
+	for (const [index, rule] of policy.entries()) {
 		const path = await canonicalize(rule.path).catch(() => null)
-		if (path) rules.push({ path, mode: rule.mode })
+		if (path)
+			rules.push({ path, mode: rule.mode, name: names[index] as string })
 	}
 	const mounts = new Map<string, FsMode>()
 	const refused: Array<FsRefusal> = []
@@ -528,7 +559,14 @@ export async function effectiveFs(
 	}
 	return {
 		mounts: [...mounts]
-			.map(([path, mode]) => ({ path, mode }))
+			.map(([path, mode]) => ({
+				path,
+				mode,
+				// The deepest allowed folder the mount sits in.
+				name: rules
+					.filter((rule) => isWithin(path, rule.path))
+					.sort((a, b) => b.path.length - a.path.length)[0]?.name as string,
+			}))
 			.sort((a, b) => a.path.localeCompare(b.path)),
 		refused,
 		grantRoots: [...grantRoots].sort(),
@@ -610,6 +648,7 @@ export async function resolveHostPath(
 				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute or Manage on the context can add the folder with \`kody context grant allow <folder> --mode ro|rw\` (or executionContextUpdate grant.fs); the machine's local policy must also allow it.`,
 		)
 	}
+	await effective.authorize?.(mount)
 	if (access === 'write' && mount.mode === 'ro') {
 		throw new FsAccessError(
 			'EROFS',

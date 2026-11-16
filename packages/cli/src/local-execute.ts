@@ -9,7 +9,11 @@ import {
 import { randomBytes } from 'node:crypto'
 import { rmSync } from 'node:fs'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import type { EffectiveFs } from './execution-context/fs-access.js'
+import {
+	FsAccessError,
+	type EffectiveFs,
+	type FsMount,
+} from './execution-context/fs-access.js'
 import {
 	type HostFsRequest,
 	handleHostFsRequest,
@@ -25,6 +29,7 @@ import { join } from 'node:path'
 import type { Readable } from 'node:stream'
 import { setTimeout as delay } from 'node:timers/promises'
 import {
+	CapabilityProxyError,
 	assertTokenSafeApiUrl,
 	callCapabilityProxy,
 	checkCredentialCallMap,
@@ -360,9 +365,53 @@ export async function runLocalExecute(
 			(startFs.mounts.length > 0 || startFs.grantRoots.length > 0)
 				? input.hostFs
 				: undefined
+		// One ask per folder per run; a refusal is asked again on the next call.
+		const folderAsks = new Map<string, Promise<void>>()
+		const authorizeFolder = async (mount: FsMount) => {
+			let ask = folderAsks.get(mount.name)
+			if (!ask) {
+				ask = callCapabilityProxy({
+					...client,
+					path: ['kody', 'fs', 'authorize'],
+					args: [{ capability: mount.name }],
+					conversationId: input.conversationId,
+					signal: input.signal,
+				}).then(
+					() => undefined,
+					(error: unknown) => {
+						// Folders predate their names in Kody: until this machine's
+						// report lands there is no entry, so no package list to enforce.
+						if (
+							error instanceof CapabilityProxyError &&
+							error.code === 'machine_capability_off'
+						) {
+							return
+						}
+						folderAsks.delete(mount.name)
+						throw new FsAccessError(
+							'EACCES',
+							error instanceof Error ? error.message : String(error),
+						)
+					},
+				)
+				folderAsks.set(mount.name, ask)
+			}
+			await ask
+		}
 		bridge = await startLocalRuntimeBridge({
 			runSecret,
 			forwardCall: async (call, signal) => {
+				if (
+					call.path.length === 3 &&
+					call.path[0] === 'kody' &&
+					call.path[1] === 'fs' &&
+					call.path[2] === 'authorize'
+				) {
+					// Only the daemon's own hop (authorizeFolder above) may authorize.
+					throw new Error(
+						'kody.fs.authorize is internal; use node:fs on the folder and Kody is asked for you. (invalid_request)',
+					)
+				}
 				if (
 					call.path.length === 3 &&
 					call.path[0] === 'kody' &&
@@ -452,7 +501,10 @@ export async function runLocalExecute(
 			...(hostFs
 				? {
 						forwardHostFs: async (body: unknown) =>
-							await handleHostFsRequest(hostFs(), body as HostFsRequest),
+							await handleHostFsRequest(
+								{ ...hostFs(), authorize: authorizeFolder },
+								body as HostFsRequest,
+							),
 					}
 				: {}),
 			forwardGatewayFetchStream: async ({ request, response, signal }) => {

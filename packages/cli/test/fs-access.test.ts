@@ -17,6 +17,7 @@ import {
 	readLocalPolicy,
 	removeLocalPath,
 	resolveHostPath,
+	folderCapabilityNames,
 } from '../src/execution-context/fs-access.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import { handleHostFsRequest } from '../src/execution-context/host-fs-bridge.js'
@@ -45,7 +46,9 @@ test('a folder is mounted only when both the grant and the local policy allow it
 		],
 		[{ path: desktop, mode: 'rw' }],
 	)
-	assert.deepEqual(effective.mounts, [{ path: desktop, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [
+		{ path: desktop, mode: 'rw', name: 'desktop' },
+	])
 	assert.deepEqual(effective.refused, [
 		{
 			path: docs,
@@ -74,7 +77,7 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: home, mode: 'ro' }],
 			)
 		).mounts,
-		[{ path: desktop, mode: 'ro' }],
+		[{ path: desktop, mode: 'ro', name: 'home' }],
 	)
 	assert.deepEqual(
 		(
@@ -83,7 +86,7 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: desktop, mode: 'rw' }],
 			)
 		).mounts,
-		[{ path: desktop, mode: 'ro' }],
+		[{ path: desktop, mode: 'ro', name: 'desktop' }],
 	)
 	assert.deepEqual(
 		(
@@ -92,8 +95,28 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: home, mode: 'rw' }],
 			)
 		).mounts,
-		[{ path: home, mode: 'rw' }],
+		[{ path: home, mode: 'rw', name: 'home' }],
 	)
+})
+
+test('each allowed folder has a stable name for Kody, and a later folder never renames an earlier one', () => {
+	const first = { path: '/volume1/docker/kody-runner', mode: 'rw' as const }
+	assert.deepEqual(folderCapabilityNames([first]), ['kody-runner'])
+	const names = folderCapabilityNames([
+		first,
+		{ path: '/backup/Kody Runner', mode: 'ro' },
+		{ path: '/other/kody-runner', mode: 'ro' },
+		{ path: '/', mode: 'ro' },
+		{ path: '/srv/.config', mode: 'ro' },
+	])
+	assert.equal(names[0], 'kody-runner')
+	assert.match(names[2]!, /^kody-runner-[0-9a-f]{8}$/)
+	assert.deepEqual(
+		[names[1], names[3], names[4]],
+		['kody-runner-' + names[1]!.slice(-8), 'folder', 'config'],
+	)
+	assert.equal(new Set(names).size, names.length)
+	for (const name of names) assert.match(name, /^[a-z0-9][a-z0-9_-]{0,62}$/)
 })
 
 test('prefix tricks, .. segments, and symlinks cannot escape a mount', async () => {
@@ -112,7 +135,9 @@ test('prefix tricks, .. segments, and symlinks cannot escape a mount', async () 
 		],
 		[{ path: desktop, mode: 'rw' }],
 	)
-	assert.deepEqual(effective.mounts, [{ path: desktop, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [
+		{ path: desktop, mode: 'rw', name: 'desktop' },
+	])
 	assert.deepEqual(
 		effective.refused.map((refusal) => refusal.layer),
 		['local_policy', 'server_grant'],
@@ -329,7 +354,7 @@ test('credential folders are never mounted and stay closed inside a mounted fold
 		[{ path: home, mode: 'rw' }],
 		denylist,
 	)
-	assert.deepEqual(effective.mounts, [{ path: home, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [{ path: home, mode: 'rw', name: 'home' }])
 	assert.deepEqual(
 		effective.refused.map((entry) => [entry.path, entry.layer]),
 		[[ssh, 'credential_denylist']],

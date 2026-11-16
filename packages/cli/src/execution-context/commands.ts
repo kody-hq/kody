@@ -66,8 +66,10 @@ import {
 } from './host-access.js'
 import {
 	type FsMode,
+	type LocalFsPolicy,
 	allowLocalPath,
 	effectiveFs,
+	folderCapabilityNames,
 	localPolicyPath,
 	readLocalCommandsEnabled,
 	readLocalPolicy,
@@ -928,9 +930,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		let capabilitiesRetryMs = 60_000
 		const reportCapabilities = async () => {
 			try {
-				const capabilities = advertisedMachineCapabilities(
-					(await readLocalPolicy()).capabilities,
-				)
+				const capabilities = advertisedCapabilitiesOf(await readLocalPolicy())
 				const next = JSON.stringify(capabilities)
 				if (next === reportedCapabilities) return
 				const result = await syncContextCapabilities({
@@ -1406,6 +1406,15 @@ async function runCommandsOptInCommand(
 	return contexts.some((context) => context.error) ? 1 : 0
 }
 
+/** What this machine reports to Kody: its named definitions and allowed folders. */
+function advertisedCapabilitiesOf(policy: LocalFsPolicy) {
+	const names = folderCapabilityNames(policy.fs)
+	return advertisedMachineCapabilities(
+		policy.capabilities,
+		policy.fs.map((rule, index) => ({ ...rule, name: names[index] as string })),
+	)
+}
+
 /**
  * Tells Kody what this machine defines now, once per context registered here.
  * The daemon repeats it when it starts and when the policy file changes, so a
@@ -1413,7 +1422,7 @@ async function runCommandsOptInCommand(
  */
 async function reportCapabilitiesToKody(
 	input: Pick<ExecutionContextCommandInput, 'apiUrl' | 'fetchFn'>,
-	capabilities: Awaited<ReturnType<typeof readLocalPolicy>>['capabilities'],
+	policy: LocalFsPolicy,
 ) {
 	const reported: Array<{ id: string; name: string; error?: string }> = []
 	for (const ecid of storedContextIds(input.apiUrl)) {
@@ -1427,7 +1436,7 @@ async function reportCapabilitiesToKody(
 				apiUrl: input.apiUrl,
 				ecid: context.ecid,
 				privateKey: await importContextKey(privateJwk),
-				capabilities: advertisedMachineCapabilities(capabilities),
+				capabilities: advertisedCapabilitiesOf(policy),
 				...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
 			})
 			reported.push({ id: result.id, name: result.name })
@@ -1510,7 +1519,7 @@ async function runCapabilityCommand(
 			policyPath: file,
 		})
 		const kody = removed
-			? await reportCapabilitiesToKody(input, policy.capabilities)
+			? await reportCapabilitiesToKody(input, policy)
 			: { reported: [], lines: [] }
 		out(
 			input,
@@ -1547,7 +1556,7 @@ async function runCapabilityCommand(
 		definition,
 		policyPath: file,
 	})
-	const kody = await reportCapabilitiesToKody(input, policy.capabilities)
+	const kody = await reportCapabilitiesToKody(input, policy)
 	out(
 		input,
 		{
@@ -1575,8 +1584,11 @@ async function runPolicyCommand(
 			? `No host folders are allowed on this machine (${file}). Execution-context runs only see their virtual filesystem.`
 			: [
 					`Host folders this machine allows (${file}):`,
-					...rules.map((rule) => `  ${rule.mode}  ${rule.path}`),
-					'This is the local policy. A run can use a folder only if its context server grant (grant.fs) also lists it; the narrower mode wins.',
+					...rules.map(
+						(rule, index) =>
+							`  ${rule.mode}  ${rule.path}  (${folderCapabilityNames(rules)[index]})`,
+					),
+					'In parentheses: the name Kody knows the folder by. This is the local policy. A run can use a folder only if its context server grant (grant.fs) also lists it; the narrower mode wins.',
 				].join('\n')
 	const grantNotes = (fs: Array<{ path: string; mode: FsMode }>) =>
 		machineGrantNotes({

@@ -408,7 +408,7 @@ export function resolveMachineCommand(
 
 /** What this machine tells Kody about one definition. Executable paths and cwd stay here. */
 export type AdvertisedMachineCapability = {
-	kind: 'command' | 'lan'
+	kind: 'command' | 'lan' | 'fs'
 	name: string
 	description: string
 	summary: Record<string, unknown>
@@ -416,8 +416,16 @@ export type AdvertisedMachineCapability = {
 
 export function advertisedMachineCapabilities(
 	policy: MachineCapabilitiesPolicy | undefined,
+	/** The machine's allowed host folders, each with its name. */
+	folders: ReadonlyArray<{ name: string; path: string; mode: string }> = [],
 ): Array<AdvertisedMachineCapability> {
 	return [
+		...folders.map((folder) => ({
+			kind: 'fs' as const,
+			name: folder.name,
+			description: '',
+			summary: { path: folder.path, mode: folder.mode },
+		})),
 		...(policy?.commands ?? []).map((command) => ({
 			kind: 'command' as const,
 			name: command.name,
