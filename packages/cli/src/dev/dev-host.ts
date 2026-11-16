@@ -112,13 +112,18 @@ export function planDevListen(input: {
 	const appHosts = input.appOrigin ? [new URL(input.appOrigin).host] : []
 	if (isLoopbackDevHost(bindHost)) {
 		const url = origin(bindHost)
+		// `*.localhost` resolves to 127.0.0.1 and ::1 only, so another loopback
+		// address (127.0.0.2) keeps its own URL.
+		const appOrigin = ['127.0.0.1', '::1', 'localhost'].includes(bindHost)
+			? input.appOrigin
+			: null
 		return {
-			hostedUrl: input.appOrigin ?? url,
+			hostedUrl: appOrigin ?? url,
 			localUrl: url,
 			// The app origin is not a loopback name, so the loopback addresses
 			// it resolves to are listed here.
 			extraAllowedHosts: () =>
-				input.appOrigin
+				appOrigin
 					? [`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]
 					: [],
 			networkUrls: [],

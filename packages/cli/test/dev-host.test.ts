@@ -151,6 +151,15 @@ test('planDevListen: a loopback bind serves the app origin and still answers on 
 		'localhost:4777',
 		'[::1]:4777',
 	])
+	// Another loopback address is not where `*.localhost` resolves.
+	const other = planDevListen({
+		bindHost: '127.0.0.2',
+		port: 4777,
+		appOrigin: 'http://notes--kent.localhost:4777',
+		interfaces: () => fakeInterfaces,
+	})
+	assert.equal(other.hostedUrl, 'http://127.0.0.2:4777')
+	assert.equal(other.localUrl, 'http://127.0.0.2:4777')
 	// A wildcard bind keeps the LAN URL other devices can open.
 	const lan = planDevListen({
 		bindHost: '0.0.0.0',

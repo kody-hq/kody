@@ -1594,7 +1594,7 @@ function normalizeBasePath(value: string): string {
 function resolveDevAppBasePath(options: {
 	appBasePath?: string
 	localKody?: LocalKodyUpstream
-	manifest: Pick<KodyPackageManifest, 'kodyId'>
+	manifest: Pick<KodyPackageManifest, 'kodyId' | 'name'>
 }): string {
 	const requested = normalizeBasePath(options.appBasePath ?? '')
 	const oldPath = `/${options.manifest.kodyId}`
