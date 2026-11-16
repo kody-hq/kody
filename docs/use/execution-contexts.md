@@ -351,7 +351,10 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   Give one of your own profiles an entry you can use yourself with
   `executionContextMachineAccessGrant` and `profile_id` in place of a person
   (parents first). You take it back with `executionContextMachineAccessRevoke`.
-  A profile grant never widens what you can use.
+  A profile grant never widens what you can use. A run acting as a profile can
+  only pass an entry down to its own sub-profiles.
+  `executionContextMachineAccessList` shows you the grants on your own profiles
+  when you do not manage the machine.
 - A saved package the run loaded directly must declare each named command and
   local network destination it uses in
   [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call

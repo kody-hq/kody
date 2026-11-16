@@ -75,6 +75,7 @@ type GrantRow = {
 async function loadMachineAccess(
 	caller: ExecutionContextCaller,
 	contextId: string,
+	manages: boolean,
 ) {
 	const db = caller.env.APP_DB
 	const [capabilities, grants] = await Promise.all([
@@ -114,7 +115,13 @@ async function loadMachineAccess(
 		description: capability.description,
 		shareable: isShareable(capability.kind),
 		grants: grants.results
-			.filter((grant) => grant.resource_id === capability.id)
+			.filter(
+				(grant) =>
+					grant.resource_id === capability.id &&
+					// Someone who does not manage the machine sees only what they
+					// gave their own profiles.
+					(manages || grant.profile_acting_user_id === caller.userId),
+			)
 			.flatMap((grant) => {
 				const subject =
 					grant.subject_type === 'org'
@@ -145,39 +152,39 @@ function isShareable(kind: string): kind is ShareableKind {
 	)
 }
 
-function canSeeMachineAccess(
+/**
+ * What a caller whose credential lacks `execution_context:manage_access`
+ * may still do: give their own profiles what they can use, and take it back.
+ */
+export type MachineAccessScope = { withoutManageAccess?: true }
+
+function managesMachineAccess(
 	caller: ExecutionContextCaller,
 	access: Parameters<typeof canManageContext>[0],
+	scope: MachineAccessScope,
 ) {
 	const role = caller.request.membership?.role
-	return canManageContext(access) || role === 'owner' || role === 'admin'
+	return (
+		!scope.withoutManageAccess &&
+		(canManageContext(access) || role === 'owner' || role === 'admin')
+	)
 }
 
-async function requireMachineAccessReader(
-	caller: ExecutionContextCaller,
-	ref: string,
-) {
-	const loaded = await loadVisibleContext(caller, ref)
-	if (!canSeeMachineAccess(caller, loaded.access)) {
-		throw new ExecutionContextError({
-			status: 403,
-			code: 'not_granted',
-			message:
-				'Only the operator, people with Manage, and org owners see who has machine access.',
-		})
-	}
-	return loaded
-}
-
+/**
+ * The operator, Manage holders and org owners see every grant. Anyone else
+ * who can see the context sees only the grants on their own profiles.
+ */
 export async function listMachineAccess(
 	caller: ExecutionContextCaller,
 	ref: string,
+	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await requireMachineAccessReader(caller, ref)
+	const { row, access } = await loadVisibleContext(caller, ref)
+	const manages = managesMachineAccess(caller, access, scope)
 	return {
 		id: row.id,
-		canGrant: access.isOperator,
-		capabilities: await loadMachineAccess(caller, row.id),
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }
 
@@ -196,10 +203,12 @@ export async function grantMachineAccess(
 			| { type: 'user' | 'team' | 'org'; id: string }
 			| { type: 'profile'; id: string }
 	},
+	scope: MachineAccessScope = {},
 ) {
 	const { row, access } = await loadVisibleContext(caller, ref)
 	const { subject } = input
-	if (subject.type !== 'profile' && !access.isOperator) {
+	const manages = managesMachineAccess(caller, access, scope)
+	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
 		throw new ExecutionContextError({
 			status: 403,
 			code: 'not_granted',
@@ -279,10 +288,8 @@ export async function grantMachineAccess(
 	})
 	return {
 		id: row.id,
-		canGrant: access.isOperator,
-		capabilities: canSeeMachineAccess(caller, access)
-			? await loadMachineAccess(caller, row.id)
-			: [],
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }
 
@@ -291,9 +298,10 @@ export async function revokeMachineAccess(
 	caller: ExecutionContextCaller,
 	ref: string,
 	grantId: string,
+	scope: MachineAccessScope = {},
 ) {
 	const { row, access } = await loadVisibleContext(caller, ref)
-	const manages = canSeeMachineAccess(caller, access)
+	const manages = managesMachineAccess(caller, access, scope)
 	const db = caller.env.APP_DB
 	const grant = await db
 		.prepare(
@@ -337,7 +345,7 @@ export async function revokeMachineAccess(
 	})
 	return {
 		id: row.id,
-		canGrant: access.isOperator,
-		capabilities: manages ? await loadMachineAccess(caller, row.id) : [],
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }

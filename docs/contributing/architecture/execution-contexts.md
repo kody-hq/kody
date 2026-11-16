@@ -284,7 +284,12 @@ data model exists so far; nothing reads it at run time yet.
   package grants to profiles: own active profile, every parent holds it first).
   `hasMachineAccessGrant` never matches a profile grant; the profile chain check
   in `assertNamedCapabilityAccess` reads it. That person revokes it, as do the
-  operator, Manage holders and org owners.
+  operator, Manage holders and org owners. The three machine access tools pass
+  the surface gate with `execution_context:manage_access` or
+  `execution_context:execute`; without `manage_access`
+  (`MachineAccessScope.withoutManageAccess`) a caller only grants, lists and
+  revokes on their own profiles. A caller acting as a profile grants only to its
+  sub-profiles (`grantResourceToProfile`, packages too).
 - Every entry package of a run that uses a named command or local network
   destination must declare it in its own published `kody.machine`, by name and
   kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs

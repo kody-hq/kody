@@ -1161,11 +1161,60 @@ test('a person gives their own profile a named command they can use, capped by i
 		name: 'kdocker',
 		subject: { type: 'user', id: 'user_friend' },
 	})
-	// They do not manage the machine, so they get no list back.
-	await expect(give(friend, 'prf_friend')).resolves.toMatchObject({
-		canGrant: false,
-		capabilities: [],
-	})
+	// They do not manage the machine, so they see only their own profile's grant.
+	const mine = [
+		{
+			grantId: expect.any(String),
+			subject: { kind: 'profile', id: 'prf_friend', name: 'prf_friend' },
+		},
+	]
+	const given = await give(friend, 'prf_friend')
+	expect(given.canGrant).toBe(false)
+	expect(given.capabilities.map((entry) => entry.grants)).toEqual([mine])
+	expect(
+		(await listMachineAccess(friend, 'ec_mac')).capabilities[0]!.grants,
+	).toEqual(mine)
+
+	// A credential without manage_access gives the operator's profile access
+	// but cannot share with a person, and sees only the operator's own profiles.
+	const scoped = { withoutManageAccess: true } as const
+	await expect(
+		grantMachineAccess(
+			owner,
+			'ec_mac',
+			{
+				kind: 'command',
+				name: 'kdocker',
+				subject: { type: 'user', id: 'user_teammate' },
+			},
+			scoped,
+		),
+	).rejects.toMatchObject({ code: 'not_granted' })
+	expect(
+		(
+			await listMachineAccess(owner, 'ec_mac', scoped)
+		).capabilities[0]!.grants.map((grant) => grant.subject.kind),
+	).toEqual(['profile', 'profile'])
+
+	// Acting as a profile, the operator's run passes access down only.
+	const actingAs = (profileId: string) => {
+		const caller = s.callerFor(operator)
+		return {
+			...caller,
+			request: {
+				...caller.request,
+				credential: { ...caller.request.credential, profileId },
+			},
+		} as typeof caller
+	}
+	profile('prf_other', operator, null)
+	await expect(give(actingAs('prf_agent'), 'prf_agent')).rejects.toThrow(
+		'A profile can only give access to its own sub-profiles',
+	)
+	await expect(give(actingAs('prf_agent'), 'prf_other')).rejects.toThrow(
+		'A profile can only give access to its own sub-profiles',
+	)
+	await give(actingAs('prf_agent'), 'prf_helper')
 	const grantOf = (profileId: string) =>
 		(
 			s.sqlite
