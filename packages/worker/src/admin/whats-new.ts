@@ -183,8 +183,19 @@ export async function setWhatsNewOptIn(input: {
 	stable_user_id: string
 	opted_in: boolean
 	source: 'email_link' | 'admin'
+	occurred_at?: string
 }) {
-	const updatedAt = new Date().toISOString()
+	const updatedAt = input.occurred_at
+		? new Date(input.occurred_at).toISOString()
+		: new Date().toISOString()
+	if (input.occurred_at) {
+		const newer = await newerStoredChoice(
+			input.db,
+			input.stable_user_id,
+			updatedAt,
+		)
+		if (newer) return newer
+	}
 	const flag = input.opted_in ? 1 : 0
 	const userRow = await input.db
 		.prepare(
@@ -260,5 +271,51 @@ export async function setWhatsNewOptIn(input: {
 		opted_in: input.opted_in,
 		opt_in_updated_at: unchangedRow?.updated_at ?? updatedAt,
 		opt_in_source: unchangedRow?.source ?? input.source,
+	}
+}
+
+/**
+ * A choice reported with its own time must not undo one the person made
+ * later, e.g. a delayed opt-in arriving after an unsubscribe.
+ */
+async function newerStoredChoice(
+	db: D1Database,
+	stableUserId: string,
+	occurredAt: string,
+) {
+	const stored =
+		(await db
+			.prepare(
+				`SELECT stable_user_id, whats_new_email_opt_in AS opted_in, whats_new_email_opt_in_updated_at AS updated_at, whats_new_email_opt_in_source AS source
+		 FROM users
+		 WHERE stable_user_id = ? AND deleted_at IS NULL AND deleting_at IS NULL`,
+			)
+			.bind(stableUserId)
+			.first<{
+				stable_user_id: string
+				opted_in: number
+				updated_at: string | null
+				source: RecipientSource
+			}>()) ??
+		(await db
+			.prepare(
+				`SELECT stable_id AS stable_user_id, status = 'confirmed' AS opted_in, updated_at, source
+		 FROM newsletter_signups
+		 WHERE stable_id = ? AND status IN ('confirmed', 'unsubscribed')`,
+			)
+			.bind(stableUserId)
+			.first<{
+				stable_user_id: string
+				opted_in: number
+				updated_at: string | null
+				source: RecipientSource
+			}>())
+	if (!stored?.updated_at) return null
+	if (Date.parse(stored.updated_at) <= Date.parse(occurredAt)) return null
+	return {
+		stable_user_id: stored.stable_user_id,
+		opted_in: stored.opted_in === 1,
+		opt_in_updated_at: stored.updated_at,
+		opt_in_source: stored.source,
 	}
 }

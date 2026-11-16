@@ -105,6 +105,12 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 			stable_user_id: stableUserIdSchema,
 			opted_in: z.boolean(),
 			source: z.enum(['email_link', 'admin']).default('admin'),
+			occurred_at: z.iso
+				.datetime()
+				.optional()
+				.describe(
+					'When the person made the choice, if it was recorded elsewhere first. Defaults to now. Not in the future. A choice older than the saved one is not applied, and the saved one is returned.',
+				),
 		}),
 		outputSchema: optInSchema.extend({ opt_in_updated_at: z.string() }),
 		async handler(args, ctx) {
@@ -112,13 +118,20 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 				ctx,
 				'adminWhatsNewOptInSet',
 				async () => {
+					if (args.occurred_at && Date.parse(args.occurred_at) > Date.now()) {
+						throw new Error('occurred_at must not be in the future.')
+					}
 					const result = await setWhatsNewOptIn({
 						db: ctx.env.APP_DB,
 						...args,
 					})
 					// `email_link` is the newsletter package reporting a choice it
 					// already recorded, so only admin changes are announced back.
-					if (args.source === 'admin') {
+					const superseded =
+						args.occurred_at !== undefined &&
+						result.opt_in_updated_at !==
+							new Date(args.occurred_at).toISOString()
+					if (args.source === 'admin' && !superseded) {
 						await recordWhatsNewConsentChange({
 							env: ctx.env,
 							stableUserId: result.stable_user_id,

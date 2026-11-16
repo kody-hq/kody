@@ -29,6 +29,19 @@ const outboxMaxAttempts = 8
 const whatsNewConsentSubscriptionActorTokenId =
 	'internal:whats-new-consent-subscriptions'
 
+/**
+ * Orgs whose packages hear consent changes besides site admins' own. The
+ * payload carries subscriber emails, so this is a fixed list of org ids.
+ */
+export function whatsNewConsentFirstPartyOrgIds(env: {
+	WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS?: string
+}) {
+	return (env.WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS ?? '')
+		.split(',')
+		.map((id) => id.trim())
+		.filter((id) => /^[0-9a-f]{64}$/.test(id))
+}
+
 export function isWhatsNewConsentOutboxQueueBody(body: unknown) {
 	return (
 		!!body &&
@@ -292,6 +305,7 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		buildIdempotencyKey: (savedPackage) =>
 			`whats-new-consent:${input.outboxId}:${row.attempts}:${savedPackage.id}`,
 		actorTokenId: whatsNewConsentSubscriptionActorTokenId,
+		additionalOwnerIds: whatsNewConsentFirstPartyOrgIds(input.env as Env),
 		retryDiscoveryFailures: true,
 		retryInvocationInfrastructureFailures: true,
 		waitUntil: input.waitUntil,
@@ -304,9 +318,14 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 			`whats_new.consent.changed was not handled by ${failed.length} of ${responses.length} subscribers.`,
 		)
 	}
-	if (responses.length === 0) {
-		// No admin package subscribes yet: keep the row, uncounted, for the
-		// sweep that runs with the next change.
+	// A subscription nobody has turned on answers 202 without running.
+	const handled = responses.filter(
+		(response) =>
+			!(response?.body as { skipped?: unknown } | undefined)?.skipped,
+	)
+	if (handled.length === 0) {
+		// No package handler ran: keep the row, uncounted, for the sweep that
+		// runs with the next change.
 		await db
 			.prepare(
 				`UPDATE whats_new_consent_outbox SET attempts = attempts - 1 WHERE id = ? AND attempts > 0`,
@@ -316,5 +335,5 @@ export async function deliverWhatsNewConsentOutboxRow(input: {
 		return { delivered: 0 }
 	}
 	await remove()
-	return { delivered: responses.length }
+	return { delivered: handled.length }
 }
