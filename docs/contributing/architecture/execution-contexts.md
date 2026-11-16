@@ -289,7 +289,9 @@ data model exists so far; nothing reads it at run time yet.
   `execution_context:execute`; without `manage_access`
   (`MachineAccessScope.withoutManageAccess`) a caller only grants, lists and
   revokes on their own profiles. A caller acting as a profile grants only to its
-  sub-profiles (`grantResourceToProfile`, packages too).
+  sub-profiles (`grantResourceToProfile`, packages too). Someone who neither
+  manages the machine nor has it shared with them is refused before any
+  definition is read.
 - Every entry package of a run that uses a named command or local network
   destination must declare it in its own published `kody.machine`, by name and
   kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs
