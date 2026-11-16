@@ -191,3 +191,28 @@ test('0019 never rewrites and never leaks source into findings', async () => {
 test('0019 scans the published tree so drifted apps are inventoried', () => {
 	expect(detectPackageAppHostMigrationCodemod.applyMode).toBe('published-only')
 })
+
+test('0019 reports declared kody.webhooks so receiver matches can be told apart', async () => {
+	const receiver = { 'hook.ts': 'request.headers.get("x-github-event")' }
+	expect(
+		await scan(
+			receiver,
+			packageContext,
+			manifest({
+				app: { entry: './app.ts' },
+				webhooks: [{ name: 'github', export: './hook' }],
+			}),
+		),
+	).toEqual([
+		'package.json: declared kody webhook',
+		'hook.ts: webhook receiver',
+	])
+	expect(await scan(receiver)).toEqual(['hook.ts: webhook receiver'])
+	expect(
+		await scan(
+			receiver,
+			packageContext,
+			manifest({ app: { entry: './app.ts' }, webhooks: [] }),
+		),
+	).toEqual(['hook.ts: webhook receiver'])
+})
