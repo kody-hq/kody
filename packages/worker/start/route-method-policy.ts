@@ -1,5 +1,6 @@
 type Handlers = Record<string, unknown>
 type ServerRoute = {
+	path?: string
 	options: {
 		component?: unknown
 		server?: {
@@ -62,6 +63,39 @@ export function routeMethodRejection(
 	}
 	return new Response(null, {
 		status: 405,
+		headers,
+	})
+}
+
+/**
+ * Start answers 406 to any document render whose Accept excludes HTML, before
+ * it knows whether a route matched. A path with no route has no representation
+ * in any type, so it is a 404. Mirrors the router's own not-found rule and
+ * Start's Accept gate so HTML callers still get the not-found page.
+ */
+export function unknownPathRejection(
+	method: string,
+	route: ServerRoute | undefined,
+	hasUnmatchedRemainder: boolean,
+	request: Pick<Request, 'headers'>,
+): Response | undefined {
+	if (method !== 'GET' && method !== 'HEAD') return
+	if (route && (route.path === '/' || !hasUnmatchedRemainder)) return
+	const accept = request.headers.get('accept') || '*/*'
+	if (/(^|,)\s*(\*\/\*|text\/html)/.test(accept)) return
+	const wantsJson = requestWantsJson(request)
+	const headers = new Headers({
+		'Content-Type': wantsJson
+			? 'application/json; charset=utf-8'
+			: 'text/plain; charset=utf-8',
+		'Cache-Control': 'no-store',
+		Vary: 'Accept',
+	})
+	const body = wantsJson
+		? JSON.stringify({ ok: false, error: 'Not found.' })
+		: 'Not found.'
+	return new Response(method === 'HEAD' ? null : body, {
+		status: 404,
 		headers,
 	})
 }
