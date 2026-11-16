@@ -28,6 +28,25 @@ export function toServingSourceView<
 }
 
 /**
+ * The source row as the definitions an app runs by (jobs, subscriptions,
+ * webhooks, events, skills, secrets) see it. A held commit (built, but
+ * waiting for its internet-visible app's owner to approve wider
+ * capabilities) is not live, so they read the serving commit instead. Any
+ * other published commit reads as itself.
+ */
+export function toUnheldSourceView<
+	T extends Pick<
+		EntitySourceRow,
+		'published_commit' | 'serving_commit' | 'held_commit'
+	>,
+>(source: T): T {
+	return source.held_commit != null &&
+		source.held_commit === source.published_commit
+		? toServingSourceView(source)
+		: source
+}
+
+/**
  * The source row pinned to an earlier published `commit` (both pointers),
  * for readers that must keep running it, such as anonymous visitors of an
  * internet-visible app whose newer publish still awaits approval. Payloads

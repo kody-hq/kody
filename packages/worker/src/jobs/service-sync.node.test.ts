@@ -199,7 +199,11 @@ test('package job sync reports scheduler changes for add, update, and remove onl
 		sourceId: 'source-1',
 	}
 	const sync = (jobs: Record<string, unknown>) =>
-		syncPackageJobsForPackage({ ...input, manifest: cloudflareManifest(jobs) })
+		syncPackageJobsForPackage({
+			...input,
+			publishedCommit: 'package-published-commit',
+			manifest: cloudflareManifest(jobs),
+		})
 	const listRows = () => listJobRowsByUserId(env.APP_DB, input.userId)
 	await seedPackageSource({
 		...input,
@@ -279,6 +283,7 @@ test('package job sync preserves runtime enabled and does not re-enable from the
 	const sync = (enabled: boolean) =>
 		syncPackageJobsForPackage({
 			...input,
+			publishedCommit: 'package-published-commit',
 			manifest: cloudflareManifest({
 				sweep: {
 					entry: './src/jobs/sweep.ts',
@@ -375,6 +380,7 @@ test('package job sync preflights the full addition set without partial inserts'
 		env,
 		...target,
 		baseUrl: 'https://heykody.dev',
+		publishedCommit: 'new-package-commit',
 		manifest: packageManifest({
 			name: '@owner/new-package',
 			kodyId: 'new-package',
@@ -462,6 +468,7 @@ test('free and public Standard plans reject new or changed schedules faster than
 			env,
 			...mixed,
 			baseUrl: 'https://example.com',
+			publishedCommit: 'mixed-interval-commit',
 			manifest: packageManifest({
 				name: '@owner/mixed-interval-package',
 				kodyId: 'mixed-interval-package',

@@ -8,7 +8,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { buildPublishedPublishChecksKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
-import type * as PublicVisitorsHeldBackNoticeModule from '#mcp/capabilities/packages/public-visitors-held-back-publish-notice.ts'
+import type * as HeldForApprovalNoticeModule from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
@@ -22,7 +22,7 @@ const mockModule = vi.hoisted(() => ({
 	absorbCommunityForkUpstream: vi.fn(),
 	getSavedPackageById: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
-	buildPublicVisitorsHeldBackPublishNotice: vi.fn(),
+	buildHeldForApprovalPublishNotice: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/service.ts', () => ({
@@ -67,11 +67,11 @@ vi.mock('#worker/community/service.ts', () => ({
 }))
 
 vi.mock(
-	'#mcp/capabilities/packages/public-visitors-held-back-publish-notice.ts',
+	'#mcp/capabilities/packages/held-for-approval-publish-notice.ts',
 	async (importOriginal) => ({
-		...(await importOriginal<typeof PublicVisitorsHeldBackNoticeModule>()),
-		buildPublicVisitorsHeldBackPublishNotice: (...args: Array<unknown>) =>
-			mockModule.buildPublicVisitorsHeldBackPublishNotice(...args),
+		...(await importOriginal<typeof HeldForApprovalNoticeModule>()),
+		buildHeldForApprovalPublishNotice: (...args: Array<unknown>) =>
+			mockModule.buildHeldForApprovalPublishNotice(...args),
 	}),
 )
 
@@ -118,7 +118,7 @@ function resetMocks() {
 		id: 'package-1',
 		kodyId: 'demo',
 	})
-	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockResolvedValue(null)
+	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(null)
 	mockModule.repoSessionRpc.mockReturnValue({
 		getSessionInfo: vi.fn(async () => ({
 			entity_type: 'package',
@@ -176,18 +176,16 @@ test('repoPublishSession keeps a successful publish when fork absorb fails and s
 	}
 })
 
-test('repoPublishSession tells the agent when public visitors stay on the previous approved version', async () => {
+test('repoPublishSession tells the agent when everyone stays on the previous approved version', async () => {
 	resetMocks()
-	const heldBack = {
-		public_commit: 'approved-commit',
-		serving_commit: 'commit-1',
+	const held = {
+		serving_commit: 'approved-commit',
+		held_commit: 'commit-1',
 		approval_url: 'https://kody.test/@user/demo/approve-capabilities',
 		message:
-			'Public visitors are still on the previous version (approved) because commit-1 asks for more capabilities.',
+			'Everyone is still on the previous version (approved) until you approve the new capabilities that commit-1 asks for.',
 	}
-	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockResolvedValue(
-		heldBack,
-	)
+	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(held)
 
 	const result = await repoPublishSessionCapability.handler(
 		{ session_id: 'session-1' },
@@ -199,18 +197,16 @@ test('repoPublishSession tells the agent when public visitors stay on the previo
 		session_id: 'session-1',
 		published_commit: 'commit-1',
 		message: 'Published session to repo-artifacts-1.',
-		public_visitors_held_back: heldBack,
+		held_for_approval: held,
 	})
-	expect(
-		mockModule.buildPublicVisitorsHeldBackPublishNotice,
-	).toHaveBeenCalledWith(
+	expect(mockModule.buildHeldForApprovalPublishNotice).toHaveBeenCalledWith(
 		expect.objectContaining({ packageId: 'package-1', kodyId: 'demo' }),
 	)
 })
 
-test('repoPublishSession still reports a completed publish when the held-back lookup rejects', async () => {
+test('repoPublishSession still reports a completed publish when the held-for-approval lookup rejects', async () => {
 	resetMocks()
-	mockModule.buildPublicVisitorsHeldBackPublishNotice.mockRejectedValueOnce(
+	mockModule.buildHeldForApprovalPublishNotice.mockRejectedValueOnce(
 		new Error('D1 unavailable'),
 	)
 	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -224,7 +220,7 @@ test('repoPublishSession still reports a completed publish when the held-back lo
 		status: 'ok',
 		published_commit: 'commit-1',
 	})
-	expect(result).not.toHaveProperty('public_visitors_held_back')
+	expect(result).not.toHaveProperty('held_for_approval')
 	warn.mockRestore()
 })
 

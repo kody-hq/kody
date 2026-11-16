@@ -28,7 +28,7 @@ vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
 })
 
 const mockModule = vi.hoisted(() => ({
-	loadPublicVisitorsHeldBack: vi.fn(
+	loadHeldForApproval: vi.fn(
 		async (..._args: Array<unknown>): Promise<unknown> => null,
 	),
 	getSavedPackageById: vi.fn(),
@@ -67,9 +67,9 @@ vi.mock(
 	}),
 )
 
-vi.mock('#worker/package-capabilities/public-visitors-held-back.ts', () => ({
-	loadPublicVisitorsHeldBack: (...args: Array<unknown>) =>
-		mockModule.loadPublicVisitorsHeldBack(...args),
+vi.mock('#worker/package-capabilities/held-for-approval.ts', () => ({
+	loadHeldForApproval: (...args: Array<unknown>) =>
+		mockModule.loadHeldForApproval(...args),
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
@@ -223,7 +223,7 @@ function setupDefaultMocks({
 	targets?: Array<unknown>
 } = {}) {
 	for (const mock of Object.values(mockModule)) mock.mockReset()
-	mockModule.loadPublicVisitorsHeldBack.mockResolvedValue(null)
+	mockModule.loadHeldForApproval.mockResolvedValue(null)
 	mockModule.listPublisherEnablementGaps.mockResolvedValue([])
 	mockModule.getSavedPackageById.mockResolvedValue({
 		id: 'package-1',
@@ -413,24 +413,24 @@ test('publishExternalPush includes listing hint when the public catalog pin lags
 	})
 })
 
-test('publishExternalPush tells agents when public visitors stay on the previous version', async () => {
+test('publishExternalPush tells agents when everyone stays on the previous version', async () => {
 	setupDefaultMocks({ hasApp: true, publish: publishedResult() })
-	mockModule.loadPublicVisitorsHeldBack.mockResolvedValue({
-		publicCommit: 'commit-old-approved',
-		servingCommit: 'commit-new',
+	mockModule.loadHeldForApproval.mockResolvedValue({
+		servingCommit: 'commit-old-approved',
+		heldCommit: 'commit-new',
 	})
 
 	const published = await publish()
 	if (published.status !== 'published') throw new Error('expected published')
-	expect(published.public_visitors_held_back).toEqual({
-		public_commit: 'commit-old-approved',
-		serving_commit: 'commit-new',
+	expect(published.held_for_approval).toEqual({
+		serving_commit: 'commit-old-approved',
+		held_commit: 'commit-new',
 		approval_url: 'https://kody.test/@user/demo-package/approve-capabilities',
 		message: expect.stringContaining(
-			'Public visitors are still on the previous version (commit-) because commit- asks for more capabilities.',
+			'Everyone is still on the previous version (commit-) until you approve the new capabilities that commit- asks for.',
 		),
 	})
-	expect(mockModule.loadPublicVisitorsHeldBack).toHaveBeenCalledWith({
+	expect(mockModule.loadHeldForApproval).toHaveBeenCalledWith({
 		env: expect.anything(),
 		packageId: 'package-1',
 		ownerUserId: ownerIdFromStored('user-1'),

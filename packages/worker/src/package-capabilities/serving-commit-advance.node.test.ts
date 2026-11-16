@@ -13,11 +13,28 @@ import {
 } from './capability-set.ts'
 import { insertPackageCapabilityApproval } from './capability-approvals-repo.ts'
 import { emptyDependencySnapshot } from './dependency-snapshot.ts'
-import { loadPublicVisitorsHeldBack } from './public-visitors-held-back.ts'
-import { advanceServingCommit } from './serving-commit-advance.ts'
+import { loadHeldForApproval } from './held-for-approval.ts'
+import { approvePackageCapabilitySet } from './capability-approval-service.ts'
+import {
+	advanceServingCommit,
+	releaseHeldServingCommit,
+} from './serving-commit-advance.ts'
+
+const projection = vi.hoisted(() => ({
+	refreshSavedPackageProjection: vi.fn(async () => undefined),
+}))
+
+vi.mock('#worker/package-registry/service.ts', () => projection)
+
+const jobs = vi.hoisted(() => ({
+	syncPublishedPackageJobs: vi.fn(async (_input: unknown) => false),
+}))
+
+vi.mock('#worker/jobs/service.ts', () => jobs)
 
 const compute = vi.hoisted(() => ({
 	entriesByCommit: new Map<string, Array<unknown>>(),
+	onCompute: undefined as undefined | ((commit: string) => Promise<void>),
 }))
 
 vi.mock('./compute-package-capability-set.ts', () => ({
@@ -27,6 +44,7 @@ vi.mock('./compute-package-capability-set.ts', () => ({
 		sourceId: string
 		publishedCommit: string
 	}) => {
+		await compute.onCompute?.(input.publishedCommit)
 		const entries = compute.entriesByCommit.get(input.publishedCommit)
 		if (!entries)
 			throw new Error(`no capability set for ${input.publishedCommit}`)
@@ -75,6 +93,10 @@ const mailCredential: CapabilitySetEntry = {
 
 beforeEach(() => {
 	compute.entriesByCommit.clear()
+	compute.onCompute = undefined
+	projection.refreshSavedPackageProjection.mockClear()
+	jobs.syncPublishedPackageJobs.mockReset()
+	jobs.syncPublishedPackageJobs.mockResolvedValue(false)
 	approvedCommitCache.delete(packageId)
 	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -124,6 +146,7 @@ async function setUp(input: { approvedEntries?: Array<CapabilitySetEntry> }) {
 	const savedPackage = {
 		id: packageId,
 		userId: ownerId,
+		kodyId: 'site',
 		sourceId,
 		hasApp: true,
 		isInternetVisible: true,
@@ -157,7 +180,40 @@ async function setUp(input: { approvedEntries?: Array<CapabilitySetEntry> }) {
 		sqlite
 			.prepare('SELECT serving_commit FROM entity_sources WHERE id = ?')
 			.get(sourceId)?.['serving_commit']
+	const heldCommit = () =>
+		sqlite
+			.prepare('SELECT held_commit FROM entity_sources WHERE id = ?')
+			.get(sourceId)?.['held_commit']
+	// The owner approves the live capability set from the approval page.
+	const approveLive = async () => {
+		const commit = sqlite
+			.prepare('SELECT published_commit FROM entity_sources WHERE id = ?')
+			.get(sourceId)?.['published_commit']
+		const entries = compute.entriesByCommit.get(String(commit))
+		const capabilitySet = await buildCapabilitySet(
+			(entries ?? []) as Array<CapabilitySetEntry>,
+		)
+		await approvePackageCapabilitySet({
+			env,
+			ownerUserId: ownerId,
+			actorUserId: 'person-owner',
+			savedPackage,
+			requestUrl: 'https://kody.test/',
+			expectedFingerprint: capabilitySet.fingerprint,
+			recordPin: true,
+		})
+	}
+	// Members, the owner and jobs read the serving commit; anonymous
+	// visitors read the approved commit. On an internet-visible app they
+	// must always match.
+	const expectEveryoneOn = async (commit: string) => {
+		expect(servingCommit()).toBe(commit)
+		await expect(publicCommit()).resolves.toBe(commit)
+	}
 	return {
+		heldCommit,
+		approveLive,
+		expectEveryoneOn,
 		db,
 		env,
 		sqlite,
@@ -201,38 +257,183 @@ test('a narrower republish is carried forward too', async () => {
 		commit: 'commit-b',
 	})
 	await expect(site.publicCommit()).resolves.toBe('commit-b')
+	// Publish already projected commit-b; nothing needs settling.
+	expect(projection.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
-test('a republish that asks for more keeps visitors on the approved version', async () => {
+test('a wider republish holds everyone on the approved version until it is approved', async () => {
 	const site = await setUp({ approvedEntries: [storage] })
 	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
 	await site.publish('commit-b')
 
+	await expect(
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit: 'commit-b',
+		}),
+	).resolves.toBe(false)
+	// Members, the owner and visitors all keep commit-a.
+	await site.expectEveryoneOn('commit-a')
+	expect(site.heldCommit()).toBe('commit-b')
+	expect(site.approvalCommits()).toEqual(['commit-a'])
+	// Jobs, subscriptions and skills settle back to the commit everyone runs.
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId,
+			sourceId,
+			rebuildArtifacts: false,
+		}),
+	)
+	projection.refreshSavedPackageProjection.mockClear()
+	// Held: no job is added, removed, or rewritten.
+	expect(jobs.syncPublishedPackageJobs).not.toHaveBeenCalled()
+
+	// A rebuild of the held commit keeps holding it without a new check.
+	compute.entriesByCommit.delete('commit-b')
 	await advanceServingCommit({
 		env: site.env,
 		sourceId,
 		userId: ownerId,
 		commit: 'commit-b',
 	})
-	// Members run commit-b; visitors keep commit-a until the owner approves.
-	expect(site.servingCommit()).toBe('commit-b')
-	expect(site.approvalCommits()).toEqual(['commit-a'])
-	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	await site.expectEveryoneOn('commit-a')
 
-	site.sqlite
-		.prepare(
-			`INSERT INTO package_capability_approvals (
-				id, package_id, owner_user_id, published_commit, fingerprint,
-				capability_set_json, dependency_snapshot_json,
-				approved_by_user_id, approved_at, created_at
-			) VALUES ('approval-b', ?, ?, 'commit-b', 'wider', '[]', '{}',
-				'person-owner', '2026-11-14T00:10:00.000Z', '2026-11-14T00:10:00.000Z')`,
-		)
-		.run(packageId, ownerId)
-	await expect(site.publicCommit()).resolves.toBe('commit-b')
+	// Approving releases everyone to commit-b at once, definitions included.
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	projection.refreshSavedPackageProjection.mockClear()
+	await site.approveLive()
+	await site.expectEveryoneOn('commit-b')
+	expect(site.heldCommit()).toBeNull()
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
+	// Jobs switch with the code, enabled as the approver.
+	expect(jobs.syncPublishedPackageJobs).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId,
+			sourceId,
+			commit: 'commit-b',
+			actorUserId: 'person-owner',
+		}),
+	)
 })
 
-test('a failed capability check advances serving but carries nothing forward', async () => {
+test('a job sync that fails on approval keeps the hold so approving again releases it', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	jobs.syncPublishedPackageJobs.mockRejectedValueOnce(new Error('d1 busy'))
+
+	await expect(site.approveLive()).rejects.toThrow('d1 busy')
+	await site.expectEveryoneOn('commit-a')
+	expect(site.heldCommit()).toBe('commit-b')
+
+	await site.approveLive()
+	await site.expectEveryoneOn('commit-b')
+	expect(site.heldCommit()).toBeNull()
+})
+
+test('an approval that lands while a wider build is being checked still releases it', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	let approving = false
+	compute.onCompute = async () => {
+		if (approving) return
+		approving = true
+		await site.approveLive()
+	}
+
+	await expect(
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit: 'commit-b',
+		}),
+	).resolves.toBe(true)
+	await site.expectEveryoneOn('commit-b')
+	expect(site.heldCommit()).toBeNull()
+})
+
+test('turning internet-visible off releases a held republish', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	expect(site.servingCommit()).toBe('commit-a')
+
+	site.sqlite
+		.prepare('UPDATE saved_packages SET is_internet_visible = 0 WHERE id = ?')
+		.run(packageId)
+	await expect(
+		releaseHeldServingCommit({ env: site.env, sourceId, userId: ownerId }),
+	).resolves.toBe(true)
+	expect(site.servingCommit()).toBe('commit-b')
+	expect(site.heldCommit()).toBeNull()
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(2)
+})
+
+test('an app that is not internet-visible serves a wider republish right away', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	site.sqlite
+		.prepare('UPDATE saved_packages SET is_internet_visible = 0 WHERE id = ?')
+		.run(packageId)
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await expect(
+		advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit: 'commit-b',
+		}),
+	).resolves.toBe(true)
+	expect(site.servingCommit()).toBe('commit-b')
+	expect(site.heldCommit()).toBeNull()
+})
+
+test('members never run a different commit from the public across republishes', async () => {
+	const site = await setUp({ approvedEntries: [storage, mailCredential] })
+	const republish = async (commit: string, entries: Array<unknown>) => {
+		compute.entriesByCommit.set(commit, entries)
+		await site.publish(commit)
+		// Building: nobody moves yet.
+		await site.expectEveryoneOn(String(site.servingCommit()))
+		await advanceServingCommit({
+			env: site.env,
+			sourceId,
+			userId: ownerId,
+			commit,
+		})
+	}
+	await republish('commit-b', [storage])
+	await site.expectEveryoneOn('commit-b')
+	await republish('commit-c', [storage, mailCredential])
+	await site.expectEveryoneOn('commit-b')
+	// A newer narrower publish replaces the hold and goes live for everyone.
+	await republish('commit-d', [storage])
+	await site.expectEveryoneOn('commit-d')
+	expect(site.heldCommit()).toBeNull()
+	await republish('commit-e', [storage, mailCredential])
+	await site.expectEveryoneOn('commit-d')
+	await site.approveLive()
+	await site.expectEveryoneOn('commit-e')
+})
+
+test('a failed capability check holds everyone on the approved version', async () => {
 	const site = await setUp({ approvedEntries: [storage] })
 	await site.publish('commit-b')
 
@@ -242,8 +443,8 @@ test('a failed capability check advances serving but carries nothing forward', a
 		userId: ownerId,
 		commit: 'commit-b',
 	})
-	expect(site.servingCommit()).toBe('commit-b')
-	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	await site.expectEveryoneOn('commit-a')
+	expect(site.heldCommit()).toBe('commit-b')
 })
 
 test('a superseded commit neither serves nor gets an approval', async () => {
@@ -331,12 +532,18 @@ test('an approval for a commit superseded before it served never reaches visitor
 		userId: ownerId,
 		commit: 'commit-c',
 	})
-	expect(site.servingCommit()).toBe('commit-c')
-	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	// Everyone stays on commit-a, the last approved commit that served.
+	await site.expectEveryoneOn('commit-a')
+	expect(site.heldCommit()).toBe('commit-c')
 
-	// Approving the serving commit marks it served at once.
+	// Approving commit-c releases it and marks it served.
 	await approve('commit-c', '2026-11-14T00:10:00.000Z')
-	await expect(site.publicCommit()).resolves.toBe('commit-c')
+	await releaseHeldServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+	})
+	await site.expectEveryoneOn('commit-c')
 	const servedAt = (id: string) =>
 		site.sqlite
 			.prepare(
@@ -344,7 +551,7 @@ test('an approval for a commit superseded before it served never reaches visitor
 			)
 			.get(id)?.['served_at']
 	expect(servedAt('approval-commit-b')).toBeNull()
-	expect(servedAt('approval-commit-c')).toBe('2026-11-14T00:10:00.000Z')
+	expect(servedAt('approval-commit-c')).toEqual(expect.any(String))
 })
 
 test('an approval recorded while its commit builds is marked served when it serves', async () => {
@@ -382,8 +589,7 @@ test('an approval recorded while its commit builds is marked served when it serv
 		userId: ownerId,
 		commit: 'commit-c',
 	})
-	expect(site.servingCommit()).toBe('commit-c')
-	await expect(site.publicCommit()).resolves.toBe('commit-b')
+	await site.expectEveryoneOn('commit-b')
 })
 
 test('approving a first build before it serves does not mark it served', async () => {
@@ -429,16 +635,22 @@ test('a commit that serves again counts as the most recently served', async () =
 	await serve('commit-b')
 	await new Promise((resolve) => setTimeout(resolve, 5))
 	await serve('commit-a')
-	await serve('commit-c')
-	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	await site.publish('commit-c')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-c',
+	})
+	await site.expectEveryoneOn('commit-a')
 })
 
-test('the owner is told public visitors are held back only while a wider republish waits', async () => {
-	const heldBack = (env: Env) =>
-		loadPublicVisitorsHeldBack({ env, packageId, ownerUserId: ownerId })
+test('the owner is told everyone is held only while a wider republish waits', async () => {
+	const held = (env: Env) =>
+		loadHeldForApproval({ env, packageId, ownerUserId: ownerId })
 
 	const firstTime = await setUp({})
-	await expect(heldBack(firstTime.env)).resolves.toBe(null)
+	await expect(held(firstTime.env)).resolves.toBe(null)
 
 	const same = await setUp({ approvedEntries: [storage] })
 	compute.entriesByCommit.set('commit-b', [storage])
@@ -449,42 +661,37 @@ test('the owner is told public visitors are held back only while a wider republi
 		userId: ownerId,
 		commit: 'commit-b',
 	})
-	await expect(heldBack(same.env)).resolves.toBe(null)
+	await expect(held(same.env)).resolves.toBe(null)
 
 	const wider = await setUp({ approvedEntries: [storage] })
 	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
 	await wider.publish('commit-b')
-	// Still building: visitors and members both run commit-a.
-	await expect(heldBack(wider.env)).resolves.toBe(null)
+	// Still building: nothing is held yet.
+	await expect(held(wider.env)).resolves.toBe(null)
 	await advanceServingCommit({
 		env: wider.env,
 		sourceId,
 		userId: ownerId,
 		commit: 'commit-b',
 	})
-	await expect(heldBack(wider.env)).resolves.toEqual({
-		publicCommit: 'commit-a',
-		servingCommit: 'commit-b',
+	await expect(held(wider.env)).resolves.toEqual({
+		servingCommit: 'commit-a',
+		heldCommit: 'commit-b',
 	})
 
 	wider.sqlite
 		.prepare('UPDATE saved_packages SET is_internet_visible = 0 WHERE id = ?')
 		.run(packageId)
-	await expect(heldBack(wider.env)).resolves.toBe(null)
+	await expect(held(wider.env)).resolves.toBe(null)
 	wider.sqlite
 		.prepare('UPDATE saved_packages SET is_internet_visible = 1 WHERE id = ?')
 		.run(packageId)
 
-	await insertPackageCapabilityApproval(wider.db, {
-		id: 'approval-b',
-		package_id: packageId,
-		owner_user_id: ownerId,
-		published_commit: 'commit-b',
-		fingerprint: 'wider',
-		capability_set_json: '[]',
-		dependency_snapshot_json: '{}',
-		approved_by_user_id: 'person-owner',
-		approved_at: '2026-11-14T00:10:00.000Z',
-	})
-	await expect(heldBack(wider.env)).resolves.toBe(null)
+	// A newer publish that is still building replaces the notice.
+	await wider.publish('commit-c')
+	await expect(held(wider.env)).resolves.toBe(null)
+	await wider.publish('commit-b')
+
+	await wider.approveLive()
+	await expect(held(wider.env)).resolves.toBe(null)
 })

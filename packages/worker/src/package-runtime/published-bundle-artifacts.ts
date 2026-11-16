@@ -34,7 +34,10 @@ import {
 	updatePublishedBundleArtifactRow,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
-import { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+import {
+	advanceServingCommit,
+	type ServingAdvanceActor,
+} from '#worker/package-capabilities/serving-commit-advance.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
@@ -822,6 +825,8 @@ export async function rebuildPublishedPackageArtifacts(
 		source: EntitySourceRow
 		savedPackage: SavedPackageRecord
 		manifest: AuthoredPackageJson
+		/** Who published; the jobs this commit adds are enabled as them. */
+		actor?: ServingAdvanceActor
 	} & PublishedPackageArtifactBuilders,
 ) {
 	const publishedCommit = input.source.published_commit
@@ -940,6 +945,7 @@ async function advanceServingCommitAfterCompleteRebuild(input: {
 	env: Env
 	userId: string
 	source: EntitySourceRow
+	actor?: ServingAdvanceActor
 }) {
 	const publishedCommit = input.source.published_commit
 	if (!publishedCommit) return
@@ -948,6 +954,7 @@ async function advanceServingCommitAfterCompleteRebuild(input: {
 		sourceId: input.source.id,
 		userId: input.source.user_id,
 		commit: publishedCommit,
+		actor: input.actor,
 	})
 }
 

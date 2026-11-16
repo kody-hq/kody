@@ -89,9 +89,9 @@ import {
 import { credentialPatternNoticeForFiles } from '#worker/repo/credential-pattern-check.ts'
 import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
 import {
-	buildPublicVisitorsHeldBackPublishNotice,
-	publicVisitorsHeldBackSchema,
-} from './public-visitors-held-back-publish-notice.ts'
+	buildHeldForApprovalPublishNotice,
+	heldForApprovalSchema,
+} from './held-for-approval-publish-notice.ts'
 
 function parseSavedPackageManifest(input: {
 	content: string
@@ -272,7 +272,7 @@ export const savePackageCapability = defineDomainCapability(
 					'Follow-up guidance for continuing package work, including the git clone-edit-push lane for coding agents and any pending package secret approvals.',
 				),
 			pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
-			public_visitors_held_back: publicVisitorsHeldBackSchema,
+			held_for_approval: heldForApprovalSchema,
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
@@ -643,15 +643,14 @@ export const savePackageCapability = defineDomainCapability(
 				// Warning is best-effort: never fail save after persistence.
 				allowedPackagesPublishNotice = null
 			}
-			const publicVisitorsHeldBack =
-				await buildPublicVisitorsHeldBackPublishNotice({
-					env: ctx.env,
-					baseUrl: ctx.callerContext.baseUrl,
-					ownerUserId: owner.ownerUserId,
-					ownerScope: owner.ownerScope,
-					packageId: saved.id,
-					kodyId: saved.kodyId,
-				})
+			const heldForApproval = await buildHeldForApprovalPublishNotice({
+				env: ctx.env,
+				baseUrl: ctx.callerContext.baseUrl,
+				ownerUserId: owner.ownerUserId,
+				ownerScope: owner.ownerScope,
+				packageId: saved.id,
+				kodyId: saved.kodyId,
+			})
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 4,
 				total: 4,
@@ -675,9 +674,7 @@ export const savePackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				pending_secret_package_approvals: pendingSecretApprovals,
-				...(publicVisitorsHeldBack
-					? { public_visitors_held_back: publicVisitorsHeldBack }
-					: {}),
+				...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
 				next_steps: buildPackageSaveNextSteps({
 					packageId: saved.id,
 					pendingSecretApprovalsGuidance: pendingSecretApprovals

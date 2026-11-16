@@ -56,9 +56,9 @@ import { readArtifactTreeAtCommit } from '#worker/repo/artifact-file.ts'
 import { listArtifactCommitsAfter } from '#worker/repo/artifact-commit-log.ts'
 import { loadAnonymousVisitorExposure } from '#app/account-package-visitor-exposure.ts'
 import {
-	loadPublicVisitorsHeldBack,
-	type PublicVisitorsHeldBack,
-} from '#worker/package-capabilities/public-visitors-held-back.ts'
+	loadHeldForApproval,
+	type HeldForApproval,
+} from '#worker/package-capabilities/held-for-approval.ts'
 import {
 	getSavedPackageWithCommunityProvenanceById,
 	resolveSavedPackageRefWithCommunityProvenance,
@@ -664,7 +664,7 @@ async function toDetailWithListingState(input: {
 		listingState,
 		capabilityAllowance,
 		anonymousVisitorExposure,
-		publicVisitorsHeldBack,
+		heldForApproval,
 	] = await Promise.all([
 		loadActiveCommunityListingState({
 			db: input.env.APP_DB,
@@ -690,7 +690,7 @@ async function toDetailWithListingState(input: {
 				})
 			: Promise.resolve(undefined),
 		input.username && input.record.hasApp && input.record.isInternetVisible
-			? loadPublicVisitorsHeldBackForOwner({
+			? loadHeldForApprovalForOwner({
 					env: input.env,
 					packageId: input.record.id,
 					ownerUserId: input.userId,
@@ -700,7 +700,7 @@ async function toDetailWithListingState(input: {
 	return {
 		...detailBase,
 		...(anonymousVisitorExposure ? { anonymousVisitorExposure } : {}),
-		...(publicVisitorsHeldBack ? { publicVisitorsHeldBack } : {}),
+		...(heldForApproval ? { heldForApproval } : {}),
 		...listingState,
 		ownerIsPersonal,
 		...(capabilityAllowance?.length ? { capabilityAllowance } : {}),
@@ -717,15 +717,15 @@ async function toDetailWithListingState(input: {
 	}
 }
 
-async function loadPublicVisitorsHeldBackForOwner(input: {
+async function loadHeldForApprovalForOwner(input: {
 	env: Env
 	packageId: string
 	ownerUserId: string
-}): Promise<PublicVisitorsHeldBack | null> {
+}): Promise<HeldForApproval | null> {
 	try {
-		return await loadPublicVisitorsHeldBack(input)
+		return await loadHeldForApproval(input)
 	} catch (error) {
-		console.warn('public-visitors-held-back-load-failed', error)
+		console.warn('held-for-approval-load-failed', error)
 		return null
 	}
 }
