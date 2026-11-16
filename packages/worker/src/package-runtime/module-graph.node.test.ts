@@ -786,6 +786,8 @@ test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle
 	const exported = `${prefix}/exported/.__kody_virtual__/runtime.js`
 	const dynamic = `${prefix}/dynamic/.__kody_virtual__/runtime.js`
 	const mentioned = `${prefix}/mentioned/.__kody_virtual__/runtime.js`
+	const parenthesized = `${prefix}/parenthesized/.__kody_virtual__/runtime.js`
+	const labelled = `${prefix}/labelled/.__kody_virtual__/runtime.js`
 	const data = Array.from(
 		{ length: 60_000 },
 		(_, i) => `\t'row-${i}-${'ab'.repeat(32)}',`,
@@ -795,12 +797,14 @@ test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle
 			[`${prefix}/bundle.js`]: `import "./.__kody_virtual__/runtime.js";
 export * from "./exported/.__kody_virtual__/runtime.js";
 const note = "./mentioned/.__kody_virtual__/runtime.js";
+const runtimeLabel = { from: "./labelled/.__kody_virtual__/runtime.js" };
 const rows = [
 ${data.join('\n')}
 ]
 export default async function run() {
 	await import("./dynamic/.__kody_virtual__/runtime.js")
-	return [note, rows.length, import.meta.url]
+	await import(("./parenthesized/.__kody_virtual__/runtime.js"))
+	return [note, rows.length, import.meta.url, runtimeLabel]
 }`,
 		},
 		{ includeDefaultRuntimePath: false },
@@ -811,7 +815,9 @@ export default async function run() {
 	expect(refreshed[primary]).toContain('__kodyCreateRuntimeObjectProxy')
 	expect(refreshed[exported]).toContain('export * from')
 	expect(refreshed[dynamic]).toContain('export * from')
+	expect(refreshed[parenthesized]).toContain('export * from')
 	expect(refreshed[mentioned]).toBeUndefined()
+	expect(refreshed[labelled]).toBeUndefined()
 })
 
 test('refreshKodyRuntimeModules regenerates stale per-package runtime modules and their sibling shared runtime', async () => {
