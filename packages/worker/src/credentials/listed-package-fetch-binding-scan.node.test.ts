@@ -70,6 +70,34 @@ test.each([
 		 export const a = () => env.root.fetch(url)`,
 		'env.root.fetch',
 	],
+	[
+		`const env = { root: globalThis }; const { root } = env
+		 export const a = () => root.fetch(url)`,
+		'root.fetch',
+	],
+	[
+		`const a = { load(scope) { return scope.fetch(url) } }
+		 const b = { load(other) { return other.size } }
+		 a.load(globalThis)`,
+		'scope.fetch',
+	],
+	[
+		`function run(scope) { return scope.fetch(url) }
+		 export const a = run.bind(null, globalThis)`,
+		'scope.fetch',
+	],
+	[
+		`function getGlobal() { return globalThis }
+		 const alias = getGlobal
+		 export const a = () => alias().fetch(url)`,
+		'alias().fetch',
+	],
+	[
+		`function run(scope) { return scope.fetch(url) }
+		 const alias = run
+		 alias(globalThis)`,
+		'scope.fetch',
+	],
 	[`(function (scope) { scope.fetch(url) })(globalThis)`, 'scope.fetch'],
 	[
 		`const { fetch: f } = globalThis; export const a = () => f(url)`,
@@ -103,6 +131,11 @@ test.each([
 	],
 	[
 		`function run() { return this.fetch(url) }
+		 export const a = () => run.call(globalThis) `,
+		['this.fetch, this set to <global>'],
+	],
+	[
+		`function run() { const scope = this; return scope.fetch(url) }
 		 export const a = () => run.call(globalThis) `,
 		['this.fetch, this set to <global>'],
 	],

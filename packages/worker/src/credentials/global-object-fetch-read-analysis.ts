@@ -176,6 +176,8 @@ export function analyzeGlobalObjectFetchReads(
 	/** Calls that hand the global object to code this module cannot follow. */
 	const callsGivenGlobal = new Set<Node>()
 	const bindingsFromCallsGivenGlobal = new Set<ModuleBinding>()
+	/** Variables assigned `this`. */
+	const thisAliasBindings = new Set<ModuleBinding>()
 	/** The global object stored somewhere this analysis does not follow. */
 	const escapes = new Set<string>()
 	const aliasReads = new Set<string>()
@@ -216,6 +218,28 @@ export function analyzeGlobalObjectFetchReads(
 		if (node.type === 'VariableDeclarator') nameFunction(node.id, node.init)
 		if (node.type === 'AssignmentExpression') {
 			nameFunction(node.left, node.right)
+		}
+	}
+	// `const run = load` makes `run` every function `load` can be.
+	for (let pass = 0, grew = true; grew && pass < 10; pass += 1) {
+		grew = false
+		for (const node of nodes) {
+			const [id, value] =
+				node.type === 'VariableDeclarator'
+					? [node.id, node.init]
+					: node.type === 'AssignmentExpression'
+						? [node.left, node.right]
+						: [null, null]
+			const target = bindingOf(id)
+			const source = bindingOf(unwrap(value))
+			if (!target || !source || target === source) continue
+			const known = functionsByBinding.get(target) ?? []
+			const added = (functionsByBinding.get(source) ?? []).filter(
+				(fn) => !known.includes(fn),
+			)
+			if (added.length === 0) continue
+			functionsByBinding.set(target, [...known, ...added])
+			grew = true
 		}
 	}
 	for (const node of nodes) {
@@ -424,11 +448,13 @@ export function analyzeGlobalObjectFetchReads(
 					: key
 						? functionsByKey.get(key)
 						: undefined
-		// A method name shared by several functions does not say which one runs.
-		if (!functions?.length || (!binding && key && functions.length > 1)) {
+		if (!functions?.length) {
 			add(callsGivenGlobal, call)
 			return
 		}
+		// A method name does not say which object it is called on, so every
+		// function of that name may run, and so may one from outside the module.
+		if (!binding && key) add(callsGivenGlobal, call)
 		for (const fn of functions) {
 			const parameter = (fn.params as Array<Node> | undefined)?.[index]
 			if (!parameter) continue
@@ -465,7 +491,7 @@ export function analyzeGlobalObjectFetchReads(
 					}
 					return
 				}
-				if (method === 'call') {
+				if (method === 'call' || method === 'bind') {
 					passToParameter(call, receiver, index - 1)
 					return
 				}
@@ -577,8 +603,36 @@ export function analyzeGlobalObjectFetchReads(
 						? { id: node.left, value: node.right }
 						: null
 			const binding = bindingOf(target?.id)
-			if (binding && mayBeGlobal(target?.value)) {
+			const value = unwrap(target?.value)
+			if (binding && mayBeGlobal(value)) {
 				add(bindingsFromCallsGivenGlobal, binding)
+			}
+			if (binding && value?.type === 'ThisExpression') {
+				add(thisAliasBindings, binding)
+			}
+			// `const alias = getGlobal` and `{ get: getGlobal }`.
+			const returnsGlobal =
+				value != null &&
+				(bindingsReturningGlobal.has(bindingOf(value) as ModuleBinding) ||
+					(memberTypes.has(value.type) &&
+						keysReturningGlobal.has(keyNameOf(value, 'property') ?? '')))
+			if (binding && returnsGlobal) add(bindingsReturningGlobal, binding)
+			if (node.type === 'ObjectPattern') {
+				// Reading a property that holds the global object, from any object.
+				for (const property of (node.properties ?? []) as Array<Node>) {
+					if (property.type === 'RestElement') continue
+					const key = keyNameOf(property, 'key')
+					if (key && aliasProperties.has(key)) {
+						bindPatternFromGlobal(property.value)
+					}
+				}
+			}
+			if (node.type === 'ObjectProperty' || node.type === 'Property') {
+				const held = bindingOf(unwrap(node.value))
+				const key = keyNameOf(node, 'key')
+				if (held && key && bindingsReturningGlobal.has(held)) {
+					add(keysReturningGlobal, key)
+				}
 			}
 		}
 	}
@@ -643,7 +697,10 @@ export function analyzeGlobalObjectFetchReads(
 			undefinedGlobalReads += 1
 		} else if (isGlobal(object)) {
 			aliasReads.add(`${text(object)}.fetch`)
-		} else if (object?.type === 'ThisExpression') {
+		} else if (
+			object?.type === 'ThisExpression' ||
+			thisAliasBindings.has(bindingOf(object) as ModuleBinding)
+		) {
 			if (thisMayBeGlobal) unresolved.add('this.fetch, this set to <global>')
 		} else if (mayBeGlobal(object)) {
 			unresolved.add(`${text(object)}.fetch, from a call given <global>`)
