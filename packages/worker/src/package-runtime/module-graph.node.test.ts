@@ -788,6 +788,7 @@ test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle
 	const mentioned = `${prefix}/mentioned/.__kody_virtual__/runtime.js`
 	const parenthesized = `${prefix}/parenthesized/.__kody_virtual__/runtime.js`
 	const labelled = `${prefix}/labelled/.__kody_virtual__/runtime.js`
+	const commented = `${prefix}/commented/.__kody_virtual__/runtime.js`
 	const data = Array.from(
 		{ length: 60_000 },
 		(_, i) => `\t'row-${i}-${'ab'.repeat(32)}',`,
@@ -796,6 +797,7 @@ test('refreshKodyRuntimeModules finds runtime imports in a multi-megabyte bundle
 		{
 			[`${prefix}/bundle.js`]: `import "./.__kody_virtual__/runtime.js";
 export * from "./exported/.__kody_virtual__/runtime.js";
+export { kody } from /* bound */ "./commented/.__kody_virtual__/runtime.js";
 const note = "./mentioned/.__kody_virtual__/runtime.js";
 const runtimeLabel = { from: "./labelled/.__kody_virtual__/runtime.js" };
 const rows = [
@@ -816,6 +818,7 @@ export default async function run() {
 	expect(refreshed[exported]).toContain('export * from')
 	expect(refreshed[dynamic]).toContain('export * from')
 	expect(refreshed[parenthesized]).toContain('export * from')
+	expect(refreshed[commented]).toContain('export * from')
 	expect(refreshed[mentioned]).toBeUndefined()
 	expect(refreshed[labelled]).toBeUndefined()
 })

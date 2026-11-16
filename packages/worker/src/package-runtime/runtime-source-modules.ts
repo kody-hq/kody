@@ -1351,11 +1351,11 @@ function findRuntimeImportSpecifiers(source: string): Array<string> {
  * `from "x"`, `import "x"`, or `import("x")`.
  */
 function followsImportKeyword(source: string, quoteIndex: number) {
-	let index = skipWhitespaceBackward(source, quoteIndex - 1)
+	let index = skipTriviaBackward(source, quoteIndex - 1)
 	let openParens = 0
 	while (index >= 0 && source[index] === '(') {
 		openParens++
-		index = skipWhitespaceBackward(source, index - 1)
+		index = skipTriviaBackward(source, index - 1)
 	}
 	const keywords = openParens > 0 ? ['import'] : ['from', 'import']
 	return keywords.some((keyword) => {
@@ -1368,9 +1368,15 @@ function followsImportKeyword(source: string, quoteIndex: number) {
 	})
 }
 
-function skipWhitespaceBackward(source: string, index: number) {
-	while (index >= 0 && whitespacePattern.test(source[index]!)) index--
-	return index
+/** Steps back over whitespace and block comments. */
+function skipTriviaBackward(source: string, index: number) {
+	for (;;) {
+		while (index >= 0 && whitespacePattern.test(source[index]!)) index--
+		if (source[index] !== '/' || source[index - 1] !== '*') return index
+		const commentStart = source.lastIndexOf('/*', index - 2)
+		if (commentStart === -1) return index
+		index = commentStart - 1
+	}
 }
 
 function collectReferencedRuntimeModulePaths(
