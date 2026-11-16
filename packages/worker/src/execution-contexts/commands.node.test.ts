@@ -963,7 +963,7 @@ test('the operator limits the shell to listed packages, and only while host comm
 			name: 'shell',
 			subject: { type: 'org', id: orgId },
 		}),
-	).rejects.toBeDefined()
+	).rejects.toMatchObject({ code: 'invalid_request' })
 	await expect(run(['pkg_own'])).resolves.toMatchObject({ ok: true })
 
 	await setMachineAccessPackages(owner, 'ec_mac', {

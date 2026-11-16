@@ -304,6 +304,14 @@ export async function grantMachineAccess(
 		scope,
 	)
 	const { subject } = input
+	if (!isShareable(input.kind)) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'Only named commands and local network destinations can be shared. The unrestricted shell and host folders are for the operator only.',
+		})
+	}
 	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
 		throw new ExecutionContextError({
 			status: 403,
