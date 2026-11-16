@@ -18,6 +18,9 @@ type FieldControlContext = {
 	invalid: boolean
 }
 
+// In a grid row with a taller sibling, keep the control at its own height.
+const fieldStackCss = { ...fieldCss, alignContent: 'start' } as const
+
 const FieldContext = createContext<FieldControlContext | null>(null)
 
 export type FieldProps = Omit<ComponentProps<'div'>, 'children'> & {
@@ -49,8 +52,8 @@ export function Field({
 	const describedBy =
 		[descriptionId, errorId].filter(Boolean).join(' ') || undefined
 	return (
-		<div css={fieldCss} {...props}>
-			<label css={fieldCss}>
+		<div css={fieldStackCss} {...props}>
+			<label css={fieldStackCss}>
 				<span css={fieldLabelCss}>{label}</span>
 				<FieldContext value={{ describedBy, invalid: Boolean(error) }}>
 					{children}
