@@ -236,6 +236,14 @@ test('mock target with --app-base-path serves the old path address on the owner 
 			}),
 			/is not an address local Kody serves.*pass \/sample-dev-package for the old path address/,
 		)
+		// A profile package (leaf equal to the owner handle) has no old path.
+		await assert.rejects(
+			withDevServer(async () => {}, {
+				localKody: { ...fake.upstream, username: 'sample-dev-package' },
+				appBasePath: '/sample-dev-package',
+			}),
+			/a profile package is only served at the root of its owner's host/,
+		)
 	} finally {
 		await fake.close()
 	}

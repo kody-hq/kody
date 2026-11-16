@@ -1598,6 +1598,15 @@ function resolveDevAppBasePath(options: {
 }): string {
 	const requested = normalizeBasePath(options.appBasePath ?? '')
 	const oldPath = `/${options.manifest.kodyId}`
+	if (
+		options.localKody &&
+		requested &&
+		options.localKody.username === options.manifest.kodyId
+	) {
+		throw new Error(
+			`--app-base-path does not apply to ${options.manifest.name}: a profile package is only served at the root of its owner's host. Drop --app-base-path.`,
+		)
+	}
 	if (options.localKody && requested && requested !== oldPath) {
 		throw new Error(
 			`--app-base-path ${requested} is not an address local Kody serves. Drop --app-base-path to serve the app at the root of its own host, or pass ${oldPath} for the old path address.`,
