@@ -137,9 +137,10 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   org, and refuses a context that is not revoked with `context_not_revoked`.
 - `deleteContext` in `service.ts` drops the context from every chain (cloud
   stays last, an emptied chain falls back to cloud), soft-deletes its
-  `execution_context` grants and bumps each affected org's access epoch, then
-  deletes its opt-ins, org attachments, chain entries and row. There are no
-  foreign keys on these tables, so add any new dependent table to that batch.
+  `execution_context` grants and its machine capabilities' grants, bumps each
+  affected org's access epoch, then deletes its machine capabilities, opt-ins,
+  org attachments, chain entries and row. There are no foreign keys on these
+  tables, so add any new dependent table to that batch.
 - Run records keep their own copy of the context id and name in
   `metadata.executionContext`, so `ranOn` still renders the deleted machine. The
   context's session Durable Object history is unreachable once the row is gone;
@@ -230,6 +231,26 @@ Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
 skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
 a macOS runner shortage cannot hold production. A failure there opens the "main:
 macOS host commands failing" issue.
+
+### Machine access data model
+
+Machine access narrows these powers per person, profile and package. Only the
+data model exists so far; nothing reads it at run time yet.
+
+- `machine_capabilities` (migration `0276-machine-capabilities.sql`) holds one
+  row per power a machine offers: kind `shell`, `command`, `lan` or `fs`, plus a
+  name unique within the context and kind. The machine defines a capability;
+  Kody stores who may use it.
+- A grant on one is a `grants` row with resource type `machine_capability` and
+  the permission `machine_capability:use`. Like `execution_context:execute`, it
+  counts only as a grant on the capability, never from a role, so checks must
+  read the grant directly. `allowed_packages_json` is the capability's package
+  list.
+- Who may change those grants is decided on the context
+  (`execution_context:manage_access`). `accessGrant` refuses to add one, and
+  `accessRevoke` removes one.
+- Org transfer leaves capabilities and their grants in the owning org, like the
+  context.
 
 ### End-to-end check
 

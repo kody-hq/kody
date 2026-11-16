@@ -4,6 +4,10 @@ import {
 	type MisconfigDetail,
 } from './notices.ts'
 import { refreshContextNotices } from './box-notices.ts'
+import {
+	deleteContextMachineCapabilitiesStatements,
+	listMachineCapabilityGrantOrgIds,
+} from './machine-capabilities.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
@@ -950,9 +954,11 @@ export async function deleteContext(
 		)
 		.bind(row.id)
 		.all<{ org_id: string }>()
+	const capabilityGrantOrgs = await listMachineCapabilityGrantOrgIds(db, row.id)
 	await removeFromChains(caller, row.id)
 	const now = new Date().toISOString()
 	const epochOrgs = new Set([
+		...capabilityGrantOrgs,
 		...(row.all_members === 1 ? [row.org_id] : []),
 		...attachedOrgs.results.map((entry) => entry.org_id),
 		...grantOrgs.results.map((entry) => entry.org_id),
@@ -963,6 +969,7 @@ export async function deleteContext(
 				`UPDATE grants SET deleted_at = ?, updated_at = ? WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL`,
 			)
 			.bind(now, now, row.id),
+		...deleteContextMachineCapabilitiesStatements(db, row.id, now),
 		...[...epochOrgs].map((orgId) => bumpAccessEpochStatement(db, orgId)),
 		db
 			.prepare(`DELETE FROM execution_context_opt_ins WHERE context_id = ?`)

@@ -249,6 +249,7 @@ async function grantInviteFamily(
 		case 'memory':
 		case 'email':
 		case 'execution_context':
+		case 'machine_capability':
 			return resourceType
 		default: {
 			const exhaustive: never = resourceType

@@ -31,6 +31,12 @@ const resourceActions = {
 		'delete',
 		'manage_access',
 	],
+	// One power a machine offers (the shell, a named command, local network
+	// destinations, a host folder). Like `execution_context:execute`, `use`
+	// counts only as a grant on the capability itself, never from a role, so
+	// checks read the grant directly. Who may grant it is decided on its
+	// context (`execution_context:manage_access`).
+	machine_capability: ['use'],
 } as const
 
 /** A permission family: the `resource-type` half of a permission string. */

@@ -17,6 +17,7 @@ import { toHex } from '@kody-internal/shared/hex.ts'
 import { z } from 'zod'
 import { inviteState } from '#worker/orgs/invite-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { getMachineCapability } from '#worker/execution-contexts/machine-capabilities.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
 	requireMcpRequest,
@@ -237,6 +238,9 @@ function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
 		case 'email':
 			return 'email:manage_access'
 		case 'execution_context':
+		// A machine capability has no access permission of its own: who may
+		// change its grants is decided on its context.
+		case 'machine_capability':
 			return 'execution_context:manage_access'
 		default: {
 			const exhaustive: never = resourceType
@@ -328,6 +332,29 @@ async function grantTargetCheck(
 				permission: manageAccessPermission(resourceType),
 				resource: { type: resourceType, id: resourceId, orgId },
 			}
+		case 'machine_capability': {
+			// Granting machine access has its own rules (the machine sets the
+			// ceiling, the shell and host folders stay with the operator), so
+			// accessGrant never adds one. Removing a grant stays here.
+			if (purpose === 'grant') {
+				throw new McpCallerError(
+					'accessGrant does not add machine access grants.',
+				)
+			}
+			const capability = await getMachineCapability(ctx.env.APP_DB, resourceId)
+			// The capability is gone: revoking a leftover grant needs the
+			// organization-level access permission.
+			if (!capability) return { family: 'org', permission: 'member:write' }
+			return {
+				family: resourceType,
+				permission: manageAccessPermission(resourceType),
+				resource: {
+					type: 'execution_context',
+					id: capability.context_id,
+					orgId,
+				},
+			}
+		}
 		case 'package':
 		case 'app':
 		case 'job':
