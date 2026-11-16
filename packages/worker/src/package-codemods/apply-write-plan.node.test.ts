@@ -94,5 +94,14 @@ test('apply fails closed on removed files and on writes the codemod did not repo
 			after: { ...before, 'README.md': 'new', 'package.json': '{}' },
 			expectedChangedPaths: ['README.md'],
 		}),
-	).toThrow(/did not report as changed \(package\.json\)/)
+	).toThrow(
+		/do not match what the codemod reported as changed \(package\.json\)/,
+	)
+	expect(() =>
+		planCodemodApplyWrites({
+			before,
+			after: { ...before },
+			expectedChangedPaths: ['README.md'],
+		}),
+	).toThrow(/do not match what the codemod reported as changed \(README\.md\)/)
 })

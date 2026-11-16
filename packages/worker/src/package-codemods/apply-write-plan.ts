@@ -55,9 +55,11 @@ export function planCodemodApplyWrites(input: {
 	if (input.expectedChangedPaths) {
 		const expected = new Set(input.expectedChangedPaths)
 		const unexpected = writes.filter((path) => !expected.has(path))
-		if (unexpected.length > 0) {
+		const written = new Set(writes)
+		const missing = [...expected].filter((path) => !written.has(path))
+		if (unexpected.length > 0 || missing.length > 0) {
 			throw new CodemodApplyWritePlanError(
-				`Codemod apply would write files the codemod did not report as changed (${unexpected.slice(0, 5).join(', ')}).`,
+				`Codemod apply would write files that do not match what the codemod reported as changed (${[...unexpected, ...missing].slice(0, 5).join(', ')}).`,
 			)
 		}
 	}
