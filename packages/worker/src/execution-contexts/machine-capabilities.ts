@@ -31,33 +31,6 @@ export async function getMachineCapability(db: D1Database, id: string) {
 		.first<MachineCapabilityRow>()
 }
 
-/**
- * Statements that drop a context's capabilities and their grants. The caller
- * batches them with the context delete and bumps the access epoch of every
- * org holding one of those grants.
- */
-export function deleteContextMachineCapabilitiesStatements(
-	db: D1Database,
-	contextId: string,
-	now: string,
-) {
-	return [
-		db
-			.prepare(
-				`UPDATE grants SET deleted_at = ?, updated_at = ?
-				 WHERE resource_type = 'machine_capability'
-				   AND deleted_at IS NULL
-				   AND resource_id IN (
-					SELECT id FROM machine_capabilities WHERE context_id = ?
-				   )`,
-			)
-			.bind(now, now, contextId),
-		db
-			.prepare(`DELETE FROM machine_capabilities WHERE context_id = ?`)
-			.bind(contextId),
-	]
-}
-
 /** Orgs holding a live grant on one of a context's capabilities. */
 export async function listMachineCapabilityGrantOrgIds(
 	db: D1Database,
