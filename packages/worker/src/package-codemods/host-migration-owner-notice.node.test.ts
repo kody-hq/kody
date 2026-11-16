@@ -80,7 +80,9 @@ async function createEnv() {
 		)
 		.run()
 	await db
-		.prepare('CREATE TABLE saved_packages (id TEXT PRIMARY KEY, name TEXT)')
+		.prepare(
+			'CREATE TABLE saved_packages (id TEXT PRIMARY KEY, name TEXT, deleted_at TEXT)',
+		)
 		.run()
 	for (const [id, name] of [
 		['alice', 'Alice A'],
