@@ -65,7 +65,8 @@ export type MachineDefinedCapability = {
 
 const capabilityNamePattern = /^[a-z0-9][a-z0-9_-]{0,62}$/
 const maxMachineDefinedCapabilities = 100
-const maxDescriptionLength = 200
+// The CLI refuses a local definition past these limits, so a valid policy always syncs.
+const maxDescriptionLength = 500
 const maxSummaryJsonLength = 4096
 
 /** Parses the full set a machine reports. Returns a message when it is not valid. */
@@ -167,23 +168,41 @@ export async function syncMachineDefinedCapabilities(
 	if (added.length + changed.length + removed.length === 0) return result
 
 	const now = new Date().toISOString()
-	const removedIds = removed.map((row) => row.id)
-	const placeholders = removedIds.map(() => '?').join(', ')
-	const grantOrgs =
-		removedIds.length === 0
-			? []
-			: (
-					await db
-						.prepare(
-							`SELECT DISTINCT org_id FROM grants
-							 WHERE resource_type = 'machine_capability'
-							   AND deleted_at IS NULL
-							   AND resource_id IN (${placeholders})`,
-						)
-						.bind(...removedIds)
-						.all<{ org_id: string }>()
-				).results.map((row) => row.org_id)
+	// Removal is decided inside the batch from the reported set, not from the
+	// read above, so the last of two reports that overlap wins as a whole. One
+	// JSON parameter also keeps a large set under D1's parameter limit.
+	const droppedIdsSql = `SELECT id FROM machine_capabilities
+		WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan')
+		  AND kind || ':' || name NOT IN (SELECT value FROM json_each(?))`
+	const reportedKeys = JSON.stringify([...definedKeys])
+	const grantOrgs = (
+		await db
+			.prepare(
+				`SELECT DISTINCT org_id FROM grants
+				 WHERE resource_type = 'machine_capability'
+				   AND deleted_at IS NULL
+				   AND resource_id IN (${droppedIdsSql})`,
+			)
+			.bind(context.id, reportedKeys)
+			.all<{ org_id: string }>()
+	).results.map((row) => row.org_id)
 	await db.batch([
+		db
+			.prepare(
+				`UPDATE grants SET deleted_at = ?, updated_at = ?
+				 WHERE resource_type = 'machine_capability'
+				   AND deleted_at IS NULL
+				   AND resource_id IN (${droppedIdsSql})`,
+			)
+			.bind(now, now, context.id, reportedKeys),
+		...grantOrgs.map((orgId) => bumpAccessEpochStatement(db, orgId)),
+		db
+			.prepare(
+				`UPDATE machine_capabilities
+				 SET removed_at = ?, updated_at = ?, allowed_packages_json = '[]'
+				 WHERE id IN (${droppedIdsSql})`,
+			)
+			.bind(now, now, context.id, reportedKeys),
 		...[...added, ...changed].map((entry) =>
 			db
 				.prepare(
@@ -210,26 +229,6 @@ export async function syncMachineDefinedCapabilities(
 					now,
 				),
 		),
-		...(removedIds.length === 0
-			? []
-			: [
-					db
-						.prepare(
-							`UPDATE grants SET deleted_at = ?, updated_at = ?
-							 WHERE resource_type = 'machine_capability'
-							   AND deleted_at IS NULL
-							   AND resource_id IN (${placeholders})`,
-						)
-						.bind(now, now, ...removedIds),
-					...grantOrgs.map((orgId) => bumpAccessEpochStatement(db, orgId)),
-					db
-						.prepare(
-							`UPDATE machine_capabilities
-							 SET removed_at = ?, updated_at = ?, allowed_packages_json = '[]'
-							 WHERE id IN (${placeholders})`,
-						)
-						.bind(now, now, ...removedIds),
-				]),
 	])
 	return result
 }

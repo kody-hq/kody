@@ -153,6 +153,11 @@ test.each([
 		/listed twice/,
 	],
 	[
+		'description over 500 characters',
+		[{ kind: 'lan', name: 'nas', description: 'x'.repeat(501) }],
+		/at most 500 characters/,
+	],
+	[
 		'huge summary',
 		[{ kind: 'lan', name: 'nas', summary: { hosts: 'x'.repeat(5000) } }],
 		/at most 4096 characters/,
@@ -167,4 +172,56 @@ test.each([
 	],
 ])('a machine report with %s is refused', (_label, value, message) => {
 	expect(parseMachineDefinedCapabilities(value)).toMatch(message)
+})
+
+test('a machine can drop all 100 definitions in one report', async () => {
+	const { db } = setup()
+	const all = Array.from({ length: 100 }, (_, index) => ({
+		...nas,
+		name: `nas-${index}`,
+	}))
+	await syncMachineDefinedCapabilities(db, context, all)
+	const { removed } = await syncMachineDefinedCapabilities(db, context, [])
+	expect(removed).toHaveLength(100)
+	expect(await listMachineDefinedCapabilities(db, 'ec_vault')).toEqual([])
+})
+
+test('a report replaces a definition another report added after it read the rows', async () => {
+	const { db } = setup()
+	// Stands in for two overlapping reports: the first read sees no rows, the
+	// other report lands, then the first one writes.
+	const stale: D1Database = new Proxy(db, {
+		get(target, key) {
+			if (key !== 'prepare') return Reflect.get(target, key)
+			let first = true
+			return (sql: string) => {
+				const statement = target.prepare(sql)
+				if (!first || !sql.includes('SELECT * FROM machine_capabilities')) {
+					return statement
+				}
+				first = false
+				return new Proxy(statement, {
+					get(inner, innerKey) {
+						if (innerKey !== 'bind') return Reflect.get(inner, innerKey)
+						return (...values: Array<unknown>) => {
+							const bound = inner.bind(...values)
+							return {
+								all: async () => {
+									const rows = await bound.all()
+									await syncMachineDefinedCapabilities(db, context, [nas])
+									return rows
+								},
+							}
+						}
+					},
+				})
+			}
+		},
+	})
+	await syncMachineDefinedCapabilities(stale, context, [kdocker])
+	expect(
+		(await listMachineDefinedCapabilities(db, 'ec_vault')).map(
+			(row) => row.name,
+		),
+	).toEqual(['kdocker'])
 })
