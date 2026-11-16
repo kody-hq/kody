@@ -648,6 +648,50 @@ test('inline code that throws a kody-terminal error fails its step once with tha
 	invocationMocks.runModuleWithRegistry.mockReset()
 })
 
+test('a failed inline workflow run names the package and commit it ran for', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.beginRunRecord.mockClear()
+	const { step } = createRetryingStep()
+	const { queued, run } = await queueWorkflow(
+		{
+			code: 'export default async function main() { return null }',
+			workflowName: 'packagePublishExternalPush',
+			runAt,
+			idempotencyKey: 'failed-publish-names-package',
+		},
+		{ packageId: 'pkg-crm', kodyId: 'crm', sourceId: 'source-crm' },
+		{ step },
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+	invocationMocks.runModuleWithRegistry.mockResolvedValue({
+		result: undefined,
+		error:
+			'Error: kody-terminal: packagePublishExternalPush returned checks_failed: credentials: over the limit',
+		logs: [],
+	})
+
+	await expect(
+		run({ ...queued.params, enqueuedCommit: 'c'.repeat(40) }),
+	).rejects.toBeInstanceOf(NonRetryableError)
+	expect(runRecordMocks.beginRunRecord).toHaveBeenCalledTimes(1)
+	expect(runRecordMocks.beginRunRecord).toHaveBeenCalledWith(
+		expect.objectContaining({
+			context: expect.objectContaining({
+				name: 'packagePublishExternalPush',
+				packageId: 'pkg-crm',
+				kodyId: 'crm',
+				sourceId: 'source-crm',
+				metadata: {
+					sourceType: 'inline',
+					workflow_step_attempt: 1,
+					enqueued_commit: 'c'.repeat(40),
+				},
+			}),
+		}),
+	)
+	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
 test('package and inline workflows each record exactly one workflow run with workflowId', async () => {
 	runRecordMocks.resetProjections()
 	const packageRun = await queueWorkflow({

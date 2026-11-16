@@ -1,7 +1,12 @@
 import { getHeapStatistics } from 'node:v8'
 import { expect, test, vi } from 'vitest'
 import type * as ModuleSource from '#worker/module-source.ts'
-import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
+import { scanCredentialStamp } from '#worker/credentials/credential-stamp.ts'
+import { isRepoCheckResourceLimitMessage } from './isolated-runner-limit-message.ts'
+import {
+	buildCredentialPatternCheck,
+	credentialScanMaxAstNodes,
+} from './credential-pattern-check.ts'
 
 // Samples the heap at every parse. Holding every module's AST at once (the
 // old whole-tree Map) peaked near 1 GB on this tree; one AST at a time stays
@@ -79,7 +84,7 @@ function generatedPackage() {
 	return files
 }
 
-test('credential publish gate scans a ~3 MB package one module at a time', async () => {
+test('credential stamp scan reads a ~3 MB package one module at a time', async () => {
 	const files = generatedPackage()
 	const sourceBytes = Object.entries(files)
 		.filter(([path]) => path.endsWith('.ts'))
@@ -89,10 +94,29 @@ test('credential publish gate scans a ~3 MB package one module at a time', async
 	const baseline = getHeapStatistics().used_heap_size
 	heap.peak = baseline
 	heap.parses = 0
-	const result = await buildCredentialPatternCheck(files)
+	// The scanner itself, which has no size limit: the publish check below
+	// refuses a tree this large before it gets here.
+	const result = await scanCredentialStamp(files)
 
-	expect(result.ok).toBe(true)
-	expect(result.stampKeys).toEqual(['EXAMPLE_TOKEN'])
+	expect(result.failures).toEqual([])
+	expect(result.keys).toEqual(['EXAMPLE_TOKEN'])
 	expect(heap.parses).toBeGreaterThan(moduleCount)
 	expect(heap.peak - baseline).toBeLessThan(peakHeapBoundBytes)
+}, 120_000)
+
+test('credential publish gate refuses a tree over its syntax node limit with a clear failure', async () => {
+	const files = generatedPackage()
+	const result = await buildCredentialPatternCheck(files)
+
+	expect(result.ok).toBe(false)
+	expect(result.sourceFiles).toBe(files)
+	expect(result.stampKeys).toEqual([])
+	expect(result.message).toContain(
+		`The limit is ${credentialScanMaxAstNodes.toLocaleString('en-US')} syntax nodes`,
+	)
+	expect(result.message).toContain(`(${moduleCount + 2} here,`)
+	expect(result.message).toMatch(/`src\/lib\/module-\d+\.ts` \(\d+ KiB\)/)
+	// Codemod and install lanes treat it as a scan that did not run, never
+	// as a clean result.
+	expect(isRepoCheckResourceLimitMessage(result.message)).toBe(true)
 }, 120_000)

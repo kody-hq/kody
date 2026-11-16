@@ -1,4 +1,12 @@
-import type { SecretPlaceholderRequestPlacementHit } from '#worker/credentials/secret-placeholder-request-placement.ts'
+import {
+	ScannableModuleAstLimitError,
+	scannableModuleIndex,
+	shareModulePasses,
+} from '#worker/credentials/module-placeholder-scan.ts'
+import {
+	secretPlaceholderRequestPlacementsOf,
+	type SecretPlaceholderRequestPlacementHit,
+} from '#worker/credentials/secret-placeholder-request-placement.ts'
 import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
 import {
 	detectLegacyCredentialPatternsCodemod,
@@ -9,11 +17,13 @@ import {
 import {
 	credentialStampConversionFixGuidance,
 	mergeCredentialStampIntoManifestFiles,
+	omitOversizedCredentialStampModules,
 	scanCredentialStamp,
 } from '#worker/credentials/credential-stamp.ts'
 import {
 	scanPackageCredentials,
 	type CredentialReference,
+	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
 import {
 	type PackageCredentialSlotKind,
@@ -24,6 +34,7 @@ import {
 	readSecretMountAliases,
 	secretMountsKeptCompatNote,
 } from '#worker/package-runtime/secret-mount-compat.ts'
+import { credentialScanSizeLimitMessage } from './isolated-runner-limit-message.ts'
 import { normalizeRepoWorkspacePath } from './manifest.ts'
 
 const credentialPatternCheckLabel = `codemod ${detectLegacyCredentialPatternsCodemodId}`
@@ -123,17 +134,21 @@ function credentialTypeHintFor(
 	}
 }
 
-async function credentialTypeHintLines(sourceFiles: Record<string, string>) {
-	let scan: Awaited<ReturnType<typeof scanPackageCredentials>>
-	try {
-		scan = await scanPackageCredentials({
-			files: sourceFiles,
-			slots: readDeclaredCredentialSlots(sourceFiles['package.json']),
-		})
-	} catch {
-		return []
-	}
-	const declaredKinds = declaredSlotKinds(scan.slots)
+function credentialTypeHintLines(
+	sourceFiles: Record<string, string>,
+	scan: Pick<
+		PackageCredentialScan,
+		'references' | 'jwtSignCalls' | 'jwtSignSecretNames'
+	>,
+) {
+	const declaredKinds = declaredSlotKinds(
+		Object.entries(
+			readDeclaredCredentialSlots(sourceFiles['package.json']) ?? {},
+		).map(([name, slot]) => ({
+			name,
+			...(slot.kind ? { kind: slot.kind } : {}),
+		})),
+	)
 	const found = new Set<CredentialTypeHint>()
 	for (const reference of scan.references) {
 		if (referenceNamesDeclaredSlot(reference, declaredKinds)) continue
@@ -235,10 +250,53 @@ export type CredentialPatternCheckResult = {
 	/** Manifest may gain auto-written stamp keys (never overwrites descriptions). */
 	sourceFiles: Record<string, string>
 	stampKeys: Array<string>
-	/** Set by the isolated scan, which also runs the request-placement scan. */
+	/** Absent only from an isolated scan that hit its runner limit. */
 	requestPlacementHits?: Array<SecretPlaceholderRequestPlacementHit>
 	/** Set by the isolated scan, which also runs the fetch-body scan. */
 	fetchBodyHits?: Array<{ path: string; line: number }>
+}
+
+/**
+ * Most syntax nodes the credential scans walk for one publish. Their CPU
+ * time grows with the node count. When every scan parsed and walked the tree
+ * on its own, packages of 300,000 to 370,000 nodes (1.2 to 1.8 MiB of
+ * modules) ran the isolated runner out of CPU time on some attempts. One
+ * walk now serves the scans, which cut that cost by a third to a half.
+ */
+export const credentialScanMaxAstNodes = 450_000
+
+const largestCredentialScanModulesShown = 5
+const credentialScanTextEncoder = new TextEncoder()
+
+/**
+ * The failure message when the modules the credential scans walk hold more
+ * than {@link credentialScanMaxAstNodes} syntax nodes, or null. Counting
+ * stops at the limit, so an oversized tree is refused for the cost of one
+ * partial parse instead of resetting the runner part way through the scans.
+ */
+async function credentialScanSizeLimitFailure(
+	sourceFiles: Record<string, string>,
+) {
+	try {
+		await scannableModuleIndex(sourceFiles, {
+			maxAstNodes: credentialScanMaxAstNodes,
+		})
+		return null
+	} catch (error) {
+		if (!(error instanceof ScannableModuleAstLimitError)) throw error
+		return credentialScanSizeLimitMessage({
+			moduleCount: error.moduleCount,
+			maxAstNodes: error.maxAstNodes,
+			largest: [...error.modules]
+				.sort((left, right) => right.astNodes - left.astNodes)
+				.slice(0, largestCredentialScanModulesShown)
+				.map(({ path }) => ({
+					path,
+					bytes: credentialScanTextEncoder.encode(sourceFiles[path]!)
+						.byteLength,
+				})),
+		})
+	}
 }
 
 /**
@@ -251,23 +309,49 @@ export async function buildCredentialPatternCheck(
 	sourceFiles: Record<string, string>,
 	options: { secretProviders?: ResolvedSecretProviderSlots } = {},
 ): Promise<CredentialPatternCheckResult> {
-	const preliminary = await scanCredentialStamp(sourceFiles, options)
+	const sizeLimitMessage = await credentialScanSizeLimitFailure(sourceFiles)
+	if (sizeLimitMessage) {
+		return {
+			kind: 'credentials',
+			ok: false,
+			message: sizeLimitMessage,
+			sourceFiles,
+			stampKeys: [],
+		}
+	}
+	const scanTree = async (files: Record<string, string>) => {
+		const stamp = await scanCredentialStamp(files, options)
+		// The stamp scan already walked every module for these, unless it left
+		// oversized modules out. Then one more shared walk covers the full tree.
+		const [inventory, legacyFindings] =
+			omitOversizedCredentialStampModules(files) === files
+				? [stamp.scan, stamp.legacyFindings]
+				: await shareModulePasses(files, [
+						() =>
+							scanPackageCredentials({ files, slots: undefined, sites: true }),
+						() =>
+							detectLegacyCredentialPatternsCodemod.detect(files, {
+								packageName: readPackageName(files),
+							}),
+					])
+		return {
+			stamp,
+			legacyFindings,
+			typeHintLines: credentialTypeHintLines(files, inventory),
+			requestPlacementHits: secretPlaceholderRequestPlacementsOf(inventory),
+		}
+	}
+	const preliminary = await scanTree(sourceFiles)
 	const merged = mergeCredentialStampIntoManifestFiles(
 		sourceFiles,
-		preliminary.keys,
+		preliminary.stamp.keys,
 	)
-	// Merge only rewrites package.json when it adds missing stamp keys. Reuse
-	// the first scan whenever the file set is unchanged so multi-MB packages
-	// do not pay for a second full AST walk inside the RepoSession DO.
-	const stamp =
-		merged.addedKeys.length === 0
-			? preliminary
-			: await scanCredentialStamp(merged.files, options)
+	// Merge only rewrites package.json when it adds missing stamp keys, so
+	// the first scan stands whenever the file set is unchanged.
+	const { stamp, legacyFindings, typeHintLines, requestPlacementHits } =
+		merged.addedKeys.length === 0 ? preliminary : await scanTree(merged.files)
 	const patternsByPath = new Map<string, Array<string>>()
-	for (const finding of await detectLegacyCredentialPatternsCodemod.detect(
-		merged.files,
-		{ packageName: readPackageName(merged.files) },
-	)) {
+	for (const finding of legacyFindings) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
 		if (pattern == null) continue
 		const path = finding.path ?? 'package'
@@ -300,10 +384,11 @@ export async function buildCredentialPatternCheck(
 				...staleNote,
 				...(mountNote ? [mountNote] : []),
 				credentialStampConversionFixGuidance,
-				...(await credentialTypeHintLines(merged.files)),
+				...typeHintLines,
 			].join('\n'),
 			sourceFiles: merged.files,
 			stampKeys: stamp.keys,
+			requestPlacementHits,
 		}
 	}
 
@@ -327,6 +412,7 @@ export async function buildCredentialPatternCheck(
 				.join('\n'),
 			sourceFiles: merged.files,
 			stampKeys: stamp.keys,
+			requestPlacementHits,
 		}
 	}
 
@@ -357,12 +443,13 @@ export async function buildCredentialPatternCheck(
 				: []),
 			...staleNote,
 			...(mountNote ? [mountNote] : []),
-			...(await credentialTypeHintLines(merged.files)),
+			...typeHintLines,
 		]
 			.filter((line): line is string => line != null && line.length > 0)
 			.join('\n'),
 		sourceFiles: merged.files,
 		stampKeys: stamp.keys,
+		requestPlacementHits,
 	}
 }
 

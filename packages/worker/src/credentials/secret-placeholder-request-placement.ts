@@ -7,6 +7,7 @@
  */
 import {
 	type CredentialPlacement,
+	type PackageCredentialScan,
 	scanPackageCredentials,
 } from './credential-inventory-scan.ts'
 
@@ -67,11 +68,15 @@ export function requestPartOfPlacement(
 export async function findSecretPlaceholderRequestPlacements(
 	files: Record<string, string>,
 ): Promise<Array<SecretPlaceholderRequestPlacementHit>> {
-	const scan = await scanPackageCredentials({
-		files,
-		slots: undefined,
-		sites: true,
-	})
+	return secretPlaceholderRequestPlacementsOf(
+		await scanPackageCredentials({ files, slots: undefined, sites: true }),
+	)
+}
+
+/** The hits in a credential scan that recorded sites (`sites: true`). */
+export function secretPlaceholderRequestPlacementsOf(
+	scan: Pick<PackageCredentialScan, 'references'>,
+): Array<SecretPlaceholderRequestPlacementHit> {
 	const seen = new Set<string>()
 	const hits: Array<SecretPlaceholderRequestPlacementHit> = []
 	for (const reference of scan.references) {
