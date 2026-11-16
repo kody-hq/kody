@@ -175,17 +175,20 @@ function listenOnce(port: number, host: string): Promise<number> {
  * 127.0.0.1 can be answered by a different server (#5267).
  */
 export async function getFreePort(): Promise<number> {
-	for (let attempt = 0; ; attempt++) {
+	for (let attempt = 0; attempt < 20; attempt++) {
 		const port = await listenOnce(0, '127.0.0.1')
 		if (handedOutPorts.has(port)) continue
 		const ipv6Free = await listenOnce(port, '::1').then(
 			() => true,
 			(error: NodeJS.ErrnoException) => error.code !== 'EADDRINUSE',
 		)
-		if (!ipv6Free && attempt < 20) continue
+		if (!ipv6Free || handedOutPorts.has(port)) continue
 		handedOutPorts.add(port)
 		return port
 	}
+	throw new Error(
+		'Could not find a local port free on both 127.0.0.1 and ::1 after 20 tries.',
+	)
 }
 
 function wranglerBin() {
