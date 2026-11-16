@@ -1,7 +1,7 @@
 import { BlockList, isIP } from 'node:net'
 import { isAbsolute as isRooted } from 'node:path'
 
-/** One argument of an allowed shape: an exact word, or a pattern for one argument. */
+/** One argument of an allowed shape: an exact word, or a pattern the whole argument must match. */
 export type MachineArgRule = string | { pattern: string }
 
 /**
@@ -76,6 +76,11 @@ function parseDescription(value: unknown, what: string) {
 	return value
 }
 
+/** A pattern always has to match the whole argument, whatever anchors it has. */
+function wholeArgument(pattern: string) {
+	return new RegExp(`^(?:${pattern})$`, 'u')
+}
+
 function parseArgRule(rule: unknown, what: string): MachineArgRule {
 	if (typeof rule === 'string') {
 		if (rule.length > maxArgLength) {
@@ -90,21 +95,16 @@ function parseArgRule(rule: unknown, what: string): MachineArgRule {
 		typeof pattern !== 'string'
 	) {
 		invalid(
-			`${what} "args" entries are lists of exact words or {"pattern": "^...$"}.`,
+			`${what} "args" entries are lists of exact words or {"pattern": "..."}.`,
 		)
 	}
-	if (
-		pattern.length > maxPatternLength ||
-		!pattern.startsWith('^') ||
-		!pattern.endsWith('$') ||
-		pattern.endsWith('\\$')
-	) {
+	if (pattern.length === 0 || pattern.length > maxPatternLength) {
 		invalid(
-			`${what} pattern ${JSON.stringify(pattern)} must start with ^ and end with $ (at most ${maxPatternLength} characters), so it matches the whole argument.`,
+			`${what} pattern ${JSON.stringify(pattern)} must be 1 to ${maxPatternLength} characters.`,
 		)
 	}
 	try {
-		new RegExp(pattern, 'u')
+		wholeArgument(pattern)
 	} catch {
 		invalid(
 			`${what} pattern ${JSON.stringify(pattern)} is not a valid regular expression.`,
@@ -299,7 +299,7 @@ function matchesShape(
 			const arg = args[index] as string
 			return typeof rule === 'string'
 				? rule === arg
-				: new RegExp(rule.pattern, 'u').test(arg)
+				: wholeArgument(rule.pattern).test(arg)
 		})
 	)
 }

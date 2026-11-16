@@ -81,6 +81,38 @@ test('a named command refuses arguments outside its shapes and names what is all
 	)
 })
 
+test('a pattern has to match the whole argument, with or without anchors', () => {
+	const definition = parseMachineCommandDefinition({
+		...kdocker,
+		args: [
+			['a', { pattern: '^foo|bar$' }],
+			['b', { pattern: '[a-z]+' }],
+			['c', { pattern: '^[a-z]+\\\\$' }],
+		],
+	})
+	for (const args of [
+		['a', 'foo'],
+		['a', 'bar'],
+		['b', 'plex'],
+		['c', 'plex\\'],
+	]) {
+		assert.equal(resolveMachineCommand(definition, args).args.at(-1), args[1])
+	}
+	for (const args of [
+		['a', 'foo --bad'],
+		['a', '--bad bar'],
+		['b', 'plex --bad'],
+		['b', '--bad plex'],
+		['c', 'plex'],
+	]) {
+		assert.equal(
+			refusal(() => resolveMachineCommand(definition, args)).code,
+			'machine_command_args_refused',
+			args.join(' '),
+		)
+	}
+})
+
 test('a command that allows no arguments only runs with none', () => {
 	const definition = parseMachineCommandDefinition({
 		name: 'uptime',
@@ -102,14 +134,7 @@ test('command definitions that could not be enforced are rejected', () => {
 		[{ exec: ['./kdocker.mjs'] }, /relative path/],
 		[{ args: [] }, /"args"/],
 		[{ args: undefined }, /"args"/],
-		[
-			{ args: [['logs', { pattern: '[a-z]+' }]] },
-			/start with \^ and end with \$/,
-		],
-		[
-			{ args: [['logs', { pattern: '^[a-z]+\\$' }]] },
-			/start with \^ and end with \$/,
-		],
+		[{ args: [['logs', { pattern: '' }]] }, /1 to 200 characters/],
 		[
 			{ args: [['logs', { pattern: '^[a-z$' }]] },
 			/not a valid regular expression/,
