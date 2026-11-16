@@ -21,6 +21,7 @@ import {
 	loadPackageAppRunsAs,
 	packageAppRunsAsUnavailableMessages,
 	packageAppVisitorConsents,
+	recordPackageAppPublish,
 	recordPackageAppPublisher,
 	recordPackageAppPublisherUnknown,
 	setPackageAppRunsAsPerson,
@@ -97,7 +98,6 @@ test('an app runs as its publisher with their live role in the owning org', asyn
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	const runsAs = await t.runsAs()
 	expect(runsAs).toMatchObject({
@@ -112,18 +112,23 @@ test('an app runs as its publisher with their live role in the owning org', asyn
 	expect(runsAs.request.actor?.userId).toBe(t.member)
 })
 
-test('privilege climb: a Member republishing an app an Owner chose to run as themselves runs as the Member', async () => {
+test('a Member republishing keeps the runs-as person an Owner chose', async () => {
 	const t = await setup()
 	await recordPackageAppPublisher({
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
-		publisherIsOwner: true,
 	})
 	await setPackageAppRunsAsPerson({
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
+	})
+
+	await recordPackageAppPublisher({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
@@ -131,53 +136,67 @@ test('privilege climb: a Member republishing an app an Owner chose to run as the
 		source: 'explicit',
 		role: 'owner',
 	})
-
-	// The Member's new code must not act with the Owner's authority.
-	await recordPackageAppPublisher({
-		db: t.db,
-		scope: t.scope,
-		personId: t.member,
-		publisherIsOwner: false,
-	})
-	expect(await t.runsAs()).toMatchObject({
-		status: 'ready',
-		personId: t.member,
-		source: 'publisher',
-		role: 'member',
-	})
 })
 
-test('privilege climb: a publish with no known person clears both the publisher and the Owner pick', async () => {
+test('a publish with no known person forgets the publisher and keeps the Owner pick', async () => {
 	const t = await setup()
 	await recordPackageAppPublisher({
 		db: t.db,
 		scope: t.scope,
-		personId: t.owner,
-		publisherIsOwner: true,
+		personId: t.member,
 	})
-	await setPackageAppRunsAsPerson({
-		db: t.db,
-		scope: t.scope,
-		personId: t.owner,
-	})
-	expect((await t.runsAs()).status).toBe('ready')
-
 	await recordPackageAppPublisherUnknown({ db: t.db, scope: t.scope })
 	expect(await t.runsAs()).toMatchObject({
 		status: 'unavailable',
 		reason: 'not-set',
 	})
 
-	await recordPackageAppPublisher({
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await recordPackageAppPublisherUnknown({ db: t.db, scope: t.scope })
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
+	})
+})
+
+test('a publish that finishes as the org itself changes neither the Owner pick nor the publisher', async () => {
+	const t = await setup()
+	await recordPackageAppPublish({
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
+	})
+	// The durable workflow acts as the owning org id, which is not a person.
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
 		personId: t.member,
 		source: 'publisher',
+	})
+
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
 	})
 })
 
@@ -192,7 +211,6 @@ test('an Owner republishing keeps the runs-as person they chose', async () => {
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
-		publisherIsOwner: true,
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
@@ -207,7 +225,6 @@ test('a runs-as person who left the org, or was suspended, fails clearly instead
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	expect((await t.runsAs()).status).toBe('ready')
 
@@ -400,7 +417,6 @@ test('runs-as credential handles resolve as the live runs-as person, and stop wh
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	forgetPackageAppRunsAs(t.scope)
 	const authority = createPackageAppCredentialAuthority({

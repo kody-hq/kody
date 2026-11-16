@@ -28,6 +28,7 @@ vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
 })
 
 const mockModule = vi.hoisted(() => ({
+	recordPackageAppPublish: vi.fn(async (_input: unknown) => {}),
 	loadHeldForApproval: vi.fn(
 		async (..._args: Array<unknown>): Promise<unknown> => null,
 	),
@@ -134,6 +135,11 @@ vi.mock('#worker/repo/published-source.ts', () => ({
 	loadPublishedEntitySource: async () => {
 		throw new Error('published source unavailable in unit test')
 	},
+}))
+
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	recordPackageAppPublish: (input: unknown) =>
+		mockModule.recordPackageAppPublish(input),
 }))
 
 vi.mock('#mcp/capabilities/durable-escalation.ts', () => ({
@@ -733,6 +739,13 @@ test('budget exhaustion returns a dispatched handle', async () => {
 			durableParams: expect.objectContaining({
 				baseline_published_commit: 'commit-old',
 			}),
+		}),
+	)
+	// The durable run finishes as the org, so the person is recorded here.
+	expect(mockModule.recordPackageAppPublish).toHaveBeenCalledWith(
+		expect.objectContaining({
+			scope: { orgId: ownerIdFromStored('user-1'), packageId: 'package-1' },
+			personId: personIdFromStored('user-1'),
 		}),
 	)
 })

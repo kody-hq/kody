@@ -29,6 +29,7 @@ import {
 	isDurableObjectIsolateResourceLimitResetError,
 	isTransientDurableObjectResetError,
 } from '#worker/durable-object-reset-retry.ts'
+import { recordPackageAppPublish } from '#worker/package-runtime/package-app-authority.ts'
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
@@ -1826,6 +1827,13 @@ export const publishExternalPushCapability = defineDomainCapability(
 				case 'completed':
 					return withUnmappableNotice(outcome.value)
 				case 'dispatched':
+					// The durable run finishes as the owning org, which is not a
+					// person an app can run as, so record the publisher here.
+					await recordPackageAppPublish({
+						db: ctx.env.APP_DB,
+						scope: { orgId: owner.ownerUserId, packageId },
+						personId: user.userId,
+					})
 					return {
 						...outcome.handle,
 						phase_timings: withPublishAttemptTotalMs({}, escalateStartedAt),

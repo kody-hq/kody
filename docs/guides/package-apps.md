@@ -361,6 +361,8 @@ means an Owner of the owning org, which is the publisher only in a personal org.
 - A publish with no known person behind it (for example an external push with no
   requester) clears the recorded publisher, so the app never keeps running as
   someone who did not ship that code.
+- Publishing never changes the person an Owner picked. That choice stays until
+  an Owner changes it, whoever publishes.
 - Authority is capped twice: only the capabilities the app lists in
   `kody.app.capabilities` run as that person, and only within what that person
   may do in the org right now.
