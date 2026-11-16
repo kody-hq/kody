@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite'
+import { refreshOpenShellNotice } from './box-notices.ts'
 import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { expect, test, vi } from 'vitest'
 import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
@@ -339,6 +340,17 @@ test('the website/API can turn commands off but never on', async () => {
 		updateContext(owner, 'ec_mac', { grant: { commands: { enabled: true } } }),
 	).rejects.toMatchObject({ code: 'commands_opt_in_local' })
 	const on = setup({ commands: true })
+	const openShell = () =>
+		on.sqlite
+			.prepare(
+				`SELECT 1 FROM execution_context_notices WHERE context_id = 'ec_mac' AND kind = 'open_shell'`,
+			)
+			.all()
+	await refreshOpenShellNotice(
+		on.db,
+		(await getExecutionContext(on.db, 'ec_mac'))!,
+	)
+	expect(openShell()).toHaveLength(1)
 	await updateContext(on.callerFor(operator), 'ec_mac', {
 		grant: { commands: { enabled: false } },
 	})
@@ -348,6 +360,8 @@ test('the website/API can turn commands off but never on', async () => {
 		enabledAt: null,
 	})
 	expect(on.grantUpdates.length).toBe(1)
+	// Turning the shell off here clears the operator's open shell notice.
+	expect(openShell()).toEqual([])
 	expect(on.audits).toContainEqual(
 		expect.objectContaining({ event: 'commands_disabled' }),
 	)
