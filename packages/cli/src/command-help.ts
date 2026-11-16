@@ -608,6 +608,45 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				flags: [orgFlag, jsonFlag],
 			},
 			{
+				name: 'capability',
+				summary:
+					'Define the named commands and local network destinations this machine offers',
+				usage: ['kody context capability [<command>] [flags]'],
+				notes: [
+					'With no command, lists the definitions. Defining one does not let any run use it yet.',
+				],
+				subcommands: [
+					{
+						name: 'list',
+						summary: 'List the definitions on this machine',
+						usage: ['kody context capability list [--json]'],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'add',
+						summary: 'Add or replace a definition from a JSON file',
+						usage: [
+							'kody context capability add command <file.json> [--json]',
+							'kody context capability add lan <file.json> [--json]',
+						],
+						notes: [
+							'command: {"name", "exec": ["program", "fixed args"], "args": [["word", {"pattern": "[a-z0-9-]+"}]], "cwd"?, "background"?, "timeoutMs"?}. A call must match one "args" entry exactly.',
+							'lan: {"name", "hosts": ["192.168.1.10", "10.0.0.0/24"], "ports": [443]}.',
+						],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'remove',
+						summary: 'Remove a definition',
+						usage: [
+							'kody context capability remove command <name> [--json]',
+							'kody context capability remove lan <name> [--json]',
+						],
+						flags: [jsonFlag],
+					},
+				],
+			},
+			{
 				name: 'policy',
 				summary:
 					'Show or change which host folders runs on this machine can use',
