@@ -1,8 +1,14 @@
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { z } from 'zod'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
 import {
+	authorize,
+	AuthorizationError,
+} from '#worker/authorization/authorize.ts'
+import {
 	grantMachineAccess,
 	listMachineAccess,
+	type MachineAccessScope,
 	revokeMachineAccess,
 	shareableMachineCapabilityKinds,
 } from '#worker/execution-contexts/machine-access.ts'
@@ -53,6 +59,28 @@ const idSchema = z
 
 function caller(ctx: CapabilityContext) {
 	return requireExecutionContextsCaller(ctx)
+}
+
+// Someone a machine is only shared with still gives their own profiles what
+// they can use. Everything else on these tools needs manage_access.
+const machineAccessSurface = [
+	'execution_context:manage_access',
+	'execution_context:execute',
+] as const satisfies ReadonlyArray<OrgPermission>
+
+async function machineAccessScope(
+	ctx: CapabilityContext,
+): Promise<MachineAccessScope> {
+	try {
+		await authorize(
+			{ env: ctx.env, request: ctx.callerContext.request ?? null },
+			'execution_context:manage_access',
+		)
+		return {}
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		return { withoutManageAccess: true }
+	}
 }
 
 const chainEntrySchema = z.discriminatedUnion('kind', [
@@ -375,16 +403,20 @@ export const executionContextMachineAccessListCapability =
 	defineDomainCapability(domain, {
 		name: 'executionContextMachineAccessList',
 		contextRuns: 'deny',
-		orgPermission: 'execution_context:manage_access',
+		orgPermission: machineAccessSurface,
 		description:
-			'List the machine access an execution context offers (named commands, local network destinations, host folders) and who each is shared with. The machine defines them; host folders are never shared. Operator, Manage holders and org owners only.',
+			'List the machine access an execution context offers (named commands, local network destinations, host folders) and who each is shared with. The machine defines them; host folders are never shared. The operator, Manage holders and org owners see every grant; anyone else sees only the grants on their own profiles.',
 		keywords: ['execution context', 'machine access', 'named command', 'lan'],
 		readOnly: true,
 		idempotent: true,
 		destructive: false,
 		inputSchema: z.object({ id: idSchema }),
 		async handler(args, ctx) {
-			return await listMachineAccess(await caller(ctx), args.id)
+			return await listMachineAccess(
+				await caller(ctx),
+				args.id,
+				await machineAccessScope(ctx),
+			)
 		},
 	})
 
@@ -392,9 +424,9 @@ export const executionContextMachineAccessGrantCapability =
 	defineDomainCapability(domain, {
 		name: 'executionContextMachineAccessGrant',
 		contextRuns: 'deny',
-		orgPermission: 'execution_context:manage_access',
+		orgPermission: machineAccessSurface,
 		description:
-			'Share one named command or local network destination of your execution context with a person (username or user_id), a team, or everyone in the org (everyone: true). Their runs on the machine can then use it; they also need the context shared with them. Operator only. The unrestricted shell and host folders are never shared.',
+			'Share one named command or local network destination of your execution context with a person (username or user_id), a team, or everyone in the org (everyone: true). Their runs on the machine can then use it; they also need the context shared with them. Operator only. The unrestricted shell and host folders are never shared. A run acting as a profile also needs the profile granted: pass profile_id to give one of your own profiles a command or destination you can use yourself (every parent profile must hold it first).',
 		keywords: ['execution context', 'machine access', 'grant', 'share'],
 		readOnly: false,
 		idempotent: true,
@@ -408,6 +440,11 @@ export const executionContextMachineAccessGrantCapability =
 			team_slug: z.string().min(1).optional(),
 			team_id: z.string().min(1).optional(),
 			everyone: z.literal(true).optional(),
+			profile_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe('One of your own profiles (profileList).'),
 		}),
 		async handler(args, ctx) {
 			const resolved = await caller(ctx)
@@ -415,37 +452,41 @@ export const executionContextMachineAccessGrantCapability =
 				args.everyone,
 				args.team_slug ?? args.team_id,
 				args.username ?? args.user_id,
+				args.profile_id,
 			].filter((value) => value !== undefined)
 			if (chosen.length !== 1) {
 				throw new ExecutionContextError({
 					status: 400,
 					code: 'invalid_request',
 					message:
-						'Name exactly one of a person (username or user_id), a team (team_slug or team_id), or everyone: true.',
+						'Name exactly one of a person (username or user_id), a team (team_slug or team_id), everyone: true, or one of your profiles (profile_id).',
 				})
 			}
-			const subject = args.everyone
-				? ({ type: 'org', id: resolved.orgId } as const)
-				: args.team_slug || args.team_id
-					? ({
-							type: 'team',
-							id: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
-								teamId: args.team_id ?? null,
-								teamSlug: args.team_slug ?? null,
-							}),
-						} as const)
-					: ({
-							type: 'user',
-							id: await resolvePersonId(ctx.env.APP_DB, {
-								userId: args.user_id ?? null,
-								username: args.username ?? null,
-							}),
-						} as const)
-			return await grantMachineAccess(resolved, args.id, {
-				kind: args.kind,
-				name: args.name,
-				subject,
-			})
+			const subject = args.profile_id
+				? ({ type: 'profile', id: args.profile_id } as const)
+				: args.everyone
+					? ({ type: 'org', id: resolved.orgId } as const)
+					: args.team_slug || args.team_id
+						? ({
+								type: 'team',
+								id: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+									teamId: args.team_id ?? null,
+									teamSlug: args.team_slug ?? null,
+								}),
+							} as const)
+						: ({
+								type: 'user',
+								id: await resolvePersonId(ctx.env.APP_DB, {
+									userId: args.user_id ?? null,
+									username: args.username ?? null,
+								}),
+							} as const)
+			return await grantMachineAccess(
+				resolved,
+				args.id,
+				{ kind: args.kind, name: args.name, subject },
+				await machineAccessScope(ctx),
+			)
 		},
 	})
 
@@ -453,9 +494,9 @@ export const executionContextMachineAccessRevokeCapability =
 	defineDomainCapability(domain, {
 		name: 'executionContextMachineAccessRevoke',
 		contextRuns: 'deny',
-		orgPermission: 'execution_context:manage_access',
+		orgPermission: machineAccessSurface,
 		description:
-			'Take back one machine access grant (grant_id from executionContextMachineAccessList). The next use is refused. Operator, Manage holders and org owners.',
+			'Take back one machine access grant (grant_id from executionContextMachineAccessList). The next use is refused. Operator, Manage holders and org owners; anyone can take back a grant on their own profile.',
 		keywords: ['execution context', 'machine access', 'revoke'],
 		readOnly: false,
 		idempotent: true,
@@ -466,6 +507,7 @@ export const executionContextMachineAccessRevokeCapability =
 				await caller(ctx),
 				args.id,
 				args.grant_id,
+				await machineAccessScope(ctx),
 			)
 		},
 	})

@@ -4,6 +4,7 @@ import {
 } from '#worker/authorization/grant-subjects.ts'
 import { softDeleteGrant, upsertGrant } from '#worker/orgs/access-writes.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
+import { grantResourceToProfile } from '#worker/profiles/package-grants.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
 	type MachineCapabilityRow,
@@ -22,6 +23,7 @@ export const shareableMachineCapabilityKinds = ['command', 'lan'] as const
 type ShareableKind = (typeof shareableMachineCapabilityKinds)[number]
 
 /** A machine access grant reaches a person directly, through a team, or as a member of the org. */
+// A profile's grant is checked as a layer of its chain (checkProfileChain), not here.
 export const machineAccessGrantSubjects = {
 	user: 'include',
 	team: 'include',
@@ -62,15 +64,18 @@ export async function hasMachineAccessGrant(
 type GrantRow = {
 	id: string
 	resource_id: string
-	subject_type: 'user' | 'team' | 'org'
+	subject_type: 'user' | 'team' | 'org' | 'profile'
 	subject_id: string
 	username: string | null
 	team_slug: string | null
+	profile_name: string | null
+	profile_acting_user_id: string | null
 }
 
 async function loadMachineAccess(
 	caller: ExecutionContextCaller,
 	contextId: string,
+	manages: boolean,
 ) {
 	const db = caller.env.APP_DB
 	const [capabilities, grants] = await Promise.all([
@@ -84,11 +89,14 @@ async function loadMachineAccess(
 		db
 			.prepare(
 				`SELECT g.id, g.resource_id, g.subject_type, g.subject_id, u.username,
-					t.slug AS team_slug
+					t.slug AS team_slug, p.name AS profile_name,
+					p.acting_user_id AS profile_acting_user_id
 				 FROM grants g
 				 LEFT JOIN users u ON g.subject_type = 'user' AND u.stable_user_id = g.subject_id
 				 LEFT JOIN teams t ON g.subject_type = 'team' AND t.id = g.subject_id
 					AND t.org_id = g.org_id AND t.deleted_at IS NULL
+				 LEFT JOIN profiles p ON g.subject_type = 'profile' AND p.id = g.subject_id
+					AND p.org_id = g.org_id AND p.revoked_at IS NULL
 				 WHERE g.resource_type = 'machine_capability' AND g.org_id = ?
 				   AND g.deleted_at IS NULL
 				   AND (g.expires_at IS NULL OR g.expires_at > ?)
@@ -100,14 +108,20 @@ async function loadMachineAccess(
 			.bind(caller.orgId, new Date().toISOString(), contextId)
 			.all<GrantRow>(),
 	])
-	return capabilities.results.map((capability) => ({
+	const entries = capabilities.results.map((capability) => ({
 		id: capability.id,
 		kind: capability.kind,
 		name: capability.name,
 		description: capability.description,
 		shareable: isShareable(capability.kind),
 		grants: grants.results
-			.filter((grant) => grant.resource_id === capability.id)
+			.filter(
+				(grant) =>
+					grant.resource_id === capability.id &&
+					// Someone who does not manage the machine sees only what they
+					// gave their own profiles.
+					(manages || grant.profile_acting_user_id === caller.userId),
+			)
 			.flatMap((grant) => {
 				const subject =
 					grant.subject_type === 'org'
@@ -116,12 +130,23 @@ async function loadMachineAccess(
 							? grant.team_slug
 								? ({ kind: 'team', slug: grant.team_slug } as const)
 								: null
-							: grant.username
-								? ({ kind: 'user', handle: grant.username } as const)
-								: null
+							: grant.subject_type === 'profile'
+								? grant.profile_name
+									? ({
+											kind: 'profile',
+											id: grant.subject_id,
+											name: grant.profile_name,
+										} as const)
+									: null
+								: grant.username
+									? ({ kind: 'user', handle: grant.username } as const)
+									: null
 				return subject ? [{ grantId: grant.id, subject }] : []
 			}),
 	}))
+	// Without Manage, a person's view is their own profiles' grants, not
+	// everything the machine defines.
+	return manages ? entries : entries.filter((entry) => entry.grants.length > 0)
 }
 
 function isShareable(kind: string): kind is ShareableKind {
@@ -130,36 +155,55 @@ function isShareable(kind: string): kind is ShareableKind {
 	)
 }
 
-async function requireMachineAccessReader(
+/**
+ * What a caller whose credential lacks `execution_context:manage_access`
+ * may still do: give their own profiles what they can use, and take it back.
+ */
+export type MachineAccessScope = { withoutManageAccess?: true }
+
+/**
+ * The context plus whether the caller manages its machine access. Someone
+ * who neither manages it nor has it shared with them learns nothing about
+ * what the machine defines.
+ */
+async function loadMachineAccessContext(
 	caller: ExecutionContextCaller,
 	ref: string,
+	scope: MachineAccessScope,
 ) {
-	const loaded = await loadVisibleContext(caller, ref)
+	const { row, access } = await loadVisibleContext(caller, ref)
 	const role = caller.request.membership?.role
-	if (
-		!canManageContext(loaded.access) &&
-		role !== 'owner' &&
-		role !== 'admin'
-	) {
+	const manages =
+		!scope.withoutManageAccess &&
+		(canManageContext(access) || role === 'owner' || role === 'admin')
+	if (!manages && !access.granted) {
 		throw new ExecutionContextError({
 			status: 403,
 			code: 'not_granted',
-			message:
-				'Only the operator, people with Manage, and org owners see who has machine access.',
+			message: `${row.name} is not shared with you.`,
 		})
 	}
-	return loaded
+	return { row, access, manages }
 }
 
+/**
+ * The operator, Manage holders and org owners see every grant. Anyone else
+ * who can see the context sees only the grants on their own profiles.
+ */
 export async function listMachineAccess(
 	caller: ExecutionContextCaller,
 	ref: string,
+	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await requireMachineAccessReader(caller, ref)
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
 	return {
 		id: row.id,
-		canGrant: access.isOperator,
-		capabilities: await loadMachineAccess(caller, row.id),
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }
 
@@ -174,18 +218,26 @@ export async function grantMachineAccess(
 	input: {
 		kind: ShareableKind
 		name: string
-		subject: { type: 'user' | 'team' | 'org'; id: string }
+		subject:
+			| { type: 'user' | 'team' | 'org'; id: string }
+			| { type: 'profile'; id: string }
 	},
+	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await loadVisibleContext(caller, ref)
-	if (!access.isOperator) {
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
+	const { subject } = input
+	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
 		throw new ExecutionContextError({
 			status: 403,
 			code: 'not_granted',
 			message: `Only ${row.name}'s operator can share its named commands and local network destinations.`,
 		})
 	}
-	if (input.subject.type === 'user' && input.subject.id === caller.userId) {
+	if (subject.type === 'user' && subject.id === caller.userId) {
 		throw new ExecutionContextError({
 			status: 400,
 			code: 'invalid_request',
@@ -207,27 +259,59 @@ export async function grantMachineAccess(
 			message: `${row.name} defines no ${input.kind === 'lan' ? 'local network destination' : 'command'} named "${input.name}". \`kody context capability list\` on that machine shows what it defines.`,
 		})
 	}
-	await upsertGrant({
-		db,
-		orgId: caller.orgId,
-		resourceType: 'machine_capability',
-		resourceId: capability.id,
-		subject: input.subject,
-		preset: null,
-		permissions: [machineCapabilityUsePermission],
-		createdByUserId: caller.userId,
-		audit: orgAuditWriterFromCaller(caller.env, caller.callerContext),
-	})
+	if (subject.type === 'profile') {
+		// A profile only narrows the person it acts for, so that person gives
+		// it what they hold themselves: the operator's own access, or a grant.
+		if (
+			!access.isOperator &&
+			!(await hasMachineAccessGrant(db, {
+				capabilityId: capability.id,
+				userId: caller.userId,
+				orgId: caller.orgId,
+			}))
+		) {
+			throw new ExecutionContextError({
+				status: 403,
+				code: 'machine_capability_not_granted',
+				message: `You are not granted "${capability.name}" on ${row.name}, so your profile cannot get it. The machine's operator can share it with you first.`,
+			})
+		}
+		await grantResourceToProfile({
+			env: caller.env,
+			request: caller.request,
+			profileId: subject.id,
+			resource: {
+				type: 'machine_capability',
+				id: capability.id,
+				label: `"${capability.name}" on ${row.name}`,
+			},
+			preset: null,
+			permissions: [machineCapabilityUsePermission],
+			ifParentLacks: 'Give the parent profile this machine access first.',
+		})
+	} else {
+		await upsertGrant({
+			db,
+			orgId: caller.orgId,
+			resourceType: 'machine_capability',
+			resourceId: capability.id,
+			subject,
+			preset: null,
+			permissions: [machineCapabilityUsePermission],
+			createdByUserId: caller.userId,
+			audit: orgAuditWriterFromCaller(caller.env, caller.callerContext),
+		})
+	}
 	await recordContextAudit(caller, row.id, 'machine_access_granted', {
 		capability: capability.name,
 		capabilityId: capability.id,
 		kind: capability.kind,
-		subject: input.subject,
+		subject,
 	})
 	return {
 		id: row.id,
-		canGrant: true,
-		capabilities: await loadMachineAccess(caller, row.id),
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }
 
@@ -236,19 +320,36 @@ export async function revokeMachineAccess(
 	caller: ExecutionContextCaller,
 	ref: string,
 	grantId: string,
+	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await requireMachineAccessReader(caller, ref)
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
 	const db = caller.env.APP_DB
 	const grant = await db
 		.prepare(
-			`SELECT g.id, c.id AS capability_id, c.name, c.kind FROM grants g
+			`SELECT g.id, c.id AS capability_id, c.name, c.kind,
+				p.acting_user_id AS profile_acting_user_id
+			 FROM grants g
 			 INNER JOIN machine_capabilities c ON c.id = g.resource_id AND c.context_id = ?
+			 LEFT JOIN profiles p ON g.subject_type = 'profile' AND p.id = g.subject_id
+				AND p.org_id = g.org_id
 			 WHERE g.id = ? AND g.org_id = ? AND g.resource_type = 'machine_capability'
 			   AND g.deleted_at IS NULL`,
 		)
 		.bind(row.id, grantId, caller.orgId)
-		.first<{ id: string; capability_id: string; name: string; kind: string }>()
-	if (!grant) {
+		.first<{
+			id: string
+			capability_id: string
+			name: string
+			kind: string
+			profile_acting_user_id: string | null
+		}>()
+	// A person takes back what they gave their own profile; everything else
+	// needs the operator, Manage, or an org owner.
+	if (!grant || (!manages && grant.profile_acting_user_id !== caller.userId)) {
 		throw new ExecutionContextError({
 			status: 404,
 			code: 'not_found',
@@ -269,7 +370,7 @@ export async function revokeMachineAccess(
 	})
 	return {
 		id: row.id,
-		canGrant: access.isOperator,
-		capabilities: await loadMachineAccess(caller, row.id),
+		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }

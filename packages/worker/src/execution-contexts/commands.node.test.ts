@@ -35,6 +35,10 @@ const published = vi.hoisted(() => ({
 	machine: new Map<string, Record<string, unknown>>(),
 }))
 
+vi.mock('#worker/profiles/flag.ts', () => ({
+	isProfilesEnabledFor: async () => true,
+}))
+
 vi.mock('#worker/repo/published-source.ts', () => ({
 	loadPublishedEntityManifest: async (input: {
 		sourceId: string
@@ -1106,4 +1110,133 @@ test('the declaration is read from the commit runs are served, and one name can 
 			),
 		).resolves.toMatchObject({ ok: true })
 	}
+})
+
+test('a person gives their own profile a named command they can use, capped by its parents, and takes it back', async () => {
+	const s = setup()
+	defineCommand(s)
+	const owner = s.callerFor(operator)
+	const friend = s.callerFor('user_friend')
+	await setSharing(owner, 'ec_mac', { allMembers: true })
+	const profile = (id: string, userId: string, parent: string | null) =>
+		s.sqlite
+			.exec(`INSERT INTO profiles (id, org_id, acting_user_id, parent_profile_id, name, depth,
+				created_by_user_id, created_at, updated_at)
+			VALUES ('${id}', '${orgId}', '${userId}', ${parent ? `'${parent}'` : 'NULL'}, '${id}', ${parent ? 2 : 1},
+				'${userId}', '${now}', '${now}')`)
+	profile('prf_agent', operator, null)
+	profile('prf_helper', operator, 'prf_agent')
+	profile('prf_friend', 'user_friend', null)
+	const give = (caller: typeof owner, profileId: string) =>
+		grantMachineAccess(caller, 'ec_mac', {
+			kind: 'command',
+			name: 'kdocker',
+			subject: { type: 'profile', id: profileId },
+		})
+
+	// Only your own profiles, and a sub-profile only after its parent.
+	await expect(give(owner, 'prf_friend')).rejects.toThrow(
+		'You can only give access to your own profiles',
+	)
+	await expect(give(owner, 'prf_helper')).rejects.toThrow(
+		'Parent profile "prf_agent" does not hold machine_capability:use',
+	)
+	await give(owner, 'prf_agent')
+	const granted = await give(owner, 'prf_helper')
+	expect(
+		granted.capabilities
+			.find((entry) => entry.name === 'kdocker')!
+			.grants.map((grant) => grant.subject),
+	).toEqual([
+		{ kind: 'profile', id: 'prf_agent', name: 'prf_agent' },
+		{ kind: 'profile', id: 'prf_helper', name: 'prf_helper' },
+	])
+
+	// Someone the command is not shared with cannot pass it to a profile.
+	await expect(give(friend, 'prf_friend')).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+	await grantMachineAccess(owner, 'ec_mac', {
+		kind: 'command',
+		name: 'kdocker',
+		subject: { type: 'user', id: 'user_friend' },
+	})
+	// They do not manage the machine, so they see only their own profile's grant.
+	const mine = [
+		{
+			grantId: expect.any(String),
+			subject: { kind: 'profile', id: 'prf_friend', name: 'prf_friend' },
+		},
+	]
+	const given = await give(friend, 'prf_friend')
+	expect(given.canGrant).toBe(false)
+	expect(given.capabilities.map((entry) => entry.grants)).toEqual([mine])
+	expect(
+		(await listMachineAccess(friend, 'ec_mac')).capabilities[0]!.grants,
+	).toEqual(mine)
+
+	// Someone the machine is not shared with learns nothing about it.
+	const stranger = s.callerFor('user_stranger')
+	await expect(listMachineAccess(stranger, 'ec_mac')).rejects.toMatchObject({
+		code: 'not_granted',
+	})
+	await expect(give(stranger, 'prf_friend')).rejects.toMatchObject({
+		code: 'not_granted',
+	})
+
+	// A credential without manage_access gives the operator's profile access
+	// but cannot share with a person, and sees only the operator's own profiles.
+	const scoped = { withoutManageAccess: true } as const
+	await expect(
+		grantMachineAccess(
+			owner,
+			'ec_mac',
+			{
+				kind: 'command',
+				name: 'kdocker',
+				subject: { type: 'user', id: 'user_teammate' },
+			},
+			scoped,
+		),
+	).rejects.toMatchObject({ code: 'not_granted' })
+	expect(
+		(
+			await listMachineAccess(owner, 'ec_mac', scoped)
+		).capabilities[0]!.grants.map((grant) => grant.subject.kind),
+	).toEqual(['profile', 'profile'])
+
+	// Acting as a profile, the operator's run passes access down only.
+	const actingAs = (profileId: string) => {
+		const caller = s.callerFor(operator)
+		return {
+			...caller,
+			request: {
+				...caller.request,
+				credential: { ...caller.request.credential, profileId },
+			},
+		} as typeof caller
+	}
+	profile('prf_other', operator, null)
+	await expect(give(actingAs('prf_agent'), 'prf_agent')).rejects.toThrow(
+		'A profile can only give access to its own sub-profiles',
+	)
+	await expect(give(actingAs('prf_agent'), 'prf_other')).rejects.toThrow(
+		'A profile can only give access to its own sub-profiles',
+	)
+	await give(actingAs('prf_agent'), 'prf_helper')
+	const grantOf = (profileId: string) =>
+		(
+			s.sqlite
+				.prepare(
+					`SELECT id FROM grants WHERE subject_type = 'profile' AND subject_id = ? AND deleted_at IS NULL`,
+				)
+				.get(profileId) as { id: string } | undefined
+		)?.id
+	// A person takes back their own profile's grant, not someone else's.
+	await expect(
+		revokeMachineAccess(friend, 'ec_mac', grantOf('prf_agent')!),
+	).rejects.toMatchObject({ code: 'not_found' })
+	await revokeMachineAccess(friend, 'ec_mac', grantOf('prf_friend')!)
+	expect(grantOf('prf_friend')).toBeUndefined()
+	expect(grantOf('prf_agent')).toBeDefined()
 })

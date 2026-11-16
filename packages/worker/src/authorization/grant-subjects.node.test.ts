@@ -63,9 +63,9 @@ const handWrittenSubjectMatches: Record<
 			"Lists a context's grantees (ADR 0096) by expanding its user and team grants, not matching a person to a grant.",
 	},
 	'execution-contexts/machine-access.ts': {
-		count: 2,
+		count: 4,
 		reason:
-			"Lists a capability's grantees by joining each user and team grant to its handle or slug, not matching a person to a grant.",
+			"Lists a capability's grantees by joining each user, team and profile grant to its handle, slug or name, and finds whose profile a grant belongs to on revoke. Neither matches a person to a grant.",
 	},
 	'orgs/access-writes.ts': {
 		count: 3,
