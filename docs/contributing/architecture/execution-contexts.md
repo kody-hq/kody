@@ -137,9 +137,10 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   org, and refuses a context that is not revoked with `context_not_revoked`.
 - `deleteContext` in `service.ts` drops the context from every chain (cloud
   stays last, an emptied chain falls back to cloud), soft-deletes its
-  `execution_context` grants and bumps each affected org's access epoch, then
-  deletes its opt-ins, org attachments, chain entries and row. There are no
-  foreign keys on these tables, so add any new dependent table to that batch.
+  `execution_context` grants and its machine capabilities' grants, bumps each
+  affected org's access epoch, then deletes its machine capabilities, opt-ins,
+  org attachments, chain entries and row. There are no foreign keys on these
+  tables, so add any new dependent table to that batch.
 - Run records keep their own copy of the context id and name in
   `metadata.executionContext`, so `ranOn` still renders the deleted machine. The
   context's session Durable Object history is unreachable once the row is gone;
@@ -202,6 +203,13 @@ sequenceDiagram
   stays valid JSON), cwd, env keys, run id, and background flag. Authorization
   requests and audit rows never carry env values; command output can, if the
   command prints them.
+- When a run loads saved packages, origin records them on the run's lease as the
+  package graph is served (`recordRunPackages`, `run-packages.ts`): `entries`
+  (imported directly by the run's code) and `all` (entries plus what they
+  import). `command_started` carries `entryPackageIds` (first 8) and
+  `packageCount`. Code on the machine cannot be trusted to say which package it
+  is, so this set, not the call, is what attribution uses. Ad hoc code has
+  neither field.
 - Saved package code gets the same `kody.command`: the package-bound `kody`
   wrapper (`__kodyCreatePackageBoundKody` in `local-execute-runtime-support.ts`)
   passes `command` through like `mcp`, so the opt-in, grant, and authorize hop
@@ -223,6 +231,49 @@ Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
 skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
 a macOS runner shortage cannot hold production. A failure there opens the "main:
 macOS host commands failing" issue.
+
+### Machine access data model
+
+Machine access narrows these powers per person, profile and package. Only the
+data model exists so far; nothing reads it at run time yet.
+
+- `machine_capabilities` (migration `0276-machine-capabilities.sql`) holds one
+  row per power a machine offers: kind `shell`, `command`, `lan` or `fs`, plus a
+  name unique within the context and kind. The machine defines a capability;
+  Kody stores who may use it.
+- A grant on one is a `grants` row with resource type `machine_capability` and
+  the permission `machine_capability:use`. Like `execution_context:execute`, it
+  counts only as a grant on the capability, never from a role, so checks must
+  read the grant directly. `allowed_packages_json` is the capability's package
+  list.
+- Who may change those grants is decided on the context
+  (`execution_context:manage_access`). `accessGrant` refuses to add one, and
+  `accessRevoke` removes one.
+- Org transfer leaves capabilities and their grants in the owning org, like the
+  context.
+- The machine layer lives in the local policy file under `capabilities`
+  (`packages/cli/src/execution-context/machine-capabilities.ts`), edited with
+  `kody context capability`. A named command is a fixed `exec` plus a list of
+  allowed argument shapes (exact words, or a pattern the whole argument must
+  match); `resolveMachineCommand` returns the `execFile` call or refuses with
+  `machine_command_args_refused`. A local network entry is IP addresses or CIDR
+  ranges plus ports. Executable paths stay on the machine. Nothing sends these
+  to Kody or runs them yet.
+
+  ```json
+  {
+  	"name": "kdocker",
+  	"description": "Inspect and restart containers on the NAS",
+  	"exec": ["node", "/volume1/docker/kody-docker-helper/kdocker.mjs"],
+  	"args": [
+  		["ps"],
+  		["logs", { "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$" }],
+  		["compose", "rebuild"]
+  	],
+  	"background": false,
+  	"timeoutMs": 120000
+  }
+  ```
 
 ### End-to-end check
 

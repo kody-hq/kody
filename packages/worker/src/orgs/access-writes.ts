@@ -158,6 +158,7 @@ export const grantResourceTypes = [
 	'memory',
 	'email',
 	'execution_context',
+	'machine_capability',
 	'org',
 ] as const
 

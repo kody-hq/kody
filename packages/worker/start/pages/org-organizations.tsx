@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	getHandleFormatError,
@@ -52,15 +53,17 @@ import {
 	AccountManagementShell,
 	AccountManagementPanel,
 	AccountPageHeader,
-	accountInputCss,
 	AccountManagementMessage,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
-import { hoverMq } from '#universal/styles/style-primitives.ts'
+import {
+	hoverMq,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 export function OrganizationsPage({
 	data,
 }: {
@@ -311,11 +314,11 @@ function CreateOrganizationForm() {
 					}}
 					css={formCss}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Name</span>
-						<input
-							data-field-ring
-							css={accountInputCss}
+					<Field
+						label="Name"
+						description="Shown in the header and to members. You can change it later."
+					>
+						<Input
 							name="displayName"
 							aria-invalid={clientError?.field === 'displayName' || undefined}
 							aria-describedby={
@@ -337,18 +340,14 @@ function CreateOrganizationForm() {
 								}
 							}}
 						/>
-						<p css={accountFieldNoteCss}>
-							Shown in the header and to members. You can change it later.
-						</p>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Handle</span>
+					</Field>
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Handle</span>
 						<span css={slugFieldCss}>
 							<span aria-hidden="true" css={slugPrefixCss}>
 								kody.codes/@
 							</span>
-							<input
-								data-field-ring
+							<Input
 								css={slugInputCss}
 								aria-describedby={[
 									'create-organization-slug-note',
@@ -372,7 +371,7 @@ function CreateOrganizationForm() {
 								required
 							/>
 						</span>
-						<p id="create-organization-slug-note" css={accountFieldNoteCss}>
+						<p id="create-organization-slug-note" css={fieldDescriptionCss}>
 							{handleFormatHint} {handlePermanentNote} Your organization's URL
 							will be{' '}
 							<strong data-testid="create-organization-url-preview">
@@ -392,7 +391,7 @@ function CreateOrganizationForm() {
 					/>
 					{confirming ? (
 						<p
-							css={accountFieldNoteCss}
+							css={fieldDescriptionCss}
 							role="status"
 							data-testid="create-organization-confirm"
 						>
@@ -692,7 +691,6 @@ const slugPrefixCss: CSSObject = {
 }
 
 const slugInputCss: CSSObject = {
-	...accountInputCss,
 	flex: '1 1 auto',
 	minWidth: 0,
 	borderTopLeftRadius: 0,

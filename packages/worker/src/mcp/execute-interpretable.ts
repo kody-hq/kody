@@ -138,15 +138,15 @@ function classifyImportSpecifier(
 	return 'has_unsupported_import'
 }
 
-function collectDisqualifiersFromSpecifiers(source: string) {
+async function collectDisqualifiersFromSpecifiers(source: string) {
 	const reasons = new Set<Exclude<ExecuteInterpretableReason, 'glue'>>()
-	for (const specifier of collectLiteralImportNodes(source).map(
+	for (const specifier of (await collectLiteralImportNodes(source)).map(
 		(node) => node.specifier,
 	)) {
 		const reason = classifyImportSpecifier(specifier)
 		if (reason) reasons.add(reason)
 	}
-	for (const node of collectDynamicImportExpressionNodes(source)) {
+	for (const node of await collectDynamicImportExpressionNodes(source)) {
 		if (node.literalSpecifier == null) {
 			reasons.add('has_dynamic_import')
 			continue
@@ -199,7 +199,7 @@ function importIntroducesAuthenticatedFetch(node: unknown) {
 	})
 }
 
-function sourceUsesAmbientFetch(source: string) {
+async function sourceUsesAmbientFetch(source: string) {
 	function visit(node: unknown): boolean {
 		if (node == null || typeof node !== 'object') return false
 		if (Array.isArray(node)) return node.some((item) => visit(item))
@@ -219,7 +219,7 @@ function sourceUsesAmbientFetch(source: string) {
 	}
 
 	try {
-		return visit(parseModuleSource(source))
+		return visit(await parseModuleSource(source))
 	} catch {
 		return false
 	}
@@ -240,17 +240,17 @@ function pickPrimaryReason(
  * `fetch`. Does not inspect bundled output (bundling rewrites `kody:runtime`
  * and would hide the author's imports).
  */
-export function classifyExecuteInterpretable(
+export async function classifyExecuteInterpretable(
 	source: string,
-): ExecuteInterpretableClassification {
+): Promise<ExecuteInterpretableClassification> {
 	try {
-		parseModuleSource(source)
+		await parseModuleSource(source)
 	} catch {
 		return { class: 'non_interpretable', reason: 'unparseable' }
 	}
 
-	const reasons = collectDisqualifiersFromSpecifiers(source)
-	if (sourceUsesAmbientFetch(source)) {
+	const reasons = await collectDisqualifiersFromSpecifiers(source)
+	if (await sourceUsesAmbientFetch(source)) {
 		reasons.add('has_fetch')
 	}
 	if (reasons.size === 0) {
@@ -267,12 +267,12 @@ export function classifyExecuteInterpretable(
  * no-op when the dedicated Analytics Engine binding is absent. The event
  * contains no user, source, run, conversation, or request identity.
  */
-export function recordExecuteInterpretableEvent(
+export async function recordExecuteInterpretableEvent(
 	env: ExecuteInterpretableTelemetryEnv,
 	input: { source: string },
-): void {
+): Promise<void> {
 	try {
-		const classification = classifyExecuteInterpretable(input.source)
+		const classification = await classifyExecuteInterpretable(input.source)
 		env.EXECUTE_INTERPRETABLE_EVENTS?.writeDataPoint({
 			indexes: [executeInterpretableTelemetryIndex],
 			blobs: [classification.class, classification.reason],

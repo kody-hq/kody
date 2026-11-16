@@ -79,6 +79,7 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
+  kody context capability [list] | add command|lan <file.json> | remove command|lan <name> [--json]
   kody context grant [show] | allow <path> [--mode ro|rw] | remove <path> | lan on|off [--context <name|ec id>] [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
@@ -361,7 +362,10 @@ ${orgBlock}
              \`--ready-file\` JSON reports the same value as \`basePath\`).
              Default is empty (serve at \`/\`). Use
              \`--app-base-path /<package-name>\` to match the
-             hosted app mount while iterating locally.
+             hosted app mount while iterating locally. With
+             \`--target mock\` on the local Kody runtime, the mount is
+             always \`/@<username>/packages/<kody.id>\`, the path local
+             Kody renders links for; a different value is rejected.
 
   --host <addr>
              With \`kody dev serve\`, the address the dev server listens on

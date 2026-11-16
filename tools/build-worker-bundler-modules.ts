@@ -112,6 +112,11 @@ const codemodeNormalizeModuleEntry = path.join(
 	repoRoot,
 	'packages/worker/src/mcp/codemode-normalize-module.ts',
 )
+export const moduleSourceParserModuleName = 'module-source-parser.mjs'
+const moduleSourceParserModuleEntry = path.join(
+	repoRoot,
+	'packages/worker/src/module-source-parser-module.ts',
+)
 const generatedArtifactNames = [
 	'worker-bundler.mjs',
 	'worker-bundler-typescript.mjs',
@@ -120,6 +125,7 @@ const generatedArtifactNames = [
 	isomorphicGitModuleName,
 	postalMimeModuleName,
 	codemodeNormalizeModuleName,
+	moduleSourceParserModuleName,
 	disposableEmailDomainsModuleName,
 	'esbuild.wasm',
 ] as const
@@ -284,6 +290,10 @@ async function buildStampContent(
 		codemodeNormalizeModuleEntry,
 		'utf8',
 	)
+	const moduleSourceParserModuleSource = await readFile(
+		moduleSourceParserModuleEntry,
+		'utf8',
+	)
 	const disposableEmailDomainsSource = await readFile(
 		disposableEmailDomainsListPath,
 		'utf8',
@@ -319,6 +329,7 @@ async function buildStampContent(
 		.update(disposableEmailDomainsSource)
 		.update(disposableEmailDomainsModuleSource)
 		.update(codemodeNormalizeModuleSource)
+		.update(moduleSourceParserModuleSource)
 		.update(shellPackageJson)
 		.update(
 			await readFile(
@@ -455,6 +466,7 @@ export async function ensureWorkerBundlerModules() {
 		entryPoints: {
 			'postal-mime': postalMimeModuleEntry,
 			'codemode-normalize': codemodeNormalizeModuleEntry,
+			'module-source-parser': moduleSourceParserModuleEntry,
 			'disposable-email-domains': disposableEmailDomainsModuleEntry,
 		},
 		bundle: true,
@@ -479,6 +491,24 @@ export async function ensureWorkerBundlerModules() {
 	await fsyncGeneratedDir()
 }
 
+/**
+ * `module-source.ts` loads the parser through
+ * `./node_modules/.kody-generated/module-source-parser.mjs`, relative to
+ * `packages/worker/src`. This bundle is itself emitted into that directory, so
+ * point the import at the sibling deferred module instead of inlining Babel.
+ */
+const moduleSourceParserSiblingPlugin: Plugin = {
+	name: 'module-source-parser-sibling',
+	setup(pluginBuild) {
+		pluginBuild.onResolve(
+			{
+				filter: /\/node_modules\/\.kody-generated\/module-source-parser\.mjs$/,
+			},
+			() => ({ path: `./${moduleSourceParserModuleName}`, external: true }),
+		)
+	},
+}
+
 async function buildLocalExecuteRuntimeSupportModule() {
 	await build({
 		entryPoints: [localExecuteRuntimeSupportEntry],
@@ -491,7 +521,11 @@ async function buildLocalExecuteRuntimeSupportModule() {
 			workerBundlerGeneratedDir,
 			localExecuteRuntimeSupportModuleName,
 		),
-		plugins: [externalsPlugin, kodyPackageImportsPlugin],
+		plugins: [
+			moduleSourceParserSiblingPlugin,
+			externalsPlugin,
+			kodyPackageImportsPlugin,
+		],
 		logLevel: 'silent',
 	})
 }

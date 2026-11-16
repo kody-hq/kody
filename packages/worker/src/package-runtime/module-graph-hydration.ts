@@ -160,7 +160,7 @@ export async function hydrateKodyRuntimeModules(input: {
 	userId: string
 	modules: WorkerLoaderModules
 }): Promise<HydratedKodyRuntimeModules> {
-	const modules = refreshKodyRuntimeModules(input.modules)
+	const modules = await refreshKodyRuntimeModules(input.modules)
 	const installedArtifacts = new Map<string, string>()
 	const resolvedArtifacts = new Map<
 		string,
@@ -213,12 +213,13 @@ export async function hydrateKodyRuntimeModules(input: {
 				})
 				continue
 			}
-			const installedArtifactMainModule = installDynamicPackageArtifactModules({
-				modules,
-				modulePath: entry.modulePath,
-				specifier: entry.specifier,
-				artifact: resolved.artifact,
-			})
+			const installedArtifactMainModule =
+				await installDynamicPackageArtifactModules({
+					modules,
+					modulePath: entry.modulePath,
+					specifier: entry.specifier,
+					artifact: resolved.artifact,
+				})
 			resolved.installedArtifactMainModule = installedArtifactMainModule
 			installedArtifacts.set(resolved.artifactKey, installedArtifactMainModule)
 			installedDynamicImport = true
@@ -240,7 +241,7 @@ export async function hydrateKodyRuntimeModules(input: {
 					parseKodyPackageSpecifier(specifier).packageName
 			}
 			return {
-				modules: refreshKodyRuntimeModules(modules),
+				modules: await refreshKodyRuntimeModules(modules),
 				dynamicDependencyPackageIds,
 				dynamicDependencyPackageNames,
 			}

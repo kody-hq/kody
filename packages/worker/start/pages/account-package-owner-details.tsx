@@ -43,11 +43,14 @@ import {
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
 import { PackageCapabilityAllowanceCallout } from './package-capability-allowance-callout.tsx'
 import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
+import { PackagePublicVisitorsHeldBackCallout } from './package-public-visitors-held-back-callout.tsx'
 import { PackageUnmappableCredentialsCallout } from './package-unmappable-credentials-callout.tsx'
 import type {
 	AccountPackageAnonymousVisitorExposure,
 	AccountPackageDetail,
 } from '#universal/loader-data.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 function PackageAppLinks(props: { openHref: string | null }) {
 	if (!props.openHref) return 'No app'
@@ -315,6 +318,15 @@ export function AccountPackageOwnerDetails(props: {
 				collaboratorsHref={collaboratorsHref}
 			/>
 			{props.viewerCanPublish ? (
+				<PackagePublicVisitorsHeldBackCallout
+					heldBack={packageDetail.publicVisitorsHeldBack}
+					approvalHref={routes.communityPackageApproveCapabilities.href({
+						username: props.ownerUsername,
+						kodyId: packageDetail.kodyId,
+					})}
+				/>
+			) : null}
+			{props.viewerCanPublish ? (
 				<PackageCapabilityAllowanceCallout
 					capabilities={packageDetail.capabilityAllowance ?? []}
 				/>
@@ -374,7 +386,7 @@ export function AccountPackageOwnerDetails(props: {
 										<span css={visuallyHiddenCss}>
 											Type {packageDetail.kodyId} to change internet-visible
 										</span>
-										<input
+										<Input
 											value={internetVisibleConfirmName}
 											placeholder={packageDetail.kodyId}
 											data-testid={
@@ -382,13 +394,6 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-internet-visible-off-confirm'
 													: 'package-internet-visible-on-confirm'
 											}
-											css={{
-												padding: spacing.sm,
-												borderRadius: radius.md,
-												border: `1px solid ${colors.border}`,
-												backgroundColor: colors.surface,
-												color: colors.text,
-											}}
 											onChange={(event) => {
 												if (
 													!(event.currentTarget instanceof HTMLInputElement)
@@ -503,7 +508,7 @@ export function AccountPackageOwnerDetails(props: {
 											Type {packageDetail.kodyId} to change who can see the
 											source
 										</span>
-										<input
+										<Input
 											value={confirmName}
 											placeholder={packageDetail.kodyId}
 											data-testid={
@@ -511,14 +516,7 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-make-public-confirm'
 													: 'package-make-private-confirm'
 											}
-											css={{
-												padding: spacing.sm,
-												borderRadius: radius.md,
-												border: `1px solid ${colors.border}`,
-												backgroundColor: colors.surface,
-												color: colors.text,
-												minWidth: 0,
-											}}
+											css={{ minWidth: 0 }}
 											onChange={(event) => {
 												if (
 													!(event.currentTarget instanceof HTMLInputElement)
@@ -737,8 +735,7 @@ function PackageOwnerDataWarning(props: {
 				</p>
 			)}
 			<label css={{ display: 'flex', gap: spacing.xs, alignItems: 'start' }}>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={props.confirmed}
 					data-testid="package-internet-visible-owner-data-confirm"
 					onChange={(event) => {

@@ -1,3 +1,4 @@
+import { executeModuleTarget } from '@kody-internal/shared/execute-module.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import { normalizePackageWorkspacePath } from '#worker/package-registry/manifest.ts'
 import {
@@ -146,6 +147,7 @@ async function createWorkerBundle(input: {
 	return await createWorker({
 		files: input.files,
 		entryPoint: input.entryPoint,
+		target: executeModuleTarget,
 		...createPackageAppJsxBundleOptions(snapshotFiles),
 		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: [
 			kodyRuntimeExternalsPlugin,
@@ -246,7 +248,7 @@ export async function buildKodyModuleBundle(input: {
 		entryPoint,
 		hasDefaultExport:
 			typeof entrySource !== 'string' ||
-			moduleSourceDeclaresDefaultExport(entrySource) !== false,
+			(await moduleSourceDeclaresDefaultExport(entrySource)) !== false,
 	})
 	const assembleBundle = async (): Promise<RuntimeBundle> => {
 		const bundle = await createWorkerBundle({
@@ -262,7 +264,7 @@ export async function buildKodyModuleBundle(input: {
 				bundle.modules as WorkerLoaderModules,
 			),
 		}
-		assertBundleHasNoUnresolvedBareImports({
+		await assertBundleHasNoUnresolvedBareImports({
 			modules,
 			bundleLabel:
 				input.bundleContext === 'ad-hoc-execute'
@@ -363,7 +365,7 @@ export async function buildKodyImportableModuleBundle(input: {
 			bundle.modules as WorkerLoaderModules,
 		),
 	}
-	assertBundleHasNoUnresolvedBareImports({
+	await assertBundleHasNoUnresolvedBareImports({
 		modules,
 		bundleLabel: `Saved package import "${normalizePackageWorkspacePath(input.entryPoint)}" bundle`,
 		sourceFiles: input.sourceFiles,
@@ -436,7 +438,7 @@ export async function buildKodyAppBundle(input: {
 				bundle.modules as WorkerLoaderModules,
 			),
 		}
-		assertBundleHasNoUnresolvedBareImports({
+		await assertBundleHasNoUnresolvedBareImports({
 			modules,
 			bundleLabel: `Saved package app "${normalizePackageWorkspacePath(input.entryPoint)}" bundle`,
 			sourceFiles: input.sourceFiles,

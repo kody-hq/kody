@@ -44,9 +44,9 @@ test('readPackageManifestSource accepts repo-root and source-root file maps', ()
 	).toBe(nested)
 })
 
-test('bundledPackageSecretMountReads names literal packageSecrets.get aliases', () => {
+test('bundledPackageSecretMountReads names literal packageSecrets.get aliases', async () => {
 	expect(
-		bundledPackageSecretMountReads({
+		await bundledPackageSecretMountReads({
 			'src/wake.ts': [
 				"import { packageSecrets } from 'kody:runtime'",
 				'export default async function wake() {',
@@ -56,7 +56,7 @@ test('bundledPackageSecretMountReads names literal packageSecrets.get aliases', 
 		}),
 	).toEqual({ aliases: ['wakeToken'], computed: false })
 	expect(
-		bundledPackageSecretMountReads({
+		await bundledPackageSecretMountReads({
 			'src/wake.ts': [
 				"import { packageSecrets } from 'kody:runtime'",
 				'export default async function wake(alias: string) {',

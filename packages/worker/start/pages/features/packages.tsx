@@ -12,6 +12,8 @@ import {
 	type PackageSharing,
 	type PackageTab,
 } from './packages-scenes.tsx'
+import { Select } from '../../components/input.tsx'
+import { Checkbox } from '../../components/choice-controls.tsx'
 const examplePackageSource = 'README.md\nAGENTS.md\npackage.json\nsrc/brief.ts'
 const packageTabs = ['Intent', 'Source', 'Result'] as const
 type PackageTabLabel = (typeof packageTabs)[number]
@@ -167,8 +169,7 @@ export function PackagesFeature() {
 					</p>
 					<div className="pt-options">
 						<label>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={questions}
 								onChange={(event) => {
 									setQuestions(event.currentTarget.checked)
@@ -262,7 +263,7 @@ export function PackagesFeature() {
 					</div>
 					<div hidden={sharing === 'fork'}>
 						<label htmlFor="pt-access">Access level</label>
-						<select
+						<Select
 							id="pt-access"
 							value={access}
 							onChange={(event) => {
@@ -277,7 +278,7 @@ export function PackagesFeature() {
 							<option value="manage">
 								Manage: edit, publish, delete, and manage access
 							</option>
-						</select>
+						</Select>
 					</div>
 					<button
 						type="button"

@@ -92,8 +92,12 @@ export type PackageAppMount =
  * 3–32 chars; alphanumeric edges), because every user owns a `{username}.`
  * subdomain on the package-app domain. Also used to validate subdomain labels
  * from wildcard-routed hostnames, which can be arbitrary strings.
+ *
+ * `--` is banned so a per-app host label `{leaf}--{handle}` splits at exactly
+ * one place and never reads as a handle.
  */
-export const dnsSafeUsernamePattern = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/
+export const dnsSafeUsernamePattern =
+	/^(?![a-z0-9-]*--)[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/
 
 /**
  * Anchor-free source of {@link dnsSafeUsernamePattern}. Embed this fragment

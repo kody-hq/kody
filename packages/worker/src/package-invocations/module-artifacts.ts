@@ -502,7 +502,7 @@ async function rebuildModuleArtifact(
 	}
 	// Invocation trusts what publish accepted: no typecheck here, only the
 	// structural preconditions execution needs anyway.
-	const entrypointCheck = checkPublishedEntrypointsForRebuild({
+	const entrypointCheck = await checkPublishedEntrypointsForRebuild({
 		sourceFiles: packageSource.files,
 		entryPoints: [{ path: freshResolution.entryPoint }],
 	})

@@ -39,16 +39,18 @@ export function declaredPackageCapabilities(
 	return new Set(declaredCapabilitiesOf(manifest))
 }
 
-export function findCapabilityDeclarationGaps(input: {
+export async function findCapabilityDeclarationGaps(input: {
 	manifest: Pick<AuthoredPackageJson, 'kody'>
 	sourceFiles: Record<string, string>
-}): Array<CapabilityDeclarationFinding> {
+}): Promise<Array<CapabilityDeclarationFinding>> {
 	const declared = declaredPackageCapabilities(input.manifest)
 	const findings: Array<CapabilityDeclarationFinding> = []
-	for (const path of listScannableModulePaths(input.sourceFiles).sort()) {
+	for (const path of (
+		await listScannableModulePaths(input.sourceFiles)
+	).sort()) {
 		const source = input.sourceFiles[path]
 		if (typeof source !== 'string') continue
-		const parsed = parseModule(source)
+		const parsed = await parseModule(source)
 		if (!parsed) continue
 		const calls = collectModuleKodyCalls(parsed)
 		const undeclared = [...calls.names]
@@ -128,7 +130,10 @@ async function findClosureGaps(input: {
 		findings.push({ kind: 'closure-undeclared', names: closure.uncovered })
 	}
 	if (closure.unverifiable > 0) {
-		findings.push({ kind: 'closure-unverifiable', calls: closure.unverifiable })
+		findings.push({
+			kind: 'closure-unverifiable',
+			calls: closure.unverifiable,
+		})
 	}
 	if (closure.unresolvedImports > 0) {
 		findings.push({
@@ -167,7 +172,7 @@ export async function buildCapabilityDeclarationCheck(input: {
 	loadPackage?: ClosurePackageLoader
 	closureBudgetMs?: number
 }) {
-	const findings = findCapabilityDeclarationGaps(input)
+	const findings = await findCapabilityDeclarationGaps(input)
 	if (input.loadPackage) {
 		const budgetMs = input.closureBudgetMs ?? closureBudgetMs
 		const deadline = Date.now() + budgetMs

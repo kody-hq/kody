@@ -546,6 +546,8 @@ function __kodyErrorResponse(error) {
 	);
 }
 
+let __kodyDevBridgeInstalled = false;
+
 export default {
 	async fetch(request, env) {
 		const secret = env.${runSecretEnvVar};
@@ -555,7 +557,10 @@ export default {
 				{ status: 403, headers: { 'content-type': 'text/plain; charset=utf-8' } },
 			);
 		}
-		__kodyInstallLocalBridge({
+		// Installed once per workerd; a second install is refused.
+		if (!__kodyDevBridgeInstalled) {
+			__kodyDevBridgeInstalled = true;
+			__kodyInstallLocalBridge({
 			call: async (path, args) => {
 				const response = await env.KODY_BRIDGE.fetch('http://kody-bridge/call', {
 					method: 'POST',
@@ -576,6 +581,7 @@ export default {
 				});
 			},
 		});
+		}
 		// Public URL is set only by the Node proxy from the trusted listen
 		// origin (never from client Host). Rebuild request.url so CSRF checks
 		// comparing Origin to new URL(request.url).origin see the dev origin.

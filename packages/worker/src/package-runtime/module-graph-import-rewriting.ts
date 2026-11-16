@@ -218,7 +218,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		encodePathKeyAsPath(exportName),
 	)
 	for (const [modulePath, module] of Object.entries(
-		materializeDependencyArtifactModules({
+		await materializeDependencyArtifactModules({
 			artifactPrefix,
 			modules: artifact.artifact.modules,
 			linkedRoot: artifactPrefix,
@@ -369,7 +369,7 @@ async function materializePackageSourceIntoFiles(
 	if (loaded.sourceMaterialized === true) return
 	for (const [filePath, content] of Object.entries(loaded.files)) {
 		const normalizedPath = normalizePackageWorkspacePath(filePath)
-		assertNoKodyVirtualModuleReference(normalizedPath, content)
+		await assertNoKodyVirtualModuleReference(normalizedPath, content)
 		const targetPath = joinPath(loaded.prefix, normalizedPath)
 		state.moduleRoles.set(targetPath, 'package-source')
 		if (isTypeDeclarationFilePath(normalizedPath)) {
@@ -461,7 +461,7 @@ async function ensurePackageProxy(
 					runtimeModulePath,
 				),
 				packageId: calleePackageId,
-				exportNames: collectModuleExportNames({
+				exportNames: await collectModuleExportNames({
 					files: state.files,
 					modulePath: absoluteExportPath,
 				}),
@@ -571,10 +571,12 @@ function jsonValueTargetsKodyVirtualModule(value: unknown): boolean {
  * inspected precisely (unparseable scripts, JSONC with comments, TOML) fail
  * closed.
  */
-function fileReachesKodyVirtualModule(filePath: string, content: string) {
+async function fileReachesKodyVirtualModule(filePath: string, content: string) {
 	if (!textMentionsKodyVirtualModule(content)) return false
 	if (bundlerScriptSourcePathPattern.test(filePath)) {
-		const specifiers = collectBundlerResolvedSpecifiers(content, { filePath })
+		const specifiers = await collectBundlerResolvedSpecifiers(content, {
+			filePath,
+		})
 		return (
 			specifiers == null || specifiers.some(specifierTargetsKodyVirtualModule)
 		)
@@ -595,12 +597,12 @@ function fileReachesKodyVirtualModule(filePath: string, content: string) {
  * `exports` / `imports` / `main` and wrangler `main` / `alias` could
  * otherwise point there).
  */
-export function assertNoKodyVirtualModuleReference(
+export async function assertNoKodyVirtualModuleReference(
 	filePath: string,
 	content: string,
 ) {
 	if (isTypeDeclarationFilePath(filePath)) return
-	if (!fileReachesKodyVirtualModule(filePath, content)) return
+	if (!(await fileReachesKodyVirtualModule(filePath, content))) return
 	const label = bundlerScriptSourcePathPattern.test(filePath)
 		? `Package source "${filePath}"`
 		: `Package config "${filePath}"`
@@ -624,7 +626,7 @@ async function rewriteKodyImports(input: {
 	// modules keep their own binding.
 	let boundFetchPrefix = ''
 	if (input.sourcePackageId && /\bfetch\b/.test(input.source)) {
-		const collisions = collectTopLevelFetchCollisionNames(input.source)
+		const collisions = await collectTopLevelFetchCollisionNames(input.source)
 		if (collisions && !collisions.has('fetch')) {
 			const facadePath = ensurePackageRuntimeModule(
 				input.state,
@@ -638,7 +640,7 @@ async function rewriteKodyImports(input: {
 	const {
 		literalImports: importNodes,
 		dynamicImportExpressions: dynamicImportNodes,
-	} = collectModuleImportNodesCached(
+	} = await collectModuleImportNodesCached(
 		input.state.importNodesCache,
 		input.source,
 		{
@@ -798,7 +800,7 @@ export async function prepareKodyGraphFiles(input: {
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
 	const importNodesCache: ModuleImportNodesCache = new Map()
-	const reachableRootFiles = collectReachableSourceFilePaths({
+	const reachableRootFiles = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
@@ -828,7 +830,7 @@ export async function prepareKodyGraphFiles(input: {
 			isBundlerRootDependencyPath(normalizedSourcePath) ||
 			reachableRootFiles.has(normalizedSourcePath)
 		) {
-			assertNoKodyVirtualModuleReference(normalizedSourcePath, content)
+			await assertNoKodyVirtualModuleReference(normalizedSourcePath, content)
 		}
 		if (isBundlerRootConfigPath(normalizedSourcePath)) {
 			files[normalizedSourcePath] = content
@@ -873,7 +875,7 @@ export async function prepareKodyGraphFiles(input: {
 		})
 	}
 	return {
-		files: refreshKodyRuntimeModules(files) as Record<string, string>,
+		files: (await refreshKodyRuntimeModules(files)) as Record<string, string>,
 		moduleRoles,
 		packages: state.packages,
 		publishedArtifactDependencies: state.publishedArtifactDependencies,

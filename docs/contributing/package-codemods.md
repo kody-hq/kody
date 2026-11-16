@@ -638,6 +638,36 @@ in step results). Read a run with `adminPackageAppCapabilityMigrationReport`
 capability), and unresolved apps by package id with counts. Pass `packageId` to
 read one app's private list for its owner.
 
+### `0019-detect-package-app-host-migration`
+
+Scan-only inventory for the move of package apps from
+`https://{user}.kody.run/{leaf}` to `https://{leaf}--{user}.kody.run` (one host
+per app, mounted at `/`). Only looks at packages with `kody.app`; `transform`
+never changes a file. `applyMode: 'published-only'`, so an app whose default
+branch has moved past its published commit is scanned on its published tree
+instead of being `skipped_drift`. Test files, `node_modules`, and lockfiles are
+skipped. Each finding is a file path plus one fixed message naming the pattern:
+
+- `old app url`: an absolute `{user}.kody.run/{leaf}` or `/packages/{leaf}` URL
+  for this app (also reported in docs and READMEs).
+- `hardcoded mount path`: a string literal that starts with `/{leaf}`.
+- `build-time base`: a build config, `base`, or router basename set to
+  `/{leaf}`.
+- `list-unsubscribe`, `oauth form_post`, `oauth redirect uri`,
+  `webhook receiver`: addresses that outside services may hold.
+- `localStorage`, `sessionStorage`, `indexedDB`, `cache storage`,
+  `service worker`: browser data scoped to the old origin.
+- `cookie path`, `cookie domain`: cookie scope tied to the mount path or host.
+- `origin check`: an origin or hostname comparison in a file that names a
+  `kody.run` host.
+- `web app manifest`: a `start_url` or `scope`, or a service worker registered
+  with a scope.
+
+The matchers are text patterns and deliberately broad: a finding means "review
+this file", not "this is broken". Count apps per pattern with
+`adminPackageCodemodScan` (`codemodId`
+`0019-detect-package-app-host-migration`).
+
 ## Engine
 
 The engine entry point is `runPackageCodemodStep` in

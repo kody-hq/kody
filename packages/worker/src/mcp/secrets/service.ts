@@ -327,23 +327,37 @@ function assertNotSealedTokenValue(value: string) {
 	}
 }
 
+function secretNotFoundError(input: {
+	name: string
+	scope: SecretScope
+	hint?: string
+}) {
+	return new McpCallerError(
+		`Secret "${input.name}" not found in ${input.scope} scope. ${
+			input.hint ?? 'Check the secret name and scope.'
+		}`,
+	)
+}
+
 export async function saveSecret(
 	input: SaveSecretInput,
 ): Promise<SecretMetadata> {
 	const name = input.name.trim()
 	if (!name) {
-		throw new Error('Secret name is required.')
+		throw new McpCallerError('Secret name is required.')
 	}
 	assertSecretNameAllowed(name)
 	const value = input.value.trim()
 	if (!value) {
-		throw new Error('Secret value is required.')
+		throw new McpCallerError('Secret value is required.')
 	}
 	assertNotSealedTokenValue(value)
 	const description = input.description?.trim() ?? ''
 	const credential = input.credential ?? null
 	if (credential && input.scope !== 'user') {
-		throw new Error('Credential fields apply only to user-scope secrets.')
+		throw new McpCallerError(
+			'Credential fields apply only to user-scope secrets.',
+		)
 	}
 	const bucket = await getOrCreateSecretBucket({
 		db: input.env.APP_DB,
@@ -778,7 +792,7 @@ export async function updateUserSecretForPackage(input: {
 		waitUntil: input.waitUntil,
 	})
 	if (!saved) {
-		throw new Error(
+		throw new McpCallerError(
 			`User secret "${input.name.trim()}" no longer exists or is not approved for package "${input.packageId.trim()}".`,
 		)
 	}
@@ -832,7 +846,7 @@ export async function setSecretsAtomically(input: {
 		}
 		for (const secret of input.secrets) {
 			const name = secret.name.trim()
-			if (!name) throw new Error('Secret name is required.')
+			if (!name) throw new McpCallerError('Secret name is required.')
 			// findSecret (not resolveSecret): a disconnected row still exists and
 			// reconnect must fill that same credential, not look like a create.
 			const existing = await findSecret({
@@ -906,7 +920,12 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		scope: 'user',
 		storageContext: null,
 	})
-	if (!bucket) throw new Error('User secret not found.')
+	if (!bucket) {
+		throw secretNotFoundError({
+			name: input.secrets[0]!.name.trim(),
+			scope: 'user',
+		})
+	}
 
 	const now = new Date().toISOString()
 	const prepared: Array<{
@@ -920,17 +939,17 @@ export async function updateUserSecretsForPackageAtomically(input: {
 
 	for (const secret of input.secrets) {
 		const name = secret.name.trim()
-		if (!name) throw new Error('Secret name is required.')
+		if (!name) throw new McpCallerError('Secret name is required.')
 		assertSecretNameAllowed(name)
 		const value = secret.value.trim()
-		if (!value) throw new Error('Secret value is required.')
+		if (!value) throw new McpCallerError('Secret value is required.')
 		assertNotSealedTokenValue(value)
 		const existingEntry = await getSecretEntry({
 			db: input.env.APP_DB,
 			bucketId: bucket.id,
 			name,
 		})
-		if (!existingEntry) throw new Error('User secret not found.')
+		if (!existingEntry) throw secretNotFoundError({ name, scope: 'user' })
 		assertValueFitsStoredKind(existingEntry, value)
 		const description = secret.description?.trim() ?? existingEntry.description
 		const encryptedValue = await encryptSecretValue(
@@ -996,7 +1015,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 		const message = error instanceof Error ? error.message : String(error)
 		if (message.includes('package cannot mutate one or more secrets')) {
 			const names = prepared.map((entry) => entry.name).join(', ')
-			throw new Error(
+			throw new McpCallerError(
 				`User secret(s) "${names}" no longer exist or are not approved for package "${packageId}".`,
 			)
 		}
@@ -1119,10 +1138,10 @@ async function saveSecretsAtomically(input: {
 
 	for (const secret of input.secrets) {
 		const name = secret.name.trim()
-		if (!name) throw new Error('Secret name is required.')
+		if (!name) throw new McpCallerError('Secret name is required.')
 		assertSecretNameAllowed(name)
 		const value = secret.value.trim()
-		if (!value) throw new Error('Secret value is required.')
+		if (!value) throw new McpCallerError('Secret value is required.')
 		assertNotSealedTokenValue(value)
 		const description = secret.description?.trim() ?? ''
 		const existingEntry = await getSecretEntry({
@@ -1780,7 +1799,7 @@ export async function renameSecret(input: {
 	const fromName = input.fromName.trim()
 	const toName = input.toName.trim()
 	if (!fromName || !toName) {
-		throw new Error('Secret name is required.')
+		throw new McpCallerError('Secret name is required.')
 	}
 	assertSecretNameAllowed(fromName)
 	assertSecretNameAllowed(toName)
@@ -1790,16 +1809,15 @@ export async function renameSecret(input: {
 		scope: input.scope,
 		storageContext: input.storageContext ?? null,
 	})
-	if (!bucket) {
-		throw new Error('Secret not found for this scope.')
-	}
-	const existing = await getSecretEntry({
-		db: input.env.APP_DB,
-		bucketId: bucket.id,
-		name: fromName,
-	})
-	if (!existing) {
-		throw new Error('Secret not found for this scope.')
+	const existing = bucket
+		? await getSecretEntry({
+				db: input.env.APP_DB,
+				bucketId: bucket.id,
+				name: fromName,
+			})
+		: null
+	if (!bucket || !existing) {
+		throw secretNotFoundError({ name: fromName, scope: input.scope })
 	}
 	if (fromName === toName) {
 		return toSecretMetadata({
@@ -1825,7 +1843,9 @@ export async function renameSecret(input: {
 		name: toName,
 	})
 	if (taken) {
-		throw new Error('A secret with that name and scope already exists.')
+		throw new McpCallerError(
+			`A secret named "${toName}" already exists in ${input.scope} scope.`,
+		)
 	}
 	const now = new Date().toISOString()
 	const renamed = await renameSecretEntry({
@@ -1836,7 +1856,7 @@ export async function renameSecret(input: {
 		updatedAt: now,
 	})
 	if (!renamed) {
-		throw new Error('Secret not found for this scope.')
+		throw new Error('Secret rename updated no row after the source was found.')
 	}
 	const updated = await getSecretEntry({
 		db: input.env.APP_DB,
@@ -1889,7 +1909,7 @@ export async function readSecretMetadata(
 		? await getSecretEntry({ db: input.env.APP_DB, bucketId: bucket.id, name })
 		: null
 	if (!bucket || !entry) {
-		throw new Error('Secret not found for this scope.')
+		throw secretNotFoundError({ name, scope: input.scope })
 	}
 	return toSecretMetadata({
 		name,
@@ -1912,30 +1932,9 @@ export async function updateSecret(
 ): Promise<SecretMetadata> {
 	const name = input.name.trim()
 	if (!name) {
-		throw new Error('Secret name is required.')
+		throw new McpCallerError('Secret name is required.')
 	}
 	assertSecretNameAllowed(name)
-	const bucket = await getExistingBucketForScope({
-		db: input.env.APP_DB,
-		userId: input.userId,
-		scope: input.scope,
-		storageContext: input.storageContext ?? null,
-	})
-	if (!bucket) {
-		throw new Error('Secret not found for this scope.')
-	}
-	const existingEntry = await getSecretEntry({
-		db: input.env.APP_DB,
-		bucketId: bucket.id,
-		name,
-	})
-	if (!existingEntry) {
-		throw new Error('Secret not found for this scope.')
-	}
-	const nextDescription =
-		input.description == null
-			? existingEntry.description
-			: input.description.trim()
 	const hasValueUpdate = input.value != null
 	const nextValue = input.value?.trim() ?? null
 	if (
@@ -1943,13 +1942,33 @@ export async function updateSecret(
 		input.description == null &&
 		input.expiresAt === undefined
 	) {
-		throw new Error(
+		throw new McpCallerError(
 			'Provide a new secret value, description, or expires_at to update.',
 		)
 	}
 	if (hasValueUpdate && !nextValue) {
-		throw new Error('Secret value must not be empty.')
+		throw new McpCallerError('Secret value must not be empty.')
 	}
+	const bucket = await getExistingBucketForScope({
+		db: input.env.APP_DB,
+		userId: input.userId,
+		scope: input.scope,
+		storageContext: input.storageContext ?? null,
+	})
+	const existingEntry = bucket
+		? await getSecretEntry({ db: input.env.APP_DB, bucketId: bucket.id, name })
+		: null
+	if (!bucket || !existingEntry) {
+		throw secretNotFoundError({
+			name,
+			scope: input.scope,
+			hint: 'Updating without a value only changes the description or expires_at of an existing secret; pass a non-empty `value` to create it. Check the scope, or call secretList to see saved secrets.',
+		})
+	}
+	const nextDescription =
+		input.description == null
+			? existingEntry.description
+			: input.description.trim()
 	if (nextValue) assertValueFitsStoredKind(existingEntry, nextValue)
 	let previousPlaintext: string | null = null
 	if (hasValueUpdate) {
@@ -2269,7 +2288,7 @@ export async function setSecretsAllowedHosts(input: {
 	for (const update of input.updates) {
 		const name = update.name.trim()
 		if (!name) {
-			throw new Error('Secret name is required.')
+			throw new McpCallerError('Secret name is required.')
 		}
 		assertSecretNameAllowed(name)
 		namedUpdates.push({ name, allowedHosts: update.allowedHosts })
@@ -2282,7 +2301,10 @@ export async function setSecretsAllowedHosts(input: {
 		storageContext: input.storageContext ?? null,
 	})
 	if (!bucket) {
-		throw new Error('Secret not found for this scope.')
+		throw secretNotFoundError({
+			name: namedUpdates[0]!.name,
+			scope: input.scope,
+		})
 	}
 
 	const entries = await Promise.all(
@@ -2297,7 +2319,7 @@ export async function setSecretsAllowedHosts(input: {
 	const prepared = namedUpdates.map((update, index) => {
 		const existingEntry = entries[index]
 		if (!existingEntry) {
-			throw new Error('Secret not found for this scope.')
+			throw secretNotFoundError({ name: update.name, scope: input.scope })
 		}
 		return { ...update, existingEntry }
 	})
@@ -2381,7 +2403,7 @@ export async function setSecretAllowedHosts(input: {
 		audit: input.audit,
 	})
 	if (!updated) {
-		throw new Error('Secret not found for this scope.')
+		throw new Error('Batch secret update returned no row for its one update.')
 	}
 	return updated
 }
@@ -2403,7 +2425,9 @@ export async function setSecretsAllowedPackages(input: {
 	if (input.updates.length === 0) return []
 	if (input.scope !== 'user') {
 		if (input.updates.some((update) => update.allowedPackages.length > 0)) {
-			throw new Error('Package approvals are only supported for user secrets.')
+			throw new McpCallerError(
+				'Package approvals are only supported for user secrets.',
+			)
 		}
 	}
 
@@ -2414,7 +2438,7 @@ export async function setSecretsAllowedPackages(input: {
 	for (const update of input.updates) {
 		const name = update.name.trim()
 		if (!name) {
-			throw new Error('Secret name is required.')
+			throw new McpCallerError('Secret name is required.')
 		}
 		assertSecretNameAllowed(name)
 		namedUpdates.push({ name, allowedPackages: update.allowedPackages })
@@ -2427,7 +2451,10 @@ export async function setSecretsAllowedPackages(input: {
 		storageContext: input.storageContext ?? null,
 	})
 	if (!bucket) {
-		throw new Error('Secret not found for this scope.')
+		throw secretNotFoundError({
+			name: namedUpdates[0]!.name,
+			scope: input.scope,
+		})
 	}
 
 	const entries = await Promise.all(
@@ -2442,7 +2469,7 @@ export async function setSecretsAllowedPackages(input: {
 	const prepared = namedUpdates.map((update, index) => {
 		const existingEntry = entries[index]
 		if (!existingEntry) {
-			throw new Error('Secret not found for this scope.')
+			throw secretNotFoundError({ name: update.name, scope: input.scope })
 		}
 		return { ...update, existingEntry }
 	})
@@ -2526,7 +2553,7 @@ export async function setSecretAllowedPackages(input: {
 		audit: input.audit,
 	})
 	if (!updated) {
-		throw new Error('Secret not found for this scope.')
+		throw new Error('Batch secret update returned no row for its one update.')
 	}
 	return updated
 }
@@ -2553,14 +2580,14 @@ export async function inspectUserSecretPackageGrant(input: {
 }): Promise<UserSecretPackageGrantState> {
 	const packageId = input.packageId.trim()
 	if (!packageId) {
-		throw new Error('Package id is required.')
+		throw new McpCallerError('Package id is required.')
 	}
 	const savedPackage = await getSavedPackageById(input.env.APP_DB, {
 		userId: input.userId,
 		packageId,
 	})
 	if (!savedPackage) {
-		throw new Error('Saved package not found for this user.')
+		throw new McpCallerError('Saved package not found for this user.')
 	}
 	const bucket = await getExistingBucketForScope({
 		db: input.env.APP_DB,
@@ -2568,21 +2595,17 @@ export async function inspectUserSecretPackageGrant(input: {
 		scope: 'user',
 		storageContext: null,
 	})
-	if (!bucket) {
-		throw new Error('Secret not found for this scope.')
-	}
-	const existingEntry = await getSecretEntry({
-		db: input.env.APP_DB,
-		bucketId: bucket.id,
-		name: input.name.trim(),
-	})
-	if (!existingEntry) {
-		throw new Error('Secret not found for this scope.')
+	const name = input.name.trim()
+	const existingEntry = bucket
+		? await getSecretEntry({ db: input.env.APP_DB, bucketId: bucket.id, name })
+		: null
+	if (!bucket || !existingEntry) {
+		throw secretNotFoundError({ name, scope: 'user' })
 	}
 	const currentPackages = parseAllowedPackages(existingEntry.allowed_packages)
 	return {
 		secret: toSecretMetadata({
-			name: input.name.trim(),
+			name,
 			scope: 'user',
 			description: existingEntry.description,
 			packageId: null,

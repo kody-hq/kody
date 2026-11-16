@@ -53,6 +53,10 @@ import {
 } from '#worker/run-records/service.ts'
 import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
 import {
+	mergeRunPackages,
+	type ExecutionContextRunPackages,
+} from './run-packages.ts'
+import {
 	type ExecuteRequirement,
 	grantRefusal,
 	markQueuedAttemptExpired,
@@ -121,6 +125,12 @@ export type ExecutionContextLease = {
 	 * callbacks; the machine never supplies or changes it.
 	 */
 	credentials?: CredentialCallMapJson | null
+	/**
+	 * Saved packages Kody served to this run through the package graph, held
+	 * here because code on the machine cannot be trusted to say which package
+	 * it is. Absent means the run loaded none (ad hoc code).
+	 */
+	packages?: ExecutionContextRunPackages
 }
 
 export type DispatchOutcome =
@@ -194,6 +204,12 @@ type SocketAttachment = {
 	apiOrigin?: string
 	/** The daemon answers `control.request` (it advertised `daemon-control`). */
 	control?: boolean
+	/**
+	 * A run offer went unanswered at this time. The socket reads as offline
+	 * until a heartbeat newer than this, so a sleeping machine costs one
+	 * accept wait and later runs fall through to the next context at once.
+	 */
+	unansweredAt?: number
 }
 
 /** A server-side pause, as the daemon and status views see it. */
@@ -982,7 +998,22 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const lastProbe = this.ctx.getWebSocketAutoResponseTimestamp(ws)
 		const freshAt = lastProbe ? lastProbe.getTime() : attachment.connectedAt
 		if (Date.now() - freshAt > ecpLivenessFreshMs) return null
+		if (
+			attachment.unansweredAt !== undefined &&
+			freshAt <= attachment.unansweredAt
+		) {
+			return null
+		}
 		return { ws, attachment, heardAt: freshAt }
+	}
+
+	#markUnanswered(ws: WebSocket) {
+		try {
+			const attachment = ws.deserializeAttachment() as SocketAttachment
+			ws.serializeAttachment({ ...attachment, unansweredAt: Date.now() })
+		} catch {
+			// The socket closed meanwhile; it is offline either way.
+		}
 	}
 
 	/**
@@ -1172,6 +1203,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			this.#setRunState(lease.runId, timedOut ? 'aborted' : 'rejected')
 			record(timedOut ? 'timeout' : 'rejected')
 			if (timedOut) {
+				this.#markUnanswered(live.ws)
 				await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			}
 			return {
@@ -1246,10 +1278,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.expiresAt,
 			Date.now(),
 		)
-		await this.#ensureAlarm(input.expiresAt)
+		await this.#ensureAlarm(this.#queueRecheckAt(Date.now(), input.expiresAt))
 		// It may have come back between the offline probe and now.
 		if (this.#liveSocket()) this.ctx.waitUntil(this.#drainQueue())
 		return { queued: true }
+	}
+
+	/**
+	 * A connected but silent daemon comes back through heartbeats, which the
+	 * runtime answers without waking this object, so queued runs recheck it.
+	 */
+	#queueRecheckAt(now: number, expiresAt: number) {
+		return this.#socket() ? Math.min(expiresAt, now + queuedRetryMs) : expiresAt
 	}
 
 	/** Queued runs waiting for this context, oldest first. */
@@ -2276,6 +2316,27 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Add the packages a package graph served to a committed run's lease.
+	 * Later graphs for the same run only add.
+	 */
+	async recordRunPackages(input: {
+		runId: string
+		entryPackageIds: Array<string>
+		packageIds: Array<string>
+	}): Promise<{ ok: boolean }> {
+		const run = this.#run(input.runId)
+		if (!run || run.state !== 'committed') return { ok: false }
+		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
+		const packages = mergeRunPackages(lease.packages, input)
+		this.ctx.storage.sql.exec(
+			`UPDATE runs SET lease_json = ? WHERE run_id = ? AND state = 'committed'`,
+			JSON.stringify({ ...lease, packages }),
+			input.runId,
+		)
+		return { ok: true }
+	}
+
 	// ---------- history ----------
 
 	/** Rows of this context. `viewerUserId` limits to that requester; `orgId` to runs bound to it. */
@@ -2535,7 +2596,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.exec<{ at: number | null }>(`SELECT MIN(expires_at) AS at FROM queued`)
 			.one().at
 		if (queuedNext !== null)
-			await this.#ensureAlarm(Math.max(now + 1000, queuedNext))
+			await this.#ensureAlarm(
+				Math.max(now + 1000, this.#queueRecheckAt(now, queuedNext)),
+			)
 		const next = this.ctx.storage.sql
 			.exec<{ deadline: number | null }>(
 				`SELECT MIN(deadline) AS deadline FROM runs WHERE state = 'committed'`,

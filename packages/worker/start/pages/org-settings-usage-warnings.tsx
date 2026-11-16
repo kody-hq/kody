@@ -13,6 +13,7 @@ import { orgUsagePath } from '#universal/org-pages.ts'
 import {
 	primaryLinkCss,
 	visuallyHiddenCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
@@ -22,7 +23,6 @@ import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldNoteCss,
 } from './account-management-components.tsx'
 import {
 	checkboxCss,
@@ -33,6 +33,7 @@ import {
 	formCss,
 	mutedCopyCss,
 } from './org-settings-member-creation.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const usageWarningsLabel = 'Send usage warnings'
 const usageWarningsDescription =
@@ -110,8 +111,7 @@ export function OrgSettingsUsageWarnings({
 					<fieldset css={fieldsetCss} disabled={mutation.isPending}>
 						<legend css={visuallyHiddenCss}>Usage warnings</legend>
 						<label css={checkRowCss}>
-							<input
-								type="checkbox"
+							<Checkbox
 								name="usageWarnings"
 								data-testid="org-settings-usage-warnings-toggle"
 								checked={draft}
@@ -124,13 +124,13 @@ export function OrgSettingsUsageWarnings({
 							/>
 							<span css={checkTextCss}>
 								<span css={checkLabelCss}>{usageWarningsLabel}</span>
-								<span css={accountFieldNoteCss}>
+								<span css={fieldDescriptionCss}>
 									{usageWarningsDescription}
 								</span>
 							</span>
 						</label>
 					</fieldset>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						Current usage is always on {usageLink}. Agents can change this with{' '}
 						<code>orgUpdate</code> (<code>usage_warnings</code>).
 					</p>

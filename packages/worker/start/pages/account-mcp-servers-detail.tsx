@@ -30,6 +30,7 @@ import {
 	fieldCss,
 	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 
 function McpServerUsageForm(props: {
 	server: McpServerListItem
@@ -67,8 +68,7 @@ function McpServerUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`mcp-usage-mode-${server.id}`}
 					checked={draft.usageMode === 'any'}
 					disabled={saving}
@@ -90,8 +90,7 @@ function McpServerUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`mcp-usage-mode-${server.id}`}
 					checked={draft.usageMode === 'packages'}
 					disabled={saving}
@@ -124,8 +123,7 @@ function McpServerUsageForm(props: {
 										fontSize: typography.fontSize.sm,
 									}}
 								>
-									<input
-										type="checkbox"
+									<Checkbox
 										checked={checked}
 										disabled={saving}
 										onChange={() =>

@@ -109,6 +109,31 @@ test('deleting a revoked context removes it and every dependent row', async () =
 	})
 })
 
+test('deleting a context removes its machine capabilities and their grants, and leaves other machines alone', async () => {
+	const { sqlite, caller, count } = setup()
+	sqlite.exec(`
+		INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at)
+			VALUES ('mc_old', 'ec_old', 'org_acme', 'user_cole', 'command', 'kdocker', '2026-11-15', '2026-11-15'),
+			       ('mc_live', 'ec_live', 'org_acme', 'user_cole', 'command', 'kdocker', '2026-11-15', '2026-11-15');
+		INSERT INTO orgs (id, slug, display_name, access_epoch, created_at, updated_at) VALUES ('org_team', 'team', 'Team', 4, 'now', 'now');
+		INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at)
+			VALUES ('g_old', 'org_team', 'machine_capability', 'mc_old', 'user', 'user_kent', 'use', 'user_cole', '2026-11-15', '2026-11-15'),
+			       ('g_live', 'org_acme', 'machine_capability', 'mc_live', 'user', 'user_kent', 'use', 'user_cole', '2026-11-15', '2026-11-15');
+	`)
+	await deleteContext(caller, 'ec_old')
+	expect(
+		sqlite.prepare(`SELECT id FROM machine_capabilities ORDER BY id`).all(),
+	).toEqual([{ id: 'mc_live' }])
+	expect(
+		sqlite
+			.prepare(`SELECT id FROM grants WHERE deleted_at IS NULL ORDER BY id`)
+			.all(),
+	).toEqual([{ id: 'g_live' }])
+	expect(
+		count(`SELECT access_epoch AS n FROM orgs WHERE id = 'org_team'`),
+	).toBe(5)
+})
+
 test('a run that ran on a deleted context still renders its machine', () => {
 	const run = {
 		runId: 'run_1',

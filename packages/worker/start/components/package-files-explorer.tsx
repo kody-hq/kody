@@ -70,6 +70,7 @@ import {
 	packageDetailPageCss,
 	proseCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from './input.tsx'
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`
@@ -383,7 +384,7 @@ function PackageFilesExplorerContent({
 								<h2 css={treeHeadingCss}>Files</h2>
 								<div css={filterFieldCss}>
 									<span css={filterIconCss}>{searchIcon()}</span>
-									<input
+									<Input
 										type="text"
 										role="searchbox"
 										inputMode="search"
@@ -978,18 +979,6 @@ const filterInputCss = {
 	minWidth: 0,
 	height: '2.25rem',
 	padding: `0 ${spacing.sm} 0 1.875rem`,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.sm,
-	backgroundColor: colors.background,
-	color: colors.text,
-	fontFamily: typography.fontFamily,
-	fontSize: typography.fontSize.sm,
-	boxSizing: 'border-box' as const,
-	'&:focus-visible': {
-		outline: `2px solid ${colors.primary}`,
-		outlineOffset: '-1px',
-		borderColor: 'transparent',
-	},
 } satisfies CSSObject
 
 const treeScrollCss = {

@@ -199,6 +199,11 @@ export type EcpPublishBuildSource = {
  * when its daemon does not advertise it (older daemons mount them for all).
  */
 export const ecpHostOperatorOnlyFeature = 'host-operator-only'
+/**
+ * The daemon transpiles execute code as TypeScript, like Kody cloud. Older
+ * daemons run it as plain JavaScript, so TypeScript skips them.
+ */
+export const ecpTypeScriptSourceFeature = 'typescript-source'
 
 export type EcpRunRequestBody = {
 	runId: string

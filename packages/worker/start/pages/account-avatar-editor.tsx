@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useActor } from '@xstate/react'
@@ -38,7 +39,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { accountFieldNoteCss } from './account-management-components.tsx'
 const previewMaxDimension = 1600
 const zoomStep = 1.15
 const panStep = 16
@@ -423,13 +423,13 @@ export function AccountAvatarEditor({
 					<h3 id="avatar-editor-title" css={editorTitleCss}>
 						Crop your avatar
 					</h3>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						Drag to reposition. Pinch, scroll, or use the slider to zoom. The
 						circle is how your avatar will look.
 					</p>
 				</div>
 				{status === 'decoding' ? (
-					<p css={accountFieldNoteCss}>Reading photo…</p>
+					<p css={fieldDescriptionCss}>Reading photo…</p>
 				) : null}
 				{status === 'ready' && previewUrl ? (
 					<div

@@ -13,8 +13,8 @@ function other(
 	return { type: 'other', context, key, callee }
 }
 
-function placementsByName(source: string) {
-	const result = scan(source)
+async function placementsByName(source: string) {
+	const result = await scan(source)
 	const byName: Record<string, Array<unknown>> = {}
 	for (const ref of result.references) {
 		;(byName[ref.name] ??= []).push(ref.placement)
@@ -22,15 +22,15 @@ function placementsByName(source: string) {
 	return byName
 }
 
-function scan(
+async function scan(
 	source: string,
 	slots?: Parameters<typeof scanPackageCredentials>[0]['slots'],
 ) {
-	return scanPackageCredentials({ files: { 'index.ts': source }, slots })
+	return await scanPackageCredentials({ files: { 'index.ts': source }, slots })
 }
 
-test('angle-bracket example vault references are not counted as placeholders', () => {
-	const result = scan(`
+test('angle-bracket example vault references are not counted as placeholders', async () => {
+	const result = await scan(`
 		export function status() {
 			return { example: '{{secret/bwvault:i/<item-uuid>/<field>}}' }
 		}
@@ -40,8 +40,8 @@ test('angle-bracket example vault references are not counted as placeholders', (
 	expect(result.vaultPlacements).toEqual([])
 })
 
-test('concrete vault refs in status display fields are not credential-use placements', () => {
-	const result = scan(`
+test('concrete vault refs in status display fields are not credential-use placements', async () => {
+	const result = await scan(`
 		export function status() {
 			return {
 				example: '{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
@@ -55,8 +55,8 @@ test('concrete vault refs in status display fields are not credential-use placem
 	).toBe(true)
 })
 
-test('URL-shaped and nested-header vault examples under status() stay display-only', () => {
-	const result = scan(`
+test('URL-shaped and nested-header vault examples under status() stay display-only', async () => {
+	const result = await scan(`
 		export function status() {
 			return {
 				example: 'https://api.example.com/v1?token={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
@@ -78,8 +78,8 @@ test('URL-shaped and nested-header vault examples under status() stay display-on
 	).toBe(true)
 })
 
-test('assigned status arrow returns stay display-only for vault examples', () => {
-	const result = scan(`
+test('assigned status arrow returns stay display-only for vault examples', async () => {
+	const result = await scan(`
 		export const status = () => ({
 			example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
 		})
@@ -89,15 +89,15 @@ test('assigned status arrow returns stay display-only for vault examples', () =>
 		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
 	).toBe(true)
 
-	const directReturn = scan(`
+	const directReturn = await scan(`
 		export const status = () =>
 			'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
 	`)
 	expect(directReturn.vaultPlacements).toEqual([other('display')])
 })
 
-test('interpolated status help text with a vault ref stays display-only', () => {
-	const result = scan(`
+test('interpolated status help text with a vault ref stays display-only', async () => {
+	const result = await scan(`
 		export function status(host) {
 			return \`curl https://\${host}/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}\`
 		}
@@ -105,7 +105,7 @@ test('interpolated status help text with a vault ref stays display-only', () => 
 	expect(result.vaultPlacements).toEqual([other('display')])
 })
 
-test('status returns the module itself reads or calls are not display-only', () => {
+test('status returns the module itself reads or calls are not display-only', async () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
 	for (const source of [
@@ -145,13 +145,13 @@ test('status returns the module itself reads or calls are not display-only', () 
 		}`,
 	]) {
 		expect(
-			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
+			(await scan(source)).vaultPlacements.some(isVaultCredentialUsePlacement),
 		).toBe(true)
 	}
 })
 
-test('calling an unrelated client.status() keeps the own status() return display-only', () => {
-	const result = scan(`
+test('calling an unrelated client.status() keeps the own status() return display-only', async () => {
+	const result = await scan(`
 		export function status() {
 			return { example: 'https://api.example.com/?t={{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}' }
 		}
@@ -160,7 +160,7 @@ test('calling an unrelated client.status() keeps the own status() return display
 	expect(result.vaultPlacements).toEqual([other('display', 'example')])
 })
 
-test('vault refs in separately bound objects that feed a request stay credential uses', () => {
+test('vault refs in separately bound objects that feed a request stay credential uses', async () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
 	for (const source of [
@@ -174,13 +174,13 @@ test('vault refs in separately bound objects that feed a request stay credential
 		export const run = (url) => fetch(url, { method: 'POST', body: JSON.stringify(body) })`,
 	]) {
 		expect(
-			scan(source).vaultPlacements.some(isVaultCredentialUsePlacement),
+			(await scan(source)).vaultPlacements.some(isVaultCredentialUsePlacement),
 		).toBe(true)
 	}
 })
 
-test('unnamed nested functions inside status do not inherit display-only returns', () => {
-	const result = scan(`
+test('unnamed nested functions inside status do not inherit display-only returns', async () => {
+	const result = await scan(`
 		export function status(build = () => ({
 			headers: {
 				Authorization: 'Bearer {{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}',
@@ -192,8 +192,8 @@ test('unnamed nested functions inside status do not inherit display-only returns
 	expect(result.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(true)
 })
 
-test('docs-named body fields and header helpers under fetch stay credential uses', () => {
-	const bodyField = scan(`
+test('docs-named body fields and header helpers under fetch stay credential uses', async () => {
+	const bodyField = await scan(`
 		await fetch('https://api.example.com/v1', {
 			method: 'POST',
 			body: JSON.stringify({
@@ -205,7 +205,7 @@ test('docs-named body fields and header helpers under fetch stay credential uses
 		true,
 	)
 
-	const headerHelper = scan(`
+	const headerHelper = await scan(`
 		function authHeaders() {
 			return {
 				headers: {
@@ -253,8 +253,8 @@ test('isVaultCredentialUsePlacement fails closed outside display sites', () => {
 	expect(display.every((p) => !isVaultCredentialUsePlacement(p))).toBe(true)
 })
 
-test('counts every placeholder by kind, including ones that match a declared slot', () => {
-	const result = scan(
+test('counts every placeholder by kind, including ones that match a declared slot', async () => {
+	const result = await scan(
 		`
 		const a = '{{secret:RESEND_API_KEY}}'
 		const b = '{{secret-basic:username=USER,password=PASS}}'
@@ -289,8 +289,8 @@ test('counts every placeholder by kind, including ones that match a declared slo
 	])
 })
 
-test('classifies header, query, path, body, and basic placements', () => {
-	const result = scan(`
+test('classifies header, query, path, body, and basic placements', async () => {
+	const result = await scan(`
 		const BASE = 'https://api.example.com'
 		await fetch(\`\${BASE}/v1/send\`, {
 			method: 'POST',
@@ -348,8 +348,8 @@ test('classifies header, query, path, body, and basic placements', () => {
 	})
 })
 
-test('keeps literal scopes, skips test files, and reads unparseable modules as text', () => {
-	const result = scanPackageCredentials({
+test('keeps literal scopes, skips test files, and reads unparseable modules as text', async () => {
+	const result = await scanPackageCredentials({
 		files: {
 			'src/index.ts': `const a = '{{secret:PKG_KEY|scope=package}}'`,
 			'src/index.test.ts': `const b = '{{secret:FIXTURE}}'`,
@@ -376,9 +376,9 @@ test('keeps literal scopes, skips test files, and reads unparseable modules as t
 	expect(result.placeholders.secret).toBe(2)
 })
 
-test('follows a bound placeholder to each read of the variable', () => {
+test('follows a bound placeholder to each read of the variable', async () => {
 	expect(
-		placementsByName(`
+		await placementsByName(`
 		const TOP_KEY = '{{secret:TOP_KEY}}'
 		export async function send(body) {
 			const token = '{{secret:LOCAL_KEY}}'
@@ -408,8 +408,8 @@ test('follows a bound placeholder to each read of the variable', () => {
 	})
 })
 
-test('classifies signing keys, SDK options, arguments, and login bodies', () => {
-	const result = scan(`
+test('classifies signing keys, SDK options, arguments, and login bodies', async () => {
+	const result = await scan(`
 		const key = await crypto.subtle.importKey(
 			'raw',
 			new TextEncoder().encode('{{secret:HMAC_KEY}}'),
@@ -450,9 +450,9 @@ test('classifies signing keys, SDK options, arguments, and login bodies', () => 
 	expect(result.jwtSignCalls).toBe(1)
 })
 
-test('a name resolves to its nearest declaration, so shadows and reassigned bindings are not followed', () => {
+test('a name resolves to its nearest declaration, so shadows and reassigned bindings are not followed', async () => {
 	expect(
-		placementsByName(`
+		await placementsByName(`
 		const key = '{{secret:OUTER_KEY}}'
 		let token = '{{secret:TOP_LET}}'
 		var hook = '{{secret:TOP_VAR}}'
@@ -489,9 +489,9 @@ test('a name resolves to its nearest declaration, so shadows and reassigned bind
 	})
 })
 
-test('a local alias resolves against the bindings visible where it is declared', () => {
+test('a local alias resolves against the bindings visible where it is declared', async () => {
 	expect(
-		placementsByName(`
+		await placementsByName(`
 		const key = 'not a credential'
 		function send() {
 			const k = '{{secret:LOCAL_ALIAS}}'
@@ -535,8 +535,8 @@ test('a local alias resolves against the bindings visible where it is declared',
 	})
 })
 
-test('reads of a binding add placements, not placeholder occurrences', () => {
-	const result = scan(`
+test('reads of a binding add placements, not placeholder occurrences', async () => {
+	const result = await scan(`
 		const key = '{{secret:KEY}}'
 		const vault = '{{secret/1password:op://v/i/f}}'
 		fetch('https://x.example.com', { headers: { Authorization: key } })
@@ -551,9 +551,9 @@ test('reads of a binding add placements, not placeholder occurrences', () => {
 	])
 })
 
-test('only the key argument of a signing call is signing key material', () => {
+test('only the key argument of a signing call is signing key material', async () => {
 	expect(
-		placementsByName(`
+		await placementsByName(`
 		jwt.sign({ aud: '{{secret:AUDIENCE}}' }, '{{secret:JWT_KEY}}')
 		await new SignJWT({ sub: '{{secret:SUBJECT}}' }).sign('{{secret:JOSE_KEY}}')
 		crypto.subtle.sign('HMAC', '{{secret:SUBTLE_KEY}}', '{{secret:SIGNED_DATA}}')

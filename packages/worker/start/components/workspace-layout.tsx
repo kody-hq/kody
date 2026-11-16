@@ -543,7 +543,6 @@ export function WorkspaceLayout() {
 							'--control-line-height': '1.5',
 							'--control-padding-y': '0.375rem',
 							'--control-padding-x': '0.625rem',
-							'--control-radius': '0.375rem',
 							'@media (pointer: coarse)': {
 								'--control-font-size': '1rem',
 								'--control-min-height': '44px',

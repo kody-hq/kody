@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -12,13 +13,10 @@ import {
 import { canConfirmAdminAccountDeletion } from '#universal/admin-account-deletion.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import { AdminAccountDeletionSummaryList } from './admin-account-deletion-summary.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AdminUserAccountModeration(props: {
 	stableUserId: string
@@ -185,8 +183,7 @@ export function AdminUserAccountModeration(props: {
 						) : null}
 						{summary?.acknowledgementRequired ? (
 							<label css={acknowledgeCss}>
-								<input
-									type="checkbox"
+								<Checkbox
 									data-testid="admin-delete-account-acknowledge"
 									checked={acknowledged}
 									onChange={(event) => {
@@ -196,26 +193,23 @@ export function AdminUserAccountModeration(props: {
 								<span>I acknowledge the consequences listed above.</span>
 							</label>
 						) : null}
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type {summary?.handle ?? props.username} to confirm
-							</span>
-							<input
+						<Field
+							label={<>Type {summary?.handle ?? props.username}to confirm</>}
+						>
+							<Input
 								type="text"
 								name="handleConfirmation"
 								data-testid="admin-delete-account-handle"
-								data-field-ring
 								autoComplete="off"
 								spellCheck={false}
 								required
 								value={typedHandle}
-								css={accountInputCss}
 								onInput={(event: FormEvent<HTMLInputElement>) => {
 									if (!(event.currentTarget instanceof HTMLInputElement)) return
 									setTypedHandle(event.currentTarget.value)
 								}}
 							/>
-						</label>
+						</Field>
 						<div css={getAccentCalloutCss({ accentColor: colors.danger })}>
 							<p css={{ margin: 0 }}>
 								This cannot be undone. The handle can be registered again after

@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import type { Brief } from './apps-intake.tsx'
 import { AppsShareScene, type AccessRole } from './apps-scenes.tsx'
+import { Select } from '../../components/input.tsx'
 const roles = {
 	Use: 'Can read the source and run the package.',
 	Contribute: 'Can read the source, run, and edit the package.',
@@ -39,7 +40,7 @@ export function AppsSharing(props: { preview: Brief }) {
 						</div>
 						<label>
 							<span className="ia-sr">Morgan’s access</span>
-							<select
+							<Select
 								value={role}
 								onChange={(event) => {
 									const next = event.currentTarget.value
@@ -56,7 +57,7 @@ export function AppsSharing(props: { preview: Brief }) {
 								<option>Use</option>
 								<option>Contribute</option>
 								<option>Manage</option>
-							</select>
+							</Select>
 						</label>
 					</div>
 					<p

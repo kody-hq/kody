@@ -46,6 +46,7 @@ import {
 	recordBodyCss,
 	recordCellClamp,
 } from './record-table.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const clampedCellCss = recordCellClamp(30)
 
@@ -330,8 +331,7 @@ export function AccountMemoriesPage({
 										whiteSpace: 'nowrap',
 									}}
 								>
-									<input
-										type="checkbox"
+									<Checkbox
 										checked={includeDeleted}
 										disabled={isMutating}
 										onChange={(event) => {

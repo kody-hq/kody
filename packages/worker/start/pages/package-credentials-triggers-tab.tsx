@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Switch } from '../components/choice-controls.tsx'
 import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import type { ReactNode } from 'react'
@@ -38,49 +39,6 @@ import {
 	rowCss,
 	tableCss,
 } from './package-credentials-tabs.tsx'
-
-const switchTrackCss = {
-	appearance: 'none' as const,
-	width: '2.75rem',
-	height: '1.55rem',
-	minWidth: '2.75rem',
-	// Toggle switch track, not a button.
-	// oxlint-disable-next-line kody-custom/no-raw-button-style
-	borderRadius: radius.full,
-	border: `1px solid ${colors.border}`,
-	background: colors.surface,
-	position: 'relative' as const,
-	cursor: 'pointer',
-	flexShrink: 0,
-	transition: 'background-color 120ms ease, border-color 120ms ease',
-	'&::after': {
-		content: '""',
-		position: 'absolute' as const,
-		top: '0.15rem',
-		left: '0.15rem',
-		width: '1.15rem',
-		height: '1.15rem',
-		borderRadius: radius.full,
-		background: colors.textMuted,
-		transition: 'transform 120ms ease, background-color 120ms ease',
-	},
-	'&[aria-checked="true"]': {
-		background: colors.primarySoft,
-		borderColor: colors.primary,
-	},
-	'&[aria-checked="true"]::after': {
-		transform: 'translateX(1.15rem)',
-		background: colors.primary,
-	},
-	'&:disabled': {
-		opacity: 0.55,
-		cursor: 'not-allowed',
-	},
-	'@media (prefers-reduced-motion: reduce)': {
-		transition: 'none',
-		'&::after': { transition: 'none' },
-	},
-}
 
 function renderTriggerMappings(
 	context: PackageTabContext,
@@ -209,18 +167,15 @@ function renderEnablementSwitch(input: {
 		`${input.trigger.trigger.kind}:${input.trigger.trigger.name}`
 	const busy = input.context.enablementBusyKey === busyKey
 	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={input.checked ? 'true' : 'false'}
+		<Switch
+			checked={input.checked}
 			aria-label={`${input.label}: ${describeTrigger(input.trigger.trigger)}`}
 			data-testid={`package-trigger-switch-${input.trigger.trigger.kind}-${input.trigger.trigger.name}${input.enablementId ? `-${input.enablementId}` : ''}`}
 			disabled={busy || Boolean(input.context.enablementBusyKey)}
-			css={switchTrackCss}
-			onClick={() => {
+			onCheckedChange={(checked) => {
 				setEnablement({
 					trigger: input.trigger.trigger,
-					state: input.checked ? 'off' : 'on',
+					state: checked ? 'on' : 'off',
 					...(input.enablementId ? { enablementId: input.enablementId } : {}),
 				})
 			}}

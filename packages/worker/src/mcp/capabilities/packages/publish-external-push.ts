@@ -104,6 +104,10 @@ import {
 } from '#worker/approval-bundles/paused-publishes.ts'
 import { optionalApprovalViewerForCaller } from './approval-bundle-shared.ts'
 import {
+	buildPublicVisitorsHeldBackPublishNotice,
+	publicVisitorsHeldBackSchema,
+} from './public-visitors-held-back-publish-notice.ts'
+import {
 	credentialNeedChangeSchema,
 	pendingPackageSecretApprovalsSchema,
 } from './shared.ts'
@@ -545,6 +549,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
+		public_visitors_held_back: publicVisitorsHeldBackSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
@@ -622,6 +627,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
+		public_visitors_held_back: publicVisitorsHeldBackSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
@@ -669,6 +675,7 @@ function publishSuccessFields(input: {
 		static_dependents: PublishedResult['static_dependents']
 		pending_secret_package_approvals: PublishedResult['pending_secret_package_approvals']
 		allowed_packages_publish_notice: PublishedResult['allowed_packages_publish_notice']
+		public_visitors_held_back: PublishedResult['public_visitors_held_back']
 		listing?: PublishedResult['listing'] | null
 	}
 	phaseTimings: PublishPhaseTimings
@@ -681,6 +688,9 @@ function publishSuccessFields(input: {
 		static_dependents: extras.static_dependents,
 		pending_secret_package_approvals: extras.pending_secret_package_approvals,
 		allowed_packages_publish_notice: extras.allowed_packages_publish_notice,
+		...(extras.public_visitors_held_back
+			? { public_visitors_held_back: extras.public_visitors_held_back }
+			: {}),
 		...(extras.listing ? { listing: extras.listing } : {}),
 		phase_timings: input.phaseTimings,
 		...buildOriginField(input.uploadedBuild),
@@ -1258,6 +1268,15 @@ async function runExternalPublishAttempt(input: {
 										kodyId: input.kodyId,
 										sourceId: input.source.id,
 									}),
+								public_visitors_held_back:
+									await buildPublicVisitorsHeldBackPublishNotice({
+										env: input.env,
+										baseUrl: input.baseUrl,
+										ownerUserId: input.ownerUserId,
+										ownerScope: input.ownerScope,
+										packageId: input.packageId,
+										kodyId: input.kodyId,
+									}),
 								allowed_packages_publish_notice:
 									await getAllowedPackagesPublishNoticeForPublishedPackage({
 										env: input.env,
@@ -1518,6 +1537,15 @@ async function runExternalPublishAttempt(input: {
 									packageId: input.packageId,
 									kodyId: input.kodyId,
 									sourceId: input.source.id,
+								}),
+							public_visitors_held_back:
+								await buildPublicVisitorsHeldBackPublishNotice({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									ownerUserId: input.ownerUserId,
+									ownerScope: input.ownerScope,
+									packageId: input.packageId,
+									kodyId: input.kodyId,
 								}),
 							allowed_packages_publish_notice:
 								result.allowed_packages_publish_notice ??

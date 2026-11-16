@@ -39,13 +39,14 @@ import {
 } from '#universal/package-repo-actions.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { renderIcon } from './icon.tsx'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Select } from './input.tsx'
+import { Checkbox } from './choice-controls.tsx'
 
 export function PackageFollowProvider(props: {
 	username: string
@@ -291,10 +292,9 @@ function FollowProvider({
 				{current.workspaces.length > 1 ? (
 					<label css={fieldCss}>
 						<span css={labelCss}>Follow in</span>
-						<select
+						<Select
 							data-testid="package-follow-workspace"
 							disabled={submitting}
-							css={getSelectCss()}
 							value={workspace.slug}
 							onChange={(event) => {
 								selectWorkspace(event.currentTarget.value)
@@ -308,7 +308,7 @@ function FollowProvider({
 									{option.follow ? ' (following)' : ''}
 								</option>
 							))}
-						</select>
+						</Select>
 					</label>
 				) : (
 					<p css={mutedCss}>Events go to {workspaceLabel(workspace)}.</p>
@@ -350,8 +350,7 @@ function FollowProvider({
 								data-testid={`package-follow-event-${option.event}`}
 								css={optionCss}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									name="events"
 									value={option.event}
 									checked={checked}

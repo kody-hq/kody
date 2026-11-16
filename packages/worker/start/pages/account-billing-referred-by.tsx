@@ -3,15 +3,17 @@ import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import type { ReferredByState } from '#universal/referral-program.ts'
 import { spacing } from '#universal/styles/tokens.ts'
-import { descriptionCss } from '#universal/styles/style-primitives.ts'
+import {
+	descriptionCss,
+	fieldCss,
+	fieldLabelCss,
+} from '#universal/styles/style-primitives.ts'
 import { requestAddReferrer } from '../billing-checkout.ts'
 import {
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 /**
  * "Referred by" for an existing account. A referral, not a discount: it
@@ -77,8 +79,8 @@ export function ReferredByPanel(props: {
 					void submit()
 				}}
 			>
-				<div css={accountFieldCss}>
-					<label htmlFor="referred-by" css={accountFieldLabelCss}>
+				<div css={fieldCss}>
+					<label htmlFor="referred-by" css={fieldLabelCss}>
 						Referrer's username or link
 					</label>
 					<div
@@ -89,7 +91,7 @@ export function ReferredByPanel(props: {
 							alignItems: 'center',
 						}}
 					>
-						<input
+						<Input
 							id="referred-by"
 							type="text"
 							name="referred-by"
@@ -98,8 +100,7 @@ export function ReferredByPanel(props: {
 							maxLength={256}
 							placeholder="@username or kody.codes/?ref=username"
 							value={referrer}
-							data-field-ring
-							css={{ ...accountInputCss, flex: '1 1 16rem' }}
+							css={{ flex: '1 1 16rem' }}
 							onChange={(event) => setReferrer(event.currentTarget.value)}
 						/>
 						<Button

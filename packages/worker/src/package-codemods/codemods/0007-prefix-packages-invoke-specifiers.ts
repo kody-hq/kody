@@ -266,9 +266,9 @@ function isTypeDeclarationFilePath(path: string) {
 	)
 }
 
-function parseProgram(source: string): AstNode | null {
+async function parseProgram(source: string): Promise<AstNode | null> {
 	try {
-		return parseModuleSource(source) as unknown as AstNode
+		return (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -416,16 +416,16 @@ function isGeneratedDynamicSpecifierWrapper(node: AstNode, source: string) {
 	)
 }
 
-function classifyModuleSource(input: {
+async function classifyModuleSource(input: {
 	path: string
 	source: string
 	sourceKind: SourceKind
 	offset?: number
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	// Keep the module prefilter deliberately broad. The AST below owns call
 	// identification, including comments between member-access tokens.
 	if (!hasPackagesInvokeTokens(input.source)) return null
-	const program = parseProgram(input.source)
+	const program = await parseProgram(input.source)
 	if (!program) {
 		return packagesInvokeDetectorPattern.test(input.source)
 			? {
@@ -641,10 +641,10 @@ function sourceOutsideRangesHasPackagesInvoke(
 	return packagesInvokeDetectorPattern.test(source.slice(cursor))
 }
 
-function classifyMarkdownFile(input: {
+async function classifyMarkdownFile(input: {
 	path: string
 	source: string
-}): FileClassification | null {
+}): Promise<FileClassification | null> {
 	if (!hasPackagesInvokeTokens(input.source)) return null
 	const fences = listMarkdownCodeFences(input.source)
 	const htmlRanges = listMarkdownHtmlRanges(input.source)
@@ -672,7 +672,7 @@ function classifyMarkdownFile(input: {
 			}
 			continue
 		}
-		const classification = classifyModuleSource({
+		const classification = await classifyModuleSource({
 			path: input.path,
 			source: content,
 			sourceKind: markdownTypescriptLanguages.has(fence.language)
@@ -694,7 +694,7 @@ function classifyMarkdownFile(input: {
 		}
 		if (rangeOverlaps(range, coveredRanges)) continue
 		coveredRanges.push(range)
-		const classification = classifyModuleSource({
+		const classification = await classifyModuleSource({
 			path: input.path,
 			source: input.source.slice(
 				inlineCode.contentStart,
@@ -714,18 +714,19 @@ function classifyMarkdownFile(input: {
 	return { path: input.path, rewrites, needsManual }
 }
 
-function classifyFile(input: {
+async function classifyFile(input: {
 	path: string
 	source: string
-}): FileClassification | null {
-	if (markdownFilePattern.test(input.path)) return classifyMarkdownFile(input)
+}): Promise<FileClassification | null> {
+	if (markdownFilePattern.test(input.path))
+		return await classifyMarkdownFile(input)
 	if (
 		!scannableModuleFilePattern.test(input.path) ||
 		isTypeDeclarationFilePath(input.path)
 	) {
 		return null
 	}
-	return classifyModuleSource({
+	return await classifyModuleSource({
 		...input,
 		sourceKind: typescriptModuleFilePattern.test(input.path)
 			? 'typescript'
@@ -733,19 +734,23 @@ function classifyFile(input: {
 	})
 }
 
-function classifyFiles(
+async function classifyFiles(
 	files: Record<string, string>,
-): Array<FileClassification> {
-	return Object.entries(files)
-		.flatMap(([path, source]) => {
-			const classification = classifyFile({ path, source })
-			return classification ? [classification] : []
-		})
+): Promise<Array<FileClassification>> {
+	const classifications = await Promise.all(
+		Object.entries(files).map(([path, source]) =>
+			classifyFile({ path, source }),
+		),
+	)
+	return classifications
+		.filter((classification) => classification != null)
 		.sort((left, right) => left.path.localeCompare(right.path))
 }
 
-function detect(files: Record<string, string>): Array<PackageCodemodFinding> {
-	return classifyFiles(files).map((classification) => ({
+async function detect(
+	files: Record<string, string>,
+): Promise<Array<PackageCodemodFinding>> {
+	return (await classifyFiles(files)).map((classification) => ({
 		path: classification.path,
 		message: classification.needsManual ?? rewriteMessage,
 	}))
@@ -764,13 +769,13 @@ function applyRewrites(source: string, rewrites: Array<SourceRewrite>) {
 	return nextSource
 }
 
-function transform(
+async function transform(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	const nextFiles = { ...files }
 	const changedPaths: Array<string> = []
 	const needsManual: Array<PackageCodemodFinding> = []
-	for (const classification of classifyFiles(files)) {
+	for (const classification of await classifyFiles(files)) {
 		const source = files[classification.path]
 		if (typeof source !== 'string') continue
 		const nextSource = applyRewrites(source, classification.rewrites)

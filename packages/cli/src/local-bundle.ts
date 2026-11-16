@@ -1,4 +1,9 @@
 import {
+	executeModuleEntryFile,
+	executeModuleLoader,
+	executeModuleTarget,
+} from '@kody-internal/shared/execute-module.ts'
+import {
 	nodeModulesImportKind,
 	parseBarePackageSpecifier,
 	resolveNodeModulesImport,
@@ -126,7 +131,7 @@ export function localBundleOptions(entry: string) {
 		write: false,
 		format: 'esm' as const,
 		platform: 'neutral' as const,
-		target: 'esnext',
+		target: executeModuleTarget,
 		logLevel: 'silent' as const,
 		packages: 'bundle' as const,
 		external: [
@@ -233,6 +238,39 @@ export async function bundleLocalUserModule(
 	modulePath: string,
 ): Promise<string> {
 	return (await bundleLocalUserModuleWithInputs(modulePath)).code
+}
+
+/**
+ * Remove TypeScript syntax from `--code` and execution-context run source.
+ * Kody cloud execute accepts TypeScript, so the same code must run here.
+ * `verbatimModuleSyntax` keeps every value import, so side-effect imports of
+ * `kody:` modules survive.
+ * A syntax error is returned, not thrown: it is the run's error.
+ */
+export async function stripLocalUserModuleTypes(
+	code: string,
+): Promise<{ code: string } | { syntaxError: string }> {
+	try {
+		const result = await esbuild.transform(code, {
+			loader: executeModuleLoader,
+			format: 'esm',
+			target: executeModuleTarget,
+			sourcefile: executeModuleEntryFile,
+			logLevel: 'silent',
+			tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
+		})
+		return { code: result.code }
+	} catch (error) {
+		const details = bundleDiagnostics(error, {
+			workingDir: process.cwd(),
+			displayRoot: process.cwd(),
+		})
+			.map(formatBundleDiagnostic)
+			.join('\n')
+		return {
+			syntaxError: `Local execute could not load the module: SyntaxError\n${details || (error instanceof Error ? error.message : String(error))}`,
+		}
+	}
 }
 
 /**

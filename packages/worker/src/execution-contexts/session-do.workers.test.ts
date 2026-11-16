@@ -9,6 +9,7 @@ import {
 	ecpDeadlineCancelGraceMs,
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
+	ecpPingFrame,
 	importEd25519PrivateKey,
 	parseEnvelope,
 	decodeEnvelopePayload,
@@ -225,6 +226,63 @@ test('tickets are single use, a dispatch with no socket is offline, and nothing 
 	first.webSocket!.close()
 })
 
+test('packages served to a committed run are kept on its lease, and refused for a run that is not committed', async () => {
+	const ecid = 'ec_run_packages'
+	const { stub, next, send, key } = await connect(ecid)
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a'],
+		}),
+	).toEqual({ ok: false })
+	const dispatching = stub.dispatch({
+		request: runRequest('run_pkgs'),
+		lease: lease(ecid, 'run_pkgs'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_pkgs' }, { re: request.seq })
+	expect(await dispatching).toEqual({ outcome: 'committed' })
+	await next('run.commit')
+
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a', 'pkg_dep'],
+		}),
+	).toEqual({ ok: true })
+	await stub.recordRunPackages({
+		runId: 'run_pkgs',
+		entryPackageIds: ['pkg_b'],
+		packageIds: ['pkg_b'],
+	})
+
+	const ts = Date.now()
+	const n = crypto.randomUUID().replaceAll('-', '')
+	const bodySha256 = await sha256Base64Url('{}')
+	const s = await signDetached({
+		prefix: ecpHttpSignaturePrefix,
+		message: ['POST', '/v1/capability-proxy', String(ts), n, bodySha256].join(
+			'\n',
+		),
+		privateKey: key,
+	})
+	const authorized = await stub.authorizeRunCall({
+		runId: 'run_pkgs',
+		signature: { ec: ecid, ts, n, s },
+		method: 'POST',
+		pathAndQuery: '/v1/capability-proxy',
+		bodySha256,
+	})
+	expect(authorized.ok && authorized.lease.packages).toEqual({
+		entries: ['pkg_a', 'pkg_b'],
+		all: ['pkg_a', 'pkg_b', 'pkg_dep'],
+	})
+})
+
 test('two-phase dispatch: accept, commit, result, then per-hop authorization ends with the lease', async () => {
 	const ecid = 'ec_two_phase'
 	const { stub, next, send, key } = await connect(ecid)
@@ -408,6 +466,85 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 			})
 		).ok,
 	).toBe(false)
+	ws.close()
+}, 60_000)
+
+test('an unanswered run offer reads the context offline until its next heartbeat', async () => {
+	const ecid = 'ec_unanswered'
+	const { stub, next, send, ws } = await connect(ecid)
+	const dispatch = (runId: string, acceptWithinMs: number) =>
+		stub.dispatch({
+			request: { ...runRequest(runId), acceptBy: Date.now() + acceptWithinMs },
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+	expect(await dispatch('run_asleep', 100)).toEqual({
+		outcome: 'timeout',
+		code: 'timeout',
+	})
+	await next('run.request')
+	expect(await dispatch('run_next', frameWaitMs)).toEqual({
+		outcome: 'offline',
+	})
+	expect((await stub.getStatus()).online).toBe(false)
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	const awake = dispatch('run_awake', frameWaitMs)
+	const offered = await next('run.request')
+	expect(offered.body).toMatchObject({ runId: 'run_awake' })
+	await send(
+		'run.reject',
+		{ runId: 'run_awake', code: 'busy' },
+		{ re: offered.seq },
+	)
+	expect(await awake).toEqual({ outcome: 'busy' })
+	ws.close()
+}, 60_000)
+
+test('a run queued behind an unanswered offer is rechecked soon and drained once heartbeats resume', async () => {
+	const ecid = 'ec_unanswered_queue'
+	const { stub, next, ws } = await connect(ecid)
+	expect(
+		await stub.dispatch({
+			request: { ...runRequest('run_asleep'), acceptBy: Date.now() + 100 },
+			lease: lease(ecid, 'run_asleep'),
+			runRecord: null,
+			position: 1,
+		}),
+	).toEqual({ outcome: 'timeout', code: 'timeout' })
+	await next('run.request')
+	const before = Date.now()
+	await stub.enqueue({
+		request: runRequest('run_waiting'),
+		lease: lease(ecid, 'run_waiting'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: before + 10 * 60_000,
+	})
+	await runInDurableObject(stub, async (_instance, state) => {
+		const alarm = await state.storage.getAlarm()
+		expect(alarm ?? Infinity).toBeLessThanOrEqual(before + 31_000)
+	})
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	// The alarm drains only for a live socket. With no context row seeded the
+	// drain ends the run as unavailable; the full redispatch is not covered here.
+	await runInDurableObject(stub, async (instance) => {
+		await instance.alarm()
+	})
+	expect(await stub.listQueued()).toEqual([])
 	ws.close()
 }, 60_000)
 

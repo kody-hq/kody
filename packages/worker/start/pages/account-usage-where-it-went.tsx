@@ -6,10 +6,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import { useState } from 'react'
 import { AreaChart } from '../charts/area-chart.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
-import {
-	AccountManagementPanel,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
 import { RecordTable } from './record-table.tsx'
 import {
 	creditAttributionDefaultVisiblePackages,
@@ -25,6 +22,7 @@ import {
 	descriptionCss,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 /**
  * "Where it went" on `/account/usage`: ranked packages + Ad hoc for this
@@ -248,7 +246,7 @@ function PackageVisitorsTable({
 			<h3 css={{ margin: 0, fontSize: typography.fontSize.lg }}>Visitors</h3>
 			<label css={{ display: 'grid', gap: spacing.xs }}>
 				Search visitors
-				<input
+				<Input
 					type="search"
 					value={search}
 					onChange={(event) => {
@@ -256,9 +254,7 @@ function PackageVisitorsTable({
 						setPage(0)
 					}}
 					placeholder="Search usernames"
-					data-field-ring
 					data-visitors-search
-					css={accountInputCss}
 				/>
 			</label>
 			<div css={{ display: 'flex', gap: spacing.sm }}>

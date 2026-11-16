@@ -56,12 +56,12 @@ type AstNode = {
  * that swallows later code. Returns null when the file does not parse:
  * callers must fail closed (do not skip any matches).
  */
-function collectStringTextRanges(
+async function collectStringTextRanges(
 	source: string,
-): Array<{ start: number; end: number }> | null {
+): Promise<Array<{ start: number; end: number }> | null> {
 	let parsed: AstNode
 	try {
-		parsed = parseModuleSource(source) as unknown as AstNode
+		parsed = (await parseModuleSource(source)) as unknown as AstNode
 	} catch {
 		return null
 	}
@@ -180,12 +180,12 @@ function pushMatch(
  * eval-of-string forms are not counted. Prefer missing those over treating
  * demo prose as a capability. Comments still count (false positive OK).
  */
-export function findPackageStorageMatchesInSource(
+export async function findPackageStorageMatchesInSource(
 	path: string,
 	source: string,
-): Array<PackageStorageMatch> {
+): Promise<Array<PackageStorageMatch>> {
 	const matches: Array<PackageStorageMatch> = []
-	const stringRanges = collectStringTextRanges(source)
+	const stringRanges = await collectStringTextRanges(source)
 
 	storageIdentifierPattern.lastIndex = 0
 	for (const match of source.matchAll(storageIdentifierPattern)) {
@@ -224,22 +224,22 @@ export function findPackageStorageMatchesInSource(
 	return matches
 }
 
-export function findPackageStorageMatchesInFiles(
+export async function findPackageStorageMatchesInFiles(
 	files: Record<string, string>,
-): Array<PackageStorageMatch> {
+): Promise<Array<PackageStorageMatch>> {
 	const matches: Array<PackageStorageMatch> = []
 	for (const [path, content] of Object.entries(files)) {
 		if (!scannableModuleFilePattern.test(path)) continue
 		if (typeDeclarationFilePattern.test(path)) continue
-		matches.push(...findPackageStorageMatchesInSource(path, content))
+		matches.push(...(await findPackageStorageMatchesInSource(path, content)))
 	}
 	return matches
 }
 
-export function sourceFilesUsePackageStorage(
+export async function sourceFilesUsePackageStorage(
 	files: Record<string, string>,
-): boolean {
-	return findPackageStorageMatchesInFiles(files).length > 0
+): Promise<boolean> {
+	return (await findPackageStorageMatchesInFiles(files)).length > 0
 }
 
 /**
@@ -274,7 +274,7 @@ export async function findPublishedPackageStorageMatches(input: {
 		}),
 	])
 	if (!source || !snapshot) return 'assumed'
-	return findPackageStorageMatchesInFiles(
+	return await findPackageStorageMatchesInFiles(
 		packageSourceFiles({ source, files: snapshot.files }).files,
 	)
 }

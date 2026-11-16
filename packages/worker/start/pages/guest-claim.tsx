@@ -16,6 +16,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import { formatGuestDate } from './guest-banner.tsx'
+import { Input } from '../components/input.tsx'
 
 const errorCopy: Record<GuestClaimPageError, string> = {
 	email_invalid: 'That does not look like an email address.',
@@ -173,14 +174,13 @@ function GuestClaimForms(props: {
 							<span>
 								Enter the code sent to {data.codeEmail || 'your email'}
 							</span>
-							<input
+							<Input
 								name="code"
 								inputMode="numeric"
 								autoComplete="one-time-code"
 								pattern="[0-9]*"
 								maxLength={6}
 								required
-								css={inputCss}
 								defaultValue={data.devCode ?? ''}
 							/>
 						</label>
@@ -227,21 +227,15 @@ function GuestClaimForms(props: {
 								<input type="hidden" name="mode" value="new" />
 								<label css={labelCss}>
 									<span>Username</span>
-									<input
-										name="username"
-										autoComplete="username"
-										required
-										css={inputCss}
-									/>
+									<Input name="username" autoComplete="username" required />
 								</label>
 								<label css={labelCss}>
 									<span>Email</span>
-									<input
+									<Input
 										name="email"
 										type="email"
 										autoComplete="email"
 										required
-										css={inputCss}
 									/>
 								</label>
 								<Button
@@ -264,12 +258,11 @@ function GuestClaimForms(props: {
 								<input type="hidden" name="mode" value="merge" />
 								<label css={labelCss}>
 									<span>Account email</span>
-									<input
+									<Input
 										name="email"
 										type="email"
 										autoComplete="email"
 										required
-										css={inputCss}
 									/>
 								</label>
 								<Button
@@ -361,16 +354,6 @@ const labelCss: CSSObject = {
 	gap: spacing.xs,
 	fontSize: typography.fontSize.sm,
 	fontWeight: typography.fontWeight.medium,
-}
-const inputCss: CSSObject = {
-	font: 'inherit',
-	fontSize: typography.fontSize.base,
-	padding: '0.6rem 0.75rem',
-	border: `1px solid ${colors.fieldBorder}`,
-	borderRadius: radius.md,
-	background: colors.surface,
-	color: colors.text,
-	minHeight: '44px',
 }
 const mutedCss: CSSObject = {
 	margin: 0,

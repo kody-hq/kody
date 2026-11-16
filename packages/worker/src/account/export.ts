@@ -1,3 +1,4 @@
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { fileStoreRpc } from '#worker/files/client.ts'
 import { linkedArtifactSourceKvPrefix } from '#worker/package-runtime/linked-artifact-store.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -157,10 +158,35 @@ export type AccountExportManifestSection = {
 	count: number
 	warnings: Array<string>
 	redactedColumns?: Array<string>
-	discovery?: {
-		section: AccountExportSectionName
-		kind?: string
-	}
+	discovery?: AccountExportSectionDiscovery
+}
+
+/** The accountExportSection arguments that read a manifest section. */
+type AccountExportSectionDiscovery = {
+	section: AccountExportSectionName
+	kind?: 'storage_runner' | 'job_manager'
+	table?: string
+}
+
+const nonD1ManifestSectionDiscovery = {
+	storage_runners: {
+		section: 'durable_object_summaries',
+		kind: 'storage_runner',
+	},
+	job_manager: { section: 'job_manager' },
+	run_records: { section: 'run_records' },
+	user_meter: { section: 'user_meter' },
+	mailbox: { section: 'mailbox' },
+	file_store: { section: 'file_store' },
+	repo_session_index: { section: 'repo_session_index' },
+	oauth_grants: { section: 'oauth_grants' },
+	artifact_repos: { section: 'artifact_repos' },
+	kv_keys: { section: 'kv_keys' },
+	r2_object: { section: 'r2_object' },
+} as const satisfies Record<string, AccountExportSectionDiscovery>
+
+function d1TableDiscovery(table: string): AccountExportSectionDiscovery {
+	return { section: 'd1_table', table }
 }
 
 export type AccountExportManifest = {
@@ -1201,6 +1227,7 @@ async function collectD1TableCounts(input: {
 				{
 					count,
 					warnings: [],
+					discovery: d1TableDiscovery(table),
 					...(count > 0 && redactedColumns.length > 0
 						? { redactedColumns }
 						: {}),
@@ -1209,17 +1236,30 @@ async function collectD1TableCounts(input: {
 		} catch (error) {
 			const warning = `D1 export failed for ${table}: ${getErrorMessage(error)}`
 			input.warnings.push(warning)
-			sections.push([`d1.${table}`, { count: 0, warnings: [warning] }])
+			sections.push([
+				`d1.${table}`,
+				{ count: 0, warnings: [warning], discovery: d1TableDiscovery(table) },
+			])
 		}
 	}
 	for (const table of jobsWorkerExportTables) {
 		try {
 			const rows = await listJobsWorkerTableRows(input.env, input.mcpUserId)
-			sections.push([`d1.${table}`, { count: rows.length, warnings: [] }])
+			sections.push([
+				`d1.${table}`,
+				{
+					count: rows.length,
+					warnings: [],
+					discovery: d1TableDiscovery(table),
+				},
+			])
 		} catch (error) {
 			const warning = `Jobs export failed for ${table}: ${getErrorMessage(error)}`
 			input.warnings.push(warning)
-			sections.push([`d1.${table}`, { count: 0, warnings: [warning] }])
+			sections.push([
+				`d1.${table}`,
+				{ count: 0, warnings: [warning], discovery: d1TableDiscovery(table) },
+			])
 		}
 	}
 	return Object.fromEntries(
@@ -1557,6 +1597,7 @@ function buildManifest(input: {
 		sections[`d1.${table}`] = {
 			count: exportTable.rows.length,
 			warnings: exportTable.warnings,
+			discovery: d1TableDiscovery(table),
 			...(exportTable.redactedColumns.length > 0
 				? { redactedColumns: exportTable.redactedColumns }
 				: {}),
@@ -1570,17 +1611,14 @@ function buildManifest(input: {
 		warnings: input.warnings.filter((warning) =>
 			warning.startsWith('Storage runner '),
 		),
-		discovery: {
-			section: 'durable_object_summaries',
-			kind: 'storage_runner',
-		},
+		discovery: nonD1ManifestSectionDiscovery.storage_runners,
 	}
 	sections.job_manager = {
 		count: 1,
 		warnings: input.warnings.filter((warning) =>
 			warning.startsWith('Job manager '),
 		),
-		discovery: { section: 'job_manager' },
+		discovery: nonD1ManifestSectionDiscovery.job_manager,
 	}
 	sections.run_records = {
 		// Full exports count every RunLog table returned by exportRuns (runs,
@@ -1593,7 +1631,7 @@ function buildManifest(input: {
 		warnings: input.warnings.filter((warning) =>
 			warning.startsWith('Run records '),
 		),
-		discovery: { section: 'run_records' },
+		discovery: nonD1ManifestSectionDiscovery.run_records,
 	}
 	sections.user_meter = {
 		count:
@@ -1604,7 +1642,7 @@ function buildManifest(input: {
 			(warning) =>
 				warning.startsWith('User meter ') || warning.startsWith('USER_METER '),
 		),
-		discovery: { section: 'user_meter' },
+		discovery: nonD1ManifestSectionDiscovery.user_meter,
 	}
 	sections.mailbox = {
 		count:
@@ -1615,7 +1653,7 @@ function buildManifest(input: {
 			(warning) =>
 				warning.startsWith('Mailbox ') || warning.startsWith('MAILBOX '),
 		),
-		discovery: { section: 'mailbox' },
+		discovery: nonD1ManifestSectionDiscovery.mailbox,
 	}
 	sections.file_store = {
 		count:
@@ -1625,7 +1663,7 @@ function buildManifest(input: {
 		warnings: input.warnings.filter((warning) =>
 			warning.startsWith('File store'),
 		),
-		discovery: { section: 'file_store' },
+		discovery: nonD1ManifestSectionDiscovery.file_store,
 	}
 	sections.repo_session_index = {
 		count:
@@ -1637,13 +1675,14 @@ function buildManifest(input: {
 				warning.startsWith('Repo session index ') ||
 				warning.startsWith('REPO_SESSION_INDEX '),
 		),
-		discovery: { section: 'repo_session_index' },
+		discovery: nonD1ManifestSectionDiscovery.repo_session_index,
 	}
 	sections.oauth_grants = {
 		count: input.oauthGrantCount ?? input.oauthGrants?.length ?? 0,
 		warnings: input.warnings.filter((warning) =>
 			warning.startsWith('OAuth grant '),
 		),
+		discovery: nonD1ManifestSectionDiscovery.oauth_grants,
 	}
 	sections.artifact_repos = {
 		count:
@@ -1651,6 +1690,7 @@ function buildManifest(input: {
 			input.inventory?.artifactRepos.length ??
 			0,
 		warnings: [],
+		discovery: nonD1ManifestSectionDiscovery.artifact_repos,
 	}
 	sections.kv_keys = {
 		count:
@@ -1658,11 +1698,13 @@ function buildManifest(input: {
 			input.inventory?.bundleKvKeys.length ??
 			0,
 		warnings: input.warnings.filter((warning) => warning.startsWith('KV ')),
+		discovery: nonD1ManifestSectionDiscovery.kv_keys,
 	}
 	sections.r2_object = {
 		count:
 			input.inventoryCounts?.r2Objects ?? input.inventory?.r2ObjectCount ?? 0,
 		warnings: input.warnings.filter((warning) => warning.includes('R2 object')),
+		discovery: nonD1ManifestSectionDiscovery.r2_object,
 	}
 	return {
 		schemaVersion: accountExportSchemaVersion,
@@ -1870,6 +1912,78 @@ async function readR2ObjectSection(input: {
 	}
 }
 
+const storageIdListingCall =
+	'accountExportSection with section: "durable_object_summaries" and kind: "storage_runner"'
+
+const exportableD1TablesHint =
+	'Exportable tables are the "d1.<table>" keys in accountExportManifest sections; pass the name after "d1." (each entry\'s discovery holds the exact arguments).'
+
+const durableObjectSummariesCursorMessage =
+	'start_after is not a durable_object_summaries cursor. Pass next_start_after from the previous durable_object_summaries page unchanged, or omit start_after to start over.'
+
+function parseDurableObjectSummariesCursor(startAfter: string | undefined) {
+	if (!startAfter) return {}
+	let cursor: unknown
+	try {
+		cursor = JSON.parse(startAfter)
+	} catch {
+		throw new McpCallerError(durableObjectSummariesCursorMessage)
+	}
+	if (!cursor || typeof cursor !== 'object' || Array.isArray(cursor)) {
+		throw new McpCallerError(durableObjectSummariesCursorMessage)
+	}
+	return cursor as Record<string, unknown>
+}
+
+function isExportableD1Table(input: {
+	table: string
+	dbUserId: number
+	mcpUserId: OwnerId
+	personUserId: PersonId
+}) {
+	return (
+		jobsWorkerExportTables.includes(
+			input.table as (typeof jobsWorkerExportTables)[number],
+		) || buildD1TableConditions(input).has(input.table)
+	)
+}
+
+function formatSectionCall(discovery: AccountExportSectionDiscovery) {
+	return [
+		`section: "${discovery.section}"`,
+		...(discovery.kind ? [`kind: "${discovery.kind}"`] : []),
+		...(discovery.table ? [`table: "${discovery.table}"`] : []),
+	].join(', ')
+}
+
+function unknownD1TableError(input: {
+	table: string
+	dbUserId: number
+	mcpUserId: OwnerId
+	personUserId: PersonId
+}) {
+	const { table } = input
+	const sectionDiscovery = Object.hasOwn(nonD1ManifestSectionDiscovery, table)
+		? nonD1ManifestSectionDiscovery[
+				table as keyof typeof nonD1ManifestSectionDiscovery
+			]
+		: null
+	if (sectionDiscovery) {
+		return new McpCallerError(
+			`"${table}" is an account export section, not a D1 table. Call accountExportSection with ${formatSectionCall(sectionDiscovery)} instead of section: "d1_table".`,
+		)
+	}
+	const unprefixed = table.startsWith('d1.') ? table.slice('d1.'.length) : null
+	if (unprefixed && isExportableD1Table({ ...input, table: unprefixed })) {
+		return new McpCallerError(
+			`Table "${table}" is a manifest key, not a table name. Call accountExportSection with ${formatSectionCall(d1TableDiscovery(unprefixed))}.`,
+		)
+	}
+	return new McpCallerError(
+		`Table "${table}" is not part of account export. ${exportableD1TablesHint}`,
+	)
+}
+
 export async function readAccountExportSection(input: {
 	env: AccountExportEnv
 	dbUserId: number
@@ -1897,7 +2011,9 @@ export async function readAccountExportSection(input: {
 	}
 	if (input.section === 'storage_runner') {
 		if (!input.storageId) {
-			throw new Error('storage_id is required when section is storage_runner.')
+			throw new McpCallerError(
+				`storage_id is required when section is storage_runner. List storage ids with ${storageIdListingCall}.`,
+			)
 		}
 		const storageOwned = await isExportDiscoverableStorageId(
 			input.env,
@@ -1905,7 +2021,9 @@ export async function readAccountExportSection(input: {
 			input.storageId,
 		)
 		if (!storageOwned) {
-			throw new Error('Storage runner was not found for account export.')
+			throw new McpCallerError(
+				`Storage runner "${input.storageId}" was not found for account export. List storage ids with ${storageIdListingCall}.`,
+			)
 		}
 		const pageSize = normalizePageSize(input.pageSize)
 		const runnerExport = await storageRunnerRpc({
@@ -2065,7 +2183,9 @@ export async function readAccountExportSection(input: {
 	switch (input.section) {
 		case 'd1_table': {
 			if (!input.table) {
-				throw new Error('table is required when section is d1_table.')
+				throw new McpCallerError(
+					`table is required when section is d1_table. ${exportableD1TablesHint}`,
+				)
 			}
 			const page = await readD1TableSectionPage({
 				env: input.env,
@@ -2078,7 +2198,12 @@ export async function readAccountExportSection(input: {
 				warnings,
 			})
 			if (!page) {
-				throw new Error(`Table "${input.table}" is not part of account export.`)
+				throw unknownD1TableError({
+					table: input.table,
+					dbUserId: input.dbUserId,
+					mcpUserId: ownerUserId,
+					personUserId,
+				})
 			}
 			return {
 				section: input.section,
@@ -2117,14 +2242,12 @@ export async function readAccountExportSection(input: {
 		}
 		case 'durable_object_summaries': {
 			if (!input.kind) {
-				throw new Error(
-					'kind is required when section is durable_object_summaries.',
+				throw new McpCallerError(
+					'kind is required when section is durable_object_summaries. Pass kind: "storage_runner" to list storage ids or kind: "job_manager".',
 				)
 			}
 			const pageSize = normalizePageSize(input.pageSize)
-			const cursor = input.startAfter
-				? (JSON.parse(input.startAfter) as Record<string, unknown>)
-				: {}
+			const cursor = parseDurableObjectSummariesCursor(input.startAfter)
 			if (input.kind === 'job_manager') {
 				return {
 					section: input.section,
@@ -2196,9 +2319,7 @@ export async function readAccountExportSection(input: {
 					warnings,
 				}
 			}
-			throw new Error(
-				`Unknown durable_object_summaries storage_runner stage: ${stage}`,
-			)
+			throw new McpCallerError(durableObjectSummariesCursorMessage)
 		}
 		default: {
 			const exhaustive: never = input.section

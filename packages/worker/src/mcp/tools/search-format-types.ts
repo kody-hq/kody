@@ -1,3 +1,4 @@
+import type { PackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import type { IntegrationConfig } from '#mcp/capabilities/integrations/integration-shared.ts'
 import type { CapabilitySpec } from '#mcp/capabilities/types.ts'
 import type { SecretSearchRow } from '#mcp/secrets/types.ts'
@@ -590,6 +591,8 @@ export type SearchEntityDetail =
 			manifest: AuthoredPackageJson
 			publishedCommit?: string | null
 			files: Record<string, string>
+			/** Export projections from `buildPackageSearchProjection` over `files`. */
+			exports: PackageSearchProjection['exports']
 			baseUrl: string
 			hostedUrl: string | null
 			ownerUsername?: string | null

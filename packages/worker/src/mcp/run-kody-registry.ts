@@ -1,3 +1,4 @@
+import { executeModuleEntryFile } from '@kody-internal/shared/execute-module.ts'
 import {
 	createPackageSecretRefKey,
 	issuePackageSecretRef,
@@ -271,13 +272,13 @@ export type PackageContextOptions = {
 	sourceId?: string | null
 } | null
 
-export function createAdHocExecuteSourceFiles(code: string) {
-	const sourceFiles: Record<string, string> = { 'entry.ts': code }
+export async function createAdHocExecuteSourceFiles(code: string) {
+	const sourceFiles: Record<string, string> = { [executeModuleEntryFile]: code }
 	// Most execute modules have no imports. Avoid parsing those entirely so the
 	// existing one-file fast path stays unchanged.
 	if (!code.includes('import') && !code.includes(' from ')) return sourceFiles
 	const packageNames = new Set<string>()
-	for (const specifier of collectLiteralImportSpecifiers(code)) {
+	for (const specifier of await collectLiteralImportSpecifiers(code)) {
 		const packageName = getBarePackageNameFromSpecifier(specifier)
 		if (packageName) packageNames.add(packageName)
 	}
@@ -750,10 +751,6 @@ export async function runModuleWithRegistry(
 		surface: observedRunSurface(options),
 		hasPackageContext: Boolean(options?.packageContext),
 	})
-	const executeShape = isAdHocExecute ? classifyExecuteThinGlue(code) : null
-	if (isAdHocExecute && !options?.packageContext) {
-		recordExecuteInterpretableEvent(env, { source: code })
-	}
 	// Begin (or reuse a keyed claim) before bundling so a hung/timeout
 	// prepare+esbuild path still leaves a visible run row. Previously
 	// begin lived only inside runBundledModuleWithRegistry — after bundle —
@@ -769,6 +766,12 @@ export async function runModuleWithRegistry(
 		})
 	let enteredBundledRun = false
 	try {
+		const executeShape = isAdHocExecute
+			? await classifyExecuteThinGlue(code)
+			: null
+		if (isAdHocExecute && !options?.packageContext) {
+			await recordExecuteInterpretableEvent(env, { source: code })
+		}
 		await reportExecutePhaseProgress(reportProgress, 'bundle')
 		const bundleStartedAtMs = Date.now()
 		const bundled = await raceWithExecuteBundleDeadline(
@@ -778,7 +781,7 @@ export async function runModuleWithRegistry(
 					baseUrl: callerContext.baseUrl,
 					userId: packageOwnerUserId,
 					code,
-					sourceFiles: createAdHocExecuteSourceFiles(code),
+					sourceFiles: await createAdHocExecuteSourceFiles(code),
 					// Only a caller that bound request permissions gets them
 					// rebound in the build isolate.
 					request: getRequestPermissions() ? callerContext.request : null,
@@ -1846,11 +1849,11 @@ ${runtimeHelperRuntimePropertySource}
 				return withRunId(sanitizedResult)
 			}
 			const rewrittenMessage =
-				rewriteUnboundRuntimeHelperError({
+				(await rewriteUnboundRuntimeHelperError({
 					error: result.error,
 					modules: hydratedModules,
 					unboundHelperNames: unboundOptionalRuntimeHelperNames,
-				}) ??
+				})) ??
 				// A stored pre-fix bundle the load site could not rebuild runs an
 				// inlined package as the caller; say so and how to fix it.
 				describePreBindingIdentityError({
@@ -1967,13 +1970,13 @@ ${runtimeHelperRuntimePropertySource}
  * Enrich the message so `getExecutionErrorDetails` can attach a structured
  * next step naming the unbound helper.
  */
-function rewriteUnboundRuntimeHelperError(input: {
+async function rewriteUnboundRuntimeHelperError(input: {
 	error: unknown
 	modules: WorkerLoaderModules
 	unboundHelperNames: ReadonlySet<string>
 }) {
 	const message = getErrorMessage(input.error)
-	const access = findUnboundRuntimeHelperAccess({
+	const access = await findUnboundRuntimeHelperAccess({
 		errorMessage: message,
 		modules: input.modules,
 		unboundHelperNames: input.unboundHelperNames,

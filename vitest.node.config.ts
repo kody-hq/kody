@@ -128,6 +128,13 @@ export default mergeConfig(
 					),
 				},
 				{
+					find: './node_modules/.kody-generated/module-source-parser.mjs',
+					replacement: resolve(
+						rootDir,
+						'packages/worker/src/module-source-parser-module.ts',
+					),
+				},
+				{
 					find: './node_modules/.kody-generated/codemode-normalize.mjs',
 					replacement: resolve(
 						rootDir,

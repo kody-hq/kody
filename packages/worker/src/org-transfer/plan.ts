@@ -1,4 +1,5 @@
 import type { JobRow } from '@kody-internal/shared/jobs/repo.ts'
+import { getPackageAppHostLabelLengthError } from '@kody-internal/shared/package-app-host-label.ts'
 import { createJobStorageId } from '@kody-internal/shared/jobs/storage-id.ts'
 import {
 	buildPackageStorageId,
@@ -17,7 +18,12 @@ import type {
 } from './snapshot.ts'
 
 /** Grantable resources a transfer leaves in the source org. */
-const resourceTypesThatStay = new Set(['memory', 'email', 'execution_context'])
+const resourceTypesThatStay = new Set([
+	'memory',
+	'email',
+	'execution_context',
+	'machine_capability',
+])
 
 export type OrgTransferOrphanCleanup =
 	/** Normal per-row soft delete (sets deleted_at). */
@@ -233,6 +239,22 @@ export function planOrgTransfer(
 	clashIf('saved_packages', moves.saved_packages, ['kody_id'], (row) =>
 		text(row, 'kody_id'),
 	)
+
+	for (const row of moves.saved_packages) {
+		if (!Number(row['has_app'])) continue
+		const message = getPackageAppHostLabelLengthError({
+			leaf: text(row, 'kody_id'),
+			handle: to.slug,
+		})
+		if (message) {
+			blockers.push({
+				code: 'package_app_host_label_too_long',
+				message,
+				table: 'saved_packages',
+				subject: text(row, 'kody_id'),
+			})
+		}
+	}
 
 	moves.user_repos = source.user_repos.filter(isLiveRow)
 	const repoIds = new Set(moves.user_repos.map((row) => text(row, 'id')))

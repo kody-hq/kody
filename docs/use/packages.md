@@ -1060,7 +1060,11 @@ Republishing an approved internet-visible app does not interrupt public
 visitors. They keep the approved version until the new one finishes building. If
 the new version asks for the same capabilities or fewer, its approval carries
 forward and visitors switch to it right away. If it asks for more, visitors stay
-on the approved version until you approve the new capability set.
+on the approved version until you approve the new capability set. While they
+wait, the package page shows **Public visitors are still on the previous
+version** with an **Approve to update public visitors** link, and the publish
+response includes `public_visitors_held_back` with the commit visitors still
+run, the new commit, and `approval_url`.
 
 When the published version has no [security audit](#security-audit) yet, both
 responses also return the next step for the agent. `packageUpdate` returns

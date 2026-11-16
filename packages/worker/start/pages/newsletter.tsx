@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	readPublicFormProtection,
@@ -19,10 +20,7 @@ import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAlertCardCss,
-	inputCss,
 	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -37,6 +35,7 @@ import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { sendUiEvent } from '#client/ui-actor.ts'
 import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { Input } from '../components/input.tsx'
 
 // Keeps the card's grid spacing while letting the no-JavaScript note hide
 // every control at once.
@@ -204,7 +203,7 @@ function SignupForm(props: {
 				</noscript>
 			) : null}
 			<div data-newsletter-fields css={fieldsCss}>
-				<input
+				<Input
 					type="text"
 					name={honeypotFieldName}
 					tabIndex={-1}
@@ -213,9 +212,8 @@ function SignupForm(props: {
 					{...passwordManagerIgnoreProps}
 					css={honeypotCss}
 				/>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Email address</span>
-					<input
+				<Field label="Email address">
+					<Input
 						type="email"
 						name="email"
 						required
@@ -226,9 +224,8 @@ function SignupForm(props: {
 						placeholder="you@example.com"
 						aria-invalid={emailInvalid || undefined}
 						aria-describedby={props.error ? errorId : undefined}
-						css={inputCss}
 					/>
-				</label>
+				</Field>
 				{turnstileSiteKey ? (
 					<>
 						<div className={turnstileWidgetClassName}></div>

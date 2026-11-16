@@ -61,13 +61,13 @@ function nestedHubArtifactModules() {
 	}
 }
 
-test('a composed dependency artifact keeps one copy of each linked package it carries', () => {
+test('a composed dependency artifact keeps one copy of each linked package it carries', async () => {
 	const hub = linkedArtifactPrefix({
 		specifier: 'kody:@u/week-run/drive',
 		sourceId: 'source-hub',
 		publishedCommit: 'commit-hub',
 	})
-	const modules = materializeDependencyArtifactModules({
+	const modules = await materializeDependencyArtifactModules({
 		artifactPrefix: hub,
 		modules: nestedHubArtifactModules(),
 		linkedRoot: '',
@@ -105,14 +105,14 @@ test('a composed dependency artifact keeps one copy of each linked package it ca
 	}
 })
 
-test('linking the same dependency twice writes the same modules', () => {
+test('linking the same dependency twice writes the same modules', async () => {
 	const prefix = linkedArtifactPrefix({
 		specifier: 'kody:@u/calendar/read',
 		sourceId: 'source-calendar',
 		publishedCommit: 'commit-calendar',
 	})
 	expect(prefix).toBe(calendar)
-	const once = materializeDependencyArtifactModules({
+	const once = await materializeDependencyArtifactModules({
 		artifactPrefix: prefix,
 		modules: { 'bundle.js': aiBundle },
 		linkedRoot: '',
@@ -120,10 +120,10 @@ test('linking the same dependency twice writes the same modules', () => {
 	expect(once).toEqual({ [`${prefix}/bundle.js`]: aiBundle })
 })
 
-test('composing a dependency artifact into a load graph keeps every module under its prefix', () => {
+test('composing a dependency artifact into a load graph keeps every module under its prefix', async () => {
 	const packagePrefix =
 		'.__kody_packages__/@u/week-run/.__published_bundle__/2e2f6472697665'
-	const modules = materializeDependencyArtifactModules({
+	const modules = await materializeDependencyArtifactModules({
 		artifactPrefix: packagePrefix,
 		modules: nestedHubArtifactModules(),
 		linkedRoot: packagePrefix,
@@ -149,24 +149,24 @@ test('composing a dependency artifact into a load graph keeps every module under
 	}
 })
 
-test('a linked artifact root must contain the artifact prefix', () => {
-	expect(() =>
+test('a linked artifact root must contain the artifact prefix', async () => {
+	await expect(
 		materializeDependencyArtifactModules({
 			artifactPrefix: calendar,
 			modules: { 'bundle.js': aiBundle },
 			linkedRoot: '.__kody_packages__/@u/other',
 		}),
-	).toThrow(/does not contain/)
+	).rejects.toThrow(/does not contain/)
 })
 
-test('omitting runtime modules leaves Kody runtime paths out of the linked graph', () => {
+test('omitting runtime modules leaves Kody runtime paths out of the linked graph', async () => {
 	const input = {
 		artifactPrefix: calendar,
 		modules: nestedHubArtifactModules(),
 		linkedRoot: '',
 	}
-	const withRuntime = materializeDependencyArtifactModules(input)
-	const withoutRuntime = materializeDependencyArtifactModules({
+	const withRuntime = await materializeDependencyArtifactModules(input)
+	const withoutRuntime = await materializeDependencyArtifactModules({
 		...input,
 		omitRuntimeModules: true,
 	})

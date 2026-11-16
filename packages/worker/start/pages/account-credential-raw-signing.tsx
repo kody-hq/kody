@@ -9,6 +9,7 @@ import { saveCredentialRawSigning } from '#start/server/credential-raw-signing'
 import type { CredentialRawSigningView } from '#universal/credentials-list.ts'
 import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const rawSigningAnchor = 'raw-signing'
 
@@ -152,8 +153,7 @@ export function CredentialRawSigningSection(props: {
 									alignItems: 'flex-start',
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={confirming}
 									onChange={(event) => setConfirming(event.target.checked)}
 									data-testid="raw-signing-confirm"

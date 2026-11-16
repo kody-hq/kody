@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import { shortPackageAppSubdomainPathCodemod } from './0016-short-package-app-subdomain-path.ts'
 
-test('0016 rewrites subdomain /packages mounts and preserves rest/query/hash', () => {
+test('0016 rewrites subdomain /packages mounts and preserves rest/query/hash', async () => {
 	const files = {
 		'index.ts': [
 			"const hosted = 'https://alice.kody.run/packages/demo/report?x=1'",
@@ -12,7 +12,7 @@ test('0016 rewrites subdomain /packages mounts and preserves rest/query/hash', (
 		'README.md': 'Open https://alice.kody.run/packages/demo.\n',
 	}
 
-	const result = shortPackageAppSubdomainPathCodemod.transform(files)
+	const result = await shortPackageAppSubdomainPathCodemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['index.ts', 'README.md'])
 	expect(result.files['index.ts']).toBe(
@@ -26,12 +26,14 @@ test('0016 rewrites subdomain /packages mounts and preserves rest/query/hash', (
 	expect(result.files['README.md']).toBe('Open https://alice.kody.run/demo.\n')
 	expect(result.needsManual).toEqual([])
 
-	const again = shortPackageAppSubdomainPathCodemod.transform(result.files)
+	const again = await shortPackageAppSubdomainPathCodemod.transform(
+		result.files,
+	)
 	expect(again.changed).toBe(false)
 	expect(again.changedPaths).toEqual([])
 })
 
-test('0016 leaves app-origin, Open API, apex, and nested hosts alone', () => {
+test('0016 leaves app-origin, Open API, apex, and nested hosts alone', async () => {
 	const files = {
 		'keep.ts': [
 			"const appOrigin = 'https://kody.codes/@alice/packages/demo'",
@@ -46,7 +48,7 @@ test('0016 leaves app-origin, Open API, apex, and nested hosts alone', () => {
 		'logo.png': 'https://alice.kody.run/packages/demo pretend-binary',
 	}
 
-	const result = shortPackageAppSubdomainPathCodemod.transform(files)
+	const result = await shortPackageAppSubdomainPathCodemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['legacy.ts'])
 	expect(result.files['keep.ts']).toBe(files['keep.ts'])
@@ -64,7 +66,7 @@ test('0016 leaves app-origin, Open API, apex, and nested hosts alone', () => {
 		]),
 	)
 
-	const findings = shortPackageAppSubdomainPathCodemod.detect(files)
+	const findings = await shortPackageAppSubdomainPathCodemod.detect(files)
 	expect(findings).toEqual(
 		expect.arrayContaining([
 			{
@@ -83,7 +85,7 @@ test('0016 leaves app-origin, Open API, apex, and nested hosts alone', () => {
 	expect(findings.some((finding) => finding.path === 'keep.ts')).toBe(false)
 })
 
-test('0016 detect reports rewrite and bare-mount findings on the same file', () => {
+test('0016 detect reports rewrite and bare-mount findings on the same file', async () => {
 	const files = {
 		'mixed.ts': [
 			"const hosted = 'https://alice.kody.run/packages/demo'",
@@ -91,7 +93,7 @@ test('0016 detect reports rewrite and bare-mount findings on the same file', () 
 			'',
 		].join('\n'),
 	}
-	const findings = shortPackageAppSubdomainPathCodemod.detect(files)
+	const findings = await shortPackageAppSubdomainPathCodemod.detect(files)
 	expect(findings).toEqual(
 		expect.arrayContaining([
 			{

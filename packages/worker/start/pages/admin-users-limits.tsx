@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -24,14 +25,10 @@ import {
 } from '#universal/plans.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 function formatLimit(limit: number | null) {
 	if (limit === null) return 'No window'
@@ -244,12 +241,10 @@ export function AdminOrgLimitsPanel({
 						}}
 						onSubmit={submit}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Limit</span>
-							<select
+						<Field label="Limit">
+							<Select
 								value={key}
 								disabled={saving}
-								css={inputCss}
 								onChange={(event) =>
 									setKey(event.currentTarget.value as LimitOverrideKey)
 								}
@@ -259,44 +254,35 @@ export function AdminOrgLimitsPanel({
 										{row.label}
 									</option>
 								))}
-							</select>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Value (or "unlimited")</span>
-							<input
+							</Select>
+						</Field>
+						<Field label={<>Value (or "unlimited")</>}>
+							<Input
 								type="text"
 								autoComplete="off"
 								value={valueText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setValueText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Expires (optional)</span>
-							<input
+						</Field>
+						<Field label="Expires (optional)">
+							<Input
 								type="datetime-local"
 								value={expiresText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setExpiresText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Reason (required)</span>
-							<input
+						</Field>
+						<Field label="Reason (required)">
+							<Input
 								type="text"
 								autoComplete="off"
 								maxLength={500}
 								value={reasonText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setReasonText(event.currentTarget.value)}
 							/>
-						</label>
+						</Field>
 						<Button
 							type="submit"
 							disabled={saving || valueText.trim() === ''}
@@ -313,7 +299,6 @@ export function AdminOrgLimitsPanel({
 	)
 }
 
-const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }
 const removeButtonCss: CSSObject = {
 	justifySelf: 'start',
 }

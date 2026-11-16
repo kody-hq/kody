@@ -124,7 +124,7 @@ test('R2 export pages owned payloads in bounded chunks and reports missing objec
 		},
 	})
 	await expect(read('r2_object', { startAfter: legacyCursor })).rejects.toThrow(
-		'restart without startAfter',
+		'restart the r2_object section without start_after',
 	)
 
 	const second = await read('r2_object', { startAfter: first.nextStartAfter })

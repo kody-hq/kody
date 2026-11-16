@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -17,10 +18,6 @@ import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import type { ScopedInviteLinkView } from '#universal/loader-data.ts'
@@ -49,6 +46,7 @@ import {
 	rowTextCss,
 	selectCss,
 } from './package-collaborators-parts.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 type CreatedLink = { id: string; url: string }
 
@@ -294,9 +292,11 @@ function PackageInviteLinksContent({
 				css={formCss}
 				onSubmit={create}
 			>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Access</span>
-					<select
+				<Field
+					label="Access"
+					description={<>{packageCollaboratorPresetDescription(preset)}.</>}
+				>
+					<Select
 						aria-label="Access for the invite link"
 						value={preset}
 						css={selectCss}
@@ -306,39 +306,30 @@ function PackageInviteLinksContent({
 						}}
 					>
 						{renderPresetOptions(preset)}
-					</select>
-					<p css={accountFieldNoteCss}>
-						{packageCollaboratorPresetDescription(preset)}.
-					</p>
-				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Max uses</span>
-					<input
+					</Select>
+				</Field>
+				<Field
+					label="Max uses"
+					description="One person per use. Leave blank to let anyone with the link accept."
+				>
+					<Input
 						value={maxUses}
-						data-field-ring
 						inputMode="numeric"
 						autoComplete="off"
 						placeholder="Unlimited"
 						aria-label="Max uses"
-						css={accountInputCss}
 						onChange={(event) => setMaxUses(event.currentTarget.value)}
 					/>
-					<p css={accountFieldNoteCss}>
-						One person per use. Leave blank to let anyone with the link accept.
-					</p>
-				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Expires in days</span>
-					<input
+				</Field>
+				<Field label="Expires in days">
+					<Input
 						value={expiresInDays}
-						data-field-ring
 						inputMode="numeric"
 						autoComplete="off"
 						aria-label="Expires in days"
-						css={accountInputCss}
 						onChange={(event) => setExpiresInDays(event.currentTarget.value)}
 					/>
-				</label>
+				</Field>
 				<div css={accountActionsCss}>
 					<Button
 						type="submit"

@@ -63,10 +63,17 @@ import {
 	localPolicyPath,
 	readLocalCommandsEnabled,
 	readLocalPolicy,
+	removeLocalCapability,
 	removeLocalPath,
 	setLocalAutoUpdateEnabled,
+	setLocalCapability,
 	setLocalCommandsEnabled,
 } from './fs-access.js'
+import {
+	describeMachineCommandArgs,
+	parseMachineCommandDefinition,
+	parseMachineLanDefinition,
+} from './machine-capabilities.js'
 import {
 	contextWorkersDir,
 	loadContext,
@@ -200,6 +207,9 @@ async function runCommand(
 	}
 	if (input.command === 'context' && sub === 'commands') {
 		return await runCommandsOptInCommand(input, rest)
+	}
+	if (input.command === 'context' && sub === 'capability') {
+		return await runCapabilityCommand(input, rest)
 	}
 	if (input.command === 'context' && sub === 'policy') {
 		return await runPolicyCommand(input, rest)
@@ -1111,7 +1121,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context capability [list | add command|lan <file.json> | remove command|lan <name>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 
@@ -1282,6 +1292,98 @@ async function runCommandsOptInCommand(
 		lines.join('\n'),
 	)
 	return contexts.some((context) => context.error) ? 1 : 0
+}
+
+const capabilityUsage =
+	'Usage: kody context capability [list] | kody context capability add command|lan <file.json> | kody context capability remove command|lan <name> [--json]'
+
+/** Named commands and local network destinations defined on this machine. */
+async function runCapabilityCommand(
+	input: ExecutionContextCommandInput,
+	[action = 'list', kind, target, ...extra]: Array<string>,
+): Promise<number> {
+	const file = localPolicyPath()
+	const describe = (
+		capabilities: Awaited<ReturnType<typeof readLocalPolicy>>['capabilities'],
+	) => {
+		const commands = capabilities?.commands ?? []
+		const lan = capabilities?.lan ?? []
+		if (commands.length === 0 && lan.length === 0) {
+			return `This machine defines no named commands or local network destinations (${file}).`
+		}
+		return [
+			`Machine access defined on this machine (${file}):`,
+			...commands.flatMap((command) => [
+				`  command ${command.name}${command.description ? `: ${command.description}` : ''}`,
+				`    runs ${command.exec.join(' ')}`,
+				...describeMachineCommandArgs(command).map(
+					(shape) => `    allows ${shape}`,
+				),
+			]),
+			...lan.map(
+				(entry) =>
+					`  lan ${entry.name}${entry.description ? `: ${entry.description}` : ''} (${entry.hosts.join(', ')} ports ${entry.ports.join(', ')})`,
+			),
+			'Defining these does not let any run use them yet.',
+		].join('\n')
+	}
+	if (action === 'list') {
+		if (kind !== undefined) throw new Error(capabilityUsage)
+		const policy = await readLocalPolicy(file)
+		out(
+			input,
+			{
+				path: file,
+				capabilities: policy.capabilities ?? { commands: [], lan: [] },
+			},
+			describe(policy.capabilities),
+		)
+		return 0
+	}
+	if (
+		(action !== 'add' && action !== 'remove') ||
+		(kind !== 'command' && kind !== 'lan') ||
+		!target ||
+		extra.length > 0
+	) {
+		throw new Error(capabilityUsage)
+	}
+	if (action === 'remove') {
+		const { policy, removed } = await removeLocalCapability({
+			kind,
+			name: target,
+			policyPath: file,
+		})
+		out(
+			input,
+			{ path: file, removed, capabilities: policy.capabilities },
+			`${removed ? `Removed ${kind} "${target}".` : `No ${kind} named "${target}" is defined.`}\n${describe(policy.capabilities)}`,
+		)
+		return removed ? 0 : 1
+	}
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(readFileSync(target, 'utf8'))
+	} catch (error) {
+		throw new Error(
+			`Could not read ${target} as JSON: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const definition =
+		kind === 'command'
+			? parseMachineCommandDefinition(parsed)
+			: parseMachineLanDefinition(parsed)
+	const { policy, replaced } = await setLocalCapability({
+		kind,
+		definition,
+		policyPath: file,
+	})
+	out(
+		input,
+		{ path: file, replaced, capabilities: policy.capabilities },
+		`${replaced ? 'Replaced' : 'Added'} ${kind} "${definition.name}".\n${describe(policy.capabilities)}`,
+	)
+	return 0
 }
 
 async function runPolicyCommand(

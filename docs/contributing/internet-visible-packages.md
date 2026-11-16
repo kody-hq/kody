@@ -77,6 +77,13 @@ set. Anonymous realtime sockets need the approved commit to be the serving
 commit, so they wait for that approval. An app that was never approved keeps
 returning 403 to anonymous visitors.
 
+`loadPublicVisitorsHeldBack`
+(`package-capabilities/public-visitors-held-back.ts`) reports that held state
+from the same `getServedPackageCapabilityApproval` lookup: an internet-visible
+app whose served approval names a commit other than the serving one. The owner
+package page renders it as a notice with the approval link, and the publish
+result returns it as `public_visitors_held_back`.
+
 ## Self-publish
 
 `packageUpdate` (`internet_visible: true`) and the settings toggle approve going
