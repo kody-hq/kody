@@ -174,6 +174,8 @@ type ExecutionContextBoxEntry = {
 
 export type ExecutionContextListItem = {
 	/** The viewer's own excess-access notice (ADR 0096). */
+	/** The operator's undismissed notice that the shell has no package list. */
+	openShell?: { fingerprint: string }
 	elevation?: {
 		fingerprint: string
 		dismissed: boolean

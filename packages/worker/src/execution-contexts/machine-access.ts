@@ -11,6 +11,7 @@ import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { grantResourceToProfile } from '#worker/profiles/package-grants.ts'
 import { isOlderCliVersion } from '#universal/execution-contexts.ts'
+import { refreshOpenShellNotice } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
 	type MachineCapabilityRow,
@@ -605,6 +606,7 @@ export async function setMachineAccessPackages(
 				removed,
 			},
 		)
+		if (capability.kind === 'shell') await refreshOpenShellNotice(db, row)
 	}
 	return {
 		id: row.id,

@@ -48,7 +48,12 @@ Execution contexts are an experiment. Turn them on at
   `executionContextSharePreview`, and the sharing capabilities. Find them with
   `search({ query: "execution context" })`. Shared-box access notices appear
   once in execute and search `notices` (`context-elevation` for a grantee;
-  `context-misconfigured` for the operator). See
+  `context-misconfigured` for the operator). The operator also gets
+  `context-open-shell` while the machine has host commands on and the shell has
+  no package list. It stays on the context page and in what is waiting on you
+  until you limit the shell to listed packages, turn host commands off on the
+  machine, or dismiss it with fingerprint `open-shell` to keep the shell as it
+  is. See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing

@@ -393,7 +393,13 @@ function NoticesPanel(props: {
 		context.elevation && !context.elevation.dismissed ? context.elevation : null
 	const misconfigurations = context.misconfigurations ?? []
 	const review = context.accessReview ?? []
-	if (!elevation && misconfigurations.length === 0 && review.length === 0) {
+	const openShell = context.openShell ?? null
+	if (
+		!elevation &&
+		!openShell &&
+		misconfigurations.length === 0 &&
+		review.length === 0
+	) {
 		return null
 	}
 
@@ -422,6 +428,27 @@ function NoticesPanel(props: {
 							<li key={code}>{misconfigurationText[code] ?? code}</li>
 						))}
 					</ul>
+				</div>
+			) : null}
+			{openShell ? (
+				<div role="status" data-testid="context-open-shell">
+					<p css={{ margin: 0 }}>
+						<strong>{context.name} has an unrestricted shell.</strong> Every run
+						of yours here can run any command, including every package you wrote
+						or adopted. Limit the shell to listed packages with{' '}
+						<code>executionContextMachineAccessPackagesSet</code>, or define
+						named commands on the machine and turn the shell off there with{' '}
+						<code>kody context commands off</code>.
+					</p>
+					<Button
+						type="button"
+						variant="primary"
+						css={target}
+						disabled={busy}
+						onClick={() => void dismiss(openShell.fingerprint)}
+					>
+						Keep the shell as it is
+					</Button>
 				</div>
 			) : null}
 			{elevation ? (

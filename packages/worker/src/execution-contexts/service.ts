@@ -1711,6 +1711,12 @@ async function noticesView(
 	const misconfigured = notices.find(
 		(notice) => notice.kind === 'misconfigured',
 	)
+	const openShell = notices.find(
+		(notice) =>
+			notice.kind === 'open_shell' &&
+			notice.subjectUserId === caller.userId &&
+			!notice.dismissed,
+	)
 	const reviewIds = notices
 		.filter((notice) => notice.kind === 'elevation' && notice.subjectUserId)
 		.map((notice) => notice.subjectUserId!)
@@ -1725,6 +1731,7 @@ async function noticesView(
 					},
 				}
 			: {}),
+		...(openShell ? { openShell: { fingerprint: openShell.fingerprint } } : {}),
 		...(canAct && misconfigured
 			? {
 					misconfigurations: (misconfigured.detail as MisconfigDetail).codes,

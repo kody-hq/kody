@@ -239,7 +239,7 @@ export const executeToolOutputSchema = {
 		.array(z.unknown())
 		.optional()
 		.describe(
-			'Execution-context notices that are new or changed since you last saw them: `context-elevation` (the machine this ran on can do more than you can personally) and `context-misconfigured`. Each has contextId, contextName, fingerprint, summary, entries or codes, href, and dismissible.',
+			'Execution-context notices that are new or changed since you last saw them: `context-elevation` (the machine this ran on can do more than you can personally) `context-misconfigured`, and `context-open-shell` (a machine you operate gives your runs an unrestricted shell with no package list). Each has contextId, contextName, fingerprint, summary, href, dismissible, and entries or codes where they apply.',
 		),
 	usage: z
 		.unknown()

@@ -1,4 +1,4 @@
-import { refreshContextNotices } from './box-notices.ts'
+import { refreshContextNotices, refreshOpenShellNotice } from './box-notices.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import {
 	ecpSignatureHeader,
@@ -674,6 +674,10 @@ async function setCommandsFromMachine(input: {
 		})
 	}
 	if (enabled) await ensureShellCapability(env.APP_DB, row)
+	await refreshOpenShellNotice(env.APP_DB, {
+		...row,
+		grant_json: JSON.stringify(grant),
+	})
 	await session.updateGrant({
 		snapshot: { ...snapshotOf(row), grant, grantVersion },
 	})
