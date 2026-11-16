@@ -16,11 +16,13 @@ import {
 	readModuleParseError,
 	resolveStringExpression,
 	scannableModuleFilePattern,
+	scannableModuleWalk,
 	unwrapExpression,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
 	isVaultCredentialUsePlacement,
+	mergePackageCredentialScans,
 	scanPackageCredentials,
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
@@ -874,24 +876,22 @@ async function scanServerEvalFailures(
 			})
 		}
 	}
-	const scannable = new Set<string>()
 	await forEachScannableModule(
 		files,
 		async (path, parsed) => {
-			scannable.add(path)
 			if (serverPaths.has(path)) await visit(path, parsed)
 		},
 		{ sorted: true },
 	)
 	// Server-reachable modules the runtime walk does not list.
+	const walk = await scannableModuleWalk(files)
 	for (const path of [...serverPaths].sort()) {
-		if (scannable.has(path) || files[path] == null) continue
+		if (walk.listed.has(path) || !walk.visits(path) || files[path] == null) {
+			continue
+		}
 		await visit(path, await parseModule(files[path]))
 	}
-	const pathOf = (failure: CredentialStampGateFailure) => failure.path ?? ''
-	return failures.sort((left, right) =>
-		pathOf(left) < pathOf(right) ? -1 : pathOf(left) > pathOf(right) ? 1 : 0,
-	)
+	return failures.sort(compareFailurePaths)
 }
 
 /**
@@ -1673,22 +1673,34 @@ export function applyCredentialStampSealPlan(
 }
 
 /**
- * Scan package source for stampable literal credential keys and publish-time
- * gate failures (non-literal uses, unstampable legacy patterns, server eval).
+ * What the module walks of a credential stamp scan found, before sealing.
+ * Plain data with nothing derived across modules, so the results of walks
+ * over disjoint sets of modules merge into the result for all of them.
  */
-export async function scanCredentialStamp(
+export type CredentialStampPasses = {
+	scan: PackageCredentialScan
+	/** Valid literal keys from credential helpers and named references. */
+	keys: Array<string>
+	oauthKeys: Array<string>
+	moduleFailures: Array<CredentialStampGateFailure>
+	mcp: { keys: Array<string>; failures: Array<CredentialStampGateFailure> }
+	legacyFindings: Array<PackageCodemodFinding>
+	serverEvalFailures: Array<CredentialStampGateFailure>
+}
+
+/**
+ * Walk the modules of `files` for a credential stamp. `files` must already
+ * be without oversized modules ({@link omitOversizedCredentialStampModules}).
+ * When the file map adopted a module plan, only that plan's modules are
+ * walked; {@link mergeCredentialStampPasses} joins the parts.
+ */
+export async function collectCredentialStampPasses(
 	files: Record<string, string>,
-	options: {
-		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
-		secretProviders?: ResolvedSecretProviderSlots
-	} = {},
-): Promise<CredentialStampScan> {
-	files = omitOversizedCredentialStampModules(files)
+	serverPaths: ReadonlySet<string>,
+): Promise<CredentialStampPasses> {
 	const keys = new Set<string>()
-	const failures: Array<CredentialStampGateFailure> = []
 	const oauthKeys = new Set<string>()
 	const slots = readManifestCredentialSlots(files[packageManifestPath])
-	const serverPaths = await collectServerRuntimeModulePaths(files)
 	const moduleFailures: Array<CredentialStampGateFailure> = []
 	// One parse of each module serves every scan below.
 	const [scan, , , mcp, legacyFindings, serverEvalFailures] =
@@ -1771,6 +1783,111 @@ export async function scanCredentialStamp(
 				}),
 			() => scanServerEvalFailures(files, serverPaths),
 		])
+
+	return {
+		scan,
+		keys: [...keys].sort(),
+		oauthKeys: [...oauthKeys].sort(),
+		moduleFailures,
+		mcp,
+		legacyFindings,
+		serverEvalFailures,
+	}
+}
+
+function compareFailurePaths(
+	left: CredentialStampGateFailure,
+	right: CredentialStampGateFailure,
+) {
+	const leftPath = left.path ?? ''
+	const rightPath = right.path ?? ''
+	return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0
+}
+
+/**
+ * Join the 0010 findings of walks over disjoint module sets, given in sorted
+ * module order. Every part reports the manifest findings; one of each stays.
+ */
+export function mergeLegacyCredentialFindings(
+	parts: ReadonlyArray<ReadonlyArray<PackageCodemodFinding>>,
+): Array<PackageCodemodFinding> {
+	const seen = new Set<string>()
+	const findings: Array<PackageCodemodFinding> = []
+	for (const finding of parts.flat()) {
+		const key = JSON.stringify([finding.path ?? null, finding.message])
+		if (seen.has(key)) continue
+		seen.add(key)
+		findings.push(finding)
+	}
+	return findings.sort((left, right) =>
+		(left.path ?? '').localeCompare(right.path ?? ''),
+	)
+}
+
+/**
+ * Join the passes of walks over disjoint module sets, given in sorted module
+ * order, into what one walk over all of them returns.
+ */
+export function mergeCredentialStampPasses(
+	parts: ReadonlyArray<CredentialStampPasses>,
+): CredentialStampPasses {
+	return {
+		scan: mergePackageCredentialScans(parts.map((part) => part.scan)),
+		keys: [...new Set(parts.flatMap((part) => part.keys))].sort(),
+		oauthKeys: [...new Set(parts.flatMap((part) => part.oauthKeys))].sort(),
+		moduleFailures: parts.flatMap((part) => part.moduleFailures),
+		mcp: {
+			keys: [...new Set(parts.flatMap((part) => part.mcp.keys))].sort(),
+			failures: dedupeFailures(parts.flatMap((part) => part.mcp.failures)),
+		},
+		legacyFindings: mergeLegacyCredentialFindings(
+			parts.map((part) => part.legacyFindings),
+		),
+		serverEvalFailures: parts
+			.flatMap((part) => part.serverEvalFailures)
+			.sort(compareFailurePaths),
+	}
+}
+
+/**
+ * Scan package source for stampable literal credential keys and publish-time
+ * gate failures (non-literal uses, unstampable legacy patterns, server eval).
+ */
+export async function scanCredentialStamp(
+	files: Record<string, string>,
+	options: {
+		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
+): Promise<CredentialStampScan> {
+	files = omitOversizedCredentialStampModules(files)
+	return sealCredentialStamp(
+		files[packageManifestPath],
+		await collectCredentialStampPasses(
+			files,
+			await collectServerRuntimeModulePaths(files),
+		),
+		options,
+	)
+}
+
+/**
+ * Turn the module passes of a whole tree into its stamp: the sorted keys and
+ * the gate failures, checked against the manifest's `kody.credentials`.
+ */
+export function sealCredentialStamp(
+	manifestSource: string | undefined,
+	passes: CredentialStampPasses,
+	options: {
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
+): CredentialStampScan {
+	const { scan, moduleFailures, mcp, legacyFindings, serverEvalFailures } =
+		passes
+	const keys = new Set(passes.keys)
+	const oauthKeys = new Set(passes.oauthKeys)
+	const failures: Array<CredentialStampGateFailure> = []
+	const slots = readManifestCredentialSlots(manifestSource)
 
 	for (const reference of scan.references) {
 		// `|scope=` is refused via the 0010 unstampable pattern list.
