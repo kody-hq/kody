@@ -39,6 +39,32 @@ export async function acquireScheduledLaneLease(
 	return (result.meta.changes ?? 0) > 0
 }
 
+/**
+ * Extend a lease this holder still owns. False means another holder took the
+ * lane after this one expired, so the caller is stale and must stop writing.
+ */
+export async function renewScheduledLaneLease(
+	db: D1Database,
+	input: {
+		lane: ScheduledLaneName
+		holder: string
+		leaseMs: number
+		now: Date
+	},
+): Promise<boolean> {
+	const expiresAt = new Date(input.now.getTime() + input.leaseMs).toISOString()
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE scheduled_lane_leases SET expires_at = ?
+				WHERE lane = ? AND holder = ?`,
+			)
+			.bind(expiresAt, input.lane, input.holder)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
+}
+
 export async function releaseScheduledLaneLease(
 	db: D1Database,
 	input: { lane: ScheduledLaneName; holder: string },
