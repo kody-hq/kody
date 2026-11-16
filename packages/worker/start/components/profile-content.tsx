@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from './text-link.tsx'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
 import type { CSSObject } from '@emotion/react'
@@ -45,7 +46,6 @@ import {
 	cardCss,
 	descriptionCss,
 	hoverMq,
-	mutedLinkCss,
 	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 
@@ -515,16 +515,16 @@ export function ProfileContent(props: ProfileContentProps) {
 										/>
 										<span>
 											{communityActivityVerb(item.type)}{' '}
-											<SiteLink
+											<TextLink
+												tone="muted"
 												href={getCommunityListingHref({
 													listingId: item.listingId,
 													listingName: item.listingName,
 													kodyId: item.listingKodyId,
 												})}
-												css={mutedLinkCss}
 											>
 												{item.listingName}
-											</SiteLink>
+											</TextLink>
 										</span>
 									</span>
 									<time

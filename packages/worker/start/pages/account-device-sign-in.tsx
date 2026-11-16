@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { Button } from '../components/button.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -9,7 +10,6 @@ import {
 	cardCss,
 	descriptionCss,
 	fieldLabelCss,
-	getAlertCardCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -86,7 +86,6 @@ function renderBody(data: AccountDeviceSignInView) {
 						variant="primary"
 						size="md"
 						reloadDocument
-						css={primaryLinkCss}
 						data-testid="account-device-start-again"
 					>
 						Start again
@@ -96,13 +95,7 @@ function renderBody(data: AccountDeviceSignInView) {
 		case 'none':
 			return (
 				<div css={actionsCss}>
-					<Button
-						href="/login"
-						variant="primary"
-						size="md"
-						reloadDocument
-						css={primaryLinkCss}
-					>
+					<Button href="/login" variant="primary" size="md" reloadDocument>
 						Go to sign in
 					</Button>
 				</div>
@@ -166,17 +159,16 @@ function PendingCard(props: {
 						variant="secondary"
 						size="md"
 						reloadDocument
-						css={secondaryLinkCss}
 						data-testid="account-device-check-now"
 					>
 						Check now
 					</Button>
 				</div>
 			</section>
-			<p role="note" css={getAlertCardCss('info')}>
+			<Alert role="note" tone="info">
 				Never read this code to anyone or approve a code someone sent you.
 				Approving gives this browser your whole Kody account.
-			</p>
+			</Alert>
 		</>
 	)
 }
@@ -195,14 +187,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

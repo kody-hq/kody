@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useState, type ReactNode } from 'react'
+import { Alert } from '../components/alert.tsx'
+import { Badge } from '../components/badge.tsx'
 import { Button } from '../components/button.tsx'
 import { Checkbox, Radio, Switch } from '../components/choice-controls.tsx'
 import {
@@ -20,7 +22,9 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 } from '../components/menu.tsx'
+import { Table } from '../components/table.tsx'
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { Tooltip } from '../components/tooltip.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -245,7 +249,89 @@ const uiGallerySections: ReadonlyArray<{
 			</>
 		),
 	},
+	{
+		id: 'badge',
+		title: 'Badge',
+		render: () => (
+			<GalleryRow label="tones">
+				{badgeTones.map((tone) => (
+					<Badge key={tone} tone={tone}>
+						{tone}
+					</Badge>
+				))}
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'alert',
+		title: 'Alert',
+		render: () => (
+			<>
+				<GalleryRow label="info">
+					<Alert role="status">Check your email for a sign-in link.</Alert>
+				</GalleryRow>
+				<GalleryRow label="error">
+					<Alert tone="error" role="alert">
+						That code expired. Request a new one.
+					</Alert>
+				</GalleryRow>
+			</>
+		),
+	},
+	{
+		id: 'text-link',
+		title: 'TextLink',
+		render: () => (
+			<GalleryRow label="tones">
+				<TextLink href="/docs">Read the docs</TextLink>
+				<TextLink tone="muted" href="/privacy">
+					Privacy
+				</TextLink>
+				<p>
+					Read the{' '}
+					<TextLink tone="prose" href="/terms">
+						terms
+					</TextLink>{' '}
+					first.
+				</p>
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'table',
+		title: 'Table',
+		render: () => (
+			<Table>
+				<caption>DNS records</caption>
+				<thead>
+					<tr>
+						<th scope="col">Type</th>
+						<th scope="col">Name</th>
+						<th scope="col">Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>CNAME</td>
+						<td>docs</td>
+						<td>
+							<Badge tone="accent">Active</Badge>
+						</td>
+					</tr>
+					<tr>
+						<td>TXT</td>
+						<td>_kody-verify</td>
+						<td>
+							<Badge tone="warning">Pending</Badge>
+						</td>
+					</tr>
+				</tbody>
+			</Table>
+		),
+	},
 ]
+
+const badgeTones = ['neutral', 'accent', 'warning', 'danger'] as const
 
 function MenuDemo() {
 	const [wrap, setWrap] = useState(true)

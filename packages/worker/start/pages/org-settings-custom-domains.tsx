@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
@@ -22,10 +23,7 @@ import {
 	AccountManagementMessage,
 	accountActionsCss,
 } from './account-management-components.tsx'
-import {
-	primaryLinkCss,
-	fieldDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import {
 	CustomDomainRecords,
 	CustomDomainStatusBadge,
@@ -97,9 +95,9 @@ export function OrgSettingsCustomDomains({
 				the DNS records shown for it at your DNS provider, set to DNS only. Kody
 				checks pending domains every few minutes and emails org owners when one
 				goes live. Sync checks right away.{' '}
-				<a css={primaryLinkCss} href="/docs/package-app-custom-domains">
+				<TextLink reloadDocument href="/docs/package-app-custom-domains">
 					Setup guide
-				</a>
+				</TextLink>
 			</p>
 			{domains.hostnames.length ? (
 				<ul data-testid="org-custom-hostnames" css={hostnameListCss}>
@@ -180,9 +178,9 @@ export function OrgSettingsCustomDomains({
 			{data.canManageDomains && !domains.canAdd ? (
 				<p data-testid="org-custom-domains-paid-only" css={fieldDescriptionCss}>
 					Custom domains need a paid plan.{' '}
-					<a css={primaryLinkCss} href={orgBillingPath(data.org.slug)}>
+					<TextLink reloadDocument href={orgBillingPath(data.org.slug)}>
 						See plans
-					</a>
+					</TextLink>
 				</p>
 			) : null}
 			{data.canManageDomains && domains.canAdd ? (

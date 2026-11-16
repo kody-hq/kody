@@ -1,12 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -33,9 +32,9 @@ export function TermsRoute() {
 				<p css={descriptionCss}>
 					Kody at kody.codes is operated by Kent C. Dodds. Questions about these
 					terms or the service can go to{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					.
 				</p>
 			</section>
@@ -123,18 +122,18 @@ export function TermsRoute() {
 					at the price and interval shown when you subscribe. You can manage or
 					cancel a subscription from Account settings. Plan limits are listed on
 					the{' '}
-					<SiteLink href="/pricing" css={mutedLinkCss}>
+					<TextLink tone="muted" href="/pricing">
 						Pricing
-					</SiteLink>{' '}
+					</TextLink>{' '}
 					page. Published limits can change; we will give reasonable notice of
 					material reductions when practical.
 				</p>
 				<p css={descriptionCss}>
 					Apart from account deletion, there are no automatic refunds. If
 					something went wrong, email{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					. Refund requests are considered case by case. Deleting your account
 					cancels any subscription immediately and automatically refunds the
 					unused portion of any billing period you have already paid for, to
@@ -171,9 +170,9 @@ export function TermsRoute() {
 				<p css={descriptionCss}>
 					Kody responds to notices of claimed copyright infringement under 17
 					U.S.C. §512 concerning public packages and profiles. Send notices to{' '}
-					<SiteLink href="mailto:dmca@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:dmca@kody.codes">
 						dmca@kody.codes
-					</SiteLink>
+					</TextLink>
 					. A valid notice must identify the copyrighted work, identify the
 					allegedly infringing material with its Kody URL, include your contact
 					information, a good-faith statement that use of the material is not
@@ -237,9 +236,9 @@ export function TermsRoute() {
 				<h2 css={cardTitleCss}>Privacy and changes</h2>
 				<p css={descriptionCss}>
 					The{' '}
-					<SiteLink href="/privacy" css={mutedLinkCss}>
+					<TextLink tone="muted" href="/privacy">
 						Privacy
-					</SiteLink>{' '}
+					</TextLink>{' '}
 					page explains how Kody handles data. We may update these terms by
 					posting the revised terms here. We will give reasonable notice of
 					material changes when practical. Continuing to use Kody after a change
@@ -248,17 +247,17 @@ export function TermsRoute() {
 			</section>
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/pricing" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/pricing">
 					Pricing
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/privacy" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/privacy">
 					Privacy
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/">
 					Back home
-				</SiteLink>
+				</TextLink>
 			</p>
 		</section>
 	)

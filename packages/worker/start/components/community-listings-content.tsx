@@ -26,7 +26,7 @@ import {
 } from './fork-outdated-copy-button.tsx'
 import { getCommunityListingHref } from '#universal/community-links.ts'
 import { renderCommunityListingName } from './community-listing-name.tsx'
-import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
+import { Badge, getBadgeCss } from './badge.tsx'
 import {
 	buildCommunityIndexHref,
 	defaultCommunityListingSort,
@@ -200,13 +200,14 @@ function renderCommunityListingCard(
 					{listing.trusted || listing.viewerInstall ? (
 						<span css={listingBadgeGroupCss}>
 							{listing.trusted ? (
-								<span
+								<Badge
+									tone="accent"
 									data-testid={`community-listing-trusted-${listing.id}`}
 									title="An admin reviewed this exact version and marked it trusted."
-									css={communityBadgePillCss}
+									css={{ cursor: 'help' }}
 								>
 									Trusted
-								</span>
+								</Badge>
 							) : null}
 							{renderCommunityViewerInstallBadge({ listing })}
 						</span>
@@ -330,9 +331,9 @@ function renderCommunityViewerInstallBadge(input: {
 		const testId = `community-listing-viewer-install-${input.listing.id}`
 		if (install.status === 'installed') {
 			return (
-				<span data-testid={testId} css={communityViewerInstallStatusCss}>
+				<Badge tone="accent" data-testid={testId}>
 					Installed
-				</span>
+				</Badge>
 			)
 		}
 		return renderCopyPromptPill({
@@ -604,21 +605,6 @@ const listingLinkCss = {
 	},
 } satisfies CSSObject
 
-const communityViewerInstallStatusCss = {
-	...communityStatusPillBoxCss,
-	color: colors.primaryText,
-	backgroundColor: `oklch(from ${colors.primary} l c h / 0.13)`,
-} satisfies CSSObject
-
-/* The prototype's `.badge-trusted` pill; the detail head reuses it without
-   the card's trailing-edge push. Same box as Install / Installed. */
-const communityBadgePillCss = {
-	...communityStatusPillBoxCss,
-	color: colors.primaryText,
-	backgroundColor: `oklch(from ${colors.primary} l c h / 0.13)`,
-	cursor: 'help',
-} satisfies CSSObject
-
 const listingBadgeGroupCss = {
 	display: 'flex',
 	alignItems: 'center',
@@ -644,14 +630,7 @@ const communityTagListCss = {
 	gap: '0.35rem',
 } satisfies CSSObject
 
-const communityTagPillCss = {
-	fontSize: '0.8rem',
-	fontWeight: 550,
-	color: colors.textMuted,
-	border: `1px solid ${colors.border}`,
-	borderRadius: '999px',
-	padding: '0.1rem 0.6rem',
-} satisfies CSSObject
+const communityTagPillCss = getBadgeCss('neutral')
 
 /* Stats sit on the card floor, over a top hairline. */
 const statsCss = {

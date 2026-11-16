@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { Field } from '../components/field.tsx'
 import {
 	oauthAuthorizeOrgField,
@@ -8,7 +9,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getAlertCardCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Select } from '../components/input.tsx'
@@ -72,13 +72,13 @@ export function AuthorizeOrgField(props: {
 	}
 	if (field.kind === 'missing')
 		return (
-			<p
+			<Alert
 				role="alert"
 				data-testid="oauth-authorize-org-missing"
-				css={getAlertCardCss('error')}
+				tone="error"
 			>
 				This account has no organization to bind this connection to.
-			</p>
+			</Alert>
 		)
 	if (field.kind === 'pending') return null
 	return (

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { Button } from '../components/button.tsx'
 import { PackageCustomDomainsSection } from '../components/custom-domain-status.tsx'
 import {
@@ -25,8 +26,8 @@ import {
 } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
-	visuallyHiddenCss,
 	getSquircleCss,
+	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	accountDisclosureCss,
@@ -288,20 +289,20 @@ export function AccountPackageOwnerDetails(props: {
 				)}
 			</div>
 			<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.xs }}>
-				{packageDetail.hidden ? <span css={statusBadgeCss}>Hidden</span> : null}
+				{packageDetail.hidden ? <Badge>Hidden</Badge> : null}
 				{!packageDetail.isPrivate ? (
-					<span css={communityBadgeCss}>Forkable</span>
+					<Badge tone="accent">Forkable</Badge>
 				) : (
-					<span css={statusBadgeCss}>Not forkable</span>
+					<Badge>Not forkable</Badge>
 				)}
 				{packageDetail.isInternetVisible ? (
-					<span css={communityBadgeCss}>Internet-visible</span>
+					<Badge tone="accent">Internet-visible</Badge>
 				) : (
-					<span css={statusBadgeCss}>Private app</span>
+					<Badge>Private app</Badge>
 				)}
-				<span css={statusBadgeCss}>
+				<Badge>
 					{packageDetail.hasCommunityListing ? 'Listed' : 'Not listed'}
-				</span>
+				</Badge>
 			</div>
 			{packageDetail.customDomains?.length ? (
 				<PackageCustomDomainsSection
@@ -787,24 +788,6 @@ const packageLockToggleCss = {
 			backgroundColor: `oklch(from ${colors.primary} l c h / 0.2)`,
 		},
 	},
-} satisfies CSSObject
-
-const statusBadgeCss = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.medium,
-} satisfies CSSObject
-
-const communityBadgeCss = {
-	...statusBadgeCss,
-	backgroundColor: colors.primarySoft,
-	border: 'none',
-	color: colors.primaryText,
-	fontWeight: typography.fontWeight.semibold,
 } satisfies CSSObject
 
 const settingsStackCss = {

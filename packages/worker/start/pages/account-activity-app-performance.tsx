@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { formatTimestamp } from '../components/local-timestamp.tsx'
+import { Table } from '../components/table.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import { recordStampCss } from './record-table.tsx'
 import type { PackageAppCpuSummary } from '#universal/package-app-cpu-samples.ts'
@@ -55,13 +56,7 @@ export function AccountActivityAppPerformance({
 			) : (
 				<div css={{ display: 'grid', gap: spacing.md }}>
 					<div css={{ overflowX: 'auto' }}>
-						<table
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table>
 							<thead>
 								<tr>
 									<th css={{ ...headCellCss, textAlign: 'left' }}>App</th>
@@ -95,7 +90,7 @@ export function AccountActivityAppPerformance({
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					</div>
 					<div css={{ display: 'grid', gap: spacing.xs }}>
 						<h3

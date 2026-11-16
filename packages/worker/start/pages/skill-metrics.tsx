@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import type {
 	SkillReadChannel,
 	SkillMetrics,
@@ -309,16 +310,10 @@ export function SkillMetricsPanel({
 						<details>
 							<summary css={{ cursor: 'pointer' }}>Recent reads</summary>
 							<div css={{ overflowX: 'auto' }}>
-								<table
+								<Table
 									css={{
-										width: '100%',
-										borderCollapse: 'collapse',
 										fontSize: '0.85rem',
-										'& th, & td': {
-											padding: '0.5rem',
-											textAlign: 'left',
-											borderBottom: `1px solid ${colors.border}`,
-										},
+										'& th, & td': { padding: '0.5rem' },
 									}}
 								>
 									<thead>
@@ -353,7 +348,7 @@ export function SkillMetricsPanel({
 											</tr>
 										))}
 									</tbody>
-								</table>
+								</Table>
 							</div>
 						</details>
 					) : null}

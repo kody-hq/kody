@@ -503,6 +503,7 @@ function renderToken(
 					data-markdown-table=""
 					data-markdown-table-compact-last={compactLast ? '' : undefined}
 				>
+					{/* oxlint-disable-next-line kody-custom/no-raw-table -- authored markdown tables use the prose stylesheet. */}
 					<table>
 						<thead>
 							<tr>

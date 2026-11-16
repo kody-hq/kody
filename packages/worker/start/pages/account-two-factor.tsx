@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -14,7 +15,6 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { toDataURL } from 'qrcode'
 import { useState, type FormEvent } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
@@ -31,7 +31,6 @@ import {
 	cardTitleCss,
 	descriptionCss,
 	layoutMaxWidths,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { Input } from '../components/input.tsx'
 
@@ -399,9 +398,7 @@ export function AccountTwoFactorPage({
 			) : null}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/account" css={primaryLinkCss}>
-					Back to account
-				</SiteLink>
+				<TextLink href="/account">Back to account</TextLink>
 			</p>
 		</AccountManagementShell>
 	)

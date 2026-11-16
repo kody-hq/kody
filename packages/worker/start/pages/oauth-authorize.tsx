@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
@@ -62,10 +64,8 @@ import {
 	detailLabelCss,
 	fieldCss,
 	fieldLabelCss,
-	getAlertCardCss,
 	insetCardCss,
 	listCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
 	sectionTitleCss,
@@ -924,12 +924,12 @@ export function OAuthAuthorizeRoute({
 				/>
 			) : null}
 			{message && !clientFailure ? (
-				<p
+				<Alert
 					role={message.type === 'error' ? 'alert' : undefined}
-					css={getAlertCardCss(message.type)}
+					tone={message.type}
 				>
 					{message.text}
-				</p>
+				</Alert>
 			) : null}
 			{message?.type === 'error' && !clientFailure ? (
 				<ErrorAgentPromptButton
@@ -1090,12 +1090,12 @@ export function OAuthAuthorizeRoute({
 							</Button>
 							{!sessionEmail ? (
 								<p css={descriptionCss}>
-									<SiteLink
+									<TextLink
+										tone="muted"
 										href={buildAuthLink('/login', readOAuthResumeTarget())}
-										css={mutedLinkCss}
 									>
 										Use the full sign-in page
-									</SiteLink>
+									</TextLink>
 								</p>
 							) : null}
 						</>

@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
 import {
@@ -24,7 +25,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -51,9 +51,7 @@ function packageValue(
 	})
 	if (scope && job.packageName) {
 		return (
-			<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
-				{job.packageName}
-			</SiteLink>
+			<TextLink href={packageHrefFromScope(scope)}>{job.packageName}</TextLink>
 		)
 	}
 	return job.packageName ?? 'Package'
@@ -222,13 +220,7 @@ export function renderAccountJobDetail(input: {
 							borderRadius: radius.md,
 						}}
 					>
-						<table
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table>
 							<thead>
 								<tr>
 									{[
@@ -321,20 +313,19 @@ export function renderAccountJobDetail(input: {
 												borderBottom: `1px solid ${colors.border}`,
 											}}
 										>
-											<SiteLink
+											<TextLink
 												href={relocateAccountHref(
 													`/account/activity/${encodeURIComponent(run.id)}`,
 													input.currentHref,
 												)}
-												css={primaryLinkCss}
 											>
 												Logs
-											</SiteLink>
+											</TextLink>
 										</td>
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					</div>
 				)}
 			</div>

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
@@ -50,7 +51,6 @@ import {
 	directionLabel,
 	emailRoute,
 	messageDate,
-	senderBadgeCss,
 	senderClassificationLabel,
 	statusLabel,
 	subjectCellCss,
@@ -642,16 +642,15 @@ export function AccountEmailPage({
 										{senderClassificationLabel(
 											emailMessage.sender_classification,
 										) ? (
-											<span
+											<Badge
 												title={
 													emailMessage.sender_classification_reason ?? undefined
 												}
-												css={senderBadgeCss}
 											>
 												{senderClassificationLabel(
 													emailMessage.sender_classification,
 												)}
-											</span>
+											</Badge>
 										) : null}
 									</span>
 								),

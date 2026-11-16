@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { useServerFn } from '@tanstack/react-start'
 import { resendWebsiteVerification } from '#start/server/auth-mutations'
@@ -12,10 +13,8 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	mutedLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import { SiteLink } from '../components/site-link.tsx'
 
 export { buildPendingVerificationPath } from '#client/routes/pending-verification-path.ts'
 
@@ -161,9 +160,9 @@ export function renderEmailVerificationPrompt(
 			<p css={descriptionCss}>{promptDescription}</p>
 			{delivery.helpHref && delivery.helpLabel ? (
 				<p css={{ ...descriptionCss, margin: 0 }}>
-					<SiteLink href={delivery.helpHref} css={mutedLinkCss}>
+					<TextLink tone="muted" href={delivery.helpHref}>
 						{delivery.helpLabel}
-					</SiteLink>
+					</TextLink>
 				</p>
 			) : null}
 			{options.email ? (
@@ -208,9 +207,9 @@ export function renderEmailVerificationPrompt(
 					</Button>
 				) : null}
 				{options.secondaryHref && options.secondaryLabel ? (
-					<SiteLink href={options.secondaryHref} css={mutedLinkCss}>
+					<TextLink tone="muted" href={options.secondaryHref}>
 						{options.secondaryLabel}
-					</SiteLink>
+					</TextLink>
 				) : null}
 			</div>
 			{options.resendMessage ? (

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
@@ -20,17 +21,14 @@ import {
 } from '#start/server/auth-mutations'
 import {
 	cardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
-	primaryLinkCss,
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { Input } from '../components/input.tsx'
@@ -237,12 +235,10 @@ export function ResetPasswordRoute() {
 				) : null}
 			</form>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
-				<SiteLink href="/login" css={primaryLinkCss}>
-					Back to sign in
-				</SiteLink>
-				<SiteLink href="/" css={mutedLinkCss}>
+				<TextLink href="/login">Back to sign in</TextLink>
+				<TextLink tone="muted" href="/">
 					Back home
-				</SiteLink>
+				</TextLink>
 			</div>
 		</section>
 	)

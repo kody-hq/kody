@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
@@ -12,9 +14,7 @@ import type {
 import {
 	cardCss,
 	descriptionCss,
-	getAlertCardCss,
 	insetCardCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -24,7 +24,6 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
 import { Input } from '../components/input.tsx'
 
@@ -60,9 +59,9 @@ export function AgentClaimRoute(props: { data: AgentClaimPageData }) {
 				<p css={pageDescriptionCss}>{agentClaimLead(data)}</p>
 			</header>
 			{renderAgentClaimBody(data)}
-			<SiteLink href="/" css={mutedLinkCss}>
+			<TextLink tone="muted" href="/">
 				Back home
-			</SiteLink>
+			</TextLink>
 		</section>
 	)
 }
@@ -118,7 +117,6 @@ function renderAgentClaimBody(data: AgentClaimPageData) {
 						variant="primary"
 						size="md"
 						reloadDocument
-						css={primaryLinkCss}
 					>
 						Resend verification email
 					</Button>
@@ -144,7 +142,6 @@ function SignedOutCard(props: {
 					variant="primary"
 					size="md"
 					reloadDocument
-					css={primaryLinkCss}
 				>
 					Sign in to continue
 				</Button>
@@ -153,7 +150,6 @@ function SignedOutCard(props: {
 					variant="secondary"
 					size="md"
 					reloadDocument
-					css={secondaryLinkCss}
 				>
 					Create an account
 				</Button>
@@ -184,21 +180,17 @@ function ConsentCard(props: {
 					not connect an MCP host.
 				</p>
 			</section>
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="agent-claim-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="agent-claim-anti-phishing">
 				{agentClaimAntiPhishingMessage}
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"
@@ -258,14 +250,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '28rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

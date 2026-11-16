@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { Switch } from '../components/choice-controls.tsx'
 import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
@@ -23,12 +24,7 @@ import {
 	withheldTriggerMappingsNote,
 } from '#universal/package-credentials-page.ts'
 import { cardCss, cardTitleCss } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	type PackageTabContext,
 	mutedCss,
@@ -37,7 +33,6 @@ import {
 	renderMappingCell,
 	renderStatus,
 	rowCss,
-	tableCss,
 } from './package-credentials-tabs.tsx'
 
 function renderTriggerMappings(
@@ -108,7 +103,7 @@ function renderTriggerMappings(
 				</p>
 			) : null}
 			<div css={{ overflowX: 'auto' }}>
-				<table css={tableCss}>
+				<Table>
 					<thead>
 						<tr>
 							<th scope="col">Need</th>
@@ -144,7 +139,7 @@ function renderTriggerMappings(
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			</div>
 		</div>
 	)

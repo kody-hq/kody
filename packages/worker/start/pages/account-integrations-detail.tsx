@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Tooltip } from '../components/tooltip.tsx'
 import { Button } from '../components/button.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
@@ -8,7 +9,6 @@ import type {
 } from '#universal/loader-data.ts'
 import type { ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { OrgAppMemberConnections } from './account-integrations-member-connections.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
@@ -45,7 +45,6 @@ import {
 	getAccentCalloutCss,
 	hoverMq,
 	insetCardCss,
-	primaryLinkCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -423,19 +422,18 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 											gap: spacing.xs,
 										}}
 									>
-										<SiteLink
+										<TextLink
 											href={integrationsRoute.buildDetailHref(
 												connectionRef.name,
 												currentSearch,
 											)}
 											resetScroll={false}
-											css={primaryLinkCss}
 										>
 											{connection
 												? integrationDisplayName(connection)
 												: connectionRef.accountLabel?.trim() ||
 													connectionRef.name}
-										</SiteLink>
+										</TextLink>
 										<p
 											css={{
 												...descriptionCss,

@@ -107,6 +107,7 @@ export function N8nAlternativesPage() {
 			<section className="shortlist" aria-labelledby="shortlist-title">
 				<h2 id="shortlist-title">Compare the tradeoffs.</h2>
 				<div className="comparison">
+					{/* oxlint-disable-next-line kody-custom/no-raw-table -- the landing page styles its comparison table through the page stylesheet. */}
 					<table>
 						<thead>
 							<tr>

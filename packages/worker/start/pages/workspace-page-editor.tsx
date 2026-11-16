@@ -699,6 +699,7 @@ export function WorkspacePageEditor({
 									<WorkspaceMermaid source={block.text} />
 								) : block.kind === 'table' ? (
 									<div className="block-table-scroll">
+										{/* oxlint-disable-next-line kody-custom/no-raw-table -- page editor tables are user content styled by the block stylesheet. */}
 										<table>
 											<tbody>
 												{block.rows.map((row, rowIndex) => {

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
@@ -22,17 +23,6 @@ const warningCss = css({
 	border: `1px solid ${colors.danger}`,
 	borderRadius: radius.md,
 	color: colors.text,
-})
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: '0.875rem',
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
 })
 
 const warningText =
@@ -215,7 +205,7 @@ function RawSignaturesList(props: {
 	}
 	return (
 		<div css={{ overflowX: 'auto' }}>
-			<table css={tableCss} aria-label="Raw signatures">
+			<Table aria-label="Raw signatures">
 				<thead>
 					<tr>
 						<th>When</th>
@@ -248,7 +238,7 @@ function RawSignaturesList(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={mutedCss}>
 				Kody keeps raw signatures for 90 days. Keys, messages, and signatures
 				are never recorded.

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
 import { Button } from '../components/button.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -9,7 +10,6 @@ import {
 	cardCss,
 	descriptionCss,
 	fieldLabelCss,
-	getAlertCardCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -87,7 +87,6 @@ function renderBody(data: PackageAppDeviceSignInView) {
 						variant="primary"
 						size="md"
 						reloadDocument
-						css={primaryLinkCss}
 						data-testid="package-app-device-start-again"
 					>
 						Start again
@@ -158,17 +157,16 @@ function PendingCard(props: {
 						variant="secondary"
 						size="md"
 						reloadDocument
-						css={secondaryLinkCss}
 						data-testid="package-app-device-check-now"
 					>
 						Check now
 					</Button>
 				</div>
 			</section>
-			<p role="note" css={getAlertCardCss('info')}>
+			<Alert role="note" tone="info">
 				Only approve on a device you trust, and only if you started this sign-in
 				here yourself.
-			</p>
+			</Alert>
 		</>
 	)
 }
@@ -187,14 +185,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
 	margin: '0 auto',
-}
-const primaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

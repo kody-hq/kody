@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Badge, type BadgeTone } from '../components/badge.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { sendCancellationFeedback } from '#start/server/billing-mutations'
@@ -13,7 +15,6 @@ import {
 	orgIdentity,
 	orgOverviewPath,
 } from '#universal/org-pages.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import type {
@@ -50,8 +51,6 @@ import {
 import {
 	descriptionCss,
 	layoutMaxWidths,
-	mutedLinkCss,
-	primaryLinkCss,
 	visuallyHiddenCss,
 	fieldCss,
 	fieldLabelCss,
@@ -139,31 +138,12 @@ function describeSubscriptionStatus(status: string): {
 	}
 }
 
-function subscriptionStatusBadgeCss(tone: SubscriptionStatusTone) {
-	const accent =
-		tone === 'action'
-			? colors.error
-			: tone === 'warn'
-				? colors.primaryText
-				: tone === 'ok'
-					? colors.primary
-					: colors.textMuted
-	return {
-		display: 'inline-flex',
-		alignItems: 'center',
-		padding: `0.2rem ${spacing.sm}`,
-		borderRadius: radius.md,
-		border: `1px solid ${accent}`,
-		backgroundColor:
-			tone === 'action'
-				? 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))'
-				: colors.surface,
-		color: accent,
-		fontSize: typography.fontSize.xs,
-		fontWeight: typography.fontWeight.semibold,
-		textTransform: 'capitalize' as const,
-	}
-}
+const subscriptionStatusBadgeTone = {
+	action: 'danger',
+	warn: 'warning',
+	ok: 'accent',
+	muted: 'neutral',
+} satisfies Record<SubscriptionStatusTone, BadgeTone>
 
 export function AccountBillingPage({
 	payload,
@@ -400,16 +380,19 @@ export function AccountBillingPage({
 								{formatPlanLabel(billing.effectivePlan, 'Free')}
 							</p>
 							{statusInfo ? (
-								<span css={subscriptionStatusBadgeCss(statusInfo.tone)}>
+								<Badge
+									tone={subscriptionStatusBadgeTone[statusInfo.tone]}
+									css={{ textTransform: 'capitalize' }}
+								>
 									{statusInfo.label}
-								</span>
+								</Badge>
 							) : null}
-							<SiteLink
+							<TextLink
+								tone="muted"
 								href={billing.usageHref ?? orgOverviewPath(billing.org.slug)}
-								css={mutedLinkCss}
 							>
 								view usage
-							</SiteLink>
+							</TextLink>
 						</div>
 						{statusInfo && statusInfo.tone !== 'action' ? (
 							<p css={descriptionCss}>{statusInfo.detail}</p>
@@ -431,9 +414,7 @@ export function AccountBillingPage({
 						) : null}
 						{billing.creditsEligible && billing.creditsHref ? (
 							<p css={{ margin: 0 }}>
-								<SiteLink href={billing.creditsHref} css={primaryLinkCss}>
-									Manage credits
-								</SiteLink>
+								<TextLink href={billing.creditsHref}>Manage credits</TextLink>
 							</p>
 						) : null}
 						{retiredPlan ? (
@@ -677,12 +658,12 @@ export function AccountBillingPage({
 								billing.manualPlan === 'free' &&
 								billing.stripePlan === 'pro' &&
 								!billing.cancelAt ? (
-									<SiteLink
+									<TextLink
+										tone="muted"
 										href={`${orgBillingPath(payload.org.slug)}/move-plan`}
-										css={mutedLinkCss}
 									>
 										Move this plan to another organization
-									</SiteLink>
+									</TextLink>
 								) : null}
 							</div>
 						</AccountManagementPanel>
@@ -713,16 +694,15 @@ export function AccountBillingPage({
 			) : null}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink
+				<TextLink
 					href={
 						payload.org.personal
 							? '/account'
 							: orgOverviewPath(payload.org.slug)
 					}
-					css={primaryLinkCss}
 				>
 					{payload.org.personal ? 'Back to account' : `Back to ${orgName}`}
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)

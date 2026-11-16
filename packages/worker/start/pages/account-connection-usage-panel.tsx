@@ -1,8 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementPanel,
 	TimestampValue,
@@ -28,10 +29,7 @@ import {
 	formatConnectionUsageQuantity,
 } from '#universal/connection-usage-presentation.ts'
 import type { ConnectedMcpAgent } from '#universal/connected-mcp-agents.ts'
-import {
-	descriptionCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 type Agents = Array<ConnectedMcpAgent>
 const summaryRowLimit = 6
@@ -122,8 +120,8 @@ function UsageTable(props: {
 	const { capCountKey } = props
 	return (
 		<div css={tableScrollCss}>
-			<table data-testid={props.testId} css={tableCss}>
-				<caption css={captionCss}>{props.caption}</caption>
+			<Table data-testid={props.testId}>
+				<caption>{props.caption}</caption>
 				<thead>
 					<tr>
 						<th scope="col">{props.rowHeader}</th>
@@ -140,9 +138,7 @@ function UsageTable(props: {
 							<th scope="row">
 								<span css={rowHeaderCss}>
 									{row.href ? (
-										<SiteLink href={row.href} css={primaryLinkCss}>
-											{row.name}
-										</SiteLink>
+										<TextLink href={row.href}>{row.name}</TextLink>
 									) : (
 										<span>{row.name}</span>
 									)}
@@ -161,7 +157,7 @@ function UsageTable(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 		</div>
 	)
 }
@@ -175,8 +171,8 @@ function RawCountsTable(props: {
 }) {
 	return (
 		<div css={tableScrollCss}>
-			<table data-testid="connection-usage-raw-counts" css={tableCss}>
-				<caption css={captionCss}>{props.caption}</caption>
+			<Table data-testid="connection-usage-raw-counts">
+				<caption>{props.caption}</caption>
 				<thead>
 					<tr>
 						<th scope="col">Count</th>
@@ -201,7 +197,7 @@ function RawCountsTable(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 		</div>
 	)
 }
@@ -284,13 +280,12 @@ export function ConnectionUsageSummaryPanel(props: {
 					)
 				})}
 				<p css={{ margin: 0 }}>
-					<SiteLink
+					<TextLink
 						href={accountConnectionsUsageHref(props.pathname)}
 						data-testid="connection-usage-details-link"
-						css={primaryLinkCss}
 					>
 						View usage details
-					</SiteLink>
+					</TextLink>
 				</p>
 			</div>
 		</AccountManagementPanel>
@@ -342,13 +337,12 @@ export function ConnectionUsageDetails(props: {
 					{renderUpdated(usage)}
 					{focus ? (
 						<p css={{ margin: 0 }}>
-							<SiteLink
+							<TextLink
 								href={accountConnectionsUsageHref(props.pathname)}
 								data-testid="connection-usage-show-all"
-								css={primaryLinkCss}
 							>
 								Show all connections
-							</SiteLink>
+							</TextLink>
 						</p>
 					) : null}
 					{focusMissing ? (
@@ -541,30 +535,6 @@ const tableScrollCss: CSSObject = {
 	minWidth: 0,
 	maxWidth: '100%',
 	overflowX: 'auto' as const,
-}
-const tableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse' as const,
-	fontSize: typography.fontSize.sm,
-	color: colors.text,
-	'& th, & td': {
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		textAlign: 'start' as const,
-		verticalAlign: 'top' as const,
-	},
-	'& thead th': {
-		color: colors.textMuted,
-		fontWeight: typography.fontWeight.semibold,
-		whiteSpace: 'nowrap' as const,
-	},
-}
-const captionCss: CSSObject = {
-	captionSide: 'top' as const,
-	textAlign: 'start' as const,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
-	paddingBottom: spacing.xs,
 }
 const numericCss: CSSObject = {
 	textAlign: 'end' as const,

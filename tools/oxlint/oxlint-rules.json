@@ -48,6 +48,7 @@
 		"kody-custom/no-raw-button-style": "error",
 		"kody-custom/no-raw-dialog": "error",
 		"kody-custom/no-raw-overlay": "error",
+		"kody-custom/no-raw-table": "error",
 		"kody-custom/no-raw-form-control": "error",
 		"kody-custom/no-tautological-absence": "error",
 		"kody-custom/prefer-loader-data-types": "error",

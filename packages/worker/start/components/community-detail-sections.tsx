@@ -3,6 +3,7 @@ import { Button } from './button.tsx'
 import type { FormFlowState } from '#client/ui-actor.ts'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
+import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { ReactNode } from 'react'
 import { CopyTextButton } from './copy-text-button.tsx'
@@ -224,9 +225,9 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 				</div>
 			) : (
 				<p css={reportLoginNoteCss}>
-					<SiteLink href="/login" css={inlineLinkCss}>
+					<TextLink tone="prose" href="/login">
 						Log in
-					</SiteLink>{' '}
+					</TextLink>{' '}
 					to report this listing.
 				</p>
 			)}
@@ -316,12 +317,6 @@ const buttonRowCss = {
 	display: 'flex',
 	gap: '0.5rem',
 	flexWrap: 'wrap' as const,
-} satisfies CSSObject
-
-const inlineLinkCss = {
-	color: colors.primaryText,
-	textDecorationThickness: '1.5px',
-	textUnderlineOffset: '3px',
 } satisfies CSSObject
 
 const errorTextCss = {

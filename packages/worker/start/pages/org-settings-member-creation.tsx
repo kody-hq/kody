@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { updateOrganizationMemberCreation } from '#start/server/org-settings-mutations'
 import {
@@ -11,7 +12,6 @@ import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
 import {
-	primaryLinkCss,
 	visuallyHiddenCss,
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
@@ -21,7 +21,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -156,10 +155,7 @@ export function OrgSettingsMemberCreation({
 					<p css={fieldDescriptionCss}>
 						To let only some people or teams create, leave a setting off and add
 						create access on{' '}
-						<SiteLink css={primaryLinkCss} href={orgGrantsPath(data.org.slug)}>
-							Grants
-						</SiteLink>
-						.
+						<TextLink href={orgGrantsPath(data.org.slug)}>Grants</TextLink>.
 					</p>
 					{message ? (
 						<AccountManagementMessage tone={message.tone}>

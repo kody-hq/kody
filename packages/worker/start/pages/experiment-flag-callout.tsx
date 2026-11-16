@@ -1,15 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import type { ReactNode } from 'react'
 import { ExperimentOptIn } from '../components/experiment-opt-in.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 import type { selfServeExperiments } from '#universal/feature-flags/experiments.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getAccentCalloutCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 /**
@@ -37,9 +34,7 @@ export function renderExperimentFlagCallout(input: {
 			</p>
 			<p css={noteCss}>
 				{experiment.stage} Manage every experiment on{' '}
-				<SiteLink href={routes.accountExperiments.href()} css={primaryLinkCss}>
-					Experiments
-				</SiteLink>
+				<TextLink href={routes.accountExperiments.href()}>Experiments</TextLink>
 				.
 			</p>
 			{input.enabled ? null : input.loggedIn ? (

@@ -90,16 +90,6 @@ const accountSectionLedeCss: CSSObject = {
 }
 
 /** `.verified` — the little green status pill next to the account email. */
-export const verifiedPillCss: CSSObject = {
-	display: 'inline-block',
-	fontSize: '0.8rem',
-	fontWeight: 600,
-	color: colors.primaryText,
-	backgroundColor: colors.primarySoft,
-	borderRadius: radius.full,
-	padding: '0.1rem 0.55rem',
-	marginLeft: '0.3rem',
-}
 
 /** `.account-actions` — wrapping row of small pill/ghost actions. */
 export const accountActionsCss: CSSObject = {

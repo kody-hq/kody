@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import {
 	joinOrganization,
@@ -14,13 +15,11 @@ import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import type { OrgInviteJoinLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import {
 	cardCss,
 	nativeDisclosureCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -98,9 +97,9 @@ export function OrgInviteJoinPage({ data }: { data: OrgInviteJoinLoaderData }) {
 					</p>
 					<ErrorAgentPromptButton prompt={inviteErrorPrompt(data.error)} />
 					<p css={footerCss}>
-						<SiteLink href="/" css={mutedLinkCss}>
+						<TextLink tone="muted" href="/">
 							Go home
-						</SiteLink>
+						</TextLink>
 					</p>
 				</div>
 			</section>

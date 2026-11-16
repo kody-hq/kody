@@ -79,7 +79,7 @@ export function OAuthAuthorizeSignedOutChoices(props: {
 				href={props.loginHref}
 				variant="primary"
 				size="md"
-				css={primaryLinkCss}
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-login"
 			>
 				Log in
@@ -88,7 +88,7 @@ export function OAuthAuthorizeSignedOutChoices(props: {
 				href={props.signupHref}
 				variant="secondary"
 				size="md"
-				css={secondaryLinkCss}
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-signup"
 			>
 				Sign up
@@ -140,7 +140,7 @@ export function OAuthAuthorizeGuestConnected(props: {
 				variant="primary"
 				size="md"
 				reloadDocument
-				css={primaryLinkCss}
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-guest-return"
 			>
 				Return to {props.clientLabel}
@@ -229,15 +229,7 @@ const kodyIconCss = {
 const linkGlyphCss = { display: 'inline-flex', color: colors.textMuted }
 const titleCss = { ...pageTitleCss, textAlign: 'center' as const }
 const choicesCss = { display: 'grid', gap: spacing.sm }
-const fullWidthLinkCss = {
-	width: '100%',
-	justifyContent: 'center',
-	textAlign: 'center' as const,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const primaryLinkCss = { ...fullWidthLinkCss }
-const secondaryLinkCss = { ...fullWidthLinkCss }
+const fullWidthLinkCss = { width: '100%' }
 const dividerCss = {
 	display: 'flex',
 	alignItems: 'center',

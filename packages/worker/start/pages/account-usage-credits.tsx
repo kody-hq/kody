@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -13,7 +14,6 @@ import {
 import { creditSettingsMutationOptions } from '../credit-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { useState, type FormEvent } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	accountActionsCss,
@@ -49,7 +49,6 @@ import { orgCreditsPath } from '#universal/org-pages.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	primaryLinkCss,
 	fieldCss,
 	fieldLabelCss,
 	fieldDescriptionCss,
@@ -335,13 +334,9 @@ export function AccountUsageCreditsSection(
 	function renderLedgerLink(label: string) {
 		return props.orgSlug ? (
 			<p css={descriptionCss}>
-				<SiteLink
-					href={orgCreditsPath(props.orgSlug)}
-					data-credits-ledger-link
-					css={primaryLinkCss}
-				>
+				<TextLink href={orgCreditsPath(props.orgSlug)} data-credits-ledger-link>
 					{label}
-				</SiteLink>
+				</TextLink>
 			</p>
 		) : null
 	}
@@ -360,9 +355,7 @@ export function AccountUsageCreditsSection(
 					{credits.canSwitchToPro ? (
 						renderSwitchToProButton('Switch to Pro')
 					) : (
-						<SiteLink href={credits.billingHref} css={primaryLinkCss}>
-							Go to billing
-						</SiteLink>
+						<TextLink href={credits.billingHref}>Go to billing</TextLink>
 					)}
 				</div>
 				{renderLedgerLink('See your balance and credit history')}

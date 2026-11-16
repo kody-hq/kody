@@ -3,8 +3,9 @@
 Shared UI primitives live in `packages/worker/start/components`. Render these
 instead of raw elements or copied style objects.
 `kody-custom/no-raw-button-style`, `kody-custom/no-raw-form-control`,
-`kody-custom/no-raw-dialog`, and `kody-custom/no-raw-overlay` reject the raw
-forms in `packages/worker/start` and `packages/worker/client`.
+`kody-custom/no-raw-dialog`, `kody-custom/no-raw-overlay`, and
+`kody-custom/no-raw-table` reject the raw forms in `packages/worker/start` and
+`packages/worker/client`.
 
 Every component passes native attributes through. Refs are ordinary props (React
 19), so `ref` reaches the underlying element. Pass `css` to adjust layout
@@ -207,6 +208,118 @@ Tab order, and Tab moves on into its panel.
 - `TabList` requires `aria-label` or `aria-labelledby`.
 - `disabled` on `Tabs` disables the whole list; on `Tab`, one tab.
 
+## TextLink
+
+`start/components/text-link.tsx`
+
+```tsx
+<TextLink href="/docs">Read the docs</TextLink>
+<TextLink tone="muted" href="/privacy">Privacy</TextLink>
+<p>Read the <TextLink tone="prose" href="/terms">terms</TextLink> first.</p>
+```
+
+An inline text link over `SiteLink`, so internal paths navigate on the client
+and external paths, downloads, and `reloadDocument` load a new document. It
+takes every `SiteLink` prop. Underlines on hover and shows the shared focus ring
+on keyboard focus.
+
+- `tone`: `primary` (default) | `muted` (smaller, secondary text) | `prose`
+  (always underlined, for a link inside a sentence so it does not rely on color
+  alone).
+- A link styled as a button is `<Button href>`, not `TextLink`.
+
+## Badge
+
+`start/components/badge.tsx`
+
+```tsx
+<Badge tone="accent">Trusted</Badge>
+```
+
+A short, non-interactive status label on a `span`. Badges are the one place a
+fully rounded pill is right: they are never pressed, so they should not look
+like a Button.
+
+- `tone`: `neutral` (default) | `accent` | `warning` | `danger`. Every tone
+  shares one box, so badges in a row line up.
+- Forwards native `span` attributes. It adds no role: put any live region on the
+  surrounding text.
+- `getBadgeCss(tone)` gives the same box to an element that must stay a link or
+  button (for example the fork "outdated" control). Keep its focus ring.
+
+## Alert
+
+`start/components/alert.tsx`
+
+```tsx
+<Alert tone="error" role="alert">
+	That code expired. Request a new one.
+</Alert>
+```
+
+A boxed message on a `div`. It sets no role on purpose, because the right one
+depends on timing:
+
+- `role="alert"` for an error that appears after a user action.
+- `role="status"` for a polite update, such as "Saved".
+- No role for a message that is part of the page when it loads.
+
+`tone`: `info` (default) | `error`. Forwards native `div` attributes.
+
+## Table
+
+`start/components/table.tsx`
+
+```tsx
+<Table>
+	<caption>DNS records</caption>
+	<thead>
+		<tr>
+			<th scope="col">Type</th>
+			<th scope="col">Name</th>
+		</tr>
+	</thead>
+	<tbody>...</tbody>
+</Table>
+```
+
+A native `table` with the shared cell padding, row rules, and muted column
+headers. Compose it from native table elements so screen readers keep row and
+column navigation. Name it with a `caption`, `aria-label`, or `aria-labelledby`,
+and give header cells a `scope`. Wrap a wide table in an `overflowX: 'auto'`
+box. The cell defaults have zero specificity, so a cell's own `css` (numeric
+alignment, a sticky first column) always wins. `RecordTable` stays the sortable,
+paged list for records.
+
+## Toasts
+
+`client/toast.ts`, rendered once by `start/components/toaster.tsx`
+
+```ts
+toast.success('Avatar updated.')
+toast.error('Could not save.', { duration: null })
+```
+
+Use a toast for the result of an action that has no better home on the page.
+Errors render as `role="alert"`, the rest as `role="status"`, and every toast
+gets a labelled dismiss Button unless `dismissible` is false. Options:
+`description`, `duration` (`null` keeps it until dismissed), `dismissible`, and
+one `action`. Prefer an inline `Alert` next to the control when the user must
+act on the message.
+
+## Cards and callouts
+
+Cards and callouts are style primitives, not components, because the element
+underneath varies (`section`, `article`, `li`, `a`). Spread them into `css`:
+
+- `cardCss` for a page card, `insetCardCss` for a card inside a card, and
+  `cardTitleCss` for its heading. `getSurfaceCardCss({ interactive: true })`
+  adds the hover lift for a card that is a link, and drops the motion under
+  reduced motion.
+- `getAccentCalloutCss({ accentColor })` for a note with an accent bar. A
+  callout is not a live region; use `Alert` with a role when the message appears
+  after an action.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a
@@ -228,3 +341,8 @@ The brand mark's context menu stays hand-built with a
 `kody-custom/no-raw-overlay` exemption: it opens from the keyboard and lays its
 download rows out as a grid. Everything else with a menu, tooltip, or tab role
 uses the components above.
+
+`RecordTable`, file previews (CSV, zip), the pricing comparison, the landing
+page comparison, and authored markdown or page editor tables keep a native
+`<table>` with a `kody-custom/no-raw-table` exemption: each has its own layout
+or renders user content with the prose stylesheet.

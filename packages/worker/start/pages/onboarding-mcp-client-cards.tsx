@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
@@ -8,7 +9,6 @@ import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 } from '#universal/styles/style-primitives.ts'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
@@ -140,13 +140,9 @@ export function AppIconCard(props: AppIconCardProps) {
 					height={256}
 					css={appIconImgCss}
 				/>
-				<SiteLink
-					href={props.src}
-					download={props.downloadName}
-					css={mutedLinkCss}
-				>
+				<TextLink tone="muted" href={props.src} download={props.downloadName}>
 					Download App Icon
-				</SiteLink>
+				</TextLink>
 				<p css={appIconHintCss}>
 					Right-click the icon and choose Save as (on a phone, long-press), then
 					upload it in ChatGPT. Icons over 10 KB are rejected.

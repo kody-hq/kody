@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { permanentHandleInputProps } from '#client/handle-field.ts'
+import { Badge } from '../components/badge.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
@@ -6,7 +8,7 @@ import {
 	handleFormatHint,
 	suggestHandle,
 } from '@kody-internal/shared/handle-rules.ts'
-import { permanentHandleInputProps } from '#client/handle-field.ts'
+
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import {
 	usePendingInviteActions,
@@ -469,12 +471,12 @@ function renderOrgRow(input: {
 			{input.pills.length > 0 ? (
 				<span css={orgRowPillsCss}>
 					{input.pills.map((pill) => (
-						<span
+						<Badge
 							key={pill.label}
-							css={pill.tone === 'accent' ? accentPillCss : quietPillCss}
+							tone={pill.tone === 'accent' ? 'accent' : 'neutral'}
 						>
 							{pill.label}
-						</span>
+						</Badge>
 					))}
 				</span>
 			) : null}
@@ -635,29 +637,6 @@ const orgRowPillsCss: CSSObject = {
 	justifyContent: 'flex-end',
 	gap: spacing.xs,
 	flexShrink: 0,
-}
-
-const pillBaseCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	fontSize: '0.8rem',
-	fontWeight: 600,
-	lineHeight: 1.4,
-	borderRadius: radius.full,
-	padding: '0.1rem 0.6rem',
-	whiteSpace: 'nowrap' as const,
-}
-
-const accentPillCss: CSSObject = {
-	...pillBaseCss,
-	color: colors.primaryText,
-	backgroundColor: colors.primarySoft,
-}
-
-const quietPillCss: CSSObject = {
-	...pillBaseCss,
-	color: colors.textMuted,
-	boxShadow: `inset 0 0 0 1px ${colors.border}`,
 }
 
 const orgRowChevronCss: CSSObject = {

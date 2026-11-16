@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 
@@ -25,7 +26,6 @@ import {
 	insetCardCss,
 	listCss,
 	pageDescriptionCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	connectOauthChooserFilterMinOptions,
@@ -393,10 +393,7 @@ export function renderChooser(input: {
 			)}
 			<p css={descriptionCss}>
 				Need a service that is not listed?{' '}
-				<SiteLink href={docHref('oauth')} css={primaryLinkCss}>
-					Bring your own OAuth app
-				</SiteLink>
-				.
+				<TextLink href={docHref('oauth')}>Bring your own OAuth app</TextLink>.
 			</p>
 		</section>
 	)
@@ -419,10 +416,7 @@ export function renderIncompleteConfig(provider: string) {
 			/>
 			<p css={descriptionCss}>
 				Or start from a known service on the{' '}
-				<SiteLink href="/connect/oauth" css={primaryLinkCss}>
-					connect page
-				</SiteLink>
-				.
+				<TextLink href="/connect/oauth">connect page</TextLink>.
 			</p>
 		</section>
 	)

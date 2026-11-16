@@ -1,17 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from './table.tsx'
+import { Badge } from './badge.tsx'
+import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import type {
 	PackageAppCustomDomainRecordView,
 	PackageAppCustomDomainStatus,
 	PackageAppCustomDomainView,
 } from '#universal/package-app-custom-domain-status.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 const stateLabels: Record<PackageAppCustomDomainStatus['state'], string> = {
 	pending: 'Pending',
@@ -24,16 +21,16 @@ export function CustomDomainStatusBadge({
 }: {
 	status: PackageAppCustomDomainStatus
 }) {
-	const css =
+	const tone =
 		status.state === 'active'
-			? activeBadgeCss
+			? 'accent'
 			: status.state === 'needs_attention'
-				? attentionBadgeCss
-				: pendingBadgeCss
+				? 'warning'
+				: 'neutral'
 	return (
-		<span css={css} data-custom-domain-state={status.state}>
+		<Badge tone={tone} data-custom-domain-state={status.state}>
 			{stateLabels[status.state]}
-		</span>
+		</Badge>
 	)
 }
 
@@ -53,7 +50,7 @@ export function CustomDomainRecords({
 				Add these records at your DNS provider. Set each one to{' '}
 				<strong>DNS only</strong> (proxy off, grey cloud in Cloudflare).
 			</p>
-			<table css={recordsTableCss}>
+			<Table css={recordsTableCss}>
 				<thead>
 					<tr>
 						<th scope="col">Type</th>
@@ -79,7 +76,7 @@ export function CustomDomainRecords({
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={recordsNoteCss}>
 				Names are shown without your domain. Some providers want the full name
 				instead, shown under each name.
@@ -110,14 +107,15 @@ function CustomDomainSummary({
 		<li css={domainRowCss} data-testid={`custom-domain-${domain.id}`}>
 			<div css={domainHeadCss}>
 				{active ? (
-					<a
-						css={[primaryLinkCss, hostnameCss]}
+					<TextLink
+						reloadDocument
+						css={hostnameCss}
 						href={`https://${domain.hostname}/`}
 						target="_blank"
 						rel="noreferrer"
 					>
 						{domain.hostname}
-					</a>
+					</TextLink>
 				) : (
 					<span css={hostnameCss}>{domain.hostname}</span>
 				)}
@@ -170,42 +168,13 @@ export function PackageCustomDomainsSection({
 				Kody checks pending domains every few minutes and emails the owners when
 				one goes live.{' '}
 				{manageHref ? (
-					<a css={primaryLinkCss} href={manageHref}>
+					<TextLink reloadDocument href={manageHref}>
 						Manage custom domains
-					</a>
+					</TextLink>
 				) : null}
 			</p>
 		</section>
 	)
-}
-
-const badgeBaseCss: CSSObject = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.semibold,
-	whiteSpace: 'nowrap',
-}
-
-const pendingBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontWeight: typography.fontWeight.medium,
-}
-
-const activeBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.primarySoft,
-	color: colors.primaryText,
-}
-
-const attentionBadgeCss: CSSObject = {
-	...badgeBaseCss,
-	backgroundColor: colors.primarySoftest,
-	border: `1px solid ${colors.warning}`,
-	color: colors.warningText,
 }
 
 const sectionCss: CSSObject = { display: 'grid', gap: spacing.md }
@@ -284,16 +253,6 @@ const recordFullNameCss: CSSObject = {
 }
 
 const recordsTableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: typography.fontSize.sm,
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
-	th: { color: colors.textMuted, fontWeight: typography.fontWeight.medium },
 	code: {
 		fontFamily: typography.fontFamilyMono,
 		color: colors.text,
