@@ -187,3 +187,7 @@ test('0019 never rewrites and never leaks source into findings', async () => {
 		expect(finding.message).not.toMatch(/acme|notes|hunter2/)
 	}
 })
+
+test('0019 scans the published tree so drifted apps are inventoried', () => {
+	expect(detectPackageAppHostMigrationCodemod.applyMode).toBe('published-only')
+})

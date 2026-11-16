@@ -643,8 +643,10 @@ read one app's private list for its owner.
 Scan-only inventory for the move of package apps from
 `https://{user}.kody.run/{leaf}` to `https://{leaf}--{user}.kody.run` (one host
 per app, mounted at `/`). Only looks at packages with `kody.app`; `transform`
-never changes a file. Test files, `node_modules`, and lockfiles are skipped.
-Each finding is a file path plus one fixed message naming the pattern:
+never changes a file. `applyMode: 'published-only'`, so an app whose default
+branch has moved past its published commit is scanned on its published tree
+instead of being `skipped_drift`. Test files, `node_modules`, and lockfiles are
+skipped. Each finding is a file path plus one fixed message naming the pattern:
 
 - `old app url`: an absolute `{user}.kody.run/{leaf}` or `/packages/{leaf}` URL
   for this app (also reported in docs and READMEs).
