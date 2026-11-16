@@ -752,9 +752,9 @@ export default async function main() { return await run() }`,
 		)
 		expect(run.result).toEqual({
 			free: notOnList,
-			// This module also aliases globalThis, so its reads through it
-			// are not rebound and stay unbound.
-			global: refused,
+			// Direct reads carry this package's identity even though the
+			// module also aliases globalThis. The alias itself stays unbound.
+			global: notOnList,
 			self: notOnList,
 			alias: refused,
 			reflect: refused,
