@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	diagnoseHandleFormat,
+	getHandleFormatError,
 	isValidHandle,
 	suggestHandle,
 } from './handle-rules.ts'
@@ -28,6 +29,7 @@ test('diagnoseHandleFormat covers spaces, diacritics, length, and edge hyphens',
 	expect(diagnoseHandleFormat('-joe')).toBe('leading-hyphen')
 	expect(diagnoseHandleFormat('joe-')).toBe('trailing-hyphen')
 	expect(diagnoseHandleFormat('joe!')).toBe('other-characters')
+	expect(diagnoseHandleFormat('joe--cool')).toBe('consecutive-hyphens')
 	expect(diagnoseHandleFormat('some-user')).toBeNull()
 	// Trailing whitespace alone does not fail once trimmed.
 	expect(diagnoseHandleFormat('kent ')).toBeNull()
@@ -40,4 +42,11 @@ test('isValidHandle matches the DNS-safe username pattern', () => {
 	expect(isValidHandle('kent ')).toBe(true)
 	expect(isValidHandle('kent_cdodds')).toBe(false)
 	expect(isValidHandle('ján')).toBe(false)
+	// `--` separates the package leaf from the handle in a per-app host label.
+	expect(isValidHandle('joe-cool-guy')).toBe(true)
+	expect(isValidHandle('joe--cool')).toBe(false)
+	expect(isValidHandle('notes--kent')).toBe(false)
+	expect(getHandleFormatError('joe--cool')).toBe(
+		"Username can't include two hyphens in a row. Try joe-cool.",
+	)
 })

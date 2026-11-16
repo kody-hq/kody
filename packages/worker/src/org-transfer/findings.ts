@@ -12,6 +12,7 @@ export const orgTransferFindingCodes = [
 	'enabler_not_target_member',
 	'grant_names_source_subjects',
 	'personal_credential_granted_to_org',
+	'package_app_host_label_too_long',
 	// Refusals raised by apply itself.
 	'orphans_present',
 	'plan_drifted',

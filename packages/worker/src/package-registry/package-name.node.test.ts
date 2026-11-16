@@ -107,6 +107,21 @@ test('normalizePackageNameInput create refuses package-app host reserved leaves'
 		}),
 	).toThrow(PackageNameInputError)
 
+	expect(() =>
+		normalizePackageNameInput({
+			value: 'xn',
+			ownerScope: 'grant',
+			action: 'create',
+		}),
+	).toThrow(/reads as an internationalized domain name/)
+	expect(
+		normalizePackageNameInput({
+			value: 'xn',
+			ownerScope: 'grant',
+			action: 'resolve',
+		}),
+	).toBe('xn')
+
 	// Resolve still accepts reserved leaves so existing packages keep working.
 	expect(
 		normalizePackageNameInput({

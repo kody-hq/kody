@@ -33,7 +33,7 @@ export type CreateOrganizationResult =
 function slugValidationMessage(message: string) {
 	if (message.toLowerCase().includes('reserved')) return message
 	if (message.toLowerCase().includes('taken')) return orgHandleTakenError
-	return 'Use 3 to 32 letters, numbers, and hyphens. Start and end with a letter or number.'
+	return 'Use 3 to 32 letters, numbers, and single hyphens. Start and end with a letter or number.'
 }
 
 async function restorableCreateConflict(

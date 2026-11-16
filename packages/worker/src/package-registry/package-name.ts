@@ -1,4 +1,8 @@
 import {
+	isPackageAppHostLabelReservedPackageLeaf,
+	packageAppHostLabelReservedPackageLeafMessage,
+} from '@kody-internal/shared/package-app-host-label.ts'
+import {
 	isPackageAppHostReservedPackageLeaf,
 	packageAppHostReservedPackageLeafMessage,
 } from '@kody-internal/shared/package-app-host-paths.ts'
@@ -113,6 +117,11 @@ function assertPackageLeafAllowedForCreate(leaf: string) {
 	if (isPackageAppHostReservedPackageLeaf(leaf)) {
 		throw new PackageNameInputError(
 			packageAppHostReservedPackageLeafMessage(leaf),
+		)
+	}
+	if (isPackageAppHostLabelReservedPackageLeaf(leaf)) {
+		throw new PackageNameInputError(
+			packageAppHostLabelReservedPackageLeafMessage(leaf),
 		)
 	}
 }

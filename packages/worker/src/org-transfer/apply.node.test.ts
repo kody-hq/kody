@@ -1705,3 +1705,47 @@ test('profile grants are dropped on moved resources and kept on ones that stay',
 		{ id: 'grant-profile-package', org_id: src, deleted: 1 },
 	])
 })
+
+test('a package app whose host label would exceed 63 characters blocks the transfer', async () => {
+	const { sqlite, db } = await seed()
+	const longLeaf = 'a'.repeat(55)
+	for (const [id, hasApp] of [
+		['pkg-long-app', 1],
+		['pkg-long-library', 0],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id, has_app)
+				 VALUES (?, ?, ?, ?, 'desc', ?, ?)`,
+			)
+			.run(
+				id,
+				src,
+				`@bradhave/${longLeaf}${hasApp}`,
+				`${longLeaf}${hasApp}`,
+				`src-${id}`,
+				hasApp,
+			)
+	}
+	const result = await runOrgResourceTransfer({
+		db,
+		effects: createEffects({ db, calls: [], backups: [] }),
+		actorUserId: 'person-admin',
+		fromOrgId: src,
+		toOrgId: dst,
+		mode: 'dry-run',
+		skipOrphans: true,
+	})
+	expect(
+		result.summary.blockers.filter(
+			(blocker) => blocker.code === 'package_app_host_label_too_long',
+		),
+	).toEqual([
+		{
+			code: 'package_app_host_label_too_long',
+			message: `Package app host "${longLeaf}1--haveman" is 65 characters, over the 63 character limit for a hostname label. For @haveman, a package with an app needs a name leaf of at most 54 characters.`,
+			table: 'saved_packages',
+			subject: `${longLeaf}1`,
+		},
+	])
+})
