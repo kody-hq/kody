@@ -197,7 +197,7 @@ test('dry run counts owners and apps by category and previews the first email wi
 			packageOwnerNoticeKvKey({
 				noticeId: base.noticeId,
 				ownerId: 'alice',
-				userId: 'alice',
+				recipientUserId: 'alice',
 			}),
 		),
 	).toBeNull()
