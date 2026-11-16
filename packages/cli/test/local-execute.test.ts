@@ -984,7 +984,7 @@ test(
 		assert.equal(syntaxError.isError, true)
 		assert.match(
 			String(syntaxError.content[0]?.text),
-			/^Error: Local execute could not load the module: SyntaxError\nmain\.ts:1:23: Unexpected end of file/,
+			/^Error: Local execute could not load the module: SyntaxError\nentry\.ts:1:23: Unexpected end of file/,
 		)
 	},
 )

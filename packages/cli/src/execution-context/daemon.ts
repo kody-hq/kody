@@ -9,6 +9,7 @@ import {
 	importEd25519PublicKey,
 	ecpDefaultGrant,
 	ecpHostOperatorOnlyFeature,
+	ecpTypeScriptSourceFeature,
 	ecpLostAfterDeadlineMs,
 	publishedKeyJwk,
 	signFrame,
@@ -312,9 +313,12 @@ export async function runDaemonConnection(
 			features: [
 				...base.filter(
 					(feature) =>
-						feature !== 'fs' && feature !== ecpHostOperatorOnlyFeature,
+						feature !== 'fs' &&
+						feature !== ecpHostOperatorOnlyFeature &&
+						feature !== ecpTypeScriptSourceFeature,
 				),
 				ecpHostOperatorOnlyFeature,
+				ecpTypeScriptSourceFeature,
 				...(input.control ? [daemonControlFeature] : []),
 				...fsFeatures(state.hostFs),
 			],
@@ -685,7 +689,7 @@ export async function runDaemonConnection(
 		// only signal: close it and let runDaemon reconnect with backoff.
 		const armHeartbeat = (pingMs: number, pongTimeoutMs: number) => {
 			clearInterval(ping)
-			ping = setInterval(() => {
+			const sendPing = () => {
 				if (ws.readyState !== ws.OPEN || pongTimer) return
 				const sentAt = Date.now()
 				try {
@@ -695,14 +699,29 @@ export async function runDaemonConnection(
 					return
 				}
 				pongTimer = setTimeout(() => {
-					pongTimer = undefined
-					if (lastInboundAt >= sentAt) return
-					input.log(
-						`Kody did not answer a ping within ${Math.round(pongTimeoutMs / 1000)}s, so the connection is dead. Closing and reconnecting.`,
-					)
-					closeAndSettle(heartbeatTimeoutCloseCode, 'heartbeat timeout')
+					// Timers run before socket reads, so a pong that arrived while
+					// the event loop was blocked is read before this check.
+					setImmediate(() => {
+						pongTimer = undefined
+						if (settled || lastInboundAt >= sentAt) return
+						const stalledMs = Date.now() - sentAt - pongTimeoutMs
+						if (stalledMs > pongTimeoutMs) {
+							// The machine slept or this process was frozen, so the
+							// missing pong says nothing yet. Ask again now.
+							input.log(
+								`This machine was asleep or stalled for about ${Math.round(stalledMs / 1000)}s. Pinging Kody again before deciding the connection is dead.`,
+							)
+							sendPing()
+							return
+						}
+						input.log(
+							`Kody did not answer a ping within ${Math.round(pongTimeoutMs / 1000)}s, so the connection is dead. Closing and reconnecting.`,
+						)
+						closeAndSettle(heartbeatTimeoutCloseCode, 'heartbeat timeout')
+					})
 				}, pongTimeoutMs)
-			}, pingMs)
+			}
+			ping = setInterval(sendPing, pingMs)
 		}
 		rearmHeartbeat = armHeartbeat
 		armHeartbeat(

@@ -1,4 +1,9 @@
 import {
+	executeModuleEntryFile,
+	executeModuleLoader,
+	executeModuleTarget,
+} from '@kody-internal/shared/execute-module.ts'
+import {
 	nodeModulesImportKind,
 	parseBarePackageSpecifier,
 	resolveNodeModulesImport,
@@ -126,7 +131,7 @@ export function localBundleOptions(entry: string) {
 		write: false,
 		format: 'esm' as const,
 		platform: 'neutral' as const,
-		target: 'esnext',
+		target: executeModuleTarget,
 		logLevel: 'silent' as const,
 		packages: 'bundle' as const,
 		external: [
@@ -247,10 +252,10 @@ export async function stripLocalUserModuleTypes(
 ): Promise<{ code: string } | { syntaxError: string }> {
 	try {
 		const result = await esbuild.transform(code, {
-			loader: 'ts',
+			loader: executeModuleLoader,
 			format: 'esm',
-			target: 'esnext',
-			sourcefile: 'main.ts',
+			target: executeModuleTarget,
+			sourcefile: executeModuleEntryFile,
 			logLevel: 'silent',
 			tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } },
 		})

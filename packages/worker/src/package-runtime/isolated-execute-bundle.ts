@@ -10,6 +10,7 @@
  * message that points at `execute --local`, which bundles on the caller's
  * machine.
  */
+import { executeModuleEntryFile } from '@kody-internal/shared/execute-module.ts'
 import {
 	errorCauseChainIncludes,
 	getErrorMessage,
@@ -151,7 +152,7 @@ async function buildAdHocExecuteBundle(
 		baseUrl: input.baseUrl,
 		userId: input.userId,
 		sourceFiles: input.sourceFiles,
-		entryPoint: 'entry.ts',
+		entryPoint: executeModuleEntryFile,
 		reuseCachedBundle: true,
 		bundleContext: 'ad-hoc-execute',
 	})
