@@ -18,6 +18,12 @@ import {
 } from 'node:path'
 import { homedir } from 'node:os'
 import { normalizeServiceEnv } from './service-env-keys.js'
+import {
+	parseMachineCapabilities,
+	type MachineCapabilitiesPolicy,
+	type MachineCommandDefinition,
+	type MachineLanDefinition,
+} from './machine-capabilities.js'
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
@@ -33,6 +39,8 @@ export type LocalFsPolicy = {
 	autoUpdate?: LocalCommandsPolicy
 	/** Extra environment for the daemon service (`kody daemon env`). */
 	serviceEnv?: Record<string, string>
+	/** Named commands and local network destinations this machine offers. */
+	capabilities?: MachineCapabilitiesPolicy
 }
 type FsMount = { path: string; mode: FsMode }
 type FsRefusal = { path: string; layer: FsLayer; reason: string }
@@ -282,6 +290,18 @@ export async function readLocalPolicy(
 			`${path} has an invalid "serviceEnv" entry. Use \`kody daemon env set|unset\` to fix it.`,
 		)
 	}
+	let capabilities: MachineCapabilitiesPolicy
+	try {
+		capabilities = parseMachineCapabilities(
+			(parsed as { capabilities?: unknown }).capabilities,
+		)
+	} catch (error) {
+		throw new Error(
+			`${path} has an invalid "capabilities" entry: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const hasCapabilities =
+		capabilities.commands.length > 0 || capabilities.lan.length > 0
 	const toggle = (value: { enabled?: unknown; changedAt?: unknown }) => ({
 		enabled: value.enabled as boolean,
 		...(typeof value.changedAt === 'string'
@@ -294,6 +314,7 @@ export async function readLocalPolicy(
 		...(commands ? { commands: toggle(commands) } : {}),
 		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
 		...(serviceEnv ? { serviceEnv } : {}),
+		...(hasCapabilities ? { capabilities } : {}),
 	}
 }
 
@@ -332,6 +353,54 @@ export async function setLocalCommandsEnabled(input: {
 	return next
 }
 
+type CapabilityKind = 'command' | 'lan'
+
+/** Adds or replaces one named command or local network definition. */
+export async function setLocalCapability(input: {
+	kind: CapabilityKind
+	definition: MachineCommandDefinition | MachineLanDefinition
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const key = input.kind === 'command' ? 'commands' : 'lan'
+	const capabilities = current.capabilities ?? { commands: [], lan: [] }
+	const others = capabilities[key].filter(
+		(entry) => entry.name !== input.definition.name,
+	)
+	const replaced = others.length !== capabilities[key].length
+	const next: LocalFsPolicy = {
+		...current,
+		capabilities: {
+			...capabilities,
+			[key]: [...others, input.definition].sort((a, b) =>
+				a.name.localeCompare(b.name),
+			),
+		},
+	}
+	await writeLocalPolicy(policyPath, next)
+	return { policy: next, replaced }
+}
+
+export async function removeLocalCapability(input: {
+	kind: CapabilityKind
+	name: string
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const key = input.kind === 'command' ? 'commands' : 'lan'
+	const capabilities = current.capabilities ?? { commands: [], lan: [] }
+	const kept = capabilities[key].filter((entry) => entry.name !== input.name)
+	const removed = kept.length !== capabilities[key].length
+	const next: LocalFsPolicy = {
+		...current,
+		capabilities: { ...capabilities, [key]: kept },
+	}
+	if (removed) await writeLocalPolicy(policyPath, next)
+	return { policy: next, removed }
+}
+
 export async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 	await mkdir(dirname(path), { recursive: true, mode: 0o700 })
 	const temp = `${path}.${process.pid}.tmp`
@@ -363,12 +432,7 @@ export async function allowLocalPath(input: {
 	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
 	fs.push({ path: canonical, mode: input.mode })
 	fs.sort((a, b) => a.path.localeCompare(b.path))
-	const next: LocalFsPolicy = {
-		version: 1,
-		fs,
-		...(policy.commands ? { commands: policy.commands } : {}),
-		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
-	}
+	const next: LocalFsPolicy = { ...policy, fs }
 	await writeLocalPolicy(policyPath, next)
 	return { policy: next, added: { path: canonical, mode: input.mode } }
 }
@@ -385,12 +449,7 @@ export async function removeLocalPath(input: {
 			!samePath(rule.path, canonical) && !samePath(rule.path, input.path),
 	)
 	const removed = fs.length !== policy.fs.length
-	const next: LocalFsPolicy = {
-		version: 1,
-		fs,
-		...(policy.commands ? { commands: policy.commands } : {}),
-		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
-	}
+	const next: LocalFsPolicy = { ...policy, fs }
 	if (removed) await writeLocalPolicy(policyPath, next)
 	return { policy: next, removed }
 }

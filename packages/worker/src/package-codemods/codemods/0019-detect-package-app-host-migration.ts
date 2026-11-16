@@ -18,6 +18,7 @@ export const packageAppHostMigrationPatterns = [
 	'oauth form_post',
 	'oauth redirect uri',
 	'webhook receiver',
+	'declared kody webhook',
 	'localStorage',
 	'sessionStorage',
 	'indexedDB',
@@ -54,6 +55,8 @@ export const packageAppHostMigrationPatternMessages: Record<
 		'oauth redirect uri: builds or names an OAuth redirect URI. If it is registered with an outside provider on the old address, the owner must register the new one.',
 	'webhook receiver':
 		'webhook receiver: appears to receive webhooks on one of the app’s own routes. Senders registered with the old address must be updated by the owner.',
+	'declared kody webhook':
+		'declared kody webhook: package.json declares kody.webhooks. Those are delivered on the Kody webhook address, which does not change, so a webhook receiver match in this package may be one of them.',
 	localStorage:
 		'localStorage: uses localStorage. Data saved under the old origin does not move to the new host.',
 	sessionStorage:
@@ -236,6 +239,18 @@ function buildMatchers({ owner, leaf }: Identity): Matchers {
 	]
 }
 
+function declaresKodyWebhooks(manifestSource: string | undefined) {
+	if (typeof manifestSource !== 'string') return false
+	try {
+		const webhooks = (
+			JSON.parse(manifestSource) as { kody?: { webhooks?: unknown } } | null
+		)?.kody?.webhooks
+		return Array.isArray(webhooks) && webhooks.length > 0
+	} catch {
+		return false
+	}
+}
+
 function detectPackageAppHostMigration(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
@@ -250,6 +265,12 @@ function detectPackageAppHostMigration(
 	if (!identity) return []
 	const matchers = buildMatchers(identity)
 	const findings: Array<PackageCodemodFinding> = []
+	if (declaresKodyWebhooks(manifestSource)) {
+		findings.push({
+			path: located.manifestKey,
+			message: packageAppHostMigrationPatternMessages['declared kody webhook'],
+		})
+	}
 	const paths = Object.keys(ownFiles).sort((left, right) =>
 		left.localeCompare(right),
 	)
