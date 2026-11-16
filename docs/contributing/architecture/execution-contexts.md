@@ -278,9 +278,11 @@ data model exists so far; nothing reads it at run time yet.
   (`authorizeContextLan`) applies the same checks as a named command against the
   `lan` row and records `lan_used`. Allowed requests leave through a second
   workerd network service (`lan`) that only the gate is bound to, with redirects
-  handed back to the run so each hop is checked. Host names are never matched,
-  so DNS rebinding cannot widen an entry. The machine wide `grant.egress` LAN
-  switch is unchanged until the migration.
+  handed back to the run so each hop is checked. The bridge re-reads local
+  policy before each ask (`machineLanCovers`), so an entry narrowed or removed
+  during a run stops working. Host names are never matched, so DNS rebinding
+  cannot widen an entry. The machine wide `grant.egress` LAN switch is unchanged
+  until the migration.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends

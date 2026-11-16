@@ -24,6 +24,11 @@ export async function runContextRun(input: {
 	egress?: EcpGrant['egress']
 	/** Local network destinations the machine defines by name (operator's runs only). */
 	lan?: ReadonlyArray<LocalLanRule>
+	lanStillCovers?: (lan: {
+		capability: string
+		host: string
+		port: number
+	}) => Promise<boolean>
 	hostFs?: () => EffectiveFs
 	hostCommands?: HostCommands
 	packageGraphCache?: PackageGraphCache
@@ -79,6 +84,7 @@ export async function runContextRun(input: {
 			input.egress ?? { mode: 'public' },
 			input.lan,
 		),
+		...(input.lanStillCovers ? { lanStillCovers: input.lanStillCovers } : {}),
 		...(input.hostFs ? { hostFs: input.hostFs } : {}),
 		...(hostCommands
 			? {

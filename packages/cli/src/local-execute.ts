@@ -135,6 +135,15 @@ export type LocalExecuteInput = {
 	 */
 	egress?: LocalEgressPolicy
 	/**
+	 * Asked before each named local network use, so a destination the machine
+	 * narrowed or removed during the run stops working.
+	 */
+	lanStillCovers?: (lan: {
+		capability: string
+		host: string
+		port: number
+	}) => Promise<boolean>
+	/**
 	 * Hosts that may hit the real network under --target mock when
 	 * `.kody/mocks.ts` is active (never carries real secrets).
 	 */
@@ -425,6 +434,11 @@ export async function runLocalExecute(
 							host: string
 							port: number
 						}) => {
+							if (input.lanStillCovers && !(await input.lanStillCovers(lan))) {
+								throw new Error(
+									`This machine no longer allows ${lan.host}:${lan.port} for local network destination "${lan.capability}". (machine_capability_off)`,
+								)
+							}
 							await callCapabilityProxy({
 								...client,
 								path: ['kody', 'lan', 'authorize'],

@@ -233,11 +233,12 @@ export default {
 			if (verdict?.ok !== true) {
 				return refuse(typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.');
 			}
-			// Redirects go back to the run, so each hop is checked here again.
-			return await env.KODY_LAN.fetch(new Request(request, { redirect: 'manual' }));
 		}
 		try {
-			return await fetch(request);
+			// A named destination's redirects go back to the run, so each hop is checked here again.
+			return refusal !== null
+				? await env.KODY_LAN.fetch(new Request(request, { redirect: 'manual' }))
+				: await fetch(request);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			// workerd hides TLS failures behind "internal error"; ask Node which cert check failed.

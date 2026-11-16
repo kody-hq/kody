@@ -75,6 +75,7 @@ import {
 	parseMachineCommandDefinition,
 	parseMachineLanDefinition,
 	advertisedMachineCapabilities,
+	machineLanCovers,
 } from './machine-capabilities.js'
 import {
 	contextWorkersDir,
@@ -969,6 +970,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 								? []
 								: ((await readLocalPolicy().catch(() => undefined))
 										?.capabilities?.lan ?? []),
+						lanStillCovers: async (lan) =>
+							machineLanCovers(
+								(await readLocalPolicy().catch(() => undefined))?.capabilities
+									?.lan ?? [],
+								lan,
+							),
 						apiUrl: input.apiUrl,
 						workerTracker,
 						packageGraphCache,

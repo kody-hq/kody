@@ -1580,6 +1580,22 @@ export default async () => {
 				/kody\.lan\.authorize is internal/,
 			)
 			assert.equal(authorizations().length, 0)
+
+			const narrowed = await runLocalExecute({
+				code,
+				params: { url: `http://127.0.0.1:${port}/` },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [nas]),
+				lanStillCovers: async () => false,
+			})
+			assert.match(
+				String((narrowed.structuredContent as { result: unknown }).result),
+				new RegExp(
+					`This machine no longer allows 127\\.0\\.0\\.1:${port} for local network destination "nas"\\. \\(machine_capability_off\\)`,
+				),
+			)
+			assert.equal(authorizations().length, 0)
 		} finally {
 			await new Promise((resolve) => lan.close(resolve))
 		}
@@ -1611,6 +1627,21 @@ test(
 			)
 			assert.match(message, /kody daemon env set NODE_OPTIONS=--use-system-ca/)
 			assert.doesNotMatch(message, /internal error|BEGIN CERTIFICATE/)
+
+			const named = await runLocalExecute({
+				code: `export default async () => {
+	try { await fetch('https://127.0.0.1:${https.port}/'); return 'ok' } catch (error) { return error.message }
+}`,
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [
+					{ name: 'nas', hosts: ['127.0.0.1'], ports: [https.port] },
+				]),
+			})
+			assert.match(
+				String((named.structuredContent as { result: unknown }).result),
+				/^HTTPS request to 127\.0\.0\.1 failed: its TLS certificate could not be verified/,
+			)
 		} finally {
 			await new Promise((resolve) => https.server.close(resolve))
 		}

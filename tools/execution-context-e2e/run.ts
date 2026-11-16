@@ -5,10 +5,8 @@
  * assert no workerd is left, then revoke and delete.
  * See docs/contributing/execution-context-e2e.md.
  */
-import { execFileSync, fork } from 'node:child_process'
+import { execFileSync, fork, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { createServer } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -234,8 +232,15 @@ async function main() {
 		{ orgSlug: 'user-me' },
 	)
 	let ecid: string | null = null
-	const lanServer = createServer((_request, response) =>
-		response.end('lan:from-the-machine'),
+	// Its own process: `cli` blocks this one while a run is in flight.
+	const lanServer = spawn(
+		process.execPath,
+		[
+			'-e',
+			`const server = require('node:http').createServer((_request, response) => response.end('lan:from-the-machine'))
+server.listen(0, '127.0.0.1', () => console.log(server.address().port))`,
+		],
+		{ stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
 	)
 	try {
 		const token = await mintCliToken(
@@ -325,9 +330,11 @@ async function main() {
 		if (named.contexts.some((context) => context.error)) {
 			throw new Error('Kody did not accept the named command.')
 		}
-		lanServer.listen(0, '127.0.0.1')
-		await once(lanServer, 'listening')
-		const lanPort = (lanServer.address() as AddressInfo).port
+		const [lanPortLine] = (await once(lanServer.stdout, 'data')) as [Buffer]
+		const lanPort = Number(String(lanPortLine).trim())
+		if (!Number.isInteger(lanPort) || lanPort < 1) {
+			throw new Error('The local test server did not report its port.')
+		}
 		writeFileSync(
 			lanFile,
 			JSON.stringify({
@@ -460,7 +467,7 @@ export default async function main() {
 			log('revoked and deleted the context')
 		}
 		await session.close()
-		lanServer.close()
+		lanServer.kill()
 		rmSync(home, { recursive: true, force: true })
 		rmSync(folder, { recursive: true, force: true })
 	}
