@@ -459,3 +459,45 @@ test('every live context with host commands on gets a shell entry with no packag
 		},
 	])
 })
+
+test('every live context with the local network on gets a whole network entry with no package limit', () => {
+	const migration = '0284-machine-network-capabilities.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at, grant_json
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?, ?)`,
+	)
+	const on = JSON.stringify({ egress: { mode: 'public-and-lan' } })
+	insert.run('ec_on', 'nas', 't1', null, on)
+	insert.run(
+		'ec_public',
+		'laptop',
+		't2',
+		null,
+		JSON.stringify({ egress: { mode: 'public' } }),
+	)
+	insert.run('ec_none', 'new', 't3', null, null)
+	insert.run('ec_gone', 'old', 't4', '2026-10-30', on)
+	applyMigrations(sqlite, (name) => name === migration)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT id, context_id, org_id, operator_user_id, kind, name, allowed_packages_json, removed_at
+				 FROM machine_capabilities`,
+			)
+			.all(),
+	).toEqual([
+		{
+			id: 'mcap_network_ec_on',
+			context_id: 'ec_on',
+			org_id: 'org_acme',
+			operator_user_id: 'user_1',
+			kind: 'lan',
+			name: '*',
+			allowed_packages_json: '[]',
+			removed_at: null,
+		},
+	])
+})
