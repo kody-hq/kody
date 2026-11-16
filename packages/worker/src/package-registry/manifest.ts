@@ -24,6 +24,7 @@ import {
 import {
 	authoredPackageJsonSchema,
 	packageCredentialsSchema,
+	packageMachineNeedsSchema,
 	packageAppVisitorNeedKeyPattern,
 	webhookDefaultRateLimitPerMinute,
 	type AuthoredPackageJson,
@@ -143,6 +144,7 @@ export function parseAuthoredPackageJson(input: {
 	}
 	const invalidCredentialSlots =
 		input.mode === 'published' ? splitPublishedCredentials(parsed) : null
+	if (input.mode === 'published') dropInvalidPublishedMachineNeeds(parsed)
 	const result = authoredPackageJsonSchema.safeParse(parsed)
 	if (!result.success) {
 		const formatted = z.prettifyError(result.error)
@@ -336,6 +338,16 @@ function splitPublishedCredentials(
 	}
 	kody.credentials = Object.fromEntries(valid)
 	return invalid.length > 0 ? Object.fromEntries(invalid) : null
+}
+
+// Publishes before `kody.machine` existed kept the key unvalidated and never
+// honored it, so a snapshot whose value is not valid loads as undeclared.
+function dropInvalidPublishedMachineNeeds(parsed: unknown) {
+	if (!isPlainRecord(parsed) || !isPlainRecord(parsed.kody)) return
+	if (!('machine' in parsed.kody)) return
+	if (!packageMachineNeedsSchema.safeParse(parsed.kody.machine).success) {
+		delete parsed.kody.machine
+	}
 }
 
 // Retired once schedules are inert at snapshot load; authoring still rejects them via packageJobScheduleSchema.

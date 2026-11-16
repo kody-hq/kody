@@ -412,4 +412,20 @@ export const packageDetailSchema =
 			.describe(
 				'Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values.',
 			),
+		machine: z
+			.object({
+				needs: z.array(
+					z.object({
+						name: z.string().describe('The name the machine gives the entry.'),
+						kind: z.enum(['command', 'lan', 'fs']),
+						description: z.string(),
+						hosts: z.array(z.string()).optional(),
+						ports: z.array(z.number()).optional(),
+						mode: z.enum(['ro', 'rw']).optional(),
+					}),
+				),
+			})
+			.describe(
+				'Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package.',
+			),
 	})

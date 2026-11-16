@@ -381,6 +381,51 @@ credential for `secretJwtSign` or signature keys. They are suggestions only,
 without credential names; nothing is suggested for a placement no type fits,
 including basic auth that names two secrets.
 
+### Machine access (`kody.machine`)
+
+A package whose code uses a machine's named commands, local network destinations
+or host folders on an [execution context](./execution-contexts.md) declares them
+in `kody.machine`. Each key is the name the machine gives the entry.
+
+```json
+{
+	"name": "@acme/nas-ops",
+	"exports": { ".": "./index.ts" },
+	"kody": {
+		"description": "Operate the NAS.",
+		"machine": {
+			"kdocker": {
+				"kind": "command",
+				"description": "Restart and inspect containers on the NAS"
+			},
+			"nas": {
+				"kind": "lan",
+				"hosts": ["192.168.1.10"],
+				"ports": [5001],
+				"description": "Call the Synology API"
+			},
+			"runner": {
+				"kind": "fs",
+				"mode": "rw",
+				"description": "Write build output"
+			}
+		}
+	}
+}
+```
+
+- `kind` is `command`, `lan` or `fs`, and `description` says why the package
+  needs it. There is no entry for the unrestricted shell.
+- `lan` may list the `hosts` (IP addresses or CIDR ranges, never host names) and
+  `ports` it expects, and `fs` gives the `mode` (`ro` or `rw`). These tell the
+  person approving what to expect; a run gets what the machine defines.
+- Declaring grants nothing. The machine defines each entry and its operator
+  decides which packages may use it.
+- A package declares what its own runs use. Access does not pass through
+  imports: the package you run needs the entry, not the helper it imports.
+- A package can declare at most 20 entries. `packageGet` returns them as
+  `machine.needs`.
+
 ### npm dependencies
 
 Saved packages may declare runtime npm dependencies in `package.json`

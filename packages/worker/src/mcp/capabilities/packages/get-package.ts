@@ -38,7 +38,7 @@ export const getPackageCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), and its credential needs with how each resolves for you (`credentials.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
+			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
 		keywords: ['package', 'get', 'read', 'metadata', 'exports', 'imports'],
 		readOnly: true,
 		idempotent: true,
@@ -202,6 +202,11 @@ export const getPackageCapability = defineDomainCapability(
 						loaded.manifest.kody.invalidCredentialSlots ?? {},
 					).map(([key, message]) => ({ key, message })),
 					suppliersEnabled,
+				},
+				machine: {
+					needs: Object.entries(loaded.manifest.kody.machine ?? {}).map(
+						([name, need]) => ({ name, ...need }),
+					),
 				},
 				exports: (projection.exports ?? []).map((exportDetail) => ({
 					subpath: exportDetail.subpath,
