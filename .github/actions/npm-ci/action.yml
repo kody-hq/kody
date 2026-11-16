@@ -1,0 +1,86 @@
+name: 📥 npm ci
+description: >-
+  npm ci. On Windows on Arm, where npm ci spends ~8 min unpacking onto the
+  runner's slow C: disk, node_modules comes from the Actions cache instead (same
+  lockfile, patches, Node version, and runner OS/arch), and npm then relinks the
+  workspaces and runs the lifecycle scripts offline. A miss runs npm ci and
+  saves the tree. Run after actions/checkout and actions/setup-node.
+
+runs:
+  using: composite
+  steps:
+    - name: 🔑 node_modules cache key
+      id: key
+      shell: bash
+      run: |
+        if [ "$RUNNER_OS" = Windows ] && [ "$RUNNER_ARCH" = ARM64 ] &&
+          [ "${VALIDATE_NO_CACHE:-false}" != true ]; then
+          echo "cache=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "cache=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
+
+    # Paths and key must match the save step below.
+    - name: ♻️ Restore node_modules
+      id: restore
+      if: steps.key.outputs.cache == 'true'
+      uses: actions/cache/restore@v5.0.3
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          packages/mock-servers/*/node_modules
+        key:
+          node-modules-${{ runner.os }}-${{ runner.arch }}-${{
+          steps.key.outputs.node }}-${{ hashFiles('package-lock.json',
+          'patches/**', '.github/actions/npm-ci/*') }}
+
+    # npm install on the restored tree adds only the workspace links and runs
+    # the same root postinstall/prepare and workspace prepare scripts npm ci
+    # runs. --offline fails on anything the tree lacks, and an install that
+    # would change the lockfile means the tree is not the locked one; both
+    # fall back to a clean npm ci.
+    - name: 📥 Install from the restored node_modules
+      if: steps.restore.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        if npm install --offline --no-audit --no-fund && git diff --quiet -- package-lock.json; then
+          exit 0
+        fi
+        echo "::warning::Restored node_modules did not match package-lock.json; running npm ci"
+        git checkout -- package-lock.json
+        npm ci
+
+    - name: 📥 npm ci
+      if: steps.restore.outputs.cache-hit != 'true'
+      shell: bash
+      run: npm ci
+
+    # Workspace links are junctions on Windows, which the cache tar does not
+    # restore as links; save the tree without them.
+    - name: 🔗 Drop workspace links before saving
+      if:
+        steps.key.outputs.cache == 'true' && steps.restore.outputs.cache-hit !=
+        'true'
+      shell: bash
+      run: node .github/actions/npm-ci/workspace-links.mjs unlink
+
+    - name: 💾 Save node_modules
+      if:
+        steps.key.outputs.cache == 'true' && steps.restore.outputs.cache-hit !=
+        'true'
+      uses: actions/cache/save@v5.0.3
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          packages/mock-servers/*/node_modules
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+
+    - name: 🔗 Restore workspace links
+      if:
+        ${{ !cancelled() && steps.key.outputs.cache == 'true' &&
+        steps.restore.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: node .github/actions/npm-ci/workspace-links.mjs link
