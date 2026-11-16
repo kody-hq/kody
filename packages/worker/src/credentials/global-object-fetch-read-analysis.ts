@@ -242,6 +242,22 @@ export function analyzeGlobalObjectFetchReads(
 			grew = true
 		}
 	}
+	/** Variables that can also hold something other than a known function. */
+	const openBindings = new Set<ModuleBinding>()
+	for (const node of nodes) {
+		const [id, value] =
+			node.type === 'VariableDeclarator'
+				? [node.id, unwrap(node.init)]
+				: node.type === 'AssignmentExpression'
+					? [node.left, unwrap(node.right)]
+					: [null, null]
+		const target = bindingOf(id)
+		if (!target || !value || functionTypes.has(value.type)) continue
+		const source = bindingOf(value)
+		if (!source || !functionsByBinding.get(source)?.length) {
+			openBindings.add(target)
+		}
+	}
 	for (const node of nodes) {
 		if (node.type === 'ObjectProperty' || node.type === 'Property') {
 			keyFunction(keyNameOf(node, 'key'), node.value)
@@ -455,6 +471,7 @@ export function analyzeGlobalObjectFetchReads(
 		// A method name does not say which object it is called on, so every
 		// function of that name may run, and so may one from outside the module.
 		if (!binding && key) add(callsGivenGlobal, call)
+		if (binding && openBindings.has(binding)) add(callsGivenGlobal, call)
 		for (const fn of functions) {
 			const parameter = (fn.params as Array<Node> | undefined)?.[index]
 			if (!parameter) continue
@@ -698,10 +715,13 @@ export function analyzeGlobalObjectFetchReads(
 		} else if (isGlobal(object)) {
 			aliasReads.add(`${text(object)}.fetch`)
 		} else if (
-			object?.type === 'ThisExpression' ||
-			thisAliasBindings.has(bindingOf(object) as ModuleBinding)
+			thisMayBeGlobal &&
+			(object?.type === 'ThisExpression' ||
+				thisAliasBindings.has(bindingOf(object) as ModuleBinding))
 		) {
-			if (thisMayBeGlobal) unresolved.add('this.fetch, this set to <global>')
+			unresolved.add('this.fetch, this set to <global>')
+		} else if (object?.type === 'ThisExpression') {
+			continue
 		} else if (mayBeGlobal(object)) {
 			unresolved.add(`${text(object)}.fetch, from a call given <global>`)
 		} else if (escapes.size > 0) {

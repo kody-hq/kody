@@ -135,6 +135,19 @@ test.each([
 		['this.fetch, this set to <global>'],
 	],
 	[
+		`import { outside } from './outside.js'
+		 function local(scope) { return scope.size }
+		 let pick = local
+		 pick = outside
+		 const scope = pick(globalThis)
+		 export const a = () => scope.fetch(url)`,
+		['scope.fetch, from a call given <global>'],
+	],
+	[
+		`export function a() { let scope = this; scope = wrap(globalThis); return scope.fetch(url) }`,
+		['scope.fetch, from a call given <global>'],
+	],
+	[
 		`function run() { const scope = this; return scope.fetch(url) }
 		 export const a = () => run.call(globalThis) `,
 		['this.fetch, this set to <global>'],
