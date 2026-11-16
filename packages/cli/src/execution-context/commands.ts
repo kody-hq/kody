@@ -38,7 +38,14 @@ import {
 	isRemoteDaemonCommand,
 	runRemoteDaemonCommand,
 } from './daemon-remote.js'
-import { DaemonControlError, type DaemonPause, runDaemon } from './daemon.js'
+import {
+	DaemonControlError,
+	type DaemonPause,
+	daemonConnection,
+	restartWhenOfflineMs,
+	runDaemon,
+} from './daemon.js'
+import { connectionState, healthWriteMs, startLoopWatchdog } from './health.js'
 import {
 	type RunnerLauncher,
 	acquireRunnerLock,
@@ -128,6 +135,7 @@ export type ExecutionContextCommandInput = {
 		install?: boolean
 		keyStorage?: string
 		lines?: string
+		maxAge?: string
 		follow?: boolean
 		unregister?: boolean
 		reason?: string
@@ -289,6 +297,7 @@ async function runCommand(
 				? { keyStorage: input.values.keyStorage }
 				: {}),
 			...(input.values.lines ? { lines: input.values.lines } : {}),
+			...(input.values.maxAge ? { maxAge: input.values.maxAge } : {}),
 			...(input.values.follow ? { follow: true } : {}),
 			...(input.values.unregister === undefined
 				? {}
@@ -821,13 +830,38 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			ecid,
 			manager: serviceManagerFor() ?? 'systemd',
 		}).statePath
-		writeJson(statePath, {
-			pid: process.pid,
-			version: input.clientVersion,
-			service: manager,
-			startedAt: new Date().toISOString(),
-			...(supervised ? { supervisorPid: process.ppid } : {}),
-		})
+		const connection = daemonConnection()
+		const writeState = () => {
+			try {
+				writeJson(statePath, {
+					pid: process.pid,
+					version: input.clientVersion,
+					service: manager,
+					startedAt,
+					...(supervised ? { supervisorPid: process.ppid } : {}),
+					connection: connectionState(connection),
+				})
+			} catch {
+				// A full disk must not stop the daemon; health reports it stale.
+			}
+		}
+		writeState()
+		const stateTimer = setInterval(writeState, healthWriteMs)
+		stateTimer.unref()
+		const stopWatchdog = startLoopWatchdog()
+		// Only where something starts the daemon again: a terminal daemon
+		// that exits while offline would just be gone.
+		const restarted =
+			Boolean(manager) ||
+			supervised ||
+			process.pid === 1 ||
+			existsSync('/.dockerenv') ||
+			existsSync('/run/.containerenv')
+		if (process.pid === 1) {
+			log(
+				'kody is PID 1 in this container, so it cannot kill itself if it ever freezes. Run the container with an init process (docker run --init, or init: true in compose) and add a healthcheck: kody daemon health',
+			)
+		}
 		const workersDir = contextWorkersDir(input.apiUrl, context.ecid)
 		const reaped = reapLeftoverWorkers(workersDir)
 		if (reaped.length > 0) {
@@ -935,6 +969,8 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		loginTimer.unref()
 		try {
 			stop = await runDaemon({
+				connection,
+				...(restarted ? { maxOfflineMs: restartWhenOfflineMs } : {}),
 				apiUrl: input.apiUrl,
 				ecid: context.ecid,
 				privateKey,
@@ -1111,6 +1147,8 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			})
 		} finally {
 			clearInterval(loginTimer)
+			clearInterval(stateTimer)
+			stopWatchdog()
 			clearTimeout(capabilitiesRetry)
 			updater.stop()
 			unwatchFile(commandsPolicyPath, onCommandsPolicyChange)
@@ -1135,6 +1173,9 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 			// Being replaced says nothing about this version's health.
 			return supervised ? startupRefusedExitCode : 1
 		}
+		// Supervisors restart on a nonzero exit; an update supervisor must not
+		// count this against the version.
+		if (stop === 'unreachable') return supervised ? startupRefusedExitCode : 1
 		const target: CurrentVersion | null = updateTo
 		if (stop === 'shutdown' && restartRequested && !target && !signalled) {
 			return relaunchExitCode
@@ -1174,7 +1215,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		return stayStoppedExitCode
 	}
 	throw new Error(
-		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context capability [list | add command|lan <file.json> | remove command|lan <name>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
+		'Usage: kody context register --name <name> [--org <slug>] | kody context list | kody context revoke <name> | kody context delete <name> | kody context cancel-run <name> <run id> | kody context policy [show | allow <path> [--mode ro|rw] | remove <path>] | kody context capability [list | add command|lan <file.json> | remove command|lan <name>] | kody context grant [show | allow <path> [--mode ro|rw] | remove <path> | lan on|off] [--context <name>] | kody context commands [status | on | off] [--context <name>] | kody chain show | add <name> | remove <name> | kody connect --name <name> | kody daemon [--context <ec id>] [--max-concurrent <n>] | kody daemon install | status | health | logs | restart | start | stop | uninstall | auto-update [on | off | status] | kody update',
 	)
 }
 

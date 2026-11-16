@@ -232,6 +232,7 @@ const cliFlagOptions = {
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
 	lines: { type: 'string' },
+	'max-age': { type: 'string' },
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
@@ -651,6 +652,9 @@ async function dispatch(
 						: {}),
 					...(typeof parsed.values.lines === 'string'
 						? { lines: parsed.values.lines }
+						: {}),
+					...(typeof parsed.values['max-age'] === 'string'
+						? { maxAge: parsed.values['max-age'] }
 						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
 					...(typeof parsed.values.reason === 'string'

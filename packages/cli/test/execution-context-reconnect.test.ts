@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import {
 	decodeEnvelopePayload,
 	ecpPingFrame,
+	ecpPongFrame,
 	parseEnvelope,
 	signFrame,
 	type EcpFramePayload,
@@ -12,6 +13,7 @@ import {
 	importContextKey,
 } from '../src/execution-context/client.js'
 import {
+	daemonConnection,
 	runDaemon,
 	type ContextRunExecutor,
 } from '../src/execution-context/daemon.js'
@@ -37,6 +39,7 @@ async function fakeKody() {
 		seq = 0
 		frames: Array<EcpFramePayload> = []
 		failSends = false
+		stalledClosing = false
 		constructor(url: string) {
 			super(url)
 			sockets.push(this)
@@ -72,7 +75,15 @@ async function fakeKody() {
 			this.dispatchEvent(Object.assign(new Event('message'), { data }))
 		}
 		override send(data = '') {
-			if (data === ecpPingFrame) return
+			if (data === ecpPingFrame) {
+				if (this.readyState !== this.OPEN) return
+				queueMicrotask(() =>
+					this.dispatchEvent(
+						Object.assign(new Event('message'), { data: ecpPongFrame }),
+					),
+				)
+				return
+			}
 			if (this.failSends) throw new Error('socket write failed')
 			super.send(data)
 			const frame = decodeEnvelopePayload(
@@ -85,6 +96,18 @@ async function fakeKody() {
 					body: { runId: frame.body.runId },
 				})
 			}
+		}
+		/**
+		 * Kody's close frame arrived but the TCP teardown never did: Node
+		 * leaves the socket CLOSING and never emits `close`.
+		 */
+		stallClosing() {
+			this.stalledClosing = true
+			this.readyState = 2
+		}
+		override close(code = 1000, reason = '') {
+			if (this.stalledClosing) return
+			super.close(code, reason)
 		}
 		/** The network dropped: no close handshake, code 1006. */
 		drop() {
@@ -341,4 +364,67 @@ test('a host folder removed while the socket is down is gone from runs that outl
 	runs.finish('run_fs')
 	await until(() => resultOf(kody.sockets[1], 'run_fs') !== undefined, 'result')
 	assert.equal(await stop(), 'shutdown')
+})
+
+test('a socket left closing with no close event after a reconnect is replaced by a working one', async () => {
+	const { kody, runs, lines, stop } = await startDaemon(1, {
+		pingMs: 20,
+		pongTimeoutMs: 5_000,
+	})
+	const welcomed = (index: number) =>
+		kody.sockets[index]?.sentTypes().includes('hello') === true
+	await until(() => welcomed(0), 'first connection')
+	kody.sockets[0]!.drop()
+	await until(() => welcomed(1), 'reconnect after the 1006 drop')
+	// Let a ping and its pong go by, so the heartbeat is between pings.
+	await new Promise((resolve) => setTimeout(resolve, 60))
+	kody.sockets[1]!.stallClosing()
+	kody.onConnect((socket) => {
+		for (const frame of runFrames('run_after')) void socket.push(frame)
+	})
+	await until(
+		() => runs.started.includes('run_after'),
+		'a run on the connection that replaced the stalled socket',
+	)
+	assert.equal(kody.sockets.length, 3)
+	assert.ok(
+		lines.some((line) => line.includes('stopped without a close event')),
+		lines.join('\n'),
+	)
+	runs.finish('run_after')
+	await until(
+		() => resultOf(kody.sockets[2], 'run_after') !== undefined,
+		'run_after result',
+	)
+	assert.equal(await stop(), 'shutdown')
+})
+
+test('the daemon reports its connection and when Kody was last heard', async () => {
+	const connection = daemonConnection()
+	const { kody, stop } = await startDaemon(1, { connection, pingMs: 20 })
+	await until(() => connection.connected, 'connected')
+	const heardAtWelcome = connection.lastHeardAt!
+	await until(
+		() => connection.lastHeardAt! > heardAtWelcome,
+		'a pong moves lastHeardAt',
+	)
+	kody.sockets[0]!.drop()
+	await until(() => !connection.connected, 'disconnected after the drop')
+	await until(() => connection.connected, 'connected again')
+	assert.equal(await stop(), 'shutdown')
+	assert.equal(connection.connected, false)
+})
+
+test('a daemon that cannot reach Kody for too long stops as unreachable', async () => {
+	const { input, lines } = await daemonInput({
+		maxOfflineMs: 1,
+		fetchFn: (async () => {
+			throw new TypeError('fetch failed')
+		}) as typeof fetch,
+	})
+	assert.equal(await runDaemon(input), 'unreachable')
+	assert.ok(
+		lines.some((line) => line.includes('No working connection to Kody')),
+		lines.join('\n'),
+	)
 })
