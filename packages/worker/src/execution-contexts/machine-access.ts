@@ -133,6 +133,7 @@ async function loadMachineAccess(
 	const packageNames = manages
 		? await loadPackageNames(
 				db,
+				caller.orgId,
 				capabilities.results.flatMap((capability) =>
 					parseAllowedPackages(capability.allowed_packages_json),
 				),
@@ -188,15 +189,30 @@ async function loadMachineAccess(
 	return manages ? entries : entries.filter((entry) => entry.grants.length > 0)
 }
 
-async function loadPackageNames(db: D1Database, ids: Array<string>) {
+/**
+ * Names for the listed packages the caller's org owns. A package from another
+ * org stays an id: a list entry is not access to that package.
+ */
+async function loadPackageNames(
+	db: D1Database,
+	orgId: string,
+	ids: Array<string>,
+) {
 	const names = new Map<string, string>()
 	await Promise.all(
 		[...new Set(ids)].map(async (id) => {
 			const saved = await getSavedPackageByIdInAnyOrg(db, id)
-			if (saved) names.set(id, saved.name)
+			if (saved?.userId === orgId) names.set(id, saved.name)
 		}),
 	)
 	return names
+}
+
+async function missingPackages(db: D1Database, ids: Array<string>) {
+	const found = await Promise.all(
+		ids.map((id) => getSavedPackageByIdInAnyOrg(db, id)),
+	)
+	return ids.filter((_, index) => found[index] === null)
 }
 
 function isShareable(kind: string): kind is ShareableKind {
@@ -462,6 +478,14 @@ export async function setMachineAccessPackages(
 			message: `${row.name} defines no ${kindWords[input.kind]} named "${input.name}". executionContextMachineAccessList shows what it defines.`,
 		})
 	}
+	if (input.packageIds.some((id) => id.trim() === '')) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'A package id cannot be blank. Pass [] to lift the package limit.',
+		})
+	}
 	const before = parseAllowedPackages(capability.allowed_packages_json)
 	const after = parseAllowedPackages(stringifyAllowedPackages(input.packageIds))
 	if (after.length > maxMachineAccessPackages) {
@@ -472,8 +496,7 @@ export async function setMachineAccessPackages(
 		})
 	}
 	const added = after.filter((id) => !before.includes(id))
-	const names = await loadPackageNames(db, added)
-	const unknown = added.filter((id) => !names.has(id))
+	const unknown = await missingPackages(db, added)
 	if (unknown.length > 0) {
 		throw new ExecutionContextError({
 			status: 400,

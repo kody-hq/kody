@@ -844,7 +844,8 @@ test('the operator limits a named command to listed packages and lifts the limit
 	})
 	expect(set.capabilities[0]).toMatchObject({
 		name: 'kdocker',
-		allowedPackages: [{ id: 'pkg_other', name: '@acme/pkg_other' }],
+		// Another org's package stays an id: listing it is not access to it.
+		allowedPackages: [{ id: 'pkg_other', name: 'pkg_other' }],
 	})
 	await expect(run(['pkg_other'])).resolves.toMatchObject({ ok: true })
 	// A listed entry is a limit: the operator's own package and ad hoc code stop.
@@ -887,7 +888,26 @@ test('the operator limits a named command to listed packages and lifts the limit
 			packageIds: [],
 		}),
 	).rejects.toMatchObject({ status: expect.any(Number) })
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', {
+			...target,
+			packageIds: [' '],
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
 	await expect(run(['pkg_other'])).resolves.toMatchObject({ ok: true })
+	expect(
+		(
+			await setMachineAccessPackages(owner, 'ec_mac', {
+				...target,
+				packageIds: ['pkg_other', 'pkg_own'],
+			})
+		).capabilities[0],
+	).toMatchObject({
+		allowedPackages: [
+			{ id: 'pkg_other', name: 'pkg_other' },
+			{ id: 'pkg_own', name: '@acme/pkg_own' },
+		],
+	})
 
 	const lifted = await setMachineAccessPackages(owner, 'ec_mac', {
 		...target,
