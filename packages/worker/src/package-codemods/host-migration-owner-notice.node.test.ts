@@ -8,6 +8,7 @@ import type { PackageCodemodRunItemRecord } from './ledger.ts'
 
 const mocks = vi.hoisted(() => ({
 	items: [] as Array<PackageCodemodRunItemRecord>,
+	currentOwners: new Map<string, string>(),
 	sendCloudflareEmail: vi.fn(),
 }))
 
@@ -81,7 +82,7 @@ async function createEnv() {
 		.run()
 	await db
 		.prepare(
-			'CREATE TABLE saved_packages (id TEXT PRIMARY KEY, name TEXT, deleted_at TEXT)',
+			'CREATE TABLE saved_packages (id TEXT PRIMARY KEY, name TEXT, user_id TEXT, deleted_at TEXT)',
 		)
 		.run()
 	for (const [id, name] of [
@@ -99,8 +100,14 @@ async function createEnv() {
 	}
 	for (const packageItem of mocks.items) {
 		await db
-			.prepare('INSERT INTO saved_packages (id, name) VALUES (?, ?)')
-			.bind(packageItem.packageId, packageItem.packageId.slice(4))
+			.prepare(
+				'INSERT INTO saved_packages (id, name, user_id) VALUES (?, ?, ?)',
+			)
+			.bind(
+				packageItem.packageId,
+				packageItem.packageId.slice(4),
+				mocks.currentOwners.get(packageItem.packageId) ?? packageItem.userId,
+			)
 			.run()
 	}
 	const { kv } = createMemoryKvNamespace()
@@ -126,6 +133,7 @@ const base = {
 }
 
 beforeEach(() => {
+	mocks.currentOwners.clear()
 	mocks.sendCloudflareEmail.mockReset()
 	mocks.sendCloudflareEmail.mockResolvedValue({ ok: true })
 	mocks.items = [
@@ -279,4 +287,39 @@ test('a scan of another codemod is refused', async () => {
 	).rejects.toThrow(
 		'This notice needs a scan run of 0019-detect-package-app-host-migration.',
 	)
+})
+
+test('an app transferred after the scan goes to its current owner at its current address', async () => {
+	mocks.items = [item('01', 'alice', '@alice/notes', [messages.localStorage])]
+	mocks.currentOwners.set('pkg-@alice/notes', 'carol')
+	const { env } = await createEnv()
+	const result = await runPackageAppHostMigrationNotice({
+		...base,
+		env,
+		dryRun: true,
+	})
+	expect(result.owners.map((owner) => owner.ownerId)).toEqual(['carol'])
+	expect(result.owners[0]?.apps[0]).toMatchObject({
+		name: '@carol/notes',
+		oldUrl: 'https://carol.kody.run/notes/',
+		newUrl: 'https://notes--carol.kody.run/',
+	})
+	expect(result.preview?.text).not.toContain('alice')
+})
+
+test('an app whose stored findings were cut short still reaches its owner', async () => {
+	mocks.items = [
+		item('01', 'alice', '@alice/notes', [
+			messages['list-unsubscribe'],
+			'…truncated 12 more findings',
+		]),
+	]
+	const { env } = await createEnv()
+	const result = await runPackageAppHostMigrationNotice({
+		...base,
+		env,
+		dryRun: true,
+	})
+	expect(result.totals.recipients.owners).toBe(1)
+	expect(result.totals.outsideOnly.owners).toBe(0)
 })

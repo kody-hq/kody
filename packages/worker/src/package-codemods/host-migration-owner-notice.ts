@@ -11,6 +11,7 @@ import {
 	packageAppHostMigrationPatternFromMessage,
 	type PackageAppHostMigrationPattern,
 } from './codemods/0019-detect-package-app-host-migration.ts'
+import { getPackageScopeByUserId } from '#worker/package-registry/user-scope.ts'
 import { packageAppHostMigrationAgentPrompt } from './host-migration-agent-prompt.ts'
 import {
 	getPackageCodemodRunById,
@@ -131,6 +132,10 @@ function classifyItem(item: PackageCodemodRunItemRecord) {
 	// does not change, so a receiver match in that package is not counted.
 	if (patterns.has('declared kody webhook')) patterns.delete('webhook receiver')
 	const categories = new Set<PackageAppHostMigrationNoticeCategory>()
+	// The ledger stores at most 50 findings per app. A cut list may have lost
+	// the findings that select a recipient, so the owner is told anyway.
+	if (item.findings.some((finding) => finding.message.startsWith('…truncated')))
+		categories.add('addressCode')
 	const outside = new Set<string>()
 	for (const pattern of patterns) {
 		const category = patternCategories[pattern]
@@ -141,8 +146,9 @@ function classifyItem(item: PackageCodemodRunItemRecord) {
 	return { categories: [...categories].sort(), outside: [...outside].sort() }
 }
 
-async function loadPackageNames(db: D1Database, packageIds: Array<string>) {
-	const names = new Map<string, string>()
+/** Current name and owner: an app transferred after the scan follows its new owner. */
+async function loadLivePackages(db: D1Database, packageIds: Array<string>) {
+	const packages = new Map<string, { name: string; userId: string }>()
 	for (
 		let index = 0;
 		index < packageIds.length;
@@ -151,13 +157,14 @@ async function loadPackageNames(db: D1Database, packageIds: Array<string>) {
 		const chunk = packageIds.slice(index, index + packageNameLookupChunk)
 		const { results } = await db
 			.prepare(
-				`SELECT id, name FROM saved_packages WHERE id IN (${chunk.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+				`SELECT id, name, user_id FROM saved_packages WHERE id IN (${chunk.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
 			)
 			.bind(...chunk)
-			.all<{ id: string; name: string }>()
-		for (const row of results) names.set(row.id, row.name)
+			.all<{ id: string; name: string; user_id: string }>()
+		for (const row of results)
+			packages.set(row.id, { name: row.name, userId: row.user_id })
 	}
-	return names
+	return packages
 }
 
 async function loadAppsByOwner(input: {
@@ -186,42 +193,52 @@ async function loadAppsByOwner(input: {
 	const classified = items
 		.map((item) => ({ item, ...classifyItem(item) }))
 		.filter((entry) => entry.categories.length > 0)
-	const names = await loadPackageNames(
+	const packages = await loadLivePackages(
 		input.db,
 		classified.map((entry) => entry.item.packageId),
 	)
+	const scopes = new Map<string, string | null>()
 	const byOwner = new Map<string, Array<PackageAppHostMigrationNoticeApp>>()
 	let appsWithoutNewHost = 0
 	for (const { item, categories, outside } of classified) {
-		const name = names.get(item.packageId)
-		const match = name ? /^@([^/]+)\/([^/]+)$/.exec(name) : null
-		if (!name || !match) continue
-		const [, username, kodyId] = match
-		const newOrigin = isProfilePackage({ username: username!, kodyId: kodyId! })
+		const live = packages.get(item.packageId)
+		if (!live) continue
+		const ownerId = live.userId
+		if (!scopes.has(ownerId)) {
+			scopes.set(
+				ownerId,
+				await getPackageScopeByUserId(input.db, ownerId).catch(() => null),
+			)
+		}
+		const username = scopes.get(ownerId)
+		const kodyId = live.name.slice(live.name.indexOf('/') + 1)
+		if (!username || !kodyId) continue
+		const name = `@${username}/${kodyId}`
+		const newOrigin = isProfilePackage({ username, kodyId: kodyId! })
 			? null
 			: buildPackageAppHostOrigin({
 					packageAppOrigin: input.packageAppOrigin,
-					username: username!,
-					kodyId: kodyId!,
+					username,
+					kodyId,
 				})
 		if (!newOrigin) {
 			appsWithoutNewHost += 1
 			continue
 		}
-		const apps = byOwner.get(item.userId) ?? []
+		const apps = byOwner.get(ownerId) ?? []
 		apps.push({
 			packageId: item.packageId,
 			name,
 			oldUrl: `${buildPackageAppSubdomainUrl({
 				packageAppOrigin: input.packageAppOrigin,
-				username: username!,
-				kodyId: kodyId!,
+				username,
+				kodyId,
 			})}/`,
 			newUrl: `${newOrigin}/`,
 			categories,
 			outside,
 		})
-		byOwner.set(item.userId, apps)
+		byOwner.set(ownerId, apps)
 	}
 	for (const apps of byOwner.values()) {
 		apps.sort((left, right) => left.name.localeCompare(right.name))
