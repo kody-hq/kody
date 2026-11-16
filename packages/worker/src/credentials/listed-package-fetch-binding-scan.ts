@@ -29,6 +29,11 @@ import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
 export const listedPackageFetchBindingScanLimitDefault = 20
 export const listedPackageFetchBindingScanLimitMax = 50
+/**
+ * Stored bundles read in one call. A package keeps a bundle for every
+ * publish, so one package alone can hold more than a request can parse.
+ */
+export const listedPackageFetchBindingScanBundlesPerCall = 25
 const shapeLengthMax = 60
 const shapesPerPackageMax = 6
 
@@ -65,6 +70,12 @@ export type ListedPackageFetchBindingPackage = {
 	possibleAlias: boolean
 	/** Matched text only (names and punctuation), for a possible alias. */
 	possibleAliasShapes: Array<string>
+	/**
+	 * True when this call stopped part way through the package's bundles. The
+	 * next page reports the same package again for the rest: add the counts
+	 * and keep the worst outcome.
+	 */
+	partial?: boolean
 	error?: string
 }
 
@@ -179,16 +190,24 @@ async function readStoredBundles(input: {
 	env: Env
 	userId: OwnerId
 	sourceId: string
-}): Promise<Array<StoredBundle>> {
-	if (!hasPublishedRuntimeArtifacts(input.env)) return []
-	const rows = await input.env.APP_DB.prepare(
+	offset: number
+	maxRows: number
+}): Promise<{ bundles: Array<StoredBundle>; rows: number; more: boolean }> {
+	if (!hasPublishedRuntimeArtifacts(input.env)) {
+		return { bundles: [], rows: 0, more: false }
+	}
+	const result = await input.env.APP_DB.prepare(
 		`SELECT kv_key, artifact_kind FROM published_bundle_artifacts
-		 WHERE user_id = ? AND source_id = ?`,
+		 WHERE user_id = ? AND source_id = ?
+		 ORDER BY kv_key
+		 LIMIT ? OFFSET ?`,
 	)
-		.bind(input.userId, input.sourceId)
+		.bind(input.userId, input.sourceId, input.maxRows + 1, input.offset)
 		.all<{ kv_key: string; artifact_kind: string }>()
+	const rows = (result.results ?? []).slice(0, input.maxRows)
+	const more = (result.results ?? []).length > input.maxRows
 	const bundles: Array<StoredBundle> = []
-	for (const row of rows.results ?? []) {
+	for (const row of rows) {
 		if (!isRepairableArtifactKind(row.artifact_kind)) continue
 		const stored = await readPublishedBundleArtifact({
 			env: input.env,
@@ -197,7 +216,7 @@ async function readStoredBundles(input: {
 		if (!stored?.modules) continue
 		bundles.push({ ...stored, kind: stored.kind ?? row.artifact_kind })
 	}
-	return bundles
+	return { bundles, rows: rows.length, more }
 }
 
 function inlinesOtherPackages(bundle: StoredBundle) {
@@ -213,7 +232,13 @@ async function scanPackage(input: {
 	packageId: string
 	userId: OwnerId
 	sourceId: string
-}): Promise<ListedPackageFetchBindingPackage> {
+	offset: number
+	maxRows: number
+}): Promise<{
+	scanned: ListedPackageFetchBindingPackage
+	rows: number
+	more: boolean
+}> {
 	const base = {
 		packageId: input.packageId,
 		bundles: 0,
@@ -223,12 +248,21 @@ async function scanPackage(input: {
 	}
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
 	if (!source || source.user_id !== input.userId) {
-		return { ...base, outcome: 'unpublished' }
+		return {
+			scanned: { ...base, outcome: 'unpublished' },
+			rows: 0,
+			more: false,
+		}
 	}
 	if (!source.published_commit?.trim()) {
-		return { ...base, outcome: 'unpublished' }
+		return {
+			scanned: { ...base, outcome: 'unpublished' },
+			rows: 0,
+			more: false,
+		}
 	}
-	const bundles = await readStoredBundles(input)
+	const { bundles, rows, more } = await readStoredBundles(input)
+	const partial = more || input.offset > 0 ? { partial: true } : {}
 	let outcome: ListedPackageFetchBindingOutcome = 'no_global_reads'
 	let needsInstall: boolean | null = null
 	const shapes = new Set<string>()
@@ -263,20 +297,51 @@ async function scanPackage(input: {
 			outcome = bundleOutcome
 		}
 	}
-	if (base.bundles === 0) return { ...base, outcome: 'no_stored_bundles' }
+	if (base.bundles === 0 && !more && input.offset === 0) {
+		return {
+			scanned: { ...base, outcome: 'no_stored_bundles' },
+			rows,
+			more,
+		}
+	}
 	return {
-		...base,
-		outcome,
-		possibleAlias: shapes.size > 0,
-		possibleAliasShapes: [...shapes].slice(0, shapesPerPackageMax),
+		scanned: {
+			...base,
+			...partial,
+			outcome,
+			possibleAlias: shapes.size > 0,
+			possibleAliasShapes: [...shapes].slice(0, shapesPerPackageMax),
+		},
+		rows,
+		more,
+	}
+}
+
+const cursorOffsetSeparator = '~'
+
+/** `<package id>` or `<package id>~<bundle offset in the next package>`. */
+function parseScanCursor(cursor: string | null | undefined) {
+	if (!cursor) return { afterId: null, offset: 0 }
+	const at = cursor.lastIndexOf(cursorOffsetSeparator)
+	if (at < 0) return { afterId: cursor, offset: 0 }
+	const offset = Number(cursor.slice(at + 1))
+	return {
+		afterId: cursor.slice(0, at) || null,
+		offset: Number.isSafeInteger(offset) && offset > 0 ? offset : 0,
 	}
 }
 
 export async function runListedPackageFetchBindingScan(input: {
 	env: Env
-	afterId?: string | null
+	cursor?: string | null
 	limit?: number
+	bundlesPerCall?: number
 }): Promise<ListedPackageFetchBindingScanResult> {
+	const start = parseScanCursor(input.cursor)
+	let budget = Math.max(
+		1,
+		input.bundlesPerCall ?? listedPackageFetchBindingScanBundlesPerCall,
+	)
 	const limit = Math.max(
 		1,
 		Math.min(
@@ -287,28 +352,40 @@ export async function runListedPackageFetchBindingScan(input: {
 	const lists = await listLists(input.env.APP_DB)
 	const listedPackageIds = new Set(lists.flatMap((list) => list.packageIds))
 	const result: ListedPackageFetchBindingScanResult = {
-		lists: input.afterId ? null : lists,
+		lists: input.cursor ? null : lists,
 		packages: [],
 		nextCursor: null,
 	}
 	if (listedPackageIds.size === 0) return result
 	const { packages, nextCursor } = await listCandidatePackages({
 		env: input.env,
-		afterId: input.afterId ?? null,
+		afterId: start.afterId,
 		limit,
 		packageIds: listedPackageIds,
 	})
 	result.nextCursor = nextCursor
-	for (const savedPackage of packages) {
+	let previousId = start.afterId
+	for (const [index, savedPackage] of packages.entries()) {
+		if (budget <= 0) {
+			result.nextCursor = previousId
+			break
+		}
+		const offset = index === 0 ? start.offset : 0
 		try {
-			result.packages.push(
-				await scanPackage({
-					env: input.env,
-					packageId: savedPackage.id,
-					userId: savedPackage.userId,
-					sourceId: savedPackage.sourceId,
-				}),
-			)
+			const { scanned, rows, more } = await scanPackage({
+				env: input.env,
+				packageId: savedPackage.id,
+				userId: savedPackage.userId,
+				sourceId: savedPackage.sourceId,
+				offset,
+				maxRows: budget,
+			})
+			result.packages.push(scanned)
+			budget -= rows
+			if (more) {
+				result.nextCursor = `${previousId ?? ''}${cursorOffsetSeparator}${offset + rows}`
+				break
+			}
 		} catch (error) {
 			result.packages.push({
 				packageId: savedPackage.id,
@@ -319,7 +396,11 @@ export async function runListedPackageFetchBindingScan(input: {
 				possibleAliasShapes: [],
 				error: getErrorMessage(error).slice(0, 200),
 			})
+			// How many bundles were read before the failure is unknown, so the
+			// page ends here instead of reading more than its share.
+			budget = 0
 		}
+		previousId = savedPackage.id
 	}
 	return result
 }
