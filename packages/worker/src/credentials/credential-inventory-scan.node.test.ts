@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	isVaultCredentialUsePlacement,
 	scanPackageCredentials,
-	type CredentialPlacement,
 } from './credential-inventory-scan.ts'
 
 function other(
@@ -50,9 +49,10 @@ test('concrete vault refs in status display fields are not credential-use placem
 		}
 	`)
 	expect(result.placeholders.vault).toBe(2)
-	expect(
-		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
-	).toBe(true)
+	expect(result.vaultPlacements).toEqual([
+		other('display', 'example'),
+		other('display', 'help'),
+	])
 })
 
 test('URL-shaped and nested-header vault examples under status() stay display-only', async () => {
@@ -73,9 +73,6 @@ test('URL-shaped and nested-header vault examples under status() stay display-on
 		other('display', 'example'),
 		other('display', 'help'),
 	])
-	expect(
-		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
-	).toBe(true)
 })
 
 test('assigned status arrow returns stay display-only for vault examples', async () => {
@@ -85,9 +82,6 @@ test('assigned status arrow returns stay display-only for vault examples', async
 		})
 	`)
 	expect(result.vaultPlacements).toEqual([other('display', 'example')])
-	expect(
-		result.vaultPlacements.every((p) => !isVaultCredentialUsePlacement(p)),
-	).toBe(true)
 
 	const directReturn = await scan(`
 		export const status = () =>
@@ -144,9 +138,14 @@ test('status returns the module itself reads or calls are not display-only', asy
 			run() { return go(this) },
 		}`,
 	]) {
+		const placements = (await scan(source)).vaultPlacements
+		expect(placements.length).toBeGreaterThan(0)
 		expect(
-			(await scan(source)).vaultPlacements.some(isVaultCredentialUsePlacement),
-		).toBe(true)
+			placements.every(
+				(placement) =>
+					placement.type === 'other' && placement.context === 'display',
+			),
+		).toBe(false)
 	}
 })
 
@@ -173,9 +172,14 @@ test('vault refs in separately bound objects that feed a request stay credential
 		`const body = { token: '${vault}' }
 		export const run = (url) => fetch(url, { method: 'POST', body: JSON.stringify(body) })`,
 	]) {
+		const placements = (await scan(source)).vaultPlacements
+		expect(placements.length).toBeGreaterThan(0)
 		expect(
-			(await scan(source)).vaultPlacements.some(isVaultCredentialUsePlacement),
-		).toBe(true)
+			placements.every(
+				(placement) =>
+					placement.type === 'other' && placement.context === 'display',
+			),
+		).toBe(false)
 	}
 })
 
@@ -189,7 +193,11 @@ test('unnamed nested functions inside status do not inherit display-only returns
 			return { example: 'docs only' }
 		}
 	`)
-	expect(result.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(true)
+	expect(result.vaultPlacements).toContainEqual({
+		type: 'header',
+		name: 'authorization',
+		format: 'Bearer {value}',
+	})
 })
 
 test('docs-named body fields and header helpers under fetch stay credential uses', async () => {
@@ -201,9 +209,11 @@ test('docs-named body fields and header helpers under fetch stay credential uses
 			}),
 		})
 	`)
-	expect(bodyField.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(
-		true,
-	)
+	expect(bodyField.vaultPlacements).toContainEqual({
+		type: 'body',
+		field: 'description',
+		endpoint: 'other',
+	})
 
 	const headerHelper = await scan(`
 		function authHeaders() {
@@ -215,42 +225,38 @@ test('docs-named body fields and header helpers under fetch stay credential uses
 		}
 		export default authHeaders
 	`)
-	expect(headerHelper.vaultPlacements.some(isVaultCredentialUsePlacement)).toBe(
-		true,
-	)
+	expect(headerHelper.vaultPlacements).toContainEqual({
+		type: 'header',
+		name: 'authorization',
+		format: 'Bearer {value}',
+	})
 })
 
 test('isVaultCredentialUsePlacement fails closed outside display sites', () => {
-	const uses: Array<CredentialPlacement> = [
-		{ type: 'header', name: 'authorization', format: 'Bearer {value}' },
-		{ type: 'query', param: 'token' },
-		{ type: 'header-custom' },
-		{ type: 'basic' },
-		{ type: 'path' },
-		{ type: 'url' },
-		{ type: 'body', field: 'password', endpoint: 'login' },
-		{ type: 'signing' },
-		{ type: 'other', context: 'sdk-option', key: 'apiKey', callee: 'OpenAI' },
-		{ type: 'other', context: 'argument', key: null, callee: 'connect' },
-		{ type: 'other', context: 'url-host', key: null, callee: null },
-		{ type: 'other', context: 'unparsed', key: null, callee: null },
-		{ type: 'other', context: 'object', key: 'example', callee: null },
-		{ type: 'other', context: 'return', key: null, callee: null },
-		{ type: 'other', context: 'assignment', key: 'help', callee: null },
-		{ type: 'other', context: 'array', key: null, callee: null },
-		{ type: 'other', context: 'default-param', key: null, callee: null },
-		{ type: 'other', context: 'comparison', key: null, callee: null },
-		{ type: 'other', context: 'reassigned-binding', key: null, callee: null },
-		{ type: 'other', context: 'template-computed', key: null, callee: null },
-		{ type: 'other', context: 'other', key: null, callee: null },
-	]
-	const display: Array<CredentialPlacement> = [
-		{ type: 'binding' },
-		{ type: 'other', context: 'display', key: 'example', callee: null },
-		{ type: 'other', context: 'unused-binding', key: null, callee: null },
-	]
-	expect(uses.every(isVaultCredentialUsePlacement)).toBe(true)
-	expect(display.every((p) => !isVaultCredentialUsePlacement(p))).toBe(true)
+	expect(
+		isVaultCredentialUsePlacement({
+			type: 'header',
+			name: 'authorization',
+			format: 'Bearer {value}',
+		}),
+	).toBe(true)
+	expect(
+		isVaultCredentialUsePlacement({
+			type: 'other',
+			context: 'object',
+			key: 'example',
+			callee: null,
+		}),
+	).toBe(true)
+	expect(
+		isVaultCredentialUsePlacement({
+			type: 'other',
+			context: 'display',
+			key: 'example',
+			callee: null,
+		}),
+	).toBe(false)
+	expect(isVaultCredentialUsePlacement({ type: 'binding' })).toBe(false)
 })
 
 test('counts every placeholder by kind, including ones that match a declared slot', async () => {

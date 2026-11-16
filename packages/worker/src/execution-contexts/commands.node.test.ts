@@ -203,11 +203,24 @@ test('command_started names the saved packages Kody served to the run, and nothi
 		}),
 		s.args,
 	)
-	expect(s.audits[0]?.detail).toMatchObject({
-		commandId: 'cmd_abcdef123',
-		entryPackageIds: entries.slice(0, 8),
-		packageCount: 12,
-	})
+	const detail = s.audits[0]?.detail as {
+		entryPackageIds: Array<string>
+		packageCount: number
+		commandId: string
+	}
+	expect(detail.commandId).toBe('cmd_abcdef123')
+	expect(detail.packageCount).toBe(12)
+	expect(detail.entryPackageIds).toEqual([
+		'pkg_entry_0',
+		'pkg_entry_1',
+		'pkg_entry_2',
+		'pkg_entry_3',
+		'pkg_entry_4',
+		'pkg_entry_5',
+		'pkg_entry_6',
+		'pkg_entry_7',
+	])
+	expect(detail.entryPackageIds).not.toContain('pkg_entry_8')
 
 	const adHoc = setup({ commands: true })
 	await authorizeContextCommand(adHoc.runCtx(operator), adHoc.args)

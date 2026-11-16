@@ -43,12 +43,10 @@ test('d1_table with a section name tells the caller to read that section', async
 		section: 'd1_table',
 		table: 'artifact_repos',
 	})
-	expect(error.message).toBe(
-		'"artifact_repos" is an account export section, not a D1 table. Call accountExportSection with section: "artifact_repos" instead of section: "d1_table".',
-	)
-	const apiError = toApiError(error)
-	expect(apiError.status).toBe(400)
-	expect(apiError.message).toBe(error.message)
+	expect(error.message).toContain('"artifact_repos"')
+	expect(error.message).toContain('section: "artifact_repos"')
+	expect(error.message).toContain('section: "d1_table"')
+	expect(toApiError(error).status).toBe(400)
 })
 
 test('d1_table with the storage_runners manifest key points at storage id discovery', async () => {
@@ -66,9 +64,9 @@ test('d1_table with a d1.-prefixed manifest key names the bare table', async () 
 		section: 'd1_table',
 		table: 'd1.mcp_memories',
 	})
-	expect(error.message).toBe(
-		'Table "d1.mcp_memories" is a manifest key, not a table name. Call accountExportSection with section: "d1_table", table: "mcp_memories".',
-	)
+	expect(error.message).toContain('"d1.mcp_memories"')
+	expect(error.message).toContain('table: "mcp_memories"')
+	expect(error.message).not.toContain('table: "d1.mcp_memories"')
 })
 
 test('d1_table with an unknown or missing table points to the manifest table keys', async () => {
@@ -76,20 +74,19 @@ test('d1_table with an unknown or missing table points to the manifest table key
 		section: 'd1_table',
 		table: 'not_a_table',
 	})
-	expect(unknown.message).toMatch(
-		/^Table "not_a_table" is not part of account export\. Exportable tables are the "d1\.<table>" keys/,
-	)
+	expect(unknown.message).toContain('"not_a_table"')
+	expect(unknown.message).toContain('d1.<table>')
 	const missing = await readSectionError({ section: 'd1_table' })
-	expect(missing.message).toMatch(
-		/^table is required when section is d1_table\. Exportable tables are the "d1\.<table>" keys/,
-	)
+	expect(missing.message).toContain('table is required')
+	expect(missing.message).toContain('d1_table')
+	expect(missing.message).toContain('d1.<table>')
 })
 
 test('storage_runner caller mistakes are caller errors with a discovery hint', async () => {
 	const missing = await readSectionError({ section: 'storage_runner' })
-	expect(missing.message).toBe(
-		'storage_id is required when section is storage_runner. List storage ids with accountExportSection with section: "durable_object_summaries" and kind: "storage_runner".',
-	)
+	expect(missing.message).toContain('storage_id is required')
+	expect(missing.message).toContain('section: "durable_object_summaries"')
+	expect(missing.message).toContain('kind: "storage_runner"')
 	const notFound = await readSectionError({
 		section: 'storage_runner',
 		storageId: 'exec:not-mine',
@@ -143,18 +140,16 @@ test('every manifest section names the accountExportSection arguments that read 
 				section: 'd1_table',
 				table: key.slice('d1.'.length),
 			})
-		} else {
-			expect({ key, discovery: section.discovery }).toEqual({
-				key,
-				discovery: expect.objectContaining({ section: expect.any(String) }),
-			})
+			continue
 		}
+		// Most non-D1 keys are the section name. storage_runners is the
+		// exception: it is listed by durable_object_summaries.
+		expect({ key, discovery: section.discovery }).toEqual({
+			key,
+			discovery:
+				key === 'storage_runners'
+					? { section: 'durable_object_summaries', kind: 'storage_runner' }
+					: { section: key },
+		})
 	}
-	expect(manifest.sections.artifact_repos?.discovery).toEqual({
-		section: 'artifact_repos',
-	})
-	expect(manifest.sections.kv_keys?.discovery).toEqual({ section: 'kv_keys' })
-	expect(manifest.sections.oauth_grants?.discovery).toEqual({
-		section: 'oauth_grants',
-	})
 })

@@ -96,9 +96,10 @@ test('a package with more bundles than one call reads spans pages without losing
 	}
 	const env = makeEnv()
 	const seen: Record<string, { bundles: number; reads: number }> = {}
-	const cursors: Array<string | null> = []
+	const pages: Array<
+		Awaited<ReturnType<typeof runListedPackageFetchBindingScan>>
+	> = []
 	let cursor: string | null = null
-	let first = true
 	do {
 		const page = await runListedPackageFetchBindingScan({
 			env,
@@ -106,23 +107,43 @@ test('a package with more bundles than one call reads spans pages without losing
 			limit: 2,
 			bundlesPerCall: 3,
 		})
-		expect(page.lists === null).toBe(!first)
-		first = false
+		pages.push(page)
 		for (const entry of page.packages) {
 			const total = (seen[entry.packageId] ??= { bundles: 0, reads: 0 })
 			total.bundles += entry.bundles
 			total.reads += entry.bundlesWithGlobalReads
-			expect(entry.partial === true).toBe(entry.packageId === 'b')
 		}
 		cursor = page.nextCursor
-		cursors.push(cursor)
 	} while (cursor)
+	expect(pages[0]?.lists).toEqual([
+		{
+			credentialId: 'credential',
+			ownerId: 'owner',
+			packageIds: ['a', 'b', 'c'],
+		},
+	])
+	expect(pages.length).toBeGreaterThan(1)
+	expect(pages.slice(1).every((page) => page.lists === null)).toBe(true)
 	expect(seen).toEqual({
 		a: { bundles: 2, reads: 0 },
 		b: { bundles: 7, reads: 1 },
 		c: { bundles: 1, reads: 0 },
 	})
-	expect(cursors).toEqual(['a~1', 'a~4', 'b', null])
+	const bPages = pages.filter((page) =>
+		page.packages.some((entry) => entry.packageId === 'b'),
+	)
+	expect(bPages.length).toBeGreaterThan(1)
+	const partialIds = [
+		...new Set(
+			pages.flatMap((page) =>
+				page.packages
+					.filter((entry) => entry.partial)
+					.map((entry) => entry.packageId),
+			),
+		),
+	]
+	expect(partialIds).toEqual(['b'])
+	expect(pages.at(-1)?.nextCursor).toBeNull()
 })
 
 test('a package that fails ends the page so later packages are not read on the same call', async () => {

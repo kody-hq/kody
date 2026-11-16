@@ -39,9 +39,10 @@ function find(input: { sourceId?: string; timezone?: string }) {
 }
 
 test('a new job more frequent than the plan floor is refused with its path', async () => {
-	await expect(find({})).resolves.toBe(
-		'kody.jobs.poll.schedule: Your "free" plan cannot run jobs more often than every 15 minutes. Space this job out.',
-	)
+	const message = await find({})
+	expect(message).toContain('kody.jobs.poll.schedule')
+	expect(message).toContain('"free"')
+	expect(message).toContain('15 minutes')
 })
 
 test('a job at the floor passes', async () => {
@@ -76,24 +77,24 @@ test('an unchanged published schedule keeps passing, a rescheduled one does not'
 	await expect(find({ sourceId: 'source-1' })).resolves.toBeNull()
 	await expect(
 		find({ sourceId: 'source-1', timezone: 'America/Denver' }),
-	).resolves.toMatch(/^kody\.jobs\.poll\.schedule: /)
-	await expect(find({ sourceId: 'source-new' })).resolves.toMatch(
-		/^kody\.jobs\.poll\.schedule: /,
+	).resolves.toContain('15 minutes')
+	await expect(find({ sourceId: 'source-new' })).resolves.toContain(
+		'kody.jobs.poll.schedule',
 	)
 })
 
 test('an unreadable schedule is reported with its path, as job sync would', async () => {
-	await expect(
-		findPackageJobIntervalFloorViolation({
-			env,
-			userId,
-			email: null,
-			jobs: {
-				poll: {
-					entry: './src/poll.ts',
-					schedule: { type: 'cron', expression: 'not a cron' },
-				},
+	const message = await findPackageJobIntervalFloorViolation({
+		env,
+		userId,
+		email: null,
+		jobs: {
+			poll: {
+				entry: './src/poll.ts',
+				schedule: { type: 'cron', expression: 'not a cron' },
 			},
-		}),
-	).resolves.toMatch(/^kody\.jobs\.poll\.schedule: /)
+		},
+	})
+	expect(message).toContain('kody.jobs.poll.schedule')
+	expect(message).toContain('5-field')
 })

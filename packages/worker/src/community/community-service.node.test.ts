@@ -663,17 +663,24 @@ test('unpublish and hard delete keep the listing row when the legacy snapshot de
 	await expect(hardDelete()).rejects.toThrow('kv down')
 	expect(mockModule.deleteCommunityListing).not.toHaveBeenCalled()
 	expect(mockModule.resolveCommunityReportRow).not.toHaveBeenCalled()
+	expect(mockModule.deleteCommunityRatingsByListingId).not.toHaveBeenCalled()
 
 	mockModule.deleteCommunitySnapshot.mockReset()
 	await unpublish()
 	await hardDelete()
+	expect(
+		mockModule.deleteCommunitySnapshot.mock.calls.map((call) => call[1]),
+	).toEqual(['listing-1', 'listing-1'])
 	const [unpublishSnapshot, deleteSnapshot] =
 		mockModule.deleteCommunitySnapshot.mock.invocationCallOrder
 	const [unpublishRow, deleteRow] =
 		mockModule.deleteCommunityListing.mock.invocationCallOrder
 	expect(unpublishSnapshot).toBeLessThan(unpublishRow ?? 0)
 	expect(deleteSnapshot).toBeLessThan(deleteRow ?? 0)
-	expect(mockModule.resolveCommunityReportRow).toHaveBeenCalledOnce()
+	expect(mockModule.resolveCommunityReportRow).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ reportId: 'report-1', status: 'resolved' }),
+	)
 })
 
 function emptyAggregates(ids: Array<string>) {

@@ -52,8 +52,7 @@ vi.mock('./credential-candidates.ts', async (importOriginal) => ({
 	},
 }))
 
-const { loadCredentialDetail, maxUsagePackages } =
-	await import('./credential-detail.ts')
+const { loadCredentialDetail } = await import('./credential-detail.ts')
 
 function item(
 	overrides: Partial<CredentialListItem> & { id: string; name: string },
@@ -207,18 +206,19 @@ test('credential usage respects package locks and package scope', async () => {
 
 test('usage checks a bounded number of packages and says so', async () => {
 	const { env } = setup()
-	const packages = Array.from({ length: maxUsagePackages + 2 }, (_, i) =>
-		pkg(`p${i}`),
-	)
-	const detail = await loadCredentialDetail({
-		env,
-		request: {} as RequestContext,
-		orgId: 'org-1',
-		ownedByViewer: false,
-		credential: item({ id: 'a', name: 'A' }),
-		packages,
-	})
-	expect(detail.usageTruncated).toBe(true)
+	const atCap = Array.from({ length: 40 }, (_, i) => pkg(`p${i}`))
+	const overCap = [...atCap, pkg('p40'), pkg('p41')]
+	const load = (packages: Array<ReturnType<typeof pkg>>) =>
+		loadCredentialDetail({
+			env,
+			request: {} as RequestContext,
+			orgId: 'org-1',
+			ownedByViewer: false,
+			credential: item({ id: 'a', name: 'A' }),
+			packages,
+		})
+	expect((await load(atCap)).usageTruncated).toBe(false)
+	expect((await load(overCap)).usageTruncated).toBe(true)
 })
 
 test("the viewer's own credential lists the team orgs it is granted to", async () => {
@@ -245,9 +245,10 @@ test("the viewer's own credential lists the team orgs it is granted to", async (
 	expect(owned.grants).toEqual([
 		{ orgSlug: 'acme', orgName: 'Acme', grantedAt: '2026-10-05T00:00:00.000Z' },
 	])
-	expect(owned.grantsUnavailable).toBe(false)
-	expect((await load(false)).grants).toEqual([])
-	expect((await load(false)).grantsUnavailable).toBe(false)
+	const notOwned = await load(false)
+	expect(notOwned.grants).toEqual([])
+	// Empty because the viewer does not own it, not because the query failed.
+	expect(notOwned.grantsUnavailable).toBe(false)
 })
 
 test('a grants query failure leaves detail usable with shared-with unavailable', async () => {

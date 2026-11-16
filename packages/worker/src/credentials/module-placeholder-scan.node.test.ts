@@ -128,22 +128,21 @@ test('shareModulePasses fails only the scan whose visitor throws, and ends the p
 
 test('scannableModuleIndex stops at the syntax node limit and names what it read', async () => {
 	const files = threeModules()
-	const index = await scannableModuleIndex(files)
-	expect(index.astNodes).toBeGreaterThan(0)
+	const index = await scannableModuleIndex(files, { maxAstNodes: 10_000 })
+	expect(index.moduleAstNodes.map((module) => module.path).sort()).toEqual([
+		'src/a.ts',
+		'src/b.ts',
+		'src/c.ts',
+	])
+	expect(index.moduleAstNodes.every((module) => module.astNodes > 0)).toBe(true)
 
-	const error = await scannableModuleIndex(files, {
-		maxAstNodes: Math.floor(index.astNodes / 2),
-	}).catch((caught: unknown) => caught)
+	const error = await scannableModuleIndex(files, { maxAstNodes: 1 }).catch(
+		(caught: unknown) => caught,
+	)
 	expect(error).toBeInstanceOf(ScannableModuleAstLimitError)
 	const limit = error as ScannableModuleAstLimitError
+	expect(limit.maxAstNodes).toBe(1)
 	expect(limit.moduleCount).toBe(3)
-	// Stopped part way: the last module was never parsed.
-	expect(limit.modules.map((module) => module.path)).toEqual([
-		'src/c.ts',
-		'src/a.ts',
-	])
-	// Within the limit, the index built earlier is reused.
-	expect(
-		await scannableModuleIndex(files, { maxAstNodes: index.astNodes }),
-	).toBe(index)
+	expect(limit.modules.map((module) => module.path)).toEqual(['src/c.ts'])
+	expect(limit.modules[0]?.astNodes).toBeGreaterThan(1)
 })

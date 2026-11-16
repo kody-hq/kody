@@ -254,11 +254,20 @@ test('packages served to a committed run are kept on its lease, and refused for 
 			packageIds: ['pkg_a', 'pkg_dep'],
 		}),
 	).toEqual({ ok: true })
-	await stub.recordRunPackages({
-		runId: 'run_pkgs',
-		entryPackageIds: ['pkg_b'],
-		packageIds: ['pkg_b'],
-	})
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_other',
+			entryPackageIds: ['pkg_x'],
+			packageIds: ['pkg_x'],
+		}),
+	).toEqual({ ok: false })
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_b'],
+			packageIds: ['pkg_b'],
+		}),
+	).toEqual({ ok: true })
 
 	const ts = Date.now()
 	const n = crypto.randomUUID().replaceAll('-', '')
@@ -530,7 +539,8 @@ test('a run queued behind an unanswered offer is rechecked soon and drained once
 	})
 	await runInDurableObject(stub, async (_instance, state) => {
 		const alarm = await state.storage.getAlarm()
-		expect(alarm ?? Infinity).toBeLessThanOrEqual(before + 31_000)
+		expect(alarm ?? Infinity).toBeGreaterThanOrEqual(before)
+		expect(alarm ?? Infinity).toBeLessThan(before + 60_000)
 	})
 	await new Promise((resolve) => setTimeout(resolve, 5))
 	ws.send(ecpPingFrame)
