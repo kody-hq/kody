@@ -922,6 +922,65 @@ export type PackagePublishDefinition = z.infer<
 	typeof packagePublishDefinitionSchema
 >
 
+const packageMachineNeedNamePattern = /^[a-z0-9][a-z0-9_-]{0,62}$/
+const maxPackageMachineNeeds = 20
+const machineNeedDescription = z.string().min(1).max(500)
+
+/**
+ * One `kody.machine` entry: machine access the package's code uses on an
+ * execution context. The key is the name the machine gives the entry. `hosts`,
+ * `ports` and `mode` say what the package expects, for the person approving;
+ * the machine's own definition is what a run gets.
+ */
+export const packageMachineNeedSchema = z.discriminatedUnion('kind', [
+	z.strictObject({
+		kind: z.literal('command'),
+		description: machineNeedDescription,
+	}),
+	z.strictObject({
+		kind: z.literal('lan'),
+		description: machineNeedDescription,
+		hosts: z
+			.array(z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]))
+			.min(1)
+			.max(20)
+			.optional(),
+		ports: z
+			.array(z.number().int().min(1).max(65535))
+			.min(1)
+			.max(20)
+			.optional(),
+	}),
+	z.strictObject({
+		kind: z.literal('fs'),
+		description: machineNeedDescription,
+		mode: z.enum(['ro', 'rw']),
+	}),
+])
+
+export type PackageMachineNeed = z.infer<typeof packageMachineNeedSchema>
+
+export const packageMachineNeedsSchema = z
+	.record(z.string(), packageMachineNeedSchema)
+	.superRefine((needs, ctx) => {
+		const names = Object.keys(needs)
+		if (names.length > maxPackageMachineNeeds) {
+			ctx.addIssue({
+				code: 'custom',
+				message: `kody.machine can declare at most ${maxPackageMachineNeeds} entries.`,
+			})
+		}
+		for (const name of names) {
+			if (!packageMachineNeedNamePattern.test(name)) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name],
+					message: `kody.machine key ${JSON.stringify(name)} must be the entry's name on the machine: lowercase letters, digits, "-" or "_" (at most 63 characters), e.g. "kdocker".`,
+				})
+			}
+		}
+	})
+
 export const authoredPackageKodySchema = z.object({
 	id: z.string().regex(kodyPackageIdPattern).optional(),
 	// No max here: this schema is shared by load/parse. Enforce
@@ -939,6 +998,8 @@ export const authoredPackageKodySchema = z.object({
 	 */
 	capabilities: packageCapabilityDeclarationsSchema.optional(),
 	credentials: packageCredentialsSchema.optional(),
+	/** Machine access the package's code uses on an execution context. */
+	machine: packageMachineNeedsSchema.optional(),
 	secretMounts: z
 		.record(z.string().min(1), packageSecretMountDefinitionSchema)
 		.optional(),
