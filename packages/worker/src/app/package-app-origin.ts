@@ -8,6 +8,7 @@ import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { createHtmlResponse } from 'remix/response/html'
 import {
 	buildPackageAppCustomHostnameUrl,
+	buildPackageAppHostOrigin,
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
@@ -189,6 +190,21 @@ function withoutHandoffToken(url: URL) {
 	return cleaned
 }
 
+/**
+ * Marks an app-origin entry URL that came from the app's own
+ * `{leaf}--{handle}` host, so the handoff returns there instead of the
+ * owner's shared subdomain. Both hosts serve the same app until the old
+ * address stops serving, when every handoff targets the app host and this
+ * marker goes away.
+ */
+const packageAppHostEntryQueryParam = '__kody_app_host'
+
+function withoutAppHostEntryMarker(url: URL) {
+	const cleaned = new URL(url)
+	cleaned.searchParams.delete(packageAppHostEntryQueryParam)
+	return cleaned
+}
+
 function redirectResponse(input: {
 	location: string
 	status: 302 | 303 | 307 | 308
@@ -244,6 +260,24 @@ async function buildHandoffHostedTarget(input: {
 }) {
 	const restPath =
 		input.packagePath.restPath === '/' ? null : input.packagePath.restPath
+	const appHostOrigin = input.url.searchParams.has(
+		packageAppHostEntryQueryParam,
+	)
+		? buildPackageAppHostOrigin({
+				packageAppOrigin: input.packageAppOrigin,
+				username: input.packagePath.username,
+				kodyId: input.kodyId,
+			})
+		: null
+	if (appHostOrigin) {
+		const target = new URL(
+			buildPackageAppCustomHostnameUrl({ origin: appHostOrigin, restPath }),
+		)
+		target.search = withoutAppHostEntryMarker(
+			withoutHandoffToken(input.url),
+		).search
+		return target
+	}
 	const publicLocation = await resolvePublicPackageAppLocation({
 		env: input.env,
 		username: input.packagePath.username,
@@ -259,7 +293,9 @@ async function buildHandoffHostedTarget(input: {
 				restPath,
 			}),
 	)
-	target.search = withoutHandoffToken(input.url).search
+	target.search = withoutAppHostEntryMarker(
+		withoutHandoffToken(input.url),
+	).search
 	return target
 }
 
@@ -290,6 +326,7 @@ function buildSubdomainTarget(input: {
  * authenticates and starts a fresh handoff.
  */
 function buildAppOriginEntryUrl(input: {
+	env: Env
 	appBaseUrl: string
 	packagePath: PackageAppPath
 	url: URL
@@ -303,6 +340,12 @@ function buildAppOriginEntryUrl(input: {
 		})}`,
 	)
 	entry.search = withoutHandoffToken(input.url).search
+	if (
+		parsePackageAppRequestHost({ env: input.env, url: input.url })?.kind ===
+		'app-subdomain'
+	) {
+		entry.searchParams.set(packageAppHostEntryQueryParam, '1')
+	}
 	return entry
 }
 
@@ -553,7 +596,10 @@ async function redirectRetiredPackageAppSlug(input: {
 	const target = new URL(input.buildLocation(currentSlug), input.url)
 	target.search = withoutHandoffToken(input.url).search
 	return redirectResponse({
-		location: `${target.pathname}${target.search}`,
+		location:
+			target.origin === input.url.origin
+				? `${target.pathname}${target.search}`
+				: target.toString(),
 		status: 308,
 		// Source slug can be reclaimed by a later package; positive freshness
 		// would keep sending browsers to the wrong app.
@@ -1358,7 +1404,12 @@ async function servePackageAppForSession(input: {
 		case 'session-required':
 			return createPackageAppSessionRequiredResponse({
 				request,
-				appOriginUrl: buildAppOriginEntryUrl({ appBaseUrl, packagePath, url }),
+				appOriginUrl: buildAppOriginEntryUrl({
+					env,
+					appBaseUrl,
+					packagePath,
+					url,
+				}),
 				handoffPresented: Boolean(handoffToken),
 			})
 		case 'forbidden':
@@ -1376,7 +1427,12 @@ async function servePackageAppForSession(input: {
 			authorized satisfies never
 			return createPackageAppSessionRequiredResponse({
 				request,
-				appOriginUrl: buildAppOriginEntryUrl({ appBaseUrl, packagePath, url }),
+				appOriginUrl: buildAppOriginEntryUrl({
+					env,
+					appBaseUrl,
+					packagePath,
+					url,
+				}),
 				handoffPresented: Boolean(handoffToken),
 			})
 		}
@@ -1673,6 +1729,73 @@ async function handleCustomHostnameRequest(input: {
 	})
 }
 
+/**
+ * One package app's own host, `{leaf}--{handle}.<package-app host>`. The host
+ * label names the app, so the request path is the app path and the app is
+ * mounted at `/`, exactly like an app-level custom hostname.
+ */
+async function handleAppSubdomainRequest(input: {
+	request: Request
+	env: Env
+	url: URL
+	username: string
+	kodyId: string
+	packageAppOrigin: string
+}) {
+	const { request, env, url, username, kodyId, packageAppOrigin } = input
+	const health = handlePackageAppHostHealth({ request, env, url })
+	if (health) return await health
+	if (isPackageAppHostProbePath(url.pathname)) {
+		return createUnmatchedPackageAppPathResponse()
+	}
+	const appBaseUrl = getAppBaseUrl({ env })
+	const hostAuth = await timePackageAppOauthHostAuth({ request, env, url })
+	if (hostAuth) return hostAuth
+	const packagePath = parsePackageAppCustomHostnamePath({
+		pathname: url.pathname,
+		username,
+		kodyId,
+	})
+
+	// A renamed leaf moves to another host, so the redirect is one absolute hop.
+	const retiredRedirect = await pushServerTiming(
+		packageAppServerTiming(),
+		'retiredSlug',
+		() =>
+			redirectRetiredPackageAppSlug({
+				env,
+				url,
+				packagePath,
+				buildLocation: (currentSlug) => {
+					const origin = buildPackageAppHostOrigin({
+						packageAppOrigin,
+						username,
+						kodyId: currentSlug,
+					})
+					return origin ? `${origin}${url.pathname}` : url.pathname
+				},
+			}),
+	)
+	if (retiredRedirect) return retiredRedirect
+
+	const crossOriginMutating = rejectCrossOriginMutatingPackageAppRequest({
+		request,
+		url,
+		message:
+			'Cross-origin mutating requests to a package-app host are not allowed.',
+	})
+	if (crossOriginMutating) return crossOriginMutating
+
+	return await servePackageAppForSession({
+		request,
+		env,
+		url,
+		appBaseUrl,
+		handle: username,
+		packagePath,
+	})
+}
+
 // First request this isolate serves through the package-app boundary: a cold
 // start whose script load ran before any phase could start.
 let workerIsolateServed = false
@@ -1839,6 +1962,22 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 					env,
 					url,
 					username: requestHost.username,
+				})
+			}
+			case 'app-subdomain': {
+				const legacyRedirect = getPackageAppLegacySubdomainRedirect({
+					request,
+					env,
+					requestHost,
+				})
+				if (legacyRedirect) return legacyRedirect
+				return await handleAppSubdomainRequest({
+					request,
+					env,
+					url,
+					username: requestHost.username,
+					kodyId: requestHost.kodyId,
+					packageAppOrigin,
 				})
 			}
 			case 'unrecognized-subdomain':

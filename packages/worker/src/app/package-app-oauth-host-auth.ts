@@ -192,6 +192,7 @@ async function resolveLogoutAppSlug(input: {
 		input.url,
 		{ packageAppHost: !inlineServing },
 	)
+	if (requestHost?.kind === 'app-subdomain') return requestHost.kodyId
 	if (requestHost?.kind === 'user-subdomain') {
 		return fromReferer ?? null
 	}
@@ -238,6 +239,14 @@ async function resolveHostApp(input: {
 		env: input.env,
 		url: input.url,
 	})
+	if (requestHost?.kind === 'app-subdomain') {
+		const resolved = await resolveVerifiedHostApp({
+			env: input.env,
+			orgUsername: requestHost.username,
+			kodyId: requestHost.kodyId,
+		})
+		return resolved ? { ...resolved, useConfiguredAppOrigin: false } : null
+	}
 	if (requestHost?.kind === 'user-subdomain') {
 		const app = readAppSlugParam(input.url)
 		if (!app) return null

@@ -1,4 +1,10 @@
 import {
+	buildPackageAppHostLabel,
+	isPackageAppHostLabelReservedPackageLeaf,
+	packageAppHostLabelMaxLength,
+	packageAppHostLabelSeparator,
+} from './package-app-host-label.ts'
+import {
 	isPackageAppHostNonLeafFirstSegment,
 	packageAppHostLegacyMountSegment,
 } from './package-app-host-paths.ts'
@@ -78,9 +84,11 @@ export function buildPackageAppUrl(input: {
  * - `username-path`: `/@{username}/packages/{kodyId}` — the app-origin entry
  *   point (which redirects into the handoff) and the non-production inline
  *   serving shape.
- * - `custom-hostname`: `https://{customer-host}/{rest}` — a verified app-level
- *   custom hostname. The package is bound by hostname, so the path has no
- *   username or slug. The app is mounted at `/`.
+ * - `custom-hostname`: `https://{host}/{rest}` — a host bound to one app: a
+ *   verified app-level custom hostname, or the app's own
+ *   `{leaf}--{handle}` host on the package-app domain. The package is bound
+ *   by hostname, so the path has no username or slug. The app is mounted at
+ *   `/`.
  */
 export type PackageAppMount =
 	| 'user-subdomain'
@@ -161,6 +169,49 @@ export function buildPackageAppSubdomainUrl(input: {
 	restPath?: string | null
 }) {
 	return `${buildPackageAppSubdomainOrigin(input)}${buildPackageAppSubdomainPath(input)}`
+}
+
+const packageAppHostLabelLeafPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * Split a per-app host label `{leaf}--{handle}` into its package leaf and
+ * owner handle. Null for anything else: a bare handle, a reserved leaf,
+ * uppercase input, or a label over the DNS limit.
+ */
+export function parsePackageAppHostLabel(label: string) {
+	if (label.length > packageAppHostLabelMaxLength) return null
+	const separatorIndex = label.indexOf(packageAppHostLabelSeparator)
+	if (separatorIndex <= 0) return null
+	const leaf = label.slice(0, separatorIndex)
+	const handle = label.slice(
+		separatorIndex + packageAppHostLabelSeparator.length,
+	)
+	if (!packageAppHostLabelLeafPattern.test(leaf)) return null
+	if (isPackageAppHostLabelReservedPackageLeaf(leaf)) return null
+	if (!dnsSafeUsernamePattern.test(handle)) return null
+	return { leaf, handle }
+}
+
+/**
+ * Origin of one package app's own host: `{leaf}--{handle}.` prefixed onto the
+ * configured package-app origin's hostname, preserving scheme and port. Null
+ * when the pair has no valid host label (for example a legacy leaf that is not
+ * lower-kebab-case), so callers fall back to another address instead of
+ * emitting a host that cannot route.
+ */
+export function buildPackageAppHostOrigin(input: {
+	packageAppOrigin: string
+	username: string
+	kodyId: string
+}) {
+	const label = buildPackageAppHostLabel({
+		leaf: input.kodyId,
+		handle: input.username,
+	})
+	if (!parsePackageAppHostLabel(label)) return null
+	const url = new URL(input.packageAppOrigin)
+	url.hostname = `${label}.${url.hostname}`
+	return url.origin
 }
 
 /**
