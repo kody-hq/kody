@@ -11,6 +11,7 @@ import {
 	ensureRbacTestSchema,
 	seedAccount,
 } from '#worker/test-support/workers-seed.ts'
+import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
 
@@ -207,6 +208,23 @@ test('a profile package owns every path on the owner host except /-/', async () 
 	expect(clientIds[0]).not.toContain('demo')
 	expect(clientIds[1]).toBe(clientIds[0])
 
+	// The owner's other apps are no longer mounted under the bare host, so
+	// links and legacy redirects for them go to their own hosts.
+	const siblingOrigin = `https://demo--${ownerUsername}.packages.isolated.test`
+	expect(
+		await resolvePublicPackageAppLocation({
+			env,
+			username: ownerUsername,
+			kodyId: 'demo',
+			restPath: '/x',
+		}),
+	).toEqual({ hostedUrl: `${siblingOrigin}/x`, appBasePath: '' })
+	const apexSibling = await workerFetch(
+		`https://packages.isolated.test/@${ownerUsername}/packages/demo/x?tab=1`,
+	)
+	expect(apexSibling.status).toBe(302)
+	expect(apexSibling.headers.get('Location')).toBe(`${siblingOrigin}/x?tab=1`)
+
 	// The profile app has one origin: its `{slug}--{slug}` host redirects.
 	const doubled = await workerFetch(
 		`https://${ownerUsername}--${ownerUsername}.packages.isolated.test/a?b=1`,
@@ -217,6 +235,15 @@ test('a profile package owns every path on the owner host except /-/', async () 
 
 	// Removing the profile package returns the host to its default behavior.
 	await deleteProfilePackage()
+	expect(
+		(
+			await resolvePublicPackageAppLocation({
+				env,
+				username: ownerUsername,
+				kodyId: 'demo',
+			})
+		)?.hostedUrl,
+	).toBe(`${profileOrigin}/demo`)
 	const bareAfter = await workerFetch(`${profileOrigin}/`)
 	expect(bareAfter.status).toBe(302)
 	expect(bareAfter.headers.get('Location')).toBe(`${appOrigin}/`)

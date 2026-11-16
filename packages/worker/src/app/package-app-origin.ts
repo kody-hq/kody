@@ -1109,7 +1109,7 @@ function createPackageAppOriginLinkResponse(input: {
  * home and redirects legacy path-based package URLs to the owning user's
  * subdomain. Everything else fails closed.
  */
-function handleApexRequest(input: {
+async function handleApexRequest(input: {
 	request: Request
 	env: Env
 	url: URL
@@ -1120,7 +1120,13 @@ function handleApexRequest(input: {
 	const health = handlePackageAppHostHealth({ request, env, url })
 	if (health) return health
 	if (packagePath) {
-		const target = buildSubdomainTarget({ packageAppOrigin, packagePath, url })
+		const target = await buildHandoffHostedTarget({
+			env,
+			packageAppOrigin,
+			packagePath,
+			kodyId: packagePath.kodyId,
+			url,
+		})
 		return redirectResponse({
 			location: target.toString(),
 			status: request.method === 'GET' || request.method === 'HEAD' ? 302 : 307,
