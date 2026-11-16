@@ -12,7 +12,6 @@ test('preview tooltips keep keyboard focus and alert dialogs require explicit di
 			contents: `
 import React, { useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { ControlTooltip } from './packages/worker/start/components/control-tooltip.tsx'
 import { CopyTextButton } from './packages/worker/start/components/copy-text-button.tsx'
 import { Dialog } from './packages/worker/start/components/dialog.tsx'
 
@@ -20,7 +19,7 @@ function Fixture() {
 	const [open, setOpen] = useState(false)
 	return <>
 		<CopyTextButton iconOnly title="" value="source" ariaLabel="Copy index.ts"
-			wrapButton={button => <ControlTooltip trigger={button}>Copy source</ControlTooltip>} />
+			tooltip={{ id: 'copy-source-tooltip', text: 'Copy source' }} />
 		<button onClick={() => setOpen(true)}>Delete package</button>
 		<Dialog open={open} aria-label="Delete example" role="alertdialog" onClose={() => setOpen(false)}>
 			<button onClick={() => setOpen(false)}>Cancel</button>
@@ -55,9 +54,13 @@ createRoot(document.getElementById('root')).render(<Fixture />)
 	await expect(copy).toBeFocused()
 	const tooltip = page.getByText('Copy source', { exact: true })
 	await expect(tooltip).toBeVisible()
+	await expect(copy).toHaveAccessibleDescription('Copy source')
 	await copy.press('Escape')
 	await expect(tooltip).toBeHidden()
 	await expect(copy).toBeFocused()
+	await page.mouse.move(400, 400)
+	await copy.hover()
+	await expect(tooltip).toBeVisible()
 
 	const trigger = page.getByRole('button', { name: 'Delete package' })
 	await trigger.click()

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Tooltip } from '../components/tooltip.tsx'
 import { Button } from '../components/button.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import type {
@@ -115,9 +116,7 @@ function renderBuiltInIndicator(input?: { tooltipId?: string }) {
 			css={builtInIndicatorCss}
 		>
 			{BuiltInIcon()}
-			<span id={tooltipId} role="tooltip" aria-hidden="true">
-				Provided by Kody
-			</span>
+			<Tooltip id={tooltipId}>Provided by Kody</Tooltip>
 		</button>
 	)
 }
@@ -201,47 +200,6 @@ const builtInIndicatorCss: CSSObject = {
 	backgroundColor: colors.primarySoft,
 	color: colors.primaryText,
 	cursor: 'help',
-	'& [role="tooltip"]': {
-		position: 'absolute' as const,
-		left: '50%',
-		bottom: 'calc(100% + 0.45rem)',
-		transform: 'translateX(-50%)',
-		width: 'max-content',
-		maxWidth: 'min(16rem, calc(100vw - 2rem))',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderRadius: radius.md,
-		backgroundColor: colors.surface,
-		color: colors.text,
-		fontSize: typography.fontSize.sm,
-		fontWeight: 400,
-		lineHeight: 1.4,
-		textAlign: 'left' as const,
-		boxShadow: shadows.md,
-		border: `1px solid ${colors.border}`,
-		pointerEvents: 'none' as const,
-		opacity: 0,
-		visibility: 'hidden' as const,
-		zIndex: 3,
-	},
-	'& [role="tooltip"]::after': {
-		content: '""',
-		position: 'absolute' as const,
-		top: '100%',
-		left: '50%',
-		transform: 'translateX(-50%)',
-		border: '6px solid transparent',
-		borderTopColor: colors.surface,
-	},
-	[hoverMq]: {
-		'&:hover [role="tooltip"]': {
-			opacity: 1,
-			visibility: 'visible' as const,
-		},
-	},
-	'&:focus-visible [role="tooltip"]': {
-		opacity: 1,
-		visibility: 'visible' as const,
-	},
 }
 
 const connectionCardCss: CSSObject = {

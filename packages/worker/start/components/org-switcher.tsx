@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useDesktopMachine } from './desktop-execution.tsx'
-import { Menu } from '@base-ui/react/menu'
+import { Menu, MenuItem, MenuTrigger, type MenuActions } from './menu.tsx'
 import {
 	SwitcherPopup,
 	renderSwitcherRow,
@@ -68,7 +68,7 @@ function LogoutRow({ menu = false }: { menu?: boolean }) {
 			css={{ margin: 0, display: 'grid' }}
 		>
 			{menu ? (
-				<Menu.Item
+				<MenuItem
 					nativeButton
 					disabled={mutation.isPending}
 					closeOnClick={false}
@@ -305,7 +305,7 @@ export function AccountMenu(props: {
 	avatarUrl: string | null
 }) {
 	const desktop = useDesktopMachine()
-	const menuActions = useRef<Menu.Root.Actions>(null)
+	const menuActions = useRef<MenuActions>(null)
 	const href = useLocation({ select: (location) => location.href })
 	const {
 		shellLocation: { pathname },
@@ -322,8 +322,8 @@ export function AccountMenu(props: {
 	const name = props.displayName.trim() || props.username
 	return (
 		<div css={orgSwitcherCss}>
-			<Menu.Root modal={false} actionsRef={menuActions}>
-				<Menu.Trigger
+			<Menu actionsRef={menuActions}>
+				<MenuTrigger
 					id={`account-menu-${props.placement ?? 'header'}`}
 					aria-label={`${name}: your account`}
 					data-testid="account-menu"
@@ -342,7 +342,7 @@ export function AccountMenu(props: {
 						size={props.placement === 'sidebar' ? 28 : 34}
 						variant="well"
 					/>
-				</Menu.Trigger>
+				</MenuTrigger>
 				<SwitcherPopup
 					testId="account-menu-panel"
 					label="Your account"
@@ -385,7 +385,7 @@ export function AccountMenu(props: {
 						menu: true,
 					})}
 				</SwitcherPopup>
-			</Menu.Root>
+			</Menu>
 		</div>
 	)
 }

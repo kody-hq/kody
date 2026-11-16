@@ -1,11 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from './button.tsx'
-import { Menu } from '@base-ui/react/menu'
-import {
-	overlayItemCss,
-	overlayPopupCss,
-	overlayPositionerCss,
-} from './overlay-styles.ts'
+import { Menu, MenuCheckboxItem, MenuContent, MenuTrigger } from './menu.tsx'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { WorkspaceBreadcrumbs } from '../pages/workspace-breadcrumbs.tsx'
@@ -28,7 +23,7 @@ import { LoadingIndicator } from './loading-indicator.tsx'
 import { SiteLink } from './site-link.tsx'
 import { withInstallOrg } from '#universal/community-search.ts'
 
-import { ControlTooltip } from './control-tooltip.tsx'
+import { Tooltip } from './tooltip.tsx'
 import { Combobox } from './combobox.tsx'
 import { CopyTextButton } from './copy-text-button.tsx'
 
@@ -674,27 +669,29 @@ function FileContent({
 							aria-label="File actions"
 						>
 							{data.rawHref ? (
-								<ControlTooltip
-									trigger={
-										<Button
-											href={data.rawHref}
-											download={
-												data.rawHref.startsWith('data:')
-													? packageFileBaseName(heading)
-													: undefined
-											}
-											data-testid="package-files-raw-link"
-											aria-label={`View raw ${heading}`}
-											variant="secondary"
-											reloadDocument
-											css={rawLinkCss}
-										>
-											{renderIcon('arrow-up-right', { size: '14' })}
-										</Button>
+								<Button
+									href={data.rawHref}
+									download={
+										data.rawHref.startsWith('data:')
+											? packageFileBaseName(heading)
+											: undefined
 									}
+									data-testid="package-files-raw-link"
+									aria-label={`View raw ${heading}`}
+									aria-describedby="package-files-raw-tooltip"
+									variant="secondary"
+									reloadDocument
+									css={rawLinkCss}
 								>
-									Open raw file
-								</ControlTooltip>
+									{renderIcon('arrow-up-right', { size: '14' })}
+									<Tooltip
+										id="package-files-raw-tooltip"
+										side="bottom"
+										align="end"
+									>
+										Open raw file
+									</Tooltip>
+								</Button>
 							) : null}
 							{canCopy ? (
 								<CopyTextButton
@@ -705,18 +702,18 @@ function FileContent({
 									variant="ghost"
 									size="sm"
 									ariaLabel={`Copy ${heading}`}
-									wrapButton={(button) => (
-										<ControlTooltip trigger={button}>
-											Copy source
-										</ControlTooltip>
-									)}
+									tooltip={{
+										id: 'package-files-copy-tooltip',
+										align: 'end',
+										text: 'Copy source',
+									}}
 								/>
 							) : null}
 						</div>
 					)}
 					{canWrap && (
-						<Menu.Root modal={false}>
-							<Menu.Trigger
+						<Menu>
+							<MenuTrigger
 								type="button"
 								aria-label="Preview options"
 								title="Preview options"
@@ -740,33 +737,16 @@ function FileContent({
 									<circle cx="8" cy="8" r="1.2" />
 									<circle cx="13" cy="8" r="1.2" />
 								</svg>
-							</Menu.Trigger>
-							<Menu.Portal>
-								<Menu.Positioner
-									align="end"
-									sideOffset={4}
-									css={overlayPositionerCss}
+							</MenuTrigger>
+							<MenuContent align="end" aria-label="Preview options">
+								<MenuCheckboxItem
+									checked={wrapLines}
+									onCheckedChange={onWrapLinesChange}
 								>
-									<Menu.Popup
-										aria-label="Preview options"
-										css={{ ...overlayPopupCss, minWidth: 170 }}
-									>
-										<Menu.CheckboxItem
-											checked={wrapLines}
-											onCheckedChange={onWrapLinesChange}
-											css={overlayItemCss}
-										>
-											<span css={{ width: '1rem' }}>
-												<Menu.CheckboxItemIndicator>
-													✓
-												</Menu.CheckboxItemIndicator>
-											</span>
-											Wrap lines
-										</Menu.CheckboxItem>
-									</Menu.Popup>
-								</Menu.Positioner>
-							</Menu.Portal>
-						</Menu.Root>
+									Wrap lines
+								</MenuCheckboxItem>
+							</MenuContent>
+						</Menu>
 					)}
 				</div>
 			</div>
