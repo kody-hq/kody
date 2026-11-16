@@ -188,7 +188,7 @@ test('resourceLock returns a secret approval URL without widening allowed_packag
 		)
 	expect(missingSecret).toBeInstanceOf(McpCallerError)
 	expect((missingSecret as Error).message).toContain(
-		'Secret not found for this scope.',
+		'Secret "missing-secret" not found in user scope.',
 	)
 	expect(await allowedPackagesFor(env, userId, 'openai-api-key')).toEqual([
 		'pkg-notes',
