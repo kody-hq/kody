@@ -27,6 +27,7 @@ import {
 	parseMachineLanDefinition,
 	resolveMachineCommand,
 	advertisedMachineCapabilities,
+	parseMachineCapabilities,
 } from '../src/execution-context/machine-capabilities.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 
@@ -407,5 +408,36 @@ test('the machine tells Kody names and argument shapes, never executable paths, 
 			publicKey: await importEd25519PublicKey(publicKeyJwk),
 		}),
 		'ok',
+	)
+})
+
+test('a definition Kody would refuse is refused on the machine first', () => {
+	assert.throws(
+		() =>
+			parseMachineCommandDefinition({
+				...kdocker,
+				args: Array.from({ length: 3 }, () => ['x'.repeat(2000)]),
+			}),
+		/too much in "args"/,
+	)
+	assert.throws(
+		() =>
+			parseMachineLanDefinition({
+				name: 'everything',
+				hosts: ['192.168.1.10'],
+				ports: Array.from({ length: 2000 }, (_, index) => index + 1),
+			}),
+		/too much in "hosts" and "ports"/,
+	)
+	assert.throws(
+		() =>
+			parseMachineCapabilities({
+				lan: Array.from({ length: 101 }, (_, index) => ({
+					name: `nas-${index}`,
+					hosts: ['192.168.1.10'],
+					ports: [443],
+				})),
+			}),
+		/at most 100 named commands and local network destinations/,
 	)
 })
