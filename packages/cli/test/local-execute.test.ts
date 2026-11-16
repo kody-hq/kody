@@ -584,6 +584,45 @@ export default async function main(params: Params) {
 	},
 )
 
+test(
+	'run code cannot read the run secret or the bridge binding, or replace the bridge',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const code = `
+import { kody } from 'kody:runtime'
+import * as runtime from 'kody:runtime'
+export default async function main() {
+	const workers = await import(['cloud', 'flare:workers'].join(''))
+	let replaced = 'not exported'
+	if (typeof runtime.__kodyInstallLocalBridge === 'function') {
+		try {
+			runtime.__kodyInstallLocalBridge({ call: async () => 'hijacked' })
+			replaced = 'accepted'
+		} catch {
+			replaced = 'refused'
+		}
+	}
+	const sent = await kody.emailSend({ to: 'kent' })
+	return { envKeys: Object.keys(workers.env ?? {}), replaced, sent }
+}
+`
+		const result = await runLocalExecute({
+			code,
+			token: goodToken,
+			apiUrl,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const value = (result.structuredContent as { result: any }).result
+		assert.deepEqual(value.envKeys, [])
+		assert.notEqual(value.replaced, 'accepted')
+		assert.deepEqual(value.sent, {
+			echoed: 'kody.emailSend',
+			args: [{ to: 'kent' }],
+		})
+	},
+)
+
 test('runLocalExecute returns cancelled without setup work when its signal is already aborted', async () => {
 	reset()
 	const abort = new AbortController()

@@ -55,8 +55,7 @@ export function createHostFsPromisesSource(input: {
 }) {
 	const names = exportNames(nodeFs.promises)
 	const platform = input.platform ?? process.platform
-	return `import { env } from 'cloudflare:workers';
-import { Buffer } from 'node:buffer';
+	return `import { Buffer } from 'node:buffer';
 import { posix } from 'node:path';
 
 const real = process.getBuiltinModule('node:fs').promises;
@@ -74,10 +73,19 @@ export function __kodyHostFsError(code, message, syscall, path) {
 	return error;
 }
 
+// The entry hands over the bridge once, before it imports run code. Run code
+// cannot read it from here or install its own.
+let bridge = null;
+export function __kodyInstallHostFsBridge(installed) {
+	if (bridge !== null) throw new Error('The host folder bridge is already installed.');
+	bridge = installed;
+}
+
 async function call(op, body) {
-	const response = await env.KODY_BRIDGE.fetch('http://kody-bridge/fs', {
+	if (bridge === null) throw __kodyHostFsError('EACCES', 'Host folders are not available in this run.', op, body.path);
+	const response = await bridge.fetcher.fetch('http://kody-bridge/fs', {
 		method: 'POST',
-		headers: { 'content-type': 'application/json', ${JSON.stringify(runSecretHeader)}: env.KODY_RUN_SECRET },
+		headers: { 'content-type': 'application/json', ${JSON.stringify(runSecretHeader)}: bridge.secret },
 		body: JSON.stringify({ op, ...body }),
 	});
 	const data = await response.json();
