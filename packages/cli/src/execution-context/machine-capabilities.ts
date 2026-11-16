@@ -31,7 +31,7 @@ export type MachineCapabilitiesPolicy = {
 	lan: Array<MachineLanDefinition>
 }
 
-export const emptyMachineCapabilities: MachineCapabilitiesPolicy = {
+const emptyMachineCapabilities: MachineCapabilitiesPolicy = {
 	commands: [],
 	lan: [],
 }
