@@ -11,7 +11,7 @@ import {
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { packageRealtimeSessionDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { resolveInternetVisibleApprovedCommit } from '#worker/app/package-app-internet-visible.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
@@ -499,7 +499,7 @@ export async function resolvePackageAppWorkerBuildInput(input: {
 	if (!savedPackage || !savedPackage.hasApp) {
 		throw new Error('Saved package app was not found.')
 	}
-	const packageSource = await loadPackageSourceBySourceId({
+	const packageSource = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.binding.baseUrl,
 		userId: input.binding.userId,
@@ -587,7 +587,7 @@ export async function resolvePackageAppWorkerCacheKey(input: {
 		input.binding.packageId,
 		input.binding.sourceId,
 		input.binding.baseUrl,
-		source.published_commit ?? null,
+		servingCommitForSource(source),
 	])
 }
 

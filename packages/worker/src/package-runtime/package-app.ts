@@ -5,6 +5,7 @@ import {
 import {
 	servingCommitForSource,
 	toServingSourceView,
+	toUnheldSourceView,
 } from '#worker/repo/serving-commit.ts'
 import {
 	kodyDevClockOffsetMs,
@@ -3536,10 +3537,16 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		visitTicket: string | null | undefined,
 	): Promise<'publisher' | 'executor' | null> {
 		const callerContext = await this.createCallerContext(null, visitTicket)
+		const source = await getEntitySourceById(
+			this.env.APP_DB,
+			this.ctx.props.sourceId,
+		)
 		const needs = await loadPublishedCredentialNeeds({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			sourceId: this.ctx.props.sourceId,
+			// The needs of the commit the app runs, not one held for approval.
+			source: source ? toUnheldSourceView(source) : null,
 			request: callerContext.request,
 		})
 		return needs.find((need) => need.key === credentialKey)?.supplier ?? null

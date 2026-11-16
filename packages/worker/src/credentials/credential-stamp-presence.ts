@@ -11,6 +11,7 @@ import {
 	readPublishedCredentialStamp,
 } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { toUnheldSourceView } from '#worker/repo/serving-commit.ts'
 /**
  * Missing stamp stays on the legacy path. Any stored blob, including one
  * `isStoredCredentialStamp` rejects, fail-closes so a malformed publish cannot
@@ -38,7 +39,9 @@ async function readPackageCarriesCredentialStamp(input: {
 		input.packageId,
 	)
 	if (!saved) return false
-	const source = await getEntitySourceById(input.env.APP_DB, saved.sourceId)
+	const row = await getEntitySourceById(input.env.APP_DB, saved.sourceId)
+	// The stamp of the commit the app runs, not one held for approval.
+	const source = row ? toUnheldSourceView(row) : null
 	const publishedCommit = source?.published_commit
 	if (!publishedCommit || source.user_id !== saved.userId) return false
 	const stored = await readPublishedCredentialStamp({
