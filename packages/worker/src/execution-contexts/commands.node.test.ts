@@ -27,12 +27,17 @@ vi.mock('#worker/authorization/authorize.ts', async (original) => ({
 }))
 
 const published = vi.hoisted(() => ({
-	machine: new Map<string, Record<string, { kind: string }>>(),
+	machine: new Map<string, Record<string, unknown>>(),
 }))
 
 vi.mock('#worker/repo/published-source.ts', () => ({
-	loadPublishedEntityManifest: async (input: { sourceId: string }) => {
-		const machine = published.machine.get(input.sourceId)
+	loadPublishedEntityManifest: async (input: {
+		sourceId: string
+		source: { published_commit: string }
+	}) => {
+		const machine = published.machine.get(
+			`${input.sourceId}@${input.source.published_commit}`,
+		)
 		if (!machine) throw new Error('not published')
 		return { manifest: { kody: { machine } } }
 	},
@@ -490,7 +495,7 @@ function savePackage(
 	s: ReturnType<typeof setup>,
 	id: string,
 	owner: string,
-	machine: Record<string, { kind: string }> | null = declaresAll,
+	machine: Record<string, unknown> | null = declaresAll,
 ) {
 	s.sqlite
 		.prepare(
@@ -498,8 +503,33 @@ function savePackage(
 			 VALUES (?, ?, ?, ?, '', ?)`,
 		)
 		.run(id, owner, `@acme/${id}`, id, `source-${id}`)
-	if (machine) published.machine.set(`source-${id}`, machine)
-	else published.machine.delete(`source-${id}`)
+	if (machine === null) return
+	publishSource(s, `source-${id}`, owner, { serving: 'c1', published: 'c1' })
+	published.machine.set(`source-${id}@c1`, machine)
+}
+
+function publishSource(
+	s: ReturnType<typeof setup>,
+	sourceId: string,
+	owner: string,
+	commits: { serving: string; published: string },
+) {
+	s.sqlite
+		.prepare(
+			`INSERT OR REPLACE INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id,
+				published_commit, serving_commit, manifest_path, source_root, created_at, updated_at)
+			 VALUES (?, ?, 'package', ?, ?, ?, ?, 'package.json', '/', ?, ?)`,
+		)
+		.run(
+			sourceId,
+			owner,
+			sourceId,
+			sourceId,
+			commits.published,
+			commits.serving,
+			now,
+			now,
+		)
 }
 
 /** A run in the context's org, so package lookups use that org. */
@@ -919,4 +949,27 @@ test('a host folder used by a package that does not declare it is logged, not re
 		event: 'fs_used',
 		detail: { undeclaredPackageIds: ['pkg_silent'] },
 	})
+})
+
+test('the declaration is read from the commit runs are served, and one name can declare more than one kind', async () => {
+	const s = setup()
+	defineCommand(s)
+	savePackage(s, 'pkg_building', orgId)
+	// A newer publish that dropped the declaration is still building.
+	publishSource(s, 'source-pkg_building', orgId, {
+		serving: 'c1',
+		published: 'c2',
+	})
+	published.machine.set('source-pkg_building@c2', {})
+	savePackage(s, 'pkg_both', orgId, {
+		kdocker: [{ kind: 'lan' }, { kind: 'command' }],
+	})
+	for (const id of ['pkg_building', 'pkg_both']) {
+		await expect(
+			authorizeContextCommand(
+				orgRun(s, operator, { packages: { entries: [id], all: [id] } }),
+				namedArgs,
+			),
+		).resolves.toMatchObject({ ok: true })
+	}
 })

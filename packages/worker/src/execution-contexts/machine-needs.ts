@@ -4,7 +4,13 @@
  * declaration does not pass through imports.
  */
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
+import {
+	packageMachineNeedsFor,
+	type SavedPackageRecord,
+} from '#worker/package-registry/types.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { loadPublishedEntityManifest } from '#worker/repo/published-source.ts'
+import { toServingSourceView } from '#worker/repo/serving-commit.ts'
 import type { machineDefinedCapabilityKinds } from './machine-capabilities.ts'
 
 type DeclaredKind = (typeof machineDefinedCapabilityKinds)[number]
@@ -22,18 +28,30 @@ export async function packagesNotDeclaring(input: {
 		input.packageIds.map(async (id) => {
 			const saved = await getSavedPackageByIdInAnyOrg(input.env.APP_DB, id)
 			if (!saved) return { id, name: id }
-			const need = await loadPublishedEntityManifest({
-				env: input.env,
-				userId: saved.userId,
-				sourceId: saved.sourceId,
-			}).then(
-				(published) => published.manifest.kody.machine?.[input.name],
+			const declared = await servingMachineNeeds(input.env, saved).catch(
 				() => undefined,
 			)
-			return need?.kind === input.kind ? null : { id, name: saved.name }
+			return packageMachineNeedsFor(declared, input.name).some(
+				(need) => need.kind === input.kind,
+			)
+				? null
+				: { id, name: saved.name }
 		}),
 	)
 	return checked.filter((entry) => entry !== null)
+}
+
+/** `kody.machine` of the commit runs are served, not a publish still building. */
+async function servingMachineNeeds(env: Env, saved: SavedPackageRecord) {
+	const source = await getEntitySourceById(env.APP_DB, saved.sourceId)
+	if (!source) return undefined
+	const published = await loadPublishedEntityManifest({
+		env,
+		userId: saved.userId,
+		sourceId: saved.sourceId,
+		source: toServingSourceView(source),
+	})
+	return published.manifest.kody.machine
 }
 
 const kindWords = {
@@ -61,5 +79,5 @@ export function undeclaredNeedMessage(input: {
 			},
 		},
 	})
-	return `${names} ${input.packages.length === 1 ? 'uses' : 'use'} ${kindWords[input.kind]} "${input.name}" on ${input.contextName} without declaring it. Add it to the package's package.json and publish again: ${example}`
+	return `${names} ${input.packages.length === 1 ? 'uses' : 'use'} ${kindWords[input.kind]} "${input.name}" on ${input.contextName} without declaring it. Add it to the package's package.json and publish again (use a list when the name already has an entry of another kind): ${example}`
 }

@@ -112,3 +112,19 @@ test('a published snapshot with a kody.machine value from before the key existed
 		}).kody.machine,
 	).toEqual({ kdocker: { kind: 'command', description: 'x' } })
 })
+
+test('one name can declare a list with one entry per kind, since a machine may reuse a name across kinds', () => {
+	const lan = { kind: 'lan', description: 'Call the NAS' }
+	const fs = { kind: 'fs', mode: 'ro', description: 'Read the NAS share' }
+	expect(
+		parseAuthoredPackageJson({
+			content: manifestWithMachine({ nas: [lan, fs] }),
+		}).kody.machine,
+	).toEqual({ nas: [lan, fs] })
+	expect(publishError({ nas: [lan, lan] })).toContain('one entry per kind')
+	expect(publishError({ nas: [] })).toContain('kody.machine')
+	const many = Object.fromEntries(
+		Array.from({ length: 11 }, (_, index) => [`nas${index}`, [lan, fs]]),
+	)
+	expect(publishError(many)).toContain('at most 20')
+})

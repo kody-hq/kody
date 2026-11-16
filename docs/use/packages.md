@@ -422,6 +422,9 @@ in `kody.machine`. Each key is the name the machine gives the entry.
 - A package that uses a named command or local network destination it did not
   declare fails with `machine_need_undeclared`. For host folders it is only
   recorded for now.
+- A machine can give a command, a destination and a folder the same name. To
+  declare more than one, use a list with one entry per kind:
+  `"nas": [{ "kind": "lan", ... }, { "kind": "fs", ... }]`.
 - Declaring grants nothing. The machine defines each entry and its operator
   decides which packages may use it.
 - A package declares what its own runs use. Access does not pass through
