@@ -1038,12 +1038,69 @@ test('worker entrypoint completes Claude-shaped dynamic registration and token e
 	})
 })
 
+test('root protected resource metadata matches the /mcp document headers and leaves MCP discovery on /mcp', async () => {
+	const origin = 'https://app.example'
+	const fetchPrm = (path: string, init?: RequestInit) =>
+		workerFetch(
+			new Request(
+				`https://heykody.dev/.well-known/oauth-protected-resource${path}`,
+				init,
+			),
+		)
+	const corsHeaders = [
+		'access-control-allow-origin',
+		'access-control-allow-methods',
+		'access-control-allow-headers',
+		'access-control-max-age',
+		'cache-control',
+		'content-type',
+	]
+	for (const headers of [undefined, { Origin: origin }]) {
+		const root = await fetchPrm('', { headers })
+		const scoped = await fetchPrm('/mcp', { headers })
+		expect(root.status).toBe(200)
+		for (const name of corsHeaders) {
+			expect([name, root.headers.get(name)]).toEqual([
+				name,
+				scoped.headers.get(name),
+			])
+		}
+	}
+	const preflight = await fetchPrm('', {
+		method: 'OPTIONS',
+		headers: { Origin: origin, 'Access-Control-Request-Method': 'GET' },
+	})
+	expect(preflight.status).toBe(204)
+	expect(preflight.headers.get('access-control-allow-origin')).toBe(origin)
+	const head = await fetchPrm('', { method: 'HEAD' })
+	expect(head.status).toBe(200)
+	expect(await head.text()).toBe('')
+	expect((await fetchPrm('', { method: 'POST' })).status).toBe(405)
+
+	// MCP clients only fall back to the root document when the challenge hint
+	// and the path-aware document are both missing. Both must keep naming /mcp.
+	const challenge = await workerFetch(new Request('https://heykody.dev/mcp'))
+	expect(challenge.status).toBe(401)
+	expect(challenge.headers.get('WWW-Authenticate')).toContain(
+		'resource_metadata="https://heykody.dev/.well-known/oauth-protected-resource/mcp"',
+	)
+	const scoped = (await (await fetchPrm('/mcp')).json()) as { resource: string }
+	expect(scoped.resource).toBe(mcpResource)
+})
+
 test('worker entrypoint advertises OAuth, OIDC, and RFC 9728 resource metadata plus jwks', async () => {
 	const rootPrm = await workerFetch(
 		new Request('https://heykody.dev/.well-known/oauth-protected-resource'),
 	)
-	// v1 serves only the path-aware document for resource `<origin>/mcp`.
-	expect(rootPrm.status).toBe(404)
+	// The root document describes the origin; `/mcp` keeps its own document.
+	expect(rootPrm.status).toBe(200)
+	expect(rootPrm.headers.get('content-type')).toBe('application/json')
+	await expect(rootPrm.json()).resolves.toEqual({
+		resource: 'https://heykody.dev',
+		authorization_servers: ['https://heykody.dev'],
+		scopes_supported: ['openid', 'profile', 'email'],
+		bearer_methods_supported: ['header'],
+	})
 
 	const prm = await workerFetch(
 		new Request('https://heykody.dev/.well-known/oauth-protected-resource/mcp'),
@@ -1061,6 +1118,7 @@ test('worker entrypoint advertises OAuth, OIDC, and RFC 9728 resource metadata p
 	)
 	expect(discovery.status).toBe(200)
 	const metadata = (await discovery.json()) as {
+		scopes_supported?: Array<string>
 		issuer?: string
 		token_endpoint?: string
 		revocation_endpoint?: string
@@ -1070,6 +1128,7 @@ test('worker entrypoint advertises OAuth, OIDC, and RFC 9728 resource metadata p
 		token_endpoint_auth_methods_supported?: Array<string>
 	}
 	expect(metadata.issuer).toBe('https://heykody.dev')
+	expect(metadata.scopes_supported).toEqual(['openid', 'profile', 'email'])
 	expect(metadata.token_endpoint).toBe('https://heykody.dev/oauth/token')
 	expect(metadata.revocation_endpoint).toBe(metadata.token_endpoint)
 	expect(metadata.authorization_response_iss_parameter_supported).toBe(true)
