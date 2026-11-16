@@ -22,6 +22,7 @@ import {
 	listMachineDefinedCapabilities,
 	parseMachineDefinedCapabilities,
 	syncMachineDefinedCapabilities,
+	ensureShellCapability,
 } from './machine-capabilities.ts'
 import productionServerKeys from './server-keys.production.json'
 import testServerKeys from './server-keys.local.json'
@@ -672,6 +673,7 @@ async function setCommandsFromMachine(input: {
 				'The context grant changed while this request ran. Run `kody context commands status`, then try again.',
 		})
 	}
+	if (enabled) await ensureShellCapability(env.APP_DB, row)
 	await session.updateGrant({
 		snapshot: { ...snapshotOf(row), grant, grantVersion },
 	})

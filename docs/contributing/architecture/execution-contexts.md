@@ -267,12 +267,16 @@ data model exists so far; nothing reads it at run time yet.
   lease's entry packages (`packagesNotAllowed`, a copy of a credential's
   `allowed_packages` rule; a truncated package set is refused). It does not need
   the shell opt-in, and turning the shell off leaves named-command jobs running.
-  Shell commands only log the packages that rule would refuse
-  (`wouldBlockPackageIds` on `command_started`).
+- The unrestricted shell is the entry `shell` / `shell`. Migration 0283 adds it
+  to every context with host commands on and `ensureShellCapability` adds it
+  when a machine turns them on. It is listed only while commands are on and
+  keeps its package list across off and on. With an empty list, shell commands
+  only log the packages the default rule would refuse (`wouldBlockPackageIds` on
+  `command_started`); a list the operator set is enforced.
 - The operator sets an entry's package list with
   `executionContextMachineAccessPackagesSet` (`setMachineAccessPackages`,
-  `command`, `lan` and `fs` kinds, saved package ids, at most 50, audited as
-  `machine_access_packages_changed`). The list lives in
+  `shell`, `command`, `lan` and `fs` kinds, saved package ids, at most 50,
+  audited as `machine_access_packages_changed`). The list lives in
   `machine_capabilities.allowed_packages_json`, survives the machine's reports
   and is cleared when the machine removes the entry.
 - Someone other than the operator needs the context shared with them

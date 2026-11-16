@@ -496,7 +496,11 @@ async function runScoped<T>(
 ): Promise<T | ExecutionContextFailure> {
 	const scope = await loadExecutionContextsScope(input)
 	if (!scope)
-		return { ok: false, error: 'not_found', message: 'Organization not found.' }
+		return {
+			ok: false,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
 	try {
 		return await run(scope)
 	} catch (error) {
@@ -893,7 +897,12 @@ function normalizeMachineAccessEntry(
 	const entry = record(value)
 	if (!entry || typeof entry.id !== 'string' || typeof entry.name !== 'string')
 		return null
-	if (entry.kind !== 'command' && entry.kind !== 'lan' && entry.kind !== 'fs')
+	if (
+		entry.kind !== 'shell' &&
+		entry.kind !== 'command' &&
+		entry.kind !== 'lan' &&
+		entry.kind !== 'fs'
+	)
 		return null
 	return {
 		id: entry.id,

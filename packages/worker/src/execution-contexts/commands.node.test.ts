@@ -16,6 +16,7 @@ import {
 	authorizeContextFolder,
 	authorizeContextLan,
 } from './commands.ts'
+import { ensureShellCapability } from './machine-capabilities.ts'
 import {
 	type ExecutionContextCaller,
 	setSharing,
@@ -342,7 +343,10 @@ test('the website/API can turn commands off but never on', async () => {
 		grant: { commands: { enabled: false } },
 	})
 	const row = await getExecutionContext(on.db, 'ec_mac')
-	expect(parseGrant(row!).commands).toEqual({ enabled: false, enabledAt: null })
+	expect(parseGrant(row!).commands).toEqual({
+		enabled: false,
+		enabledAt: null,
+	})
 	expect(on.grantUpdates.length).toBe(1)
 	expect(on.audits).toContainEqual(
 		expect.objectContaining({ event: 'commands_disabled' }),
@@ -918,6 +922,90 @@ test('the operator limits a named command to listed packages and lifts the limit
 	await expect(run(['pkg_other'])).rejects.toMatchObject({
 		code: 'machine_capability_package_not_allowed',
 	})
+})
+
+test('the operator limits the shell to listed packages, and only while host commands are on', async () => {
+	const s = setup({ commands: true })
+	savePackage(s, 'pkg_own', orgId)
+	savePackage(s, 'pkg_listed', orgId)
+	const owner = s.callerFor(operator)
+	const target = { kind: 'shell', name: 'shell' } as const
+	const run = (entries: Array<string>) =>
+		authorizeContextCommand(
+			orgRun(s, operator, { packages: { entries, all: entries } }),
+			s.args,
+		)
+	// No entry until the machine turned commands on under this release.
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', { ...target, packageIds: [] }),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+	await ensureShellCapability(s.db, {
+		id: 'ec_mac',
+		org_id: orgId,
+		operator_user_id: operator,
+	})
+	await ensureShellCapability(s.db, {
+		id: 'ec_mac',
+		org_id: orgId,
+		operator_user_id: operator,
+	})
+	expect((await listMachineAccess(owner, 'ec_mac')).capabilities).toEqual([
+		expect.objectContaining({
+			kind: 'shell',
+			name: 'shell',
+			shareable: false,
+			allowedPackages: [],
+		}),
+	])
+	await expect(
+		grantMachineAccess(owner, 'ec_mac', {
+			kind: 'shell' as never,
+			name: 'shell',
+			subject: { type: 'org', id: orgId },
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	await expect(run(['pkg_own'])).resolves.toMatchObject({ ok: true })
+
+	await setMachineAccessPackages(owner, 'ec_mac', {
+		...target,
+		packageIds: ['pkg_listed'],
+	})
+	await expect(run(['pkg_listed'])).resolves.toMatchObject({ ok: true })
+	await expect(run(['pkg_own'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('the shell on'),
+	})
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), s.args),
+	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
+
+	// Listing, reading and killing shell jobs follows the same list.
+	const lifecycle = (entries?: Array<string>) =>
+		authorizeContextCommand(
+			orgRun(
+				s,
+				operator,
+				entries ? { packages: { entries, all: entries } } : {},
+			),
+			{ lifecycle: 'list' },
+		)
+	await expect(lifecycle(['pkg_listed'])).resolves.toEqual({ ok: true })
+	await expect(lifecycle(['pkg_own'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+	await expect(lifecycle()).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+
+	// With commands off the entry is hidden and cannot be edited, and it keeps
+	// its list for when they come back on.
+	s.sqlite
+		.prepare(`UPDATE execution_contexts SET grant_json = ? WHERE id = 'ec_mac'`)
+		.run(JSON.stringify({ commands: { enabled: false, enabledAt: null } }))
+	expect((await listMachineAccess(owner, 'ec_mac')).capabilities).toEqual([])
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', { ...target, packageIds: [] }),
+	).rejects.toMatchObject({ code: 'execution_context_commands_off' })
 })
 
 test('a shell command logs the packages a package rule would refuse, and still runs', async () => {

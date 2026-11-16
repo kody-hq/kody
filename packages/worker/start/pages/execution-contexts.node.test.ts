@@ -575,6 +575,14 @@ const machineAccessFixture = {
 			grants: [],
 		},
 		{
+			id: 'mc_shell',
+			kind: 'shell' as const,
+			name: 'shell',
+			description: null,
+			shareable: false,
+			grants: [],
+		},
+		{
 			id: 'mc_folder',
 			kind: 'fs' as const,
 			name: 'kody-runner',
@@ -604,7 +612,9 @@ test('operator detail lists machine access with who holds each entry', async () 
 	expect(body).toContain('Host folders')
 	expect(body).toContain('never shared')
 	expect(body).toContain('One of my profiles')
-	// Two shareable entries get a form; the host folder does not.
+	expect(body).toContain('Unrestricted shell')
+	expect(body).toContain('Any command, as the machine')
+	// Two shareable entries get a form; the shell and the host folder do not.
 	expect(body.match(/Give access/g)).toHaveLength(2)
 })
 

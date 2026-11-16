@@ -55,6 +55,38 @@ export async function listMachineCapabilityGrantOrgIds(
 /** The kinds a machine defines in its local policy and reports to Kody. */
 export const machineCapabilityUsePermission = 'machine_capability:use' as const
 
+/** The one name the unrestricted shell's entry has on every context. */
+export const shellCapabilityName = 'shell'
+
+/**
+ * The shell's entry exists from the first time the machine turns host commands
+ * on. It outlives turning them off, so a package list the operator set still
+ * holds when they come back on.
+ */
+export async function ensureShellCapability(
+	db: D1Database,
+	context: { id: string; org_id: string; operator_user_id: string },
+) {
+	const now = new Date().toISOString()
+	await db
+		.prepare(
+			`INSERT INTO machine_capabilities (
+				id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at
+			) VALUES (?, ?, ?, ?, 'shell', ?, ?, ?)
+			ON CONFLICT (context_id, kind, name) DO NOTHING`,
+		)
+		.bind(
+			`mcap_${crypto.randomUUID()}`,
+			context.id,
+			context.org_id,
+			context.operator_user_id,
+			shellCapabilityName,
+			now,
+			now,
+		)
+		.run()
+}
+
 export const machineDefinedCapabilityKinds = ['command', 'lan', 'fs'] as const
 
 export type MachineDefinedCapability = {

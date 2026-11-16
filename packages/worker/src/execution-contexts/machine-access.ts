@@ -20,7 +20,7 @@ import {
 	loadVisibleContext,
 	recordContextAudit,
 } from './service.ts'
-import { canManageContext } from './store.ts'
+import { canManageContext, parseGrant } from './store.ts'
 
 /** The kinds that can be shared. The shell and host folders stay with the operator. */
 export const shareableMachineCapabilityKinds = ['command', 'lan'] as const
@@ -29,6 +29,7 @@ type ShareableKind = (typeof shareableMachineCapabilityKinds)[number]
 
 /** The kinds whose use the operator can limit to listed packages. */
 export const packageLimitedMachineCapabilityKinds = [
+	'shell',
 	'command',
 	'lan',
 	'fs',
@@ -39,6 +40,7 @@ type PackageLimitedKind = (typeof packageLimitedMachineCapabilityKinds)[number]
 export const maxMachineAccessPackages = 50
 
 const kindWords = {
+	shell: 'shell',
 	command: 'command',
 	lan: 'local network destination',
 	fs: 'host folder',
@@ -104,7 +106,13 @@ async function loadMachineAccess(
 		db
 			.prepare(
 				`SELECT * FROM machine_capabilities
-				 WHERE context_id = ? AND removed_at IS NULL ORDER BY kind, name`,
+				 WHERE context_id = ? AND removed_at IS NULL
+				   AND (kind != 'shell' OR EXISTS (
+					SELECT 1 FROM execution_contexts c
+					WHERE c.id = machine_capabilities.context_id
+					  AND json_extract(c.grant_json, '$.commands.enabled') = 1
+				   ))
+				 ORDER BY kind, name`,
 			)
 			.bind(contextId)
 			.all<MachineCapabilityRow>(),
@@ -296,6 +304,14 @@ export async function grantMachineAccess(
 		scope,
 	)
 	const { subject } = input
+	if (!isShareable(input.kind)) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'Only named commands and local network destinations can be shared. The unrestricted shell and host folders are for the operator only.',
+		})
+	}
 	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
 		throw new ExecutionContextError({
 			status: 403,
@@ -471,6 +487,23 @@ export async function setMachineAccessPackages(
 		)
 		.bind(row.id, input.kind, input.name)
 		.first<MachineCapabilityRow>()
+	if (
+		capability?.kind === 'shell' &&
+		parseGrant(row).commands?.enabled !== true
+	) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'execution_context_commands_off',
+			message: `Host commands are off on ${row.name}, so there is no shell to limit. Its owner turns them on from that machine with \`kody context commands on\`.`,
+		})
+	}
+	if (!capability && input.kind === 'shell') {
+		throw new ExecutionContextError({
+			status: 404,
+			code: 'machine_capability_off',
+			message: `${row.name} has never had host commands turned on, so it has no shell to limit. The shell's name is "shell".`,
+		})
+	}
 	if (!capability) {
 		throw new ExecutionContextError({
 			status: 404,

@@ -359,12 +359,13 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   use an entry. To limit a named command, local network destination or host
   folder to chosen packages, the operator passes the full list of package ids to
   `executionContextMachineAccessPackagesSet`
-  (`{ id, kind: "command" | "lan" | "fs", name, package_ids }`). With packages
-  listed, a run may use the entry only when every saved package it loaded
-  directly is on the list, and code that is not a saved package may not use it.
-  An empty list lifts the limit. This is also how you let a package from someone
-  else use an entry without adopting it. The list never shares the entry with
-  another person.
+  (`{ id, kind: "shell" | "command" | "lan" | "fs", name, package_ids }`; the
+  unrestricted shell is kind `shell`, name `shell`, on a machine with host
+  commands on). With packages listed, a run may use the entry only when every
+  saved package it loaded directly is on the list, and code that is not a saved
+  package may not use it. An empty list lifts the limit. This is also how you
+  let a package from someone else use an entry without adopting it. The list
+  never shares the entry with another person.
 - In the app: a context's detail page has a Machine access section that lists
   its named commands, local network destinations and host folders with who holds
   each one, and any package limit. The operator gives or takes back access
