@@ -44,6 +44,8 @@ vi.mock('./published-bundle-artifacts.ts', async () => {
 	}
 })
 
+const { PublishedImportsNeedSourceBuildError } =
+	await import('./module-graph-bundle-builders.ts')
 const { buildKodyImportableModuleBundle, buildKodyModuleBundle } =
 	await import('./module-graph.ts')
 
@@ -885,4 +887,149 @@ test('a pre-fix multi-package npm artifact that cannot rebuild is still composed
 			String(call[0]).includes('pre_binding_bundle_needs_republish'),
 		),
 	).toBe(true)
+})
+
+type CapturedPlugin = {
+	name: string
+	setup(build: {
+		onResolve(
+			options: { filter: RegExp },
+			callback: (args: {
+				path: string
+				resolveDir: string
+				kind: string
+			}) => { path: string; external: boolean } | undefined,
+		): void
+	}): void
+}
+
+async function setUpCallableArtifact(
+	source = { id: 'source-1', published_commit: 'commit-1' },
+) {
+	const callableManifest = {
+		...examplePackage,
+		exports: { './callable': './src/callable.js' },
+	}
+	const callableFiles = {
+		'src/callable.js': `export default function callable() { return "from-artifact" }`,
+	}
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource(callableManifest, callableFiles, source),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockImplementation(
+		async (input: { kind: string }) =>
+			input.kind === 'importable-module'
+				? makeArtifactHit({
+						artifactName: './callable',
+						entryPoint: 'src/callable.js',
+						mainModule: 'bundle.js',
+						modules: {
+							'bundle.js': `import { helper } from "./helper.js"\nexport default function callable() { return helper() }`,
+							'helper.js': `export function helper() { return "from-artifact" }`,
+						},
+					})
+				: null,
+	)
+}
+
+function buildAdHoc(
+	options: {
+		reuseCachedBundle?: boolean
+		requirePublishedImports?: boolean
+	} = {},
+) {
+	return buildKodyModuleBundle({
+		...graphInput,
+		sourceFiles: {
+			'entry.ts': `import callable from "kody:@kentcdodds/example-package/callable"
+export default () => callable()`,
+		},
+		entryPoint: 'entry.ts',
+		bundleContext: 'ad-hoc-execute',
+		attachPublishedArtifacts: true,
+		...options,
+	})
+}
+
+test('ad hoc execute attaches published artifact modules unchanged and bundles only the caller code', async () => {
+	mockModule.createWorker.mockImplementation(
+		async (input: { files: Record<string, string>; entryPoint: string }) => ({
+			mainModule: 'bundle.js',
+			modules: { 'bundle.js': 'export default () => "caller"' },
+			dependencies: [],
+		}),
+	)
+	await setUpCallableArtifact()
+
+	const bundle = await buildAdHoc()
+
+	const call = mockModule.createWorker.mock.calls.at(-1)?.[0] as {
+		files: Record<string, string>
+		__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired: Array<CapturedPlugin>
+	}
+	expect(
+		Object.keys(call.files).filter((path) =>
+			path.includes('.__published_bundle__/'),
+		),
+	).toEqual([])
+	const attachedPaths = Object.keys(bundle.modules).filter((path) =>
+		path.includes('.__published_bundle__/'),
+	)
+	expect(attachedPaths).toHaveLength(2)
+	const helperPath = attachedPaths.find((path) => path.endsWith('/helper.js'))
+	expect(bundle.modules[helperPath ?? '']).toBe(
+		`export function helper() { return "from-artifact" }`,
+	)
+
+	// The import proxy's import of the artifact entry stays external.
+	const proxy = findProxy(call.files)
+	const target = /from\s+["']([^"']+)["']/.exec(proxy?.[1] ?? '')?.[1]
+	expect(target).toBeDefined()
+	const plugin =
+		call.__dangerouslyUseEsBuildPluginsDoNotUseOrYouWillBeFired.find(
+			(candidate) => candidate.name === 'kody-attached-published-artifacts',
+		)
+	let resolve:
+		| Parameters<Parameters<CapturedPlugin['setup']>[0]['onResolve']>[1]
+		| undefined
+	plugin?.setup({ onResolve: (_options, callback) => (resolve = callback) })
+	const proxyDir = (proxy?.[0] ?? '').split('/').slice(0, -1).join('/')
+	const resolved = resolve?.({
+		path: target ?? '',
+		resolveDir: proxyDir,
+		kind: 'import-statement',
+	})
+	expect(resolved?.external).toBe(true)
+	expect(attachedPaths).toContain(resolved?.path.slice('./'.length))
+})
+
+test('ad hoc execute reuses the entry bundle until an imported package serves a new commit', async () => {
+	mockModule.createWorker.mockImplementation(async () => ({
+		mainModule: 'bundle.js',
+		modules: { 'bundle.js': 'export default () => "caller"' },
+		dependencies: [],
+	}))
+	await setUpCallableArtifact({ id: 'source-1', published_commit: 'cache-1' })
+	const before = mockModule.createWorker.mock.calls.length
+
+	await buildAdHoc({ reuseCachedBundle: true })
+	await buildAdHoc({ reuseCachedBundle: true })
+	expect(mockModule.createWorker.mock.calls.length - before).toBe(1)
+
+	await setUpCallableArtifact({ id: 'source-1', published_commit: 'cache-2' })
+	await buildAdHoc({ reuseCachedBundle: true })
+	expect(mockModule.createWorker.mock.calls.length - before).toBe(2)
+})
+
+test('requirePublishedImports refuses an import that needs a package source build', async () => {
+	mockModule.createWorker.mockResolvedValue(createBundleResult('unused'))
+	await setUpCallableArtifact()
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(null)
+	const before = mockModule.createWorker.mock.calls.length
+
+	await expect(buildAdHoc({ requirePublishedImports: true })).rejects.toThrow(
+		PublishedImportsNeedSourceBuildError,
+	)
+	expect(mockModule.createWorker.mock.calls.length).toBe(before)
 })
