@@ -59,16 +59,15 @@ import {
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
-import {
-	AccountManagementMessage,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementMessage } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import {
 	formatTimestamp,
 	formatTimestampDate,
 } from '../components/local-timestamp.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const sectionCss = css({ display: 'grid', gap: spacing.sm })
 const mutedCss = css({ color: colors.textMuted, margin: 0 })
@@ -635,8 +634,8 @@ function DaemonPanel(props: {
 				<div css={rowCss}>
 					<label css={{ display: 'grid', gap: spacing.xs, flex: '1 1 16rem' }}>
 						<span>Reason (optional, shown on the context)</span>
-						<input
-							css={[accountInputCss, target]}
+						<Input
+							css={target}
 							value={reason}
 							maxLength={200}
 							onChange={(event) => setReason(event.target.value)}
@@ -834,10 +833,6 @@ function CommandsPanel(props: {
 					Host commands
 				</h2>
 				<span
-					role="switch"
-					aria-checked={on}
-					aria-readonly
-					aria-labelledby="context-commands-title"
 					data-testid="context-commands-state"
 					css={{
 						display: 'inline-flex',
@@ -1140,8 +1135,7 @@ function OptInControls(props: {
 						minHeight: 44,
 					}}
 				>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={addToChain && !full}
 						disabled={full}
 						onChange={(event) => setAddToChain(event.target.checked)}
@@ -1481,7 +1475,7 @@ function SharingPanel(props: {
 					>
 						<label css={{ display: 'grid', gap: 2 }}>
 							Share with
-							<select
+							<Select
 								value={kind}
 								css={[target, selectCss]}
 								onChange={(event) => setKind(event.target.value as typeof kind)}
@@ -1489,22 +1483,22 @@ function SharingPanel(props: {
 								<option value="user">A person</option>
 								<option value="team">A team</option>
 								<option value="org">Everyone in @{props.orgSlug}</option>
-							</select>
+							</Select>
 						</label>
 						{kind === 'org' ? null : (
 							<label css={{ display: 'grid', gap: 2 }}>
 								{kind === 'user' ? 'Username' : 'Team slug'}
-								<input
+								<Input
 									value={value}
 									required
-									css={[target, accountInputCss]}
+									css={target}
 									onChange={(event) => setValue(event.target.value)}
 								/>
 							</label>
 						)}
 						<label css={{ display: 'grid', gap: 2 }}>
 							Access
-							<select
+							<Select
 								value={preset}
 								css={[target, selectCss]}
 								onChange={(event) =>
@@ -1516,7 +1510,7 @@ function SharingPanel(props: {
 										{presetLabels[item]}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						<Button
 							type="submit"
@@ -1631,10 +1625,10 @@ function RunHistory(props: {
 				<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm }}>
 					<label css={{ display: 'grid', gap: 2 }}>
 						Requester
-						<input
+						<Input
 							value={requesterDraft}
 							placeholder="username"
-							css={[target, accountInputCss]}
+							css={target}
 							onChange={(event) => setRequesterDraft(event.target.value)}
 							onBlur={applyRequester}
 							onKeyDown={(event) => {
@@ -1644,7 +1638,7 @@ function RunHistory(props: {
 					</label>
 					<label css={{ display: 'grid', gap: 2 }}>
 						Outcome
-						<select
+						<Select
 							value={outcome}
 							css={[target, selectCss]}
 							onChange={(event) => {
@@ -1658,7 +1652,7 @@ function RunHistory(props: {
 									{label}
 								</option>
 							))}
-						</select>
+						</Select>
 					</label>
 				</div>
 			) : ok.length > 0 ? (

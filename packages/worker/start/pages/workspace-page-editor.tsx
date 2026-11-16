@@ -75,6 +75,8 @@ import {
 import { BlockPicker, type BlockChoice } from './block-picker.tsx'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { workspaceProse } from './workspace-prose.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const MermaidPreview = lazy(() => import('./workspace-mermaid.tsx'))
 
@@ -720,8 +722,7 @@ export function WorkspacePageEditor({
 								) : (
 									<div className="block-row">
 										{block.kind === 'task' && (
-											<input
-												type="checkbox"
+											<Checkbox
 												aria-label={block.text || 'Task'}
 												checked={block.checked ?? false}
 												disabled
@@ -871,7 +872,7 @@ function WorkspaceLinkBlock({
 			/>
 			{showFields && (
 				<div className="block-link-controls" contentEditable={false}>
-					<input
+					<Input
 						className="block-section-title"
 						aria-label="Link title"
 						placeholder="Link title"
@@ -1041,7 +1042,7 @@ function WorkspaceBlockView({
 				>
 					<summary contentEditable={false}>
 						{editable ? (
-							<input
+							<Input
 								className="block-section-title"
 								aria-label="Section title"
 								placeholder="Section title"
@@ -1063,9 +1064,8 @@ function WorkspaceBlockView({
 			) : (
 				<div className="block-row">
 					{kind === 'task' && (
-						<input
+						<Checkbox
 							contentEditable={false}
-							type="checkbox"
 							aria-label={node.textContent || 'Task'}
 							checked={node.attrs.checked ?? false}
 							disabled={!editable}

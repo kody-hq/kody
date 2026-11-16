@@ -8,7 +8,7 @@ import type { ReactNode } from 'react'
 import { CopyTextButton } from './copy-text-button.tsx'
 import { routes } from '#universal/routes.ts'
 
-import { colors, transitions, typography } from '#universal/styles/tokens.ts'
+import { colors, transitions } from '#universal/styles/tokens.ts'
 import {
 	getSurfaceCardCss,
 	packageDetailPageCss,
@@ -16,6 +16,7 @@ import {
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import type { CommunityInstallOutcome } from '../community-types.ts'
+import { Textarea } from './input.tsx'
 
 export function renderMissingListing(title: string, message: string) {
 	return (
@@ -181,12 +182,11 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 				<div css={reportFormCss}>
 					<label css={reportFieldCss}>
 						<span>Reason</span>
-						<textarea
+						<Textarea
 							value={props.reportReason}
 							rows={4}
 							maxLength={2000}
 							placeholder="Describe why this listing should be reviewed."
-							css={reportTextareaCss}
 							onChange={(event) =>
 								props.onReasonInput(event.currentTarget.value)
 							}
@@ -414,28 +414,6 @@ const reportFieldCss = {
 		fontSize: '0.92rem',
 		fontWeight: 600,
 		color: colors.text,
-	},
-} satisfies CSSObject
-
-const reportTextareaCss = {
-	font: `400 1rem/1.5 ${typography.fontFamilyBody}`,
-	color: colors.text,
-	backgroundColor: colors.surface,
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: '12px',
-	padding: '0.85rem 1.05rem',
-	width: '100%',
-	minHeight: '6.5rem',
-	resize: 'vertical' as const,
-	boxSizing: 'border-box' as const,
-	'&::placeholder': {
-		color: colors.textMuted,
-		opacity: 1,
-	},
-	'&:focus': {
-		outline: 'none',
-		borderColor: colors.primary,
-		boxShadow: `0 0 0 3px oklch(from ${colors.primary} l c h / 0.25)`,
 	},
 } satisfies CSSObject
 

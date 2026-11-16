@@ -57,6 +57,7 @@ export const profileGrantResourceTypes = [
 	'memory',
 	'email',
 	'execution_context',
+	'machine_capability',
 ] as const satisfies ReadonlyArray<OrgGrantResourceType | 'org'>
 
 export type ProfileGrantResourceType =

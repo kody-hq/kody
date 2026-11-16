@@ -223,3 +223,68 @@ test('memoized builders build an export and the jobs on its entry once', async (
 	])
 	expect(built[0]).toBe(built[2])
 })
+
+test('the reuse scan spreads a 65-artifact package over throwaway isolates and maps indexes back', async () => {
+	const { isolatedArtifactReuseScanChunkSize } =
+		await import('./isolated-artifact-rebuild.ts')
+	const targets = Array.from({ length: 65 }, (_, index) => ({
+		kind: 'module' as const,
+		artifactName: `./export-${index}`,
+		entryPoint: `src/export-${index}.ts`,
+		bundleKind: 'module' as const,
+	}))
+	// Every third target changed since the published commit.
+	const runIsolatedArtifactReuseScan = vi.fn(
+		async (request: {
+			targets: Array<{ entryPoint: string }>
+		}): Promise<{ ok: true; reusableIndexes: Array<number> }> => ({
+			ok: true,
+			reusableIndexes: request.targets.flatMap((target, index) =>
+				Number(target.entryPoint.match(/\d+/)![0]) % 3 === 0 ? [] : [index],
+			),
+		}),
+	)
+	const idFromName = vi.fn((name: string) => ({ name }))
+	const runner = createIsolatedArtifactRebuildRunner({
+		REPO_SESSION: {
+			idFromName,
+			get: vi.fn(() => ({ runIsolatedArtifactReuseScan })),
+		},
+		BUNDLE_ARTIFACTS_KV: { put: vi.fn(), get: vi.fn(), delete: vi.fn() },
+	} as unknown as Env)
+	if (!runner) throw new Error('expected runner')
+	const request = {
+		stagingKey: `${isolatedArtifactRebuildStagingKeyPrefix}user-1:stage-1`,
+		userId: ownerIdFromStored('user-1'),
+		source: { id: 'source-1', manifest_path: 'package.json', source_root: '/' },
+		targets,
+	}
+	const outcome = await runner.reuseScan(request)
+	expect(
+		runIsolatedArtifactReuseScan.mock.calls.map(
+			([chunk]) => chunk.targets.length,
+		),
+	).toEqual([
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		1,
+	])
+	expect(new Set(idFromName.mock.calls.map(([name]) => name)).size).toBe(5)
+	expect(outcome).toEqual({
+		ok: true,
+		reusableIndexes: targets.flatMap((_, index) =>
+			index % 3 === 0 ? [] : [index],
+		),
+	})
+
+	runIsolatedArtifactReuseScan.mockRejectedValueOnce(
+		new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset.",
+		),
+	)
+	const reset = await runner.reuseScan(request)
+	expect(reset.ok).toBe(false)
+	expect(reset.ok ? '' : reset.message).toContain('memory or CPU limits')
+})

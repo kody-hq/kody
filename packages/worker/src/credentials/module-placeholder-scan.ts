@@ -252,9 +252,13 @@ export function resolveStringExpression(
 
 /**
  * Names bound in an enclosing function, catch, loop, switch case, or block
- * that shadow a module-level constant for `node`'s ancestors.
+ * that shadow a module-level constant for `node`'s ancestors. Pass `node` so
+ * a function's own computed key and parameter defaults resolve correctly.
  */
-export function shadowedConstantNames(ancestors: ReadonlyArray<AstNode>) {
+export function shadowedConstantNames(
+	ancestors: ReadonlyArray<AstNode>,
+	node?: AstNode,
+) {
 	const names = new Set<string>()
 	for (let index = ancestors.length - 1; index >= 0; index -= 1) {
 		const ancestor = ancestors[index]!
@@ -273,9 +277,25 @@ export function shadowedConstantNames(ancestors: ReadonlyArray<AstNode>) {
 			) {
 				collectBoundNames(ancestor.id, names)
 			}
-			for (const param of ancestor.params ?? []) {
-				collectBoundNames(param, names)
+			// A computed method key runs outside the method, and a parameter
+			// default runs before the body's `var`s exist.
+			const via = ancestors[index + 1] ?? node
+			const inParams = via != null && (ancestor.params ?? []).includes(via)
+			const inBody = via == null || via === ancestor.body
+			if (inParams || inBody) {
+				for (const param of ancestor.params ?? []) {
+					collectBoundNames(param, names)
+				}
 			}
+			if (inBody) {
+				for (const name of hoistedVarNames(ancestor)) names.add(name)
+			}
+		}
+		if (ancestor.type === 'StaticBlock' && Array.isArray(ancestor.body)) {
+			for (const statement of ancestor.body) {
+				collectStatementBindingNames(statement, names)
+			}
+			for (const name of hoistedVarNames(ancestor)) names.add(name)
 		}
 		if (ancestor.type === 'ClassExpression') {
 			collectBoundNames(ancestor.id, names)
@@ -303,6 +323,51 @@ export function shadowedConstantNames(ancestors: ReadonlyArray<AstNode>) {
 			}
 		}
 	}
+	return names
+}
+
+const functionScopeTypes = new Set([
+	'FunctionDeclaration',
+	'FunctionExpression',
+	'ArrowFunctionExpression',
+	'ClassMethod',
+	'ClassPrivateMethod',
+	'ObjectMethod',
+	'StaticBlock',
+])
+
+const hoistedVarNamesByScope = new WeakMap<AstNode, ReadonlySet<string>>()
+
+/**
+ * `var` names declared anywhere in a function body, nested blocks and loops
+ * included: they bind for the whole function, not just their block.
+ */
+function hoistedVarNames(scope: AstNode) {
+	const cached = hoistedVarNamesByScope.get(scope)
+	if (cached) return cached
+	const names = new Set<string>()
+	const visit = (node: AstNode) => {
+		if (node.type === 'VariableDeclaration' && node.kind === 'var') {
+			for (const declarator of node.declarations ?? []) {
+				collectBoundNames(declarator.id, names)
+			}
+		}
+		for (const [key, value] of Object.entries(node)) {
+			if (key === 'loc' || key === 'range' || key.endsWith('omments')) continue
+			for (const child of Array.isArray(value) ? value : [value]) {
+				if (
+					child &&
+					typeof child === 'object' &&
+					'type' in child &&
+					!functionScopeTypes.has((child as AstNode).type)
+				) {
+					visit(child as AstNode)
+				}
+			}
+		}
+	}
+	visit(scope)
+	hoistedVarNamesByScope.set(scope, names)
 	return names
 }
 

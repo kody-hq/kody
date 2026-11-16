@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from './field.tsx'
 import { Button } from './button.tsx'
 import { css } from '@emotion/react'
 import { useEffect, useState } from 'react'
@@ -25,6 +26,8 @@ import {
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import { AccountManagementMessage } from '../pages/account-management-components.tsx'
 import { selectCss } from '../pages/package-collaborators-parts.tsx'
+import { Input, Select } from './input.tsx'
+import { Checkbox } from './choice-controls.tsx'
 
 export type AutomationExecutionTarget = {
 	kind: 'job' | 'webhook' | 'subscription'
@@ -158,9 +161,8 @@ export function AutomationExecutionSettings(props: {
 					Its handler is not a package export, so it can only run on Kody cloud.
 				</AccountManagementMessage>
 			)}
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Run on</span>
-				<select
+			<Field label="Run on">
+				<Select
 					css={selectCss}
 					value={form.mode}
 					disabled={!setting.contextRunnable}
@@ -175,24 +177,22 @@ export function AutomationExecutionSettings(props: {
 					</option>
 					<option value="context">One context</option>
 					<option value="chain">Its own chain</option>
-				</select>
-			</label>
+				</Select>
+			</Field>
 			{form.mode === 'context' ? (
 				<div css={rowCss}>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Context</span>
-						<select
+					<Field label="Context">
+						<Select
 							css={selectCss}
 							value={form.context}
 							onChange={(event) => update({ context: event.target.value })}
 						>
 							<option value="">Choose a context</option>
 							{contextOptions}
-						</select>
-					</label>
+						</Select>
+					</Field>
 					<label css={rowCss}>
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={form.fallbackToChain}
 							onChange={(event) =>
 								update({ fallbackToChain: event.target.checked })
@@ -207,7 +207,7 @@ export function AutomationExecutionSettings(props: {
 					{Array.from({ length: automationChainMaxContexts }, (_, index) => (
 						<label key={index} css={fieldCss}>
 							<span css={fieldLabelCss}>{index + 1}.</span>
-							<select
+							<Select
 								css={selectCss}
 								value={form.chain[index] ?? ''}
 								aria-label={`Chain entry ${index + 1}`}
@@ -219,12 +219,11 @@ export function AutomationExecutionSettings(props: {
 							>
 								<option value="">None</option>
 								{contextOptions}
-							</select>
+							</Select>
 						</label>
 					))}
 					<label css={rowCss}>
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={form.cloudLast}
 							onChange={(event) => update({ cloudLast: event.target.checked })}
 						/>
@@ -236,8 +235,7 @@ export function AutomationExecutionSettings(props: {
 				<legend css={fieldLabelCss}>Needs</legend>
 				{(['fs', 'lan'] as const).map((requirement) => (
 					<label key={requirement} css={rowCss}>
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={form.requires.includes(requirement)}
 							onChange={(event) =>
 								update({
@@ -252,9 +250,8 @@ export function AutomationExecutionSettings(props: {
 				))}
 			</fieldset>
 			<div css={rowCss}>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>When offline</span>
-					<select
+				<Field label="When offline">
+					<Select
 						css={selectCss}
 						value={form.whenOffline}
 						onChange={(event) =>
@@ -265,12 +262,11 @@ export function AutomationExecutionSettings(props: {
 					>
 						<option value="fail">Fail the run</option>
 						<option value="queue">Queue until it reconnects</option>
-					</select>
-				</label>
+					</Select>
+				</Field>
 				{form.whenOffline === 'queue' ? (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Queue for (minutes)</span>
-						<input
+					<Field label="Queue for (minutes)">
+						<Input
 							type="number"
 							min={1}
 							max={automationQueueMaxMinutes}
@@ -279,7 +275,7 @@ export function AutomationExecutionSettings(props: {
 								update({ queueMinutes: Number(event.target.value) || 1 })
 							}
 						/>
-					</label>
+					</Field>
 				) : null}
 			</div>
 			<div css={rowCss}>

@@ -103,7 +103,7 @@ function normalizeSnapshotPath(path: string) {
  * repo root, so only files under its root are its own, or keyed from its
  * source root, so every file is.
  */
-function locatePackage(
+export function locatePackage(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
 ) {

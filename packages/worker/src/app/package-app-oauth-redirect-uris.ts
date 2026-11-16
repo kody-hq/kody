@@ -8,13 +8,17 @@ import {
 	packageAppOauthLegacyPaths,
 	packageAppOauthPaths,
 } from '#universal/package-app-oauth-paths.ts'
-import { buildPackageAppSubdomainUrl } from '@kody-internal/shared/public-urls.ts'
+import {
+	buildPackageAppHostOrigin,
+	buildPackageAppSubdomainUrl,
+} from '@kody-internal/shared/public-urls.ts'
 import type { PackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 
 /**
  * Redirect URIs for package-app OAuth are not registered. They must be the
  * platform callback on an origin that already serves this package:
- * the owner's `*.kody.run` (or local) subdomain, a verified app custom
+ * the owner's `*.kody.run` (or local) subdomain, the app's own
+ * `{leaf}--{handle}` host on that domain, a verified app custom
  * hostname, a verified org custom hostname (private apps), or — when
  * `PACKAGE_APP_BASE_URL` is unset (preview / path-based inline serving) —
  * the app origin itself.
@@ -68,6 +72,12 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 				}),
 			)
 			pushCallbackUrls(allowed, subdomain.origin)
+			const appHostOrigin = buildPackageAppHostOrigin({
+				packageAppOrigin,
+				username: input.client.username,
+				kodyId: input.client.kodyId,
+			})
+			if (appHostOrigin) pushCallbackUrls(allowed, appHostOrigin)
 		} catch {
 			// Ignore unparsable package-app origin.
 		}

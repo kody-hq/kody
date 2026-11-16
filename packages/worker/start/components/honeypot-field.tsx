@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
+import { Input } from './input.tsx'
 
 export function Honeypot() {
 	return (
-		<input
+		<Input
 			type="text"
 			name={honeypotFieldName}
 			tabIndex={-1}

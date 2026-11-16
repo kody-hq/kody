@@ -372,6 +372,12 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		matchColumn: 'paused_by_user_id',
 		nullColumns: ['paused_by_user_id'],
 	},
+	// What a machine the person operates offers (machine access).
+	{
+		kind: 'user_columns',
+		table: 'machine_capabilities',
+		columns: ['operator_user_id'],
+	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
 	// Excess-access notices about a person (ADR 0096).
 	{

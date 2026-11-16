@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { ModalDialog } from '../components/modal-dialog.tsx'
 import { deletePackage } from '#start/server/package-mutations'
@@ -29,15 +30,11 @@ import {
 import {
 	getAccentCalloutCss,
 	hoverMq,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
+import { Input } from '../components/input.tsx'
 
 const packageDeleteCopyTooltip = 'Copy'
 const packageDeleteCopyTooltipId = 'package-delete-copy-name-tooltip'
@@ -155,7 +152,7 @@ export function AccountPackageDeleteDialog(props: {
 				css={{ display: 'grid', gap: spacing.sm }}
 				data-testid="package-delete-controls"
 			>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					Permanently delete this package, its jobs, storage, secrets, tokens,
 					and public listing if it has one. Existing forks keep their copies.
 					This cannot be undone.
@@ -216,24 +213,19 @@ export function AccountPackageDeleteDialog(props: {
 								confirm.
 							</p>
 						</div>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type the name of the package
-							</span>
-							<input
+						<Field label="Type the name of the package">
+							<Input
 								type="text"
 								name="confirmation"
 								data-testid="package-delete-confirmation"
-								data-field-ring
 								autoComplete="off"
 								spellCheck={false}
 								required
 								placeholder={packageName}
 								value={confirmation}
-								css={accountInputCss}
 								onChange={updateConfirmation}
 							/>
-						</label>
+						</Field>
 						{error ? (
 							<p
 								role="alert"

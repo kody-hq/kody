@@ -6,6 +6,7 @@ import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { maxAuditDetailChars } from './audit-detail.ts'
 import { ExecutionContextError } from './errors.ts'
+import type { ExecutionContextRunPackages } from './run-packages.ts'
 import {
 	executionContextCommandPermission,
 	getExecutionContext,
@@ -125,6 +126,7 @@ export async function authorizeContextCommand(
 			cwd: rawCwd ? rawCwd.slice(0, 512) : null,
 			envKeys,
 			background: args.background === true,
+			...runPackagesAuditDetail(principal.packages),
 			...(cut ? { truncated: true as const } : {}),
 		}),
 	})
@@ -202,7 +204,25 @@ type CommandStartedDetail = {
 	cwd: string | null
 	envKeys: Array<string>
 	background: boolean
+	entryPackageIds?: Array<string>
+	packageCount?: number
 	truncated?: true
+}
+
+const maxAuditedEntryPackages = 8
+
+/**
+ * Which saved packages Kody served to the run that started the command.
+ * Nothing for ad hoc code. Any package in the run may have made the call.
+ */
+function runPackagesAuditDetail(
+	packages: ExecutionContextRunPackages | undefined,
+) {
+	if (!packages || packages.all.length === 0) return {}
+	return {
+		entryPackageIds: packages.entries.slice(0, maxAuditedEntryPackages),
+		packageCount: packages.all.length,
+	}
 }
 
 /** Shrinks the detail so its JSON never hits the audit store's cut (which would leave invalid JSON). */

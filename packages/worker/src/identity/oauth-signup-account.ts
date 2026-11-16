@@ -1,3 +1,4 @@
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
 import { maybeTagKitSubscriberOnSignup } from '#app/kit-signup.ts'
 import {
@@ -364,6 +365,7 @@ export async function createOauthSignupAccount(input: {
 		stage: 'email_verified',
 		userId: stableUserId,
 	})
+	await recordWhatsNewVerifiedAccount({ env, stableUserId })
 
 	return { ok: true, user: newUser }
 }

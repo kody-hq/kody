@@ -520,10 +520,14 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				summary:
 					'Bundle and run the publish checks without running the package',
 				usage: [
-					'kody dev check [--target prod|mock] [--offline] [--debug] [--json]',
+					'kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]',
 				],
 				flags: [
 					devTargetFlag,
+					[
+						'--build local',
+						'Also run the publish build on this machine (no upload, no experiment needed)',
+					],
 					['--offline', 'Skip the server publish checks'],
 					['--debug', 'Print the publish checks call to stderr'],
 					jsonFlag,
@@ -606,6 +610,45 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					'kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]',
 				],
 				flags: [orgFlag, jsonFlag],
+			},
+			{
+				name: 'capability',
+				summary:
+					'Define the named commands and local network destinations this machine offers',
+				usage: ['kody context capability [<command>] [flags]'],
+				notes: [
+					'With no command, lists the definitions. Defining one does not let any run use it yet.',
+				],
+				subcommands: [
+					{
+						name: 'list',
+						summary: 'List the definitions on this machine',
+						usage: ['kody context capability list [--json]'],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'add',
+						summary: 'Add or replace a definition from a JSON file',
+						usage: [
+							'kody context capability add command <file.json> [--json]',
+							'kody context capability add lan <file.json> [--json]',
+						],
+						notes: [
+							'command: {"name", "exec": ["program", "fixed args"], "args": [["word", {"pattern": "[a-z0-9-]+"}]], "cwd"?, "background"?, "timeoutMs"?}. A call must match one "args" entry exactly.',
+							'lan: {"name", "hosts": ["192.168.1.10", "10.0.0.0/24"], "ports": [443]}.',
+						],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'remove',
+						summary: 'Remove a definition',
+						usage: [
+							'kody context capability remove command <name> [--json]',
+							'kody context capability remove lan <name> [--json]',
+						],
+						flags: [jsonFlag],
+					},
+				],
 			},
 			{
 				name: 'policy',

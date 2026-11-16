@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { recordWhatsNewConsentChange } from '#worker/newsletter/consent-outbox.ts'
 import {
 	listWhatsNewDeliveryEvents,
 	listWhatsNewRecipients,
@@ -110,7 +111,24 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 			return auditAdminCapabilityInvocation(
 				ctx,
 				'adminWhatsNewOptInSet',
-				() => setWhatsNewOptIn({ db: ctx.env.APP_DB, ...args }),
+				async () => {
+					const result = await setWhatsNewOptIn({
+						db: ctx.env.APP_DB,
+						...args,
+					})
+					// `email_link` is the newsletter package reporting a choice it
+					// already recorded, so only admin changes are announced back.
+					if (args.source === 'admin') {
+						await recordWhatsNewConsentChange({
+							env: ctx.env,
+							stableUserId: result.stable_user_id,
+							optedIn: result.opted_in,
+							source: 'admin',
+							occurredAt: result.opt_in_updated_at,
+						})
+					}
+					return result
+				},
 				{
 					successReason: (result) =>
 						`target_stable_user_id=${result.stable_user_id};opted_in=${result.opted_in}`,

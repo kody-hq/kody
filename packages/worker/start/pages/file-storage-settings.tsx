@@ -6,9 +6,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
 import { readFileStorage, setFileStorage } from '#start/server/file-storage'
-import { accountInputCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
+import { Input } from '../components/input.tsx'
 export default function FileStorageSettings({
 	orgSlug,
 	onClose,
@@ -204,10 +204,9 @@ export default function FileStorageSettings({
 						<div css={{ display: 'grid', gap: 12, marginTop: 18 }}>
 							<label>
 								R2 or S3 endpoint
-								<input
+								<Input
 									required
 									type="url"
-									css={accountInputCss}
 									placeholder="https://account-id.r2.cloudflarestorage.com"
 									value={endpoint}
 									onChange={(e) => setEndpoint(e.target.value)}
@@ -215,27 +214,24 @@ export default function FileStorageSettings({
 							</label>
 							<label>
 								Bucket
-								<input
+								<Input
 									required
-									css={accountInputCss}
 									value={bucket}
 									onChange={(e) => setBucket(e.target.value)}
 								/>
 							</label>
 							<label>
 								Region
-								<input
+								<Input
 									required
-									css={accountInputCss}
 									value={region}
 									onChange={(e) => setRegion(e.target.value)}
 								/>
 							</label>
 							<label>
 								Workspace credential
-								<input
+								<Input
 									required
-									css={accountInputCss}
 									value={credentialName}
 									onChange={(e) => setCredentialName(e.target.value)}
 								/>

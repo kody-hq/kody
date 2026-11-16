@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -23,7 +24,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
@@ -40,9 +40,9 @@ import {
 	IdValue,
 	MetadataGrid,
 	TimestampValue,
-	accountInputCss,
 } from './account-management-components.tsx'
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 type ActionState =
 	| 'idle'
 	| 'saving-global'
@@ -476,9 +476,8 @@ export function AdminFeatureFlagsPage({
 									}}
 								>
 									<span css={fieldLabelCss}>Enabled</span>
-									<input
+									<Checkbox
 										name="enabled"
-										type="checkbox"
 										defaultChecked={flag.global?.enabled ?? false}
 										disabled={isMutating}
 										css={{
@@ -488,10 +487,8 @@ export function AdminFeatureFlagsPage({
 										}}
 									/>
 								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Rollout %</span>
-									<input
-										data-field-ring
+								<Field label="Rollout %">
+									<Input
 										name="rolloutPercent"
 										type="number"
 										min="0"
@@ -504,26 +501,22 @@ export function AdminFeatureFlagsPage({
 												: String(flag.global.rolloutPercent)
 										}
 										disabled={isMutating}
-										css={accountInputCss}
 									/>
-								</label>
+								</Field>
 								{renderAdminFeatureFlagAudienceField({
 									audience:
 										flag.global?.audience ?? flag.defaultAudience ?? undefined,
 									disabled: isMutating,
 								})}
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Note</span>
-									<input
-										data-field-ring
+								<Field label="Note">
+									<Input
 										name="note"
 										type="text"
 										placeholder="Optional operator note"
 										defaultValue={flag.global?.note ?? ''}
 										disabled={isMutating}
-										css={accountInputCss}
 									/>
-								</label>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-global' ? 'Saving…' : 'Save'}
 								</Button>
@@ -672,43 +665,34 @@ export function AdminFeatureFlagsPage({
 									},
 								}}
 							>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Organization handle</span>
-									<input
-										data-field-ring
+								<Field label="Organization handle">
+									<Input
 										name="orgSlug"
 										type="text"
 										required
 										placeholder="org-handle"
 										disabled={isMutating}
-										css={accountInputCss}
 									/>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>State</span>
-									<select
-										data-field-ring
+								</Field>
+								<Field label="State">
+									<Select
 										name="enabled"
 										defaultValue="true"
 										disabled={isMutating}
-										css={selectCss}
 									>
 										<option value="true">On</option>
 										<option value="false">Off</option>
-									</select>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Note</span>
-									<input
-										data-field-ring
+									</Select>
+								</Field>
+								<Field label="Note">
+									<Input
 										name="note"
 										type="text"
 										maxLength={500}
 										placeholder="Why this org has the flag"
 										disabled={isMutating}
-										css={accountInputCss}
 									/>
-								</label>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-org-override'
 										? 'Adding…'
@@ -793,31 +777,25 @@ export function AdminFeatureFlagsPage({
 									},
 								}}
 							>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Username</span>
-									<input
-										data-field-ring
+								<Field label="Username">
+									<Input
 										name="username"
 										type="text"
 										required
 										placeholder="username"
 										disabled={isMutating}
-										css={accountInputCss}
 									/>
-								</label>
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>State</span>
-									<select
-										data-field-ring
+								</Field>
+								<Field label="State">
+									<Select
 										name="enabled"
 										defaultValue="true"
 										disabled={isMutating}
-										css={selectCss}
 									>
 										<option value="true">On</option>
 										<option value="false">Off</option>
-									</select>
-								</label>
+									</Select>
+								</Field>
 								<Button type="submit" disabled={isMutating} variant="primary">
 									{actionState === 'saving-override'
 										? 'Adding…'

@@ -437,3 +437,37 @@ test('repeating a consent choice reports the stored source and time', async () =
 		opt_in_source: 'newsletter_page',
 	})
 })
+
+test('confirming records the consent change for the newsletter ledger, under the account id when there is one', async () => {
+	const { signup, sentToken, confirm, user, rows, sqlite } = setup()
+	const outbox = () =>
+		sqlite
+			.prepare(
+				`SELECT recipient_id AS stable_user_id, opted_in, source, occurred_at FROM whats_new_consent_outbox ORDER BY created_at, rowid`,
+			)
+			.all()
+	await signup('guest@example.com')
+	expect(outbox()).toEqual([])
+	// A bad link records nothing.
+	await confirm('0'.repeat(64))
+	expect(outbox()).toEqual([])
+	await confirm(sentToken())
+	const guestId = rows()[0]!['stable_id']
+	expect(outbox()).toEqual([
+		{
+			stable_user_id: guestId,
+			opted_in: 1,
+			source: 'newsletter_page',
+			occurred_at: now.toISOString(),
+		},
+	])
+	const accountId = user('member@example.com')
+	await signup('member@example.com')
+	await confirm(sentToken())
+	expect(outbox().at(-1)).toEqual({
+		stable_user_id: accountId,
+		opted_in: 1,
+		source: 'newsletter_page',
+		occurred_at: now.toISOString(),
+	})
+})

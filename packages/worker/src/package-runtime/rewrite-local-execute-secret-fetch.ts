@@ -1,4 +1,5 @@
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import { resolveModuleBindings } from './module-scope-bindings.ts'
 import {
 	createRelativeImportSpecifier,
 	normalizeWorkspaceModulePath,
@@ -158,9 +159,9 @@ const globalObjectNames = new Set(['globalThis', 'self'])
  * Replace reads of `globalThis.fetch` / `self.fetch` with `replacement`, so
  * a package module that reaches fetch through the global object still uses
  * its own package-bound fetch. Writes (`globalThis.fetch = ...`) are left
- * alone. A global-object name is only rewritten when every use of that name
- * in the module is a plain member access, so a local binding or an alias of
- * the same name is never mistaken for the global object. Returns the source
+ * alone. A name is only rewritten where it refers to the global object: a
+ * local variable or parameter of the same name is left alone, and so is a
+ * read through another name for the global object. Returns the source
  * unchanged when it does not parse.
  */
 /** Cheap text check that runs before parsing. */
@@ -176,18 +177,14 @@ export async function rewriteGlobalObjectFetchReads(
 	if (!found) return source
 	let next = source
 	for (const read of found.reads.sort((a, b) => b.start - a.start)) {
-		if (found.unsafeNames.has(read.name)) continue
 		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
 	}
 	return next
 }
 
 /**
- * True when the source reads `fetch` off the global object anywhere, even
- * where {@link rewriteGlobalObjectFetchReads} would leave it alone because
- * the module also uses the global object as a value. A bundle that inlines
- * several packages is one module, so one package's alias would otherwise
- * hide another package's plain reads.
+ * True when the source has a read of `fetch` off the global object that
+ * {@link rewriteGlobalObjectFetchReads} would replace.
  */
 export async function sourceReadsFetchThroughGlobalObject(source: string) {
 	return ((await collectGlobalObjectFetchReads(source))?.reads.length ?? 0) > 0
@@ -201,12 +198,14 @@ async function collectGlobalObjectFetchReads(source: string) {
 	} catch {
 		return null
 	}
-	const unsafeNames = new Set<string>()
-	const reads: Array<{ start: number; end: number; name: string }> = []
+	const bindings = resolveModuleBindings(parsed)
+	const reads: Array<{ start: number; end: number }> = []
 	walkAst(parsed, (node, parent) => {
 		if (node.type !== 'Identifier') return
 		const name = (node as { name?: unknown }).name
 		if (typeof name !== 'string' || !globalObjectNames.has(name)) return
+		// A local of the same name is not the global object.
+		if (bindings.has(node)) return
 		const member = parent as
 			| (ModuleAstNode & {
 					object?: unknown
@@ -219,21 +218,7 @@ async function collectGlobalObjectFetchReads(source: string) {
 			member?.type === 'OptionalMemberExpression' ||
 			member?.type === 'StaticMemberExpression' ||
 			member?.type === 'ComputedMemberExpression'
-		if (isMember && member.property === node && member.computed !== true) {
-			return
-		}
-		if (
-			parent &&
-			(parent as { key?: unknown }).key === node &&
-			(parent as { computed?: boolean }).computed !== true &&
-			(parent as { shorthand?: boolean }).shorthand !== true
-		) {
-			return
-		}
-		if (!isMember || member.object !== node) {
-			unsafeNames.add(name)
-			return
-		}
+		if (!isMember || member.object !== node) return
 		const property = member.property as
 			| { type?: string; name?: unknown; value?: unknown }
 			| undefined
@@ -247,16 +232,12 @@ async function collectGlobalObjectFetchReads(source: string) {
 					: null
 		if (propertyName !== 'fetch') return
 		if (typeof member.start !== 'number' || typeof member.end !== 'number') {
-			unsafeNames.add(name)
 			return
 		}
-		reads.push({ start: member.start, end: member.end, name })
+		reads.push({ start: member.start, end: member.end })
 	})
 	const writes = collectMemberWriteStarts(parsed)
-	return {
-		reads: reads.filter((read) => !writes.has(read.start)),
-		unsafeNames,
-	}
+	return { reads: reads.filter((read) => !writes.has(read.start)) }
 }
 
 /**
@@ -266,7 +247,7 @@ async function collectGlobalObjectFetchReads(source: string) {
  * whole target subtree also covers computed keys and defaults inside a
  * pattern; leaving those unrewritten is the safe direction.
  */
-function collectMemberWriteStarts(parsed: ModuleAstNode) {
+export function collectMemberWriteStarts(parsed: ModuleAstNode) {
 	const starts = new Set<number>()
 	const addTarget = (target: unknown) => {
 		walkAst(target, (inner) => {

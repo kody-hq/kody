@@ -3,8 +3,8 @@
 Kody is your agents' cloud. Accounts isolate packages, jobs, credentials,
 memories, connectors, email, and durable storage for individuals and teams.
 
-Reuse existing UI components and styles. Extend shared controls for shared
-behavior. Never add unstyled native selects. Verify the rendered result.
+Reuse existing UI components; extend shared controls. Never add unstyled native
+selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
 `npm run validate` is the local gate. Verify UI/API with
 [control-kody](./docs/contributing/control-kody.md) first.
 

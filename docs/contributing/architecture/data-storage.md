@@ -275,7 +275,14 @@ state, or R2 bytes. The MCP capability domain `account` provides the complete,
 migration-safe chunked interface:
 
 - `accountExportManifest` returns the manifest, counts, warnings, and chunking
-  instructions.
+  instructions. Every manifest section carries a `discovery` object with the
+  exact `accountExportSection` arguments that read it: `d1.<table>` keys map to
+  `section: "d1_table"` plus `table`, `storage_runners` maps to
+  `durable_object_summaries` with `kind: "storage_runner"`, and every other key
+  (for example `artifact_repos`, `kv_keys`, `oauth_grants`) is its own section.
+  Wrong arguments (a section name passed as a D1 table, a missing `table`,
+  `storage_id`, or `kind`, an unknown storage id, a malformed cursor) are caller
+  errors whose message names the call to make instead.
 - `accountExportSection` pages through one section at a time. D1 rows are read
   with `section: "d1_table"` and a table name. Durable storage buckets are read
   with `section: "storage_runner"` and a `storage_id`, using the same

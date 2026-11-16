@@ -12,7 +12,7 @@ test('reads of fetch through the global object use the replacement', async () =>
 	expect(await rewrite(`globalThis['fetch'](url)`)).toBe(`F(url)`)
 	expect(
 		await rewrite(`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`),
-	).toBe(`new Sdk({ fetch: globalThis.fetch.bind(globalThis) })`)
+	).toBe(`new Sdk({ fetch: F.bind(globalThis) })`)
 	expect(await rewrite(`new Sdk({ fetch: globalThis.fetch, self: 1 })`)).toBe(
 		`new Sdk({ fetch: F, self: 1 })`,
 	)
@@ -56,6 +56,32 @@ test('a module can read through one global object while aliasing the other', asy
 	).toBe(`const s = self; F(url); s.fetch(url)`)
 })
 
+test('a global object also used as a value is still read as the global object', async () => {
+	expect(
+		await rewrite(`const g = globalThis; globalThis.fetch(url); g.fetch(url)`),
+	).toBe(`const g = globalThis; F(url); g.fetch(url)`)
+	expect(
+		await rewrite(`if ('document' in self) self.fetch(url, { self })`),
+	).toBe(`if ('document' in self) F(url, { self })`)
+})
+
+test('a name is the global object only outside the scopes that declare it', async () => {
+	expect(
+		await rewrite(
+			`function run(self) { return self.fetch(url) }\nexport const a = () => self.fetch(url)`,
+		),
+	).toBe(
+		`function run(self) { return self.fetch(url) }\nexport const a = () => F(url)`,
+	)
+	expect(
+		await rewrite(
+			`export const a = () => { var self = this; return self.fetch(url) }\nself.fetch(url)`,
+		),
+	).toBe(
+		`export const a = () => { var self = this; return self.fetch(url) }\nF(url)`,
+	)
+})
+
 test('a parenthesized global object is still read as the global object', async () => {
 	expect(await rewrite(`(globalThis).fetch(url)`)).toBe(`F(url)`)
 })
@@ -63,7 +89,9 @@ test('a parenthesized global object is still read as the global object', async (
 test('a read is still found where the module also uses the global object as a value', async () => {
 	// One package's alias in an inlined bundle must not hide another's read.
 	const source = `const shared = globalThis\nshared.fetch(a)\nglobalThis.fetch(b)`
-	expect(await rewrite(source)).toBe(source)
+	expect(await rewrite(source)).toBe(
+		`const shared = globalThis\nshared.fetch(a)\nF(b)`,
+	)
 	expect(await sourceReadsFetchThroughGlobalObject(source)).toBe(true)
 	expect(
 		await sourceReadsFetchThroughGlobalObject(`const shared = globalThis`),

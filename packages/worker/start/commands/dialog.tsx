@@ -17,13 +17,13 @@ import { rankCommands, parseCommandQuery, type Command } from './model.ts'
 import { readCommandHistory, saveCommandHistory } from './preferences.ts'
 import {
 	dialogCss,
-	inputCss,
 	rowCss,
 	footerCss,
 	pressedCss,
 	compactSelectCss,
 } from './styles.ts'
 import { Button } from '../components/button.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 export function CommandDialog({
 	session,
@@ -521,10 +521,8 @@ export function CommandDialog({
 						}}
 					>
 						{renderIcon('search', { size: '20px' })}
-						<input
+						<Input
 							ref={input}
-							data-field-ring
-							css={inputCss}
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							placeholder={
@@ -577,7 +575,7 @@ export function CommandDialog({
 							</Button>
 						) : (
 							<>
-								<select
+								<Select
 									aria-label="Search workspace"
 									value={slug ?? ''}
 									onChange={(event) => {
@@ -592,7 +590,7 @@ export function CommandDialog({
 										</option>
 									))}
 									{!session ? <option value="">Kody</option> : null}
-								</select>
+								</Select>
 								<Button
 									variant="secondary"
 									size="xs"

@@ -23,7 +23,12 @@ import {
 import { extraTrustedCertificates } from './tls-errors.js'
 
 const localExecuteCompatibilityDate = '2026-04-16'
-const localExecuteCompatibilityFlags = ['nodejs_compat'] as const
+// `disallow_importable_env`: run code must not read the run secret or the
+// bridge binding through `import { env } from 'cloudflare:workers'`.
+const localExecuteCompatibilityFlags = [
+	'nodejs_compat',
+	'disallow_importable_env',
+] as const
 
 export const localWorkerModuleNames = {
 	entry: '__kody_local_entry.js',
@@ -67,6 +72,11 @@ export function localGatewayFetchStreamRuntimeSource(options: {
 let __kodyBridge = null;
 
 export function __kodyInstallLocalBridge(bridge) {
+	// The entry installs the bridge before it imports run code; a later call
+	// (run code trying to swap the bridge) is refused.
+	if (__kodyBridge !== null) {
+		throw new Error('The local runtime bridge is already installed.');
+	}
 	// Object form: { call, gatewayFetch }. Legacy function form still works for /call.
 	__kodyBridge =
 		typeof bridge === 'function' ? { call: bridge, gatewayFetch: null } : bridge;
@@ -506,8 +516,16 @@ export function __kodyRunInLocalRuntime(callback) {
 export function createLocalEntrySource(
 	input: {
 		sideEffectModules?: ReadonlyArray<string>
+		/** Module name of the host folder shim, when the run has host folders. */
+		hostFsModule?: string
 	} = {},
 ): string {
+	const hostFsImport = input.hostFsModule
+		? `import { __kodyInstallHostFsBridge } from ${JSON.stringify(input.hostFsModule)};`
+		: ''
+	const hostFsInstall = input.hostFsModule
+		? '__kodyInstallHostFsBridge({ fetcher: env.KODY_BRIDGE, secret });'
+		: ''
 	const sideEffectImports = [...new Set(input.sideEffectModules ?? [])]
 		.filter((name) => typeof name === 'string' && name.trim().length > 0)
 		.map((name) => `import ${JSON.stringify(name)};`)
@@ -519,6 +537,7 @@ ${sideEffectBlock}import {
 	__kodyRunInLocalRuntime,
 } from ${JSON.stringify(localWorkerModuleNames.runtime)};
 
+${hostFsImport}
 const __kodyRunSecretHeader = ${JSON.stringify(runSecretHeader)};
 let __kodyClaimed = false;
 
@@ -542,6 +561,7 @@ export default {
 			return new Response('Forbidden: missing run secret, or this one-shot run was already claimed. Only the kody process that started this workerd may call it.', { status: 403 });
 		}
 		__kodyClaimed = true;
+		${hostFsInstall}
 		const { params } = await request.json();
 		__kodyInstallLocalBridge({
 			call: async (path, args) => {

@@ -71,10 +71,7 @@ import {
 	type FileMetadata,
 } from '#universal/files.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getSquircleCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 import {
 	workspaceDirectoryMediaType,
 	isWorkspaceContainer,
@@ -105,7 +102,7 @@ const MarkdownPreview = lazy(
 	() => import('./file-viewers/markdown-file-viewer.tsx'),
 )
 import { SiteLink } from '../components/site-link.tsx'
-import { accountInputCss } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 const loadLinkTitle = (url: string) => readPageLinkTitle({ data: { url } })
 
@@ -1052,9 +1049,8 @@ export function FilesPage({
 					</span>
 				)}
 				{isPage && editable && !historical ? (
-					<input
+					<Input
 						aria-label="Page title"
-						data-field-ring
 						placeholder="Untitled"
 						value={creating ? name : newName}
 						maxLength={200}
@@ -1295,12 +1291,11 @@ export function FilesPage({
 								}}
 							>
 								<WorkspaceIcon name="search" />
-								<input
+								<Input
 									ref={explorerSearch}
 									role="searchbox"
 									inputMode="search"
 									css={{
-										...accountInputCss,
 										minHeight: 28,
 										fontSize: typography.fontSize.xs,
 										padding: '4px 30px 4px 26px',
@@ -1715,8 +1710,7 @@ export function FilesPage({
 													}}
 												>
 													{isDirectory ? 'Folder name' : 'File name'}
-													<input
-														css={accountInputCss}
+													<Input
 														placeholder={
 															isDirectory ? 'Untitled folder' : 'Untitled file'
 														}
@@ -1737,9 +1731,7 @@ export function FilesPage({
 														}}
 													>
 														File type
-														<select
-															data-field-ring
-															css={getSelectCss()}
+														<Select
 															value={mediaType}
 															onChange={(event) =>
 																setMediaType(
@@ -1752,7 +1744,7 @@ export function FilesPage({
 															<option value="text/plain">Text</option>
 															<option value="text/html">HTML</option>
 															<option value="text/csv">CSV</option>
-														</select>
+														</Select>
 													</label>
 												)}
 											</div>
@@ -2049,10 +2041,8 @@ export function FilesPage({
 												}}
 											>
 												Version
-												<select
-													data-field-ring
+												<Select
 													css={{
-														...getSelectCss(),
 														minWidth: 0,
 														textOverflow: 'ellipsis',
 													}}
@@ -2095,7 +2085,7 @@ export function FilesPage({
 															{revision.author}
 														</option>
 													))}
-												</select>
+												</Select>
 											</label>
 											{historyCursor && (
 												<Button
@@ -2409,6 +2399,7 @@ export function FilesPage({
 											fill={fullHtmlPreview}
 										/>
 									) : (
+										// oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless source editor surface
 										<textarea
 											css={sourceCss}
 											aria-label="Document text"

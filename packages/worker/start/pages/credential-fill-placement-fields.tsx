@@ -5,17 +5,15 @@ import {
 	fillPlacementPartIds,
 	type FillPlacementPartId,
 } from '#universal/credential-fill-placement.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	inputCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const partsLabel: Record<FillPlacementPartId, string> = {
 	headers: 'Headers',
@@ -91,8 +89,7 @@ export function CredentialFillPlacementFields(
 				{fillPlacementPartIds.map((part) => (
 					<li key={part}>
 						<label css={rowCss}>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={draft[part]}
 								disabled={disabled}
 								onChange={(event) => {
@@ -114,7 +111,7 @@ export function CredentialFillPlacementFields(
 			{draft.headers ? (
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>Named headers (optional)</span>
-					<input
+					<Input
 						type="text"
 						value={draft.namedHeaders}
 						disabled={disabled}
@@ -125,7 +122,6 @@ export function CredentialFillPlacementFields(
 								namedHeaders: event.currentTarget.value,
 							})
 						}}
-						css={inputCss}
 					/>
 					<p css={hintCss}>
 						Leave empty to allow any header name. Comma-separated list limits

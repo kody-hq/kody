@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import type { CSSObject } from '@emotion/react'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AccountConnectedAppDisconnectOptions(props: {
 	credentials: Array<{ id: string; name: string }>
@@ -12,8 +13,7 @@ export function AccountConnectedAppDisconnectOptions(props: {
 		<div css={disconnectOptionsCss}>
 			{props.credentials.map((credential) => (
 				<label key={credential.id} css={disconnectOptionCss}>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={props.selectedIds.has(credential.id)}
 						onChange={(event) => {
 							const next = new Set(props.selectedIds)

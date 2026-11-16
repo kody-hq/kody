@@ -15,7 +15,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getAuthInputCss } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 type Slot = ReactNode
 
@@ -53,21 +53,19 @@ export function RecordTableSearch(props: {
 		}
 	}
 	return (
-		<input
+		<Input
 			type="text"
 			role="searchbox"
 			inputMode="search"
 			autoComplete="off"
 			autoCorrect="off"
 			spellCheck={false}
-			data-field-ring={props.variant === 'plain' ? undefined : true}
 			disabled={props.disabled}
 			value={draft ?? props.value}
 			placeholder={props.placeholder}
 			aria-label={props.label}
 			onChange={(event) => update(event.currentTarget.value)}
 			css={{
-				...getAuthInputCss(),
 				appearance: 'none',
 				WebkitAppearance: 'none',
 				flex: '1 1 12rem',

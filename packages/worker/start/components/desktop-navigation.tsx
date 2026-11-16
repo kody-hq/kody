@@ -6,6 +6,7 @@ import { toast } from '#client/toast.ts'
 import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
+import { Input } from './input.tsx'
 
 const toolbarHeight = 32
 
@@ -181,19 +182,15 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 								flexWrap: 'wrap',
 							}}
 						>
-							<input
+							<Input
+								size="sm"
+								background="canvas"
 								aria-label="Page address"
 								readOnly
 								value={state.url}
 								onFocus={(event) => event.currentTarget.select()}
 								css={{
 									width: '100%',
-									boxSizing: 'border-box',
-									padding: 8,
-									color: colors.text,
-									background: colors.background,
-									border: `1px solid ${colors.border}`,
-									borderRadius: 6,
 								}}
 							/>
 							<button

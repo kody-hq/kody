@@ -1011,7 +1011,7 @@ test('setSecretsAllowedPackages and setSecretsAllowedHosts batch upserts and ski
 			updates: [{ name: 'missingToken', allowedPackages: ['pkg-a'] }],
 			audit: null,
 		}),
-	).rejects.toThrow('Secret not found for this scope.')
+	).rejects.toThrow('Secret "missingToken" not found in user scope.')
 
 	await expect(
 		setSecretAllowedPackages({

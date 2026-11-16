@@ -95,6 +95,7 @@ function renderHostSelect(
 				}
 				aria-hidden="true"
 			/>
+			{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- inline select set in running prose */}
 			<select
 				aria-label={label}
 				value={selected.id}

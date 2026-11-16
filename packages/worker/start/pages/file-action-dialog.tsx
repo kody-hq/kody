@@ -4,9 +4,8 @@ import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useState } from 'react'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { accountInputCss } from './account-management-components.tsx'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { readFileMovePreview } from '#start/server/file-collaboration'
+import { Input, Select } from '../components/input.tsx'
 
 export function FileActionDialog({
 	item,
@@ -112,20 +111,18 @@ export function FileActionDialog({
 					)}
 				</div>
 				{action === 'rename' ? (
-					<input
+					<Input
 						autoFocus
 						aria-label="New name"
-						css={accountInputCss}
 						value={name}
 						maxLength={200}
 						onChange={(event) => setName(event.target.value)}
 					/>
 				) : action === 'move' ? (
-					<select
+					<Select
 						autoFocus
 						aria-label="Destination"
-						data-field-ring
-						css={{ ...getSelectCss(), minWidth: 0, textOverflow: 'ellipsis' }}
+						css={{ minWidth: 0, textOverflow: 'ellipsis' }}
 						value={parent}
 						onChange={(event) => {
 							setMovePreview(null)
@@ -139,7 +136,7 @@ export function FileActionDialog({
 								{option.name}
 							</option>
 						))}
-					</select>
+					</Select>
 				) : (
 					<p css={{ margin: 0, overflowWrap: 'anywhere' }}>
 						Move “{item.name}” and its contents to trash? You can restore them

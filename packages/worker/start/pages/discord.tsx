@@ -30,6 +30,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
+import { Input } from '../components/input.tsx'
 
 const discordPath = routes.discord.href()
 
@@ -272,7 +273,7 @@ export function DiscordPage({
 							void handleConnectDiscord()
 						}}
 					>
-						<input
+						<Input
 							type="text"
 							name={honeypotFieldName}
 							tabIndex={-1}

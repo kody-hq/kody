@@ -77,6 +77,7 @@ import { Route as ConnectSecretsRouteImport } from './routes/connect.secrets'
 import { Route as ConnectWebhookApplyRouteImport } from './routes/connect.webhook-apply'
 import { Route as DesktopLoginRouteImport } from './routes/desktop.login'
 import { Route as DesktopSessionRouteImport } from './routes/desktop.session'
+import { Route as DevUiRouteImport } from './routes/dev.ui'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as DocsConnectRouteImport } from './routes/docs.connect'
@@ -653,6 +654,11 @@ const DesktopLoginRoute = DesktopLoginRouteImport.update({
 const DesktopSessionRoute = DesktopSessionRouteImport.update({
   id: '/desktop/session',
   path: '/desktop/session',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevUiRoute = DevUiRouteImport.update({
+  id: '/dev/ui',
+  path: '/dev/ui',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
@@ -2026,6 +2032,7 @@ export interface FileRoutesByFullPath {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
@@ -2325,6 +2332,7 @@ export interface FileRoutesByTo {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
@@ -2627,6 +2635,7 @@ export interface FileRoutesById {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs_/connect.md': typeof DocsConnectDotmdRoute
@@ -2929,6 +2938,7 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
@@ -3228,6 +3238,7 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
@@ -3529,6 +3540,7 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs_/connect.md'
@@ -3829,6 +3841,7 @@ export interface RootRouteChildren {
   ConnectWebhookApplyRoute: typeof ConnectWebhookApplyRoute
   DesktopLoginRoute: typeof DesktopLoginRoute
   DesktopSessionRoute: typeof DesktopSessionRoute
+  DevUiRoute: typeof DevUiRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsConnectRoute: typeof DocsConnectRoute
   DocsConnectDotmdRoute: typeof DocsConnectDotmdRoute
@@ -4382,6 +4395,13 @@ declare module '@tanstack/react-router' {
       path: '/desktop/session'
       fullPath: '/desktop/session'
       preLoaderRoute: typeof DesktopSessionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/ui': {
+      id: '/dev/ui'
+      path: '/dev/ui'
+      fullPath: '/dev/ui'
+      preLoaderRoute: typeof DevUiRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/docs/': {
@@ -6502,6 +6522,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectWebhookApplyRoute: ConnectWebhookApplyRoute,
   DesktopLoginRoute: DesktopLoginRoute,
   DesktopSessionRoute: DesktopSessionRoute,
+  DevUiRoute: DevUiRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsConnectRoute: DocsConnectRoute,
   DocsConnectDotmdRoute: DocsConnectDotmdRoute,

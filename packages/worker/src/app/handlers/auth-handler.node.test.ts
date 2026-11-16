@@ -509,7 +509,7 @@ test('auth handler login and signup workflow', async () => {
 		[
 			'no spaces',
 			400,
-			'Username must be 3 to 32 characters, use only letters, numbers, and hyphens, and start and end with a letter or number.',
+			'Username must be 3 to 32 characters, use only letters, numbers, and single hyphens (no two in a row), and start and end with a letter or number.',
 		],
 		['kody', 400, 'This username is reserved.'],
 		['postmaster', 400, 'This username is reserved.'],

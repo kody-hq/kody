@@ -1,6 +1,11 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { listJsonSchemaSubsetProblems } from '@kody-internal/shared/json-schema-subset.ts'
 import {
+	getPackageAppHostLabelLengthError,
+	isPackageAppHostLabelReservedPackageLeaf,
+	packageAppHostLabelReservedPackageLeafMessage,
+} from '@kody-internal/shared/package-app-host-label.ts'
+import {
 	isPackageAppHostReservedPackageLeaf,
 	packageAppHostReservedPackageLeafMessage,
 } from '@kody-internal/shared/package-app-host-paths.ts'
@@ -167,6 +172,23 @@ export function parseAuthoredPackageJson(input: {
 		throw new Error(
 			`Invalid ${input.manifestPath ?? packageManifestPath}:\n${packageAppHostReservedPackageLeafMessage(expectedKodyId)}`,
 		)
+	}
+	if ((input.mode ?? 'authoring') === 'authoring') {
+		const hostLabelError = isPackageAppHostLabelReservedPackageLeaf(
+			expectedKodyId,
+		)
+			? packageAppHostLabelReservedPackageLeafMessage(expectedKodyId)
+			: manifest.kody.app
+				? getPackageAppHostLabelLengthError({
+						leaf: expectedKodyId,
+						handle: getPackageNameScope(manifest.name) ?? '',
+					})
+				: null
+		if (hostLabelError) {
+			throw new Error(
+				`Invalid ${input.manifestPath ?? packageManifestPath}:\n${hostLabelError}`,
+			)
+		}
 	}
 	// Authoring/publish only: an older snapshot with such a key still loads,
 	// and consent rejects its need:<key> scope when a visitor is asked for it.

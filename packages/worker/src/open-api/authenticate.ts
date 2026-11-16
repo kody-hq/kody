@@ -502,6 +502,7 @@ async function authenticateWithExecutionContextLease(input: {
 			runtime: lease.runtime,
 			byOperator,
 			callMap: credentialCallMapFromJson(lease.credentials),
+			...(lease.packages ? { packages: lease.packages } : {}),
 		},
 		waitUntil: input.waitUntil,
 	})

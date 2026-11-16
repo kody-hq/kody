@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
@@ -62,7 +63,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	mutedLinkCss,
@@ -100,6 +100,7 @@ import {
 	OAuthAuthorizeGuestConnected,
 	OAuthAuthorizeSignedOutChoices,
 } from './oauth-authorize-guest.tsx'
+import { Input } from '../components/input.tsx'
 type OAuthAuthorizeStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 function oauthAuthorizeAccessLead(
@@ -1021,18 +1022,16 @@ export function OAuthAuthorizeRoute({
 									, then you'll come right back here to finish connecting.
 								</p>
 							) : null}
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Email</span>
-								<input
+							<Field label="Email">
+								<Input
 									type="email"
 									name="email"
 									required
 									autoComplete="email"
 									placeholder="you@example.com"
 									disabled={actionsDisabled}
-									css={inputCss}
 								/>
-							</label>
+							</Field>
 							<div css={fieldCss}>
 								<label htmlFor="oauth-authorize-password" css={fieldLabelCss}>
 									Password
@@ -1044,7 +1043,6 @@ export function OAuthAuthorizeRoute({
 									autoComplete="current-password"
 									placeholder="Enter your password"
 									disabled={actionsDisabled}
-									css={inputCss}
 								/>
 							</div>
 						</>

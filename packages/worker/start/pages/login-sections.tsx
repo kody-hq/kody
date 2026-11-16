@@ -17,10 +17,10 @@ import { renderIcon } from '../components/icon.tsx'
 import { turnstileWidgetClassName } from '#client/public-form-protection.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
 import {
-	authFieldCss,
-	authFieldLabelCss,
-	authFieldLabelRowCss,
-	getAuthInputCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldLabelRowCss,
+	getFieldControlCss,
 	getLanternGlowCss,
 	getSwapLabelCss,
 	hoverMq,
@@ -31,6 +31,8 @@ import {
 	type UsernameAvailabilityView,
 } from '../components/username-choice-field.tsx'
 import type { AuthStatus } from './login.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const motionOk = '@media (prefers-reduced-motion: no-preference)'
 const mobileMq = '@media (max-width: 900px)'
@@ -170,7 +172,7 @@ export function AuthForm(
 				if (isTextEntryTarget(event.target)) props.onFieldEdit()
 			}}
 		>
-			<input
+			<Input
 				type="text"
 				name={honeypotFieldName}
 				tabIndex={-1}
@@ -199,28 +201,27 @@ export function AuthForm(
 					statusId={statusId}
 				/>
 			) : null}
-			<div css={authFieldCss}>
-				<label htmlFor={`${props.handleId}-email`} css={authFieldLabelCss}>
+			<div css={fieldCss}>
+				<label htmlFor={`${props.handleId}-email`} css={fieldLabelCss}>
 					Email
 				</label>
 				{props.isSignup ? (
-					<input
+					<Input
 						id={`${props.handleId}-email`}
 						type="email"
 						name="email"
 						required
 						autoComplete="email"
 						placeholder="you@yourdomain.dev"
-						data-field-ring
 						value={props.signupEmail}
 						onChange={(event) =>
 							props.onSignupEmailInput(event.currentTarget.value)
 						}
 						{...fieldErrorProps('email', invalidFields, statusId)}
-						css={authInputCss}
+						background="canvas"
 					/>
 				) : (
-					<input
+					<Input
 						id={`${props.handleId}-email`}
 						type="email"
 						name="email"
@@ -230,23 +231,19 @@ export function AuthForm(
 						// in the username field (1Password's default) can autofill.
 						autoComplete="username"
 						placeholder="you@yourdomain.dev"
-						data-field-ring
 						{...fieldErrorProps('email', invalidFields, statusId)}
-						css={authInputCss}
+						background="canvas"
 					/>
 				)}
 			</div>
-			<div css={authFieldCss}>
+			<div css={fieldCss}>
 				{props.isSignup ? (
-					<label htmlFor={`${props.handleId}-password`} css={authFieldLabelCss}>
+					<label htmlFor={`${props.handleId}-password`} css={fieldLabelCss}>
 						Password
 					</label>
 				) : (
-					<div css={authFieldLabelRowCss}>
-						<label
-							htmlFor={`${props.handleId}-password`}
-							css={authFieldLabelCss}
-						>
+					<div css={fieldLabelRowCss}>
+						<label htmlFor={`${props.handleId}-password`} css={fieldLabelCss}>
 							Password
 						</label>
 						<SiteLink href="/reset-password" css={fieldAsideCss}>
@@ -278,21 +275,12 @@ export function AuthForm(
 			) : null}
 			{props.isSignup ? (
 				<label css={rememberCss}>
-					<input
-						type="checkbox"
-						name="whatsNewEmailOptIn"
-						css={rememberInputCss}
-					/>
+					<Checkbox name="whatsNewEmailOptIn" css={rememberInputCss} />
 					<span>Send me What's New in Kody emails</span>
 				</label>
 			) : (
 				<label css={rememberCss}>
-					<input
-						type="checkbox"
-						name="rememberMe"
-						defaultChecked
-						css={rememberInputCss}
-					/>
+					<Checkbox name="rememberMe" defaultChecked css={rememberInputCss} />
 					<span>Remember me on this device</span>
 				</label>
 			)}
@@ -460,7 +448,7 @@ const authFormCss: CSSObject = {
 
 /* Fields sit on the lighter surface, so they take the canvas tone and read
    as wells in both themes. */
-const authInputCss = getAuthInputCss({ background: 'canvas' })
+const authInputCss = getFieldControlCss({ background: 'canvas' })
 
 const inlineLinkCss: CSSObject = {
 	color: colors.primaryText,

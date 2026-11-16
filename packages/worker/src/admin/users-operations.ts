@@ -1,3 +1,4 @@
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
 import { adminOperationResult } from './operation-result.ts'
 import {
 	auditDatabaseFromEnv,
@@ -373,6 +374,10 @@ export async function verifyAdminUserEmail(input: {
 
 	try {
 		await markAdminUserEmailVerified(input.env.APP_DB, {
+			stableUserId: targetStableUserId,
+		})
+		await recordWhatsNewVerifiedAccount({
+			env: input.env,
 			stableUserId: targetStableUserId,
 		})
 	} catch (error) {

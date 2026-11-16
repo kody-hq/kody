@@ -102,5 +102,5 @@ test('lockSecretToPackage adds a package grant and rejects unknown packages', as
 			packageId: 'pkg-notes',
 			audit: null,
 		}),
-	).rejects.toThrow('Secret not found for this scope.')
+	).rejects.toThrow('Secret "missing-secret" not found in user scope.')
 })
