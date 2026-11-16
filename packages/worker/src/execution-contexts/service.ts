@@ -4,7 +4,10 @@ import {
 	type MisconfigDetail,
 } from './notices.ts'
 import { refreshContextNotices } from './box-notices.ts'
-import { listMachineCapabilityGrantOrgIds } from './machine-capabilities.ts'
+import {
+	ensureNetworkCapability,
+	listMachineCapabilityGrantOrgIds,
+} from './machine-capabilities.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
@@ -767,6 +770,8 @@ export async function updateContext(
 		})
 	}
 	if (input.grant) {
+		if (grant.egress.mode === 'public-and-lan')
+			await ensureNetworkCapability(db, row)
 		await sessionStub(caller.env, row.id).updateGrant({
 			snapshot: {
 				ecid: row.id,

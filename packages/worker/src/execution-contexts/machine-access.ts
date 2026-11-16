@@ -14,6 +14,7 @@ import { ExecutionContextError } from './errors.ts'
 import {
 	type MachineCapabilityRow,
 	machineCapabilityUsePermission,
+	networkCapabilityName,
 } from './machine-capabilities.ts'
 import {
 	type ExecutionContextCaller,
@@ -112,6 +113,11 @@ async function loadMachineAccess(
 					WHERE c.id = machine_capabilities.context_id
 					  AND json_extract(c.grant_json, '$.commands.enabled') = 1
 				   ))
+				   AND (kind != 'lan' OR name != '*' OR EXISTS (
+					SELECT 1 FROM execution_contexts c
+					WHERE c.id = machine_capabilities.context_id
+					  AND json_extract(c.grant_json, '$.egress.mode') = 'public-and-lan'
+				   ))
 				 ORDER BY kind, name`,
 			)
 			.bind(contextId)
@@ -152,7 +158,8 @@ async function loadMachineAccess(
 		kind: capability.kind,
 		name: capability.name,
 		description: capability.description,
-		shareable: isShareable(capability.kind),
+		shareable:
+			isShareable(capability.kind) && capability.name !== networkCapabilityName,
 		// Empty: code that is not a saved package, and packages the operator's
 		// org wrote or adopted. Otherwise only these, and no ad hoc code.
 		...(manages
@@ -304,12 +311,12 @@ export async function grantMachineAccess(
 		scope,
 	)
 	const { subject } = input
-	if (!isShareable(input.kind)) {
+	if (!isShareable(input.kind) || input.name === networkCapabilityName) {
 		throw new ExecutionContextError({
 			status: 400,
 			code: 'invalid_request',
 			message:
-				'Only named commands and local network destinations can be shared. The unrestricted shell and host folders are for the operator only.',
+				'Only named commands and local network destinations can be shared. The unrestricted shell, the whole local network and host folders cannot.',
 		})
 	}
 	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
@@ -495,6 +502,30 @@ export async function setMachineAccessPackages(
 			status: 403,
 			code: 'execution_context_commands_off',
 			message: `Host commands are off on ${row.name}, so there is no shell to limit. Its owner turns them on from that machine with \`kody context commands on\`.`,
+		})
+	}
+	if (
+		input.kind === 'lan' &&
+		input.name === networkCapabilityName &&
+		(!capability || parseGrant(row).egress.mode !== 'public-and-lan')
+	) {
+		throw new ExecutionContextError({
+			status: capability ? 403 : 404,
+			code: 'machine_capability_off',
+			message: `The local network is off on ${row.name}, so there is nothing to limit. Its owner turns it on from that machine with \`kody context grant lan on\`. The entry is kind "lan", name "*".`,
+		})
+	}
+	if (
+		input.kind === 'lan' &&
+		input.name === networkCapabilityName &&
+		input.packageIds.length > 0
+	) {
+		// Machines do not ask Kody before using the whole local network yet, so a
+		// list here would look like a limit and limit nothing.
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message: `Machines do not check a package list for the whole local network yet, so Kody will not save one for ${row.name}. Limit a named local network destination instead.`,
 		})
 	}
 	if (!capability && input.kind === 'shell') {

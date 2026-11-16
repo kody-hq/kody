@@ -13,6 +13,8 @@ import {
 	type MachineCapabilityRow,
 	machineCapabilityUsePermission,
 	shellCapabilityName,
+	networkCapabilityName,
+	ensureNetworkCapability,
 } from './machine-capabilities.ts'
 import { hasMachineAccessGrant } from './machine-access.ts'
 import { packagesNotDeclaring, undeclaredNeedMessage } from './machine-needs.ts'
@@ -268,7 +270,13 @@ export async function authorizeContextLan(
 			status: 400,
 			code: 'invalid_request',
 			message:
-				'kody.lan.authorize needs the name of a local network destination the machine defines, the address and the port.',
+				'kody.lan.authorize needs the name of a local network destination the machine defines ("*" for the whole local network), the address and the port.',
+		})
+	}
+	if (args.capability === networkCapabilityName) {
+		return await authorizeWholeNetwork(ctx, principal, {
+			host: args.host,
+			port: args.port,
 		})
 	}
 	const { env, row, user, orgId, capabilityId } =
@@ -284,6 +292,92 @@ export async function authorizeContextLan(
 			host: args.host,
 			port: args.port,
 			...runPackagesAuditDetail(principal.packages),
+		},
+	})
+	return { ok: true as const }
+}
+
+/**
+ * A run's use of the machine wide local network switch (`grant.egress`
+ * public-and-lan). The switch predates machine capabilities, so anyone who can
+ * run on the context passes and the default package rule is only logged; a
+ * list the operator set is enforced.
+ */
+async function authorizeWholeNetwork(
+	ctx: ApiInvocationContext,
+	principal: ContextRunPrincipal,
+	target: { host: string; port: number },
+) {
+	const { env, row, user, orgId } = await loadCommandContext(ctx, principal)
+	const label = `the whole local network on ${row.name}`
+	if (parseGrant(row).egress.mode !== 'public-and-lan') {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_off',
+			message: `The local network is off on ${row.name}. Its owner turns it on from that machine with \`kody context grant lan on\`, or defines one destination with \`kody context capability add lan <file.json>\`.`,
+		})
+	}
+	const access = await loadContextAccess(env.APP_DB, row, {
+		userId: user.userId,
+		orgId,
+	})
+	if (!access.usable) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_not_granted',
+			message: `You are not granted ${label}.`,
+		})
+	}
+	const find = () =>
+		env.APP_DB.prepare(
+			`SELECT * FROM machine_capabilities
+			 WHERE context_id = ? AND kind = 'lan' AND name = ? AND removed_at IS NULL`,
+		)
+			.bind(row.id, networkCapabilityName)
+			.first<MachineCapabilityRow>()
+	let capability = await find()
+	if (!capability) {
+		await ensureNetworkCapability(env.APP_DB, row)
+		capability = await find()
+	}
+	const allowedPackages = capability ? parseAllowedPackages(capability) : []
+	const entries = principal.packages?.entries ?? []
+	const refused = principal.packages?.truncated
+		? entries
+		: await packagesNotAllowed(ctx, principal.packages, allowedPackages)
+	if (
+		allowedPackages.length > 0 &&
+		(principal.packages?.truncated ||
+			refused.length > 0 ||
+			entries.length === 0)
+	) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_capability_package_not_allowed',
+			message: principal.packages?.truncated
+				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
+				: entries.length === 0
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.${packagesSetHint}`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}.${packagesSetHint}`,
+			details: { capability: networkCapabilityName, packageIds: refused },
+		})
+	}
+	await sessionStub(env, row.id).recordAudit({
+		event: 'lan_used',
+		actor: { userId: user.userId, handle: user.username ?? null },
+		orgId,
+		detail: {
+			runId: principal.runId,
+			capability: networkCapabilityName,
+			capabilityId: capability?.id ?? null,
+			wholeNetwork: true,
+			...(access.isOperator ? {} : { notOperator: true }),
+			host: target.host,
+			port: target.port,
+			...runPackagesAuditDetail(principal.packages),
+			...(refused.length > 0
+				? { wouldBlockPackageIds: refused.slice(0, maxAuditedEntryPackages) }
+				: {}),
 		},
 	})
 	return { ok: true as const }

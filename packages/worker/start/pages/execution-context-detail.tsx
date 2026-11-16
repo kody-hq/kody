@@ -1596,7 +1596,11 @@ function MachineAccessPanel(props: {
 										gap: spacing.xs,
 									}}
 								>
-									<strong>{entry.name}</strong>
+									<strong>
+										{entry.kind === 'lan' && entry.name === '*'
+											? 'The whole local network'
+											: entry.name}
+									</strong>
 									{entry.description ? (
 										<span css={mutedCss}>{entry.description}</span>
 									) : null}

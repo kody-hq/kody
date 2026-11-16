@@ -273,6 +273,15 @@ data model exists so far; nothing reads it at run time yet.
   keeps its package list across off and on. With an empty list, shell commands
   only log the packages the default rule would refuse (`wouldBlockPackageIds` on
   `command_started`); a list the operator set is enforced.
+- The machine wide local network switch (`grant.egress.mode` `public-and-lan`)
+  is the entry `lan` / `*`, a name no machine can define. Migration 0284 adds it
+  to every context with the switch on, and `ensureNetworkCapability` adds it
+  when the switch is turned on or first used. It is listed only while the switch
+  is on and is never shareable. `authorizeContextLan` with capability `*` lets
+  anyone who can run on the context through, records `lan_used` with
+  `wholeNetwork` and `wouldBlockPackageIds`, and enforces a non-empty package
+  list. No released CLI calls it yet, so `setMachineAccessPackages` refuses a
+  list for it.
 - The operator sets an entry's package list with
   `executionContextMachineAccessPackagesSet` (`setMachineAccessPackages`,
   `shell`, `command`, `lan` and `fs` kinds, saved package ids, at most 50,

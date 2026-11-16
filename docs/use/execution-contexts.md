@@ -365,7 +365,9 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   saved package it loaded directly is on the list, and code that is not a saved
   package may not use it. An empty list lifts the limit. This is also how you
   let a package from someone else use an entry without adopting it. The list
-  never shares the entry with another person.
+  never shares the entry with another person. A machine with the whole local
+  network turned on also lists it, as kind `lan`, name `*`. It cannot be shared
+  or limited to packages yet; define named destinations for that.
 - In the app: a context's detail page has a Machine access section that lists
   its named commands, local network destinations and host folders with who holds
   each one, and any package limit. The operator gives or takes back access

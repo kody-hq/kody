@@ -67,12 +67,49 @@ export async function ensureShellCapability(
 	db: D1Database,
 	context: { id: string; org_id: string; operator_user_id: string },
 ) {
+	await ensureSwitchCapability(db, context, 'shell', shellCapabilityName)
+}
+
+/**
+ * The name of the machine wide local network switch's `lan` entry on every
+ * context. A machine cannot define it: its names start with a letter or digit.
+ */
+export const networkCapabilityName = '*'
+
+const networkCapabilityDescription =
+	'Every address on the local network, for every run on the machine.'
+
+/**
+ * The whole local network's entry exists from the first time the context's
+ * egress is set to public-and-lan, and outlives turning it off, like the
+ * shell's.
+ */
+export async function ensureNetworkCapability(
+	db: D1Database,
+	context: { id: string; org_id: string; operator_user_id: string },
+) {
+	await ensureSwitchCapability(
+		db,
+		context,
+		'lan',
+		networkCapabilityName,
+		networkCapabilityDescription,
+	)
+}
+
+async function ensureSwitchCapability(
+	db: D1Database,
+	context: { id: string; org_id: string; operator_user_id: string },
+	kind: 'shell' | 'lan',
+	name: string,
+	description = '',
+) {
 	const now = new Date().toISOString()
 	await db
 		.prepare(
 			`INSERT INTO machine_capabilities (
-				id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at
-			) VALUES (?, ?, ?, ?, 'shell', ?, ?, ?)
+				id, context_id, org_id, operator_user_id, kind, name, description, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT (context_id, kind, name) DO NOTHING`,
 		)
 		.bind(
@@ -80,7 +117,9 @@ export async function ensureShellCapability(
 			context.id,
 			context.org_id,
 			context.operator_user_id,
-			shellCapabilityName,
+			kind,
+			name,
+			description,
 			now,
 			now,
 		)
@@ -159,7 +198,7 @@ export async function listMachineDefinedCapabilities(
 	const result = await db
 		.prepare(
 			`SELECT * FROM machine_capabilities
-			 WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs')
+			 WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs') AND name != '*'
 			 ORDER BY kind, name`,
 		)
 		.bind(contextId)
@@ -206,7 +245,7 @@ export async function syncMachineDefinedCapabilities(
 	// read above, so the last of two reports that overlap wins as a whole. One
 	// JSON parameter also keeps a large set under D1's parameter limit.
 	const droppedIdsSql = `SELECT id FROM machine_capabilities
-		WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs')
+		WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs') AND name != '*'
 		  AND kind || ':' || name NOT IN (SELECT value FROM json_each(?))`
 	const reportedKeys = JSON.stringify([...definedKeys])
 	const grantOrgs = (

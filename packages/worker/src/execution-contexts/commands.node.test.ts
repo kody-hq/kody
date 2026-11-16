@@ -1132,6 +1132,111 @@ function defineFolder(
 		.run(orgId, operator, JSON.stringify(input.allowedPackages ?? []), now, now)
 }
 
+test('the whole local network is an entry: use is logged for anyone who can run, and a list the operator set is enforced', async () => {
+	const s = setup()
+	const setEgress = (mode: string) =>
+		s.sqlite
+			.prepare(
+				`UPDATE execution_contexts SET grant_json = ? WHERE id = 'ec_mac'`,
+			)
+			.run(JSON.stringify({ ...ecpDefaultGrant, egress: { mode } }))
+	const owner = s.callerFor(operator)
+	const target = { kind: 'lan', name: '*' } as const
+	const where = { capability: '*', host: '192.168.1.10', port: 5001 }
+	const run = (userId: string, entries?: Array<string>) =>
+		authorizeContextLan(
+			orgRun(s, userId, entries ? { packages: { entries, all: entries } } : {}),
+			where,
+		)
+	savePackage(s, 'pkg_listed', orgId)
+	savePackage(s, 'pkg_other', 'org_someone_else')
+
+	setEgress('public')
+	await expect(run(operator)).rejects.toMatchObject({
+		code: 'machine_capability_off',
+		message: expect.stringContaining('kody context grant lan on'),
+	})
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', { ...target, packageIds: [] }),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+
+	setEgress('public-and-lan')
+	// The first use adds the entry, with no package limit.
+	await expect(run(operator, ['pkg_other'])).resolves.toEqual({ ok: true })
+	expect(s.audits.at(-1)).toMatchObject({
+		event: 'lan_used',
+		detail: {
+			capability: '*',
+			wholeNetwork: true,
+			host: '192.168.1.10',
+			port: 5001,
+			wouldBlockPackageIds: ['pkg_other'],
+		},
+	})
+	expect((await listMachineAccess(owner, 'ec_mac')).capabilities).toEqual([
+		expect.objectContaining({
+			kind: 'lan',
+			name: '*',
+			shareable: false,
+			allowedPackages: [],
+		}),
+	])
+	await expect(
+		grantMachineAccess(owner, 'ec_mac', {
+			kind: 'lan',
+			name: '*',
+			subject: { type: 'org', id: orgId },
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+
+	// Someone the context is shared with keeps the local network for now.
+	await expect(run('user_friend')).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+	await setSharing(owner, 'ec_mac', { allMembers: true })
+	s.sqlite.exec(`
+		INSERT INTO execution_context_opt_ins (context_id, user_id, org_id, created_at)
+			VALUES ('ec_mac', 'user_friend', '${orgId}', '${now}');
+	`)
+	await expect(run('user_friend')).resolves.toEqual({ ok: true })
+	expect(s.audits.at(-1)).toMatchObject({
+		event: 'lan_used',
+		detail: { wholeNetwork: true, notOperator: true },
+	})
+
+	// Machines do not ask yet, so the tool saves no list; the check is ready.
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', {
+			...target,
+			packageIds: ['pkg_listed'],
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	s.sqlite
+		.prepare(
+			`UPDATE machine_capabilities SET allowed_packages_json = ? WHERE kind = 'lan' AND name = '*'`,
+		)
+		.run(JSON.stringify(['pkg_listed']))
+	await expect(run(operator, ['pkg_listed'])).resolves.toEqual({ ok: true })
+	await expect(run(operator, ['pkg_other'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('the whole local network on'),
+	})
+	await expect(run(operator)).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+
+	// With the switch off the entry is hidden and keeps its list.
+	setEgress('public')
+	expect((await listMachineAccess(owner, 'ec_mac')).capabilities).toEqual([])
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', { ...target, packageIds: [] }),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+	setEgress('public-and-lan')
+	await expect(run(operator, ['pkg_other'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+})
+
 test('a host folder use is audited by name, and a package the default rule would refuse is logged, not refused', async () => {
 	const s = setup()
 	defineFolder(s)
