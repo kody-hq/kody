@@ -15,6 +15,11 @@ import {
 	type IsolatedExecuteBundleOutcome,
 	type IsolatedExecuteBundleRequest,
 } from '#worker/package-runtime/isolated-execute-bundle.ts'
+import {
+	runIsolatedCredentialStampFleetPackage,
+	type IsolatedCredentialStampFleetPackageRequest,
+	type IsolatedCredentialStampFleetPackageResult,
+} from '#worker/credentials/credential-stamp-fleet.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -3891,6 +3896,17 @@ class RepoSessionBase extends DurableObject<Env> {
 		input: IsolatedModuleArtifactRebuildRequest,
 	): Promise<IsolatedModuleArtifactRebuildOutcome> {
 		return await runIsolatedModuleArtifactRebuild(this.env, input)
+	}
+
+	/**
+	 * One package of the credential stamp fleet scan in this throwaway
+	 * isolate, so a large package source cannot reset the caller's isolate
+	 * (`#worker/credentials/credential-stamp-fleet.ts`).
+	 */
+	async scanIsolatedCredentialStampFleetPackage(
+		input: IsolatedCredentialStampFleetPackageRequest,
+	): Promise<IsolatedCredentialStampFleetPackageResult> {
+		return await runIsolatedCredentialStampFleetPackage(this.env, input)
 	}
 
 	/**
