@@ -102,50 +102,72 @@ test('interpolated status help text with a vault ref stays display-only', async 
 test('status returns the module itself reads or calls are not display-only', async () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
-	for (const source of [
-		`export function status() { return 'https://api.example.com/?t=${vault}' }
+	const query = { type: 'query', param: 't' }
+	const cases: Array<[source: string, expected: Array<unknown>]> = [
+		[
+			`export function status() { return 'https://api.example.com/?t=${vault}' }
 		export const run = () => fetch(status())`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			help() { return { headers: { Authorization: 'Bearer ${vault}' } } },
 			run() { return fetch('https://api.example.com', this.help()) },
 		}`,
-		`export default {
+			[{ type: 'header', name: 'authorization', format: 'Bearer {value}' }],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { const url = this.status; return fetch(url()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { return fetch(this['status']()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run(key) { return fetch(this[key]()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { const { status } = this; return fetch(status()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { const self = this as any; return fetch(self.status()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { return fetch((this as any).status()) },
 		}`,
-		`export default {
+			[query],
+		],
+		[
+			`export default {
 			status() { return 'https://api.example.com/?t=${vault}' },
 			run() { return go(this) },
 		}`,
-	]) {
-		const placements = (await scan(source)).vaultPlacements
-		expect(placements.length).toBeGreaterThan(0)
-		expect(
-			placements.every(
-				(placement) =>
-					placement.type === 'other' && placement.context === 'display',
-			),
-		).toBe(false)
+			[query],
+		],
+	]
+	for (const [source, expected] of cases) {
+		expect((await scan(source)).vaultPlacements).toEqual(expected)
 	}
 })
 
@@ -162,24 +184,30 @@ test('calling an unrelated client.status() keeps the own status() return display
 test('vault refs in separately bound objects that feed a request stay credential uses', async () => {
 	const vault =
 		'{{secret/bwvault:i/a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d/password}}'
-	for (const source of [
-		`const spec = { description: '${vault}' }
+	const cases: Array<[source: string, expected: Array<unknown>]> = [
+		[
+			`const spec = { description: '${vault}' }
 		export const run = (url) => fetch(url, { headers: { Authorization: spec.description } })`,
-		`const opts = { token: '${vault}' }
+			[other('object', 'description')],
+		],
+		[
+			`const opts = { token: '${vault}' }
 		export const run = (url) => fetch(url, { headers: { Authorization: opts.token } })`,
-		`const headers = { Authorization: 'Bearer ${vault}' }
+			[other('object', 'token')],
+		],
+		[
+			`const headers = { Authorization: 'Bearer ${vault}' }
 		export const run = (url) => fetch(url, { headers })`,
-		`const body = { token: '${vault}' }
+			[other('object', 'Authorization')],
+		],
+		[
+			`const body = { token: '${vault}' }
 		export const run = (url) => fetch(url, { method: 'POST', body: JSON.stringify(body) })`,
-	]) {
-		const placements = (await scan(source)).vaultPlacements
-		expect(placements.length).toBeGreaterThan(0)
-		expect(
-			placements.every(
-				(placement) =>
-					placement.type === 'other' && placement.context === 'display',
-			),
-		).toBe(false)
+			[other('object', 'token')],
+		],
+	]
+	for (const [source, expected] of cases) {
+		expect((await scan(source)).vaultPlacements).toEqual(expected)
 	}
 })
 

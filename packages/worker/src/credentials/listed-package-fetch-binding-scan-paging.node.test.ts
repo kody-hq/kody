@@ -143,6 +143,13 @@ test('a package with more bundles than one call reads spans pages without losing
 		),
 	]
 	expect(partialIds).toEqual(['b'])
+	expect(
+		bPages.flatMap((page) =>
+			page.packages
+				.filter((entry) => entry.packageId === 'b')
+				.map((entry) => entry.partial),
+		),
+	).toEqual(bPages.map(() => true))
 	expect(pages.at(-1)?.nextCursor).toBeNull()
 })
 
