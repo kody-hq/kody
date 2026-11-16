@@ -10,6 +10,7 @@ import {
 	type AstNode,
 	constantsWithoutShadows,
 	forEachScannableModule,
+	shareModulePasses,
 	getNodeName,
 	parseModule,
 	readModuleParseError,
@@ -28,6 +29,7 @@ import {
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
 import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { PackageCodemodFinding } from '#worker/package-codemods/types.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -165,7 +167,10 @@ export type CredentialStampScan = {
 	jwtSignKeys: Array<string>
 	/** Literal integration / createAuthenticatedFetch account names. */
 	oauthKeys: Array<string>
+	/** The credential inventory of the scanned modules, with sites. */
 	scan: PackageCredentialScan
+	/** Every 0010 legacy-pattern finding of the scanned modules. */
+	legacyFindings: Array<PackageCodemodFinding>
 }
 
 /**
@@ -832,10 +837,9 @@ async function scanServerEvalFailures(
 	serverPaths: ReadonlySet<string>,
 ): Promise<Array<CredentialStampGateFailure>> {
 	const failures: Array<CredentialStampGateFailure> = []
-	for (const path of [...serverPaths].sort()) {
+	const visit = async (path: string, parsed: AstNode | null) => {
 		const source = files[path]
-		if (source == null) continue
-		const parsed = await parseModule(source)
+		if (source == null) return
 		if (!parsed) {
 			if (serverEvalTextFallbackPattern.test(source)) {
 				failures.push({
@@ -844,7 +848,7 @@ async function scanServerEvalFailures(
 					message: `${path}: server-runtime code looks like it uses eval, new Function, or a non-literal import(). Remove those from execute/export/handler/trigger and Worker app graphs (UI/client bundles may keep them). Shared modules follow the server rule.`,
 				})
 			}
-			continue
+			return
 		}
 		let foundEval = false
 		walkAst(parsed, (node) => {
@@ -870,7 +874,24 @@ async function scanServerEvalFailures(
 			})
 		}
 	}
-	return failures
+	const scannable = new Set<string>()
+	await forEachScannableModule(
+		files,
+		async (path, parsed) => {
+			scannable.add(path)
+			if (serverPaths.has(path)) await visit(path, parsed)
+		},
+		{ sorted: true },
+	)
+	// Server-reachable modules the runtime walk does not list.
+	for (const path of [...serverPaths].sort()) {
+		if (scannable.has(path) || files[path] == null) continue
+		await visit(path, await parseModule(files[path]))
+	}
+	const pathOf = (failure: CredentialStampGateFailure) => failure.path ?? ''
+	return failures.sort((left, right) =>
+		pathOf(left) < pathOf(right) ? -1 : pathOf(left) > pathOf(right) ? 1 : 0,
+	)
 }
 
 /**
@@ -1667,10 +1688,89 @@ export async function scanCredentialStamp(
 	const failures: Array<CredentialStampGateFailure> = []
 	const oauthKeys = new Set<string>()
 	const slots = readManifestCredentialSlots(files[packageManifestPath])
-	const scan = await scanPackageCredentials({
-		files,
-		slots: toInventorySlots(slots),
-	})
+	const serverPaths = await collectServerRuntimeModulePaths(files)
+	const moduleFailures: Array<CredentialStampGateFailure> = []
+	// One parse of each module serves every scan below.
+	const [scan, , , mcp, legacyFindings, serverEvalFailures] =
+		await shareModulePasses(files, [
+			// Sites ride along so the publish check reads its request-placement
+			// hits from this scan instead of walking every module again.
+			() =>
+				scanPackageCredentials({
+					files,
+					slots: toInventorySlots(slots),
+					sites: true,
+				}),
+			() =>
+				scanModuleCredentialReferences(files, (_path) => ({
+					add: () => {},
+					named: (name, kind) => {
+						if (packageCredentialSlotNamePattern.test(name)) {
+							keys.add(name)
+							if (kind === 'integration') oauthKeys.add(name)
+						}
+					},
+					// Non-literal helper args are refused via 0010 unstampable patterns.
+					computed: () => {},
+					// Vault placeholders are gated from inventory placements below: only
+					// request / credential-mapped sites fail the stamp. Display strings
+					// (status example/help fields) are not credential uses.
+					unnamed: () => {},
+				})),
+			() =>
+				forEachScannableModule(files, async (path, parsed, constants) => {
+					if (!parsed && serverPaths.has(path)) {
+						const failure = await unparsedServerModuleFailure(
+							path,
+							files[path]!,
+						)
+						if (failure) moduleFailures.push(failure)
+					}
+					const keyScan: KeyScan = {
+						key: (key) => {
+							if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
+							else {
+								moduleFailures.push({
+									code: 'invalid_key',
+									path,
+									message: `${path}: credential("${key}") is not a valid kody.credentials key. Rename it.`,
+								})
+							}
+						},
+						computed: () => {
+							moduleFailures.push({
+								code: 'non_literal',
+								path,
+								message: nonLiteralFixMessage(
+									`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
+								),
+							})
+						},
+						named: () => {
+							moduleFailures.push({
+								code: 'credential_named',
+								path,
+								message: `${path}: credential.named() is only for ad hoc execute and unshared personal-org packages (not stamped). ${credentialStampConversionFixGuidance}`,
+							})
+						},
+						indirect: () => {
+							moduleFailures.push({
+								code: 'non_literal',
+								path,
+								message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
+							})
+						},
+					}
+					if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
+					else scanUnparsedCredentialKeys(files[path]!, keyScan)
+				}),
+			() => scanLiteralMcpServerKeys(files),
+			() =>
+				detectLegacyCredentialPatternsCodemod.detect(files, {
+					packageName: '',
+				}),
+			() => scanServerEvalFailures(files, serverPaths),
+		])
 
 	for (const reference of scan.references) {
 		// `|scope=` is refused via the 0010 unstampable pattern list.
@@ -1707,22 +1807,6 @@ export async function scanCredentialStamp(
 		})
 	}
 
-	await scanModuleCredentialReferences(files, (_path) => ({
-		add: () => {},
-		named: (name, kind) => {
-			if (packageCredentialSlotNamePattern.test(name)) {
-				keys.add(name)
-				if (kind === 'integration') oauthKeys.add(name)
-			}
-		},
-		// Non-literal helper args are refused via 0010 unstampable patterns.
-		computed: () => {},
-		// Vault placeholders are gated from inventory placements below: only
-		// request / credential-mapped sites fail the stamp. Display strings
-		// (status example/help fields) are not credential uses.
-		unnamed: () => {},
-	}))
-
 	// A vault use seals only through a described kind "secret-provider" slot
 	// for its literal provider id. Refs stay governed by per-package grants.
 	const providerSlots = secretProviderSlotKeysByProvider(
@@ -1755,61 +1839,11 @@ export async function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
-	const serverPaths = await collectServerRuntimeModulePaths(files)
-	await forEachScannableModule(files, async (path, parsed, constants) => {
-		if (!parsed && serverPaths.has(path)) {
-			const failure = await unparsedServerModuleFailure(path, files[path]!)
-			if (failure) failures.push(failure)
-		}
-		const keyScan: KeyScan = {
-			key: (key) => {
-				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
-				else {
-					failures.push({
-						code: 'invalid_key',
-						path,
-						message: `${path}: credential("${key}") is not a valid kody.credentials key. Rename it.`,
-					})
-				}
-			},
-			computed: () => {
-				failures.push({
-					code: 'non_literal',
-					path,
-					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
-					),
-				})
-			},
-			named: () => {
-				failures.push({
-					code: 'credential_named',
-					path,
-					message: `${path}: credential.named() is only for ad hoc execute and unshared personal-org packages (not stamped). ${credentialStampConversionFixGuidance}`,
-				})
-			},
-			indirect: () => {
-				failures.push({
-					code: 'non_literal',
-					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
-				})
-			},
-		}
-		if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
-		else scanUnparsedCredentialKeys(files[path]!, keyScan)
-	})
-
-	const mcp = await scanLiteralMcpServerKeys(files)
+	failures.push(...moduleFailures)
 	for (const key of mcp.keys) keys.add(key)
 	failures.push(...mcp.failures)
 
-	for (const finding of await detectLegacyCredentialPatternsCodemod.detect(
-		files,
-		{
-			packageName: '',
-		},
-	)) {
+	for (const finding of legacyFindings) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
 		if (pattern == null || !unstampableLegacyPatterns.has(pattern)) continue
 		failures.push({
@@ -1819,7 +1853,7 @@ export async function scanCredentialStamp(
 		})
 	}
 
-	failures.push(...(await scanServerEvalFailures(files, serverPaths)))
+	failures.push(...serverEvalFailures)
 
 	const sortedKeys = [...keys].sort()
 	const staleManifestKeys = Object.keys(slots)
@@ -1844,6 +1878,7 @@ export async function scanCredentialStamp(
 		jwtSignKeys: [...jwtSignKeys].sort(),
 		oauthKeys: [...oauthKeys].sort(),
 		scan,
+		legacyFindings,
 	}
 }
 

@@ -98,7 +98,6 @@ import {
 	validatePackageBundles,
 	findFetchBodySecretResolutionHits,
 } from './checks.ts'
-import { findSecretPlaceholderRequestPlacements } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
@@ -3153,8 +3152,9 @@ class RepoSessionBase extends DurableObject<Env> {
 				stampKeys: check.stampKeys,
 				...(check.ok
 					? {
-							requestPlacementHits:
-								await findSecretPlaceholderRequestPlacements(check.sourceFiles),
+							...(check.requestPlacementHits
+								? { requestPlacementHits: check.requestPlacementHits }
+								: {}),
 							fetchBodyHits: await findFetchBodySecretResolutionHits(
 								check.sourceFiles,
 							),

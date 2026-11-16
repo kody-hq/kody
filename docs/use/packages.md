@@ -1222,6 +1222,13 @@ publish also counts the rest of the checked-out repo toward the 32 MiB cap.
 | Any single file                           | 10 MiB                      |
 | Checked-out tree for `git push` publishes | 32 MiB                      |
 | JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
+| Code the credential stamp scan reads      | 450,000 syntax nodes        |
+
+The credential stamp scan parses every JS/TS module the runtime can import,
+committed build output included, and its cost grows with the amount of code in
+them. Past the limit the scan stops before it reads the rest and names the
+heaviest modules. Import less from the server entry points, or list code the
+runtime never imports in `.kodyignore`.
 
 Each check isolate also has a fixed memory and CPU budget. When a step runs out,
 the error names the step (cloning, staging the package files, reading the source
