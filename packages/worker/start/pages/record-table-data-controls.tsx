@@ -187,6 +187,7 @@ export function RecordTablePagination({ model }: { model: Model }) {
 				</Select>
 			</label>
 			<Button
+				type="button"
 				variant="secondary"
 				size="xs"
 				aria-label="Previous page"
@@ -199,6 +200,7 @@ export function RecordTablePagination({ model }: { model: Model }) {
 				Page {pageIndex + 1} of {Math.max(1, model.getPageCount())}
 			</span>
 			<Button
+				type="button"
 				variant="secondary"
 				size="xs"
 				aria-label="Next page"
