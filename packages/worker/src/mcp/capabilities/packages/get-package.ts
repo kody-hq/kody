@@ -19,6 +19,7 @@ import { describePackageCredentialNeeds } from '#worker/credentials/package-cred
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
 import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
+import { packageMachineNeedsFor } from '#worker/package-registry/types.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { getSavedPackageWithCommunityProvenanceById } from '#worker/package-registry/repo.ts'
@@ -204,8 +205,11 @@ export const getPackageCapability = defineDomainCapability(
 					suppliersEnabled,
 				},
 				machine: {
-					needs: Object.entries(loaded.manifest.kody.machine ?? {}).map(
-						([name, need]) => ({ name, ...need }),
+					needs: Object.keys(loaded.manifest.kody.machine ?? {}).flatMap(
+						(name) =>
+							packageMachineNeedsFor(loaded.manifest.kody.machine, name).map(
+								(need) => ({ name, ...need }),
+							),
 					),
 				},
 				exports: (projection.exports ?? []).map((exportDetail) => ({

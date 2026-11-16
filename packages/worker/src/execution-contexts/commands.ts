@@ -13,6 +13,7 @@ import {
 	type MachineCapabilityRow,
 	machineCapabilityUsePermission,
 } from './machine-capabilities.ts'
+import { packagesNotDeclaring, undeclaredNeedMessage } from './machine-needs.ts'
 import type { ExecutionContextRunPackages } from './run-packages.ts'
 import {
 	executionContextCommandPermission,
@@ -245,8 +246,9 @@ export async function authorizeContextLan(
 /**
  * The daemon's hop the first time a run touches a host folder the machine
  * allows. Folders predate machine capabilities, so the default package rule
- * is only logged (`wouldBlockPackageIds`) until existing machines are
- * migrated; a list the operator set is enforced.
+ * and a missing `kody.machine` declaration are only logged
+ * (`wouldBlockPackageIds`, `undeclaredPackageIds`) until existing machines
+ * are migrated; a list the operator set is enforced.
  */
 export async function authorizeContextFolder(
 	ctx: ApiInvocationContext,
@@ -308,6 +310,12 @@ export async function authorizeContextFolder(
 			details: { capability: name, packageIds: refused },
 		})
 	}
+	const undeclared = await packagesNotDeclaring({
+		env,
+		packageIds: entries,
+		kind: 'fs',
+		name,
+	})
 	await sessionStub(env, row.id).recordAudit({
 		event: 'fs_used',
 		actor: { userId: user.userId, handle: user.username ?? null },
@@ -319,6 +327,13 @@ export async function authorizeContextFolder(
 			...runPackagesAuditDetail(principal.packages),
 			...(refused.length > 0
 				? { wouldBlockPackageIds: refused.slice(0, maxAuditedEntryPackages) }
+				: {}),
+			...(undeclared.length > 0
+				? {
+						undeclaredPackageIds: undeclared
+							.slice(0, maxAuditedEntryPackages)
+							.map((entry) => entry.id),
+					}
 				: {}),
 		},
 	})
@@ -449,6 +464,28 @@ async function assertNamedCapabilityAccess(
 					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.`
 					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}. A package from someone else needs to be adopted by the machine's operator before it can use the machine's ${things}.`,
 			details: { capability: name, packageIds: refused },
+		})
+	}
+	const undeclared = await packagesNotDeclaring({
+		env,
+		packageIds: principal.packages?.entries ?? [],
+		kind,
+		name,
+	})
+	if (undeclared.length > 0) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'machine_need_undeclared',
+			message: undeclaredNeedMessage({
+				packages: undeclared.slice(0, maxAuditedEntryPackages),
+				kind,
+				name,
+				contextName: row.name,
+			}),
+			details: {
+				capability: name,
+				packageIds: undeclared.map((entry) => entry.id),
+			},
 		})
 	}
 	return { env, row, user, orgId, capabilityId: capability.id }

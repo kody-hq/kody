@@ -269,6 +269,14 @@ data model exists so far; nothing reads it at run time yet.
   the shell opt-in, and turning the shell off leaves named-command jobs running.
   Shell commands only log the packages that rule would refuse
   (`wouldBlockPackageIds` on `command_started`).
+- Every entry package of a run that uses a named command or local network
+  destination must declare it in its own published `kody.machine`, by name and
+  kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs
+  are served, not a publish still building), or the call fails with
+  `machine_need_undeclared`, which names the packages and the JSON to add.
+  Packages an entry imports are not asked and do not declare for it; ad hoc code
+  has nothing to declare. For host folders a missing declaration is only logged
+  (`undeclaredPackageIds` on `fs_used`) until the migration.
 - A run reaches a named local network destination with a plain `fetch`. The
   egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
   `lan` entries in its policy (operator's runs only). When the grant's egress

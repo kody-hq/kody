@@ -24,6 +24,7 @@ export const executionContextErrorCodes = [
 	'machine_capability_off',
 	'machine_capability_not_granted',
 	'machine_capability_package_not_allowed',
+	'machine_need_undeclared',
 	'context_paused',
 	'context_offline',
 	'not_service_managed',
