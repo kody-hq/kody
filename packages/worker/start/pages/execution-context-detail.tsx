@@ -13,12 +13,14 @@ import {
 	cancelExecutionContextRun,
 	deleteExecutionContext,
 	dismissExecutionContextNotice,
+	grantExecutionContextMachineAccess,
 	loadExecutionContextAudit,
 	previewExecutionContextShare,
 	loadExecutionContextRuns,
 	optIntoExecutionContext,
 	optOutOfExecutionContext,
 	removeExecutionContextShare,
+	revokeExecutionContextMachineAccess,
 	runExecutionContextDaemonAction,
 	setExecutionChain,
 	shareExecutionContext,
@@ -34,6 +36,7 @@ import {
 	type ExecutionChain,
 	type ExecutionContextAuditPage,
 	type ExecutionContextListItem,
+	type ExecutionContextMachineAccessEntry,
 	type ExecutionContextPreset,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
@@ -51,6 +54,8 @@ import {
 	grantSummaryDetail,
 	insertBeforeCloud,
 	loginPredatesPermissionsMessage,
+	machineAccessKindLabels,
+	machineAccessSubjectLabel,
 	accessBitsLabel,
 	ordinal,
 	runFallbackLabel,
@@ -241,6 +246,11 @@ export function ExecutionContextDetail(props: {
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
+			<MachineAccessPanel
+				orgSlug={orgSlug}
+				context={context}
+				onChanged={refresh}
+			/>
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
 			<AuditLog orgSlug={orgSlug} context={context} />
 			<DeleteControls orgSlug={orgSlug} context={context} onDeleted={refresh} />
@@ -1489,6 +1499,307 @@ function SharingPanel(props: {
 				<p css={mutedCss}>{copy.ownerWithoutManageNote}</p>
 			)}
 		</section>
+	)
+}
+
+type MachineAccessSubjectKind = 'user' | 'team' | 'org' | 'profile'
+
+const machineAccessKinds = ['command', 'lan', 'fs'] as const
+
+function MachineAccessPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const access = context.machineAccess
+	const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	if (!access || context.status === 'revoked') return null
+	// Someone the machine is only shared with sees what their profiles hold.
+	if (!access.canGrant && access.capabilities.length === 0) return null
+
+	async function remove(grantId: string) {
+		setConfirmRemove(null)
+		setError(null)
+		const result = (await revokeExecutionContextMachineAccess({
+			data: { orgSlug: props.orgSlug, contextId: context.id, grantId },
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		if (!result.ok) return setError(failureText(result))
+		props.onChanged()
+	}
+
+	return (
+		<section
+			css={sectionCss}
+			aria-labelledby="context-machine-access-title"
+			data-testid="context-machine-access"
+		>
+			<h3 id="context-machine-access-title" css={{ margin: 0 }}>
+				Machine access
+			</h3>
+			<p css={mutedCss}>
+				{access.canGrant
+					? `What ${context.name} lets a run do on the machine itself. The machine defines each entry; you choose who else can use it. Your own runs can use all of them.`
+					: `What your profiles can use on ${context.name}.`}
+			</p>
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+			{access.capabilities.length === 0 ? (
+				<p css={mutedCss} data-testid="context-machine-access-empty">
+					This machine defines no named commands or local network destinations
+					yet. Add one on the machine with{' '}
+					<code>kody context capability add</code>.
+				</p>
+			) : null}
+			{machineAccessKinds.map((kind) => {
+				const entries = access.capabilities.filter(
+					(entry) => entry.kind === kind,
+				)
+				if (entries.length === 0) return null
+				return (
+					<div key={kind} css={{ display: 'grid', gap: spacing.sm }}>
+						<h4 css={{ margin: 0 }}>{machineAccessKindLabels[kind]}</h4>
+						{kind === 'fs' ? (
+							<p css={mutedCss}>
+								Host folders are for the operator's runs only and are never
+								shared.
+							</p>
+						) : null}
+						<ul
+							css={{
+								margin: 0,
+								padding: 0,
+								listStyle: 'none',
+								display: 'grid',
+								gap: spacing.sm,
+							}}
+						>
+							{entries.map((entry) => (
+								<li
+									key={entry.id}
+									data-testid="context-machine-access-entry"
+									css={{
+										border: `1px solid ${colors.border}`,
+										borderRadius: radius.lg,
+										padding: spacing.md,
+										display: 'grid',
+										gap: spacing.xs,
+									}}
+								>
+									<strong>{entry.name}</strong>
+									{entry.description ? (
+										<span css={mutedCss}>{entry.description}</span>
+									) : null}
+									{!entry.shareable ? null : entry.grants.length === 0 ? (
+										<span css={mutedCss}>Only the operator</span>
+									) : (
+										<ul
+											css={{
+												margin: 0,
+												paddingLeft: '1.2rem',
+												display: 'grid',
+												gap: spacing.xs,
+											}}
+										>
+											{entry.grants.map((grant) => {
+												const label = machineAccessSubjectLabel(
+													grant.subject,
+													props.orgSlug,
+												)
+												return (
+													<li key={grant.grantId}>
+														{label}{' '}
+														{confirmRemove === grant.grantId ? (
+															<>
+																<span css={mutedCss}>
+																	{label} stops being able to use {entry.name}{' '}
+																	on the next call.
+																</span>{' '}
+																<Button
+																	type="button"
+																	variant="danger"
+																	css={target}
+																	onClick={() => void remove(grant.grantId)}
+																>
+																	Take back
+																</Button>{' '}
+																<Button
+																	type="button"
+																	variant="secondary"
+																	css={target}
+																	onClick={() => setConfirmRemove(null)}
+																>
+																	Cancel
+																</Button>
+															</>
+														) : (
+															<Button
+																type="button"
+																variant="secondary"
+																css={target}
+																aria-label={`Remove ${label} from ${entry.name}`}
+																onClick={() => setConfirmRemove(grant.grantId)}
+															>
+																Remove
+															</Button>
+														)}
+													</li>
+												)
+											})}
+										</ul>
+									)}
+									{entry.shareable ? (
+										<MachineAccessGrantForm
+											orgSlug={props.orgSlug}
+											context={context}
+											entry={entry}
+											onChanged={props.onChanged}
+										/>
+									) : null}
+								</li>
+							))}
+						</ul>
+					</div>
+				)
+			})}
+		</section>
+	)
+}
+
+function MachineAccessGrantForm(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	entry: ExecutionContextMachineAccessEntry
+	onChanged: () => void
+}) {
+	const { context, entry } = props
+	const access = context.machineAccess!
+	const kinds: Array<MachineAccessSubjectKind> = [
+		...(access.canGrant ? (['user', 'team', 'org'] as const) : []),
+		...(access.profiles.length > 0 ? (['profile'] as const) : []),
+	]
+	const [kind, setKind] = useState<MachineAccessSubjectKind>(
+		kinds[0] ?? 'profile',
+	)
+	const [value, setValue] = useState('')
+	const [profileId, setProfileId] = useState(access.profiles[0]?.id ?? '')
+	const [busy, setBusy] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+	if (kinds.length === 0 || entry.kind === 'fs') return null
+	const capability = { kind: entry.kind, name: entry.name }
+
+	async function grant() {
+		setBusy(true)
+		setError(null)
+		const result = (await grantExecutionContextMachineAccess({
+			data: {
+				orgSlug: props.orgSlug,
+				contextId: context.id,
+				capability,
+				subject:
+					kind === 'user'
+						? { kind, username: value }
+						: kind === 'team'
+							? { kind, slug: value }
+							: kind === 'profile'
+								? { kind, profileId }
+								: { kind },
+			},
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		setBusy(false)
+		if (!result.ok) return setError(failureText(result))
+		setValue('')
+		props.onChanged()
+	}
+
+	return (
+		<form
+			css={{ display: 'grid', gap: spacing.xs }}
+			onSubmit={(event) => {
+				event.preventDefault()
+				void grant()
+			}}
+		>
+			<div
+				css={{
+					display: 'flex',
+					flexWrap: 'wrap',
+					gap: spacing.sm,
+					alignItems: 'end',
+				}}
+			>
+				<label css={{ display: 'grid', gap: 2 }}>
+					Let {entry.name} be used by
+					<Select
+						value={kind}
+						css={[target, selectCss]}
+						onChange={(event) =>
+							setKind(event.target.value as MachineAccessSubjectKind)
+						}
+					>
+						{kinds.map((item) => (
+							<option key={item} value={item}>
+								{item === 'user'
+									? 'A person'
+									: item === 'team'
+										? 'A team'
+										: item === 'org'
+											? `Everyone in @${props.orgSlug}`
+											: 'One of my profiles'}
+							</option>
+						))}
+					</Select>
+				</label>
+				{kind === 'org' ? null : kind === 'profile' ? (
+					<label css={{ display: 'grid', gap: 2 }}>
+						Profile
+						<Select
+							value={profileId}
+							css={[target, selectCss]}
+							onChange={(event) => setProfileId(event.target.value)}
+						>
+							{access.profiles.map((profile) => (
+								<option key={profile.id} value={profile.id}>
+									{profile.name}
+								</option>
+							))}
+						</Select>
+					</label>
+				) : (
+					<label css={{ display: 'grid', gap: 2 }}>
+						{kind === 'user' ? 'Username' : 'Team slug'}
+						<Input
+							value={value}
+							required
+							css={target}
+							onChange={(event) => setValue(event.target.value)}
+						/>
+					</label>
+				)}
+				<Button type="submit" variant="secondary" css={target} disabled={busy}>
+					Give access
+				</Button>
+			</div>
+			{kind === 'profile' ? (
+				<p css={mutedCss}>
+					A profile can use it only when you can, and its parent profiles need
+					it first.
+				</p>
+			) : kind === 'org' ? null : (
+				<p css={mutedCss}>
+					They also need {context.name} itself shared with them under Sharing.
+				</p>
+			)}
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+		</form>
 	)
 }
 
