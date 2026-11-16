@@ -34,6 +34,9 @@ const vocabularyFiles = new Set([
 const unenforcedGrantablePermissions: ReadonlyArray<OrgPermission> = [
 	'app:delete',
 	'app:write',
+	// Machine access: the data model landed first. Remove this entry with the
+	// change that checks the grant when a run uses a capability.
+	'machine_capability:use',
 ]
 
 function listSourceFiles(directory: string): Array<string> {

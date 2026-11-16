@@ -33,6 +33,7 @@ const useByType: Record<OrgResourceType, ReadonlyArray<OrgPermission>> = {
 	memory: ['memory:read'],
 	email: ['email:read'],
 	execution_context: ['execution_context:read', 'execution_context:execute'],
+	machine_capability: ['machine_capability:use'],
 }
 
 const contributeExtraByType: Record<
@@ -48,6 +49,7 @@ const contributeExtraByType: Record<
 	memory: ['memory:write'],
 	email: ['email:send', 'email:write'],
 	execution_context: ['execution_context:write'],
+	machine_capability: [],
 }
 
 const manageExtraByType: Record<
@@ -66,6 +68,7 @@ const manageExtraByType: Record<
 		'execution_context:delete',
 		'execution_context:manage_access',
 	],
+	machine_capability: [],
 }
 
 /**

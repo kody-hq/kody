@@ -364,3 +364,56 @@ test('stored grants lose their credential mode and keep everything else', () => 
 		['ec_requester', { egress }, 3],
 	])
 })
+
+test('the machine capability migration keeps every grant and admits machine_capability', () => {
+	const migration = '0276-machine-capabilities.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = (id: string, resourceType: string) =>
+		sqlite.exec(`INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at, allow_unmappable_credential_changes)
+			VALUES ('${id}', 'org_acme', '${resourceType}', 'r1', 'profile', 'profile_1', 'use', 'user_test_1', 'now', 'now', 1)`)
+	insert('g-credential', 'credential')
+	insert('g-context', 'execution_context')
+	sqlite.exec(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES ('g-credential', 'secret:use')`,
+	)
+	expect(() => insert('g-early', 'machine_capability')).toThrow(
+		/CHECK constraint failed/,
+	)
+	const before = grantsSnapshot(sqlite)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(grantsSnapshot(sqlite)).toEqual(before)
+
+	insert('g-capability', 'machine_capability')
+	expect(() => insert('g-duplicate', 'machine_capability')).toThrow(
+		/UNIQUE constraint failed/,
+	)
+	const capability = (id: string, kind: string) =>
+		sqlite.exec(`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at)
+			VALUES ('${id}', 'ec_1', 'org_acme', 'user_test_1', '${kind}', 'kdocker', 'now', 'now')`)
+	capability('mc_1', 'command')
+	expect(() => capability('mc_2', 'command')).toThrow(
+		/UNIQUE constraint failed/,
+	)
+	expect(() => capability('mc_3', 'docker')).toThrow(/CHECK constraint failed/)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT description, summary_json, allowed_packages_json, removed_at FROM machine_capabilities`,
+			)
+			.all(),
+	).toEqual([
+		{
+			description: '',
+			summary_json: '{}',
+			allowed_packages_json: '[]',
+			removed_at: null,
+		},
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT name FROM sqlite_master WHERE name IN ('grants_next', '__migration_assertions')`,
+			)
+			.all(),
+	).toEqual([])
+})

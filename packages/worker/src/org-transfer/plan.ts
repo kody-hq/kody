@@ -17,7 +17,12 @@ import type {
 } from './snapshot.ts'
 
 /** Grantable resources a transfer leaves in the source org. */
-const resourceTypesThatStay = new Set(['memory', 'email', 'execution_context'])
+const resourceTypesThatStay = new Set([
+	'memory',
+	'email',
+	'execution_context',
+	'machine_capability',
+])
 
 export type OrgTransferOrphanCleanup =
 	/** Normal per-row soft delete (sets deleted_at). */
