@@ -17,6 +17,7 @@ import {
 	readLocalPolicy,
 	removeLocalPath,
 	resolveHostPath,
+	folderCapabilityNames,
 } from '../src/execution-context/fs-access.js'
 import { runExecutionContextCommand } from '../src/execution-context/commands.js'
 import { handleHostFsRequest } from '../src/execution-context/host-fs-bridge.js'
@@ -45,7 +46,9 @@ test('a folder is mounted only when both the grant and the local policy allow it
 		],
 		[{ path: desktop, mode: 'rw' }],
 	)
-	assert.deepEqual(effective.mounts, [{ path: desktop, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [
+		{ path: desktop, mode: 'rw', name: 'desktop' },
+	])
 	assert.deepEqual(effective.refused, [
 		{
 			path: docs,
@@ -74,7 +77,7 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: home, mode: 'ro' }],
 			)
 		).mounts,
-		[{ path: desktop, mode: 'ro' }],
+		[{ path: desktop, mode: 'ro', name: 'home' }],
 	)
 	assert.deepEqual(
 		(
@@ -83,7 +86,7 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: desktop, mode: 'rw' }],
 			)
 		).mounts,
-		[{ path: desktop, mode: 'ro' }],
+		[{ path: desktop, mode: 'ro', name: 'desktop' }],
 	)
 	assert.deepEqual(
 		(
@@ -92,8 +95,134 @@ test('the narrower mode wins and the overlap is the more specific folder', async
 				[{ path: home, mode: 'rw' }],
 			)
 		).mounts,
-		[{ path: home, mode: 'rw' }],
+		[{ path: home, mode: 'rw', name: 'home' }],
 	)
+})
+
+test('each allowed folder has a name for Kody that no later folder or reordering can take over', async () => {
+	const first = { path: '/volume1/docker/kody-runner', mode: 'rw' as const }
+	assert.deepEqual(folderCapabilityNames([first]), ['kody-runner'])
+	const rules = [
+		first,
+		{ path: '/backup/Kody Runner', mode: 'ro' as const },
+		{ path: '/', mode: 'ro' as const },
+		{ path: '/srv/.config', mode: 'ro' as const },
+		{ path: '/srv/saved', mode: 'ro' as const, name: 'kept' },
+	]
+	const names = folderCapabilityNames(rules)
+	assert.match(names[0]!, /^kody-runner-[0-9a-f]{8}$/)
+	assert.match(names[1]!, /^kody-runner-[0-9a-f]{8}$/)
+	assert.deepEqual(names.slice(2), ['folder', 'config', 'kept'])
+	assert.equal(new Set(names).size, names.length)
+	for (const name of names) assert.match(name, /^[a-z0-9][a-z0-9_-]{0,62}$/)
+	// The same folders in another order keep the same names.
+	assert.deepEqual(
+		folderCapabilityNames([...rules].reverse()),
+		[...names].reverse(),
+	)
+
+	// A folder whose own name is another folder's hashed name still gets a
+	// name of its own.
+	const hashed = folderCapabilityNames([
+		{ path: '/a/project', mode: 'ro' },
+		{ path: '/b/project', mode: 'ro' },
+	])[0]!
+	for (const clash of [
+		{ path: `/c/${hashed}`, mode: 'ro' as const },
+		{ path: '/c/other', mode: 'ro' as const, name: hashed },
+	]) {
+		const clashing = [
+			clash,
+			{ path: '/a/project', mode: 'ro' as const },
+			{ path: '/b/project', mode: 'ro' as const },
+		]
+		const unique = folderCapabilityNames(clashing)
+		assert.equal(new Set(unique).size, 3)
+		for (const name of unique) assert.match(name, /^[a-z0-9][a-z0-9_-]{0,62}$/)
+		assert.deepEqual(
+			folderCapabilityNames([...clashing].reverse()),
+			[...unique].reverse(),
+		)
+	}
+
+	// `policy allow` saves names, so a same-named folder that sorts first
+	// gets its own name instead of the existing folder's.
+	const { root, dir } = sandbox()
+	const policyPath = join(root, 'config', 'execution-context-policy.json')
+	const existing = dir('z/project')
+	const later = dir('a/project')
+	await allowLocalPath({ path: existing, mode: 'rw', policyPath })
+	const { added } = await allowLocalPath({
+		path: later,
+		mode: 'ro',
+		policyPath,
+	})
+	assert.match(added.name, /^project-[0-9a-f]{8}$/)
+	const saved = (await readLocalPolicy(policyPath)).fs
+	assert.deepEqual(
+		saved.map((rule) => [rule.path, rule.name]),
+		[
+			[later, added.name],
+			[existing, 'project'],
+		],
+	)
+	assert.deepEqual(folderCapabilityNames(saved), [added.name, 'project'])
+	// Allowing a folder again (another mode) keeps its name.
+	await allowLocalPath({ path: later, mode: 'rw', policyPath })
+	assert.deepEqual(
+		folderCapabilityNames((await readLocalPolicy(policyPath)).fs),
+		[added.name, 'project'],
+	)
+})
+
+test('a write that moves or removes a folder asks for every allowed folder inside it', async () => {
+	const { dir } = sandbox()
+	const outer = dir('outer')
+	const inner = dir('outer/mid/inner')
+	const rules = [
+		{ path: outer, mode: 'rw' as const },
+		{ path: inner, mode: 'rw' as const },
+	]
+	const asked: Array<string> = []
+	const effective = {
+		...(await effectiveFs(rules, rules)),
+		authorize: async (mount: { name: string }) => {
+			asked.push(mount.name)
+			if (mount.name === 'inner') throw new Error('inner is refused')
+		},
+	}
+	await assert.rejects(
+		resolveHostPath(effective, join(outer, 'mid'), 'write', {
+			followFinal: false,
+		}),
+		/inner is refused/,
+	)
+	assert.deepEqual(asked, ['outer', 'inner'])
+	asked.length = 0
+	await resolveHostPath(effective, join(outer, 'mid'), 'read')
+	await resolveHostPath(effective, join(outer, 'other.txt'), 'write')
+	assert.deepEqual(asked, ['outer', 'outer'])
+})
+
+test('a machine cannot allow more folders and definitions than Kody accepts in one report', async () => {
+	const { root, dir } = sandbox()
+	const policyPath = join(root, 'config', 'execution-context-policy.json')
+	dir('config')
+	writeFileSync(
+		policyPath,
+		JSON.stringify({
+			version: 1,
+			fs: Array.from({ length: 100 }, (_, index) => ({
+				path: join(root, `f${index}`),
+				mode: 'ro',
+			})),
+		}),
+	)
+	await assert.rejects(
+		allowLocalPath({ path: dir('one-more'), mode: 'ro', policyPath }),
+		/at most 100 host folders, named commands and local network destinations together/,
+	)
+	assert.equal((await readLocalPolicy(policyPath)).fs.length, 100)
 })
 
 test('prefix tricks, .. segments, and symlinks cannot escape a mount', async () => {
@@ -112,7 +241,9 @@ test('prefix tricks, .. segments, and symlinks cannot escape a mount', async () 
 		],
 		[{ path: desktop, mode: 'rw' }],
 	)
-	assert.deepEqual(effective.mounts, [{ path: desktop, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [
+		{ path: desktop, mode: 'rw', name: 'desktop' },
+	])
 	assert.deepEqual(
 		effective.refused.map((refusal) => refusal.layer),
 		['local_policy', 'server_grant'],
@@ -185,7 +316,7 @@ test('the local policy file is absent until allowed, stores canonical paths, and
 	await allowLocalPath({ path: desktop, mode: 'ro', policyPath })
 	assert.deepEqual(await readLocalPolicy(policyPath), {
 		version: 1,
-		fs: [{ path: desktop, mode: 'ro' }],
+		fs: [{ path: desktop, mode: 'ro', name: 'desktop' }],
 	})
 	await assert.rejects(
 		allowLocalPath({ path: `${desktop}/../x`, mode: 'ro', policyPath }),
@@ -246,11 +377,11 @@ test('kody context policy show, allow, and remove edit the file under the CLI co
 		)
 		if (process.platform === 'linux') {
 			assert.deepEqual(JSON.parse(readFileSync(policyFile, 'utf8')).fs, [
-				{ path: desktop, mode: 'rw' },
+				{ path: desktop, mode: 'rw', name: 'desktop' },
 			])
 		}
 		assert.deepEqual(JSON.parse(await run(['show'], { json: true })).fs, [
-			{ path: desktop, mode: 'rw' },
+			{ path: desktop, mode: 'rw', name: 'desktop' },
 		])
 		await assert.rejects(
 			run(['allow', desktop], { mode: 'write' }),
@@ -329,7 +460,7 @@ test('credential folders are never mounted and stay closed inside a mounted fold
 		[{ path: home, mode: 'rw' }],
 		denylist,
 	)
-	assert.deepEqual(effective.mounts, [{ path: home, mode: 'rw' }])
+	assert.deepEqual(effective.mounts, [{ path: home, mode: 'rw', name: 'home' }])
 	assert.deepEqual(
 		effective.refused.map((entry) => [entry.path, entry.layer]),
 		[[ssh, 'credential_denylist']],

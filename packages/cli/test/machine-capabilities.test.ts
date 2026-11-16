@@ -381,6 +381,19 @@ test('the machine tells Kody names and argument shapes, never executable paths, 
 		],
 	})
 	assert.deepEqual(
+		advertisedMachineCapabilities(undefined, [
+			{ name: 'kody-runner', path: '/volume1/docker/kody-runner', mode: 'rw' },
+		]),
+		[
+			{
+				kind: 'fs',
+				name: 'kody-runner',
+				description: '',
+				summary: { path: '/volume1/docker/kody-runner', mode: 'rw' },
+			},
+		],
+	)
+	assert.deepEqual(
 		capabilities.map((entry) => [entry.kind, entry.name]),
 		[
 			['command', 'kdocker'],

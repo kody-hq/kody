@@ -316,6 +316,10 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   name is never matched, even one that resolves to a listed address. Each use is
   audited as `lan_used` with the name, address and port. Egress mode `none`
   still refuses everything.
+- Host folders have names too: `kody context policy show` lists each allowed
+  folder with the name Kody knows it by (the folder's own name). The first time
+  a run touches a folder, Kody is asked and records `fs_used` with that name and
+  the run's packages. Folders stay for the operator's own runs.
 - Named commands:
   `kody.command.run({ capability: 'kdocker', args: ['restart', 'plex'] })` (and
   `start`) runs a command the machine defined with
