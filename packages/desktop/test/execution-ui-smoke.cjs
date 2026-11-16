@@ -360,17 +360,28 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await expect(
 			page.getByRole('button', { name: 'Resume execution', exact: true }),
 		).toBeVisible()
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
+		const machinePanel = page.getByRole('region', { name: 'This machine' })
+		const forgetSetup = machinePanel.getByRole('button', {
+			name: 'Forget desktop setup',
+			exact: true,
+		})
+		const forgetDialog = page.getByRole('dialog', {
+			name: 'Forget desktop setup?',
+			exact: true,
+		})
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
+			.getByRole('button', { name: 'Cancel', exact: true })
 			.click()
-		await page.getByRole('button', { name: 'Cancel', exact: true }).click()
-		await expect(page.getByRole('dialog')).toHaveCount(0)
+		await expect(forgetDialog).toHaveCount(0)
+		await expect(
+			page.getByRole('button', { name: 'Forget desktop setup', exact: true }),
+		).toHaveCount(1)
 		assert.equal(await page.evaluate(() => window.fixture.state.hasSetup), true)
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
-			.click()
-		await page
-			.getByRole('dialog')
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
 			.getByRole('button', { name: 'Forget desktop setup', exact: true })
 			.click()
 		await expect(
