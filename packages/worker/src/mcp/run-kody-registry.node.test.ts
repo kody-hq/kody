@@ -10,7 +10,6 @@ import { buildCapabilityRegistry } from '#mcp/capabilities/build-capability-regi
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import * as moduleGraph from '#worker/package-runtime/module-graph.ts'
-import { PublishedImportsNeedSourceBuildError } from '#worker/package-runtime/module-graph-bundle-builders.ts'
 import {
 	buildKodyFns,
 	buildKodyToolContext,
@@ -1119,7 +1118,7 @@ test('credential needs come from entry closures, never a pinned dependency', () 
 	expect(entries(null, 'callee')).toEqual(['callee', 'dynamic'])
 })
 
-test('runModuleWithRegistry bundles saved package imports here and npm imports in a throwaway isolate', async () => {
+test('runModuleWithRegistry bundles saved package and npm imports in a throwaway isolate', async () => {
 	silenceIncidentalRuntimeWarnings()
 	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
 		emptyRegistry,
@@ -1156,27 +1155,11 @@ export default async function main() { return z.string().parse('ok') }`,
 	expect(saved.error).toBeUndefined()
 	expect(npm.error).toBeUndefined()
 	expect(reExport.error).toBeUndefined()
-	expect(isolateNames).toHaveLength(1)
+	expect(isolateNames).toHaveLength(3)
+	expect(new Set(isolateNames).size).toBe(3)
 	expect(vi.mocked(moduleGraph.buildKodyModuleBundle)).toHaveBeenCalledWith(
-		expect.objectContaining({
-			attachPublishedArtifacts: true,
-			requirePublishedImports: true,
-		}),
+		expect.objectContaining({ attachPublishedArtifacts: true }),
 	)
-
-	// An import without a usable published artifact needs a source build.
-	vi.mocked(moduleGraph.buildKodyModuleBundle).mockRejectedValueOnce(
-		new PublishedImportsNeedSourceBuildError(),
-	)
-	const fallback = await runModuleWithRegistry(
-		env,
-		meCaller(),
-		`import run from 'kody:@you/big/run'
-export default async function main() { return await run({}) }`,
-	)
-	expect(fallback.error).toBeUndefined()
-	expect(isolateNames).toHaveLength(2)
-	expect(new Set(isolateNames).size).toBe(2)
 	for (const name of isolateNames) {
 		expect(name).toMatch(/^isolated-execute-bundle-/)
 	}

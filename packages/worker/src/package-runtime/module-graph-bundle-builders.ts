@@ -159,26 +159,6 @@ function createAttachedModulesExternalsPlugin(
 }
 
 /**
- * The bundle needs package source rebuilt from a fallback (an import with no
- * usable published artifact) or an npm install. Thrown before esbuild runs
- * when the caller asked to build from published artifacts only.
- */
-export class PublishedImportsNeedSourceBuildError extends Error {
-	constructor() {
-		super('Bundle needs a package source build.')
-		this.name = 'PublishedImportsNeedSourceBuildError'
-	}
-}
-
-function preparedGraphNeedsSourceBuild(prepared: PreparedKodyGraph) {
-	if (prepared.hasTypedPublishedArtifactModules) return true
-	for (const role of prepared.moduleRoles.values()) {
-		if (role === 'package-source' || role === 'root-dependency') return true
-	}
-	return false
-}
-
-/**
  * Split a prepared graph into the files esbuild bundles and the published
  * artifact modules attached to the dynamic worker as they are. Runtime
  * modules inside an artifact are dropped; hydration installs the one shared
@@ -318,8 +298,6 @@ export async function buildKodyModuleBundle(input: {
 	 * its own modules, unchanged, and bundle only the rest of the graph.
 	 */
 	attachPublishedArtifacts?: boolean
-	/** Throw {@link PublishedImportsNeedSourceBuildError} instead of building package source or npm dependencies. */
-	requirePublishedImports?: boolean
 }) {
 	const prepared = await getOrPrepareKodyGraphFiles({
 		env: input.env,
@@ -331,14 +309,9 @@ export async function buildKodyModuleBundle(input: {
 		prepareCache: input.prepareCache,
 		linkKodyPackageImports: input.linkKodyPackageImports,
 	})
-	if (
-		input.requirePublishedImports &&
-		preparedGraphNeedsSourceBuild(prepared)
-	) {
-		throw new PublishedImportsNeedSourceBuildError()
-	}
+	// JSON, CommonJS, and text modules keep their types only through esbuild.
 	const { bundlerFiles: files, attachedModules } =
-		input.attachPublishedArtifacts
+		input.attachPublishedArtifacts && !prepared.hasTypedPublishedArtifactModules
 			? splitAttachedPublishedArtifactModules(
 					prepared.files,
 					prepared.moduleRoles,
