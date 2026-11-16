@@ -306,8 +306,8 @@ export async function authorizeContextFolder(
 			message: principal.packages?.truncated
 				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
 				: entries.length === 0
-					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.`
-					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}.`,
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.${packagesSetHint}`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}.${packagesSetHint}`,
 			details: { capability: name, packageIds: refused },
 		})
 	}
@@ -370,6 +370,9 @@ async function packagesNotAllowed(
 	)
 	return entries.filter((_, index) => kinds[index] === null)
 }
+
+const packagesSetHint =
+	" The machine's operator chooses the list with executionContextMachineAccessPackagesSet."
 
 function parseAllowedPackages(row: MachineCapabilityRow) {
 	try {
@@ -472,8 +475,8 @@ async function assertNamedCapabilityAccess(
 			message: principal.packages?.truncated
 				? `This run loaded too many packages for Kody to check them against ${label}, so it is refused. Run it with fewer packages.`
 				: adHocRefused
-					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.`
-					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}. A package from someone else needs to be adopted by the machine's operator before it can use the machine's ${things}.`,
+					? `Code that is not a saved package may not use ${label}: it is limited to listed packages.${packagesSetHint}`
+					: `This run loaded ${refused.length === 1 ? 'a package that is' : 'packages that are'} not allowed to use ${label}: ${refused.slice(0, maxAuditedEntryPackages).join(', ')}. ${allowedPackages.length > 0 ? `It is limited to listed packages.${packagesSetHint}` : `A package from someone else can use the machine's ${things} once the machine's operator adopts it or lists it (executionContextMachineAccessPackagesSet).`}`,
 			details: { capability: name, packageIds: refused },
 		})
 	}

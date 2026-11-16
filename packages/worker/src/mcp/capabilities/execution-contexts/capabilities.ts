@@ -9,7 +9,10 @@ import {
 	grantMachineAccess,
 	listMachineAccess,
 	type MachineAccessScope,
+	maxMachineAccessPackages,
+	packageLimitedMachineCapabilityKinds,
 	revokeMachineAccess,
+	setMachineAccessPackages,
 	shareableMachineCapabilityKinds,
 } from '#worker/execution-contexts/machine-access.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -509,6 +512,35 @@ export const executionContextMachineAccessRevokeCapability =
 				args.grant_id,
 				await machineAccessScope(ctx),
 			)
+		},
+	})
+
+export const executionContextMachineAccessPackagesSetCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextMachineAccessPackagesSet',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:manage_access',
+		description:
+			'Choose which saved packages may use one named command, local network destination or host folder of your execution context. Pass the full list of package ids; it replaces the old one. With packages listed, only runs whose loaded packages are all on the list may use the entry, and code that is not a saved package may not. An empty list lifts the limit: your own code and packages your org wrote or adopted pass again. Operator only. This never shares the entry with anyone; it narrows which code uses it.',
+		keywords: ['execution context', 'machine access', 'packages', 'allow'],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			kind: z.enum(packageLimitedMachineCapabilityKinds),
+			name: z.string().min(1).describe('The name the machine gave it.'),
+			package_ids: z
+				.array(z.string().min(1))
+				.max(maxMachineAccessPackages)
+				.describe('Saved package ids (packageGet package_id). [] lifts it.'),
+		}),
+		async handler(args, ctx) {
+			return await setMachineAccessPackages(await caller(ctx), args.id, {
+				kind: args.kind,
+				name: args.name,
+				packageIds: args.package_ids,
+			})
 		},
 	})
 

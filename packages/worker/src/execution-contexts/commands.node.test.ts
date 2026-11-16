@@ -8,6 +8,7 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import {
 	grantMachineAccess,
 	listMachineAccess,
+	setMachineAccessPackages,
 	revokeMachineAccess,
 } from './machine-access.ts'
 import {
@@ -816,6 +817,107 @@ test('a named command checks the packages Kody served to the run', async () => {
 	await expect(
 		authorizeContextCommand(orgRun(listed, operator), namedArgs),
 	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
+})
+
+test('the operator limits a named command to listed packages and lifts the limit again', async () => {
+	const s = setup()
+	defineCommand(s)
+	savePackage(s, 'pkg_own', orgId)
+	savePackage(s, 'pkg_other', 'org_someone_else')
+	const owner = s.callerFor(operator)
+	const run = (entries: Array<string>) =>
+		authorizeContextCommand(
+			orgRun(s, operator, { packages: { entries, all: entries } }),
+			namedArgs,
+		)
+	const target = { kind: 'command', name: 'kdocker' } as const
+	await expect(run(['pkg_other'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining(
+			'executionContextMachineAccessPackagesSet',
+		),
+	})
+
+	const set = await setMachineAccessPackages(owner, 'ec_mac', {
+		...target,
+		packageIds: ['pkg_other', ' pkg_other '],
+	})
+	expect(set.capabilities[0]).toMatchObject({
+		name: 'kdocker',
+		// Another org's package stays an id: listing it is not access to it.
+		allowedPackages: [{ id: 'pkg_other', name: 'pkg_other' }],
+	})
+	await expect(run(['pkg_other'])).resolves.toMatchObject({ ok: true })
+	// A listed entry is a limit: the operator's own package and ad hoc code stop.
+	await expect(run(['pkg_own'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), namedArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
+	expect(s.audits).toContainEqual(
+		expect.objectContaining({
+			event: 'machine_access_packages_changed',
+			detail: expect.objectContaining({
+				capability: 'kdocker',
+				added: ['pkg_other'],
+				removed: [],
+			}),
+		}),
+	)
+
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', {
+			...target,
+			packageIds: ['pkg_other', 'pkg_missing'],
+		}),
+	).rejects.toMatchObject({
+		code: 'invalid_request',
+		message: expect.stringContaining('pkg_missing'),
+	})
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', {
+			kind: 'command',
+			name: 'nope',
+			packageIds: [],
+		}),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+	await expect(
+		setMachineAccessPackages(s.callerFor('user_friend'), 'ec_mac', {
+			...target,
+			packageIds: [],
+		}),
+	).rejects.toMatchObject({ status: expect.any(Number) })
+	await expect(
+		setMachineAccessPackages(owner, 'ec_mac', {
+			...target,
+			packageIds: [' '],
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	await expect(run(['pkg_other'])).resolves.toMatchObject({ ok: true })
+	expect(
+		(
+			await setMachineAccessPackages(owner, 'ec_mac', {
+				...target,
+				packageIds: ['pkg_other', 'pkg_own'],
+			})
+		).capabilities[0],
+	).toMatchObject({
+		allowedPackages: [
+			{ id: 'pkg_other', name: 'pkg_other' },
+			{ id: 'pkg_own', name: '@acme/pkg_own' },
+		],
+	})
+
+	const lifted = await setMachineAccessPackages(owner, 'ec_mac', {
+		...target,
+		packageIds: [],
+	})
+	expect(lifted.capabilities[0]).toMatchObject({ allowedPackages: [] })
+	await expect(run(['pkg_own'])).resolves.toMatchObject({ ok: true })
+	await expect(run(['pkg_other'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
 })
 
 test('a shell command logs the packages a package rule would refuse, and still runs', async () => {

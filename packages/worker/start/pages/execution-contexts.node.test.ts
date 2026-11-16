@@ -560,6 +560,7 @@ const machineAccessFixture = {
 			name: 'kdocker',
 			description: 'Restart a container',
 			shareable: true,
+			allowedPackages: [{ id: 'pkg_1', name: '@jane/nas-ops' }],
 			grants: [
 				{ grantId: 'g_sam', subject: { kind: 'user' as const, handle: 'sam' } },
 				{ grantId: 'g_all', subject: { kind: 'everyone' as const } },
@@ -595,6 +596,7 @@ test('operator detail lists machine access with who holds each entry', async () 
 	expect(body).toContain('Named commands')
 	expect(body).toContain('kdocker')
 	expect(body).toContain('Restart a container')
+	expect(body).toContain('Only these packages may use it: @jane/nas-ops')
 	expect(body).toContain('@sam')
 	expect(body).toContain('Everyone in @jane')
 	expect(body).toContain('Local network destinations')

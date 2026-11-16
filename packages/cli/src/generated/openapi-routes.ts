@@ -415,6 +415,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextMachineAccessPackagesSet',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access/packages',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextMachineAccessRevoke',
 		method: 'DELETE',
 		pathTemplate: '/v1/execution-contexts/{id}/machine-access/{grant_id}',

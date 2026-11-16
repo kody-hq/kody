@@ -2,8 +2,13 @@ import {
 	type GrantSubjectChoices,
 	grantSubjectMatchSql,
 } from '#worker/authorization/grant-subjects.ts'
+import {
+	parseAllowedPackages,
+	stringifyAllowedPackages,
+} from '#worker/mcp/secrets/allowed-packages.ts'
 import { softDeleteGrant, upsertGrant } from '#worker/orgs/access-writes.ts'
 import { orgAuditWriterFromCaller } from '#worker/orgs/org-audit.ts'
+import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 import { grantResourceToProfile } from '#worker/profiles/package-grants.ts'
 import { ExecutionContextError } from './errors.ts'
 import {
@@ -21,6 +26,23 @@ import { canManageContext } from './store.ts'
 export const shareableMachineCapabilityKinds = ['command', 'lan'] as const
 
 type ShareableKind = (typeof shareableMachineCapabilityKinds)[number]
+
+/** The kinds whose use the operator can limit to listed packages. */
+export const packageLimitedMachineCapabilityKinds = [
+	'command',
+	'lan',
+	'fs',
+] as const
+
+type PackageLimitedKind = (typeof packageLimitedMachineCapabilityKinds)[number]
+
+export const maxMachineAccessPackages = 50
+
+const kindWords = {
+	command: 'command',
+	lan: 'local network destination',
+	fs: 'host folder',
+} as const
 
 /** A machine access grant reaches a person directly, through a team, or as a member of the org. */
 // A profile's grant is checked as a layer of its chain (checkProfileChain), not here.
@@ -108,12 +130,30 @@ async function loadMachineAccess(
 			.bind(caller.orgId, new Date().toISOString(), contextId)
 			.all<GrantRow>(),
 	])
+	const packageNames = manages
+		? await loadPackageNames(
+				db,
+				caller.orgId,
+				capabilities.results.flatMap((capability) =>
+					parseAllowedPackages(capability.allowed_packages_json),
+				),
+			)
+		: new Map<string, string>()
 	const entries = capabilities.results.map((capability) => ({
 		id: capability.id,
 		kind: capability.kind,
 		name: capability.name,
 		description: capability.description,
 		shareable: isShareable(capability.kind),
+		// Empty: code that is not a saved package, and packages the operator's
+		// org wrote or adopted. Otherwise only these, and no ad hoc code.
+		...(manages
+			? {
+					allowedPackages: parseAllowedPackages(
+						capability.allowed_packages_json,
+					).map((id) => ({ id, name: packageNames.get(id) ?? id })),
+				}
+			: {}),
 		grants: grants.results
 			.filter(
 				(grant) =>
@@ -147,6 +187,32 @@ async function loadMachineAccess(
 	// Without Manage, a person's view is their own profiles' grants, not
 	// everything the machine defines.
 	return manages ? entries : entries.filter((entry) => entry.grants.length > 0)
+}
+
+/**
+ * Names for the listed packages the caller's org owns. A package from another
+ * org stays an id: a list entry is not access to that package.
+ */
+async function loadPackageNames(
+	db: D1Database,
+	orgId: string,
+	ids: Array<string>,
+) {
+	const names = new Map<string, string>()
+	await Promise.all(
+		[...new Set(ids)].map(async (id) => {
+			const saved = await getSavedPackageByIdInAnyOrg(db, id)
+			if (saved?.userId === orgId) names.set(id, saved.name)
+		}),
+	)
+	return names
+}
+
+async function missingPackages(db: D1Database, ids: Array<string>) {
+	const found = await Promise.all(
+		ids.map((id) => getSavedPackageByIdInAnyOrg(db, id)),
+	)
+	return ids.filter((_, index) => found[index] === null)
 }
 
 function isShareable(kind: string): kind is ShareableKind {
@@ -371,6 +437,98 @@ export async function revokeMachineAccess(
 	return {
 		id: row.id,
 		canGrant: manages && access.isOperator,
+		capabilities: await loadMachineAccess(caller, row.id, manages),
+	}
+}
+
+/**
+ * Limit one named command, local network destination or host folder to
+ * listed packages, or lift the limit with an empty list. Operator only: the
+ * list decides which code may act on their machine.
+ */
+export async function setMachineAccessPackages(
+	caller: ExecutionContextCaller,
+	ref: string,
+	input: { kind: PackageLimitedKind; name: string; packageIds: Array<string> },
+) {
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		{},
+	)
+	if (!(manages && access.isOperator)) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `Only ${row.name}'s operator can choose which packages use its machine access.`,
+		})
+	}
+	const db = caller.env.APP_DB
+	const capability = await db
+		.prepare(
+			`SELECT * FROM machine_capabilities
+			 WHERE context_id = ? AND kind = ? AND name = ? AND removed_at IS NULL`,
+		)
+		.bind(row.id, input.kind, input.name)
+		.first<MachineCapabilityRow>()
+	if (!capability) {
+		throw new ExecutionContextError({
+			status: 404,
+			code: 'machine_capability_off',
+			message: `${row.name} defines no ${kindWords[input.kind]} named "${input.name}". executionContextMachineAccessList shows what it defines.`,
+		})
+	}
+	if (input.packageIds.some((id) => id.trim() === '')) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message:
+				'A package id cannot be blank. Pass [] to lift the package limit.',
+		})
+	}
+	const before = parseAllowedPackages(capability.allowed_packages_json)
+	const after = parseAllowedPackages(stringifyAllowedPackages(input.packageIds))
+	if (after.length > maxMachineAccessPackages) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message: `A machine access entry lists at most ${maxMachineAccessPackages} packages.`,
+		})
+	}
+	const added = after.filter((id) => !before.includes(id))
+	const unknown = await missingPackages(db, added)
+	if (unknown.length > 0) {
+		throw new ExecutionContextError({
+			status: 400,
+			code: 'invalid_request',
+			message: `No saved package has the id ${unknown.join(', ')}. Pass package ids (packageGet returns one as package_id).`,
+		})
+	}
+	const removed = before.filter((id) => !after.includes(id))
+	if (added.length > 0 || removed.length > 0) {
+		await db
+			.prepare(
+				`UPDATE machine_capabilities SET allowed_packages_json = ?, updated_at = ?
+				 WHERE id = ? AND removed_at IS NULL`,
+			)
+			.bind(JSON.stringify(after), new Date().toISOString(), capability.id)
+			.run()
+		await recordContextAudit(
+			caller,
+			row.id,
+			'machine_access_packages_changed',
+			{
+				capability: capability.name,
+				capabilityId: capability.id,
+				kind: capability.kind,
+				added,
+				removed,
+			},
+		)
+	}
+	return {
+		id: row.id,
+		canGrant: true,
 		capabilities: await loadMachineAccess(caller, row.id, manages),
 	}
 }

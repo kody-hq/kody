@@ -1594,6 +1594,14 @@ function MachineAccessPanel(props: {
 									{entry.description ? (
 										<span css={mutedCss}>{entry.description}</span>
 									) : null}
+									{entry.allowedPackages?.length ? (
+										<span css={mutedCss}>
+											Only these packages may use it:{' '}
+											{entry.allowedPackages
+												.map((item) => item.name)
+												.join(', ')}
+										</span>
+									) : null}
 									{!entry.shareable ? null : entry.grants.length === 0 ? (
 										<span css={mutedCss}>Only the operator</span>
 									) : (

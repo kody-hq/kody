@@ -634,6 +634,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'executionContextMachineAccessRevoke',
 		],
 		[
+			'PUT',
+			'/v1/execution-contexts/{id}/machine-access/packages',
+			'executionContextMachineAccessPackagesSet',
+		],
+		[
 			'POST',
 			'/v1/execution-contexts/{id}/attachments',
 			'executionContextAttach',
