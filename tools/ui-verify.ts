@@ -70,11 +70,15 @@ async function startPinnedBrowser() {
 	if (run.status !== 0) return null
 	const stop = () =>
 		spawnSync('docker', ['rm', '--force', name], { stdio: 'ignore' })
+	// `--rm` only removes a stopped container, so an interrupted run stops it.
+	process.once('exit', stop)
+	process.once('SIGINT', () => process.exit(130))
+	process.once('SIGTERM', () => process.exit(143))
 	for (let attempt = 0; attempt < 240; attempt++) {
 		if (await canConnect(port)) {
 			// The port opens before run-server is accepting browsers.
 			await delay(1000)
-			return { endpoint: `ws://127.0.0.1:${port}/`, stop }
+			return { endpoint: `ws://127.0.0.1:${port}/` }
 		}
 		await delay(500)
 	}
@@ -125,7 +129,6 @@ const run = spawnSync(
 			: process.env,
 	},
 )
-browser?.stop()
 if (run.status === 0 && update)
 	console.log(
 		`\nBaselines updated under ${uiVerifyPaths.baselines}/. Review them with git diff and commit them with the UI change.`,
