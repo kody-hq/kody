@@ -1175,6 +1175,15 @@ test('a person gives their own profile a named command they can use, capped by i
 		(await listMachineAccess(friend, 'ec_mac')).capabilities[0]!.grants,
 	).toEqual(mine)
 
+	// Someone the machine is not shared with learns nothing about it.
+	const stranger = s.callerFor('user_stranger')
+	await expect(listMachineAccess(stranger, 'ec_mac')).rejects.toMatchObject({
+		code: 'not_granted',
+	})
+	await expect(give(stranger, 'prf_friend')).rejects.toMatchObject({
+		code: 'not_granted',
+	})
+
 	// A credential without manage_access gives the operator's profile access
 	// but cannot share with a person, and sees only the operator's own profiles.
 	const scoped = { withoutManageAccess: true } as const

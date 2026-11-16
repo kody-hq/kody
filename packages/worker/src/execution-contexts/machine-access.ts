@@ -108,7 +108,7 @@ async function loadMachineAccess(
 			.bind(caller.orgId, new Date().toISOString(), contextId)
 			.all<GrantRow>(),
 	])
-	return capabilities.results.map((capability) => ({
+	const entries = capabilities.results.map((capability) => ({
 		id: capability.id,
 		kind: capability.kind,
 		name: capability.name,
@@ -144,6 +144,9 @@ async function loadMachineAccess(
 				return subject ? [{ grantId: grant.id, subject }] : []
 			}),
 	}))
+	// Without Manage, a person's view is their own profiles' grants, not
+	// everything the machine defines.
+	return manages ? entries : entries.filter((entry) => entry.grants.length > 0)
 }
 
 function isShareable(kind: string): kind is ShareableKind {
@@ -158,16 +161,29 @@ function isShareable(kind: string): kind is ShareableKind {
  */
 export type MachineAccessScope = { withoutManageAccess?: true }
 
-function managesMachineAccess(
+/**
+ * The context plus whether the caller manages its machine access. Someone
+ * who neither manages it nor has it shared with them learns nothing about
+ * what the machine defines.
+ */
+async function loadMachineAccessContext(
 	caller: ExecutionContextCaller,
-	access: Parameters<typeof canManageContext>[0],
+	ref: string,
 	scope: MachineAccessScope,
 ) {
+	const { row, access } = await loadVisibleContext(caller, ref)
 	const role = caller.request.membership?.role
-	return (
+	const manages =
 		!scope.withoutManageAccess &&
 		(canManageContext(access) || role === 'owner' || role === 'admin')
-	)
+	if (!manages && !access.granted) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `${row.name} is not shared with you.`,
+		})
+	}
+	return { row, access, manages }
 }
 
 /**
@@ -179,8 +195,11 @@ export async function listMachineAccess(
 	ref: string,
 	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await loadVisibleContext(caller, ref)
-	const manages = managesMachineAccess(caller, access, scope)
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
 	return {
 		id: row.id,
 		canGrant: manages && access.isOperator,
@@ -205,9 +224,12 @@ export async function grantMachineAccess(
 	},
 	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await loadVisibleContext(caller, ref)
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
 	const { subject } = input
-	const manages = managesMachineAccess(caller, access, scope)
 	if (subject.type !== 'profile' && !(manages && access.isOperator)) {
 		throw new ExecutionContextError({
 			status: 403,
@@ -300,8 +322,11 @@ export async function revokeMachineAccess(
 	grantId: string,
 	scope: MachineAccessScope = {},
 ) {
-	const { row, access } = await loadVisibleContext(caller, ref)
-	const manages = managesMachineAccess(caller, access, scope)
+	const { row, access, manages } = await loadMachineAccessContext(
+		caller,
+		ref,
+		scope,
+	)
 	const db = caller.env.APP_DB
 	const grant = await db
 		.prepare(
