@@ -10,6 +10,18 @@ import {
 import { Field } from '../components/field.tsx'
 import { Input, Select, Textarea } from '../components/input.tsx'
 import { renderIcon } from '../components/icon.tsx'
+import {
+	Menu,
+	MenuCheckboxItem,
+	MenuContent,
+	MenuGroup,
+	MenuItem,
+	MenuLinkItem,
+	MenuSeparator,
+	MenuTrigger,
+} from '../components/menu.tsx'
+import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
+import { Tooltip } from '../components/tooltip.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	visuallyHiddenCss,
@@ -160,7 +172,115 @@ const uiGallerySections: ReadonlyArray<{
 			</GalleryRow>
 		),
 	},
+	{
+		id: 'menu',
+		title: 'Menu',
+		render: () => (
+			<GalleryRow label="actions">
+				<MenuDemo />
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'tooltip',
+		title: 'Tooltip',
+		render: () => (
+			<GalleryRow label="hover or focus">
+				<Button
+					type="button"
+					variant="secondary"
+					aria-describedby="gallery-tooltip-top"
+				>
+					Above
+					<Tooltip id="gallery-tooltip-top">Shows on hover and focus.</Tooltip>
+				</Button>
+				<Button
+					type="button"
+					variant="ghost"
+					iconOnly
+					aria-label="Help"
+					aria-describedby="gallery-tooltip-bottom"
+				>
+					{renderIcon('information')}
+					<Tooltip id="gallery-tooltip-bottom" side="bottom" align="start">
+						Escape hides it until focus leaves.
+					</Tooltip>
+				</Button>
+			</GalleryRow>
+		),
+	},
+	{
+		id: 'tabs',
+		title: 'Tabs',
+		render: () => (
+			<>
+				<GalleryRow label="segmented">
+					<Tabs defaultActiveTab="html">
+						<TabList aria-label="Email body">
+							<Tab name="html">HTML</Tab>
+							<Tab name="text">Text</Tab>
+							<Tab name="source" disabled>
+								Source
+							</Tab>
+						</TabList>
+						<TabPanel name="html">Rendered HTML body.</TabPanel>
+						<TabPanel name="text">Plain text body.</TabPanel>
+						<TabPanel name="source">Raw source.</TabPanel>
+					</Tabs>
+				</GalleryRow>
+				<GalleryRow label="underline">
+					<Tabs variant="underline" defaultActiveTab="sharing">
+						<TabList aria-label="File settings">
+							<Tab name="sharing">Sharing</Tab>
+							<Tab name="details">Details</Tab>
+						</TabList>
+						<TabPanel name="sharing" css={{ paddingBlock: spacing.sm }}>
+							People and teams with access.
+						</TabPanel>
+						<TabPanel name="details" css={{ paddingBlock: spacing.sm }}>
+							Type, modified date, and location.
+						</TabPanel>
+					</Tabs>
+				</GalleryRow>
+			</>
+		),
+	},
 ]
+
+function MenuDemo() {
+	const [wrap, setWrap] = useState(true)
+	const [last, setLast] = useState('Nothing chosen yet.')
+	return (
+		<>
+			<Menu>
+				<MenuTrigger render={<Button type="button" variant="secondary" />}>
+					File actions
+				</MenuTrigger>
+				<MenuContent aria-label="File actions">
+					<MenuGroup label="Edit">
+						<MenuItem onClick={() => setLast('Renamed.')}>Rename</MenuItem>
+						<MenuItem onClick={() => setLast('Duplicated.')}>
+							Duplicate
+						</MenuItem>
+						<MenuItem disabled>Move (no other folders)</MenuItem>
+					</MenuGroup>
+					<MenuSeparator />
+					<MenuCheckboxItem checked={wrap} onCheckedChange={setWrap}>
+						Wrap lines
+					</MenuCheckboxItem>
+					<MenuLinkItem href="/docs">Open docs</MenuLinkItem>
+					<MenuSeparator />
+					<MenuItem tone="danger" onClick={() => setLast('Deleted.')}>
+						Delete
+					</MenuItem>
+				</MenuContent>
+			</Menu>
+			<span role="status" css={{ color: colors.textMuted }}>
+				{last}
+			</span>
+		</>
+	)
+}
 
 type DialogDemoProps = Omit<DialogProps, 'open' | 'onClose' | 'children'> & {
 	trigger: string

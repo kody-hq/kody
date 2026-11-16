@@ -11,11 +11,21 @@ import {
 	type ReactNode,
 } from 'react'
 import type { CSSObject } from '@emotion/react'
+import { colors } from '#universal/styles/tokens.ts'
 type TabsSize = 'md' | 'lg'
+/**
+ * `segmented` is a pill track for switching views of one thing;
+ * `underline` is a quiet row for sections of a panel. Size only applies
+ * to `segmented`.
+ */
+type TabsLook =
+	| { variant?: 'segmented'; size?: TabsSize }
+	| { variant: 'underline'; size?: never }
 type ContextValue = {
 	id: string
 	active: string | undefined
 	disabled: boolean
+	variant: 'segmented' | 'underline'
 	select: (name: string) => void
 }
 const TabsContext = createContext<ContextValue | null>(null)
@@ -40,22 +50,28 @@ function firstTabName(children: ReactNode): string | undefined {
 	}
 	return undefined
 }
+/**
+ * WAI-ARIA tabs with automatic activation: arrow keys, Home, and End move
+ * focus and select. Controlled with `activeTab`, otherwise starts on
+ * `defaultActiveTab` or the first enabled tab.
+ */
 export function Tabs({
 	activeTab,
 	defaultActiveTab,
 	disabled = false,
 	onActiveTabChange,
+	variant = 'segmented',
 	size = 'md',
 	children,
 	...props
-}: ComponentProps<'div'> & {
-	activeTab?: string
-	defaultActiveTab?: string
-	disabled?: boolean
-	onActiveTabChange?: (active: string) => void
-	size?: TabsSize
-	children?: ReactNode
-}) {
+}: Omit<ComponentProps<'div'>, 'children'> &
+	TabsLook & {
+		activeTab?: string
+		defaultActiveTab?: string
+		disabled?: boolean
+		onActiveTabChange?: (active: string) => void
+		children?: ReactNode
+	}) {
 	const id = useId()
 	const [local, setLocal] = useState(defaultActiveTab ?? firstTabName(children))
 	const active = activeTab ?? local
@@ -65,6 +81,7 @@ export function Tabs({
 				id,
 				active,
 				disabled,
+				variant,
 				select(name) {
 					if (disabled) return
 					setLocal(name)
@@ -72,13 +89,28 @@ export function Tabs({
 				},
 			}}
 		>
-			<div {...props} css={[tabsRootCss, sizeStyles[size]]}>
+			<div
+				{...props}
+				css={[
+					tabsRootCss,
+					variant === 'segmented' ? sizeStyles[size] : underlineRootCss,
+				]}
+			>
 				{children}
 			</div>
 		</TabsContext>
 	)
 }
-export function TabList({ onKeyDown, ...props }: ComponentProps<'div'>) {
+/** A tablist needs a name: visible text via `aria-labelledby`, or `aria-label`. */
+type TabListName =
+	| { 'aria-label': string; 'aria-labelledby'?: never }
+	| { 'aria-labelledby': string; 'aria-label'?: never }
+
+export function TabList({
+	onKeyDown,
+	...props
+}: Omit<ComponentProps<'div'>, 'aria-label' | 'aria-labelledby'> &
+	TabListName) {
 	const context = useTabs()
 	return (
 		<div
@@ -86,7 +118,7 @@ export function TabList({ onKeyDown, ...props }: ComponentProps<'div'>) {
 			role="tablist"
 			tabIndex={-1}
 			aria-disabled={context.disabled || undefined}
-			css={tabsListCss}
+			css={context.variant === 'segmented' ? tabsListCss : underlineListCss}
 			onKeyDown={(event) => {
 				onKeyDown?.(event)
 				if (event.defaultPrevented || context.disabled) return
@@ -132,7 +164,7 @@ export function Tab({
 			disabled={disabled || context.disabled}
 			tabIndex={selected ? 0 : -1}
 			data-state={selected ? 'active' : 'inactive'}
-			css={tabsTabCss}
+			css={context.variant === 'segmented' ? tabsTabCss : underlineTabCss}
 			onClick={(event) => {
 				onClick?.(event)
 				if (!event.defaultPrevented) context.select(name)
@@ -153,7 +185,7 @@ export function TabPanel({
 			aria-labelledby={context.id + '-tab-' + name}
 			hidden={context.active !== name}
 			tabIndex={0}
-			css={tabsPanelCss}
+			css={context.variant === 'segmented' ? tabsPanelCss : underlinePanelCss}
 		/>
 	)
 }
@@ -294,3 +326,48 @@ const sizeStyles = {
 		'--rmx-tabs-gap': '14px',
 	},
 } as const satisfies Record<TabsSize, CSSObject>
+
+const underlineRootCss: CSSObject = { gap: 0 }
+
+const underlineListCss: CSSObject = {
+	display: 'flex',
+	gap: 20,
+	minWidth: 0,
+	borderBottom: `1px solid ${colors.border}`,
+	overflowX: 'auto',
+	scrollbarWidth: 'none',
+	'&[aria-disabled="true"]': { opacity: 0.55 },
+}
+
+const underlineTabCss: CSSObject = {
+	appearance: 'none',
+	display: 'inline-flex',
+	alignItems: 'center',
+	gap: 7,
+	minHeight: 32,
+	margin: 0,
+	padding: '12px 0',
+	border: 0,
+	borderBottom: '2px solid transparent',
+	borderRadius: 0,
+	background: 'transparent',
+	color: colors.textMuted,
+	font: 'inherit',
+	whiteSpace: 'nowrap',
+	cursor: 'pointer',
+	'@media (pointer: coarse)': { minHeight: 40 },
+	'&[data-state="active"]': {
+		borderBottomColor: colors.primary,
+		color: colors.text,
+	},
+	'&:disabled': { cursor: 'not-allowed', opacity: 0.55 },
+	'&:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: 2,
+	},
+}
+
+const underlinePanelCss: CSSObject = {
+	minWidth: 0,
+	'&[hidden]': { display: 'none' },
+}

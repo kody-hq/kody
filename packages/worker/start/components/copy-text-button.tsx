@@ -1,12 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Tooltip, type TooltipProps } from './tooltip.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import {
-	useCallback,
-	useEffect,
-	useRef,
-	type ReactElement,
-	type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { useActor } from '@xstate/react'
 import {
 	clipboardFeedbackState,
@@ -26,7 +21,8 @@ export const onboardingCopiedConnectActionEvent =
 
 type CopyTextButtonProps = {
 	title?: string
-	wrapButton?: (button: ReactElement) => ReactElement
+	/** Hover and focus hint; `id` must be stable (see Tooltip). */
+	tooltip?: Omit<TooltipProps, 'children' | 'className'> & { text: ReactNode }
 	value: string
 	iconOnly?: boolean
 	idleLabel?: ReactNode
@@ -179,6 +175,7 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 			type="button"
 			className={props.class}
 			aria-label={props.ariaLabel}
+			aria-describedby={props.tooltip?.id}
 			title={
 				props.title ??
 				(props.iconOnly ? (props.ariaLabel ?? 'Copy') : undefined)
@@ -208,7 +205,12 @@ export function CopyTextButton(props: CopyTextButtonProps) {
 						? 'Copy failed'
 						: ''}
 			</span>
+			{props.tooltip ? (
+				<Tooltip side="bottom" {...props.tooltip}>
+					{props.tooltip.text}
+				</Tooltip>
+			) : null}
 		</Button>
 	)
-	return props.wrapButton ? props.wrapButton(button) : button
+	return button
 }

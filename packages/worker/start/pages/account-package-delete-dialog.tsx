@@ -17,7 +17,7 @@ import { mergeCss } from '../components/merge-css.ts'
 
 import { writeClipboardText } from '#client/clipboard.ts'
 import { useRouter } from '@tanstack/react-router'
-import { copyPromptTooltipCss } from '../components/fork-outdated-copy-button.tsx'
+import { Tooltip } from '../components/tooltip.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { ownerWorkspaceHref } from '#client/routes/account-rail.ts'
 import { useShellData } from '../routes/__root.tsx'
@@ -50,7 +50,11 @@ export function AccountPackageDeleteDialog(props: {
 		async ({
 			data,
 		}: {
-			data: { packageId: string; confirmName: string; isCurrent: () => boolean }
+			data: {
+				packageId: string
+				confirmName: string
+				isCurrent: () => boolean
+			}
 		}) => {
 			const result = await deletePackage({
 				data: { packageId: data.packageId, confirmName: data.confirmName },
@@ -194,13 +198,9 @@ export function AccountPackageDeleteDialog(props: {
 								onClick={() => void copyName()}
 							>
 								{renderIcon('copy', { size: '0.85em' })}
-								<span
-									id={packageDeleteCopyTooltipId}
-									role="tooltip"
-									aria-hidden="true"
-								>
+								<Tooltip id={packageDeleteCopyTooltipId}>
 									{copyFeedback ?? packageDeleteCopyTooltip}
-								</span>
+								</Tooltip>
 							</button>
 							?
 						</h3>
@@ -278,7 +278,7 @@ const deleteDialogTitleCss = {
 	lineHeight: 1.2,
 } satisfies CSSObject
 
-const packageDeleteCopyButtonCss = mergeCss(copyPromptTooltipCss, {
+const packageDeleteCopyButtonCss = {
 	position: 'relative' as const,
 	display: 'inline-flex',
 	alignItems: 'center',
@@ -304,4 +304,4 @@ const packageDeleteCopyButtonCss = mergeCss(copyPromptTooltipCss, {
 		outline: `2px solid ${colors.primary}`,
 		outlineOffset: '2px',
 	},
-})
+} satisfies CSSObject

@@ -14,6 +14,9 @@ export async function findAxeViolations(
 		'wcag21a',
 		'wcag21aa',
 	])
+	// Base UI's focus guards are hidden tab stops that hand focus back to the
+	// popup or its trigger; axe reads them as hidden focusable content.
+	axe.exclude('[data-base-ui-focus-guard]')
 	if (options.include) axe.include(options.include)
 	if (options.exclude) axe.exclude(options.exclude)
 	const results = await axe.analyze()
