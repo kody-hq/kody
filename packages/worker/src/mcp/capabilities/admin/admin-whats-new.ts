@@ -109,7 +109,7 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 				.datetime()
 				.optional()
 				.describe(
-					'When the person made the choice, if it was recorded elsewhere first. Defaults to now. Not in the future.',
+					'When the person made the choice, if it was recorded elsewhere first. Defaults to now. Not in the future. A choice older than the saved one is not applied, and the saved one is returned.',
 				),
 		}),
 		outputSchema: optInSchema.extend({ opt_in_updated_at: z.string() }),
@@ -127,7 +127,11 @@ export const adminWhatsNewOptInSetCapability = defineDomainCapability(
 					})
 					// `email_link` is the newsletter package reporting a choice it
 					// already recorded, so only admin changes are announced back.
-					if (args.source === 'admin') {
+					const superseded =
+						args.occurred_at !== undefined &&
+						result.opt_in_updated_at !==
+							new Date(args.occurred_at).toISOString()
+					if (args.source === 'admin' && !superseded) {
 						await recordWhatsNewConsentChange({
 							env: ctx.env,
 							stableUserId: result.stable_user_id,

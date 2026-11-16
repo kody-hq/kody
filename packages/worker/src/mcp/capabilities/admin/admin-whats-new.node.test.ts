@@ -195,6 +195,44 @@ test('a choice recorded elsewhere first keeps its own time, and a future time is
 	).rejects.toThrow('occurred_at must not be in the future.')
 })
 
+test('a choice older than the saved one is not applied', async () => {
+	const { ctx, user } = setup()
+	const unsubscribedAt = '2026-11-15T21:00:00.000Z'
+	const id = user(1, 0, unsubscribedAt)
+	const stored = {
+		opted_in: false,
+		opt_in_updated_at: unsubscribedAt,
+	}
+	expect(
+		await set.handler(
+			{
+				stable_user_id: id,
+				opted_in: true,
+				source: 'email_link',
+				occurred_at: '2026-11-15T20:06:42.050Z',
+			},
+			ctx,
+		),
+	).toMatchObject(stored)
+	expect(
+		(await list.handler({ audience: 'all-users' }, ctx)).users[0],
+	).toMatchObject(stored)
+	expect(
+		await set.handler(
+			{
+				stable_user_id: id,
+				opted_in: true,
+				source: 'email_link',
+				occurred_at: '2026-11-15T21:00:01.000Z',
+			},
+			ctx,
+		),
+	).toMatchObject({
+		opted_in: true,
+		opt_in_updated_at: '2026-11-15T21:00:01.000Z',
+	})
+})
+
 test('newsletter capabilities require a site admin and send exactly one recipient with redacted audit', async () => {
 	const { ctx } = setup(['user'])
 	for (const capability of [list, set, send, events]) {
