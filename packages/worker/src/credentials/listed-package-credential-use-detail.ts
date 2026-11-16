@@ -59,13 +59,24 @@ export function countCredentialReferences(
 		if (isPlatformRuntimeModulePath(modulePath)) continue
 		const source = moduleSource(module as never)
 		if (source == null) continue
-		const names = [
-			...findPlaceholderMatches(source).map((match) => match.names),
-			...[...source.matchAll(secretRefCallPattern)].map((match) => [match[1]!]),
+		// Only secret placeholders name a stored secret; an integration
+		// placeholder of the same name is a different credential.
+		const placeholders = [
+			...findPlaceholderMatches(source).map((match) => ({
+				names: match.names,
+				namesSecret: match.kind === 'secret' || match.kind === 'secret-basic',
+			})),
+			...[...source.matchAll(secretRefCallPattern)].map((match) => ({
+				names: [match[1]!],
+				namesSecret: true,
+			})),
 		]
-		for (const placeholderNames of names) {
+		for (const placeholder of placeholders) {
 			counts.any += 1
-			if (placeholderNames.some((name) => lockedNames.has(name))) {
+			if (
+				placeholder.namesSecret &&
+				placeholder.names.some((name) => lockedNames.has(name))
+			) {
 				counts.locked += 1
 			}
 		}

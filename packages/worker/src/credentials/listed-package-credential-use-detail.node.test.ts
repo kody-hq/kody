@@ -139,6 +139,15 @@ test('an unknown package reports nothing', async () => {
 	])
 })
 
+test('an integration placeholder with the same name is not a reference to the listed secret', async () => {
+	expect(
+		countCredentialReferences(
+			{ 'bundle.js': `const h = 'Bearer {{integration-token:apiKey}}'` },
+			new Set(['apiKey']),
+		),
+	).toEqual({ locked: 0, any: 1, clientCalls: 0 })
+})
+
 test('a property or longer name is not a credential client call', async () => {
 	expect(
 		countCredentialReferences(
