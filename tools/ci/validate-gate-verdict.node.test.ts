@@ -21,6 +21,7 @@ function needs(overrides: Needs = {}): Needs {
 		mcp: success,
 		e2e: success,
 		e2e_report: success,
+		ui_verify: success,
 		cli: success,
 		cli_windows: success,
 		dev_runtime: success,

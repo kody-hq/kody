@@ -25,6 +25,8 @@ style, tests, MCP capabilities, and runtime architecture.
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
 - [control-kody](./control-kody.md) (Feature Map + CLI; daily
   `@kentcdodds/verification-skill-maintain`)
+- [UI verify](./ui-verify.md) (`npm run ui:verify`: gallery and key pages, axe,
+  keyboard focus, visual baselines; run before calling UI work done)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
 - [Cursor Cloud Agent notes](./cloud-agents.md)
 - [Nx remote cache](../../packages/nx-cache/readme.md) (self-hosted HTTP cache
