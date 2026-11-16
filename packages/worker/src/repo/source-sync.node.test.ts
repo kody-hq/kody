@@ -338,7 +338,11 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 	await expect(
 		syncArtifactSourceSnapshot({
 			...syncInput,
-			files: { 'package.json': packageFiles['package.json'] },
+			files: {
+				'package.json': packageFiles['package.json'],
+				'public/icon.png': '\u0089PNG\r\n\u001a\n',
+			},
+			editPaths: ['package.json'],
 		}),
 	).resolves.toBe('commit-session-2')
 	expect(session.bootstrapSource).not.toHaveBeenCalled()
@@ -354,6 +358,14 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 			userId: ownerIdFromStored('user-1'),
 			dryRun: false,
 			rollbackOnError: true,
+			// Only `editPaths` are written; the PNG byte string is not.
+			edits: [
+				{
+					kind: 'write',
+					path: 'package.json',
+					content: packageFiles['package.json'],
+				},
+			],
 		}),
 	)
 	expect(session.runChecks).toHaveBeenCalledWith(

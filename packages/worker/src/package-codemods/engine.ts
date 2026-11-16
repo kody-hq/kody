@@ -11,6 +11,7 @@ import {
 	listSavedPackagesByUserId,
 	listSavedPackagesPage,
 } from '#worker/package-registry/repo.ts'
+import { planCodemodApplyWrites } from './apply-write-plan.ts'
 import { isSavedPackageLocked } from '#worker/package-registry/package-publish-lock.ts'
 import { refreshSavedPackageProjection } from '#worker/package-registry/service.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
@@ -1122,7 +1123,15 @@ async function processPackageForMode(input: {
 							userId: input.savedPackage.userId,
 							sourceId: input.savedPackage.sourceId,
 							files: gated.transformedFiles,
-							destructiveOverwriteConfirmed: true,
+							// Only the files the codemod changed are written, as a
+							// commit on top of the current one. Rewriting the whole
+							// loaded tree re-encoded binary files as UTF-8, and a
+							// destructive overwrite dropped the parent commit.
+							editPaths: planCodemodApplyWrites({
+								before: loaded.files,
+								after: gated.transformedFiles,
+								expectedChangedPaths: gated.changedPaths,
+							}),
 							// Platform migrations do not wait in the owner approval queue.
 							credentialNeedsApproved: true,
 							promotePublished,
@@ -1515,7 +1524,10 @@ async function processRevertStep(input: {
 											userId: priorItem.userId,
 											sourceId: savedPackage.sourceId,
 											files: snapshot.files,
-											destructiveOverwriteConfirmed: true,
+											editPaths: planCodemodApplyWrites({
+												before: loaded.files,
+												after: snapshot.files,
+											}),
 											credentialNeedsApproved: true,
 											promotePublished: publishedOnlyAlignedRevert
 												? true
