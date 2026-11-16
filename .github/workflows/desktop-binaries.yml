@@ -95,7 +95,8 @@ jobs:
             electron-${{ runner.os }}-${{ matrix.arch }}-${{
             hashFiles('package-lock.json') }}
           restore-keys: electron-${{ runner.os }}-${{ matrix.arch }}-
-      - run: npm ci
+      - name: Run npm ci
+        uses: ./.github/actions/npm-ci
       - name: Build bundled CLI
         run: npm run build --workspace @kodycodes/cli
       - name: Validate desktop

@@ -1138,7 +1138,7 @@ jobs:
           cache: npm
 
       - name: 📥 Install deps
-        run: npm ci
+        uses: ./.github/actions/npm-ci
 
       - name: 🧪 CLI validate
         run: npm run cli:validate
