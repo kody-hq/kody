@@ -168,7 +168,10 @@ test('mock target serves the app at the root of its own {leaf}--{handle}.localho
 					localUrl: server.localUrl,
 					host: appHost,
 					path: '/',
-					headers: { 'x-kody-dev-visitor': 'anonymous' },
+					headers: {
+						'x-kody-dev-visitor': 'anonymous',
+						cookie: 'kody_pkg_ticket_x=signed-in',
+					},
 				})
 				assert.equal(anonymous.status, 200)
 				assert.equal(fake.seen.at(-1)?.cookie, null)

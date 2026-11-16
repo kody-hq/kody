@@ -454,8 +454,10 @@ export async function startPackageAppDev(
 				search: incomingUrl.search,
 			}),
 		)
+		// An anonymous probe carries no cookies at all: the browser's own may
+		// include a ticket local Kody issued to the signed-in visitor.
 		if (isAnonymousDevVisitor(req.headers)) {
-			return { forwardUrl, cookie: req.headers.cookie }
+			return { forwardUrl, cookie: undefined }
 		}
 		appSession ??= upstream.appSessionCookie({ rootMounted: !appBasePath })
 		const session = await appSession.catch((error: unknown) => {
