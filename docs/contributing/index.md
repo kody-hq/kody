@@ -88,6 +88,7 @@ style, tests, MCP capabilities, and runtime architecture.
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
 - [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)
+- [Hosted execute `kody:@` import baseline](./performance/prebuilt-imports-baseline-2026-11-16.md)
 - [MCP latency bench](./latency-bench.md)
 - [Mock API servers](./mock-api-servers.md)
 - [Package discovery routing evaluation](./package-discovery-evaluation.md)
