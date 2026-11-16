@@ -880,6 +880,8 @@ Admin-gated operator fleet runs:
 - `adminPackageCodemodApply`
 - `adminPackageCodemodRevert`
 - `adminPackageCodemodOwnerNotice` (see [Owner notice](#owner-notice))
+- `adminPackageAppHostMigrationOwnerNotice` (see
+  [Package app host migration notice](#package-app-host-migration-notice))
 - `adminPackageAppCapabilityMigrationReport` (counts for a
   [`0018-declare-package-app-capabilities`](#0018-declare-package-app-capabilities)
   run)
@@ -954,6 +956,32 @@ the run).
 - **Paging.** Owners are processed in id order, `limit` (default 20, max 50) per
   call. Pass `nextCursor` back until it is `null`. A scan with more than 10,000
   items is refused; filter the scan first.
+
+### Package app host migration notice
+
+`adminPackageAppHostMigrationOwnerNotice` is the owner email for the move from
+`{user}.kody.run/{app}` to `{app}--{user}.kody.run`. It reads a scan run of
+`0019-detect-package-app-host-migration` and uses the same recipients, claims,
+and paging as the owner notice above. The wording is approved text that lives in
+`host-migration-owner-notice.ts` and `host-migration-agent-prompt.ts`; the
+caller passes only `noticeId`, `kind` (`announce` or `reminder`, each with its
+own `noticeId`), `cutoverDate`, and `reminderDate`.
+
+- **Who is emailed.** Owners with at least one app that stores data in the
+  browser (localStorage, IndexedDB, Cache Storage, a service worker) or has code
+  tied to the old address (hardcoded mount path, build-time base, cookie Path or
+  Domain, origin check, web app manifest). The email lists those apps with old
+  and new address.
+- **Outside requests.** A recipient's apps with a List-Unsubscribe header, an
+  OAuth callback, or a webhook receiver are named in an extra paragraph. A
+  webhook receiver is not counted when the package declares `kody.webhooks`.
+  Owners whose apps only have outside-request findings are not emailed; the dry
+  run reports them as `totals.outsideOnly`.
+- **Dry run.** `dryRun` defaults to `true` and returns `totals` (owners and apps
+  per category, over the whole run), the owners on this page, and a preview of
+  the first email.
+- **Prompt.** One copy per email. With one listed app `{app}` is filled in; with
+  several the owner replaces `{app}` per app.
 
 ## Revert
 

@@ -17,7 +17,11 @@ type EmailAction = {
 	url: string
 }
 
-export type EmailAfterActionBlock = string | { kind: 'quote'; text: string }
+export type EmailAfterActionBlock =
+	| string
+	| { kind: 'quote'; text: string }
+	/** Preformatted text the reader copies as is (line breaks kept). */
+	| { kind: 'code'; text: string }
 
 /** A body paragraph, or one that ends in a link (rendered as an anchor in HTML). */
 export type EmailBodyBlock = string | { text: string; link: EmailAction }
@@ -100,6 +104,8 @@ function bodyText(values: Array<EmailBodyBlock>) {
 	)
 }
 
+const codeStyle = `margin: 0 0 16px; padding: 12px 16px; border: 1px solid ${colors.border}; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; color: ${colors.text}; white-space: pre-wrap; word-break: break-word;`
+
 function afterActionBlocks(
 	values: Array<EmailAfterActionBlock>,
 	mutedStyle: string,
@@ -109,6 +115,9 @@ function afterActionBlocks(
 		.map((value) => {
 			if (typeof value === 'string') {
 				return `<p class="kody-muted" style="${mutedStyle}">${escapeHtml(value)}</p>`
+			}
+			if (value.kind === 'code') {
+				return `<pre class="kody-text" style="${codeStyle}">${escapeHtml(value.text)}</pre>`
 			}
 			return `<blockquote class="kody-text" style="${quoteStyle}">${escapeHtml(value.text)}</blockquote>`
 		})
@@ -130,7 +139,11 @@ function brandImage(
 
 function afterActionText(values: Array<EmailAfterActionBlock>) {
 	return values.map((value) =>
-		typeof value === 'string' ? value : `"${value.text}"`,
+		typeof value === 'string'
+			? value
+			: value.kind === 'code'
+				? value.text
+				: `"${value.text}"`,
 	)
 }
 
