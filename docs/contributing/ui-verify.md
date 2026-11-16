@@ -45,8 +45,12 @@ Read `.tmp/ui-verify/report.md`. Each failure names the page, theme and width.
   `git diff --stat e2e/ui-verify/baselines` to confirm only the pages you meant
   to change moved, and commit the baselines with the change.
 
-Baselines are rendered by Chromium on Linux. If you are not on Linux, let the CI
-job report the diff and update baselines from a Linux machine or Cloud Agent.
+Screenshots render in the official Playwright Docker image that matches the
+installed `@playwright/test` (`mcr.microsoft.com/playwright:v<version>-noble`),
+so baselines match on every OS and in CI. The app still runs on the host; the
+browser reaches it through Playwright's `exposeNetwork`. Without Docker, axe and
+keyboard checks still run, visual diffs are skipped, and the report says so. CI
+and `--update` fail instead of skipping.
 
 ## Component gallery
 
