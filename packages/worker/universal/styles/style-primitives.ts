@@ -926,14 +926,17 @@ const controlSizes = {
  */
 export function getFieldControlCss(options: FieldControlStyleOptions = {}) {
 	const size = controlSizes[options.size ?? 'md']
+	// Dense containers such as the workspace panel retune every field inside
+	// them through the `--control-*` variables; the size is the fallback.
 	return {
-		font: `400 ${size.font}/${size.lineHeight} ${typography.fontFamilyBody}`,
+		font: `400 var(--control-font-size, ${size.font})/var(--control-line-height, ${size.lineHeight}) ${typography.fontFamilyBody}`,
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
 		border: `1px solid ${colors.fieldBorder}`,
 		...getSquircleCss(size.squircle),
-		padding: `${size.paddingY} ${size.paddingX}`,
+		padding: `var(--control-padding-y, ${size.paddingY}) var(--control-padding-x, ${size.paddingX})`,
+		minHeight: 'var(--control-min-height, auto)',
 		minWidth: 0,
 		width: '100%',
 		maxWidth: '100%',

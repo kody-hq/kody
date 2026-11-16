@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	getButtonCss,
+	getFieldControlCss,
 	renderButtonStylesheet,
 	type ButtonSize,
 	type ButtonVariant,
@@ -48,4 +49,14 @@ test('static pages render the same squircle button stylesheet', () => {
 	)
 	expect(sheet).toContain('a.go:disabled,a.go[aria-disabled="true"]{')
 	expect(sheet).not.toContain('999px')
+})
+
+test('dense containers retune fields through the control variables', () => {
+	const css = getFieldControlCss({ size: 'sm' })
+	expect(css.font).toContain('var(--control-font-size, 0.875rem)')
+	expect(css.font).toContain('var(--control-line-height, 1.5)')
+	expect(css.padding).toBe(
+		'var(--control-padding-y, 0.375rem) var(--control-padding-x, 0.625rem)',
+	)
+	expect(css.minHeight).toBe('var(--control-min-height, auto)')
 })
