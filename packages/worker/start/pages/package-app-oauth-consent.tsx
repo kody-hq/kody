@@ -19,6 +19,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 
 export function PackageAppOauthConsentPage({
 	data,
@@ -223,8 +224,7 @@ export function PackageAppOauthConsentPage({
 					<div css={{ display: 'grid', gap: spacing.sm }}>
 						{data.optionalScopes.map(({ scope, label }) => (
 							<label key={scope} css={{ display: 'flex', gap: spacing.sm }}>
-								<input
-									type="checkbox"
+								<Checkbox
 									name="selected_scopes"
 									value={scope}
 									form="package-app-oauth-consent-form"
@@ -285,8 +285,7 @@ export function PackageAppOauthConsentPage({
 							) : null}
 							{recommended ? (
 								<label css={credentialChoiceCss}>
-									<input
-										type="radio"
+									<Radio
 										name={`credential_need:${encodeURIComponent(need.key)}`}
 										value={recommended.id}
 										form="package-app-oauth-consent-form"
@@ -319,8 +318,7 @@ export function PackageAppOauthConsentPage({
 									<summary>Choose another credential</summary>
 									{otherCandidates.map((credential) => (
 										<label key={credential.id} css={credentialChoiceCss}>
-											<input
-												type="radio"
+											<Radio
 												name={`credential_need:${encodeURIComponent(need.key)}`}
 												value={credential.id}
 												form="package-app-oauth-consent-form"

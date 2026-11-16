@@ -3,7 +3,6 @@ import { ModalDialog } from '../components/modal-dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { colors } from '#universal/styles/tokens.ts'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import {
 	assetCacheControls,
 	defaultFileAssetSettings,
@@ -27,7 +26,6 @@ import {
 } from '#start/server/file-permissions'
 import { manageWorkspaceFile, shareFile } from '#start/server/files'
 import { setFilePublicLink } from '#start/server/public-files'
-import { accountInputCss } from './account-management-components.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { Combobox } from '../components/combobox.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
@@ -36,6 +34,8 @@ import {
 	ContextMenuButton,
 } from '../components/context-menu-surface.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const button = {
 	border: 0,
@@ -69,7 +69,6 @@ const linkField = {
 	gap: 6,
 }
 const linkInput = {
-	...accountInputCss,
 	width: 'auto',
 	flex: '1 1 180px',
 	minWidth: 0,
@@ -118,8 +117,7 @@ function CustomAccess({
 						key={option.permission}
 						css={{ display: 'flex', alignItems: 'center', gap: 8 }}
 					>
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={selected.includes(option.permission)}
 							onChange={(event) =>
 								setSelected((current) =>
@@ -158,13 +156,11 @@ function AccessSelect({
 	onChange: (value: Preset) => void
 }) {
 	return (
-		<select
+		<Select
 			aria-label={label}
 			value={value}
 			disabled={disabled}
-			data-field-ring
 			css={{
-				...getSelectCss(),
 				width: 'auto',
 				minWidth: 130,
 				maxWidth: '100%',
@@ -181,7 +177,7 @@ function AccessSelect({
 					{option.label}
 				</option>
 			))}
-		</select>
+		</Select>
 	)
 }
 export default function FilePermissionsPanel({
@@ -609,14 +605,13 @@ export default function FilePermissionsPanel({
 											/>
 										)}
 										{!recipient && (
-											<input
+											<Input
 												aria-label="Collaborator email"
 												type="email"
 												placeholder="Email address"
 												value={inviteEmail}
 												disabled={busy}
 												onChange={(event) => setInviteEmail(event.target.value)}
-												css={accountInputCss}
 												required
 											/>
 										)}
@@ -643,7 +638,7 @@ export default function FilePermissionsPanel({
 									{inviteLink && (
 										<div css={{ marginTop: 12 }}>
 											<div css={linkField}>
-												<input
+												<Input
 													aria-label="Invitation link"
 													readOnly
 													value={new URL(inviteLink, location.origin).href}
@@ -709,12 +704,11 @@ export default function FilePermissionsPanel({
 							)}
 							<section aria-label="General access" hidden={tab !== 'sharing'}>
 								<h3>General access</h3>
-								<select
+								<Select
 									aria-label="General access"
-									data-field-ring
 									disabled={busy || !data.access.manage}
 									value={data.file.accessMode ?? 'inherit'}
-									css={{ ...getSelectCss(), width: '100%' }}
+									css={{ width: '100%' }}
 									onChange={(event) =>
 										void mutate(async () => {
 											const result = await manageWorkspaceFile({
@@ -739,7 +733,7 @@ export default function FilePermissionsPanel({
 									<option value="restricted">
 										Only added people and teams
 									</option>
-								</select>
+								</Select>
 								<p>
 									{data.file.accessMode === 'restricted'
 										? 'Only added people and teams can access this item and its contents.'
@@ -884,7 +878,7 @@ export default function FilePermissionsPanel({
 									)}
 									{link && (
 										<div css={linkField}>
-											<input
+											<Input
 												aria-label="Public link URL"
 												readOnly
 												value={new URL(link, location.origin).href}
@@ -988,7 +982,7 @@ export default function FilePermissionsPanel({
 										)}
 										{publicAssetLink ? (
 											<div css={linkField}>
-												<input
+												<Input
 													css={linkInput}
 													aria-label="Public asset URL"
 													readOnly
@@ -1024,8 +1018,7 @@ export default function FilePermissionsPanel({
 										>
 											<label>
 												Public cache lifetime
-												<select
-													css={getSelectCss()}
+												<Select
 													name="cacheControl"
 													disabled={busy}
 													value={
@@ -1048,12 +1041,11 @@ export default function FilePermissionsPanel({
 													<option value="public, max-age=60">1 minute</option>
 													<option value="public, max-age=300">5 minutes</option>
 													<option value="public, max-age=3600">1 hour</option>
-												</select>
+												</Select>
 											</label>
 											<label>
 												Content disposition
-												<select
-													css={getSelectCss()}
+												<Select
 													name="disposition"
 													disabled={busy}
 													value={
@@ -1073,7 +1065,7 @@ export default function FilePermissionsPanel({
 												>
 													<option value="inline">Display when supported</option>
 													<option value="attachment">Download</option>
-												</select>
+												</Select>
 											</label>
 											<button css={button} disabled={busy}>
 												Save asset settings
@@ -1096,8 +1088,7 @@ export default function FilePermissionsPanel({
 										>
 											<label>
 												Signed URL expires in
-												<select
-													css={getSelectCss()}
+												<Select
 													name="minutes"
 													disabled={busy}
 													defaultValue="60"
@@ -1105,7 +1096,7 @@ export default function FilePermissionsPanel({
 													<option value="15">15 minutes</option>
 													<option value="60">1 hour</option>
 													<option value="1440">24 hours</option>
-												</select>
+												</Select>
 											</label>
 											<button css={button} disabled={busy}>
 												Create signed URL
@@ -1113,7 +1104,7 @@ export default function FilePermissionsPanel({
 										</form>
 										{signedAssetLink && (
 											<div css={linkField}>
-												<input
+												<Input
 													css={linkInput}
 													aria-label="Signed asset URL"
 													readOnly

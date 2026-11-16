@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -12,11 +17,8 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export function AccountConvertPersonalOrgPanel({
 	username,
@@ -129,41 +131,37 @@ export function AccountConvertPersonalOrgPanel({
 						email, and billing stay there. Your new personal organization starts
 						from your current name and avatar.
 					</p>
-					<div css={accountFieldCss}>
-						<label htmlFor="convert-new-handle" css={accountFieldLabelCss}>
+					<div css={fieldCss}>
+						<label htmlFor="convert-new-handle" css={fieldLabelCss}>
 							New personal handle
 						</label>
-						<input
+						<Input
 							id="convert-new-handle"
 							name="newHandle"
 							data-testid="account-convert-personal-org-handle"
-							data-field-ring
 							autoComplete="off"
 							spellCheck={false}
 							value={newHandle}
 							placeholder="new-handle"
-							css={accountInputCss}
 							disabled={mutation.isPending}
 							onChange={(event) => setNewHandle(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							This becomes your username and the handle of your new personal
 							organization. Choose carefully, handles stay put after this.
 						</p>
 					</div>
-					<div css={accountFieldCss}>
-						<label htmlFor="convert-confirm" css={accountFieldLabelCss}>
+					<div css={fieldCss}>
+						<label htmlFor="convert-confirm" css={fieldLabelCss}>
 							Type {expected} to confirm
 						</label>
-						<input
+						<Input
 							id="convert-confirm"
 							name="confirmation"
 							data-testid="account-convert-personal-org-confirm"
-							data-field-ring
 							autoComplete="off"
 							spellCheck={false}
 							value={confirmation}
-							css={accountInputCss}
 							disabled={mutation.isPending}
 							onChange={(event) => setConfirmation(event.currentTarget.value)}
 						/>

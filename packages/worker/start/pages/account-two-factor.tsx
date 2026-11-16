@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -18,7 +19,6 @@ import {
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountInputCss,
 } from './account-management-components.tsx'
 import {
 	colors,
@@ -30,11 +30,10 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	layoutMaxWidths,
 	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 export type AccountTwoFactorPayload = {
 	ok: true
@@ -288,10 +287,8 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleDisable}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+						<Field label="Verification code">
+							<Input
 								type="text"
 								name="code"
 								required
@@ -300,10 +297,9 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={disableCode}
-								css={accountInputCss}
 								onInput={updateDisableCode}
 							/>
-						</label>
+						</Field>
 						<div>
 							<Button type="submit" disabled={isBusy} variant="danger">
 								{isBusy ? 'Working...' : 'Disable 2FA'}
@@ -372,10 +368,8 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleConfirmSetup}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+						<Field label="Verification code">
+							<Input
 								type="text"
 								name="code"
 								required
@@ -384,10 +378,9 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={confirmCode}
-								css={accountInputCss}
 								onInput={updateConfirmCode}
 							/>
-						</label>
+						</Field>
 						<div css={{ display: 'flex', gap: spacing.sm }}>
 							<Button type="submit" disabled={isBusy} variant="primary">
 								{isBusy ? 'Working...' : 'Confirm'}

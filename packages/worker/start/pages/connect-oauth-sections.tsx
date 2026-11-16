@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -20,10 +21,7 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAccentCalloutCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	pageDescriptionCss,
@@ -41,6 +39,7 @@ import type {
 	ConnectOauthStatusTone,
 	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
+import { Input } from '../components/input.tsx'
 
 /**
  * True when saving `next` would swap the OAuth app behind a live
@@ -178,13 +177,11 @@ export function renderLiveAppReplaceWarning(input: {
 					onSubmit={input.onSaveAsNew}
 					data-testid="connect-live-replace-new-form"
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>New connection name</span>
-						<input
+					<Field label="New connection name">
+						<Input
 							name="newConnectionName"
 							required
 							value={state.newName}
-							css={inputCss}
 							aria-invalid={state.nameError ? true : undefined}
 							aria-describedby={
 								state.nameError ? 'connect-new-name-error' : undefined
@@ -193,7 +190,7 @@ export function renderLiveAppReplaceWarning(input: {
 								input.onNewNameInput(event.currentTarget.value)
 							}}
 						/>
-					</label>
+					</Field>
 					{state.nameError ? (
 						<p
 							id="connect-new-name-error"
@@ -331,7 +328,7 @@ export function renderChooser(input: {
 				Pick a service to connect. Saved integrations start from a name alone.
 			</p>
 			{showFilter ? (
-				<input
+				<Input
 					type="text"
 					role="searchbox"
 					inputMode="search"
@@ -339,7 +336,6 @@ export function renderChooser(input: {
 					placeholder="Filter services"
 					aria-label="Filter services"
 					data-testid="connect-oauth-chooser-filter"
-					css={inputCss}
 					value={input.chooserFilter}
 					onChange={(event) => input.onFilterChange(event.currentTarget.value)}
 				/>

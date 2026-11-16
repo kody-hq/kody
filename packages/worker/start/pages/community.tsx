@@ -81,6 +81,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						<label htmlFor="pkg-q" css={visuallyHiddenCss}>
 							Search public packages
 						</label>
+						{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless input inside the search pill */}
 						<input
 							id="pkg-q"
 							type="search"

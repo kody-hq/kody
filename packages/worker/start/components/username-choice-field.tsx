@@ -26,14 +26,14 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	authFieldCss,
-	authFieldLabelCss,
-	getAuthInputCss,
+	fieldCss,
+	fieldLabelCss,
 	hoverMq,
 	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
 import { renderIcon } from './icon.tsx'
+import { Input } from './input.tsx'
 export type UsernameAvailabilityView = AvailabilityView
 
 export type UsernameChoiceSeeds = {
@@ -260,9 +260,9 @@ export function UsernameChoiceField(props: {
 	}
 
 	return (
-		<div css={authFieldCss}>
+		<div css={fieldCss}>
 			<div css={labelRowCss}>
-				<label htmlFor={inputId} css={authFieldLabelCss}>
+				<label htmlFor={inputId} css={fieldLabelCss}>
 					Username
 				</label>
 				<button
@@ -291,7 +291,7 @@ export function UsernameChoiceField(props: {
 					</p>
 				</div>
 			</div>
-			<input
+			<Input
 				id={inputId}
 				type="text"
 				name="username"
@@ -301,14 +301,13 @@ export function UsernameChoiceField(props: {
 				placeholder="kent"
 				disabled={props.disabled}
 				value={props.value}
-				data-field-ring
 				aria-invalid={props.invalid ? true : undefined}
 				aria-describedby={describedBy}
 				{...permanentHandleInputProps({ caseInsensitivePattern: true })}
 				onChange={(event: ChangeEvent<HTMLInputElement>) =>
 					props.onChange(event.currentTarget.value)
 				}
-				css={authInputCss}
+				background="canvas"
 			/>
 			<div css={statusRowCss}>
 				<p
@@ -369,8 +368,6 @@ function availabilityMessage(view: UsernameAvailabilityView) {
 		}
 	}
 }
-
-const authInputCss = getAuthInputCss({ background: 'canvas' })
 
 const labelRowCss: CSSObject = {
 	display: 'flex',

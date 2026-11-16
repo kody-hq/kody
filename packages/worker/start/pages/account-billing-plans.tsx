@@ -6,7 +6,6 @@ import type {
 	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
@@ -23,6 +22,8 @@ import {
 	primaryLinkCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
+import { Radio } from '../components/choice-controls.tsx'
 export type PaidTier = 'pro'
 type PlanTier = 'free' | PaidTier
 export type { BillingInterval }
@@ -299,8 +300,7 @@ export function renderAccountBillingPlans(input: {
 												alignItems: 'center',
 											}}
 										>
-											<input
-												type="radio"
+											<Radio
 												name={`${paidTier}-interval`}
 												checked={selectedIntervalByPlan[paidTier] === 'month'}
 												onChange={() =>
@@ -316,8 +316,7 @@ export function renderAccountBillingPlans(input: {
 												alignItems: 'center',
 											}}
 										>
-											<input
-												type="radio"
+											<Radio
 												name={`${paidTier}-interval`}
 												checked={selectedIntervalByPlan[paidTier] === 'year'}
 												onChange={() =>
@@ -337,14 +336,13 @@ export function renderAccountBillingPlans(input: {
 											>
 												Promo code (optional)
 											</span>
-											<input
+											<Input
 												type="text"
 												name="promo-code"
 												autoComplete="off"
 												spellCheck={false}
 												maxLength={64}
 												value={input.promoCode}
-												data-field-ring
 												css={promoInputCss}
 												onChange={(event) =>
 													input.onPromoCodeChange(event.currentTarget.value)
@@ -400,4 +398,4 @@ export function renderAccountBillingPlans(input: {
 		</AccountManagementPanel>
 	)
 }
-const promoInputCss = { ...accountInputCss, maxWidth: '16rem' }
+const promoInputCss = { maxWidth: '16rem' }

@@ -42,11 +42,11 @@ import { usePageInvalidation } from '../page-invalidation.ts'
 import { passkeyMutationOptions } from '../passkey-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 type PasskeyListItem = {
 	id: string
 	name: string
@@ -403,14 +403,12 @@ export function AccountPasskeysPage({
 														>
 															Nickname
 														</span>
-														<input
-															data-field-ring
+														<Input
 															type="text"
 															value={renameDraft}
 															maxLength={80}
 															disabled={isBusy}
 															aria-label="Passkey nickname"
-															css={accountInputCss}
 															onInput={(event) => {
 																setRenameDraft(
 																	(event.currentTarget as HTMLInputElement)

@@ -373,6 +373,7 @@ export function CollaborativeTextEditor({
 					</button>
 				)
 			})}
+			{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- transparent textarea layered over the highlighted text */}
 			<textarea
 				ref={input}
 				aria-label="Document text"

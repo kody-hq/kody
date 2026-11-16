@@ -31,6 +31,7 @@ import {
 	type MappingCellInput,
 	renderStored,
 } from './package-credentials-tabs.tsx'
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 const linkButtonCss = {
 	padding: 0,
 	border: 'none',
@@ -206,11 +207,11 @@ export function usePackageMappingEditor(
 		const choices = mappingOptions(input.need, input.target)
 		const group = `mapping-${state.key}`
 		const multiple = input.need.multiple
+		const Choice = multiple ? Checkbox : Radio
 		const draft = state.draft
 		const radio = (mode: 'inherit' | 'none', label: string) => (
 			<label css={optionCss}>
-				<input
-					type="radio"
+				<Radio
 					name={group}
 					value={mode}
 					checked={draft.mode === mode}
@@ -245,8 +246,7 @@ export function usePackageMappingEditor(
 					</legend>
 					{choices.map((choice) => (
 						<label key={choice.id} css={optionCss}>
-							<input
-								type={multiple ? 'checkbox' : 'radio'}
+							<Choice
 								name={group}
 								value={choice.id}
 								checked={draft.mode === 'pick' && draft.ids.includes(choice.id)}

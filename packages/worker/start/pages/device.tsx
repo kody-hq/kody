@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
@@ -8,11 +9,9 @@ import type { DevicePageData, DevicePageError } from '#start/server/device'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
 	fieldLabelCss,
 	getAlertCardCss,
 	insetCardCss,
-	inputCss,
 	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
@@ -26,6 +25,8 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const deviceAntiPhishingMessage =
 	'Only continue if you started this sign-in yourself on a device you control.'
@@ -179,9 +180,8 @@ function CodeEntryCard(props: {
 				css={cardCss}
 				data-testid="device-code-form"
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Device code</span>
-					<input
+				<Field label="Device code">
+					<Input
 						type="text"
 						name="user_code"
 						required
@@ -194,7 +194,7 @@ function CodeEntryCard(props: {
 						placeholder="BCDF-GHJK"
 						css={codeInputCss}
 					/>
-				</label>
+				</Field>
 				<Button type="submit" variant="primary" size="md">
 					Continue
 				</Button>
@@ -404,8 +404,7 @@ function AccountConsentCard(props: {
 			>
 				<input type="hidden" name="user_code" value={request.userCode} />
 				<label css={confirmCss}>
-					<input
-						type="checkbox"
+					<Checkbox
 						name="confirm"
 						value="full_account"
 						required
@@ -465,7 +464,6 @@ const inlineCodeCss = {
 	color: colors.text,
 }
 const codeInputCss = {
-	...inputCss,
 	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.lg,
 	letterSpacing: '0.12em',

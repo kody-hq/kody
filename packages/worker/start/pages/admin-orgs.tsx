@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouter } from '@tanstack/react-router'
@@ -17,12 +18,7 @@ import {
 } from '#universal/credits.ts'
 import { planNames, type PlanName } from '#universal/plans.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss } from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import type {
 	AdminOrgDetail,
@@ -50,9 +46,9 @@ import {
 	RecordTableSearch,
 	RecordTableSelect,
 } from './record-table.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
-const billingInputCss = getAuthInputCss()
-const billingSelectCss = getSelectCss()
 const secondaryButtonCss = {
 	justifySelf: 'start',
 }
@@ -219,10 +215,8 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 				[mq.mobile]: { gridTemplateColumns: '1fr' },
 			}}
 		>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Manual grant</span>
-				<select
-					css={billingSelectCss}
+			<Field label="Manual grant">
+				<Select
 					value={plan}
 					onChange={(event) => setPlan(event.currentTarget.value as PlanName)}
 					disabled={mutation.isPending}
@@ -232,18 +226,16 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 							{formatAdminPlanLabel(name)}
 						</option>
 					))}
-				</select>
-			</label>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Reason</span>
-				<input
-					css={billingInputCss}
+				</Select>
+			</Field>
+			<Field label="Reason">
+				<Input
 					required
 					value={reason}
 					onChange={(event) => setReason(event.currentTarget.value)}
 					disabled={mutation.isPending}
 				/>
-			</label>
+			</Field>
 			<Button type="submit" variant="primary" disabled={mutation.isPending}>
 				{mutation.isPending ? 'Saving…' : 'Save'}
 			</Button>
@@ -327,27 +319,23 @@ function AdminOrgCreditsForms(props: {
 					[mq.mobile]: { gridTemplateColumns: '1fr' },
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Amount ($)</span>
-					<input
-						css={billingInputCss}
+				<Field label="Amount ($)">
+					<Input
 						inputMode="decimal"
 						required
 						value={amountText}
 						onChange={(event) => setAmountText(event.currentTarget.value)}
 						disabled={grant.isPending}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+				</Field>
+				<Field label="Reason">
+					<Input
 						required
 						value={grantReason}
 						onChange={(event) => setGrantReason(event.currentTarget.value)}
 						disabled={grant.isPending}
 					/>
-				</label>
+				</Field>
 				<Button type="submit" variant="primary" disabled={grant.isPending}>
 					{grant.isPending ? 'Granting…' : 'Grant'}
 				</Button>
@@ -388,18 +376,15 @@ function AdminOrgCreditsForms(props: {
 				}}
 			>
 				<label css={{ ...fieldCss, display: 'flex', alignItems: 'center' }}>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={eligible}
 						onChange={(event) => setEligible(event.currentTarget.checked)}
 						disabled={eligibility.isPending}
 					/>
 					<span>Admin credits eligible</span>
 				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+				<Field label="Reason">
+					<Input
 						required
 						value={eligibilityReason}
 						onChange={(event) =>
@@ -407,7 +392,7 @@ function AdminOrgCreditsForms(props: {
 						}
 						disabled={eligibility.isPending}
 					/>
-				</label>
+				</Field>
 				<Button
 					type="submit"
 					variant="primary"

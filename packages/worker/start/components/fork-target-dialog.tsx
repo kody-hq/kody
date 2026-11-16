@@ -5,8 +5,8 @@ import { useEffect, useId, useRef, useState } from 'react'
 import type { ForkTargetChoice } from '../fork-target.ts'
 import { installOrgOptionLabel } from './community-install-org-select.tsx'
 import { renderIcon } from './icon.tsx'
-import { getSelectCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, shadows, spacing } from '#universal/styles/tokens.ts'
+import { Select } from './input.tsx'
 
 /**
  * Asks which org a fork goes into when the viewer can fork into more than
@@ -78,11 +78,10 @@ export function ForkTargetDialog(props: {
 					<label htmlFor={selectId} css={labelCss}>
 						Workspace
 					</label>
-					<select
+					<Select
 						id={selectId}
 						data-testid="fork-target-org"
 						autoFocus
-						css={getSelectCss()}
 						value={selected}
 						onChange={(event) => setSelected(event.currentTarget.value)}
 					>
@@ -91,7 +90,7 @@ export function ForkTargetDialog(props: {
 								{installOrgOptionLabel(owner)}
 							</option>
 						))}
-					</select>
+					</Select>
 				</div>
 				<div css={actionsCss}>
 					<Button

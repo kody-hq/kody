@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
 import type { ProfilePackageFilters } from '#universal/community-public-types.ts'
 import { buildProfileHref } from '#universal/profile-search.ts'
-import { inputCss } from '#universal/styles/style-primitives.ts'
+import { Input } from './input.tsx'
 
 export function ProfileRepositorySearchInput({
 	username,
@@ -24,7 +24,7 @@ export function ProfileRepositorySearchInput({
 		setQuery(filters.query)
 	}
 	return (
-		<input
+		<Input
 			type="text"
 			role="searchbox"
 			inputMode="search"
@@ -35,7 +35,6 @@ export function ProfileRepositorySearchInput({
 			data-testid="profile-repository-search"
 			value={query}
 			placeholder="Search by name, description, or tags"
-			css={inputCss}
 			onChange={(event) => {
 				const value = event.currentTarget.value
 				setQuery(value)

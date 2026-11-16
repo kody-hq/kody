@@ -21,9 +21,6 @@ import type {
 	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -56,7 +53,10 @@ import {
 	mutedLinkCss,
 	primaryLinkCss,
 	visuallyHiddenCss,
+	fieldCss,
+	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input, Textarea } from '../components/input.tsx'
 
 type SubscriptionStatusTone = 'ok' | 'warn' | 'action' | 'muted'
 
@@ -472,11 +472,8 @@ export function AccountBillingPage({
 									gap: spacing.sm,
 								}}
 							>
-								<div css={accountFieldCss}>
-									<label
-										htmlFor="referral-share-url"
-										css={accountFieldLabelCss}
-									>
+								<div css={fieldCss}>
+									<label htmlFor="referral-share-url" css={fieldLabelCss}>
 										Your referral link
 									</label>
 									<div
@@ -487,14 +484,12 @@ export function AccountBillingPage({
 											alignItems: 'center',
 										}}
 									>
-										<input
+										<Input
 											id="referral-share-url"
 											type="url"
 											readOnly
 											value={billing.referralProgram.shareUrl}
-											data-field-ring
 											css={{
-												...accountInputCss,
 												flex: '1 1 16rem',
 											}}
 										/>
@@ -587,7 +582,7 @@ export function AccountBillingPage({
 								<div css={{ display: 'grid', gap: spacing.sm }}>
 									<label css={{ display: 'grid', gap: spacing.xs }}>
 										<span css={visuallyHiddenCss}>Cancellation feedback</span>
-										<textarea
+										<Textarea
 											rows={3}
 											maxLength={8000}
 											placeholder="Too expensive, missing a feature, not useful enough…"

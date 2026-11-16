@@ -25,7 +25,6 @@ import {
 	putDesktopExecutionFirst,
 } from '#start/server/execution-contexts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
-import { inputCss } from '#universal/styles/style-primitives.ts'
 import {
 	chainIsFull,
 	type ExecutionContextsPageData,
@@ -43,6 +42,7 @@ import type {
 	DesktopMachineMenuCommand,
 } from '../desktop-shell.ts'
 import { onboardingQuery } from '../onboarding-query.ts'
+import { Input, Select } from './input.tsx'
 const DesktopMachineContext = createContext<null | {
 	state: DesktopExecutionState | undefined
 	commands: (action: 'status' | 'on' | 'off') => Promise<void>
@@ -644,8 +644,7 @@ export function DesktopExecutionProvider({
 							) : (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Machine name
-									<input
-										css={inputCss}
+									<Input
 										value={name}
 										onChange={(event) => setName(event.target.value)}
 										pattern="[a-z0-9][a-z0-9-]{0,62}"
@@ -669,8 +668,7 @@ export function DesktopExecutionProvider({
 							{!target && needsReplacement ? (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Your chain is full. Replace an entry
-									<select
-										css={inputCss}
+									<Select
 										value={replace}
 										onChange={(event) => setReplace(event.target.value)}
 										disabled={busy}
@@ -687,7 +685,7 @@ export function DesktopExecutionProvider({
 													]
 												: [],
 										)}
-									</select>
+									</Select>
 								</label>
 							) : null}
 							<Button
@@ -720,8 +718,7 @@ export function DesktopExecutionProvider({
 							{needsReplacement ? (
 								<label css={{ display: 'grid', gap: spacing.sm }}>
 									Your chain is full. Replace an entry
-									<select
-										css={inputCss}
+									<Select
 										value={replace}
 										onChange={(event) => setReplace(event.target.value)}
 										disabled={busy}
@@ -738,7 +735,7 @@ export function DesktopExecutionProvider({
 													]
 												: [],
 										)}
-									</select>
+									</Select>
 								</label>
 							) : null}
 							<Button

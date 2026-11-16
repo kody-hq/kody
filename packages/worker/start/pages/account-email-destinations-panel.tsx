@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { FormEvent } from 'react'
@@ -6,12 +8,9 @@ import type { EmailNotificationDestination } from '#universal/email-destinations
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	AccountManagementPanel,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 	verifiedPillCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export type AccountEmailDestinationsPanelProps = {
 	destinations: Array<EmailNotificationDestination>
@@ -155,23 +154,26 @@ export function renderAccountEmailDestinationsPanel(
 						gap: spacing.md,
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Add an address</span>
-						<input
+					<Field
+						label="Add an address"
+						description={
+							<>
+								Up to {additionalLimit}extras besides your account email. We
+								send a verification link before emailSend can use this address.
+								New accounts can request that link 24 hours after signup.
+							</>
+						}
+					>
+						<Input
 							type="email"
 							name="email"
 							autoComplete="email"
 							value={draftEmail}
 							disabled={isSending}
 							onInput={onDraftEmailInput}
-							css={{ ...accountInputCss, maxWidth: '28rem' }}
+							css={{ maxWidth: '28rem' }}
 						/>
-						<span css={accountFieldNoteCss}>
-							Up to {additionalLimit} extras besides your account email. We send
-							a verification link before emailSend can use this address. New
-							accounts can request that link 24 hours after signup.
-						</span>
-					</label>
+					</Field>
 					<Button
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}
@@ -185,7 +187,7 @@ export function renderAccountEmailDestinationsPanel(
 					</Button>
 				</form>
 			) : (
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					You have reached the {additionalLimit} extra-address limit.
 				</p>
 			)}

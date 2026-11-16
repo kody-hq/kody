@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { isConnectOauthCallbackUrl } from '#universal/oauth-connect.ts'
 import { orgIdentity, type OrganizationSummary } from '#universal/org-pages.ts'
@@ -6,12 +7,10 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getSelectCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { UserAvatar } from '../components/user-avatar.tsx'
+import { Select } from '../components/input.tsx'
 
 /** Personal org first, so it is the picker default. */
 export function orderConnectOauthOrgs(
@@ -116,11 +115,9 @@ export function ConnectOauthOrgPicker(props: {
 			{hidden.map(([key, value], index) => (
 				<input key={`${key}-${index}`} type="hidden" name={key} value={value} />
 			))}
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Organization</span>
-				<select
+			<Field label="Organization">
+				<Select
 					name="org"
-					css={getSelectCss()}
 					defaultValue={ordered[0]?.slug}
 					data-testid="connect-oauth-org-select"
 				>
@@ -129,8 +126,8 @@ export function ConnectOauthOrgPicker(props: {
 							{orgOptionLabel(org, props.viewer)}
 						</option>
 					))}
-				</select>
-			</label>
+				</Select>
+			</Field>
 			<div>
 				<Button type="submit" variant="primary" size="md">
 					Continue

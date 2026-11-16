@@ -34,7 +34,7 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
+	getFieldControlCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -371,7 +371,7 @@ export function ConnectSecretSetRoute({
 									setShowSecretValue(next)
 								}}
 								onInput={(event) => setValue(event.currentTarget.value)}
-								css={inputCss}
+								css={getFieldControlCss()}
 							/>
 						</div>
 

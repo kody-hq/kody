@@ -20,7 +20,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	getAuthInputCss,
+	fieldLabelCss,
 	hoverMq,
 	layoutMaxWidths,
 	pageGutter,
@@ -87,41 +87,6 @@ const accountSectionLedeCss: CSSObject = {
 	fontSize: '0.98rem',
 	maxWidth: '60ch',
 	textWrap: 'balance' as const,
-}
-
-/** `.field` */
-export const accountFieldCss: CSSObject = {
-	display: 'grid',
-	gap: '0.45rem',
-	minWidth: 0,
-}
-
-/** `.field label` */
-export const accountFieldLabelCss: CSSObject = {
-	fontSize: '0.92rem',
-	fontWeight: 600,
-	color: colors.text,
-}
-
-/** `.field input` — the shared auth-field treatment (green border + glow on
- * focus). Inputs must carry `data-field-ring` so the unlayered global
- * `:focus-visible` outline stands down. */
-export const accountInputCss: CSSObject = {
-	...getAuthInputCss(),
-	maxWidth: '100%',
-}
-
-export const accountTextareaCss: CSSObject = {
-	...accountInputCss,
-	resize: 'vertical' as const,
-	minHeight: '7rem',
-}
-
-/** `.field-note` */
-export const accountFieldNoteCss: CSSObject = {
-	margin: 0,
-	fontSize: '0.92rem',
-	color: colors.textMuted,
 }
 
 /** `.verified` — the little green status pill next to the account email. */
@@ -735,7 +700,7 @@ export function MetadataGrid(props: MetadataGridProps) {
 		>
 			{props.items.map((item) => (
 				<div key={item.key ?? item.label} css={{ minWidth: 0 }}>
-					<dt css={accountFieldLabelCss}>{item.label}</dt>
+					<dt css={fieldLabelCss}>{item.label}</dt>
 					<dd
 						css={{
 							margin: 0,

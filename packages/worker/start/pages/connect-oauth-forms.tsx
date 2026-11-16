@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { FormEvent } from 'react'
@@ -19,9 +20,7 @@ import {
 	cardTitleCss,
 	descriptionCss,
 	detailValueCss as sourceDetailValueCss,
-	fieldCss,
 	fieldLabelCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	primaryLinkCss,
@@ -34,6 +33,8 @@ import type {
 import { renderProviderInstructions } from './connect-oauth-detail.tsx'
 import { renderReplaceConfirmation } from './connect-oauth-sections.tsx'
 import { connectOauthAdvancedDetailsCss } from './connect-oauth-shared.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 function renderScopePicker(input: {
 	config: ConnectOauthConfig
@@ -84,8 +85,7 @@ function renderScopePicker(input: {
 									fontSize: typography.fontSize.sm,
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={currentConfig.scopes.includes(scope)}
 									onChange={() => input.onToggleScope(scope)}
 								/>
@@ -152,19 +152,17 @@ export function ConnectOauthCredentialsForm(props: {
 				css={{ display: 'grid', gap: spacing.md }}
 				onSubmit={props.onSubmit}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Client ID</span>
-					<input
+				<Field label="Client ID">
+					<Input
 						name="oauthClientId"
 						required
 						{...passwordManagerIgnoreProps}
 						value={props.clientIdInput}
-						css={inputCss}
 						onChange={(event) => {
 							props.onClientIdInput(event.currentTarget.value)
 						}}
 					/>
-				</label>
+				</Field>
 				<p css={descriptionCss}>
 					{props.hasStoredClientId
 						? 'Stored on the OAuth app for this connection.'
@@ -192,20 +190,18 @@ export function ConnectOauthCredentialsForm(props: {
 							</Button>
 						</section>
 					) : (
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Client Secret</span>
-							<input
+						<Field label="Client Secret">
+							<Input
 								name="oauthClientSecret"
 								type="password"
 								required
 								{...passwordManagerIgnoreProps}
 								value={props.clientSecretInput}
-								css={inputCss}
 								onChange={(event) => {
 									props.onClientSecretInput(event.currentTarget.value)
 								}}
 							/>
-						</label>
+						</Field>
 					)
 				) : null}
 				<Button

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { useState, type FormEvent } from 'react'
 import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
@@ -10,10 +11,6 @@ import {
 	AccountManagementPanel,
 	accountActionsCss,
 	accountDisclosureCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
@@ -50,6 +47,8 @@ import {
 	rowTextCss,
 	presetOrPermissions,
 } from './package-collaborators-parts.tsx'
+import { Input } from '../components/input.tsx'
+import { Radio } from '../components/choice-controls.tsx'
 
 type PostChange = (
 	key: string,
@@ -130,21 +129,18 @@ export function PackageCollaboratorInvites({
 					css={formCss}
 					onSubmit={(event) => void submit(event)}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Email or username</span>
-						<input
+					<Field
+						label="Email or username"
+						description="They need a Kody account with this email or username to accept."
+					>
+						<Input
 							value={invitee}
 							required
-							data-field-ring
 							autoComplete="off"
 							placeholder="jesse@example.com or @jesse"
-							css={accountInputCss}
 							onChange={(event) => setInvitee(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
-							They need a Kody account with this email or username to accept.
-						</p>
-					</label>
+					</Field>
 					<fieldset css={fieldsetCss}>
 						<legend css={legendCss}>What they can do</legend>
 						{packageCollaboratorPresets.map((option) => (
@@ -152,8 +148,7 @@ export function PackageCollaboratorInvites({
 								key={option}
 								css={option === preset ? presetCardCheckedCss : presetCardCss}
 							>
-								<input
-									type="radio"
+								<Radio
 									name="package-invite-preset"
 									value={option}
 									checked={option === preset}

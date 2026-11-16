@@ -1,9 +1,10 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from './button.tsx'
-import { useState, type ComponentProps } from 'react'
+import { useState } from 'react'
 import { spacing } from '#universal/styles/tokens.ts'
+import { Input, type InputProps } from './input.tsx'
 
-type PasswordRevealInputProps = Omit<ComponentProps<'input'>, 'type'> & {
+type PasswordRevealInputProps = Omit<InputProps, 'type'> & {
 	revealNoun?: string
 	revealed?: boolean
 	onRevealedChange?: (revealed: boolean) => void
@@ -28,7 +29,7 @@ export function PasswordRevealInput({
 				minWidth: 0,
 			}}
 		>
-			<input
+			<Input
 				{...props}
 				type={revealed ? 'text' : 'password'}
 				autoCorrect="off"

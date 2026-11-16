@@ -32,6 +32,7 @@ import {
 	senderBadgeCss,
 	senderClassificationLabel,
 } from './account-email-shared.ts'
+import { Input, Select } from '../components/input.tsx'
 
 const emailBodyPreCss: CSSObject = {
 	margin: 0,
@@ -285,30 +286,24 @@ export function renderAccountEmailDetail(props: AccountEmailDetailProps) {
 					}}
 				>
 					{selectedMessage.enable_sender.packages.length > 0 ? (
-						<select
+						<Select
+							size="sm"
 							name="kodyId"
 							aria-label="Package to enable for this sender"
-							css={{
-								fontSize: typography.fontSize.sm,
-								color: colors.text,
-							}}
 						>
 							{selectedMessage.enable_sender.packages.map((pkg) => (
 								<option key={pkg.kody_id} value={pkg.kody_id}>
 									{pkg.kody_id}
 								</option>
 							))}
-						</select>
+						</Select>
 					) : (
-						<input
+						<Input
+							size="sm"
 							name="kodyId"
 							required
 							aria-label="Package to enable for this sender"
 							placeholder="Package name"
-							css={{
-								fontSize: typography.fontSize.sm,
-								color: colors.text,
-							}}
 						/>
 					)}
 					<Button type="submit" variant="secondary">

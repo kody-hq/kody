@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState, useSyncExternalStore, type FormEvent } from 'react'
@@ -14,10 +15,7 @@ import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts
 import { saveCredentialPlacement } from '#start/server/credential-placement'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
-import {
-	accountActionsCss,
-	accountFieldNoteCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 
 type Props = {
@@ -119,7 +117,7 @@ export function CredentialFillPlacementEditor(props: Props) {
 		return (
 			<div css={css({ display: 'grid', gap: spacing.sm })}>
 				<code css={summaryCss}>{formatFillPlacementSummary(placement)}</code>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					Placeholders for this credential may only fill the parts above; Kody
 					refuses a fill anywhere else.
 				</p>

@@ -1,15 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouteContext } from '@tanstack/react-router'
 import { AdminUserDestinationPanel } from './admin-users-destination-panel.tsx'
 import { useState } from 'react'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -59,7 +55,7 @@ import {
 	isWithinSoftDeleteRestoreWindow,
 	softDeleteRestoreDeadlineIso,
 } from '#worker/soft-delete/window.ts'
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
 export type AdminUsersActionState =
 	| 'idle'
 	| 'assigning'
@@ -336,10 +332,8 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 						[mq.mobile]: { gridTemplateColumns: '1fr' },
 					}}
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Role</span>
-						<select
-							data-field-ring
+					<Field label="Role">
+						<Select
 							value={props.selectedRoleToAssign}
 							disabled={isMutating}
 							aria-label="Role"
@@ -348,15 +342,14 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 									event.currentTarget.value as RoleName,
 								)
 							}}
-							css={selectCss}
 						>
 							{props.availableRoles.map((role) => (
 								<option key={role} value={role}>
 									{role}
 								</option>
 							))}
-						</select>
-					</label>
+						</Select>
+					</Field>
 					<Button
 						type="button"
 						disabled={isMutating}
@@ -443,10 +436,8 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 					</div>
 					{props.mintedVerifyUrl &&
 					props.mintedVerifyUrlForStableUserId === selectedUser.stableUserId ? (
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>One-time verify URL</span>
-							<input
-								data-field-ring
+						<Field label="One-time verify URL">
+							<Input
 								readOnly
 								value={props.mintedVerifyUrl}
 								aria-label="One-time verify URL"
@@ -455,7 +446,7 @@ export function AdminUserDetail(props: AdminUserDetailProps) {
 									fontFamily: typography.fontFamilyMono,
 								}}
 							/>
-						</label>
+						</Field>
 					) : null}
 				</AccountManagementPanel>
 			) : null}

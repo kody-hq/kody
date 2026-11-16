@@ -5,6 +5,7 @@ import type { CSSProperties } from 'react'
 import { accountDeviceSignInPath } from '#universal/oauth-paths.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { colors } from '#universal/styles/tokens.ts'
+import { Checkbox } from './choice-controls.tsx'
 
 /**
  * "Sign in on another device" (ADR 0094): a plain form that works with no
@@ -74,7 +75,7 @@ export function AccountDeviceSignInOption(props: {
 				Kody. You get a short code and a QR code.
 			</p>
 			<label css={rememberCss}>
-				<input type="checkbox" name="rememberMe" /> Keep this browser signed in
+				<Checkbox name="rememberMe" /> Keep this browser signed in
 			</label>
 			<Button
 				type="submit"
