@@ -180,7 +180,14 @@ export async function getFreePort(): Promise<number> {
 		if (handedOutPorts.has(port)) continue
 		const ipv6Free = await listenOnce(port, '::1').then(
 			() => true,
-			(error: NodeJS.ErrnoException) => error.code !== 'EADDRINUSE',
+			(error: NodeJS.ErrnoException) => {
+				if (error.code === 'EADDRINUSE') return false
+				// Hosts without an IPv6 loopback reject ::1 with these codes.
+				if (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT') {
+					return true
+				}
+				throw error
+			},
 		)
 		if (!ipv6Free || handedOutPorts.has(port)) continue
 		handedOutPorts.add(port)
