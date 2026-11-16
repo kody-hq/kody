@@ -78,6 +78,8 @@ function parseDescription(value: unknown, what: string) {
 
 /** A pattern always has to match the whole argument, whatever anchors it has. */
 function wholeArgument(pattern: string) {
+	// Throws unless the pattern is valid on its own, so it cannot close the group below.
+	new RegExp(pattern, 'u')
 	return new RegExp(`^(?:${pattern})$`, 'u')
 }
 

@@ -136,6 +136,10 @@ test('command definitions that could not be enforced are rejected', () => {
 		[{ args: undefined }, /"args"/],
 		[{ args: [['logs', { pattern: '' }]] }, /1 to 200 characters/],
 		[
+			{ args: [['logs', { pattern: 'foo)|(?:bar' }]] },
+			/not a valid regular expression/,
+		],
+		[
 			{ args: [['logs', { pattern: '^[a-z$' }]] },
 			/not a valid regular expression/,
 		],
