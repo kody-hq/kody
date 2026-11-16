@@ -94,6 +94,7 @@ function setup() {
 			| { kind: 'api-token'; scopes: ReadonlyArray<string> } = {
 			kind: 'session',
 		},
+		inOrgId = orgId,
 	) =>
 		deriveRequestContext({
 			user: { userId: personIdFromStored(userId), username: userId },
@@ -102,21 +103,24 @@ function setup() {
 					? { kind: 'session' }
 					: { kind: 'api-token', tokenId: 'tok_test' },
 			orgBinding: {
-				org: { id: ownerIdFromStored(orgId), slug: 'acme' },
+				org: {
+					id: ownerIdFromStored(inOrgId),
+					slug: inOrgId === orgId ? 'acme' : 'other',
+				},
 				role: roles[userId] ?? null,
 			},
 			...(credential.kind === 'api-token'
 				? { scopes: credential.scopes as Array<never> }
 				: {}),
 		})
-	const callerFor = (userId: string) => {
-		const request = requestFor(userId)
+	const callerFor = (userId: string, inOrgId = orgId) => {
+		const request = requestFor(userId, undefined, inOrgId)
 		return {
 			env,
 			callerContext: { baseUrl: 'https://kody.test', request },
 			request,
 			userId,
-			orgId,
+			orgId: inOrgId,
 		} as unknown as ExecutionContextCaller
 	}
 	const surface = (
@@ -243,4 +247,30 @@ test('the role checks still apply behind the surface permission', async () => {
 	await expect(
 		detachContext(callerFor(operator), 'ec_box', otherOrgId),
 	).resolves.toMatchObject({ detached: true })
+})
+
+test('a context attached to a second org is shared with the same person in each org', async () => {
+	const { sqlite, callerFor } = setup()
+	const share = {
+		subject: { type: 'user' as const, id: manager },
+		preset: 'use' as const,
+	}
+	await setSharing(callerFor(operator), 'ec_box', { add: [share] })
+	await attachContext(callerFor(operator), 'ec_box', otherOrgId)
+	await setSharing(callerFor(operator, otherOrgId), 'ec_box', { add: [share] })
+	// Sharing again in one org rewrites that org's grant.
+	await setSharing(callerFor(operator, otherOrgId), 'ec_box', { add: [share] })
+	expect(
+		sqlite
+			.prepare(
+				`SELECT org_id FROM grants
+				 WHERE resource_type = 'execution_context' AND resource_id = 'ec_box'
+				   AND subject_id = ? AND deleted_at IS NULL ORDER BY org_id`,
+			)
+			.all(manager),
+	).toEqual(
+		[{ org_id: orgId }, { org_id: otherOrgId }].sort((a, b) =>
+			a.org_id.localeCompare(b.org_id),
+		),
+	)
 })
