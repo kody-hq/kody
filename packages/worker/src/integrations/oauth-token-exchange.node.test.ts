@@ -88,6 +88,7 @@ test('token exchange builds basic-json and form request shapes and the failure p
 
 	expect(
 		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
 			providerStatus: 401,
 			payload: {
 				error: 'invalid_client',
@@ -104,12 +105,14 @@ test('token exchange builds basic-json and form request shapes and the failure p
 	})
 	expect(
 		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
 			providerStatus: 200,
 			payload: { error: 'bad_verification_code' },
 		}).error,
 	).toBe('Token exchange failed: bad_verification_code')
 	expect(
 		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
 			providerStatus: 429,
 			payload: null,
 		}),
@@ -121,6 +124,7 @@ test('token exchange builds basic-json and form request shapes and the failure p
 	})
 	expect(
 		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
 			providerStatus: 422,
 			payload: { message: 'Validation Failed' },
 		}).error,
@@ -129,10 +133,30 @@ test('token exchange builds basic-json and form request shapes and the failure p
 	)
 	expect(
 		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
 			providerStatus: 400,
 			payload: { error: 'invalid_grant', error_description: 'x'.repeat(900) },
 		}).error_description,
 	).toHaveLength(300)
+	expect(
+		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: [],
+			providerStatus: 400,
+			payload: { error_description: 'The code passed is expired.' },
+		}).error,
+	).toBe('Token exchange failed: The code passed is expired.')
+	expect(
+		buildOAuthTokenExchangeFailurePayload({
+			sentCredentials: ['s3cret-value', null, 'auth-code-1'],
+			providerStatus: 400,
+			payload: {
+				error: 'invalid_grant',
+				error_description: 'code auth-code-1 unknown for secret s3cret-value',
+			},
+		}).error,
+	).toBe(
+		'Token exchange failed: invalid_grant (code [redacted] unknown for secret [redacted])',
+	)
 	expect(oauthTokenExchangeFailureHttpStatus()).toBe(502)
 })
 

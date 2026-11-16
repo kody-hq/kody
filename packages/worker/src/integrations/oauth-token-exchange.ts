@@ -224,14 +224,30 @@ function readTrimmedString(value: unknown): string | null {
 	return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
+/** Replace anything this request sent as a credential, in case a provider echoes it back. */
+function redactSentCredentials(
+	text: string | null,
+	sentCredentials: ReadonlyArray<string | null | undefined>,
+): string | null {
+	if (!text) return text
+	let redacted = text
+	for (const credential of sentCredentials) {
+		if (credential) redacted = redacted.replaceAll(credential, '[redacted]')
+	}
+	return redacted
+}
+
 /**
  * `error` is the message the connect page shows, so it carries the provider's
  * own reason. Without one it names the HTTP status and whether the body was
- * JSON, which is all that is known. The provider's raw body is never echoed.
+ * JSON, which is all that is known. The provider's raw body is never echoed,
+ * and `sentCredentials` (client secret, authorization code, PKCE verifier) are
+ * removed from the reason because it is also logged.
  */
 export function buildOAuthTokenExchangeFailurePayload(input: {
 	providerStatus: number
 	payload: Record<string, unknown> | null
+	sentCredentials: ReadonlyArray<string | null | undefined>
 }): {
 	ok: false
 	error: string
@@ -240,22 +256,23 @@ export function buildOAuthTokenExchangeFailurePayload(input: {
 	providerStatus: number
 } {
 	const providerError =
-		readTrimmedString(input.payload?.error)?.slice(
-			0,
-			providerErrorCodeMaxLength,
-		) ?? null
+		redactSentCredentials(
+			readTrimmedString(input.payload?.error),
+			input.sentCredentials,
+		)?.slice(0, providerErrorCodeMaxLength) ?? null
 	const errorDescription =
-		readTrimmedString(input.payload?.error_description)?.slice(
-			0,
-			providerErrorDescriptionMaxLength,
-		) ?? null
-	const reason = providerError
-		? errorDescription
+		redactSentCredentials(
+			readTrimmedString(input.payload?.error_description),
+			input.sentCredentials,
+		)?.slice(0, providerErrorDescriptionMaxLength) ?? null
+	const reason =
+		providerError && errorDescription
 			? `${providerError} (${errorDescription})`
-			: providerError
-		: `the provider returned HTTP ${input.providerStatus} with ${
-				input.payload ? 'no error reason' : 'a response that was not JSON'
-			}`
+			: (providerError ??
+				errorDescription ??
+				`the provider returned HTTP ${input.providerStatus} with ${
+					input.payload ? 'no error reason' : 'a response that was not JSON'
+				}`)
 	return {
 		ok: false,
 		error: `Token exchange failed: ${reason}`,

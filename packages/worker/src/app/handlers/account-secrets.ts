@@ -1140,6 +1140,13 @@ async function exchangeOAuthToken(input: {
 		const failure = buildOAuthTokenExchangeFailurePayload({
 			providerStatus: response.status,
 			payload: payloadRecord,
+			sentCredentials: [
+				input.clientSecret,
+				input.params.get('client_secret'),
+				input.params.get('code'),
+				input.params.get('code_verifier'),
+				input.params.get('refresh_token'),
+			],
 		})
 		// The only record of why a provider refused an exchange.
 		console.warn(
