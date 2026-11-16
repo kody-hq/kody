@@ -7,6 +7,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
+import { machineAccessGrantSubjects } from '#worker/execution-contexts/machine-access.ts'
 import {
 	contextGrantSubjects,
 	type ExecutionContextRow,
@@ -42,6 +43,7 @@ const workerSrc = fileURLToPath(new URL('../', import.meta.url))
 /** Every lookup that asks "which grants reach this person", by file. */
 const lookupSites: Record<string, GrantSubjectChoices> = {
 	'authorization/access-compile.ts': liveGrantRowSubjects,
+	'execution-contexts/machine-access.ts': machineAccessGrantSubjects,
 	'execution-contexts/store.ts': contextGrantSubjects,
 	'orgs/repo.ts': grantOnlyBindingSubjects,
 	'mcp/capabilities/access/invites.ts': outsideInviterGrantSubjects,
@@ -59,6 +61,11 @@ const handWrittenSubjectMatches: Record<
 		count: 2,
 		reason:
 			"Lists a context's grantees (ADR 0096) by expanding its user and team grants, not matching a person to a grant.",
+	},
+	'execution-contexts/machine-access.ts': {
+		count: 2,
+		reason:
+			"Lists a capability's grantees by joining each user and team grant to its handle or slug, not matching a person to a grant.",
 	},
 	'orgs/access-writes.ts': {
 		count: 3,

@@ -31,6 +31,7 @@ import {
 
 type HostCommandsDenialCode =
 	| 'execution_context_commands_off'
+	| 'execution_context_command_not_granted'
 	| 'invalid_request'
 	| 'not_found'
 	| 'machine_capability_off'
@@ -44,6 +45,13 @@ class HostCommandError extends Error {
 		super(`${message} (${code})`)
 		this.name = 'HostCommandError'
 	}
+}
+
+function shellOperatorOnlyError() {
+	return new HostCommandError(
+		'execution_context_command_not_granted',
+		"Shell commands run only for this machine's operator. A command the operator shared with you runs by name: kody.command.run({ capability, args }).",
+	)
 }
 
 type HostCommandSpec = {
@@ -115,6 +123,11 @@ export type HostCommandRunContext = {
 	requesterUserId: string
 	signal: AbortSignal
 	authorize: HostCommandAuthorize
+	/**
+	 * True for a run whose requester is not the machine's operator. It can use
+	 * the named commands Kody says it was granted, never the shell.
+	 */
+	namedOnly?: boolean
 }
 
 const hostCommandLimits = {
@@ -412,6 +425,7 @@ export class HostCommands {
 					? true
 					: await this.#authorizeNamedJob(name, args, run)
 		if (!named) {
+			if (run.namedOnly) throw shellOperatorOnlyError()
 			this.assertAvailable()
 			if (name === 'status' || name === 'output' || name === 'kill') {
 				await run.authorize({ lifecycle: name })
@@ -490,6 +504,7 @@ export class HostCommands {
 
 	async #list(run: HostCommandRunContext) {
 		try {
+			if (run.namedOnly) throw shellOperatorOnlyError()
 			this.assertAvailable()
 			await run.authorize({ lifecycle: 'list' })
 			this.assertAvailable()

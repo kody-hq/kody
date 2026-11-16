@@ -6,6 +6,11 @@ import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
+	grantMachineAccess,
+	listMachineAccess,
+	revokeMachineAccess,
+} from './machine-access.ts'
+import {
 	authorizeContextCommand,
 	authorizeContextFolder,
 	authorizeContextLan,
@@ -612,6 +617,135 @@ test('a named command the machine does not define, or removed, is refused by nam
 		authorizeContextCommand(orgRun(removed, operator), namedArgs),
 	).rejects.toMatchObject({ code: 'machine_capability_off' })
 	expect(removed.audits).toHaveLength(0)
+})
+
+test('the operator shares a named command or destination with a person, a team or everyone, and takes it back', async () => {
+	const s = setup()
+	defineCommand(s)
+	defineLan(s)
+	defineFolder(s)
+	const owner = s.callerFor(operator)
+	await setSharing(owner, 'ec_mac', { allMembers: true })
+	s.sqlite.exec(`
+		INSERT INTO execution_context_opt_ins (context_id, user_id, org_id, created_at)
+			VALUES ('ec_mac', 'user_friend', '${orgId}', '${now}'),
+			       ('ec_mac', 'user_teammate', '${orgId}', '${now}');
+		INSERT INTO users (username, email, password_hash, stable_user_id)
+			VALUES ('friend', 'friend@example.com', '', 'user_friend');
+		INSERT INTO teams (id, org_id, slug, name, created_at, updated_at)
+			VALUES ('team_ops', '${orgId}', 'ops', 'Ops', '${now}', '${now}');
+		INSERT INTO team_members (team_id, user_id, created_at)
+			VALUES ('team_ops', 'user_teammate', '${now}');
+	`)
+	const lanArgs = { capability: 'nas', host: '192.168.1.10', port: 5000 }
+	const friend = () =>
+		authorizeContextCommand(orgRun(s, 'user_friend'), namedArgs)
+	const teammate = () =>
+		authorizeContextCommand(orgRun(s, 'user_teammate'), namedArgs)
+	await expect(friend()).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+
+	// Only the operator grants, and never to themselves or for a host folder.
+	await expect(
+		grantMachineAccess(s.callerFor('user_friend'), 'ec_mac', {
+			kind: 'command',
+			name: 'kdocker',
+			subject: { type: 'user', id: 'user_friend' },
+		}),
+	).rejects.toMatchObject({ code: 'not_granted' })
+	await expect(
+		grantMachineAccess(owner, 'ec_mac', {
+			kind: 'command',
+			name: 'kdocker',
+			subject: { type: 'user', id: operator },
+		}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	await expect(
+		grantMachineAccess(owner, 'ec_mac', {
+			kind: 'command',
+			name: 'missing',
+			subject: { type: 'user', id: 'user_friend' },
+		}),
+	).rejects.toMatchObject({ code: 'machine_capability_off' })
+
+	const granted = await grantMachineAccess(owner, 'ec_mac', {
+		kind: 'command',
+		name: 'kdocker',
+		subject: { type: 'user', id: 'user_friend' },
+	})
+	await expect(friend()).resolves.toMatchObject({ ok: true })
+	// One command is shared, nothing else on the machine.
+	await expect(teammate()).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+	await expect(
+		authorizeContextLan(orgRun(s, 'user_friend'), lanArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextFolder(orgRun(s, 'user_friend'), {
+			capability: 'kody-runner',
+		}),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextCommand(orgRun(s, 'user_friend'), s.args),
+	).rejects.toMatchObject({ code: 'execution_context_commands_off' })
+
+	await grantMachineAccess(owner, 'ec_mac', {
+		kind: 'command',
+		name: 'kdocker',
+		subject: { type: 'team', id: 'team_ops' },
+	})
+	await expect(teammate()).resolves.toMatchObject({ ok: true })
+	await grantMachineAccess(owner, 'ec_mac', {
+		kind: 'lan',
+		name: 'nas',
+		subject: { type: 'org', id: orgId },
+	})
+	await expect(
+		authorizeContextLan(orgRun(s, 'user_friend'), lanArgs),
+	).resolves.toMatchObject({ ok: true })
+
+	const listed = await listMachineAccess(owner, 'ec_mac')
+	expect(
+		listed.capabilities.map((entry) => [
+			entry.kind,
+			entry.name,
+			entry.shareable,
+			entry.grants.map((grant) => grant.subject),
+		]),
+	).toEqual([
+		[
+			'command',
+			'kdocker',
+			true,
+			[
+				{ kind: 'user', handle: 'friend' },
+				{ kind: 'team', slug: 'ops' },
+			],
+		],
+		['fs', 'kody-runner', false, []],
+		['lan', 'nas', true, [{ kind: 'everyone' }]],
+	])
+
+	// Taking the grant back, or the context share, stops the next use.
+	const friendGrant = granted.capabilities
+		.find((entry) => entry.name === 'kdocker')!
+		.grants.find((grant) => grant.subject.kind === 'user')!
+	await revokeMachineAccess(owner, 'ec_mac', friendGrant.grantId)
+	await expect(friend()).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+	await setSharing(owner, 'ec_mac', { allMembers: false })
+	await expect(teammate()).rejects.toMatchObject({
+		code: 'machine_capability_not_granted',
+	})
+	expect(s.audits.map((entry) => entry.event)).toEqual(
+		expect.arrayContaining([
+			'machine_access_granted',
+			'machine_access_revoked',
+		]),
+	)
 })
 
 test('a named command is refused for other people and for a token without the scope', async () => {

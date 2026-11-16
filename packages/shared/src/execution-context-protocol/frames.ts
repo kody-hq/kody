@@ -224,7 +224,8 @@ export type EcpRunRequestBody = {
 	apiUrl: string
 	/**
 	 * True for runs whose requester is not the operator. The daemon gives
-	 * these runs no host folders and no host commands.
+	 * these runs no host folders and no shell, only the named commands and
+	 * local network destinations Kody says they were granted.
 	 */
 	sharedRun?: boolean
 }

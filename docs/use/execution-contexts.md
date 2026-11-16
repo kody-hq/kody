@@ -53,6 +53,7 @@ Execution contexts are an experiment. Turn them on at
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing
   changes (`executionContextShareSet`, `executionContextShareRemove`,
+  `executionContextMachineAccessGrant`, `executionContextMachineAccessRevoke`,
   `executionContextAttach`, `executionContextDetach`) need
   `execution_context:manage_access`. `executionContextNoticeDismiss`,
   `executionChainSet`, opt-in and opt-out need `execution_context:execute`. A
@@ -311,11 +312,11 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
 - Named local network destinations: with the local network off, a run's `fetch`
   to an address and port that the machine defined with
   `kody context capability add lan` goes through once Kody allows it. The same
-  rules as named commands apply (operator only for now, `machine_capability:use`
-  scope, the package rule), and the same errors. Only IP addresses match: a host
-  name is never matched, even one that resolves to a listed address. Each use is
-  audited as `lan_used` with the name, address and port. Egress mode `none`
-  still refuses everything.
+  rules as named commands apply (the operator or a grant, the
+  `machine_capability:use` scope, the package rule), and the same errors. Only
+  IP addresses match: a host name is never matched, even one that resolves to a
+  listed address. Each use is audited as `lan_used` with the name, address and
+  port. Egress mode `none` still refuses everything.
 - Host folders have names too: `kody context policy show` lists each allowed
   folder with the name Kody knows it by (the folder's own name). The first time
   a run touches a folder, Kody is asked and records `fs_used` with that name and
@@ -327,14 +328,24 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   executable, folder, environment and timeout ceiling, no shell is involved, and
   the arguments must match one of its allowed shapes. Only `args`, `timeoutMs`
   and `maxOutputBytes` are accepted. It works with the shell
-  (`kody context commands`) off. For now only the machine's operator can use
-  one, a token needs the `machine_capability:use` scope, and every saved package
-  the run loaded directly must be one the operator's org wrote or adopted.
-  Kody's audit row holds the name and arguments, not the executable path.
-  Errors: `machine_capability_off` (the machine defines no such command),
+  (`kody context commands`) off. The machine's operator can use one, and so can
+  anyone the operator shared it with (see the next item). A token needs the
+  `machine_capability:use` scope, and every saved package the run loaded
+  directly must be one the operator's org wrote or adopted. Kody's audit row
+  holds the name and arguments, not the executable path. Errors:
+  `machine_capability_off` (the machine defines no such command),
   `machine_capability_not_granted`, `machine_capability_package_not_allowed`
   (names the packages), `machine_command_args_refused` (lists the allowed
   shapes).
+- Sharing machine access: the operator shares one named command or local network
+  destination with a person, a team, or everyone in the org using
+  `executionContextMachineAccessGrant`
+  (`{ id, kind: "command" | "lan", name, username | team_slug | everyone: true }`).
+  The person also needs the context shared with them, and their runs then use it
+  by name like the operator's. `executionContextMachineAccessList` shows each
+  entry and who has it; `executionContextMachineAccessRevoke` takes a grant
+  back, and the next use is refused. The unrestricted shell and host folders are
+  never shared. The machine needs CLI 3.42.0 or later.
 - A saved package the run loaded directly must declare each named command and
   local network destination it uses in
   [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call

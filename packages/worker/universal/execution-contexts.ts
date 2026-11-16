@@ -913,6 +913,8 @@ const executionContextAuditLabels: Record<string, string> = {
 	command_finished: 'Command finished',
 	lan_used: 'Local network destination used',
 	fs_used: 'Host folder used',
+	machine_access_granted: 'Machine access shared',
+	machine_access_revoked: 'Machine access taken back',
 	run_cancelled: 'Run cancelled',
 	paused: 'Paused',
 	resumed: 'Resumed',
