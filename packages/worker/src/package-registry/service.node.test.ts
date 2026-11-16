@@ -39,7 +39,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		loadPackageSourceBySourceId: vi.fn(),
 		loadPackageSourceFromFiles: vi.fn(),
 		syncJobManagerAlarm: vi.fn(),
-		syncPackageJobsForPackage: vi.fn(),
+		syncPublishedPackageJobs: vi.fn(),
 		updateSavedPackage: vi.fn(),
 		upsertSavedPackageVector: vi.fn(),
 		scheduleSavedPackageSearchIndexUpsert: vi.fn(),
@@ -121,7 +121,7 @@ vi.mock('#worker/jobs/jobs-data.ts', () => ({
 vi.mock('#worker/jobs/manager-client.ts', () =>
 	pickMocks('syncJobManagerAlarm'),
 )
-vi.mock('#worker/jobs/service.ts', () => pickMocks('syncPackageJobsForPackage'))
+vi.mock('#worker/jobs/service.ts', () => pickMocks('syncPublishedPackageJobs'))
 vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 	pickMocks('cleanupArtifactReposForPackage'),
 )
@@ -239,7 +239,7 @@ function setupDefaultMocks() {
 	mockModule.upsertSavedPackageVector.mockResolvedValue(undefined)
 	mockModule.scheduleSavedPackageSearchIndexUpsert.mockResolvedValue(undefined)
 	mockModule.buildPublishedPackageArtifacts.mockResolvedValue(undefined)
-	mockModule.syncPackageJobsForPackage.mockResolvedValue(false)
+	mockModule.syncPublishedPackageJobs.mockResolvedValue(false)
 	mockModule.syncJobManagerAlarm.mockResolvedValue(undefined)
 	mockModule.refreshPackageSubscriptionTopicMap.mockResolvedValue(undefined)
 	mockModule.collectPackageSkills.mockResolvedValue([])
@@ -359,9 +359,9 @@ test('refreshSavedPackageProjection uses caller-supplied source files instead of
 	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalled()
 })
 
-test('refreshSavedPackageProjection syncs the job manager only when package jobs change', async () => {
+test('refreshSavedPackageProjection syncs jobs to the serving commit as the publisher', async () => {
 	setupDefaultMocks()
-	mockModule.syncPackageJobsForPackage.mockResolvedValue(true)
+	mockModule.syncPublishedPackageJobs.mockResolvedValue(true)
 	const env = createEnv()
 	const manifest = shadeManifest({
 		tags: ['home', 'shades'],
@@ -380,14 +380,12 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 
 	await refresh(env)
 
-	expect(mockModule.syncPackageJobsForPackage).toHaveBeenCalledWith({
+	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith({
 		env,
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
-		publishedCommit: 'commit-1',
 		sourceId: 'source-1',
-		manifest,
 		actorUserId: undefined,
 		actorCredential: null,
 	})
@@ -407,6 +405,7 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 			updatedAt: expect.any(String),
 		}),
 		manifest,
+		actor: { userId: undefined, credential: null },
 		buildAppBundle: expect.any(Function),
 		buildAppClientBundle: expect.any(Function),
 		buildModuleBundle: expect.any(Function),
@@ -418,26 +417,7 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 		/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/,
 	)
 	expect(savedPackageArg?.updatedAt).not.toBe('2026-04-20T00:00:00.000Z')
-	expect(mockModule.syncJobManagerAlarm).toHaveBeenCalledWith({
-		env,
-		userId: ownerIdFromStored('user-1'),
-	})
 	expect(mockModule.getSavedPackageById).toHaveBeenCalledTimes(1)
-	expect(
-		mockModule.syncJobManagerAlarm.mock.invocationCallOrder[0],
-	).toBeGreaterThan(
-		mockModule.syncPackageJobsForPackage.mock.invocationCallOrder[0]!,
-	)
-
-	mockModule.syncPackageJobsForPackage.mockResolvedValue(false)
-	mockModule.syncJobManagerAlarm.mockClear()
-	mockSource({
-		name: '@kentcdodds/cloudflare',
-		kody: { id: 'cloudflare', description: 'Inert community fork' },
-	})
-	mockModule.getSavedPackageById.mockResolvedValue(null)
-	await refresh(env)
-	expect(mockModule.syncJobManagerAlarm).not.toHaveBeenCalled()
 })
 
 test('refreshSavedPackageProjection omits files when artifact rebuild is skipped', async () => {
@@ -473,7 +453,7 @@ test('refreshSavedPackageProjection leaves a held build to the settled projectio
 	await refresh(createEnv())
 
 	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalled()
-	expect(mockModule.syncPackageJobsForPackage).not.toHaveBeenCalled()
+	expect(mockModule.syncPublishedPackageJobs).not.toHaveBeenCalled()
 	expect(mockModule.writePackageSkillsIndex).not.toHaveBeenCalled()
 	expect(mockModule.refreshPackageSubscriptionTopicMap).not.toHaveBeenCalled()
 })
@@ -540,18 +520,15 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 
 	await refresh(env)
 
-	expect(mockModule.syncPackageJobsForPackage).toHaveBeenCalledWith({
+	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith({
 		env,
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
-		publishedCommit: 'commit-1',
 		sourceId: 'source-1',
-		manifest,
 		actorUserId: undefined,
 		actorCredential: null,
 	})
-	expect(mockModule.syncJobManagerAlarm).not.toHaveBeenCalled()
 	// The swallowed skills-index failure is still logged for operators.
 	expect(consoleError).toHaveBeenCalledTimes(1)
 })

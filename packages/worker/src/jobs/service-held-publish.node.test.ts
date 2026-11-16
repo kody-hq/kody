@@ -1,8 +1,10 @@
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	ownerIdFromStored,
+	personIdFromStored,
+} from '@kody-internal/shared/owner-person-ids.ts'
 import { listJobRowsByUserId } from '@kody-internal/shared/jobs/repo.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import * as registry from '#mcp/run-kody-registry.ts'
-import { loadPackageManifestBySourceId } from '#worker/package-registry/source.ts'
 import { persistPublishedBundleArtifact } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import { writePublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import {
@@ -21,7 +23,8 @@ import {
 	insertPublishedEntitySource,
 	resetJobServiceMocks,
 } from '#worker/test-support/jobs-service.ts'
-import { executeJobOnce, syncPackageJobsForPackage } from './service.ts'
+import { ensureOwnerCronEnablementForJob } from '#worker/enablements/owner-cron-enablement.ts'
+import { executeJobOnce, syncPublishedPackageJobs } from './service.ts'
 
 vi.mock('#worker/repo/source-service.ts', async () =>
 	(
@@ -82,6 +85,7 @@ const sourceId = 'source-held-newsletter'
 const packageId = 'pkg-held-newsletter'
 const kodyId = 'held-newsletter'
 const hourly = { type: 'interval', every: '1h' } as const
+const approverId = personIdFromStored('person-approver')
 
 /**
  * commit-1 sends the newsletter and a digest. commit-2 (held: it asks for
@@ -167,23 +171,15 @@ async function setUp() {
 		}
 	}
 
-	/** The projection's job step, reading the manifest the app runs by. */
-	async function project(manifestCommit?: string) {
-		const loaded = await loadPackageManifestBySourceId({
-			env,
-			baseUrl: 'https://heykody.dev',
-			userId,
-			sourceId,
-			commit: manifestCommit,
-		})
-		await syncPackageJobsForPackage({
+	/** The projection's job step: the serving commit, or one about to serve. */
+	async function syncJobs(commit?: string) {
+		await syncPublishedPackageJobs({
 			env,
 			userId,
 			baseUrl: 'https://heykody.dev',
 			packageId,
 			sourceId,
-			manifest: loaded.manifest,
-			publishedCommit: loaded.source.published_commit,
+			...(commit ? { commit, actorUserId: approverId } : {}),
 		})
 	}
 
@@ -201,7 +197,7 @@ async function setUp() {
 			source,
 			files: packageFiles(commit),
 		})
-		await project(commit)
+		await syncJobs()
 		await build(commit)
 	}
 
@@ -212,6 +208,14 @@ async function setUp() {
 				row.record.publishedCommit,
 			]),
 		)
+	const jobRows = async () =>
+		(await listJobRowsByUserId(db, userId)).map(({ record }) => ({
+			name: record.name,
+			enabled: record.enabled,
+			schedule: record.schedule,
+			nextRunAt: record.nextRunAt,
+			publishedCommit: record.publishedCommit,
+		}))
 
 	const executeSpy = vi
 		.spyOn(registry, 'runBundledModuleWithRegistry')
@@ -233,25 +237,26 @@ async function setUp() {
 		)
 	}
 
-	await project()
+	await syncJobs()
 	await build('commit-1')
 	await advanceEntitySourceServingCommit(db, {
 		id: sourceId,
 		userId,
 		commit: 'commit-1',
 	})
-	return { db, jobs, publish, project, run }
+	return { db, jobs, jobRows, publish, syncJobs, run }
 }
 
-test('a held publish keeps every job on the version everyone runs until it is approved', async () => {
+test('a held publish never touches jobs, and approval switches them with the code', async () => {
 	const site = await setUp()
+	const before = await site.jobRows()
 	expect(await site.jobs()).toEqual({
 		'send-newsletter': 'commit-1',
 		digest: 'commit-1',
 	})
 
 	await site.publish('commit-2')
-	// The build asks for wider capabilities: hold it, then settle.
+	// The build asks for wider capabilities: it is held.
 	await expect(
 		holdEntitySourceCommit(site.db, {
 			id: sourceId,
@@ -259,30 +264,33 @@ test('a held publish keeps every job on the version everyone runs until it is ap
 			commit: 'commit-2',
 		}),
 	).resolves.toBe(true)
-	await site.project()
+	await site.syncJobs()
 
-	// The removed digest keeps running and the added blast is not registered.
-	expect(await site.jobs()).toEqual({
-		'send-newsletter': 'commit-1',
-		digest: 'commit-1',
-	})
+	// No row changed: the removed digest keeps running with its own enabled
+	// state and enabler, and the added blast is not registered.
+	expect(await site.jobRows()).toEqual(before)
 	expect(await site.run('digest')).toContain('digest@commit-1')
 	// The email-sending job never runs the held code.
 	const sent = await site.run('send-newsletter')
 	expect(sent).toContain('send-newsletter@commit-1')
 	expect(sent).not.toContain('commit-2')
 
-	// Approval moves the code and the jobs together.
+	// Approval syncs the jobs to commit-2, then moves the code.
+	vi.mocked(ensureOwnerCronEnablementForJob).mockClear()
+	await site.syncJobs('commit-2')
 	await advanceEntitySourceServingCommit(site.db, {
 		id: sourceId,
 		userId,
 		commit: 'commit-2',
 	})
-	await site.project()
 	expect(await site.jobs()).toEqual({
 		'send-newsletter': 'commit-2',
 		blast: 'commit-2',
 	})
+	// The added job is enabled as the approver, not the earliest Owner.
+	expect(ensureOwnerCronEnablementForJob).toHaveBeenCalledWith(
+		expect.objectContaining({ jobName: 'blast', enablerUserId: approverId }),
+	)
 	expect(await site.run('send-newsletter')).toContain(
 		'send-newsletter@commit-2',
 	)

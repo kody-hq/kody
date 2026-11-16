@@ -1,5 +1,10 @@
 import * as Sentry from '@sentry/cloudflare'
-import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	personIdFromStored,
+	type OwnerId,
+	type PersonId,
+} from '@kody-internal/shared/owner-person-ids.ts'
+import type { EnablerCredential } from '#worker/enablements/owner-cron-enablement.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -39,12 +44,23 @@ import { serializeDependencySnapshot } from './dependency-snapshot.ts'
  * Other apps and packages advance as soon as the build is complete
  * (ADR 0069).
  */
-export async function advanceServingCommit(input: {
+/** Who made the commit serve; jobs it adds are enabled as them. */
+export type ServingAdvanceActor = {
+	userId?: PersonId
+	credential?: EnablerCredential | null
+}
+
+type ServingAdvanceInput = {
 	env: Env
 	sourceId: string
 	userId: OwnerId
 	commit: string
-}): Promise<boolean> {
+	actor?: ServingAdvanceActor
+}
+
+export async function advanceServingCommit(
+	input: ServingAdvanceInput,
+): Promise<boolean> {
 	const decision = await decideServingAdvance(input)
 	if (decision?.hold) {
 		const held = await holdEntitySourceCommit(input.env.APP_DB, {
@@ -65,9 +81,12 @@ export async function advanceServingCommit(input: {
 }
 
 async function advanceToServing(
-	input: { env: Env; sourceId: string; userId: OwnerId; commit: string },
+	input: ServingAdvanceInput,
 	decision: Exclude<ServingAdvanceDecision, { hold: true }> | null,
 ): Promise<boolean> {
+	// Jobs switch with the code. A sync that fails throws before the pointer
+	// moves, so the commit is not served and a retry runs the sync again.
+	await syncJobsToCommit(input)
 	const advanced = await advanceEntitySourceServingCommit(
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },
@@ -97,6 +116,8 @@ export async function releaseHeldServingCommit(input: {
 	env: Env
 	sourceId: string
 	userId: OwnerId
+	/** Who approved or turned internet-visible off. */
+	actorUserId?: string | null
 }): Promise<boolean> {
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
 	if (
@@ -112,6 +133,9 @@ export async function releaseHeldServingCommit(input: {
 		sourceId: source.id,
 		userId: input.userId,
 		commit: source.held_commit,
+		...(input.actorUserId
+			? { actor: { userId: personIdFromStored(input.actorUserId) } }
+			: {}),
 	})
 	if (advanced) {
 		await settleProjection(
@@ -122,10 +146,33 @@ export async function releaseHeldServingCommit(input: {
 	return advanced
 }
 
+async function syncJobsToCommit(input: ServingAdvanceInput) {
+	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
+	if (
+		!source ||
+		source.user_id !== input.userId ||
+		source.entity_kind !== 'package' ||
+		source.published_commit !== input.commit
+	) {
+		return
+	}
+	const { syncPublishedPackageJobs } = await import('#worker/jobs/service.ts')
+	await syncPublishedPackageJobs({
+		env: input.env,
+		userId: input.userId,
+		baseUrl: getAppBaseUrl({ env: input.env }),
+		packageId: source.entity_id,
+		sourceId: source.id,
+		commit: input.commit,
+		actorUserId: input.actor?.userId,
+		actorCredential: input.actor?.credential ?? null,
+	})
+}
+
 /**
- * Jobs, subscriptions, and skills follow the commit everyone runs: publish
- * projected the held commit, so a hold settles them back, and a release
- * moves them on with the code.
+ * Subscriptions, skills, and package metadata follow the commit everyone
+ * runs: publish projected the held commit, so a hold settles them back, and a
+ * release moves them on with the code.
  */
 async function settleProjection(
 	input: { env: Env; sourceId: string; userId: OwnerId },

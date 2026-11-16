@@ -26,6 +26,12 @@ const projection = vi.hoisted(() => ({
 
 vi.mock('#worker/package-registry/service.ts', () => projection)
 
+const jobs = vi.hoisted(() => ({
+	syncPublishedPackageJobs: vi.fn(async (_input: unknown) => false),
+}))
+
+vi.mock('#worker/jobs/service.ts', () => jobs)
+
 const compute = vi.hoisted(() => ({
 	entriesByCommit: new Map<string, Array<unknown>>(),
 	onCompute: undefined as undefined | ((commit: string) => Promise<void>),
@@ -89,6 +95,8 @@ beforeEach(() => {
 	compute.entriesByCommit.clear()
 	compute.onCompute = undefined
 	projection.refreshSavedPackageProjection.mockClear()
+	jobs.syncPublishedPackageJobs.mockReset()
+	jobs.syncPublishedPackageJobs.mockResolvedValue(false)
 	approvedCommitCache.delete(packageId)
 	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -280,6 +288,8 @@ test('a wider republish holds everyone on the approved version until it is appro
 		}),
 	)
 	projection.refreshSavedPackageProjection.mockClear()
+	// Held: no job is added, removed, or rewritten.
+	expect(jobs.syncPublishedPackageJobs).not.toHaveBeenCalled()
 
 	// A rebuild of the held commit keeps holding it without a new check.
 	compute.entriesByCommit.delete('commit-b')
@@ -298,6 +308,36 @@ test('a wider republish holds everyone on the approved version until it is appro
 	await site.expectEveryoneOn('commit-b')
 	expect(site.heldCommit()).toBeNull()
 	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
+	// Jobs switch with the code, enabled as the approver.
+	expect(jobs.syncPublishedPackageJobs).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId,
+			sourceId,
+			commit: 'commit-b',
+			actorUserId: 'person-owner',
+		}),
+	)
+})
+
+test('a job sync that fails on approval keeps the hold so approving again releases it', async () => {
+	const site = await setUp({ approvedEntries: [storage] })
+	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	await site.publish('commit-b')
+	await advanceServingCommit({
+		env: site.env,
+		sourceId,
+		userId: ownerId,
+		commit: 'commit-b',
+	})
+	jobs.syncPublishedPackageJobs.mockRejectedValueOnce(new Error('d1 busy'))
+
+	await expect(site.approveLive()).rejects.toThrow('d1 busy')
+	await site.expectEveryoneOn('commit-a')
+	expect(site.heldCommit()).toBe('commit-b')
+
+	await site.approveLive()
+	await site.expectEveryoneOn('commit-b')
+	expect(site.heldCommit()).toBeNull()
 })
 
 test('an approval that lands while a wider build is being checked still releases it', async () => {

@@ -241,6 +241,7 @@ export async function approvePackageCapabilitySet(input: {
 		env: input.env,
 		sourceId: input.savedPackage.sourceId,
 		userId: input.ownerUserId,
+		actorUserId: input.actorUserId,
 	})
 
 	// Going public pauses on the shared approval queue (`went_public`). The
@@ -315,6 +316,7 @@ export async function clearInternetVisible(input: {
 			env: input.env,
 			sourceId: live.sourceId,
 			userId: live.userId,
+			actorUserId: input.actorUserId,
 		})
 	}
 	// Package missing → false. Already-off with a superseded pending → true so

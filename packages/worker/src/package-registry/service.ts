@@ -497,6 +497,10 @@ export async function refreshSavedPackageProjection(input: {
 						source: loaded.source,
 						savedPackage,
 						manifest: loaded.manifest,
+						actor: {
+							userId: input.actorUserId,
+							credential: input.actorCredential ?? null,
+						},
 						buildAppBundle: async ({ entryPoint }) => {
 							const { buildKodyAppBundle } =
 								await import('#worker/package-runtime/module-graph.ts')
@@ -605,25 +609,19 @@ export async function refreshSavedPackageProjection(input: {
 				} else {
 					await skillsIndexTask
 				}
-				const { syncPackageJobsForPackage } =
+				// Jobs follow the serving commit: a publish switches them when its
+				// build starts serving (`advanceServingCommit`), never before.
+				const { syncPublishedPackageJobs } =
 					await import('#worker/jobs/service.ts')
-				const schedulerStateChanged = await syncPackageJobsForPackage({
+				await syncPublishedPackageJobs({
 					env: input.env,
 					userId: input.userId,
 					baseUrl: input.baseUrl,
 					packageId: input.packageId,
 					sourceId: input.sourceId,
-					manifest: loaded.manifest,
-					publishedCommit: loaded.source?.published_commit ?? null,
 					actorUserId: input.actorUserId,
 					actorCredential: input.actorCredential ?? null,
 				})
-				if (schedulerStateChanged) {
-					await syncJobManagerAlarm({
-						env: input.env,
-						userId: input.userId,
-					})
-				}
 				// Same-isolate invoke paths must observe this refresh immediately;
 				// other isolates converge within the freshness-cache TTL.
 				const retiredPackageAppSlugs = await listPackageSlugRedirects({

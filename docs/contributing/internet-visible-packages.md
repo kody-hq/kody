@@ -90,15 +90,21 @@ anonymous visitors, and its republishes advance for members. Apps that are not
 internet-visible never hold a commit. There is no members-only preview of a held
 commit; test it with local dev or a dev check.
 
-Everything else an app runs follows the same commit: jobs, subscriptions,
-webhooks, events, skills, and secret access. Publish projects the new commit
-before it builds. Holding the build re-projects the serving commit through the
-settle a failed rebuild uses (`refreshSavedPackageProjection` with
-`rebuildArtifacts: false`), and releasing the hold projects the held commit
-right after the pointer moves. Readers that load a manifest by source
-(`loadPackageManifestBySourceId`, `loadManifestsForSavedPackages`) read
-`toUnheldSourceView`, which is the serving commit while the published one is
-held. Capability checks pin the commit they inspect (`commit`).
+Everything else an app runs follows the same commit. Jobs sync only when a
+commit starts serving: `advanceServingCommit` syncs them to that commit
+(`syncPublishedPackageJobs` with `commit`) before it moves the pointer, as the
+publisher or, on release, the approver. A sync that fails throws before the
+pointer moves, so the hold stays and approving again retries it. Publish-time
+projection syncs jobs to the serving commit only, so a held build never adds,
+removes, re-enables, or rewrites a job. Subscriptions, skills, and package
+metadata are projected at publish and settled back on hold through the settle a
+failed rebuild uses (`refreshSavedPackageProjection` with
+`rebuildArtifacts: false`), then projected again on release. Readers that load a
+manifest by source (`loadPackageManifestBySourceId`,
+`loadManifestsForSavedPackages`) read `toUnheldSourceView`, the serving commit
+while the published one is held, so webhooks, events, subscription dispatch,
+secret access, and enablements follow it too. Capability checks pin the commit
+they inspect (`commit`).
 
 `loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
 held state from `held_commit`: an internet-visible app whose held commit is the
