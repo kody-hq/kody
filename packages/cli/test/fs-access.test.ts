@@ -121,6 +121,30 @@ test('each allowed folder has a name for Kody that no later folder or reordering
 		[...names].reverse(),
 	)
 
+	// A folder whose own name is another folder's hashed name still gets a
+	// name of its own.
+	const hashed = folderCapabilityNames([
+		{ path: '/a/project', mode: 'ro' },
+		{ path: '/b/project', mode: 'ro' },
+	])[0]!
+	for (const clash of [
+		{ path: `/c/${hashed}`, mode: 'ro' as const },
+		{ path: '/c/other', mode: 'ro' as const, name: hashed },
+	]) {
+		const clashing = [
+			clash,
+			{ path: '/a/project', mode: 'ro' as const },
+			{ path: '/b/project', mode: 'ro' as const },
+		]
+		const unique = folderCapabilityNames(clashing)
+		assert.equal(new Set(unique).size, 3)
+		for (const name of unique) assert.match(name, /^[a-z0-9][a-z0-9_-]{0,62}$/)
+		assert.deepEqual(
+			folderCapabilityNames([...clashing].reverse()),
+			[...unique].reverse(),
+		)
+	}
+
 	// `policy allow` saves names, so a same-named folder that sorts first
 	// gets its own name instead of the existing folder's.
 	const { root, dir } = sandbox()

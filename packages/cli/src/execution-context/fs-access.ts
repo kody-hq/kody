@@ -505,25 +505,39 @@ function folderSlug(path: string) {
 export function folderCapabilityNames(
 	policy: ReadonlyArray<FsRule>,
 ): Array<string> {
-	const saved = policy.map((rule, index) =>
+	const names = policy.map((rule, index) =>
 		rule.name && policy.findIndex((other) => other.name === rule.name) === index
 			? rule.name
 			: null,
 	)
+	const taken = new Set(names.filter((name) => name !== null))
 	const slugs = policy.map((rule) => folderSlug(rule.path))
-	return policy.map((rule, index) => {
-		const own = saved[index]
-		if (own) return own
-		const slug = slugs[index] as string
-		const shared = policy.some(
-			(_, other) =>
-				other !== index &&
-				(saved[other] === slug || (!saved[other] && slugs[other] === slug)),
+	const unnamed = policy
+		.map((_, index) => index)
+		.filter((index) => names[index] === null)
+		.sort((a, b) =>
+			(policy[a] as FsRule).path < (policy[b] as FsRule).path ? -1 : 1,
 		)
-		return shared
-			? `${slug}-${createHash('sha256').update(rule.path).digest('hex').slice(0, 8)}`
-			: slug
-	})
+	for (const index of unnamed) {
+		const slug = slugs[index] as string
+		const shared = unnamed.some(
+			(other) => other !== index && slugs[other] === slug,
+		)
+		let name = slug
+		// A hashed name can equal another folder's own name, so hash again.
+		for (let attempt = 0; shared || taken.has(name); attempt += 1) {
+			name = `${slug}-${createHash('sha256')
+				.update(
+					`${(policy[index] as FsRule).path}${attempt ? `\0${attempt}` : ''}`,
+				)
+				.digest('hex')
+				.slice(0, 8)}`
+			if (!taken.has(name)) break
+		}
+		taken.add(name)
+		names[index] = name
+	}
+	return names as Array<string>
 }
 
 // Kody refuses a report of more entries than this (folders count too).
