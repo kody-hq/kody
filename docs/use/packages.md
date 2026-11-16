@@ -419,6 +419,9 @@ in `kody.machine`. Each key is the name the machine gives the entry.
 - `lan` may list the `hosts` (IP addresses or CIDR ranges, never host names) and
   `ports` it expects, and `fs` gives the `mode` (`ro` or `rw`). These tell the
   person approving what to expect; a run gets what the machine defines.
+- A package that uses a named command or local network destination it did not
+  declare fails with `machine_need_undeclared`. For host folders it is only
+  recorded for now.
 - Declaring grants nothing. The machine defines each entry and its operator
   decides which packages may use it.
 - A package declares what its own runs use. Access does not pass through

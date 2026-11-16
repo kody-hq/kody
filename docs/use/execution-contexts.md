@@ -335,6 +335,12 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   `machine_capability_not_granted`, `machine_capability_package_not_allowed`
   (names the packages), `machine_command_args_refused` (lists the allowed
   shapes).
+- A saved package the run loaded directly must declare each named command and
+  local network destination it uses in
+  [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call
+  fails with `machine_need_undeclared`, which names the package and the JSON to
+  add. Code that is not a saved package declares nothing. For host folders a
+  missing declaration is recorded and does not fail the run yet.
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a

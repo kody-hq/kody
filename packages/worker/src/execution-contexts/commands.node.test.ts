@@ -26,6 +26,24 @@ vi.mock('#worker/authorization/authorize.ts', async (original) => ({
 	computeEffectivePermissions: async () => profileAccess.current,
 }))
 
+const published = vi.hoisted(() => ({
+	machine: new Map<string, Record<string, { kind: string }>>(),
+}))
+
+vi.mock('#worker/repo/published-source.ts', () => ({
+	loadPublishedEntityManifest: async (input: { sourceId: string }) => {
+		const machine = published.machine.get(input.sourceId)
+		if (!machine) throw new Error('not published')
+		return { manifest: { kody: { machine } } }
+	},
+}))
+
+const declaresAll = {
+	kdocker: { kind: 'command' },
+	nas: { kind: 'lan' },
+	'kody-runner': { kind: 'fs' },
+}
+
 const orgId = 'org_acme'
 const operator = 'user_operator'
 const now = '2026-10-30T00:00:00.000Z'
@@ -467,13 +485,21 @@ function defineCommand(
 		)
 }
 
-function savePackage(s: ReturnType<typeof setup>, id: string, owner: string) {
+/** `machine` is the package's published `kody.machine`; null is unpublished. */
+function savePackage(
+	s: ReturnType<typeof setup>,
+	id: string,
+	owner: string,
+	machine: Record<string, { kind: string }> | null = declaresAll,
+) {
 	s.sqlite
 		.prepare(
 			`INSERT INTO saved_packages (id, user_id, name, kody_id, description, source_id)
 			 VALUES (?, ?, ?, ?, '', ?)`,
 		)
-		.run(id, owner, id, id, `source-${id}`)
+		.run(id, owner, `@acme/${id}`, id, `source-${id}`)
+	if (machine) published.machine.set(`source-${id}`, machine)
+	else published.machine.delete(`source-${id}`)
 }
 
 /** A run in the context's org, so package lookups use that org. */
@@ -608,6 +634,7 @@ test('a named command checks the packages Kody served to the run', async () => {
 	const listed = setup()
 	defineCommand(listed, { allowedPackages: ['pkg_listed'] })
 	savePackage(listed, 'pkg_own', orgId)
+	savePackage(listed, 'pkg_listed', orgId)
 	const listedRun = (entries: Array<string>) =>
 		authorizeContextCommand(
 			orgRun(listed, operator, { packages: { entries, all: entries } }),
@@ -826,5 +853,70 @@ test('a host folder is refused when the machine does not allow it, for other peo
 		}),
 	).rejects.toMatchObject({
 		code: 'execution_context_command_requires_context',
+	})
+})
+
+test('a package that uses a named command or destination without declaring it in kody.machine is refused with the fix', async () => {
+	const s = setup()
+	defineCommand(s)
+	defineLan(s)
+	savePackage(s, 'pkg_declares', orgId)
+	savePackage(s, 'pkg_silent', orgId, {})
+	savePackage(s, 'pkg_wrong_kind', orgId, { kdocker: { kind: 'lan' } })
+	savePackage(s, 'pkg_unpublished', orgId, null)
+	const run = (entries: Array<string>, all = entries) =>
+		authorizeContextCommand(
+			orgRun(s, operator, { packages: { entries, all } }),
+			namedArgs,
+		)
+	await expect(run(['pkg_declares'])).resolves.toMatchObject({ ok: true })
+	// What a package imports does not declare for it, and need not declare.
+	await expect(
+		run(['pkg_declares'], ['pkg_declares', 'pkg_silent']),
+	).resolves.toMatchObject({ ok: true })
+	await expect(run(['pkg_declares', 'pkg_silent'])).rejects.toMatchObject({
+		code: 'machine_need_undeclared',
+		message: expect.stringMatching(
+			/^@acme\/pkg_silent uses command "kdocker" on mac without declaring it\..*"kdocker":\{"kind":"command"/,
+		),
+		details: { capability: 'kdocker', packageIds: ['pkg_silent'] },
+	})
+	for (const id of ['pkg_wrong_kind', 'pkg_unpublished']) {
+		await expect(run([id])).rejects.toMatchObject({
+			code: 'machine_need_undeclared',
+		})
+	}
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_silent'], all: ['pkg_silent'] },
+			}),
+			lanArgs,
+		),
+	).rejects.toMatchObject({
+		code: 'machine_need_undeclared',
+		message: expect.stringContaining('local network destination "nas"'),
+	})
+	// Ad hoc code has no manifest to declare in.
+	await expect(
+		authorizeContextCommand(orgRun(s, operator), namedArgs),
+	).resolves.toMatchObject({ ok: true })
+})
+
+test('a host folder used by a package that does not declare it is logged, not refused', async () => {
+	const s = setup()
+	defineFolder(s)
+	savePackage(s, 'pkg_silent', orgId, {})
+	await expect(
+		authorizeContextFolder(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_silent'], all: ['pkg_silent'] },
+			}),
+			{ capability: 'kody-runner' },
+		),
+	).resolves.toEqual({ ok: true })
+	expect(s.audits[0]).toMatchObject({
+		event: 'fs_used',
+		detail: { undeclaredPackageIds: ['pkg_silent'] },
 	})
 })
