@@ -48,7 +48,8 @@ export async function grantPackageToProfile(input: {
 /**
  * Gives one of the caller's own active profiles a grant on one resource,
  * replacing the profile's live grant there. Every parent profile must already
- * hold each permission. Whether the caller holds them is the caller's check.
+ * hold each permission, and a caller acting as a profile reaches only its
+ * sub-profiles. Whether the person holds them is the caller's check.
  */
 export async function grantResourceToProfile(input: {
 	env: Pick<Env, 'APP_DB'>
@@ -93,6 +94,14 @@ export async function grantResourceToProfile(input: {
 	}
 	const key = `${resource.type}:${resource.id}`
 	const ancestors = chain.slice(0, -1)
+	// A caller acting as a profile only passes access down: its own grant, or
+	// a profile outside its sub-profiles, would get what its creator withheld.
+	const actingAs = request.credential.profileId
+	if (actingAs && !ancestors.some((ancestor) => ancestor.id === actingAs)) {
+		throw new McpCallerError(
+			`A profile can only give access to its own sub-profiles, and "${self.name}" is not one of them. The person this profile acts for can do it signed in as themselves.`,
+		)
+	}
 	const grants = await loadProfileGrants(db, {
 		orgId,
 		profileIds: chain.map((row) => row.id),
