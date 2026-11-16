@@ -116,6 +116,7 @@ export function TabList({
 		<div
 			{...props}
 			role="tablist"
+			tabIndex={-1}
 			aria-disabled={context.disabled || undefined}
 			css={context.variant === 'segmented' ? tabsListCss : underlineListCss}
 			onKeyDown={(event) => {

@@ -177,3 +177,155 @@ test.describe('Dialog', () => {
 		})
 	}
 })
+
+test.describe('Menu', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.emulateMedia({ reducedMotion: 'reduce' })
+		await page.goto('/dev/ui#menu')
+		await waitForClientHydration(page)
+	})
+
+	test('opens from the keyboard, skips disabled items, and restores focus', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'File actions' })
+		await expect(trigger).toHaveAttribute('aria-haspopup', 'menu')
+		await trigger.focus()
+		await page.keyboard.press('ArrowDown')
+		const menu = page.getByRole('menu', { name: 'File actions' })
+		await expect(menu).toBeVisible()
+		await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+		const rename = menu.getByRole('menuitem', { name: 'Rename' })
+		await expect(rename).toBeFocused()
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('ArrowDown')
+		await expect(
+			menu.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),
+		).toBeFocused()
+		await page.keyboard.press('Space')
+		await expect(
+			menu.getByRole('menuitemcheckbox', { name: 'Wrap lines' }),
+		).toHaveAttribute('aria-checked', 'false')
+		await page.keyboard.press('Escape')
+		await expect(menu).toBeHidden()
+		await expect(trigger).toBeFocused()
+	})
+
+	test('Enter runs an item and closes the menu', async ({ page }) => {
+		const trigger = page.getByRole('button', { name: 'File actions' })
+		await trigger.focus()
+		await page.keyboard.press('Enter')
+		const menu = page.getByRole('menu', { name: 'File actions' })
+		await expect(menu.getByRole('menuitem', { name: 'Rename' })).toBeFocused()
+		await page.keyboard.press('ArrowDown')
+		await page.keyboard.press('Enter')
+		await expect(menu).toBeHidden()
+		await expect(
+			page.getByRole('status').getByText('Duplicated.'),
+		).toBeVisible()
+		await expect(trigger).toBeFocused()
+	})
+
+	for (const theme of themes) {
+		test(`open menu passes axe and matches its baseline (${theme})`, async ({
+			page,
+		}) => {
+			await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
+			const trigger = page.getByRole('button', { name: 'File actions' })
+			await trigger.click()
+			const menu = page.getByRole('menu', { name: 'File actions' })
+			await expect(menu).toBeVisible()
+			await waitForAnimationsToSettle(page)
+			const shot = `gallery-menu-open-${theme}.png`
+			await menu.screenshot({
+				path: path.join(uiVerifyPaths.screenshots, shot),
+				animations: 'disabled',
+			})
+			if (pinnedBrowserEndpoint()) {
+				await expect
+					.soft(
+						menu,
+						`visual: open menu (${theme}) no longer matches its baseline. If the change is intended, run \`${uiVerifyUpdateCommand}\` and commit the files under ${uiVerifyPaths.baselines}/.`,
+					)
+					.toHaveScreenshot(shot)
+			}
+			expect
+				.soft(
+					await findAxeViolations(page),
+					`axe: open menu (${theme}) has blocking accessibility violations.`,
+				)
+				.toEqual([])
+		})
+	}
+})
+
+test.describe('Tooltip', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/dev/ui#tooltip')
+		await waitForClientHydration(page)
+	})
+
+	test('describes its trigger, shows on focus and hover, and Escape hides it', async ({
+		page,
+	}) => {
+		const trigger = page.getByRole('button', { name: 'Above' })
+		const tip = page.getByText('Shows on hover and focus.')
+		await expect(trigger).toHaveAccessibleDescription(
+			'Shows on hover and focus.',
+		)
+		await expect(tip).toBeHidden()
+		await trigger.focus()
+		await page.keyboard.press('Shift+Tab')
+		await page.keyboard.press('Tab')
+		await expect(tip).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(tip).toBeHidden()
+		await expect(trigger).toBeFocused()
+		await page.keyboard.press('Tab')
+		await page.mouse.move(0, 0)
+		await trigger.hover()
+		await expect(tip).toBeVisible()
+	})
+})
+
+test.describe('Tabs', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/dev/ui#tabs')
+		await waitForClientHydration(page)
+	})
+
+	test('arrow keys, Home, and End select tabs and skip disabled ones', async ({
+		page,
+	}) => {
+		const list = page.getByRole('tablist', { name: 'Email body' })
+		const html = list.getByRole('tab', { name: 'HTML' })
+		const text = list.getByRole('tab', { name: 'Text' })
+		await expect(html).toHaveAttribute('aria-selected', 'true')
+		await expect(page.getByRole('tabpanel', { name: 'HTML' })).toHaveText(
+			'Rendered HTML body.',
+		)
+		await html.focus()
+		await page.keyboard.press('ArrowRight')
+		await expect(text).toBeFocused()
+		await expect(text).toHaveAttribute('aria-selected', 'true')
+		await expect(page.getByRole('tabpanel', { name: 'Text' })).toBeVisible()
+		await expect(page.getByText('Rendered HTML body.')).toBeHidden()
+		await page.keyboard.press('ArrowRight')
+		await expect(html).toBeFocused()
+		await page.keyboard.press('End')
+		await expect(text).toBeFocused()
+		await page.keyboard.press('Home')
+		await expect(html).toBeFocused()
+		await expect(list.getByRole('tab', { name: 'Source' })).toBeDisabled()
+		await page.keyboard.press('Tab')
+		await expect(page.getByRole('tabpanel', { name: 'HTML' })).toBeFocused()
+	})
+
+	test('underline tabs select on click', async ({ page }) => {
+		const list = page.getByRole('tablist', { name: 'File settings' })
+		await list.getByRole('tab', { name: 'Details' }).click()
+		await expect(page.getByRole('tabpanel', { name: 'Details' })).toHaveText(
+			'Type, modified date, and location.',
+		)
+	})
+})
