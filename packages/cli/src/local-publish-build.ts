@@ -86,7 +86,7 @@ ${wasm}
  * (`dist/publish-builder.js`, built from the worker's own source) from a
  * local workerd with no network and no bindings, and POST the tree to it.
  */
-async function loadPublishBuilder(): Promise<PublishBuilder> {
+export async function loadPublishBuilder(): Promise<PublishBuilder> {
 	const { fileURLToPath } = await import('node:url')
 	const distDir =
 		process.env.KODY_PUBLISH_BUILDER_DIR ??

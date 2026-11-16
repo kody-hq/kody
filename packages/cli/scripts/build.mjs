@@ -11,10 +11,10 @@
 //
 // CommonJS dependencies call `require()` for Node builtins; an ESM bundle has
 // no `require`, so each output file gets one from `createRequire`.
-import { copyFileSync, mkdirSync, rmSync } from 'node:fs'
-import path from 'node:path'
+import { rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { build } from 'esbuild'
+import { buildPublishBuilder } from './build-publish-builder.mjs'
 
 const pkg = createRequire(import.meta.url)('../package.json')
 
@@ -38,87 +38,4 @@ await build({
 	logLevel: 'warning',
 })
 
-// Publish offload builder: the worker's own artifact builders, served from
-// a local workerd (the bundler only runs there), so a CLI or
-// execution-context build makes the same bytes as a cloud rebuild. The
-// worker loads its bundler from generated additional modules; here it
-// resolves straight to the package. .wasm imports stay external and are
-// copied beside the bundle as workerd wasm modules.
-const workerGeneratedModules = {
-	'worker-bundler': '@cloudflare/worker-bundler',
-	'worker-bundler-typescript': '@cloudflare/worker-bundler/typescript',
-	'module-source-parser': './src/module-source-parser-module.ts',
-}
-// Loaded only by worker features the publish builder never runs.
-const builderUnusedGeneratedModules = new Set([
-	'codemode-normalize',
-	'disposable-email-domains',
-	'isomorphic-git',
-	'oauth-provider',
-	'postal-mime',
-])
-const builderWasmDir = 'dist/publish-builder-wasm'
-mkdirSync(builderWasmDir, { recursive: true })
-await build({
-	entryPoints: {
-		'publish-builder': '../worker/src/publish-offload/builder-workerd-entry.ts',
-	},
-	outdir: 'dist',
-	bundle: true,
-	format: 'esm',
-	platform: 'browser',
-	conditions: ['workerd', 'worker', 'browser'],
-	target: 'es2024',
-	external: ['node:*', 'cloudflare:*'],
-	plugins: [
-		{
-			name: 'wasm-modules',
-			setup(pluginBuild) {
-				pluginBuild.onResolve({ filter: /\.wasm$/ }, (args) => {
-					const file = args.path.startsWith('.')
-						? path.resolve(args.resolveDir, args.path)
-						: createRequire(path.join(args.resolveDir, 'index.js')).resolve(
-								args.path,
-							)
-					const name = path.basename(file)
-					copyFileSync(file, path.join(builderWasmDir, name))
-					return { path: `./${name}`, external: true }
-				})
-			},
-		},
-		{
-			name: 'worker-generated-modules',
-			setup(pluginBuild) {
-				pluginBuild.onResolve(
-					{ filter: /^\.\/generated\/.+\.mjs$/ },
-					(args) => ({
-						path: args.path,
-						external: true,
-					}),
-				)
-				pluginBuild.onResolve(
-					{ filter: /\.kody-generated\/[^/]+\.mjs$/ },
-					async (args) => {
-						const name = args.path
-							.replace(/^.*\.kody-generated\//, '')
-							.replace(/\.mjs$/, '')
-						const target = workerGeneratedModules[name]
-						if (builderUnusedGeneratedModules.has(name)) {
-							return { path: args.path, external: true }
-						}
-						if (!target) {
-							throw new Error(
-								`The publish builder imports ${args.path}, which has no entry in workerGeneratedModules. Add one so the builder bundles it.`,
-							)
-						}
-						return await pluginBuild.resolve(target, {
-							kind: args.kind,
-							resolveDir: '../worker',
-						})
-					},
-				)
-			},
-		},
-	],
-	logLevel: 'warning',
-})
+await buildPublishBuilder({ outDir: 'dist' })
