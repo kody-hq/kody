@@ -257,8 +257,19 @@ data model exists so far; nothing reads it at run time yet.
   allowed argument shapes (exact words, or a pattern the whole argument must
   match); `resolveMachineCommand` returns the `execFile` call or refuses with
   `machine_command_args_refused`. A local network entry is IP addresses or CIDR
-  ranges plus ports. Executable paths stay on the machine. No run can use these
-  yet.
+  ranges plus ports. Executable paths stay on the machine.
+- A run uses a named command with `kody.command.run({ capability, args })`. The
+  daemon (`HostCommands`) resolves it from local policy, refuses any field but
+  `args`, `timeoutMs` and `maxOutputBytes`, and sends `kody.command.authorize`
+  the name and arguments. Origin (`assertNamedCommandAccess`) requires a live
+  `command` row, the operator (sharing is not built yet), the profile chain and
+  token scope for `machine_capability:use`, and the package rule over the
+  lease's entry packages (`packagesNotAllowed`, a copy of a credential's
+  `allowed_packages` rule; a truncated package set is refused). It does not need
+  the shell opt-in, and turning the shell off leaves named-command jobs running.
+  Shell commands only log the packages that rule would refuse
+  (`wouldBlockPackageIds` on `command_started`). Local network entries are not
+  enforced yet.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends
