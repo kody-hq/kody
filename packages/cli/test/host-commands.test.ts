@@ -657,3 +657,30 @@ test('list shows the named jobs the caller may still use when the shell rules or
 	commands.killAll('shutdown')
 	await commands.idle()
 })
+
+test("another person's run uses the named commands Kody allows and never the shell, even with the shell on", async () => {
+	const commands = namedCommands({ shell: true })
+	const { run, authorized } = runContext({
+		requesterUserId: 'user_b',
+		namedOnly: true,
+	})
+	const result = (await commands.call(
+		'run',
+		{ capability: 'echo', args: ['hello', 'world'] },
+		run,
+	)) as { stdout: string }
+	assert.equal(result.stdout.trim(), 'hello world')
+	for (const call of [
+		() => commands.call('run', 'echo hi', run),
+		() => commands.call('start', { file: 'echo', args: ['hi'] }, run),
+		() => commands.call('status', 'cmd_missing', run),
+		() => commands.call('list', undefined, run),
+	]) {
+		await assert.rejects(call(), /execution_context_command_not_granted/)
+	}
+	// Kody was only ever asked about the named command.
+	assert.deepEqual(
+		authorized.map((entry) => (entry as { capability?: string }).capability),
+		['echo'],
+	)
+})

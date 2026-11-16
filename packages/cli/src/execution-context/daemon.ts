@@ -500,16 +500,15 @@ export async function runDaemonConnection(
 		let result: Awaited<ReturnType<ContextRunExecutor>>
 		try {
 			if (input.fs) state.hostFs = await effectiveFsNow()
-			// Host folders and commands are for the operator's own runs only.
+			// Host folders are for the operator's own runs only. Another person's
+			// run gets host commands limited to the named ones (run-executor).
 			const operatorRun = run.request.sharedRun !== true
 			result = await input.execute({
 				request: run.request,
 				// A getter, so a grant.update or policy change narrows runs already in flight.
 				...(input.fs && operatorRun ? { hostFs: () => state.hostFs } : {}),
 				signal: run.abort.signal,
-				...(input.hostCommands && operatorRun
-					? { hostCommands: input.hostCommands }
-					: {}),
+				...(input.hostCommands ? { hostCommands: input.hostCommands } : {}),
 				egress: grantEgress,
 				fetchFn: runScopedFetch({
 					apiUrl: input.apiUrl,

@@ -13,6 +13,7 @@ import {
 	type MachineCapabilityRow,
 	machineCapabilityUsePermission,
 } from './machine-capabilities.ts'
+import { hasMachineAccessGrant } from './machine-access.ts'
 import { packagesNotDeclaring, undeclaredNeedMessage } from './machine-needs.ts'
 import type { ExecutionContextRunPackages } from './run-packages.ts'
 import {
@@ -384,8 +385,8 @@ function parseAllowedPackages(row: MachineCapabilityRow) {
 /**
  * A named command (`machine_capability` of kind `command`): the machine
  * defines it, the operator may use it, and the run's packages pass the
- * package rule. It does not need the shell opt-in. Sharing one with other
- * people is not built yet, so everyone else is refused.
+ * package rule. It does not need the shell opt-in. Anyone else needs the
+ * context shared with them and a grant on the capability.
  */
 async function assertNamedCapabilityAccess(
 	ctx: ApiInvocationContext,
@@ -410,11 +411,21 @@ async function assertNamedCapabilityAccess(
 		userId: user.userId,
 		orgId,
 	})
-	if (!access.isOperator) {
+	if (
+		!access.isOperator &&
+		!(
+			access.usable &&
+			(await hasMachineAccessGrant(env.APP_DB, {
+				capabilityId: capability.id,
+				userId: user.userId,
+				orgId,
+			}))
+		)
+	) {
 		throw new ExecutionContextError({
 			status: 403,
 			code: 'machine_capability_not_granted',
-			message: `You are not granted ${label} (${machineCapabilityUsePermission}). Only the machine's operator can use its named ${things} for now.`,
+			message: `You are not granted ${label} (${machineCapabilityUsePermission}). The machine's operator can share it with you, a team you are on, or everyone in the org (executionContextMachineAccessGrant).`,
 		})
 	}
 	const request = ctx.callerContext.request

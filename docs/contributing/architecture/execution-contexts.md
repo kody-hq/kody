@@ -262,13 +262,22 @@ data model exists so far; nothing reads it at run time yet.
   daemon (`HostCommands`) resolves it from local policy, refuses any field but
   `args`, `timeoutMs` and `maxOutputBytes`, and sends `kody.command.authorize`
   the name and arguments. Origin (`assertNamedCapabilityAccess`) requires a live
-  `command` row, the operator (sharing is not built yet), the profile chain and
+  `command` row, the operator or a grant (next item), the profile chain and
   token scope for `machine_capability:use`, and the package rule over the
   lease's entry packages (`packagesNotAllowed`, a copy of a credential's
   `allowed_packages` rule; a truncated package set is refused). It does not need
   the shell opt-in, and turning the shell off leaves named-command jobs running.
   Shell commands only log the packages that rule would refuse
   (`wouldBlockPackageIds` on `command_started`).
+- Someone other than the operator needs the context shared with them
+  (`access.usable`) and a live `machine_capability` grant holding
+  `machine_capability:use` that reaches them as a user, a team member, or an org
+  member (`hasMachineAccessGrant` in `machine-access.ts`). Only the operator
+  adds one (`grantMachineAccess`, `command` and `lan` kinds only); the operator,
+  Manage holders and org owners list and revoke. The check runs on every use, so
+  a revoke or an unshare stops the next call. On the machine a `sharedRun` gets
+  `HostCommands` with `namedOnly`, which refuses every shell call before asking
+  Kody, and the machine's `lan` entries; host folders stay unmounted.
 - Every entry package of a run that uses a named command or local network
   destination must declare it in its own published `kody.machine`, by name and
   kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs
@@ -279,18 +288,17 @@ data model exists so far; nothing reads it at run time yet.
   (`undeclaredPackageIds` on `fs_used`) until the migration.
 - A run reaches a named local network destination with a plain `fetch`. The
   egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
-  `lan` entries in its policy (operator's runs only). When the grant's egress
-  mode would refuse a request and its host is an IP literal inside an entry's
-  addresses and ports, the gate asks the bridge (`/lan-authorize`), which sends
-  `kody.lan.authorize` with the name, address and port. Origin
-  (`authorizeContextLan`) applies the same checks as a named command against the
-  `lan` row and records `lan_used`. Allowed requests leave through a second
-  workerd network service (`lan`) that only the gate is bound to, with redirects
-  handed back to the run so each hop is checked. The bridge re-reads local
-  policy before each ask (`machineLanCovers`), so an entry narrowed or removed
-  during a run stops working. Host names are never matched, so DNS rebinding
-  cannot widen an entry. The machine wide `grant.egress` LAN switch is unchanged
-  until the migration.
+  `lan` entries in its policy. When the grant's egress mode would refuse a
+  request and its host is an IP literal inside an entry's addresses and ports,
+  the gate asks the bridge (`/lan-authorize`), which sends `kody.lan.authorize`
+  with the name, address and port. Origin (`authorizeContextLan`) applies the
+  same checks as a named command against the `lan` row and records `lan_used`.
+  Allowed requests leave through a second workerd network service (`lan`) that
+  only the gate is bound to, with redirects handed back to the run so each hop
+  is checked. The bridge re-reads local policy before each ask
+  (`machineLanCovers`), so an entry narrowed or removed during a run stops
+  working. Host names are never matched, so DNS rebinding cannot widen an entry.
+  The machine wide `grant.egress` LAN switch is unchanged until the migration.
 - Origin also accepts `fs` entries in a machine's report (one per host folder,
   summary: path and mode) and `kody.fs.authorize` with a folder's name
   (`authorizeContextFolder`). Folders predate machine capabilities, so that hop

@@ -403,6 +403,24 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'executionContextMachineAccessGrant',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextMachineAccessList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextMachineAccessRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access/{grant_id}',
+		pathParamNames: ['id', 'grant_id'],
+	},
+	{
 		operationId: 'executionContextNoticeDismiss',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/notices/dismiss',

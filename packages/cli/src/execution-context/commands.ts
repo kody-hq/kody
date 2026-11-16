@@ -1001,12 +1001,10 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				execute: async (run) =>
 					runContextRun({
 						...run,
-						// Named local network destinations are for the operator's own runs only.
+						// Kody decides per use who may reach a named destination.
 						lan:
-							run.request.sharedRun === true
-								? []
-								: ((await readLocalPolicy().catch(() => undefined))
-										?.capabilities?.lan ?? []),
+							(await readLocalPolicy().catch(() => undefined))?.capabilities
+								?.lan ?? [],
 						lanStillCovers: async (lan) =>
 							machineLanCovers(
 								(await readLocalPolicy().catch(() => undefined))?.capabilities

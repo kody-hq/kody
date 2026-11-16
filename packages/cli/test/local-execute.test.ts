@@ -1586,6 +1586,22 @@ test(
 			)
 			assert.equal(authorizations().length, 1)
 
+			// Two destinations cover the address; the run is granted only the second.
+			proxyRequests.length = 0
+			assert.equal(
+				await run(
+					[{ ...nas, name: 'refused' }, nas],
+					`http://127.0.0.1:${port}/`,
+				),
+				'ok: lan ok',
+			)
+			assert.deepEqual(
+				authorizations().map(
+					(args) => (args as Array<{ capability: string }>)[0]?.capability,
+				),
+				['refused', 'nas'],
+			)
+
 			proxyRequests.length = 0
 			const direct = await runLocalExecute({
 				code: `import { kody } from 'kody:runtime'

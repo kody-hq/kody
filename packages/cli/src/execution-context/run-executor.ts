@@ -99,6 +99,7 @@ export async function runContextRun(input: {
 							// The run's signal: a cancel or deadline kills a foreground command.
 							signal: input.signal,
 							authorize: call.authorize,
+							...(input.request.sharedRun === true ? { namedOnly: true } : {}),
 						}),
 				}
 			: {}),

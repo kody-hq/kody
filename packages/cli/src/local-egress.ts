@@ -165,13 +165,13 @@ function addressInRule(rule, address) {
 	return true;
 }
 
-// The named destination that covers this address and port, or one that covers only the address.
+// The named destinations that cover this address and port, or one that covers only the address.
 function lanMatch(rules, host, port) {
 	const address = addressBits(host);
 	if (!address) return null;
 	const covering = rules.filter((rule) => rule.hosts.some((entry) => addressInRule(entry, address)));
-	const rule = covering.find((entry) => entry.ports.includes(port));
-	return rule ? { rule } : covering[0] ? { portMiss: covering[0] } : null;
+	const matching = covering.filter((entry) => entry.ports.includes(port));
+	return matching.length ? { rules: matching } : covering[0] ? { portMiss: covering[0] } : null;
 }
 
 function modeText(policy) {
@@ -208,30 +208,39 @@ export default {
 						: null;
 		if (refusal !== null) {
 			const lan = policy.lan?.length ? lanMatch(policy.lan, host, port) : null;
-			if (!lan?.rule) {
+			if (!lan?.rules) {
 				return block(refusal + (lan?.portMiss
 					? ' (this machine\\'s local network destination "' + lan.portMiss.name + '" covers that address on ' +
 						(lan.portMiss.ports.length === 1 ? 'port ' : 'ports ') + lan.portMiss.ports.join(', ') + ' only)'
 					: ''));
 			}
-			const refuse = (message) => new Response(
-				'Blocked: the request to ' + host + ':' + port + ' needs this machine\\'s local network destination "' +
-					lan.rule.name + '", and Kody refused it. ' + message,
-				{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
-			);
-			let verdict;
-			try {
-				const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
-					method: 'POST',
-					headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
-					body: JSON.stringify({ capability: lan.rule.name, host, port }),
-				});
-				verdict = await reply.json();
-			} catch (error) {
-				return refuse('Kody could not be asked: ' + (error instanceof Error ? error.message : String(error)));
+			// Destinations can overlap, and a run may be granted only one of them: the first Kody allows wins.
+			let refused = null;
+			for (const rule of lan.rules) {
+				let message;
+				try {
+					const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
+						method: 'POST',
+						headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
+						body: JSON.stringify({ capability: rule.name, host, port }),
+					});
+					const verdict = await reply.json();
+					if (verdict?.ok === true) {
+						refused = null;
+						break;
+					}
+					message = typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.';
+				} catch (error) {
+					message = 'Kody could not be asked: ' + (error instanceof Error ? error.message : String(error));
+				}
+				refused ??= { rule, message };
 			}
-			if (verdict?.ok !== true) {
-				return refuse(typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.');
+			if (refused) {
+				return new Response(
+					'Blocked: the request to ' + host + ':' + port + ' needs this machine\\'s local network destination "' +
+						refused.rule.name + '", and Kody refused it. ' + refused.message,
+					{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
+				);
 			}
 		}
 		try {
