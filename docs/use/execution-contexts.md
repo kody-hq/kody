@@ -65,10 +65,10 @@ Execution contexts are an experiment. Turn them on at
   `kody context policy allow <path> [--mode ro|rw]`,
   `kody context capability [list] | add command|lan <file.json> | remove command|lan <name>`
   (defines named commands and local network destinations on this machine and
-  tells Kody their names; the operator's runs can use a named command, local
-  network destinations are not used by runs yet),
-  `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
-  default 2), `kody chain show | add | remove`,
+  tells Kody their names; the operator's runs can use a named command and reach
+  a named local network destination), `kody daemon [--max-concurrent <n>]`
+  (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8, default 2),
+  `kody chain show | add | remove`,
   `kody context commands [status | on | off] [--context <name>] [--json]`,
   `kody context cancel-run <name> <run id>`.
 - Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
@@ -308,6 +308,14 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   `commands_operator_only`, and legacy command shares confer nothing. Commands
   get the daemon's environment without `KODY_*` variables and cannot use a
   credential folder as `cwd`.
+- Named local network destinations: with the local network off, a run's `fetch`
+  to an address and port that the machine defined with
+  `kody context capability add lan` goes through once Kody allows it. The same
+  rules as named commands apply (operator only for now, `machine_capability:use`
+  scope, the package rule), and the same errors. Only IP addresses match: a host
+  name is never matched, even one that resolves to a listed address. Each use is
+  audited as `lan_used` with the name, address and port. Egress mode `none`
+  still refuses everything.
 - Named commands:
   `kody.command.run({ capability: 'kdocker', args: ['restart', 'plex'] })` (and
   `start`) runs a command the machine defined with

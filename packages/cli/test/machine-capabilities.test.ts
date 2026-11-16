@@ -25,6 +25,7 @@ import {
 	MachineCapabilityError,
 	parseMachineCommandDefinition,
 	parseMachineLanDefinition,
+	machineLanCovers,
 	resolveMachineCommand,
 	advertisedMachineCapabilities,
 	parseMachineCapabilities,
@@ -169,6 +170,27 @@ test('command definitions that could not be enforced are rejected', () => {
 		assert.equal(error.code, 'machine_capability_invalid')
 		assert.match(error.message, message)
 	}
+})
+
+test('a local network entry covers only its own addresses and ports', () => {
+	const lan = [
+		parseMachineLanDefinition({
+			name: 'nas',
+			hosts: ['192.168.1.10', '10.0.0.0/30', 'fd00::/8'],
+			ports: [5001],
+		}),
+	]
+	const covers = (host: string, port = 5001, capability = 'nas') =>
+		machineLanCovers(lan, { capability, host, port })
+	assert.equal(covers('192.168.1.10'), true)
+	assert.equal(covers('10.0.0.3'), true)
+	assert.equal(covers('::ffff:10.0.0.3'), true)
+	assert.equal(covers('[fd00::1]'), true)
+	assert.equal(covers('10.0.0.4'), false)
+	assert.equal(covers('192.168.1.11'), false)
+	assert.equal(covers('192.168.1.10', 5000), false)
+	assert.equal(covers('192.168.1.10', 5001, 'other'), false)
+	assert.equal(covers('nas.local'), false)
 })
 
 test('local network definitions take IP addresses and CIDR ranges only', () => {

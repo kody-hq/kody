@@ -5,7 +5,7 @@
  * assert no workerd is left, then revoke and delete.
  * See docs/contributing/execution-context-e2e.md.
  */
-import { execFileSync, fork } from 'node:child_process'
+import { execFileSync, fork, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -232,6 +232,16 @@ async function main() {
 		{ orgSlug: 'user-me' },
 	)
 	let ecid: string | null = null
+	// Its own process: `cli` blocks this one while a run is in flight.
+	const lanServer = spawn(
+		process.execPath,
+		[
+			'-e',
+			`const server = require('node:http').createServer((_request, response) => response.end('lan:from-the-machine'))
+server.listen(0, '127.0.0.1', () => console.log(server.address().port))`,
+		],
+		{ stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+	)
 	try {
 		const token = await mintCliToken(
 			session,
@@ -320,6 +330,32 @@ async function main() {
 		if (named.contexts.some((context) => context.error)) {
 			throw new Error('Kody did not accept the named command.')
 		}
+		const [lanPortLine] = (await once(lanServer.stdout, 'data')) as [Buffer]
+		const lanPort = Number(String(lanPortLine).trim())
+		if (!Number.isInteger(lanPort) || lanPort < 1) {
+			throw new Error('The local test server did not report its port.')
+		}
+		writeFileSync(
+			lanFile,
+			JSON.stringify({
+				name: 'e2e-local',
+				hosts: ['127.0.0.1'],
+				ports: [lanPort],
+			}),
+		)
+		const local = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'lan',
+				lanFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (local.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the local network destination.')
+		}
 
 		const daemon = fork(
 			join(import.meta.dirname, 'daemon-host.cjs'),
@@ -358,7 +394,10 @@ export default async function main() {
 	const refused = await kody.command
 		.run({ capability: 'e2e-named', args: ['hello; id'] })
 		.then(() => 'ran', (error) => String(error))
-	return { seed, sum: 20 + 22, shell, named: { out: named.stdout, refused } }
+	const lan = await fetch('http://127.0.0.1:${lanPort}/').then((response) => response.text())
+	const lanRefused = await fetch('http://127.0.0.1:${lanPort === 65535 ? lanPort - 1 : lanPort + 1}/')
+		.then(() => 'reached', (error) => 'lan-refused: ' + String(error))
+	return { seed, sum: 20 + 22, shell, named: { out: named.stdout, refused }, lan, lanRefused }
 }
 `,
 		)
@@ -391,6 +430,14 @@ export default async function main() {
 				'The named command did not run, or its bad arguments were not refused.',
 			)
 		log(`named command ok on ${process.platform}`)
+		if (
+			!output.includes('lan:from-the-machine') ||
+			!output.includes('lan-refused:')
+		)
+			throw new Error(
+				'The run did not reach the named local network destination, or reached a port it does not cover.',
+			)
+		log(`named local network destination ok on ${process.platform}`)
 
 		await runWorkflowStepOnContext(session)
 
@@ -420,6 +467,7 @@ export default async function main() {
 			log('revoked and deleted the context')
 		}
 		await session.close()
+		lanServer.kill()
 		rmSync(home, { recursive: true, force: true })
 		rmSync(folder, { recursive: true, force: true })
 	}

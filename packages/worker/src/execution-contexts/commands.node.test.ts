@@ -5,7 +5,7 @@ import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { authorizeContextCommand } from './commands.ts'
+import { authorizeContextCommand, authorizeContextLan } from './commands.ts'
 import {
 	type ExecutionContextCaller,
 	setSharing,
@@ -620,5 +620,99 @@ test('a shell command logs the packages a package rule would refuse, and still r
 	)
 	expect(s.audits[0]?.detail).toMatchObject({
 		wouldBlockPackageIds: ['pkg_other'],
+	})
+})
+
+function defineLan(
+	s: ReturnType<typeof setup>,
+	input: { allowedPackages?: Array<string> } = {},
+) {
+	s.sqlite
+		.prepare(
+			`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name,
+				allowed_packages_json, created_at, updated_at)
+			 VALUES ('mcap_nas', 'ec_mac', ?, ?, 'lan', 'nas', ?, ?, ?)`,
+		)
+		.run(orgId, operator, JSON.stringify(input.allowedPackages ?? []), now, now)
+}
+
+const lanArgs = { capability: 'nas', host: '192.168.1.10', port: 5001 }
+
+test('the operator reaches a named local network destination, and the audit row names it and the address', async () => {
+	const s = setup()
+	defineLan(s)
+	savePackage(s, 'pkg_own', orgId)
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_own'], all: ['pkg_own'] },
+			}),
+			lanArgs,
+		),
+	).resolves.toEqual({ ok: true })
+	expect(s.audits[0]).toMatchObject({
+		event: 'lan_used',
+		detail: {
+			capability: 'nas',
+			capabilityId: 'mcap_nas',
+			host: '192.168.1.10',
+			port: 5001,
+			entryPackageIds: ['pkg_own'],
+		},
+	})
+})
+
+test('a named local network destination is refused when undefined, for other people, without the scope, and for packages not allowed', async () => {
+	const missing = setup()
+	// A command of the same name is not a local network destination.
+	defineCommand(missing)
+	await expect(
+		authorizeContextLan(orgRun(missing, operator), {
+			...lanArgs,
+			capability: 'kdocker',
+		}),
+	).rejects.toMatchObject({
+		code: 'machine_capability_off',
+		message: expect.stringContaining('kody context capability add lan'),
+	})
+
+	const s = setup()
+	defineLan(s)
+	await setSharing(s.callerFor(operator), 'ec_mac', { allMembers: true })
+	await expect(
+		authorizeContextLan(orgRun(s, 'user_friend'), lanArgs),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, { scopes: ['execution_context:command'] }),
+			lanArgs,
+		),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	savePackage(s, 'pkg_other', 'org_someone_else')
+	await expect(
+		authorizeContextLan(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_other'], all: ['pkg_other'] },
+			}),
+			lanArgs,
+		),
+	).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('local network destination "nas"'),
+	})
+	for (const bad of [
+		{ ...lanArgs, port: 0 },
+		{ ...lanArgs, host: '' },
+		{ host: '192.168.1.10', port: 80 },
+	]) {
+		await expect(
+			authorizeContextLan(orgRun(s, operator), bad),
+		).rejects.toMatchObject({ code: 'invalid_request' })
+	}
+	expect(s.audits.filter((audit) => audit.event === 'lan_used')).toEqual([])
+	await expect(
+		authorizeContextLan(s.runCtx(operator, 'user'), lanArgs),
+	).rejects.toMatchObject({
+		code: 'execution_context_command_requires_context',
 	})
 })

@@ -261,15 +261,28 @@ data model exists so far; nothing reads it at run time yet.
 - A run uses a named command with `kody.command.run({ capability, args })`. The
   daemon (`HostCommands`) resolves it from local policy, refuses any field but
   `args`, `timeoutMs` and `maxOutputBytes`, and sends `kody.command.authorize`
-  the name and arguments. Origin (`assertNamedCommandAccess`) requires a live
+  the name and arguments. Origin (`assertNamedCapabilityAccess`) requires a live
   `command` row, the operator (sharing is not built yet), the profile chain and
   token scope for `machine_capability:use`, and the package rule over the
   lease's entry packages (`packagesNotAllowed`, a copy of a credential's
   `allowed_packages` rule; a truncated package set is refused). It does not need
   the shell opt-in, and turning the shell off leaves named-command jobs running.
   Shell commands only log the packages that rule would refuse
-  (`wouldBlockPackageIds` on `command_started`). Local network entries are not
-  enforced yet.
+  (`wouldBlockPackageIds` on `command_started`).
+- A run reaches a named local network destination with a plain `fetch`. The
+  egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
+  `lan` entries in its policy (operator's runs only). When the grant's egress
+  mode would refuse a request and its host is an IP literal inside an entry's
+  addresses and ports, the gate asks the bridge (`/lan-authorize`), which sends
+  `kody.lan.authorize` with the name, address and port. Origin
+  (`authorizeContextLan`) applies the same checks as a named command against the
+  `lan` row and records `lan_used`. Allowed requests leave through a second
+  workerd network service (`lan`) that only the gate is bound to, with redirects
+  handed back to the run so each hop is checked. The bridge re-reads local
+  policy before each ask (`machineLanCovers`), so an entry narrowed or removed
+  during a run stops working. Host names are never matched, so DNS rebinding
+  cannot widen an entry. The machine wide `grant.egress` LAN switch is unchanged
+  until the migration.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends
