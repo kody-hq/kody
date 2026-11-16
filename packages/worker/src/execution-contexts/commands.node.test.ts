@@ -961,7 +961,7 @@ test('the operator limits the shell to listed packages, and only while host comm
 		grantMachineAccess(owner, 'ec_mac', {
 			kind: 'shell' as never,
 			name: 'shell',
-			subject: { type: 'org' },
+			subject: { type: 'org', id: orgId },
 		}),
 	).rejects.toBeDefined()
 	await expect(run(['pkg_own'])).resolves.toMatchObject({ ok: true })

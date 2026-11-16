@@ -1703,7 +1703,8 @@ function MachineAccessGrantForm(props: {
 	const [profileId, setProfileId] = useState(access.profiles[0]?.id ?? '')
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
-	if (kinds.length === 0 || !entry.shareable) return null
+	if (kinds.length === 0 || (entry.kind !== 'command' && entry.kind !== 'lan'))
+		return null
 	const capability = { kind: entry.kind, name: entry.name }
 
 	async function grant() {
