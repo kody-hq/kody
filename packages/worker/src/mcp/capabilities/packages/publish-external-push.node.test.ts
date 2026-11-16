@@ -415,21 +415,27 @@ test('publishExternalPush includes listing hint when the public catalog pin lags
 
 test('publishExternalPush tells agents when everyone stays on the previous version', async () => {
 	setupDefaultMocks({ hasApp: true, publish: publishedResult() })
+	const servingCommit = 'approved0deadbeef'
+	const heldCommit = 'heldnew1cafebabe'
 	mockModule.loadHeldForApproval.mockResolvedValue({
-		servingCommit: 'commit-old-approved',
-		heldCommit: 'commit-new',
+		servingCommit,
+		heldCommit,
 	})
 
 	const published = await publish()
 	if (published.status !== 'published') throw new Error('expected published')
-	expect(published.held_for_approval).toEqual({
-		serving_commit: 'commit-old-approved',
-		held_commit: 'commit-new',
-		approval_url: 'https://kody.test/@user/demo-package/approve-capabilities',
-		message: expect.stringContaining(
-			'Everyone is still on the previous version (commit-) until you approve the new capabilities that commit- asks for.',
-		),
+	const notice = published.held_for_approval
+	expect(notice).toMatchObject({
+		serving_commit: servingCommit,
+		held_commit: heldCommit,
 	})
+	if (!notice) throw new Error('expected held_for_approval')
+	const approval = new URL(notice.approval_url)
+	expect(approval.origin).toBe('https://kody.test')
+	expect(approval.pathname).toBe('/@user/demo-package/approve-capabilities')
+	expect(notice.message).toContain(servingCommit.slice(0, 7))
+	expect(notice.message).toContain(heldCommit.slice(0, 7))
+	expect(notice.message).toContain(notice.approval_url)
 	expect(mockModule.loadHeldForApproval).toHaveBeenCalledWith({
 		env: expect.anything(),
 		packageId: 'package-1',

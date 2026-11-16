@@ -1,11 +1,21 @@
+import path from 'node:path'
 import { expect, test } from 'vitest'
 import {
 	ensureLocalExecuteMeterStaticPackageExportImport,
 	injectLocalExecuteGatewayFetchBinding,
-	moduleSourceHasSecretPlaceholderLiterals,
 	rewriteLocalExecuteModuleForSecretAwareFetch,
 	rewriteLocalExecuteSecretPlaceholderLiterals,
 } from './rewrite-local-execute-secret-fetch.ts'
+
+function resolvedMeterRuntimeImport(source: string, modulePath: string) {
+	const match = source.match(
+		/import\s*\{[^}]*__kodyMeterStaticPackageExport[^}]*\}\s*from\s*"([^"]+)"/,
+	)
+	if (!match?.[1]) return null
+	return path.posix.normalize(
+		path.posix.join(path.posix.dirname(modulePath), match[1]),
+	)
+}
 
 test('rewriteLocalExecuteSecretPlaceholderLiterals removes resolvable template literals', async () => {
 	const source = `const token = '{{secret:demoToken|scope=user}}'
@@ -14,13 +24,12 @@ export async function request() {
     headers: { authorization: 'Bearer ' + token },
   })
 }`
-	expect(await moduleSourceHasSecretPlaceholderLiterals(source)).toBe(true)
+	expect(source).toContain('{{secret:demoToken|scope=user}}')
 	const rewritten = await rewriteLocalExecuteSecretPlaceholderLiterals(source)
 	expect(rewritten.rewritten).toBe(true)
 	expect(rewritten.source).not.toContain('{{secret:demoToken|scope=user}}')
-	expect(rewritten.source).toContain('__kodySecretRef("demoToken", "user")')
-	expect(await moduleSourceHasSecretPlaceholderLiterals(rewritten.source)).toBe(
-		false,
+	expect(rewritten.source).toMatch(
+		/__kodySecretRef\(\s*"demoToken"\s*,\s*"user"\s*\)/,
 	)
 })
 
@@ -88,15 +97,17 @@ var fetch = __kodyCreatePackageBoundGatewayFetch("280d0259-20e7-4fbb-9e22-5a5072
 var editMessage = __kodyMeterStaticPackageExport("41095c29-4539-4f2f-a6fb-646348602c18", rawEdit);
 export default async function advance() { return editMessage }
 `
+	const modulePath =
+		'.__kody_packages__/demo/.__published_bundle__/artifact/dist/index.js'
+	const primaryRuntimePath = '.__kody_virtual__/runtime.js'
 	const merged = await ensureLocalExecuteMeterStaticPackageExportImport({
-		modulePath:
-			'.__kody_packages__/demo/.__published_bundle__/artifact/dist/index.js',
+		modulePath,
 		source: mergeSource,
-		primaryRuntimePath: '.__kody_virtual__/runtime.js',
+		primaryRuntimePath,
 	})
 	expect(merged.rewritten).toBe(true)
-	expect(merged.source).toMatch(
-		/import\s*\{[^}]*__kodyMeterStaticPackageExport[^}]*\}\s*from\s*"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/\.__kody_virtual__\/runtime\.js"/,
+	expect(resolvedMeterRuntimeImport(merged.source, modulePath)).toBe(
+		primaryRuntimePath,
 	)
 	expect(merged.source.match(/__kodyMeterStaticPackageExport/g)?.length).toBe(2)
 

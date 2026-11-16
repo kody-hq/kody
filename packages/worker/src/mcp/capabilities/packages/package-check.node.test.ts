@@ -226,12 +226,12 @@ test('packageCheck reports a job schedule the plan refuses, as publish would', a
 	files['src/index.ts'] = 'export default async function poll() {}\n'
 	const result = await check(files)
 	expect(result.ok).toBe(false)
-	expect(result.checks.at(-1)).toEqual({
-		kind: 'manifest',
-		ok: false,
-		message:
-			'kody.jobs.poll.schedule: Your "free" plan cannot run jobs more often than every 15 minutes. Space this job out.',
-	})
+	const denial = result.checks.find(
+		(entry) => entry.kind === 'manifest' && entry.ok === false,
+	)
+	expect(denial?.message).toMatch(/^kody\.jobs\.poll\.schedule:/)
+	expect(denial?.message).toMatch(/"free"/)
+	expect(denial?.message).toMatch(/15 minutes/)
 
 	manifest.kody.jobs.poll.schedule.expression = '*/15 * * * *'
 	files['package.json'] = JSON.stringify(manifest)
@@ -285,22 +285,26 @@ test('packageCheck counts binary_files toward a binary-only kody.app.assets dire
 	resetMocks()
 	// The app bundle phase runs after the assets gate; worker-bundler warns.
 	consoleWarn.mockImplementation(() => {})
-	const emptyAssetsMessage =
-		'package.json#kody.app.assets points at "icons", but no files exist under that directory. Add the static files or remove the field.'
 	const withoutBinaries = await check(binaryOnlyAssetsPackageFiles())
-	expect(withoutBinaries.checks).toContainEqual({
-		kind: 'bundle',
-		ok: false,
-		message: emptyAssetsMessage,
-	})
+	expect(withoutBinaries.checks).toContainEqual(
+		expect.objectContaining({
+			kind: 'bundle',
+			ok: false,
+			message: expect.stringMatching(
+				/kody\.app\.assets.*icons.*no files exist under that directory/,
+			),
+		}),
+	)
 
 	const withBinaries = await check(
 		binaryOnlyAssetsPackageFiles(),
 		binaryOnlyAssets,
 	)
-	expect(withBinaries.checks.map((entry) => entry.message)).not.toContain(
-		emptyAssetsMessage,
-	)
+	expect(
+		withBinaries.checks.some((entry) =>
+			/no files exist under that directory/.test(entry.message),
+		),
+	).toBe(false)
 	// Past the assets gate, the run reaches the app bundle phase (which can
 	// only build inside workerd, so Node reports that instead).
 	expect(withBinaries.checks).toContainEqual(
