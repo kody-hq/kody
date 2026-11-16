@@ -668,6 +668,30 @@ this file", not "this is broken". Count apps per pattern with
 `adminPackageCodemodScan` (`codemodId`
 `0019-detect-package-app-host-migration`).
 
+### `0020-package-app-host-urls`
+
+Apply step of the same move. It rewrites full `https://{user}.kody.run/{leaf}`
+URLs (and the older `/packages/{leaf}` form) of the package's **own** app to
+`https://{leaf}--{user}.kody.run`, keeping the rest of the path, query, and
+hash. An absolute URL on the new host is right wherever the page that carries it
+was loaded from, so this is the one rewrite that is correct on both addresses
+while both still serve.
+
+- Only the package's own owner and leaf match. URLs of sibling apps, other
+  owners, longer leaves (`/notes-archive`), and template fallbacks
+  (`https://{user}.kody.run${appBasePath}`) are left alone.
+- A file that also compares origins or hostnames is not rewritten; it is
+  reported as `needsManual`, because the rewrite could break that check on the
+  old address.
+- Mentions without `https://` (display labels, `http://`) are reported as
+  `needsManual` and left as written.
+- Packages with no app, profile packages (`@{slug}/{slug}`, which keep the
+  owner's bare host), and names with no valid `{leaf}--{handle}` label are
+  unchanged.
+- Everything else `0019` reports (mount paths, build-time bases, browser
+  storage, cookie scope, origin checks, PWA scope) stays with the owner.
+- Uses `applyMode: 'published-only'`.
+
 ## Engine
 
 The engine entry point is `runPackageCodemodStep` in
