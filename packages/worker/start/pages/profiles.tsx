@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
@@ -737,7 +738,7 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 					Collaborators tab.
 				</p>
 			) : (
-				<table css={tableCss}>
+				<Table>
 					<thead>
 						<tr>
 							<th scope="col">Resource</th>
@@ -772,7 +773,7 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			)}
 		</section>
 	)
@@ -1001,7 +1002,7 @@ function ProfileTokens(props: {
 					No tokens act as this profile yet.
 				</p>
 			) : (
-				<table css={tableCss} data-testid="profile-tokens">
+				<Table data-testid="profile-tokens">
 					<thead>
 						<tr>
 							<th scope="col">Name</th>
@@ -1047,7 +1048,7 @@ function ProfileTokens(props: {
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			)}
 			{secret ? (
 				<div role="status" css={secretCss} data-testid="profile-token-secret">
@@ -1480,19 +1481,6 @@ const chainCss: CSSObject = {
 const subheadCss: CSSObject = {
 	margin: 0,
 	fontSize: typography.fontSize.base,
-}
-
-const tableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: typography.fontSize.sm,
-	'th, td': {
-		textAlign: 'start',
-		padding: '0.4rem 0.5rem',
-		borderBottom: `1px solid ${colors.borderSubtle}`,
-		verticalAlign: 'top',
-	},
-	th: { color: colors.textMuted, fontWeight: typography.fontWeight.medium },
 }
 
 const chipCss: CSSObject = {

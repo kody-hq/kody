@@ -262,6 +262,29 @@ depends on timing:
 
 `tone`: `info` (default) | `error`. Forwards native `div` attributes.
 
+## Table
+
+`start/components/table.tsx`
+
+```tsx
+<Table>
+	<caption>DNS records</caption>
+	<thead>
+		<tr>
+			<th scope="col">Type</th>
+			<th scope="col">Name</th>
+		</tr>
+	</thead>
+	<tbody>...</tbody>
+</Table>
+```
+
+A native `table` with the shared cell padding, row rules, and muted column
+headers. Compose it from native table elements so screen readers keep row and
+column navigation. Name it with a `caption`, `aria-label`, or `aria-labelledby`,
+and give header cells a `scope`. Wrap a wide table in an `overflowX: 'auto'`
+box. `RecordTable` stays the sortable, paged list for records.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a

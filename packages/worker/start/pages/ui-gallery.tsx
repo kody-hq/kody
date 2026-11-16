@@ -22,6 +22,7 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 } from '../components/menu.tsx'
+import { Table } from '../components/table.tsx'
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { Tooltip } from '../components/tooltip.tsx'
@@ -287,6 +288,38 @@ const uiGallerySections: ReadonlyArray<{
 					Privacy
 				</TextLink>
 			</GalleryRow>
+		),
+	},
+	{
+		id: 'table',
+		title: 'Table',
+		render: () => (
+			<Table>
+				<caption>DNS records</caption>
+				<thead>
+					<tr>
+						<th scope="col">Type</th>
+						<th scope="col">Name</th>
+						<th scope="col">Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					<tr>
+						<td>CNAME</td>
+						<td>docs</td>
+						<td>
+							<Badge tone="accent">Active</Badge>
+						</td>
+					</tr>
+					<tr>
+						<td>TXT</td>
+						<td>_kody-verify</td>
+						<td>
+							<Badge tone="warning">Pending</Badge>
+						</td>
+					</tr>
+				</tbody>
+			</Table>
 		),
 	},
 ]

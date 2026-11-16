@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from './table.tsx'
 import { Badge } from './badge.tsx'
 import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -49,7 +50,7 @@ export function CustomDomainRecords({
 				Add these records at your DNS provider. Set each one to{' '}
 				<strong>DNS only</strong> (proxy off, grey cloud in Cloudflare).
 			</p>
-			<table css={recordsTableCss}>
+			<Table css={recordsTableCss}>
 				<thead>
 					<tr>
 						<th scope="col">Type</th>
@@ -75,7 +76,7 @@ export function CustomDomainRecords({
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={recordsNoteCss}>
 				Names are shown without your domain. Some providers want the full name
 				instead, shown under each name.
@@ -252,16 +253,6 @@ const recordFullNameCss: CSSObject = {
 }
 
 const recordsTableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: typography.fontSize.sm,
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
-	th: { color: colors.textMuted, fontWeight: typography.fontWeight.medium },
 	code: {
 		fontFamily: typography.fontFamilyMono,
 		color: colors.text,

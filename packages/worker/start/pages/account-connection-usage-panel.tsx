@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { TextLink } from '../components/text-link.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { ReactNode } from 'react'
@@ -119,8 +120,8 @@ function UsageTable(props: {
 	const { capCountKey } = props
 	return (
 		<div css={tableScrollCss}>
-			<table data-testid={props.testId} css={tableCss}>
-				<caption css={captionCss}>{props.caption}</caption>
+			<Table data-testid={props.testId}>
+				<caption>{props.caption}</caption>
 				<thead>
 					<tr>
 						<th scope="col">{props.rowHeader}</th>
@@ -156,7 +157,7 @@ function UsageTable(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 		</div>
 	)
 }
@@ -170,8 +171,8 @@ function RawCountsTable(props: {
 }) {
 	return (
 		<div css={tableScrollCss}>
-			<table data-testid="connection-usage-raw-counts" css={tableCss}>
-				<caption css={captionCss}>{props.caption}</caption>
+			<Table data-testid="connection-usage-raw-counts">
+				<caption>{props.caption}</caption>
 				<thead>
 					<tr>
 						<th scope="col">Count</th>
@@ -196,7 +197,7 @@ function RawCountsTable(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 		</div>
 	)
 }
@@ -534,30 +535,6 @@ const tableScrollCss: CSSObject = {
 	minWidth: 0,
 	maxWidth: '100%',
 	overflowX: 'auto' as const,
-}
-const tableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse' as const,
-	fontSize: typography.fontSize.sm,
-	color: colors.text,
-	'& th, & td': {
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		textAlign: 'start' as const,
-		verticalAlign: 'top' as const,
-	},
-	'& thead th': {
-		color: colors.textMuted,
-		fontWeight: typography.fontWeight.semibold,
-		whiteSpace: 'nowrap' as const,
-	},
-}
-const captionCss: CSSObject = {
-	captionSide: 'top' as const,
-	textAlign: 'start' as const,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
-	paddingBottom: spacing.xs,
 }
 const numericCss: CSSObject = {
 	textAlign: 'end' as const,

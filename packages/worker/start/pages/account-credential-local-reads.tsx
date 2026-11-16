@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
@@ -18,17 +19,6 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 const localReadsAnchor = 'local-reads'
 
 const mutedCss = css({ margin: 0, color: colors.textMuted })
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: '0.875rem',
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
-})
 
 function localReadsExplanation(vault: boolean) {
 	return vault
@@ -169,7 +159,7 @@ function LocalReadsList(props: {
 	}
 	return (
 		<div css={{ overflowX: 'auto' }}>
-			<table css={tableCss} aria-label="Local reads">
+			<Table aria-label="Local reads">
 				<thead>
 					<tr>
 						<th>When</th>
@@ -201,7 +191,7 @@ function LocalReadsList(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={mutedCss}>
 				Kody keeps local reads for 90 days. Values are never recorded.
 			</p>

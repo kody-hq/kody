@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { expect, test } from 'vitest'
 import { Alert } from './alert.tsx'
 import { Badge, getBadgeCss } from './badge.tsx'
+import { Table } from './table.tsx'
 
 function markup(node: ReactNode) {
 	return renderToStaticMarkup(node).replace(
@@ -47,4 +48,17 @@ test('Alert sets no role unless the caller asks for one', () => {
 	)
 	expect(error).toContain('role="alert"')
 	expect(error).toContain('id="err"')
+})
+
+test('Table renders a native table so captions and header scopes work', () => {
+	const html = markup(
+		createElement(
+			Table,
+			{ 'aria-label': 'Records' },
+			createElement('caption', null, 'DNS'),
+		),
+	)
+	expect(html).toMatch(
+		/^<table aria-label="Records" class="[^"]+"><caption>DNS<\/caption><\/table>$/,
+	)
 })

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { Button } from '../components/button.tsx'
 import { Dialog, DialogActions } from '../components/dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -79,15 +80,6 @@ const dlCss = css({
 	margin: 0,
 	'& dd': { margin: 0, overflowWrap: 'anywhere' },
 	'@container (max-width: 480px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
-})
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	'& th, & td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.borderSubtle}`,
-	},
 })
 const target = css({ minHeight: 44 })
 
@@ -1630,7 +1622,7 @@ function RunHistory(props: {
 				<p css={mutedCss}>No runs yet.</p>
 			) : runs.length > 0 ? (
 				<div css={{ overflowX: 'auto' }}>
-					<table css={tableCss}>
+					<Table>
 						<thead>
 							<tr>
 								<th scope="col">When</th>
@@ -1680,7 +1672,7 @@ function RunHistory(props: {
 								</tr>
 							))}
 						</tbody>
-					</table>
+					</Table>
 				</div>
 			) : null}
 			{last?.nextCursor ? (
