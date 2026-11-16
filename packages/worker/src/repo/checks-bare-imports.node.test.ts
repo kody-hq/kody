@@ -336,7 +336,8 @@ test.each([
 				`src/app.${extension}`,
 				code + appFetchExport,
 			)
-			expect(result).toEqual({ ok: true, message: expect.any(String) })
+			expect(result.ok).toBe(true)
+			expect(result.message).not.toMatch(/undeclared bare package/)
 		}
 	},
 )

@@ -46,6 +46,9 @@ const mockModule = vi.hoisted(() => ({
 	loadPriorPackageManifestContent: vi.fn(),
 	insertSavedPackage: vi.fn(),
 	buildHeldForApprovalPublishNotice: vi.fn(),
+	loadHeldForApproval: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 	realInsertSavedPackage: null as
 		| null
 		| typeof packageRegistryRepoModule.insertSavedPackage,
@@ -109,6 +112,11 @@ vi.mock(
 		loadPackageUnmappableCredentials: async () => new Map(),
 	}),
 )
+
+vi.mock('#worker/package-capabilities/held-for-approval.ts', () => ({
+	loadHeldForApproval: (...args: Array<unknown>) =>
+		mockModule.loadHeldForApproval(...args),
+}))
 
 vi.mock('./held-for-approval-publish-notice.ts', async (importOriginal) => ({
 	...(await importOriginal<
@@ -326,12 +334,14 @@ async function setup({
 		mockModule.loadPriorPackageManifestContent,
 		mockModule.insertSavedPackage,
 		mockModule.buildHeldForApprovalPublishNotice,
+		mockModule.loadHeldForApproval,
 	]) {
 		mock.mockReset()
 	}
 	mockModule.buildHeldForApprovalPublishNotice.mockImplementation(
 		realHeldForApprovalNotice.buildHeldForApprovalPublishNotice,
 	)
+	mockModule.loadHeldForApproval.mockResolvedValue(null)
 	mockModule.ensureEntitySource.mockImplementation(async (input) => ({
 		...sourceRow(input),
 		bootstrapAccess: null,
@@ -918,19 +928,28 @@ test('packageSave reports when everyone stays on the previous approved version',
 	const plain = await save({ files: buildPackageFiles('plain-package') })
 	expect(plain).not.toHaveProperty('held_for_approval')
 
-	const notice = {
-		serving_commit: 'approved-commit',
-		held_commit: 'published-commit-1',
-		approval_url: 'https://example.com/@planned/pkg/approve-capabilities',
-		message:
-			'Everyone is still on the previous version (approved) until you approve the new capabilities that publish asks for.',
-	}
-	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValueOnce(notice)
+	const servingCommit = 'approved0deadbeef'
+	const heldCommit = 'heldnew1cafebabe'
+	mockModule.loadHeldForApproval.mockResolvedValueOnce({
+		servingCommit,
+		heldCommit,
+	})
 	const held = await save({ files: buildPackageFiles('held-package') })
-	expect(held.held_for_approval).toEqual(notice)
-	expect(mockModule.buildHeldForApprovalPublishNotice).toHaveBeenLastCalledWith(
-		expect.objectContaining({ kodyId: 'pkg' }),
+	expect(held.kody_id).toBe('pkg')
+	const notice = held.held_for_approval
+	expect(notice).toMatchObject({
+		serving_commit: servingCommit,
+		held_commit: heldCommit,
+	})
+	if (!notice) throw new Error('expected held_for_approval')
+	const approval = new URL(notice.approval_url)
+	expect(approval.origin).toBe('https://example.com')
+	expect(approval.pathname).toBe(
+		`/@planned/${held.kody_id}/approve-capabilities`,
 	)
+	expect(notice.message).toContain(servingCommit.slice(0, 7))
+	expect(notice.message).toContain(heldCommit.slice(0, 7))
+	expect(notice.message).toContain(notice.approval_url)
 })
 
 const maintainersOrg = { id: 'd'.repeat(64), slug: 'kody', plan: 'max' }

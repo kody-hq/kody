@@ -2,7 +2,6 @@ import { expect, test } from 'vitest'
 import {
 	ensureLocalExecuteMeterStaticPackageExportImport,
 	injectLocalExecuteGatewayFetchBinding,
-	moduleSourceHasSecretPlaceholderLiterals,
 	rewriteLocalExecuteModuleForSecretAwareFetch,
 	rewriteLocalExecuteSecretPlaceholderLiterals,
 } from './rewrite-local-execute-secret-fetch.ts'
@@ -14,13 +13,12 @@ export async function request() {
     headers: { authorization: 'Bearer ' + token },
   })
 }`
-	expect(await moduleSourceHasSecretPlaceholderLiterals(source)).toBe(true)
+	expect(source).toContain('{{secret:demoToken|scope=user}}')
 	const rewritten = await rewriteLocalExecuteSecretPlaceholderLiterals(source)
 	expect(rewritten.rewritten).toBe(true)
 	expect(rewritten.source).not.toContain('{{secret:demoToken|scope=user}}')
-	expect(rewritten.source).toContain('__kodySecretRef("demoToken", "user")')
-	expect(await moduleSourceHasSecretPlaceholderLiterals(rewritten.source)).toBe(
-		false,
+	expect(rewritten.source).toMatch(
+		/__kodySecretRef\(\s*"demoToken"\s*,\s*"user"\s*\)/,
 	)
 })
 
@@ -96,7 +94,7 @@ export default async function advance() { return editMessage }
 	})
 	expect(merged.rewritten).toBe(true)
 	expect(merged.source).toMatch(
-		/import\s*\{[^}]*__kodyMeterStaticPackageExport[^}]*\}\s*from\s*"\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/\.__kody_virtual__\/runtime\.js"/,
+		/import\s*\{[^}]*__kodyMeterStaticPackageExport[^}]*\}\s*from\s*"[^"]*\.__kody_virtual__\/runtime\.js"/,
 	)
 	expect(merged.source.match(/__kodyMeterStaticPackageExport/g)?.length).toBe(2)
 

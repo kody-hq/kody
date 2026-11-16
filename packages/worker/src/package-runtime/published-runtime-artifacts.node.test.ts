@@ -3,48 +3,12 @@ import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
 	type BundleArtifactKind,
-	isUsableStoredPublishedBundleArtifact,
 	type PublishedBundleArtifact,
 	readPackageAppWorkerTemplate,
 	readPublishedBundleArtifact,
 	writePublishedBundleArtifact,
 	writePublishedSourceSnapshot,
 } from './published-runtime-artifacts.ts'
-
-test('isUsableStoredPublishedBundleArtifact keeps clean v1 payloads and rejects remix-injected ones', () => {
-	expect(
-		isUsableStoredPublishedBundleArtifact({
-			version: 1,
-			modules: { 'dist/out.js': 'export default {}' },
-		}),
-	).toBe(true)
-	expect(
-		isUsableStoredPublishedBundleArtifact({
-			version: 2,
-			modules: { 'dist/out.js': 'export default {}' },
-		}),
-	).toBe(false)
-	expect(
-		isUsableStoredPublishedBundleArtifact({
-			version: 1,
-			modules: { 'dist/out.js': 'export default {}' },
-			remixVersion: '3.0.0',
-		}),
-	).toBe(false)
-	expect(
-		isUsableStoredPublishedBundleArtifact({
-			version: 1,
-			modules: { 'dist/out.js': 'export default {}' },
-			remixUiVersion: '0.12.1',
-		}),
-	).toBe(false)
-	expect(
-		isUsableStoredPublishedBundleArtifact({
-			version: 1,
-			modules: null,
-		}),
-	).toBe(false)
-})
 
 // A bundle persisted before package `fetch` became lexical: no
 // `packageBindingRewrite` marker and a free `fetch`.
@@ -83,6 +47,33 @@ function envWithStoredArtifact(stored: unknown) {
 	}
 	return { BUNDLE_ARTIFACTS_KV: kv } as unknown as Env
 }
+
+test('readPublishedBundleArtifact keeps clean v1 payloads and rejects remix-injected ones', async () => {
+	const clean = storedPreBindingArtifact({
+		kind: 'app-client',
+		mainModule: 'client.js',
+		source: 'export default {}',
+	})
+	const loaded = await readPublishedBundleArtifact({
+		env: envWithStoredArtifact(clean),
+		kvKey: 'bundle-artifact:key',
+	})
+	expect(loaded?.modules['client.js']).toBe('export default {}')
+
+	for (const stored of [
+		{ ...clean, version: 2 },
+		{ ...clean, remixVersion: '3.0.0' },
+		{ ...clean, remixUiVersion: '0.12.1' },
+		{ ...clean, modules: null },
+	]) {
+		await expect(
+			readPublishedBundleArtifact({
+				env: envWithStoredArtifact(stored),
+				kvKey: 'bundle-artifact:key',
+			}),
+		).resolves.toBeNull()
+	}
+})
 
 test('readPublishedBundleArtifact returns an app-client bundle with a free fetch byte-identical', async () => {
 	const clientSource = [

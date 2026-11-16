@@ -1,8 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	detectPackageAppHostMigrationCodemod,
-	packageAppHostMigrationPatternFromMessage,
-	packageAppHostMigrationPatternMessages,
+	packageAppHostMigrationPatterns,
 } from './0019-detect-package-app-host-migration.ts'
 
 const packageContext = { packageName: '@acme/notes' }
@@ -25,10 +24,14 @@ async function scan(
 		{ 'package.json': manifestSource, ...files },
 		context,
 	)
-	return findings.map(
-		(finding) =>
-			`${finding.path}: ${packageAppHostMigrationPatternFromMessage(finding.message)}`,
-	)
+	return findings.map((finding) => {
+		const pattern =
+			[...packageAppHostMigrationPatterns]
+				.sort((left, right) => right.length - left.length)
+				.find((candidate) => finding.message.startsWith(`${candidate}:`)) ??
+			null
+		return `${finding.path}: ${pattern}`
+	})
 }
 
 test('0019 ignores packages that are not apps', async () => {
@@ -153,12 +156,10 @@ test('0019 scans only the files of a nested package', async () => {
 			sourceRoot: 'apps/notes',
 		},
 	)
-	expect(findings).toEqual([
-		{
-			path: 'apps/notes/app.ts',
-			message: packageAppHostMigrationPatternMessages.localStorage,
-		},
-	])
+	expect(findings).toHaveLength(1)
+	expect(findings[0]?.path).toBe('apps/notes/app.ts')
+	expect(findings[0]?.message).toMatch(/^localStorage:/)
+	expect(findings[0]?.message).not.toMatch(/acme|notes/)
 })
 
 test('0019 never rewrites and never leaks source into findings', async () => {
@@ -173,19 +174,10 @@ test('0019 never rewrites and never leaks source into findings', async () => {
 	expect(result.files).toBe(files)
 	expect(result.changed).toBe(false)
 	expect(result.changedPaths).toEqual([])
-	expect(result.needsManual).toEqual([
-		{
-			path: 'app.ts',
-			message: packageAppHostMigrationPatternMessages['old app url'],
-		},
-	])
-	const fixedMessages = new Set(
-		Object.values(packageAppHostMigrationPatternMessages),
-	)
-	for (const finding of result.needsManual) {
-		expect(fixedMessages.has(finding.message)).toBe(true)
-		expect(finding.message).not.toMatch(/acme|notes|hunter2/)
-	}
+	expect(result.needsManual).toHaveLength(1)
+	expect(result.needsManual[0]?.path).toBe('app.ts')
+	expect(result.needsManual[0]?.message).toMatch(/^old app url:/)
+	expect(result.needsManual[0]?.message).not.toMatch(/acme|notes|hunter2/)
 })
 
 test('0019 scans the published tree so drifted apps are inventoried', () => {

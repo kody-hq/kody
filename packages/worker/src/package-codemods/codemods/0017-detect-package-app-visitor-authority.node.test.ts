@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	detectPackageAppVisitorAuthorityCodemod,
-	packageAppVisitorAuthorityPatternFromMessage,
+	packageAppVisitorAuthorityPatterns,
 } from './0017-detect-package-app-visitor-authority.ts'
 
 const packageContext = { packageName: '@acme/demo' }
@@ -22,7 +22,10 @@ async function patterns(kody: Record<string, unknown>, source: string) {
 		)
 	).map((finding) => ({
 		path: finding.path,
-		pattern: packageAppVisitorAuthorityPatternFromMessage(finding.message),
+		pattern:
+			[...packageAppVisitorAuthorityPatterns]
+				.sort((left, right) => right.length - left.length)
+				.find((pattern) => finding.message.startsWith(`${pattern}:`)) ?? null,
 	}))
 }
 

@@ -13,7 +13,6 @@ import type {
 } from '../types.ts'
 import {
 	declarePackageAppCapabilitiesCodemod,
-	declarePackageAppCapabilitiesMessages,
 	type DeclarePackageAppCapabilitiesOwnerDetail,
 } from './0018-declare-package-app-capabilities.ts'
 
@@ -126,17 +125,13 @@ test('0018 adds capabilities called through an imported helper', async () => {
 			credentialNamedCalls: 0,
 		},
 	} satisfies DeclarePackageAppCapabilitiesOwnerDetail)
-	expect(
-		await declarePackageAppCapabilitiesCodemod.detect(
-			files,
-			context({ closure }),
-		),
-	).toEqual([
-		{
-			path: 'package.json',
-			message: declarePackageAppCapabilitiesMessages.declare,
-		},
-	])
+	const findings = await declarePackageAppCapabilitiesCodemod.detect(
+		files,
+		context({ closure }),
+	)
+	expect(findings).toHaveLength(1)
+	expect(findings[0]?.path).toBe('package.json')
+	expect(findings[0]?.message).toMatch(/^declare capabilities:/)
 })
 
 test('0018 is idempotent and keeps existing declarations first', async () => {
@@ -169,9 +164,9 @@ test('0018 gap-fills computed names from the runtime log and still reports them'
 		context(),
 	)
 	expect(unfilled.changed).toBe(false)
-	expect(unfilled.needsManual).toEqual([
-		{ path: null, message: declarePackageAppCapabilitiesMessages.computed },
-	])
+	expect(unfilled.needsManual).toHaveLength(1)
+	expect(unfilled.needsManual[0]?.path).toBeNull()
+	expect(unfilled.needsManual[0]?.message).toMatch(/^computed capability:/)
 	expect(
 		(unfilled.ownerDetail as DeclarePackageAppCapabilitiesOwnerDetail)
 			.unresolved.computedCalls,
@@ -206,8 +201,8 @@ test('0018 never adds names that are not platform capabilities, and findings nev
 		...(await declarePackageAppCapabilitiesCodemod.detect(files, context())),
 	]
 	for (const finding of findings) {
-		expect(Object.values(declarePackageAppCapabilitiesMessages)).toContain(
-			finding.message,
+		expect(finding.message).toMatch(
+			/^(declare capabilities|computed capability|kody\.mcp|unresolved import|unknown capability|credential\.named):/,
 		)
 		expect(finding.message).not.toMatch(/notAPlatformCall|secretList/)
 	}
