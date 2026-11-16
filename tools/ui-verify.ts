@@ -56,7 +56,12 @@ async function startPinnedBrowser() {
 	const pull = spawnSync('docker', ['pull', '--quiet', pinnedBrowserImage], {
 		stdio: 'inherit',
 	})
-	if (pull.status !== 0) return null
+	// Offline with the image cached still renders in the pinned browser.
+	const cached = () =>
+		spawnSync('docker', ['image', 'inspect', pinnedBrowserImage], {
+			stdio: 'ignore',
+		}).status === 0
+	if (pull.status !== 0 && !cached()) return null
 	const port = await freePort()
 	const name = `kody-ui-verify-${process.pid}`
 	const run = spawnSync('docker', pinnedBrowserRunArgs({ name, port }), {
