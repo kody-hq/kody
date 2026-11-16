@@ -65,7 +65,8 @@ Execution contexts are an experiment. Turn them on at
   `kody context policy allow <path> [--mode ro|rw]`,
   `kody context capability [list] | add command|lan <file.json> | remove command|lan <name>`
   (defines named commands and local network destinations on this machine and
-  tells Kody their names; no run can use them yet),
+  tells Kody their names; the operator's runs can use a named command, local
+  network destinations are not used by runs yet),
   `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
   default 2), `kody chain show | add | remove`,
   `kody context commands [status | on | off] [--context <name>] [--json]`,
@@ -250,6 +251,21 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   `commands_operator_only`, and legacy command shares confer nothing. Commands
   get the daemon's environment without `KODY_*` variables and cannot use a
   credential folder as `cwd`.
+- Named commands:
+  `kody.command.run({ capability: 'kdocker', args: ['restart', 'plex'] })` (and
+  `start`) runs a command the machine defined with
+  `kody context capability add command`. The machine's definition fixes the
+  executable, folder, environment and timeout ceiling, no shell is involved, and
+  the arguments must match one of its allowed shapes. Only `args`, `timeoutMs`
+  and `maxOutputBytes` are accepted. It works with the shell
+  (`kody context commands`) off. For now only the machine's operator can use
+  one, a token needs the `machine_capability:use` scope, and every saved package
+  the run loaded directly must be one the operator's org wrote or adopted.
+  Kody's audit row holds the name and arguments, not the executable path.
+  Errors: `machine_capability_off` (the machine defines no such command),
+  `machine_capability_not_granted`, `machine_capability_package_not_allowed`
+  (names the packages), `machine_command_args_refused` (lists the allowed
+  shapes).
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a

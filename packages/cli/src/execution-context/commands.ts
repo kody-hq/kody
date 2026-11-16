@@ -716,6 +716,10 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		const { runContextRun } = await import('./run-executor.js')
 		const hostCommands = new HostCommands({
 			localEnabled: await readLocalCommandsEnabled().catch(() => false),
+			namedCommand: async (name) =>
+				(await readLocalPolicy()).capabilities?.commands.find(
+					(command) => command.name === name,
+				),
 		})
 		const commandsPolicyPath = localPolicyPath()
 		const onCommandsPolicyChange = () => {
@@ -1420,7 +1424,7 @@ async function runCapabilityCommand(
 				(entry) =>
 					`  lan ${entry.name}${entry.description ? `: ${entry.description}` : ''} (${entry.hosts.join(', ')} ports ${entry.ports.join(', ')})`,
 			),
-			'Kody knows these by name. No run can use them yet.',
+			'Kody knows these by name. Your runs use a command with kody.command.run({ capability: "<name>", args: [...] }). Local network destinations are not used by runs yet.',
 		].join('\n')
 	}
 	if (action === 'list') {

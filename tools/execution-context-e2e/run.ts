@@ -294,6 +294,32 @@ async function main() {
 			throw new Error('Kody did not accept the capability removal.')
 		}
 		log('machine access definition reported to Kody and removed')
+		const commandFile = join(folder, 'command.json')
+		writeFileSync(
+			commandFile,
+			JSON.stringify({
+				name: 'e2e-named',
+				exec: [
+					process.execPath,
+					'-e',
+					'console.log("named:" + process.argv[1])',
+				],
+				args: [[{ pattern: '[a-z]+' }]],
+			}),
+		)
+		const named = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'command',
+				commandFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (named.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the named command.')
+		}
 
 		const daemon = fork(
 			join(import.meta.dirname, 'daemon-host.cjs'),
@@ -328,7 +354,11 @@ export default async function main() {
 		command: ${JSON.stringify(shellCommand)},
 		cwd: folder,
 	})
-	return { seed, sum: 20 + 22, shell }
+	const named = await kody.command.run({ capability: 'e2e-named', args: ['hello'] })
+	const refused = await kody.command
+		.run({ capability: 'e2e-named', args: ['hello; id'] })
+		.then(() => 'ran', (error) => String(error))
+	return { seed, sum: 20 + 22, shell, named: { out: named.stdout, refused } }
 }
 `,
 		)
@@ -353,6 +383,14 @@ export default async function main() {
 		if (shell?.exitCode !== 0 || !shell.stdout?.includes(shellMarker))
 			throw new Error(`The host command did not run: ${JSON.stringify(shell)}`)
 		log(`host command ok on ${process.platform}`)
+		if (
+			!output.includes('named:hello') ||
+			!output.includes('machine_command_args_refused')
+		)
+			throw new Error(
+				'The named command did not run, or its bad arguments were not refused.',
+			)
+		log(`named command ok on ${process.platform}`)
 
 		await runWorkflowStepOnContext(session)
 

@@ -53,6 +53,8 @@ export async function listMachineCapabilityGrantOrgIds(
 }
 
 /** The kinds a machine defines in its local policy and reports to Kody. */
+export const machineCapabilityUsePermission = 'machine_capability:use' as const
+
 export const machineDefinedCapabilityKinds = ['command', 'lan'] as const
 
 export type MachineDefinedCapability = {
