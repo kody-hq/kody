@@ -1700,6 +1700,21 @@ test(
 				[{ capability: '*', host: '127.0.0.2', port }],
 			])
 
+			// Parallel first requests to one address ask once.
+			proxyRequests.length = 0
+			const parallel = await runLocalExecute({
+				code: `export default async ({ url }) => Promise.all([1, 2, 3].map(async () => (await fetch(url)).text()))`,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public-and-lan' }),
+			})
+			assert.deepEqual(
+				(parallel.structuredContent as { result: unknown }).result,
+				['lan ok', 'lan ok', 'lan ok'],
+			)
+			assert.equal(authorizations().length, 1)
+
 			// kody execute --local --allow-private-network is not a Kody entry.
 			proxyRequests.length = 0
 			assert.deepEqual(await run(localExecuteEgressPolicy(true), [url]), [

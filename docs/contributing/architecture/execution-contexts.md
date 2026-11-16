@@ -282,9 +282,10 @@ data model exists so far; nothing reads it at run time yet.
   `wholeNetwork` and `wouldBlockPackageIds`, and enforces a non-empty package
   list. On a context run in `public-and-lan` mode the egress gate asks through
   the same bridge route with capability `*` before the run's first request to
-  each literal local address and port, and blocks the request on a refusal. A
-  host name that resolves to a local address is not asked about.
-  `kody execute --local --allow-private-network` never asks.
+  each local address or local name (`localhost`, `.localhost`, `.local`) and
+  port, and blocks the request on a refusal. Parallel first requests to one
+  address ask once. Any other host name that resolves to a local address is not
+  asked about. `kody execute --local --allow-private-network` never asks.
   `setMachineAccessPackages` still refuses a list for it, since machines on an
   older CLI do not ask.
 - The operator sets an entry's package list with

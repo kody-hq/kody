@@ -25,8 +25,9 @@ export type LocalEgressPolicy = {
 	lan?: Array<LocalLanRule>
 	/**
 	 * In `public-and-lan` mode, ask Kody before the run's first request to each
-	 * local address and port. Set for execution context runs, whose machine wide
-	 * switch is a Kody entry; `kody execute --local` leaves it off.
+	 * local address or local name (`localhost`, `.local`) and port. Set for
+	 * execution context runs, whose machine wide switch is a Kody entry;
+	 * `kody execute --local` leaves it off.
 	 */
 	askWholeLan?: boolean
 	/** Whose setting refused it, e.g. "this execution context's network setting". */
@@ -195,6 +196,8 @@ function modeText(policy) {
 
 // Addresses Kody already allowed this run under the machine wide switch.
 const wholeLanAllowed = new Set();
+// Questions still on their way to Kody, so parallel first requests to one address ask once.
+const wholeLanAsking = new Map();
 
 export default {
 	async fetch(request, env) {
@@ -259,25 +262,37 @@ export default {
 		const privateTarget = isPrivateHost(literal?.bytes.length === 4 ? literal.bytes.join('.') : host);
 		if (refusal === null && policy.askWholeLan && policy.mode === 'public-and-lan' && privateTarget && !wholeLanAllowed.has(host + ' ' + port)) {
 			// The machine wide switch is a Kody entry too: Kody records the use and may refuse the run's packages.
-			let message;
-			try {
-				const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
-					method: 'POST',
-					headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
-					body: JSON.stringify({ capability: ${JSON.stringify(wholeLanCapabilityName)}, host, port }),
-				});
-				const verdict = await reply.json();
-				message = verdict?.ok === true ? null : typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.';
-			} catch (error) {
-				message = 'Kody could not be asked: ' + (error instanceof Error ? error.message : String(error));
+			const key = host + ' ' + port;
+			let asking = wholeLanAsking.get(key);
+			if (!asking) {
+				asking = (async () => {
+					try {
+						const reply = await env.KODY_BRIDGE.fetch('http://kody-bridge${localBridgeLanAuthorizePath}', {
+							method: 'POST',
+							headers: { [env.KODY_BRIDGE_SECRET_HEADER]: env.KODY_RUN_SECRET, 'content-type': 'application/json' },
+							body: JSON.stringify({ capability: ${JSON.stringify(wholeLanCapabilityName)}, host, port }),
+						});
+						const verdict = await reply.json();
+						if (verdict?.ok === true) {
+							wholeLanAllowed.add(key);
+							return null;
+						}
+						return typeof verdict?.message === 'string' ? verdict.message : 'No reason was given.';
+					} catch (error) {
+						return 'Kody could not be asked: ' + (error instanceof Error ? error.message : String(error));
+					} finally {
+						wholeLanAsking.delete(key);
+					}
+				})();
+				wholeLanAsking.set(key, asking);
 			}
+			const message = await asking;
 			if (message !== null) {
 				return new Response(
 					'Blocked: the request to ' + host + ':' + port + ' uses this machine\\'s whole local network, and Kody refused it. ' + message,
 					{ status: 403, headers: { [blockedHeader]: '1', 'content-type': 'text/plain; charset=utf-8' } },
 				);
 			}
-			wholeLanAllowed.add(host + ' ' + port);
 		}
 		try {
 			// A named destination's redirects go back to the run, so each hop is checked here again.
