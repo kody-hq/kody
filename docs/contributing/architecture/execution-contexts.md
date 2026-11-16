@@ -251,6 +251,29 @@ data model exists so far; nothing reads it at run time yet.
   `accessRevoke` removes one.
 - Org transfer leaves capabilities and their grants in the owning org, like the
   context.
+- The machine layer lives in the local policy file under `capabilities`
+  (`packages/cli/src/execution-context/machine-capabilities.ts`), edited with
+  `kody context capability`. A named command is a fixed `exec` plus a list of
+  allowed argument shapes (exact words or one anchored pattern per argument);
+  `resolveMachineCommand` returns the `execFile` call or refuses with
+  `machine_command_args_refused`. A local network entry is IP addresses or CIDR
+  ranges plus ports. Executable paths stay on the machine. Nothing sends these
+  to Kody or runs them yet.
+
+  ```json
+  {
+  	"name": "kdocker",
+  	"description": "Inspect and restart containers on the NAS",
+  	"exec": ["node", "/volume1/docker/kody-docker-helper/kdocker.mjs"],
+  	"args": [
+  		["ps"],
+  		["logs", { "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$" }],
+  		["compose", "rebuild"]
+  	],
+  	"background": false,
+  	"timeoutMs": 120000
+  }
+  ```
 
 ### End-to-end check
 
