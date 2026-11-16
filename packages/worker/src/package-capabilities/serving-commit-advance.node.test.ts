@@ -465,6 +465,11 @@ test('a superseded commit neither serves nor gets an approval', async () => {
 	expect(site.approvalCommits()).toEqual(['commit-a'])
 	// commit-c is still building, so visitors keep commit-a.
 	await expect(site.publicCommit()).resolves.toBe('commit-a')
+	// Jobs re-sync to whatever serves, so a superseded build cannot keep its
+	// definitions.
+	expect(jobs.syncPublishedPackageJobs).toHaveBeenLastCalledWith(
+		expect.not.objectContaining({ commit: 'commit-b' }),
+	)
 })
 
 test('an app approved for the first time keeps today’s behavior', async () => {

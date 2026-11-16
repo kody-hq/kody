@@ -101,6 +101,10 @@ async function advanceToServing(
 				]
 			: [],
 	)
+	if (!advanced) {
+		// A newer publish may have synced and taken the pointer in between.
+		await syncJobsToCommit(input, { serving: true })
+	}
 	if (advanced && decision) {
 		approvedCommitCache.delete(decision.packageId)
 	}
@@ -146,13 +150,20 @@ export async function releaseHeldServingCommit(input: {
 	return advanced
 }
 
-async function syncJobsToCommit(input: ServingAdvanceInput) {
+/**
+ * Sync jobs to `input.commit`, or with `serving` to whatever serves now (a
+ * newer publish that won the pointer while this sync ran).
+ */
+async function syncJobsToCommit(
+	input: ServingAdvanceInput,
+	options: { serving?: boolean } = {},
+) {
 	const source = await getEntitySourceById(input.env.APP_DB, input.sourceId)
 	if (
 		!source ||
 		source.user_id !== input.userId ||
 		source.entity_kind !== 'package' ||
-		source.published_commit !== input.commit
+		(!options.serving && source.published_commit !== input.commit)
 	) {
 		return
 	}
@@ -163,9 +174,13 @@ async function syncJobsToCommit(input: ServingAdvanceInput) {
 		baseUrl: getAppBaseUrl({ env: input.env }),
 		packageId: source.entity_id,
 		sourceId: source.id,
-		commit: input.commit,
-		actorUserId: input.actor?.userId,
-		actorCredential: input.actor?.credential ?? null,
+		...(options.serving
+			? {}
+			: {
+					commit: input.commit,
+					actorUserId: input.actor?.userId,
+					actorCredential: input.actor?.credential ?? null,
+				}),
 	})
 }
 
