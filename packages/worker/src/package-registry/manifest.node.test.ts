@@ -1247,3 +1247,26 @@ test('parseAuthoredPackageJson treats a missing exports field as no exports', ()
 		/Invalid package.json/,
 	)
 })
+
+test('parseAuthoredPackageJson authoring refuses leaves that break the per-app host label', () => {
+	expect(() => parse('@kentcdodds/xn')).toThrow(/reads as an internationalized/)
+	expect(parse('@kentcdodds/xn', {}, { mode: 'published' }).kody.id).toBe('xn')
+	expect(
+		parse('@kentcdodds/ai', { app: { entry: './src/app.ts' } }).kody.id,
+	).toBe('ai')
+
+	// 49 + 2 + 12 = 63 fits; one more character does not.
+	const fits = 'a'.repeat(49)
+	const tooLong = 'a'.repeat(50)
+	const app = { app: { entry: './src/app.ts' } }
+	expect(parse(`@twelve-chars/${fits}`, app).kody.id).toBe(fits)
+	expect(() => parse(`@twelve-chars/${tooLong}`, app)).toThrow(
+		/is 64 characters, over the 63 character limit.*at most 49 characters/,
+	)
+	// The limit only applies to packages that serve an app, and never to a
+	// published snapshot.
+	expect(parse(`@twelve-chars/${tooLong}`).kody.id).toBe(tooLong)
+	expect(
+		parse(`@twelve-chars/${tooLong}`, app, { mode: 'published' }).kody.id,
+	).toBe(tooLong)
+})

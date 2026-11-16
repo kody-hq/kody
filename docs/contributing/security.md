@@ -235,12 +235,15 @@ from `{username}.<package-app host>` (`buildPackageAppSubdomainOrigin` in
 `packages/shared/src/public-urls.ts`), so browser state (cookies, storage,
 `document` access) never crosses accounts. The username label in the hostname
 must be a valid single DNS label: lowercase letters, digits, and hyphens only,
-3–32 characters, alphanumeric edges (`dnsSafeUsernamePattern` in
-`packages/shared/src/public-urls.ts`). Every username satisfies this shape —
-underscores are rejected everywhere, and there is no lenient recognition tier
-(decision 0017). Wildcard DNS still routes invalid or nested labels to the
-Worker, so hostnames that are not exactly one valid username label fail closed
-with `404`.
+3–32 characters, alphanumeric edges, no two hyphens in a row
+(`dnsSafeUsernamePattern` in `packages/shared/src/public-urls.ts`). `--` is kept
+out of handles so a per-app host label `{leaf}--{handle}` splits in exactly one
+place; `packages/shared/src/package-app-host-label.ts` also reserves the package
+leaf `xn` and caps the combined label at 63 characters for packages with an app
+(publish and org transfer). Every username satisfies this shape — underscores
+are rejected everywhere, and there is no lenient recognition tier (decision
+0017). Wildcard DNS still routes invalid or nested labels to the Worker, so
+hostnames that are not exactly one valid username label fail closed with `404`.
 
 Usernames are also `{username}@<platform domain>` mail locals. The built-in
 reserved list in `packages/worker/src/identity/reserved-usernames.ts` blocks
