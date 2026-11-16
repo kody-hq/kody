@@ -193,6 +193,31 @@ export function parsePackageAppHostLabel(label: string) {
 }
 
 /**
+ * A profile package is named after its owner (`@{slug}/{slug}`, like a
+ * GitHub `username/username` repository). Its app owns the owner's bare
+ * `{slug}` host instead of a `{leaf}--{handle}` host.
+ */
+export function isProfilePackage(input: { username: string; kodyId: string }) {
+	const username = input.username.trim().toLowerCase()
+	return username !== '' && input.kodyId === username
+}
+
+/**
+ * Origin where a package app is mounted at `/`: the owner's bare host for a
+ * profile package, otherwise the app's own `{leaf}--{handle}` host. Null when
+ * the pair has no routable host.
+ */
+export function buildPackageAppRootOrigin(input: {
+	packageAppOrigin: string
+	username: string
+	kodyId: string
+}) {
+	if (!isProfilePackage(input)) return buildPackageAppHostOrigin(input)
+	if (!isDnsSafeUsername(input.username.toLowerCase())) return null
+	return buildPackageAppSubdomainOrigin(input)
+}
+
+/**
  * Origin of one package app's own host: `{leaf}--{handle}.` prefixed onto the
  * configured package-app origin's hostname, preserving scheme and port. Null
  * when the pair has no valid host label (for example a legacy leaf that is not
@@ -233,7 +258,8 @@ export function buildPackageAppCustomHostnameUrl(input: {
 
 /**
  * Canonical browser URL for a hosted package app: the per-user subdomain of
- * the package-app origin when one is configured, or the path-based mount on
+ * the package-app origin when one is configured (its root for a profile
+ * package), or the path-based mount on
  * the app origin when a non-production deployment serves package apps inline.
  */
 export function resolveHostedPackageAppUrl(input: {
@@ -244,6 +270,19 @@ export function resolveHostedPackageAppUrl(input: {
 	restPath?: string | null
 }) {
 	if (input.packageAppBaseUrl) {
+		const profileOrigin = isProfilePackage(input)
+			? buildPackageAppRootOrigin({
+					packageAppOrigin: input.packageAppBaseUrl,
+					username: input.username,
+					kodyId: input.kodyId,
+				})
+			: null
+		if (profileOrigin) {
+			return buildPackageAppCustomHostnameUrl({
+				origin: profileOrigin,
+				restPath: input.restPath,
+			})
+		}
 		return buildPackageAppSubdomainUrl({
 			packageAppOrigin: input.packageAppBaseUrl,
 			username: input.username,

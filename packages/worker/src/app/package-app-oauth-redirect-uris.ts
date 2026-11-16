@@ -9,7 +9,7 @@ import {
 	packageAppOauthPaths,
 } from '#universal/package-app-oauth-paths.ts'
 import {
-	buildPackageAppHostOrigin,
+	buildPackageAppRootOrigin,
 	buildPackageAppSubdomainUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import type { PackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
@@ -72,7 +72,7 @@ export async function listAllowedPackageAppOauthRedirectUris(input: {
 				}),
 			)
 			pushCallbackUrls(allowed, subdomain.origin)
-			const appHostOrigin = buildPackageAppHostOrigin({
+			const appHostOrigin = buildPackageAppRootOrigin({
 				packageAppOrigin,
 				username: input.client.username,
 				kodyId: input.client.kodyId,

@@ -17,6 +17,11 @@ const mockModule = vi.hoisted(() => ({
 	collectIntegrationPackageSuggestions: vi.fn(),
 }))
 
+// These fixtures have no owner or package rows, so no profile package exists.
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
+}))
+
 vi.mock('#worker/community/fork-listing-relation.ts', () => ({
 	applySavedPackageForkListingAncestry: async ({
 		records,

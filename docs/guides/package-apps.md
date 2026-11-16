@@ -111,6 +111,24 @@ host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
 not the hosted origin: visitors who may run the app hand off to it; everyone
 else stays on the package page (or a same-origin landing).
 
+### Profile package: own your whole host
+
+A package named after its owner, `@{username}/{username}` (like a GitHub
+`username/username` repository), is a profile package. Once it is published with
+an app, that app is served at the root of `https://{username}.kody.run/` and
+owns every path on that host (except Kody's reserved `/-/` paths, the same
+sign-in and health paths every app host has). Kody serves nothing else there: no
+other app of yours is mounted under it, and no path is redirected or rewritten,
+so `/newsletter/unsubscribe` reaches your profile app as
+`/newsletter/unsubscribe`.
+
+It is a normal app: same build, sign-in, limits and `packageContext`
+(`appBasePath` is `""`). Use it when an address under
+`https://{username}.kody.run/` must keep answering in place, for example a
+one-click unsubscribe link in mail you already sent or a webhook URL registered
+with another service. Delete the package, or remove its app, and the host goes
+back to its default behavior.
+
 **Open app** is one control. For someone who may run the app it goes to
 `/@{username}/packages/<name>/open` on kody.codes, which mints a short-lived
 handoff token and redirects to the hosted origin (`*.kody.run` or a verified
