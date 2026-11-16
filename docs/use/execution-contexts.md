@@ -93,7 +93,10 @@ chain meanwhile.
 It never downgrades. A failed download or install keeps the old version running
 and retries with backoff (1h, doubling to 24h); a new version that crashes right
 after starting is skipped and the old one takes over again. Each step is logged
-in the daemon log (`kody daemon logs`).
+in the daemon log (`kody daemon logs`), including a check that found nothing
+newer and a latest version that is skipped because it failed to start here.
+`kody daemon health --json` reports the last check and its error; see
+[liveness](#liveness-and-health-checks).
 
 - `kody daemon auto-update status` (`--json`): on or off, the last check, the
   latest version, and recent updates. `kody daemon status` shows it too.
@@ -106,6 +109,60 @@ in the daemon log (`kody daemon logs`).
 
 Existing installs need nothing: a daemon started from a CLI that has auto-update
 turns it on at its next restart (or run `kody update` once).
+
+## Liveness and health checks
+
+The daemon pings Kody every 30 seconds on every connection, including each one
+it opens after a drop. No answer within 10 seconds, or a socket that stopped
+without a close event, closes that connection and opens a new one. Three more
+guards make a daemon that cannot recover exit nonzero, so systemd, launchd, the
+Windows task, or a container restart policy starts it again:
+
+- No working connection to Kody for 30 minutes of running time while no run is
+  in flight: a daemon under a service, an update supervisor, or in a container
+  logs why and exits 1. A daemon in a terminal keeps retrying, since nothing
+  would start it again.
+- An event loop stuck for 5 minutes: a watchdog thread kills the process.
+- A machine that sleeps does not trip either one; both count running time.
+
+`kody daemon health` reads the state file the daemon rewrites every 30 seconds,
+so it needs no network and no login. It exits 0 when a daemon is running and
+heard Kody within `--max-age` seconds (default 120), and 1 when no daemon runs,
+the daemon is frozen, or it has been disconnected or unanswered for longer.
+`--json` prints `healthy`, `reason` (`ok`, `not-running`, `no-health-data`,
+`stalled`, `disconnected`, `heartbeat-stale`), `connected`, `lastHeartbeatAt`,
+`lastHeartbeatAgeSeconds`, and the last auto-update check with its error.
+`kody daemon status --json` carries the same object as `health` and exits 1 when
+a running daemon is unhealthy.
+
+In a container, run an init process and add the health check:
+
+```yaml
+services:
+  kody:
+    image: your-kody-image
+    command: ['kody', 'daemon']
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'kody', 'daemon', 'health']
+      interval: 60s
+      timeout: 20s
+      start_period: 60s
+      retries: 3
+```
+
+The Dockerfile form is
+`HEALTHCHECK --interval=60s --timeout=20s --start-period=60s --retries=3 CMD kody daemon health`.
+
+`init: true` matters: Linux ignores a kill signal that PID 1 sends itself, so
+without an init process the watchdog cannot end a frozen daemon. The daemon logs
+a warning when it starts as PID 1. Docker marks a failing container `unhealthy`
+but does not restart it on its own; Swarm and Kubernetes do, and plain Docker or
+Compose needs a watcher such as
+[autoheal](https://github.com/willfarrell/docker-autoheal). Keep the CLI store
+(`~/.local/share/kody/cli`, or `KODY_CLI_STORE_DIR`) on a volume so an
+auto-updated version survives a recreated container.
 
 ## One runner per machine
 

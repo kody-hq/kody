@@ -805,8 +805,28 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				usage: ['kody daemon status [--context <name>] [--remote] [--json]'],
 				flags: [anyContextFlag, remoteFlag, jsonFlag],
 				notes: [
-					'Exits 0 when the service is running or was stopped on purpose (`kody daemon stop`), and 1 when it crashed or has another problem.',
+					'Exits 0 when the service is running or was stopped on purpose (`kody daemon stop`), and 1 when it crashed, has another problem, or the running daemon has lost Kody (see `kody daemon health`).',
 					remoteNote,
+				],
+			},
+			{
+				name: 'health',
+				summary: 'Check that the daemon on this machine is connected to Kody',
+				usage: [
+					'kody daemon health [--context <ec id>] [--max-age <seconds>] [--json]',
+				],
+				flags: [
+					ecContextFlag,
+					[
+						'--max-age <seconds>',
+						'How long ago Kody may last have been heard (default: 120)',
+					],
+					jsonFlag,
+				],
+				notes: [
+					'Exits 0 when a daemon is running here and heard Kody within --max-age, and 1 when none is running, it is frozen, or it has been disconnected or unanswered for longer.',
+					'Reads only local state, so it suits a Docker HEALTHCHECK: HEALTHCHECK --interval=60s --timeout=20s --start-period=60s --retries=3 CMD kody daemon health',
+					'--json adds the connection, the last heartbeat and its age in seconds, and the last auto-update check with its error.',
 				],
 			},
 			{
