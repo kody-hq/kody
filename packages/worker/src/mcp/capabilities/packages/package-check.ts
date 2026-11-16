@@ -43,7 +43,6 @@ import {
 	kodyIgnoreFilePath,
 } from '#worker/repo/kodyignore.ts'
 import { runPackageCheckArtifactBuild } from '#worker/repo/package-check-artifact-build.ts'
-import { publishedPackageArtifactTargetsReusableForFiles } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createPublishWorkTree } from '#worker/repo/publish-work.ts'
 import { recordApiRequestProgress } from '#worker/open-api/request-progress.ts'
@@ -376,18 +375,8 @@ export const packageCheckCapability = defineDomainCapability(
 						...(existingPackage ? { rootPackageId: existingPackage.id } : {}),
 						...(existingSource
 							? {
-									listReusableTargets: async (targets) => {
-										const reusable =
-											await publishedPackageArtifactTargetsReusableForFiles({
-												env: ctx.env,
-												userId: owner.ownerUserId,
-												source: existingSource!,
-												targets,
-												files: snapshot.tree.files,
-											})
-										await recordStep('artifact_build')
-										return reusable
-									},
+									reuseSource: existingSource,
+									onReuseScanDone: () => recordStep('artifact_build'),
 								}
 							: {}),
 					})

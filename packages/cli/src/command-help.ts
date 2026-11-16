@@ -520,10 +520,14 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				summary:
 					'Bundle and run the publish checks without running the package',
 				usage: [
-					'kody dev check [--target prod|mock] [--offline] [--debug] [--json]',
+					'kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]',
 				],
 				flags: [
 					devTargetFlag,
+					[
+						'--build local',
+						'Also run the publish build on this machine (no upload, no experiment needed)',
+					],
 					['--offline', 'Skip the server publish checks'],
 					['--debug', 'Print the publish checks call to stderr'],
 					jsonFlag,

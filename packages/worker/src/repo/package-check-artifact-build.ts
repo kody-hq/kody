@@ -5,6 +5,7 @@ import {
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { RepoCheckRunResult } from './checks.ts'
+import type { EntitySourceRow } from './types.ts'
 import {
 	chunkArtifactTargetsPerIsolate,
 	isolatedArtifactRebuildChunkSize,
@@ -41,9 +42,9 @@ export async function runPackageCheckArtifactBuild(input: {
 	 * of building (unchanged inputs); publish never builds them, so neither
 	 * does the check.
 	 */
-	listReusableTargets?: (
-		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>,
-	) => Promise<ReadonlySet<PublishedPackageArtifactBuildTarget>>
+	reuseSource?: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
+	/** Called once the reuse scan settles, before any build starts. */
+	onReuseScanDone?: () => Promise<void>
 }): Promise<RepoCheckResult> {
 	const manifest = parseAuthoredPackageJson({
 		content: input.files['package.json'] ?? '',
@@ -61,7 +62,47 @@ export async function runPackageCheckArtifactBuild(input: {
 				'No runtime artifacts to build: the package has no entry points.',
 		}
 	}
-	const reusable = (await input.listReusableTargets?.(allTargets)) ?? new Set()
+	const stagingKey = await input.runner.stage({
+		userId: input.userId,
+		sourceFiles: input.files,
+	})
+	try {
+		return await buildStagedTargets({ ...input, allTargets, stagingKey })
+	} finally {
+		await input.runner.discard(stagingKey)
+	}
+}
+
+async function buildStagedTargets(input: {
+	runner: IsolatedArtifactRebuildRunner
+	userId: OwnerId
+	baseUrl: string
+	rootPackageId?: string
+	reuseSource?: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
+	onReuseScanDone?: () => Promise<void>
+	allTargets: Array<PublishedPackageArtifactBuildTarget>
+	stagingKey: string
+}): Promise<RepoCheckResult> {
+	const { allTargets, stagingKey } = input
+	const reusable = new Set<PublishedPackageArtifactBuildTarget>()
+	if (input.reuseSource) {
+		const scan = await input.runner.reuseScan({
+			stagingKey,
+			userId: input.userId,
+			source: {
+				id: input.reuseSource.id,
+				manifest_path: input.reuseSource.manifest_path,
+				source_root: input.reuseSource.source_root,
+			},
+			targets: allTargets,
+		})
+		if (!scan.ok) return { kind: 'bundle', ok: false, message: scan.message }
+		for (const index of scan.reusableIndexes) {
+			const target = allTargets[index]
+			if (target) reusable.add(target)
+		}
+		await input.onReuseScanDone?.()
+	}
 	const targets = allTargets.filter((target) => !reusable.has(target))
 	const reusedNote =
 		reusable.size > 0
@@ -74,52 +115,42 @@ export async function runPackageCheckArtifactBuild(input: {
 			message: `All ${reusable.size} runtime artifact(s) are unchanged since the published commit, so publish copies them instead of building them; nothing was built or saved.`,
 		}
 	}
-	const stagingKey = await input.runner.stage({
-		userId: input.userId,
-		sourceFiles: input.files,
-	})
 	const failures: Array<string> = []
 	let platformError: unknown = null
 	let built = 0
-	try {
-		await runIsolatedArtifactRebuildWaves({
-			targets,
-			runChunk: (chunk) =>
-				input.runner.buildCheck({
-					stagingKey,
-					userId: input.userId,
-					baseUrl: input.baseUrl,
-					...(input.rootPackageId
-						? { rootPackageId: input.rootPackageId }
-						: {}),
-					targets: chunk,
-				}),
-			beforeNextWave: () => input.runner.touch(stagingKey),
-			recordChunk: (chunk, result) => {
-				if (result.status === 'rejected') {
-					platformError ??= result.reason
-					return true
+	await runIsolatedArtifactRebuildWaves({
+		targets,
+		runChunk: (chunk) =>
+			input.runner.buildCheck({
+				stagingKey,
+				userId: input.userId,
+				baseUrl: input.baseUrl,
+				...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
+				targets: chunk,
+			}),
+		beforeNextWave: () => input.runner.touch(stagingKey),
+		recordChunk: (chunk, result) => {
+			if (result.status === 'rejected') {
+				platformError ??= result.reason
+				return true
+			}
+			const before = failures.length
+			for (const targetResult of result.value.results) {
+				if (targetResult.ok) built += 1
+				else {
+					failures.push(
+						describeFailedTarget(targetResult.target, targetResult.message),
+					)
 				}
-				const before = failures.length
-				for (const targetResult of result.value.results) {
-					if (targetResult.ok) built += 1
-					else {
-						failures.push(
-							describeFailedTarget(targetResult.target, targetResult.message),
-						)
-					}
+			}
+			if (result.value.results.length === 0 && !result.value.ok) {
+				for (const target of chunk) {
+					failures.push(describeFailedTarget(target, result.value.message))
 				}
-				if (result.value.results.length === 0 && !result.value.ok) {
-					for (const target of chunk) {
-						failures.push(describeFailedTarget(target, result.value.message))
-					}
-				}
-				return failures.length > before
-			},
-		})
-	} finally {
-		await input.runner.discard(stagingKey)
-	}
+			}
+			return failures.length > before
+		},
+	})
 	if (platformError !== null) throw platformError
 	if (failures.length > 0) {
 		return {

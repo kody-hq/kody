@@ -95,7 +95,7 @@ Usage:
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
-  kody dev check [--target prod|mock] [--offline] [--debug] [--json]
+  kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
