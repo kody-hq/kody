@@ -192,8 +192,11 @@ the interactive budget goes in a workflow or a job.
 
 ### Modules too large to bundle on Kody cloud
 
-Hosted execute bundles a module that imports saved packages (`kody:@…`) or npm
-packages in its own short-lived isolate. If that build exceeds the isolate's
+Hosted execute bundles only your module's own code when it imports saved
+packages (`kody:@…`). Each imported export's published build is loaded as is, so
+a large package costs about the same as a small one. A module that imports npm
+packages, or a saved package with no usable published build, is bundled from
+source in its own short-lived isolate. If that build exceeds the isolate's
 memory or CPU limit, or takes longer than 90s, only that call fails and nothing
 runs. The error says so, and its structured `errorDetails` has
 `kind: "execute_bundle_too_large"` and a
