@@ -285,6 +285,35 @@ column navigation. Name it with a `caption`, `aria-label`, or `aria-labelledby`,
 and give header cells a `scope`. Wrap a wide table in an `overflowX: 'auto'`
 box. `RecordTable` stays the sortable, paged list for records.
 
+## Toasts
+
+`client/toast.ts`, rendered once by `start/components/toaster.tsx`
+
+```ts
+toast.success('Avatar updated.')
+toast.error('Could not save.', { duration: null })
+```
+
+Use a toast for the result of an action that has no better home on the page.
+Errors render as `role="alert"`, the rest as `role="status"`, and every toast
+gets a labelled dismiss Button unless `dismissible` is false. Options:
+`description`, `duration` (`null` keeps it until dismissed), `dismissible`, and
+one `action`. Prefer an inline `Alert` next to the control when the user must
+act on the message.
+
+## Cards and callouts
+
+Cards and callouts are style primitives, not components, because the element
+underneath varies (`section`, `article`, `li`, `a`). Spread them into `css`:
+
+- `cardCss` for a page card, `insetCardCss` for a card inside a card, and
+  `cardTitleCss` for its heading. `getSurfaceCardCss({ interactive: true })`
+  adds the hover lift for a card that is a link, and drops the motion under
+  reduced motion.
+- `getAccentCalloutCss({ accentColor })` for a note with an accent bar. A
+  callout is not a live region; use `Alert` with a role when the message appears
+  after an action.
+
 ## When a raw control is right
 
 Some surfaces are editors rather than form fields (a borderless code editor, a

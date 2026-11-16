@@ -7,7 +7,7 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 
-export type AlertTone = 'info' | 'error'
+type AlertTone = 'info' | 'error'
 
 const alertCss = {
 	margin: 0,
