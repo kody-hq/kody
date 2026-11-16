@@ -1,7 +1,9 @@
 import { getDomain } from 'tldts'
 import {
+	buildPackageAppHostOrigin,
 	buildPackageAppSubdomainOrigin,
 	isDnsSafeUsername,
+	parsePackageAppHostLabel,
 } from '@kody-internal/shared/public-urls.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { parseLegacyHosts } from '#worker/app-legacy-redirect.ts'
@@ -146,6 +148,13 @@ export type PackageAppRequestHost =
 	| { kind: 'apex'; role: PackageAppHostRole }
 	/** One user's package-app subdomain: `{username}.<package-app host>`. */
 	| { kind: 'user-subdomain'; username: string; role: PackageAppHostRole }
+	/** One package app's own host: `{leaf}--{handle}.<package-app host>`. */
+	| {
+			kind: 'app-subdomain'
+			username: string
+			kodyId: string
+			role: PackageAppHostRole
+	  }
 	/**
 	 * A hostname under the package-app domain that is not a valid single
 	 * username label (nested labels, invalid characters, wrong scheme/port).
@@ -211,6 +220,23 @@ function classifyAgainstPackageAppOrigin(input: {
 		return { kind: 'unrecognized-subdomain', role: input.role }
 
 	const label = hostname.slice(0, -(base.hostname.length + 1))
+	const appLabel = label.includes('.') ? null : parsePackageAppHostLabel(label)
+	if (appLabel) {
+		const expectedAppOrigin = buildPackageAppHostOrigin({
+			packageAppOrigin: input.packageAppOrigin,
+			username: appLabel.handle,
+			kodyId: appLabel.leaf,
+		})
+		if (input.url.origin !== expectedAppOrigin) {
+			return { kind: 'unrecognized-subdomain', role: input.role }
+		}
+		return {
+			kind: 'app-subdomain',
+			username: appLabel.handle,
+			kodyId: appLabel.leaf,
+			role: input.role,
+		}
+	}
 	// Strict DNS-label check: legacy underscore usernames cannot own a
 	// subdomain, and nested labels never match.
 	if (label.includes('.') || !isDnsSafeUsername(label)) {
@@ -409,7 +435,12 @@ export function getPackageAppLegacySubdomainRedirect(input: {
 	if (input.env.PACKAGE_APP_LEGACY_REDIRECT !== 'true') return null
 	const method = input.request.method
 	if (method !== 'GET' && method !== 'HEAD') return null
-	if (input.requestHost.kind !== 'user-subdomain') return null
+	if (
+		input.requestHost.kind !== 'user-subdomain' &&
+		input.requestHost.kind !== 'app-subdomain'
+	) {
+		return null
+	}
 	if (input.requestHost.role !== 'legacy') return null
 
 	const packageAppOrigin = getPackageAppBaseUrl({ env: input.env })
@@ -422,11 +453,18 @@ export function getPackageAppLegacySubdomainRedirect(input: {
 		return null
 	}
 
-	const canonical = buildPackageAppSubdomainOrigin({
-		packageAppOrigin,
-		username: input.requestHost.username,
-	})
-	if (canonical === url.origin) return null
+	const canonical =
+		input.requestHost.kind === 'app-subdomain'
+			? buildPackageAppHostOrigin({
+					packageAppOrigin,
+					username: input.requestHost.username,
+					kodyId: input.requestHost.kodyId,
+				})
+			: buildPackageAppSubdomainOrigin({
+					packageAppOrigin,
+					username: input.requestHost.username,
+				})
+	if (!canonical || canonical === url.origin) return null
 
 	return Response.redirect(`${canonical}${url.pathname}${url.search}`, 308)
 }
