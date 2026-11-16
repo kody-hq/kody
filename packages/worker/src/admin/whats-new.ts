@@ -183,8 +183,11 @@ export async function setWhatsNewOptIn(input: {
 	stable_user_id: string
 	opted_in: boolean
 	source: 'email_link' | 'admin'
+	occurred_at?: string
 }) {
-	const updatedAt = new Date().toISOString()
+	const updatedAt = input.occurred_at
+		? new Date(input.occurred_at).toISOString()
+		: new Date().toISOString()
 	const flag = input.opted_in ? 1 : 0
 	const userRow = await input.db
 		.prepare(

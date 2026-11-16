@@ -172,7 +172,13 @@ Sources that emit it:
   subscriber's address stays current
 
 `adminWhatsNewOptInSet` with source `email_link` does not emit: that call is the
-newsletter package reporting a choice it already recorded.
+newsletter package reporting a choice it already recorded. It passes
+`occurred_at` so the site keeps the time the person made the choice.
+
+Besides site admins' own packages, this topic is delivered to packages owned by
+the orgs listed by id in `WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS` (the kody org
+in production). The payload carries subscriber addresses, so a package in any
+other org never receives it, whether or not it declares the topic.
 
 ```ts
 type WhatsNewConsentChangedEvent = {
@@ -192,11 +198,11 @@ type WhatsNewConsentChangedEvent = {
 address with no account. Queue messages contain only the outbox row id; the
 address is loaded at dispatch, and a row whose recipient no longer exists is
 dropped. The row is deleted once every subscriber handled the event. While no
-admin package subscribes, the row is kept and does not count an attempt. A
-failed handler or infrastructure error retries and can reach the DLQ; each
-attempt uses a fresh idempotency key, so handlers must dedupe on `event_id`. A
-row that was never delivered is enqueued again by the next change, up to 8
-attempts. Recording never fails the change that caused it.
+package subscribes, or none has the subscription turned on, the row is kept and
+does not count an attempt. A failed handler or infrastructure error retries and
+can reach the DLQ; each attempt uses a fresh idempotency key, so handlers must
+dedupe on `event_id`. A row that was never delivered is enqueued again by the
+next change, up to 8 attempts. Recording never fails the change that caused it.
 
 ## `community.activity.recorded` (admins)
 
