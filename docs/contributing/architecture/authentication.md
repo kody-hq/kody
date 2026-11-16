@@ -673,17 +673,15 @@ shared host does not clear sibling apps.
   instant, so the package-app cookie cannot outlive the parent session.
   Remember-me renewal on the app origin does not extend an already-issued
   package-app cookie; a later handoff mints a new snapshot. Tokens without
-  `sessExp`, and cookies without `expiresAt`, use a 12 hour lifetime from
-  mint/`issuedAt`
+  `sessExp` use a 12 hour lifetime from mint when the cookie is written.
 - signed with a **derived** secret,
   `sha256Base64Url('kody-package-app-session:v2:' + COOKIE_SECRET)`, so a value
   signed for this cookie can never verify as a `kody_session`
-- payload is `{ v: 3, stableUserId, pkgUsername, app, issuedAt, expiresAt? }` —
-  a shape the app session schema rejects, so the two cannot be confused even by
-  name substitution. Readers also accept legacy host-wide `v: 2` cookies (no
-  `app` field / unhashed name) until the next login/handoff or logout clears
-  them. New cookies always set `expiresAt`; readers treat a missing field as the
-  12 hour mint/`issuedAt` fallback above.
+- payload is `{ v: 3, stableUserId, pkgUsername, app, issuedAt, expiresAt }` — a
+  shape the app session schema rejects, so the two cannot be confused even by
+  name substitution. `expiresAt` is required. Host-wide `v: 2` cookies and
+  unhashed `__Host-kody_pkg_session` / `kody_pkg_session` names are not read
+  (#3906).
 - the `__Host-` prefix on secure requests forbids a `Domain` attribute, so
   sibling subdomains cannot plant a shadow cookie under this name
 - sibling subdomains are still same-site (until the Public Suffix List entry),

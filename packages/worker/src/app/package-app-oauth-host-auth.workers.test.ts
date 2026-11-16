@@ -170,7 +170,7 @@ test('shared-host logout prefers Referer leaf over a sibling ?app=', async () =>
 	).resolves.toMatchObject({ session })
 })
 
-test('shared-host logout without Referer clears legacy only (not ?app=)', async () => {
+test('shared-host logout without Referer does not guess a per-app cookie', async () => {
 	resetPackageAppSessionCookieForTests()
 	configureOrigins()
 	const expiresAt = Date.now() + 60 * 60 * 1000
@@ -191,7 +191,7 @@ test('shared-host logout without Referer clears legacy only (not ?app=)', async 
 	const cleared = response.headers.getSetCookie()
 	expect(
 		cleared.some((header) => header.startsWith('__Host-kody_pkg_session=')),
-	).toBe(true)
+	).toBe(false)
 	expect(
 		cleared.some((header) => header.startsWith(`${pair.split('=')[0]}=`)),
 	).toBe(false)

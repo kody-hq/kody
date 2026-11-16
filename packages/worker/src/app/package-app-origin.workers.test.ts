@@ -627,7 +627,7 @@ test('createPackageCodeRequest drops credential headers in the workers runtime',
 		new Request(`${ownerPackageAppOrigin}/packages/demo/save`, {
 			method: 'POST',
 			headers: {
-				Cookie: 'kody_session=owner; __Host-kody_pkg_session=package',
+				Cookie: 'kody_session=owner; __Host-kody_pkg_session_testhash=package',
 				Authorization: 'Bearer owner-token',
 				'Proxy-Authorization': 'Basic owner',
 				'X-Kody-Connector-Session-Key': 'internal',

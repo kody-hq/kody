@@ -1,6 +1,4 @@
 import { expect, test } from 'vitest'
-import { createCookie } from 'remix/cookie'
-import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import {
 	createAuthCookie,
 	readParsedAuthSession,
@@ -262,31 +260,4 @@ test('the package-app session cookie is not interchangeable with the app session
 			'https://kodyapps.dev/@owner/packages/x',
 		),
 	).resolves.toBeNull()
-
-	// Pre-per-app host-wide cookies (v2, no app field) still authorize any
-	// leaf until login/handoff or logout clears them.
-	const legacyExpiresAt = now + 12 * 60 * 60 * 1000
-	const legacyCookie = createCookie('kody_pkg_session', {
-		httpOnly: true,
-		sameSite: 'Lax',
-		path: '/',
-		secrets: [
-			await sha256Base64Url(`kody-package-app-session:v2:${cookieSecret}`),
-		],
-	})
-	const legacyPair =
-		(
-			await legacyCookie.serialize(
-				JSON.stringify({
-					v: 2,
-					stableUserId: ownerStableUserId,
-					pkgUsername: 'owner',
-					issuedAt: now,
-				}),
-			)
-		).split(';')[0] ?? ''
-	await expect(
-		read(legacyPair, legacyExpiresAt - 1, localUrl),
-	).resolves.toMatchObject({ ...ownerSession, expiresAt: legacyExpiresAt })
-	await expect(read(legacyPair, legacyExpiresAt, localUrl)).resolves.toBeNull()
 })
