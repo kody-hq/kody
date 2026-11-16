@@ -187,7 +187,7 @@ const outcomeRank: Array<ListedPackageFetchBindingOutcome> = [
 	'unbound_reads',
 ]
 
-type StoredBundle = {
+export type StoredBundle = {
 	kind?: string | null
 	modules?: Record<string, unknown>
 	dependencies?: Array<{ packageId?: string | null }>
@@ -198,7 +198,7 @@ type StoredBundle = {
  * Reads the stored rows and payloads directly. The runtime loaders recover
  * and save a missing snapshot as they go, and this scan must not write.
  */
-async function readStoredBundles(input: {
+export async function readStoredBundles(input: {
 	env: Env
 	userId: OwnerId
 	sourceId: string
