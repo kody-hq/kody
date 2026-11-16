@@ -173,10 +173,13 @@ function isKodyObject(
 	node: AstNode | undefined,
 	aliases: Set<string>,
 	ancestors: ReadonlyArray<AstNode>,
+	usedIn: AstNode,
 ) {
 	if (node?.type !== 'Identifier') return false
 	const name = getNodeName(node) ?? ''
-	return aliases.has(name) && !shadowedConstantNames(ancestors).has(name)
+	return (
+		aliases.has(name) && !shadowedConstantNames(ancestors, usedIn).has(name)
+	)
 }
 
 export type ModuleKodyCalls = {
@@ -209,7 +212,7 @@ export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 			const callee = node.callee
 			if (
 				!isMemberExpression(callee) ||
-				!isKodyObject(callee?.object, aliases, ancestors)
+				!isKodyObject(callee?.object, aliases, ancestors, node)
 			) {
 				return
 			}
@@ -228,7 +231,7 @@ export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 		}
 		if (isMemberExpression(node)) {
 			if (
-				isKodyObject(node.object, aliases, ancestors) &&
+				isKodyObject(node.object, aliases, ancestors, node) &&
 				getNodeName(node.property) === 'mcp'
 			) {
 				calls.mcpCalls += 1

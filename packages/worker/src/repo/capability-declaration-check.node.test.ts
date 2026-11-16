@@ -293,6 +293,8 @@ test('a bundled module that reuses the renamed kody import for locals reports on
 		'class Box{static{let a=[];a.push(1)}run(a){return a.map(String)}}',
 		'export async function load(e){return[rows(e),await a.secretList({}),await a.metaGetCurrentUser({})]}',
 		'export function later(e){{let a=e;a.push(1)}return a.valueGet({})}',
+		'export function early(e=a.emailSend({})){var a=[e];return a.map(String)}',
+		'export class Keyed{[a.secretSet({})](a){return a.map(String)}}',
 	].join('')
 	expect(
 		await findCapabilityDeclarationGaps({
@@ -306,7 +308,7 @@ test('a bundled module that reuses the renamed kody import for locals reports on
 		{
 			kind: 'undeclared',
 			path: 'src/index.ts',
-			names: ['secretList', 'valueGet'],
+			names: ['emailSend', 'secretList', 'secretSet', 'valueGet'],
 		},
 	])
 })
