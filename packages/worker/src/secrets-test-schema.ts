@@ -168,7 +168,9 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				runs_as_person_id TEXT,
 				published_by_person_id TEXT,
 				publisher_unknown INTEGER NOT NULL DEFAULT 0,
-				updated_at TEXT NOT NULL
+				updated_at TEXT NOT NULL,
+				publish_requested_by_person_id TEXT,
+				publish_requested_commit TEXT
 			)`,
 		)
 		.run()

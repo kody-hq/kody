@@ -19,6 +19,7 @@ import {
 	createPackageAppCredentialAuthority,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
+	notePackageAppPublishRequester,
 	packageAppRunsAsUnavailableMessages,
 	packageAppVisitorConsents,
 	recordPackageAppPublish,
@@ -164,18 +165,37 @@ test('a publish with no known person forgets the publisher and keeps the Owner p
 	})
 })
 
-test('a publish that finishes as the org itself changes neither the Owner pick nor the publisher', async () => {
+test('a publish that finishes as the org itself records the person who asked for that commit and keeps the Owner pick', async () => {
 	const t = await setup()
 	await recordPackageAppPublish({
 		db: t.db,
 		scope: t.scope,
+		personId: t.owner,
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
 		personId: t.member,
+		commit: 'commit-2',
+	})
+	// Asking changes nothing about the live app.
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.owner,
+		source: 'publisher',
+	})
+	// Someone else asking for the same commit does not replace the first.
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit: 'commit-2',
 	})
 	// The durable workflow acts as the owning org id, which is not a person.
 	await recordPackageAppPublish({
 		db: t.db,
 		scope: t.scope,
 		personId: t.orgId,
+		commit: 'commit-2',
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
@@ -188,10 +208,76 @@ test('a publish that finishes as the org itself changes neither the Owner pick n
 		scope: t.scope,
 		personId: t.owner,
 	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-3',
+	})
 	await recordPackageAppPublish({
 		db: t.db,
 		scope: t.scope,
 		personId: t.orgId,
+		commit: 'commit-3',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
+	})
+})
+
+test('a publish by an id that is no member, with nobody noted for that commit, forgets the publisher but keeps the Owner pick', async () => {
+	const t = await setup()
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-2',
+	})
+	// A different commit than the one asked for, and a requester from outside.
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-other',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'unavailable',
+		reason: 'not-set',
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.outsider,
+		commit: 'commit-4',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-4',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'unavailable',
+		reason: 'not-set',
+	})
+
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-5',
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',

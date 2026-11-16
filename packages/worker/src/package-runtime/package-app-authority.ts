@@ -266,6 +266,8 @@ export async function recordPackageAppPublisher(input: {
 				owner_id = excluded.owner_id,
 				published_by_person_id = excluded.published_by_person_id,
 				publisher_unknown = 0,
+				publish_requested_by_person_id = NULL,
+				publish_requested_commit = NULL,
 				updated_at = excluded.updated_at`,
 		)
 		.bind(
@@ -298,6 +300,8 @@ export async function recordPackageAppPublisherUnknown(input: {
 				owner_id = excluded.owner_id,
 				published_by_person_id = NULL,
 				publisher_unknown = 1,
+				publish_requested_by_person_id = NULL,
+				publish_requested_commit = NULL,
 				updated_at = excluded.updated_at`,
 		)
 		.bind(
@@ -310,37 +314,104 @@ export async function recordPackageAppPublisherUnknown(input: {
 }
 
 /**
+ * Note who asked to publish a commit that will finish in the durable
+ * workflow. Nothing about the live app changes: the person becomes the
+ * publisher only when that commit is published (`recordPackageAppPublish`).
+ * The first person to ask for a commit stays noted for it.
+ */
+export async function notePackageAppPublishRequester(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string
+	commit: string
+	now?: Date
+}) {
+	await input.db
+		.prepare(
+			`INSERT INTO package_app_authority
+			 (package_id, owner_id, publish_requested_by_person_id,
+			  publish_requested_commit, updated_at)
+			 VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(package_id) DO UPDATE SET
+				publish_requested_by_person_id = excluded.publish_requested_by_person_id,
+				publish_requested_commit = excluded.publish_requested_commit
+			 WHERE package_app_authority.owner_id = excluded.owner_id
+			   AND package_app_authority.publish_requested_commit IS NOT excluded.publish_requested_commit`,
+		)
+		.bind(
+			input.scope.packageId,
+			input.scope.orgId,
+			input.personId,
+			input.commit,
+			(input.now ?? new Date()).toISOString(),
+		)
+		.run()
+}
+
+async function loadPublishRequester(
+	db: D1Database,
+	scope: PackageAppAuthorityScope,
+	commit: string,
+) {
+	const row = await db
+		.prepare(
+			`SELECT publish_requested_by_person_id AS person_id
+			 FROM package_app_authority
+			 WHERE package_id = ? AND owner_id = ? AND publish_requested_commit = ?`,
+		)
+		.bind(scope.packageId, scope.orgId, commit)
+		.first<{ person_id: string | null }>()
+	return row?.person_id?.trim() || null
+}
+
+/**
  * Record the person behind a publish (null: no known person). Call before the
  * new code serves.
  *
- * An actor who is not a live member of the owning org is not recorded: a
- * publish that finishes in the durable workflow acts as the org itself, and
- * the app could never run as that id. The interactive request records the
- * person instead (see `packagePublishExternalPush`).
+ * A publish that finishes in the durable workflow acts as the owning org,
+ * which is not a person. The publisher is then whoever asked for that commit
+ * (`notePackageAppPublishRequester`). Any other actor who is not a live member
+ * of the owning org counts as no known person, so new code never keeps
+ * running as the previous publisher.
  */
 export async function recordPackageAppPublish(input: {
 	db: D1Database
 	scope: PackageAppAuthorityScope
 	personId: string | null
+	commit?: string | null
 }) {
-	if (input.personId === null) {
+	const personId = await resolvePublishingPerson(input)
+	if (personId === null) {
 		await recordPackageAppPublisherUnknown({
 			db: input.db,
 			scope: input.scope,
 		})
 		return
 	}
-	const binding = await loadOrgBindingForOrg(
-		input.db,
-		input.personId,
-		input.scope.orgId,
-	)
-	if (!binding) return
 	await recordPackageAppPublisher({
 		db: input.db,
 		scope: input.scope,
-		personId: input.personId,
+		personId,
 	})
+}
+
+async function resolvePublishingPerson(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string | null
+	commit?: string | null
+}) {
+	if (input.personId === null) return null
+	const isMember = async (personId: string) =>
+		(await loadOrgBindingForOrg(input.db, personId, input.scope.orgId)) !== null
+	if (await isMember(input.personId)) return input.personId
+	if (!input.commit) return null
+	const requester = await loadPublishRequester(
+		input.db,
+		input.scope,
+		input.commit,
+	)
+	return requester && (await isMember(requester)) ? requester : null
 }
 
 /** Choose who an app runs as; null goes back to the publisher. */

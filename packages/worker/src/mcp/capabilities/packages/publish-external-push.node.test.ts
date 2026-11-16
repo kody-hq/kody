@@ -28,7 +28,7 @@ vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
 })
 
 const mockModule = vi.hoisted(() => ({
-	recordPackageAppPublish: vi.fn(async (_input: unknown) => {}),
+	notePackageAppPublishRequester: vi.fn(async (_input: unknown) => {}),
 	loadHeldForApproval: vi.fn(
 		async (..._args: Array<unknown>): Promise<unknown> => null,
 	),
@@ -138,8 +138,8 @@ vi.mock('#worker/repo/published-source.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
-	recordPackageAppPublish: (input: unknown) =>
-		mockModule.recordPackageAppPublish(input),
+	notePackageAppPublishRequester: (input: unknown) =>
+		mockModule.notePackageAppPublishRequester(input),
 }))
 
 vi.mock('#mcp/capabilities/durable-escalation.ts', () => ({
@@ -741,11 +741,12 @@ test('budget exhaustion returns a dispatched handle', async () => {
 			}),
 		}),
 	)
-	// The durable run finishes as the org, so the person is recorded here.
-	expect(mockModule.recordPackageAppPublish).toHaveBeenCalledWith(
+	// The durable run finishes as the org, so the person who asked is noted.
+	expect(mockModule.notePackageAppPublishRequester).toHaveBeenCalledWith(
 		expect.objectContaining({
 			scope: { orgId: ownerIdFromStored('user-1'), packageId: 'package-1' },
 			personId: personIdFromStored('user-1'),
+			commit: expect.any(String),
 		}),
 	)
 })

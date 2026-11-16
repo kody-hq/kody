@@ -124,6 +124,7 @@ export async function finalizePublishedEntitySource(
 			orgId: input.source.user_id,
 			packageId: input.source.entity_id,
 			personId: input.actorUserId,
+			commit: input.publishedCommit,
 		})
 	} else if (
 		!resuming &&
@@ -350,11 +351,13 @@ async function recordPublisherOfPackage(input: {
 	orgId: OwnerId
 	packageId: string
 	personId: string
+	commit: string
 }) {
 	await recordPackageAppPublish({
 		db: input.db,
 		scope: { orgId: input.orgId, packageId: input.packageId },
 		personId: input.personId,
+		commit: input.commit,
 	})
 }
 
