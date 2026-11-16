@@ -99,6 +99,56 @@ export type ExecutionContextSharing = {
 	accessRoster?: ExecutionContextAccessRoster
 }
 
+export type ExecutionContextMachineAccessSubject =
+	| { kind: 'everyone' }
+	| { kind: 'team'; slug: string }
+	| { kind: 'user'; handle: string }
+	| { kind: 'profile'; id: string; name: string }
+
+export type ExecutionContextMachineAccessEntry = {
+	id: string
+	kind: 'command' | 'lan' | 'fs'
+	name: string
+	description: string | null
+	/** Host folders are never shared. */
+	shareable: boolean
+	grants: Array<{
+		grantId: string
+		subject: ExecutionContextMachineAccessSubject
+	}>
+}
+
+/**
+ * What the machine defines and who holds each entry. Someone who does not
+ * manage the machine gets only the entries granted to their own profiles.
+ */
+export type ExecutionContextMachineAccess = {
+	/** Only the operator shares with people, teams or everyone. */
+	canGrant: boolean
+	capabilities: Array<ExecutionContextMachineAccessEntry>
+	/** The viewer's own active profiles in this org. */
+	profiles: Array<{ id: string; name: string }>
+}
+
+export const machineAccessKindLabels: Record<
+	ExecutionContextMachineAccessEntry['kind'],
+	string
+> = {
+	command: 'Named commands',
+	lan: 'Local network destinations',
+	fs: 'Host folders',
+}
+
+export function machineAccessSubjectLabel(
+	subject: ExecutionContextMachineAccessSubject,
+	orgSlug: string,
+) {
+	if (subject.kind === 'everyone') return `Everyone in @${orgSlug}`
+	if (subject.kind === 'team') return `Team ${subject.slug}`
+	if (subject.kind === 'profile') return `Profile ${subject.name}`
+	return `@${subject.handle}`
+}
+
 export type ExecutionContextGrantSummary = {
 	fs: number
 	fsMode?: 'read' | 'write'
@@ -145,6 +195,7 @@ export type ExecutionContextListItem = {
 	isOperator: boolean
 	myPermissions: Array<ExecutionContextPermission>
 	sharing?: ExecutionContextSharing
+	machineAccess?: ExecutionContextMachineAccess
 	registeredBy?: { handle: string }
 	status: ExecutionContextStatus
 	acceptingRuns: boolean

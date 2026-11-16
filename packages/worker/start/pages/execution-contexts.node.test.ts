@@ -549,3 +549,127 @@ test('an in-progress run offers Cancel, then asks before it stops the run', asyn
 		),
 	).toContain('Cancelling…')
 })
+
+const machineAccessFixture = {
+	canGrant: true,
+	profiles: [{ id: 'prof_ci', name: 'ci-bot' }],
+	capabilities: [
+		{
+			id: 'mc_kdocker',
+			kind: 'command' as const,
+			name: 'kdocker',
+			description: 'Restart a container',
+			shareable: true,
+			grants: [
+				{ grantId: 'g_sam', subject: { kind: 'user' as const, handle: 'sam' } },
+				{ grantId: 'g_all', subject: { kind: 'everyone' as const } },
+			],
+		},
+		{
+			id: 'mc_nas',
+			kind: 'lan' as const,
+			name: 'nas-api',
+			description: null,
+			shareable: true,
+			grants: [],
+		},
+		{
+			id: 'mc_folder',
+			kind: 'fs' as const,
+			name: 'kody-runner',
+			description: null,
+			shareable: false,
+			grants: [],
+		},
+	],
+}
+
+test('operator detail lists machine access with who holds each entry', async () => {
+	const mine = contextFixture({ machineAccess: machineAccessFixture })
+	const html = await renderStartPage(
+		route(pageFixture({ selected: mine }), mine.id, `${href}/${mine.id}`),
+		`${href}/${mine.id}`,
+	)
+	const body = text(html)
+	expect(html).toContain('data-testid="context-machine-access"')
+	expect(body).toContain('Named commands')
+	expect(body).toContain('kdocker')
+	expect(body).toContain('Restart a container')
+	expect(body).toContain('@sam')
+	expect(body).toContain('Everyone in @jane')
+	expect(body).toContain('Local network destinations')
+	expect(body).toContain('Only the operator')
+	expect(body).toContain('Host folders')
+	expect(body).toContain('never shared')
+	expect(body).toContain('One of my profiles')
+	// Two shareable entries get a form; the host folder does not.
+	expect(body.match(/Give access/g)).toHaveLength(2)
+})
+
+test('operator detail says how to define machine access when there is none', async () => {
+	const mine = contextFixture({
+		machineAccess: { canGrant: true, profiles: [], capabilities: [] },
+	})
+	const html = await renderStartPage(
+		route(pageFixture({ selected: mine }), mine.id, `${href}/${mine.id}`),
+		`${href}/${mine.id}`,
+	)
+	expect(html).toContain('data-testid="context-machine-access-empty"')
+	expect(text(html)).toContain('kody context capability add')
+})
+
+test('someone the machine is shared with sees only what their profiles hold', async () => {
+	const withGrant = {
+		...sharedBuildbox,
+		machineAccess: {
+			canGrant: false,
+			profiles: [{ id: 'prof_ci', name: 'ci-bot' }],
+			capabilities: [
+				{
+					id: 'mc_kdocker',
+					kind: 'command' as const,
+					name: 'kdocker',
+					description: null,
+					shareable: true,
+					grants: [
+						{
+							grantId: 'g_prof',
+							subject: {
+								kind: 'profile' as const,
+								id: 'prof_ci',
+								name: 'ci-bot',
+							},
+						},
+					],
+				},
+			],
+		},
+	}
+	const html = await renderStartPage(
+		route(
+			pageFixture({ selected: withGrant }),
+			withGrant.id,
+			`${href}/${withGrant.id}`,
+		),
+		`${href}/${withGrant.id}`,
+	)
+	const body = text(html)
+	expect(body).toContain('What your profiles can use on buildbox')
+	expect(body).toContain('Profile ci-bot')
+	expect(body).toContain('One of my profiles')
+	expect(body).not.toContain('A person')
+
+	const without = {
+		...sharedBuildbox,
+		machineAccess: { canGrant: false, profiles: [], capabilities: [] },
+	}
+	const none = await renderStartPage(
+		route(
+			pageFixture({ selected: without }),
+			without.id,
+			`${href}/${without.id}`,
+		),
+		`${href}/${without.id}`,
+	)
+	expect(none).not.toContain('data-testid="context-machine-access"')
+})

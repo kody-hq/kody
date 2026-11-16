@@ -40,4 +40,10 @@ non-empty list.
   now, and View recent log (operator only, at most 500 lines). A paused context
   shows who paused it and why; `kody chain` marks it `[paused]` and runs skip it
   with routing outcome `paused`
+- Context detail Machine access section (`context-machine-access`): named
+  commands, local network destinations and host folders with who holds each.
+  Only the operator sees the person, team and everyone choices; someone the
+  machine is shared with sees only their own profiles' grants and the profile
+  choice. Host folders never get a form. Locally, seed rows in
+  `machine_capabilities` for the context to see it without a daemon
 - Org owners/admins can pause (never resume) any context attached to the org

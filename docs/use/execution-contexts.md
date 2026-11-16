@@ -355,6 +355,11 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   only pass an entry down to its own sub-profiles.
   `executionContextMachineAccessList` shows you the grants on your own profiles
   when you do not manage the machine.
+- In the app: a context's detail page has a Machine access section that lists
+  its named commands, local network destinations and host folders with who holds
+  each one. The operator gives or takes back access there. Someone the machine
+  is shared with sees the entries their own profiles hold and can give one of
+  their profiles an entry. Host folders are listed as operator only.
 - A saved package the run loaded directly must declare each named command and
   local network destination it uses in
   [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call
