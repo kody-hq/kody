@@ -54,6 +54,12 @@ export const isolatedArtifactRebuildChunkSize = 4
  */
 export const isolatedArtifactRebuildChunkConcurrency = 2
 
+/**
+ * Targets one throwaway isolate compares with the published commit. Each one
+ * loads its whole current artifact, which is megabytes for an app bundle.
+ */
+export const isolatedArtifactReuseScanChunkSize = 16
+
 export type IsolatedArtifactRebuildRequest = {
 	stagingKey: string
 	sourceId: string
@@ -282,10 +288,35 @@ export function createIsolatedArtifactRebuildRunner(
 			)
 		},
 		async reuseScan(request) {
+			// Each isolate loads the current artifact of every target it scans,
+			// so the artifacts are spread over isolates like the builds are.
+			const chunks = chunkArray(
+				request.targets.map((target, index) => ({ target, index })),
+				isolatedArtifactReuseScanChunkSize,
+			)
+			const reusableIndexes: Array<number> = []
 			try {
-				return await throwawayStub(request.userId).runIsolatedArtifactReuseScan(
-					request,
-				)
+				for (const wave of chunkArray(
+					chunks,
+					isolatedArtifactRebuildChunkConcurrency,
+				)) {
+					const outcomes = await Promise.all(
+						wave.map((chunk) =>
+							throwawayStub(request.userId).runIsolatedArtifactReuseScan({
+								...request,
+								targets: chunk.map((entry) => entry.target),
+							}),
+						),
+					)
+					for (const [waveIndex, outcome] of outcomes.entries()) {
+						if (!outcome.ok) return outcome
+						const chunk = wave[waveIndex] ?? []
+						for (const index of outcome.reusableIndexes) {
+							const entry = chunk[index]
+							if (entry) reusableIndexes.push(entry.index)
+						}
+					}
+				}
 			} catch (error) {
 				if (isDurableObjectResourceLimitResetError(error)) {
 					return {
@@ -298,6 +329,7 @@ export function createIsolatedArtifactRebuildRunner(
 				}
 				throw error
 			}
+			return { ok: true, reusableIndexes }
 		},
 		async discard(stagingKey) {
 			try {
