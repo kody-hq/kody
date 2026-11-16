@@ -155,16 +155,48 @@ function writeLocalState(stateDir: string, state: LocalState) {
 	)
 }
 
-export async function getFreePort(): Promise<number> {
-	return await new Promise((resolvePort, reject) => {
+const handedOutPorts = new Set<number>()
+
+function listenOnce(port: number, host: string): Promise<number> {
+	return new Promise((resolvePort, reject) => {
 		const server = createServer()
 		server.once('error', reject)
-		server.listen(0, '127.0.0.1', () => {
+		server.listen(port, host, () => {
 			const address = server.address()
-			const port = typeof address === 'object' && address ? address.port : 0
-			server.close(() => resolvePort(port))
+			const bound = typeof address === 'object' && address ? address.port : 0
+			server.close(() => resolvePort(bound))
 		})
 	})
+}
+
+/**
+ * A port free on both loopbacks and not already handed out by this process.
+ * `localhost` can resolve to `::1` first, so a port that is only free on
+ * 127.0.0.1 can be answered by a different server (#5267).
+ */
+export async function getFreePort(): Promise<number> {
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const port = await listenOnce(0, '127.0.0.1')
+		if (handedOutPorts.has(port)) continue
+		const ipv6Free = await listenOnce(port, '::1').then(
+			() => true,
+			(error: NodeJS.ErrnoException) => {
+				// Windows reports EACCES for excluded or exclusively bound ports.
+				if (error.code === 'EADDRINUSE' || error.code === 'EACCES') return false
+				// Hosts without an IPv6 loopback reject ::1 with these codes.
+				if (error.code === 'EADDRNOTAVAIL' || error.code === 'EAFNOSUPPORT') {
+					return true
+				}
+				throw error
+			},
+		)
+		if (!ipv6Free || handedOutPorts.has(port)) continue
+		handedOutPorts.add(port)
+		return port
+	}
+	throw new Error(
+		'Could not find a local port free on both 127.0.0.1 and ::1 after 20 tries.',
+	)
 }
 
 function wranglerBin() {
@@ -296,12 +328,23 @@ function stopChild(child: ChildProcess) {
 	})
 }
 
-async function waitForOk(url: string, timeoutMs: number, child: ChildProcess) {
+async function waitForOk(
+	url: string,
+	timeoutMs: number,
+	child: ChildProcess,
+	recentLogs: () => Array<string> = () => [],
+) {
 	const started = Date.now()
 	let lastError = ''
+	const logTail = () => {
+		const lines = recentLogs()
+		return lines.length > 0
+			? `\nLast wrangler output:\n${lines.join('\n')}`
+			: ''
+	}
 	while (Date.now() - started < timeoutMs) {
 		if (child.exitCode !== null) {
-			throw new Error(`Local Kody stopped before ${url} was ready.`)
+			throw new Error(`Local Kody stopped before ${url} was ready.${logTail()}`)
 		}
 		try {
 			const response = await fetch(url)
@@ -312,7 +355,7 @@ async function waitForOk(url: string, timeoutMs: number, child: ChildProcess) {
 		}
 		await new Promise((done) => setTimeout(done, 250))
 	}
-	throw new Error(`Timed out waiting for ${url} (${lastError}).`)
+	throw new Error(`Timed out waiting for ${url} (${lastError}).${logTail()}`)
 }
 
 function sqlString(value: string) {
@@ -486,6 +529,7 @@ export async function startDevRuntime(
 			onLog: input.onLog,
 		})
 		children.push(mock)
+		const kodyLogTail: Array<string> = []
 		const kody = spawnWrangler({
 			args: [
 				'dev',
@@ -501,7 +545,11 @@ export async function startDevRuntime(
 			],
 			cwd: stateDir,
 			source: 'wrangler',
-			onLog: input.onLog,
+			onLog: (line) => {
+				kodyLogTail.push(line.line)
+				if (kodyLogTail.length > 30) kodyLogTail.shift()
+				input.onLog?.(line)
+			},
 		})
 		children.push(kody)
 		const timeout = input.readyTimeoutMs ?? 120_000
@@ -510,7 +558,7 @@ export async function startDevRuntime(
 			timeout,
 			mock,
 		).catch(() => {})
-		await waitForOk(`${origin}/health`, timeout, kody)
+		await waitForOk(`${origin}/health`, timeout, kody, () => kodyLogTail)
 		const sessionCookie = await login(origin, state)
 		return {
 			origin,

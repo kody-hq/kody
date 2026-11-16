@@ -49,6 +49,9 @@ npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; 
 
 Saved packages keep `--local` and a static `kody:@…` import.
 
+Omit `lifetime` too. `short` has no refresh token and expires mid-loop, so a
+ship-pr babysitting loop that waits on CI fails its next tick.
+
 Omit `scopes`: the default is the login-equivalent set. Passed `scopes` replace
 it with a deliberately narrower list, which often misses `integration:use`,
 `org:execute`, or `secret:use` and fails with `insufficient_scope`.

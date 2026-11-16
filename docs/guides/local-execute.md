@@ -37,7 +37,8 @@ token, not host MCP OAuth). `kody whoami` reports the same pick.
 
 **Agents already on MCP (do this yourself; never ask a human for a token):**
 call `cliCredentialBootstrap` with no params (single-task agents may pass
-`lifetime: "short"`). Prefer MCP `api` with
+`lifetime: "short"`, which has no refresh: anything that waits, like a ship-pr
+loop on CI, needs the default). Prefer MCP `api` with
 `operationId: "cliCredentialBootstrap"` (or the capability via search when you
 need the schema). It returns a one-shot `kody_bc_…` code and a `cli_command`
 that includes lifetime flags for older CLIs (**not** a `kody_at_…`). Bootstrap

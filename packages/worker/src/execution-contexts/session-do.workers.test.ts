@@ -27,6 +27,8 @@ import {
 	runRecordStaleRunningTtlMsShortLived,
 } from '#worker/run-records/types.ts'
 import { runLogDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
+import { executionContextsFlagKey } from './flag.ts'
+import { insertExecutionContext, setOptIn } from './store.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -156,6 +158,55 @@ function lease(ecid: string, runId: string): ExecutionContextLease {
 		deadline: Date.now() + 60_000,
 		sharedRun: true,
 	}
+}
+
+/**
+ * Seed the APP_DB rows a queue drain checks before it redispatches: the
+ * context row, live org memberships for the requester and operator, the
+ * requester's opt-in under all-members access, and the feature flag.
+ */
+async function seedRunnableContext(ecid: string) {
+	const { orgId, operatorUserId, name, publicKeyJwk, grant, grantVersion } =
+		snapshot(ecid)
+	const requester = lease(ecid, 'seed').requester.userId
+	const now = new Date().toISOString()
+	await insertExecutionContext(env.APP_DB, {
+		id: ecid,
+		org_id: orgId,
+		operator_user_id: operatorUserId,
+		name,
+		public_key_jwk: JSON.stringify(publicKeyJwk),
+		thumbprint: `thumb-${ecid}`,
+		created_at: now,
+		client_name: null,
+		client_version: null,
+		capabilities_json: null,
+		grant_json: JSON.stringify(grant),
+		grant_version: grantVersion,
+	})
+	await env.APP_DB.batch([
+		env.APP_DB.prepare(
+			`UPDATE execution_contexts SET all_members = 1 WHERE id = ?`,
+		).bind(ecid),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'member', ?), (?, ?, 'member', ?)`,
+		).bind(orgId, requester, now, orgId, operatorUserId, now),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO users (username, email, password_hash, stable_user_id)
+			 VALUES (?, ?, 'test-password-hash', ?)`,
+		).bind(requester, `${requester}@example.com`, requester),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO feature_flag_user_overrides (flag_key, user_id, enabled)
+			 SELECT ?, id, 1 FROM users WHERE stable_user_id = ?`,
+		).bind(executionContextsFlagKey, requester),
+	])
+	await setOptIn(env.APP_DB, {
+		contextId: ecid,
+		userId: requester,
+		orgId,
+		now,
+	})
 }
 
 function runRequest(runId: string) {
@@ -516,9 +567,10 @@ test('an unanswered run offer reads the context offline until its next heartbeat
 	ws.close()
 }, 60_000)
 
-test('a run queued behind an unanswered offer is rechecked soon and drained once heartbeats resume', async () => {
+test('a run queued behind an unanswered offer is rechecked soon and redispatched once heartbeats resume', async () => {
 	const ecid = 'ec_unanswered_queue'
-	const { stub, next, ws } = await connect(ecid)
+	await seedRunnableContext(ecid)
+	const { stub, next, send, ws } = await connect(ecid)
 	expect(
 		await stub.dispatch({
 			request: { ...runRequest('run_asleep'), acceptBy: Date.now() + 100 },
@@ -549,11 +601,15 @@ test('a run queued behind an unanswered offer is rechecked soon and drained once
 			timeout: frameWaitMs,
 		})
 		.toBe(true)
-	// The alarm drains only for a live socket. With no context row seeded the
-	// drain ends the run as unavailable; the full redispatch is not covered here.
-	await runInDurableObject(stub, async (instance) => {
+	// The alarm drains only for a live socket.
+	const drained = runInDurableObject(stub, async (instance) => {
 		await instance.alarm()
 	})
+	const offered = await next('run.request')
+	expect(offered.body).toMatchObject({ runId: 'run_waiting' })
+	await send('run.accept', { runId: 'run_waiting' }, { re: offered.seq })
+	await drained
+	expect((await next('run.commit')).body.runId).toBe('run_waiting')
 	expect(await stub.listQueued()).toEqual([])
 	ws.close()
 }, 60_000)

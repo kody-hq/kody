@@ -624,7 +624,7 @@ function denialMessage(
 		case 'missing_permission':
 			return `Missing ${permission}${target}. ${ownerCanGrant(permission, resource)}`
 		case 'credential_scope':
-			return `This credential is not scoped for ${permission}${target}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`
+			return `This credential is not scoped for ${permission}${target}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "long", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime long --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`
 		case 'profile_inactive':
 		case 'profile_grant':
 			return `This profile cannot use ${permission}${target}.`
