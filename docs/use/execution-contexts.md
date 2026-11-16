@@ -346,6 +346,12 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   entry and who has it; `executionContextMachineAccessRevoke` takes a grant
   back, and the next use is refused. The unrestricted shell and host folders are
   never shared. The machine needs CLI 3.42.0 or later.
+- Profiles: a run acting as a profile uses a named command or local network
+  destination only when the profile, and every parent profile, was given it.
+  Give one of your own profiles an entry you can use yourself with
+  `executionContextMachineAccessGrant` and `profile_id` in place of a person
+  (parents first). You take it back with `executionContextMachineAccessRevoke`.
+  A profile grant never widens what you can use.
 - A saved package the run loaded directly must declare each named command and
   local network destination it uses in
   [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call

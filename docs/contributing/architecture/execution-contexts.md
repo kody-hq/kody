@@ -278,6 +278,13 @@ data model exists so far; nothing reads it at run time yet.
   a revoke or an unshare stops the next call. On the machine a `sharedRun` gets
   `HostCommands` with `namedOnly`, which refuses every shell call before asking
   Kody, and the machine's `lan` entries; host folders stay unmounted.
+- A profile gets a `machine_capability` grant from the person it acts for, who
+  must be the operator or hold a grant themselves (`grantMachineAccess` with a
+  `profile` subject, written by `grantResourceToProfile`, the same writer as
+  package grants to profiles: own active profile, every parent holds it first).
+  `hasMachineAccessGrant` never matches a profile grant; the profile chain check
+  in `assertNamedCapabilityAccess` reads it. That person revokes it, as do the
+  operator, Manage holders and org owners.
 - Every entry package of a run that uses a named command or local network
   destination must declare it in its own published `kody.machine`, by name and
   kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs

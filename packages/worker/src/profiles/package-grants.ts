@@ -34,7 +34,36 @@ export async function grantPackageToProfile(input: {
 	profileId: string
 	preset: GrantPreset
 }): Promise<{ grantId: string }> {
-	const { env, request } = input
+	return await grantResourceToProfile({
+		env: input.env,
+		request: input.request,
+		profileId: input.profileId,
+		resource: { type: 'package', id: input.packageId, label: 'this package' },
+		preset: input.preset,
+		permissions: [...permissionsForGrantPreset('package', input.preset)],
+		ifParentLacks: 'Give the parent access first, or pick a smaller preset.',
+	})
+}
+
+/**
+ * Gives one of the caller's own active profiles a grant on one resource,
+ * replacing the profile's live grant there. Every parent profile must already
+ * hold each permission. Whether the caller holds them is the caller's check.
+ */
+export async function grantResourceToProfile(input: {
+	env: Pick<Env, 'APP_DB'>
+	request: RequestContext
+	profileId: string
+	resource: {
+		type: 'package' | 'machine_capability'
+		id: string
+		label: string
+	}
+	preset: GrantPreset | null
+	permissions: ReadonlyArray<OrgPermission>
+	ifParentLacks: string
+}): Promise<{ grantId: string; profileName: string }> {
+	const { env, request, resource, permissions } = input
 	const db = env.APP_DB
 	const orgId = request.org.id
 	if (
@@ -62,8 +91,7 @@ export async function grantPackageToProfile(input: {
 			`Profile "${self.name}" is no longer active, so it cannot be given access.`,
 		)
 	}
-	const permissions = [...permissionsForGrantPreset('package', input.preset)]
-	const key = `package:${input.packageId}`
+	const key = `${resource.type}:${resource.id}`
 	const ancestors = chain.slice(0, -1)
 	const grants = await loadProfileGrants(db, {
 		orgId,
@@ -78,7 +106,7 @@ export async function grantPackageToProfile(input: {
 		const missing = permissions.find((permission) => !held.has(permission))
 		if (missing) {
 			throw new McpCallerError(
-				`Parent profile "${ancestor.name}" does not hold ${missing} on this package, so "${self.name}" cannot get it. Give the parent access first, or pick a smaller preset.`,
+				`Parent profile "${ancestor.name}" does not hold ${missing} on ${resource.label}, so "${self.name}" cannot get it. ${input.ifParentLacks}`,
 			)
 		}
 	}
@@ -96,21 +124,22 @@ export async function grantPackageToProfile(input: {
 			.prepare(
 				`UPDATE grants SET deleted_at = ?, updated_at = ?
 				 WHERE org_id = ? AND subject_type = 'profile' AND subject_id = ?
-				   AND resource_type = 'package' AND resource_id = ?
+				   AND resource_type = ? AND resource_id = ?
 				   AND deleted_at IS NULL`,
 			)
-			.bind(now, now, orgId, self.id, input.packageId),
+			.bind(now, now, orgId, self.id, resource.type, resource.id),
 		db
 			.prepare(
 				`INSERT INTO grants (
 					id, org_id, resource_type, resource_id, subject_type, subject_id,
 					preset, created_by_user_id, created_at, updated_at, origin, expires_at
-				) VALUES (?, ?, 'package', ?, 'profile', ?, ?, ?, ?, ?, 'manual', NULL)`,
+				) VALUES (?, ?, ?, ?, 'profile', ?, ?, ?, ?, ?, 'manual', NULL)`,
 			)
 			.bind(
 				grantId,
 				orgId,
-				input.packageId,
+				resource.type,
+				resource.id,
 				self.id,
 				input.preset,
 				request.actor.userId,
@@ -126,7 +155,7 @@ export async function grantPackageToProfile(input: {
 		),
 	]
 	await db.batch(statements)
-	return { grantId }
+	return { grantId, profileName: self.name }
 }
 
 /** Soft-deletes one profile grant on the package; false when none matched. */

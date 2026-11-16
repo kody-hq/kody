@@ -394,7 +394,7 @@ export const executionContextMachineAccessGrantCapability =
 		contextRuns: 'deny',
 		orgPermission: 'execution_context:manage_access',
 		description:
-			'Share one named command or local network destination of your execution context with a person (username or user_id), a team, or everyone in the org (everyone: true). Their runs on the machine can then use it; they also need the context shared with them. Operator only. The unrestricted shell and host folders are never shared.',
+			'Share one named command or local network destination of your execution context with a person (username or user_id), a team, or everyone in the org (everyone: true). Their runs on the machine can then use it; they also need the context shared with them. Operator only. The unrestricted shell and host folders are never shared. A run acting as a profile also needs the profile granted: pass profile_id to give one of your own profiles a command or destination you can use yourself (every parent profile must hold it first).',
 		keywords: ['execution context', 'machine access', 'grant', 'share'],
 		readOnly: false,
 		idempotent: true,
@@ -408,6 +408,11 @@ export const executionContextMachineAccessGrantCapability =
 			team_slug: z.string().min(1).optional(),
 			team_id: z.string().min(1).optional(),
 			everyone: z.literal(true).optional(),
+			profile_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe('One of your own profiles (profileList).'),
 		}),
 		async handler(args, ctx) {
 			const resolved = await caller(ctx)
@@ -415,32 +420,35 @@ export const executionContextMachineAccessGrantCapability =
 				args.everyone,
 				args.team_slug ?? args.team_id,
 				args.username ?? args.user_id,
+				args.profile_id,
 			].filter((value) => value !== undefined)
 			if (chosen.length !== 1) {
 				throw new ExecutionContextError({
 					status: 400,
 					code: 'invalid_request',
 					message:
-						'Name exactly one of a person (username or user_id), a team (team_slug or team_id), or everyone: true.',
+						'Name exactly one of a person (username or user_id), a team (team_slug or team_id), everyone: true, or one of your profiles (profile_id).',
 				})
 			}
-			const subject = args.everyone
-				? ({ type: 'org', id: resolved.orgId } as const)
-				: args.team_slug || args.team_id
-					? ({
-							type: 'team',
-							id: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
-								teamId: args.team_id ?? null,
-								teamSlug: args.team_slug ?? null,
-							}),
-						} as const)
-					: ({
-							type: 'user',
-							id: await resolvePersonId(ctx.env.APP_DB, {
-								userId: args.user_id ?? null,
-								username: args.username ?? null,
-							}),
-						} as const)
+			const subject = args.profile_id
+				? ({ type: 'profile', id: args.profile_id } as const)
+				: args.everyone
+					? ({ type: 'org', id: resolved.orgId } as const)
+					: args.team_slug || args.team_id
+						? ({
+								type: 'team',
+								id: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+									teamId: args.team_id ?? null,
+									teamSlug: args.team_slug ?? null,
+								}),
+							} as const)
+						: ({
+								type: 'user',
+								id: await resolvePersonId(ctx.env.APP_DB, {
+									userId: args.user_id ?? null,
+									username: args.username ?? null,
+								}),
+							} as const)
 			return await grantMachineAccess(resolved, args.id, {
 				kind: args.kind,
 				name: args.name,
