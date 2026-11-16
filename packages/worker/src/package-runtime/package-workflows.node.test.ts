@@ -671,7 +671,7 @@ test('a failed inline workflow run names the package and commit it ran for', asy
 	})
 
 	await expect(
-		run({ ...queued.params, enqueuedCommit: 'c'.repeat(40) }),
+		run({ ...(queued.params as object), enqueuedCommit: 'c'.repeat(40) }),
 	).rejects.toBeInstanceOf(NonRetryableError)
 	expect(runRecordMocks.beginRunRecord).toHaveBeenCalledTimes(1)
 	expect(runRecordMocks.beginRunRecord).toHaveBeenCalledWith(
