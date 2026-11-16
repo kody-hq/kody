@@ -28,7 +28,8 @@ import {
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
-export type FsRule = { path: string; mode: FsMode }
+/** `name` is what Kody knows the folder by, kept once `policy allow` assigns it. */
+export type FsRule = { path: string; mode: FsMode; name?: string }
 type FsLayer = 'server_grant' | 'local_policy' | 'credential_denylist'
 /** Host commands opt-in on this machine (ADR 0093). Absent means off. */
 type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
@@ -263,7 +264,9 @@ export async function readLocalPolicy(
 			(rule) =>
 				typeof rule?.path === 'string' &&
 				isAbsolute(rule.path) &&
-				isFsMode(rule.mode),
+				isFsMode(rule.mode) &&
+				(rule.name === undefined ||
+					(typeof rule.name === 'string' && folderNamePattern.test(rule.name))),
 		)
 	) {
 		throw new Error(
@@ -314,7 +317,11 @@ export async function readLocalPolicy(
 	})
 	return {
 		version: 1,
-		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
+		fs: (fs as Array<FsRule>).map(({ path, mode, name }) => ({
+			path,
+			mode,
+			...(name ? { name } : {}),
+		})),
 		...(commands ? { commands: toggle(commands) } : {}),
 		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
 		...(serviceEnv ? { serviceEnv } : {}),
@@ -383,6 +390,7 @@ export async function setLocalCapability(input: {
 			),
 		}),
 	}
+	assertReportFits(next)
 	await writeLocalPolicy(policyPath, next)
 	return { policy: next, replaced }
 }
@@ -434,12 +442,29 @@ export async function allowLocalPath(input: {
 	const policyPath = input.policyPath ?? localPolicyPath()
 	const canonical = await canonicalHostPath(input.path)
 	const policy = await readLocalPolicy(policyPath)
-	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
-	fs.push({ path: canonical, mode: input.mode })
-	fs.sort((a, b) => a.path.localeCompare(b.path))
+	// Names are saved before the new folder joins, so it cannot change them.
+	const names = folderCapabilityNames(policy.fs)
+	const named = policy.fs.map((rule, index) => ({
+		...rule,
+		name: names[index] as string,
+	}))
+	const previous = named.find((rule) => samePath(rule.path, canonical))
+	const kept = named.filter((rule) => rule !== previous)
+	const added = {
+		path: canonical,
+		mode: input.mode,
+		name:
+			previous?.name ??
+			(folderCapabilityNames([
+				...kept,
+				{ path: canonical, mode: input.mode },
+			]).at(-1) as string),
+	}
+	const fs = [...kept, added].sort((a, b) => a.path.localeCompare(b.path))
 	const next: LocalFsPolicy = { ...policy, fs }
+	assertReportFits(next)
 	await writeLocalPolicy(policyPath, next)
-	return { policy: next, added: { path: canonical, mode: input.mode } }
+	return { policy: next, added }
 }
 
 export async function removeLocalPath(input: {
@@ -459,29 +484,61 @@ export async function removeLocalPath(input: {
 	return { policy: next, removed }
 }
 
+const folderNamePattern = /^[a-z0-9][a-z0-9_-]{0,62}$/
+
+function folderSlug(path: string) {
+	const slug = basename(plainPath(path))
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, '-')
+		.replace(/^[-_]+/, '')
+		.slice(0, 50)
+		.replace(/-+$/, '')
+	return slug || 'folder'
+}
+
 /**
- * The name Kody knows each allowed folder by, in policy order: the folder's
- * own name in lowercase, with a hash of the path added when an earlier folder
- * already took it, so allowing another folder never renames an existing one.
+ * The name Kody knows each allowed folder by: the one saved with the rule,
+ * else the folder's own name in lowercase, with a hash of the path added when
+ * another folder has that name. It never depends on the order of the rules,
+ * and `policy allow` saves every name, so a later folder cannot take one over.
  */
 export function folderCapabilityNames(
 	policy: ReadonlyArray<FsRule>,
 ): Array<string> {
-	const taken = new Set<string>()
-	return policy.map((rule) => {
-		const slug = basename(plainPath(rule.path))
-			.toLowerCase()
-			.replace(/[^a-z0-9_-]+/g, '-')
-			.replace(/^[-_]+/, '')
-			.slice(0, 50)
-			.replace(/-+$/, '')
-		let name = slug || 'folder'
-		if (taken.has(name)) {
-			name = `${name}-${createHash('sha256').update(rule.path).digest('hex').slice(0, 8)}`
-		}
-		taken.add(name)
-		return name
+	const saved = policy.map((rule, index) =>
+		rule.name && policy.findIndex((other) => other.name === rule.name) === index
+			? rule.name
+			: null,
+	)
+	const slugs = policy.map((rule) => folderSlug(rule.path))
+	return policy.map((rule, index) => {
+		const own = saved[index]
+		if (own) return own
+		const slug = slugs[index] as string
+		const shared = policy.some(
+			(_, other) =>
+				other !== index &&
+				(saved[other] === slug || (!saved[other] && slugs[other] === slug)),
+		)
+		return shared
+			? `${slug}-${createHash('sha256').update(rule.path).digest('hex').slice(0, 8)}`
+			: slug
 	})
+}
+
+// Kody refuses a report of more entries than this (folders count too).
+const maxReportedEntries = 100
+
+function assertReportFits(policy: LocalFsPolicy) {
+	const count =
+		policy.fs.length +
+		(policy.capabilities?.commands.length ?? 0) +
+		(policy.capabilities?.lan.length ?? 0)
+	if (count > maxReportedEntries) {
+		throw new Error(
+			`A machine can have at most ${maxReportedEntries} host folders, named commands and local network destinations together. Remove one first.`,
+		)
+	}
 }
 
 /**
@@ -649,6 +706,14 @@ export async function resolveHostPath(
 		)
 	}
 	await effective.authorize?.(mount)
+	if (access === 'write') {
+		// Moving or removing a folder also takes every allowed folder inside it.
+		for (const inner of effective.mounts) {
+			if (inner !== mount && isWithin(inner.path, real)) {
+				await effective.authorize?.(inner)
+			}
+		}
+	}
 	if (access === 'write' && mount.mode === 'ro') {
 		throw new FsAccessError(
 			'EROFS',

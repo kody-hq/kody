@@ -289,14 +289,16 @@ data model exists so far; nothing reads it at run time yet.
   requires a live `fs` row and the operator, records `fs_used`, and only logs
   the packages the default rule would refuse (`wouldBlockPackageIds`); a
   non-empty `allowed_packages` list is enforced. It asks for no new token scope.
-  The CLI reports each folder in the local policy under a name it derives from
-  the folder's own name (`folderCapabilityNames`; a hash of the path is added
-  only when an earlier folder already has the name), and `resolveHostPath` asks
-  once per folder per run before the first call that uses it. A refusal fails
-  that call with `EACCES` and is asked again on the next.
-  `machine_capability_off` (Kody has no row yet) lets the call through, since
-  there is no list to enforce until the migration. Run code cannot call
-  `kody.fs.authorize` itself.
+  The CLI reports each folder in the local policy under a name
+  (`folderCapabilityNames`): the one `kody context policy allow` saved with the
+  rule, else the folder's own name, with a hash of the path when another folder
+  shares it. Names never depend on rule order. Folders count toward the 100
+  entry report limit, checked when one is allowed or defined. `resolveHostPath`
+  asks once per folder per run before the first call that uses it, and a write
+  also asks for every allowed folder inside the path. A refusal fails that call
+  with `EACCES` and is asked again on the next. `machine_capability_off` (Kody
+  has no row yet) lets the call through, since there is no list to enforce until
+  the migration. Run code cannot call `kody.fs.authorize` itself.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends

@@ -430,7 +430,10 @@ test('local policy keeps the commands opt-in alongside host folders', async () =
 	await allowLocalPath({ path: dir, mode: 'ro', policyPath })
 	const policy = await readLocalPolicy(policyPath)
 	assert.equal(policy.commands?.enabled, true)
-	assert.deepEqual(policy.fs, [{ path: dir, mode: 'ro' }])
+	assert.deepEqual(
+		policy.fs.map(({ path, mode }) => ({ path, mode })),
+		[{ path: dir, mode: 'ro' }],
+	)
 	await setLocalCommandsEnabled({ enabled: false, policyPath })
 	assert.equal(await readLocalCommandsEnabled(policyPath), false)
 })
