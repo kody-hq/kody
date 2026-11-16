@@ -979,6 +979,24 @@ test('the operator limits the shell to listed packages, and only while host comm
 		authorizeContextCommand(orgRun(s, operator), s.args),
 	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
 
+	// Listing, reading and killing shell jobs follows the same list.
+	const lifecycle = (entries?: Array<string>) =>
+		authorizeContextCommand(
+			orgRun(
+				s,
+				operator,
+				entries ? { packages: { entries, all: entries } } : {},
+			),
+			{ lifecycle: 'list' },
+		)
+	await expect(lifecycle(['pkg_listed'])).resolves.toEqual({ ok: true })
+	await expect(lifecycle(['pkg_own'])).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+	await expect(lifecycle()).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+	})
+
 	// With commands off the entry is hidden and cannot be edited, and it keeps
 	// its list for when they come back on.
 	s.sqlite

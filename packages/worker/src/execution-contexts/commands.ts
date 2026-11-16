@@ -130,7 +130,10 @@ export async function authorizeContextCommand(
 			? { ...(await assertCommandAccess(ctx, principal)), capabilityId: null }
 			: await assertNamedCapabilityAccess(ctx, principal, 'command', capability)
 	if (lifecycle) {
-		await assertAccess()
+		const { row } = await assertAccess()
+		// Listing, reading and killing shell jobs follows the shell's own list.
+		if (capability === undefined)
+			await shellPackagesWouldBlock(ctx, principal, row)
 		return { ok: true as const }
 	}
 	if (
