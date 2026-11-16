@@ -741,7 +741,12 @@ served at `http://<name>.localhost:<port>/`.
 Browsers resolve `*.localhost` to this machine on their own. Node's `fetch` may
 not on every platform, so `kody dev` also answers on `http://127.0.0.1:<port>/`
 (printed as `local:`, and `localUrl` in the `--ready-file` JSON). It is the same
-app. Use that address from scripts, and from another device with `--host`.
+app. Use that address from scripts.
+
+With `--host` and `--target mock`, another device reaches the app on the LAN
+address, but `packageContext.hostedUrl` (and absolute URLs built from it,
+including the client module URL) still names the `*.localhost` origin, which
+only resolves on this machine. Relative links work everywhere.
 
 `--app-base-path /<package-name>` serves the old path address instead: the app
 under `/<package-name>` on `http://<scope>.localhost:<port>`, with
