@@ -850,11 +850,12 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 		stateTimer.unref()
 		const stopWatchdog = startLoopWatchdog()
 		// Only where something starts the daemon again: a terminal daemon
-		// that exits while offline would just be gone.
+		// that exits while offline would just be gone, and so would one an
+		// update supervisor started from a terminal.
 		const restarted =
 			Boolean(manager) ||
-			supervised ||
 			process.pid === 1 ||
+			(supervised && process.ppid === 1) ||
 			existsSync('/.dockerenv') ||
 			existsSync('/run/.containerenv')
 		if (process.pid === 1) {
