@@ -44,8 +44,6 @@ vi.mock('./published-bundle-artifacts.ts', async () => {
 	}
 })
 
-const { PublishedImportsNeedSourceBuildError } =
-	await import('./module-graph-bundle-builders.ts')
 const { buildKodyImportableModuleBundle, buildKodyModuleBundle } =
 	await import('./module-graph.ts')
 
@@ -945,7 +943,6 @@ async function setUpCallableArtifact(
 function buildAdHoc(
 	options: {
 		reuseCachedBundle?: boolean
-		requirePublishedImports?: boolean
 	} = {},
 ) {
 	return buildKodyModuleBundle({
@@ -1029,16 +1026,18 @@ test('ad hoc execute reuses the entry bundle until an imported package serves a 
 	expect(mockModule.createWorker.mock.calls.length - before).toBe(2)
 })
 
-test('requirePublishedImports refuses an import that needs a package source build', async () => {
-	mockModule.createWorker.mockResolvedValue(createBundleResult('unused'))
+test('ad hoc execute bundles package source when an import has no published artifact', async () => {
+	mockModule.createWorker.mockResolvedValue(createBundleResult('source'))
 	await setUpCallableArtifact()
 	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(null)
-	const before = mockModule.createWorker.mock.calls.length
 
-	await expect(buildAdHoc({ requirePublishedImports: true })).rejects.toThrow(
-		PublishedImportsNeedSourceBuildError,
-	)
-	expect(mockModule.createWorker.mock.calls.length).toBe(before)
+	const bundle = await buildAdHoc()
+
+	expect(
+		Object.keys(bundle.modules).filter((path) =>
+			path.includes('.__published_bundle__/'),
+		),
+	).toEqual([])
 })
 
 test('ad hoc execute rebuilds the entry bundle when an artifact is replaced at the same commit', async () => {
@@ -1056,17 +1055,29 @@ test('ad hoc execute rebuilds the entry bundle when an artifact is replaced at t
 	expect(mockModule.createWorker.mock.calls.length - before).toBe(2)
 })
 
-test('requirePublishedImports refuses an artifact with JSON modules, whose type attaching would lose', async () => {
-	mockModule.createWorker.mockResolvedValue(createBundleResult('unused'))
+test('ad hoc execute bundles an artifact with JSON modules instead of attaching it, so the module keeps its type', async () => {
+	mockModule.createWorker.mockResolvedValue(createBundleResult('typed'))
 	await setUpCallableArtifact(undefined, {
 		modules: {
 			'bundle.js': `import data from "./data.json"\nexport default function callable() { return data }`,
 			'data.json': { json: { ok: true } },
 		},
 	})
-	await expect(buildAdHoc({ requirePublishedImports: true })).rejects.toThrow(
-		PublishedImportsNeedSourceBuildError,
-	)
+	const bundle = await buildAdHoc()
+
+	const call = mockModule.createWorker.mock.calls.at(-1)?.[0] as {
+		files: Record<string, string>
+	}
+	expect(
+		Object.keys(call.files).some((path) =>
+			path.includes('.__published_bundle__/'),
+		),
+	).toBe(true)
+	expect(
+		Object.keys(bundle.modules).filter((path) =>
+			path.includes('.__published_bundle__/'),
+		),
+	).toEqual([])
 })
 
 test('the metered proxy for an attached artifact reads export names from package source', async () => {
