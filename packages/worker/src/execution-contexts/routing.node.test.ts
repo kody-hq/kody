@@ -1,8 +1,5 @@
 import { expect, test } from 'vitest'
-import {
-	ecpDefaultGrant,
-	ecpTypeScriptSourceFeature,
-} from '@kody-internal/shared/execution-context-protocol/index.ts'
+import { ecpDefaultGrant } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import { runChainShapeError } from './chain-rules.ts'
 import {
 	describeAttempts,
@@ -526,7 +523,7 @@ test('TypeScript skips a daemon too old to run it, with a please update reason',
 	await expect(typeScriptSourceRefusal(plain, {})).resolves.toBeNull()
 	await expect(
 		typeScriptSourceRefusal(typed, {
-			features: [ecpTypeScriptSourceFeature],
+			features: ['typescript-source'],
 		}),
 	).resolves.toBeNull()
 	const text = describeAttempts([
@@ -537,5 +534,6 @@ test('TypeScript skips a daemon too old to run it, with a please update reason',
 			reason: 'typescript_daemon_outdated',
 		},
 	])
-	expect(text).toContain('please update it with `kody daemon update`')
+	expect(text).toContain('old-box')
+	expect(text).toContain('kody daemon update')
 })

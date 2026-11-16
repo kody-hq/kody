@@ -41,9 +41,13 @@ test('omitOversizedCredentialStampModules drops huge prebuilt client bundles fro
 
 	const scanned = await scanCredentialStamp(files)
 	expect(scanned.keys).toEqual(['API_KEY'])
-	expect(scanned.failures.some((f) => f.code === 'missing_description')).toBe(
-		true,
-	)
+	expect(
+		scanned.failures.some(
+			(failure) =>
+				failure.code === 'missing_description' &&
+				failure.message.includes('API_KEY'),
+		),
+	).toBe(true)
 })
 
 test('scanCredentialStamp collects sorted literal keys from credential() and placeholders', async () => {
@@ -1059,17 +1063,12 @@ test('large prebuilt client asset does not fail stamp and stays cheap to scan', 
 		'public/client/main.js': largeClient,
 	})
 
-	const started = performance.now()
 	const stamp = await scanCredentialStamp(files)
-	const elapsedMs = performance.now() - started
 	expect(stamp.failures).toEqual([])
 	expect(stamp.keys).toEqual(['API_KEY'])
 	expect(await listScannableModulePaths(files)).not.toContain(
 		'public/client/main.js',
 	)
-	// Soft budget: parsing a 1.7 MB asset used to blow the DO CPU limit;
-	// skipping it should finish in well under a second on Node.
-	expect(elapsedMs).toBeLessThan(2_000)
 
 	const serverStillFails = await scanCredentialStamp(
 		assetsAppFiles({

@@ -45,15 +45,15 @@ const adminStableUserId = testStableUserIdFromEmail('admin@example.com')
 
 function inspectionFixture() {
 	return {
-		schemaVersion: 11,
+		schemaVersion: 1,
 		billing: {
 			databaseSize: 4096,
-			since: '2026-11-15T00:00:00.000Z',
+			since: '2026-01-01T00:00:00.000Z',
 			rowsReadTotal: 12,
 			rowsWrittenTotal: 3,
 			statements: [
 				{
-					sql: 'SELECT r.* FROM runs r WHERE r.id = ? LIMIT 1',
+					sql: 'SELECT ?',
 					rowsRead: 12,
 					rowsWritten: 0,
 					calls: 1,
@@ -64,7 +64,7 @@ function inspectionFixture() {
 		runLogsIndexes: [
 			{
 				seq: 0,
-				name: 'sqlite_autoindex_run_logs_1',
+				name: 'idx',
 				unique: true,
 				origin: 'pk',
 				partial: false,
@@ -73,7 +73,7 @@ function inspectionFixture() {
 		runLogsColumns: [
 			{
 				cid: 0,
-				name: 'run_id',
+				name: 'id',
 				type: 'TEXT',
 				notnull: true,
 				dfltValue: null,
@@ -87,12 +87,8 @@ function inspectionFixture() {
 			workflowProjections: 1,
 		},
 		runCount: { meta: 2, actual: 2, matches: true },
-		explainRunLogsDeleteByRunId: [
-			{ id: 2, parent: 0, detail: 'SEARCH run_logs USING INTEGER PRIMARY KEY' },
-		],
-		explainRunLogsSelectByRunId: [
-			{ id: 3, parent: 0, detail: 'SEARCH run_logs USING INTEGER PRIMARY KEY' },
-		],
+		explainRunLogsDeleteByRunId: [{ id: 1, parent: 0, detail: 'SCAN t' }],
+		explainRunLogsSelectByRunId: [{ id: 1, parent: 0, detail: 'SCAN t' }],
 	}
 }
 
@@ -162,8 +158,13 @@ test('adminRunLogSqlBilling is admin-only and returns content-free schema stats'
 		env: ctx.env,
 		userId: targetStableUserId,
 	})
-	expect(present.report?.stableUserId).toBe(targetStableUserId)
-	expect(present.report?.username).toBe('kentcdodds')
+	expect(present.report).toMatchObject({
+		stableUserId: targetStableUserId,
+		username: 'kentcdodds',
+		billing: { rowsReadTotal: 12, rowsWrittenTotal: 3 },
+		tableCounts: { runs: 2, runLogs: 4 },
+		runCount: { matches: true },
+	})
 	expect(mockModule.logAuditEvent).toHaveBeenCalledWith(
 		expect.objectContaining({
 			action: 'adminRunLogSqlBilling',
