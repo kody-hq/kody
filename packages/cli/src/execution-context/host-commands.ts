@@ -409,16 +409,11 @@ export class HostCommands {
 			name === 'run' || name === 'start'
 				? namedCapability(args) !== null
 				: name === 'list'
-					? await this.#authorizeNamedList(run)
+					? true
 					: await this.#authorizeNamedJob(name, args, run)
 		if (!named) {
 			this.assertAvailable()
-			if (
-				name === 'status' ||
-				name === 'output' ||
-				name === 'kill' ||
-				name === 'list'
-			) {
+			if (name === 'status' || name === 'output' || name === 'kill') {
 				await run.authorize({ lifecycle: name })
 				this.assertAvailable()
 			}
@@ -435,7 +430,7 @@ export class HostCommands {
 			case 'kill':
 				return this.kill(args, run)
 			case 'list':
-				return this.list(run, named ? { namedOnly: true } : {})
+				return await this.#list(run)
 			default:
 				throw new HostCommandError(
 					'invalid_request',
@@ -473,21 +468,37 @@ export class HostCommands {
 	}
 
 	/**
-	 * With the shell off, `list` shows the caller's named-command jobs, each
-	 * command authorized once. False when the shell rules apply instead.
+	 * `list` for a caller the shell rules refuse: their named-command jobs,
+	 * each command authorized on its own, so a command that was removed or is
+	 * no longer granted hides only its own jobs. Null when none is allowed.
 	 */
-	async #authorizeNamedList(run: HostCommandRunContext) {
-		if (this.enabled) return false
+	async #allowedNamedJobs(run: HostCommandRunContext) {
+		const allowed = new Set<string>()
 		const capabilities = new Set(
 			this.#ownJobs(run).flatMap((job) =>
 				job.capability ? [job.capability] : [],
 			),
 		)
-		if (capabilities.size === 0) return false
 		for (const capability of capabilities) {
-			await run.authorize({ lifecycle: 'list', capability })
+			await run.authorize({ lifecycle: 'list', capability }).then(
+				() => allowed.add(capability),
+				() => {},
+			)
 		}
-		return true
+		return allowed.size > 0 ? allowed : null
+	}
+
+	async #list(run: HostCommandRunContext) {
+		try {
+			this.assertAvailable()
+			await run.authorize({ lifecycle: 'list' })
+			this.assertAvailable()
+		} catch (error) {
+			const allowed = await this.#allowedNamedJobs(run)
+			if (!allowed) throw error
+			return this.list(run, { capabilities: allowed })
+		}
+		return this.list(run)
 	}
 
 	async #prepareNamed(
@@ -1064,11 +1075,19 @@ export class HostCommands {
 		return this.#describe(job)
 	}
 
-	list(run: HostCommandRunContext, options: { namedOnly?: boolean } = {}) {
+	list(
+		run: HostCommandRunContext,
+		options: { capabilities?: ReadonlySet<string> } = {},
+	) {
 		this.#sweep()
 		return {
 			commands: this.#ownJobs(run)
-				.filter((job) => !options.namedOnly || job.capability !== undefined)
+				.filter(
+					(job) =>
+						!options.capabilities ||
+						(job.capability !== undefined &&
+							options.capabilities.has(job.capability)),
+				)
 				.map((job) => this.#describe(job)),
 		}
 	}

@@ -481,6 +481,12 @@ function namedCommands(input: { shell?: boolean } = {}) {
 			args: [[]],
 			background: true,
 		}),
+		parseMachineCommandDefinition({
+			name: 'wait-too',
+			exec: [process.execPath, '-e', 'setTimeout(() => {}, 60000)'],
+			args: [[]],
+			background: true,
+		}),
 	]
 	const commands = new HostCommands({
 		localEnabled: input.shell === true,
@@ -611,5 +617,40 @@ test('a named background job is polled and killed against its own command, and s
 		state: string
 	}
 	assert.equal(killed.state, 'killed')
+	await commands.idle()
+})
+
+test('list shows the named jobs the caller may still use when the shell rules or one command refuse', async () => {
+	const commands = namedCommands({ shell: true })
+	const refuse = new Set<string>(['shell'])
+	const { run } = runContext({
+		authorize: async (input) => {
+			const key =
+				'capability' in input && input.capability ? input.capability : 'shell'
+			if (refuse.has(key)) throw new Error(`refused ${key}`)
+		},
+	})
+	const wait = (await commands.call('start', { capability: 'wait' }, run)) as {
+		commandId: string
+	}
+	const other = (await commands.call(
+		'start',
+		{ capability: 'wait-too' },
+		run,
+	)) as { commandId: string }
+	const ids = async () =>
+		(
+			(await commands.call('list', undefined, run)) as {
+				commands: Array<{ commandId: string }>
+			}
+		).commands.map((entry) => entry.commandId)
+	// The shell is on here, but this caller's token is refused the shell.
+	assert.deepEqual(await ids(), [wait.commandId, other.commandId])
+	// One command was removed: only its jobs disappear.
+	refuse.add('wait-too')
+	assert.deepEqual(await ids(), [wait.commandId])
+	refuse.add('wait')
+	await assert.rejects(ids(), /refused shell/)
+	commands.killAll('shutdown')
 	await commands.idle()
 })
