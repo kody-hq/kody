@@ -125,6 +125,57 @@ test('a tampered module is refused by hash', async () => {
 	).rejects.toBeInstanceOf(PublishBuildVerificationError)
 })
 
+test('a bundle that still imports kody:runtime or a kody: package is refused for every target kind', async () => {
+	const targets: Array<Partial<PublishBuildTargetEntry>> = [
+		{ kind: 'app', bundleKind: 'app', entryPoint: 'src/app.ts' },
+		{ kind: 'job', bundleKind: 'module', artifactName: 'tick' },
+		{ kind: 'module', bundleKind: 'module' },
+		{ kind: 'importable-module', bundleKind: 'importable-module' },
+	]
+	const sources = [
+		'import { packageContext } from "kody:runtime"\nexport default { fetch: () => new Response(String(packageContext)) }',
+		'import helper from "kody:@other/pkg/helper"\nexport default helper',
+		'export * from "kody:runtime"',
+		'export default () => import("kody:runtime")',
+	]
+	for (const overrides of targets) {
+		for (const source of sources) {
+			const uploaded = await uploadedTarget(
+				{ 'bundle.js': source },
+				{
+					mainModule: 'bundle.js',
+					...overrides,
+				},
+			)
+			await expect(
+				verifyUploadedTargetModules({
+					uploaded,
+					modules: { 'bundle.js': source },
+					ownPackageId: 'pkg-1',
+					linkedImports: new Map(),
+				}),
+			).rejects.toThrow(
+				/module "bundle\.js" of "[^"]+" still imports "kody:[^"]+"\. A build rewrites kody: imports to modules Kody supplies at load time, and this one did not, so the bundle would fail to load\. Update the Kody CLI/,
+			)
+		}
+	}
+	const rewritten =
+		'import { packageContext } from "./.__kody_virtual__/runtime.js"\nexport default "kody:runtime is only a string here"'
+	await expect(
+		verifyUploadedTargetModules({
+			uploaded: await uploadedTarget(
+				{ 'bundle.js': rewritten },
+				{
+					mainModule: 'bundle.js',
+				},
+			),
+			modules: { 'bundle.js': rewritten },
+			ownPackageId: 'pkg-1',
+			linkedImports: new Map(),
+		}),
+	).resolves.toMatchObject({ referencedLinkedImports: new Set() })
+})
+
 test('unsafe module paths and a missing main module are refused', async () => {
 	for (const path of [
 		'../escape.js',

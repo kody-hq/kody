@@ -13,6 +13,7 @@ import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { mergePublishedArtifactDependencies } from '#worker/package-runtime/module-graph-import-rewriting.ts'
 import { resolveKodyDependenciesForEntryPoint } from '#worker/package-runtime/module-graph-workspace.ts'
 import {
+	buildKodyAppBundle,
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
 } from '#worker/package-runtime/module-graph.ts'
@@ -721,5 +722,79 @@ export default async function run() {
 			catalog: ['notes'],
 			names: ['install_from_catalog', 'list_catalog'],
 		})
+	},
+)
+
+test(
+	'an app that imports kody:runtime builds to the same modules in Kody cloud and in the offload builder',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const userId = `user-${crypto.randomUUID()}`
+		const packageId = `pkg-${crypto.randomUUID()}`
+		const files = {
+			'package.json': JSON.stringify({
+				name: '@me/runtime-app',
+				exports: { '.': './src/index.ts' },
+				kody: {
+					id: 'runtime-app',
+					description: 'App that imports kody:runtime',
+					app: { entry: './src/app.ts' },
+				},
+			}),
+			'src/index.ts': `import { packageContext } from 'kody:runtime'
+export default async function main() {
+	return packageContext?.packageId ?? null
+}`,
+			'src/app.ts': `import { packageContext } from 'kody:runtime'
+export default {
+	async fetch() {
+		return new Response(packageContext?.packageId ?? 'none')
+	},
+}`,
+		}
+		const built = await buildPublishTargets({
+			files: builderFiles(files),
+			rootPackageId: packageId,
+			userId,
+			baseUrl,
+		})
+		const cloudInput = {
+			env,
+			baseUrl,
+			userId,
+			sourceFiles: files,
+			rootPackageId: packageId,
+		}
+		const cloud = {
+			app: await buildKodyAppBundle({
+				...cloudInput,
+				entryPoint: 'src/app.ts',
+				cacheKey: null,
+			}),
+			module: await buildKodyModuleBundle({
+				...cloudInput,
+				entryPoint: 'src/index.ts',
+			}),
+			'importable-module': await buildKodyImportableModuleBundle({
+				...cloudInput,
+				entryPoint: 'src/index.ts',
+			}),
+		}
+		for (const [bundleKind, cloudBundle] of Object.entries(cloud)) {
+			const offload = built.targets.find(
+				(candidate) => candidate.target.bundleKind === bundleKind,
+			)
+			if (!offload) throw new Error(`no ${bundleKind} target`)
+			expect(offload.mainModule, bundleKind).toBe(cloudBundle.mainModule)
+			expect(offload.modules, bundleKind).toEqual(cloudBundle.modules)
+			const sources = Object.values(offload.modules).map((module) =>
+				typeof module === 'string' ? module : (module.js ?? ''),
+			)
+			expect(sources.join('\n'), bundleKind).not.toMatch(/["']kody:/)
+			expect(sources.join('\n'), bundleKind).toContain(
+				'.__kody_virtual__/runtime.js',
+			)
+		}
 	},
 )

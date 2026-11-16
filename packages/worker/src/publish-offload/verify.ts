@@ -1,5 +1,8 @@
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
-import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
+import {
+	collectBundlerResolvedSpecifiers,
+	isKodyVirtualImportSpecifier,
+} from '#worker/package-runtime/import-specifiers.ts'
 import {
 	publicRuntimeModulePath,
 	resolveRelativeModulePath,
@@ -270,7 +273,8 @@ function assertSafeModulePath(path: string) {
  * 6C: every relative import an uploaded module makes stays inside the
  * upload, is the shared runtime or this package's own runtime facade, or is
  * a linked placeholder for a Kody package the source imports. Anything else
- * (another package's facade, a linked artifact's internals) is refused.
+ * (another package's facade, a linked artifact's internals) is refused, and
+ * so is a `kody:` import the build left unrewritten.
  * Returns the placeholders the module imports.
  */
 async function assertImportsStayInPackage(input: {
@@ -286,6 +290,11 @@ async function assertImportsStayInPackage(input: {
 		fail(`${input.label} does not parse as a module.`)
 	}
 	for (const specifier of specifiers) {
+		if (isKodyVirtualImportSpecifier(specifier)) {
+			fail(
+				`${input.label} still imports "${specifier}". A build rewrites kody: imports to modules Kody supplies at load time, and this one did not, so the bundle would fail to load. Update the Kody CLI (or the execution context daemon) and build again, or publish with --context cloud.`,
+			)
+		}
 		if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
 		const resolved = resolveRelativeModulePath(input.path, specifier)
 		if (resolved && linkedPathPattern.test(resolved)) {

@@ -119,6 +119,12 @@ What Kody checks before it serves an uploaded build:
 - Uploaded modules may bind only your own package. A build that inlines another
   package's code, binds another package's id, or ships its own module at a
   linked placeholder path is refused.
+- A build rewrites every `kody:runtime` and `kody:@` import to a module Kody
+  supplies when it loads the bundle. An uploaded bundle that still has a raw
+  `kody:` import could not load, so Kody refuses it and names the module and the
+  import. That means the builder is out of date: run `kody update` on the
+  machine that built it (then `kody daemon restart` on an execution context) and
+  build again, or publish with `--context cloud`.
 
 ## When a build is refused
 

@@ -1,5 +1,6 @@
 import {
 	describeModuleSourceParseError,
+	loadModuleSourceParser,
 	moduleSourceParserPlugins,
 	parseModuleSource,
 	type ModuleAstNode,
@@ -209,6 +210,8 @@ export async function collectModuleImportNodes(
 		}
 	}
 
+	// A parser that cannot load is a broken build, not import-free source.
+	await loadModuleSourceParser()
 	try {
 		const program = await parseModuleSource(source, {
 			filePath: options?.filePath,
@@ -321,6 +324,8 @@ export async function parseBundlerResolvedSpecifiers(
 	| { ok: true; specifiers: Array<string> }
 	| { ok: false; error: ModuleSourceParseError }
 > {
+	// A parser that cannot load is a broken build, not source that fails to parse.
+	await loadModuleSourceParser()
 	let program: unknown
 	try {
 		program = await parseModuleSource(source, { filePath: options?.filePath })
@@ -397,6 +402,15 @@ export async function collectDynamicImportExpressionNodes(
 	source: string,
 ): Promise<Array<DynamicImportExpressionNode>> {
 	return (await collectModuleImportNodes(source)).dynamicImportExpressions
+}
+
+/**
+ * `kody:runtime` and `kody:@owner/package` exist only in source. A build
+ * rewrites every one to a module the loader supplies, so one left in a
+ * bundle is an import the loader cannot provide.
+ */
+export function isKodyVirtualImportSpecifier(specifier: string) {
+	return specifier.startsWith('kody:')
 }
 
 export function isBarePackageImportSpecifier(specifier: string) {
