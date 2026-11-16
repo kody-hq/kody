@@ -1066,8 +1066,12 @@ different versions. While they wait, the package page shows **Everyone is still
 on the previous version** with an **Approve to update everyone** link, and the
 publish response includes `held_for_approval` with the commit everyone still
 runs (`serving_commit`), the new commit (`held_commit`), and `approval_url`.
-Approving moves everyone to the new version. To try the new version before you
-approve it, use local dev or a dev check.
+Approving moves everyone to the new version. Jobs, subscriptions, webhooks,
+events, and skills stay on the approved version too: a job the new version
+removes keeps running, a job it adds starts only after you approve, and no job
+runs the new code until then. The **Public release** panel shows the commit
+everyone is on and the published commit that waits for approval. To try the new
+version before you approve it, use local dev or a dev check.
 
 Apps that are not internet-visible switch to each new version as soon as it
 finishes building.

@@ -28,6 +28,7 @@ const { mockModule, pickMocks } = vi.hoisted(() => {
 		refreshPackageSubscriptionTopicMap: vi.fn(),
 		deleteJobRow: vi.fn(),
 		deleteEntitySource: vi.fn(),
+		getEntitySourceByIdForUser: vi.fn(async () => null),
 		deleteSavedPackage: vi.fn(),
 		deletePackageAppRateLimits: vi.fn(),
 		deleteSavedPackageVector: vi.fn(),
@@ -124,7 +125,9 @@ vi.mock('#worker/jobs/service.ts', () => pickMocks('syncPackageJobsForPackage'))
 vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 	pickMocks('cleanupArtifactReposForPackage'),
 )
-vi.mock('#worker/repo/entity-sources.ts', () => pickMocks('deleteEntitySource'))
+vi.mock('#worker/repo/entity-sources.ts', () =>
+	pickMocks('deleteEntitySource', 'getEntitySourceByIdForUser'),
+)
 vi.mock('#worker/community/repo.ts', () =>
 	pickMocks(
 		'getCommunityListingByOwnerAndPackage',
@@ -382,6 +385,7 @@ test('refreshSavedPackageProjection syncs the job manager only when package jobs
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
+		publishedCommit: 'commit-1',
 		sourceId: 'source-1',
 		manifest,
 		actorUserId: undefined,
@@ -454,6 +458,26 @@ test('refreshSavedPackageProjection omits files when artifact rebuild is skipped
 	expect(mockModule.collectPackageSkills).not.toHaveBeenCalled()
 })
 
+test('refreshSavedPackageProjection leaves a held build to the settled projection', async () => {
+	setupDefaultMocks()
+	mockSource()
+	mockModule.getSavedPackageById.mockResolvedValue(savedPackageRecord())
+	// Holding the build already re-projected the commit everyone still runs.
+	mockModule.getEntitySourceByIdForUser.mockResolvedValueOnce({
+		id: 'source-1',
+		published_commit: 'commit-1',
+		serving_commit: 'commit-0',
+		held_commit: 'commit-1',
+	})
+
+	await refresh(createEnv())
+
+	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalled()
+	expect(mockModule.syncPackageJobsForPackage).not.toHaveBeenCalled()
+	expect(mockModule.writePackageSkillsIndex).not.toHaveBeenCalled()
+	expect(mockModule.refreshPackageSubscriptionTopicMap).not.toHaveBeenCalled()
+})
+
 test('refreshSavedPackageProjection indexes skills from sourceFiles even when artifact rebuild is skipped', async () => {
 	setupDefaultMocks()
 	const skillFiles = {
@@ -521,6 +545,7 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
+		publishedCommit: 'commit-1',
 		sourceId: 'source-1',
 		manifest,
 		actorUserId: undefined,

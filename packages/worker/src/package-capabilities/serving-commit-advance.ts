@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
@@ -51,7 +52,10 @@ export async function advanceServingCommit(input: {
 			userId: input.userId,
 			commit: input.commit,
 		})
-		if (held) return false
+		if (held) {
+			await settleProjection(input, decision.packageId)
+			return false
+		}
 		// An approval or visibility change landed while deciding: decide again.
 		const again = await decideServingAdvance(input)
 		if (again?.hold) return false
@@ -103,16 +107,58 @@ export async function releaseHeldServingCommit(input: {
 	) {
 		return false
 	}
-	return await advanceServingCommit({
+	const advanced = await advanceServingCommit({
 		env: input.env,
 		sourceId: source.id,
 		userId: input.userId,
 		commit: source.held_commit,
 	})
+	if (advanced) {
+		await settleProjection(
+			{ env: input.env, sourceId: source.id, userId: input.userId },
+			source.entity_id,
+		)
+	}
+	return advanced
+}
+
+/**
+ * Jobs, subscriptions, and skills follow the commit everyone runs: publish
+ * projected the held commit, so a hold settles them back, and a release
+ * moves them on with the code.
+ */
+async function settleProjection(
+	input: { env: Env; sourceId: string; userId: OwnerId },
+	packageId: string,
+) {
+	// The same settle a failed publish rebuild runs (settleFailedPublishRebuild).
+	const { refreshSavedPackageProjection } =
+		await import('#worker/package-registry/service.ts')
+	try {
+		await refreshSavedPackageProjection({
+			env: input.env,
+			baseUrl: getAppBaseUrl({ env: input.env }),
+			userId: input.userId,
+			packageId,
+			sourceId: input.sourceId,
+			rebuildArtifacts: false,
+			audit: null,
+		})
+	} catch (error) {
+		console.error('held-commit-projection-settle-failed', {
+			sourceId: input.sourceId,
+			packageId,
+			error,
+		})
+		Sentry.captureException(error, {
+			tags: { scope: 'held-commit-projection-settle' },
+			extra: { sourceId: input.sourceId, packageId },
+		})
+	}
 }
 
 type ServingAdvanceDecision =
-	| { hold: true }
+	| { hold: true; packageId: string }
 	| {
 			hold: false
 			/** The package app whose approvals for `commit` are marked served. */
@@ -167,7 +213,8 @@ async function decideServingAdvance(input: {
 		) {
 			return advance
 		}
-		if (source.held_commit === input.commit) return { hold: true }
+		if (source.held_commit === input.commit)
+			return { hold: true, packageId: savedPackage.id }
 		const computed = await computePackageCapabilitySet({
 			env: input.env,
 			ownerUserId: savedPackage.userId,
@@ -178,7 +225,7 @@ async function decideServingAdvance(input: {
 			publishedCommit: input.commit,
 		})
 		if (!capabilitySetWithinApproval(computed.capabilitySet, served)) {
-			return { hold: true }
+			return { hold: true, packageId: savedPackage.id }
 		}
 		return {
 			...advance,
@@ -205,7 +252,7 @@ async function decideServingAdvance(input: {
 			commit: input.commit,
 			error: error instanceof Error ? error.message : String(error),
 		})
-		return appPackageId ? { hold: true } : null
+		return appPackageId ? { hold: true, packageId: appPackageId } : null
 	}
 }
 

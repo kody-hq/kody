@@ -20,6 +20,12 @@ import {
 	releaseHeldServingCommit,
 } from './serving-commit-advance.ts'
 
+const projection = vi.hoisted(() => ({
+	refreshSavedPackageProjection: vi.fn(async () => undefined),
+}))
+
+vi.mock('#worker/package-registry/service.ts', () => projection)
+
 const compute = vi.hoisted(() => ({
 	entriesByCommit: new Map<string, Array<unknown>>(),
 	onCompute: undefined as undefined | ((commit: string) => Promise<void>),
@@ -82,6 +88,7 @@ const mailCredential: CapabilitySetEntry = {
 beforeEach(() => {
 	compute.entriesByCommit.clear()
 	compute.onCompute = undefined
+	projection.refreshSavedPackageProjection.mockClear()
 	approvedCommitCache.delete(packageId)
 	vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -242,6 +249,8 @@ test('a narrower republish is carried forward too', async () => {
 		commit: 'commit-b',
 	})
 	await expect(site.publicCommit()).resolves.toBe('commit-b')
+	// Publish already projected commit-b; nothing needs settling.
+	expect(projection.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
 test('a wider republish holds everyone on the approved version until it is approved', async () => {
@@ -261,6 +270,16 @@ test('a wider republish holds everyone on the approved version until it is appro
 	await site.expectEveryoneOn('commit-a')
 	expect(site.heldCommit()).toBe('commit-b')
 	expect(site.approvalCommits()).toEqual(['commit-a'])
+	// Jobs, subscriptions and skills settle back to the commit everyone runs.
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledWith(
+		expect.objectContaining({
+			packageId,
+			sourceId,
+			rebuildArtifacts: false,
+		}),
+	)
+	projection.refreshSavedPackageProjection.mockClear()
 
 	// A rebuild of the held commit keeps holding it without a new check.
 	compute.entriesByCommit.delete('commit-b')
@@ -272,11 +291,13 @@ test('a wider republish holds everyone on the approved version until it is appro
 	})
 	await site.expectEveryoneOn('commit-a')
 
-	// Approving releases everyone to commit-b at once.
+	// Approving releases everyone to commit-b at once, definitions included.
 	compute.entriesByCommit.set('commit-b', [storage, mailCredential])
+	projection.refreshSavedPackageProjection.mockClear()
 	await site.approveLive()
 	await site.expectEveryoneOn('commit-b')
 	expect(site.heldCommit()).toBeNull()
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(1)
 })
 
 test('an approval that lands while a wider build is being checked still releases it', async () => {
@@ -322,6 +343,7 @@ test('turning internet-visible off releases a held republish', async () => {
 	).resolves.toBe(true)
 	expect(site.servingCommit()).toBe('commit-b')
 	expect(site.heldCommit()).toBeNull()
+	expect(projection.refreshSavedPackageProjection).toHaveBeenCalledTimes(2)
 })
 
 test('an app that is not internet-visible serves a wider republish right away', async () => {

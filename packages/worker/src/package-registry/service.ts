@@ -65,7 +65,10 @@ import {
 import { invalidateInvokeContractFreshness } from '#worker/package-invocations/invoke-contract-cache.ts'
 import { refreshPackageSubscriptionTopicMap } from '#worker/package-invocations/subscription-topic-cache.ts'
 import { cleanupArtifactReposForPackage } from '#worker/repo/artifact-repo-cleanup.ts'
-import { deleteEntitySource } from '#worker/repo/entity-sources.ts'
+import {
+	deleteEntitySource,
+	getEntitySourceByIdForUser,
+} from '#worker/repo/entity-sources.ts'
 import {
 	assertWithinEntitlement,
 	assertWithinStorageBytesEntitlement,
@@ -543,6 +546,21 @@ export async function refreshSavedPackageProjection(input: {
 							})
 						},
 					})
+					// A complete build that asks for wider capabilities is held, and
+					// holding it already settled the projection to the commit
+					// everyone still runs (`advanceServingCommit`).
+					const built = await getEntitySourceByIdForUser(input.env.APP_DB, {
+						id: input.sourceId,
+						userId: input.userId,
+					})
+					const builtCommit = loaded.source?.published_commit
+					if (builtCommit && built?.held_commit === builtCommit) {
+						return {
+							record: savedPackage,
+							manifest: loaded.manifest,
+							files: loadedFiles,
+						}
+					}
 				}
 				// Vector upsert is searchable but not needed for the publish
 				// response. Defer via waitUntil with durable debt + Sentry so a
@@ -596,6 +614,7 @@ export async function refreshSavedPackageProjection(input: {
 					packageId: input.packageId,
 					sourceId: input.sourceId,
 					manifest: loaded.manifest,
+					publishedCommit: loaded.source?.published_commit ?? null,
 					actorUserId: input.actorUserId,
 					actorCredential: input.actorCredential ?? null,
 				})

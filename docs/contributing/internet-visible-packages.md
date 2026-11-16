@@ -90,6 +90,16 @@ anonymous visitors, and its republishes advance for members. Apps that are not
 internet-visible never hold a commit. There is no members-only preview of a held
 commit; test it with local dev or a dev check.
 
+Everything else an app runs follows the same commit: jobs, subscriptions,
+webhooks, events, skills, and secret access. Publish projects the new commit
+before it builds. Holding the build re-projects the serving commit through the
+settle a failed rebuild uses (`refreshSavedPackageProjection` with
+`rebuildArtifacts: false`), and releasing the hold projects the held commit
+right after the pointer moves. Readers that load a manifest by source
+(`loadPackageManifestBySourceId`, `loadManifestsForSavedPackages`) read
+`toUnheldSourceView`, which is the serving commit while the published one is
+held. Capability checks pin the commit they inspect (`commit`).
+
 `loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
 held state from `held_commit`: an internet-visible app whose held commit is the
 published commit and not the serving one. The owner package page renders it as a

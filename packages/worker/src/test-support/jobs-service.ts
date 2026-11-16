@@ -1276,6 +1276,7 @@ export async function syncSinglePackageJob(input: {
 		baseUrl: input.baseUrl,
 		packageId: input.packageId,
 		sourceId: input.sourceId,
+		publishedCommit: input.publishedCommit ?? 'package-published-commit',
 		manifest: parseAuthoredPackageJson({
 			content: JSON.stringify({
 				name: `@owner/${input.packageId}`,
