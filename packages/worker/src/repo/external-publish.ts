@@ -24,9 +24,8 @@ import { runAuthoringPublishChecks } from './authoring-publish-checks.ts'
 import type { PublishPhaseTimings } from './publish-phase-timing.ts'
 import type { EntitySourceRow, RepoExternalPublishResult } from './types.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import {
-	recordPackageAppPublisher,
+	recordPackageAppPublish,
 	recordPackageAppPublisherUnknown,
 } from '#worker/package-runtime/package-app-authority.ts'
 import { assertPackageSourceOverwriteAllowed } from './source-safety-policy.ts'
@@ -112,8 +111,7 @@ export async function finalizePublishedEntitySource(
 		})
 		wrotePublishedSnapshot = written
 	}
-	// Before the new code serves, so it never runs as someone the publisher
-	// could not act as.
+	// Before the new code serves.
 	// A resumed finalize keeps the publisher the interrupted attempt recorded
 	// before its pointer moved.
 	if (
@@ -126,6 +124,7 @@ export async function finalizePublishedEntitySource(
 			orgId: input.source.user_id,
 			packageId: input.source.entity_id,
 			personId: input.actorUserId,
+			commit: input.publishedCommit,
 		})
 	} else if (
 		!resuming &&
@@ -352,17 +351,13 @@ async function recordPublisherOfPackage(input: {
 	orgId: OwnerId
 	packageId: string
 	personId: string
+	commit: string
 }) {
-	const binding = await loadOrgBindingForOrg(
-		input.db,
-		input.personId,
-		input.orgId,
-	)
-	await recordPackageAppPublisher({
+	await recordPackageAppPublish({
 		db: input.db,
 		scope: { orgId: input.orgId, packageId: input.packageId },
 		personId: input.personId,
-		publisherIsOwner: binding?.role === 'owner' || binding?.role === 'admin',
+		commit: input.commit,
 	})
 }
 

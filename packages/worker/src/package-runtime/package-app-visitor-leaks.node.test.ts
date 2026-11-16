@@ -103,7 +103,6 @@ async function setup() {
 		db,
 		scope: { orgId, packageId: 'pkg-app' },
 		personId: ownerId,
-		publisherIsOwner: true,
 	})
 	const env = {
 		APP_DB: db,

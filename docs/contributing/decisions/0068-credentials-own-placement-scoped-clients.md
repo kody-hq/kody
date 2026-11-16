@@ -886,8 +886,10 @@ credentials fill its needs. Visitors bring only verified identity.
 
 - **Who.** An explicit runs-as person an Owner picks, else the person who last
   published the app, else the owner of a personal org. A publish with no known
-  person clears the recorded publisher. The person is checked live (member of
-  the owning org, account usable) on every call and fails clearly when not.
+  person clears the recorded publisher. No publish clears the explicit pick
+  (2026-11-16, #5315): it stays until an Owner changes it. The person is checked
+  live (member of the owning org, account usable) on every call and fails
+  clearly when not.
 - **Cap.** Only Kody capabilities the app lists in `kody.app.capabilities` run
   as that person, within the role they hold now. Credential needs stay capped by
   credential-need enforcement.

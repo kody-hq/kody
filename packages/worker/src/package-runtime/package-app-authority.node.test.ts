@@ -19,8 +19,10 @@ import {
 	createPackageAppCredentialAuthority,
 	forgetPackageAppRunsAs,
 	loadPackageAppRunsAs,
+	notePackageAppPublishRequester,
 	packageAppRunsAsUnavailableMessages,
 	packageAppVisitorConsents,
+	recordPackageAppPublish,
 	recordPackageAppPublisher,
 	recordPackageAppPublisherUnknown,
 	setPackageAppRunsAsPerson,
@@ -97,7 +99,6 @@ test('an app runs as its publisher with their live role in the owning org', asyn
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	const runsAs = await t.runsAs()
 	expect(runsAs).toMatchObject({
@@ -112,18 +113,23 @@ test('an app runs as its publisher with their live role in the owning org', asyn
 	expect(runsAs.request.actor?.userId).toBe(t.member)
 })
 
-test('privilege climb: a Member republishing an app an Owner chose to run as themselves runs as the Member', async () => {
+test('a Member republishing keeps the runs-as person an Owner chose', async () => {
 	const t = await setup()
 	await recordPackageAppPublisher({
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
-		publisherIsOwner: true,
 	})
 	await setPackageAppRunsAsPerson({
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
+	})
+
+	await recordPackageAppPublisher({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
@@ -131,52 +137,187 @@ test('privilege climb: a Member republishing an app an Owner chose to run as the
 		source: 'explicit',
 		role: 'owner',
 	})
-
-	// The Member's new code must not act with the Owner's authority.
-	await recordPackageAppPublisher({
-		db: t.db,
-		scope: t.scope,
-		personId: t.member,
-		publisherIsOwner: false,
-	})
-	expect(await t.runsAs()).toMatchObject({
-		status: 'ready',
-		personId: t.member,
-		source: 'publisher',
-		role: 'member',
-	})
 })
 
-test('privilege climb: a publish with no known person clears both the publisher and the Owner pick', async () => {
+test('a publish with no known person forgets the publisher and keeps the Owner pick', async () => {
 	const t = await setup()
 	await recordPackageAppPublisher({
 		db: t.db,
 		scope: t.scope,
-		personId: t.owner,
-		publisherIsOwner: true,
+		personId: t.member,
 	})
-	await setPackageAppRunsAsPerson({
-		db: t.db,
-		scope: t.scope,
-		personId: t.owner,
-	})
-	expect((await t.runsAs()).status).toBe('ready')
-
 	await recordPackageAppPublisherUnknown({ db: t.db, scope: t.scope })
 	expect(await t.runsAs()).toMatchObject({
 		status: 'unavailable',
 		reason: 'not-set',
 	})
 
-	await recordPackageAppPublisher({
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await recordPackageAppPublisherUnknown({ db: t.db, scope: t.scope })
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
+	})
+})
+
+test('a publish that finishes as the org itself records the person who asked for that commit and keeps the Owner pick', async () => {
+	const t = await setup()
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await notePackageAppPublishRequester({
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
+		commit: 'commit-2',
+	})
+	// Asking changes nothing about the live app.
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.owner,
+		source: 'publisher',
+	})
+	// Someone else asking for the same commit does not replace the first.
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit: 'commit-2',
+	})
+	// The durable workflow acts as the owning org id, which is not a person.
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-2',
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
 		personId: t.member,
+		source: 'publisher',
+	})
+
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-3',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-3',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
+	})
+})
+
+test('a publish by an id that is no member, with nobody noted for that commit, forgets the publisher but keeps the Owner pick', async () => {
+	const t = await setup()
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-2',
+	})
+	// A different commit than the one asked for, and a requester from outside.
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-other',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'unavailable',
+		reason: 'not-set',
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.outsider,
+		commit: 'commit-4',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-4',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'unavailable',
+		reason: 'not-set',
+	})
+
+	await setPackageAppRunsAsPerson({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-5',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		status: 'ready',
+		personId: t.owner,
+		source: 'explicit',
+	})
+})
+
+test('overlapping publishes of one package each record the person who asked for their commit', async () => {
+	const t = await setup()
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.member,
+		commit: 'commit-a',
+	})
+	await notePackageAppPublishRequester({
+		db: t.db,
+		scope: t.scope,
+		personId: t.owner,
+		commit: 'commit-b',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-a',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.member,
+		source: 'publisher',
+	})
+	await recordPackageAppPublish({
+		db: t.db,
+		scope: t.scope,
+		personId: t.orgId,
+		commit: 'commit-b',
+	})
+	expect(await t.runsAs()).toMatchObject({
+		personId: t.owner,
 		source: 'publisher',
 	})
 })
@@ -192,7 +333,6 @@ test('an Owner republishing keeps the runs-as person they chose', async () => {
 		db: t.db,
 		scope: t.scope,
 		personId: t.owner,
-		publisherIsOwner: true,
 	})
 	expect(await t.runsAs()).toMatchObject({
 		status: 'ready',
@@ -207,7 +347,6 @@ test('a runs-as person who left the org, or was suspended, fails clearly instead
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	expect((await t.runsAs()).status).toBe('ready')
 
@@ -400,7 +539,6 @@ test('runs-as credential handles resolve as the live runs-as person, and stop wh
 		db: t.db,
 		scope: t.scope,
 		personId: t.member,
-		publisherIsOwner: false,
 	})
 	forgetPackageAppRunsAs(t.scope)
 	const authority = createPackageAppCredentialAuthority({

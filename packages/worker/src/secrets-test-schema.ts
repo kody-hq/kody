@@ -174,6 +174,18 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
+			`CREATE TABLE IF NOT EXISTS package_app_publish_requests (
+				package_id TEXT NOT NULL,
+				commit_sha TEXT NOT NULL,
+				owner_id TEXT NOT NULL,
+				person_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (package_id, commit_sha)
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
 			`CREATE TABLE IF NOT EXISTS package_app_authority_rejections (
 				day TEXT NOT NULL,
 				owner_id TEXT NOT NULL,

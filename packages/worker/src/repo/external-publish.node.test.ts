@@ -52,19 +52,13 @@ const mockModule = vi.hoisted(() => ({
 	syncActiveCommunityListingToPublishedCommit: vi.fn(
 		async (_input?: unknown) => 'skipped' as const,
 	),
-	loadOrgBindingForOrg: vi.fn(async () => ({ role: 'member' })),
-	recordPackageAppPublisher: vi.fn(async (_input: unknown) => {}),
+	recordPackageAppPublish: vi.fn(async (_input: unknown) => {}),
 	recordPackageAppPublisherUnknown: vi.fn(async (_input: unknown) => {}),
 }))
 
-vi.mock('#worker/orgs/repo.ts', async (importOriginal) => ({
-	...(await importOriginal<object>()),
-	loadOrgBindingForOrg: () => mockModule.loadOrgBindingForOrg(),
-}))
-
 vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
-	recordPackageAppPublisher: (input: unknown) =>
-		mockModule.recordPackageAppPublisher(input),
+	recordPackageAppPublish: (input: unknown) =>
+		mockModule.recordPackageAppPublish(input),
 	recordPackageAppPublisherUnknown: (input: unknown) =>
 		mockModule.recordPackageAppPublisherUnknown(input),
 }))
@@ -484,7 +478,7 @@ test('same-commit republish re-runs checks when stored checker version is stale'
 		expect.objectContaining({ publishedCommit: 'commit-old' }),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalled()
-	expect(mockModule.recordPackageAppPublisher).not.toHaveBeenCalled()
+	expect(mockModule.recordPackageAppPublish).not.toHaveBeenCalled()
 })
 
 test('storage failure after the pointer advances leaves the commit unsealed and a same-commit retry finishes it', async () => {
@@ -816,8 +810,8 @@ test('finalize forwards actorUserId into listing auto-follow sync', async () => 
 test('finalize records who published a package before the new code serves', async () => {
 	const callOrder: Array<string> = []
 	mockModule.hasPublishedRuntimeArtifacts.mockReturnValue(false)
-	mockModule.recordPackageAppPublisher.mockImplementation(async () => {
-		callOrder.push('recordPackageAppPublisher')
+	mockModule.recordPackageAppPublish.mockImplementation(async () => {
+		callOrder.push('recordPackageAppPublish')
 	})
 	mockModule.recordPackageAppPublisherUnknown.mockImplementation(async () => {
 		callOrder.push('recordPackageAppPublisherUnknown')
@@ -843,9 +837,9 @@ test('finalize records who published a package before the new code serves', asyn
 		})
 
 	await finalize({ actorUserId: 'member-1' })
-	expect(callOrder).toEqual(['recordPackageAppPublisher', 'updateEntitySource'])
-	expect(mockModule.recordPackageAppPublisher).toHaveBeenLastCalledWith(
-		expect.objectContaining({ personId: 'member-1', publisherIsOwner: false }),
+	expect(callOrder).toEqual(['recordPackageAppPublish', 'updateEntitySource'])
+	expect(mockModule.recordPackageAppPublish).toHaveBeenLastCalledWith(
+		expect.objectContaining({ personId: 'member-1' }),
 	)
 
 	callOrder.length = 0
@@ -859,9 +853,7 @@ test('finalize records who published a package before the new code serves', asyn
 	await finalize({})
 	expect(callOrder).toEqual(['updateEntitySource'])
 
-	mockModule.recordPackageAppPublisher.mockRejectedValueOnce(
-		new Error('d1 down'),
-	)
+	mockModule.recordPackageAppPublish.mockRejectedValueOnce(new Error('d1 down'))
 	callOrder.length = 0
 	await expect(finalize({ actorUserId: 'member-1' })).rejects.toThrow('d1 down')
 	expect(callOrder).toEqual([])
