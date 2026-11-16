@@ -99,6 +99,8 @@ async function createEnv() {
 				stable_user_id TEXT NOT NULL UNIQUE,
 			personal_org_id TEXT,
 				email TEXT,
+				display_name TEXT,
+				username TEXT,
 				email_verified_at TEXT,
 				deleting_at TEXT,
 				deleted_at TEXT
