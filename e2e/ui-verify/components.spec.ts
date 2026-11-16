@@ -291,6 +291,8 @@ test.describe('Tooltip', () => {
 		await page.mouse.move(0, 0)
 		await trigger.hover()
 		await expect(tip).toBeVisible()
+		await page.keyboard.press('Escape')
+		await expect(tip).toBeHidden()
 	})
 })
 

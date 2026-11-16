@@ -41,18 +41,22 @@ export function Tooltip({
 	useEffect(() => {
 		const trigger = ref.current?.parentElement
 		if (!trigger) return
+		// On the document: a hovered trigger without focus never gets the key.
 		function onKeyDown(event: KeyboardEvent) {
-			if (event.key === 'Escape') trigger!.dataset.tooltipDismissed = ''
+			if (event.key !== 'Escape') return
+			if (trigger!.matches(':hover, :focus-visible')) {
+				trigger!.dataset.tooltipDismissed = ''
+			}
 		}
 		function reset() {
 			delete trigger!.dataset.tooltipDismissed
 		}
-		trigger.addEventListener('keydown', onKeyDown)
+		document.addEventListener('keydown', onKeyDown)
 		trigger.addEventListener('blur', reset)
 		trigger.addEventListener('pointerenter', reset)
 		trigger.addEventListener('pointerleave', reset)
 		return () => {
-			trigger.removeEventListener('keydown', onKeyDown)
+			document.removeEventListener('keydown', onKeyDown)
 			trigger.removeEventListener('blur', reset)
 			trigger.removeEventListener('pointerenter', reset)
 			trigger.removeEventListener('pointerleave', reset)
