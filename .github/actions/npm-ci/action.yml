@@ -21,7 +21,7 @@ runs:
         fi
         echo "node=$(node --version)" >> "$GITHUB_OUTPUT"
 
-    # Paths and key must match the save step below.
+    # Paths and key must match the lookup and save steps below.
     - name: ♻️ Restore node_modules
       id: restore
       if: steps.key.outputs.cache == 'true'
@@ -57,19 +57,34 @@ runs:
       shell: bash
       run: npm ci
 
+    # Parallel jobs miss together and only the first save wins; the others
+    # skip the ~45s tar instead of failing to reserve the key.
+    - name: 🔎 Check whether another job saved node_modules
+      id: saved
+      if:
+        steps.key.outputs.cache == 'true' && steps.restore.outputs.cache-hit !=
+        'true'
+      uses: actions/cache/restore@v5.0.3
+      with:
+        path: |
+          node_modules
+          packages/*/node_modules
+          packages/mock-servers/*/node_modules
+        key: ${{ steps.restore.outputs.cache-primary-key }}
+        lookup-only: true
+
     # Workspace links are junctions on Windows, which the cache tar does not
     # restore as links; save the tree without them.
     - name: 🔗 Drop workspace links before saving
+      id: unlink
       if:
-        steps.key.outputs.cache == 'true' && steps.restore.outputs.cache-hit !=
+        steps.saved.outcome == 'success' && steps.saved.outputs.cache-hit !=
         'true'
       shell: bash
       run: node .github/actions/npm-ci/workspace-links.mjs unlink
 
     - name: 💾 Save node_modules
-      if:
-        steps.key.outputs.cache == 'true' && steps.restore.outputs.cache-hit !=
-        'true'
+      if: steps.unlink.outcome == 'success'
       uses: actions/cache/save@v5.0.3
       with:
         path: |
@@ -79,8 +94,6 @@ runs:
         key: ${{ steps.restore.outputs.cache-primary-key }}
 
     - name: 🔗 Restore workspace links
-      if:
-        ${{ !cancelled() && steps.key.outputs.cache == 'true' &&
-        steps.restore.outputs.cache-hit != 'true' }}
+      if: ${{ !cancelled() && steps.unlink.outcome != 'skipped' }}
       shell: bash
       run: node .github/actions/npm-ci/workspace-links.mjs link
