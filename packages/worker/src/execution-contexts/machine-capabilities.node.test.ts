@@ -119,6 +119,27 @@ test('a machine report adds, changes and removes named capabilities and leaves t
 	expect(liveGrants()).not.toContain(lan!.id)
 })
 
+test('a machine report carries its host folders, and a folder it stops allowing is removed', async () => {
+	const { db } = setup()
+	const runner: MachineDefinedCapability = {
+		kind: 'fs',
+		name: 'kody-runner',
+		description: '',
+		summary: { path: '/volume1/docker/kody-runner', mode: 'rw' },
+	}
+	expect(
+		await syncMachineDefinedCapabilities(db, context, [kdocker, runner]),
+	).toMatchObject({ added: ['command:kdocker', 'fs:kody-runner'] })
+	expect(
+		(await listMachineDefinedCapabilities(db, 'ec_vault')).map(
+			(row) => `${row.kind}:${row.name}`,
+		),
+	).toEqual(['command:kdocker', 'fs:kody-runner'])
+	expect(
+		await syncMachineDefinedCapabilities(db, context, [kdocker]),
+	).toMatchObject({ removed: ['fs:kody-runner'] })
+})
+
 test('removing a granted capability bumps the access epoch of the org that held the grant', async () => {
 	const { sqlite, db, epoch, grant } = setup()
 	sqlite.exec(
@@ -141,8 +162,7 @@ test('removing a granted capability bumps the access epoch of the org that held 
 
 test.each([
 	['not a list', {}, /must be a list/],
-	['shell', [{ kind: 'shell', name: 'shell' }], /"command" or "lan"/],
-	['fs', [{ kind: 'fs', name: 'docs' }], /"command" or "lan"/],
+	['shell', [{ kind: 'shell', name: 'shell' }], /"command", "lan" or "fs"/],
 	['bad name', [{ kind: 'command', name: 'Bad Name' }], /must be lowercase/],
 	[
 		'duplicate',

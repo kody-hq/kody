@@ -5,7 +5,11 @@ import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import type { ApiInvocationContext } from '#worker/open-api/context.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
-import { authorizeContextCommand, authorizeContextLan } from './commands.ts'
+import {
+	authorizeContextCommand,
+	authorizeContextFolder,
+	authorizeContextLan,
+} from './commands.ts'
 import {
 	type ExecutionContextCaller,
 	setSharing,
@@ -712,6 +716,101 @@ test('a named local network destination is refused when undefined, for other peo
 	expect(s.audits.filter((audit) => audit.event === 'lan_used')).toEqual([])
 	await expect(
 		authorizeContextLan(s.runCtx(operator, 'user'), lanArgs),
+	).rejects.toMatchObject({
+		code: 'execution_context_command_requires_context',
+	})
+})
+
+function defineFolder(
+	s: ReturnType<typeof setup>,
+	input: { allowedPackages?: Array<string> } = {},
+) {
+	s.sqlite
+		.prepare(
+			`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name,
+				allowed_packages_json, created_at, updated_at)
+			 VALUES ('mcap_runner', 'ec_mac', ?, ?, 'fs', 'kody-runner', ?, ?, ?)`,
+		)
+		.run(orgId, operator, JSON.stringify(input.allowedPackages ?? []), now, now)
+}
+
+test('a host folder use is audited by name, and a package the default rule would refuse is logged, not refused', async () => {
+	const s = setup()
+	defineFolder(s)
+	savePackage(s, 'pkg_other', 'org_someone_else')
+	await expect(
+		authorizeContextFolder(
+			orgRun(s, operator, {
+				// A token that predates machine capabilities keeps its folders.
+				scopes: ['execution_context:command'],
+				packages: { entries: ['pkg_other'], all: ['pkg_other'] },
+			}),
+			{ capability: 'kody-runner' },
+		),
+	).resolves.toEqual({ ok: true })
+	expect(s.audits[0]).toMatchObject({
+		event: 'fs_used',
+		detail: {
+			capability: 'kody-runner',
+			capabilityId: 'mcap_runner',
+			entryPackageIds: ['pkg_other'],
+			wouldBlockPackageIds: ['pkg_other'],
+		},
+	})
+})
+
+test('a host folder is refused when the machine does not allow it, for other people, and for packages off a list the operator set', async () => {
+	const missing = setup()
+	await expect(
+		authorizeContextFolder(orgRun(missing, operator), {
+			capability: 'kody-runner',
+		}),
+	).rejects.toMatchObject({
+		code: 'machine_capability_off',
+		message: expect.stringContaining('kody context policy allow'),
+	})
+
+	const s = setup()
+	defineFolder(s, { allowedPackages: ['pkg_own'] })
+	savePackage(s, 'pkg_own', orgId)
+	savePackage(s, 'pkg_second', orgId)
+	await setSharing(s.callerFor(operator), 'ec_mac', { allMembers: true })
+	await expect(
+		authorizeContextFolder(orgRun(s, 'user_friend'), {
+			capability: 'kody-runner',
+		}),
+	).rejects.toMatchObject({ code: 'machine_capability_not_granted' })
+	await expect(
+		authorizeContextFolder(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_second'], all: ['pkg_second'] },
+			}),
+			{ capability: 'kody-runner' },
+		),
+	).rejects.toMatchObject({
+		code: 'machine_capability_package_not_allowed',
+		message: expect.stringContaining('host folder "kody-runner"'),
+	})
+	// Ad hoc code is not on the list either.
+	await expect(
+		authorizeContextFolder(orgRun(s, operator), { capability: 'kody-runner' }),
+	).rejects.toMatchObject({ code: 'machine_capability_package_not_allowed' })
+	await expect(
+		authorizeContextFolder(orgRun(s, operator), {}),
+	).rejects.toMatchObject({ code: 'invalid_request' })
+	expect(s.audits.filter((audit) => audit.event === 'fs_used')).toEqual([])
+	await expect(
+		authorizeContextFolder(
+			orgRun(s, operator, {
+				packages: { entries: ['pkg_own'], all: ['pkg_own'] },
+			}),
+			{ capability: 'kody-runner' },
+		),
+	).resolves.toEqual({ ok: true })
+	await expect(
+		authorizeContextFolder(s.runCtx(operator, 'user'), {
+			capability: 'kody-runner',
+		}),
 	).rejects.toMatchObject({
 		code: 'execution_context_command_requires_context',
 	})

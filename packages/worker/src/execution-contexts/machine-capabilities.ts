@@ -55,13 +55,13 @@ export async function listMachineCapabilityGrantOrgIds(
 /** The kinds a machine defines in its local policy and reports to Kody. */
 export const machineCapabilityUsePermission = 'machine_capability:use' as const
 
-export const machineDefinedCapabilityKinds = ['command', 'lan'] as const
+export const machineDefinedCapabilityKinds = ['command', 'lan', 'fs'] as const
 
 export type MachineDefinedCapability = {
 	kind: (typeof machineDefinedCapabilityKinds)[number]
 	name: string
 	description: string
-	/** What the machine advertises (argument shapes, hosts and ports). Never executable paths. */
+	/** What the machine advertises (argument shapes, hosts and ports, a folder's path and mode). Never executable paths. */
 	summary: Record<string, unknown>
 }
 
@@ -77,7 +77,7 @@ export function parseMachineDefinedCapabilities(
 ): Array<MachineDefinedCapability> | string {
 	if (!Array.isArray(value)) return '"capabilities" must be a list.'
 	if (value.length > maxMachineDefinedCapabilities) {
-		return `A machine can define at most ${maxMachineDefinedCapabilities} named commands and local network destinations.`
+		return `A machine can define at most ${maxMachineDefinedCapabilities} named commands, local network destinations and host folders.`
 	}
 	const seen = new Set<string>()
 	const parsed: Array<MachineDefinedCapability> = []
@@ -87,8 +87,8 @@ export function parseMachineDefinedCapabilities(
 				? (entry as Record<string, unknown>)
 				: {}
 		const { kind, name, description = '', summary = {} } = record
-		if (kind !== 'command' && kind !== 'lan') {
-			return 'Each capability "kind" must be "command" or "lan".'
+		if (kind !== 'command' && kind !== 'lan' && kind !== 'fs') {
+			return 'Each capability "kind" must be "command", "lan" or "fs".'
 		}
 		if (typeof name !== 'string' || !capabilityNamePattern.test(name)) {
 			return `Capability name ${JSON.stringify(name)} must be lowercase letters, digits, "-" or "_" (at most 63 characters).`
@@ -127,7 +127,7 @@ export async function listMachineDefinedCapabilities(
 	const result = await db
 		.prepare(
 			`SELECT * FROM machine_capabilities
-			 WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan')
+			 WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs')
 			 ORDER BY kind, name`,
 		)
 		.bind(contextId)
@@ -174,7 +174,7 @@ export async function syncMachineDefinedCapabilities(
 	// read above, so the last of two reports that overlap wins as a whole. One
 	// JSON parameter also keeps a large set under D1's parameter limit.
 	const droppedIdsSql = `SELECT id FROM machine_capabilities
-		WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan')
+		WHERE context_id = ? AND removed_at IS NULL AND kind IN ('command', 'lan', 'fs')
 		  AND kind || ':' || name NOT IN (SELECT value FROM json_each(?))`
 	const reportedKeys = JSON.stringify([...definedKeys])
 	const grantOrgs = (
