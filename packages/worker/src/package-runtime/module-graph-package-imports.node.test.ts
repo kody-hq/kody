@@ -905,31 +905,40 @@ type CapturedPlugin = {
 
 async function setUpCallableArtifact(
 	source = { id: 'source-1', published_commit: 'commit-1' },
+	artifact: {
+		createdAt?: string
+		modules?: Record<string, unknown>
+		sourceEntry?: string
+	} = {},
 ) {
 	const callableManifest = {
 		...examplePackage,
 		exports: { './callable': './src/callable.js' },
 	}
 	const callableFiles = {
-		'src/callable.js': `export default function callable() { return "from-artifact" }`,
+		'src/callable.js':
+			artifact.sourceEntry ??
+			`export default function callable() { return "from-artifact" }`,
 	}
 	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
 		makeLoadedSource(callableManifest, callableFiles, source),
 	)
 	mockModule.loadPublishedBundleArtifactByIdentity.mockImplementation(
-		async (input: { kind: string }) =>
-			input.kind === 'importable-module'
-				? makeArtifactHit({
-						artifactName: './callable',
-						entryPoint: 'src/callable.js',
-						mainModule: 'bundle.js',
-						modules: {
-							'bundle.js': `import { helper } from "./helper.js"\nexport default function callable() { return helper() }`,
-							'helper.js': `export function helper() { return "from-artifact" }`,
-						},
-					})
-				: null,
+		async (input: { kind: string }) => {
+			if (input.kind !== 'importable-module') return null
+			const hit = makeArtifactHit({
+				artifactName: './callable',
+				entryPoint: 'src/callable.js',
+				mainModule: 'bundle.js',
+				modules: artifact.modules ?? {
+					'bundle.js': `import { helper } from "./helper.js"\nexport default function callable() { return helper() }`,
+					'helper.js': `export function helper() { return "from-artifact" }`,
+				},
+			})
+			if (artifact.createdAt) hit.artifact.createdAt = artifact.createdAt
+			return hit
+		},
 	)
 }
 
@@ -1030,4 +1039,56 @@ test('requirePublishedImports refuses an import that needs a package source buil
 		PublishedImportsNeedSourceBuildError,
 	)
 	expect(mockModule.createWorker.mock.calls.length).toBe(before)
+})
+
+test('ad hoc execute rebuilds the entry bundle when an artifact is replaced at the same commit', async () => {
+	mockModule.createWorker.mockImplementation(async () => ({
+		mainModule: 'bundle.js',
+		modules: { 'bundle.js': 'export default () => "caller"' },
+		dependencies: [],
+	}))
+	const source = { id: 'source-1', published_commit: 'replaced-1' }
+	await setUpCallableArtifact(source, { createdAt: '2026-11-01T00:00:00.000Z' })
+	const before = mockModule.createWorker.mock.calls.length
+	await buildAdHoc({ reuseCachedBundle: true })
+	await setUpCallableArtifact(source, { createdAt: '2026-11-02T00:00:00.000Z' })
+	await buildAdHoc({ reuseCachedBundle: true })
+	expect(mockModule.createWorker.mock.calls.length - before).toBe(2)
+})
+
+test('requirePublishedImports refuses an artifact with JSON modules, whose type attaching would lose', async () => {
+	mockModule.createWorker.mockResolvedValue(createBundleResult('unused'))
+	await setUpCallableArtifact(undefined, {
+		modules: {
+			'bundle.js': `import data from "./data.json"\nexport default function callable() { return data }`,
+			'data.json': { json: { ok: true } },
+		},
+	})
+	await expect(buildAdHoc({ requirePublishedImports: true })).rejects.toThrow(
+		PublishedImportsNeedSourceBuildError,
+	)
+})
+
+test('the metered proxy for an attached artifact reads export names from package source', async () => {
+	mockModule.createWorker.mockImplementation(async () => ({
+		mainModule: 'bundle.js',
+		modules: { 'bundle.js': 'export default () => "caller"' },
+		dependencies: [],
+	}))
+	await setUpCallableArtifact(
+		{ id: 'source-1', published_commit: 'names-1' },
+		{
+			sourceEntry: `export function fromSource() {}\nexport default function callable() {}`,
+			modules: {
+				'bundle.js': `function a() {}\nfunction b() {}\nexport { b as default, a as fromArtifact }`,
+			},
+		},
+	)
+	await buildAdHoc()
+	const call = mockModule.createWorker.mock.calls.at(-1)?.[0] as {
+		files: Record<string, string>
+	}
+	const proxy = findProxy(call.files)?.[1] ?? ''
+	expect(proxy).toContain('__kodyPackageModule.fromSource')
+	expect(proxy).not.toContain('__kodyPackageModule.fromArtifact')
 })

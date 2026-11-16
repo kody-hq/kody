@@ -150,6 +150,10 @@ type RewriteState = {
 	 * rewrite pass.
 	 */
 	publishedArtifactDependencies: Array<BundleArtifactDependency>
+	/** Row id and build time of each composed published artifact. */
+	publishedArtifactVersions: Array<string>
+	/** A composed artifact has JSON, CommonJS, or text modules. */
+	hasTypedPublishedArtifactModules: boolean
 	/**
 	 * Shared with reachability so each source string is parsed once per
 	 * prepare.
@@ -229,6 +233,16 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 	}
 	for (const dependency of artifact.artifact.dependencies) {
 		input.state.publishedArtifactDependencies.push(dependency)
+	}
+	input.state.publishedArtifactVersions.push(
+		`${artifact.row.id}@${artifact.artifact.createdAt}`,
+	)
+	if (
+		Object.values(artifact.artifact.modules).some(
+			(module) => typeof module !== 'string' && typeof module.js !== 'string',
+		)
+	) {
+		input.state.hasTypedPublishedArtifactModules = true
 	}
 	return joinPath(artifactPrefix, artifact.artifact.mainModule)
 }
@@ -407,6 +421,14 @@ async function ensurePackageProxy(
 	// stamped: the surrounding run already meters that package via
 	// `package_export`.
 	let calleePackageId: string | null = null
+	// For a published artifact target, read export names from the package's
+	// source entry: parsing a multi-megabyte artifact costs about 25 times
+	// its size in memory. Names the artifact lacks read as undefined, and
+	// names missed here still pass through the proxy's `export *`.
+	let exportNamesSource: {
+		files: Record<string, string>
+		modulePath: string
+	} | null = null
 	const absoluteExportPath =
 		parsed.packageName === state.rootPackage?.manifest.name
 			? joinPath(
@@ -429,7 +451,17 @@ async function ensurePackageProxy(
 						specifier,
 						loaded,
 					})
-					if (publishedTarget) return publishedTarget
+					if (publishedTarget) {
+						exportNamesSource = {
+							files: loaded.files,
+							modulePath: resolvePackageExportSourcePath({
+								files: loaded.files,
+								manifest: loaded.manifest,
+								exportName: parsed.exportName,
+							}),
+						}
+						return publishedTarget
+					}
 					await materializePackageSourceIntoFiles(state, loaded)
 					assertPublishedSourceCanRebuildWithoutInstallingDeps({
 						sourceFiles: loaded.files,
@@ -461,10 +493,12 @@ async function ensurePackageProxy(
 					runtimeModulePath,
 				),
 				packageId: calleePackageId,
-				exportNames: await collectModuleExportNames({
-					files: state.files,
-					modulePath: absoluteExportPath,
-				}),
+				exportNames: await collectModuleExportNames(
+					exportNamesSource ?? {
+						files: state.files,
+						modulePath: absoluteExportPath,
+					},
+				),
 			})
 		: createPackageImportProxySource({
 				targetPath: proxyTarget,
@@ -757,6 +791,16 @@ export type PreparedKodyGraph = {
 	moduleRoles: ReadonlyMap<string, KodyGraphModuleRole>
 	packages: LoadedKodyGraphPackages
 	publishedArtifactDependencies: Array<BundleArtifactDependency>
+	/**
+	 * Row id and build time of each composed published artifact, so a cache
+	 * key changes when an artifact is replaced at the same commit.
+	 */
+	publishedArtifactVersions: Array<string>
+	/**
+	 * A composed artifact has JSON, CommonJS, or text modules, whose type is
+	 * lost when the artifact is flattened into bundler input.
+	 */
+	hasTypedPublishedArtifactModules: boolean
 	entryPoint: string
 }
 
@@ -820,6 +864,8 @@ export async function prepareKodyGraphFiles(input: {
 		dynamicPackageImports: new Map(),
 		packages: new Map(),
 		publishedArtifactDependencies: [],
+		publishedArtifactVersions: [],
+		hasTypedPublishedArtifactModules: false,
 		importNodesCache,
 		prefetchedPublishedArtifacts: new Map(),
 	}
@@ -879,6 +925,8 @@ export async function prepareKodyGraphFiles(input: {
 		moduleRoles,
 		packages: state.packages,
 		publishedArtifactDependencies: state.publishedArtifactDependencies,
+		publishedArtifactVersions: state.publishedArtifactVersions,
+		hasTypedPublishedArtifactModules: state.hasTypedPublishedArtifactModules,
 		entryPoint,
 	}
 }

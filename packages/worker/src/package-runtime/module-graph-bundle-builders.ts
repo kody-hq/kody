@@ -171,6 +171,7 @@ export class PublishedImportsNeedSourceBuildError extends Error {
 }
 
 function preparedGraphNeedsSourceBuild(prepared: PreparedKodyGraph) {
+	if (prepared.hasTypedPublishedArtifactModules) return true
 	for (const role of prepared.moduleRoles.values()) {
 		if (role === 'package-source' || role === 'root-dependency') return true
 	}
@@ -248,6 +249,7 @@ async function createModuleBundleCacheKey(input: {
 	entryPoint: string
 	files: Record<string, string>
 	packages: PreparedKodyGraph['packages']
+	publishedArtifactVersions: PreparedKodyGraph['publishedArtifactVersions']
 }) {
 	// Digest the bundled prepared files (not raw source) so rewritten graph
 	// contents invalidate the cache. Attached artifacts are not digested: each
@@ -270,6 +272,7 @@ async function createModuleBundleCacheKey(input: {
 		input.entryPoint,
 		filesDigest,
 		packageCommits,
+		[...input.publishedArtifactVersions].sort(),
 	])
 }
 
@@ -376,8 +379,14 @@ export async function buildKodyModuleBundle(input: {
 			...stripKodyRuntimeModules(emittedModules),
 			...collectDynamicPackageImportProxyModules(files, emittedModules),
 		}
+		// Attached artifacts were checked when they were published, and
+		// parsing them again would cost far more memory than bundling.
 		await assertBundleHasNoUnresolvedBareImports({
-			modules,
+			modules: Object.fromEntries(
+				Object.entries(modules).filter(
+					([modulePath]) => !attachedModulePaths.has(modulePath),
+				),
+			),
 			bundleLabel:
 				input.bundleContext === 'ad-hoc-execute'
 					? 'Ad hoc execute module bundle'
@@ -416,6 +425,7 @@ export async function buildKodyModuleBundle(input: {
 		entryPoint,
 		files,
 		packages,
+		publishedArtifactVersions: prepared.publishedArtifactVersions,
 	})
 	let built = false
 	const cached = await moduleBundleCache.getOrCreate({
