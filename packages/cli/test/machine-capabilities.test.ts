@@ -441,3 +441,35 @@ test('a definition Kody would refuse is refused on the machine first', () => {
 		/at most 100 named commands and local network destinations/,
 	)
 })
+
+test('adding a definition past the limit is refused and leaves the policy readable', async () => {
+	const dir = mkdtempSync(join(tmpdir(), 'kody-machine-capabilities-'))
+	const policyPath = join(dir, 'policy.json')
+	const lan = (index: number) =>
+		parseMachineLanDefinition({
+			name: `nas-${index}`,
+			hosts: ['192.168.1.10'],
+			ports: [443],
+		})
+	writeFileSync(
+		policyPath,
+		JSON.stringify({
+			version: 1,
+			fs: [],
+			capabilities: {
+				commands: [],
+				lan: Array.from({ length: 100 }, (_, index) => lan(index)),
+			},
+		}),
+	)
+	await assert.rejects(
+		setLocalCapability({ kind: 'lan', definition: lan(100), policyPath }),
+		/at most 100 named commands and local network destinations/,
+	)
+	assert.equal(
+		(await readLocalPolicy(policyPath)).capabilities?.lan.length,
+		100,
+	)
+	// Replacing one of the 100 still works.
+	await setLocalCapability({ kind: 'lan', definition: lan(5), policyPath })
+})
