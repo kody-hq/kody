@@ -689,6 +689,10 @@
 				// capture is unaffected.
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
 				"ARTIFACTS_NAMESPACE": "production",
+				// When https://{handle}.kody.run/{app}/ stops serving apps and
+				// only redirects to https://{app}--{handle}.kody.run/. Matches
+				// packageAppPathMountCutoverAt; unset elsewhere on purpose.
+				"PACKAGE_APP_PATH_MOUNT_CUTOVER_AT": "2026-12-17T20:45:00Z",
 				// Origin hosted package apps are served from. Must stay a
 				// separate registrable domain from APP_BASE_URL — that is what
 				// makes package code cross-site from the app origin, so
