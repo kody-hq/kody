@@ -23,12 +23,23 @@ const shellSyntax = /[|&;<>`$*?(){}\n]/
  * literal, except `$` and backticks inside double quotes.
  */
 export function commandNeedsShell(command: string) {
-	const unquoted = command
-		.replace(/'[^']*'/g, '')
-		.replace(/"((?:[^"\\]|\\.)*)"/g, (_, inner: string) =>
-			inner.replace(/\\.|[^`$]/g, ''),
-		)
-	return shellSyntax.test(unquoted)
+	let quote: "'" | '"' | null = null
+	for (let index = 0; index < command.length; index += 1) {
+		const char = command[index]!
+		if (quote === "'") {
+			if (char === "'") quote = null
+		} else if (char === '\\') {
+			index += 1
+		} else if (quote === '"') {
+			if (char === '"') quote = null
+			else if (char === '$' || char === '`') return true
+		} else if (char === "'" || char === '"') {
+			quote = char
+		} else if (shellSyntax.test(char)) {
+			return true
+		}
+	}
+	return false
 }
 
 export function readShellCommandUse(row: {
