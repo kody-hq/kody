@@ -31,7 +31,14 @@ export type DevWatcher = {
 	 */
 	track: (
 		paths: ReadonlyArray<string>,
-		options?: { ignoreChanges?: ReadonlyArray<string> },
+		options?: {
+			ignoreChanges?: ReadonlyArray<string>
+			/**
+			 * Absolute paths outside the root (mapped local dep files) to poll
+			 * too. The root ignore rules do not apply to them.
+			 */
+			external?: ReadonlyArray<string>
+		},
 	) => Promise<ReadonlyArray<string>>
 	close: () => Promise<void>
 }
@@ -140,8 +147,9 @@ export function createDevWatcher(input: {
 			tracked = new Map()
 			const changedDuringBuild: Array<string> = []
 			const next = new Map<string, Fingerprint | null>()
-			for (const path of paths) {
-				if (ignored(path)) continue
+			const external = new Set(options?.external ?? [])
+			for (const path of [...paths, ...external]) {
+				if (!external.has(path) && ignored(path)) continue
 				const current = await fingerprint(path)
 				if (generation !== trackGeneration) return []
 				const previous = previousTracked.get(path)

@@ -55,6 +55,7 @@ async function startFakeLocalKody(): Promise<{
 				return 'kody_pkg_session=local'
 			},
 			sync: async () => {},
+			watchPaths: () => [],
 			listOutbox: async () => [],
 			packageId: () => 'local-package-id',
 			call: async () => null,

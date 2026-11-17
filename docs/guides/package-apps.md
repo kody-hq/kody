@@ -562,8 +562,11 @@ and highlight workers, and `kody dev` starts them under local wrangler with
 local D1, Durable Objects, KV, R2, queues, workflows and worker loaders. Each
 rebuild saves the working tree into that local Kody through the real
 `packageSave` route, and every request runs through the hosted package app
-runtime. Nothing is proxied to hosted Kody, and nothing you do locally touches
-your hosted account.
+runtime. Mapped local deps (`.kody/deps.json` and `package.json#kody.localDeps`,
+the same maps `kody execute --local` reads) that the package imports, directly
+or through another mapped dep, are saved first, each under the name it is mapped
+as. Editing a mapped dep re-saves it and the packages that import it. Nothing is
+proxied to hosted Kody, and nothing you do locally touches your hosted account.
 
 So under `kody dev` the hosted code runs for:
 

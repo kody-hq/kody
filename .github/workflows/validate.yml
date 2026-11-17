@@ -1099,6 +1099,18 @@ jobs:
       - name: 🧪 Local contract suite
         run: npm test -w @kodycodes/dev-runtime
 
+      # The CLI suite skips this test when the runtime is not built.
+      - name: 🧪 kody dev with mapped local deps
+        working-directory: packages/cli
+        env:
+          KODY_REQUIRE_DEV_RUNTIME: '1'
+          KODY_CLI_CREDENTIAL_STORE: file
+          KODY_SKIP_SKILL_REFRESH: '1'
+          KODY_SKIP_GIT_HELPER_REFRESH: '1'
+        run:
+          npx tsx --test --test-force-exit
+          test/dev-local-kody-mapped-deps.test.ts
+
   cli_windows:
     # Windows execution contexts (kody daemon, host folders, Task Scheduler):
     # x64 natively and Windows on Arm running the x64 workerd under emulation.
