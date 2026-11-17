@@ -1209,21 +1209,14 @@ test('a durable publish run that did not publish fails once and still stores the
 	// The publish reports a phase while it runs, as the capability would.
 	reportedRunProgress.length = 0
 	invocationMocks.runModuleWithRegistry.mockImplementationOnce(
-		async (
-			...args: [
-				unknown,
-				unknown,
-				unknown,
-				unknown,
-				{
-					reportProgress?: (update: {
-						progress: number
-						message?: string
-					}) => Promise<void>
-				},
-			]
-		) => {
-			await args[4].reportProgress?.({
+		async (...args: Array<unknown>) => {
+			const options = args[4] as {
+				reportProgress?: (update: {
+					progress: number
+					message?: string
+				}) => Promise<void>
+			}
+			await options.reportProgress?.({
 				progress: 1,
 				message: 'Running publish checks.',
 			})
