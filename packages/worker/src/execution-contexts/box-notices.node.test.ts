@@ -10,10 +10,12 @@ import {
 	narrowByProfile,
 	type BoxPrincipal,
 } from './box-access.ts'
-import { refreshContextNotices } from './box-notices.ts'
+import { refreshContextNotices, refreshOpenShellNotice } from './box-notices.ts'
 import {
-	dismissElevation,
+	dismissNotice,
 	listContextNotices,
+	listNoticesForViewer,
+	noticePayload,
 	recordElevation,
 	takeUndeliveredNotices,
 } from './notices.ts'
@@ -138,11 +140,11 @@ test('notices raise on new or added excess, dismiss by subject fingerprint, and 
 	const two = [...one, { permission: 'secret:use' as const, resource: null }]
 	expect(await recordElevation(db, { ...key, entries: two })).toBe(true)
 	const [first] = await listContextNotices(db, { contextId: 'ec_mac', orgId })
-	expect(await dismissElevation(db, { ...key, fingerprint: 'stale' })).toBe(
+	expect(await dismissNotice(db, { ...key, fingerprint: 'stale' })).toBe(
 		'changed',
 	)
 	expect(
-		await dismissElevation(db, { ...key, fingerprint: first!.fingerprint }),
+		await dismissNotice(db, { ...key, fingerprint: first!.fingerprint }),
 	).toBe('dismissed')
 	// Losing an entry changes the fingerprint but never re-raises.
 	expect(await recordElevation(db, { ...key, entries: one })).toBe(false)
@@ -233,4 +235,79 @@ test('a full refresh drops notices of people who lost access', async () => {
 			(notice) => notice.kind === 'elevation',
 		),
 	).toBe(false)
+})
+
+test('the operator gets an open shell notice while the shell has no package list, and keeps the shell by dismissing it', async () => {
+	const { sqlite, db } = setup()
+	const setCommands = (enabled: boolean) =>
+		sqlite
+			.prepare(
+				`UPDATE execution_contexts SET grant_json = ? WHERE id = 'ec_mac'`,
+			)
+			.run(JSON.stringify({ commands: { enabled } }))
+	const setList = (list: Array<string>) =>
+		sqlite
+			.prepare(
+				`UPDATE machine_capabilities SET allowed_packages_json = ? WHERE context_id = 'ec_mac'`,
+			)
+			.run(JSON.stringify(list))
+	const refresh = async () =>
+		refreshOpenShellNotice(db, (await getExecutionContext(db, 'ec_mac'))!)
+	const seenBy = async (userId: string) =>
+		(await listNoticesForViewer(db, { userId, orgId })).map(
+			(notice) => noticePayload(notice, '/here').kind,
+		)
+	sqlite.exec(`
+		INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at)
+		VALUES ('mcap_shell', 'ec_mac', '${orgId}', 'user_op', 'shell', 'shell', '${now}', '${now}');
+	`)
+
+	// Host commands are off: nothing to say.
+	await refresh()
+	expect(await seenBy('user_op')).toEqual([])
+
+	setCommands(true)
+	await refresh()
+	expect(await seenBy('user_op')).toEqual(['context-open-shell'])
+	expect(await seenBy('user_friend')).toEqual([])
+	const [notice] = await listNoticesForViewer(db, { userId: 'user_op', orgId })
+	expect(noticePayload(notice!, '/here')).toMatchObject({
+		fingerprint: 'open-shell',
+		dismissible: true,
+		href: '/here',
+		summary: expect.stringContaining('unrestricted shell'),
+	})
+	// Execute carries it once.
+	const take = () =>
+		takeUndeliveredNotices(db, { userId: 'user_op', orgId, surface: 'execute' })
+	expect(await take()).toHaveLength(1)
+	await refresh()
+	expect(await take()).toEqual([])
+
+	// Only the operator keeps the shell, and the choice survives a refresh.
+	const dismiss = (userId: string) =>
+		dismissNotice(db, {
+			contextId: 'ec_mac',
+			orgId,
+			userId,
+			fingerprint: 'open-shell',
+		})
+	expect(await dismiss('user_friend')).toBe('none')
+	expect(await dismiss('user_op')).toBe('dismissed')
+	await refresh()
+	expect(await seenBy('user_op')).toEqual([])
+
+	// A package list clears it; lifting the list raises it again, undismissed.
+	setList(['pkg_a'])
+	await refresh()
+	expect(await listContextNotices(db, { contextId: 'ec_mac', orgId })).toEqual(
+		[],
+	)
+	setList([])
+	await refresh()
+	expect(await seenBy('user_op')).toEqual(['context-open-shell'])
+
+	setCommands(false)
+	await refresh()
+	expect(await seenBy('user_op')).toEqual([])
 })

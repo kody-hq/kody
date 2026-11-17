@@ -501,3 +501,58 @@ test('every live context with the local network on gets a whole network entry wi
 		},
 	])
 })
+
+test('the notices table keeps its rows and gains an open shell notice for every live context whose shell has no package list', () => {
+	const migration = '0286-execution-context-open-shell-notices.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at, grant_json
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?, ?)`,
+	)
+	const on = JSON.stringify({ commands: { enabled: true } })
+	insert.run('ec_open', 'nas', 't1', null, on)
+	insert.run('ec_limited', 'mini', 't2', null, on)
+	insert.run('ec_off', 'laptop', 't3', null, '{}')
+	insert.run('ec_gone', 'old', 't4', '2026-10-30', on)
+	sqlite.exec(`
+		INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, allowed_packages_json, created_at, updated_at)
+		VALUES ('m1', 'ec_open', 'org_acme', 'user_1', 'shell', 'shell', '[]', '2026-10-29', '2026-10-29'),
+		       ('m2', 'ec_limited', 'org_acme', 'user_1', 'shell', 'shell', '["pkg_a"]', '2026-10-29', '2026-10-29');
+		INSERT INTO execution_context_notices (context_id, org_id, kind, subject_user_id, fingerprint, detail_json, raised_at, updated_at, dismissed_fingerprint)
+		VALUES ('ec_off', 'org_acme', 'elevation', 'user_2', 'fp', '{"entries":[]}', '2026-10-29', '2026-10-29', 'fp');
+	`)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT context_id, org_id, kind, subject_user_id, fingerprint, dismissed_fingerprint
+				 FROM execution_context_notices ORDER BY context_id`,
+			)
+			.all(),
+	).toEqual([
+		{
+			context_id: 'ec_off',
+			org_id: 'org_acme',
+			kind: 'elevation',
+			subject_user_id: 'user_2',
+			fingerprint: 'fp',
+			dismissed_fingerprint: 'fp',
+		},
+		{
+			context_id: 'ec_open',
+			org_id: 'org_acme',
+			kind: 'open_shell',
+			subject_user_id: 'user_1',
+			fingerprint: 'open-shell',
+			dismissed_fingerprint: null,
+		},
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'execution_context_notices_subject'`,
+			)
+			.all(),
+	).toHaveLength(1)
+})

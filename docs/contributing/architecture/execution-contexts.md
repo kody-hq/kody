@@ -273,6 +273,13 @@ data model exists so far; nothing reads it at run time yet.
   keeps its package list across off and on. With an empty list, shell commands
   only log the packages the default rule would refuse (`wouldBlockPackageIds` on
   `command_started`); a list the operator set is enforced.
+- While host commands are on and the shell's package list is empty, the operator
+  holds an `open_shell` notice (`refreshOpenShellNotice` in `box-notices.ts`,
+  backfilled by migration 0286). It is recomputed when the machine turns host
+  commands on or off, when the shell's package list changes, and with the other
+  notices. Its fingerprint is the constant `open-shell`, so a dismissal ("keep
+  the shell") holds until the notice is cleared and raised again. The notice
+  does not yet suggest named commands from the audit log.
 - The machine wide local network switch (`grant.egress.mode` `public-and-lan`)
   is the entry `lan` / `*`, a name no machine can define. Migration 0284 adds it
   to every context with the switch on, and `ensureNetworkCapability` adds it

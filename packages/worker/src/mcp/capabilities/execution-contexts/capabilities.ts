@@ -712,7 +712,7 @@ export const executionContextNoticeDismissCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'execution_context:execute',
 		description:
-			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
+			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. As the operator, pass the fingerprint `open-shell` to keep the unrestricted shell of a machine as it is; that notice comes back if the shell is turned off and on again or a package list is set and lifted. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
 		keywords: ['execution context', 'notice', 'dismiss', 'warning'],
 		readOnly: false,
 		idempotent: true,
