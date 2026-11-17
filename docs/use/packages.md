@@ -1267,16 +1267,21 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   inputs are unchanged since the published commit are skipped, because publish
   copies those artifacts instead of building them.
 - **Same run.** Like publish, the server checks run as a durable workflow, not
-  inside the request. The CLI uploads the tree once
+  inside the request. The CLI uploads the tree
   (`POST /v1/packages/check-uploads`, streamed to short-lived storage), starts
   the run with `packageCheck({ upload_id })`, which answers
   `{ status: "dispatched", workflow_id }` right away, and polls
   `workflowRunList({ workflow_id })`. It prints each phase and artifact chunk
   count as the run reports it, then reads the full result with
   `packageRunResult({ workflow_id })`. Each phase is a durable step in its own
-  throwaway isolate, so a step that hits a compute limit is retried by the run,
-  not by the CLI. Ctrl-C cancels the run (`workflowRunCancel`). Checking the
-  same upload again while its run is active returns that run.
+  throwaway isolate. Ctrl-C cancels the run (`workflowRunCancel`). Checking the
+  same upload again while its run is active returns that run. The token needs
+  `job:read` to follow the run (and `job:execute` to cancel it).
+- **Same retries.** A durable publish retries an attempt that hit a compute
+  limit or timed out, so `kody dev check` runs the server checks up to 3 times
+  (a fresh upload and run each time) when a check reports a memory or CPU limit,
+  the server answers 502/503/504, or it sends no answer before the request times
+  out.
 
 `packageCheck` no longer takes the tree in the request. A CLI older than 3.46.0
 gets HTTP 426 with error code `upgrade_required` and
