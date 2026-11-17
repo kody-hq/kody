@@ -6,7 +6,7 @@ import { expect, test } from './playwright-utils.ts'
 /**
  * Limited browsers (ADR 0094), for package-app visitors and full Kody
  * accounts: the sign-in and consent pages work as plain HTML with JavaScript
- * off, and "Sign in on another device" finishes from a second, signed-in
+ * off, and "Sign in with another device" finishes from a second, signed-in
  * browser. The limited browser uses an e-reader's Chromium 80 user agent.
  */
 const kindleUserAgent =
@@ -101,7 +101,7 @@ async function startDeviceSignIn(page: Page, path: string) {
 	await expect(page).toHaveURL(/\/login\?redirectTo=/)
 	await page
 		.getByTestId('sign-in-on-another-device')
-		.getByRole('button', { name: 'Sign in on another device' })
+		.getByRole('button', { name: 'Sign in with another device' })
 		.click()
 	await expect(page).toHaveURL(/\/oauth\/package-app\/device$/)
 	const code = (
@@ -229,12 +229,12 @@ test('a limited browser with JavaScript on gets the plain sign-in page, with no 
 	await expect(
 		page
 			.getByTestId('sign-in-on-another-device')
-			.getByRole('button', { name: 'Sign in on another device' }),
+			.getByRole('button', { name: 'Sign in with another device' }),
 	).toBeVisible()
 	await context.close()
 })
 
-test("with JavaScript off, a package app's Open link offers Sign in on another device and lands in the app", async ({
+test("with JavaScript off, a package app's Open link offers Sign in with another device and lands in the app", async ({
 	browser,
 	baseURL,
 	seedE2eUser,
@@ -250,11 +250,11 @@ test("with JavaScript off, a package app's Open link offers Sign in on another d
 	await ereader.goto(`/@${owner.username}/packages/${kodyId}/open`)
 	await expect(ereader).toHaveURL(/\/login\?/)
 	await expect(ereader.getByTestId('auth-no-javascript-note')).toContainText(
-		'Sign in on another device',
+		'Sign in with another device',
 	)
 	await ereader
 		.getByTestId('sign-in-on-another-device')
-		.getByRole('button', { name: 'Sign in on another device' })
+		.getByRole('button', { name: 'Sign in with another device' })
 		.click()
 	await expect(ereader).toHaveURL(/\/oauth\/package-app\/device$/)
 	const code = (
@@ -292,7 +292,7 @@ test('a limited browser signs in to the full Kody account from another device', 
 	await ereader.goto('/login?redirectTo=%2Faccount')
 	await ereader
 		.getByTestId('account-sign-in-on-another-device')
-		.getByRole('button', { name: 'Sign in on another device' })
+		.getByRole('button', { name: 'Sign in with another device' })
 		.click()
 	await expect(ereader).toHaveURL(/\/login\/device$/)
 	const code = (
@@ -300,6 +300,19 @@ test('a limited browser signs in to the full Kody account from another device', 
 	).trim()
 	expect(code).toMatch(/^[B-Z]{4}-[B-Z]{4}$/)
 	await expect(ereader.getByTestId('account-device-qr')).toBeVisible()
+	// "Keep this browser signed in" lives on the code screen; with JavaScript
+	// off it saves through its own Save button.
+	const rememberMe = ereader.getByRole('checkbox', {
+		name: 'Keep this browser signed in',
+	})
+	await expect(rememberMe).not.toBeChecked()
+	await rememberMe.check()
+	await ereader
+		.getByTestId('account-device-remember')
+		.getByRole('button', { name: 'Save' })
+		.click()
+	await expect(ereader).toHaveURL(/\/login\/device$/)
+	await expect(rememberMe).toBeChecked()
 
 	const phone = await browser.newContext({ baseURL: localhostBase(baseURL) })
 	await signInPhone(phone, person)
@@ -345,5 +358,37 @@ test('a sign-in that resumes a package app offers only the app device flow', asy
 	await expect(
 		page.getByTestId('account-sign-in-on-another-device'),
 	).toHaveCount(0)
+	await context.close()
+})
+
+test('with JavaScript on, the code screen saves Keep this browser signed in as it changes', async ({
+	browser,
+	baseURL,
+}) => {
+	const context = await browser.newContext({
+		baseURL: localhostBase(baseURL),
+	})
+	const page = await context.newPage()
+	await page.goto('/login')
+	await page
+		.getByTestId('account-sign-in-on-another-device')
+		.getByRole('button', { name: 'Sign in with another device' })
+		.click()
+	await expect(page).toHaveURL(/\/login\/device$/)
+	const form = page.getByTestId('account-device-remember')
+	await expect(form.getByRole('button', { name: 'Save' })).toBeHidden()
+	const saved = page.waitForResponse(
+		(response) =>
+			response.request().method() === 'POST' &&
+			new URL(response.url()).pathname === '/login/device',
+	)
+	await form
+		.getByRole('checkbox', { name: 'Keep this browser signed in' })
+		.check()
+	await saved
+	await page.reload()
+	await expect(
+		form.getByRole('checkbox', { name: 'Keep this browser signed in' }),
+	).toBeChecked()
 	await context.close()
 })

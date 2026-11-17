@@ -488,12 +488,6 @@ export function LoginPage({
 
 			{turnstileSiteKey ? <HumanCheckHelp deviceSignIn={deviceSignIn} /> : null}
 
-			{deviceSignInTarget ? (
-				<DeviceSignInOption target={deviceSignInTarget} rise={2} />
-			) : accountDeviceSignIn ? (
-				<AccountDeviceSignInOption redirectTo={redirectTo} rise={2} />
-			) : null}
-
 			{showSocial ? (
 				<>
 					<div
@@ -529,6 +523,12 @@ export function LoginPage({
 				</>
 			) : null}
 
+			{deviceSignInTarget ? (
+				<DeviceSignInOption target={deviceSignInTarget} rise={4} />
+			) : accountDeviceSignIn ? (
+				<AccountDeviceSignInOption redirectTo={redirectTo} rise={4} />
+			) : null}
+
 			<AuthFormFallback
 				turnstileSiteKey={turnstileSiteKey}
 				note={
@@ -536,10 +536,10 @@ export function LoginPage({
 						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
 						: turnstileSiteKey
 							? deviceSignIn
-								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in with another device, or turn JavaScript on.'
 								: 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so turn JavaScript on to sign in.'
 							: deviceSignIn
-								? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
+								? 'JavaScript is off. Sign in with your email and password, or use Sign in with another device. Passkeys and social sign-in need JavaScript.'
 								: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
 				}
 			/>

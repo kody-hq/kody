@@ -4,7 +4,7 @@ title: Sign in to an app from an e-reader or older browser
 summary:
   Sign in to a Kody package app from a browser that cannot run Kody's page
   JavaScript (e-readers, older Chromium, JavaScript off) with your email and
-  password, or with Sign in on another device (short code plus QR code).
+  password, or with Sign in with another device (short code plus QR code).
 category: platform
 ---
 
@@ -23,19 +23,20 @@ choose **Allow** on the app's consent page.
 
 This works on browsers that run older JavaScript, such as e-readers. The page
 draws a quick human check with a small script, so if JavaScript is turned off
-completely, use **Sign in on another device** instead.
+completely, use **Sign in with another device** instead.
 
 Passkeys and social sign-in (GitHub, Google, and others) need modern JavaScript,
 so use your email and password, or the option below.
 
-## Sign in on another device
+## Sign in with another device
 
 This option appears whenever you are signing in to an app, whether you used the
 app's own sign-in link or its **Open app** link on Kody. It works with
 JavaScript off, and it is the way in when the human check does not appear in
 your browser.
 
-1. On the sign-in page, choose **Sign in on another device**.
+1. On the sign-in page, choose **Sign in with another device** (the small link
+   below the other sign-in options).
 2. The browser shows a short code (like `BCDF-GHJK`), a QR code, and the address
    `kody.codes/device`.
 3. On a phone or computer where you are signed in to Kody, scan the QR code or

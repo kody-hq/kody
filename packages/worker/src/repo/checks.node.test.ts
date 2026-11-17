@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 
@@ -57,6 +58,8 @@ import {
 	isolatedBundleChunkSize,
 } from './isolated-check-phases.ts'
 import { maxRepoSourceFileBytes } from './large-file-policy.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 type RepoCheckRun = Awaited<ReturnType<typeof runRepoChecks>>
 
@@ -1624,6 +1627,108 @@ test('runRepoChecks fails publish on credential placeholders in a fetch body', a
 		'- src/index.ts:9: secret "clerkReviewUserId" in the request body',
 	)
 	expect(check?.message).not.toContain('"apiKey"')
+	expect(check?.message).toContain('This blocks publish.')
+})
+
+function placementDbEnv(
+	ownerId: string,
+	keys: ReadonlyArray<{
+		name: string
+		placement: string | null
+		optInBody?: 'owner' | 'observed'
+	}>,
+) {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	sqlite.exec('PRAGMA foreign_keys = OFF')
+	sqlite
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key) VALUES ('b1', ?, 'user', '')`,
+		)
+		.run(ownerId)
+	for (const key of keys) {
+		sqlite
+			.prepare(
+				`INSERT INTO secret_entries (bucket_id, id, name, encrypted_value, placement_json, created_at) VALUES ('b1', ?, ?, 'x', ?, '2026-10-01 00:00:00')`,
+			)
+			.run(`cred-${key.name}`, key.name, key.placement)
+		if (key.optInBody) {
+			sqlite
+				.prepare(
+					`INSERT INTO credential_fill_placement_opt_ins (credential_id, query, path, body, source, updated_at) VALUES (?, 0, 0, 1, ?, '2026-10-28T16:41:58.414Z')`,
+				)
+				.run(`cred-${key.name}`, key.optInBody)
+		}
+	}
+	return { APP_DB: createD1FromSqlite(sqlite) } as unknown as Env
+}
+
+const bodyPlaceholderPackage = () =>
+	packageFiles(
+		manifest('body-placeholder-allowed', {
+			credentials: {
+				accountPassword: { kind: 'secret', description: 'Password.' },
+			},
+		}),
+		{
+			'src/index.ts': [
+				'export const ready = true',
+				'export async function login() {',
+				"  await fetch('https://api.example.com/login', {",
+				"    method: 'POST',",
+				"    body: JSON.stringify({ password: '{{secret:accountPassword}}' }),",
+				'  })',
+				'}',
+			].join('\n'),
+		},
+	)
+
+test('runRepoChecks passes a body placeholder the Key already allows, including a legacy Key', async () => {
+	const ownerId = 'user-placement-owner'
+	for (const key of [
+		{
+			name: 'accountPassword',
+			placement: JSON.stringify({ headers: true, body: true }),
+			optInBody: 'owner' as const,
+		},
+		// No stored placement, body observed before placement existed.
+		{
+			name: 'accountPassword',
+			placement: null,
+			optInBody: 'observed' as const,
+		},
+	]) {
+		const { result } = await runChecks(bodyPlaceholderPackage(), {
+			env: placementDbEnv(ownerId, [key]),
+			baseUrl: 'https://kody.dev',
+			userId: ownerIdFromStored(ownerId),
+		})
+		const check = findCheck(result, 'credentials')
+		expect(check?.ok).toBe(true)
+		expect(check?.message).toContain('WARNING:')
+		expect(check?.message).toContain(
+			'- src/index.ts:5: secret "accountPassword" in the request body',
+		)
+		expect(check?.message).not.toContain('Publish failed:')
+	}
+})
+
+test('runRepoChecks fails a body placeholder the Key does not allow and links its approval page', async () => {
+	const ownerId = 'user-placement-owner'
+	const { result } = await runChecks(bodyPlaceholderPackage(), {
+		env: placementDbEnv(ownerId, [
+			{ name: 'accountPassword', placement: JSON.stringify({ headers: true }) },
+		]),
+		baseUrl: 'https://kody.dev',
+		userId: ownerIdFromStored(ownerId),
+	})
+	expect(result.ok).toBe(false)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(false)
+	expect(check?.message).toContain('Publish failed:')
+	expect(check?.message).toContain(
+		'  Owner approval: https://kody.dev/connect/secrets?name=accountPassword&placement=body&credential=cred-accountPassword',
+	)
 	expect(check?.message).toContain('This blocks publish.')
 })
 

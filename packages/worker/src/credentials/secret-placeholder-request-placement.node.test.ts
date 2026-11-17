@@ -79,7 +79,7 @@ test('the notice names the fix and the switch decides whether it blocks', async 
 	})
 	expect(failure).toContain('Publish failed:')
 	expect(failure).toContain('This blocks publish.')
-	expect(failure).not.toContain('owner can allow')
+	expect(failure).toContain('owner approval link')
 	expect(
 		formatSecretPlaceholderRequestPlacementNotice({ hits: [], mode: 'warn' }),
 	).toBeNull()
