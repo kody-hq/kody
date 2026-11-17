@@ -22,6 +22,7 @@ export const repoCreateCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoCreate',
+		walletGuard: 'repo_change',
 		contextRuns: 'allow',
 		orgPermission: 'package:create',
 		description:

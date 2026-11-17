@@ -1,3 +1,9 @@
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	enforceWalletGuard,
+	isWalletGuardLimitError,
+	walletGuardRateLimitedResponse,
+} from '#worker/wallet-guard/enforce.ts'
 import {
 	buildAuthenticatedArtifactsRemote,
 	parseArtifactTokenSecret,
@@ -776,8 +782,28 @@ export async function handlePlainRepoGitHttpRequest(
 		return serviceUnavailableResponse(resolved.message)
 	}
 
+	// The Artifacts token names no person, so this counts against the org.
+	// Artifacts is what validates the token, so the request is only counted
+	// once Artifacts accepted it: a forged token cannot spend the org's
+	// allowance.
+	const gitGuard = {
+		env,
+		ownerId: ownerIdFromStored(resolved.target.ownerId),
+		email: null,
+		actorUserId: null,
+		guard: 'git',
+	} as const
 	try {
-		return await proxyArtifactsGitRequest({
+		await enforceWalletGuard({ ...gitGuard, mode: 'check' })
+	} catch (error) {
+		if (isWalletGuardLimitError(error)) {
+			return walletGuardRateLimitedResponse(error)
+		}
+		throw error
+	}
+
+	try {
+		const response = await proxyArtifactsGitRequest({
 			env,
 			target: resolved.target,
 			parsed,
@@ -786,6 +812,10 @@ export async function handlePlainRepoGitHttpRequest(
 			service:
 				parsed.kind === 'info-refs' ? url.searchParams.get('service') : null,
 		})
+		if (response.ok) {
+			await enforceWalletGuard({ ...gitGuard, mode: 'record' })
+		}
+		return response
 	} catch {
 		return serviceUnavailableResponse(
 			'Failed to proxy git traffic to the artifact repository.',

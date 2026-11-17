@@ -14,6 +14,12 @@ import {
 } from '#worker/dr/do-pitr.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
 import {
+	admitWalletGuardInWindows,
+	type WalletGuardAdmission,
+	type WalletGuardCheck,
+	type WalletGuardMode,
+} from './wallet-guard-windows.ts'
+import {
 	admitExecuteCallInWindows,
 	ExecuteRepeatWindow,
 	type ExecuteAdmissionResult,
@@ -35,7 +41,7 @@ export const userMeterDailyCounterRetentionDays = 14
 
 const metaSchemaVersionKey = 'schema_version'
 /** Bump when initializeSchema DDL changes; warm objects skip DDL. */
-const userMeterSchemaVersion = 16
+const userMeterSchemaVersion = 17
 // How long a completed release is remembered for reset-retry idempotency.
 const writeLeaseReleaseMemoryMs = 60 * 60 * 1000
 /** Leases taken before expiry existed get this long to finish. */
@@ -121,7 +127,11 @@ export type UserMeterWorkerDayConsumeResult =
 			weekCount?: number
 	  })
 
-export type UserMeterExecuteAdmissionResult = ExecuteAdmissionResult
+export type UserMeterExecuteAdmissionResult =
+	| ExecuteAdmissionResult
+	| (Extract<WalletGuardAdmission, { admitted: false }> & {
+			reason: 'wallet_guard'
+	  })
 
 export type UserMeterReadResult = UserMeterBootstrapState | UserMeterReadyState
 
@@ -814,6 +824,15 @@ class UserMeterBase extends DurableObject<Env> {
 				count INTEGER NOT NULL
 			)
 		`)
+		// Denial-of-wallet guard windows (schema v17): one row per bucket,
+		// reset in place when its fixed window rolls over.
+		this.ctx.storage.sql.exec(`
+			CREATE TABLE IF NOT EXISTS wallet_guard_windows (
+				bucket TEXT PRIMARY KEY NOT NULL,
+				window_start INTEGER NOT NULL,
+				count INTEGER NOT NULL
+			)
+		`)
 		this.ctx.storage.sql.exec(
 			`INSERT INTO user_meter_meta (key, value) VALUES (?, ?)
 			ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
@@ -1133,13 +1152,35 @@ class UserMeterBase extends DurableObject<Env> {
 		nowMs: number
 		limitPerMinute: number
 		repeat?: ExecuteRepeatInput
+		/** Denial-of-wallet ceilings checked first and counted only on admit. */
+		walletGuard?: { checks: Array<WalletGuardCheck> }
 	}): Promise<UserMeterExecuteAdmissionResult> {
+		if (input.walletGuard) {
+			const guard = this.admitWalletGuardSync({
+				nowMs: input.nowMs,
+				checks: input.walletGuard.checks,
+				mode: 'check',
+			})
+			if (!guard.admitted) {
+				const { admitted, ...refusal } = guard
+				return { admitted, reason: 'wallet_guard', ...refusal }
+			}
+		}
 		const result = admitExecuteCallInWindows({
-			...input,
+			nowMs: input.nowMs,
+			limitPerMinute: input.limitPerMinute,
+			repeat: input.repeat,
 			minuteWindow: this.executeCallMinute,
 			repeatWindow: this.executeRepeatWindow,
 		})
 		if (result.admitted) {
+			if (input.walletGuard) {
+				this.admitWalletGuardSync({
+					nowMs: input.nowMs,
+					checks: input.walletGuard.checks,
+					mode: 'record',
+				})
+			}
 			this.ctx.storage.sql.exec(
 				`INSERT INTO execute_call_days (day, count) VALUES (?, 1)
 				ON CONFLICT(day) DO UPDATE SET count = count + 1`,
@@ -1147,6 +1188,61 @@ class UserMeterBase extends DurableObject<Env> {
 			)
 		}
 		return result
+	}
+
+	/**
+	 * Denial-of-wallet guard: admit one call against every listed fixed
+	 * window, or refuse it without counting. Persisted, so a daily ceiling
+	 * survives eviction and deploys.
+	 */
+	async admitWalletGuard(input: {
+		nowMs: number
+		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
+	}): Promise<WalletGuardAdmission> {
+		return this.ctx.storage.transactionSync(() =>
+			this.admitWalletGuardSync(input),
+		)
+	}
+
+	private admitWalletGuardSync(input: {
+		nowMs: number
+		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
+	}): WalletGuardAdmission {
+		const sql = this.ctx.storage.sql
+		return admitWalletGuardInWindows({
+			...input,
+			store: {
+				read: (bucket) => {
+					const row = sql
+						.exec<{ window_start: number; count: number }>(
+							`SELECT window_start, count FROM wallet_guard_windows
+								WHERE bucket = ? LIMIT 1`,
+							bucket,
+						)
+						.toArray()[0]
+					return row
+						? {
+								windowStart: Number(row.window_start),
+								count: Number(row.count),
+							}
+						: null
+				},
+				write: (bucket, windowStart, count) => {
+					sql.exec(
+						`INSERT INTO wallet_guard_windows (bucket, window_start, count)
+							VALUES (?, ?, ?)
+							ON CONFLICT(bucket) DO UPDATE SET
+								window_start = excluded.window_start,
+								count = excluded.count`,
+						bucket,
+						windowStart,
+						count,
+					)
+				},
+			},
+		})
 	}
 
 	private readonly executeCallMinute: ExecuteCallMinuteWindow = {
@@ -2687,7 +2783,14 @@ export type UserMeterRpc = DurableObjectPitrRpc & {
 		nowMs: number
 		limitPerMinute: number
 		repeat?: ExecuteRepeatInput
+		walletGuard?: { checks: Array<WalletGuardCheck> }
 	}) => Promise<UserMeterExecuteAdmissionResult>
+	/** Persisted denial-of-wallet guard admission across fixed windows. */
+	admitWalletGuard: (input: {
+		nowMs: number
+		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
+	}) => Promise<WalletGuardAdmission>
 	/** Cold initialize authoritative state from a caller-provided physical byte count. */
 	initializeStorageBytes: (input: {
 		bytes: number

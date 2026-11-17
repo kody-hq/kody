@@ -1,7 +1,14 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { http, HttpResponse } from 'msw'
+import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { createMswNodeServer } from '#worker/test-support/msw-node-server.ts'
+import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import {
+	walletGuardPlanLimits,
+	walletGuardWindowMs,
+} from '#universal/wallet-guards.ts'
 
 const getEntitySourceById = vi.fn()
 const resolveExistingArtifactSourceRepo = vi.fn()
@@ -552,4 +559,60 @@ test('proxy keeps working after promote flips entity_kind to package', async () 
 	expect(response).not.toBeNull()
 	expect(response!.status).toBe(200)
 	expect(await response!.text()).toBe(packResult)
+})
+
+test('a full git ceiling answers 429, and a forged token never spends the org allowance', async () => {
+	resetMocks()
+	seedPlainRepo()
+	consoleWarn.mockImplementation(() => {})
+	const env = {
+		...testEnv(),
+		...createInMemoryUserMeterEnv().env,
+	} as unknown as Env
+	const orgLimit = walletGuardPlanLimits.maxGitOperationsPer5Minutes
+	// One slot left in the org's 5-minute window.
+	const meter = userMeterRpc({ env, userId: ownerIdFromStored('owner-1') })
+	for (let used = 0; used < orgLimit - 1; used += 1) {
+		await meter.admitWalletGuard({
+			nowMs: Date.now(),
+			checks: [
+				{
+					bucket: 'org:git_operations_per_5_minutes',
+					windowMs: walletGuardWindowMs.five_minutes,
+					limit: orgLimit,
+				},
+			],
+			mode: 'record',
+		})
+	}
+	using _server = createMswNodeServer([
+		http.get(`${artifactsRemote}/info/refs`, ({ request }) =>
+			request.headers.get('Authorization')?.includes('forged')
+				? HttpResponse.text('Unauthorized', { status: 401 })
+				: HttpResponse.text('001e# service=git-upload-pack\n0000', {
+						status: 200,
+					}),
+		),
+	])
+	const infoRefs = (token: string) =>
+		handlePlainRepoGitHttpRequest(
+			new Request(
+				`https://kody.codes/git/sources/${sourceId}.git/info/refs?service=git-upload-pack`,
+				{ headers: { Authorization: `Bearer ${token}` } },
+			),
+			env,
+		)
+
+	for (let attempt = 0; attempt < 3; attempt += 1) {
+		expect((await infoRefs('forged'))!.status).toBe(401)
+	}
+	// The forged requests were not counted, so the last slot is still free.
+	expect((await infoRefs(artifactToken))!.status).toBe(200)
+
+	const refused = await infoRefs(artifactToken)
+	expect(refused!.status).toBe(429)
+	expect(Number(refused!.headers.get('Retry-After'))).toBeGreaterThan(0)
+	expect(await refused!.text()).toContain(
+		`Rate limit reached (git_operations_per_5_minutes, per organization): ${orgLimit.toLocaleString('en-US')} git operations per 5 minutes per organization.`,
+	)
 })

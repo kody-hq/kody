@@ -1628,6 +1628,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packagePublishExternalPush',
+		walletGuard: 'publish',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:

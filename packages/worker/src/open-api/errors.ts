@@ -9,6 +9,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { findWalletGuardLimitError } from '#worker/wallet-guard/enforce.ts'
 import {
 	executionContextErrorCodes,
 	isExecutionContextError,
@@ -325,6 +326,19 @@ export function toApiError(
 			code: 'account_deleting',
 			message:
 				'Account deletion is in progress; retry after the current write finishes.',
+			cause: error,
+		})
+	}
+	const walletGuardError = findWalletGuardLimitError(error)
+	if (walletGuardError) {
+		return new ApiError({
+			status: 429,
+			code: 'rate_limited',
+			message: walletGuardError.message,
+			details: walletGuardError.details,
+			headers: {
+				'Retry-After': String(walletGuardError.details.retryAfterSeconds),
+			},
 			cause: error,
 		})
 	}

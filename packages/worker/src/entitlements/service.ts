@@ -17,6 +17,8 @@ import {
 	resolveCreditWalletState,
 	resolveEffectivePlan,
 	resolveEntitlementLimit,
+	resolveEntitlementLimits,
+	type PlanLimits,
 	resolveWeeklyEntitlementLimit,
 	type DailyEntitlementResource,
 	type EntitlementResource,
@@ -345,6 +347,31 @@ export async function resolveLiveEntitlementForResource(input: {
 }
 
 /**
+ * Effective limit table with live limit overrides, for the denial-of-wallet
+ * guards: an admin raise binds on the next call.
+ */
+export async function resolveLiveOverriddenLimits(input: {
+	db: D1Database
+	userId: OwnerId
+	email: string | null | undefined
+	now?: Date
+}): Promise<PlanLimits> {
+	const now = input.now ?? new Date()
+	return resolveEntitlementLimits(
+		await withLiveLimitOverrides({
+			db: input.db,
+			orgId: input.userId,
+			entitlement: getCachedUserEntitlement(input.db, {
+				userId: input.userId,
+				email: input.email,
+			}),
+			now,
+		}),
+		now,
+	)
+}
+
+/**
  * Resolve the effective plan, entitlement ladder, and credit wallet state
  * for a user. Missing userId, invalid stable ids, and no matching row
  * resolve to public `free` without warning. Stored plan values go through
@@ -558,10 +585,11 @@ async function withLiveLimitOverrides(input: {
 	db: D1Database
 	orgId: string
 	entitlement: Promise<UserEntitlement>
-	resource: EntitlementResource
+	/** Omit when the caller only reads override-backed limits. */
+	resource?: EntitlementResource
 	now: Date
 }): Promise<UserEntitlement> {
-	if (!isLimitOverrideResource(input.resource)) {
+	if (input.resource && !isLimitOverrideResource(input.resource)) {
 		return await input.entitlement
 	}
 	const [entitlement, limitOverrides] = await Promise.all([

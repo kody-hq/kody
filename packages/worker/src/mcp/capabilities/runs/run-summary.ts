@@ -24,6 +24,7 @@ export const runSummaryCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runSummary',
+		walletGuard: 'run_read',
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:
