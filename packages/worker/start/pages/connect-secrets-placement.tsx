@@ -176,18 +176,23 @@ export function ConnectSecretsPlacementApproval({
 		credentials.length > 0 &&
 		pendingParts.length === 0 &&
 		pendingHosts.length === 0
+	// Allowed only once the re-read request shows nothing left to approve.
 	const done =
-		(completed === 'approve' || nothingPending) &&
+		nothingPending &&
 		missingNames.length === 0 &&
 		rejectedHosts.length === 0 &&
 		!data.approvalError
 	const partlyDone =
 		!done &&
-		(completed === 'approve' || nothingPending) &&
+		nothingPending &&
 		(missingNames.length > 0 ||
 			rejectedHosts.length > 0 ||
 			Boolean(data.approvalError))
-	const error = data.placementApprovalError ?? data.approvalError ?? null
+	const unconfirmed =
+		completed === 'approve' && credentials.length > 0 && !nothingPending
+			? 'Kody could not confirm this approval was saved. Try again.'
+			: null
+	const error = data.placementApprovalError ?? data.approvalError ?? unconfirmed
 	const canApprove =
 		!done &&
 		completed !== 'reject' &&
@@ -220,6 +225,7 @@ export function ConnectSecretsPlacementApproval({
 					data: { orgSlug, refresh: connectSecretsInput(url.search) },
 				})
 			}
+			await refresh()
 			if (isCurrent()) setCompleted('approve')
 		} catch (caught) {
 			if (isCurrent())
@@ -228,7 +234,6 @@ export function ConnectSecretsPlacementApproval({
 						? caught.message
 						: 'Unable to approve this request.',
 				)
-		} finally {
 			await refresh()
 		}
 	}

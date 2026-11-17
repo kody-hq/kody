@@ -5,7 +5,7 @@ import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { secretPageOrgSlugFromCaller } from '#mcp/secrets/package-approval-url.ts'
 import { readStoredCredentialPlacement } from '#worker/credentials/credential-fields.ts'
-import { effectiveFillPlacement } from '#worker/credentials/fill-placement-enforcement.ts'
+import { pendingPlacementApprovalParts } from '#worker/credentials/fill-placement-enforcement.ts'
 import { readFillPlacementOptIn } from '#worker/credentials/fill-placement-opt-ins.ts'
 import { buildCredentialPlacementApprovalUrl } from '#worker/credentials/placement-approval-links.ts'
 import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
@@ -96,11 +96,14 @@ export const credentialPlacementApprovalLinkCapability = defineDomainCapability(
 				)
 			}
 			const optIn = await readFillPlacementOptIn(ctx.env.APP_DB, stored.id)
-			const effective = effectiveFillPlacement(stored.placement, optIn) ?? {}
 			const parts = placementApprovalParts.filter((part) =>
 				args.parts.includes(part),
 			)
-			const pendingParts = parts.filter((part) => effective[part] !== true)
+			const pendingParts = pendingPlacementApprovalParts(
+				stored.placement,
+				optIn,
+				parts,
+			)
 			const approvalUrl = buildCredentialPlacementApprovalUrl({
 				baseUrl: ctx.callerContext.baseUrl,
 				names: [name],
