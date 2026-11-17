@@ -178,8 +178,11 @@ host in the same click). The owner sees the credential, the requested part, and
 the "host may store this" warning, then approves or declines. Agents can build
 the same link with `credentialPlacementApprovalLink` (MCP `api`, or
 `kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
-which never changes placement itself. Other refusals link to the credential's
-fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
+which never changes placement itself. An older credential with no placement set
+still asks for approval of a part it already fills, so the owner's approval is
+saved on the credential and `secretList` shows it. Other refusals link to the
+credential's fill placement setting
+(`/@<org>/-/credentials/<credential>#fill-placement`).
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
