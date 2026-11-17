@@ -999,8 +999,13 @@ async function loadShellUse(
 			{ id: contextId },
 		)
 		const count = (value: unknown) => (typeof value === 'number' ? value : 0)
-		const rows = (value: unknown) =>
-			Array.isArray(value) ? value.flatMap((entry) => record(entry) ?? []) : []
+		const rows = (value: unknown): Array<Record<string, unknown>> =>
+			Array.isArray(value)
+				? value.flatMap((entry) => {
+						const row = record(entry)
+						return row ? [row] : []
+					})
+				: []
 		return {
 			commands: count(result.commands),
 			adHocCommands: count(result.adHocCommands),
