@@ -480,6 +480,8 @@ export function createLocalKodyUpstream(input: {
 				)
 			}
 			watchPaths = depFiles
+			// Checked after watching, so fixing the mapping rebuilds.
+			assertDepsInAppScope(input.manifest, deps)
 			let changed = false
 			for (const pkg of packages) {
 				const tree = await readTree(pkg.root)
@@ -519,6 +521,30 @@ export function createLocalKodyUpstream(input: {
 		},
 		watchPaths: () => watchPaths,
 	}
+}
+
+/**
+ * Local Kody saves into the app's own account, and like hosted Kody that only
+ * accepts packages in its scope, so a mapped dep from another scope stops the
+ * sync before anything is saved.
+ */
+function assertDepsInAppScope(
+	manifest: KodyPackageManifest,
+	deps: ReadonlyArray<{ name: string; manifest: KodyPackageManifest }>,
+) {
+	const scope = localUsernameFor(manifest)
+	const foreign = deps.filter((dep) => localUsernameFor(dep) !== scope)
+	if (foreign.length === 0) return
+	const lines = foreign.map((dep) => {
+		const leaf = dep.name.split('/').at(-1)
+		return `- ${dep.name} (mapped to ${dep.manifest.root}): fork it into @${scope}, for example as @${scope}/${leaf}, then import and map that copy.`
+	})
+	throw new Error(
+		[
+			`Mapped local deps must be in the app's own scope (@${scope}). Local Kody can only save deps in the app's scope, like hosted Kody, where imports resolve only within the caller's org.`,
+			...lines,
+		].join('\n'),
+	)
 }
 
 const sourceModulePattern = /\.[cm]?[jt]sx?$/

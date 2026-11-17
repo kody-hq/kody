@@ -565,8 +565,13 @@ rebuild saves the working tree into that local Kody through the real
 runtime. Mapped local deps (`.kody/deps.json` and `package.json#kody.localDeps`,
 the same maps `kody execute --local` reads) that the package imports, directly
 or through another mapped dep, are saved first, each under the name it is mapped
-as. Editing a mapped dep re-saves it and the packages that import it. Nothing is
-proxied to hosted Kody, and nothing you do locally touches your hosted account.
+as. Editing a mapped dep re-saves it and the packages that import it. Like
+hosted Kody, local Kody only saves packages in the app's own scope, so a mapped
+dep from another scope (an `@danj` app mapping `kody:@someone/shared`) stops the
+save before anything is saved, with a message naming the dep and its mapped
+path. Fork the dep into the app's scope (for example as `@danj/shared`), then
+import and map that copy. Nothing is proxied to hosted Kody, and nothing you do
+locally touches your hosted account.
 
 So under `kody dev` the hosted code runs for:
 
