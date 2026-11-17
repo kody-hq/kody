@@ -228,6 +228,21 @@ on keyboard focus.
   alone).
 - A link styled as a button is `<Button href>`, not `TextLink`.
 
+## HandleSuggestion
+
+`start/components/handle-suggestion.tsx`
+
+```tsx
+const suggestion = useVerifiedHandleSuggestion(formatProblem?.suggestion ?? null)
+<HandleSuggestion suggestion={suggestion} onApply={applySuggestion} />
+```
+
+Renders "Try <suggestion>." after a handle format error, with the suggestion as
+a link-styled `<button type="button">`. `useVerifiedHandleSuggestion` debounces
+the same availability check the username field uses and returns a suggestion
+only once it is confirmed free (falling back to `-2`, `-3`, and similar
+variants). `onApply` sets the field value and returns focus to the field.
+
 ## Badge
 
 `start/components/badge.tsx`

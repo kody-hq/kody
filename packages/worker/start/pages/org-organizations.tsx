@@ -4,10 +4,14 @@ import { Badge } from '../components/badge.tsx'
 import { Field } from '../components/field.tsx'
 import { Button } from '../components/button.tsx'
 import {
-	getHandleFormatError,
+	getHandleFormatProblem,
 	handleFormatHint,
 	suggestHandle,
 } from '@kody-internal/shared/handle-rules.ts'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from '../components/handle-suggestion.tsx'
 
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import {
@@ -15,7 +19,7 @@ import {
 	renderPendingInviteActions,
 	type PendingInviteActions,
 } from './pending-invite-actions.tsx'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -188,7 +192,12 @@ function CreateOrganizationForm() {
 	const [clientError, setClientError] = useState<{
 		message: string
 		field: 'displayName' | 'slug'
+		suggestion?: string | null
 	} | null>(null)
+	const slugInputRef = useRef<HTMLInputElement>(null)
+	const slugSuggestion = useVerifiedHandleSuggestion(
+		clientError?.field === 'slug' ? (clientError.suggestion ?? null) : null,
+	)
 	const restore = useOrganizationRestore()
 	const [restorableSlug, setRestorableSlug] = useState<string | null>(
 		draft.get('restorableSlug'),
@@ -246,6 +255,21 @@ function CreateOrganizationForm() {
 							createError ??
 							mutation.error?.message ??
 							draft.get('error')}
+						{clientError?.field === 'slug' ? (
+							<HandleSuggestion
+								suggestion={slugSuggestion}
+								disabled={mutation.isPending}
+								onApply={(suggestion) => {
+									slugInputRef.current?.focus()
+									setSlug(suggestion)
+									setSlugEdited(true)
+									setClientError(null)
+									setRestorableSlug(null)
+									setCreateError(null)
+									setConfirming(false)
+								}}
+							/>
+						) : null}
 					</span>
 				</AccountManagementMessage>
 			) : null}
@@ -282,11 +306,15 @@ function CreateOrganizationForm() {
 							setConfirming(false)
 							return
 						}
-						const error = getHandleFormatError(slug.trim(), {
+						const slugProblem = getHandleFormatProblem(slug.trim(), {
 							label: 'Handle',
 						})
-						if (error) {
-							setClientError({ message: error, field: 'slug' })
+						if (slugProblem) {
+							setClientError({
+								message: slugProblem.message,
+								field: 'slug',
+								suggestion: slugProblem.suggestion,
+							})
 							setConfirming(false)
 							return
 						}
@@ -350,6 +378,7 @@ function CreateOrganizationForm() {
 								kody.codes/@
 							</span>
 							<Input
+								ref={slugInputRef}
 								css={slugInputCss}
 								aria-describedby={[
 									'create-organization-slug-note',

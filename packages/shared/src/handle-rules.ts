@@ -1,7 +1,7 @@
 /**
  * Permanent handle rules (usernames and organization slugs). One source of
  * truth for format checks, HTML progressive-enhancement hints, and the
- * client-side copy that explains what is wrong and suggests a valid handle.
+ * client-side copy that explains what is wrong and derives a valid handle.
  *
  * The DNS-safe pattern lives in {@link dnsSafeUsernamePattern} because every
  * handle is also a subdomain label; this module owns diagnosis and messaging.
@@ -159,27 +159,48 @@ function issueMessage(
 	}
 }
 
+export type HandleFormatProblem = {
+	message: string
+	/**
+	 * A valid handle derived from the input, or null. Unverified: show it only
+	 * after an availability check (see `useVerifiedHandleSuggestion`).
+	 */
+	suggestion: string | null
+}
+
 /**
- * Human-facing format error for a handle field. Includes a `Try …` suggestion
- * when one can be derived and differs from the trimmed lowercase input.
+ * Format problem for a handle field: the message plus a format-valid
+ * suggestion when one can be derived and differs from the trimmed lowercase
+ * input. Callers render the suggestion themselves once it is confirmed free.
  */
-export function getHandleFormatError(
+export function getHandleFormatProblem(
 	raw: string,
 	options: { label?: HandleFormatLabel } = {},
-): string | null {
+): HandleFormatProblem | null {
 	const label = options.label ?? 'Username'
 	const issue = diagnoseHandleFormat(raw)
 	if (!issue) return null
 
 	const message = issueMessage(issue, label)
-	if (issue === 'required') return message
+	if (issue === 'required') return { message, suggestion: null }
 
 	const suggestion = suggestHandle(raw)
 	const normalized = normalizeHandle(raw)
-	if (suggestion && suggestion !== normalized) {
-		return `${message} Try ${suggestion}.`
+	return {
+		message,
+		suggestion: suggestion && suggestion !== normalized ? suggestion : null,
 	}
-	return message
+}
+
+/**
+ * Human-facing format error for a handle field. Never names a suggestion:
+ * an unchecked suggestion may already be taken.
+ */
+export function getHandleFormatError(
+	raw: string,
+	options: { label?: HandleFormatLabel } = {},
+): string | null {
+	return getHandleFormatProblem(raw, options)?.message ?? null
 }
 
 /** Generic server-style requirements line (API responses, reserved fallbacks). */

@@ -9,7 +9,7 @@ import {
 import { useServerFn } from '@tanstack/react-start'
 import {
 	handleFormatHint,
-	getHandleFormatError,
+	getHandleFormatProblem,
 } from '@kody-internal/shared/handle-rules.ts'
 import {
 	handleEmailLocalPreview,
@@ -34,6 +34,10 @@ import {
 import type { CSSObject } from '@emotion/react'
 import { renderIcon } from './icon.tsx'
 import { Input } from './input.tsx'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from './handle-suggestion.tsx'
 export type UsernameAvailabilityView = AvailabilityView
 
 export type UsernameChoiceSeeds = {
@@ -103,7 +107,7 @@ export function UsernameChoiceField(props: {
 			return
 		}
 
-		const formatError = getHandleFormatError(trimmed)
+		const formatError = getHandleFormatProblem(trimmed)?.message
 		if (formatError) {
 			setAvailability({
 				...({
@@ -240,6 +244,13 @@ export function UsernameChoiceField(props: {
 		setAvailability,
 	])
 
+	const inputRef = useRef<HTMLInputElement>(null)
+	const formatProblem = props.value.trim()
+		? getHandleFormatProblem(props.value.trim())
+		: null
+	const formatSuggestion = useVerifiedHandleSuggestion(
+		formatProblem?.suggestion ?? null,
+	)
 	const preview = props.value.trim().toLowerCase() || 'your-username'
 	const suggestions =
 		availability.status === 'taken' ||
@@ -256,6 +267,7 @@ export function UsernameChoiceField(props: {
 		.join(' ')
 
 	function applySuggestion(suggestion: string) {
+		inputRef.current?.focus()
 		props.onChange(suggestion)
 	}
 
@@ -292,6 +304,7 @@ export function UsernameChoiceField(props: {
 				</div>
 			</div>
 			<Input
+				ref={inputRef}
 				id={inputId}
 				type="text"
 				name="username"
@@ -318,6 +331,13 @@ export function UsernameChoiceField(props: {
 					data-status={availability.status}
 				>
 					{availabilityMessage(availability)}
+					{formatProblem && availability.status === 'invalid' ? (
+						<HandleSuggestion
+							suggestion={formatSuggestion}
+							onApply={applySuggestion}
+							disabled={props.disabled}
+						/>
+					) : null}
 				</p>
 				{suggestions.length > 0 ? (
 					<ul css={suggestionsCss} aria-label="Available username suggestions">

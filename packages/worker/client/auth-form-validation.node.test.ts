@@ -12,7 +12,7 @@ test('signup rejects invalid username with a field-tied message', () => {
 	).toEqual({
 		field: 'username',
 		message:
-			'Username can only use a–z letters (no accents), numbers, and hyphens. Try jan-kovac.',
+			'Username can only use a–z letters (no accents), numbers, and hyphens.',
 	})
 })
 
