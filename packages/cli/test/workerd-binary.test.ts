@@ -252,8 +252,13 @@ test('ensureWorkerdBinary retries a stalled download', async () => {
 		}),
 		/failed verification/,
 	)
-	assert.equal(server.calls(), 2)
-	assert.equal(downloads.length, 2)
+	// A slow runner can also stall the retried body past the 50ms idle timeout
+	// and retry once more, so only require that a retry happened.
+	assert.ok(
+		server.calls() >= 2,
+		`expected a retry, got ${server.calls()} call(s)`,
+	)
+	assert.equal(downloads.length, server.calls())
 })
 
 test('ensureWorkerdBinary names the download step when every attempt stalls', async () => {

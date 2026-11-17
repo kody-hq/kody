@@ -425,7 +425,7 @@ test('a running mock sees outside writes and never overwrites them', async () =>
 		await writeFile(statePath, JSON.stringify(onDisk))
 
 		await storageCall(dev, 'packageStorageSet', { key: 'd', value: 'dev' })
-		await Promise.all(
+		const concurrent = await Promise.all(
 			Array.from({ length: 10 }, (_, i) =>
 				storageCall(i % 2 ? dev : outside, 'packageStorageSet', {
 					key: `k${i}`,
@@ -433,6 +433,9 @@ test('a running mock sees outside writes and never overwrites them', async () =>
 				}),
 			),
 		)
+		for (const write of concurrent) {
+			assert.deepEqual(write.body, { result: { ok: true } })
+		}
 		const list = await storageCall(dev, 'packageStorageList', {})
 		const rows = Object.fromEntries(
 			list.body.result.entries.map((e: { key: string; value: unknown }) => [

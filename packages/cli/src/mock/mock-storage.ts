@@ -156,7 +156,28 @@ async function persistMockSession(
 	// Write then rename so a reader in another process never sees half a file.
 	const temp = `${path}.${process.pid}.${randomUUID()}.tmp`
 	await writeFile(temp, `${JSON.stringify(state, null, 2)}\n`)
-	await rename(temp, path)
+	await retryWhileFileBusy(() => rename(temp, path))
+}
+
+/**
+ * Windows refuses to replace, read, or create a file another process holds
+ * open or is still deleting (EPERM, EACCES, EBUSY); such a moment passes.
+ */
+const fileBusyCodes = new Set(['EPERM', 'EACCES', 'EBUSY'])
+
+function isFileBusyError(error: unknown) {
+	return fileBusyCodes.has((error as NodeJS.ErrnoException)?.code ?? '')
+}
+
+async function retryWhileFileBusy<T>(fn: () => Promise<T>): Promise<T> {
+	for (let attempt = 1; ; attempt++) {
+		try {
+			return await fn()
+		} catch (error) {
+			if (!isFileBusyError(error) || attempt >= 20) throw error
+			await sleep(10 * attempt)
+		}
+	}
 }
 
 /**
@@ -178,7 +199,7 @@ async function readMockStateFile(
 	for (let attempt = 0; ; attempt++) {
 		let text: string
 		try {
-			text = await readFile(path, 'utf8')
+			text = await retryWhileFileBusy(() => readFile(path, 'utf8'))
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
 			throw error
@@ -219,14 +240,16 @@ async function withMockStoreLock<T>(
 			await (await open(lockPath, 'wx')).close()
 			break
 		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+			// Windows answers EPERM while the last holder's lock is still deleting.
+			const code = (error as NodeJS.ErrnoException).code
+			if (code !== 'EEXIST' && !isFileBusyError(error)) throw error
 			const heldMs = await stat(lockPath).then(
 				(info) => Date.now() - info.mtimeMs,
 				() => 0,
 			)
 			// A process that died mid-write leaves its lock behind.
 			if (heldMs > mockStoreStaleLockMs) {
-				await rm(lockPath, { force: true })
+				await retryWhileFileBusy(() => rm(lockPath, { force: true }))
 				continue
 			}
 			if (Date.now() > deadline) {
@@ -240,7 +263,7 @@ async function withMockStoreLock<T>(
 	try {
 		return await fn()
 	} finally {
-		await rm(lockPath, { force: true })
+		await retryWhileFileBusy(() => rm(lockPath, { force: true }))
 	}
 }
 
