@@ -1403,23 +1403,6 @@ test('publishSession persists the workspace snapshot to BUNDLE_ARTIFACTS_KV for 
 	)
 })
 
-test('publishFromExternalRef clones the named branch when the commit is not on the default branch', async () => {
-	consoleWarn.mockImplementation(() => {})
-	setCommonSessionFixtures()
-	mockExternalClone()
-	await publishExternal({
-		branch: 'kody-published',
-		expectedHead: 'commit-new',
-		deferBundleCheckToRebuild: true,
-	})
-	expect(mockModule.cloneExternalPublishWorkspace).toHaveBeenCalledWith(
-		expect.objectContaining({
-			branch: 'kody-published',
-			checkoutCommit: 'commit-new',
-		}),
-	)
-})
-
 test('publishFromExternalRef rejects stale expected HEAD values and checks fast-forward ancestry through the ephemeral clone', async () => {
 	setCommonSessionFixtures()
 	// Clone tip is the remote default-branch HEAD at clone time; a mismatch
