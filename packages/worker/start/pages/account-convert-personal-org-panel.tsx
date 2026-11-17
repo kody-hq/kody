@@ -5,7 +5,7 @@ import {
 	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import { Button } from '../components/button.tsx'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { convertPersonalOrganization } from '#start/server/convert-personal-org'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -19,6 +19,11 @@ import {
 	accountActionsCss,
 } from './account-management-components.tsx'
 import { Input } from '../components/input.tsx'
+import { getHandleFormatProblem } from '@kody-internal/shared/handle-rules.ts'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from '../components/handle-suggestion.tsx'
 
 export function AccountConvertPersonalOrgPanel({
 	username,
@@ -32,6 +37,13 @@ export function AccountConvertPersonalOrgPanel({
 	const [newHandle, setNewHandle] = useState('')
 	const [confirmation, setConfirmation] = useState('')
 	const [error, setError] = useState<string | null>(null)
+	const handleInputRef = useRef<HTMLInputElement>(null)
+	const handleProblem = newHandle.trim()
+		? getHandleFormatProblem(newHandle.trim())
+		: null
+	const handleSuggestion = useVerifiedHandleSuggestion(
+		handleProblem?.suggestion ?? null,
+	)
 	const router = useRouter()
 	const mutation = useMutation(
 		conversionMutationOptions(client, convertPersonalOrganization),
@@ -136,6 +148,7 @@ export function AccountConvertPersonalOrgPanel({
 							New personal handle
 						</label>
 						<Input
+							ref={handleInputRef}
 							id="convert-new-handle"
 							name="newHandle"
 							data-testid="account-convert-personal-org-handle"
@@ -144,8 +157,34 @@ export function AccountConvertPersonalOrgPanel({
 							value={newHandle}
 							placeholder="new-handle"
 							disabled={mutation.isPending}
+							aria-invalid={handleProblem ? true : undefined}
+							aria-describedby={
+								handleProblem ? 'convert-new-handle-error' : undefined
+							}
 							onChange={(event) => setNewHandle(event.currentTarget.value)}
 						/>
+						{handleProblem ? (
+							<p
+								id="convert-new-handle-error"
+								aria-live="polite"
+								data-testid="account-convert-personal-org-handle-error"
+								css={{
+									margin: 0,
+									color: colors.danger,
+									fontSize: typography.fontSize.sm,
+								}}
+							>
+								{handleProblem.message}
+								<HandleSuggestion
+									suggestion={handleSuggestion}
+									disabled={mutation.isPending}
+									onApply={(suggestion) => {
+										handleInputRef.current?.focus()
+										setNewHandle(suggestion)
+									}}
+								/>
+							</p>
+						) : null}
 						<p css={fieldDescriptionCss}>
 							This becomes your username and the handle of your new personal
 							organization. Choose carefully, handles stay put after this.

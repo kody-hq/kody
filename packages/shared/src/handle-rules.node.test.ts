@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	diagnoseHandleFormat,
 	getHandleFormatError,
+	getHandleFormatProblem,
 	isValidHandle,
 	suggestHandle,
 } from './handle-rules.ts'
@@ -47,6 +48,23 @@ test('isValidHandle matches the DNS-safe username pattern', () => {
 	expect(isValidHandle('joe--cool')).toBe(false)
 	expect(isValidHandle('notes--kent')).toBe(false)
 	expect(getHandleFormatError('joe--cool')).toBe(
-		"Username can't include two hyphens in a row. Try joe-cool.",
+		"Username can't include two hyphens in a row.",
 	)
+})
+
+test('getHandleFormatProblem keeps the unverified suggestion out of the message', () => {
+	expect(getHandleFormatProblem('jsdklfjsdlsks;j')).toEqual({
+		message: 'Username can only use a–z letters, numbers, and hyphens.',
+		suggestion: 'jsdklfjsdlsks-j',
+	})
+	expect(getHandleFormatProblem('Acme Co', { label: 'Handle' })).toEqual({
+		message: "Handle can't include spaces.",
+		suggestion: 'acme-co',
+	})
+	expect(getHandleFormatProblem('')).toEqual({
+		message: 'Username is required.',
+		suggestion: null,
+	})
+	expect(getHandleFormatProblem('ab')?.suggestion).toBeNull()
+	expect(getHandleFormatProblem('kent')).toBeNull()
 })
