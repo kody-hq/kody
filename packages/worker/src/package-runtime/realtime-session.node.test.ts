@@ -143,5 +143,13 @@ test('resolvePackageAppWorkerCacheKey keys a held app on the commit everyone run
 		binding,
 	})
 
-	expect(JSON.parse(cacheKey).at(-1)).toBe('served-commit')
+	expect(cacheKey).toBe(
+		JSON.stringify([
+			'user-1',
+			'package-1',
+			'source-1',
+			'https://example.com',
+			'served-commit',
+		]),
+	)
 })

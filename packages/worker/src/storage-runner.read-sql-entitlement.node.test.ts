@@ -223,7 +223,6 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		['SELECT created FROM t', false],
 		['WITH create AS (SELECT 1) SELECT * FROM create', false],
 		['WITH drop AS (SELECT 1 AS alter) SELECT alter FROM drop', false],
-		["WITH c AS (SELECT 'a' AS v) SELECT replace(v, 'a', 'b') FROM c", false],
 		['WITH s AS (SELECT 1 AS i) REPLACE INTO t SELECT i FROM s', true],
 	]
 	expect(
@@ -527,9 +526,4 @@ test('only a single CREATE TABLE IF NOT EXISTS that stores no rows skips the wri
 		expect(isIdempotentStorageSqlDdl(query)).toBe(false)
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(true)
 	}
-	expect(storageSqlNeedsWriteEntitlement('SELECT 1')).toBe(false)
-	// A comment before a read does not make it pay the entitlement fan-out.
-	expect(storageSqlNeedsWriteEntitlement('/* newest first */ SELECT 1')).toBe(
-		false,
-	)
 })

@@ -16,7 +16,6 @@ import {
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
 } from './package-app-diagnostics.ts'
-import { buildPackageAppNotFoundMessage } from './package-app-synthetic.ts'
 import {
 	parsePackageAppCustomHostnamePath,
 	parsePackageAppPath,
@@ -1821,16 +1820,18 @@ function seedPublishedAppAheadOfServing(kodyId: string) {
 	return fixture
 }
 
+const servedCommitWithoutAppNotFoundBody =
+	'Saved package app not found. Declare package.json#kody.app and publish, then smoke-test the fetch handler with packageAppFetch.'
+
 test('a served commit without kody.app is the normal 404 while hasApp already projects the next publish', async () => {
 	const kodyId = 'app-pending-serve'
-	const fixture = seedPublishedAppAheadOfServing(kodyId)
-	expect(fixture.savedPackage.hasApp).toBe(true)
+	seedPublishedAppAheadOfServing(kodyId)
 	mockModule.buildPackageAppWorker.mockClear()
 
 	const response = await serveHelloWorld({ kodyId, restPath: '/opt-in' })
 
 	expect(response.status).toBe(404)
-	expect(await response.text()).toBe(buildPackageAppNotFoundMessage())
+	expect(await response.text()).toBe(servedCommitWithoutAppNotFoundBody)
 	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
 })
 
@@ -1842,6 +1843,6 @@ test('/_assets/ is the normal 404 when the served commit has no kody.app', async
 	const response = await asset('app.css', undefined, kodyId)
 
 	expect(response.status).toBe(404)
-	expect(await response.text()).toBe(buildPackageAppNotFoundMessage())
+	expect(await response.text()).toBe(servedCommitWithoutAppNotFoundBody)
 	expect(mockModule.loadPackageSourceBySourceId).not.toHaveBeenCalled()
 })

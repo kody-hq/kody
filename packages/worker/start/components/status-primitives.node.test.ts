@@ -32,11 +32,20 @@ test('every Badge tone shares one box so adjacent badges line up', () => {
 		lineHeight: css.lineHeight,
 		borderRadius: css.borderRadius,
 	})
-	const neutral = box(getBadgeCss('neutral'))
+	const sharedBox = {
+		fontSize: '0.78rem',
+		padding: '0.15rem 0.6rem',
+		lineHeight: 1.2,
+		borderRadius: '999px',
+	}
+	expect(box(getBadgeCss('neutral'))).toEqual(sharedBox)
 	for (const tone of ['accent', 'warning', 'danger'] as const) {
-		expect(box(getBadgeCss(tone))).toEqual(neutral)
+		expect(box(getBadgeCss(tone))).toEqual(sharedBox)
 	}
 	expect(getBadgeCss()).toEqual(getBadgeCss('neutral'))
+	expect(getBadgeCss('accent').color).toBe('var(--color-primary-text)')
+	expect(getBadgeCss('warning').color).toBe('var(--color-warning-text)')
+	expect(getBadgeCss('danger').color).toBe('var(--color-danger)')
 })
 
 test('Alert sets no role unless the caller asks for one', () => {
@@ -74,5 +83,8 @@ test('Table cell defaults never beat a cell that sets its own alignment', () => 
 	const tableClass = /\.(css-[\w-]+)/.exec(styles)?.[1]
 	expect(tableClass).toBeTruthy()
 	expect(styles).toContain(`:where(.${tableClass}) :where(th, td){`)
+	expect(styles).toContain(
+		'padding:var(--spacing-xs) var(--spacing-sm);border-bottom:1px solid var(--color-border)',
+	)
 	expect(styles).not.toMatch(/\.css-[\w-]+ (th|td)\b/)
 })
