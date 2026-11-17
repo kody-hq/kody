@@ -48,14 +48,16 @@ test('an app with no valid host label keeps its path address after cutover', () 
 	expect(locationAt(cutoverAt, { kodyId: 'Not_Kebab' })).toBeNull()
 })
 
-test('production is configured with the cutover the owner notice promised', () => {
-	const wrangler = readFileSync(
-		new URL('../../wrangler.jsonc', import.meta.url),
-		'utf8',
-	)
-	const configured = [
-		...wrangler.matchAll(/"PACKAGE_APP_PATH_MOUNT_CUTOVER_AT":\s*"([^"]+)"/g),
-	].map((match) => match[1])
-	expect(configured).toEqual([packageAppPathMountCutoverAt])
+test('both workers that serve package apps are configured with the cutover the owner notice promised', () => {
+	for (const config of [
+		'../../wrangler.jsonc',
+		'../../../runtime-worker/wrangler.jsonc',
+	]) {
+		const wrangler = readFileSync(new URL(config, import.meta.url), 'utf8')
+		const configured = [
+			...wrangler.matchAll(/"PACKAGE_APP_PATH_MOUNT_CUTOVER_AT":\s*"([^"]+)"/g),
+		].map((match) => match[1])
+		expect(configured).toEqual([packageAppPathMountCutoverAt])
+	}
 	expect(new Date(cutoverAt).toISOString()).toBe('2026-12-17T20:45:00.000Z')
 })

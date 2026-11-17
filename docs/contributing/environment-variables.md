@@ -215,8 +215,9 @@ confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
   same moment "Open app" and `hostedUrl` use the app's own host. Hosts owned by
   a profile package and the reserved `/-/` paths are unaffected, and a pair with
   no valid host label keeps being served on the path address. Production sets
-  `2026-12-17T20:45:00Z`, the date the owner notice promised; unset or
-  unparsable means no cutover. See
+  `2026-12-17T20:45:00Z` in both `packages/worker/wrangler.jsonc` and
+  `packages/runtime-worker/wrangler.jsonc`, the date the owner notice promised;
+  unset or unparsable means no cutover. See
   `packages/worker/src/package-runtime/package-app-path-mount-cutover.ts`.
 - `PACKAGE_APP_LEGACY_HOSTS` — optional comma-separated dual-served package-app
   apex hostnames alongside `PACKAGE_APP_BASE_URL`. Generated runtime zone routes
