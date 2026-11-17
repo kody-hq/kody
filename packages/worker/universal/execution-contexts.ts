@@ -175,6 +175,8 @@ type ExecutionContextBoxEntry = {
 /** What the unrestricted shell was used for, from the audit log. */
 export type ExecutionContextShellUse = {
 	commands: number
+	/** Older shell commands exist beyond the ones counted. */
+	more: boolean
 	adHocCommands: number
 	packages: Array<{ id: string; name: string; commands: number }>
 	programs: Array<{ program: string; commands: number; needShell: number }>

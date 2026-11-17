@@ -1008,6 +1008,7 @@ async function loadShellUse(
 				: []
 		return {
 			commands: count(result.commands),
+			more: result.more === true,
 			adHocCommands: count(result.adHocCommands),
 			packages: rows(result.packages).flatMap((entry) =>
 				typeof entry.id === 'string'

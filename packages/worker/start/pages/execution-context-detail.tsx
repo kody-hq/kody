@@ -395,7 +395,9 @@ function ShellUse(props: { use: ExecutionContextShellUse }) {
 	return (
 		<div data-testid="context-shell-use">
 			<p css={{ margin: 0 }}>
-				In the last 30 days the shell ran {times(use.commands)}
+				{use.more
+					? `The newest ${times(use.commands)} the shell ran in the last 30 days are counted here; older ones are not. Of these`
+					: `In the last 30 days the shell ran ${times(use.commands)}`}
 				{use.adHocCommands > 0
 					? `, ${use.adHocCommands} of them from code that is not a saved package. A package list refuses that code.`
 					: ', all from saved packages.'}
