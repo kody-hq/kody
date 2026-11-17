@@ -77,7 +77,7 @@ test('the daily window refuses with the time left until the next UTC day', () =>
 		bucket: 'org:day',
 		limit: 1,
 		windowMs: dayMs,
-		retryAfterMs: Date.parse('2026-11-18T00:00:00.000Z') - (noon + minuteMs),
+		retryAfterMs: 43_120_000,
 	})
 })
 

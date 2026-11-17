@@ -286,6 +286,8 @@ test('estimateRetainedBytes sizes strings and binaries in plain data only', () =
 	class Binding {
 		readonly payload = 'x'.repeat(1_000)
 	}
+	expect(estimateRetainedBytes(new Binding())).toBe(0)
+	expect(estimateRetainedBytes({ payload: 'x'.repeat(1_000) })).toBe(1_007)
 	expect(
 		estimateRetainedBytes({
 			mainModule: 'main.js',
@@ -293,14 +295,5 @@ test('estimateRetainedBytes sizes strings and binaries in plain data only', () =
 			bytes: new Uint8Array(50),
 			binding: new Binding(),
 		}),
-	).toBe(
-		'mainModule'.length +
-			'main.js'.length +
-			'modules'.length +
-			'main.js'.length +
-			100 +
-			'bytes'.length +
-			50 +
-			'binding'.length,
-	)
+	).toBe(193)
 })

@@ -31,7 +31,8 @@ test('the kody.machine example in docs/use/packages.md publishes', () => {
 	)
 	const section = doc.split('### Machine access (`kody.machine`)')[1]
 	const example = section?.match(/```json\n([\s\S]*?)```/)?.[1]
-	expect(example).toBeDefined()
+	expect(example).toContain('"kdocker"')
+	expect(example).toContain('192.168.1.10')
 	expect(parseAuthoredPackageJson({ content: example! }).kody.machine).toEqual({
 		kdocker: {
 			kind: 'command',
@@ -92,7 +93,13 @@ test('publish refuses kody.machine entries a machine could never match', () => {
 				},
 			}),
 		}).kody.machine,
-	).toBeDefined()
+	).toEqual({
+		lan6: {
+			kind: 'lan',
+			description: 'x',
+			hosts: ['10.0.0.0/8', 'fd00::/8', '::1'],
+		},
+	})
 })
 
 test('a published snapshot with a kody.machine value from before the key existed loads as undeclared', () => {
@@ -120,7 +127,12 @@ test('one name can declare a list with one entry per kind, since a machine may r
 		parseAuthoredPackageJson({
 			content: manifestWithMachine({ nas: [lan, fs] }),
 		}).kody.machine,
-	).toEqual({ nas: [lan, fs] })
+	).toEqual({
+		nas: [
+			{ kind: 'lan', description: 'Call the NAS' },
+			{ kind: 'fs', mode: 'ro', description: 'Read the NAS share' },
+		],
+	})
 	expect(publishError({ nas: [lan, lan] })).toContain('one entry per kind')
 	expect(publishError({ nas: [] })).toContain('kody.machine')
 	const many = Object.fromEntries(

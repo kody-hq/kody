@@ -338,6 +338,19 @@ test('an app whose stored findings were cut short still reaches its owner', asyn
 		env,
 		dryRun: true,
 	})
-	expect(result.totals.recipients.owners).toBe(1)
+	expect(result.owners).toEqual([
+		expect.objectContaining({
+			ownerId: 'alice',
+			apps: [
+				expect.objectContaining({
+					name: '@alice/notes',
+					categories: ['addressCode', 'outsideRequests'],
+					outside: ['unsubscribe links in email it sends'],
+				}),
+			],
+		}),
+	])
+	expect(result.preview!.text).toContain('@alice/notes')
+	expect(result.preview!.text).toContain('unsubscribe links in email it sends')
 	expect(result.totals.outsideOnly.owners).toBe(0)
 })
