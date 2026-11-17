@@ -306,8 +306,10 @@ export class PromiseLruCache<T> {
 	 * Await an entry another request may own. If it has not settled within
 	 * `inFlightWaitMs`, or it rejects, treat it as orphaned: replace it (when
 	 * it is still the cached entry) and run `create()` in this request. The
-	 * owner may have ended, and its failure is not this request's, so a
-	 * waiter rebuilds once before it reports a rejection.
+	 * owner may have ended, and its failure is not this request's. A waiter
+	 * shares at most one other rebuild; if that one also fails or stalls, it
+	 * runs its own `create()`, so the only rejection a caller sees is one
+	 * from a `create()` it ran.
 	 */
 	private waitForInFlight(
 		entry: PromiseLruCacheEntry<T>,
@@ -323,10 +325,10 @@ export class PromiseLruCache<T> {
 				// Another waiter may already have started a rebuild: share it
 				// instead of replacing it with a second create().
 				const current = this.getEntry(input.cacheKey)
-				const next = !current
-					? this.createEntry(input)
-					: current.settled
-						? Promise.resolve(current.settled.value)
+				const next = current?.settled
+					? Promise.resolve(current.settled.value)
+					: !current || options.retried
+						? this.createEntry(input)
 						: this.waitForInFlight(current, input, { retried: true })
 				next.then(resolve, reject)
 			}
@@ -342,14 +344,10 @@ export class PromiseLruCache<T> {
 					clearTimeout(timer)
 					resolve(value)
 				},
-				(error: unknown) => {
+				() => {
 					if (done) return
 					done = true
 					clearTimeout(timer)
-					if (options.retried) {
-						reject(error)
-						return
-					}
 					takeOver()
 				},
 			)

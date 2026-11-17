@@ -114,6 +114,61 @@ test("a waiter retries another request's failed create once, then reports its ow
 	).resolves.toBe('ok')
 })
 
+test("a waiter whose shared rebuild also fails runs its own create instead of reporting another request's error", async () => {
+	// Request A's entry rejects as ended, request C's rebuild is shared by
+	// waiter B, then C ends too. B must not report C's failure.
+	const cache = new PromiseLruCache<string>({ inFlightWaitMs: 60_000 })
+	const ended = () =>
+		new Error(
+			'This promise was created by a request that has since ended, so it can never settle.',
+		)
+	let rejectOrphan!: (error: unknown) => void
+	void cache.set(
+		'k',
+		new Promise<string>((_resolve, reject) => {
+			rejectOrphan = reject
+		}),
+	)
+	let rejectSharedRebuild!: (error: unknown) => void
+	const otherRebuild = vi.fn(
+		() =>
+			new Promise<string>((_resolve, reject) => {
+				rejectSharedRebuild = reject
+			}),
+	)
+	const other = cache.getOrCreate({ cacheKey: 'k', create: otherRebuild })
+	const ownCreate = vi.fn(async () => 'own')
+	const waiter = cache.getOrCreate({ cacheKey: 'k', create: ownCreate })
+	rejectOrphan(ended())
+	await vi.waitFor(() => expect(otherRebuild).toHaveBeenCalledTimes(1))
+	rejectSharedRebuild(ended())
+	await expect(other).rejects.toThrow('request that has since ended')
+	await expect(waiter).resolves.toBe('own')
+	expect(ownCreate).toHaveBeenCalledTimes(1)
+})
+
+test('a waiter whose shared rebuild stalls runs its own create', async () => {
+	vi.useFakeTimers()
+	const cache = new PromiseLruCache<string>({ inFlightWaitMs: 50 })
+	void cache.getOrCreate({
+		cacheKey: 'k',
+		create: () => new Promise<string>(() => {}),
+	})
+	const stalledRebuild = vi.fn(() => new Promise<string>(() => {}))
+	void cache.getOrCreate({ cacheKey: 'k', create: stalledRebuild })
+	await vi.advanceTimersByTimeAsync(20)
+	const ownCreate = vi.fn(async () => 'own')
+	const waiter = cache.getOrCreate({ cacheKey: 'k', create: ownCreate })
+	await vi.advanceTimersByTimeAsync(30)
+	expect(stalledRebuild).toHaveBeenCalledTimes(1)
+	// The waiter times out on the orphan, shares the stalled rebuild, then
+	// times out on that too.
+	await vi.advanceTimersByTimeAsync(70)
+	expect(ownCreate).toHaveBeenCalledTimes(1)
+	await expect(waiter).resolves.toBe('own')
+	expect(ownCreate).toHaveBeenCalledTimes(1)
+})
+
 test('a rejected create is evicted so the next call retries', async () => {
 	const cache = new PromiseLruCache<string>()
 	await expect(
