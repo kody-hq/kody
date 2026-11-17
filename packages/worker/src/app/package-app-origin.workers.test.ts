@@ -1079,3 +1079,56 @@ async function sessionCookieForFixtureOutsider(
 	})
 	return setCookies[0]?.split(';')[0] ?? ''
 }
+
+test('from the cutover the path address answers every method with a 308 to the app host', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	const sessionCookie = await seedOwnerSessionCookie()
+	const mutableEnv = env as unknown as Record<string, string | undefined>
+	const appHostOrigin = `https://demo--${ownerUsername}.packages.isolated.test`
+	const pathAddress = `${ownerPackageAppOrigin}/demo/report?tab=1`
+	try {
+		// Before the cutover moment the path address is still served (a signed-out
+		// request reaches the app gate, not a redirect).
+		mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT = new Date(Date.now() + 60_000)
+			.toISOString()
+			.replace(/\.\d{3}Z$/, 'Z')
+		const before = await workerFetch(pathAddress, {
+			headers: { Accept: 'application/json' },
+		})
+		expect(before.status).toBe(403)
+
+		mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT = '2020-01-01T00:00:00Z'
+		for (const method of ['GET', 'POST', 'DELETE']) {
+			const after = await workerFetch(pathAddress, { method })
+			expect(after.status).toBe(308)
+			expect(after.headers.get('Location')).toBe(
+				`${appHostOrigin}/report?tab=1`,
+			)
+		}
+		const legacyMount = await workerFetch(
+			`${ownerPackageAppOrigin}/packages/demo/report`,
+			{ method: 'POST' },
+		)
+		expect(legacyMount.status).toBe(308)
+		expect(legacyMount.headers.get('Location')).toBe(`${appHostOrigin}/report`)
+
+		// Reserved platform paths stay on the owner's host.
+		const health = await workerFetch(`${ownerPackageAppOrigin}/-/health`)
+		expect(health.status).not.toBe(308)
+
+		// "Open app" hands off straight to the app host, not through the redirect.
+		const open = await workerFetch(
+			`${appOrigin}/@${ownerUsername}/packages/demo/open/report`,
+			{ headers: { Cookie: sessionCookie } },
+		)
+		expect(open.status).toBe(302)
+		const handoff = new URL(open.headers.get('Location') ?? '')
+		expect(handoff.origin).toBe(appHostOrigin)
+		expect(handoff.pathname).toBe('/report')
+	} finally {
+		delete mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT
+	}
+})

@@ -1,4 +1,5 @@
 import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
+import { buildPackageAppPathMountCutoverLocation } from '#worker/package-runtime/package-app-path-mount-cutover.ts'
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type {
 	RuntimePackageAppIdentity,
@@ -1617,6 +1618,21 @@ async function handleUserSubdomainRequest(input: {
 			})
 		}
 		return retiredRedirect
+	}
+
+	// After cutover the path address only redirects, on every method, so no
+	// app code runs on the owner's shared origin any more.
+	const packageAppOrigin = getPackageAppBaseUrl({ env })
+	const cutoverLocation = packageAppOrigin
+		? buildPackageAppPathMountCutoverLocation({
+				env,
+				packageAppOrigin,
+				packagePath,
+				url,
+			})
+		: null
+	if (cutoverLocation) {
+		return redirectResponse({ location: cutoverLocation, status: 308 })
 	}
 
 	const legacyMount = maybeHandleLegacyPackageAppSubdomainMount({
