@@ -220,7 +220,7 @@ export function VerifyRoute() {
 				note={
 					turnstileSiteKey
 						? deviceSignInTarget
-							? 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+							? 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so use Sign in with another device, or turn JavaScript on.'
 							: 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so turn JavaScript on to finish signing in.'
 						: 'JavaScript is off, so this form submits as a plain page. Enter your code and press Verify.'
 				}
