@@ -240,6 +240,10 @@ test('kody dev --target mock stops before saving when a mapped dep is from anoth
 			return true
 		})
 		assert.deepEqual(fetched, [])
+		// Still watched, so fixing the mapping rebuilds.
+		assert.ok(
+			upstream.watchPaths().includes(join(scratch, 'shared', 'src/index.ts')),
+		)
 	} finally {
 		await rm(scratch, { recursive: true, force: true })
 	}

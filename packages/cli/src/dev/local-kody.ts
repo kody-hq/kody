@@ -462,7 +462,6 @@ export function createLocalKodyUpstream(input: {
 				selfManifest: input.manifest,
 				listImports: async (root) => listTreeImports(await readTree(root)),
 			})
-			assertDepsInAppScope(input.manifest, deps)
 			const packages = [
 				...deps.map((dep) => ({
 					name: dep.name,
@@ -481,6 +480,8 @@ export function createLocalKodyUpstream(input: {
 				)
 			}
 			watchPaths = depFiles
+			// Checked after watching, so fixing the mapping rebuilds.
+			assertDepsInAppScope(input.manifest, deps)
 			let changed = false
 			for (const pkg of packages) {
 				const tree = await readTree(pkg.root)
