@@ -41,7 +41,8 @@ sequenceDiagram
   `/openapi.json`, and `/v1/*`, applies per-IP (`API_IP_RATE_LIMITER`, 600/min)
   and per-token (`API_TOKEN_RATE_LIMITER`, 300/min, keyed by API token id or a
   SHA-256 of an opaque Bearer such as CLI MCP OAuth — never the secret
-  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes, and
+  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes (24 MiB
+  on `POST /v1/packages/check`, whose body is a whole package tree), and
   forwards only `Authorization`, `Content-Type`, `Accept`, `User-Agent`, and
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,

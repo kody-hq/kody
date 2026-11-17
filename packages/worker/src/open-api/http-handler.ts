@@ -62,8 +62,8 @@ import {
 	matchApiRoute,
 	type ApiOperation,
 } from './operations.ts'
+import { maxRequestBodyBytesForOperation } from './api-body-limits.ts'
 import {
-	maxApiRequestBodyBytes,
 	mergeApiParams,
 	readJsonBody,
 	readQueryParams,
@@ -173,13 +173,16 @@ async function readOperationParams(input: {
 			readQueryParams(input.url.searchParams, input.inputSchema),
 		)
 	}
-	const body = await readJsonBody(input.request)
+	const maxBytes = maxRequestBodyBytesForOperation(
+		input.match.operation.operationId,
+	)
+	const body = await readJsonBody(input.request, maxBytes)
 	switch (body.kind) {
 		case 'too_large':
 			throw new ApiError({
 				status: 413,
 				code: 'payload_too_large',
-				message: `Request body is ${body.byteLength} bytes; the maximum is ${maxApiRequestBodyBytes} bytes.`,
+				message: `Request body is ${body.byteLength} bytes; the maximum is ${maxBytes} bytes.`,
 			})
 		case 'unsupported_media_type':
 			throw new ApiError({
