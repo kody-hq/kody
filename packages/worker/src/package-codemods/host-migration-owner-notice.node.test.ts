@@ -213,7 +213,7 @@ test('dry run counts owners and apps by category and previews the first email wi
 	).toBeNull()
 })
 
-test('an owner with several apps gets the outside-requests paragraph and an unfilled {app}', async () => {
+test('an owner with several apps gets the outside-requests paragraph and one filled-in prompt per app', async () => {
 	mocks.items.push(item('08', 'bob', '@bob/board', [messages['cookie path']]))
 	const { env } = await createEnv()
 
@@ -232,8 +232,26 @@ test('an owner with several apps gets the outside-requests paragraph and an unfi
 	expect(text).toContain(
 		'@bob/mailer (unsubscribe links in email it sends); @bob/shop (an OAuth sign-in callback)',
 	)
-	expect(text).toContain('replace {app} with')
-	expect(text).toContain('My Kody package app @bob/{app} is moving')
+	expect(text.slice(text.indexOf('Prompt for @bob/board'))).not.toContain(
+		'{app}',
+	)
+	expect(text).toContain(
+		'Prompt for @bob/board\n\nMy Kody package app @bob/board is moving',
+	)
+	expect(text).toContain(
+		'Prompt for @bob/shop\n\nMy Kody package app @bob/shop is moving',
+	)
+	// The subject is not repeated as the first line of the text body.
+	expect(text.startsWith('Hi bob,')).toBe(true)
+	// No prompt line is longer than the wrapped width.
+	const promptLines = text
+		.slice(text.indexOf('Prompt for @bob/board'))
+		.split('\n')
+	expect(
+		promptLines.filter(
+			(line) => line.length > 80 && !line.startsWith("You're receiving"),
+		),
+	).toEqual([])
 })
 
 test('the reminder repeats the visit line and the cutover date', async () => {
@@ -248,7 +266,7 @@ test('the reminder repeats the visit line and the cutover date', async () => {
 	})
 
 	expect(result.preview!.subject).toBe(
-		'One week left: your Kody apps move on January 15, 2027',
+		'Two weeks left: your Kody apps move on January 15, 2027',
 	)
 	expect(result.preview!.text).toContain(
 		'has to open your app at the old address at least once after the update ships, before January 15, 2027',

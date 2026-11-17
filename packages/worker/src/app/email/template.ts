@@ -42,6 +42,8 @@ export type TransactionalEmailContent = {
 	preheader: string
 	/** Large headline at the top of the card. */
 	heading: string
+	/** Leave the heading out of the plain text, for when it repeats the subject. */
+	textOmitsHeading?: boolean
 	/** Body paragraphs shown above the action button. */
 	body: Array<EmailBodyBlock>
 	/** Primary call to action. */
@@ -259,7 +261,7 @@ export function renderTransactionalEmail(
 </html>`
 
 	const text = [
-		content.heading,
+		...(content.textOmitsHeading ? [] : [content.heading]),
 		...bodyText(content.body),
 		...(action ? [`${action.label}: ${action.url}`] : []),
 		...(secondaryAction
