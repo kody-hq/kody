@@ -4108,7 +4108,8 @@ class RunLogBase extends DurableObject<Env> {
 	/**
 	 * Content-free schema + SQL-plan snapshot for cost diagnosis. Counts and
 	 * planner text only — never run rows, logs, or other user-authored values.
-	 * Uses raw `sql.exec` so these one-off scans do not increment billing ops.
+	 * Uses raw `ctx.storage.sql.exec` so these one-off scans skip the wrapped
+	 * `sql` and do not increment per-statement counters or platform rows-read.
 	 * First RPC on a never-used account initializes the same empty schema as
 	 * any other RunLog read.
 	 */

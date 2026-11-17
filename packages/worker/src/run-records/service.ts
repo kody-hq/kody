@@ -1686,8 +1686,10 @@ export async function summarizePackageFailures(input: {
 }
 
 /**
- * RunLog-only SQLite rowsRead/rowsWritten counters for cost diagnosis.
- * Propagates binding/RPC errors. Never returns user content.
+ * Per-statement RunLog SQLite rowsRead/rowsWritten since that isolate started
+ * (highest rows read first). In-isolate only; history lives in
+ * `run_log_sql_rows` log lines. Propagates binding/RPC errors. Never returns
+ * user content.
  */
 export async function getSqlBillingStats(input: {
 	env: Env
@@ -1703,8 +1705,10 @@ export async function getSqlBillingStats(input: {
 }
 
 /**
- * Content-free RunLog schema + SQL-plan snapshot for cost diagnosis.
- * Propagates binding/RPC errors. Never returns user content.
+ * Content-free RunLog schema + SQL-plan snapshot for cost diagnosis
+ * (`inspectSqlBilling` on the DO). Schema and plan probes skip the wrapped
+ * statement counters. Propagates binding/RPC errors. Never returns user
+ * content.
  */
 export async function inspectRunLogSqlBilling(input: {
 	env: Env

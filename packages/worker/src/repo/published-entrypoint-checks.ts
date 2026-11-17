@@ -5,6 +5,10 @@ function readSourceFile(sourceFiles: Record<string, string>, path: string) {
 	return sourceFiles[path] ?? sourceFiles[path.replace(/^\.\//, '')] ?? null
 }
 
+/**
+ * Paths whose source parses and has no top-level default export. Awaits the
+ * lazy Babel parse.
+ */
 export async function collectEntrypointsMissingDefaultExport(input: {
 	snapshot: { read(path: string): string | null }
 	targets: ReadonlyArray<{ path: string }>
@@ -30,6 +34,7 @@ export function formatMissingDefaultExportMessage(
 /**
  * Structural preconditions for rebuilding an already-published runtime
  * entrypoint (export, subscription handler, or job) at invocation time.
+ * Async because it awaits the lazy Babel parse (`hasTopLevelDefaultExport`).
  *
  * Invocation deliberately does NOT typecheck. Publish (and `kody dev check`,
  * which runs the same server checks) is the only authoring gate, so an

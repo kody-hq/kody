@@ -15,8 +15,9 @@ export type UnresolvedRelativeImport = {
 /**
  * Static relative imports reachable from the entrypoints that resolve to no
  * file in `files`, the way the bundler would fail on them. Cheap stand-in
- * for esbuild when publish defers bundling to rebuild. Files that do not
- * parse are skipped: other checks report them.
+ * for esbuild when publish defers bundling to rebuild. Awaits
+ * `collectModuleImportNodes` (lazy Babel parse). Files that do not parse are
+ * skipped: other checks report them.
  */
 export async function collectUnresolvedRelativeImports(input: {
 	files: Record<string, string>
