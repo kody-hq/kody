@@ -1,3 +1,4 @@
+import { walletGuardActorUserId } from '#worker/wallet-guard/enforce.ts'
 import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
@@ -246,6 +247,12 @@ export const executeToolOutputSchema = {
 		.optional()
 		.describe(
 			'Hosted execute allowance after this call: unit, and per window (day, plus week when the plan has one) used, limit, remaining, resetsAt. Repeats of code already run today do not count.',
+		),
+	rateLimit: z
+		.unknown()
+		.optional()
+		.describe(
+			'Set when a safety ceiling (denial-of-wallet guard) refused the call before it ran: the limit key, scope (user or org), window, limit, retryAfterSeconds, and the support address.',
 		),
 	admission: z
 		.object({
@@ -729,7 +736,7 @@ export async function runExecuteToolCall(input: {
 						env,
 						ownerId: storageOwnerId,
 						email: entitlementEmail,
-						actorUserId: callerContext.request?.actor?.userId ?? null,
+						actorUserId: walletGuardActorUserId(callerContext.request),
 						repeatKey: await executeRepeatKey({
 							credential: callerContext.request?.credential ?? null,
 							actorUserId:

@@ -80,3 +80,25 @@ test('the daily window refuses with the time left until the next UTC day', () =>
 		retryAfterMs: Date.parse('2026-11-18T00:00:00.000Z') - (noon + minuteMs),
 	})
 })
+
+test('check refuses a full window without counting, and record counts without refusing', () => {
+	const store = memoryStore()
+	const checks: Array<WalletGuardCheck> = [
+		{ bucket: 'org:burst', windowMs: minuteMs, limit: 1 },
+	]
+	expect(
+		admitWalletGuardInWindows({ nowMs: noon, checks, store, mode: 'check' }),
+	).toEqual({ admitted: true })
+	expect(store.read('org:burst')).toBeNull()
+
+	for (let call = 0; call < 2; call += 1) {
+		expect(
+			admitWalletGuardInWindows({ nowMs: noon, checks, store, mode: 'record' }),
+		).toEqual({ admitted: true })
+	}
+	expect(store.read('org:burst')?.count).toBe(2)
+	expect(
+		admitWalletGuardInWindows({ nowMs: noon, checks, store, mode: 'check' }),
+	).toMatchObject({ admitted: false, bucket: 'org:burst' })
+	expect(store.read('org:burst')?.count).toBe(2)
+})

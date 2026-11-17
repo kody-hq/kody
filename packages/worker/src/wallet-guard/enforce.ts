@@ -5,9 +5,12 @@ import {
 	userMeterNamespace,
 	userMeterRpc,
 } from '#worker/entitlements/user-meter-client.ts'
+import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import { isLivePersonRequest } from '#worker/authorization/authorize.ts'
 import type {
 	WalletGuardAdmission,
 	WalletGuardCheck,
+	WalletGuardMode,
 } from '#worker/entitlements/wallet-guard-windows.ts'
 import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import {
@@ -91,41 +94,74 @@ function bucketFor(scope: string, limitKey: WalletGuardLimitKey) {
 }
 
 /**
- * Count one call against the org ceilings and, when a person made it, that
- * person's ceilings. Throws {@link WalletGuardLimitError} when any window is
- * full. Automation (jobs, webhooks, email) has no person and counts against
- * the org only. A failure to reach the meter admits the call: the guard is a
- * cost ceiling, not an access check, so it must not take product paths down.
+ * The person a call counts against: the caller of a signed-in or token
+ * request. A job, webhook, or other triggered run keeps its enabler as the
+ * actor, but it is automation and counts against the org only.
  */
-export async function enforceWalletGuard(input: {
+export function walletGuardActorUserId(
+	request: RequestContext | null | undefined,
+): string | null {
+	return request && isLivePersonRequest(request)
+		? (request.actor?.userId ?? null)
+		: null
+}
+
+type WalletGuardInput = {
 	env: Env
 	ownerId: OwnerId
 	email: string | null | undefined
+	/** From {@link walletGuardActorUserId}; null for automation. */
 	actorUserId: string | null | undefined
 	guard: WalletGuardName
 	now?: Date
-}): Promise<void> {
-	// No meter binding (a config without Durable Objects): nothing to count in.
-	if (!input.ownerId || !userMeterNamespace(input.env)) return
-	const now = input.now ?? new Date()
+}
+
+type WalletGuardRefusal = Extract<WalletGuardAdmission, { admitted: false }>
+
+export type PreparedWalletGuard = {
+	/** What the meter checks: person windows first, then org windows. */
+	checks: Array<WalletGuardCheck>
+	/** Log and report a refusal, and build the error to throw for it. */
+	refuse: (refusal: WalletGuardRefusal) => WalletGuardLimitError
+}
+
+function reportWalletGuardUnavailable(input: WalletGuardInput, error: unknown) {
+	console.warn(
+		JSON.stringify({
+			event: 'wallet_guard_unavailable',
+			guard: input.guard,
+			orgId: input.ownerId,
+			errorMessage: error instanceof Error ? error.message : String(error),
+		}),
+	)
+}
+
+/**
+ * Resolve the windows one call counts against, with live limit overrides.
+ * Null when there is nothing to count in (no owner, no meter binding) or
+ * the limits could not be read: the guard is a cost ceiling, not an access
+ * check, so a failure admits the call instead of taking product paths down.
+ */
+export async function prepareWalletGuard(
+	input: WalletGuardInput,
+): Promise<PreparedWalletGuard | null> {
+	if (!input.ownerId || !userMeterNamespace(input.env)) return null
 	let checks: Array<GuardCheck>
-	let admission: WalletGuardAdmission
 	try {
 		const limits = await resolveLiveOverriddenLimits({
 			db: input.env.APP_DB,
 			userId: input.ownerId,
 			email: input.email,
-			now,
+			now: input.now,
 		})
 		checks = walletGuards[input.guard].limits.flatMap(({ key, window }) => {
 			const orgLimit = limits[walletGuardLimitFields[key]]
-			const windowMs = walletGuardWindowMs[window]
 			const org: GuardCheck = {
 				bucket: bucketFor('org', key),
 				scope: 'org',
 				limitKey: key,
 				window,
-				windowMs,
+				windowMs: walletGuardWindowMs[window],
 				limit: orgLimit,
 			}
 			if (!input.actorUserId) return [org]
@@ -139,47 +175,65 @@ export async function enforceWalletGuard(input: {
 				org,
 			]
 		})
+	} catch (error) {
+		reportWalletGuardUnavailable(input, error)
+		return null
+	}
+	return {
+		checks: checks.map(({ bucket, windowMs, limit }) => ({
+			bucket,
+			windowMs,
+			limit,
+		})),
+		refuse: (refusal) => {
+			const hit =
+				checks.find((check) => check.bucket === refusal.bucket) ?? checks[0]!
+			const details = {
+				guard: input.guard,
+				limitKey: hit.limitKey,
+				scope: hit.scope,
+				window: hit.window,
+				windowSeconds: hit.windowMs / 1000,
+				limit: refusal.limit,
+				retryAfterSeconds: Math.max(1, Math.ceil(refusal.retryAfterMs / 1000)),
+			}
+			reportWalletGuardHit({
+				...details,
+				orgId: input.ownerId,
+				actorUserId: input.actorUserId ?? null,
+			})
+			return new WalletGuardLimitError(details)
+		},
+	}
+}
+
+/**
+ * Count one call against the org ceilings and, when a person made it, that
+ * person's ceilings. Throws {@link WalletGuardLimitError} when any window is
+ * full. `mode: 'check'` refuses without counting and `mode: 'record'` counts
+ * without refusing, for a caller that only knows afterwards whether the call
+ * was real. A failure to reach the meter admits the call.
+ */
+export async function enforceWalletGuard(
+	input: WalletGuardInput & { mode?: WalletGuardMode },
+): Promise<void> {
+	const prepared = await prepareWalletGuard(input)
+	if (!prepared) return
+	let admission: WalletGuardAdmission
+	try {
 		admission = await userMeterRpc({
 			env: input.env,
 			userId: input.ownerId,
 		}).admitWalletGuard({
-			nowMs: now.getTime(),
-			checks: checks.map(({ bucket, windowMs, limit }) => ({
-				bucket,
-				windowMs,
-				limit,
-			})),
+			nowMs: (input.now ?? new Date()).getTime(),
+			checks: prepared.checks,
+			...(input.mode ? { mode: input.mode } : {}),
 		})
 	} catch (error) {
-		console.warn(
-			JSON.stringify({
-				event: 'wallet_guard_unavailable',
-				guard: input.guard,
-				orgId: input.ownerId,
-				errorMessage: error instanceof Error ? error.message : String(error),
-			}),
-		)
+		reportWalletGuardUnavailable(input, error)
 		return
 	}
-	if (admission.admitted) return
-	const refusedBucket = admission.bucket
-	const hit = checks.find((check) => check.bucket === refusedBucket)
-	if (!hit) return
-	const details = {
-		guard: input.guard,
-		limitKey: hit.limitKey,
-		scope: hit.scope,
-		window: hit.window,
-		windowSeconds: hit.windowMs / 1000,
-		limit: admission.limit,
-		retryAfterSeconds: Math.max(1, Math.ceil(admission.retryAfterMs / 1000)),
-	}
-	reportWalletGuardHit({
-		...details,
-		orgId: input.ownerId,
-		actorUserId: input.actorUserId ?? null,
-	})
-	throw new WalletGuardLimitError(details)
+	if (!admission.admitted) throw prepared.refuse(admission)
 }
 
 /** At most one Sentry event per org, limit, and scope per isolate per minute. */

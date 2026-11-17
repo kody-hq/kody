@@ -2,7 +2,10 @@ import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
 } from '#worker/request-context/owner-id.ts'
-import { enforceWalletGuard } from '#worker/wallet-guard/enforce.ts'
+import {
+	enforceWalletGuard,
+	walletGuardActorUserId,
+} from '#worker/wallet-guard/enforce.ts'
 import { assertGuestCapabilityAllowed } from '#worker/guest/guest-policy.ts'
 import { z } from 'zod'
 import {
@@ -176,7 +179,7 @@ export function defineCapability<
 					env: ctx.env,
 					ownerId,
 					email: entitlementEmailForOwner(ctx.callerContext, ownerId),
-					actorUserId: ctx.callerContext.request?.actor?.userId ?? null,
+					actorUserId: walletGuardActorUserId(ctx.callerContext.request),
 					guard: definition.walletGuard,
 				})
 			}

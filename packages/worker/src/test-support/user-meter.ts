@@ -3,6 +3,7 @@ import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
 import {
 	admitWalletGuardInWindows,
 	type WalletGuardCheck,
+	type WalletGuardMode,
 } from '#worker/entitlements/wallet-guard-windows.ts'
 import {
 	admitExecuteCallInWindows,
@@ -90,6 +91,24 @@ export function createInMemoryUserMeterEnv() {
 		if (!existingDynamicWorkerDays) {
 			dynamicWorkerDaysByUser.set(userId, dynamicWorkerDays)
 		}
+		const admitWalletGuard = (input: {
+			nowMs: number
+			checks: Array<WalletGuardCheck>
+			mode?: WalletGuardMode
+		}) =>
+			admitWalletGuardInWindows({
+				...input,
+				store: {
+					read: (bucket) =>
+						walletGuardWindows.get(`${userId}\n${bucket}`) ?? null,
+					write: (bucket, windowStart, count) => {
+						walletGuardWindows.set(`${userId}\n${bucket}`, {
+							windowStart,
+							count,
+						})
+					},
+				},
+			})
 		const existingLastUsed = lastUsedByUser.get(userId)
 		const lastUsed = existingLastUsed ?? new Map<string, string>()
 		if (!existingLastUsed) lastUsedByUser.set(userId, lastUsed)
@@ -448,14 +467,38 @@ export function createInMemoryUserMeterEnv() {
 				nowMs: number
 				limitPerMinute: number
 				repeat?: ExecuteRepeatInput
+				walletGuard?: { checks: Array<WalletGuardCheck> }
 			}) {
+				if (input.walletGuard) {
+					const guard = admitWalletGuard({
+						nowMs: input.nowMs,
+						checks: input.walletGuard.checks,
+						mode: 'check',
+					})
+					if (!guard.admitted) {
+						const { admitted, ...refusal } = guard
+						return { admitted, reason: 'wallet_guard' as const, ...refusal }
+					}
+				}
 				const windows = executeAdmissionByUser.get(userId) ?? {
 					minuteWindow: { minute: 0, count: 0 },
 					repeatWindow: new ExecuteRepeatWindow(),
 				}
 				executeAdmissionByUser.set(userId, windows)
-				const result = admitExecuteCallInWindows({ ...input, ...windows })
+				const result = admitExecuteCallInWindows({
+					nowMs: input.nowMs,
+					limitPerMinute: input.limitPerMinute,
+					repeat: input.repeat,
+					...windows,
+				})
 				if (result.admitted) {
+					if (input.walletGuard) {
+						admitWalletGuard({
+							nowMs: input.nowMs,
+							checks: input.walletGuard.checks,
+							mode: 'record',
+						})
+					}
 					const day = utcDayKey(new Date(input.nowMs))
 					executeCallDays.set(day, (executeCallDays.get(day) ?? 0) + 1)
 				}
@@ -464,20 +507,9 @@ export function createInMemoryUserMeterEnv() {
 			async admitWalletGuard(input: {
 				nowMs: number
 				checks: Array<WalletGuardCheck>
+				mode?: WalletGuardMode
 			}) {
-				return admitWalletGuardInWindows({
-					...input,
-					store: {
-						read: (bucket) =>
-							walletGuardWindows.get(`${userId}\n${bucket}`) ?? null,
-						write: (bucket, windowStart, count) => {
-							walletGuardWindows.set(`${userId}\n${bucket}`, {
-								windowStart,
-								count,
-							})
-						},
-					},
-				})
+				return admitWalletGuard(input)
 			},
 			async refund(input: {
 				resource: string

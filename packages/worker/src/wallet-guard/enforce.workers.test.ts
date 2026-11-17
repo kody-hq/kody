@@ -27,6 +27,7 @@ import {
 import {
 	WalletGuardLimitError,
 	enforceWalletGuard,
+	walletGuardActorUserId,
 	walletGuardRateLimitedResponse,
 } from './enforce.ts'
 
@@ -334,6 +335,21 @@ test('an admin limit override raises the org and per-person ceilings without a d
 	})
 })
 
+async function readWindowCount(org: SeededOrg, bucket: string) {
+	const stub = env.USER_METER.get(
+		env.USER_METER.idFromName(userMeterDurableObjectName(org.ownerId)),
+	)
+	return await runInDurableObject(stub, async (_instance: UserMeter, state) => {
+		const row = state.storage.sql
+			.exec<{ count: number }>(
+				`SELECT count FROM wallet_guard_windows WHERE bucket = ?`,
+				bucket,
+			)
+			.toArray()[0]
+		return row ? Number(row.count) : 0
+	})
+}
+
 test('hosted execute is refused once the daily execute ceiling is reached', async () => {
 	consoleWarn.mockImplementation(() => {})
 	const org = await seedOrg('wallet-guard-execute')
@@ -360,4 +376,61 @@ test('hosted execute is refused once the daily execute ceiling is reached', asyn
 			limit: 120_000,
 		},
 	})
+})
+
+test('an execute refused at the daily ceiling does not spend the per-minute brake', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const org = await seedOrg('wallet-guard-execute-brake')
+	await setWindow(org, {
+		scope: `user:${actorUserId}`,
+		key: 'execute_calls_per_day',
+		window: 'day',
+		count: walletGuardUserLimit(walletGuardPlanLimits.maxExecuteCallsPerDay),
+	})
+	const admit = (actor: string) =>
+		admitHostedExecuteCall({
+			env,
+			ownerId: org.ownerId,
+			email: org.email,
+			actorUserId: actor,
+			now,
+		})
+	// More refusals than the org's per-minute brake (300) allows calls.
+	for (let attempt = 0; attempt < 301; attempt += 1) {
+		await expect(admit(actorUserId)).rejects.toMatchObject({
+			details: { limitKey: 'execute_calls_per_day', scope: 'user' },
+		})
+	}
+	// Another member still gets through, and only that call was counted.
+	await expect(admit('person-2')).resolves.toBeUndefined()
+	expect(await readWindowCount(org, 'org:execute_calls_per_day')).toBe(1)
+}, 120_000)
+
+test('an execute refused by the per-minute brake is not counted against the day', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const org = await seedOrg('wallet-guard-execute-minute')
+	const admit = () =>
+		admitHostedExecuteCall({
+			env,
+			ownerId: org.ownerId,
+			email: org.email,
+			actorUserId,
+			now,
+		})
+	for (let call = 0; call < 300; call += 1) await admit()
+	await expect(admit()).rejects.toMatchObject({ code: 'execute_rate_limited' })
+	expect(await readWindowCount(org, 'org:execute_calls_per_day')).toBe(300)
+}, 120_000)
+
+test('a triggered run counts against the org, a live person against both', () => {
+	const request = (kind: string) =>
+		({
+			actor: { userId: 'person-1' },
+			credential: { kind },
+		}) as unknown as Parameters<typeof walletGuardActorUserId>[0]
+	expect(walletGuardActorUserId(request('mcp-oauth'))).toBe('person-1')
+	expect(walletGuardActorUserId(request('api-token'))).toBe('person-1')
+	expect(walletGuardActorUserId(request('schedule'))).toBeNull()
+	expect(walletGuardActorUserId(request('webhook'))).toBeNull()
+	expect(walletGuardActorUserId(null)).toBeNull()
 })

@@ -17,6 +17,7 @@ import {
 	admitWalletGuardInWindows,
 	type WalletGuardAdmission,
 	type WalletGuardCheck,
+	type WalletGuardMode,
 } from './wallet-guard-windows.ts'
 import {
 	admitExecuteCallInWindows,
@@ -126,7 +127,11 @@ export type UserMeterWorkerDayConsumeResult =
 			weekCount?: number
 	  })
 
-export type UserMeterExecuteAdmissionResult = ExecuteAdmissionResult
+export type UserMeterExecuteAdmissionResult =
+	| ExecuteAdmissionResult
+	| (Extract<WalletGuardAdmission, { admitted: false }> & {
+			reason: 'wallet_guard'
+	  })
 
 export type UserMeterReadResult = UserMeterBootstrapState | UserMeterReadyState
 
@@ -1147,13 +1152,35 @@ class UserMeterBase extends DurableObject<Env> {
 		nowMs: number
 		limitPerMinute: number
 		repeat?: ExecuteRepeatInput
+		/** Denial-of-wallet ceilings checked first and counted only on admit. */
+		walletGuard?: { checks: Array<WalletGuardCheck> }
 	}): Promise<UserMeterExecuteAdmissionResult> {
+		if (input.walletGuard) {
+			const guard = this.admitWalletGuardSync({
+				nowMs: input.nowMs,
+				checks: input.walletGuard.checks,
+				mode: 'check',
+			})
+			if (!guard.admitted) {
+				const { admitted, ...refusal } = guard
+				return { admitted, reason: 'wallet_guard', ...refusal }
+			}
+		}
 		const result = admitExecuteCallInWindows({
-			...input,
+			nowMs: input.nowMs,
+			limitPerMinute: input.limitPerMinute,
+			repeat: input.repeat,
 			minuteWindow: this.executeCallMinute,
 			repeatWindow: this.executeRepeatWindow,
 		})
 		if (result.admitted) {
+			if (input.walletGuard) {
+				this.admitWalletGuardSync({
+					nowMs: input.nowMs,
+					checks: input.walletGuard.checks,
+					mode: 'record',
+				})
+			}
 			this.ctx.storage.sql.exec(
 				`INSERT INTO execute_call_days (day, count) VALUES (?, 1)
 				ON CONFLICT(day) DO UPDATE SET count = count + 1`,
@@ -1171,42 +1198,51 @@ class UserMeterBase extends DurableObject<Env> {
 	async admitWalletGuard(input: {
 		nowMs: number
 		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
 	}): Promise<WalletGuardAdmission> {
-		const sql = this.ctx.storage.sql
 		return this.ctx.storage.transactionSync(() =>
-			admitWalletGuardInWindows({
-				...input,
-				store: {
-					read: (bucket) => {
-						const row = sql
-							.exec<{ window_start: number; count: number }>(
-								`SELECT window_start, count FROM wallet_guard_windows
+			this.admitWalletGuardSync(input),
+		)
+	}
+
+	private admitWalletGuardSync(input: {
+		nowMs: number
+		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
+	}): WalletGuardAdmission {
+		const sql = this.ctx.storage.sql
+		return admitWalletGuardInWindows({
+			...input,
+			store: {
+				read: (bucket) => {
+					const row = sql
+						.exec<{ window_start: number; count: number }>(
+							`SELECT window_start, count FROM wallet_guard_windows
 								WHERE bucket = ? LIMIT 1`,
-								bucket,
-							)
-							.toArray()[0]
-						return row
-							? {
-									windowStart: Number(row.window_start),
-									count: Number(row.count),
-								}
-							: null
-					},
-					write: (bucket, windowStart, count) => {
-						sql.exec(
-							`INSERT INTO wallet_guard_windows (bucket, window_start, count)
+							bucket,
+						)
+						.toArray()[0]
+					return row
+						? {
+								windowStart: Number(row.window_start),
+								count: Number(row.count),
+							}
+						: null
+				},
+				write: (bucket, windowStart, count) => {
+					sql.exec(
+						`INSERT INTO wallet_guard_windows (bucket, window_start, count)
 							VALUES (?, ?, ?)
 							ON CONFLICT(bucket) DO UPDATE SET
 								window_start = excluded.window_start,
 								count = excluded.count`,
-							bucket,
-							windowStart,
-							count,
-						)
-					},
+						bucket,
+						windowStart,
+						count,
+					)
 				},
-			}),
-		)
+			},
+		})
 	}
 
 	private readonly executeCallMinute: ExecuteCallMinuteWindow = {
@@ -2747,11 +2783,13 @@ export type UserMeterRpc = DurableObjectPitrRpc & {
 		nowMs: number
 		limitPerMinute: number
 		repeat?: ExecuteRepeatInput
+		walletGuard?: { checks: Array<WalletGuardCheck> }
 	}) => Promise<UserMeterExecuteAdmissionResult>
 	/** Persisted denial-of-wallet guard admission across fixed windows. */
 	admitWalletGuard: (input: {
 		nowMs: number
 		checks: Array<WalletGuardCheck>
+		mode?: WalletGuardMode
 	}) => Promise<WalletGuardAdmission>
 	/** Cold initialize authoritative state from a caller-provided physical byte count. */
 	initializeStorageBytes: (input: {

@@ -506,7 +506,11 @@ observes:
   burst window and a UTC-day window, counted per org and, when a person made the
   call, per person at half the org limit. Automation counts against the org
   only. Counters are fixed windows persisted in the org's `UserMeter`
-  (`admitWalletGuard`); a refused call is not counted.
+  (`admitWalletGuard`); a refused call is not counted. Execute checks its
+  ceiling in the same `admitExecuteCall` round trip as the runaway brake, and a
+  call either brake refuses counts against neither. A git request that carries
+  only an Artifacts token is counted once Artifacts accepts it, so a forged
+  token cannot spend an org's allowance.
 
   | Guard         | Counts                                                         | Org burst               | Org per day |
   | ------------- | -------------------------------------------------------------- | ----------------------- | ----------- |

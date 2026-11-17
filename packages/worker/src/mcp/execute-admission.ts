@@ -28,8 +28,8 @@ import {
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
 import {
-	enforceWalletGuard,
 	findWalletGuardLimitError,
+	prepareWalletGuard,
 } from '#worker/wallet-guard/enforce.ts'
 import type { ClaimWorkerDay } from './executor.ts'
 
@@ -136,7 +136,7 @@ export async function admitHostedExecuteCall(input: {
 	env: Env
 	ownerId: OwnerId
 	email: string | null | undefined
-	/** The person who made the call; null for automation. */
+	/** From `walletGuardActorUserId`; null for automation. */
 	actorUserId: string | null
 	repeatKey?: string
 	now?: Date
@@ -154,12 +154,21 @@ export async function admitHostedExecuteCall(input: {
 		'execute_calls_per_minute',
 		now,
 	)
+	const walletGuard = await prepareWalletGuard({
+		env: input.env,
+		ownerId: input.ownerId,
+		email: input.email,
+		actorUserId: input.actorUserId,
+		guard: 'execute',
+		now,
+	})
 	const admission = await userMeterRpc({
 		env: input.env,
 		userId: input.ownerId,
 	}).admitExecuteCall({
 		nowMs: now.getTime(),
 		limitPerMinute,
+		...(walletGuard ? { walletGuard: { checks: walletGuard.checks } } : {}),
 		...(input.repeatKey
 			? {
 					repeat: {
@@ -170,18 +179,16 @@ export async function admitHostedExecuteCall(input: {
 				}
 			: {}),
 	})
-	if (admission.admitted) {
-		await enforceWalletGuard({
-			env: input.env,
-			ownerId: input.ownerId,
-			email: input.email,
-			actorUserId: input.actorUserId,
-			guard: 'execute',
-			now,
-		})
-		return
-	}
+	if (admission.admitted) return
 	switch (admission.reason) {
+		case 'wallet_guard': {
+			if (!walletGuard) {
+				throw new Error(
+					'Execute was refused by a wallet guard it did not send.',
+				)
+			}
+			throw walletGuard.refuse(admission)
+		}
 		case 'rate':
 			throw new ExecuteRateLimitedError({
 				limitPerMinute,

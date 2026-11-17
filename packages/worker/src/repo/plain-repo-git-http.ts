@@ -783,14 +783,18 @@ export async function handlePlainRepoGitHttpRequest(
 	}
 
 	// The Artifacts token names no person, so this counts against the org.
+	// Artifacts is what validates the token, so the request is only counted
+	// once Artifacts accepted it: a forged token cannot spend the org's
+	// allowance.
+	const gitGuard = {
+		env,
+		ownerId: ownerIdFromStored(resolved.target.ownerId),
+		email: null,
+		actorUserId: null,
+		guard: 'git',
+	} as const
 	try {
-		await enforceWalletGuard({
-			env,
-			ownerId: ownerIdFromStored(resolved.target.ownerId),
-			email: null,
-			actorUserId: null,
-			guard: 'git',
-		})
+		await enforceWalletGuard({ ...gitGuard, mode: 'check' })
 	} catch (error) {
 		if (isWalletGuardLimitError(error)) {
 			return walletGuardRateLimitedResponse(error)
@@ -799,7 +803,7 @@ export async function handlePlainRepoGitHttpRequest(
 	}
 
 	try {
-		return await proxyArtifactsGitRequest({
+		const response = await proxyArtifactsGitRequest({
 			env,
 			target: resolved.target,
 			parsed,
@@ -808,6 +812,10 @@ export async function handlePlainRepoGitHttpRequest(
 			service:
 				parsed.kind === 'info-refs' ? url.searchParams.get('service') : null,
 		})
+		if (response.ok) {
+			await enforceWalletGuard({ ...gitGuard, mode: 'record' })
+		}
+		return response
 	} catch {
 		return serviceUnavailableResponse(
 			'Failed to proxy git traffic to the artifact repository.',
