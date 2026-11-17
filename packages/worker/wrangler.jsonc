@@ -689,6 +689,10 @@
 				// capture is unaffected.
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
 				"ARTIFACTS_NAMESPACE": "production",
+				// Lets the one-time package app host migration reminder (Dec 3,
+				// 2026) send. Only production sets it; see
+				// package-codemods/host-migration-reminder.ts.
+				"PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED": "true",
 				// Origin hosted package apps are served from. Must stay a
 				// separate registrable domain from APP_BASE_URL — that is what
 				// makes package code cross-site from the app origin, so

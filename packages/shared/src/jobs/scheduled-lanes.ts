@@ -37,6 +37,7 @@ export const scheduledLaneNames = [
 	'org_audit_outbox',
 	'package_app_custom_hostnames_reconcile',
 	'follow_maintenance',
+	'package_app_host_migration_reminder',
 ] as const
 
 export type ScheduledLaneName = (typeof scheduledLaneNames)[number]
@@ -306,6 +307,19 @@ export function shouldRunFleetUsersAffectedAlertCron(now: Date) {
 }
 
 /**
+ * One-time reminder for the package app host migration: the lane only runs
+ * from 2026-12-03 00:00 UTC (fresh fleet scan, then the mail) for one week.
+ * Matches `packageAppHostMigrationReminder` in the main worker.
+ */
+export function shouldRunPackageAppHostMigrationReminderCron(now: Date) {
+	const time = now.getTime()
+	return (
+		time >= Date.parse('2026-12-03T00:00:00Z') &&
+		time < Date.parse('2026-12-10T00:00:00Z')
+	)
+}
+
+/**
  * Which lanes a cron tick at `scheduledAt` should dispatch. DR export lanes
  * are dispatched on cadence regardless of configuration; the main worker
  * skips them cheaply when DR export is not configured (the jobs worker has no
@@ -329,6 +343,9 @@ export function getScheduledLaneCadence(
 		'follow_maintenance',
 		'dlq_depth_alert',
 	]
+	if (shouldRunPackageAppHostMigrationReminderCron(scheduledAt)) {
+		lanes.push('package_app_host_migration_reminder')
+	}
 	if (shouldRunRetentionCron(scheduledAt)) {
 		lanes.push('retention', 'unverified_account_purge', 'soft_delete_purge')
 	}

@@ -163,7 +163,7 @@ test('dry run counts owners and apps by category and previews the first email wi
 	})
 
 	expect(result.totals).toEqual({
-		recipients: { owners: 2, apps: 2 },
+		recipients: { owners: 2, apps: 3 },
 		byCategory: {
 			browserData: { owners: 1, apps: 1 },
 			addressCode: { owners: 1, apps: 1 },
@@ -174,6 +174,10 @@ test('dry run counts owners and apps by category and previews the first email wi
 	})
 	expect(result.summary).toEqual({ would_send: 2 })
 	expect(result.owners.map((owner) => owner.ownerId)).toEqual(['alice', 'bob'])
+	// The total counts the same apps the owners' arrays hold.
+	expect(result.owners.flatMap((owner) => owner.apps)).toHaveLength(
+		result.totals.recipients.apps,
+	)
 	expect(result.owners[0]!.apps).toEqual([
 		{
 			packageId: 'pkg-@alice/notes',
@@ -353,4 +357,30 @@ test('an app whose stored findings were cut short still reaches its owner', asyn
 	expect(result.preview!.text).toContain('@alice/notes')
 	expect(result.preview!.text).toContain('unsubscribe links in email it sends')
 	expect(result.totals.outsideOnly.owners).toBe(0)
+})
+
+test('a reminder on a fresh scan skips owners whose apps are clean and is separate from the announcement', async () => {
+	const { env } = await createEnv()
+	await runPackageAppHostMigrationNotice({ env, ...base, dryRun: false })
+	expect(mocks.sendCloudflareEmail).toHaveBeenCalledTimes(2)
+	mocks.sendCloudflareEmail.mockClear()
+
+	// Alice fixed her app: the fresh scan has no finding for it.
+	mocks.items = mocks.items.map((entry) =>
+		entry.userId === 'alice' ? { ...entry, findings: [] } : entry,
+	)
+	const reminder = {
+		...base,
+		noticeId: 'host-migration-reminder',
+		kind: 'reminder' as const,
+		dryRun: false,
+	}
+	const result = await runPackageAppHostMigrationNotice({ env, ...reminder })
+	expect(result.owners.map((owner) => owner.ownerId)).toEqual(['bob'])
+	expect(result.summary).toEqual({ sent: 1 })
+	expect(mocks.sendCloudflareEmail).toHaveBeenCalledTimes(1)
+
+	const again = await runPackageAppHostMigrationNotice({ env, ...reminder })
+	expect(again.summary).toEqual({ already_sent: 1 })
+	expect(mocks.sendCloudflareEmail).toHaveBeenCalledTimes(1)
 })
