@@ -16,7 +16,7 @@ import {
 	layoutMaxWidths,
 } from '#universal/styles/style-primitives.ts'
 
-const features = [
+export const featureMenuItems = [
 	{
 		id: 'memory',
 		name: 'Memory',
@@ -41,6 +41,31 @@ const features = [
 		id: 'apps',
 		name: 'Apps',
 		description: 'Give your work an interface.',
+	},
+	{
+		id: 'skills',
+		name: 'Skills',
+		description: 'Playbooks that ship with your packages.',
+	},
+	{
+		id: 'agent-profiles',
+		name: 'Agent profiles',
+		description: 'A scoped identity for each agent.',
+	},
+	{
+		id: 'context',
+		name: 'Execution contexts',
+		description: 'Run work on your own machine.',
+	},
+	{
+		id: 'email',
+		name: 'Email',
+		description: 'An inbox your agents can work from.',
+	},
+	{
+		id: 'files',
+		name: 'Files',
+		description: 'Pages and files you edit together.',
 	},
 ] as const
 const panelId = 'features-navigation'
@@ -93,7 +118,7 @@ export function FeaturesMenu(props: Props) {
 					<span aria-hidden="true">↗</span>
 				</SiteLink>
 				<div css={gridCss}>
-					{features.map((feature) => (
+					{featureMenuItems.map((feature) => (
 						<SiteLink
 							key={feature.id}
 							aria-label={feature.name}
