@@ -1562,6 +1562,12 @@ async function handleUserSubdomainRequest(input: {
 	env: Env
 	url: URL
 	username: string
+	/**
+	 * True only for `{username}.kody.run`. An org's custom hostname reuses this
+	 * handler and keeps serving its apps by path: it is not the shared origin
+	 * the cutover retires, and its apps have no host of their own under it.
+	 */
+	pathMountCutoverApplies?: boolean
 }) {
 	const { request, env, url, username } = input
 	const health = handlePackageAppHostHealth({ request, env, url })
@@ -1623,14 +1629,15 @@ async function handleUserSubdomainRequest(input: {
 	// After cutover the path address only redirects, on every method, so no
 	// app code runs on the owner's shared origin any more.
 	const packageAppOrigin = getPackageAppBaseUrl({ env })
-	const cutoverLocation = packageAppOrigin
-		? buildPackageAppPathMountCutoverLocation({
-				env,
-				packageAppOrigin,
-				packagePath,
-				url,
-			})
-		: null
+	const cutoverLocation =
+		input.pathMountCutoverApplies && packageAppOrigin
+			? buildPackageAppPathMountCutoverLocation({
+					env,
+					packageAppOrigin,
+					packagePath,
+					url,
+				})
+			: null
 	if (cutoverLocation) {
 		return redirectResponse({ location: cutoverLocation, status: 308 })
 	}
@@ -2005,6 +2012,7 @@ async function dispatchPackageAppOriginRequest(request: Request, env: Env) {
 					env,
 					url,
 					username: requestHost.username,
+					pathMountCutoverApplies: true,
 				})
 			}
 			case 'app-subdomain': {
