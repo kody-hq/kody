@@ -32,7 +32,10 @@ export type PackageAppHostMigrationReminderState = {
 	noticeCursor: string | null
 	/** Set true to finish, or by hand to cancel the reminder. */
 	done: boolean
+	/** Notice statuses counted over the current pass through the owners. */
 	sent: Record<string, number>
+	/** Passes that ended with a failed send and were started again. */
+	passes: number
 	updatedAt: string
 }
 
@@ -68,6 +71,7 @@ export async function runPackageAppHostMigrationReminder(input: {
 		noticeCursor: null,
 		done: false,
 		sent: {},
+		passes: 0,
 		updatedAt: input.now.toISOString(),
 	}
 	if (state.done) return state
@@ -119,13 +123,28 @@ export async function runPackageAppHostMigrationReminder(input: {
 			state.sent[status] = (state.sent[status] ?? 0) + (count ?? 0)
 		}
 		state.noticeCursor = page.nextCursor
-		state.done = page.nextCursor === null
+		if (page.nextCursor === null) {
+			// A failed send leaves no claim, so another pass on a later tick
+			// retries only those owners. A failed claim write is the one case
+			// where a pass could mail someone twice, so that ends the run.
+			const retry =
+				(state.sent.send_failed ?? 0) > 0 &&
+				(state.sent.claim_failed ?? 0) === 0
+			if (retry) {
+				state.passes += 1
+				state.sent = {}
+				await save()
+				break
+			}
+			state.done = true
+		}
 		await save()
 	}
 	console.log('package-app-host-migration-reminder', {
 		scanRunId: state.scanRunId,
 		done: state.done,
 		sent: state.sent,
+		passes: state.passes,
 	})
 	return state
 }

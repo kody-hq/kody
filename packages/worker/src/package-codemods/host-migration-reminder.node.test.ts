@@ -142,3 +142,41 @@ test('a tick that runs out of time or fails resumes from the saved cursor', asyn
 	expect(failing.scanStep).toHaveBeenCalledTimes(2)
 	expect(retried).toMatchObject({ done: true, sent: { sent: 3 } })
 })
+
+test('a failed send is retried on a later tick, and a done run means every owner was reached', async () => {
+	const { sendNotice, run } = setup()
+	sendNotice.mockReset()
+	sendNotice
+		.mockResolvedValueOnce({
+			summary: { sent: 4, send_failed: 1 },
+			nextCursor: null,
+		})
+		.mockResolvedValueOnce({
+			summary: { sent: 1, already_sent: 4 },
+			nextCursor: null,
+		})
+
+	const first = await run('2026-12-03T15:00:00Z')
+	expect(first).toMatchObject({ done: false, noticeCursor: null, passes: 1 })
+	expect(sendNotice).toHaveBeenCalledTimes(1)
+
+	const second = await run('2026-12-03T15:05:00Z')
+	expect(sendNotice.mock.calls[1]![0]).toMatchObject({ cursor: null })
+	expect(second).toMatchObject({
+		done: true,
+		sent: { sent: 1, already_sent: 4 },
+	})
+})
+
+test('a failed claim write ends the run instead of risking a second email', async () => {
+	const { sendNotice, run } = setup()
+	sendNotice.mockReset()
+	sendNotice.mockResolvedValueOnce({
+		summary: { sent: 3, send_failed: 1, claim_failed: 1 },
+		nextCursor: null,
+	})
+	const result = await run('2026-12-03T15:00:00Z')
+	expect(result).toMatchObject({ done: true, passes: 0 })
+	await run('2026-12-03T15:05:00Z')
+	expect(sendNotice).toHaveBeenCalledTimes(1)
+})

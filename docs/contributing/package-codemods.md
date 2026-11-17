@@ -995,10 +995,11 @@ own `noticeId`), `cutoverDate`, and `reminderDate`.
   scan, and from 15:00 UTC that day, once the scan is complete, it sends kind
   `reminder` with notice id `host-migration-reminder`. Owners the fresh scan
   finds clean get nothing. Progress lives in KV under
-  `package-app-host-migration-reminder:v1` (`scanRunId`, `done`, `sent`);
-  writing `done: true` there before December 3 cancels it. The lane stops on
-  2026-12-10 and only runs where `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED`
-  is `true` (production).
+  `package-app-host-migration-reminder:v1` (`scanRunId`, `done`, `sent`). A
+  failed send is retried on later ticks until the lane stops; writing
+  `done: true` there before December 3 cancels it. The lane stops on 2026-12-10
+  and only runs where `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED` is `true`
+  (production).
 - **Prompt.** One copy per email. With one listed app `{app}` is filled in; with
   several the owner replaces `{app}` per app.
 
