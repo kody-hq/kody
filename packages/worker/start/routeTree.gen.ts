@@ -84,12 +84,17 @@ import { Route as DocsConnectRouteImport } from './routes/docs.connect'
 import { Route as DocsConnectDotmdRouteImport } from './routes/docs_.connect[.]md'
 import { Route as DocsLlmsDottxtRouteImport } from './routes/docs_.llms[.]txt'
 import { Route as DocsChar123slugChar125DotmdRouteImport } from './routes/docs_.{$slug}[.]md'
+import { Route as FeaturesAgentProfilesRouteImport } from './routes/features_.agent-profiles'
 import { Route as FeaturesAppsRouteImport } from './routes/features_.apps'
+import { Route as FeaturesContextRouteImport } from './routes/features_.context'
 import { Route as FeaturesCredentialsRouteImport } from './routes/features_.credentials'
+import { Route as FeaturesEmailRouteImport } from './routes/features_.email'
+import { Route as FeaturesFilesRouteImport } from './routes/features_.files'
 import { Route as FeaturesIntegrationsRouteImport } from './routes/features_.integrations'
 import { Route as FeaturesMemoryRouteImport } from './routes/features_.memory'
 import { Route as FeaturesPackagesRouteImport } from './routes/features_.packages'
 import { Route as FeaturesSecretsRouteImport } from './routes/features_.secrets'
+import { Route as FeaturesSkillsRouteImport } from './routes/features_.skills'
 import { Route as FeaturesTriggersRouteImport } from './routes/features_.triggers'
 import { Route as ForBusinessRouteImport } from './routes/for.business'
 import { Route as GuidesSplatRouteImport } from './routes/guides_.$'
@@ -692,14 +697,34 @@ const DocsChar123slugChar125DotmdRoute =
     path: '/docs/{$slug}.md',
     getParentRoute: () => rootRouteImport,
   } as any)
+const FeaturesAgentProfilesRoute = FeaturesAgentProfilesRouteImport.update({
+  id: '/features_/agent-profiles',
+  path: '/features/agent-profiles',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeaturesAppsRoute = FeaturesAppsRouteImport.update({
   id: '/features_/apps',
   path: '/features/apps',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeaturesContextRoute = FeaturesContextRouteImport.update({
+  id: '/features_/context',
+  path: '/features/context',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeaturesCredentialsRoute = FeaturesCredentialsRouteImport.update({
   id: '/features_/credentials',
   path: '/features/credentials',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesEmailRoute = FeaturesEmailRouteImport.update({
+  id: '/features_/email',
+  path: '/features/email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesFilesRoute = FeaturesFilesRouteImport.update({
+  id: '/features_/files',
+  path: '/features/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeaturesIntegrationsRoute = FeaturesIntegrationsRouteImport.update({
@@ -720,6 +745,11 @@ const FeaturesPackagesRoute = FeaturesPackagesRouteImport.update({
 const FeaturesSecretsRoute = FeaturesSecretsRouteImport.update({
   id: '/features_/secrets',
   path: '/features/secrets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesSkillsRoute = FeaturesSkillsRouteImport.update({
+  id: '/features_/skills',
+  path: '/features/skills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeaturesTriggersRoute = FeaturesTriggersRouteImport.update({
@@ -2038,12 +2068,17 @@ export interface FileRoutesByFullPath {
   '/docs/connect.md': typeof DocsConnectDotmdRoute
   '/docs/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features/apps': typeof FeaturesAppsRoute
+  '/features/context': typeof FeaturesContextRoute
   '/features/credentials': typeof FeaturesCredentialsRoute
+  '/features/email': typeof FeaturesEmailRoute
+  '/features/files': typeof FeaturesFilesRoute
   '/features/integrations': typeof FeaturesIntegrationsRoute
   '/features/memory': typeof FeaturesMemoryRoute
   '/features/packages': typeof FeaturesPackagesRoute
   '/features/secrets': typeof FeaturesSecretsRoute
+  '/features/skills': typeof FeaturesSkillsRoute
   '/features/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
@@ -2338,12 +2373,17 @@ export interface FileRoutesByTo {
   '/docs/connect.md': typeof DocsConnectDotmdRoute
   '/docs/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features/apps': typeof FeaturesAppsRoute
+  '/features/context': typeof FeaturesContextRoute
   '/features/credentials': typeof FeaturesCredentialsRoute
+  '/features/email': typeof FeaturesEmailRoute
+  '/features/files': typeof FeaturesFilesRoute
   '/features/integrations': typeof FeaturesIntegrationsRoute
   '/features/memory': typeof FeaturesMemoryRoute
   '/features/packages': typeof FeaturesPackagesRoute
   '/features/secrets': typeof FeaturesSecretsRoute
+  '/features/skills': typeof FeaturesSkillsRoute
   '/features/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
@@ -2641,12 +2681,17 @@ export interface FileRoutesById {
   '/docs_/connect.md': typeof DocsConnectDotmdRoute
   '/docs_/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs_/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features_/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features_/apps': typeof FeaturesAppsRoute
+  '/features_/context': typeof FeaturesContextRoute
   '/features_/credentials': typeof FeaturesCredentialsRoute
+  '/features_/email': typeof FeaturesEmailRoute
+  '/features_/files': typeof FeaturesFilesRoute
   '/features_/integrations': typeof FeaturesIntegrationsRoute
   '/features_/memory': typeof FeaturesMemoryRoute
   '/features_/packages': typeof FeaturesPackagesRoute
   '/features_/secrets': typeof FeaturesSecretsRoute
+  '/features_/skills': typeof FeaturesSkillsRoute
   '/features_/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides_/$': typeof GuidesSplatRoute
@@ -2944,12 +2989,17 @@ export interface FileRouteTypes {
     | '/docs/connect.md'
     | '/docs/llms.txt'
     | '/docs/{$slug}.md'
+    | '/features/agent-profiles'
     | '/features/apps'
+    | '/features/context'
     | '/features/credentials'
+    | '/features/email'
+    | '/features/files'
     | '/features/integrations'
     | '/features/memory'
     | '/features/packages'
     | '/features/secrets'
+    | '/features/skills'
     | '/features/triggers'
     | '/for/business'
     | '/guides/$'
@@ -3244,12 +3294,17 @@ export interface FileRouteTypes {
     | '/docs/connect.md'
     | '/docs/llms.txt'
     | '/docs/{$slug}.md'
+    | '/features/agent-profiles'
     | '/features/apps'
+    | '/features/context'
     | '/features/credentials'
+    | '/features/email'
+    | '/features/files'
     | '/features/integrations'
     | '/features/memory'
     | '/features/packages'
     | '/features/secrets'
+    | '/features/skills'
     | '/features/triggers'
     | '/for/business'
     | '/guides/$'
@@ -3546,12 +3601,17 @@ export interface FileRouteTypes {
     | '/docs_/connect.md'
     | '/docs_/llms.txt'
     | '/docs_/{$slug}.md'
+    | '/features_/agent-profiles'
     | '/features_/apps'
+    | '/features_/context'
     | '/features_/credentials'
+    | '/features_/email'
+    | '/features_/files'
     | '/features_/integrations'
     | '/features_/memory'
     | '/features_/packages'
     | '/features_/secrets'
+    | '/features_/skills'
     | '/features_/triggers'
     | '/for/business'
     | '/guides_/$'
@@ -3847,12 +3907,17 @@ export interface RootRouteChildren {
   DocsConnectDotmdRoute: typeof DocsConnectDotmdRoute
   DocsLlmsDottxtRoute: typeof DocsLlmsDottxtRoute
   DocsChar123slugChar125DotmdRoute: typeof DocsChar123slugChar125DotmdRoute
+  FeaturesAgentProfilesRoute: typeof FeaturesAgentProfilesRoute
   FeaturesAppsRoute: typeof FeaturesAppsRoute
+  FeaturesContextRoute: typeof FeaturesContextRoute
   FeaturesCredentialsRoute: typeof FeaturesCredentialsRoute
+  FeaturesEmailRoute: typeof FeaturesEmailRoute
+  FeaturesFilesRoute: typeof FeaturesFilesRoute
   FeaturesIntegrationsRoute: typeof FeaturesIntegrationsRoute
   FeaturesMemoryRoute: typeof FeaturesMemoryRoute
   FeaturesPackagesRoute: typeof FeaturesPackagesRoute
   FeaturesSecretsRoute: typeof FeaturesSecretsRoute
+  FeaturesSkillsRoute: typeof FeaturesSkillsRoute
   FeaturesTriggersRoute: typeof FeaturesTriggersRoute
   ForBusinessRoute: typeof ForBusinessRoute
   GuidesSplatRoute: typeof GuidesSplatRoute
@@ -4446,6 +4511,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsChar123slugChar125DotmdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features_/agent-profiles': {
+      id: '/features_/agent-profiles'
+      path: '/features/agent-profiles'
+      fullPath: '/features/agent-profiles'
+      preLoaderRoute: typeof FeaturesAgentProfilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/features_/apps': {
       id: '/features_/apps'
       path: '/features/apps'
@@ -4453,11 +4525,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeaturesAppsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features_/context': {
+      id: '/features_/context'
+      path: '/features/context'
+      fullPath: '/features/context'
+      preLoaderRoute: typeof FeaturesContextRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/features_/credentials': {
       id: '/features_/credentials'
       path: '/features/credentials'
       fullPath: '/features/credentials'
       preLoaderRoute: typeof FeaturesCredentialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/email': {
+      id: '/features_/email'
+      path: '/features/email'
+      fullPath: '/features/email'
+      preLoaderRoute: typeof FeaturesEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/files': {
+      id: '/features_/files'
+      path: '/features/files'
+      fullPath: '/features/files'
+      preLoaderRoute: typeof FeaturesFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/features_/integrations': {
@@ -4486,6 +4579,13 @@ declare module '@tanstack/react-router' {
       path: '/features/secrets'
       fullPath: '/features/secrets'
       preLoaderRoute: typeof FeaturesSecretsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/skills': {
+      id: '/features_/skills'
+      path: '/features/skills'
+      fullPath: '/features/skills'
+      preLoaderRoute: typeof FeaturesSkillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/features_/triggers': {
@@ -6528,12 +6628,17 @@ const rootRouteChildren: RootRouteChildren = {
   DocsConnectDotmdRoute: DocsConnectDotmdRoute,
   DocsLlmsDottxtRoute: DocsLlmsDottxtRoute,
   DocsChar123slugChar125DotmdRoute: DocsChar123slugChar125DotmdRoute,
+  FeaturesAgentProfilesRoute: FeaturesAgentProfilesRoute,
   FeaturesAppsRoute: FeaturesAppsRoute,
+  FeaturesContextRoute: FeaturesContextRoute,
   FeaturesCredentialsRoute: FeaturesCredentialsRoute,
+  FeaturesEmailRoute: FeaturesEmailRoute,
+  FeaturesFilesRoute: FeaturesFilesRoute,
   FeaturesIntegrationsRoute: FeaturesIntegrationsRoute,
   FeaturesMemoryRoute: FeaturesMemoryRoute,
   FeaturesPackagesRoute: FeaturesPackagesRoute,
   FeaturesSecretsRoute: FeaturesSecretsRoute,
+  FeaturesSkillsRoute: FeaturesSkillsRoute,
   FeaturesTriggersRoute: FeaturesTriggersRoute,
   ForBusinessRoute: ForBusinessRoute,
   GuidesSplatRoute: GuidesSplatRoute,

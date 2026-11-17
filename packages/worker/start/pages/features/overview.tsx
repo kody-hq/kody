@@ -9,6 +9,18 @@ import {
 import type { LandingPrimitiveId } from '#universal/landing-lantern.ts'
 import { LandingPrimitives } from '../../components/landing-primitives.tsx'
 import { OverviewWidget } from './overview-widgets.tsx'
+import { featureMenuItems } from '../../components/features-menu.tsx'
+
+const primitiveFeatureIds = new Set<string>([
+	'memory',
+	'packages',
+	'triggers',
+	'credentials',
+	'apps',
+])
+const moreFeatures = featureMenuItems.filter(
+	(feature) => !primitiveFeatureIds.has(feature.id),
+)
 
 /** Card accent hues; `feature-pages.css` derives `--accent` from `--hue`. */
 const cardHues = {
@@ -68,6 +80,27 @@ export function FeaturesOverview() {
 					</article>
 				))}
 			</div>
+			<section className="more" aria-labelledby="more-features">
+				<h2 id="more-features">More for your agents</h2>
+				<ul>
+					{moreFeatures.map((feature) => (
+						<li key={feature.id}>
+							<SiteLink href={`/features/${feature.id}`}>
+								<img
+									src={publicAsset(`/images/features/${feature.id}.svg`)}
+									width="44"
+									height="44"
+									alt=""
+								/>
+								<span>
+									<strong>{feature.name}</strong>
+									<small>{feature.description}</small>
+								</span>
+							</SiteLink>
+						</li>
+					))}
+				</ul>
+			</section>
 			<section className="together">
 				<h2>
 					Useful on their own.

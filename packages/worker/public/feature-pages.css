@@ -1567,3 +1567,155 @@
 	content-visibility: auto;
 	contain-intrinsic-size: auto 640px;
 }
+
+/* Example-led feature pages (skills, agent profiles, execution contexts,
+   email, files): one accent hue each and a shared example window. */
+.feature-detail .skills,
+.feature-detail:has(.skills) {
+	--hue: 205;
+}
+.feature-detail .agent-profiles,
+.feature-detail:has(.agent-profiles) {
+	--hue: 5;
+}
+.feature-detail .context,
+.feature-detail:has(.context) {
+	--hue: 275;
+}
+.feature-detail .email,
+.feature-detail:has(.email) {
+	--hue: 55;
+}
+.feature-detail .files,
+.feature-detail:has(.files) {
+	--hue: 180;
+}
+.feature-detail :is(.skills, .agent-profiles, .context, .email, .files) h1 em {
+	font-style: normal;
+	color: var(--accent);
+}
+.feature-detail .fx-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 5px;
+	padding: 10px 16px;
+	border-bottom: 1px solid var(--ui-line);
+	background: var(--ui-stage);
+}
+.feature-detail .fx-tabs button {
+	min-height: 44px;
+	padding: 6px 12px;
+	font-size: 13px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: inherit;
+}
+.feature-detail .fx-tabs button[aria-pressed='true'] {
+	background: var(--accent);
+	color: var(--on-accent);
+}
+.feature-detail .fx-tabs button:focus-visible {
+	outline: 3px solid var(--accent);
+	outline-offset: -3px;
+}
+.feature-detail .fx-code {
+	margin: 0;
+	padding: 20px 18px;
+	font:
+		13px/1.75 ui-monospace,
+		monospace;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	tab-size: 2;
+}
+.feature-detail .fx-tabs + .fx-code {
+	min-height: 250px;
+}
+@media (max-width: 800px) {
+	.feature-detail .fx-code {
+		font-size: 12px;
+		padding: 16px 14px;
+	}
+	.feature-detail .fx-tabs + .fx-code {
+		min-height: 0;
+	}
+}
+.feature-detail .story-section .fx-example {
+	margin-top: 18px;
+}
+.feature-detail .story-section p + h3 {
+	margin-top: 36px;
+}
+.feature-detail .fx-availability {
+	font-size: 14px;
+	color: var(--muted);
+	max-width: 550px;
+	margin: 18px 0 0;
+	padding-left: 12px;
+	border-left: 3px solid var(--accent);
+}
+.feature-detail .fx-points {
+	margin: 18px 0;
+	padding-left: 20px;
+	max-width: 55ch;
+	line-height: 1.65;
+}
+.feature-detail .fx-points li + li {
+	margin-top: 8px;
+}
+.feature-detail .fx-points code,
+.feature-detail .story-section p code,
+.feature-detail .fx-availability code {
+	font-size: 0.9em;
+	overflow-wrap: anywhere;
+}
+.feature-detail .fx-prompts {
+	margin-top: 0;
+	border-top: 0;
+	padding-top: 0;
+}
+
+/* `/features` overview: links to the example-led feature pages. */
+.feature-overview .more {
+	margin-top: 4rem;
+}
+.feature-overview .more h2 {
+	font: 700 32px/1.12 var(--font-display);
+	margin: 0 0 1.5rem;
+}
+.feature-overview .more ul {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+	gap: 1rem;
+}
+.feature-overview .more a:not(.feature-cta) {
+	display: flex;
+	gap: 0.85rem;
+	align-items: center;
+	height: 100%;
+	padding: 1rem;
+	border: 1px solid var(--line);
+	border-radius: 1rem;
+	background: var(--surface);
+	color: var(--text);
+	text-decoration: none;
+}
+.feature-overview .more a:hover {
+	border-color: var(--accent);
+}
+.feature-overview .more img {
+	flex-shrink: 0;
+}
+.feature-overview .more span {
+	display: grid;
+	gap: 0.2rem;
+}
+.feature-overview .more small {
+	color: var(--muted);
+	font-size: 0.85rem;
+	line-height: 1.4;
+}

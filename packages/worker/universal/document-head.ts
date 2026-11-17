@@ -521,6 +521,26 @@ const routeDocumentHeads = {
 		'Package apps for your AI agents | Kody',
 		'apps',
 	),
+	featureSkills: featurePageHead(
+		'feature-skills',
+		'Agent Skills for your AI agents | Kody',
+	),
+	featureAgentProfiles: featurePageHead(
+		'feature-agent-profiles',
+		'Agent profiles: scoped identities for AI agents | Kody',
+	),
+	featureContext: featurePageHead(
+		'feature-context',
+		'Execution contexts: run agent work on your machine | Kody',
+	),
+	featureEmail: featurePageHead(
+		'feature-email',
+		'Email for your AI agents | Kody',
+	),
+	featureFiles: featurePageHead(
+		'feature-files',
+		'Workspace files for you and your AI agents | Kody',
+	),
 	business: publicPageHead(
 		'business',
 		'AI Agent Cloud for Business and Agencies | Kody',
