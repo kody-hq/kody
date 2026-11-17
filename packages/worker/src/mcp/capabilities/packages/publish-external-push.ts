@@ -1782,6 +1782,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 				enqueuedCommit: newCommit,
 				durableCode: durablePublishWorkflowCode,
 				durableParams,
+				// Publishing a commit again is how its artifacts are repaired,
+				// and a finished run's stored result expires: run it again.
+				rerunComplete: true,
 			})
 
 			switch (outcome.kind) {

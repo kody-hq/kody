@@ -756,6 +756,8 @@ test('an interactive publish returns the dispatched handle with the baseline sta
 			durableParams: expect.objectContaining({
 				baseline_published_commit: 'commit-old',
 			}),
+			// Publishing a finished commit again runs again (artifact repair).
+			rerunComplete: true,
 		}),
 	)
 	// The durable run finishes as the org, so the person who asked is noted.
