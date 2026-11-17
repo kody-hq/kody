@@ -2,7 +2,8 @@
  * `kody dev --target mock` on the real local Kody: an app that imports
  * mapped local deps (`.kody/deps.json` and `package.json#kody.localDeps`),
  * one of them only through another, serves, and an edit to the deepest dep
- * reaches the app without restarting.
+ * reaches the app without restarting. A mapped dep from another scope stops
+ * the sync before anything is saved.
  */
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
@@ -24,6 +25,7 @@ import { resolveDevAuth } from '../src/dev-command.js'
 import {
 	createLocalKodyUpstream,
 	startLocalKody,
+	type LocalKody,
 } from '../src/dev/local-kody.js'
 import { startPackageAppDev } from '../src/package-app-dev.js'
 import { loadPackageManifest } from '../src/package-manifest.js'
@@ -191,3 +193,54 @@ test(
 		}
 	},
 )
+
+test('kody dev --target mock stops before saving when a mapped dep is from another scope', async () => {
+	const scratch = await realpath(
+		await mkdtemp(join(tmpdir(), 'kody-dev-foreign-dep-')),
+	)
+	try {
+		const appRoot = join(scratch, 'app')
+		await writeTree(
+			join(scratch, 'shared'),
+			packageFiles({
+				name: '@someone/shared',
+				source: `export function shared() {\n\treturn 'shared'\n}\n`,
+			}),
+		)
+		await writeTree(appRoot, {
+			...packageFiles({
+				name: '@danj/app',
+				source: `import { shared } from 'kody:@someone/shared'\n\nexport default async function main() {\n\treturn shared()\n}\n`,
+				extra: {
+					dependencies: { '@someone/shared': '*' },
+					localDeps: { '@someone/shared': '../shared' },
+				},
+			}),
+		})
+		const fetched: Array<string> = []
+		const upstream = createLocalKodyUpstream({
+			kody: {
+				origin: 'http://127.0.0.1:9',
+				apiToken: 'local',
+			} as unknown as LocalKody,
+			manifest: await loadPackageManifest(appRoot),
+			fetchFn: (async (url: string | URL | Request) => {
+				fetched.push(String(url))
+				throw new Error('nothing should be saved')
+			}) as typeof fetch,
+		})
+		await assert.rejects(upstream.sync(), (error: Error) => {
+			assert.equal(
+				error.message,
+				[
+					"Mapped local deps must be in the app's own scope (@danj). Local Kody can only save deps in the app's scope, like hosted Kody, where imports resolve only within the caller's org.",
+					`- @someone/shared (mapped to ${join(scratch, 'shared')}): fork it into @danj, for example as @danj/shared, then import and map that copy.`,
+				].join('\n'),
+			)
+			return true
+		})
+		assert.deepEqual(fetched, [])
+	} finally {
+		await rm(scratch, { recursive: true, force: true })
+	}
+})
