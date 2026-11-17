@@ -19,10 +19,7 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { readLastCheckStep } from '#worker/repo/isolated-check-phases.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import {
-	defaultDurableEscalationBudgetMs,
-	runWithDurableEscalation,
-} from '#mcp/capabilities/durable-escalation.ts'
+import { dispatchDurableRun } from '#mcp/capabilities/durable-escalation.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
@@ -268,29 +265,8 @@ function logExternalPublishRetry(input: {
 	}
 }
 
-function assertNotAborted(signal: AbortSignal | undefined) {
-	if (signal?.aborted) {
-		throw new DOMException('The publish attempt was aborted.', 'AbortError')
-	}
-}
-
-async function delay(ms: number, signal?: AbortSignal) {
-	assertNotAborted(signal)
-	if (!signal) {
-		await new Promise((resolve) => setTimeout(resolve, ms))
-		return
-	}
-	await new Promise<void>((resolve, reject) => {
-		const timer = setTimeout(() => {
-			signal.removeEventListener('abort', onAbort)
-			resolve()
-		}, ms)
-		const onAbort = () => {
-			clearTimeout(timer)
-			reject(new DOMException('The publish attempt was aborted.', 'AbortError'))
-		}
-		signal.addEventListener('abort', onAbort, { once: true })
-	})
+async function delay(ms: number) {
+	await new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 const checkSchema = z.object({
@@ -519,10 +495,10 @@ const externalPushRestoreSentryScope =
 	'packagePublishExternalPush.restore-after-rebuild-failure'
 
 /**
- * Tip moved relative to the publish request start (or the interactive call
- * that dispatched this durable run). The overlapping inline attempt may have
- * advanced D1 before durable re-entry, so RepoSession tip==HEAD alone is not
- * enough to call the result a no-op.
+ * Tip moved relative to the call that dispatched this durable run. An
+ * earlier attempt of the durable step may have advanced D1 before this
+ * re-entry, so RepoSession tip==HEAD alone is not enough to call the result a
+ * no-op.
  */
 export function publishTipMovedRelativeToBaseline(input: {
 	baselinePublishedCommit: string | null | undefined
@@ -1005,7 +981,7 @@ export type ExternalPublishSemanticInput = {
 export function buildExternalPublishIdempotencyParts(
 	input: ExternalPublishSemanticInput,
 ) {
-	// Caller identity is applied by runWithDurableEscalation (RunLog workflow
+	// Caller identity is applied by dispatchDurableRun (RunLog workflow
 	// projections are user-scoped). Distinct delegates may each dispatch for
 	// the same publish; that is safe because re-invoking publish when
 	// published_commit already matches HEAD is idempotent (no D1 tip write).
@@ -1023,15 +999,6 @@ export function buildExternalPublishIdempotencyParts(
 		'v2',
 		canonicalJsonStringify(input),
 	] as const
-}
-
-function shouldEscalateExternalPublish(executionOrigin: string | undefined) {
-	// Fail closed: only interactive MCP calls escalate. Missing origin and
-	// background (durable workflow re-entry) must not create another workflow.
-	// package-workflows invokeInlineWorkflowCode always sets background today;
-	// requiring an explicit interactive origin still prevents a self-replicating
-	// chain if any future path forgets to set it.
-	return executionOrigin === 'interactive'
 }
 
 async function runExternalPublishAttempt(input: {
@@ -1052,9 +1019,9 @@ async function runExternalPublishAttempt(input: {
 		repo_id: string
 	}
 	/**
-	 * Tip before this publish request (and before any overlapping inline
-	 * attempt that may have advanced D1). Durable re-entry must pass the
-	 * interactive request's baseline, not a fresh D1 read.
+	 * Tip before this publish request (and before any earlier attempt of the
+	 * durable step that may have advanced D1). Durable re-entry must pass the
+	 * dispatching request's baseline, not a fresh D1 read.
 	 */
 	baselinePublishedCommit: string | null
 	newCommit: string
@@ -1063,7 +1030,6 @@ async function runExternalPublishAttempt(input: {
 	requestedByUserId: string | null
 	publisherRequest?: RequestContext | null
 	approvalViewer: ApprovalViewer | null
-	signal?: AbortSignal
 	reportProgress?: McpReportProgress
 	/** Publish offload: persist this verified upload instead of rebuilding. */
 	uploadedBuild?: UploadedPublishBuildRef | null
@@ -1071,7 +1037,6 @@ async function runExternalPublishAttempt(input: {
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
 	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
-		assertNotAborted(input.signal)
 		const attempt = attemptIndex + 1
 		const sessionId =
 			attemptIndex === 0
@@ -1108,7 +1073,6 @@ async function runExternalPublishAttempt(input: {
 				...(input.uploadedBuild ? { typecheckRanOffWorker: true } : {}),
 			})
 			const publishMs = Date.now() - publishStartedAt
-			assertNotAborted(input.signal)
 			if (result.status === 'already_published') {
 				const publishedCommit = result.published_commit
 				if (!publishedCommit) {
@@ -1116,8 +1080,8 @@ async function runExternalPublishAttempt(input: {
 						`Package "${input.packageId}" is already published, but no published commit is available to rebuild artifacts.`,
 					)
 				}
-				// RepoSession tip==HEAD is idempotent, but the overlapping inline
-				// attempt (or a prior retry) may have advanced the tip after this
+				// RepoSession tip==HEAD is idempotent, but an earlier attempt of
+				// the durable step may have advanced the tip after this
 				// request's baseline. Agents use already_published to skip
 				// dependent republishes — only a true pre-request no-op qualifies.
 				const tipMoved = publishTipMovedRelativeToBaseline({
@@ -1580,7 +1544,6 @@ async function runExternalPublishAttempt(input: {
 				}),
 			} as const
 		} catch (error) {
-			assertNotAborted(input.signal)
 			if (
 				!(error instanceof McpCallerError) &&
 				isDurableObjectIsolateResourceLimitResetError(error)
@@ -1614,7 +1577,7 @@ async function runExternalPublishAttempt(input: {
 			if (!willRetry) {
 				break
 			}
-			await delay(nextDelayMs, input.signal)
+			await delay(nextDelayMs)
 		}
 	}
 	throw new Error(
@@ -1632,7 +1595,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
-			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including durable re-entry after an overlapping inline attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. Common cases return the full synchronous result. If the publish exceeds the inline budget (~35s), the work is dispatched once to a durable workflow (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags) and this capability returns status dispatched with a workflow_id to poll via workflowRunList instead of hanging until an opaque execute timeout. Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in workflowRunList last_error, and like any terminal failure (for example a Durable Object reset because its code was updated) it releases the idempotency key so retrying the same commit starts a fresh attempt. dispatched includes phase_timings.total_ms as time-to-dispatch.',
+			'Publish the current Artifacts git HEAD for a saved package after a packageGetGitRemote clone/edit/push workflow and server-side checks pass. Non-fast-forward publishes require explicit destructive overwrite confirmation and a verified restorable backup snapshot. Full check-time esbuild is deferred to the published artifact rebuild so callable and importable targets are bundled once; unchanged targets are copied from the previous published commit when their reachable inputs match, and a rebuild failure returns checks_failed with a bundle check. Published and already_published responses include hosted_app_url when the package declares an app, plus bounded static dependent metadata so agents can decide whether stale kody:@ bundled snapshots need inspection or dependent republish; Kody does not republish dependents automatically. already_published means the package tip already matched HEAD before this request began; a true no-op (same checker version, prior success) skips checks, while a missing or older stored checker version re-runs checks, refreshes the stamp, and sets checks_rerun true with a message. It still runs the artifact rebuild and sets artifacts_rebuilt true when any target needed rebuild or a forced snapshot repair ran. If published_commit moved relative to that pre-request tip — including a durable step retry after an earlier attempt advanced the tip — the status is published with previous_commit set to the baseline tip, even when RepoSession reported tip==HEAD. Those success results also include phase_timings with optional millisecond fields clone_ms, checks_typecheck_ms, checks_bundle_ms, rebuild_ms, dependents_ms, and total_ms — omitted keys did not run; checks_bundle_ms is omitted when bundle validation is deferred to rebuild; checks_bundle_ms and rebuild_ms stay separate. The publish always runs as a durable workflow, never in the calling request: this capability returns status dispatched with a workflow_id right away (idempotent per acting caller plus the full semantic publish input, including force/overwrite flags). Poll workflowRunList({ workflow_id }) until the run is terminal, then read the full publish result with packageRunResult({ workflow_id }). Active and published durable runs still dedupe. A durable run whose publish did not publish (checks_failed, not_fast_forward, locked, approval_required) ends errored with the reason in workflowRunList last_error, and like any terminal failure (for example a Durable Object reset because its code was updated) it releases the idempotency key so retrying the same commit starts a fresh attempt. dispatched includes phase_timings.total_ms as time-to-dispatch.',
 		keywords: ['package', 'publish', 'git', 'artifacts', 'external', 'push'],
 		readOnly: false,
 		idempotent: true,
@@ -1697,12 +1660,13 @@ export const publishExternalPushCapability = defineDomainCapability(
 				)
 			}
 
-			// Prefer the interactive-request baseline stamped into durableParams,
+			// Prefer the dispatching request's baseline stamped into durableParams,
 			// but only on durable (background) re-entry. Interactive callers
 			// often send null for unused optionals; trusting that would turn a
 			// true no-op tip into published with previous_commit: null.
-			// Re-reading D1 on durable re-entry would see a tip the overlapping
-			// inline attempt already advanced and wrongly yield already_published.
+			// Re-reading D1 on durable re-entry would see a tip an earlier
+			// attempt of the step already advanced and wrongly yield
+			// already_published.
 			const baselinePublishedCommit =
 				ctx.callerContext.executionOrigin === 'background' &&
 				args.baseline_published_commit !== undefined
@@ -1771,7 +1735,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 					: null,
 			}
 
-			if (!shouldEscalateExternalPublish(ctx.callerContext.executionOrigin)) {
+			// The durable run is the only place a publish executes: its step
+			// re-enters this capability with the baseline stamped at dispatch.
+			if (durableReentry) {
 				return withUnmappableNotice(
 					await runExternalPublishAttempt(publishInput),
 				)
@@ -1797,16 +1763,15 @@ export const publishExternalPushCapability = defineDomainCapability(
 				baseline_published_commit: baselinePublishedCommit,
 				...(publishBuildId ? { publish_build_id: publishBuildId } : {}),
 			}
-			const escalateStartedAt = Date.now()
+			const dispatchStartedAt = Date.now()
 			// Key the durable re-entry to the package-owning org, not the actor's
 			// personal org. Team publishes (`@kody`, …) otherwise re-bind to the
 			// actor personal org and fail mid-rebuild after git accepted the push.
-			const outcome = await runWithDurableEscalation({
+			const outcome = await dispatchDurableRun({
 				env: ctx.env,
 				userId: owner.ownerUserId,
 				userEmail: packageOwnerEntitlementEmail(owner),
 				lineage: requestLineage(requireMcpRequest(ctx.callerContext)),
-				budgetMs: defaultDurableEscalationBudgetMs,
 				idempotencyParts: buildExternalPublishIdempotencyParts(semanticInput),
 				workflowName: 'packagePublishExternalPush',
 				packageContext: {
@@ -1817,16 +1782,9 @@ export const publishExternalPushCapability = defineDomainCapability(
 				enqueuedCommit: newCommit,
 				durableCode: durablePublishWorkflowCode,
 				durableParams,
-				run: async (signal) =>
-					await runExternalPublishAttempt({
-						...publishInput,
-						signal,
-					}),
 			})
 
 			switch (outcome.kind) {
-				case 'completed':
-					return withUnmappableNotice(outcome.value)
 				case 'dispatched':
 					// The durable run finishes as the owning org, which is not a
 					// person. Note who asked, so the finish step can record them
@@ -1839,7 +1797,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 					})
 					return {
 						...outcome.handle,
-						phase_timings: withPublishAttemptTotalMs({}, escalateStartedAt),
+						phase_timings: withPublishAttemptTotalMs({}, dispatchStartedAt),
 					}
 				case 'failed':
 					// Preserve typed errors (EntitlementLimitError, …) for toApiError.

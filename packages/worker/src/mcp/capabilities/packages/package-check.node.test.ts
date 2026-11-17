@@ -4,16 +4,12 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { runAuthoringPublishChecks } from '#worker/repo/authoring-publish-checks.ts'
-import {
-	createSnapshotFilesWorkspace,
-	deferredBundleCheckMessage,
-} from '#worker/repo/checks.ts'
+import { UpgradeRequiredError } from '#mcp/upgrade-required-error.ts'
+import { toApiError } from '#worker/open-api/errors.ts'
 
 const mockModule = vi.hoisted(() => ({
 	resolvePackageOwnerContext: vi.fn(),
-	resolveOwnedPackageSource: vi.fn(),
+	dispatchDurableRun: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/package-owner.ts', () => ({
@@ -23,12 +19,16 @@ vi.mock('#worker/package-registry/package-owner.ts', () => ({
 		input.ownerEmail,
 }))
 
-vi.mock('./resolve-package-source.ts', () => ({
-	resolveOwnedPackageSource: (...args: Array<unknown>) =>
-		mockModule.resolveOwnedPackageSource(...args),
+vi.mock('#mcp/capabilities/durable-escalation.ts', () => ({
+	dispatchDurableRun: (...args: Array<unknown>) =>
+		mockModule.dispatchDurableRun(...args),
 }))
 
-const { packageCheckCapability } = await import('./package-check.ts')
+const {
+	minimumPackageCheckCliVersion,
+	packageCheckCapability,
+	packageCheckUploadCreateCapability,
+} = await import('./package-check.ts')
 
 const owner = {
 	ownerUserId: ownerIdFromStored('user-1'),
@@ -36,7 +36,15 @@ const owner = {
 	ownerEmail: 'user-1@example.com',
 	actorUserId: 'user-1',
 }
-const env = { APP_DB: {} } as unknown as Env
+const uploadId = `pcu_${'a'.repeat(32)}`
+const handle = {
+	status: 'dispatched',
+	workflow_id: 'dynwf-check-1',
+	workflow_name: 'packageCheck',
+	idempotency_key: 'user-1:packageCheck',
+	run_status: 'queued',
+	message: 'Dispatched.',
+}
 
 function callerContext() {
 	return createMcpCallerContext({
@@ -50,664 +58,109 @@ function callerContext() {
 	})
 }
 
-/**
- * The reported case: a stamped package (kody.credentials declared, so the
- * credential stamp gate applies) whose fetch uses a `|scope=package`
- * placeholder. Local bundling is happy with it; publish refuses it.
- */
-function stampedScopePackageFiles(): Record<string, string> {
-	return {
-		'package.json': JSON.stringify({
-			name: '@acme/poll',
-			type: 'module',
-			exports: { '.': './src/index.ts' },
-			kody: {
-				id: 'poll',
-				description: 'Polls an API.',
-				credentials: {
-					TOKEN: { kind: 'secret', description: 'API token for the poll.' },
-				},
-			},
-		}),
-		'README.md': '# poll\n\nPolls an API.\n',
-		'AGENTS.md': '# Agents\n\nCall the default export.\n',
-		'src/index.ts': [
-			'export default async function poll() {',
-			"\tconst response = await fetch('https://api.example.com/poll', {",
-			"\t\theaders: { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' },",
-			'\t})',
-			'\treturn response.status',
-			'}',
-		].join('\n'),
-	}
-}
-
-async function check(
-	files: Record<string, string>,
-	binaryFiles?: Record<string, number>,
-) {
-	return (await packageCheckCapability.handler(
-		{ files, ...(binaryFiles ? { binary_files: binaryFiles } : {}) },
-		{ env, callerContext: callerContext() },
-	)) as {
-		ok: boolean
-		package_name: string | null
-		checks: Array<{ kind: string; ok: boolean; message: string }>
-	}
-}
-
-function resetMocks() {
+function setup(staged: Record<string, { etag: string }> = {}) {
 	mockModule.resolvePackageOwnerContext.mockReset()
-	mockModule.resolveOwnedPackageSource.mockReset()
+	mockModule.dispatchDurableRun.mockReset()
 	mockModule.resolvePackageOwnerContext.mockResolvedValue(owner)
-	mockModule.resolveOwnedPackageSource.mockRejectedValue(
-		new Error('Package not found.'),
-	)
+	mockModule.dispatchDurableRun.mockResolvedValue({
+		kind: 'dispatched',
+		handle,
+	})
+	const head = vi.fn(async (key: string) => staged[key] ?? null)
+	const env = { APP_DB: {}, REPO_SESSION_BLOBS: { head } } as unknown as Env
+	return { env, head }
 }
 
-test('packageCheck refuses a stamped package that uses |scope=package, with the publish gate message', async () => {
-	resetMocks()
-	const result = await check(stampedScopePackageFiles())
-	expect(result.ok).toBe(false)
-	expect(result.package_name).toBe('@acme/poll')
-	const credentials = result.checks.find(
-		(entry) => entry.kind === 'credentials',
+test('reserving an upload returns a staging key under the caller account', async () => {
+	const { env } = setup()
+	const reserved = (await packageCheckUploadCreateCapability.handler(
+		{},
+		{ env, callerContext: callerContext() },
+	)) as { upload_id: string; object_key: string; max_bytes: number }
+	expect(reserved.upload_id).toMatch(/^pcu_[0-9a-f]{32}$/)
+	expect(reserved.object_key).toBe(
+		`package-runs/uploads/user-1/${reserved.upload_id}.json`,
 	)
-	expect(credentials?.ok).toBe(false)
-	expect(credentials?.message).toMatch(/Credential stamp publish gate/)
-	expect(credentials?.message).toMatch(/\|scope=/)
-	// The gate stops the run, exactly as publish does.
-	expect(result.checks.some((entry) => entry.kind === 'bundle')).toBe(false)
-	expect(mockModule.resolveOwnedPackageSource).toHaveBeenCalledWith(
+	expect(reserved.max_bytes).toBe(24 * 1024 * 1024)
+})
+
+test('packageCheck dispatches a durable run keyed on the caller upload and its content hash', async () => {
+	const { env } = setup({
+		[`package-runs/uploads/user-1/${uploadId}.json`]: { etag: 'etag-1' },
+	})
+	const result = await packageCheckCapability.handler(
+		{ upload_id: uploadId },
+		{ env, callerContext: callerContext() },
+	)
+	expect(result).toEqual(handle)
+	expect(mockModule.dispatchDurableRun).toHaveBeenCalledTimes(1)
+	expect(mockModule.dispatchDurableRun).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: owner.ownerUserId,
-			ownerScope: 'acme',
-			args: { kody_id: 'poll' },
-		}),
-	)
-})
-
-test('packageCheck reports the same results publish computes for the same tree', async () => {
-	resetMocks()
-	const files = stampedScopePackageFiles()
-	const viaCapability = await check(files)
-	// Publish (publishFromExternalRef) calls runAuthoringPublishChecks on its
-	// cloned workspace with the owner scope. Same tree, same answer.
-	const viaPublish = await runAuthoringPublishChecks({
-		workspace: createSnapshotFilesWorkspace(files),
-		manifestPath: 'package.json',
-		sourceRoot: '/',
-		env,
-		baseUrl: 'https://kody.test',
-		userId: owner.ownerUserId,
-		expectedPackageScope: 'acme',
-	})
-	expect(viaCapability.ok).toBe(viaPublish.ok)
-	expect(viaCapability.checks).toEqual(
-		viaPublish.results.map((entry) => ({
-			kind: entry.kind,
-			ok: entry.ok,
-			message: entry.message,
-		})),
-	)
-})
-
-test('packageCheck and publish accept a data-only app package with no exports field', async () => {
-	resetMocks()
-	// The app bundle phase can only build inside workerd; Node warns and
-	// reports a bundle failure past the manifest check.
-	consoleWarn.mockImplementation(() => {})
-	const files = {
-		'package.json': JSON.stringify({
-			name: '@acme/board',
-			type: 'module',
-			kody: {
-				id: 'board',
-				description: 'Data-only package with an app.',
-				app: { entry: './src/app.ts' },
+			workflowName: 'packageCheck',
+			idempotencyParts: ['packageCheck', 'v1', 'etag-1', uploadId],
+			rerunComplete: true,
+			durableParams: {
+				upload_id: uploadId,
+				owner_scope: 'acme',
+				owner_email: 'user-1@example.com',
+				base_url: 'https://kody.test',
 			},
 		}),
-		'README.md': '# board\n\nA board app.\n',
-		'AGENTS.md': '# Agents\n\nOpen the app.\n',
-		'src/app.ts':
-			'export default { async fetch() { return new Response("ok") } }\n',
-	}
-	const viaCapability = await check(files)
-	expect(viaCapability.package_name).toBe('@acme/board')
-	expect(viaCapability.checks[0]).toEqual({
-		kind: 'manifest',
-		ok: true,
-		message: 'Validated package.json.',
-	})
-	expect(
-		viaCapability.checks.some((entry) => /exports/.test(entry.message)),
-	).toBe(false)
-	const viaPublish = await runAuthoringPublishChecks({
-		workspace: createSnapshotFilesWorkspace(files),
-		manifestPath: 'package.json',
-		sourceRoot: '/',
-		env,
-		baseUrl: 'https://kody.test',
-		userId: owner.ownerUserId,
-		expectedPackageScope: 'acme',
-	})
-	expect(viaPublish.manifest?.exports).toEqual({})
-	expect(viaCapability.checks).toEqual(
-		viaPublish.results.map((entry) => ({
-			kind: entry.kind,
-			ok: entry.ok,
-			message: entry.message,
-		})),
 	)
 })
 
-test('packageCheck refuses a package scope publish would refuse', async () => {
-	resetMocks()
-	const files = stampedScopePackageFiles()
-	files['package.json'] = files['package.json']!.replace('@acme/', '@other/')
-	const result = await check(files)
-	expect(result.ok).toBe(false)
-	expect(result.checks[0]).toMatchObject({ kind: 'manifest', ok: false })
-})
-
-test('packageCheck reports a job schedule the plan refuses, as publish would', async () => {
-	resetMocks()
-	consoleWarn.mockImplementation(() => {})
-	const files = stampedScopePackageFiles()
-	const manifest = JSON.parse(files['package.json']!)
-	delete manifest.kody.credentials
-	manifest.kody.jobs = {
-		poll: {
-			entry: './src/index.ts',
-			schedule: { type: 'cron', expression: '*/10 * * * *' },
-		},
-	}
-	files['package.json'] = JSON.stringify(manifest)
-	files['src/index.ts'] = 'export default async function poll() {}\n'
-	const result = await check(files)
-	expect(result.ok).toBe(false)
-	const denial = result.checks.find(
-		(entry) => entry.kind === 'manifest' && entry.ok === false,
-	)
-	expect(denial?.message).toMatch(/^kody\.jobs\.poll\.schedule:/)
-	expect(denial?.message).toMatch(/"free"/)
-	expect(denial?.message).toMatch(/15 minutes/)
-
-	manifest.kody.jobs.poll.schedule.expression = '*/15 * * * *'
-	files['package.json'] = JSON.stringify(manifest)
-	const spaced = await check(files)
-	expect(
-		spaced.checks.some((entry) => entry.message.includes('kody.jobs.poll')),
-	).toBe(false)
-})
-
-test('packageCheck rejects paths outside the package root', async () => {
-	resetMocks()
-	await expect(
-		check({ ...stampedScopePackageFiles(), '../secrets.txt': 'nope' }),
-	).rejects.toThrow(/relative to the package root/)
-})
-
-/** A package app whose `kody.app.assets` directory holds only PNG files. */
-function binaryOnlyAssetsPackageFiles(): Record<string, string> {
-	return {
-		'package.json': JSON.stringify({
-			name: '@acme/maintenance',
-			type: 'module',
-			exports: { '.': './src/index.ts' },
-			kody: {
-				id: 'maintenance',
-				description: 'Tracks home maintenance.',
-				app: { entry: './src/app.ts', assets: './icons' },
-			},
-		}),
-		'README.md': '# maintenance\n\nTracks home maintenance.\n',
-		'AGENTS.md': '# Agents\n\nCall the default export.\n',
-		'src/index.ts': 'export default async function run() {\n\treturn 1\n}\n',
-		'src/app.ts': [
-			'export default {',
-			'\tasync fetch() {',
-			'\t\treturn new Response(\'<link rel="icon" href="_assets/icon-192.png">\', {',
-			"\t\t\theaders: { 'content-type': 'text/html' },",
-			'\t\t})',
-			'\t},',
-			'}',
-		].join('\n'),
-	}
-}
-
-const binaryOnlyAssets = {
-	'icons/icon-192.png': 52_126,
-	'icons/icon-512.png': 343_198,
-}
-
-test('packageCheck counts binary_files toward a binary-only kody.app.assets directory', async () => {
-	resetMocks()
-	// The app bundle phase runs after the assets gate; worker-bundler warns.
-	consoleWarn.mockImplementation(() => {})
-	const withoutBinaries = await check(binaryOnlyAssetsPackageFiles())
-	expect(withoutBinaries.checks).toContainEqual(
-		expect.objectContaining({
-			kind: 'bundle',
-			ok: false,
-			message: expect.stringMatching(
-				/kody\.app\.assets.*icons.*no files exist under that directory/,
-			),
-		}),
-	)
-
-	const withBinaries = await check(
-		binaryOnlyAssetsPackageFiles(),
-		binaryOnlyAssets,
-	)
-	expect(
-		withBinaries.checks.some((entry) =>
-			/no files exist under that directory/.test(entry.message),
-		),
-	).toBe(false)
-	// Past the assets gate, the run reaches the app bundle phase (which can
-	// only build inside workerd, so Node reports that instead).
-	expect(withBinaries.checks).toContainEqual(
-		expect.objectContaining({
-			kind: 'bundle',
-			message: expect.stringMatching(/^src\/app\.ts: /),
-		}),
-	)
-})
-
-test('packageCheck counts binary_files toward the publish size limit', async () => {
-	resetMocks()
-	const result = await check(binaryOnlyAssetsPackageFiles(), {
-		'icons/huge.png': 64 * 1024 * 1024,
-	})
-	expect(result.ok).toBe(false)
-	expect(result.checks.some((entry) => /MiB|bytes/.test(entry.message))).toBe(
-		true,
-	)
-})
-
-test('packageCheck rejects a path in both files and binary_files', async () => {
-	resetMocks()
-	await expect(
-		check(binaryOnlyAssetsPackageFiles(), { 'src/app.ts': 10 }),
-	).rejects.toThrow(/both files and binary_files/)
-	await expect(
-		check(binaryOnlyAssetsPackageFiles(), { '../icon.png': 10 }),
-	).rejects.toThrow(/relative to the package root/)
-})
-
-function isolatedCheckEnv(
-	runIsolatedAuthoringChecks: (request: Record<string, unknown>) => unknown,
-	runIsolatedArtifactBuildCheck: (
-		request: Record<string, unknown>,
-	) => unknown = async () => {
-		throw new Error('unexpected artifact build check')
-	},
-	runIsolatedArtifactReuseScan: (
-		request: Record<string, unknown>,
-	) => unknown = async () => {
-		throw new Error('unexpected artifact reuse scan')
-	},
-) {
-	const kv = {
-		get: vi.fn(async (_key: string, _type: string) => null),
-		put: vi.fn(async (_key: string, _value: string, _options: unknown) => {}),
-		delete: vi.fn(async (_key: string) => {}),
-	}
-	const namespace = {
-		idFromName: vi.fn((name: string) => ({ name })),
-		get: vi.fn(() => ({
-			runIsolatedAuthoringChecks,
-			runIsolatedArtifactBuildCheck,
-			runIsolatedArtifactReuseScan,
-		})),
-	}
-	return {
-		kv,
-		namespace,
-		env: {
-			APP_DB: {},
-			REPO_SESSION: namespace,
-			BUNDLE_ARTIFACTS_KV: kv,
-		} as unknown as Env,
-	}
-}
-
-test('packageCheck runs the publish checks in a throwaway check isolate when the bindings exist', async () => {
-	resetMocks()
-	const files = stampedScopePackageFiles()
-	const runIsolatedAuthoringChecks = vi.fn(async () => ({
-		ok: true,
-		results: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
-	}))
-	const isolated = isolatedCheckEnv(runIsolatedAuthoringChecks)
-	const result = (await packageCheckCapability.handler(
-		{ files },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as { ok: boolean; checks: Array<{ kind: string; ok: boolean }> }
-	expect(result).toMatchObject({
-		ok: true,
-		checks: [{ kind: 'manifest', ok: true }],
-	})
-	const [stagingKey, staged] = isolated.kv.put.mock.calls[0]!
-	expect(stagingKey).toMatch(/^repo-checks-staging:v1:user-1:/)
-	expect(JSON.parse(staged)).toEqual({ sourceFiles: files })
-	expect(isolated.namespace.idFromName).toHaveBeenCalledWith(
-		expect.stringMatching(/^isolated-authoring-checks-user-1-/),
-	)
-	expect(runIsolatedAuthoringChecks).toHaveBeenCalledWith({
-		stagingKey,
-		userId: owner.ownerUserId,
-		baseUrl: 'https://kody.test',
-		expectedPackageScope: 'acme',
-		deferBundleCheckToRebuild: true,
-	})
-	expect(isolated.kv.delete).toHaveBeenCalledWith(stagingKey)
-
-	await packageCheckCapability.handler(
-		{ files, binary_files: { './icons/icon-192.png': 52_126 } },
-		{ env: isolated.env, callerContext: callerContext() },
-	)
-	expect(JSON.parse(isolated.kv.put.mock.calls[1]![1])).toEqual({
-		sourceFiles: files,
-		binaryFileSizes: { 'icons/icon-192.png': 52_126 },
-	})
-})
-
-test('packageCheck names the memory or CPU limit when the check isolate is reset', async () => {
-	resetMocks()
-	const isolated = isolatedCheckEnv(async () => {
-		throw new Error(
-			"Durable Object's isolate exceeded its memory limit and was reset.",
+test('packageCheck with an inline tree is refused with upgrade_required and the minimum CLI version', async () => {
+	const { env, head } = setup()
+	const error = await packageCheckCapability
+		.handler(
+			{ files: { 'package.json': '{}' } },
+			{ env, callerContext: callerContext() },
 		)
+		.catch((caught: unknown) => caught)
+	expect(error).toBeInstanceOf(UpgradeRequiredError)
+	expect(toApiError(error)).toMatchObject({
+		status: 426,
+		code: 'upgrade_required',
+		details: { minimum_cli_version: minimumPackageCheckCliVersion },
 	})
-	const result = (await packageCheckCapability.handler(
-		{ files: stampedScopePackageFiles() },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as {
-		ok: boolean
-		checks: Array<{ kind: string; ok: boolean; message: string }>
-	}
-	expect(result.ok).toBe(false)
-	expect(result.checks).toHaveLength(1)
-	expect(result.checks[0]).toMatchObject({ kind: 'bundle', ok: false })
-	expect(result.checks[0]!.message).toMatch(/ran out of memory or CPU time/)
-	expect(isolated.kv.delete).toHaveBeenCalled()
+	expect((error as Error).message).toContain(minimumPackageCheckCliVersion)
+	expect(head).not.toHaveBeenCalled()
+	expect(mockModule.dispatchDurableRun).not.toHaveBeenCalled()
 })
 
-function multiExportPackageFiles(): Record<string, string> {
-	const names = ['a', 'b', 'c', 'd', 'e']
-	return {
-		'package.json': JSON.stringify({
-			name: '@acme/many',
-			type: 'module',
-			exports: Object.fromEntries(
-				names.map((name) => [`./${name}`, `./src/${name}.ts`]),
-			),
-			kody: { id: 'many', description: 'Many exports.' },
-		}),
-		...Object.fromEntries(
-			names.map((name) => [
-				`src/${name}.ts`,
-				`export default () => '${name}'\n`,
-			]),
-		),
-	}
-}
-
-const deferredBundle = {
-	kind: 'bundle',
-	ok: true,
-	message: deferredBundleCheckMessage,
-}
-
-test('packageCheck builds the rebuild targets in the rebuild batches after deferring the bundle check', async () => {
-	resetMocks()
-	const runIsolatedArtifactBuildCheck = vi.fn(
-		async (request: Record<string, unknown>) => {
-			const targets = request.targets as Array<unknown>
-			return {
-				ok: true,
-				message: 'built',
-				results: targets.map((target) => ({ ok: true, message: '', target })),
-			}
-		},
-	)
-	const isolated = isolatedCheckEnv(
-		async () => ({
-			ok: true,
-			results: [
-				{ kind: 'manifest', ok: true, message: 'Validated.' },
-				deferredBundle,
-			],
-		}),
-		runIsolatedArtifactBuildCheck,
-	)
-	const result = (await packageCheckCapability.handler(
-		{ files: multiExportPackageFiles() },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as {
-		ok: boolean
-		checks: Array<{ kind: string; ok: boolean; message: string }>
-	}
-	expect(result.ok).toBe(true)
-	const chunks = runIsolatedArtifactBuildCheck.mock.calls.map(
-		([request]) => (request.targets as Array<unknown>).length,
-	)
-	// Each export is a module and an importable-module target: 10 targets
-	// in chunks of 4, exactly as the publish rebuild batches them.
-	expect(chunks).toEqual([4, 4, 2])
-	const [request] = runIsolatedArtifactBuildCheck.mock.calls[0]!
-	expect(request.stagingKey).toMatch(
-		/^repo-artifact-rebuild-staging:v1:user-1:/,
-	)
-	expect(result.checks[1]).toMatchObject({ kind: 'bundle', ok: true })
-	expect(result.checks[1]!.message).toMatch(/Built all 10 runtime artifact/)
-	expect(isolated.kv.delete).toHaveBeenCalledWith(request.stagingKey)
-})
-
-test('packageCheck fails when the rebuild bundling would fail and stops before later waves', async () => {
-	resetMocks()
-	const runIsolatedArtifactBuildCheck = vi.fn(
-		async (request: Record<string, unknown>) => {
-			const targets = request.targets as Array<{ entryPoint: string }>
-			return {
-				ok: false,
-				message: 'boom',
-				results: targets.map((target, index) => ({
-					ok: index !== 0,
-					message: index === 0 ? 'Could not resolve "missing"' : '',
-					target,
-				})),
-			}
-		},
-	)
-	const isolated = isolatedCheckEnv(
-		async () => ({ ok: true, results: [deferredBundle] }),
-		runIsolatedArtifactBuildCheck,
-	)
-	const result = (await packageCheckCapability.handler(
-		{ files: multiExportPackageFiles() },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as {
-		ok: boolean
-		checks: Array<{ kind: string; ok: boolean; message: string }>
-	}
-	expect(result.ok).toBe(false)
-	expect(result.checks[0]).toMatchObject({ kind: 'bundle', ok: false })
-	expect(result.checks[0]!.message).toMatch(
-		/artifact rebuild would fail.*Could not resolve "missing"/,
-	)
-	// First wave (two isolates) failed, so the third chunk never starts.
-	expect(runIsolatedArtifactBuildCheck).toHaveBeenCalledTimes(2)
-})
-
-test('packageCheck checks binary_contents byte for byte as the publish snapshot', async () => {
-	resetMocks()
-	const isolated = isolatedCheckEnv(async () => ({
-		ok: true,
-		results: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
-	}))
-	const png = new Uint8Array([
-		0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff,
-	])
-	await packageCheckCapability.handler(
-		{
-			files: stampedScopePackageFiles(),
-			binary_files: { 'icons/icon.png': png.byteLength },
-			binary_contents: {
-				'./icons/icon.png': Buffer.from(png).toString('base64'),
-			},
-		},
-		{ env: isolated.env, callerContext: callerContext() },
-	)
-	const staged = JSON.parse(isolated.kv.put.mock.calls[0]![1])
-	expect(staged.binaryFileSizes).toBeUndefined()
-	expect([
-		...Buffer.from(staged.sourceFiles['icons/icon.png'], 'latin1'),
-	]).toEqual([...png])
+test('packageCheck refuses an upload it cannot find, including one staged by another account', async () => {
+	const { env } = setup({
+		[`package-runs/uploads/user-2/${uploadId}.json`]: { etag: 'etag-2' },
+	})
 	await expect(
 		packageCheckCapability.handler(
-			{ files: stampedScopePackageFiles(), binary_contents: { 'x.png': '%%' } },
-			{ env: isolated.env, callerContext: callerContext() },
+			{ upload_id: uploadId },
+			{ env, callerContext: callerContext() },
 		),
-	).rejects.toThrow(/not valid base64/)
+	).rejects.toThrow(/No uploaded tree for this upload_id/)
+	await expect(
+		packageCheckCapability.handler(
+			{ upload_id: '../other' },
+			{ env, callerContext: callerContext() },
+		),
+	).rejects.toThrow(/upload_id is not valid/)
+	expect(mockModule.dispatchDurableRun).not.toHaveBeenCalled()
 })
 
-test('packageCheck applies .kodyignore before the git-push snapshot limit', async () => {
-	resetMocks()
-	const isolated = isolatedCheckEnv(async () => ({
-		ok: true,
-		results: [{ kind: 'manifest', ok: true, message: 'Validated.' }],
-	}))
-	const files = {
-		...stampedScopePackageFiles(),
-		'.kodyignore': 'fixtures/\n',
-		'fixtures/types.d.ts': 'export {}\n',
-	}
-	const huge = { 'fixtures/huge.bin': 40 * 1024 * 1024 }
-	const ignored = (await packageCheckCapability.handler(
-		{ files, binary_files: huge },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as { ok: boolean }
-	expect(ignored.ok).toBe(true)
-	const staged = JSON.parse(isolated.kv.put.mock.calls[0]![1])
-	expect(Object.keys(staged.sourceFiles)).not.toContain('fixtures/types.d.ts')
-	expect(staged.binaryFileSizes).toBeUndefined()
-	expect(staged.kodyIgnoredDeclarationFiles).toEqual(['fixtures/types.d.ts'])
-
-	const tooLarge = (await packageCheckCapability.handler(
-		{
-			files: stampedScopePackageFiles(),
-			binary_files: { 'assets/huge.bin': 40 * 1024 * 1024 },
-		},
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
-	expect(tooLarge.ok).toBe(false)
-	expect(tooLarge.checks[0]!.message).toMatch(
-		/over the 32 MiB publish snapshot limit/,
-	)
-})
-
-test('packageCheck skips the targets publish would copy from the published commit', async () => {
-	resetMocks()
-	const source = {
-		id: 'source-1',
-		manifest_path: 'package.json',
-		source_root: '/',
-	}
-	mockModule.resolveOwnedPackageSource.mockResolvedValue({
-		packageId: 'pkg-1',
-		userId: owner.ownerUserId,
-		kodyId: 'many',
-		name: '@acme/many',
-		hasApp: false,
-		source,
+test('packageCheck surfaces a dispatch failure instead of a handle', async () => {
+	const { env } = setup({
+		[`package-runs/uploads/user-1/${uploadId}.json`]: { etag: 'etag-1' },
 	})
-	const runIsolatedArtifactReuseScan = vi.fn(
-		async (request: Record<string, unknown>) => ({
-			ok: true,
-			reusableIndexes: (
-				request.targets as Array<{ entryPoint: string }>
-			).flatMap((target, index) =>
-				target.entryPoint.includes('/a.ts') ? [] : [index],
-			),
-		}),
-	)
-	const runIsolatedArtifactBuildCheck = vi.fn(
-		async (request: Record<string, unknown>) => {
-			const targets = request.targets as Array<unknown>
-			return {
-				ok: true,
-				message: 'built',
-				results: targets.map((target) => ({ ok: true, message: '', target })),
-			}
-		},
-	)
-	const isolated = isolatedCheckEnv(
-		async () => ({ ok: true, results: [deferredBundle] }),
-		runIsolatedArtifactBuildCheck,
-		runIsolatedArtifactReuseScan,
-	)
-	const result = (await packageCheckCapability.handler(
-		{ files: multiExportPackageFiles() },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
-	expect(result.ok).toBe(true)
-	// The scan loads every artifact and parses both trees: it runs in a
-	// throwaway isolate on the staged files, not in the request isolate.
-	expect(runIsolatedArtifactReuseScan).toHaveBeenCalledTimes(1)
-	const [scan] = runIsolatedArtifactReuseScan.mock.calls[0]!
-	expect(scan).toEqual(
-		expect.objectContaining({ source, userId: owner.ownerUserId }),
-	)
-	expect(scan.stagingKey).toBe(
-		runIsolatedArtifactBuildCheck.mock.calls[0]![0].stagingKey,
-	)
-	expect(isolated.kv.delete).toHaveBeenCalledWith(scan.stagingKey)
-	const built = runIsolatedArtifactBuildCheck.mock.calls.flatMap(
-		([request]) => request.targets as Array<{ entryPoint: string }>,
-	)
-	expect(built.length).toBeGreaterThan(0)
-	expect(built.every((target) => target.entryPoint.includes('/a.ts'))).toBe(
-		true,
-	)
-	expect(result.checks[0]!.message).toMatch(
-		/more are unchanged since the published commit, so publish copies them/,
-	)
-})
-
-test('packageCheck reports a reuse scan that exceeds its isolate as a failed bundle check', async () => {
-	resetMocks()
-	mockModule.resolveOwnedPackageSource.mockResolvedValue({
-		packageId: 'pkg-1',
-		userId: owner.ownerUserId,
-		kodyId: 'many',
-		name: '@acme/many',
-		hasApp: false,
-		source: { id: 'source-1', manifest_path: 'package.json', source_root: '/' },
+	const failure = new Error('Missing DYNAMIC_CALLABLE_WORKFLOWS binding.')
+	mockModule.dispatchDurableRun.mockResolvedValue({
+		kind: 'failed',
+		error: failure,
 	})
-	const runIsolatedArtifactBuildCheck = vi.fn()
-	const isolated = isolatedCheckEnv(
-		async () => ({ ok: true, results: [deferredBundle] }),
-		runIsolatedArtifactBuildCheck,
-		async () => {
-			throw new Error(
-				"Durable Object's isolate exceeded its memory limit and was reset.",
-			)
-		},
-	)
-	const result = (await packageCheckCapability.handler(
-		{ files: multiExportPackageFiles() },
-		{ env: isolated.env, callerContext: callerContext() },
-	)) as { ok: boolean; checks: Array<{ kind: string; message: string }> }
-	expect(result.ok).toBe(false)
-	expect(result.checks[0]).toEqual(
-		expect.objectContaining({ kind: 'bundle', ok: false }),
-	)
-	expect(result.checks[0]!.message).toMatch(
-		/with the published commit exceeded the isolated runner's memory or CPU limits/,
-	)
-	expect(runIsolatedArtifactBuildCheck).not.toHaveBeenCalled()
-	expect(isolated.kv.delete).toHaveBeenCalled()
+	await expect(
+		packageCheckCapability.handler(
+			{ upload_id: uploadId },
+			{ env, callerContext: callerContext() },
+		),
+	).rejects.toBe(failure)
 })

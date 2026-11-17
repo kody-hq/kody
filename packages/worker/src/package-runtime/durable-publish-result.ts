@@ -2,34 +2,49 @@ import {
 	publishPhaseTimingFields,
 	type PublishPhaseTimings,
 } from '#worker/repo/publish-phase-timing.ts'
-import { terminalInlineWorkflowErrorPrefix } from './workflow-statuses.ts'
 
 const publishedExternalPushStatuses = ['published', 'already_published']
 
 /**
- * The module a durable `packagePublishExternalPush` run executes. A publish
- * that did not publish fails its run once (no step retries) with the reason as
- * last_error, so the run is not recorded as a success and its idempotency key
- * is released for the next attempt.
+ * The module a durable `packagePublishExternalPush` run executes. The engine
+ * stores what it returns, then fails the run when it did not publish (see
+ * {@link durablePublishRefusalReason}).
  */
 export const durablePublishWorkflowCode = `import { kody } from 'kody:runtime'
-const publishedStatuses = ${JSON.stringify(publishedExternalPushStatuses)}
 export default async function main(params = {}) {
-	const result = await kody.packagePublishExternalPush(params)
-	const status = result && typeof result === 'object' ? result.status : null
-	if (publishedStatuses.includes(status)) return result
-	const failedChecks = Array.isArray(result?.failed_checks)
-		? result.failed_checks
-				.filter((check) => check && check.ok === false)
-				.map((check) => String(check.kind) + ': ' + String(check.message ?? '').slice(0, 600))
+	return await kody.packagePublishExternalPush(params)
+}`
+
+/**
+ * Why a durable publish run that did not publish fails, or null when it
+ * published. Such a run fails once (no step retries) with this as last_error,
+ * so it is not recorded as a success and its idempotency key is released for
+ * the next attempt. The full refusal stays readable with packageRunResult.
+ */
+export function durablePublishRefusalReason(value: unknown): string | null {
+	const result =
+		value && typeof value === 'object' && !Array.isArray(value)
+			? (value as Record<string, unknown>)
+			: {}
+	const status = typeof result['status'] === 'string' ? result['status'] : null
+	if (status !== null && publishedExternalPushStatuses.includes(status)) {
+		return null
+	}
+	const failedChecks = Array.isArray(result['failed_checks'])
+		? result['failed_checks']
+				.filter(
+					(check): check is Record<string, unknown> =>
+						Boolean(check) && typeof check === 'object' && check.ok === false,
+				)
+				.map(
+					(check) =>
+						`${String(check['kind'])}: ${String(check['message'] ?? '').slice(0, 600)}`,
+				)
 				.join('; ')
 		: ''
-	const detail = failedChecks || String(result?.message ?? '').slice(0, 1200)
-	throw new Error(
-		${JSON.stringify(terminalInlineWorkflowErrorPrefix)} +
-			'packagePublishExternalPush returned ' + String(status) + (detail ? ': ' + detail : ''),
-	)
-}`
+	const detail = failedChecks || String(result['message'] ?? '').slice(0, 1200)
+	return `packagePublishExternalPush returned ${String(status)}${detail ? `: ${detail}` : ''}`
+}
 
 /**
  * What a durable `packagePublishExternalPush` run keeps as `metadata.result`.

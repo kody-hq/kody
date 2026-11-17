@@ -70,8 +70,14 @@ import {
 	updateRunErrorTriage,
 	upsertWorkflowProjection,
 	type WorkflowProjectionRecord,
+	setWorkflowProjectionProgress,
 	type WorkflowProjectionUpsertInput,
 } from '#worker/run-records/service.ts'
+import { packageRunResultKey } from '#worker/repo/package-run-staging-keys.ts'
+import {
+	durablePackageCheckWorkflowCode,
+	packageCheckWorkflowName,
+} from './package-check-run.constants.ts'
 import {
 	creatingWorkflowProjectionStatus,
 	decodeWorkflowProjectionCursor,
@@ -81,6 +87,7 @@ import {
 	parseWorkflowProjectionSourceRevision,
 	workflowProjectionReservationStatuses,
 	type WorkflowBindingName,
+	type WorkflowProjectionProgress,
 	type WorkflowSourceRevisionPolicy,
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
@@ -96,6 +103,7 @@ import {
 import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
 import {
 	compactDurablePublishResult,
+	durablePublishRefusalReason,
 	isDurablePublishWorkflowCode,
 } from './durable-publish-result.ts'
 
@@ -233,6 +241,7 @@ export type WorkflowRunInspection = {
 	lastError: string | null
 	enqueuedCommit: string | null
 	sourceRevision: WorkflowSourceRevisionPolicy | null
+	progress: WorkflowProjectionProgress | null
 }
 
 function resolveWorkflowEngineBinding(
@@ -316,6 +325,19 @@ function attemptWillRetry(
 
 function isPublishWorkflow(payload: DynamicCallableWorkflowPayload) {
 	return payload.workflowName === 'packagePublishExternalPush'
+}
+
+function isPackageCheckWorkflow(
+	payload: DynamicCallableWorkflowPayload,
+): payload is Extract<
+	DynamicCallableWorkflowPayload,
+	{ sourceType: 'inline' }
+> {
+	return (
+		payload.sourceType === 'inline' &&
+		payload.workflowName === packageCheckWorkflowName &&
+		payload.code === durablePackageCheckWorkflowCode
+	)
 }
 
 function isPublishComputeFailure(
@@ -910,6 +932,7 @@ function mapWorkflowProjectionToInspection(
 		lastError: projection.lastError,
 		enqueuedCommit: projection.enqueuedCommit ?? null,
 		sourceRevision: projection.sourceRevision ?? null,
+		progress: projection.progress ?? null,
 	}
 }
 
@@ -1986,45 +2009,52 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		)
 		let result: JsonValue
 		try {
-			result = await typedStep.do(
-				payload.sourceType === 'package'
-					? 'invoke saved package workflow export'
-					: 'execute inline workflow code',
-				workflowStepDoConfig,
-				async (stepCtx) => {
-					// An earlier attempt killed before its finish write (CPU or
-					// memory limit) left its run row `running`.
-					if ((stepCtx?.attempt ?? 1) > 1) {
-						await closeStoppedWorkflowAttemptRuns({
-							env: this.env,
-							userId: payload.userId,
-							workflowId: event.instanceId,
-							outcome: 'retried',
-						})
-					}
-					try {
-						if (payload.sourceType === 'package') {
-							return await this.invokePackageWorkflowExport(
+			if (isPackageCheckWorkflow(payload)) {
+				result = (await this.runPackageCheck(
+					payload,
+					event.instanceId,
+					typedStep,
+				)) as unknown as JsonValue
+			} else
+				result = await typedStep.do(
+					payload.sourceType === 'package'
+						? 'invoke saved package workflow export'
+						: 'execute inline workflow code',
+					workflowStepDoConfig,
+					async (stepCtx) => {
+						// An earlier attempt killed before its finish write (CPU or
+						// memory limit) left its run row `running`.
+						if ((stepCtx?.attempt ?? 1) > 1) {
+							await closeStoppedWorkflowAttemptRuns({
+								env: this.env,
+								userId: payload.userId,
+								workflowId: event.instanceId,
+								outcome: 'retried',
+							})
+						}
+						try {
+							if (payload.sourceType === 'package') {
+								return await this.invokePackageWorkflowExport(
+									payload,
+									event.instanceId,
+									stepCtx,
+								)
+							}
+							return await this.invokeInlineWorkflowCode(
 								payload,
 								event.instanceId,
 								stepCtx,
 							)
+						} catch (error) {
+							// Suspension stays in force across step retries, so fail the
+							// step once instead of waiting out the retry backoff.
+							if (isAccountSuspendedError(error)) {
+								throw terminalWorkflowStepError(error.message)
+							}
+							throw error
 						}
-						return await this.invokeInlineWorkflowCode(
-							payload,
-							event.instanceId,
-							stepCtx,
-						)
-					} catch (error) {
-						// Suspension stays in force across step retries, so fail the
-						// step once instead of waiting out the retry backoff.
-						if (isAccountSuspendedError(error)) {
-							throw terminalWorkflowStepError(error.message)
-						}
-						throw error
-					}
-				},
-			)
+					},
+				)
 		} catch (error) {
 			await updateWorkflowRunStatus({
 				env: this.env,
@@ -2077,6 +2107,44 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			outcome: 'success',
 		})
 		return result
+	}
+
+	/** A built-in `packageCheck` run: each phase is its own durable step. */
+	private async runPackageCheck(
+		payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'inline' }>,
+		instanceId: string,
+		typedStep: DynamicCallableWorkflowStep,
+	) {
+		const { runPackageCheckWorkflow, readPackageCheckRunParams } =
+			await import('./package-check-run.ts')
+		const callerContext = createMcpCallerContext({
+			baseUrl: getAppBaseUrl({ env: this.env }),
+			executionOrigin: 'background',
+			user: await resolveBackgroundMcpUser(this.env.APP_DB, payload.userId),
+			storageContext: null,
+			source: await workflowRequestSource(this.env.APP_DB, payload),
+		})
+		return await runPackageCheckWorkflow({
+			env: this.env,
+			userId: payload.userId,
+			workflowId: instanceId,
+			params: readPackageCheckRunParams(payload.params),
+			request: callerContext.request ?? null,
+			step: async (name, run) =>
+				(await typedStep.do(
+					name,
+					workflowStepDoConfig,
+					async () => (await run()) as JsonValue,
+				)) as never,
+			reportProgress: async (progress) => {
+				await setWorkflowProjectionProgress({
+					env: this.env,
+					userId: payload.userId,
+					id: instanceId,
+					progress,
+				})
+			},
+		})
 	}
 
 	private async recordWorkflowRunUsage(input: {
@@ -2377,6 +2445,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				isPublishWorkflow(payload) &&
 				isDurablePublishWorkflowCode(payload.code)
 			) {
+				// The full answer, refusals included, is read with
+				// packageRunResult: the compact result below drops the manifest,
+				// dependents, and hints, and a refusal fails the run.
+				await this.env.REPO_SESSION_BLOBS.put(
+					packageRunResultKey(payload.userId, instanceId),
+					JSON.stringify({ kind: 'packagePublishExternalPush', result: value }),
+					{ httpMetadata: { contentType: 'application/json' } },
+				)
+				const refusal = durablePublishRefusalReason(value)
+				if (refusal) throw terminalWorkflowStepError(refusal)
 				const publish = compactDurablePublishResult(
 					value,
 					payload.enqueuedCommit ?? null,

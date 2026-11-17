@@ -146,8 +146,16 @@ function createWorkflowEnv(
 		DYNAMIC_CALLABLE_WORKFLOWS: binding.workflow,
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
-	} as Env
+		REPO_SESSION_BLOBS: {
+			async put(key: string, value: string) {
+				storedRunResults.set(key, value)
+			},
+		},
+	} as unknown as Env
 }
+
+/** What runs wrote to R2 staging, by object key. */
+const storedRunResults = new Map<string, string>()
 
 function createInline(
 	env: Env,
@@ -1166,6 +1174,47 @@ test('a durable publish run keeps a compact result and records its published com
 	expect(
 		new TextEncoder().encode(JSON.stringify(finish?.result)).length,
 	).toBeLessThan(runRecordMaxResultSnapshotBytes)
+	// The full answer is stored under the run id for packageRunResult.
+	const stored = JSON.parse(
+		storedRunResults.get(`package-runs/results/user-1/${created.id}.json`)!,
+	)
+	expect(stored.kind).toBe('packagePublishExternalPush')
+	expect(stored.result.manifest.exports).toEqual(exports)
+})
+
+test('a durable publish run that did not publish fails once and still stores the full refusal', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	const binding = createStatefulWorkflowBinding()
+	const env = createWorkflowEnv(binding)
+	const created = await createPublishRun(
+		env,
+		'user-1:publish-refused',
+		durablePublishWorkflowCode,
+	)
+	const refusal = {
+		status: 'checks_failed',
+		failed_checks: [{ kind: 'typecheck', ok: false, message: 'TS2345' }],
+		manifest: null,
+	}
+	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: refusal,
+		logs: [],
+	})
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).rejects.toThrow(
+		'packagePublishExternalPush returned checks_failed: typecheck: TS2345',
+	)
+	expect(invocationMocks.runModuleWithRegistry).toHaveBeenCalledTimes(1)
+	expect(
+		JSON.parse(
+			storedRunResults.get(`package-runs/results/user-1/${created.id}.json`)!,
+		),
+	).toEqual({ kind: 'packagePublishExternalPush', result: refusal })
 })
 
 test('a custom inline workflow that reuses the publish name keeps its own result', async () => {

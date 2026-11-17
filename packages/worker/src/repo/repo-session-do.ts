@@ -105,7 +105,6 @@ import {
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
-import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
 import {
 	planCredentialTreeScan,
 	scanCredentialTreeChunk,
@@ -125,8 +124,6 @@ import {
 } from './isolated-artifact-rebuild.ts'
 import {
 	isolatedCheckStagingKeyBelongsToUser,
-	type IsolatedAuthoringChecksOutcome,
-	type IsolatedAuthoringChecksRequest,
 	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
@@ -198,6 +195,11 @@ import {
 	measureRepoSessionWorkspaceBlobBytes,
 	purgeRepoSessionWorkspaceBlobs,
 } from './repo-session-blobs.ts'
+import {
+	prepareStagedPackageCheckUpload,
+	type PackageCheckPrepareRequest,
+	type PackageCheckPrepareResult,
+} from './package-check-upload.ts'
 import {
 	buildRepoApplyPatchParseCallerMessage,
 	buildRepoSessionDirectoryTargetMessage,
@@ -3115,7 +3117,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		}
 		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
 			sourceFiles?: Record<string, string>
-			binaryFileSizes?: Record<string, number>
 		}>(input.stagingKey, 'json')
 		const sourceFiles = staged?.sourceFiles
 		if (!sourceFiles) {
@@ -3165,94 +3166,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		throw new Error(
 			`Unsupported isolated check phase: ${JSON.stringify(exhaustive)}`,
 		)
-	}
-
-	/**
-	 * The full authoring publish checks for a staged in-memory tree
-	 * (`packageCheck`, which `kody dev check` calls), invoked on a throwaway
-	 * Durable Object id so the run never shares the origin request isolate's
-	 * memory or CPU (see `runAuthoringChecksInIsolate`). No session; the
-	 * only storage is the current check step marker, which the caller reads
-	 * and clears with `takeLastCheckStep` after a memory or CPU reset. Heavy
-	 * phases still fan out to their own throwaway isolates from inside
-	 * `runRepoChecks`.
-	 */
-	async runIsolatedAuthoringChecks(
-		input: IsolatedAuthoringChecksRequest,
-	): Promise<IsolatedAuthoringChecksOutcome> {
-		if (
-			!isolatedCheckStagingKeyBelongsToUser({
-				stagingKey: input.stagingKey,
-				userId: input.userId,
-			})
-		) {
-			return {
-				ok: false,
-				results: [
-					{
-						kind: 'manifest',
-						ok: false,
-						failureOrigin: 'platform',
-						message:
-							'Publish check staging key does not belong to the requesting user.',
-					},
-				],
-			}
-		}
-		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
-			sourceFiles?: Record<string, string>
-			binaryFileSizes?: Record<string, number>
-			kodyIgnoredDeclarationFiles?: Array<string>
-		}>(input.stagingKey, 'json')
-		const sourceFiles = staged?.sourceFiles
-		if (!sourceFiles) {
-			return {
-				ok: false,
-				results: [
-					{
-						kind: 'manifest',
-						ok: false,
-						failureOrigin: 'platform',
-						message:
-							'Publish check staging data expired or is missing; run the checks again.',
-					},
-				],
-			}
-		}
-		const recordCheckStep = this.checkStepRecorder()
-		// A memory or CPU reset kills this isolate before `finally`, leaving the
-		// step for `takeLastCheckStep`; any other ending clears it.
-		const checks = await runAuthoringPublishChecksOnFiles({
-			onStep: recordCheckStep,
-			files: sourceFiles,
-			...(staged?.binaryFileSizes
-				? { binaryFileSizes: staged.binaryFileSizes }
-				: {}),
-			env: this.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			...(input.sourceId ? { sourceId: input.sourceId } : {}),
-			...(input.expectedPackageScope !== undefined
-				? { expectedPackageScope: input.expectedPackageScope }
-				: {}),
-			...(input.deferBundleCheckToRebuild === true
-				? { deferBundleCheckToRebuild: true }
-				: {}),
-			...(input.typecheckRanOffWorker === true
-				? { typecheckRanOffWorker: true }
-				: {}),
-			...(staged.kodyIgnoredDeclarationFiles?.length
-				? { kodyIgnoredDeclarationFiles: staged.kodyIgnoredDeclarationFiles }
-				: {}),
-		}).finally(() => this.clearCheckStep())
-		return {
-			ok: checks.ok,
-			results: checks.results.map((result) => ({
-				kind: result.kind,
-				ok: result.ok,
-				message: result.message,
-			})),
-		}
 	}
 
 	/**
@@ -3388,6 +3301,16 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * Throwaway-isolate half of `publishWorkRunner().run`: one heavy publish
 	 * step over a staged tree (checks, credential scans, stamps, finalize).
 	 */
+	/**
+	 * First phase of a durable `packageCheck` run, in a throwaway isolate:
+	 * turn the staged upload into the tree the later phases read.
+	 */
+	async runIsolatedPackageCheckPrepare(
+		request: PackageCheckPrepareRequest,
+	): Promise<PackageCheckPrepareResult> {
+		return await prepareStagedPackageCheckUpload({ env: this.env, request })
+	}
+
 	async runIsolatedPublishWork(request: PublishWorkRequest): Promise<unknown> {
 		return await runStagedPublishWorkStep({
 			env: this.env,

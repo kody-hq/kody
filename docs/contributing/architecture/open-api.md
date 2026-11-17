@@ -41,8 +41,7 @@ sequenceDiagram
   `/openapi.json`, and `/v1/*`, applies per-IP (`API_IP_RATE_LIMITER`, 600/min)
   and per-token (`API_TOKEN_RATE_LIMITER`, 300/min, keyed by API token id or a
   SHA-256 of an opaque Bearer such as CLI MCP OAuth — never the secret
-  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes (24 MiB
-  on `POST /v1/packages/check`, whose body is a whole package tree), and
+  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes, and
   forwards only `Authorization`, `Content-Type`, `Accept`, `User-Agent`, and
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,
@@ -52,9 +51,20 @@ sequenceDiagram
   (~100 MiB Free/Pro) and returns JSON `413 payload_too_large` when
   `Content-Length` exceeds that limit (see the
   [CLI streaming gateway-fetch contract](../contracts/cli-streaming-gateway-fetch.md)).
-  `Cookie` and other `X-Kody-*` headers never reach origin, and origin
-  `Set-Cookie` never reaches the client. CORS allows any origin because auth is
-  bearer-only. It never serves HTML.
+  `POST /v1/packages/check-uploads` carries a whole package tree (up to 24 MiB,
+  `Content-Length` required) and never reaches origin: the edge asks origin for
+  an upload id with an empty body (auth, rate limits, and the owner-scoped
+  object key come from that call), then streams the request body unparsed into
+  the `REPO_SESSION_BLOBS` R2 bucket under `package-runs/uploads/` and answers
+  `201 { upload_id }`. The durable check run reads and parses it inside a
+  throwaway isolate. A body on `POST /v1/packages/check` larger than an
+  `{ upload_id }` request is the old synchronous shape: the edge answers
+  `426 upgrade_required` with `details.minimum_cli_version` without forwarding
+  it. Objects under `package-runs/` (uploads and stored run results) are deleted
+  when their run ends and by a one-day bucket lifecycle rule. `Cookie` and other
+  `X-Kody-*` headers never reach origin, and origin `Set-Cookie` never reaches
+  the client. CORS allows any origin because auth is bearer-only. It never
+  serves HTML.
 - `kody-api-docs` (`packages/api-docs-worker/`) is the interactive docs host on
   `api-docs.kody.codes`. It serves a Scalar shell at `/`, proxies
   `/openapi.json` from the live API, and answers `/health`. DNS and the

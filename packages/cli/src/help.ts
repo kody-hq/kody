@@ -239,10 +239,12 @@ ${orgBlock}
              auth as \`kody api\`). Optional positional is a \`package_id\`, or a
              name (\`@owner/leaf\` or bare leaf) resolved to its package_id
              via \`packageList\` in the current org. Extra fields
-             via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
-             body. Exit 0 for \`published\`, \`already_published\` (including
-             when \`artifacts_rebuilt\` is true), and \`dispatched\` (poll
-             \`workflowRunList({ workflow_id })\`). Exit 1 for refusal/rejection
+             via \`--params\` JSON (e.g. \`allow_force\`). Publish always runs
+             as a durable workflow: the CLI follows it, prints each phase
+             to stderr, then prints the stored result JSON. Ctrl-C cancels
+             the run. Exit 0 for \`published\` and \`already_published\`
+             (including when \`artifacts_rebuilt\` is true). Exit 1 for a
+             run that failed, and for refusal/rejection
              statuses (\`checks_failed\`, \`locked\`, \`approval_required\`,
              \`not_fast_forward\`) — the API \`message\` (or a checks summary)
              goes to stderr, like npm. Auth / permission / network failures
@@ -435,7 +437,10 @@ ${orgBlock}
              when a bundle input is gitignored / untracked-ignored, since
              publish builds the git snapshot), then runs the server publish
              checks on the same tree (\`packageCheck\`, the checks publish
-             runs, credential stamp gate included) with your login. Without
+             runs, credential stamp gate included) with your login. The
+             tree is uploaded once and checked in a durable run: phase and
+             artifact chunk progress prints to stderr, and Ctrl-C cancels
+             the run. Without
              \`--offline\`, a passing check means publish will not refuse it;
              \`--offline\` skips the server checks (a WARN says so) and that
              guarantee does not apply. \`--debug\` prints the publish checks

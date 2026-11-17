@@ -7,8 +7,7 @@ import {
 } from '#worker/entitlements/errors.ts'
 import {
 	buildCallerScopedIdempotencyKey,
-	defaultDurableEscalationBudgetMs,
-	runWithDurableEscalation,
+	dispatchDurableRun,
 } from './durable-escalation.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 import type {
@@ -43,6 +42,7 @@ const runRecordMocks = vi.hoisted(() => {
 		const now = new Date().toISOString()
 		return {
 			id: input.id,
+			progress: null,
 			bindingName: input.bindingName,
 			sourceType: input.sourceType,
 			packageId: input.packageId ?? null,
@@ -179,30 +179,15 @@ function envStub() {
 	} as Env
 }
 
-function hangUntilAborted() {
-	return vi.fn(
-		async (signal: AbortSignal) =>
-			await new Promise<never>((_resolve, reject) => {
-				signal.addEventListener(
-					'abort',
-					() => reject(new DOMException('Aborted', 'AbortError')),
-					{ once: true },
-				)
-			}),
-	)
-}
-
-type EscalationInput = Parameters<typeof runWithDurableEscalation>[0]
+type EscalationInput = Parameters<typeof dispatchDurableRun>[0]
 
 function escalate(overrides: Partial<EscalationInput> = {}) {
-	return runWithDurableEscalation({
+	return dispatchDurableRun({
 		env: envStub(),
 		userId: ownerIdFromStored('user-1'),
 		idempotencyParts: publishParts,
 		workflowName,
 		durableCode: 'export default async function main() { return null }',
-		budgetMs: 30,
-		run: hangUntilAborted(),
 		...overrides,
 	} as EscalationInput)
 }
@@ -239,29 +224,11 @@ function seedProjection(
 const keyFor = (userId: string, parts: ReadonlyArray<string> = publishParts) =>
 	buildCallerScopedIdempotencyKey({ userId: ownerIdFromStored(userId), parts })
 
-test('runWithDurableEscalation returns the inline result when work finishes within budget', async () => {
-	const run = vi.fn(async (_signal: AbortSignal) => ({
-		status: 'published',
-		commit: 'abc',
-	}))
-	const outcome = await escalate({
-		idempotencyParts: ['publish', 'pkg-1', 'commit-1'],
-		budgetMs: 5_000,
-		run,
-	})
-	expect(outcome).toMatchObject({ kind: 'completed' })
-	expect(run).toHaveBeenCalledTimes(1)
-	expect(run.mock.calls[0]?.[0]).toBeInstanceOf(AbortSignal)
-	expect(mockModule.createDynamicCallableWorkflow).not.toHaveBeenCalled()
-	expect(defaultDurableEscalationBudgetMs).toBeLessThanOrEqual(40_000)
-})
-
-test('runWithDurableEscalation dispatches once on budget exhaustion and reuses an active run for the same caller', async () => {
+test('dispatches once and reuses an active run for the same caller', async () => {
 	runRecordMocks.resetProjections()
 	mockModule.createDynamicCallableWorkflow.mockResolvedValue(
 		created('dynwf-escalated-1'),
 	)
-	const run = hangUntilAborted()
 	const expectedKey = keyFor('user-1')
 
 	const first = await escalate({
@@ -275,7 +242,6 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 			sourceId: 'src-1',
 		},
 		enqueuedCommit: 'commit-new',
-		run,
 	})
 	expect(first).toMatchObject({
 		kind: 'dispatched',
@@ -299,7 +265,7 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 
 	mockModule.createDynamicCallableWorkflow.mockClear()
 	seedProjection('user-1', 'dynwf-escalated-1', expectedKey, 'running')
-	await expect(escalate({ run })).resolves.toMatchObject({
+	await expect(escalate()).resolves.toMatchObject({
 		kind: 'dispatched',
 		handle: {
 			workflow_id: 'dynwf-escalated-1',
@@ -308,7 +274,6 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 		},
 	})
 	expect(mockModule.createDynamicCallableWorkflow).not.toHaveBeenCalled()
-	expect(run).toHaveBeenCalledTimes(1)
 	expect(
 		runRecordMocks.findWorkflowProjectionByIdempotencyKey,
 	).toHaveBeenCalled()
@@ -316,7 +281,6 @@ test('runWithDurableEscalation dispatches once on budget exhaustion and reuses a
 
 test('mid-creation workflow projection rows are treated as already dispatched', async () => {
 	runRecordMocks.resetProjections()
-	const run = hangUntilAborted()
 	const expectedKey = keyFor('user-1')
 	seedProjection(
 		'user-1',
@@ -325,7 +289,7 @@ test('mid-creation workflow projection rows are treated as already dispatched', 
 		creatingWorkflowProjectionStatus,
 	)
 
-	await expect(escalate({ run })).resolves.toEqual({
+	await expect(escalate()).resolves.toEqual({
 		kind: 'dispatched',
 		handle: expect.objectContaining({
 			status: 'dispatched',
@@ -334,7 +298,6 @@ test('mid-creation workflow projection rows are treated as already dispatched', 
 			run_status: 'creating',
 		}),
 	})
-	expect(run).not.toHaveBeenCalled()
 	expect(mockModule.createDynamicCallableWorkflow).not.toHaveBeenCalled()
 	expect(
 		runRecordMocks.findWorkflowProjectionByBindingIdempotencyKey,
@@ -411,22 +374,8 @@ test('different acting callers get non-colliding dedupe; same caller still reuse
 	expect(mockModule.createDynamicCallableWorkflow).not.toHaveBeenCalled()
 })
 
-test('runWithDurableEscalation never throws and preserves original failures', async () => {
-	const checksError = new Error('checks blew up')
-	await expect(
-		escalate({
-			idempotencyParts: ['publish', 'pkg-1', 'fail'],
-			budgetMs: 5_000,
-			run: async () => {
-				throw checksError
-			},
-		}),
-	).resolves.toEqual({ kind: 'failed', error: checksError })
-	const emptyParts = await escalate({
-		idempotencyParts: ['   ', ''],
-		budgetMs: undefined,
-		run: async () => ({ ok: true }),
-	})
+test('dispatchDurableRun never throws and reports why it could not dispatch', async () => {
+	const emptyParts = await escalate({ idempotencyParts: ['   ', ''] })
 	expect(emptyParts).toEqual({
 		kind: 'failed',
 		error: expect.any(Error),
@@ -439,12 +388,9 @@ test('runWithDurableEscalation never throws and preserves original failures', as
 	)
 
 	const dispatchError = new Error('Missing DYNAMIC_CALLABLE_WORKFLOWS binding.')
-	mockModule.createDynamicCallableWorkflow.mockRejectedValue(dispatchError)
+	mockModule.createDynamicCallableWorkflow.mockRejectedValueOnce(dispatchError)
 	await expect(
-		escalate({
-			idempotencyParts: ['publish', 'pkg-1', 'dispatch-fail'],
-			budgetMs: 20,
-		}),
+		escalate({ idempotencyParts: ['publish', 'pkg-1', 'dispatch-fail'] }),
 	).resolves.toEqual({
 		kind: 'failed',
 		error: dispatchError,
@@ -458,12 +404,11 @@ test('runWithDurableEscalation never throws and preserves original failures', as
 		upgradeHint:
 			'Wait for a run to finish, or upgrade your plan at /@<slug>/-/billing.',
 	})
+	mockModule.createDynamicCallableWorkflow.mockRejectedValueOnce(
+		entitlementError,
+	)
 	const entitlementOutcome = await escalate({
 		idempotencyParts: ['publish', 'pkg-1', 'entitlement'],
-		budgetMs: 5_000,
-		run: async () => {
-			throw entitlementError
-		},
 	})
 	expect(entitlementOutcome).toEqual({
 		kind: 'failed',
@@ -475,7 +420,7 @@ test('runWithDurableEscalation never throws and preserves original failures', as
 	expect(isEntitlementLimitError(entitlementOutcome.error)).toBe(true)
 })
 
-test('budget exhaustion releases a dead terminal key and re-dispatches once', async () => {
+test('a dead terminal key is released and re-dispatched once; a complete run is kept', async () => {
 	runRecordMocks.resetProjections()
 	const expectedKey = keyFor('user-1')
 	seedProjection('user-1', 'dynwf-cancelled-1', expectedKey, 'cancelled')
@@ -522,39 +467,26 @@ test('budget exhaustion releases a dead terminal key and re-dispatches once', as
 	).not.toHaveBeenCalled()
 })
 
-test('budget abort dispatches while the inline attempt is still in flight', async () => {
-	const events: Array<string> = []
-	mockModule.createDynamicCallableWorkflow.mockImplementation(async () => {
-		events.push('dispatched')
-		return created('dynwf-overlap-1')
-	})
+test('rerunComplete starts a new run when the same operation already completed', async () => {
+	runRecordMocks.resetProjections()
+	mockModule.createDynamicCallableWorkflow.mockReset()
+	runRecordMocks.releaseWorkflowProjectionIdempotencyKey.mockClear()
+	const parts = ['packageCheck', 'v1', 'etag-1', 'pcu_1']
+	seedProjection('user-1', 'dynwf-check-1', keyFor('user-1', parts), 'complete')
+	mockModule.createDynamicCallableWorkflow
+		.mockResolvedValueOnce(created('dynwf-check-1', 'complete'))
+		.mockResolvedValueOnce(created('dynwf-check-2', 'queued'))
 
-	let releaseInline = null as (() => void) | null
-	const outcome = await escalate({
-		idempotencyParts: ['publish', 'pkg-1', 'overlap'],
-		run: async (signal: AbortSignal) => {
-			events.push('run-start')
-			await new Promise<void>((resolve) => {
-				signal.addEventListener(
-					'abort',
-					() => {
-						events.push('aborted')
-						resolve()
-					},
-					{ once: true },
-				)
-			})
-			// Stay in flight after abort until the test releases us. The helper
-			// must dispatch without awaiting this completion.
-			await new Promise<void>((resolve) => {
-				releaseInline = resolve
-			})
-			events.push('run-end')
-			return { status: 'published' }
-		},
+	await expect(
+		escalate({ idempotencyParts: parts, rerunComplete: true }),
+	).resolves.toEqual({
+		kind: 'dispatched',
+		handle: expect.objectContaining({
+			workflow_id: 'dynwf-check-2',
+			run_status: 'queued',
+		}),
 	})
-
-	expect(outcome.kind).toBe('dispatched')
-	expect(events).toEqual(['run-start', 'aborted', 'dispatched'])
-	releaseInline?.()
+	expect(
+		runRecordMocks.releaseWorkflowProjectionIdempotencyKey,
+	).toHaveBeenCalledWith(expect.objectContaining({ id: 'dynwf-check-1' }))
 })

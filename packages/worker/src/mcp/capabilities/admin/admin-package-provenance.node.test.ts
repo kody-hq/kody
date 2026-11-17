@@ -213,6 +213,7 @@ function publishProjection(
 ): WorkflowProjectionRecord {
 	return {
 		id: 'workflow-1',
+		progress: null,
 		bindingName: 'DYNAMIC_CALLABLE_WORKFLOWS',
 		sourceType: 'package',
 		packageId,

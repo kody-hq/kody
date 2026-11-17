@@ -615,11 +615,13 @@ jobs:
           CLOUDFLARE_ENV: preview
           DEPLOY_COMMIT_SHA: ${{ github.sha }}
           APP_WORKER_NAME: ${{ steps.names.outputs.worker_name }}
+          REPO_SESSION_BLOBS_BUCKET:
+            ${{ steps.resources.outputs.repo_session_blobs_bucket_name }}
         run: |
           set -euo pipefail
           API_WORKER_NAME="${APP_WORKER_NAME}-api"
           API_CONFIG="packages/api-worker/wrangler-preview.generated.json"
-          node tools/ci/api-worker-config.ts --worker-name "$API_WORKER_NAME" --app-worker-name "$APP_WORKER_NAME" --out-config "$API_CONFIG"
+          node tools/ci/api-worker-config.ts --worker-name "$API_WORKER_NAME" --app-worker-name "$APP_WORKER_NAME" --repo-session-blobs-bucket "$REPO_SESSION_BLOBS_BUCKET" --out-config "$API_CONFIG"
           echo "worker_name=$API_WORKER_NAME" >> "$GITHUB_OUTPUT"
 
           is_retryable_deploy_failure() {

@@ -23,6 +23,8 @@ import {
 	ensureCloudflareQueue,
 	ensureD1Database,
 	ensureR2Bucket,
+	ensureR2BucketLifecycle,
+	packageRunStagingLifecyclePolicy,
 	fail,
 	isWranglerNotFoundOutput,
 	listD1Databases,
@@ -602,6 +604,11 @@ async function ensurePreviewResources(options: CliOptions) {
 	})
 	const repoSessionBlobs = await ensureR2Bucket({
 		name: repoSessionBlobsBucketName,
+		dryRun: options.dryRun,
+	})
+	ensureR2BucketLifecycle({
+		name: repoSessionBlobs.name,
+		policy: packageRunStagingLifecyclePolicy,
 		dryRun: options.dryRun,
 	})
 	const fileBlobs = await ensureR2Bucket({
