@@ -1,3 +1,9 @@
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	enforceWalletGuard,
+	isWalletGuardLimitError,
+	walletGuardRateLimitedResponse,
+} from '#worker/wallet-guard/enforce.ts'
 import {
 	buildAuthenticatedArtifactsRemote,
 	parseArtifactTokenSecret,
@@ -774,6 +780,22 @@ export async function handlePlainRepoGitHttpRequest(
 	if (resolved.kind === 'not_found') return notFoundResponse()
 	if (resolved.kind === 'unavailable') {
 		return serviceUnavailableResponse(resolved.message)
+	}
+
+	// The Artifacts token names no person, so this counts against the org.
+	try {
+		await enforceWalletGuard({
+			env,
+			ownerId: ownerIdFromStored(resolved.target.ownerId),
+			email: null,
+			actorUserId: null,
+			guard: 'git',
+		})
+	} catch (error) {
+		if (isWalletGuardLimitError(error)) {
+			return walletGuardRateLimitedResponse(error)
+		}
+		throw error
 	}
 
 	try {

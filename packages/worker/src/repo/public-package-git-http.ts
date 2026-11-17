@@ -1,3 +1,10 @@
+import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
+import {
+	enforceWalletGuard,
+	isWalletGuardLimitError,
+	walletGuardRateLimitedResponse,
+	type WalletGuardLimitError,
+} from '#worker/wallet-guard/enforce.ts'
 import {
 	parseApiToken,
 	readBearerApiToken,
@@ -1004,6 +1011,7 @@ async function resolveAuthenticatedGitTarget(input: {
 	| { kind: 'unauthorized'; message?: string }
 	| { kind: 'forbidden'; message: string }
 	| { kind: 'unavailable'; message: string }
+	| { kind: 'rate_limited'; error: WalletGuardLimitError }
 > {
 	const authentication = await authenticateApiToken({
 		db: input.env.APP_DB,
@@ -1107,6 +1115,19 @@ async function resolveAuthenticatedGitTarget(input: {
 		}
 	}
 
+	try {
+		await enforceWalletGuard({
+			env: input.env,
+			ownerId: ownerIdFromStored(access.resourceOrgId),
+			email: null,
+			actorUserId: authContext.user.userId,
+			guard: 'git',
+		})
+	} catch (error) {
+		if (isWalletGuardLimitError(error)) return { kind: 'rate_limited', error }
+		throw error
+	}
+
 	const artifactsScope = access.canWrite ? 'write' : 'read'
 	let token: Awaited<ReturnType<typeof repo.createToken>>
 	try {
@@ -1162,6 +1183,7 @@ async function resolveGitHttpProxyTarget(input: {
 	| { kind: 'unauthorized'; message?: string }
 	| { kind: 'forbidden'; message: string }
 	| { kind: 'unavailable'; message: string }
+	| { kind: 'rate_limited'; error: WalletGuardLimitError }
 > {
 	const credential = readGitHttpCredential(input.authorization)
 
@@ -1273,6 +1295,8 @@ function responseForGitResolve(
 				gitSmartProtocolError(endpoint, resolved.message) ??
 				serviceUnavailableResponse(resolved.message)
 			)
+		case 'rate_limited':
+			return walletGuardRateLimitedResponse(resolved.error)
 		default: {
 			const exhaustive: never = resolved
 			throw new Error(`Unexpected git resolve: ${String(exhaustive)}`)

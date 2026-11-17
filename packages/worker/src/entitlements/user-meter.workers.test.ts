@@ -114,7 +114,7 @@ function expectSchemaV16(state: DurableObjectState) {
 			`SELECT value FROM user_meter_meta WHERE key = 'schema_version' LIMIT 1`,
 		)
 		.toArray()[0]
-	expect(Number(version?.value)).toBe(16)
+	expect(Number(version?.value)).toBe(17)
 	expect(
 		state.storage.sql
 			.exec<{ name: string }>(`PRAGMA table_info(account_write_leases)`)

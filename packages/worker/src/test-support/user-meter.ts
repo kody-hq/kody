@@ -1,6 +1,10 @@
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
 import {
+	admitWalletGuardInWindows,
+	type WalletGuardCheck,
+} from '#worker/entitlements/wallet-guard-windows.ts'
+import {
 	admitExecuteCallInWindows,
 	ExecuteRepeatWindow,
 	type ExecuteCallMinuteWindow,
@@ -49,6 +53,10 @@ export function createInMemoryUserMeterEnv() {
 		{ minuteWindow: ExecuteCallMinuteWindow; repeatWindow: ExecuteRepeatWindow }
 	>()
 	const executeCallDaysByUser = new Map<string, Map<string, number>>()
+	const walletGuardWindows = new Map<
+		string,
+		{ windowStart: number; count: number }
+	>()
 	function counterKey(resource: string, day: string) {
 		return `${resource}\0${day}`
 	}
@@ -452,6 +460,24 @@ export function createInMemoryUserMeterEnv() {
 					executeCallDays.set(day, (executeCallDays.get(day) ?? 0) + 1)
 				}
 				return result
+			},
+			async admitWalletGuard(input: {
+				nowMs: number
+				checks: Array<WalletGuardCheck>
+			}) {
+				return admitWalletGuardInWindows({
+					...input,
+					store: {
+						read: (bucket) =>
+							walletGuardWindows.get(`${userId}\n${bucket}`) ?? null,
+						write: (bucket, windowStart, count) => {
+							walletGuardWindows.set(`${userId}\n${bucket}`, {
+								windowStart,
+								count,
+							})
+						},
+					},
+				})
 			},
 			async refund(input: {
 				resource: string

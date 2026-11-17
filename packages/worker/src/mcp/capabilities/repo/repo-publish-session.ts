@@ -65,6 +65,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPublishSession',
+		walletGuard: 'publish',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:

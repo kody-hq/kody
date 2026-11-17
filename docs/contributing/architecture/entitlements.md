@@ -499,6 +499,36 @@ observes:
   within a minute. Refused calls are not recorded, so a looping agent gets at
   most 20 identical calls through per minute. In memory and bounded to 1,000
   keys per org, like the runaway brake.
+- **Denial-of-wallet guards** (`packages/worker/universal/wallet-guards.ts`,
+  `enforceWalletGuard` in `packages/worker/src/wallet-guard/enforce.ts`) are
+  very high call ceilings that normal use never reaches. They cap what a loop or
+  an abusive caller can cost and are the same on every plan. Each guard has a
+  burst window and a UTC-day window, counted per org and, when a person made the
+  call, per person at half the org limit. Automation counts against the org
+  only. Counters are fixed windows persisted in the org's `UserMeter`
+  (`admitWalletGuard`); a refused call is not counted.
+
+  | Guard         | Counts                                                         | Org burst               | Org per day |
+  | ------------- | -------------------------------------------------------------- | ----------------------- | ----------- |
+  | `execute`     | hosted execute calls                                           | the runaway brake above | 120,000     |
+  | `git`         | git remote mints and authenticated smart-HTTP git requests     | 5,000 per 5 minutes     | 40,000      |
+  | `publish`     | publish capabilities                                           | 1,200 per hour          | 2,400       |
+  | `check`       | `packageCheck`, `repoRunChecks`                                | 1,200 per hour          | 2,400       |
+  | `repo_change` | repo and package create, save, fork, delete, and session opens | 1,200 per hour          | 2,400       |
+  | `run_read`    | `runGet`, `runList`, `runSummary`                              | 10,000 per minute       | 60,000      |
+
+  A capability opts in with `walletGuard` on its definition; `defineCapability`
+  enforces it before the handler. A refusal is a `WalletGuardLimitError`: HTTP
+  429 with `Retry-After` and code `rate_limited` on the Open API (including
+  `POST /v1/execute`), a plain-text 429 on git smart HTTP, and the same message
+  as the MCP tool error. The message names the limit key, the window, the wait,
+  and `support@kody.codes`. Every hit logs a `wallet_guard_limit_hit` line and a
+  Sentry breadcrumb, plus one Sentry warning per org and limit per minute. Raise
+  one org with a limit override on the limit key (for example
+  `git_operations_per_day`); the per-person limit follows at half. If the meter
+  cannot be reached the call is admitted, because the guard is a cost ceiling
+  and not an access check.
+
 - **Outbound fetches** are consumed at the top of `executeGatewayFetch`
   (`packages/worker/src/mcp/fetch-gateway.ts`), which every sandbox fetch passes
   through, before secret expansion. `FetchGatewayProps.email` carries the acting
@@ -947,10 +977,10 @@ its plan. Nothing in code names an org; overrides are data.
 `outbound_fetches_per_week`, `job_runs_per_day`,
 `automation_invocations_per_day`, `email_sends_per_day`,
 `email_receives_per_day`, `unique_worker_days_per_month`,
-`durable_object_rows_read_per_month`, and `execute_calls_per_minute`. Each
-override is a whole number or `'unlimited'` (`unlimitedLimit`,
-`Number.MAX_SAFE_INTEGER`), an optional `expires_at`, a required reason, and the
-admin who set it.
+`durable_object_rows_read_per_month`, `execute_calls_per_minute`, and the
+denial-of-wallet guard keys (`walletGuardLimitKeys`). Each override is a whole
+number or `'unlimited'` (`unlimitedLimit`, `Number.MAX_SAFE_INTEGER`), an
+optional `expires_at`, a required reason, and the admin who set it.
 
 **Storage:** D1 `org_limit_overrides` (`0103-org-limit-overrides.sql`), primary
 key `(org_id, limit_key)`, `limit_value` NULL for unlimited. It is the only

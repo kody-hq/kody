@@ -27,6 +27,10 @@ import {
 } from '#worker/entitlements/service.ts'
 import { userMeterRpc } from '#worker/entitlements/user-meter-client.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
+import {
+	enforceWalletGuard,
+	findWalletGuardLimitError,
+} from '#worker/wallet-guard/enforce.ts'
 import type { ClaimWorkerDay } from './executor.ts'
 
 /**
@@ -122,6 +126,8 @@ export function executeAdmissionStructuredContent(error: unknown) {
 			admission: { code: error.code, retryAfterMs: error.retryAfterMs },
 		}
 	}
+	const walletGuardError = findWalletGuardLimitError(error)
+	if (walletGuardError) return { rateLimit: walletGuardError.details }
 	return {}
 }
 
@@ -130,6 +136,8 @@ export async function admitHostedExecuteCall(input: {
 	env: Env
 	ownerId: OwnerId
 	email: string | null | undefined
+	/** The person who made the call; null for automation. */
+	actorUserId: string | null
 	repeatKey?: string
 	now?: Date
 }): Promise<void> {
@@ -162,7 +170,17 @@ export async function admitHostedExecuteCall(input: {
 				}
 			: {}),
 	})
-	if (admission.admitted) return
+	if (admission.admitted) {
+		await enforceWalletGuard({
+			env: input.env,
+			ownerId: input.ownerId,
+			email: input.email,
+			actorUserId: input.actorUserId,
+			guard: 'execute',
+			now,
+		})
+		return
+	}
 	switch (admission.reason) {
 		case 'rate':
 			throw new ExecuteRateLimitedError({

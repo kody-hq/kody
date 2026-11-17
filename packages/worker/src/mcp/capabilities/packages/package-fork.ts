@@ -42,6 +42,7 @@ export const packageForkCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageFork',
+		walletGuard: 'repo_change',
 		contextRuns: 'allow',
 		orgPermission: 'package:create',
 		description:

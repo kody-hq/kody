@@ -87,6 +87,7 @@ async function admit(org: SeededOrg) {
 		env,
 		ownerId: ownerIdFromStored(org.stableUserId),
 		email: org.email,
+		actorUserId: null,
 		now,
 	})
 }

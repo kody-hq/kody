@@ -67,6 +67,7 @@ export const repoPromoteToPackageCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPromoteToPackage',
+		walletGuard: 'repo_change',
 		contextRuns: 'deny',
 		orgPermission: 'package:create',
 		description:

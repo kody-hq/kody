@@ -175,6 +175,7 @@ export const packageCheckCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageCheck',
+		walletGuard: 'check',
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:

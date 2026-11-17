@@ -22,6 +22,16 @@
  * (`orgs.stripe_credits_eligible`). See {@link CreditWalletState}.
  */
 
+import {
+	isWalletGuardLimitKey,
+	walletGuardLimitFields,
+	walletGuardLimitKeyLabels,
+	walletGuardLimitKeys,
+	walletGuardPlanLimits,
+	type WalletGuardLimitField,
+	type WalletGuardPlanLimits,
+} from './wallet-guards.ts'
+
 export const planNames = ['free', 'standard', 'pro', 'max'] as const
 
 export type PlanName = (typeof planNames)[number]
@@ -373,7 +383,7 @@ export type PlanLimits = {
 	 * meter. Approaching and reached warning emails cover this allotment.
 	 */
 	maxDurableObjectRowsReadPerMonth: number
-}
+} & WalletGuardPlanLimits
 
 export const entitlementResources = [
 	'repos',
@@ -555,6 +565,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		minJobIntervalMs: 15 * 60 * 1000,
 		maxUniqueWorkerDaysPerMonth: 50,
 		maxDurableObjectRowsReadPerMonth: 500_000_000,
+		...walletGuardPlanLimits,
 	},
 	standard: {
 		maxRepos: 200,
@@ -582,6 +593,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		minJobIntervalMs: 15 * 60 * 1000,
 		maxUniqueWorkerDaysPerMonth: 350,
 		maxDurableObjectRowsReadPerMonth: 5_000_000_000,
+		...walletGuardPlanLimits,
 	},
 	pro: {
 		maxRepos: 400,
@@ -607,6 +619,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		minJobIntervalMs: 5 * 60 * 1000,
 		maxUniqueWorkerDaysPerMonth: 2_000,
 		maxDurableObjectRowsReadPerMonth: 20_000_000_000,
+		...walletGuardPlanLimits,
 	},
 	max: {
 		// 25× pro (400) → 10_000.
@@ -650,6 +663,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
 		maxUniqueWorkerDaysPerMonth: 25_000,
 		// Dominates public Pro (20B). Operator cap only.
 		maxDurableObjectRowsReadPerMonth: 200_000_000_000,
+		...walletGuardPlanLimits,
 	},
 }
 
@@ -685,6 +699,7 @@ export const legacyPlanLimits: Record<'standard' | 'pro', PlanLimits> = {
 		minJobIntervalMs: 0,
 		maxUniqueWorkerDaysPerMonth: 350,
 		maxDurableObjectRowsReadPerMonth: 5_000_000_000,
+		...walletGuardPlanLimits,
 	},
 	pro: {
 		maxRepos: 400,
@@ -708,6 +723,7 @@ export const legacyPlanLimits: Record<'standard' | 'pro', PlanLimits> = {
 		minJobIntervalMs: 0,
 		maxUniqueWorkerDaysPerMonth: 2_000,
 		maxDurableObjectRowsReadPerMonth: 20_000_000_000,
+		...walletGuardPlanLimits,
 	},
 }
 
@@ -1093,6 +1109,7 @@ export const limitOverrideKeys = [
 	'unique_worker_days_per_month',
 	'durable_object_rows_read_per_month',
 	'execute_calls_per_minute',
+	...walletGuardLimitKeys,
 ] as const
 
 export type LimitOverrideKey = (typeof limitOverrideKeys)[number]
@@ -1116,6 +1133,7 @@ export const limitOverrideKeyLabels: Record<LimitOverrideKey, string> = {
 	unique_worker_days_per_month: 'Worker compute per month (stop at $0)',
 	durable_object_rows_read_per_month: 'Rows read per month (stop at $0)',
 	execute_calls_per_minute: 'Execute calls per minute',
+	...walletGuardLimitKeyLabels,
 }
 
 type LimitOverrideField =
@@ -1130,8 +1148,10 @@ type LimitOverrideField =
 	| 'maxUniqueWorkerDaysPerMonth'
 	| 'maxDurableObjectRowsReadPerMonth'
 	| 'maxExecuteCallsPerMinute'
+	| WalletGuardLimitField
 
 function limitOverrideField(key: LimitOverrideKey): LimitOverrideField {
+	if (isWalletGuardLimitKey(key)) return walletGuardLimitFields[key]
 	switch (key) {
 		case 'execute_unique_workers_per_day':
 			return 'maxExecuteUniqueWorkersPerDay'

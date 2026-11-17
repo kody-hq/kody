@@ -729,6 +729,7 @@ export async function runExecuteToolCall(input: {
 						env,
 						ownerId: storageOwnerId,
 						email: entitlementEmail,
+						actorUserId: callerContext.request?.actor?.userId ?? null,
 						repeatKey: await executeRepeatKey({
 							credential: callerContext.request?.credential ?? null,
 							actorUserId:

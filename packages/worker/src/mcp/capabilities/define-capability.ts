@@ -1,3 +1,8 @@
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
+import { enforceWalletGuard } from '#worker/wallet-guard/enforce.ts'
 import { assertGuestCapabilityAllowed } from '#worker/guest/guest-policy.ts'
 import { z } from 'zod'
 import {
@@ -165,6 +170,16 @@ export function defineCapability<
 				{ env: ctx.env, request: ctx.callerContext.request },
 				definition.orgPermission,
 			)
+			if (definition.walletGuard) {
+				const ownerId = ownerIdFromCaller(ctx.callerContext)
+				await enforceWalletGuard({
+					env: ctx.env,
+					ownerId,
+					email: entitlementEmailForOwner(ctx.callerContext, ownerId),
+					actorUserId: ctx.callerContext.request?.actor?.userId ?? null,
+					guard: definition.walletGuard,
+				})
+			}
 
 			const invoke = async (): Promise<CapabilityOutput<TOutputSchema>> => {
 				let parsedArgs: InferCapabilitySchema<TInputSchema>
