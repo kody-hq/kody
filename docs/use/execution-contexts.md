@@ -53,7 +53,10 @@ Execution contexts are an experiment. Turn them on at
   no package list. It stays on the context page and in what is waiting on you
   until you limit the shell to listed packages, turn host commands off on the
   machine, or dismiss it with fingerprint `open-shell` to keep the shell as it
-  is. See
+  is. On the context page the notice lists the packages and programs that used
+  the shell in the last 30 days; `executionContextShellSuggestions` returns the
+  same with example commands. List those packages for the shell, or define the
+  programs as named commands on the machine. See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing

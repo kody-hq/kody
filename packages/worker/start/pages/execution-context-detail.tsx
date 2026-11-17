@@ -40,6 +40,7 @@ import {
 	type ExecutionContextPreset,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
+	type ExecutionContextShellUse,
 	auditEventLabel,
 	canOptIntoContext,
 	chainEntryInputs,
@@ -381,6 +382,59 @@ function entryText(entry: { permission: string; resource: string | null }) {
 		: entry.permission
 }
 
+function ShellUse(props: { use: ExecutionContextShellUse }) {
+	const { use } = props
+	const times = (count: number) => `${count} command${count === 1 ? '' : 's'}`
+	if (use.commands === 0) {
+		return (
+			<p css={{ margin: 0 }} data-testid="context-shell-use">
+				No run used the shell in the last 30 days.
+			</p>
+		)
+	}
+	return (
+		<div data-testid="context-shell-use">
+			<p css={{ margin: 0 }}>
+				{use.more
+					? `The newest ${times(use.commands)} the shell ran in the last 30 days are counted here; older ones are not. Of these`
+					: `In the last 30 days the shell ran ${times(use.commands)}`}
+				{use.adHocCommands > 0
+					? `, ${use.adHocCommands} of them from code that is not a saved package. A package list refuses that code.`
+					: ', all from saved packages.'}
+			</p>
+			{use.packages.length > 0 ? (
+				<>
+					<p css={{ margin: 0 }}>Packages to list for the shell:</p>
+					<ul css={{ margin: 0 }}>
+						{use.packages.map((entry) => (
+							<li key={entry.id}>
+								{entry.name} (<code>{entry.id}</code>), {times(entry.commands)}
+							</li>
+						))}
+					</ul>
+				</>
+			) : null}
+			<p css={{ margin: 0 }}>Programs to define as named commands:</p>
+			<ul css={{ margin: 0 }}>
+				{use.programs.map((entry) => (
+					<li key={entry.program}>
+						<code>{entry.program}</code>, {times(entry.commands)}
+						{entry.needShell > 0
+							? ` (${entry.needShell} used pipes or other shell syntax)`
+							: ''}
+					</li>
+				))}
+			</ul>
+			{use.morePrograms > 0 ? (
+				<p css={{ margin: 0 }}>
+					And {use.morePrograms} more.{' '}
+					<code>executionContextShellSuggestions</code> has examples of each.
+				</p>
+			) : null}
+		</div>
+	)
+}
+
 function NoticesPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem
@@ -440,6 +494,7 @@ function NoticesPanel(props: {
 						named commands on the machine and turn the shell off there with{' '}
 						<code>kody context commands off</code>.
 					</p>
+					{openShell.use ? <ShellUse use={openShell.use} /> : null}
 					<Button
 						type="button"
 						variant="primary"

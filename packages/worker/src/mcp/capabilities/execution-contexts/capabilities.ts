@@ -13,6 +13,7 @@ import {
 	packageLimitedMachineCapabilityKinds,
 	revokeMachineAccess,
 	setMachineAccessPackages,
+	suggestShellNarrowing,
 	shareableMachineCapabilityKinds,
 } from '#worker/execution-contexts/machine-access.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -541,6 +542,23 @@ export const executionContextMachineAccessPackagesSetCapability =
 				name: args.name,
 				packageIds: args.package_ids,
 			})
+		},
+	})
+
+export const executionContextShellSuggestionsCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextShellSuggestions',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:manage_access',
+		description:
+			'What the unrestricted shell of your execution context was used for, from its audit log (the newest 1000 shell commands of the last 30 days in this org), as a starting point for narrowing it. `packages` are the saved packages whose runs used the shell: pass their ids to executionContextMachineAccessPackagesSet (kind "shell", name "shell") to limit the shell to them. `adHocCommands` counts commands from code that is not a saved package, which a package list refuses. `programs` are the programs those commands started with, most used first, with examples: each is a candidate for a named command defined on the machine with `kody context capability add command`. `needShell` counts the commands that used pipes, chaining, redirects, substitution or globs, which a named command cannot run as written. Operator only. Read only: it changes nothing.',
+		keywords: ['execution context', 'shell', 'suggest', 'machine access'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await suggestShellNarrowing(await caller(ctx), args.id)
 		},
 	})
 

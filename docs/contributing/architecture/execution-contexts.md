@@ -278,8 +278,14 @@ data model exists so far; nothing reads it at run time yet.
   backfilled by migration 0286). It is recomputed when the machine turns host
   commands on or off, when the shell's package list changes, and with the other
   notices. Its fingerprint is the constant `open-shell`, so a dismissal ("keep
-  the shell") holds until the notice is cleared and raised again. The notice
-  does not yet suggest named commands from the audit log.
+  the shell") holds until the notice is cleared and raised again.
+- `executionContextShellSuggestions` (`suggestShellNarrowing` in
+  `machine-access.ts`, operator only) reads the newest 1000 `command_started`
+  audit rows of the caller's org that carry no `capability` (shell calls, not
+  named commands) from the session DO and groups them by entry package and by
+  the program each command starts with (`shell-suggestions.ts`). The context
+  page shows the counts inside the open shell notice. It is computed on read and
+  stored nowhere, so it never outlives the 30 day audit retention.
 - The machine wide local network switch (`grant.egress.mode` `public-and-lan`)
   is the entry `lan` / `*`, a name no machine can define. Migration 0284 adds it
   to every context with the switch on, and `ensureNetworkCapability` adds it

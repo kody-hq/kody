@@ -28,6 +28,7 @@ import {
 	type ExecutionContextListItem,
 	type ExecutionContextMachineAccess,
 	type ExecutionContextMachineAccessEntry,
+	type ExecutionContextShellUse,
 	type ExecutionContextRun,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
@@ -62,6 +63,7 @@ export const executionContextCapabilityNames = {
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
 	machineAccessList: 'executionContextMachineAccessList',
+	shellSuggestions: 'executionContextShellSuggestions',
 	machineAccessGrant: 'executionContextMachineAccessGrant',
 	machineAccessRevoke: 'executionContextMachineAccessRevoke',
 	attach: 'executionContextAttach',
@@ -444,6 +446,10 @@ export async function loadExecutionContextsPageData(input: {
 		const contexts = visibleContexts(readContexts(listResult), Date.now())
 		const selected = selectedResult ? readContext(selectedResult) : null
 		if (selected && machineAccess) selected.machineAccess = machineAccess
+		if (selected?.openShell) {
+			const use = await loadShellUse(scope, selected.id)
+			if (use) selected.openShell.use = use
+		}
 		return {
 			enabled: true,
 			orgSlug,
@@ -978,6 +984,54 @@ async function loadMachineAccess(
 		const failure = readExecutionContextFailure(error)
 		if (failure?.status === 403 || failure?.status === 404) return null
 		throw error
+	}
+}
+
+/** Null when it cannot be read; the notice still shows without it. */
+async function loadShellUse(
+	scope: ExecutionContextsScope,
+	contextId: string,
+): Promise<ExecutionContextShellUse | null> {
+	try {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.shellSuggestions,
+			{ id: contextId },
+		)
+		const count = (value: unknown) => (typeof value === 'number' ? value : 0)
+		const rows = (value: unknown): Array<Record<string, unknown>> =>
+			Array.isArray(value)
+				? value.flatMap((entry) => {
+						const row = record(entry)
+						return row ? [row] : []
+					})
+				: []
+		return {
+			commands: count(result.commands),
+			more: result.more === true,
+			adHocCommands: count(result.adHocCommands),
+			packages: rows(result.packages).flatMap((entry) =>
+				typeof entry.id === 'string'
+					? {
+							id: entry.id,
+							name: typeof entry.name === 'string' ? entry.name : entry.id,
+							commands: count(entry.commands),
+						}
+					: [],
+			),
+			programs: rows(result.programs).flatMap((entry) =>
+				typeof entry.program === 'string'
+					? {
+							program: entry.program,
+							commands: count(entry.commands),
+							needShell: count(entry.needShell),
+						}
+					: [],
+			),
+			morePrograms: count(result.morePrograms),
+		}
+	} catch {
+		return null
 	}
 }
 
