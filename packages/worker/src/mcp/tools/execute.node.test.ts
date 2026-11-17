@@ -128,14 +128,24 @@ const mockModule = vi.hoisted(() => ({
 			'mcp-events-extension': false,
 		}),
 	),
-	callerFeatureFlagEvaluationFailed: vi.fn(
+	callerFeatureFlagEvaluationFailure: vi.fn(
 		async (
 			..._args: Parameters<
-				typeof AccessControlModule.callerFeatureFlagEvaluationFailed
+				typeof AccessControlModule.callerFeatureFlagEvaluationFailure
 			>
-		) => false,
+		): Promise<{ cause: unknown } | null> => null,
 	),
 }))
+
+const observabilityMock = vi.hoisted(() => ({
+	logMcpEvent: vi.fn(),
+}))
+
+vi.mock('#mcp/observability.ts', async (importOriginal) => {
+	const actual = await importOriginal<typeof import('#mcp/observability.ts')>()
+	observabilityMock.logMcpEvent.mockImplementation(actual.logMcpEvent)
+	return { ...actual, logMcpEvent: observabilityMock.logMcpEvent }
+})
 
 vi.mock('#mcp/run-kody-registry.ts', () => ({
 	runModuleWithRegistry: (...args: Array<unknown>) =>
@@ -174,11 +184,11 @@ vi.mock(
 					typeof AccessControlModule.resolveCallerFeatureFlags
 				>
 			) => mockModule.resolveCallerFeatureFlags(...args),
-			callerFeatureFlagEvaluationFailed: (
+			callerFeatureFlagEvaluationFailure: (
 				...args: Parameters<
-					typeof AccessControlModule.callerFeatureFlagEvaluationFailed
+					typeof AccessControlModule.callerFeatureFlagEvaluationFailure
 				>
-			) => mockModule.callerFeatureFlagEvaluationFailed(...args),
+			) => mockModule.callerFeatureFlagEvaluationFailure(...args),
 		}
 	},
 )
@@ -349,7 +359,7 @@ async function getExecuteRegistration(
 		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 	})
-	mockModule.callerFeatureFlagEvaluationFailed.mockResolvedValue(false)
+	mockModule.callerFeatureFlagEvaluationFailure.mockResolvedValue(null)
 	const registerTool = vi.fn()
 
 	await registerExecuteTool({
@@ -1580,7 +1590,10 @@ test('execute does not run or reach the registry when flag evaluation fails clos
 			email: 'flag-fail-closed@example.com',
 		},
 	})
-	mockModule.callerFeatureFlagEvaluationFailed.mockResolvedValueOnce(true)
+	const cause = new Error(
+		'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
+	)
+	mockModule.callerFeatureFlagEvaluationFailure.mockResolvedValueOnce({ cause })
 
 	const denied = await handler({
 		code: shouldNotRunCode,
@@ -1589,6 +1602,12 @@ test('execute does not run or reach the registry when flag evaluation fails clos
 
 	expect(denied.isError).toBe(true)
 	expect(denied.structuredContent.error).toBe('Feature flag evaluation failed')
+	expect(observabilityMock.logMcpEvent).toHaveBeenCalledWith(
+		expect.objectContaining({
+			errorMessage: 'Feature flag evaluation failed',
+			cause: expect.objectContaining({ cause }),
+		}),
+	)
 	expect(mockModule.runModuleWithRegistry).not.toHaveBeenCalled()
 	expect(mockModule.getCapabilityRegistryForContext).not.toHaveBeenCalled()
 })
