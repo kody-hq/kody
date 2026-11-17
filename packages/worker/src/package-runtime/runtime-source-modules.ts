@@ -44,7 +44,7 @@ export function createRuntimeModuleSource() {
 	// Prefixed published-artifact copies of this module re-export this root
 	// so the stamp ALS is created once in this closure. The ALS instance and
 	// stamp runner stay module-local (never hung off Symbol.for / globalThis);
-	// only a read-only current-stamp getter is published for host wrappers.
+	// host wrappers import `__kodyRunWithPackageBindings` from this module.
 	//
 	// This module is evaluated at most once per isolate path, but dynamic
 	// workers with identical code are cached and reused across executions
