@@ -3,6 +3,7 @@ import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	handleApiEdgeRequest,
 	maxApiRequestBodyBytes,
+	maxPackageCheckRequestBodyBytes,
 	maxGatewayFetchUploadBytes,
 	type ApiWorkerEnv,
 } from './edge.ts'
@@ -164,6 +165,27 @@ test('rejects unknown paths, oversize bodies, and rate-limited callers', async (
 	)
 	expect(oversize.status).toBe(413)
 	expect(forwarded).toHaveLength(0)
+
+	// packageCheck carries a whole package tree, so it gets its own cap (#5308).
+	const packageCheck = (bytes: number) =>
+		handleApiEdgeRequest(
+			new Request('https://api.kody.test/v1/packages/check', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: 'x'.repeat(bytes),
+			}),
+			env,
+		)
+	expect((await packageCheck(maxApiRequestBodyBytes + 1)).status).not.toBe(413)
+	expect(forwarded).toHaveLength(1)
+	const oversizeCheck = await packageCheck(maxPackageCheckRequestBodyBytes + 1)
+	expect(oversizeCheck.status).toBe(413)
+	expect(await oversizeCheck.json()).toMatchObject({
+		error: {
+			message: `Request body exceeds ${maxPackageCheckRequestBodyBytes} bytes.`,
+		},
+	})
+	expect(forwarded).toHaveLength(1)
 
 	const ipLimited = createEnv({ ipAllowed: false })
 	const ipResponse = await handleApiEdgeRequest(

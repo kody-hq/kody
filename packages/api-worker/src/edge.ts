@@ -37,6 +37,16 @@ export type ApiWorkerEnv = {
 /** Matches `maxApiRequestBodyBytes` in origin's open-api request parsing. */
 export const maxApiRequestBodyBytes = 5 * 1024 * 1024
 
+/** Matches `maxPackageCheckRequestBodyBytes` in origin's api-body-limits. */
+export const maxPackageCheckRequestBodyBytes = 24 * 1024 * 1024
+const packageCheckPath = '/v1/packages/check'
+
+function maxBodyBytesFor(method: string, pathname: string) {
+	return method === 'POST' && pathname === packageCheckPath
+		? maxPackageCheckRequestBodyBytes
+		: maxApiRequestBodyBytes
+}
+
 /**
  * Cloudflare Worker request upload limit on Free/Pro. Matches origin's
  * `maxGatewayFetchUploadBytes` for `POST /v1/capability-proxy/gateway-fetch`.
@@ -159,9 +169,9 @@ function buildForwardHeaders(
 	return forwarded
 }
 
-async function readCappedBody(request: Request) {
+async function readCappedBody(request: Request, maxBytes: number) {
 	const declared = Number(request.headers.get('Content-Length') ?? '0')
-	if (declared > maxApiRequestBodyBytes) return null
+	if (declared > maxBytes) return null
 	if (!request.body) return new Uint8Array(0)
 	const reader = request.body.getReader()
 	const chunks: Array<Uint8Array> = []
@@ -170,7 +180,7 @@ async function readCappedBody(request: Request) {
 		const { done, value } = await reader.read()
 		if (done) break
 		total += value.byteLength
-		if (total > maxApiRequestBodyBytes) {
+		if (total > maxBytes) {
 			await reader.cancel()
 			return null
 		}
@@ -329,12 +339,13 @@ async function routeApiEdgeRequest(
 
 	let body: Uint8Array<ArrayBuffer> | undefined
 	if (bodyMethods.has(request.method)) {
-		const capped = await readCappedBody(request)
+		const maxBytes = maxBodyBytesFor(request.method, url.pathname)
+		const capped = await readCappedBody(request, maxBytes)
 		if (!capped) {
 			return errorResponse(
 				413,
 				'payload_too_large',
-				`Request body exceeds ${maxApiRequestBodyBytes} bytes.`,
+				`Request body exceeds ${maxBytes} bytes.`,
 			)
 		}
 		body = capped
