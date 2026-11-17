@@ -298,15 +298,15 @@ function appLine(app: PackageAppHostMigrationNoticeApp) {
 }
 
 function fillPrompt(input: {
-	apps: Array<PackageAppHostMigrationNoticeApp>
+	app: PackageAppHostMigrationNoticeApp
 	cutoverDate: string
 }) {
-	const [, username, kodyId] = /^@([^/]+)\/([^/]+)$/.exec(input.apps[0]!.name)!
-	const prompt = packageAppHostMigrationAgentPrompt
+	const [, username, kodyId] = /^@([^/]+)\/([^/]+)$/.exec(input.app.name)!
+	return packageAppHostMigrationAgentPrompt
 		.replaceAll('{owner}', username!)
 		.replaceAll('{username}', username!)
+		.replaceAll('{app}', kodyId!)
 		.replaceAll('{cutover date}', input.cutoverDate)
-	return input.apps.length === 1 ? prompt.replaceAll('{app}', kodyId!) : prompt
 }
 
 export function buildPackageAppHostMigrationNoticeEmail(input: {
@@ -325,26 +325,29 @@ export function buildPackageAppHostMigrationNoticeEmail(input: {
 	const outsideList = outside
 		.map((app) => `${app.name} (${app.outside.join(', ')})`)
 		.join('; ')
+	// One filled-in prompt per app, so nothing has to be replaced by hand.
 	const promptBlocks = [
-		...(listed.length > 1
-			? [
-					"Paste the prompt once per app. Before pasting, replace {app} with that app's name (the part after the slash).",
-				]
-			: []),
-		{
-			kind: 'code' as const,
-			text: fillPrompt({ apps: listed, cutoverDate: input.cutoverDate }),
-		},
+		listed.length > 1
+			? 'One prompt per app, ready to paste. Each starts under a line naming its app.'
+			: 'The prompt, ready to paste:',
+		...listed.flatMap((app) => [
+			`Prompt for ${app.name}`,
+			{
+				kind: 'code' as const,
+				text: fillPrompt({ app, cutoverDate: input.cutoverDate }),
+			},
+		]),
 	]
 	const footnote =
 		"You're receiving this because you own a Kody package app that is moving to its own address."
 	if (input.kind === 'reminder') {
-		const subject = `One week left: your Kody apps move on ${input.cutoverDate}`
+		const subject = `Two weeks left: your Kody apps move on ${input.cutoverDate}`
 		return renderTransactionalEmail({
 			appBaseUrl: input.appBaseUrl,
 			subject,
 			preheader: `On ${input.cutoverDate} the old addresses of your Kody apps only redirect to the new ones.`,
 			heading: subject,
+			textOmitsHeading: true,
 			body: [
 				greeting,
 				`A reminder that on ${input.cutoverDate} the old addresses of your Kody apps stop serving and only redirect to the new ones. Browser data saved under the old address cannot be read after that date.`,
@@ -356,7 +359,7 @@ export function buildPackageAppHostMigrationNoticeEmail(input: {
 							`Apps of yours that receive requests from outside services at the old address: ${outsideList}.`,
 						]
 					: []),
-				'If you have already shipped the move, or the data does not matter, there is nothing to do. Otherwise the prompt from our first email is repeated below.',
+				'If you have already shipped the move, or the data does not matter, there is nothing to do. Otherwise the prompts from our first email are repeated below, one per app.',
 				'The Kody team',
 			],
 			afterAction: promptBlocks,
@@ -370,16 +373,17 @@ export function buildPackageAppHostMigrationNoticeEmail(input: {
 		subject,
 		preheader: `Each Kody package app is getting its own address. The old address stops serving on ${input.cutoverDate}.`,
 		heading: subject,
+		textOmitsHeading: true,
 		body: [
 			greeting,
 			"Each Kody package app is getting its own address. Instead of https://{username}.kody.run/{app}/, your app will live at https://{app}--{username}.kody.run/. This gives every app its own browser origin, so your apps can no longer read each other's cookies or stored data.",
 			'What stays the same: old links keep working. They redirect to the new address.',
 			"What needs you: anything your app saved in the browser (localStorage, IndexedDB, cookies your app sets, and offline caches or service workers) is tied to the old address and will not follow the app. Data your app keeps on Kody's servers is not affected. Only data saved in visitors' browsers is. These apps of yours need a look, because they store data in the browser or have code tied to the old address:",
 			...listed.map(appLine),
-			`Both addresses work today. On ${input.cutoverDate} the old address stops serving your app for good and only redirects to the new one. This date is fixed and applies to every app. After it, data saved under the old address can no longer be read. If your app keeps data there that people would miss, add a one-time move before ${input.cutoverDate}. The prompt below does it, and it also fixes code tied to the old address. Paste it to your coding agent once per app.`,
+			`Both addresses work today. On ${input.cutoverDate} the old address stops serving your app for good and only redirects to the new one. This date is fixed and applies to every app. After it, data saved under the old address can no longer be read. If your app keeps data there that people would miss, add a one-time move before ${input.cutoverDate}. The prompt does it, and it also fixes code tied to the old address. There is one ready-to-paste prompt per app at the end of this email. Paste each one to your coding agent.`,
 			visitLine,
 			'If people installed your app to a home screen or desktop, they will need to reinstall it from the new address.',
-			"If the data is only a cache or can be rebuilt, the prompt's second step stops early and only the address fixes ship.",
+			'If the data is only a cache or can be rebuilt from the server, there is nothing to move. The prompt has your agent check for that first, and in that case it ships only the address fixes.',
 			`If an old link must keep answering in place: redirects cover normal links, but some callers do not follow them (one-click unsubscribe buttons in mail you already sent, webhooks, some sign-in callbacks). To keep those working, create a package named @${username}/${username}. Once it is published, it owns every path on https://${username}.kody.run/ (except Kody's reserved /-/ paths) and Kody stops redirecting there, so your package decides what every old path does. It is a normal app, and you only need it if a redirect is not enough.`,
 			...(outside.length > 0
 				? [

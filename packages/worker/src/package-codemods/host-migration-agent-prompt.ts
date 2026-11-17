@@ -45,8 +45,9 @@ into the page (for example a data-app-base attribute on <html>) and read it
 there. Cookie names stay the same on NEW: cookiePrefix comes from the
 package id, so do not rename any cookie, including names with a __Host- or
 __Secure- prefix. Only the Path changes, and it follows the base: a cookie
-set with Path=/{app} on OLD needs Path=/ on NEW. Also list any OAuth redirect URIs or webhook URLs registered with
-outside services; I will update those by hand.
+set with Path=/{app} on OLD needs Path=/ on NEW. Also list any OAuth
+redirect URIs or webhook URLs registered with outside services; I will update
+those by hand.
 
 Step 2. Inventory browser storage, then wait for my OK.
 List everything this app's code itself creates: localStorage and
@@ -106,8 +107,8 @@ app registers a service worker: make sure the update with the export code
 actually reaches visitors on OLD (an old cache-first worker can keep serving
 the old build): the page calls registration.update(), and the new worker
 calls skipWaiting() and clients.claim(), so the new version takes over
-without waiting for every tab to close; after migration, or right away if nothing migrates,
-unregister only the registration whose scope is exactly
+without waiting for every tab to close; after migration, or right away if
+nothing migrates, unregister only the registration whose scope is exactly
 https://{username}.kody.run/{app}/; on NEW, register it with the scope built
 from the rendered base ("/"). If the app has a web app manifest, tell me so I
 can ask people who installed it to reinstall from NEW.
