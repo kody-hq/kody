@@ -121,7 +121,6 @@ export function FeaturesMenu(props: Props) {
 					{featureMenuItems.map((feature) => (
 						<SiteLink
 							key={feature.id}
-							aria-label={feature.name}
 							href={`/features/${feature.id}`}
 							aria-current={
 								props.currentPathname === `/features/${feature.id}`
@@ -138,7 +137,10 @@ export function FeaturesMenu(props: Props) {
 							/>
 							<span>
 								<strong>{feature.name}</strong>
-								<small>{feature.description}</small>
+								{/* Hidden so the link is named by the feature alone. An
+								    aria-label here would also match form-field lookups
+								    such as the Email input. */}
+								<small aria-hidden="true">{feature.description}</small>
 							</span>
 						</SiteLink>
 					))}
