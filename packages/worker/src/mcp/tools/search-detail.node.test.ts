@@ -267,12 +267,13 @@ test('resolveEntityDetail loads official guides without a signed-in user and gat
 		section: 'repo.pushed',
 	})
 
-	for (const entity of ['guide:not_a_real_guide', 'guide:admin_events']) {
-		await expect(resolve(entity, anonymous)).rejects.toThrow('Guide not found.')
+	for (const id of ['not_a_real_guide', 'admin_events']) {
+		await expect(resolve(`guide:${id}`, anonymous)).rejects.toThrow(
+			new McpCallerError(
+				`Guide "${id}" not found. Find guides with \`search({ query: "<topic> guide" })\`.`,
+			),
+		)
 	}
-	await expect(resolve('guide:not_a_real_guide', anonymous)).rejects.toThrow(
-		/^Guide not found\.$/,
-	)
 	await expect(resolve('guide:search', anonymous)).rejects.toThrow(
 		'Did you mean `guide:search_and_execute`?',
 	)
