@@ -20,7 +20,10 @@ import {
 } from '../mock/mock-fetch-gateway.js'
 import { lexableModuleSource } from '../fetch-body-package-scan.js'
 import { listSavedPackageImports } from '../local-package-graph.js'
-import { listMappedLocalDeps } from '../mock-local-deps.js'
+import {
+	listMappedLocalDeps,
+	localDepsRelativePath,
+} from '../mock-local-deps.js'
 import { collectPackageCheckFiles } from '../package-check-files.js'
 import type { KodyPackageManifest } from '../package-manifest.js'
 import { readPackageVersion } from '../package-info.js'
@@ -467,7 +470,19 @@ export function createLocalKodyUpstream(input: {
 				})),
 				{ name: input.manifest.name, root: input.manifest.root, rename: false },
 			]
-			const depFiles: Array<string> = []
+			// Watched before saving, so fixing a dep that failed to save rebuilds.
+			// The root's dep map sits under `.kody/`, which the root watch skips.
+			const depFiles = [join(input.manifest.root, localDepsRelativePath)]
+			for (const dep of deps) {
+				const tree = await readTree(dep.manifest.root)
+				depFiles.push(
+					...Object.keys(tree).map((path) => join(dep.manifest.root, path)),
+				)
+			}
+			watchPaths = depFiles
+			// Recorded only once every save lands, so a failed dependent is not
+			// skipped on the next sync because its dep already saved.
+			const hashes = new Map<string, string>()
 			let changed = false
 			for (const pkg of packages) {
 				const tree = await readTree(pkg.root)
@@ -478,11 +493,6 @@ export function createLocalKodyUpstream(input: {
 							? renamePackageJson(content, pkg.name)
 							: content,
 				}))
-				if (pkg.root !== input.manifest.root) {
-					depFiles.push(
-						...Object.keys(tree).map((path) => join(pkg.root, path)),
-					)
-				}
 				const hash = createHash('sha256')
 					.update(JSON.stringify(files))
 					.digest('hex')
@@ -499,9 +509,9 @@ export function createLocalKodyUpstream(input: {
 						: `mapped local dep ${pkg.name} (${pkg.root})`,
 				})
 				if (id) savedIds.set(pkg.name, id)
-				savedHashes.set(pkg.name, hash)
+				hashes.set(pkg.name, hash)
 			}
-			watchPaths = depFiles
+			for (const [name, hash] of hashes) savedHashes.set(name, hash)
 			packageId = savedIds.get(input.manifest.name) ?? packageId
 			// Saving re-syncs package jobs onto the real local scheduler. They only
 			// fire on schedule with --run-jobs; otherwise `kody dev job` runs them.
@@ -528,11 +538,26 @@ async function listTreeImports(files: Record<string, string>) {
 	return [...found]
 }
 
-/** `package.json` with `name` set to the name importers use for the dep. */
+/**
+ * `package.json` with `name` set to the name importers use for the dep, and
+ * an explicit `kody.id` set to match its leaf.
+ */
 function renamePackageJson(content: string, name: string) {
 	try {
 		const pkg = JSON.parse(content) as Record<string, unknown>
-		return `${JSON.stringify({ ...pkg, name }, null, '\t')}\n`
+		const kody = pkg.kody as Record<string, unknown> | undefined
+		const id = name.split('/').at(-1)
+		return `${JSON.stringify(
+			{
+				...pkg,
+				name,
+				...(kody && typeof kody === 'object' && 'id' in kody
+					? { kody: { ...kody, id } }
+					: {}),
+			},
+			null,
+			'\t',
+		)}\n`
 	} catch {
 		return content
 	}

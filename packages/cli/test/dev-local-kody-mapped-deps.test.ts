@@ -108,11 +108,15 @@ test(
 		const appRoot = join(scratch, 'app')
 		const tokenSource = (version: string) =>
 			`export function token() {\n\treturn 'token ${version}'\n}\n`
-		// The dep's own package.json name differs from the name it is mapped
-		// under, like a checkout of someone else's package.
+		// The dep's own package.json name and kody.id differ from the name it
+		// is mapped under, like a checkout of someone else's package.
 		await writeTree(
 			join(scratch, 'token'),
-			packageFiles({ name: '@upstream/token', source: tokenSource('v1') }),
+			packageFiles({
+				name: '@upstream/tokens',
+				extra: { id: 'tokens' },
+				source: tokenSource('v1'),
+			}),
 		)
 		await writeTree(
 			join(scratch, 'auth'),

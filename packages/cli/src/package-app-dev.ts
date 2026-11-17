@@ -669,9 +669,15 @@ export async function startPackageAppDev(
 				}
 			}
 			await trackInputs()
-			// A mapped local dep edit leaves the bundle as is but still has to be
-			// saved into the local Kody.
-			const depChanged = files.some((file) => depFiles.includes(file))
+			// A mapped local dep or dep map edit leaves the bundle as is but still
+			// has to be saved into the local Kody.
+			const depChanged =
+				options.localKody !== undefined &&
+				files.some(
+					(file) =>
+						depFiles.includes(file) ||
+						file === options.manifest.packageJsonPath,
+				)
 			if (
 				active &&
 				!buildFailure &&
@@ -696,9 +702,13 @@ export async function startPackageAppDev(
 				}
 				return
 			}
-			const generation = await startGeneration(bundle, client)
-			// The sync may have found a new set of mapped local dep files.
-			if (options.localKody) await trackInputs()
+			let generation: Generation
+			try {
+				generation = await startGeneration(bundle, client)
+			} finally {
+				// The sync may have found a new set of mapped local dep files.
+				if (options.localKody) await trackInputs()
+			}
 			if (closed) {
 				await stopGeneration(generation)
 				return

@@ -29,7 +29,7 @@ import {
 type LocalDepMap = Record<string, string>
 
 /** Relative path for the optional local-deps map file. */
-const localDepsRelativePath = '.kody/deps.json'
+export const localDepsRelativePath = '.kody/deps.json'
 
 /**
  * Parse `kody:@scope/name/export` → `{ packageName: '@scope/name', exportKey }`.
