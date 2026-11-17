@@ -499,6 +499,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: ['id'],
 	},
 	{
+		operationId: 'executionContextShellSuggestions',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/shell-suggestions',
+		pathParamNames: ['id'],
+	},
+	{
 		operationId: 'executionContextUpdate',
 		method: 'PATCH',
 		pathTemplate: '/v1/execution-contexts/{id}',

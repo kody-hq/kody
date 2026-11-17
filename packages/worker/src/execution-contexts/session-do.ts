@@ -2500,6 +2500,33 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * The newest shell commands in the audit log, for suggesting what to
+	 * narrow an unrestricted shell to. Named commands are left out.
+	 */
+	async listShellCommands(input: { orgId: string; limit: number }) {
+		this.#pruneHistory(Date.now())
+		const limit = Math.min(2000, Math.max(1, input.limit))
+		const rows = this.ctx.storage.sql
+			.exec<{ at: number; detail_json: string }>(
+				`SELECT at, detail_json FROM audit
+				 WHERE event = 'command_started' AND org_id = ?1
+				   AND detail_json IS NOT NULL AND json_valid(detail_json)
+				   AND json_extract(detail_json, '$.capability') IS NULL
+				 ORDER BY id DESC LIMIT ?2`,
+				input.orgId,
+				limit + 1,
+			)
+			.toArray()
+		return {
+			rows: rows.slice(0, limit).map((row) => ({
+				at: new Date(row.at).toISOString(),
+				detailJson: row.detail_json,
+			})),
+			more: rows.length > limit,
+		}
+	}
+
 	async purgeRequester(input: { userId: string }) {
 		this.ctx.storage.sql.exec(
 			`DELETE FROM history WHERE requester_user_id = ?`,

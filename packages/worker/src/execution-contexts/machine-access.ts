@@ -23,7 +23,8 @@ import {
 	loadVisibleContext,
 	recordContextAudit,
 } from './service.ts'
-import { canManageContext, parseGrant } from './store.ts'
+import { readShellCommandUse, summarizeShellUse } from './shell-suggestions.ts'
+import { canManageContext, parseGrant, sessionStub } from './store.ts'
 
 /** The kinds that can be shared. The shell and host folders stay with the operator. */
 export const shareableMachineCapabilityKinds = ['command', 'lan'] as const
@@ -612,5 +613,58 @@ export async function setMachineAccessPackages(
 		id: row.id,
 		canGrant: true,
 		capabilities: await loadMachineAccess(caller, row.id, manages),
+	}
+}
+
+/** How many of the newest shell commands a suggestion is built from. */
+const shellSuggestionCommands = 1000
+
+/**
+ * What the unrestricted shell was used for in this org, from the audit log
+ * (kept 30 days), as a starting point for narrowing it. Operator only: it
+ * quotes command text, and only the operator can act on it.
+ */
+export async function suggestShellNarrowing(
+	caller: ExecutionContextCaller,
+	ref: string,
+) {
+	const { row, access } = await loadVisibleContext(caller, ref)
+	if (!access.isOperator) {
+		throw new ExecutionContextError({
+			status: 403,
+			code: 'not_granted',
+			message: `Only ${row.name}'s operator can see what its shell was used for.`,
+		})
+	}
+	const page = await sessionStub(caller.env, row.id).listShellCommands({
+		orgId: caller.orgId,
+		limit: shellSuggestionCommands,
+	})
+	const uses = page.rows.flatMap((use) => readShellCommandUse(use) ?? [])
+	const summary = summarizeShellUse(uses)
+	const names = await loadPackageNames(
+		caller.env.APP_DB,
+		caller.orgId,
+		summary.packages.map((entry) => entry.packageId),
+	)
+	const named = (id: string) => ({ id, name: names.get(id) ?? id })
+	return {
+		id: row.id,
+		shellOn: parseGrant(row).commands?.enabled === true,
+		commands: uses.length,
+		from: uses.at(-1)?.at ?? null,
+		to: uses[0]?.at ?? null,
+		/** Older commands exist beyond the ones counted here. */
+		more: page.more,
+		adHocCommands: summary.adHocCommands,
+		packages: summary.packages.map(({ packageId, ...seen }) => ({
+			...named(packageId),
+			...seen,
+		})),
+		programs: summary.programs.map(({ packageIds, ...seen }) => ({
+			...seen,
+			packages: packageIds.map(named),
+		})),
+		morePrograms: summary.morePrograms,
 	}
 }

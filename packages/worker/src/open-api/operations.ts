@@ -639,6 +639,11 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'executionContextMachineAccessPackagesSet',
 		],
 		[
+			'GET',
+			'/v1/execution-contexts/{id}/shell-suggestions',
+			'executionContextShellSuggestions',
+		],
+		[
 			'POST',
 			'/v1/execution-contexts/{id}/attachments',
 			'executionContextAttach',

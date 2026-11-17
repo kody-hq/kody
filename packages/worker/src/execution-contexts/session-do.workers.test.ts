@@ -1532,3 +1532,26 @@ test('control requests round-trip over the signed socket, and fail fast when the
 		code: 'daemon_timeout',
 	})
 })
+
+test('shell commands are listed newest first for one org, without named commands', async () => {
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName('ec_shell_use'),
+	)
+	const started = (orgId: string, detail: Record<string, unknown>) =>
+		stub.recordAudit({ event: 'command_started', orgId, detail })
+	await started('org_a', { command: 'ls' })
+	await started('org_a', { command: 'kdocker', capability: 'kdocker' })
+	await started('org_b', { command: 'whoami' })
+	await started('org_a', { command: 'docker ps', entryPackageIds: ['pkg_1'] })
+	await stub.recordAudit({ event: 'command_finished', orgId: 'org_a' })
+
+	const all = await stub.listShellCommands({ orgId: 'org_a', limit: 10 })
+	expect(all.more).toBe(false)
+	expect(all.rows.map((row) => JSON.parse(row.detailJson).command)).toEqual([
+		'docker ps',
+		'ls',
+	])
+	const first = await stub.listShellCommands({ orgId: 'org_a', limit: 1 })
+	expect(first.rows).toHaveLength(1)
+	expect(first.more).toBe(true)
+})

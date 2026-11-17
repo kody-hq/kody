@@ -172,10 +172,19 @@ type ExecutionContextBoxEntry = {
 	resource: string | null
 }
 
+/** What the unrestricted shell was used for, from the audit log. */
+export type ExecutionContextShellUse = {
+	commands: number
+	adHocCommands: number
+	packages: Array<{ id: string; name: string; commands: number }>
+	programs: Array<{ program: string; commands: number; needShell: number }>
+	morePrograms: number
+}
+
 export type ExecutionContextListItem = {
 	/** The viewer's own excess-access notice (ADR 0096). */
 	/** The operator's undismissed notice that the shell has no package list. */
-	openShell?: { fingerprint: string }
+	openShell?: { fingerprint: string; use?: ExecutionContextShellUse }
 	elevation?: {
 		fingerprint: string
 		dismissed: boolean

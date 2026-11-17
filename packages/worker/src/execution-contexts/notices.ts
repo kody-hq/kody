@@ -435,7 +435,7 @@ export function noticePayload(
 			contextId: notice.contextId,
 			contextName: notice.contextName,
 			fingerprint: notice.fingerprint,
-			summary: `${notice.contextName} gives your runs an unrestricted shell, including every package you wrote or adopted. Limit the shell to listed packages with executionContextMachineAccessPackagesSet, or define named commands on the machine and turn the shell off there. To keep the shell as it is, dismiss this notice.`,
+			summary: `${notice.contextName} gives your runs an unrestricted shell, including every package you wrote or adopted. Limit the shell to listed packages with executionContextMachineAccessPackagesSet, or define named commands on the machine and turn the shell off there. executionContextShellSuggestions lists the packages and programs that used the shell, from its audit log. To keep the shell as it is, dismiss this notice.`,
 			href,
 			dismissible: true,
 		}

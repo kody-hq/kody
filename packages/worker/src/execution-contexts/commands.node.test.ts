@@ -10,6 +10,7 @@ import {
 	grantMachineAccess,
 	listMachineAccess,
 	setMachineAccessPackages,
+	suggestShellNarrowing,
 	revokeMachineAccess,
 } from './machine-access.ts'
 import {
@@ -1562,4 +1563,66 @@ test('a person gives their own profile a named command they can use, capped by i
 	await revokeMachineAccess(friend, 'ec_mac', grantOf('prf_friend')!)
 	expect(grantOf('prf_friend')).toBeUndefined()
 	expect(grantOf('prf_agent')).toBeDefined()
+})
+
+test('the operator sees which packages and programs used the shell, and nobody else does', async () => {
+	const s = setup()
+	savePackage(s, 'pkg_own', orgId)
+	const asked: Array<unknown> = []
+	const session = (
+		s.env.EXECUTION_CONTEXT_SESSION as unknown as {
+			get: () => Record<string, unknown>
+		}
+	).get()
+	session.listShellCommands = async (input: unknown) => {
+		asked.push(input)
+		const row = (at: string, detail: Record<string, unknown>) => ({
+			at,
+			detailJson: JSON.stringify(detail),
+		})
+		return {
+			rows: [
+				row('2026-11-03T00:00:00.000Z', {
+					command: 'docker restart plex',
+					entryPackageIds: ['pkg_own'],
+				}),
+				row('2026-11-02T00:00:00.000Z', {
+					command: 'docker ps | grep plex',
+					entryPackageIds: ['pkg_elsewhere'],
+				}),
+				row('2026-11-01T00:00:00.000Z', { command: 'ls' }),
+			],
+			more: false,
+		}
+	}
+
+	await expect(
+		suggestShellNarrowing(s.callerFor('user_friend'), 'ec_mac'),
+	).rejects.toMatchObject({ code: expect.stringMatching(/not_/) })
+	expect(asked).toEqual([])
+
+	const result = await suggestShellNarrowing(s.callerFor(operator), 'ec_mac')
+	expect(asked).toEqual([{ orgId, limit: 1000 }])
+	expect(result).toMatchObject({
+		id: 'ec_mac',
+		commands: 3,
+		from: '2026-11-01T00:00:00.000Z',
+		to: '2026-11-03T00:00:00.000Z',
+		more: false,
+		adHocCommands: 1,
+		// A package another org owns stays an id.
+		packages: [
+			{ id: 'pkg_elsewhere', name: 'pkg_elsewhere', commands: 1 },
+			{ id: 'pkg_own', name: '@acme/pkg_own', commands: 1 },
+		],
+	})
+	expect(result.programs[0]).toMatchObject({
+		program: 'docker',
+		commands: 2,
+		needShell: 1,
+		packages: [
+			{ id: 'pkg_elsewhere', name: 'pkg_elsewhere' },
+			{ id: 'pkg_own', name: '@acme/pkg_own' },
+		],
+	})
 })
