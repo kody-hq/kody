@@ -24,6 +24,7 @@ import {
 import {
 	buildOriginProductionViteBundle,
 	findOriginViteDeferredAssets,
+	findTwoByteOriginServerModules,
 } from './origin-vite-startup-build.ts'
 import {
 	reportStartupBundleOverages,
@@ -374,6 +375,31 @@ function assertOriginViteDeferredChunks(
 	}
 }
 
+async function assertOriginViteModulesStayOneByte(
+	build: { entryPath: string; assetsDir: string },
+	assetNames: ReadonlyArray<string>,
+	name: string,
+) {
+	const modulePaths = [
+		build.entryPath,
+		...assetNames
+			.filter((assetName) => assetName.endsWith('.js'))
+			.map((assetName) => path.join(build.assetsDir, assetName)),
+	]
+	const modules = await Promise.all(
+		modulePaths.map(async (modulePath) => ({
+			name: path.basename(modulePath),
+			source: await readFile(modulePath, 'utf8'),
+		})),
+	)
+	const twoByteModules = findTwoByteOriginServerModules(modules)
+	if (twoByteModules.length > 0) {
+		throw new Error(
+			`${name} Vite server build emitted ${twoByteModules.length} module(s) with characters above U+00FF. workerd keeps every module source on the isolate heap and V8 stores these at two bytes per character, which is what pushed the shared jobs isolate into "Worker exceeded memory limit". Keep the SSR codegen ASCII-only in vite.config.ts. Offenders: ${twoByteModules.slice(0, 10).join(', ')}`,
+		)
+	}
+}
+
 async function inspectViteOriginStartupBundle(
 	definition: StartupBundleDefinition,
 	outputRoot: string,
@@ -389,6 +415,7 @@ async function inspectViteOriginStartupBundle(
 	const sources = readSourceMapSources(sourceMapText, definition.name)
 	assertDeferredSourcesStayOutOfMain(definition, sources)
 	assertOriginViteDeferredChunks(assetNames, definition.name)
+	await assertOriginViteModulesStayOneByte(build, assetNames, definition.name)
 	return {
 		name: definition.name,
 		size,
