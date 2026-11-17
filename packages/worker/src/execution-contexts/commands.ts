@@ -388,8 +388,8 @@ async function authorizeWholeNetwork(
  * allows. Folders predate machine capabilities, so this hop requires a live
  * `fs` row (otherwise `machine_capability_off`). The default package rule and
  * a missing `kody.machine` declaration are only logged
- * (`wouldBlockPackageIds`, `undeclaredPackageIds`); a list the operator set
- * is enforced.
+ * (`wouldBlockPackageIds`, `undeclaredPackageIds`); a non-empty list the
+ * operator set is enforced. An empty list uses the default rule.
  */
 export async function authorizeContextFolder(
 	ctx: ApiInvocationContext,
