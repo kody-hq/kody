@@ -150,7 +150,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
         run: |
-          npm run dist:release --workspace @kodycodes/desktop -- --mac --${{ matrix.arch }} --dir
+          node packages/desktop/scripts/release-retry.cjs --mac-packaging npm run dist:release --workspace @kodycodes/desktop -- --mac --${{ matrix.arch }} --dir
           if [ "$KODY_DESKTOP_ARCH" = arm64 ]; then bundle=artifacts/desktop/mac-arm64/Kody.app; else bundle=artifacts/desktop/mac/Kody.app; fi
           echo "KODY_MAC_APP=$PWD/$bundle" >> "$GITHUB_ENV"
       # Notarize, staple, and package are separate steps so an Apple network
@@ -178,7 +178,8 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.DESKTOP_APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.DESKTOP_APPLE_API_ISSUER }}
         run:
-          npm run dist:release --workspace @kodycodes/desktop -- --mac --${{
+          node packages/desktop/scripts/release-retry.cjs --mac-packaging npm
+          run dist:release --workspace @kodycodes/desktop -- --mac --${{
           matrix.arch }} --prepackaged "$KODY_MAC_APP"
       - name: Build signed installers
         if: runner.os != 'macOS'
