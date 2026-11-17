@@ -57,7 +57,10 @@ test('0020 leaves other apps, other owners, and longer leaves alone', async () =
 		].join('\n'),
 	}
 	const result = await packageAppHostUrlsCodemod.transform(files, context)
-	expect(result.changed).toBe(false)
+	expect(result.files['src/links.ts']).toBe(files['src/links.ts'])
+	expect(result.files['src/links.ts']).toContain(
+		"'https://alice.kody.run/podium/aie'",
+	)
 	expect(result.needsManual).toEqual([])
 })
 
@@ -114,7 +117,9 @@ test('0020 skips packages with no app, profile packages, and names with no valid
 		{ 'package.json': JSON.stringify({ name: '@alice/notes' }), ...source },
 		context,
 	)
-	expect(noApp.changed).toBe(false)
+	expect(noApp.files['src/a.ts']).toBe(source['src/a.ts'])
+	expect(noApp.files['src/a.ts']).toContain("'https://alice.kody.run/notes'")
+	expect(noApp.needsManual).toEqual([])
 	for (const packageName of ['@alice/alice', '@alice/xn']) {
 		const result = await packageAppHostUrlsCodemod.transform(
 			{
@@ -126,7 +131,8 @@ test('0020 skips packages with no app, profile packages, and names with no valid
 			},
 			{ packageName },
 		)
-		expect(result.changed).toBe(false)
+		expect(result.files['src/a.ts']).toBe(source['src/a.ts'])
+		expect(result.files['src/a.ts']).toContain("'https://alice.kody.run/notes'")
 		expect(result.needsManual).toEqual([])
 	}
 })

@@ -129,27 +129,22 @@ test('a package with more bundles than one call reads spans pages without losing
 		b: { bundles: 7, reads: 1 },
 		c: { bundles: 1, reads: 0 },
 	})
-	const bPages = pages.filter((page) =>
-		page.packages.some((entry) => entry.packageId === 'b'),
-	)
-	expect(bPages.length).toBeGreaterThan(1)
-	const partialIds = [
-		...new Set(
-			pages.flatMap((page) =>
-				page.packages
-					.filter((entry) => entry.partial)
-					.map((entry) => entry.packageId),
-			),
-		),
-	]
-	expect(partialIds).toEqual(['b'])
-	expect(
-		bPages.flatMap((page) =>
+	const scanned = (packageId: string) =>
+		pages.flatMap((page) =>
 			page.packages
-				.filter((entry) => entry.packageId === 'b')
-				.map((entry) => entry.partial),
-		),
-	).toEqual(bPages.map(() => true))
+				.filter((entry) => entry.packageId === packageId)
+				.map((entry) => ({
+					bundles: entry.bundles,
+					partial: entry.partial ?? false,
+				})),
+		)
+	expect(scanned('b')).toEqual([
+		{ bundles: 1, partial: true },
+		{ bundles: 3, partial: true },
+		{ bundles: 3, partial: true },
+	])
+	expect(scanned('a')).toEqual([{ bundles: 2, partial: false }])
+	expect(scanned('c')).toEqual([{ bundles: 1, partial: false }])
 	expect(pages.at(-1)?.nextCursor).toBeNull()
 })
 

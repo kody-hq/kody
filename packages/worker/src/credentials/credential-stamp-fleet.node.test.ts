@@ -229,15 +229,12 @@ test('credential stamp fleet dry-run classifies stamped, needs_manifest, and unc
 		'skipped_unpublished',
 	])
 	expect(result.unconvertibleFailureCodes).toContain('non_literal')
-	const unconvertible = result.outcomes.find(
-		(row) => row.outcome === 'unconvertible',
-	)
-	expect(unconvertible?.outcome).toBe('unconvertible')
-	if (unconvertible?.outcome === 'unconvertible') {
-		expect(unconvertible.blockingFailureCodes).toContain('non_literal')
-		expect(unconvertible.blockingFailures.length).toBeGreaterThan(0)
-		expect(unconvertible.blockingFailures[0]?.code).toBe('non_literal')
-	}
+	expect(result.outcomes.find((row) => row.packageId === 'bad')).toMatchObject({
+		packageName: '@acme/bad',
+		outcome: 'unconvertible',
+		blockingFailureCodes: expect.arrayContaining(['non_literal']),
+		blockingFailures: [expect.objectContaining({ code: 'non_literal' })],
+	})
 	expect(storeStamp).not.toHaveBeenCalled()
 })
 

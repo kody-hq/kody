@@ -102,12 +102,8 @@ vi.mock('./subscription-events.ts', () => ({
 		mocks.dispatchPackageCodemodSubscriptionEvent,
 }))
 
-const {
-	buildPackageCodemodRevertSnapshotKvKey,
-	operatorExcludedFinding,
-	runPackageCodemodStep,
-	unfinishedAttemptsError,
-} = await import('./engine.ts')
+const { buildPackageCodemodRevertSnapshotKvKey, runPackageCodemodStep } =
+	await import('./engine.ts')
 
 const codemodId = '0001-ambient-storage-to-package-storage'
 const userScope = {
@@ -510,7 +506,14 @@ test('package codemod engine covers lifecycle, drift, isolation, snapshot keys, 
 	})
 	expect(excluded.items[0]).toMatchObject({
 		status: 'needs_manual',
-		findings: [operatorExcludedFinding],
+		findings: [
+			{
+				path: null,
+				message: expect.stringContaining(
+					'Excluded from this run by the operator',
+				),
+			},
+		],
 	})
 	expect(mocks.runRepoChecks).not.toHaveBeenCalled()
 	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
@@ -782,7 +785,8 @@ test('apply writes only changed files on top of the current commit, never the wh
 		editPaths: Array<string>
 		destructiveOverwriteConfirmed?: boolean
 	}
-	expect(call.editPaths).toEqual(apply.items[0]!.changedPaths)
+	expect(call.editPaths).toEqual(['index.ts'])
+	expect(apply.items[0]!.changedPaths).toEqual(['index.ts'])
 	expect(call.editPaths).not.toContain('public/icon.png')
 	expect(call.editPaths).not.toContain('public/font.woff2')
 	expect(call.files['public/icon.png']).toBe(png)
@@ -877,12 +881,22 @@ test('a continuation step may widen excludePackageIds to step past a package', a
 		expect.objectContaining({
 			packageId: 'pkg-b',
 			status: 'needs_manual',
-			findings: [operatorExcludedFinding],
+			findings: [
+				{
+					path: null,
+					message: expect.stringContaining('handle this package manually'),
+				},
+			],
 		}),
 		expect.objectContaining({
 			packageId: 'pkg-c',
 			status: 'needs_manual',
-			findings: [operatorExcludedFinding],
+			findings: [
+				{
+					path: null,
+					message: expect.stringContaining('handle this package manually'),
+				},
+			],
 		}),
 	])
 	const run = await getPackageCodemodRunById(env.APP_DB, first.runId)
@@ -1688,7 +1702,9 @@ test('a package whose earlier attempts never finished is recorded as failed and 
 	expect(result.items[0]).toMatchObject({
 		status: 'failed',
 		packageId: pkg.id,
-		error: unfinishedAttemptsError,
+		error: expect.stringContaining(
+			'earlier attempts on this package did not finish',
+		),
 	})
 	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
 	const attemptKey = `package-codemod-attempt:${result.runId}:${pkg.id}`
