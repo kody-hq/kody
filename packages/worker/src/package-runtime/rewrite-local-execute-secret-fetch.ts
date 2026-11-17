@@ -148,12 +148,12 @@ export async function collectTopLevelFetchCollisionNames(
 	}
 }
 
-/**
- * Shadow module-local `fetch` with a CapabilityProxy gateway hop when the
- * name is free. No-op when the hop is already present or `fetch` is already
- * bound (avoids duplicate-declaration SyntaxError under --local).
- */
 const globalObjectNames = new Set(['globalThis', 'self'])
+
+/** Cheap text check that runs before parsing. */
+export function sourceMayReadFetchThroughGlobalObject(source: string) {
+	return /\b(?:globalThis|self)\b/.test(source) && source.includes('fetch')
+}
 
 /**
  * Replace reads of `globalThis.fetch` / `self.fetch` with `replacement`, so
@@ -164,11 +164,6 @@ const globalObjectNames = new Set(['globalThis', 'self'])
  * read through another name for the global object. Returns the source
  * unchanged when it does not parse.
  */
-/** Cheap text check that runs before parsing. */
-export function sourceMayReadFetchThroughGlobalObject(source: string) {
-	return /\b(?:globalThis|self)\b/.test(source) && source.includes('fetch')
-}
-
 export async function rewriteGlobalObjectFetchReads(
 	source: string,
 	replacement: string,
@@ -273,6 +268,11 @@ export function collectMemberWriteStarts(parsed: ModuleAstNode) {
 	return starts
 }
 
+/**
+ * Shadow module-local `fetch` with a CapabilityProxy gateway hop when the
+ * name is free. No-op when the hop is already present or `fetch` is already
+ * bound (avoids duplicate-declaration SyntaxError under --local).
+ */
 export async function injectLocalExecuteGatewayFetchBinding(input: {
 	modulePath: string
 	source: string

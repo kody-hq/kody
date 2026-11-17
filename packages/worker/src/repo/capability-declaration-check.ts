@@ -30,7 +30,11 @@ type CapabilityDeclarationFinding =
 /** Publish waits at most this long for the closure walk; it never blocks. */
 const closureBudgetMs = 5_000
 
-/** `kody.capabilities` plus, for an app, `kody.app.capabilities`. */
+/**
+ * Declared capabilities for this package's own modules: `kody.app.capabilities`
+ * for an app, else `kody.capabilities` (see `declaredCapabilitiesOf`). Never
+ * both.
+ */
 export function declaredPackageCapabilities(
 	manifest: Pick<AuthoredPackageJson, 'kody'>,
 ) {
@@ -70,11 +74,12 @@ export async function findCapabilityDeclarationGaps(input: {
 }
 
 /**
- * The package's effective capabilities: its own declaration plus the
- * declarations of every package its static imports reach (ADR 0089), and the
- * closure calls that set does not cover. The runtime still caps an app to
- * `kody.app.capabilities` alone, so for an app imported needs count only once
- * that list holds them.
+ * The package's own declaration plus the declarations of every package its
+ * static imports reach (ADR 0089), and the closure calls that set does not
+ * cover. For an app, this check still asks `kody.app.capabilities` to list
+ * imported needs. The running app already unions bundled dependency
+ * declarations (`effectivePackageAppCapabilities`); older bundles that never
+ * recorded those declarations still use the app's list alone.
  */
 export async function computeCapabilityClosure(input: {
 	manifest: Pick<AuthoredPackageJson, 'kody' | 'name'>
