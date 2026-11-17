@@ -189,6 +189,9 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		['CREATE TABLE skills (id TEXT)', false],
 		['SELECT 1; CREATE TABLE skills (id TEXT)', false],
 		['', false],
+		['/* newest first */ SELECT 1', true],
+		['-- newest first\nselect 1', true],
+		['/* select */ DELETE FROM skills', false],
 	]
 	expect(
 		readOnlyCases.filter(
@@ -209,6 +212,8 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		["WITH c AS (SELECT 'insert' AS label) SELECT label FROM c", false],
 		['WITH c AS (SELECT 1) /* insert */ SELECT 1', false],
 		['CREATE TABLE snapshot AS SELECT * FROM source', false],
+		["WITH c AS (SELECT 'a' AS v) SELECT replace(v, 'a', 'b') FROM c", false],
+		['WITH s AS (SELECT 1 AS i) REPLACE INTO t SELECT i FROM s', true],
 	]
 	const writeCases: Array<[string, boolean]> = [
 		['CREATE TABLE snapshot AS SELECT * FROM source', true],
@@ -218,6 +223,8 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		['SELECT created FROM t', false],
 		['WITH create AS (SELECT 1) SELECT * FROM create', false],
 		['WITH drop AS (SELECT 1 AS alter) SELECT alter FROM drop', false],
+		["WITH c AS (SELECT 'a' AS v) SELECT replace(v, 'a', 'b') FROM c", false],
+		['WITH s AS (SELECT 1 AS i) REPLACE INTO t SELECT i FROM s', true],
 	]
 	expect(
 		returningMutationCases.filter(
@@ -493,12 +500,13 @@ test('entitlement run cache drops a rejected baseline so later writes retry', as
 	expect(cache.reservedBytes).toBe(1)
 })
 
-test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write entitlement', async () => {
+test('only a single CREATE TABLE IF NOT EXISTS that stores no rows skips the write entitlement', async () => {
 	const { isIdempotentStorageSqlDdl, storageSqlNeedsWriteEntitlement } =
 		await import('./storage-runner.ts')
 	for (const query of [
 		'CREATE TABLE IF NOT EXISTS skills (id TEXT)',
 		'  create table if not exists notes (name text)',
+		'CREATE TABLE IF NOT EXISTS totals (a INTEGER, b INTEGER AS (a + 1))',
 	]) {
 		expect(isIdempotentStorageSqlDdl(query)).toBe(true)
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(false)
@@ -509,6 +517,9 @@ test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write en
 		'create index if not exists by_name on notes (name)',
 		'CREATE UNIQUE INDEX IF NOT EXISTS skills_id ON skills (id)',
 		'CREATE TABLE IF NOT EXISTS copy AS SELECT * FROM skills',
+		// VALUES stores rows without the word SELECT.
+		'CREATE TABLE IF NOT EXISTS copy AS VALUES (1), (2)',
+		'create table if not exists copy as with c (a) as (values (1)) values (2)',
 		'CREATE TABLE IF NOT EXISTS a (id TEXT); INSERT INTO a VALUES (1)',
 		'CREATE TRIGGER IF NOT EXISTS t AFTER INSERT ON a BEGIN SELECT 1; END',
 		'INSERT INTO skills (id) VALUES (1)',
@@ -517,4 +528,8 @@ test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write en
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(true)
 	}
 	expect(storageSqlNeedsWriteEntitlement('SELECT 1')).toBe(false)
+	// A comment before a read does not make it pay the entitlement fan-out.
+	expect(storageSqlNeedsWriteEntitlement('/* newest first */ SELECT 1')).toBe(
+		false,
+	)
 })

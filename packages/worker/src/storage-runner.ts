@@ -579,6 +579,7 @@ function hasMultipleSqlStatements(query: string) {
  * True when `query` is a single SELECT / EXPLAIN / schema PRAGMA that the
  * read-only storage.sql contract accepts. Mutating SQL (and multi-statement
  * batches) return false even when the caller passed `writable: true`.
+ * Comments before the statement do not change the answer.
  *
  * Used to skip the all-bucket storage-byte entitlement fan-out on pure reads:
  * `packageStorage().sql(...)` always marks calls writable so CREATE/INSERT
@@ -590,7 +591,7 @@ export function isReadOnlyStorageSqlQuery(query: string) {
 	if (!trimmed || hasMultipleSqlStatements(trimmed)) {
 		return false
 	}
-	const normalized = trimmed.toLowerCase()
+	const normalized = maskSqlLiteralsAndComments(trimmed).trim().toLowerCase()
 	return readOnlyStorageSqlPrefixes.some((prefix) =>
 		normalized.startsWith(prefix),
 	)
@@ -598,11 +599,14 @@ export function isReadOnlyStorageSqlQuery(query: string) {
 
 const idempotentStorageSqlDdlPattern = /^create\s+table\s+if\s+not\s+exists\b/
 
+const storageSqlCreateTableAsPattern = /^[^(]*\bas\b/
+
 /**
- * True for a single `CREATE TABLE … IF NOT EXISTS` without a `SELECT` (so
- * never `CREATE TABLE … AS SELECT`). Package apps run these on every new
- * isolate; a new table starts empty and adds only schema bytes, so they skip
- * the storage-byte entitlement baseline. Later writes are still metered.
+ * True for a single `CREATE TABLE … IF NOT EXISTS` with a column list (so
+ * never `CREATE TABLE … AS SELECT`, `AS VALUES`, or `AS WITH`, which store
+ * rows). Package apps run these on every new isolate; a new table starts
+ * empty and adds only schema bytes, so they skip the storage-byte entitlement
+ * baseline. Later writes are still metered.
  * `CREATE INDEX` is excluded: on a populated table it materializes rows.
  */
 export function isIdempotentStorageSqlDdl(query: string) {
@@ -611,7 +615,7 @@ export function isIdempotentStorageSqlDdl(query: string) {
 	const normalized = maskSqlLiteralsAndComments(trimmed).trim().toLowerCase()
 	return (
 		idempotentStorageSqlDdlPattern.test(normalized) &&
-		!/\bselect\b/.test(normalized)
+		!storageSqlCreateTableAsPattern.test(normalized)
 	)
 }
 
