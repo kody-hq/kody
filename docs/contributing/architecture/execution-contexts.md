@@ -339,7 +339,9 @@ Machine access narrows these powers per person, profile and package.
   `machine_need_undeclared`, which names the packages and the JSON to add.
   Packages an entry imports are not asked and do not declare for it; ad hoc code
   has nothing to declare. For host folders a missing declaration is only logged
-  (`undeclaredPackageIds` on `fs_used`).
+  (`undeclaredPackageIds` on `fs_used`) when a live `fs` row exists. With none,
+  `authorizeContextFolder` returns `machine_capability_off` before checking
+  declarations or writing `fs_used`; the daemon still allows the folder call.
 - A run reaches a named local network destination with a plain `fetch`. The
   egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
   `lan` entries in its policy. When the grant's egress mode would refuse a

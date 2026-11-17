@@ -385,10 +385,11 @@ async function authorizeWholeNetwork(
 
 /**
  * The daemon's hop the first time a run touches a host folder the machine
- * allows. Folders predate machine capabilities, so the default package rule
- * and a missing `kody.machine` declaration are only logged
- * (`wouldBlockPackageIds`, `undeclaredPackageIds`) until existing machines
- * are migrated; a list the operator set is enforced.
+ * allows. Folders predate machine capabilities, so this hop requires a live
+ * `fs` row (otherwise `machine_capability_off`). The default package rule and
+ * a missing `kody.machine` declaration are only logged
+ * (`wouldBlockPackageIds`, `undeclaredPackageIds`); a list the operator set
+ * is enforced.
  */
 export async function authorizeContextFolder(
 	ctx: ApiInvocationContext,

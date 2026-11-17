@@ -382,7 +382,10 @@ credential stamp (issue #3836) and **fails the build** on non-literal or
 unstampable patterns. This module yields a publish gate failure for `index.ts`
 (computed integration/secret names and `|scope=`). Literal `kody.mcp.linear` is
 reported by this codemod as `kody.mcp` and is stampable once a `kind: "mcp"`
-slot is declared; dynamic `kody.mcp[variable]` fails the stamp gate:
+slot is declared; dynamic `kody.mcp[variable]` in a scanned module fails the
+stamp gate. Modules over 256 KiB are omitted from those AST walks
+(`omitOversizedCredentialStampModules`) so prebuilt client bundles do not blow
+the Durable Object CPU budget:
 
 ```ts
 import { createAuthenticatedFetch, kody } from 'kody:runtime'
