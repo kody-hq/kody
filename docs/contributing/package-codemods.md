@@ -987,7 +987,19 @@ own `noticeId`), `cutoverDate`, and `reminderDate`.
   run reports them as `totals.outsideOnly`.
 - **Dry run.** `dryRun` defaults to `true` and returns `totals` (owners and apps
   per category, over the whole run), the owners on this page, and a preview of
-  the first email.
+  the first email. `totals.recipients.apps` counts every app the emails name,
+  including an emailed owner's apps that only have outside-request findings, so
+  it equals the sum of the owners' `apps` arrays over the whole run.
+- **Reminder.** The `package_app_host_migration_reminder` scheduled lane sends
+  the one reminder by itself. From 2026-12-03 00:00 UTC it runs a fresh fleet
+  scan, and from 15:00 UTC that day, once the scan is complete, it sends kind
+  `reminder` with notice id `host-migration-reminder`. Owners the fresh scan
+  finds clean get nothing. Progress lives in KV under
+  `package-app-host-migration-reminder:v1` (`scanRunId`, `done`, `sent`). A
+  failed send is retried on later ticks until the lane stops; writing
+  `done: true` there before December 3 cancels it. The lane stops on 2026-12-10
+  and only runs where `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED` is `true`
+  (production).
 - **Prompt.** One copy per email. With one listed app `{app}` is filled in; with
   several the owner replaces `{app}` per app.
 

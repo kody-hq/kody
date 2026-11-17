@@ -179,6 +179,11 @@ Wrangler `var` (public and non-secret; required in production, optional in
 confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
 `packages/worker/src/app/package-app-origin.ts`):
 
+- `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED`: `true` lets the one-time
+  package app host migration reminder (December 3, 2026) scan and send. Set in
+  production only, in `packages/worker/wrangler.jsonc`; anywhere else the
+  `package_app_host_migration_reminder` lane does nothing. See
+  [package codemods](./package-codemods.md).
 - `PACKAGE_APP_BASE_URL` — the **apex** origin of the package-app domain that
   hosted package apps are served from. Production sets `https://kody.run` in
   `packages/worker/wrangler.jsonc`, and the deploy publishes **zone routes** for

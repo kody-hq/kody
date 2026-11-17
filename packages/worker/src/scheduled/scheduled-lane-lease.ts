@@ -10,6 +10,8 @@ export const scheduledLaneLeaseMs: Partial<Record<ScheduledLaneName, number>> =
 	{
 		// Lane budget (60s) plus one source deadline (45s), with headroom.
 		reconcile_artifacts_pushes: 3 * 60_000,
+		// One tick at a time: 40s budget plus one slow scan or mail page.
+		package_app_host_migration_reminder: 4 * 60_000,
 	}
 
 export async function acquireScheduledLaneLease(

@@ -41,7 +41,10 @@ export type PackageOwnerNoticeStatus =
 	| 'already_sent'
 	| 'no_recipients'
 	| 'send_failed'
-	/** Delivered, but a claim write failed, so a re-run may email again. */
+	/**
+	 * Delivered to someone whose claim write failed, so a re-run may email them
+	 * again. Reported ahead of `send_failed` when both happen for one owner.
+	 */
 	| 'claim_failed'
 
 export type PackageOwnerNoticePackage = {
@@ -411,10 +414,10 @@ export async function noticeOneOwner(input: {
 	}
 	return {
 		status:
-			delivered < pending.length
-				? 'send_failed'
-				: claimFailures > 0
-					? 'claim_failed'
+			claimFailures > 0
+				? 'claim_failed'
+				: delivered < pending.length
+					? 'send_failed'
 					: 'sent',
 		recipientCount: delivered,
 	}

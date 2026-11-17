@@ -1,4 +1,5 @@
 import { pruneExpiredGuestAccounts } from '#worker/guest/guest-account-purge.ts'
+import { runPackageAppHostMigrationReminder } from '#worker/package-codemods/host-migration-reminder.ts'
 import { reconcileSecondAgentStandardGifts } from '#worker/entitlements/second-agent-gift-reconciliation.ts'
 import * as Sentry from '@sentry/cloudflare'
 import {
@@ -146,6 +147,11 @@ export async function runScheduledLane(input: {
 			})
 		case 'package_app_custom_hostnames_reconcile':
 			return reconcilePackageAppCustomHostnames({
+				env: input.env,
+				now: input.scheduledAt,
+			})
+		case 'package_app_host_migration_reminder':
+			return runPackageAppHostMigrationReminder({
 				env: input.env,
 				now: input.scheduledAt,
 			})
