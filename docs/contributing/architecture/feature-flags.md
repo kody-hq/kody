@@ -261,15 +261,16 @@ expected and more accurate**: they count the assignment the user saw, not each
 call site or each stateless request inside the window. A kill switch or override
 can be stale until the TTL expires. Evaluation failures are not cached and fail
 closed (every flag off) without an exposure write, and execute refuses before
-loading a worker, so the failure never spends daily quota. Flags with
-`exposureRecording: 'mcp-events-clients'` write only when an MCP client calls an
-`events/*` method, so other MCP callers stay outside that experiment frame.
-Flags with `exposureRecording: 'repo-push-owners'` (`repo-push-queue`) write
-only from the plain-repo git proxy, once per push, for the repo owner. The write
-path mirrors usage metering — the `FLAG_EXPOSURES` Analytics Engine dataset in
-production/preview, the D1 `feature_flag_exposure_rollups` table (migration
-`0001-squashed-init.sql`, 90-day retention) in local dev and tests — and never
-throws.
+loading a worker, carrying the underlying D1 or evaluation error
+(`callerFeatureFlagEvaluationFailure`), so the failure never spends daily quota.
+Flags with `exposureRecording: 'mcp-events-clients'` write only when an MCP
+client calls an `events/*` method, so other MCP callers stay outside that
+experiment frame. Flags with `exposureRecording: 'repo-push-owners'`
+(`repo-push-queue`) write only from the plain-repo git proxy, once per push, for
+the repo owner. The write path mirrors usage metering — the `FLAG_EXPOSURES`
+Analytics Engine dataset in production/preview, the D1
+`feature_flag_exposure_rollups` table (migration `0001-squashed-init.sql`,
+90-day retention) in local dev and tests — and never throws.
 
 The assignment source (`default` / `global` / `rollout` / `override` / `org`) is
 what keeps the readout honest: `override` and `org` users are hand-picked and

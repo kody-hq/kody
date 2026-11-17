@@ -749,8 +749,9 @@ function mapPrepareFailure(
 
 /**
  * Local workerd supplies `kody:runtime` (CapabilityProxy bridge). Stamped
- * package moka published-bundle copies re-export one shim (and one relative hop to
- * host `kody:runtime`). Artifact-only graphs fall back to the shortest path.
+ * packages' published-bundle copies re-export one shim (and one relative hop
+ * to host `kody:runtime`). Artifact-only graphs fall back to the shortest
+ * path.
  */
 export function pickLocalExecutePrimaryRuntimePath(
 	paths: ReadonlyArray<string>,

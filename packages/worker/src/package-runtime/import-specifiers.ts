@@ -108,8 +108,8 @@ function moduleImportNodesCacheKey(
 
 /**
  * One Babel parse + one AST walk for both literal import sites and dynamic
- * `import()` expressions. Callers that previously parsed twice for rewrite
- * should use this (or {@link collectModuleImportNodesCached}) instead.
+ * `import()` expressions. Callers that need both kinds of nodes should use
+ * this (or {@link collectModuleImportNodesCached}).
  */
 export async function collectModuleImportNodes(
 	source: string,

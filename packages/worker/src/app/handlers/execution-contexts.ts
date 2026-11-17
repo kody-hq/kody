@@ -44,8 +44,8 @@ import {
 type AppUser = NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 
 /**
- * The capabilities the website calls. They ship in the execution contexts API
- * PR; until a deployment carries them, the page renders its feature-off view.
+ * The capabilities the website calls. If any name is missing from the
+ * registry, the page renders its feature-off view.
  */
 export const executionContextCapabilityNames = {
 	list: 'executionContextList',
@@ -278,7 +278,7 @@ function cursorText(value: unknown) {
 	return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-/** PR 2 returns `null` for deleted handles and org slugs; the page needs text. */
+/** Deleted handles and org slugs arrive as `null`; the page needs text. */
 export function normalizeContext(
 	value: unknown,
 ): ExecutionContextListItem | null {
@@ -367,7 +367,7 @@ export function normalizeRun(value: unknown): ExecutionContextRun | null {
 	}
 }
 
-/** PR 2 audit rows: `{ id, at, event, actor: { userId, handle } | null, detail }`. */
+/** Audit rows: `{ id, at, event, actor: { userId, handle } | null, detail }`. */
 export function normalizeAuditEvent(
 	value: unknown,
 ): ExecutionContextAuditPage['events'][number] | null {
