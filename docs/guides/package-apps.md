@@ -363,9 +363,9 @@ means an Owner of the owning org, which is the publisher only in a personal org.
   someone who did not ship that code.
 - Publishing never changes the person an Owner picked. That choice stays until
   an Owner changes it, whoever publishes.
-- Authority is capped twice: only the capabilities the app lists in
-  `kody.app.capabilities` run as that person, and only within what that person
-  may do in the org right now.
+- Authority is capped twice: only the capabilities the app may call (see the
+  next bullet) run as that person, and only within what that person may do in
+  the org right now.
 - The cap covers every Kody capability call made while the app runs, including
   calls made by packages the app imports. At run time an app may call what it
   listed in `kody.app.capabilities` plus what those imported packages declared
@@ -412,11 +412,13 @@ though its own code never calls them:
 }
 ```
 
-Without them the call fails with `PackageAppCapabilityNotDeclaredError`, which
-names the capability to add and, when known, the app (package name and version)
-and the imported package that made the call. Add it to the importing app's
-`kody.app.capabilities` and republish the app. For `credential.named`, declare
-the credential in `kody.credentials` and open it with `credential(key)` instead.
+If `@example/helper` does not declare them, or the app's bundle was built before
+dependencies recorded declarations, the call fails with
+`PackageAppCapabilityNotDeclaredError`, which names the capability to add and,
+when known, the app (package name and version) and the imported package that
+made the call. Add it to the importing app's `kody.app.capabilities` and
+republish the app. For `credential.named`, declare the credential in
+`kody.credentials` and open it with `credential(key)` instead.
 
 MCP server tools are declared one tool at a time as `mcp:<server>:<tool>`:
 `kody.mcp.home.court_get_status(input)` (or `kody.mcp['home'].court_get_status`)
