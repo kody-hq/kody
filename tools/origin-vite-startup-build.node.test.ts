@@ -5,6 +5,7 @@ import { expect, test } from 'vitest'
 import {
 	copyOriginViteBuildSnapshot,
 	findOriginViteDeferredAssets,
+	findTwoByteOriginServerModules,
 } from './origin-vite-startup-build.ts'
 
 test('classifies hashed Vite origin deferred assets', () => {
@@ -67,4 +68,16 @@ test('startup snapshot keeps the Vite client tree next to SSR wrangler.json', as
 		await rm(sourceRoot, { recursive: true, force: true })
 		await rm(outputRoot, { recursive: true, force: true })
 	}
+})
+
+test('flags server modules whose source V8 would store as two bytes per character', () => {
+	expect(
+		findTwoByteOriginServerModules([
+			{ name: 'index.js', source: 'const label="caf\u00e9"' },
+			{ name: 'guide-catalog-BKLgV76U.js', source: 'const arrow="\u2192"' },
+			{ name: 'account-area-Bk2HBZxv.js', source: 'const dash="\\u2014"' },
+			{ name: 'pele.global-DGzcz58A.js', source: 'var pele="\u2026"' },
+			{ name: 'json-preview.worker-BMF412N5.js', source: 'x="\u2026"' },
+		]),
+	).toEqual(['guide-catalog-BKLgV76U.js'])
 })
