@@ -37,8 +37,9 @@ type ForkAheadLinkProps = {
 }
 
 /**
- * Static HTML copy pill. Frames render it without hydration; the app copies
- * `data-copy-text` on click and swaps the tooltip.
+ * Copy pill. Ships in the server HTML with `data-copy-text` and the shared
+ * Tooltip (works before hydration). Click copies through the hydrated
+ * handler and swaps the tooltip to Copied.
  */
 export function renderCopyPromptPill(input: CopyPromptPillInput) {
 	return <CopyPromptPill {...input} />
@@ -166,11 +167,11 @@ const copyPromptButtonBaseCss = {
 } satisfies CSSObject
 
 /*
- * CSS hover/focus tooltip (same grammar as onboarding Copy prompt): a
- * top-layer popover would steal pointer events from neighboring pills.
- * `pointer-events: none` keeps the tip from becoming a hover target.
- * `z-index` lifts the control above a listing card's stretched name-link
- * overlay so the click hits the button instead of the card.
+ * Shared Badge box (`getBadgeCss`) plus the shared Tooltip. A top-layer
+ * popover would steal pointer events from neighboring pills; Tooltip never
+ * takes pointer events. `z-index` lifts the control above a listing card's
+ * stretched name-link overlay so the click hits the button instead of the
+ * card.
  */
 const forkOutdatedCopyButtonCss = mergeCss(
 	getBadgeCss('warning'),

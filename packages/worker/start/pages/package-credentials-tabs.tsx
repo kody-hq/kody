@@ -330,6 +330,7 @@ export function renderIncomplete(
 		</section>
 	)
 }
+/** Needs table (shared `Table`), incomplete mappings, and locked keys. */
 export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 	const { view, orgSlug } = context
 	const needs = sortNeedsByAttention(view.needs)

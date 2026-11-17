@@ -4094,9 +4094,10 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * Per-statement SqlStorageCursor.rowsRead / rowsWritten since this isolate
-	 * started, highest rows read first. In-isolate only; history lives in the
-	 * `run_log_sql_rows` log lines.
+	 * Per-statement SqlStorageCursor.rowsRead / rowsWritten since stats were
+	 * initialized or last reset (including `clearAll()`), highest rows read
+	 * first. In-isolate only; `run_log_sql_rows` is partial history (top ten
+	 * statements per flushed window; the final window may remain unflushed).
 	 */
 	async getSqlBillingStats(): Promise<RunLogSqlBillingStats> {
 		return {
@@ -4108,7 +4109,8 @@ class RunLogBase extends DurableObject<Env> {
 	/**
 	 * Content-free schema + SQL-plan snapshot for cost diagnosis. Counts and
 	 * planner text only — never run rows, logs, or other user-authored values.
-	 * Uses raw `sql.exec` so these one-off scans do not increment billing ops.
+	 * Uses raw `ctx.storage.sql.exec` so these one-off scans skip the wrapped
+	 * `sql` and do not increment per-statement counters or platform rows-read.
 	 * First RPC on a never-used account initializes the same empty schema as
 	 * any other RunLog read.
 	 */
