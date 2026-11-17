@@ -74,6 +74,7 @@ import {
 	type WorkflowProjectionUpsertInput,
 } from '#worker/run-records/service.ts'
 import { packageRunResultKey } from '#worker/repo/package-run-staging-keys.ts'
+import type { McpProgressUpdate } from '#mcp/progress.ts'
 import {
 	durablePackageCheckWorkflowCode,
 	packageCheckWorkflowName,
@@ -2422,6 +2423,22 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					packageContext: payload.packageContext,
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
 					runSurface: 'workflow',
+					// A durable publish reports its phases on the run, where
+					// workflowRunList shows them to whoever is polling.
+					...(isPublishWorkflow(payload) &&
+					isDurablePublishWorkflowCode(payload.code)
+						? {
+								reportProgress: async (update: McpProgressUpdate) => {
+									if (!update.message) return
+									await setWorkflowProjectionProgress({
+										env: this.env,
+										userId: payload.userId,
+										id: instanceId,
+										progress: { phase: 'publish', message: update.message },
+									})
+								},
+							}
+						: {}),
 				},
 			)
 			logs = result.logs

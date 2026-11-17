@@ -74,6 +74,12 @@ vi.mock('#worker/run-records/service.ts', () => ({
 				},
 			]),
 		),
+	setWorkflowProjectionProgress: async (input: {
+		id: string
+		progress: unknown
+	}) => {
+		reportedRunProgress.push({ id: input.id, progress: input.progress })
+	},
 	releaseWorkflowProjectionIdempotencyKey: (...args: Array<unknown>) =>
 		runRecordMocks.releaseWorkflowProjectionIdempotencyKey(
 			...(args as [{ env: Env; userId: string; id: string }]),
@@ -153,6 +159,9 @@ function createWorkflowEnv(
 		},
 	} as unknown as Env
 }
+
+/** Progress runs reported on their workflow projection, in order. */
+const reportedRunProgress: Array<{ id: string; progress: unknown }> = []
 
 /** What runs wrote to R2 staging, by object key. */
 const storedRunResults = new Map<string, string>()
@@ -1197,10 +1206,30 @@ test('a durable publish run that did not publish fails once and still stores the
 		failed_checks: [{ kind: 'typecheck', ok: false, message: 'TS2345' }],
 		manifest: null,
 	}
-	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
-		result: refusal,
-		logs: [],
-	})
+	// The publish reports a phase while it runs, as the capability would.
+	reportedRunProgress.length = 0
+	invocationMocks.runModuleWithRegistry.mockImplementationOnce(
+		async (
+			...args: [
+				unknown,
+				unknown,
+				unknown,
+				unknown,
+				{
+					reportProgress?: (update: {
+						progress: number
+						message?: string
+					}) => Promise<void>
+				},
+			]
+		) => {
+			await args[4].reportProgress?.({
+				progress: 1,
+				message: 'Running publish checks.',
+			})
+			return { result: refusal, logs: [] }
+		},
+	)
 	await expect(
 		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
 			queuedPayload(binding, created.id),
@@ -1209,7 +1238,12 @@ test('a durable publish run that did not publish fails once and still stores the
 	).rejects.toThrow(
 		'packagePublishExternalPush returned checks_failed: typecheck: TS2345',
 	)
-	expect(invocationMocks.runModuleWithRegistry).toHaveBeenCalledTimes(1)
+	expect(reportedRunProgress).toEqual([
+		{
+			id: created.id,
+			progress: { phase: 'publish', message: 'Running publish checks.' },
+		},
+	])
 	expect(
 		JSON.parse(
 			storedRunResults.get(`package-runs/results/user-1/${created.id}.json`)!,
