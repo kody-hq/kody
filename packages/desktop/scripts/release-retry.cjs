@@ -54,6 +54,7 @@ const macPackagingTransientPatterns = [
 
 function classifyMacPackagingFailure(output) {
 	const text = String(output ?? '')
+	if (fatalPatterns.some((pattern) => pattern.test(text))) return 'fatal'
 	if (macPackagingTransientPatterns.some((pattern) => pattern.test(text)))
 		return 'transient'
 	return classifyFailure(text)

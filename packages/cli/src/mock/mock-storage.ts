@@ -249,7 +249,7 @@ async function withMockStoreLock<T>(
 			)
 			// A process that died mid-write leaves its lock behind.
 			if (heldMs > mockStoreStaleLockMs) {
-				await rm(lockPath, { force: true, maxRetries: 10 })
+				await retryWhileFileBusy(() => rm(lockPath, { force: true }))
 				continue
 			}
 			if (Date.now() > deadline) {
@@ -263,7 +263,7 @@ async function withMockStoreLock<T>(
 	try {
 		return await fn()
 	} finally {
-		await rm(lockPath, { force: true, maxRetries: 10 })
+		await retryWhileFileBusy(() => rm(lockPath, { force: true }))
 	}
 }
 

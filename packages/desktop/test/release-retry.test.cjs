@@ -124,6 +124,7 @@ test('Mac packaging retries codesign timestamp and dmg detach hiccups only', () 
 		assert.equal(classifyMacPackagingFailure(output), 'transient', output)
 	for (const output of [
 		'Kody.app: invalid signature (code or signature have been modified)',
+		'Kody.app: invalid signature\nesbuild.wasm: A timestamp was expected but was not found.',
 		'⨯ Cannot find module electron',
 		'',
 	])
