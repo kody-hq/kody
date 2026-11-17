@@ -298,7 +298,7 @@ export function UsernameChoiceField(props: {
 				required
 				autoFocus={props.autoFocus}
 				autoComplete="username"
-				placeholder="kent"
+				placeholder="yourname"
 				disabled={props.disabled}
 				value={props.value}
 				aria-invalid={props.invalid ? true : undefined}
