@@ -45,8 +45,10 @@ const storageSqlWriteVerbs = [
 	'alter',
 ] as const
 
+// `replace` is a statement only as `REPLACE INTO`; `replace(...)` is the
+// scalar function, which a pure read may call.
 const storageSqlReturningMutationVerbInWithPattern =
-	/(?:^|[^a-z0-9_])(?:insert|update|delete|replace)(?:[^a-z0-9_]|$)/
+	/(?:^|[^a-z0-9_])(?:insert|update|delete|replace\s+into)(?:[^a-z0-9_]|$)/
 
 /**
  * Replace comments and quoted literals with spaces so verb checks cannot see
