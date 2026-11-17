@@ -209,7 +209,10 @@ export async function runDurablePackageCheck(
 }
 
 /** An AbortSignal that fires on the first Ctrl-C (or SIGTERM), and its cleanup. */
-export function abortOnInterrupt() {
+export function abortOnInterrupt(): {
+	signal: AbortSignal
+	dispose: () => void
+} {
 	const controller = new AbortController()
 	const abort = () => controller.abort()
 	process.once('SIGINT', abort)
