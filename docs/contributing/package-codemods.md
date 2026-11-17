@@ -378,10 +378,14 @@ secret before the user one, and no static scan can see that, so `|scope=`
 findings undercount package-scoped buckets. Count those with the read-only
 `adminPackageScopedSecretReport` (live package-scope secrets by org and package)
 next to the 0010 fleet report. Publish seals literal credential uses into a
-credential stamp (issue #3836 phase 1) and **fails the build** on non-literal or
+credential stamp (issue #3836) and **fails the build** on non-literal or
 unstampable patterns. This module yields a publish gate failure for `index.ts`
-(computed integration/secret names and `|scope=`; `kody.mcp` is reported by this
-codemod but does not fail publish in phase 1):
+(computed integration/secret names and `|scope=`). Literal `kody.mcp.linear` is
+reported by this codemod as `kody.mcp` and is stampable once a `kind: "mcp"`
+slot is declared; dynamic `kody.mcp[variable]` in a scanned module fails the
+stamp gate. Modules over 256 KiB are omitted from those AST walks
+(`omitOversizedCredentialStampModules`) so prebuilt client bundles do not blow
+the Durable Object CPU budget:
 
 ```ts
 import { createAuthenticatedFetch, kody } from 'kody:runtime'
@@ -411,10 +415,11 @@ dependents; publish warnings name them. Callers pick which saved credential
 fills each slot with the execute `credentials` call map
 (`{ "SLOT": "credential-name" }` or CLI `--credential SLOT=name`) or a
 stored/trigger mapping — never choose the credential name at runtime inside
-package code. Literal `kody.mcp.SERVER` names are stamped as `kind: "mcp"` slots
-(phase 2); dynamic `kody.mcp[variable]` fails the stamp gate. The `kody.mcp`
-0010 label remains for migration tracking. `credential.named()` stays limited to
-ad hoc runs and unshared personal-org packages (not stamped).
+package code. Literal `kody.mcp.SERVER` names are stamped as `kind: "mcp"`
+slots; dynamic `kody.mcp[variable]` fails the stamp gate. The `kody.mcp` 0010
+label lists every `kody.mcp` access, including literals the stamp gate accepts.
+`credential.named()` stays limited to ad hoc runs and unshared personal-org
+packages (not stamped).
 
 Save each scan step result as its own JSON file, then print the report over all
 of them:
@@ -521,9 +526,9 @@ same filter must come back clean before the enforcement flag is turned on.
 
 ### `0014-seal-credential-stamps`
 
-Fleet seal for [issue #3836](https://github.com/kody-hq/kody/issues/3836)
-phase 2. Declares missing `kody.credentials` slots for every stampable literal
-use (`credential("KEY")`, placeholders, `createAuthenticatedFetch`, JWT signing
+Fleet seal for [issue #3836](https://github.com/kody-hq/kody/issues/3836).
+Declares missing `kody.credentials` slots for every stampable literal use
+(`credential("KEY")`, placeholders, `createAuthenticatedFetch`, JWT signing
 names, and literal `kody.mcp.SERVER` names) and fills an inferred description
 when the slot has none. Existing descriptions are never overwritten. Literal MCP
 servers get `kind: "mcp"`; OAuth / integration names get `kind: "oauth"`;

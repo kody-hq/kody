@@ -21,6 +21,7 @@ cloud.
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
 | Website Start functions (page, chain, daemon card, desktop setup)                         | `packages/worker/start/server/execution-contexts.ts`                                                        |
+| Website capability hops, page data, machine-access grants                                 | `packages/worker/src/app/handlers/execution-contexts.ts`                                                    |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
@@ -234,8 +235,7 @@ macOS host commands failing" issue.
 
 ### Machine access data model
 
-Machine access narrows these powers per person, profile and package. Only the
-data model exists so far; nothing reads it at run time yet.
+Machine access narrows these powers per person, profile and package.
 
 - `machine_capabilities` (migration `0276-machine-capabilities.sql`) holds one
   row per power a machine offers: kind `shell`, `command`, `lan` or `fs`, plus a
@@ -339,7 +339,9 @@ data model exists so far; nothing reads it at run time yet.
   `machine_need_undeclared`, which names the packages and the JSON to add.
   Packages an entry imports are not asked and do not declare for it; ad hoc code
   has nothing to declare. For host folders a missing declaration is only logged
-  (`undeclaredPackageIds` on `fs_used`) until the migration.
+  (`undeclaredPackageIds` on `fs_used`) when a live `fs` row exists. With none,
+  `authorizeContextFolder` returns `machine_capability_off` before checking
+  declarations or writing `fs_used`; the daemon still allows the folder call.
 - A run reaches a named local network destination with a plain `fetch`. The
   egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
   `lan` entries in its policy. When the grant's egress mode would refuse a
@@ -352,7 +354,6 @@ data model exists so far; nothing reads it at run time yet.
   is checked. The bridge re-reads local policy before each ask
   (`machineLanCovers`), so an entry narrowed or removed during a run stops
   working. Host names are never matched, so DNS rebinding cannot widen an entry.
-  The machine wide `grant.egress` LAN switch is unchanged until the migration.
 - Origin also accepts `fs` entries in a machine's report (one per host folder,
   summary: path and mode) and `kody.fs.authorize` with a folder's name
   (`authorizeContextFolder`). Folders predate machine capabilities, so that hop
@@ -367,8 +368,8 @@ data model exists so far; nothing reads it at run time yet.
   asks once per folder per run before the first call that uses it, and a write
   also asks for every allowed folder inside the path. A refusal fails that call
   with `EACCES` and is asked again on the next. `machine_capability_off` (Kody
-  has no row yet) lets the call through, since there is no list to enforce until
-  the migration. Run code cannot call `kody.fs.authorize` itself.
+  has no `fs` row yet) lets the call through, since there is no list to enforce.
+  Run code cannot call `kody.fs.authorize` itself.
 - The machine reports its definitions to Kody with
   `POST /v1/execution-contexts/capabilities`, signed with the context key like
   the host commands opt-in, so only the machine can add or widen one. It sends

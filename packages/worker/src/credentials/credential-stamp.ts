@@ -1,8 +1,9 @@
 /**
  * Build-time credential stamp (issue #3836): sealed allowlist of literal
- * credential keys a package may resolve, plus dependency stamp pins. Phase 1
- * sealed publish; phase 2 fleet-seals existing packages (mcp literals +
- * inferred descriptions). Runtime fail-closed enforcement is phase 3.
+ * credential keys a package may resolve, plus dependency stamp pins. Publish
+ * fails closed on non-literal or unstampable use. Fleet seal (`0014`) and
+ * convert (`0015`) fill missing slots and descriptions. A stored stamp limits
+ * every run of that package to its declared slots (ADR 0068, 2026-10-16).
  */
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
@@ -68,9 +69,10 @@ export const credentialStampFileName = 'credential-stamp.json'
  * Soft cap for AST-walking a single module during stamp seal. Larger
  * prebuilt client bundles (e.g. @kentcdodds/world-builder's ~1.7MB
  * `public/client/main.js`) reset the Durable Object CPU budget when parsed.
- * Client/prebuilt assets never resolve credentials server-side; skipping them
- * keeps publish and fleet restamp safe until the dedicated publish-path fix
- * (agent bc-58c7f5e0) lands. UTF-8 byte length.
+ * Client/prebuilt assets never resolve credentials server-side, so
+ * {@link omitOversizedCredentialStampModules} drops those modules from the
+ * AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * UTF-8 byte length.
  */
 export const credentialStampMaxModuleScanBytes = 256 * 1024
 
@@ -176,8 +178,8 @@ export type CredentialStampScan = {
 }
 
 /**
- * A slot the phase-2 seal codemod / backfill can write without overwriting an
- * existing description.
+ * A slot the `0014` seal codemod / stamp backfill can write without
+ * overwriting an existing description.
  */
 export type CredentialStampSealSlot = {
 	key: string
@@ -202,8 +204,8 @@ const packageManifestPath = 'package.json'
 
 /**
  * 0010 labels that cannot be sealed into a stamp allowlist. `kody.mcp` stays
- * off this list: phase 2 stamps literal server names and fails dynamic access
- * via {@link scanLiteralMcpServerKeys}. Non-literal names, `|scope=`,
+ * off this list: {@link scanLiteralMcpServerKeys} stamps literal server names
+ * and fails dynamic access. Non-literal names, `|scope=`,
  * packageSecrets.get, and plain http still fail closed. Manifest-only
  * `kody.secretMounts` is a compat finding: publish may keep it for stale
  * static dependents, and it does not fail this gate.
@@ -1531,8 +1533,8 @@ export function inferCredentialStampDescription(input: {
 }
 
 /**
- * Plan phase-2 seal updates: add missing slots / descriptions where inferable,
- * and list blocking failures / uninferable keys that need an agent or owner.
+ * Plan seal updates: add missing slots / descriptions where inferable, and
+ * list blocking failures / uninferable keys that need an agent or owner.
  */
 export async function planCredentialStampSeal(
 	files: Record<string, string>,
