@@ -1644,6 +1644,9 @@
 .feature-detail .story-section .fx-example {
 	margin-top: 18px;
 }
+.feature-detail .story-section p + h3 {
+	margin-top: 36px;
+}
 .feature-detail .fx-availability {
 	font-size: 14px;
 	color: var(--muted);
