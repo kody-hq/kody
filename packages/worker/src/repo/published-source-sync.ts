@@ -7,6 +7,8 @@ import {
 	hasArtifactsAccess,
 	isSnapshotOnlyArtifactsRemote,
 	resolveArtifactSourceRepo,
+	kodyPublishedBranchName,
+	kodyPublishedRef,
 } from './artifacts.ts'
 import { writeArtifactSourceSnapshot } from './artifact-source-snapshot.ts'
 import {
@@ -21,13 +23,7 @@ import {
 	attachPublishGitNoteBestEffort,
 	buildPublishGitNote,
 } from './publish-git-notes.ts'
-/**
- * Durable non-default ref that keeps published-only codemod commits fetchable
- * without moving the Artifacts default-branch tip (owner unpublished work).
- * Prior published OIDs stay ancestors when this tip advances by fast-forward.
- */
-export const kodyPublishedBranchName = 'kody-published'
-export const kodyPublishedRef = `refs/heads/${kodyPublishedBranchName}`
+export { kodyPublishedBranchName, kodyPublishedRef }
 
 const publishedOnlyCommitAuthor = {
 	name: 'Kody Package Codemod',

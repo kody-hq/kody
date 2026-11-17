@@ -250,6 +250,7 @@ export type RepoSessionRpc = {
 		sourceId: string
 		userId: string
 		newCommit: string
+		branch?: string
 		expectedHead?: string | null
 		allowForce?: boolean
 		destructiveOverwriteConfirmed?: boolean

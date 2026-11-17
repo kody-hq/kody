@@ -9,7 +9,11 @@ import {
 import { jobsData } from '#worker/jobs/jobs-data.ts'
 import { publishedPublishChecksAreCurrent } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
-import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
+import {
+	kodyPublishedBranchName,
+	resolveArtifactSourceHead,
+	resolveArtifactSourceKodyPublishedTip,
+} from '#worker/repo/artifacts.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { readPublishGitNoteFromArtifactsRepo } from '#worker/repo/publish-git-notes.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
@@ -128,9 +132,19 @@ async function resumePackage(input: {
 	if (!publishedCommit) return { ...base, outcome: 'skipped_unpublished' }
 	const withCommit = { ...base, publishedCommit }
 	try {
-		// Only the live tip is finished; the source itself is never moved.
+		// Only the live tip is finished; the source itself is never moved. A
+		// published-only codemod publish lives on kody-published, not HEAD.
 		const head = await resolveArtifactSourceHead(input.env, source.repo_id)
-		if (head.commit !== publishedCommit) {
+		const branch =
+			head.commit === publishedCommit
+				? null
+				: (await resolveArtifactSourceKodyPublishedTip(
+							input.env,
+							source.repo_id,
+					  )) === publishedCommit
+					? kodyPublishedBranchName
+					: undefined
+		if (branch === undefined) {
 			return { ...withCommit, outcome: 'skipped_head_differs' }
 		}
 		const ownerUserId = source.user_id
@@ -200,6 +214,7 @@ async function resumePackage(input: {
 			sourceId: source.id,
 			userId: ownerUserId,
 			newCommit: publishedCommit,
+			...(branch ? { branch } : {}),
 			expectedHead: publishedCommit,
 			allowForce: false,
 			baseUrl: input.baseUrl,
@@ -239,7 +254,7 @@ export const adminPublishFinalizeResumeCapability = defineDomainCapability(
 		name: 'adminPublishFinalizeResume',
 		contextRuns: 'deny',
 		description:
-			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only (a sealed commit with attributed jobs and a publish note skips straight to the artifact rebuild); never moves the source or published_commit, and skips packages whose Artifacts HEAD differs. dryRun default is true (reports sealed, stale job count, whether the publish note exists, and unbuilt bundle artifact targets).',
+			'Finish an interrupted publish of the live published commit for specific saved packages: a publish that moved published_commit but died (Durable Object reset or CPU limit) before the credential stamp, package projection and job attribution, publish note, and bundle artifacts landed. Re-runs checks and those steps at the current published commit only (a sealed commit with attributed jobs and a publish note skips straight to the artifact rebuild); never moves the source or published_commit, and skips packages whose published_commit is neither the Artifacts HEAD nor the kody-published tip (published-only codemod publishes). dryRun default is true (reports sealed, stale job count, whether the publish note exists, and unbuilt bundle artifact targets).',
 		keywords: [
 			'admin',
 			'package',
