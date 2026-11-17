@@ -480,9 +480,6 @@ export function createLocalKodyUpstream(input: {
 				)
 			}
 			watchPaths = depFiles
-			// Recorded only once every save lands, so a failed dependent is not
-			// skipped on the next sync because its dep already saved.
-			const hashes = new Map<string, string>()
 			let changed = false
 			for (const pkg of packages) {
 				const tree = await readTree(pkg.root)
@@ -501,6 +498,9 @@ export function createLocalKodyUpstream(input: {
 				const isRoot = pkg.root === input.manifest.root
 				if (!isRoot && !changed && savedHashes.get(pkg.name) === hash) continue
 				changed = true
+				// Forgotten until the save lands, so a failed package and its
+				// dependents all re-save on the next sync.
+				savedHashes.delete(pkg.name)
 				const id = await save({
 					files,
 					packageId: savedIds.get(pkg.name),
@@ -509,9 +509,8 @@ export function createLocalKodyUpstream(input: {
 						: `mapped local dep ${pkg.name} (${pkg.root})`,
 				})
 				if (id) savedIds.set(pkg.name, id)
-				hashes.set(pkg.name, hash)
+				savedHashes.set(pkg.name, hash)
 			}
-			for (const [name, hash] of hashes) savedHashes.set(name, hash)
 			packageId = savedIds.get(input.manifest.name) ?? packageId
 			// Saving re-syncs package jobs onto the real local scheduler. They only
 			// fire on schedule with --run-jobs; otherwise `kody dev job` runs them.
