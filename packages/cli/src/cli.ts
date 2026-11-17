@@ -2098,21 +2098,6 @@ async function dispatch(
 				typeof parsed.values.build === 'string' ? parsed.values.build : null
 			const publishTarget = await resolvePackagePublishTarget(params, call)
 			const { runPublishWithBuild } = await import('./publish-offload.js')
-			const dispatched = await runPublishWithBuild({
-				build: buildMode,
-				context:
-					typeof parsed.values.context === 'string'
-						? parsed.values.context
-						: null,
-				target: publishTarget,
-				call,
-				apiUrl,
-				cwd: process.cwd(),
-				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
-				writeErr,
-			})
-			// Publish always runs as a durable workflow: follow it to its end.
-			// Ctrl-C cancels the run instead of leaving it going.
 			const {
 				abortOnInterrupt,
 				followPackageRun,
@@ -2120,15 +2105,24 @@ async function dispatch(
 				PackageRunFailedError,
 				readDispatchedWorkflowId,
 			} = await import('./package-run.js')
-			const publishWorkflowId = readDispatchedWorkflowId(dispatched)
-			let result: unknown = dispatched
-			if (publishWorkflowId) {
+			// Publish always runs as a durable workflow: a publish call is
+			// followed to the run's end, so its answer is the final result
+			// (the build-here offer after a compute limit reads it too).
+			// Ctrl-C cancels the run instead of leaving it going.
+			const callAndFollowPublish: typeof call = async (
+				operationId,
+				operationParams,
+			) => {
+				const dispatched = await call(operationId, operationParams)
+				if (operationId !== 'packagePublishExternalPush') return dispatched
+				const publishWorkflowId = readDispatchedWorkflowId(dispatched)
+				if (!publishWorkflowId) return dispatched
 				writeErr(
 					`kody package publish: running as workflow ${publishWorkflowId}.\n`,
 				)
 				const interrupt = abortOnInterrupt()
 				try {
-					result = await followPackageRun({
+					return await followPackageRun({
 						workflowId: publishWorkflowId,
 						token: publishToken,
 						apiUrl,
@@ -2141,9 +2135,9 @@ async function dispatch(
 					})
 				} catch (error) {
 					if (!(error instanceof PackageRunFailedError)) throw error
-					// A publish that did not publish ends its run errored, with
-					// the refusal (failed checks included) as the reason.
-					result = {
+					// A run Kody itself failed stores no result: report its
+					// last error.
+					return {
 						status: 'failed',
 						workflow_id: error.workflowId,
 						run_status: error.runStatus,
@@ -2153,6 +2147,19 @@ async function dispatch(
 					interrupt.dispose()
 				}
 			}
+			const result: unknown = await runPublishWithBuild({
+				build: buildMode,
+				context:
+					typeof parsed.values.context === 'string'
+						? parsed.values.context
+						: null,
+				target: publishTarget,
+				call: callAndFollowPublish,
+				apiUrl,
+				cwd: process.cwd(),
+				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+				writeErr,
+			})
 			// Always print the API body (agents/scripts inspect `status`).
 			write(`${JSON.stringify(result, null, 2)}\n`)
 			const unmappableNotice =
