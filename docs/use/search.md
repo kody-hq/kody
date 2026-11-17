@@ -249,8 +249,10 @@ Official guides are first-class entities. Ranked search can return `guide:{id}`
 hits; `search({ entity: "guide:package_authoring" })` returns the bundled
 markdown, or a contents index when that file exceeds the response budget. Prefer
 that over executing `codingGuideGet` just to read a guide. `codingGuideGet` is
-for execute-module code that needs the body programmatically and accepts the
-same optional `section` heading or line anchor (`L165`, `L165-L180`).
+for execute-module code that needs the body programmatically. It accepts the
+same guide ids, page slugs, and optional `section` heading or line anchor
+(`L165`, `L165-L180`) as the `guide:{id}` entity, and an unknown id fails with
+the same "Guide not found" message and suggestions.
 
 There is **no separate `detail` flag** on search. Deeper inspection uses
 **`entity`**, not a different mode of the same ranked query.

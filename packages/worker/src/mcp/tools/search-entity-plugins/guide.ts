@@ -1,5 +1,4 @@
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
-import { McpCallerError } from '#mcp/caller-error.ts'
 import { guideMetadataList } from '#worker/guide-catalog-modules.ts'
 import { resolveMarkdownDocument } from '#worker/guides/document-sections.ts'
 import type { GuideMetadata } from '#worker/guides/guide-types.ts'
@@ -189,23 +188,15 @@ export const guideSearchEntityPlugin = {
 		const headerLines = options?.omitSharedMetadata
 			? buildGuideBatchRepeatHeaderLines(detail)
 			: buildGuideDetailHeaderLines(detail)
-		let resolved
-		try {
-			resolved = resolveMarkdownDocument({
-				markdown: detail.body,
-				maxChars: guideSearchBodyBudget({
-					...detail,
-					maxChars,
-				}),
-				entityRef,
-				...(detail.section ? { section: detail.section } : {}),
-			})
-		} catch (error) {
-			throw new McpCallerError(
-				error instanceof Error ? error.message : String(error),
-				{ cause: error },
-			)
-		}
+		const resolved = resolveMarkdownDocument({
+			markdown: detail.body,
+			maxChars: guideSearchBodyBudget({
+				...detail,
+				maxChars,
+			}),
+			entityRef,
+			...(detail.section ? { section: detail.section } : {}),
+		})
 		const lineLabel = resolved.lines
 			? formatRequestedLineLabel(resolved.lines)
 			: null

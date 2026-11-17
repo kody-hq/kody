@@ -1,3 +1,4 @@
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	FileAnchorError,
 	formatLineExcerpt,
@@ -146,7 +147,7 @@ export function resolveMarkdownDocument(input: {
 	if (input.section != null) {
 		const lineAnchor = parseLineAnchor(input.section)
 		if (lineAnchor.status === 'invalid') {
-			throw new Error(lineAnchor.message)
+			throw new McpCallerError(lineAnchor.message)
 		}
 		if (lineAnchor.status === 'ok') {
 			return resolveLineAnchor({
@@ -163,7 +164,7 @@ export function resolveMarkdownDocument(input: {
 			const available = requestableHeadings(headings)
 				.map((heading) => heading.slug)
 				.join(', ')
-			throw new Error(
+			throw new McpCallerError(
 				`Unknown section ${JSON.stringify(input.section)} for ${input.entityRef}. Available: ${available || 'none'}.`,
 			)
 		}
@@ -233,7 +234,7 @@ function resolveLineAnchor(input: {
 		}
 	} catch (error) {
 		if (error instanceof FileAnchorError) {
-			throw new Error(error.message, { cause: error })
+			throw new McpCallerError(error.message, { cause: error })
 		}
 		throw error
 	}

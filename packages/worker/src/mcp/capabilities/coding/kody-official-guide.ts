@@ -5,6 +5,7 @@ import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { maxChars } from '#mcp/tools/search-constants.ts'
 import { resolveMarkdownDocument } from '#worker/guides/document-sections.ts'
+import { resolveVisibleCatalogGuide } from '#worker/guides/resolve-catalog-guide.ts'
 import {
 	guideMetadataList,
 	importGuideCatalog,
@@ -37,14 +38,12 @@ function buildCapabilityDescription(): string {
 	].join('\n')
 }
 
-const unknownGuideError = 'Unknown Kody guide.'
-
 const guideFieldSchema = z
 	.string()
 	.min(1)
 	.describe(
 		[
-			'Which guide to load.',
+			'Which guide to load (id or page slug, same as `guide:{id}` on search).',
 			...advertisedGuides.map((guide) => `\`${guide.id}\`: ${guide.summary}`),
 		].join(' '),
 	)
@@ -125,18 +124,17 @@ export const kodyOfficialGuideCapability = defineDomainCapability(
 		outputSchema,
 		async handler(args, ctx: CapabilityContext) {
 			const { guides } = await importGuideCatalog()
-			const guide = guides.find((candidate) => candidate.id === args.guide)
-			if (
-				!guide ||
-				(guide.adminOnly && !callerHasRole(ctx.callerContext, 'admin'))
-			) {
-				throw new Error(unknownGuideError)
-			}
+			const { guide, aliasSection } = resolveVisibleCatalogGuide(
+				guides,
+				args.guide,
+				{ includeAdmin: callerHasRole(ctx.callerContext, 'admin') },
+			)
+			const section = args.section ?? aliasSection
 			const resolved = resolveMarkdownDocument({
 				markdown: guide.body,
 				maxChars,
 				entityRef: `guide:${guide.id}`,
-				...(args.section ? { section: args.section } : {}),
+				...(section ? { section } : {}),
 			})
 			return {
 				title: guide.title,

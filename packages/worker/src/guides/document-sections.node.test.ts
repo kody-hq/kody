@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	findDocumentHeading,
 	formatDocumentContents,
@@ -88,6 +89,7 @@ test('document sections parse headings, skip fences, and resolve by slug or titl
 	expect(() => resolve(sample, 'not-a-heading', 80)).toThrow(
 		/Unknown section "not-a-heading" for guide:demo/,
 	)
+	expect(() => resolve(sample, 'not-a-heading', 80)).toThrow(McpCallerError)
 
 	const contents = formatDocumentContents({
 		headings,
@@ -158,6 +160,7 @@ test('document sections resolve line anchors before heading slugs', () => {
 	expect(() => resolve(numbered, 'L999')).toThrow(
 		/Line 999 is past the end of guide:demo#L999/,
 	)
+	expect(() => resolve(numbered, 'L999')).toThrow(McpCallerError)
 })
 
 test('document sections keep info-string fence lines inside the open block', () => {
