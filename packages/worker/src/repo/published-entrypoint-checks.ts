@@ -6,8 +6,9 @@ function readSourceFile(sourceFiles: Record<string, string>, path: string) {
 }
 
 /**
- * Paths whose source parses and has no top-level default export. Awaits the
- * lazy Babel parse.
+ * Paths whose source is present and has no top-level default export. Parse
+ * failures and empty sources are treated as missing. Awaits the lazy Babel
+ * parse.
  */
 export async function collectEntrypointsMissingDefaultExport(input: {
 	snapshot: { read(path: string): string | null }

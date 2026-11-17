@@ -559,13 +559,14 @@ come from indexed `users` stamp columns, not RunLog.
 `adminRunLogSqlBilling` is a role-gated, content-free operator read of one
 user's RunLog SQLite (`inspectRunLogSqlBilling` in the run-records service,
 `inspectSqlBilling` on the DO). It returns `getSqlBillingStats` per-statement
-counters since the isolate last started, `PRAGMA index_list` / `table_info` for
-`run_logs`, `COUNT(*)` for `runs`, `run_logs`, `package_invocation_ledger`, and
-`workflow_projections`, `EXPLAIN QUERY PLAN` for `DELETE`/`SELECT` on `run_logs`
-by `run_id`, and `run_count` meta versus `COUNT(*) FROM runs`. Schema and plan
-probes use raw `sql.exec` so they skip the wrapped statement counters and
-platform rows-read. It never returns run rows, log bodies, errors, or other
-user-authored content. Look up the target by `stableUserId`, email, or username.
+counters since stats were initialized or last reset (including `clearAll()`),
+`PRAGMA index_list` / `table_info` for `run_logs`, `COUNT(*)` for `runs`,
+`run_logs`, `package_invocation_ledger`, and `workflow_projections`,
+`EXPLAIN QUERY PLAN` for `DELETE`/`SELECT` on `run_logs` by `run_id`, and
+`run_count` meta versus `COUNT(*) FROM runs`. Schema and plan probes use raw
+`sql.exec` so they skip the wrapped statement counters and platform rows-read.
+It never returns run rows, log bodies, errors, or other user-authored content.
+Look up the target by `stableUserId`, email, or username.
 
 ### Admin package placement failures
 

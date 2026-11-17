@@ -1686,10 +1686,11 @@ export async function summarizePackageFailures(input: {
 }
 
 /**
- * Per-statement RunLog SQLite rowsRead/rowsWritten since that isolate started
- * (highest rows read first). In-isolate only; history lives in
- * `run_log_sql_rows` log lines. Propagates binding/RPC errors. Never returns
- * user content.
+ * Per-statement RunLog SQLite rowsRead/rowsWritten since stats were
+ * initialized or last reset (including `clearAll()`), highest rows read first.
+ * In-isolate only; `run_log_sql_rows` is partial history (top ten statements
+ * per flushed window; the final window may remain unflushed). Propagates
+ * binding/RPC errors. Never returns user content.
  */
 export async function getSqlBillingStats(input: {
 	env: Env
