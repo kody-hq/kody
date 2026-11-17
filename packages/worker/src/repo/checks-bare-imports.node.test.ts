@@ -336,8 +336,11 @@ test.each([
 				`src/app.${extension}`,
 				code + appFetchExport,
 			)
-			expect(result.ok).toBe(true)
-			expect(result.message).not.toMatch(/undeclared bare package/)
+			expect(result).toEqual({
+				ok: true,
+				message:
+					'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
+			})
 		}
 	},
 )
@@ -406,7 +409,7 @@ test('validateBarePackageImportDeclarations does not throw on malformed dynamic 
 		exports: { '.': './src/index.ts' },
 		kody: { id: 'dynamic-kody', description: 'Dynamic kody import package' },
 	} as AuthoredPackageJson
-	await validateBarePackageImportDeclarations({
+	const malformed = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -414,6 +417,11 @@ test('validateBarePackageImportDeclarations does not throw on malformed dynamic 
 				'export default async () => await import("kody:@not-a-valid")\n',
 		},
 		entryPoints: [{ path: 'src/index.ts', bundleKind: 'callable' }],
+	})
+	expect(malformed).toEqual({
+		ok: true,
+		message:
+			'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
 	})
 	const missingExport = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
@@ -424,7 +432,11 @@ test('validateBarePackageImportDeclarations does not throw on malformed dynamic 
 		},
 		entryPoints: [{ path: 'src/index.ts', bundleKind: 'callable' }],
 	})
-	expect(missingExport.ok).toBe(true)
+	expect(missingExport).toEqual({
+		ok: true,
+		message:
+			'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
+	})
 })
 
 test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undeclared packages', async () => {

@@ -58,7 +58,21 @@ test('readPublishedBundleArtifact keeps clean v1 payloads and rejects remix-inje
 		env: envWithStoredArtifact(clean),
 		kvKey: 'bundle-artifact:key',
 	})
-	expect(loaded?.modules['client.js']).toBe('export default {}')
+	expect(loaded).toMatchObject({
+		version: 1,
+		kind: 'app-client',
+		mainModule: 'client.js',
+		sourceId: 'source-own',
+		publishedCommit: 'commit-1',
+		packageContext: {
+			packageId: 'pkg-own',
+			kodyId: 'own',
+			sourceId: 'source-own',
+		},
+	})
+	expect(loaded?.modules).toEqual({ 'client.js': 'export default {}' })
+	expect(loaded).not.toHaveProperty('remixVersion')
+	expect(loaded).not.toHaveProperty('remixUiVersion')
 
 	for (const stored of [
 		{ ...clean, version: 2 },
