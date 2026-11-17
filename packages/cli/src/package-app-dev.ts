@@ -252,8 +252,13 @@ export type LocalKodyUpstream = {
 	 * host (`rootMounted`) or on the owner's host under `/{kodyId}`.
 	 */
 	appSessionCookie: (input: { rootMounted: boolean }) => Promise<string>
-	/** Save the working tree into the local Kody. */
+	/**
+	 * Save the working tree into the local Kody, after the mapped local deps
+	 * (`.kody/deps.json` / `package.json#kody.localDeps`) it imports.
+	 */
 	sync: () => Promise<void>
+	/** Files of the mapped local deps the last sync saved. */
+	watchPaths: () => ReadonlyArray<string>
 	/** Email captured by the local email boundary instead of being sent. */
 	listOutbox: () => Promise<unknown>
 	/** Package id of the local saved copy, once the first sync lands. */
@@ -641,25 +646,36 @@ export async function startPackageAppDev(
 				bundler.build(),
 				clientBundler ? clientBundler.build() : Promise.resolve(null),
 			])
-			const midBuildEdits =
-				(await watcher?.track(
-					[
-						...bundle.inputs,
-						...(client?.inputs ?? []),
-						options.manifest.packageJsonPath,
-					],
-					{ ignoreChanges: files },
-				)) ?? []
-			// Queue mid-build edits for the next loop iteration directly — do not
-			// call onChange (debounced); chokidar may already have the same paths
-			// pending and would double-schedule a rebuild after debounce.
-			if (midBuildEdits.length > 0) {
-				for (const path of midBuildEdits) changedFiles.add(path)
-				rebuildAgain = true
+			const depFiles = options.localKody?.watchPaths() ?? []
+			const trackInputs = async () => {
+				const midBuildEdits =
+					(await watcher?.track(
+						[
+							...bundle.inputs,
+							...(client?.inputs ?? []),
+							options.manifest.packageJsonPath,
+						],
+						{
+							ignoreChanges: files,
+							external: options.localKody?.watchPaths(),
+						},
+					)) ?? []
+				// Queue mid-build edits for the next loop iteration directly — do not
+				// call onChange (debounced); chokidar may already have the same paths
+				// pending and would double-schedule a rebuild after debounce.
+				if (midBuildEdits.length > 0) {
+					for (const path of midBuildEdits) changedFiles.add(path)
+					rebuildAgain = true
+				}
 			}
+			await trackInputs()
+			// A mapped local dep edit leaves the bundle as is but still has to be
+			// saved into the local Kody.
+			const depChanged = files.some((file) => depFiles.includes(file))
 			if (
 				active &&
 				!buildFailure &&
+				!depChanged &&
 				bundle.code === active.code &&
 				client?.name === active.client?.name
 			) {
@@ -681,6 +697,8 @@ export async function startPackageAppDev(
 				return
 			}
 			const generation = await startGeneration(bundle, client)
+			// The sync may have found a new set of mapped local dep files.
+			if (options.localKody) await trackInputs()
 			if (closed) {
 				await stopGeneration(generation)
 				return
