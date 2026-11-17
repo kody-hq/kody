@@ -92,6 +92,7 @@ import {
 	type SecretPlaceholderRequestPlacementMode,
 	secretPlaceholderRequestPlacementPublishMode,
 } from '#worker/credentials/secret-placeholder-request-placement.ts'
+import { partitionSecretPlaceholderRequestPlacementHits } from '#worker/credentials/secret-placeholder-request-placement-allowance.ts'
 import {
 	buildCredentialPatternCheck,
 	type CredentialPatternCheckResult,
@@ -2063,6 +2064,9 @@ export async function runRepoChecks(input: {
 				...(credentialPatternCheck.requestPlacementHits
 					? { hits: credentialPatternCheck.requestPlacementHits }
 					: {}),
+				...(input.env?.APP_DB ? { db: input.env.APP_DB } : {}),
+				...(input.userId ? { ownerId: input.userId } : {}),
+				...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
 			})
 		: null
 	const fetchBodyWarning = credentialCheckOk
@@ -2071,7 +2075,7 @@ export async function runRepoChecks(input: {
 				credentialPatternCheck.fetchBodyHits,
 			)
 		: null
-	const placementBlocks = placementNotice?.mode === 'fail'
+	const placementBlocks = placementNotice?.blocks === true
 	results.push({
 		kind: credentialPatternCheck.kind,
 		ok: credentialCheckOk && !placementBlocks,
@@ -2596,24 +2600,39 @@ export async function runRepoSourceWalkChecks(input: {
 
 /**
  * Credential placeholders a fetch puts in a request body, URL, or query.
- * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}.
+ * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}. In
+ * `fail` mode a placeholder blocks only when the publishing org's credential
+ * does not already allow that part; one it allows only warns.
  */
 async function secretPlaceholderRequestPlacementNotice(input: {
 	sourceFiles: Record<string, string>
 	mode: SecretPlaceholderRequestPlacementMode
 	/** Already found by the isolated credentials phase. */
 	hits?: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
-}): Promise<{
-	mode: SecretPlaceholderRequestPlacementMode
-	message: string
-} | null> {
+	db?: D1Database
+	ownerId?: string
+	baseUrl?: string
+}): Promise<{ blocks: boolean; message: string } | null> {
+	const hits =
+		input.hits ??
+		(await findSecretPlaceholderRequestPlacements(input.sourceFiles))
+	const split =
+		input.mode === 'fail' && input.db && input.ownerId && input.baseUrl
+			? await partitionSecretPlaceholderRequestPlacementHits({
+					db: input.db,
+					ownerId: input.ownerId,
+					baseUrl: input.baseUrl,
+					hits,
+				})
+			: { blocked: [...hits], allowed: [] }
 	const message = formatSecretPlaceholderRequestPlacementNotice({
-		hits:
-			input.hits ??
-			(await findSecretPlaceholderRequestPlacements(input.sourceFiles)),
+		hits: split.blocked,
+		allowed: split.allowed,
 		mode: input.mode,
 	})
-	return message ? { mode: input.mode, message } : null
+	return message
+		? { blocks: input.mode === 'fail' && split.blocked.length > 0, message }
+		: null
 }
 
 /**

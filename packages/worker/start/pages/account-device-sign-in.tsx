@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Alert } from '../components/alert.tsx'
 import { Button } from '../components/button.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
@@ -48,7 +49,7 @@ export function AccountDeviceSignInPage(props: {
 function titleFor(data: AccountDeviceSignInView) {
 	switch (data.kind) {
 		case 'pending':
-			return 'Sign in on another device'
+			return 'Sign in with another device'
 		case 'denied':
 			return 'Sign-in was denied'
 		case 'expired':
@@ -69,7 +70,7 @@ function leadFor(data: AccountDeviceSignInView) {
 		case 'none':
 			return data.error === 'rate_limited'
 				? 'Too many sign-in requests from this network. Wait a few minutes, then start again.'
-				: 'Start from the Kody sign-in page, then choose "Sign in on another device".'
+				: 'Start from the Kody sign-in page, then choose "Sign in with another device".'
 	}
 }
 
@@ -148,6 +149,33 @@ function PendingCard(props: {
 					</svg>
 				</div>
 			</section>
+			<form
+				method="post"
+				action={accountDeviceSignInPath}
+				data-save-on-change=""
+				css={rememberFormCss}
+				data-testid="account-device-remember"
+			>
+				<input type="hidden" name="intent" value="remember" />
+				<label css={rememberLabelCss}>
+					<Checkbox
+						name="rememberMe"
+						defaultChecked={data.rememberMe}
+						data-testid="account-device-remember-me"
+					/>{' '}
+					Keep this browser signed in
+				</label>
+				{/* With JavaScript, `page-init.js` saves on change and hides this. */}
+				<Button
+					type="submit"
+					variant="secondary"
+					size="sm"
+					data-save-on-change-submit=""
+					css={rememberSaveCss}
+				>
+					Save
+				</Button>
+			</form>
 			<section css={insetCardCss}>
 				<p css={descriptionCss}>
 					This page checks for your approval every {data.refreshSeconds} seconds
@@ -227,4 +255,19 @@ const qrCss = {
 	borderRadius: radius.md,
 	border: `1px solid ${colors.border}`,
 	backgroundColor: '#ffffff',
+}
+const rememberFormCss = {
+	display: 'flex',
+	flexWrap: 'wrap' as const,
+	alignItems: 'center',
+	gap: spacing.sm,
+}
+const rememberLabelCss = {
+	display: 'flex',
+	alignItems: 'center',
+	gap: spacing.xs,
+	color: colors.text,
+}
+const rememberSaveCss = {
+	'html.js &': { display: 'none' },
 }

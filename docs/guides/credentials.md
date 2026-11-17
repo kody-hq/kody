@@ -149,11 +149,17 @@ that build headers in a variable and header spreads — the scanner cannot see
 are still skipped. The warning does not fail the check or block publish.
 
 Publish fails when a fetch puts a credential placeholder in the request body,
-URL path, URL query, or whole URL. The error lists each file, line, and
-credential name (never a value) and says to send the credential in a request
-header instead. Community installs and platform codemods only warn, so existing
-published packages keep running and republishing; the next authoring publish has
-to move the credential. The switch is
+URL path, or URL query and the publishing org's credential of that name does not
+allow that part in its effective fill placement (the same placement the fetch
+gateway enforces, described below). A whole-URL placeholder always fails. The
+error lists each file, line, and credential name (never a value), says to send
+the credential in a request header instead, and links the owner approval page
+for each credential (`/connect/secrets?name=<key>&placement=<part>` for a
+secret, the credential page for an integration token). When the owner approves
+the part, publish again. When the credential already allows the part, including
+an older Key with no stored placement that Kody already fills there, publish
+passes with a warning. Community installs and platform codemods only warn, so
+existing published packages keep running and republishing. The switch is
 `secretPlaceholderRequestPlacementPublishMode` in the publish check.
 
 Each credential also stores an allowed **fill placement** (headers, optionally

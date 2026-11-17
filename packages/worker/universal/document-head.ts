@@ -592,8 +592,8 @@ const routeDocumentHeads = {
 	device: titleOnly('Sign in on a device'),
 	agentClaim: titleOnly('Connect an agent'),
 	packageAppOauthAuthorize: titleOnly('Allow package app'),
-	packageAppDeviceSignIn: titleOnly('Sign in on another device'),
-	accountDeviceSignIn: titleOnly('Sign in on another device'),
+	packageAppDeviceSignIn: titleOnly('Sign in with another device'),
+	accountDeviceSignIn: titleOnly('Sign in with another device'),
 	oauthCallback: titleOnly('OAuth callback'),
 } as const satisfies Record<string, DocumentHeadResolver>
 
