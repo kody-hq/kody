@@ -18,6 +18,19 @@ const maxExampleChars = 200
 /** Pipes, chaining, redirects, substitution and globs need a shell. */
 const shellSyntax = /[|&;<>`$*?(){}\n]/
 
+/**
+ * Whether the command needs a shell to mean what it says. Quoted text is
+ * literal, except `$` and backticks inside double quotes.
+ */
+export function commandNeedsShell(command: string) {
+	const unquoted = command
+		.replace(/'[^']*'/g, '')
+		.replace(/"((?:[^"\\]|\\.)*)"/g, (_, inner: string) =>
+			inner.replace(/\\.|[^`$]/g, ''),
+		)
+	return shellSyntax.test(unquoted)
+}
+
 export function readShellCommandUse(row: {
 	at: string
 	detailJson: string
@@ -80,7 +93,7 @@ export function summarizeShellUse(uses: ReadonlyArray<ShellCommandUse>) {
 		}
 		programs.set(name, program)
 		program.commands += 1
-		if (shellSyntax.test(use.command)) program.needShell += 1
+		if (commandNeedsShell(use.command)) program.needShell += 1
 		if (use.entryPackageIds.length === 0) program.adHoc += 1
 		for (const id of use.entryPackageIds) program.packageIds.add(id)
 		const example = use.command.trim().slice(0, maxExampleChars)

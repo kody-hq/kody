@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import {
+	commandNeedsShell,
 	readShellCommandUse,
 	shellCommandProgram,
 	summarizeShellUse,
@@ -67,4 +68,14 @@ test('only the 20 most used programs are listed, and the rest are counted', () =
 	const summary = summarizeShellUse(uses)
 	expect(summary.programs).toHaveLength(20)
 	expect(summary.morePrograms).toBe(3)
+})
+
+test('quoted text is literal, except substitution inside double quotes', () => {
+	expect(commandNeedsShell("echo 'ready?'")).toBe(false)
+	expect(commandNeedsShell('grep "a|b" notes.txt')).toBe(false)
+	expect(commandNeedsShell('echo "it\\"s; fine"')).toBe(false)
+	expect(commandNeedsShell('echo "$HOME"')).toBe(true)
+	expect(commandNeedsShell('echo "`date`"')).toBe(true)
+	expect(commandNeedsShell("echo 'a' | wc")).toBe(true)
+	expect(commandNeedsShell('ls *.txt')).toBe(true)
 })
