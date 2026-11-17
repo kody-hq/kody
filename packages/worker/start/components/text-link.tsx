@@ -42,5 +42,10 @@ const toneCss = {
  * client side and everything else is a plain anchor.
  */
 export function TextLink({ tone = 'primary', ...props }: TextLinkProps) {
-	return <SiteLink {...props} css={[baseCss, toneCss[tone]]} />
+	return <SiteLink {...props} css={textLinkCss(tone)} />
+}
+
+/** The text-link look, for a `<button>` that has to read as a link. */
+export function textLinkCss(tone: TextLinkTone = 'primary') {
+	return [baseCss, toneCss[tone]]
 }

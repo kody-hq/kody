@@ -49,7 +49,7 @@ export function PackageAppDeviceSignInPage(props: {
 function titleFor(data: PackageAppDeviceSignInView) {
 	switch (data.kind) {
 		case 'pending':
-			return 'Sign in on another device'
+			return 'Sign in with another device'
 		case 'denied':
 			return 'Sign-in was denied'
 		case 'expired':
@@ -70,7 +70,7 @@ function leadFor(data: PackageAppDeviceSignInView) {
 		case 'none':
 			return data.error === 'rate_limited'
 				? 'Too many sign-in requests from this network. Wait a minute, then start again from the app.'
-				: 'Start from the app you were signing in to, then choose "Sign in on another device".'
+				: 'Start from the app you were signing in to, then choose "Sign in with another device".'
 	}
 }
 
