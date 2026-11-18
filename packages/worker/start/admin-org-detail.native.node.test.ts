@@ -41,7 +41,7 @@ test('organization detail SSR uses admin labels and hides raw ids', async () => 
 					stripeCreditsEligible: true,
 					creditsEligible: true,
 				},
-				seats: { live: 2, billingOnly: 1 },
+				seats: { live: 2, billingOnly: 1, comped: null },
 				members: [
 					{
 						stableUserId: memberId,
@@ -106,6 +106,8 @@ test('organization detail SSR uses admin labels and hides raw ids', async () => 
 	expect(visibleText).toContain('This organization is deleted.')
 	expect(html).not.toContain('aria-label="Set organization manual plan"')
 	expect(html).not.toContain('aria-label="Grant organization credits"')
+	expect(html).not.toContain('aria-label="Set organization comped seats"')
+	expect(visibleText).toContain('No cap')
 	expect(visibleText).not.toContain(orgId)
 	expect(visibleText).not.toContain(memberId)
 	expect(visibleText).not.toContain(billingMemberId)
@@ -133,7 +135,7 @@ test('live organization detail SSR renders billing mutation forms', async () => 
 			stripeCreditsEligible: false,
 			creditsEligible: false,
 		},
-		seats: { live: 0, billingOnly: 0 },
+		seats: { live: 0, billingOnly: 0, comped: 50 },
 		members: [],
 		budgets: {
 			defaultUserBudgetMicroUsd: null,
@@ -160,6 +162,10 @@ test('live organization detail SSR renders billing mutation forms', async () => 
 	expect(html).toContain('aria-label="Grant organization credits"')
 	expect(html).toContain('aria-label="Set organization credit eligibility"')
 	expect(html).toContain('Pro</option>')
+	expect(html).toContain('aria-label="Set organization comped seats"')
+	expect(html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')).toContain(
+		'0 of 50 used',
+	)
 	expect(
 		html.indexOf('aria-label="Grant organization credits"'),
 	).toBeGreaterThan(html.indexOf('aria-label="Recent credit ledger"'))
