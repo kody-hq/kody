@@ -24,9 +24,7 @@ export async function saveKeyThroughUi(
 		}),
 	)
 	await waitForClientHydration(page)
-	await page
-		.getByRole('textbox', { name: 'Value', exact: true })
-		.fill(input.value)
+	await page.getByLabel('Value', { exact: true }).fill(input.value)
 	await page.getByTestId('connect-credential-save').click()
 	await expect(page.getByTestId('connect-credential-saved')).toContainText(
 		`${input.name} is saved`,

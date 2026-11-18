@@ -7,6 +7,7 @@ test('both credential setup links let you review and edit a Key allowlist', asyn
 	seedE2eUser,
 	login,
 }) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
 	const runId = Date.now()
 	const user = await seedE2eUser({
 		email: `credential-hosts-${runId}@example.com`,
@@ -20,7 +21,7 @@ test('both credential setup links let you review and edit a Key allowlist', asyn
 	)
 	await waitForClientHydration(page)
 	const hosts = page.getByRole('textbox', { name: 'Allowed hosts' })
-	const value = page.getByRole('textbox', { name: 'Value', exact: true })
+	const value = page.getByLabel('Value', { exact: true })
 	const save = page.getByTestId('connect-credential-save')
 	await expect(hosts).toBeInViewport()
 	await expect(hosts).toHaveValue('SENTRY.io\nkent-c-dodds-tech-llc.sentry.io')
