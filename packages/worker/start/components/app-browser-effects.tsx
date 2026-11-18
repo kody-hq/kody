@@ -1,6 +1,11 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useRouter, useRouterState } from '@tanstack/react-router'
+import {
+	useLocation,
+	useRouteContext,
+	useRouter,
+	useRouterState,
+} from '@tanstack/react-router'
 import { captureFirstTouchAttributionFromLocation } from '#client/first-touch-attribution.ts'
 import { persistReferralCookieFromLocation } from '#client/referral-cookie.ts'
 import { scheduleConsumeAccountCreatedFathomSignal } from '#client/fathom-events.ts'
@@ -10,8 +15,15 @@ import { colors, transitions } from '#universal/styles/tokens.ts'
 export function AppBrowserEffects() {
 	const router = useRouter()
 	const href = useLocation({ select: (location) => location.href })
+	// Signup clears the first-touch cookie; a signed-in page must not recreate it.
+	const signedOut = useRouteContext({
+		from: '__root__',
+		select: (context) => context.actorKey === null,
+	})
 	useEffect(() => {
-		captureFirstTouchAttributionFromLocation()
+		if (signedOut) captureFirstTouchAttributionFromLocation()
+	}, [signedOut])
+	useEffect(() => {
 		return scheduleConsumeAccountCreatedFathomSignal({
 			replaceHref: (next) =>
 				router.history.replace(next, router.history.location.state),
