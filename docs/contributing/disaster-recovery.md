@@ -298,8 +298,9 @@ Contract: `packages/shared/src/backup-staging.ts`.
      replacing it. A per-owner Mailbox or RunLog dump larger than the 16 MiB
      buffer is split the same way, into `mailbox-parts/{owner}/{sha256}.ndjson`
      or `run-log-parts/{owner}/{sha256}.ndjson` entries that carry `part` in the
-     owner index, and Mailbox import reads an owner's parts in order. No owner
-     dump is skipped for size.
+     owner index. Mailbox import validates and streams an owner's parts one at a
+     time, holding only ids, references and attachment metadata in memory. No
+     owner dump is skipped for size.
 3. **Seal** — Control plane verifies staged checksums against
    `staging/{day}/exporter/summary.json`, requires the sealed paced D1 night for
    every `D1_PACED_SOURCES` entry (APP_DB, AUDIT_DB, JOBS_DB) when sealing a new
