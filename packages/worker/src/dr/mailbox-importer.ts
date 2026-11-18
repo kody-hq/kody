@@ -120,21 +120,42 @@ function requireNonNegativeInteger(value: unknown, field: string): number {
 	return value
 }
 
+type MailboxOwnerDump = { ownerId: string; parts: Array<OwnerIndexEntry> }
+
 async function loadVerifiedMailboxDump(
 	s3: DrBackupS3Client,
 	day: string,
-	entry: OwnerIndexEntry,
+	owner: MailboxOwnerDump,
 ): Promise<ParsedMailboxDump> {
-	const text = await loadVerifiedMailboxDumpText({ s3, day, entry })
-	return parseMailboxDump(text, entry.entryCount)
+	const text = await loadVerifiedMailboxDumpText({
+		s3,
+		day,
+		ownerId: owner.ownerId,
+		parts: owner.parts,
+	})
+	return parseMailboxDump(
+		text,
+		owner.parts.reduce((sum, part) => sum + part.entryCount, 0),
+	)
+}
+
+function groupOwnerDumps(index: MailboxIndex): Array<MailboxOwnerDump> {
+	const owners: Array<MailboxOwnerDump> = []
+	for (const entry of index.entries) {
+		const last = owners.at(-1)
+		if (last?.ownerId === entry.ownerId) last.parts.push(entry)
+		else owners.push({ ownerId: entry.ownerId, parts: [entry] })
+	}
+	return owners
 }
 
 function selectOwners(
 	index: MailboxIndex,
 	selection: MailboxImportOwnerSelection,
-): Array<OwnerIndexEntry> {
-	if (selection === 'all-from-index') return index.entries
-	const byOwner = new Map(index.entries.map((entry) => [entry.ownerId, entry]))
+): Array<MailboxOwnerDump> {
+	const all = groupOwnerDumps(index)
+	if (selection === 'all-from-index') return all
+	const byOwner = new Map(all.map((owner) => [owner.ownerId, owner]))
 	return selection.map((ownerId) => {
 		const entry = byOwner.get(ownerId)
 		if (!entry) {

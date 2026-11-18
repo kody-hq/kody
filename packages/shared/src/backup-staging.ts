@@ -84,12 +84,30 @@ export function stagingMailboxDumpKey(day: string, ownerId: string): string {
 	return `${stagingPrefix(day)}mailbox/${encodeURIComponent(ownerId)}.ndjson`
 }
 
+/** One part of a Mailbox dump split into parts, keyed by content. */
+export function stagingMailboxDumpPartKey(
+	day: string,
+	ownerId: string,
+	sha256: string,
+): string {
+	return `${stagingPrefix(day)}mailbox-parts/${encodeURIComponent(ownerId)}/${sha256}.ndjson`
+}
+
 export function stagingMailboxIndexKey(day: string): string {
 	return `${stagingPrefix(day)}mailbox-index.json`
 }
 
 export function stagingRunLogDumpKey(day: string, ownerId: string): string {
 	return `${stagingPrefix(day)}run-log/${encodeURIComponent(ownerId)}.ndjson`
+}
+
+/** One part of a RunLog dump split into parts, keyed by content. */
+export function stagingRunLogDumpPartKey(
+	day: string,
+	ownerId: string,
+	sha256: string,
+): string {
+	return `${stagingPrefix(day)}run-log-parts/${encodeURIComponent(ownerId)}/${sha256}.ndjson`
 }
 
 export function stagingRunLogIndexKey(day: string): string {
@@ -145,6 +163,11 @@ export type StorageIndex = {
 
 export type OwnerIndexEntry = {
 	ownerId: string
+	/**
+	 * Set only when the owner's dump outgrew the exporter buffer and was split
+	 * into consecutive entries (parts 0..n-1) that restore in order.
+	 */
+	part?: number
 	objectKey: string
 	entryCount: number
 	bytes: number
