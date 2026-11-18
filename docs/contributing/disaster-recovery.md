@@ -515,6 +515,15 @@ Routes (all require Access JWT):
 | `GET`  | `/seal-status?id=...`      | Poll seal Workflow status (in progress, sealed, already sealed, or incomplete reason)                                                                                                                                            |
 | `GET`  | `/restore-status?id=...`   | Poll restore Workflow status                                                                                                                                                                                                     |
 
+### Force a paced full base
+
+`POST https://kody.codes/__maintenance/dr-paced-force-full-base?day=YYYY-MM-DD`
+with `Authorization: Bearer $DR_RESTORE_SECRET` makes the paced lane cut a full
+base for that night instead of deltas. Use it when a restore drill needs a base
+newer than the last Sunday. `day` must be today or tomorrow (UTC), and the
+request is refused with 409 once any paced source has started that night. The
+night keeps its weekday `daily` tier, and later delta nights chain back to it.
+
 ### Agent seal API (`DR_OPS_SECRET`)
 
 Headless agents enqueue seal workflows without the Access-protected HTML UI.

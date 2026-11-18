@@ -48,7 +48,10 @@ import {
 	readLatestD1PacedRestoreDrill,
 	setD1PacedRestoreDrillSourceActive,
 } from '#worker/dr/d1-paced-restore-drill-progress.ts'
-import { collectD1PacedStatus } from '#worker/dr/d1-paced-status.ts'
+import {
+	collectD1PacedStatus,
+	handleD1PacedForceFullBaseRequest,
+} from '#worker/dr/d1-paced-status.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 const day = '2026-10-24'
@@ -1382,4 +1385,76 @@ test('restore drill counts a rowid the full base carries twice once, like a rest
 		restoredCount: 12,
 		ok: true,
 	})
+})
+
+function forceFullBaseRequest(day: string, secret = 'restore-secret') {
+	return new Request(
+		`https://kody.codes/__maintenance/dr-paced-force-full-base?day=${day}`,
+		{ method: 'POST', headers: { Authorization: `Bearer ${secret}` } },
+	)
+}
+
+test('a force-full-base request cuts a full base on a weekday night', async () => {
+	const { client } = createMemoryS3()
+	const sqlite = seedSqlite(2)
+	const env = createEnv({
+		APP_DB: createAppD1(sqlite),
+		DR_RESTORE_SECRET: 'restore-secret',
+	})
+	const baseDay = '2026-10-23' // Friday
+	const nextDay = '2026-10-24' // Saturday, normally a delta night
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${baseDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const requestedAt = new Date(`${baseDay}T15:00:00.000Z`)
+	expect(
+		(
+			await handleD1PacedForceFullBaseRequest(
+				forceFullBaseRequest(nextDay, 'wrong'),
+				env,
+				client,
+				requestedAt,
+			)
+		).status,
+	).toBe(401)
+	const accepted = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest(nextDay),
+		env,
+		client,
+		requestedAt,
+	)
+	expect(accepted.status).toBe(200)
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${nextDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const raw = await client.getText(pacedD1StagingManifestKey(nextDay, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.retentionTier).toBe('daily')
+	expect(manifest.tables.items?.mode).toBe('full')
+	expect(manifest.tables.items?.count).toBe(2)
+	const late = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest(nextDay),
+		env,
+		client,
+		new Date(`${nextDay}T02:00:00.000Z`),
+	)
+	expect(late.status).toBe(409)
+})
+
+test('a force-full-base request only accepts today or tomorrow', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv({ DR_RESTORE_SECRET: 'restore-secret' })
+	const response = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest('2026-10-20'),
+		env,
+		client,
+		new Date('2026-10-23T15:00:00.000Z'),
+	)
+	expect(response.status).toBe(400)
 })

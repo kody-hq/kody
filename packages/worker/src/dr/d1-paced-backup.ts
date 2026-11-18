@@ -3,6 +3,7 @@ import {
 	pacedD1BackupSchemaVersion,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedIndexKey,
+	pacedD1ForceFullBaseRequestKey,
 	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
@@ -121,6 +122,7 @@ type NightMeta = {
 	bytesOut: number
 	queryMs: Array<number>
 	wallStartedAtMs: number
+	forceFullBase: boolean
 }
 
 type LaneProgress = {
@@ -546,6 +548,7 @@ async function loadOrCreateNightMeta(input: {
 			if (parsed.schemaHash !== input.schema.schemaHash) {
 				parsed.schemaStableDuringWalk = false
 			}
+			parsed.forceFullBase = parsed.forceFullBase === true
 			return parsed
 		}
 	}
@@ -568,6 +571,9 @@ async function loadOrCreateNightMeta(input: {
 		bytesOut: 0,
 		queryMs: [],
 		wallStartedAtMs: Date.now(),
+		forceFullBase:
+			(await input.s3.getText(pacedD1ForceFullBaseRequestKey(input.day))) !==
+			null,
 	}
 	await input.s3.put(key, `${JSON.stringify(meta)}\n`, {
 		contentType: 'application/json',
@@ -1002,6 +1008,7 @@ async function workSourceTick(input: {
 			day: input.day,
 			tableSchemaHash: table.schemaHash,
 			prevSchemaHash: prevTable?.schemaHash,
+			forceFullBase: meta.forceFullBase,
 		})
 
 		// Mid-table resume: lastRowid set. Walk-complete-pending-finalize:

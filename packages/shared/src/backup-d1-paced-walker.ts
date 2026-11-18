@@ -242,8 +242,9 @@ export function resolvePacedD1TableMode(input: {
 	day: string
 	tableSchemaHash: string
 	prevSchemaHash: string | null | undefined
+	forceFullBase: boolean
 }): PacedD1TableMode {
-	if (pacedD1ForcesFullBase(input.day)) return 'full'
+	if (input.forceFullBase || pacedD1ForcesFullBase(input.day)) return 'full'
 	if (!input.prevSchemaHash || input.prevSchemaHash !== input.tableSchemaHash) {
 		return 'full'
 	}
