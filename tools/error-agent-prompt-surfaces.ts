@@ -23,7 +23,6 @@ export const errorAgentPromptAdoptFiles = [
 	'packages/worker/start/components/error-agent-prompt-button.tsx',
 	'packages/worker/start/pages/connect-oauth-sections.tsx',
 	'packages/worker/start/pages/connect-secrets.tsx',
-	'packages/worker/start/pages/connect-secret-set.tsx',
 	'packages/worker/start/pages/connect-webhook-apply.tsx',
 	'packages/worker/start/pages/account-secrets-approval.tsx',
 	'packages/worker/start/pages/account-package-approve-publish.tsx',
