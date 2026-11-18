@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
+import { buildPackageJobId } from '@kody-internal/shared/jobs/package-job-id.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
@@ -39,6 +40,29 @@ function createService(db: D1Database) {
 	const env = { JOBS_DB: db } as unknown as JobsWorkerEnv
 	return new JobsService({ props: {} } as never, env)
 }
+
+test('retrying a committed package job insert preserves the existing runtime state', async () => {
+	const { sqlite, db } = createJobsDb()
+	const store = createD1JobsStore(db)
+	const userId = ownerIdFromStored('org-jobs')
+	const jobId = buildPackageJobId('package-1', 'nightly')
+	insertJob(sqlite, { id: jobId, userId })
+	const row = await store.getJobById({ userId, jobId })
+	if (!row) throw new Error('Expected the committed job.')
+	const insert = {
+		userId,
+		job: { ...row.record, enabled: !row.record.enabled },
+		callerContextJson: '{"attempt":2}',
+	}
+	await expect(store.insertJob(insert)).resolves.toBeUndefined()
+	await expect(store.getJobById({ userId, jobId })).resolves.toEqual(row)
+	await expect(
+		store.insertJob({
+			...insert,
+			job: { ...insert.job, publishedCommit: 'different' },
+		}),
+	).rejects.toThrow('conflicts with an existing job')
+})
 
 test('listJobIdsForUser returns the user’s live job ids from the jobs D1 only', async () => {
 	const { sqlite, db } = createJobsDb()

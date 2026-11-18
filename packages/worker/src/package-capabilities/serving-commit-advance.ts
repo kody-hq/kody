@@ -12,6 +12,7 @@ import {
 	getEntitySourceById,
 	holdEntitySourceCommit,
 } from '#worker/repo/entity-sources.ts'
+import { updatePackageServing } from '#worker/repo/package-serving-update.ts'
 import { approvedCommitCache } from './approved-commit-cache.ts'
 import {
 	getServedPackageCapabilityApproval,
@@ -61,7 +62,22 @@ type ServingAdvanceInput = {
 export async function advanceServingCommit(
 	input: ServingAdvanceInput,
 ): Promise<boolean> {
-	const decision = await decideServingAdvance(input)
+	const { env, ...update } = input
+	const result = await updatePackageServing(env, { kind: 'advance', ...update })
+	if (result.advanced && result.packageId) {
+		approvedCommitCache.delete(result.packageId)
+	}
+	if (result.heldPackageId) {
+		await settleProjection(input, result.heldPackageId)
+	}
+	return result.advanced
+}
+
+/** Runs on the source's serving update queue, including job reconciliation. */
+export async function advancePackageServingCommit(
+	input: ServingAdvanceInput,
+): Promise<{ advanced: boolean; packageId?: string; heldPackageId?: string }> {
+	let decision = await decideServingAdvance(input)
 	if (decision?.hold) {
 		const held = await holdEntitySourceCommit(input.env.APP_DB, {
 			id: input.sourceId,
@@ -69,15 +85,16 @@ export async function advanceServingCommit(
 			commit: input.commit,
 		})
 		if (held) {
-			await settleProjection(input, decision.packageId)
-			return false
+			return { advanced: false, heldPackageId: decision.packageId }
 		}
 		// An approval or visibility change landed while deciding: decide again.
-		const again = await decideServingAdvance(input)
-		if (again?.hold) return false
-		return await advanceToServing(input, again)
+		decision = await decideServingAdvance(input)
+		if (decision?.hold) return { advanced: false }
 	}
-	return await advanceToServing(input, decision)
+	return {
+		advanced: await advanceToServing(input, decision),
+		packageId: decision?.packageId,
+	}
 }
 
 async function advanceToServing(
@@ -86,7 +103,7 @@ async function advanceToServing(
 ): Promise<boolean> {
 	// Jobs switch with the code. A sync that fails throws before the pointer
 	// moves, so the commit is not served and a retry runs the sync again.
-	await syncJobsToCommit(input)
+	if (!(await syncJobsToCommit(input))) return false
 	const advanced = await advanceEntitySourceServingCommit(
 		input.env.APP_DB,
 		{ id: input.sourceId, userId: input.userId, commit: input.commit },
@@ -154,7 +171,7 @@ async function syncJobsToCommit(input: ServingAdvanceInput) {
 		source.entity_kind !== 'package' ||
 		source.published_commit !== input.commit
 	) {
-		return
+		return false
 	}
 	const { syncPublishedPackageJobs } = await import('#worker/jobs/service.ts')
 	await syncPublishedPackageJobs({
@@ -167,6 +184,7 @@ async function syncJobsToCommit(input: ServingAdvanceInput) {
 		actorUserId: input.actor?.userId,
 		actorCredential: input.actor?.credential ?? null,
 	})
+	return true
 }
 
 /**

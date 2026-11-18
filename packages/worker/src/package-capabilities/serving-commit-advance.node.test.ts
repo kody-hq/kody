@@ -4,6 +4,10 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { updateEntitySource } from '#worker/repo/entity-sources.ts'
+import {
+	PackageServingUpdateQueue,
+	type PackageServingUpdate,
+} from '#worker/repo/package-serving-update.ts'
 import { resolveInternetVisibleApprovedCommit } from '#app/package-app-internet-visible.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { approvedCommitCache } from './approved-commit-cache.ts'
@@ -142,7 +146,17 @@ async function setUp(input: { approvedEntries?: Array<CapabilitySetEntry> }) {
 				now,
 			)
 	}
-	const env = { APP_DB: db } as unknown as Env
+	const queue = new PackageServingUpdateQueue()
+	const env = {
+		APP_DB: db,
+		REPO_SESSION: {
+			idFromName: (name: string) => name,
+			get: () => ({
+				updatePackageServing: (update: PackageServingUpdate) =>
+					queue.run(env, update),
+			}),
+		},
+	} as unknown as Env
 	const savedPackage = {
 		id: packageId,
 		userId: ownerId,
@@ -338,6 +352,36 @@ test('a job sync that fails on approval keeps the hold so approving again releas
 	await site.approveLive()
 	await site.expectEveryoneOn('commit-b')
 	expect(site.heldCommit()).toBeNull()
+})
+
+test('a newer publish waits for an overlapping job sync and is the only commit that serves', async () => {
+	const site = await setUp({})
+	const started = Promise.withResolvers<void>()
+	const finish = Promise.withResolvers<boolean>()
+	const advance = (commit: string) =>
+		advanceServingCommit({ env: site.env, sourceId, userId: ownerId, commit })
+	jobs.syncPublishedPackageJobs.mockImplementationOnce(async () => {
+		started.resolve()
+		return await finish.promise
+	})
+	await site.publish('commit-b')
+	const older = advance('commit-b')
+	await started.promise
+
+	await site.publish('commit-c')
+	const newer = advance('commit-c')
+	await new Promise<void>((resolve) => setImmediate(resolve))
+	expect(jobs.syncPublishedPackageJobs).toHaveBeenCalledTimes(1)
+	expect(site.servingCommit()).toBe('commit-a')
+	finish.resolve(true)
+
+	await expect(older).resolves.toBe(false)
+	await expect(newer).resolves.toBe(true)
+	expect(jobs.syncPublishedPackageJobs).toHaveBeenNthCalledWith(
+		2,
+		expect.objectContaining({ commit: 'commit-c' }),
+	)
+	expect(site.servingCommit()).toBe('commit-c')
 })
 
 test('an approval that lands while a wider build is being checked still releases it', async () => {

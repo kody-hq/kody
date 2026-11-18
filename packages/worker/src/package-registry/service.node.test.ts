@@ -121,7 +121,9 @@ vi.mock('#worker/jobs/jobs-data.ts', () => ({
 vi.mock('#worker/jobs/manager-client.ts', () =>
 	pickMocks('syncJobManagerAlarm'),
 )
-vi.mock('#worker/jobs/service.ts', () => pickMocks('syncPublishedPackageJobs'))
+vi.mock('#worker/repo/package-serving-update.ts', () => ({
+	updatePackageServing: mockModule.syncPublishedPackageJobs,
+}))
 vi.mock('#worker/repo/artifact-repo-cleanup.ts', () =>
 	pickMocks('cleanupArtifactReposForPackage'),
 )
@@ -380,14 +382,13 @@ test('refreshSavedPackageProjection syncs jobs to the serving commit as the publ
 
 	await refresh(env)
 
-	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith({
-		env,
+	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith(env, {
+		kind: 'refresh-jobs',
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
 		sourceId: 'source-1',
-		actorUserId: undefined,
-		actorCredential: null,
+		actor: { userId: undefined, credential: null },
 	})
 	expect(mockModule.buildPublishedPackageArtifacts).toHaveBeenCalledWith({
 		env,
@@ -520,14 +521,13 @@ test('refreshSavedPackageProjection continues best-effort cleanup when dependent
 
 	await refresh(env)
 
-	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith({
-		env,
+	expect(mockModule.syncPublishedPackageJobs).toHaveBeenCalledWith(env, {
+		kind: 'refresh-jobs',
 		userId: ownerIdFromStored('user-1'),
 		baseUrl: 'https://heykody.dev',
 		packageId: 'package-1',
 		sourceId: 'source-1',
-		actorUserId: undefined,
-		actorCredential: null,
+		actor: { userId: undefined, credential: null },
 	})
 	// The swallowed skills-index failure is still logged for operators.
 	expect(consoleError).toHaveBeenCalledTimes(1)

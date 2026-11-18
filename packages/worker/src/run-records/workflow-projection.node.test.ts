@@ -17,7 +17,7 @@ const semanticInput: ExternalPublishSemanticInput = {
 }
 const userId = ownerIdFromStored('user-synthetic')
 
-test('publishProvenanceFromIdempotencyKey reads the current v2 publish key', () => {
+test('publishProvenanceFromIdempotencyKey reads the current v3 publish key', () => {
 	const key = buildCallerScopedIdempotencyKey({
 		userId,
 		parts: buildExternalPublishIdempotencyParts(semanticInput),
@@ -28,19 +28,23 @@ test('publishProvenanceFromIdempotencyKey reads the current v2 publish key', () 
 	})
 })
 
-test('publishProvenanceFromIdempotencyKey reads the pre-v2 publish key', () => {
-	const key = buildCallerScopedIdempotencyKey({
-		userId,
-		parts: [
-			'packagePublishExternalPush',
-			canonicalJsonStringify(semanticInput),
-		],
-	})
-	expect(publishProvenanceFromIdempotencyKey(key)).toEqual({
-		packageId: 'pkg-synthetic',
-		commit: 'b'.repeat(40),
-	})
-})
+test.each([[], ['v2']])(
+	'publishProvenanceFromIdempotencyKey reads legacy publish keys (%j)',
+	(...version) => {
+		const key = buildCallerScopedIdempotencyKey({
+			userId,
+			parts: [
+				'packagePublishExternalPush',
+				...version,
+				canonicalJsonStringify(semanticInput),
+			],
+		})
+		expect(publishProvenanceFromIdempotencyKey(key)).toEqual({
+			packageId: 'pkg-synthetic',
+			commit: 'b'.repeat(40),
+		})
+	},
+)
 
 test('publishProvenanceFromIdempotencyKey ignores released and unrelated keys', () => {
 	expect(publishProvenanceFromIdempotencyKey('released:dynwf-synthetic')).toBe(

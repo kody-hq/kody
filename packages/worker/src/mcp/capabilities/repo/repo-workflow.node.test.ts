@@ -44,7 +44,20 @@ vi.mock('#worker/repo/repo-sessions.ts', () => ({
 }))
 
 vi.mock('#worker/repo/entity-sources.ts', () => ({
-	advanceEntitySourceServingCommit: async () => true,
+	advanceEntitySourceServingCommit: async (
+		_db: D1Database,
+		input: { id: string; userId: string; commit: string },
+	) => {
+		mockModule.getEntitySourceByIdForUser.mockResolvedValue({
+			id: input.id,
+			user_id: input.userId,
+			entity_kind: 'package',
+			entity_id: 'package-1',
+			published_commit: input.commit,
+			serving_commit: input.commit,
+		})
+		return true
+	},
 	getEntitySourceByIdForUser: (...args: Array<unknown>) =>
 		mockModule.getEntitySourceByIdForUser(...args),
 }))

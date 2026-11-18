@@ -2344,12 +2344,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			waitUntil,
 		})
 		let logs: Array<string> | undefined
+		const durablePublish =
+			isPublishWorkflow(payload) && isDurablePublishWorkflowCode(payload.code)
 		try {
 			const result = await runModuleWithRegistry(
 				this.env,
 				callerContext,
 				payload.code,
-				payload.params,
+				durablePublish && payload.enqueuedCommit
+					? { ...payload.params, expected_head: payload.enqueuedCommit }
+					: payload.params,
 				{
 					packageContext: payload.packageContext,
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
@@ -2373,10 +2377,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
-			if (
-				isPublishWorkflow(payload) &&
-				isDurablePublishWorkflowCode(payload.code)
-			) {
+			if (durablePublish) {
 				const publish = compactDurablePublishResult(
 					value,
 					payload.enqueuedCommit ?? null,

@@ -91,6 +91,12 @@ import {
 import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.ts'
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
+// Keep serving reconciliation off the RepoSession startup graph.
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type {
+	PackageServingUpdate,
+	PackageServingUpdateQueue,
+} from './package-serving-update.ts'
 import {
 	resolveRepoWorkspacePath,
 	toExternalRepoPath,
@@ -417,6 +423,15 @@ function buildGitCloneAuth(input: { remote: string; token: string }) {
 }
 
 class RepoSessionBase extends DurableObject<Env> {
+	private packageServingUpdateQueue?: PackageServingUpdateQueue
+
+	async updatePackageServing(update: PackageServingUpdate) {
+		const { PackageServingUpdateQueue } =
+			await import('./package-serving-update.ts')
+		this.packageServingUpdateQueue ??= new PackageServingUpdateQueue()
+		return await this.packageServingUpdateQueue.run(this.env, update)
+	}
+
 	readonly workspace = new Workspace({
 		sql: this.ctx.storage.sql,
 		name: () => buildRepoSessionWorkspaceName(this.ctx.id.toString()),
