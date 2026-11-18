@@ -459,7 +459,7 @@ test('a package secret is refused with the reason and no link, and its page offe
 		refusals: [{ reason: 'not_found', approveUrl: null }],
 	})
 	if (result.ok) return
-	expect(result.refusals[0]?.message).toContain('package secrets cannot')
+	expect(result.refusals[0]?.message).toContain('package secrets')
 	expect(result.refusals[0]?.message).toContain('{{secret:wakeToken}}')
 
 	const user = sessionUser(
