@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
+import { readFileSync } from 'node:fs'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	d1ImportMaxStatementBytes,
@@ -184,4 +185,38 @@ test('a sealed document too large for a D1 import statement stays in R2', async 
 			row,
 		}),
 	).toEqual(document)
+})
+
+test('a committed build that still had a document before 0289 is purged after it', async () => {
+	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_json TEXT, updated_at TEXT, expires_at TEXT)`,
+	)
+	sqlite
+		.prepare(
+			`INSERT INTO publish_builds (id, status, document_json, expires_at) VALUES ('pb_old', 'committed', '{}', '2026-11-01T00:00:00Z')`,
+		)
+		.run()
+	sqlite.exec(
+		readFileSync(
+			new URL(
+				'../../migrations/0289-publish-build-documents-in-r2.sql',
+				import.meta.url,
+			),
+			'utf8',
+		),
+	)
+	const bucket = fakeBucket([publishBuildBlobKey('pb_old', 'a'.repeat(64))])
+
+	const purged = await purgeExpiredPublishBuilds({
+		db: createD1FromSqlite(sqlite),
+		bucket: bucket as unknown as R2Bucket,
+		now: Date.parse('2026-11-03T12:00:00Z'),
+	})
+
+	expect(purged).toBe(1)
+	expect([...bucket.objects]).toEqual([])
+	expect(
+		sqlite.prepare(`SELECT document_sha256 FROM publish_builds`).get(),
+	).toEqual({ document_sha256: null })
 })
