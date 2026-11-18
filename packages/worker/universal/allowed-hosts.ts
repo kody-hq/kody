@@ -1,4 +1,4 @@
-export function normalizeHost(host: string) {
+function normalizeHost(host: string) {
 	const trimmed = host.trim().toLowerCase()
 	if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
 		return trimmed

@@ -133,16 +133,15 @@ function hostsHint(kind: ValueFormKind) {
 export function ConnectCredentialRoute({
 	data,
 	currentHref: href,
+	search,
 }: {
 	data: AccountCredentialsResponse
 	currentHref: string
+	search: URLSearchParams
 }) {
+	const query = parseCredentialCreateQuery(search)
 	const [form, setForm] = useState<KeyFormState>(() =>
-		createKeyFormState(
-			parseCredentialCreateQuery(
-				new URL(href, 'https://kody.local').searchParams,
-			),
-		),
+		createKeyFormState(query),
 	)
 	const [showValue, setShowValue] = useState(false)
 	const [editedKeyHosts, setEditedKeyHosts] = useState<string | null>(null)
@@ -581,8 +580,6 @@ export function ConnectCredentialRoute({
 		)
 	}
 	const state = form as KeyFormState
-	const search = new URL(href, 'http://localhost').searchParams
-	const query = parseCredentialCreateQuery(search)
 	const pathOrgSlug = orgSlugFromPathname(
 		new URL(href, 'http://localhost').pathname,
 	)
