@@ -16,6 +16,7 @@ export const iconNames = [
 	'key',
 	'plug',
 	'server',
+	'monitor',
 	'book',
 	'mail',
 	'users',
