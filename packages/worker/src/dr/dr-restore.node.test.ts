@@ -211,6 +211,25 @@ test('dr-restore restores storage, R2, and artifacts in chunked ticks', async ()
 	expect(kvPutKeys).toEqual(['source-snapshot:v1:src-1:commit-1'])
 })
 
+test('dr-restore fails closed on a storage dump part without its predecessor', async () => {
+	const s3 = createSealedS3({
+		storage: [
+			{
+				...storageEntry({
+					bytes: dumpBody.length,
+					sha256: await sha256Hex(dumpBody),
+				}),
+				part: 1,
+				objectKey: stagingStorageDumpKey(day, identity, 1),
+			},
+		],
+	})
+	await expect(
+		runDrRestoreTick({ env: baseEnv(), day, timeBudgetMs: 60_000, s3 }),
+	).rejects.toThrow('does not follow part 0')
+	expect(storageMocks.importStorage).not.toHaveBeenCalled()
+})
+
 test('dr-restore hard-fails closed on missing dumps, sha mismatches, and missing blobs', async () => {
 	const badDigest = 'a'.repeat(64)
 	const cases: Array<[string, Parameters<typeof createSealedS3>[0]]> = [

@@ -18,6 +18,7 @@ import {
 	stagingStorageDumpKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
+	type StorageIndex,
 } from '@kody-internal/shared/backup-staging.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 import {
@@ -38,6 +39,10 @@ import {
 } from '#worker/dr/exporter-inventory.ts'
 import { encodeStorageIdentity } from '#worker/dr/storage-identity.ts'
 import {
+	__testOnlySealedObjectKey,
+	runDrRestoreTick,
+} from '#worker/dr/dr-restore.ts'
+import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
 	type DrBackupS3PutOptions,
@@ -45,6 +50,7 @@ import {
 
 const storageMocks = vi.hoisted(() => ({
 	exportStorage: vi.fn(),
+	importStorage: vi.fn(),
 }))
 
 const mailboxMocks = vi.hoisted(() => ({
@@ -64,6 +70,7 @@ const storageBucketMocks = vi.hoisted(() => ({
 vi.mock('#worker/storage-runner.ts', () => ({
 	storageRunnerRpc: () => ({
 		exportStorage: storageMocks.exportStorage,
+		importStorage: storageMocks.importStorage,
 	}),
 }))
 
@@ -1200,34 +1207,84 @@ test('a storage identity whose serial attempts keep aborting is skipped', async 
 	)
 })
 
-test('exporter skips oversized storage dumps with a summary warning', async () => {
-	const hugeValue = 'x'.repeat(drExportMaxStorageDumpBufferBytes + 1)
+test('a storage dump over the buffer is exported in parts and restores whole', async () => {
+	const value = 'x'.repeat(7 * 1024 * 1024)
+	const pages: Record<string, { key: string; next: string | null }> = {
+		start: { key: 'k1', next: 'k1' },
+		k1: { key: 'k2', next: 'k2' },
+		k2: { key: 'k3', next: null },
+	}
+	storageMocks.exportStorage.mockReset()
 	storageMocks.exportStorage.mockImplementation(
-		async (input: { startAfter?: string | null }) => ({
-			entries: input.startAfter ? [] : [{ key: 'huge', value: hugeValue }],
-			truncated: false,
-			nextStartAfter: null,
-		}),
+		async (input: { startAfter?: string | null }) => {
+			const page = pages[input.startAfter ?? 'start']!
+			return {
+				entries: [{ key: page.key, value }],
+				truncated: page.next !== null,
+				nextStartAfter: page.next,
+			}
+		},
 	)
-	const { client, readText } = createMemoryS3()
-	const identity = encodeStorageIdentity('user-a', 'job:huge')
+	const { client, objects, readText } = createMemoryS3()
 	const env = createEnv({
 		APP_DB: createDb({
-			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:huge' }],
+			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:big' }],
 		}),
 	})
 
-	const result = await runDrExportTick({
+	const exported = await runDrExportTick({
 		env,
 		now: at('01:00'),
 		timeBudgetMs: 60_000,
 		s3: client,
 	})
-	expect(result.summaryWritten).toBe(true)
-	expect(JSON.parse(await readText(stagingSummaryKey(day))).warnings).toContain(
-		`storage dump too large: ${identity}`,
+	expect(exported.summaryWritten).toBe(true)
+	const index = JSON.parse(
+		await readText(stagingStorageIndexKey(day)),
+	) as StorageIndex
+	expect(index.entries.map((entry) => [entry.part, entry.entryCount])).toEqual([
+		[0, 2],
+		[1, 1],
+	])
+	const dumpBytes = index.entries.map((entry) => entry.bytes)
+	expect(dumpBytes.reduce((sum, bytes) => sum + bytes, 0)).toBeGreaterThan(
+		drExportMaxStorageDumpBufferBytes,
 	)
-	expect(await client.getText(stagingStorageDumpKey(day, identity))).toBeNull()
+	for (const bytes of dumpBytes) {
+		expect(bytes).toBeLessThanOrEqual(drExportMaxStorageDumpBufferBytes)
+	}
+
+	for (const [key, entry] of [...objects]) {
+		if (key.startsWith(`staging/${day}/`) && !key.includes('/exporter/')) {
+			objects.set(__testOnlySealedObjectKey(day, key), entry)
+		}
+	}
+	const imported: Array<{ replacePage: string; keys: Array<string> }> = []
+	storageMocks.importStorage.mockImplementation(
+		async (input: { replacePage: string; entries: Array<{ key: string }> }) => {
+			imported.push({
+				replacePage: input.replacePage,
+				keys: input.entries.map((entry) => entry.key),
+			})
+			return { ok: true }
+		},
+	)
+	let cursor: string | undefined
+	for (let tick = 0; tick < 10; tick += 1) {
+		const restored = await runDrRestoreTick({
+			env,
+			day,
+			cursor,
+			timeBudgetMs: 60_000,
+			s3: client,
+		})
+		if (restored.done) break
+		cursor = restored.nextCursor ?? undefined
+	}
+	expect(imported).toEqual([
+		{ replacePage: 'first', keys: ['k1', 'k2'] },
+		{ replacePage: 'continue', keys: ['k3'] },
+	])
 })
 
 test('exporter aborts quietly when progress If-Match precondition fails', async () => {

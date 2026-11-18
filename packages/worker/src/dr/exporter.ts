@@ -92,7 +92,10 @@ export const drExportRunTimeBudgetMs = 45_000
 const ownerExportConcurrency = 8
 /** Skip individual R2 objects larger than this (full-buffer ceiling). */
 export const drExportMaxObjectBytes = 25 * 1024 * 1024
-/** Cap for an assembled storage dump before it is admitted to the index. */
+/**
+ * Most bytes of one storage dump part assembled in memory. A larger dump is
+ * split into consecutive parts, so no storage identity is ever left out.
+ */
 export const drExportMaxStorageDumpBufferBytes = 16 * 1024 * 1024
 const storageExportPageSize = 250
 /**
@@ -205,6 +208,11 @@ export type DrExporterProgress = {
 	storageEntryChunkHead: string | null
 	/** Bounded tail; full chunks live under exporter/chunks/storage-index/. */
 	storagePendingEntries: Array<StorageIndexEntry>
+	/**
+	 * Parts already written for the in-progress storage dump. They join the
+	 * index together once the identity's last page is written.
+	 */
+	storageDumpParts?: Array<StorageIndexEntry>
 	/**
 	 * Storage cursor seen at the start of recent ticks and how many ticks in a
 	 * row began there. Unchanged across ticks means no storage progress.
@@ -347,6 +355,7 @@ function createInitialProgress(day: string, now: Date): DrExporterProgress {
 		storageEntryChunkCount: 0,
 		storageEntryChunkHead: null,
 		storagePendingEntries: [],
+		storageDumpParts: [],
 		storageStall: null,
 		r2LabelIndex: 0,
 		r2ListCursor: null,
@@ -844,7 +853,6 @@ function runLogDumpEntries(page: {
 	]
 }
 
-const oversizedStorageDumpWarningPrefix = 'storage dump too large: '
 const failedStorageDumpWarningPrefix = 'storage dump failed: '
 
 function storageStallKey(progress: DrExporterProgress) {
@@ -853,6 +861,7 @@ function storageStallKey(progress: DrExporterProgress) {
 		progress.storagePartialIdentity ?? null,
 		progress.storagePageStartAfter,
 		progress.storageDumpChunkCount,
+		progress.storageDumpParts?.length ?? 0,
 		progress.storageEntryChunkCount,
 		progress.storagePendingEntries.length,
 		progress.warnings.length,
@@ -881,15 +890,7 @@ function resetPartialStorageState(progress: DrExporterProgress) {
 	progress.storageDumpChunkHead = null
 	progress.storagePartialEntryCount = 0
 	progress.storagePartialBytes = 0
-}
-
-function skipOversizedStorageDump(
-	progress: DrExporterProgress,
-	identity: string,
-) {
-	progress.warnings.push(`${oversizedStorageDumpWarningPrefix}${identity}`)
-	progress.storageIndex += 1
-	resetPartialStorageState(progress)
+	progress.storageDumpParts = []
 }
 
 async function collectHandledStorageIdentities(input: {
@@ -906,9 +907,6 @@ async function collectHandledStorageIdentities(input: {
 		...input.progress.storagePendingEntries.map((entry) => entry.storageId),
 	])
 	for (const warning of input.progress.warnings) {
-		if (warning.startsWith(oversizedStorageDumpWarningPrefix)) {
-			handled.add(warning.slice(oversizedStorageDumpWarningPrefix.length))
-		}
 		if (warning.startsWith(failedStorageDumpWarningPrefix)) {
 			handled.add(warning.slice(failedStorageDumpWarningPrefix.length))
 		}
@@ -1094,6 +1092,36 @@ async function exportStoragePhase(input: {
 		}
 	}
 
+	async function closeStorageDumpPart(
+		item: StorageInventoryEntry,
+		body: string,
+	) {
+		const parts = progress.storageDumpParts ?? []
+		const part = parts.length
+		const objectKey = stagingStorageDumpKey(progress.day, item.identity, part)
+		const storedBody = await putImmutableOutput({
+			s3,
+			key: objectKey,
+			body,
+			contentType: 'application/x-ndjson',
+		})
+		const summary = await fileSummary(objectKey, storedBody)
+		progress.storageDumpParts = [
+			...parts,
+			{
+				storageId: item.identity,
+				part,
+				objectKey,
+				entryCount: ndjsonEntryCount(storedBody),
+				bytes: summary.bytes,
+				sha256: summary.sha256,
+			},
+		]
+		progress.storageDumpChunkHead = null
+		progress.storageDumpChunkCount = 0
+		progress.storagePartialBytes = 0
+	}
+
 	async function consumeStoragePage(
 		item: StorageInventoryEntry,
 		page: StoragePage,
@@ -1115,12 +1143,18 @@ async function exportStoragePhase(input: {
 		}
 		const pageBytes = utf8ByteLength(pageBody)
 		if (
+			progress.storagePartialBytes > 0 &&
 			progress.storagePartialBytes + pageBytes >
-			drExportMaxStorageDumpBufferBytes
+				drExportMaxStorageDumpBufferBytes
 		) {
-			skipOversizedStorageDump(progress, item.identity)
-			handledIdentities.add(item.identity)
-			return
+			await closeStorageDumpPart(
+				item,
+				await readLinkedChunkBody({
+					s3,
+					headKey: progress.storageDumpChunkHead,
+					chunkCount: progress.storageDumpChunkCount,
+				}),
+			)
 		}
 		const finalPage = !(page.truncated && page.nextStartAfter)
 		let body: string
@@ -1149,21 +1183,10 @@ async function exportStoragePhase(input: {
 				chunkCount: progress.storageDumpChunkCount,
 			})
 		}
-		const objectKey = stagingStorageDumpKey(progress.day, item.identity)
-		const storedBody = await putImmutableOutput({
-			s3,
-			key: objectKey,
-			body,
-			contentType: 'application/x-ndjson',
-		})
-		const summary = await fileSummary(objectKey, storedBody)
-		progress.storagePendingEntries.push({
-			storageId: item.identity,
-			objectKey,
-			entryCount: ndjsonEntryCount(storedBody),
-			bytes: summary.bytes,
-			sha256: summary.sha256,
-		})
+		if (body.length > 0 || !progress.storageDumpParts?.length) {
+			await closeStorageDumpPart(item, body)
+		}
+		progress.storagePendingEntries.push(...(progress.storageDumpParts ?? []))
 		if (progress.storagePendingEntries.length >= indexChunkEntryLimit) {
 			await flushStorageEntryChunk({ s3, progress })
 		}

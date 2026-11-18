@@ -60,8 +60,13 @@ export function stagingSummaryKey(day: string): string {
 	return `${stagingPrefix(day)}exporter/summary.json`
 }
 
-export function stagingStorageDumpKey(day: string, storageId: string): string {
-	return `${stagingPrefix(day)}storage/${encodeURIComponent(storageId)}.ndjson`
+export function stagingStorageDumpKey(
+	day: string,
+	storageId: string,
+	part = 0,
+): string {
+	const suffix = part === 0 ? '' : `.part-${String(part)}`
+	return `${stagingPrefix(day)}storage/${encodeURIComponent(storageId)}${suffix}.ndjson`
 }
 
 export function stagingStorageIndexKey(day: string): string {
@@ -113,6 +118,12 @@ export type StorageDumpEntry = {
 
 export type StorageIndexEntry = {
 	storageId: string
+	/**
+	 * 0-based part of this identity's dump. A dump larger than the exporter's
+	 * buffer is split into consecutive parts that restore in order. Indexes
+	 * sealed before parts existed omit it; those are part 0.
+	 */
+	part?: number
 	objectKey: string
 	entryCount: number
 	bytes: number

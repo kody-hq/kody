@@ -78,7 +78,9 @@ function parseStorageIndex(value: unknown, day: string): StorageIndex {
 			!Number.isSafeInteger(entry.entryCount) ||
 			!Number.isSafeInteger(entry.bytes) ||
 			typeof entry.sha256 !== 'string' ||
-			!sha256Pattern.test(entry.sha256)
+			!sha256Pattern.test(entry.sha256) ||
+			(entry.part !== undefined &&
+				!(Number.isSafeInteger(entry.part) && Number(entry.part) >= 0))
 		) {
 			throw new BackupError(
 				'storage-index-corrupt',
