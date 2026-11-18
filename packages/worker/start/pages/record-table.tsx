@@ -580,7 +580,8 @@ export function RecordTable(props: RecordTableProps) {
 					spaNavigated:
 						document.documentElement.hasAttribute('data-spa-nav') ||
 						window.location.hash !== '',
-					hasTarget: Boolean(target),
+					// A create form (`/new`) is not a record a link points at.
+					hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
 				}) &&
 				target
 			) {
