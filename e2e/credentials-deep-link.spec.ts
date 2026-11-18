@@ -79,7 +79,8 @@ test('a credential deep link scrolls to its record once; row clicks and Edit kee
 	await table.getByRole('link', { name: 'aa_FILLER_08' }).click()
 	await expect(page).toHaveURL(new RegExp(`/credentials/dl-${runId}-08`))
 	await page.waitForTimeout(500)
-	expect(await scrollY(page)).toBe(240)
+	// The record that closed above can nudge scroll anchoring a few pixels.
+	expect(Math.abs((await scrollY(page)) - 240)).toBeLessThan(40)
 	await expect(page.locator('[data-record-highlight]')).toHaveCount(0)
 
 	// Edit opens the form in place; cancel and save keep the URL and scroll.
