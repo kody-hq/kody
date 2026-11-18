@@ -54,11 +54,12 @@ Clicking the Dock icon brings back the same page without reloading, preserving
 navigation history, scroll position, and unfinished input. Quit stops the CLI
 and its workerd processes. On Windows, closing all windows quits unless
 background mode is on. On Linux, closing all windows quits. Pausing persists
-across launches. **Pause routing** in **This machine** is the server-side pause
-(`kody daemon pause`): chains skip this machine from anywhere until **Resume
-routing**, while the runner stays connected. Sleep and network reconnects use
-the CLI's reconnect behavior, a sleeping machine cannot run compute. A running
-process is not necessarily connected, the website shows the context's status.
+across launches. Turning off **Accept new executes** in **This machine** is the
+server-side pause (`kody daemon pause`): chains skip this machine from anywhere
+until it is turned back on, while the runner stays connected. Sleep and network
+reconnects use the CLI's reconnect behavior, a sleeping machine cannot run
+compute. A running process is not necessarily connected, the website shows the
+context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding
@@ -112,12 +113,12 @@ permissioned capabilities.
 
 ## Host commands
 
-**This machine > Allow host commands** opens a native confirmation explaining
-that granted runs can execute any shell command as your user, without approval
-per command. It uses the CLI's `context commands on|off --context <ecid>`.
-Turning it off stops background commands too. The website and CLI can also turn
-it off, and the controls refresh while the machine panel is open. Commands are
-disabled before setup. See
+Turning on **This machine > Host commands** opens a native confirmation
+explaining that granted runs can execute any shell command as your user, without
+approval per command. It uses the CLI's
+`context commands on|off --context <ecid>`. Turning it off stops background
+commands too. The website and CLI can also turn it off, and the controls refresh
+while the machine panel is open. Commands are disabled before setup. See
 [Host commands](../../docs/use/execution-contexts.md#host-commands).
 
 ## Packaging and checks
