@@ -219,14 +219,15 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `fatal` with `dr.drill.source` / `dr.drill.phase` tags, so a platform reset
    never folds into a generic (possibly ignored) OOM issue; the jobs worker asks
    `JobsHost.readD1PacedRestoreDrillCheckpoint` for the source and phase when
-   the RPC itself dies. This lane does not feed the admin UI drill or graduated
-   production restore — those stay on the REST SQL objects (APP_DB and JOBS_DB
-   only; AUDIT_DB is paced-only). `GET`/`POST /__maintenance/dr-paced-status`
-   (bearer `DR_RESTORE_SECRET`, optional `?day=YYYY-MM-DD`) reports
-   staging/sealed presence per source plus `restoreDrill`: the latest drill run
-   with per-source status, active table/phase, interruption count, and per-table
-   results. `DR_D1_PACED_SOURCES` commits APP_DB + AUDIT_DB + JOBS_DB (deploy
-   still expands live D1 UUIDs from resource bindings).
+   the RPC itself dies. Graduated production restore and the isolated paced
+   drill replay the same sealed paced chains for schema-v3 days; the admin UI
+   REST drill and schema-v1/v2 days use the REST SQL objects.
+   `GET`/`POST /__maintenance/dr-paced-status` (bearer `DR_RESTORE_SECRET`,
+   optional `?day=YYYY-MM-DD`) reports staging/sealed presence per source plus
+   `restoreDrill`: the latest drill run with per-source status, active
+   table/phase, interruption count, and per-table results. `DR_D1_PACED_SOURCES`
+   commits APP_DB + AUDIT_DB + JOBS_DB (deploy still expands live D1 UUIDs from
+   resource bindings).
 2. **Other canonical stores (production worker)** — When
    `DR_EXPORT_ENABLED=true` and DR S3 credentials are set, nightly ticks
    (`packages/worker/src/dr/exporter.ts`) stage:
@@ -315,11 +316,15 @@ Contract: `packages/shared/src/backup-staging.ts`.
    holds the seal (`rest-d1-pending`) until 12:00 UTC on that day so an early
    seal does not drop same-day REST SQL. After that, or for a failed, corrupt,
    or disabled REST export, its absence never blocks the seal (log
-   `full-backup-rest-d1-omitted`). Graduated production restore still imports
-   REST SQL, so it refuses a day sealed without REST evidence
-   (`restore-rest-d1-absent`). Historical schema-v1 and schema-v2 days keep
-   their required REST fields. Already-sealed days short-circuit before source
-   checks. Hourly freshness also attempts to seal the last sixteen complete days
+   `full-backup-rest-d1-omitted`). Graduated production restore of a schema-v3
+   day replays each sealed paced chain into its source database, one workflow
+   step per unit, then re-hashes every restored row and fails with
+   `restore-paced-verify-mismatch` when a count or checksum differs from the
+   sealed tip manifest. A paced source without a sealed manifest is refused
+   before the safety export (`restore-paced-seal-missing`). REST evidence on a
+   v3 day is never imported. Historical schema-v1 and schema-v2 days keep their
+   required REST fields. Already-sealed days short-circuit before source checks.
+   Hourly freshness also attempts to seal the last sixteen complete days
    synchronously. The UI seal action enqueues workflow
    `kody-production-seal-day` for that day and returns immediately.
 
@@ -394,8 +399,8 @@ Restore rebuilds the derived stores below; do not treat them as recovery media:
   in-flight workflow state as lost and restart or reconcile affected workflows.
 - **`AUDIT_DB`** — the separate D1 database containing hashed security audit
   events with 180-day retention is included in the paced D1 walk
-  (`DR_D1_PACED_SOURCES`) but is **not** on the REST SQL / admin UI drill /
-  graduated production-restore path (those still read only APP_DB and JOBS_DB).
+  (`DR_D1_PACED_SOURCES`) and restored from it by graduated production restore
+  on schema-v3 days. It is not on the REST SQL / admin UI drill path.
   Cross-account REST export of AUDIT_DB remains out of scope: paced sealed
   nights are the backup lane for this evidence. Scheduled job definitions live
   in `JOBS_DB` (`kody-jobs`) and are part of the nightly D1 export; APP_DB does

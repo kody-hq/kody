@@ -1,3 +1,7 @@
+import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
 import { sealedFullManifestKey } from '@kody-internal/shared/backup-staging.ts'
 
 import {
@@ -7,6 +11,7 @@ import {
 	bindSourceDatabase,
 	configuredSourceDatabases,
 	declaredSourceDatabases,
+	pacedSourceDatabases,
 	primarySourceDatabase,
 	restoreImportOrder,
 	safeLog,
@@ -22,6 +27,17 @@ import { importSqlIntoD1 } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
 import { readManifest } from './immutable-storage.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
+import {
+	bucketReader,
+	importPacedTargetUnits,
+	planPacedTargetRestore,
+	preflightPacedTargetUnits,
+	quickCheckPacedTarget,
+	scanPacedTargetTable,
+	type PacedTargetD1,
+	type PacedTargetPlan,
+	type PacedTargetStep,
+} from './paced-d1-target-restore.ts'
 import { readFullManifest } from './seal-full-backup.ts'
 import { assertSqlRestorable } from './sql-statement-stats.ts'
 
@@ -149,7 +165,7 @@ export function restoreWorkflowInstanceId(
 	return `dr-restore-${day}-${safeExpires}`
 }
 
-export type RestorableD1Source = {
+type RestorableD1Source = {
 	source: SourceDatabase
 	manifestKey: string
 	sqlObjectKey: string
@@ -253,10 +269,8 @@ export function restoreProgressFailsWorkflow(
 	return progress.phase === 'failed' || progress.warnings.length > 0
 }
 
-export async function validateSealedDayForRestore(
-	env: BackupEnvironment,
-	day: string,
-): Promise<{
+export type ValidatedRestDay = {
+	kind: 'rest'
 	fullManifestKey: string
 	d1ManifestKey: string
 	declaredSources: Array<RestorableD1Source>
@@ -264,7 +278,18 @@ export async function validateSealedDayForRestore(
 	sqlBytes: number
 	sqlSha256: string
 	sqlR2Etag: string
-}> {
+}
+
+export type ValidatedPacedDay = {
+	kind: 'paced'
+	fullManifestKey: string
+	pacedSources: Array<SourceDatabase>
+}
+
+export async function validateSealedDayForRestore(
+	env: BackupEnvironment,
+	day: string,
+): Promise<ValidatedRestDay | ValidatedPacedDay> {
 	const fullManifestKey = sealedFullManifestKey(day)
 	const fullManifest = await readFullManifest(
 		env.BACKUP_BUCKET,
@@ -282,12 +307,67 @@ export async function validateSealedDayForRestore(
 			`sealed full manifest signature invalid for ${day}`,
 		)
 	}
-	// Production restore imports REST D1 SQL. A day sealed from the paced lane
-	// alone has none until a paced restore path lands.
+	// Schema v3 days restore D1 from the sealed paced chain; REST evidence,
+	// when present, is not imported.
+	if ('d1Paced' in fullManifest.payload) {
+		const configured = pacedSourceDatabases(env)
+		const tier = pacedD1RetentionTierForDay(day)
+		const pacedSources: Array<SourceDatabase> = []
+		for (const entry of fullManifest.payload.d1Paced) {
+			const source = configured.find(
+				(candidate) =>
+					candidate.id.toLowerCase() === entry.databaseId.toLowerCase(),
+			)
+			if (source === undefined) {
+				throw new BackupError(
+					'restore-d1-source-not-configured',
+					`sealed paced source ${entry.databaseName} (${entry.databaseId}) is not a configured paced source`,
+				)
+			}
+			if (
+				entry.manifestKey !== pacedD1SealedManifestKey(tier, source.id, day)
+			) {
+				throw new BackupError(
+					'restore-paced-manifest-key-mismatch',
+					`sealed full manifest points ${source.name} at an unexpected paced manifest key`,
+				)
+			}
+			const object = await env.BACKUP_BUCKET.get(entry.manifestKey)
+			if (object === null) {
+				throw new BackupError(
+					'restore-paced-seal-missing',
+					`no sealed paced manifest for ${source.name} on ${day}`,
+				)
+			}
+			if (
+				sha256HexFromBuffer(
+					await crypto.subtle.digest('SHA-256', await object.arrayBuffer()),
+				) !== entry.manifestSha256.toLowerCase()
+			) {
+				throw new BackupError(
+					'restore-paced-manifest-digest-mismatch',
+					`sealed paced manifest for ${source.name} on ${day} does not match the signed full manifest`,
+				)
+			}
+			pacedSources.push(source)
+		}
+		if (
+			!pacedSources.some(
+				(source) =>
+					source.id.toLowerCase() === env.SOURCE_DATABASE_ID.toLowerCase(),
+			)
+		) {
+			throw new BackupError(
+				'restore-d1-source-not-configured',
+				'sealed paced D1 sources do not include the primary database',
+			)
+		}
+		return { kind: 'paced', fullManifestKey, pacedSources }
+	}
 	if (fullManifest.payload.d1ManifestKey === undefined) {
 		throw new BackupError(
-			'restore-rest-d1-absent',
-			`sealed full manifest for ${day} has no REST D1 export to restore`,
+			'restore-d1-manifest-missing',
+			`sealed full manifest for ${day} has no D1 manifest`,
 		)
 	}
 	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
@@ -347,6 +427,7 @@ export async function validateSealedDayForRestore(
 		)
 	}
 	return {
+		kind: 'rest',
 		fullManifestKey,
 		d1ManifestKey: fullManifest.payload.d1ManifestKey,
 		declaredSources: restorableSources,
@@ -556,6 +637,68 @@ async function captureOneSourceSafetyExport(
 	return { objectKey, bytes: buffer.byteLength }
 }
 
+const inlineStep: PacedTargetStep = {
+	do: async (_name, callback) => callback(),
+}
+
+/**
+ * Replay one sealed paced chain into its production D1 database, then require
+ * every table's target count and re-hashed checksum to match the tip manifest.
+ */
+async function restorePacedSourceIntoProduction(
+	env: BackupEnvironment,
+	day: string,
+	source: SourceDatabase,
+	input: { step: PacedTargetStep; api: ApiOptions; plan: PacedTargetPlan },
+): Promise<void> {
+	const reader = bucketReader(env.BACKUP_BUCKET)
+	const target: PacedTargetD1 = {
+		accountId: env.SOURCE_ACCOUNT_ID,
+		databaseId: source.id,
+		token: env.CLOUDFLARE_API_TOKEN,
+		options: input.api,
+	}
+	const { plan } = input
+	await importPacedTargetUnits({
+		reader,
+		source,
+		day,
+		step: input.step,
+		plan,
+		target,
+		onUnit: async () => undefined,
+	})
+	const quickCheck = await quickCheckPacedTarget({
+		source,
+		step: input.step,
+		target,
+	})
+	const failing: Array<string> = []
+	for (const [tableIndex, table] of plan.tables.entries()) {
+		const scan = await scanPacedTargetTable({
+			source,
+			step: input.step,
+			target,
+			table,
+			tableIndex,
+		})
+		if (
+			scan.count !== table.manifestCount ||
+			scan.checksum !== table.manifestChecksum
+		) {
+			failing.push(
+				`${table.table} (manifest ${String(table.manifestCount)}, restored ${String(scan.count)})`,
+			)
+		}
+	}
+	if (quickCheck !== 'ok' || failing.length > 0) {
+		throw new BackupError(
+			'restore-paced-verify-mismatch',
+			`${source.name}: ${quickCheck === 'ok' ? `count or checksum mismatch: ${failing.join(', ')}` : `PRAGMA quick_check returned ${quickCheck}`}`,
+		)
+	}
+}
+
 export async function runProductionRestore(
 	env: BackupEnvironment,
 	payload: ProductionRestorePayload,
@@ -563,6 +706,7 @@ export async function runProductionRestore(
 		maxPollAttempts?: number
 		pollDelayMs?: number
 		onProgress?: (progress: ProductionRestoreProgress) => Promise<void> | void
+		step?: PacedTargetStep
 		now?: Date
 	} = {},
 ): Promise<ProductionRestoreProgress> {
@@ -578,14 +722,47 @@ export async function runProductionRestore(
 	const publish = async () => {
 		await options.onProgress?.(progress)
 	}
+	const step = options.step ?? inlineStep
 	try {
 		await publish()
-		const validated = await validateSealedDayForRestore(env, payload.day)
-		await verifyRequiredSqlObjects(
-			env.BACKUP_BUCKET,
-			payload.day,
-			validated.declaredSources,
+		const validated = await step.do('restore-validate', async () =>
+			validateSealedDayForRestore(env, payload.day),
 		)
+		const restoredSources =
+			validated.kind === 'paced'
+				? validated.pacedSources
+				: validated.declaredSources.map((entry) => entry.source)
+		if (validated.kind === 'rest') {
+			await step.do('restore-verify-sql-objects', async () =>
+				verifyRequiredSqlObjects(
+					env.BACKUP_BUCKET,
+					payload.day,
+					validated.declaredSources,
+				),
+			)
+		}
+
+		const pacedPlans = new Map<string, PacedTargetPlan>()
+		if (validated.kind === 'paced') {
+			const reader = bucketReader(env.BACKUP_BUCKET)
+			for (const source of validated.pacedSources) {
+				const plan = await planPacedTargetRestore({
+					reader,
+					source,
+					day: payload.day,
+					step,
+					missingCode: 'restore-paced-seal-missing',
+				})
+				await preflightPacedTargetUnits({
+					reader,
+					source,
+					day: payload.day,
+					step,
+					plan,
+				})
+				pacedPlans.set(source.id, plan)
+			}
+		}
 
 		progress.phase = 'capturing-safety-export'
 		await publish()
@@ -594,12 +771,14 @@ export async function runProductionRestore(
 			status: 'success',
 			day: payload.day,
 		})
-		const safety = await capturePreRestoreSafetyExport(
-			env,
-			payload.day,
-			options.now ?? new Date(),
-			options,
-			validated.declaredSources.map((entry) => entry.source),
+		const safety = await step.do('restore-safety-export', async () =>
+			capturePreRestoreSafetyExport(
+				env,
+				payload.day,
+				options.now ?? new Date(),
+				options,
+				restoredSources,
+			),
 		)
 		progress.safetyExportKey = safety.objectKey
 		progress.safetyExportBytes = safety.bytes
@@ -612,20 +791,26 @@ export async function runProductionRestore(
 			objectKey: safety.objectKey,
 			bytes: safety.bytes,
 		})
-
 		progress.phase = 'importing-d1'
 		await publish()
 		safeLog({
 			event: 'production-restore-d1-import-started',
 			status: 'success',
 			day: payload.day,
-			objectKey: validated.sqlObjectKey,
 		})
 		const importOrder = restoreImportOrder(
-			validated.declaredSources.map((entry) => entry.source),
+			restoredSources,
 			primarySourceDatabase(env),
 		)
 		for (const source of importOrder) {
+			if (validated.kind === 'paced') {
+				await restorePacedSourceIntoProduction(env, payload.day, source, {
+					step,
+					api: options,
+					plan: pacedPlans.get(source.id)!,
+				})
+				continue
+			}
 			const restorable = validated.declaredSources.find(
 				(entry) => entry.source.id.toLowerCase() === source.id.toLowerCase(),
 			)
@@ -635,23 +820,27 @@ export async function runProductionRestore(
 					`SQL object missing for ${payload.day} (${source.name})`,
 				)
 			}
-			await importSqlIntoD1({
-				accountId: env.SOURCE_ACCOUNT_ID,
-				databaseId: source.id,
-				token: env.CLOUDFLARE_API_TOKEN,
-				sourceMd5Etag: restorable.sqlR2Etag,
-				loadSqlBody: async () => {
-					const sqlObject = await env.BACKUP_BUCKET.get(restorable.sqlObjectKey)
-					if (sqlObject?.body == null) {
-						throw new BackupError(
-							'restore-sql-missing',
-							`SQL object missing for ${payload.day} (${source.name}): ${restorable.sqlObjectKey}`,
+			await step.do(`restore-d1-rest:${source.id}`, async () =>
+				importSqlIntoD1({
+					accountId: env.SOURCE_ACCOUNT_ID,
+					databaseId: source.id,
+					token: env.CLOUDFLARE_API_TOKEN,
+					sourceMd5Etag: restorable.sqlR2Etag,
+					loadSqlBody: async () => {
+						const sqlObject = await env.BACKUP_BUCKET.get(
+							restorable.sqlObjectKey,
 						)
-					}
-					return sqlObject.body
-				},
-				options,
-			})
+						if (sqlObject?.body == null) {
+							throw new BackupError(
+								'restore-sql-missing',
+								`SQL object missing for ${payload.day} (${source.name}): ${restorable.sqlObjectKey}`,
+							)
+						}
+						return sqlObject.body
+					},
+					options,
+				}),
+			)
 		}
 		progress.d1ImportComplete = true
 		progress.phase = 'restoring-stores'
@@ -669,10 +858,15 @@ export async function runProductionRestore(
 			iteration += 1
 		) {
 			progress.storeIterations = iteration
-			const chunk = await callProductionDrRestore(
-				env,
-				{ day: payload.day, cursor },
-				options,
+			const from = cursor
+			const chunk = await step.do(
+				`restore-stores:${String(iteration)}`,
+				async () =>
+					callProductionDrRestore(
+						env,
+						{ day: payload.day, cursor: from },
+						options,
+					),
 			)
 			progress.warnings.push(...chunk.warnings)
 			progress.progress = serializeRestoreProgress(chunk.progress)
@@ -683,11 +877,7 @@ export async function runProductionRestore(
 					progress.phase = 'failed'
 					progress.errorCode = 'dr-restore-warnings'
 					progress.errorMessage = `dr-restore completed with ${String(progress.warnings.length)} warning(s)`
-					appendAbsentConfiguredSourceNotes(
-						env,
-						validated.declaredSources.map((entry) => entry.source),
-						progress,
-					)
+					appendAbsentConfiguredSourceNotes(env, restoredSources, progress)
 					await publish()
 					safeLog({
 						event: 'production-restore-failure',
@@ -697,11 +887,7 @@ export async function runProductionRestore(
 					})
 					return progress
 				}
-				appendAbsentConfiguredSourceNotes(
-					env,
-					validated.declaredSources.map((entry) => entry.source),
-					progress,
-				)
+				appendAbsentConfiguredSourceNotes(env, restoredSources, progress)
 				progress.phase = 'complete'
 				await publish()
 				safeLog({

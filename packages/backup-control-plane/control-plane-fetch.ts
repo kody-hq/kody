@@ -276,9 +276,20 @@ async function handleAuthenticated(
 				renderRestorePreparePage({
 					day,
 					sourceDatabaseName: env.SOURCE_DATABASE_NAME,
-					sqlObjectKey: validated.sqlObjectKey,
-					sqlBytes: validated.sqlBytes,
-					sqlSha256: validated.sqlSha256,
+					d1:
+						validated.kind === 'paced'
+							? {
+									kind: 'paced',
+									sourceNames: validated.pacedSources.map(
+										(source) => source.name,
+									),
+								}
+							: {
+									kind: 'rest',
+									sqlObjectKey: validated.sqlObjectKey,
+									sqlBytes: validated.sqlBytes,
+									sqlSha256: validated.sqlSha256,
+								},
 					token,
 				}),
 			)
