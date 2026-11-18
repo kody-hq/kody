@@ -307,6 +307,8 @@ test('listEntitySourcesByIdsForUser scopes by user_id and skips other users', as
 test('reverting a failed publish only moves the pointer while the failed commit still holds it', async () => {
 	const sqlite = entitySourcesSqlite()
 	sqlite.exec(`
+		ALTER TABLE entity_sources ADD COLUMN serving_commit TEXT;
+		ALTER TABLE entity_sources ADD COLUMN held_commit TEXT;
 		INSERT INTO entity_sources (
 			id, user_id, entity_kind, entity_id, repo_id, published_commit,
 			manifest_path, source_root, created_at, updated_at
@@ -334,6 +336,21 @@ test('reverting a failed publish only moves the pointer while the failed commit 
 		}),
 	).toBe(false)
 	expect(readPointer()).toBe('commit-failed')
+
+	// An overlapping attempt served or held the commit before rollback.
+	for (const pointer of ['serving_commit', 'held_commit']) {
+		sqlite.exec(`UPDATE entity_sources SET ${pointer} = 'commit-failed'`)
+		expect(
+			await revertEntitySourcePublishedCommit(db, {
+				id: 'source-1',
+				userId,
+				failedCommit: 'commit-failed',
+				restoreCommit: 'commit-good',
+			}),
+		).toBe(false)
+		expect(readPointer()).toBe('commit-failed')
+		sqlite.exec(`UPDATE entity_sources SET ${pointer} = NULL`)
+	}
 
 	expect(
 		await revertEntitySourcePublishedCommit(db, {
