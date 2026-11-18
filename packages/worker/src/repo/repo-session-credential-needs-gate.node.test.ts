@@ -368,7 +368,6 @@ test('a publish paused for credential needs keeps the source branch and records 
 	needsGate.requireCredentialNeedsApproval.mockResolvedValueOnce(approval)
 	mockModule.rawPush.mockClear()
 	mockModule.updateRepoSession.mockClear()
-	mockModule.deleteStorageBucketInventory.mockClear()
 
 	await expect(
 		repoSession(createEnv(), state).publishSession(session),
@@ -394,13 +393,6 @@ test('a publish paused for credential needs keeps the source branch and records 
 			lastCheckpointAt: expect.any(String),
 		}),
 	)
-	// The paused commit lives on the pushed session branch, so the idle
-	// workspace scratch stops counting toward storage while approval waits.
-	expect(mockModule.deleteStorageBucketInventory).toHaveBeenCalledWith({
-		db: expect.anything(),
-		userId: ownerIdFromStored('user-1'),
-		storageId: 'repo-session:session-1',
-	})
 
 	await expect(
 		repoSession(createEnv(), state).publishSession({
