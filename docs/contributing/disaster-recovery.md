@@ -245,14 +245,17 @@ Contract: `packages/shared/src/backup-staging.ts`.
      storage identity via `exportStorage`
    - **R2** — `EMAIL_BLOBS` and `COMMUNITY_ASSETS` listed and copied into
      `blobs/sha256/{hash}` with per-bucket NDJSON indexes (objects above 25 MiB
-     are skipped with a warning in the staging summary; the same summary also
-     warns when a `StorageRunner` dump exceeds the 16 MiB buffer ceiling and is
-     skipped — review dashboard warnings before treating a sealed day as
-     complete). An object whose key, size, ETag, and uploaded timestamp match
-     the latest retained sealed-day index reuses that index entry and
-     content-addressed blob without downloading or hashing the source object.
-     Missing, malformed, or checksum-mismatched sealed indexes fall back to the
-     full download and hash path.
+     are skipped with a warning in the staging summary). A `StorageRunner` dump
+     larger than the 16 MiB buffer is written as consecutive parts under
+     `storage-parts/{id}/{sha256}.ndjson` (content-addressed, so a retried part
+     never adopts different bytes), each a `storage-index.json` entry with its
+     `part`, and restore imports them in order into one replace. Until
+     2026-11-18 such a dump was skipped with a `storage dump too large` warning
+     and was not backed up. An object whose key, size, ETag, and uploaded
+     timestamp match the latest retained sealed-day index reuses that index
+     entry and content-addressed blob without downloading or hashing the source
+     object. Missing, malformed, or checksum-mismatched sealed indexes fall back
+     to the full download and hash path.
    - **Published artifacts** — `BUNDLE_ARTIFACTS_KV` published source snapshots
      for rows in `entity_sources` with a `published_commit`. Snapshots are
      settled 8 at a time: each is hashed as a stream and its
@@ -292,8 +295,8 @@ Contract: `packages/shared/src/backup-staging.ts`.
      newer lease. Progress updates retain `If-Match` ownership semantics.
      Canonical per-day dumps, indexes, and the completion summary are
      create-only; a resumed writer adopts an already completed object instead of
-     replacing it. Per-owner Mailbox and RunLog dumps use the same 16 MiB
-     admission ceiling and summary-warning behavior as StorageRunner dumps.
+     replacing it. Per-owner Mailbox and RunLog dumps still use a 16 MiB
+     admission ceiling with a summary warning.
 3. **Seal** — Control plane verifies staged checksums against
    `staging/{day}/exporter/summary.json`, requires a verified same-day D1
    manifest for every configured source (APP_DB and JOBS_DB) when sealing a new

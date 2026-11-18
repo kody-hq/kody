@@ -64,6 +64,18 @@ export function stagingStorageDumpKey(day: string, storageId: string): string {
 	return `${stagingPrefix(day)}storage/${encodeURIComponent(storageId)}.ndjson`
 }
 
+/**
+ * One part of a storage dump split into parts. Keyed by content so a retried
+ * part with a moved boundary never adopts bytes it did not write.
+ */
+export function stagingStorageDumpPartKey(
+	day: string,
+	storageId: string,
+	sha256: string,
+): string {
+	return `${stagingPrefix(day)}storage-parts/${encodeURIComponent(storageId)}/${sha256}.ndjson`
+}
+
 export function stagingStorageIndexKey(day: string): string {
 	return `${stagingPrefix(day)}storage-index.json`
 }
@@ -113,6 +125,12 @@ export type StorageDumpEntry = {
 
 export type StorageIndexEntry = {
 	storageId: string
+	/**
+	 * 0-based part of this identity's dump. A dump larger than the exporter's
+	 * buffer is split into consecutive parts that restore in order. Indexes
+	 * sealed before parts existed omit it; those are part 0.
+	 */
+	part?: number
 	objectKey: string
 	entryCount: number
 	bytes: number
