@@ -120,6 +120,8 @@ function parseOwnerIndex(
 			!isRecord(entry) ||
 			typeof entry.ownerId !== 'string' ||
 			entry.ownerId.length === 0 ||
+			(entry.part !== undefined &&
+				!(Number.isSafeInteger(entry.part) && Number(entry.part) >= 0)) ||
 			typeof entry.objectKey !== 'string' ||
 			!Number.isSafeInteger(entry.entryCount) ||
 			Number(entry.entryCount) < 0 ||

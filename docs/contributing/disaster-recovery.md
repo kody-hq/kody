@@ -295,9 +295,11 @@ Contract: `packages/shared/src/backup-staging.ts`.
      newer lease. Progress updates retain `If-Match` ownership semantics.
      Canonical per-day dumps, indexes, and the completion summary are
      create-only; a resumed writer adopts an already completed object instead of
-     replacing it. Per-owner Mailbox and RunLog dumps still use a 16 MiB
-     admission ceiling with a summary warning (part splitting is tracked
-     separately).
+     replacing it. A per-owner Mailbox or RunLog dump larger than the 16 MiB
+     buffer is split the same way, into `mailbox-parts/{owner}/{sha256}.ndjson`
+     or `run-log-parts/{owner}/{sha256}.ndjson` entries that carry `part` in the
+     owner index, and Mailbox import reads an owner's parts in order. No owner
+     dump is skipped for size.
 3. **Seal** — Control plane verifies staged checksums against
    `staging/{day}/exporter/summary.json`, requires the sealed paced D1 night for
    every `D1_PACED_SOURCES` entry (APP_DB, AUDIT_DB, JOBS_DB) when sealing a new

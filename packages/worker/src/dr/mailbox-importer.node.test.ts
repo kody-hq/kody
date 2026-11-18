@@ -14,6 +14,7 @@ import {
 	sealedFullManifestKey,
 	sealedFullPrefix,
 	stagingMailboxDumpKey,
+	stagingMailboxDumpPartKey,
 	type MailboxIndex,
 } from '@kody-internal/shared/backup-staging.ts'
 import {
@@ -101,12 +102,13 @@ async function createBackup(
 	options: {
 		indexDumpOwnerId?: string
 		sealedAt?: string
+		splitDump?: boolean
 		threadRowExtra?: Record<string, unknown>
 	} = {},
 ) {
 	const day = '2026-08-01'
 	const ownerId = ownerIdFromStored('owner-a')
-	const dump = ['thread-a', 'thread-b']
+	const lines = ['thread-a', 'thread-b']
 		.map((id) =>
 			JSON.stringify({
 				kind: 'thread',
@@ -123,22 +125,40 @@ async function createBackup(
 			}),
 		)
 		.map((line) => `${line}\n`)
-		.join('')
+	const dump = lines.join('')
+	const parts = await Promise.all(
+		lines.map(async (line, part) => {
+			const sha256 = await sha256Hex(line)
+			return {
+				line,
+				entry: {
+					ownerId,
+					part,
+					objectKey: stagingMailboxDumpPartKey(day, ownerId, sha256),
+					entryCount: 1,
+					bytes: new TextEncoder().encode(line).byteLength,
+					sha256,
+				},
+			}
+		}),
+	)
 	const index: MailboxIndex = {
 		schemaVersion: backupStagingSchemaVersion,
 		day,
-		entries: [
-			{
-				ownerId,
-				objectKey: stagingMailboxDumpKey(
-					day,
-					options.indexDumpOwnerId ?? ownerId,
-				),
-				entryCount: 2,
-				bytes: new TextEncoder().encode(dump).byteLength,
-				sha256: await sha256Hex(dump),
-			},
-		],
+		entries: options.splitDump
+			? parts.map(({ entry }) => entry)
+			: [
+					{
+						ownerId,
+						objectKey: stagingMailboxDumpKey(
+							day,
+							options.indexDumpOwnerId ?? ownerId,
+						),
+						entryCount: 2,
+						bytes: new TextEncoder().encode(dump).byteLength,
+						sha256: await sha256Hex(dump),
+					},
+				],
 	}
 	const indexBody = JSON.stringify(index)
 	const prefix = sealedFullPrefix(day)
@@ -193,6 +213,12 @@ async function createBackup(
 		[sealedFullManifestKey(day)]: serializeBackupFullManifest(manifest),
 		[mailboxIndex.objectKey]: indexBody,
 		[`${prefix}mailbox/${encodeURIComponent(ownerId)}.ndjson`]: dump,
+		...Object.fromEntries(
+			parts.map(({ line, entry }) => [
+				`${prefix}mailbox-parts/${encodeURIComponent(ownerId)}/${entry.sha256}.ndjson`,
+				line,
+			]),
+		),
 	})
 	const env = {
 		DR_RESTORE_SECRET: 'node-test-restore-secret',
@@ -354,6 +380,22 @@ test('drill cleanup stays idempotent across lost responses for success and misma
 		expect((await resume()).verified).toBe(verified)
 		expect(mailboxMocks.completeDrill).toHaveBeenCalledTimes(cleanupCalls)
 	}
+})
+
+test('mailbox importer restores a dump split into parts in order', async () => {
+	resetMailboxMocks()
+	mailboxMocks.countMailbox.mockResolvedValue(threadCounts)
+	const backup = await createBackup({ splitDump: true })
+	expect(await backup.tick({ timeBudgetMs: 60_000 })).toMatchObject({
+		done: true,
+		verified: true,
+		progress: { ownersPassed: 1, ownersMismatched: 0 },
+	})
+	expect(
+		mailboxMocks.upsertMessageGraph.mock.calls.map(
+			([input]) => (input as { thread: { id: string } }).thread.id,
+		),
+	).toEqual(['thread-a', 'thread-b'])
 })
 
 test('mailbox importer resumes replacement idempotently and reports count mismatch', async () => {
