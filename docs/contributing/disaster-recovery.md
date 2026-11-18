@@ -509,11 +509,20 @@ Routes (all require Access JWT):
 | `POST` | `/actions/run-backup`      | Enqueue today's D1 backup Workflow for every configured source (APP_DB and JOBS_DB)                                                                                                                                              |
 | `POST` | `/actions/seal-day`        | Enqueue workflow `kody-production-seal-day` for that day (`seal-day-<day>`), then redirect to its status page.                                                                                                                   |
 | `POST` | `/actions/run-paced-drill` | Isolated paced restore drill: replays the latest sealed paced base plus deltas for every `D1_PACED_SOURCES` database into fresh D1 databases in `DRILL_ACCOUNT_ID` (never production) and redirects to `/paced-drill-status?id=` |
-| `GET`  | `/paced-drill-status?id=`  | Live paced drill readout: per-source progress, per-table manifest, restored and target row counts, manifest and restored checksums, and PASS or FAIL. Refreshes every 5 seconds while running                                    |
+| `GET`  | `/paced-drill-status?id=`  | Live paced drill readout: per-source progress, per-table manifest, imported and target row counts, manifest and target checksums, and PASS or FAIL. Refreshes every 5 seconds while running                                      |
 | `POST` | `/actions/restore/prepare` | Validate sealed day; issue 10-minute HMAC confirm token                                                                                                                                                                          |
 | `POST` | `/actions/restore/execute` | Require typed exact `SOURCE_DATABASE_NAME` + valid token; start restore Workflow                                                                                                                                                 |
 | `GET`  | `/seal-status?id=...`      | Poll seal Workflow status (in progress, sealed, already sealed, or incomplete reason)                                                                                                                                            |
 | `GET`  | `/restore-status?id=...`   | Poll restore Workflow status                                                                                                                                                                                                     |
+
+### Force a paced full base
+
+`POST https://kody.codes/__maintenance/dr-paced-force-full-base?day=YYYY-MM-DD`
+with `Authorization: Bearer $DR_RESTORE_SECRET` makes the paced lane cut a full
+base for that night instead of deltas. Use it when a restore drill needs a base
+newer than the last Sunday. `day` must be today or tomorrow (UTC), and the
+request is refused with 409 once any paced source has started that night. The
+night keeps its weekday `daily` tier, and later delta nights chain back to it.
 
 ### Agent seal API (`DR_OPS_SECRET`)
 

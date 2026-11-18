@@ -1,6 +1,9 @@
 import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	pacedD1BackupSchemaVersion,
+	pacedD1ForceFullBaseRequestKey,
+	type PacedD1NightManifest,
+	type PacedD1ProgressCursor,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedIndexKey,
 	pacedD1SealedIndexPartKey,
@@ -10,13 +13,12 @@ import {
 	pacedD1StagingIndexKey,
 	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
+	pacedD1StagingNightMetaKey,
 	pacedD1StagingPrefix,
 	pacedD1StagingProgressKey,
+	type PacedD1TableManifest,
 	parsePacedD1NightManifest,
 	parsePacedD1ProgressCursor,
-	type PacedD1NightManifest,
-	type PacedD1ProgressCursor,
-	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
 	parsePacedD1IndexLine,
@@ -121,6 +123,7 @@ type NightMeta = {
 	bytesOut: number
 	queryMs: Array<number>
 	wallStartedAtMs: number
+	forceFullBase: boolean
 }
 
 type LaneProgress = {
@@ -169,10 +172,6 @@ function utcDayMinus(day: string, daysBack: number) {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	date.setUTCDate(date.getUTCDate() - daysBack)
 	return date.toISOString().slice(0, 10)
-}
-
-function pacedD1StagingNightMetaKey(day: string, databaseName: string) {
-	return `${pacedD1StagingPrefix(day, databaseName)}night-meta.json`
 }
 
 function pacedD1StagingTableManifestKey(
@@ -546,6 +545,7 @@ async function loadOrCreateNightMeta(input: {
 			if (parsed.schemaHash !== input.schema.schemaHash) {
 				parsed.schemaStableDuringWalk = false
 			}
+			parsed.forceFullBase = parsed.forceFullBase === true
 			return parsed
 		}
 	}
@@ -568,6 +568,9 @@ async function loadOrCreateNightMeta(input: {
 		bytesOut: 0,
 		queryMs: [],
 		wallStartedAtMs: Date.now(),
+		forceFullBase:
+			(await input.s3.getText(pacedD1ForceFullBaseRequestKey(input.day))) !==
+			null,
 	}
 	await input.s3.put(key, `${JSON.stringify(meta)}\n`, {
 		contentType: 'application/json',
@@ -1002,6 +1005,7 @@ async function workSourceTick(input: {
 			day: input.day,
 			tableSchemaHash: table.schemaHash,
 			prevSchemaHash: prevTable?.schemaHash,
+			forceFullBase: meta.forceFullBase,
 		})
 
 		// Mid-table resume: lastRowid set. Walk-complete-pending-finalize:

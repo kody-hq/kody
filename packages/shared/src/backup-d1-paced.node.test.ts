@@ -268,6 +268,7 @@ test('full night then delta restores exactly, including deletes and schema rebas
 			day: '2026-10-26',
 			tableSchemaHash: table.schemaHash,
 			prevSchemaHash: prev?.schemaHash,
+			forceFullBase: false,
 		})
 		expect(table.name === 'users' ? mode : 'delta').toBe(
 			table.name === 'users' ? 'full' : 'delta',

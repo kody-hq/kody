@@ -3,16 +3,20 @@ import {
 	type D1PacedRestoreDrillProgress,
 } from '#worker/dr/d1-paced-restore-drill-progress.ts'
 import {
+	pacedD1ForceFullBaseRequestKey,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedManifestKey,
 	pacedD1StagingManifestKey,
+	pacedD1StagingNightMetaKey,
 } from '@kody-internal/shared/backup-d1-paced.ts'
+import { assertBackupDay } from '@kody-internal/shared/backup-staging.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import {
 	createDrBackupS3Client,
 	readDrBackupS3Config,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
+import { claimD1PacedBackupLease } from '#worker/dr/d1-paced-backup-lease.ts'
 import { isD1PacedBackupConfigured } from '#worker/dr/d1-paced-backup-schedule.ts'
 import {
 	parseD1PacedSources,
@@ -20,6 +24,8 @@ import {
 } from '#worker/dr/d1-paced-backup-sources.ts'
 
 export const d1PacedStatusPath = '/__maintenance/dr-paced-status'
+export const d1PacedForceFullBasePath =
+	'/__maintenance/dr-paced-force-full-base'
 
 export type D1PacedSourceStatus = {
 	binding: string
@@ -181,4 +187,89 @@ export async function handleD1PacedStatusRequest(
 			{ status: 500 },
 		)
 	}
+}
+
+/**
+ * POST ?day=YYYY-MM-DD: the paced lane cuts a full base for that night
+ * instead of deltas. Refused once any source has started the night.
+ */
+export async function handleD1PacedForceFullBaseRequest(
+	request: Request,
+	env: Env,
+	s3?: DrBackupS3Client,
+	now: Date = new Date(),
+): Promise<Response> {
+	if (request.method !== 'POST') {
+		return new Response('Method Not Allowed', { status: 405 })
+	}
+	const secret = env.DR_RESTORE_SECRET?.trim()
+	if (!secret) {
+		return new Response('DR paced status is not configured', { status: 503 })
+	}
+	const bearer = readBearerToken(request)
+	if (bearer === null || !(await timingSafeEqualString(bearer, secret))) {
+		return new Response('Unauthorized', { status: 401 })
+	}
+	const config = readDrBackupS3Config(env)
+	if (!isD1PacedBackupConfigured(env) || !config) {
+		return new Response('DR paced backup is not configured', { status: 503 })
+	}
+	const day = new URL(request.url).searchParams.get('day')?.trim() ?? ''
+	try {
+		assertBackupDay(day)
+	} catch {
+		return Response.json(
+			{ ok: false, error: 'day must be YYYY-MM-DD' },
+			{ status: 400 },
+		)
+	}
+	const today = formatUtcDay(now)
+	const tomorrow = formatUtcDay(new Date(now.getTime() + 86_400_000))
+	if (day !== today && day !== tomorrow) {
+		return Response.json(
+			{ ok: false, error: `day must be ${today} or ${tomorrow}` },
+			{ status: 400 },
+		)
+	}
+	// Holding the backup lane lease means no tick can create night metadata
+	// between the check below and the request write.
+	const lease = await claimD1PacedBackupLease(env.APP_DB)
+	if (lease === null) {
+		return Response.json(
+			{ ok: false, error: 'a paced backup tick is running; retry shortly' },
+			{ status: 409 },
+		)
+	}
+	const client = s3 ?? createDrBackupS3Client(config)
+	const sources = parseD1PacedSources(env.DR_D1_PACED_SOURCES)
+	try {
+		const started: Array<string> = []
+		for (const source of sources) {
+			if (await client.getText(pacedD1StagingNightMetaKey(day, source.name))) {
+				started.push(source.name)
+			}
+		}
+		if (started.length > 0) {
+			return Response.json(
+				{
+					ok: false,
+					error: `the ${day} paced night already started for ${started.join(', ')}`,
+				},
+				{ status: 409 },
+			)
+		}
+		await lease.assertHeld()
+		await client.put(
+			pacedD1ForceFullBaseRequestKey(day),
+			`${JSON.stringify({ day, requestedAt: now.toISOString() })}\n`,
+			{ contentType: 'application/json' },
+		)
+	} finally {
+		await lease.release()
+	}
+	return Response.json({
+		ok: true,
+		day,
+		sources: sources.map((source) => source.name),
+	})
 }
