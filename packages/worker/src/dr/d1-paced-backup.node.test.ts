@@ -37,7 +37,10 @@ import {
 	shouldRunD1PacedFreshnessCron,
 	shouldRunD1PacedRestoreDrillCron,
 } from '#worker/dr/d1-paced-backup.ts'
-import { D1PacedBackupLeaseLostError } from '#worker/dr/d1-paced-backup-lease.ts'
+import {
+	D1PacedBackupLeaseLostError,
+	claimD1PacedBackupLease,
+} from '#worker/dr/d1-paced-backup-lease.ts'
 import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
 import {
 	D1PacedRestoreDrillError,
@@ -1420,6 +1423,18 @@ test('a force-full-base request cuts a full base on a weekday night', async () =
 			)
 		).status,
 	).toBe(401)
+	const tick = await claimD1PacedBackupLease(env.APP_DB)
+	expect(
+		(
+			await handleD1PacedForceFullBaseRequest(
+				forceFullBaseRequest(nextDay),
+				env,
+				client,
+				requestedAt,
+			)
+		).status,
+	).toBe(409)
+	await tick!.release()
 	const accepted = await handleD1PacedForceFullBaseRequest(
 		forceFullBaseRequest(nextDay),
 		env,

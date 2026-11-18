@@ -16,6 +16,7 @@ import {
 	readDrBackupS3Config,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
+import { claimD1PacedBackupLease } from '#worker/dr/d1-paced-backup-lease.ts'
 import { isD1PacedBackupConfigured } from '#worker/dr/d1-paced-backup-schedule.ts'
 import {
 	parseD1PacedSources,
@@ -230,28 +231,42 @@ export async function handleD1PacedForceFullBaseRequest(
 			{ status: 400 },
 		)
 	}
-	const client = s3 ?? createDrBackupS3Client(config)
-	const sources = parseD1PacedSources(env.DR_D1_PACED_SOURCES)
-	const started: Array<string> = []
-	for (const source of sources) {
-		if (await client.getText(pacedD1StagingNightMetaKey(day, source.name))) {
-			started.push(source.name)
-		}
-	}
-	if (started.length > 0) {
+	// Holding the backup lane lease means no tick can create night metadata
+	// between the check below and the request write.
+	const lease = await claimD1PacedBackupLease(env.APP_DB)
+	if (lease === null) {
 		return Response.json(
-			{
-				ok: false,
-				error: `the ${day} paced night already started for ${started.join(', ')}`,
-			},
+			{ ok: false, error: 'a paced backup tick is running; retry shortly' },
 			{ status: 409 },
 		)
 	}
-	await client.put(
-		pacedD1ForceFullBaseRequestKey(day),
-		`${JSON.stringify({ day, requestedAt: now.toISOString() })}\n`,
-		{ contentType: 'application/json' },
-	)
+	const client = s3 ?? createDrBackupS3Client(config)
+	const sources = parseD1PacedSources(env.DR_D1_PACED_SOURCES)
+	try {
+		const started: Array<string> = []
+		for (const source of sources) {
+			if (await client.getText(pacedD1StagingNightMetaKey(day, source.name))) {
+				started.push(source.name)
+			}
+		}
+		if (started.length > 0) {
+			return Response.json(
+				{
+					ok: false,
+					error: `the ${day} paced night already started for ${started.join(', ')}`,
+				},
+				{ status: 409 },
+			)
+		}
+		await lease.assertHeld()
+		await client.put(
+			pacedD1ForceFullBaseRequestKey(day),
+			`${JSON.stringify({ day, requestedAt: now.toISOString() })}\n`,
+			{ contentType: 'application/json' },
+		)
+	} finally {
+		await lease.release()
+	}
 	return Response.json({
 		ok: true,
 		day,
