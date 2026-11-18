@@ -41,7 +41,7 @@ import {
 
 export type PacedDrillPayload = { runId: string; day: string }
 
-export type PacedDrillTableProgress = {
+type PacedDrillTableProgress = {
 	table: string
 	manifestCount: number
 	manifestChecksum: string
@@ -51,7 +51,7 @@ export type PacedDrillTableProgress = {
 	ok: boolean | null
 }
 
-export type PacedDrillSourceProgress = {
+type PacedDrillSourceProgress = {
 	databaseName: string
 	databaseId: string
 	targetDatabaseId: string | null
@@ -85,15 +85,15 @@ export function pacedDrillRunId(day: string, now: Date): string {
 	return `paced-drill-${day}-${now.getTime()}`
 }
 
-export function dayFromPacedDrillRunId(runId: string): string | null {
+function dayFromPacedDrillRunId(runId: string): string | null {
 	return runIdPattern.exec(runId)?.[1] ?? null
 }
 
-export function pacedDrillProgressKey(day: string, runId: string): string {
+function pacedDrillProgressKey(day: string, runId: string): string {
 	return `staging/${day}/d1-paced/isolated-restore-drill/${runId}.json`
 }
 
-export function bucketReader(bucket: R2Bucket): PacedD1ObjectReader {
+function bucketReader(bucket: R2Bucket): PacedD1ObjectReader {
 	return {
 		async getText(key) {
 			const object = await bucket.get(key)
