@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { Button } from '../components/button.tsx'
@@ -152,18 +152,38 @@ function LoadedCredentialSecretEditor(props: {
 	onClose: () => void
 }) {
 	const router = useRouter()
+	const queryClient = useQueryClient()
 	const { actorKey } = useMatchedPageScope()
 	const { payload, secret } = props
+	// A personal credential shown in a team org saves in its owner's org, so
+	// refresh this page's list too.
+	const refreshCredentials = () =>
+		queryClient.invalidateQueries({
+			queryKey: ['page', actorKey, 'loadCredentialsPage'],
+		})
 	const editor = useSecretEditor({
 		actorKey,
 		orgSlug: props.editOrgSlug,
 		resources: editResources,
 		initialEditorState: createEditorStateFromSecret(secret),
 		getSearch: () => '',
-		onSaved: () => props.onClose(),
+		onSaved: (saved) => {
+			void refreshCredentials()
+			// A scope or package change saves a new credential and removes this one.
+			if (
+				saved &&
+				(saved.scope !== secret.scope || saved.packageId !== secret.packageId)
+			) {
+				void router.navigate({ to: props.listHref, resetScroll: false })
+				return
+			}
+			props.onClose()
+		},
 		onSaveRefused: () => {},
-		onDeleted: () =>
-			void router.navigate({ to: props.listHref, resetScroll: false }),
+		onDeleted: () => {
+			void refreshCredentials()
+			void router.navigate({ to: props.listHref, resetScroll: false })
+		},
 	})
 	const kodyIds = new Map(payload.packages.map((pkg) => [pkg.id, pkg.kodyId]))
 	return (
