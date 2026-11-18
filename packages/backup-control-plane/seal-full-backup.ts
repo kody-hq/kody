@@ -603,14 +603,22 @@ async function readSealedPacedNight(
 }
 
 /**
+ * A REST export still in flight (02:15 UTC cron plus retries) holds the seal
+ * until this hour so an early paced-only seal does not drop same-day REST SQL.
+ */
+const restD1WaitUntilUtcHour = 12
+
+/**
  * REST D1 evidence for the day, recorded in the full manifest only when every
  * REST source (including the primary) has a signed, restorable manifest.
- * Informational while both lanes exist: absence never blocks the seal.
+ * Informational while both lanes exist: after the wait deadline its absence
+ * never blocks the seal.
  */
 async function readRestD1Fields(
 	env: BackupEnvironment,
 	day: string,
-): Promise<RestD1Fields | null> {
+	now: Date,
+): Promise<RestD1Fields | null | 'pending'> {
 	const skip = (reason: string) => {
 		safeLog({
 			event: 'full-backup-rest-d1-omitted',
@@ -632,8 +640,27 @@ async function readRestD1Fields(
 	const d1Sources: Array<BackupFullD1Source> = []
 	for (const source of restSources) {
 		const sourceEnv = bindSourceDatabase(env, source)
-		const sourceResult = await assertSourceDayRestorable(sourceEnv, day)
-		if (sourceResult.kind === 'incomplete') return skip(sourceResult.reason)
+		let sourceResult: Awaited<ReturnType<typeof assertSourceDayRestorable>>
+		try {
+			sourceResult = await assertSourceDayRestorable(sourceEnv, day)
+		} catch (error) {
+			if (errorCode(error) === 'manifest-corrupt') {
+				return skip('manifest-corrupt')
+			}
+			throw error
+		}
+		if (sourceResult.kind === 'incomplete') {
+			const waitDeadline = Date.parse(
+				`${day}T${String(restD1WaitUntilUtcHour).padStart(2, '0')}:00:00.000Z`,
+			)
+			if (
+				sourceResult.reason === 'd1-manifest-missing' &&
+				now.getTime() < waitDeadline
+			) {
+				return 'pending'
+			}
+			return skip(sourceResult.reason)
+		}
 		const manifestKey = backupPayload(
 			sourceEnv,
 			new Date(`${day}T12:00:00.000Z`),
@@ -714,7 +741,10 @@ export async function sealFullBackupDay(
 		}
 		d1Paced.push(night.ref)
 	}
-	const restD1 = await readRestD1Fields(env, day)
+	const restD1 = await readRestD1Fields(env, day, now)
+	if (restD1 === 'pending') {
+		return { kind: 'incomplete', day, reason: 'rest-d1-pending' }
+	}
 
 	let summary: StagingSummary
 	try {

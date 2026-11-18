@@ -308,9 +308,12 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `paced-d1-seal-missing` or `paced-d1-seal-corrupt` with the source name. REST
    D1 evidence (`d1ManifestKey`, `d1ManifestSha256`, `d1Sources`) is
    informational: it is recorded only when every REST-enabled source has a
-   signed, restorable same-day manifest, and its absence never blocks the seal
-   (log `full-backup-rest-d1-omitted`). Graduated production restore still
-   imports REST SQL, so it refuses a day sealed without REST evidence
+   signed, restorable same-day manifest. A REST manifest that is still missing
+   holds the seal (`rest-d1-pending`) until 12:00 UTC on that day so an early
+   seal does not drop same-day REST SQL. After that, or for a failed, corrupt,
+   or disabled REST export, its absence never blocks the seal (log
+   `full-backup-rest-d1-omitted`). Graduated production restore still imports
+   REST SQL, so it refuses a day sealed without REST evidence
    (`restore-rest-d1-absent`). Historical schema-v1 and schema-v2 days keep
    their required REST fields. Already-sealed days short-circuit before source
    checks. Hourly freshness also attempts to seal the last sixteen complete days

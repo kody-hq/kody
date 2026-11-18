@@ -485,8 +485,27 @@ test('REST D1 evidence is recorded only when every REST source has a restorable 
 	vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	const partial = await seedCompleteDay(new MemoryBucket())
 	addJobsSource(partial.env)
-	assert.equal((await partial.seal()).kind, 'sealed')
+	// A REST export still in flight holds the seal until 12:00 UTC.
+	assert.deepEqual(await partial.seal('04:00'), {
+		kind: 'incomplete',
+		day: partial.day,
+		reason: 'rest-d1-pending',
+	})
+	assert.equal((await partial.seal('12:00')).kind, 'sealed')
 	assert.equal((await partial.sealedManifest())?.payload.d1Sources, undefined)
+
+	const corrupt = new MemoryBucket()
+	const corruptDay = await seedCompleteDay(corrupt)
+	await corrupt.put(
+		backupPayload(corruptDay.env, new Date(`${corruptDay.day}T12:00:00.000Z`))
+			.manifestKey,
+		'not json',
+	)
+	assert.equal((await corruptDay.seal()).kind, 'sealed')
+	assert.equal(
+		(await corruptDay.sealedManifest())?.payload.d1ManifestKey,
+		undefined,
+	)
 
 	const bucket = new MemoryBucket()
 	const seeded = await seedCompleteDay(bucket)
