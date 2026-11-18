@@ -5,6 +5,7 @@ import {
 	resolveEffectivePlanWithSecondAgentGift,
 	resolvePlanOverlay,
 	resolveSecondAgentStandardGiftWrite,
+	secondAgentGiftInvoiceCreditMinor,
 } from './second-agent-standard-gift.ts'
 
 const now = new Date('2026-09-07T12:00:00.000Z')
@@ -14,7 +15,7 @@ const granted = now.toISOString()
 
 type PlanArgs = Parameters<typeof resolvePlanOverlay>
 
-test('gift overlay raises free to the purchasable Pro once, never double-applies, and no-ops paid tiers', () => {
+test('gift overlay raises free to the purchasable Pro once, never double-applies, and routes paid tiers to an invoice credit', () => {
 	expect(
 		[inTwoWeeks, yesterday, null].map((expiresAt) =>
 			isSecondAgentStandardGiftActive(expiresAt, now),
@@ -53,23 +54,45 @@ test('gift overlay raises free to the purchasable Pro once, never double-applies
 		resolveSecondAgentStandardGiftWrite({
 			manualPlan: 'free',
 			stripePlan: null,
+			hasStripeCustomer: false,
 			now,
-		}).expiresAt,
-	).toBe(inTwoWeeks)
+		}),
+	).toEqual({ kind: 'overlay', expiresAt: inTwoWeeks })
 
-	// Already-paid Standard/Pro (and manual standard/pro/max): do not extend
-	// Stripe. There is no existing trial-period helper.
-	const alreadyPaid = [
-		{ manualPlan: 'free', stripePlan: 'standard' },
-		{ manualPlan: 'free', stripePlan: 'pro' },
-		{ manualPlan: 'standard', stripePlan: null },
-		{ manualPlan: 'max', stripePlan: null },
+	// Paid Kody Stripe plans get 2 weeks as an invoice credit, even with a
+	// manual grant on top. Manual grants without Stripe have nothing to extend.
+	const writes = [
+		[
+			{ manualPlan: 'free', stripePlan: 'standard', hasStripeCustomer: true },
+			'invoice_credit',
+		],
+		[
+			{ manualPlan: 'free', stripePlan: 'pro', hasStripeCustomer: true },
+			'invoice_credit',
+		],
+		[
+			{ manualPlan: 'pro', stripePlan: 'pro', hasStripeCustomer: true },
+			'invoice_credit',
+		],
+		[
+			{ manualPlan: 'free', stripePlan: null, hasStripeCustomer: true },
+			'overlay',
+		],
+		[
+			{ manualPlan: 'standard', stripePlan: null, hasStripeCustomer: false },
+			'included',
+		],
+		[
+			{ manualPlan: 'max', stripePlan: null, hasStripeCustomer: true },
+			'included',
+		],
 	] as const
 	expect(
-		alreadyPaid.map((plans) =>
-			resolveSecondAgentStandardGiftWrite({ ...plans, now }),
-		),
-	).toEqual(alreadyPaid.map(() => ({ expiresAt: null })))
+		writes.map(([plans]) => [
+			plans,
+			resolveSecondAgentStandardGiftWrite({ ...plans, now }).kind,
+		]),
+	).toEqual(writes)
 
 	const descriptions = [
 		[null, null, { received: false, active: false, status: 'none' }],
@@ -88,4 +111,62 @@ test('gift overlay raises free to the purchasable Pro once, never double-applies
 			grantedAt,
 		})),
 	)
+})
+
+test('paid-plan invoice credit is described and worth 14 days of the price', () => {
+	expect(
+		describeSecondAgentStandardGift({
+			grantedAt: granted,
+			expiresAt: null,
+			invoiceCreditRequestedAt: granted,
+			now,
+		}),
+	).toEqual({
+		received: true,
+		active: false,
+		status: 'invoice_credit',
+		expiresAt: null,
+		grantedAt: granted,
+	})
+	const credits = [
+		[
+			{
+				unitAmountMinor: 1200,
+				quantity: 1,
+				interval: 'month',
+				intervalCount: 1,
+			},
+			560,
+		],
+		[
+			{
+				unitAmountMinor: 12000,
+				quantity: 1,
+				interval: 'year',
+				intervalCount: 1,
+			},
+			460,
+		],
+		[
+			{
+				unitAmountMinor: 1200,
+				quantity: 3,
+				interval: 'month',
+				intervalCount: 1,
+			},
+			1680,
+		],
+		[
+			{
+				unitAmountMinor: 1200,
+				quantity: 1,
+				interval: 'fortnight',
+				intervalCount: 1,
+			},
+			0,
+		],
+	] as const
+	expect(
+		credits.map(([price]) => [price, secondAgentGiftInvoiceCreditMinor(price)]),
+	).toEqual(credits)
 })

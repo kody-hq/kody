@@ -13,7 +13,8 @@ function fixture() {
 	const sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(`CREATE TABLE users (stable_user_id TEXT, personal_org_id TEXT, deleted_at TEXT, deleting_at TEXT);
 	CREATE TABLE orgs (id TEXT, plan TEXT DEFAULT 'free', stripe_plan TEXT,
-	 second_agent_standard_gift_granted_at TEXT, second_agent_standard_gift_expires_at TEXT,
+	 stripe_customer_id TEXT, second_agent_standard_gift_granted_at TEXT, second_agent_standard_gift_expires_at TEXT,
+	 second_agent_gift_invoice_credit_requested_at TEXT,
 	 updated_at TEXT, deleted_at TEXT, deleting_at TEXT);`)
 	const db = createD1FromSqlite(sqlite)
 	const cursor = new Map<string, string>()
@@ -81,25 +82,25 @@ test('bounded sweep continues beyond a failed person, wraps, and repairs missed 
 	try {
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 8, granted: 7, failed: 1 })
+		).toEqual({ scanned: 8, granted: 7, failed: 1, invoiceCredits: null })
 		expect(f.cursor.get(secondAgentGiftCursorKey)).toBe('person-7')
 		expect(f.gift('person-0')?.granted).toBeNull()
 		const original = f.gift('person-1')
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 2, granted: 2, failed: 0 })
+		).toEqual({ scanned: 2, granted: 2, failed: 0, invoiceCredits: null })
 		expect(f.cursor.get(secondAgentGiftCursorKey)).toBe('')
 		f.failures.clear()
 		const later = new Date(now.getTime() + 86_400_000)
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now: later }),
-		).toEqual({ scanned: 1, granted: 1, failed: 0 })
+		).toEqual({ scanned: 1, granted: 1, failed: 0, invoiceCredits: null })
 		expect(f.gift('person-0')?.granted).toBe(later.toISOString())
 		// A stale KV cursor/replayed tick cannot extend a gift already in D1.
 		f.cursor.set(secondAgentGiftCursorKey, '')
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now: later }),
-		).toEqual({ scanned: 0, granted: 0, failed: 0 })
+		).toEqual({ scanned: 0, granted: 0, failed: 0, invoiceCredits: null })
 		expect(f.gift('person-1')).toEqual(original)
 	} finally {
 		warning.mockRestore()
@@ -129,7 +130,7 @@ test('website onboarding reads eligible people without granting, and the sweep e
 		expect(f.gift('eligible')?.granted).toBeNull()
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 1, granted: 1, failed: 0 })
+		).toEqual({ scanned: 1, granted: 1, failed: 0, invoiceCredits: null })
 		expect(f.gift('eligible')?.granted).toBe(now.toISOString())
 		expect(f.gift('deleted-person')?.granted).toBeNull()
 		expect(f.gift('deleted-org')?.granted).toBeNull()
@@ -158,7 +159,7 @@ test('deletion starting during grant listing prevents the gift write', async () 
 		})
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 2, granted: 0, failed: 0 })
+		).toEqual({ scanned: 2, granted: 0, failed: 0, invoiceCredits: null })
 		expect(f.gift('deleting-person')?.granted).toBeNull()
 		expect(f.gift('deleting-org')?.granted).toBeNull()
 	} finally {
@@ -223,7 +224,7 @@ test('a person that kills the tick mid-listing is skipped next tick instead of r
 		f.helpers.listUserGrants.mockClear()
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 6, granted: 6, failed: 0 })
+		).toEqual({ scanned: 6, granted: 6, failed: 0, invoiceCredits: null })
 		const listed = f.helpers.listUserGrants.mock.calls.map(([id]) => id)
 		expect(listed).toEqual([4, 5, 6, 7, 8, 9].map((i) => `person-${i}`))
 		expect(f.cursor.get(secondAgentGiftCursorKey)).toBe('')
@@ -255,7 +256,7 @@ test('ecosystems are counted across every grant page', async () => {
 		)
 		expect(
 			await reconcileSecondAgentStandardGifts({ env: f.env, now }),
-		).toEqual({ scanned: 1, granted: 1, failed: 0 })
+		).toEqual({ scanned: 1, granted: 1, failed: 0, invoiceCredits: null })
 		expect(f.helpers.listUserGrants).toHaveBeenCalledTimes(5)
 		expect(f.helpers.lookupClient).toHaveBeenCalledTimes(2)
 	} finally {

@@ -109,7 +109,7 @@ export function OnboardingRoute({
 	const mcpHighlights = payload.mcpHighlights ?? {}
 	const featuredPlatformIntegrations =
 		payload.featuredPlatformIntegrations ?? []
-	const secondAgentGiftActive = payload.secondAgentStandardGift?.active === true
+	const secondAgentGift = payload.secondAgentStandardGift
 	const activeStep: OnboardingWizardStepNumber = selection?.valid
 		? selection.step
 		: hasMcpClient
@@ -331,7 +331,7 @@ export function OnboardingRoute({
 								onSelectStep: selectStep,
 								loggedIn,
 								hasSecondMcpClient,
-								secondAgentGiftActive,
+								secondAgentGift,
 								connectedAgents,
 								firstAgent,
 								selectedAgent: visibleSelectedAgent,

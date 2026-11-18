@@ -23,6 +23,7 @@ async function createGiftTestDb(input: {
 	email: string
 	plan?: string
 	stripePlan?: string | null
+	stripeCustomerId?: string | null
 }) {
 	const sqlite = new DatabaseSync(':memory:')
 	const db = createD1FromSqlite(sqlite)
@@ -44,6 +45,7 @@ async function createGiftTestDb(input: {
 		username,
 		plan: input.plan ?? 'free',
 		stripePlan: input.stripePlan ?? null,
+		stripeCustomerId: input.stripeCustomerId ?? null,
 		createdAt: now.toISOString(),
 	})
 	return { db, stableUserId, email: input.email }
@@ -83,7 +85,7 @@ const alreadyPaidGift = {
 	expiresAt: null,
 }
 
-test('first second-ecosystem grant gives 14-day Standard; later events and paid tiers do not', async () => {
+test('first second-ecosystem grant gives 14-day Pro once; later events and manual grants do not', async () => {
 	// Entitlement reads the wall clock, so pin it to the grant time or the
 	// gift looks expired.
 	vi.useFakeTimers({ now })
@@ -134,26 +136,56 @@ test('first second-ecosystem grant gives 14-day Standard; later events and paid 
 			second_agent_standard_gift_expires_at: giftExpiresAt,
 		})
 
-		for (const stripePlan of ['standard', 'pro'] as const) {
-			const paid = await createGiftTestDb({
-				email: `paid-${stripePlan}@example.com`,
-				stripePlan,
-			})
-			expect(await evaluate(paid, 2)).toEqual({
-				outcome: 'granted',
-				gift: alreadyPaidGift,
-			})
-			expect(await entitlementOf(paid)).toEqual({
-				plan: stripePlan,
-				ladder: 'public',
-				creditWallet: 'none',
-				seats: 1,
-				limitOverrides: [],
-			})
-			expect((await evaluate(paid, 4)).outcome).toBe('already_granted')
-		}
+		const manual = await createGiftTestDb({
+			email: 'manual-pro@example.com',
+			plan: 'pro',
+		})
+		expect(await evaluate(manual, 2)).toEqual({
+			outcome: 'granted',
+			gift: alreadyPaidGift,
+		})
+		expect((await evaluate(manual, 4)).outcome).toBe('already_granted')
 	} finally {
 		vi.useRealTimers()
+	}
+})
+
+test('paid Stripe Pro queues one invoice credit per account and keeps the paid plan', async () => {
+	for (const stripePlan of ['standard', 'pro'] as const) {
+		const paid = await createGiftTestDb({
+			email: `paid-${stripePlan}@example.com`,
+			stripePlan,
+			stripeCustomerId: `cus_${stripePlan}`,
+		})
+		const invoiceCreditGift = {
+			...alreadyPaidGift,
+			status: 'invoice_credit',
+		}
+		expect(await evaluate(paid, 2)).toEqual({
+			outcome: 'granted',
+			gift: invoiceCreditGift,
+		})
+		expect((await entitlementOf(paid)).plan).toBe(stripePlan)
+		const later = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+		expect(await evaluate(paid, 3, later)).toEqual({
+			outcome: 'already_granted',
+			gift: invoiceCreditGift,
+		})
+		expect(
+			await paid.db
+				.prepare(
+					`SELECT second_agent_standard_gift_granted_at AS granted,
+					        second_agent_standard_gift_expires_at AS expires,
+					        second_agent_gift_invoice_credit_requested_at AS requested
+					 FROM orgs WHERE id = ?`,
+				)
+				.bind(paid.stableUserId)
+				.first(),
+		).toEqual({
+			granted: now.toISOString(),
+			expires: null,
+			requested: now.toISOString(),
+		})
 	}
 })
 
