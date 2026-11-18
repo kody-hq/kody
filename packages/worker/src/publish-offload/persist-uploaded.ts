@@ -19,7 +19,7 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	finishPublishBuild,
 	getPublishBuild,
-	parsePublishBuildDocument,
+	readPublishBuildDocument,
 	publishBuildBlobKey,
 } from './store.ts'
 import {
@@ -199,7 +199,12 @@ export async function persistUploadedPublishBuild(input: {
 	}
 	try {
 		const row = await getPublishBuild(db, input.buildId)
-		const document = row ? parsePublishBuildDocument(row) : null
+		const document = row
+			? await readPublishBuildDocument({
+					bucket: input.env.REPO_SESSION_BLOBS,
+					row,
+				})
+			: null
 		if (
 			!row ||
 			!document ||

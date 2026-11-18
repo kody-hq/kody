@@ -188,6 +188,11 @@ export async function handlePublishBuildRoute(input: {
 	if (missing.length > 0) {
 		return json({ ok: false, missing_chunks: missing }, 409)
 	}
-	await sealPublishBuild({ db: input.env.APP_DB, buildId: row.id, document })
+	await sealPublishBuild({
+		db: input.env.APP_DB,
+		bucket,
+		buildId: row.id,
+		document,
+	})
 	return json({ ok: true, build_id: row.id, status: 'sealed' })
 }

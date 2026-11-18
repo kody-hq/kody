@@ -192,7 +192,7 @@ function seedBobPackage(sqlite: DatabaseSync) {
 		)
 	sqlite
 		.prepare(
-			`INSERT INTO publish_builds (id, package_id, source_id, owner_user_id, requester_user_id, org_id, commit_sha, origin, ticket_sha256, status, document_json, message, created_at, updated_at, expires_at)
+			`INSERT INTO publish_builds (id, package_id, source_id, owner_user_id, requester_user_id, org_id, commit_sha, origin, ticket_sha256, status, document_sha256, message, created_at, updated_at, expires_at)
 			 VALUES ('build-1', ?, ?, ?, ?, ?, ?, 'cli', ?, 'rejected', ?, ?, '2026-10-30T00:00:00.000Z', '2026-10-30T00:01:00.000Z', '2026-10-31T00:00:00.000Z')`,
 		)
 		.run(
@@ -203,7 +203,7 @@ function seedBobPackage(sqlite: DatabaseSync) {
 			ownerId,
 			published,
 			`ticket-${secretMarker}`,
-			JSON.stringify({ files: { 'src/index.ts': secretMarker } }),
+			`doc-${secretMarker}`,
 			`RepoCheckError: token=${secretMarker} was rejected`,
 		)
 }
