@@ -15,7 +15,10 @@ import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-inte
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
-import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import {
+	packageOwnerEntitlementEmail,
+	resolvePackageOwnerContext,
+} from '#worker/package-registry/package-owner.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
@@ -433,7 +436,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 				owner: {
 					userId: owner.ownerUserId,
 					username: owner.ownerScope,
-					email: owner.ownerEmail,
+					email: packageOwnerEntitlementEmail(owner) ?? '',
 					displayName: resolveDisplayName({
 						email: owner.ownerEmail,
 						username: owner.ownerScope,
