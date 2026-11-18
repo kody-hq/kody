@@ -6,6 +6,7 @@ import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, RefCallback } from 'react'
 import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { routes } from '#universal/routes.ts'
+import type { SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
 import {
 	onboardingAccessLede,
 	onboardingAccessSelectedLede,
@@ -30,6 +31,7 @@ import {
 import {
 	onboardingSecondAgentGreyedPresentation,
 	onboardingStep3EcosystemGroups,
+	onboardingSameEcosystemNote,
 } from '#universal/onboarding-agent-ecosystems.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import {
@@ -213,7 +215,7 @@ export function renderSecondAgentPanel(
 		entrance: RefCallback<HTMLElement>
 		loggedIn: boolean
 		hasSecondMcpClient: boolean
-		secondAgentGiftActive?: boolean
+		secondAgentGift?: Pick<SecondAgentStandardGiftState, 'active' | 'status'>
 		connectedAgents?: ReadonlyArray<OnboardingConnectedAgentListItem>
 		firstAgent: McpClientKind | null
 		selectedAgent: McpClientKind | null
@@ -231,6 +233,9 @@ export function renderSecondAgentPanel(
 	const selectedAgentLabel = selectedAgent ? props.selectedAgentLabel : null
 	const connectedAgents = props.connectedAgents ?? []
 	const greyed = onboardingSecondAgentGreyedPresentation(connectedAgents)
+	const sameEcosystemNote = props.hasSecondMcpClient
+		? null
+		: onboardingSameEcosystemNote(selectedAgent, connectedAgents)
 	const accessWinMade = onboardingAccessWinMadeLine({
 		memorySubject: props.accessWinMemorySubject,
 		packageName: props.persistedPackageName,
@@ -265,6 +270,11 @@ export function renderSecondAgentPanel(
 					{onboardingSecondAgentLede}
 				</p>
 			) : null}
+			{sameEcosystemNote ? (
+				<p css={panelLedeCss} data-testid="onboarding-same-ecosystem-note">
+					{sameEcosystemNote}
+				</p>
+			) : null}
 			{renderConnectAgentStatus({
 				loggedIn: props.loggedIn,
 				hasMcpClient: props.hasSecondMcpClient,
@@ -275,7 +285,7 @@ export function renderSecondAgentPanel(
 				search: props.search,
 				loginHref: onboardingSecondAgentHref(selectedAgent, props.search ?? ''),
 				connectedLabel: onboardingSecondAgentConnectedStatusLabel(
-					props.secondAgentGiftActive === true,
+					props.secondAgentGift,
 				),
 			})}
 			{renderConnectedAgentsLine(

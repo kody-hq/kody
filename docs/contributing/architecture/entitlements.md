@@ -60,11 +60,12 @@ at `packages/worker/universal/plans.ts`.
   `readCurrentEntitlementResourceUsage` (UserMeter-authoritative for
   `storage_bytes` and daily resources).
 - `second-agent-standard-gift.ts` (universal + worker) — one 14-day overlay of
-  Pro on Free when known connected agent ecosystems first reach 2. File, column,
-  and helper names say Standard; the overlay uses the retired Pro table without
-  a credit wallet. `describeSecondAgentStandardGift` is the flag for lifecycle
-  email / PackagedSingleClient. Enforcement goes through `getUserEntitlement`;
-  Stripe is not mutated.
+  Pro on Free when known connected agent ecosystems first reach 2, or a Stripe
+  invoice credit worth 14 days of the plan for a paid Kody subscription
+  (`second-agent-gift-invoice-credit.ts`). File, column, and helper names say
+  Standard; the overlay uses the retired Pro table without a credit wallet.
+  `describeSecondAgentStandardGift` is the flag for lifecycle email /
+  PackagedSingleClient. Enforcement goes through `getUserEntitlement`.
 - `referral-program.ts` (universal + worker) — uncapped referral Pro credit.
   Share links write a last-wins one-week `kody_ref` cookie; signup persists a
   pending `referrals` row from that cookie. `invoice.paid` grants both parties
@@ -147,11 +148,25 @@ When a user first reaches two known connected agent ecosystems, Kody records one
 signup and not a second OAuth `clientId` for the same ecosystem. Two Cursor auth
 contexts are one ecosystem. An unlabeled client does not add an ecosystem.
 `orgs.second_agent_standard_gift_granted_at` is the write-once ledger (one gift
-per user). `orgs.second_agent_standard_gift_expires_at` is set only when the
-base effective plan is still `free`; NULL means the account was already
-Standard/Pro/max and Stripe was not touched. There is no existing helper that
-extends a remaining Stripe period, and mutating `trial_end` / period end is
-payment-adjacent.
+per account). `orgs.second_agent_standard_gift_expires_at` is set only when the
+base effective plan is still `free`.
+
+An account with a paid Kody Stripe subscription (Pro or retired Standard) gets
+the same 2 weeks as money: `orgs.second_agent_gift_invoice_credit_requested_at`
+queues it, and the `second_agent_gift_reconciliation` lane creates one Stripe
+customer balance credit worth 14 days of the subscription price (unit amount
+times quantity, times 14 over the interval's 30 or 365 days). Stripe applies a
+negative balance to the next invoices, so renewal is lower by 2 weeks of the
+plan. The credit carries `kody_second_agent_gift_org_id` metadata and the
+idempotency key `kody-second-agent-gift-<orgId>`; the lane reuses an existing
+transaction before creating one, then records it in
+`orgs.second_agent_gift_invoice_credit_id`. A balance credit was chosen over
+moving `trial_end` or the billing anchor because it does not change the
+subscription, proration, or period dates, and it is idempotent per org. If the
+subscription ended before the credit applied, the gift falls back to the Free
+overlay. Manual standard/pro/max grants without Stripe have nothing to extend
+and keep `expires_at` NULL. Migration 0287 queued the credit once for paid
+accounts that had earned the gift before this existed.
 
 `getUserEntitlement` overlays Pro through `resolvePlanOverlay` while
 `expires_at` is in the future and the base plan is still `free`. An overlaid
@@ -166,8 +181,8 @@ gift. Missing `APP_DB.prepare` skips both write and read.
 
 `describeSecondAgentStandardGift` / `SecondAgentStandardGiftState` is the flag
 lifecycle email or PackagedSingleClient should read: `received`, `active`, and
-`status` (`none` | `active` | `expired` | `already_paid`). The onboarding loader
-exposes that object as `secondAgentStandardGift`.
+`status` (`none` | `active` | `expired` | `invoice_credit` | `already_paid`).
+The onboarding loader exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 
@@ -957,6 +972,31 @@ writing `orgs.plan`:
   by `orgId` or handle. A downgrade to free is blocked when it exceeds an
   owner's two-free-organization cap.
 
+#### Comped seat cap
+
+A manual plan grant covers every live seat unless an admin sets
+`orgs.comped_seats` with `adminOrgCompedSeatsSet` or the comped seats field in
+the Plan panel (`setAdminOrgCompedSeats`). `adminOrgGet` reports it as
+`seats.comped`. The cap binds only while the manual grant is paid and the org
+has no paid Stripe plan: a paid Stripe plan is the org's own billing (seat sync
+bills every live seat on purchasable plans, and retired plans keep their
+grandfathered terms), so there is no second billing path for overage seats. The
+Plan panel marks a cap that is not binding.
+
+While the cap binds and live seats (Owners, Admins, and Members, the same
+`countLiveSeats` count seat sync bills) have reached it, `addOrgMember` and a
+Billing-to-seat role change in `updateOrgMemberRole` refuse the new seat inside
+the same SQL statement, so concurrent joins cannot overshoot. Seat invites and
+membership or team invite links are refused at creation, and accepting one is
+refused before the invite is claimed. The error (`CompedSeatLimitError`) tells
+org admins to free a seat or ask support for more; invite link redemption
+returns block reason `seat_limit`. Members already in the org keep their seats
+when a cap lands below the live count, and re-adding a live member or moving a
+seat to Billing is never blocked. The write is compare-and-set, so repeating the
+same value is a no-op, and it changes only `comped_seats` (plan, credits, and
+Stripe are untouched). It writes `admin_comped_seats_set` org and platform audit
+events.
+
 Leftover `POST /admin/users.json` `update_plan` and `adminUserUpdate` still
 forward to the personal org (`updateAdminUserPlan` in
 `packages/worker/src/admin/users-data.ts`). `plan: null` maps to `free`; unknown
@@ -1030,20 +1070,25 @@ binds on the next counted check everywhere, with no TTL that can hide it.
   wallet with a required reason; clawbacks are not supported.
 - `adminOrgCreditEligibilitySet` — change one organization's admin credit
   eligibility with a required reason.
-- `/admin/orgs/$orgSlug` — Plan, Credits, and Limit overrides panels (TanStack
-  server functions in `packages/worker/start/server/admin-controls.ts`). User
-  detail links "Open personal organization" and has no billing forms.
+- `adminOrgCompedSeatsSet`: cap how many seats a manual plan grant covers
+  (`orgs.comped_seats`, `null` for no cap) with a required reason. See
+  [Comped seat cap](#comped-seat-cap).
+- `/admin/orgs/$orgSlug` — Plan (manual grant and comped seats), Credits, and
+  Limit overrides panels (TanStack server functions in
+  `packages/worker/start/server/admin-controls.ts`). User detail links "Open
+  personal organization" and has no billing forms.
 
 Every set, change, or remove writes an org audit event (`limit_override.set` /
 `.changed` / `.removed`, `resource_type` `limit_override`, `resource_id` the
 key) with the acting admin, `previous` and `next` (`value`, `expiresAt`,
 `reason`, `setByUserId`), and the reason.
 
-Organization plan, credit grant, and credit-eligibility changes each write a
-platform admin audit event and an org audit event (`admin_plan_set`,
-`admin_credits_granted`, and `admin_credit_eligibility_set`). The legacy
-user-targeted `adminUserUpdate`, `adminCreditGrant`, and
-`adminCreditEligibilitySet` tools remain personal-organization operations.
+Organization plan, credit grant, credit-eligibility, and comped seat changes
+each write a platform admin audit event and an org audit event
+(`admin_plan_set`, `admin_credits_granted`, `admin_credit_eligibility_set`, and
+`admin_comped_seats_set`). The legacy user-targeted `adminUserUpdate`,
+`adminCreditGrant`, and `adminCreditEligibilitySet` tools remain
+personal-organization operations.
 
 **What users see:** the usage page, email usage, admin consumption views, and
 execute `entitlement` metadata (`limit`, `remaining`) report the effective
@@ -1219,10 +1264,11 @@ Rules:
   `jobsData(…).countJobsForUser` on the jobs worker (pass `getCurrent` into
   `assertWithinEntitlement`; there is no APP_DB built-in counter). **Repo
   sessions** count `status = 'active'` rows in the per-user `RepoSessionIndex`
-  catalog. Unused (never-checkpointed) leftovers are swept after 30 minutes
-  idle; checkpointed sessions after 7 days idle (`repo_session_cleanup` lane,
-  100 rows per 5-minute tick). **Concurrent workflows** are authoritative in
-  per-user RunLog `workflow_projections`: create reserves atomically via
+  catalog. Unused (never-checkpointed) leftovers, and `source-sync-` sessions
+  still at their base commit, are swept after 30 minutes idle; checkpointed
+  sessions after 7 days idle (`repo_session_cleanup` lane, 100 rows per 5-minute
+  tick). **Concurrent workflows** are authoritative in per-user RunLog
+  `workflow_projections`: create reserves atomically via
   `reserveWorkflowProjectionSlot`, and usage readers call
   `countActiveWorkflowProjections` through
   `readCurrentEntitlementResourceUsage`. D1 has no `workflow_runs` table. See

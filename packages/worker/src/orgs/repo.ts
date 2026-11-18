@@ -1,4 +1,8 @@
 import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
+import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
@@ -177,33 +181,52 @@ export async function loadOrgBindingForSlug(
 	personId: string,
 	slug: string,
 ): Promise<OrgBinding | null> {
-	const normalized = slug.trim().toLowerCase()
-	if (!normalized) return null
-	const row = await db
-		.prepare(
-			`SELECT o.id AS org_id,
-			        o.slug AS org_slug,
-			        o.suspended_at AS suspended_at,
-			        o.deleted_at AS deleted_at,
-			        m.role AS role
-			 FROM orgs o
-			 LEFT JOIN org_memberships m
-			   ON m.org_id = o.id
-			  AND m.user_id = ?
-			  AND m.deleted_at IS NULL
-			 WHERE o.slug = ?`,
-		)
-		.bind(personId, normalized)
-		.first<OrgAccessRow>()
-	if (!row || row.deleted_at || row.suspended_at) return null
-	if (row.role) return bindingFromAccessRow(row)
-	const liveGrant = liveGrantForPersonSql('?', personId)
-	const grant = await db
-		.prepare(`SELECT 1 AS ok WHERE EXISTS (${liveGrant.sql})`)
-		.bind(row.org_id, ...liveGrant.binds)
-		.first<{ ok: number }>()
-	if (!grant) return null
-	return bindingFromAccessRow({ ...row, role: null })
+	const bindings = await loadOrgBindingsForSlugs(db, personId, [slug])
+	return bindings.get(slug.trim().toLowerCase()) ?? null
+}
+
+/**
+ * {@link loadOrgBindingForSlug} for many slugs in one round trip per chunk,
+ * keyed by normalized slug. Slugs without a binding are absent.
+ */
+export async function loadOrgBindingsForSlugs(
+	db: D1Database,
+	personId: string,
+	slugs: ReadonlyArray<string>,
+): Promise<Map<string, OrgBinding>> {
+	const normalized = [
+		...new Set(slugs.map((slug) => slug.trim().toLowerCase()).filter(Boolean)),
+	]
+	const bindings = new Map<string, OrgBinding>()
+	if (normalized.length === 0) return bindings
+	const liveGrant = liveGrantForPersonSql('o.id', personId)
+	const chunkSize = maxD1BoundParameters - liveGrant.binds.length - 1
+	for (const chunk of chunkArray(normalized, chunkSize)) {
+		const result = await db
+			.prepare(
+				`SELECT o.id AS org_id,
+				        o.slug AS org_slug,
+				        o.suspended_at AS suspended_at,
+				        o.deleted_at AS deleted_at,
+				        m.role AS role,
+				        CASE WHEN m.role IS NULL AND EXISTS (${liveGrant.sql})
+				          THEN 1 ELSE 0 END AS live_grant
+				 FROM orgs o
+				 LEFT JOIN org_memberships m
+				   ON m.org_id = o.id
+				  AND m.user_id = ?
+				  AND m.deleted_at IS NULL
+				 WHERE o.slug IN (${chunk.map(() => '?').join(', ')})`,
+			)
+			.bind(...liveGrant.binds, personId, ...chunk)
+			.all<OrgAccessRow & { live_grant: number }>()
+		for (const row of result.results ?? []) {
+			if (!row.role && row.live_grant !== 1) continue
+			const binding = bindingFromAccessRow(row)
+			if (binding) bindings.set(row.org_slug, binding)
+		}
+	}
+	return bindings
 }
 
 export type ListedOrganization = {

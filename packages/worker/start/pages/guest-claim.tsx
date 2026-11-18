@@ -18,6 +18,8 @@ import {
 } from '#universal/styles/tokens.ts'
 import { formatGuestDate } from './guest-banner.tsx'
 import { Input } from '../components/input.tsx'
+import { UsernameChoiceField } from '../components/username-choice-field.tsx'
+import { useState } from 'react'
 
 const errorCopy: Record<GuestClaimPageError, string> = {
 	email_invalid: 'That does not look like an email address.',
@@ -148,6 +150,7 @@ function GuestClaimForms(props: {
 	data: Extract<GuestClaimPageData, { kind: 'claim' }>
 }) {
 	const { data } = props
+	const [username, setUsername] = useState('')
 	const action = `/claim/${encodeURIComponent(data.code)}`
 	const status =
 		data.phase === 'active'
@@ -227,13 +230,10 @@ function GuestClaimForms(props: {
 							<h2 id="claim-new" css={sectionTitleCss}>
 								Make a new account
 							</h2>
-							<form method="post" action={action} css={formCss}>
+							<form method="post" action={action} css={formCss} noValidate>
 								<input type="hidden" name="action" value="email_start" />
 								<input type="hidden" name="mode" value="new" />
-								<label css={labelCss}>
-									<span>Username</span>
-									<Input name="username" autoComplete="username" required />
-								</label>
+								<UsernameChoiceField value={username} onChange={setUsername} />
 								<label css={labelCss}>
 									<span>Email</span>
 									<Input

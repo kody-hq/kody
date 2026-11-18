@@ -9,6 +9,8 @@ import {
 import {
 	credentialHostsMax,
 	parseCredentialHostsInput,
+} from '#universal/credential-host-input.ts'
+import {
 	readCredentialHostSettings,
 	updateCredentialHosts,
 } from './credential-hosts.ts'

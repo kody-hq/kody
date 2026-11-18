@@ -24,6 +24,7 @@ import {
 } from '#worker/entitlements/service.ts'
 import {
 	countLiveFreeOwnedOrgs,
+	countLiveSeats,
 	FreeOrgLimitError,
 	effectiveFreeOrgSql,
 	isPaidOrgBilling,
@@ -47,7 +48,10 @@ export const orgBillingAuditActions = {
 	planSet: 'admin_plan_set',
 	creditsGranted: 'admin_credits_granted',
 	creditEligibilitySet: 'admin_credit_eligibility_set',
+	compedSeatsSet: 'admin_comped_seats_set',
 } as const
+
+export const maxCompedSeats = 100_000
 
 export const freeOrgCapDowngradeGuardSql = `
 	AND NOT EXISTS (
@@ -73,9 +77,9 @@ const freeOrgDowngradeRaceMessage =
 	'Downgrading this organization to free would give an Owner more than 2 free organizations. Make one of their organizations paid or delete one first.'
 
 export class AdminOrgBillingMutationError extends Error {
-	readonly status: 400 | 404
+	readonly status: 400 | 404 | 409
 
-	constructor(status: 400 | 404, message: string) {
+	constructor(status: 400 | 404 | 409, message: string) {
 		super(message)
 		this.name = 'AdminOrgBillingMutationError'
 		this.status = status
@@ -461,4 +465,89 @@ export async function setAdminOrgCreditEligibility(input: {
 		reason: `org_id=${org.id};credits_eligible=${next};previous=${previous};reason=${reason}`,
 	})
 	return { orgId: org.id, previous, next, changed: true }
+}
+
+/**
+ * Set or clear the admin seat comp (`orgs.comped_seats`). Null means every
+ * live seat is covered. Compare-and-set on the previous value, so a repeat
+ * call is a no-op and only the cap column changes.
+ */
+export async function setAdminOrgCompedSeats(input: {
+	env: Env
+	audit: OrgAuditWriter
+	target: AdminOrgTarget
+	compedSeats: number | null
+	reason: unknown
+	platformAudit?: AdminOrgPlatformAudit
+	now?: Date
+}): Promise<{
+	orgId: string
+	previous: number | null
+	next: number | null
+	changed: boolean
+	liveSeats: number
+}> {
+	const reason = normalizeOrgLimitOverrideReason(input.reason)
+	const next = input.compedSeats
+	if (
+		next !== null &&
+		(!Number.isInteger(next) || next < 1 || next > maxCompedSeats)
+	) {
+		throw new AdminOrgBillingMutationError(
+			400,
+			`Comped seats must be a whole number from 1 to ${maxCompedSeats}, or null for no cap.`,
+		)
+	}
+	const db = input.env.APP_DB
+	const org = await resolveAdminOrgTarget(db, input.target)
+	const current = await db
+		.prepare(
+			`SELECT comped_seats FROM orgs WHERE id = ? AND deleted_at IS NULL`,
+		)
+		.bind(org.id)
+		.first<{ comped_seats: number | null }>()
+	if (!current) throw new AdminOrgBillingMutationError(404, 'Org not found.')
+	const previous = current.comped_seats
+	const liveSeats = await countLiveSeats(db, org.id)
+	if (previous === next) {
+		return { orgId: org.id, previous, next, changed: false, liveSeats }
+	}
+	const result = await runAppDbBatchWithOrgAudit({
+		appDb: db,
+		audit: input.audit,
+		onlyIfChanged: true,
+		statements: [
+			db
+				.prepare(
+					`UPDATE orgs SET comped_seats = ?, updated_at = ?
+					 WHERE id = ? AND deleted_at IS NULL AND comped_seats IS ?`,
+				)
+				.bind(
+					next,
+					utcSqliteTimestamp(input.now ?? new Date()),
+					org.id,
+					previous,
+				),
+		],
+		event: {
+			orgId: org.id,
+			action: orgBillingAuditActions.compedSeatsSet,
+			resourceType: 'org_billing',
+			resourceId: org.id,
+			details: { previous, next, liveSeats, reason },
+		},
+	})
+	if (!result.changed) {
+		throw new AdminOrgBillingMutationError(
+			409,
+			'Comped seats changed while saving. Reload and try again.',
+		)
+	}
+	await writePlatformAudit({
+		env: input.env,
+		audit: input.platformAudit,
+		action: 'adminOrgCompedSeatsSet',
+		reason: `org_id=${org.id};comped_seats=${next ?? 'none'};previous=${previous ?? 'none'};live_seats=${liveSeats};reason=${reason}`,
+	})
+	return { orgId: org.id, previous, next, changed: true, liveSeats }
 }

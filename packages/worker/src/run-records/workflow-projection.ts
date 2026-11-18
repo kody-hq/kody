@@ -203,9 +203,8 @@ const publishWorkflowName = 'packagePublishExternalPush'
 /**
  * Read-only recovery of package id and target commit from a durable publish
  * idempotency key, for backfilling rows queued before provenance columns were
- * filled. Keys are `<owner>:packagePublishExternalPush:[v2:]<canonical JSON>`;
- * released keys (`released:<id>`) carry nothing and return null. This never
- * builds or matches keys.
+ * filled. The optional version prefix is v2 or v3. Released keys
+ * (`released:<id>`) carry nothing and return null.
  */
 export function publishProvenanceFromIdempotencyKey(
 	key: string,
@@ -213,8 +212,7 @@ export function publishProvenanceFromIdempotencyKey(
 	const marker = `:${publishWorkflowName}:`
 	const markerIndex = key.indexOf(marker)
 	if (markerIndex <= 0) return null
-	let rest = key.slice(markerIndex + marker.length)
-	if (rest.startsWith('v2:')) rest = rest.slice('v2:'.length)
+	const rest = key.slice(markerIndex + marker.length).replace(/^v[23]:/, '')
 	try {
 		const parsed = JSON.parse(rest) as unknown
 		if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {

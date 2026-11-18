@@ -9,6 +9,10 @@ import {
 	hasCredentialCreatePrefill,
 } from '#universal/credential-contracts.ts'
 import { credentialKindLabel } from '#universal/credentials-list.ts'
+import {
+	credentialHostsLimitError,
+	parseCredentialHostsInput,
+} from '#universal/credential-host-input.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 
@@ -202,6 +206,18 @@ export function parseHostsInput(text: string) {
 				.filter(Boolean),
 		),
 	]
+}
+
+/** The Key editor accepts one host per line or comma-separated hosts. */
+export function parseKeyHosts(text: string, existing: ReadonlyArray<string>) {
+	const parsed = parseCredentialHostsInput(text.split(/[\n,]/))
+	if (!parsed.ok) return parsed
+	const error = credentialHostsLimitError(parsed.hosts.length, existing.length)
+	if (error) return { ok: false as const, error }
+	return {
+		ok: true as const,
+		hosts: parsed.hosts.length ? parsed.hosts : [...existing],
+	}
 }
 
 /**
@@ -418,11 +434,9 @@ export function keyFormPackageId(
 }
 
 /**
- * The `/account/secrets.json` save for the value form. Replacing a Key keeps
- * its hosts and adds the form's; package locks are exactly the form's checked
- * set (replacement hydrates those checkboxes from the existing Key). The
- * opt-in kinds take exactly the form's hosts, because whoever types the value
- * decides where it may go. An empty expiry keeps the existing one.
+ * The save for the value form. A Key's empty host field retains existing
+ * approvals. Otherwise the form supplies the full list. Package locks use
+ * the checked set and an empty expiry keeps the existing one.
  */
 export function buildKeySaveBody(input: {
 	kind: ValueFormKind
@@ -433,7 +447,6 @@ export function buildKeySaveBody(input: {
 	const name = form.name.trim()
 	const existing = input.existing
 	const replacing = form.replaceExisting && existing !== null
-	const hosts = parseHostsInput(form.hosts)
 	const packageId = keyFormPackageId(form, input.kind)
 	const scope: 'package' | 'user' = packageId ? 'package' : 'user'
 	const allowedPackages = packageId
@@ -467,17 +480,18 @@ export function buildKeySaveBody(input: {
 		allowedPackages,
 	}
 	switch (input.kind) {
-		case 'secret':
+		case 'secret': {
+			const hosts = parseKeyHosts(form.hosts, replacing ? existing.hosts : [])
+			if (!hosts.ok) return hosts
 			return {
 				ok: true,
 				body: {
 					...common,
 					value: form.value,
-					allowedHosts: replacing
-						? [...new Set([...(input.existing?.hosts ?? []), ...hosts])]
-						: hosts,
+					allowedHosts: hosts.hosts,
 				},
 			}
+		}
 		case 'url':
 		case 'signing':
 			return {
@@ -486,7 +500,7 @@ export function buildKeySaveBody(input: {
 					...common,
 					kind: input.kind,
 					value: form.value.trim(),
-					hosts,
+					hosts: parseHostsInput(form.hosts),
 					allowedHosts: [],
 				},
 			}
@@ -511,7 +525,7 @@ export function buildKeySaveBody(input: {
 					...common,
 					kind: 'login',
 					value: JSON.stringify(fields),
-					hosts,
+					hosts: parseHostsInput(form.hosts),
 					allowedHosts: [],
 					loginExchange: {
 						...form.loginExchange.rest,
@@ -578,6 +592,7 @@ export function credentialCreateStartPrompt(input: {
 		'If it is not obvious which service it is for, ask me.',
 		'Use Kody: search for the service, then use the credential creation capability or a creation link for this org.',
 		'Pick the right kind (key, URL, login, signing, OAuth, or MCP) and the hosts it may be sent to.',
+		'Use the allowedHosts query parameter for comma-separated hosts on the creation link.',
 		'Give me the prefilled Kody creation link so I can paste the value there myself.',
 		'Never ask me to paste a secret value into this chat.',
 	].join('\n')

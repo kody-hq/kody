@@ -125,3 +125,50 @@ test('vault detail shows local reads unavailable when its load failed', async ()
 	)
 	expect(html).toContain('data-testid="local-reads-unavailable"')
 })
+
+test('the credential page shows the local reads state and links to it', async () => {
+	const html = await renderStartPage(
+		renderCredentialDetail({
+			credential,
+			detail: detail(),
+			manageHref: '/@ann/-/secrets',
+			teamOrg: false,
+			packagesById: new Map(),
+			orgSlug: 'ann',
+			localReads: {
+				credentialId: credential.id,
+				enabled: true,
+				canChange: true,
+				manageHref: null,
+				lastReadAt: null,
+				reads: [],
+			},
+		}),
+	)
+	expect(html).toMatch(
+		/<a[^>]*href="#local-reads"[^>]*data-testid="local-reads-entry"[^>]*>On<\/a>/,
+	)
+	expect(html).toContain('data-testid="local-reads-toggle"')
+})
+
+test('a package secret says why it cannot be read locally and links the fix', async () => {
+	const html = await render({
+		credential: { ...credential, scope: 'org', packageId: 'pkg-1' },
+		detail: detail(),
+	})
+	expect(html).toMatch(/data-testid="local-reads-entry"[^>]*>Not available</)
+	expect(html).toContain('is a package secret')
+	expect(html).toContain(
+		'href="/@ann/-/credentials/new?kind=secret&amp;name=annToken&amp;allowedPackages=pkg-1"',
+	)
+	expect(html).toContain('Save as an account secret')
+	expect(html).not.toContain('local-reads-toggle')
+})
+
+test('a secret URL says only Keys can be read locally', async () => {
+	const html = await render({
+		credential: { ...credential, kind: 'url' },
+		detail: detail(),
+	})
+	expect(html).toContain('annToken is a secret URL, and only Keys can be read')
+})

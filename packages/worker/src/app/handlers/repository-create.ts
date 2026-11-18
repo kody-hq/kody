@@ -6,6 +6,7 @@ import {
 import { isMcpCallerError } from '#mcp/caller-error.ts'
 import { repoCreateCapability } from '#mcp/capabilities/repo/repo-create.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
+import { compileAccessForRequests } from '#worker/authorization/access-compile.ts'
 import {
 	AuthorizationError,
 	checkPermission,
@@ -16,6 +17,7 @@ import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
 	listOrganizationsForPerson,
 	loadOrgBindingForSlug,
+	loadOrgBindingsForSlugs,
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 import {
@@ -57,18 +59,31 @@ async function canCreateIn(input: RepositoryCreateInput, binding: OrgBinding) {
 export async function loadRepositoryCreateOptions(
 	input: RepositoryCreateInput,
 ): Promise<RepositoryCreateOptions> {
+	const { env, user } = input
 	const organizations = await listOrganizationsForPerson(
-		input.env.APP_DB,
-		input.user.mcpUser.userId,
+		env.APP_DB,
+		user.mcpUser.userId,
 	)
+	const bindings = await loadOrgBindingsForSlugs(
+		env.APP_DB,
+		user.mcpUser.userId,
+		organizations.map((organization) => organization.slug),
+	)
+	const candidates = organizations.flatMap((organization) => {
+		const binding = bindings.get(organization.slug.trim().toLowerCase())
+		return binding ? [{ organization, binding }] : []
+	})
+	// One compile for every org, so each package:create check below reads
+	// its permissions from the request memo instead of D1.
+	await compileAccessForRequests({
+		db: env.APP_DB,
+		requests: candidates.flatMap(
+			({ binding }) => callerContextFor(input, binding).request ?? [],
+		),
+	})
 	const checked = await Promise.all(
-		organizations.map(async (organization) => {
-			const binding = await loadOrgBindingForSlug(
-				input.env.APP_DB,
-				input.user.mcpUser.userId,
-				organization.slug,
-			)
-			if (!binding || !(await canCreateIn(input, binding))) return null
+		candidates.map(async ({ organization, binding }) => {
+			if (!(await canCreateIn(input, binding))) return null
 			const owner: RepositoryOwnerOption = {
 				slug: organization.slug,
 				displayName: organization.displayName,

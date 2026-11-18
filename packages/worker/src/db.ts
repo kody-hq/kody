@@ -173,6 +173,8 @@ export const orgsTable = table({
 		admin_credits_eligible: c.integer(),
 		second_agent_standard_gift_granted_at: c.text(),
 		second_agent_standard_gift_expires_at: c.text(),
+		second_agent_gift_invoice_credit_requested_at: c.text(),
+		second_agent_gift_invoice_credit_id: c.text(),
 		referral_standard_credit_expires_at: c.text(),
 		signup_welcome_credits_pending: c.integer(),
 		default_user_budget_micro_usd: c.integer(),

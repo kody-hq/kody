@@ -98,6 +98,15 @@ const subscriptionItemSchema = object({
 	quantity: optional(number()),
 	price: object({
 		id: string(),
+		unit_amount: optional(nullable(number())),
+		recurring: optional(
+			nullable(
+				object({
+					interval: string(),
+					interval_count: optional(number()),
+				}),
+			),
+		),
 	}),
 	current_period_end: optional(nullable(number())),
 })

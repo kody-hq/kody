@@ -205,13 +205,17 @@ export async function insertJobRow(input: {
 }) {
 	requirePackageIdFromJobId(input.job.id)
 	const serialized = serializeJob(input.job)
-	await input.db
+	const result = await input.db
 		.prepare(
 			`INSERT INTO jobs (
 				id, user_id, name, source_id, published_commit, repo_check_policy_json, storage_id, params_json, schedule_json, timezone, enabled,
 				kill_switch_enabled, expires_at, caller_context_json, created_at, updated_at,
 				last_run_at, last_run_status, next_run_at, disabled_reason
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(id) DO UPDATE SET id = excluded.id
+			WHERE jobs.user_id = excluded.user_id AND jobs.source_id = excluded.source_id
+				AND jobs.name = excluded.name AND jobs.published_commit IS excluded.published_commit
+				AND jobs.deleted_at IS NULL AND jobs.deleting_at IS NULL`,
 		)
 		.bind(
 			serialized.id,
@@ -236,6 +240,14 @@ export async function insertJobRow(input: {
 			serialized.disabled_reason,
 		)
 		.run()
+	// An insert can be retried after the first write committed. Preserve the
+	// existing job's runtime state and reject a conflict with another identity
+	// or a job being deleted.
+	if ((result.meta.changes ?? 0) === 0) {
+		throw new Error(
+			`Package job "${input.job.id}" conflicts with an existing job.`,
+		)
+	}
 }
 
 export async function updateJobRow(input: {

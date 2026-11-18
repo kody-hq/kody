@@ -8,7 +8,7 @@ import {
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import {
 	firstTouchAttributionCreateFields,
-	type FirstTouchAttribution,
+	readFirstTouchAttributionFromCookie,
 } from '#universal/first-touch-attribution.ts'
 import { resolvePlanWrite } from '#universal/plans.ts'
 import { resolveReferralCodeForSignup } from '#universal/referral-cookie.ts'
@@ -86,7 +86,6 @@ export async function createOauthSignupAccount(input: {
 	providerDisplayName: string | null
 	email: string
 	username: string
-	attribution: FirstTouchAttribution | null
 	accessToken: string | null
 	requestIp?: string
 	path: string
@@ -98,6 +97,7 @@ export async function createOauthSignupAccount(input: {
 	const email = input.email
 	const username = normalizeUsername(input.username)
 	const provider = input.provider
+	const attribution = readFirstTouchAttributionFromCookie(input.cookieHeader)
 
 	const usernameError = await getEffectiveUsernameValidationError(username, env)
 	if (usernameError) {
@@ -185,7 +185,7 @@ export async function createOauthSignupAccount(input: {
 				personal_org_id: signupPersonalOrgId,
 				password_hash: oauthNoUsablePasswordHash,
 				email_verified_at: createdAt,
-				...firstTouchAttributionCreateFields(input.attribution),
+				...firstTouchAttributionCreateFields(attribution),
 				last_active_at: createdAt,
 			},
 			{ returnRow: true },
@@ -326,7 +326,7 @@ export async function createOauthSignupAccount(input: {
 			email,
 		},
 		source: 'oauth',
-		attribution: input.attribution,
+		attribution,
 	})
 	scheduleFounderWelcomeEmail({ env, email, stableUserId })
 	await maybeGrantSignupWelcomeCredits({

@@ -49,7 +49,7 @@ const mockModule = vi.hoisted(() => ({
 		async (..._args: Array<unknown>) => {},
 	),
 	revertEntitySourcePublishedCommit: vi.fn(
-		async (..._args: Array<unknown>) => true,
+		async (..._args: Array<unknown>): Promise<string | null> => 'commit-old',
 	),
 	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
 }))
@@ -100,8 +100,15 @@ vi.mock('#worker/repo/artifacts.ts', () => ({
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 	repoSessionRpc: () => ({
-		publishFromExternalRef: (...args: Array<unknown>) =>
-			mockModule.publishFromExternalRef(...args),
+		publishFromExternalRef: async (...args: Array<unknown>) => {
+			const result = await mockModule.publishFromExternalRef(...args)
+			if (result?.status === 'published' && result.published_commit) {
+				mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+					sourceRow(result.published_commit),
+				)
+			}
+			return result
+		},
 		listPublishedPackageArtifactTargets: (...args: Array<unknown>) =>
 			mockModule.listPublishedPackageArtifactTargets(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
@@ -157,7 +164,7 @@ const { publishExternalPushCapability } =
 
 const defaultPublishIdempotencyParts = [
 	'packagePublishExternalPush',
-	'v2',
+	'v3',
 	'{"allowForce":false,"destructiveOverwriteConfirmed":false,"newCommit":"commit-new","ownerUserId":"user-1","packageId":"package-1"}',
 ]
 const moduleTarget = {
@@ -186,6 +193,8 @@ function sourceRow(publishedCommit = 'commit-old') {
 		entity_id: 'package-1',
 		repo_id: 'package-package-1',
 		published_commit: publishedCommit,
+		serving_commit: publishedCommit,
+		held_commit: null,
 		indexed_commit: null,
 		manifest_path: 'package.json',
 		source_root: '/',
@@ -314,6 +323,7 @@ function publish(
 		allow_force?: boolean
 		confirm_destructive_overwrite?: boolean
 		baseline_published_commit?: string | null
+		expected_head?: string
 	} = {},
 	executionOrigin: 'interactive' | 'background' | 'omit' = 'background',
 ) {
@@ -611,7 +621,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -635,7 +644,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -647,6 +655,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		publish: alreadyPublishedOld,
 		targets: [moduleTarget],
 	})
+	mockModule.revertEntitySourcePublishedCommit.mockResolvedValueOnce(null)
 	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
 		new Error('No matching default export for import "default"'),
 	)
@@ -664,8 +673,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'commit-old' }),
 	)
-	// A true no-op retry did not move the tip, so there is nothing to restore.
-	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
+	// The already serving commit stayed in place.
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
@@ -768,6 +776,35 @@ test('an interactive publish returns the dispatched handle with the baseline sta
 			commit: expect.any(String),
 		}),
 	)
+})
+
+test('durable re-entry rejects a Git HEAD different from the enqueued commit', async () => {
+	setupDefaultMocks({ head: 'commit-newer' })
+
+	await expect(
+		publish(
+			{ baseline_published_commit: 'commit-old', expected_head: 'commit-new' },
+			'background',
+		),
+	).rejects.toThrow(/Artifacts HEAD moved from "commit-new" to "commit-newer"/)
+	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('an external publish superseded during artifact rebuild cannot report success', async () => {
+	setupDefaultMocks({ publish: publishedResult(), targets: [moduleTarget] })
+	mockModule.rebuildPublishedPackageArtifact.mockImplementationOnce(
+		async () => {
+			mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+				sourceRow('commit-newer'),
+			)
+			return { ok: true, target: moduleTarget, kvKey: 'bundle-key' }
+		},
+	)
+
+	await expect(publish()).rejects.toThrow(
+		/published commit moved while this publish was running/,
+	)
+	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
 })
 
 test('durable re-entry remaps RepoSession already_published to published when tip moved vs baseline', async () => {
@@ -943,9 +980,14 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 		.mockRejectedValueOnce(
 			new Error('Durable Object reset because its code was updated.'),
 		)
-		.mockResolvedValueOnce({
-			status: 'already_published',
-			published_commit: 'commit-new',
+		.mockImplementationOnce(async () => {
+			mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+				sourceRow('commit-new'),
+			)
+			return {
+				status: 'already_published',
+				published_commit: 'commit-new',
+			}
 		})
 	// Tip advanced during the failed attempt; remap to published vs pre-request tip.
 	expect(await publish()).toEqual({

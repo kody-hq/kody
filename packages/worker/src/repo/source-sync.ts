@@ -10,6 +10,7 @@ import {
 	writeArtifactSourceSnapshot,
 } from './artifact-source-snapshot.ts'
 import { createSnapshotFilesWorkspace, runRepoChecks } from './checks.ts'
+import { sourceSyncSessionIdPrefix } from './repo-session-due.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
 import {
@@ -157,7 +158,7 @@ function canSyncArtifactSource(env: Env) {
 }
 
 function buildSyncSessionId(sourceId: string) {
-	return `source-sync-${sourceId}-${crypto.randomUUID()}`
+	return `${sourceSyncSessionIdPrefix}${sourceId}-${crypto.randomUUID()}`
 }
 
 async function writePublishedSnapshotWithRevert(input: {

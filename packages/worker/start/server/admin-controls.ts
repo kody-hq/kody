@@ -192,6 +192,42 @@ export const setAdminOrgCreditEligibility = createServerFn({ method: 'POST' })
 		})
 	})
 
+export const setAdminOrgCompedSeats = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgId: z.string().min(1),
+			compedSeats: z.number().int().positive().nullable(),
+			reason: z.string(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { withWebsiteMutation } = await import('./mutation-context.ts')
+		return withWebsiteMutation({}, async () => {
+			const { env, actor, request } = await adminContext()
+			const [
+				{ setAdminOrgCompedSeats },
+				{ orgAuditWriterFromRequest },
+				{ getRequestIp },
+			] = await Promise.all([
+				import('../../src/admin/org-billing-mutations.ts'),
+				import('../../src/orgs/org-audit.ts'),
+				import('../../src/audit-log.ts'),
+			])
+			return setAdminOrgCompedSeats({
+				env,
+				audit: orgAuditWriterFromRequest(env, actor.request),
+				target: { orgId: data.orgId },
+				compedSeats: data.compedSeats,
+				reason: data.reason,
+				platformAudit: {
+					email: actor.email,
+					ip: getRequestIp(request) ?? undefined,
+					path: '/admin/orgs',
+				},
+			})
+		})
+	})
+
 export const readAdminUsersPage = createServerFn({ method: 'GET' })
 	.validator(adminUsersReadInput.extend({ page: z.number().int().positive() }))
 	.handler(async ({ data }) => {

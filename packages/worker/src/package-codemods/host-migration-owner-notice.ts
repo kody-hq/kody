@@ -89,7 +89,11 @@ export type PackageAppHostMigrationNoticeApp = {
 type CategoryCount = { owners: number; apps: number }
 
 export type PackageAppHostMigrationNoticeTotals = {
-	/** Owners that get the email, and their listed apps. */
+	/**
+	 * Owners that get the email, and every affected app of theirs: the same
+	 * apps each owner's `apps` array holds, so the two always add up. That
+	 * includes an emailed owner's apps that only have outside-request findings.
+	 */
 	recipients: CategoryCount
 	byCategory: Record<PackageAppHostMigrationNoticeCategory, CategoryCount>
 	/** Owners whose apps only have outside-request findings: not emailed. */
@@ -276,7 +280,7 @@ function countTotals(input: {
 			continue
 		}
 		totals.recipients.owners += 1
-		totals.recipients.apps += listed.length
+		totals.recipients.apps += apps.length
 		for (const category of [
 			'browserData',
 			'addressCode',

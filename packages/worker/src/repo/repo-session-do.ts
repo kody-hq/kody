@@ -91,6 +91,12 @@ import {
 import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.ts'
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
+// Keep serving reconciliation off the RepoSession startup graph.
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type {
+	PackageServingUpdate,
+	PackageServingUpdateQueue,
+} from './package-serving-update.ts'
 import {
 	resolveRepoWorkspacePath,
 	toExternalRepoPath,
@@ -419,6 +425,15 @@ function buildGitCloneAuth(input: { remote: string; token: string }) {
 }
 
 class RepoSessionBase extends DurableObject<Env> {
+	private packageServingUpdateQueue?: PackageServingUpdateQueue
+
+	async updatePackageServing(update: PackageServingUpdate) {
+		const { PackageServingUpdateQueue } =
+			await import('./package-serving-update.ts')
+		this.packageServingUpdateQueue ??= new PackageServingUpdateQueue()
+		return await this.packageServingUpdateQueue.run(this.env, update)
+	}
+
 	readonly workspace = new Workspace({
 		sql: this.ctx.storage.sql,
 		name: () => buildRepoSessionWorkspaceName(this.ctx.id.toString()),
@@ -3235,6 +3250,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		const { publishClone } = await this.cloneExternalRefForPublish({
 			source: request.source,
 			commit: request.commit,
+			...(request.branch ? { branch: request.branch } : {}),
 			expectedHead: request.expectedHead,
 			phaseTimings,
 		})
@@ -4653,6 +4669,7 @@ class RepoSessionBase extends DurableObject<Env> {
 	private async cloneExternalRefForPublish(input: {
 		source: EntitySourceRow
 		commit: string
+		branch?: string
 		expectedHead?: string | null
 		phaseTimings: PublishPhaseTimings
 	}) {
@@ -4663,7 +4680,8 @@ class RepoSessionBase extends DurableObject<Env> {
 			repo: sourceRepo,
 			scope: 'read',
 		})
-		const targetBranch = sourceInfo?.defaultBranch ?? defaultSessionBranch
+		const targetBranch =
+			input.branch ?? sourceInfo?.defaultBranch ?? defaultSessionBranch
 		let publishClone: Awaited<ReturnType<typeof cloneExternalPublishWorkspace>>
 		try {
 			// In-memory clone: publish verification does not need the session
@@ -4678,8 +4696,8 @@ class RepoSessionBase extends DurableObject<Env> {
 						checkoutCommit: input.commit,
 					})
 					// Race protection without a second Artifacts REST HEAD resolve:
-					// the single-branch clone tip is the remote default-branch HEAD
-					// at clone time. Compare it to the worker-resolved expectedHead
+					// the single-branch clone tip is the remote branch tip (default
+					// branch unless `branch` is set) at clone time. Compare it to the worker-resolved expectedHead
 					// before publish.
 					if (input.expectedHead) {
 						const clonedHead = cloned.headCommit
@@ -4866,6 +4884,8 @@ class RepoSessionBase extends DurableObject<Env> {
 		sourceId: string
 		userId: OwnerId
 		newCommit: string
+		/** Branch holding `newCommit` when it is not on the default branch. */
+		branch?: string
 		expectedHead?: string | null
 		allowForce?: boolean
 		destructiveOverwriteConfirmed?: boolean
@@ -4894,6 +4914,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			userId: input.userId,
 			source,
 			commit: input.newCommit,
+			...(input.branch ? { branch: input.branch } : {}),
 			expectedHead: input.expectedHead,
 			previousCommit: source.published_commit,
 		})

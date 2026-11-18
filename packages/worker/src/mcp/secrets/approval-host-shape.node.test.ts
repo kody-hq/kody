@@ -2,7 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	classifyApprovalHosts,
 	filterValidApprovalHosts,
-} from './approval-host-shape.ts'
+} from '#universal/approval-host-shape.ts'
 
 test('approval host classification accepts happy-path hosts and rejects truncated or malformed values', () => {
 	const classified = classifyApprovalHosts([

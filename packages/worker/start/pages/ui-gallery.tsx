@@ -10,6 +10,7 @@ import {
 	type DialogProps,
 } from '../components/dialog.tsx'
 import { Field } from '../components/field.tsx'
+import { HandleSuggestion } from '../components/handle-suggestion.tsx'
 import { Input, Select, Textarea } from '../components/input.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
@@ -296,6 +297,11 @@ const uiGallerySections: ReadonlyArray<{
 				</p>
 			</GalleryRow>
 		),
+	},
+	{
+		id: 'handle-suggestion',
+		title: 'HandleSuggestion',
+		render: () => <GalleryHandleSuggestion />,
 	},
 	{
 		id: 'table',
@@ -592,4 +598,29 @@ const rowItemsCss = {
 	flexWrap: 'wrap' as const,
 	alignItems: 'center',
 	gap: spacing.sm,
+}
+
+function GalleryHandleSuggestion() {
+	const [applied, setApplied] = useState<string | null>(null)
+	return (
+		<>
+			<GalleryRow label="default">
+				<p>
+					Username can only use a-z letters, numbers, and hyphens.
+					<HandleSuggestion suggestion="jane-doe" onApply={setApplied} />
+				</p>
+			</GalleryRow>
+			<GalleryRow label="disabled">
+				<p>
+					Username can only use a-z letters, numbers, and hyphens.
+					<HandleSuggestion
+						suggestion="jane-doe-2"
+						onApply={setApplied}
+						disabled
+					/>
+				</p>
+			</GalleryRow>
+			<p>{applied ? `Applied ${applied}.` : 'Nothing applied yet.'}</p>
+		</>
+	)
 }

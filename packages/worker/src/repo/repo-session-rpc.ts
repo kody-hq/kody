@@ -33,6 +33,7 @@ import type {
 	RepoSessionTreeResult,
 } from './types.ts'
 import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
+import type { PackageServingUpdate } from './package-serving-update.ts'
 // Type-only: an inline `type` specifier keeps a runtime import of
 // publish-work.ts and creates an import cycle through checks.ts.
 // oxlint-disable-next-line import/consistent-type-specifier-style
@@ -43,6 +44,11 @@ import type {
 } from './publish-work.ts'
 
 export type RepoSessionRpc = {
+	updatePackageServing: (update: PackageServingUpdate) => Promise<{
+		advanced: boolean
+		packageId?: string
+		heldPackageId?: string
+	}>
 	restorePublishedSkill: (payload: {
 		sessionId: string
 		userId: string
@@ -253,6 +259,7 @@ export type RepoSessionRpc = {
 		sourceId: string
 		userId: string
 		newCommit: string
+		branch?: string
 		expectedHead?: string | null
 		allowForce?: boolean
 		destructiveOverwriteConfirmed?: boolean

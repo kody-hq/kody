@@ -5,10 +5,8 @@ import {
 	AuthorizationError,
 	authorize,
 } from '#worker/authorization/authorize.ts'
-import {
-	parseCredentialHostsInput,
-	updateCredentialHosts,
-} from '#worker/credentials/credential-hosts.ts'
+import { parseCredentialHostsInput } from '#universal/credential-host-input.ts'
+import { updateCredentialHosts } from '#worker/credentials/credential-hosts.ts'
 import {
 	credentialPermissionFamily,
 	credentialResource,

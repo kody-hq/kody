@@ -2413,20 +2413,23 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			waitUntil,
 		})
 		let logs: Array<string> | undefined
+		const durablePublish =
+			isPublishWorkflow(payload) && isDurablePublishWorkflowCode(payload.code)
 		try {
 			const result = await runModuleWithRegistry(
 				this.env,
 				callerContext,
 				payload.code,
-				payload.params,
+				durablePublish && payload.enqueuedCommit
+					? { ...payload.params, expected_head: payload.enqueuedCommit }
+					: payload.params,
 				{
 					packageContext: payload.packageContext,
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
 					runSurface: 'workflow',
 					// A durable publish reports its phases on the run, where
 					// workflowRunList shows them to whoever is polling.
-					...(isPublishWorkflow(payload) &&
-					isDurablePublishWorkflowCode(payload.code)
+					...(durablePublish
 						? {
 								reportProgress: async (update: McpProgressUpdate) => {
 									if (!update.message) return
@@ -2458,10 +2461,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
-			if (
-				isPublishWorkflow(payload) &&
-				isDurablePublishWorkflowCode(payload.code)
-			) {
+			if (durablePublish) {
 				// The full answer, refusals included, is read with
 				// packageRunResult: the compact result below drops the manifest,
 				// dependents, and hints, and a refusal fails the run.

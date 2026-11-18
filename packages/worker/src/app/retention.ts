@@ -316,7 +316,10 @@ async function deletePublishedBundleArtifactRowIfStillStale(input: {
 					FROM entity_sources AS source
 					WHERE source.user_id = published_bundle_artifacts.user_id
 						AND source.id = published_bundle_artifacts.source_id
-						AND source.published_commit = published_bundle_artifacts.published_commit
+						AND published_bundle_artifacts.published_commit IN (
+							source.published_commit,
+							source.serving_commit
+						)
 				)
 				AND NOT EXISTS (
 					SELECT 1
@@ -417,7 +420,10 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 				FROM entity_sources AS source
 				WHERE source.user_id = artifact.user_id
 					AND source.id = artifact.source_id
-					AND source.published_commit = artifact.published_commit
+					AND artifact.published_commit IN (
+						source.published_commit,
+						source.serving_commit
+					)
 			)
 			AND NOT EXISTS (
 				SELECT 1
@@ -473,8 +479,8 @@ export async function prunePublishedBundleArtifactsForRetention(input: {
 			})
 		}
 	}
-	// A pruned row already satisfied the safety conditions (commit not current
-	// for any entity_sources row, not pinned by an active community listing, no
+	// A pruned row already satisfied the safety conditions (commit neither
+	// published nor serving for any entity_sources row, not pinned by an active community listing, no
 	// active repo session), so the source snapshot KV keys for that commit are
 	// stale too.
 	for (const pair of prunedSnapshotPairs.values()) {

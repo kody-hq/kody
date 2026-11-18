@@ -33,11 +33,32 @@ export const Route = createFileRoute('/_app/@{$orgSlug}_/-/credentials_/new')({
 function Page() {
 	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
 	const { payload } = usePageQuery(pageQuery(actorKey, pageQueryInput)).data
+	const search = new URLSearchParams(pageLocation.searchStr)
+	const allowedHosts =
+		'allowedHosts' in pageLocation.search
+			? pageLocation.search.allowedHosts
+			: undefined
+	// Start serializes repeated query parameters as a JSON array in the URL.
+	// Restore the repeated values before passing them to the setup form.
+	if (
+		Array.isArray(allowedHosts) &&
+		allowedHosts.length > 1 &&
+		allowedHosts.every(
+			(host) =>
+				typeof host === 'string' ||
+				typeof host === 'number' ||
+				typeof host === 'boolean',
+		)
+	) {
+		search.delete('allowedHosts')
+		for (const host of allowedHosts) search.append('allowedHosts', String(host))
+	}
 	return (
 		<ConnectCredentialRoute
 			key={pageLocation.href}
 			data={payload}
 			currentHref={pageLocation.href}
+			search={search}
 		/>
 	)
 }

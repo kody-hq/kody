@@ -611,16 +611,18 @@ export async function refreshSavedPackageProjection(input: {
 				}
 				// Jobs follow the serving commit: a publish switches them when its
 				// build starts serving (`advanceServingCommit`), never before.
-				const { syncPublishedPackageJobs } =
-					await import('#worker/jobs/service.ts')
-				await syncPublishedPackageJobs({
-					env: input.env,
+				const { updatePackageServing } =
+					await import('#worker/repo/package-serving-update.ts')
+				await updatePackageServing(input.env, {
+					kind: 'refresh-jobs',
 					userId: input.userId,
 					baseUrl: input.baseUrl,
 					packageId: input.packageId,
 					sourceId: input.sourceId,
-					actorUserId: input.actorUserId,
-					actorCredential: input.actorCredential ?? null,
+					actor: {
+						userId: input.actorUserId,
+						credential: input.actorCredential ?? null,
+					},
 				})
 				// Same-isolate invoke paths must observe this refresh immediately;
 				// other isolates converge within the freshness-cache TTL.

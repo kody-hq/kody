@@ -9,7 +9,10 @@ import {
 	getInviteByIdAnyOrg,
 	type StoredInvite,
 } from '#worker/orgs/access-writes.ts'
-import { FreeOrgLimitError } from '#worker/orgs/billing.ts'
+import {
+	CompedSeatLimitError,
+	FreeOrgLimitError,
+} from '#worker/orgs/billing.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import { routes } from '#universal/routes.ts'
@@ -50,7 +53,11 @@ async function loadRecipientInvite(
 }
 
 function callerErrorResponse(error: unknown) {
-	if (error instanceof McpCallerError || error instanceof FreeOrgLimitError) {
+	if (
+		error instanceof McpCallerError ||
+		error instanceof FreeOrgLimitError ||
+		error instanceof CompedSeatLimitError
+	) {
 		return operationResult({ ok: false, error: error.message }, 400)
 	}
 	throw error

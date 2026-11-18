@@ -96,7 +96,7 @@ const refusalMessages: Record<
 	(name: string) => string
 > = {
 	not_found: (name) =>
-		`Kody could not find a secret named "${name}" that you can use here.`,
+		`Kody could not find an account or org Key named "${name}" that you can use here. Only those can be read locally: package secrets, secret URLs, logins, signing keys, and connections cannot. Use one of those from a package or an execute with {{secret:${name}}} or credential('${name}') instead.`,
 	no_access: (name) => `You do not have access to use the secret "${name}".`,
 	local_reads_off: (name) =>
 		`Local reads are off for the secret "${name}". A person with write access to it can turn them on from the link below.`,
@@ -105,7 +105,7 @@ const refusalMessages: Record<
 	profile_grant: (name) =>
 		`The profile this CLI acts as is not allowed to read "${name}" locally. Its owner can check "read locally" for that secret on the profile.`,
 	unsupported_secret: (name) =>
-		`Only account and org secrets can be read locally, so "${name}" was not read.`,
+		`"${name}" is a package secret. Only its package's runs can use it, so it cannot be read locally and was not read. Use it from that package's code or an execute with {{secret:${name}}}, or save the value as an account secret on the Kody website and turn on local reads for that secret.`,
 	rate_limited: (name) =>
 		`Too many local reads in the last minute, so "${name}" was not read. Wait a minute and try again.`,
 	provider_failed: (name) =>

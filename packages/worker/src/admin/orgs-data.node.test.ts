@@ -196,7 +196,7 @@ test('organization detail resolves slug/id, tombstone deadline, budgets, and org
 	const detail = await loadAdminOrgDetail(db, { slug: '@blue-team' })
 	expect(detail).toMatchObject({
 		org: { id: teamId, slug: 'blue-team', kind: 'team' },
-		seats: { live: 2, billingOnly: 1 },
+		seats: { live: 2, billingOnly: 1, comped: null },
 		plan: {
 			manualPlan: 'pro',
 			stripePlan: 'pro',

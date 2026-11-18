@@ -13,10 +13,26 @@ export const editedAbandonedSessionRetentionMs = 7 * 24 * 60 * 60 * 1000
 /** Far-future due used so every catalog owner stays pageable for storage backfill. */
 export const repoSessionFarFutureDueAt = '2099-01-01T00:00:00.000Z'
 
+/** Sessions Kody opens itself to save a package (`syncArtifactSourceSnapshot`). */
+export const sourceSyncSessionIdPrefix = 'source-sync-'
+
 export type RepoSessionDueFields = Pick<
 	RepoSessionRow,
 	'status' | 'last_checkpoint_at' | 'updated_at' | 'expires_at'
->
+> &
+	Partial<Pick<RepoSessionRow, 'id' | 'base_commit' | 'last_checkpoint_commit'>>
+
+/**
+ * A package-save session is discarded as soon as its save finishes. One still
+ * active with no commit past its base never reached a publish (a paused
+ * publish commits first), so it holds no work and sweeps like a leftover.
+ */
+function isAbandonedSourceSyncSession(row: RepoSessionDueFields): boolean {
+	return (
+		row.id?.startsWith(sourceSyncSessionIdPrefix) === true &&
+		row.last_checkpoint_commit === row.base_commit
+	)
+}
 
 export function unusedActiveDueBefore(now: Date): string {
 	return new Date(
@@ -35,7 +51,10 @@ function addMs(iso: string, ms: number): string {
 }
 
 export function nextRepoSessionDueAt(row: RepoSessionDueFields): string | null {
-	if (row.status === 'active' && row.last_checkpoint_at == null) {
+	if (
+		row.status === 'active' &&
+		(row.last_checkpoint_at == null || isAbandonedSourceSyncSession(row))
+	) {
 		return addMs(row.updated_at, unusedAbandonedSessionRetentionMs)
 	}
 	if (row.status === 'active' && row.last_checkpoint_at != null) {

@@ -6,7 +6,6 @@ import {
 	stagingArtifactsIndexKey,
 	stagingPrefix,
 	stagingR2IndexKey,
-	stagingStorageDumpKey,
 	stagingStorageIndexKey,
 	type ArtifactsIndex,
 	type BackupR2BucketLabel,
@@ -254,10 +253,22 @@ async function restoreStoragePhase(input: {
 	while (input.cursor.storageIndex < storageIndex.entries.length) {
 		if (Date.now() - input.startedAtMs >= input.timeBudgetMs) return true
 		const entry = storageIndex.entries[input.cursor.storageIndex]!
-		const dumpKey = sealedObjectKey(
-			input.day,
-			stagingStorageDumpKey(input.day, entry.storageId),
-		)
+		const part = entry.part ?? 0
+		const previous = storageIndex.entries[input.cursor.storageIndex - 1]
+		if (
+			part > 0 &&
+			(previous?.storageId !== entry.storageId ||
+				(previous.part ?? 0) !== part - 1)
+		) {
+			throw new MaintenanceFailureError(
+				`storage dump part ${String(part)} of ${entry.storageId} does not follow part ${String(part - 1)}`,
+				{
+					progress: input.progress,
+					warnings: input.warnings,
+				},
+			)
+		}
+		const dumpKey = sealedObjectKey(input.day, entry.objectKey)
 		const loaded = await input.s3.getText(dumpKey)
 		if (!loaded) {
 			throw new MaintenanceFailureError(
@@ -269,7 +280,7 @@ async function restoreStoragePhase(input: {
 			)
 		}
 		// Verify the full dump against the sealed index before any destructive
-		// importStorage page. Dumps are ≤16 MiB by exporter construction.
+		// importStorage page. Each part is bounded by the exporter's dump buffer.
 		if (!input.cursor.storageDumpVerified) {
 			const actual = await sha256Hex(loaded.text)
 			if (actual !== entry.sha256) {
@@ -313,9 +324,8 @@ async function restoreStoragePhase(input: {
 				}
 				return parsed
 			})
-			const replacePage = input.cursor.storageReplaceStarted
-				? 'continue'
-				: 'first'
+			const replacePage =
+				input.cursor.storageReplaceStarted || part > 0 ? 'continue' : 'first'
 			await runner.importStorage({
 				mode: 'replace',
 				replacePage,
@@ -325,7 +335,7 @@ async function restoreStoragePhase(input: {
 			input.cursor.storageLineOffset += slice.length
 		}
 		// Empty dump: still clear via a first page with no entries.
-		if (!input.cursor.storageReplaceStarted) {
+		if (!input.cursor.storageReplaceStarted && part === 0) {
 			await runner.importStorage({
 				mode: 'replace',
 				replacePage: 'first',

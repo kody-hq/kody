@@ -1170,6 +1170,45 @@ export async function resolveExistingArtifactSourceRepo(
 	)
 }
 
+/**
+ * Durable non-default ref that keeps published-only codemod commits fetchable
+ * without moving the Artifacts default-branch tip (owner unpublished work).
+ * Prior published OIDs stay ancestors when this tip advances by fast-forward.
+ */
+export const kodyPublishedBranchName = 'kody-published'
+export const kodyPublishedRef = `refs/heads/${kodyPublishedBranchName}`
+
+/** Tip of {@link kodyPublishedRef}, or null when the repo or ref is missing. */
+export async function resolveArtifactSourceKodyPublishedTip(
+	env: Env,
+	repoId: string,
+) {
+	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
+	if (!repo) return null
+	const [info, token] = await Promise.all([
+		repo.info(),
+		repo.createToken('read', 300),
+	])
+	if (!info?.remote) {
+		throw new Error('Artifact repo remote URL is unavailable.')
+	}
+	let refs: Awaited<ReturnType<typeof listArtifactServerRefs>>
+	try {
+		refs = await listArtifactServerRefs({
+			remote: info.remote,
+			token: token.plaintext,
+			prefix: kodyPublishedRef,
+		})
+	} catch (error) {
+		throw wrapArtifactsGitHttpError({
+			operation: 'listServerRefs',
+			remote: info.remote,
+			error,
+		})
+	}
+	return refs.find((ref) => ref.ref === kodyPublishedRef)?.oid ?? null
+}
+
 export async function resolveArtifactSourceHead(env: Env, repoId: string) {
 	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
 	if (!repo) {

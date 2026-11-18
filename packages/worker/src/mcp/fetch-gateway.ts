@@ -126,10 +126,7 @@ import {
 	type PackageAppAuthorityScope,
 	type PackageAppVisitorGrantScope,
 } from '#worker/package-runtime/package-app-authority.ts'
-import {
-	consumeDailyEntitlement,
-	findCachedUserAccountByStableUserId,
-} from '#worker/entitlements/service.ts'
+import { consumeDailyEntitlement } from '#worker/entitlements/service.ts'
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
@@ -436,21 +433,10 @@ async function fetchThroughGateway(
 		// org's quota and meter (ADR 0095).
 		const billedUserId = billedOrgIdOf(input.props.request, input.props.userId)
 		if (billedUserId) {
-			// Plan lookup requires the account email. Callers that cannot
-			// carry one (MCP provider requests, package runtime) get it
-			// reverse-resolved from the stable userId so authenticated
-			// fetches count against the caller's real plan rather than
-			// failing open to `max` (whose limit is still finite for
-			// genuinely accountless synthetic contexts).
+			// Without an email the plan resolves from the billed org row
+			// itself, so team orgs and converted orgs bill their own plan.
 			const email =
-				(billedUserId === input.props.userId ? input.props.email : null) ??
-				(
-					await findCachedUserAccountByStableUserId(
-						input.env.APP_DB,
-						billedUserId,
-					)
-				)?.email ??
-				null
+				billedUserId === input.props.userId ? input.props.email : null
 			await consumeDailyEntitlement({
 				db: input.env.APP_DB,
 				env: input.env,

@@ -756,7 +756,6 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				displayName: profile.displayName,
 				suggestedUsername,
 				redirectTo,
-				attribution: loginState.attribution,
 				csrf: generateOauthRandomValue(),
 				accessToken,
 				issuedAt: Date.now(),

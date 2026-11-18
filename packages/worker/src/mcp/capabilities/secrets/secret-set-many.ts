@@ -1,4 +1,7 @@
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -103,7 +106,7 @@ export const secretSetManyCapability = defineDomainCapability(
 		inputSchema: secretSetManyInputSchema,
 		outputSchema: secretSetManyOutputSchema,
 		async handler(parsed, ctx: CapabilityContext) {
-			const user = requireMcpUser(ctx.callerContext)
+			requireMcpUser(ctx.callerContext)
 			const { authorityPackageId, storageContext } =
 				resolveCallerSecretAuthority({
 					storageContext: ctx.callerContext.storageContext,
@@ -153,7 +156,10 @@ export const secretSetManyCapability = defineDomainCapability(
 					? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
 					: null,
 				userId: ownerIdFromCaller(ctx.callerContext),
-				userEmail: user.email,
+				userEmail: entitlementEmailForOwner(
+					ctx.callerContext,
+					ownerIdFromCaller(ctx.callerContext),
+				),
 				secrets: parsed.secrets.map((secret) => ({
 					name: secret.name,
 					value: secret.value as string,

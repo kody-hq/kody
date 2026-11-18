@@ -40,6 +40,7 @@ import {
 	keyFormPackageId,
 	keyFormProblem,
 	keyLinkProblem,
+	parseKeyHosts,
 	type KeyFormState,
 	type ValueFormKind,
 } from '#client/routes/connect-credential-shared.ts'
@@ -76,6 +77,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Input, Textarea } from '../components/input.tsx'
+import { Field } from '../components/field.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
 const primaryButtonCss = {
 	justifySelf: 'start',
@@ -131,18 +133,18 @@ function hostsHint(kind: ValueFormKind) {
 export function ConnectCredentialRoute({
 	data,
 	currentHref: href,
+	search,
 }: {
 	data: AccountCredentialsResponse
 	currentHref: string
+	search: URLSearchParams
 }) {
+	const query = parseCredentialCreateQuery(search)
 	const [form, setForm] = useState<KeyFormState>(() =>
-		createKeyFormState(
-			parseCredentialCreateQuery(
-				new URL(href, 'https://kody.local').searchParams,
-			),
-		),
+		createKeyFormState(query),
 	)
 	const [showValue, setShowValue] = useState(false)
+	const [editedKeyHosts, setEditedKeyHosts] = useState<string | null>(null)
 	const [saving, setSaving] = useState(false)
 	const [savedWarning, setSavedWarning] = useState<string | null>(null)
 	const [seededReplaceLocksForId, setSeededReplaceLocksForId] = useState<
@@ -165,10 +167,10 @@ export function ConnectCredentialRoute({
 	async function saveKey(
 		event: FormEvent<HTMLFormElement>,
 		kind: ValueFormKind,
+		current: KeyFormState,
 	) {
 		event.preventDefault()
-		if (saving || mutation.isPending || !form) return
-		const current = form
+		if (saving || mutation.isPending) return
 		const isCurrent = capture()
 		const problem = keyFormProblem(current, kind)
 		if (problem) {
@@ -236,6 +238,21 @@ export function ConnectCredentialRoute({
 		const { kind, state, existing } = input
 		const isKey = kind === 'secret'
 		const kindConflict = existingKindConflict(existing, kind)
+		const existingHosts =
+			isKey && !kindConflict && state.replaceExisting
+				? (existing?.hosts ?? [])
+				: []
+		const hosts = isKey
+			? (editedKeyHosts ??
+				[
+					...new Set([
+						...state.hosts.split('\n').filter(Boolean),
+						...existingHosts,
+					]),
+				].join('\n'))
+			: state.hosts
+		const keyHostResult = isKey ? parseKeyHosts(hosts, existingHosts) : null
+		const hostError = keyHostResult?.ok === false ? keyHostResult.error : null
 		const update = (patch: Partial<KeyFormState>) => {
 			setForm({ ...state, ...patch })
 		}
@@ -302,7 +319,7 @@ export function ConnectCredentialRoute({
 					{...passwordManagerIgnoreProps}
 					css={{ display: 'grid', gap: spacing.md }}
 					onSubmit={(event) => {
-						void saveKey(event, kind)
+						void saveKey(event, kind, { ...state, hosts })
 					}}
 				>
 					<div css={fieldCss}>
@@ -375,8 +392,8 @@ export function ConnectCredentialRoute({
 								{isKey ? (
 									<>
 										A credential named <code>{existing.name}</code> already
-										exists. Replace it (its hosts stay; edit package locks
-										below).
+										exists. Replace it using the allowed hosts and package
+										access below.
 									</>
 								) : (
 									<>
@@ -388,6 +405,31 @@ export function ConnectCredentialRoute({
 							</span>
 						</label>
 					) : null}
+					{isKey ? (
+						<Field
+							label="Allowed hosts"
+							description={
+								<>
+									{hostsHint(kind)} Enter one host per line or separate hosts
+									with commas.
+									{state.replaceExisting
+										? ' Leave blank to keep the current hosts.'
+										: ' With no hosts, Kody won’t send the value to any host.'}
+								</>
+							}
+							error={hostError}
+						>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								value={hosts}
+								placeholder="api.example.com"
+								onChange={(event) =>
+									setEditedKeyHosts(event.currentTarget.value)
+								}
+							/>
+						</Field>
+					) : null}
 					{kind === 'login' ? (
 						renderLoginFields({ state, update })
 					) : (
@@ -398,7 +440,7 @@ export function ConnectCredentialRoute({
 							<PasswordRevealInput
 								id="connect-credential-value"
 								required
-								autoFocus={Boolean(state.name)}
+								autoFocus={!isKey && Boolean(state.name)}
 								{...passwordManagerIgnoreProps}
 								value={state.value}
 								placeholder={valuePlaceholder(kind)}
@@ -416,23 +458,24 @@ export function ConnectCredentialRoute({
 							</span>
 						</div>
 					)}
-					<div css={fieldCss}>
-						<label htmlFor="connect-credential-hosts" css={fieldLabelCss}>
-							{isKey ? 'Allowed hosts' : 'Hosts'}{' '}
-							<span css={labelHintCss}>(one per line)</span>
-						</label>
-						<Textarea
-							id="connect-credential-hosts"
-							rows={2}
-							required={!isKey}
-							value={state.hosts}
-							placeholder={
-								isKey ? 'api.example.com' : 'api.example.com or *.example.com'
-							}
-							onChange={(event) => update({ hosts: event.currentTarget.value })}
-						/>
-						<span css={mutedCss}>{hostsHint(kind)}</span>
-					</div>
+					{isKey ? null : (
+						<div css={fieldCss}>
+							<label htmlFor="connect-credential-hosts" css={fieldLabelCss}>
+								Hosts <span css={labelHintCss}>(one per line)</span>
+							</label>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								required
+								value={state.hosts}
+								placeholder="api.example.com or *.example.com"
+								onChange={(event) =>
+									update({ hosts: event.currentTarget.value })
+								}
+							/>
+							<span css={mutedCss}>{hostsHint(kind)}</span>
+						</div>
+					)}
 					{kind === 'login' ? renderLoginExchange({ state, update }) : null}
 					<div css={fieldCss}>
 						<label htmlFor="connect-credential-provider" css={fieldLabelCss}>
@@ -519,7 +562,10 @@ export function ConnectCredentialRoute({
 					<Button
 						type="submit"
 						disabled={
-							saving || input.linkProblem !== null || kindConflict !== null
+							saving ||
+							hostError !== null ||
+							input.linkProblem !== null ||
+							kindConflict !== null
 						}
 						data-testid="connect-credential-save"
 						variant="primary"
@@ -534,8 +580,6 @@ export function ConnectCredentialRoute({
 		)
 	}
 	const state = form as KeyFormState
-	const search = new URL(href, 'http://localhost').searchParams
-	const query = parseCredentialCreateQuery(search)
 	const pathOrgSlug = orgSlugFromPathname(
 		new URL(href, 'http://localhost').pathname,
 	)

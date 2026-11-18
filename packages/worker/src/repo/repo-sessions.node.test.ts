@@ -3,6 +3,7 @@ import {
 	isRepoSessionDue,
 	nextOwnerDueAt,
 	nextRepoSessionDueAt,
+	sourceSyncSessionIdPrefix,
 } from './repo-session-due.ts'
 
 test('due helpers treat unused leftovers sooner than edited sessions', () => {
@@ -97,4 +98,26 @@ test('due helpers treat unused leftovers sooner than edited sessions', () => {
 			},
 		]),
 	).toBe('2026-06-24T12:00:00.000Z')
+})
+
+test('a package-save session that never reached publish sweeps like a leftover', () => {
+	const now = new Date('2026-06-24T20:00:00.000Z')
+	const abandoned = {
+		id: `${sourceSyncSessionIdPrefix}source-1-run-1`,
+		status: 'active' as const,
+		base_commit: 'base',
+		last_checkpoint_commit: 'base',
+		last_checkpoint_at: '2026-06-24T19:00:00.000Z',
+		updated_at: '2026-06-24T19:00:00.000Z',
+		expires_at: null,
+	}
+	expect(isRepoSessionDue(abandoned, now)).toBe(true)
+	// A publish paused for approval commits first; it keeps the long window.
+	expect(
+		isRepoSessionDue({ ...abandoned, last_checkpoint_commit: 'paused' }, now),
+	).toBe(false)
+	// Agent sessions with edits keep the long window too.
+	expect(isRepoSessionDue({ ...abandoned, id: 'agent-session' }, now)).toBe(
+		false,
+	)
 })

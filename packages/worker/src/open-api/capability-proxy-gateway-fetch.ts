@@ -2,7 +2,10 @@ import { base64ToBytes } from '@kody-internal/shared/base64.ts'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	capabilityProxyAuthenticatedFetchMaxBodyBytes,
 	serializeAuthenticatedFetchResponse,
@@ -169,7 +172,7 @@ export async function runCapabilityProxyGatewayFetch(input: {
 		props: {
 			baseUrl: input.ctx.callerContext.baseUrl,
 			userId: orgUserId,
-			email: input.ctx.callerContext.user.email,
+			email: entitlementEmailForOwner(input.ctx.callerContext, orgUserId),
 			request: input.ctx.callerContext.request,
 			storageContext,
 			claimedPackageId: stampedPackageId,

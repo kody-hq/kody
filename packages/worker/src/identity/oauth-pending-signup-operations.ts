@@ -19,6 +19,7 @@ import {
 } from '#app/verify-session.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
+import { serializeFirstTouchAttributionCookie } from '#universal/first-touch-attribution.ts'
 import { serializeReferralCookie } from '#universal/referral-cookie.ts'
 import {
 	defaultPostVerificationRedirect,
@@ -141,7 +142,6 @@ export async function completeOauthPendingSignup({
 		providerDisplayName: pending.providerUsername ?? pending.displayName,
 		email: pending.email,
 		username,
-		attribution: pending.attribution,
 		accessToken: pending.accessToken,
 		requestIp,
 		path: url.pathname,
@@ -210,10 +210,10 @@ export async function completeOauthPendingSignup({
 			secure,
 		)
 		appendCookies(headers, [verifyCookie, await destroyAuthCookie(secure)])
-		headers.append(
-			'Set-Cookie',
+		appendCookies(headers, [
 			serializeReferralCookie({ code: null, secure }),
-		)
+			serializeFirstTouchAttributionCookie({ attribution: null, secure }),
+		])
 		return authOperationResult(
 			{
 				ok: true as const,
@@ -241,6 +241,7 @@ export async function completeOauthPendingSignup({
 	appendCookies(headers, [
 		sessionCookie,
 		serializeReferralCookie({ code: null, secure }),
+		serializeFirstTouchAttributionCookie({ attribution: null, secure }),
 	])
 
 	return authOperationResult(

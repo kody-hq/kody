@@ -505,3 +505,30 @@ test('the admin capability defaults to a dry run and reports bad input as a call
 		.catch((caught: unknown) => caught)
 	expect(isMcpCallerError(error)).toBe(true)
 })
+
+test('a failed claim write is reported even when another recipient of the owner was not delivered', async () => {
+	const { env, kv } = await createEnv()
+	mocks.items = [item('01', 'org-acme', '@acme/billing', [bodyFinding])]
+	mocks.sendCloudflareEmail.mockImplementation(
+		async (_config: unknown, message: { to: string }) =>
+			message.to === 'bob@example.com'
+				? { ok: false, error: 'rejected' }
+				: { ok: true },
+	)
+	vi.spyOn(kv, 'put').mockRejectedValue(new Error('kv down'))
+	consoleWarn.mockImplementation(() => {})
+
+	const result = await runPackageOwnerNotice({
+		env,
+		runId: 'run-1',
+		noticeId: '2026-10-body-placeholders',
+		content,
+		dryRun: false,
+	})
+
+	// A re-run would email the delivered recipient again, so that wins.
+	expect(result.owners[0]).toMatchObject({
+		status: 'claim_failed',
+		recipientCount: 1,
+	})
+})

@@ -47,7 +47,7 @@ import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import type { StorageContext } from '#mcp/storage.ts'
-import { filterValidApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
+import { filterValidApprovalHosts } from '#universal/approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import {
 	deleteSecret,
@@ -123,7 +123,10 @@ import {
 	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	requireWebsitePermission,
 	requireWebsiteIntegrationPermission,
@@ -2042,16 +2045,20 @@ export async function saveAccountSecret(input: {
 		}
 	}
 
+	const secretCaller = {
+		request: input.user.request,
+		user: input.user.mcpUser,
+	}
 	let saved: Awaited<ReturnType<typeof saveSecret>>
 	try {
 		saved = await saveSecret({
 			env: input.env,
 			audit: orgAuditWriterFromRequest(input.env, input.user.request),
-			userId: ownerIdFromCaller({
-				request: input.user.request,
-				user: input.user.mcpUser,
-			}),
-			userEmail: input.user.mcpUser.email,
+			userId: ownerIdFromCaller(secretCaller),
+			userEmail: entitlementEmailForOwner(
+				secretCaller,
+				ownerIdFromCaller(secretCaller),
+			),
 			name,
 			value,
 			scope,
