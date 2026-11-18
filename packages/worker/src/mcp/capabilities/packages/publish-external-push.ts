@@ -1772,7 +1772,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				source: {
 					id: source.id,
 					repo_id: source.repo_id,
-					serving_commit: source.serving_commit,
+					serving_commit: source.serving_commit ?? null,
 				},
 				baselinePublishedCommit,
 				newCommit,
