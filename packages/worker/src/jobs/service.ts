@@ -156,7 +156,10 @@ import {
 	recordUsage,
 	usageErrorNameFromUnknown,
 } from '#worker/usage/record-usage.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	getEntitySourceById,
 	getEntitySourceByIdForUser,
@@ -678,7 +681,7 @@ export async function syncPackageJobsForPackage(input: {
 				await assertWithinEntitlement({
 					db: input.env.APP_DB,
 					userId: input.userId,
-					email: callerContext.user.email,
+					email: entitlementEmailForOwner(callerContext, input.userId),
 					resource: 'scheduled_jobs',
 					requested: jobsToCreate,
 					getCurrent: async () =>
@@ -692,7 +695,7 @@ export async function syncPackageJobsForPackage(input: {
 			}
 			const entitlement = await getCachedUserEntitlement(input.env.APP_DB, {
 				userId: input.userId,
-				email: callerContext.user.email,
+				email: entitlementEmailForOwner(callerContext, input.userId),
 			})
 			const plan = entitlement.plan
 			for (const [jobName, definition] of Object.entries(desiredJobs)) {
@@ -988,8 +991,8 @@ export async function updateJob(input: {
 			if (scheduleChanged || timezoneChanged) {
 				assertJobScheduleIntervalFloor({
 					...(await getCachedUserEntitlement(input.env.APP_DB, {
-						userId: callerContext.user.userId,
-						email: callerContext.user.email,
+						userId: ownerId,
+						email: entitlementEmailForOwner(callerContext, ownerId),
 					})),
 					schedule: nextSchedule,
 					timezone: nextTimezone,
@@ -1190,7 +1193,10 @@ export async function executeJobOnce(input: {
 						db: input.env.APP_DB,
 						env: input.env,
 						userId: input.job.userId,
-						email: backgroundUser.email,
+						email: entitlementEmailForOwner(
+							{ user: backgroundUser },
+							input.job.userId,
+						),
 						resource: 'job_runs_per_day',
 						orgBudget: orgBudgetForJobExecution({
 							orgId: input.job.userId,

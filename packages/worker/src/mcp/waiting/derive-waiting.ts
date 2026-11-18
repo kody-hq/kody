@@ -528,7 +528,8 @@ async function collectEntitlementCaps(
 	try {
 		const entitlement = await getUserEntitlement(env.APP_DB, {
 			userId: user.stableUserId,
-			email: user.email,
+			// stableUserId is always an org id, so the plan resolves from its row.
+			email: null,
 		})
 		const snapshot = await readEntitlementUsageSnapshot({
 			db: env.APP_DB,

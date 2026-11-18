@@ -1234,10 +1234,11 @@ Rules:
   `jobsData(…).countJobsForUser` on the jobs worker (pass `getCurrent` into
   `assertWithinEntitlement`; there is no APP_DB built-in counter). **Repo
   sessions** count `status = 'active'` rows in the per-user `RepoSessionIndex`
-  catalog. Unused (never-checkpointed) leftovers are swept after 30 minutes
-  idle; checkpointed sessions after 7 days idle (`repo_session_cleanup` lane,
-  100 rows per 5-minute tick). **Concurrent workflows** are authoritative in
-  per-user RunLog `workflow_projections`: create reserves atomically via
+  catalog. Unused (never-checkpointed) leftovers, and `source-sync-` sessions
+  still at their base commit, are swept after 30 minutes idle; checkpointed
+  sessions after 7 days idle (`repo_session_cleanup` lane, 100 rows per 5-minute
+  tick). **Concurrent workflows** are authoritative in per-user RunLog
+  `workflow_projections`: create reserves atomically via
   `reserveWorkflowProjectionSlot`, and usage readers call
   `countActiveWorkflowProjections` through
   `readCurrentEntitlementResourceUsage`. D1 has no `workflow_runs` table. See

@@ -1064,22 +1064,24 @@ pause.
 A paused publish keeps the previously published commit serving and is never
 published again automatically. A paused `repoPublishSession` or `packageSave`
 leaves Artifacts HEAD on the published commit and keeps its session, which holds
-the paused commit until approval; an idle session is swept after seven days, so
-publish again then. A pushed commit (`packagePublishExternalPush`) is already on
-HEAD. `repoPublishSession` and `packagePublishExternalPush` return
-**`approval_required`** with `pending_commit`, `credential_need_changes`, and an
-**`approval_url`**; `packageSave` fails with the same message and URL. The URL
-opens `/@{username}/{package-name}/approve-capabilities`, the package's one
-approval page. Its **Waiting for your approval** section shows each paused
-publish with its reason (**Credential needs changed**) and the needs that
-changed. **Approve and publish** needs `package:publish` and runs the real
-publish (checks, fast-forward) for that exact commit, with the paused publish's
-overwrite options; it also counts as the locked-publish approval. A later
-publish replaces the pending request, and a request whose published base moved,
-or whose pushed commit is no longer HEAD, can no longer be approved, so publish
-again. A locked package keeps its locked-publish flow first: approving that
-publish on approve-publish runs this check and pauses there if the needs
-changed. Platform codemods do not pause.
+the paused commit on its pushed branch until approval. The paused session's
+workspace scratch is released right away, so it does not count toward storage.
+An idle session is swept after seven days, so publish again then. A pushed
+commit (`packagePublishExternalPush`) is already on HEAD. `repoPublishSession`
+and `packagePublishExternalPush` return **`approval_required`** with
+`pending_commit`, `credential_need_changes`, and an **`approval_url`**;
+`packageSave` fails with the same message and URL. The URL opens
+`/@{username}/{package-name}/approve-capabilities`, the package's one approval
+page. Its **Waiting for your approval** section shows each paused publish with
+its reason (**Credential needs changed**) and the needs that changed. **Approve
+and publish** needs `package:publish` and runs the real publish (checks,
+fast-forward) for that exact commit, with the paused publish's overwrite
+options; it also counts as the locked-publish approval. A later publish replaces
+the pending request, and a request whose published base moved, or whose pushed
+commit is no longer HEAD, can no longer be approved, so publish again. A locked
+package keeps its locked-publish flow first: approving that publish on
+approve-publish runs this check and pauses there if the needs changed. Platform
+codemods do not pause.
 
 ## Approval when a package goes internet-visible
 

@@ -553,15 +553,16 @@ class RepoSessionBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * After a successful publish, durable source lives in Artifacts + the
-	 * published snapshot. Drop workspace scratch and its storage-bucket
-	 * inventory so leftover session bytes cannot push the owner over their
-	 * plan storage limit. Keeps the catalog row (`published` + expires_at).
-	 * Idempotent and never throws: publish already committed; cleanup failure
-	 * must not fail the capability or block getSessionInfo heal. Cron expiry
-	 * still purges leftovers.
+	 * After a successful publish (durable source in Artifacts + the published
+	 * snapshot) or a publish paused for approval (the paused commit is pushed
+	 * to the session branch, and resuming clones it back), drop workspace
+	 * scratch and its storage-bucket inventory so idle session bytes cannot
+	 * push the owner over their plan storage limit. Keeps the catalog row.
+	 * Idempotent and never throws: cleanup failure must not fail the
+	 * capability or block getSessionInfo heal. Cron expiry still purges
+	 * leftovers.
 	 */
-	private async releasePublishedSessionScratch(
+	private async releaseSessionScratch(
 		sessionId: string,
 		userId: OwnerId,
 	): Promise<void> {
@@ -2264,10 +2265,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				storageId: repoSessionStorageBucketId(sessionRow.id),
 			}))
 		) {
-			await this.releasePublishedSessionScratch(
-				sessionRow.id,
-				sessionRow.user_id,
-			)
+			await this.releaseSessionScratch(sessionRow.id, sessionRow.user_id)
 		}
 		await this.touchRepoSession(sessionRow)
 		return {
@@ -4263,7 +4261,7 @@ class RepoSessionBase extends DurableObject<Env> {
 				published_commit: publishedCommit,
 			},
 		})
-		await this.releasePublishedSessionScratch(
+		await this.releaseSessionScratch(
 			input.sessionRow.id,
 			input.sessionRow.user_id,
 		)
@@ -4575,6 +4573,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					lastCheckpointCommit: publishedCommit,
 					lastCheckpointAt: nowIso(),
 				})
+				await this.releaseSessionScratch(sessionRow.id, sessionRow.user_id)
 				return {
 					status: 'approval_required',
 					sessionId: input.sessionId,
@@ -4706,10 +4705,7 @@ class RepoSessionBase extends DurableObject<Env> {
 					published_commit: publishedCommit,
 				},
 			})
-			await this.releasePublishedSessionScratch(
-				sessionRow.id,
-				sessionRow.user_id,
-			)
+			await this.releaseSessionScratch(sessionRow.id, sessionRow.user_id)
 			return {
 				status: 'ok',
 				sessionId: sessionRow.id,

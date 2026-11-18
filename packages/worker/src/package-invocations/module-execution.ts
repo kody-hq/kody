@@ -64,6 +64,7 @@ import {
 	isMissingPackageModuleError,
 	isTransientModuleArtifactError,
 } from './module-artifacts.ts'
+import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
 import { buildSubscriptionInvocationRunMetadata } from './subscription-envelope.ts'
 import {
 	buildExecutionErrorResponse,
@@ -292,7 +293,7 @@ export async function runSavedPackageModuleOnce(
 					db: input.env.APP_DB,
 					env: input.env,
 					userId: input.actor.orgId,
-					email: user.email,
+					email: entitlementEmailForOwner({ user }, input.actor.orgId),
 					resource: automationInvocationsPerDayResource,
 					orgBudget: billedActor
 						? {

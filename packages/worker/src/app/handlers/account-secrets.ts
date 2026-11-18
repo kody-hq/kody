@@ -123,7 +123,10 @@ import {
 	recordCredentialAudit,
 } from '#worker/credentials/credential-audit.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	requireWebsitePermission,
 	requireWebsiteIntegrationPermission,
@@ -2042,16 +2045,20 @@ export async function saveAccountSecret(input: {
 		}
 	}
 
+	const secretCaller = {
+		request: input.user.request,
+		user: input.user.mcpUser,
+	}
 	let saved: Awaited<ReturnType<typeof saveSecret>>
 	try {
 		saved = await saveSecret({
 			env: input.env,
 			audit: orgAuditWriterFromRequest(input.env, input.user.request),
-			userId: ownerIdFromCaller({
-				request: input.user.request,
-				user: input.user.mcpUser,
-			}),
-			userEmail: input.user.mcpUser.email,
+			userId: ownerIdFromCaller(secretCaller),
+			userEmail: entitlementEmailForOwner(
+				secretCaller,
+				ownerIdFromCaller(secretCaller),
+			),
 			name,
 			value,
 			scope,

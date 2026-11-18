@@ -141,7 +141,10 @@ import {
 	resolveCallerCredentialPackageId,
 } from '#worker/mcp/credential-client-tools.ts'
 import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
@@ -3212,7 +3215,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				return await createDynamicCallableWorkflow({
 					env: this.env,
 					userId: this.ctx.props.userId,
-					userEmail: callerContext.user?.email ?? this.ctx.props.email,
+					userEmail: entitlementEmailForOwner(
+						callerContext,
+						this.ctx.props.userId,
+					),
 					packageContext: {
 						packageId: this.ctx.props.packageId,
 						kodyId: this.ctx.props.kodyId,
