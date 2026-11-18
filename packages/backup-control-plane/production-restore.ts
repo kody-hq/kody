@@ -160,7 +160,7 @@ export function restoreWorkflowInstanceId(
 	return `dr-restore-${day}-${safeExpires}`
 }
 
-export type RestorableD1Source = {
+type RestorableD1Source = {
 	source: SourceDatabase
 	manifestKey: string
 	sqlObjectKey: string
