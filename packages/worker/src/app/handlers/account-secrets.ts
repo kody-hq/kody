@@ -47,7 +47,7 @@ import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import type { StorageContext } from '#mcp/storage.ts'
-import { filterValidApprovalHosts } from '#mcp/secrets/approval-host-shape.ts'
+import { filterValidApprovalHosts } from '#universal/approval-host-shape.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import {
 	deleteSecret,

@@ -1,5 +1,4 @@
-import type { z } from 'zod'
-import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
+import { createServerFn } from '@tanstack/react-start'
 import { redirect, notFound } from '@tanstack/react-router'
 import {
 	connectSecretsSchema,
@@ -8,11 +7,7 @@ import {
 	connectWebhookDecisionSchema,
 } from '../connect-input.ts'
 async function context(
-	path:
-		| '/connect/secrets'
-		| '/connect/oauth'
-		| '/connect/webhook-apply'
-		| '/connect/secret-set',
+	path: '/connect/secrets' | '/connect/oauth' | '/connect/webhook-apply',
 	input: { orgSlug?: string; search: [string, string][] },
 ) {
 	const { withWebsiteRead, WebsiteAuthenticationError } =
@@ -42,11 +37,10 @@ async function context(
 		throw error
 	}
 }
-export const readConnectSecrets = createServerOnlyFn(
-	async function readConnectSecrets(
-		path: '/connect/secrets' | '/connect/secret-set',
-		data: z.infer<typeof connectSecretsSchema>,
-	) {
+export const loadConnectSecrets = createServerFn({ method: 'GET' })
+	.validator(connectSecretsSchema)
+	.handler(async ({ data }) => {
+		const path = '/connect/secrets'
 		const { bindings, user, loadDocumentHead, search } = await context(
 			path,
 			data,
@@ -63,37 +57,31 @@ export const readConnectSecrets = createServerOnlyFn(
 				selectedSecretId: data.selectedSecretId,
 				approval: data.approval,
 			}),
-			path !== '/connect/secrets'
-				? null
-				: data.approval.scope !== 'user' && data.placement.length > 0
-					? {
-							placementApproval: null,
-							placementApprovalError:
-								'Fill placement can only be requested for your own credentials. Ask for a new link without a package or session scope.',
-						}
-					: loadPlacementApproval({
-							env: bindings,
-							user,
-							names: data.approval.names,
-							parts: data.placement,
-							credentialId: data.placementCredentialId ?? null,
-						}),
+			data.approval.scope !== 'user' && data.placement.length > 0
+				? {
+						placementApproval: null,
+						placementApprovalError:
+							'Fill placement can only be requested for your own credentials. Ask for a new link without a package or session scope.',
+					}
+				: loadPlacementApproval({
+						env: bindings,
+						user,
+						names: data.approval.names,
+						parts: data.placement,
+						credentialId: data.placementCredentialId ?? null,
+					}),
 		])
 		const payload = placement ? { ...selection, ...placement } : selection
 		return {
 			payload,
 			head: loadDocumentHead(
-				path === '/connect/secrets' ? 'connectSecrets' : 'connectSecretSet',
+				'connectSecrets',
 				path,
 				{ accountSecrets: payload },
 				search,
 			),
 		}
-	},
-)
-export const loadConnectSecrets = createServerFn({ method: 'GET' })
-	.validator(connectSecretsSchema)
-	.handler(({ data }) => readConnectSecrets('/connect/secrets', data))
+	})
 export const loadConnectWebhookApply = createServerFn({ method: 'GET' })
 	.validator(connectWebhookSchema)
 	.handler(async ({ data }) => {

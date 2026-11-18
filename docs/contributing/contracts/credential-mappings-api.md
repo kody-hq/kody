@@ -227,7 +227,7 @@ org context).
 | `name`               | Prefilled credential name.                                                                                                                                                                                                                           |
 | `provider`           | Prefilled provider slug (`^[a-z0-9-]+$`).                                                                                                                                                                                                            |
 | `description`        | Prefilled description.                                                                                                                                                                                                                               |
-| `allowedHosts`       | Prefilled hosts, comma separated or repeated (same as `/connect/secret-set`).                                                                                                                                                                        |
+| `allowedHosts`       | Prefills the editable host list. Pass comma-separated hosts or repeat the parameter (also supported on `/connect/secret-set`). For a Key, use public host names.                                                                                     |
 | `forPackage`, `need` | The package (kody id) and need key this credential is for. After saving, the page offers the approval link that maps it as the default. (`package` is taken: `/connect/secret-set` reads it as an allowed package id.)                               |
 | `loginExchange`      | For `kind=login`: the `login_exchange` JSON (`url`, `bodyFormat`, `body`, `tokenPath`, ...) the need expects. The page asks only for the login fields its `body` names (`{email}`, `{password}`, ...). Without it, the person fills in the exchange. |
 | anything else        | Passed through unchanged to the reused form: `/connect/secret-set` params (`scope`, `packageId`, `expiresAt`, `allowedPackages`) or `/connect/oauth` params (`authorizeUrl`, `tokenUrl`, `scopes`, `flow`, ...).                                     |
@@ -239,8 +239,12 @@ holds it. `oauth` hands off to `/connect/oauth` with the same query plus
 `org=<org>` (the OAuth redirect URI stays org-less; `org` binds account writes
 to the creation org), and `mcp` to `/@<org>/-/mcp-servers/new`.
 
-Codecs: `buildCredentialCreateHref(input)` and
-`parseCredentialCreateQuery(url)`.
+Pass `allowedHosts: ['api.example.com', 'uploads.example.com']` to
+`buildCredentialCreateHref(input)` or
+`buildCredentialCreateUrl(baseUrl, input)`. `parseCredentialCreateQuery(search)`
+reads the list for the form. On a Key, a nonempty field replaces the allowlist
+with the reviewed hosts. An empty field preserves the current hosts on
+replacement and gives a new Key no approved hosts.
 
 ## Credentials list API
 
@@ -813,13 +817,13 @@ show. Each connection links to its row under `/@:org/-/credentials?kind=oauth`.
 
 Where they are wired:
 
-- Org index routes (`/@:org/-/secrets`, `/@:org/-/mcp-servers`) and
-  `/connect/secret-set` call `credentialRedirectFor` in `beforeLoad` and throw a
-  302 when the table matches.
+- Org index routes (`/@:org/-/secrets`, `/@:org/-/mcp-servers`) call
+  `credentialRedirectFor` in `beforeLoad` and throw a 302 when the table
+  matches.
 - `/connect/credential` redirects to the creation one-pager at
-  `/@:org/-/credentials/new` in the signed-in user's signup org, with the query
-  preserved. A legacy `/connect/secret-set` link therefore lands on the
-  one-pager in two hops.
+  `/@:org/-/credentials/new` in the requested org or the signed-in user's signup
+  org, with the query preserved. A legacy `/connect/secret-set` link first
+  redirects to `/connect/credential` with `kind=secret` and the same prefill.
 - `/account/credentials` redirects to the signup org's Credentials list, query
   preserved. `SiteLink` uses `linkNavigation`, which treats exact native routes
   that have `beforeLoad` and no component or loader as document navigations, so
@@ -827,4 +831,4 @@ Where they are wired:
   page. `/account/credits` uses the same redirect-only shape.
 - URLs the table returns null for stay on the dedicated page: approval links
   (`names`, `hosts`, `package_id`, `capability`) and `package=` filters on the
-  index pages. `/connect/secret-set` remains the Key intake.
+  index pages.

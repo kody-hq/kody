@@ -461,6 +461,7 @@ export type CredentialCreateLinkInput = {
 	name?: string | null
 	provider?: string | null
 	description?: string | null
+	/** Prefills Allowed hosts so the person saving the credential can review and edit them. */
 	allowedHosts?: ReadonlyArray<string>
 	/** The package (kody id) and need key the credential is for. */
 	packageKodyId?: string | null

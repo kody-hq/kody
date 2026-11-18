@@ -86,7 +86,7 @@ const secretSetParamRenames: Record<string, string> = {
  * with the same prefill: name, description, provider, hosts, expiry, package
  * scope (`scope`, `packageId`), and package locks.
  */
-function connectSecretSetRedirect(url: URL): string {
+export function connectSecretSetRedirect(url: URL): string {
 	const search = new URLSearchParams()
 	search.set('kind', 'secret')
 	for (const [name, value] of url.searchParams) {
