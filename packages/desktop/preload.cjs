@@ -9,6 +9,7 @@ const origin = process.argv
 if (process.isMainFrame && location.origin === origin) {
 	contextBridge.exposeInMainWorld('kodyDesktop', {
 		version: 1,
+		integratedTitlebar: process.argv.includes('--kody-integrated-titlebar'),
 		...(process.argv.includes('--kody-browser-login')
 			? {
 					authentication: {

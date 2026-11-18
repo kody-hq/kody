@@ -605,7 +605,7 @@ async function createWindow(path = '/account') {
 		title: 'Kody',
 		icon: join(__dirname, 'assets/icon.png'),
 		...(integratedTitlebar
-			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 9 } }
+			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 8 } }
 			: {}),
 		backgroundColor: '#ffffff',
 		webPreferences: {
@@ -617,6 +617,7 @@ async function createWindow(path = '/account') {
 			preload: join(__dirname, 'preload.cjs'),
 			additionalArguments: [
 				`--kody-app-origin=${appOrigin}`,
+				...(integratedTitlebar ? ['--kody-integrated-titlebar'] : []),
 				...(browserAuthentication ? ['--kody-browser-login'] : []),
 			],
 		},
