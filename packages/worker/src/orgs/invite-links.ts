@@ -20,6 +20,8 @@ import {
 import { toHex } from '@kody-internal/shared/hex.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { normalizeEmailAddress } from '#worker/email/address.ts'
+import { isSeatRole } from '#worker/orgs/admin-role-rules.ts'
+import { assertCompedSeatAvailable } from '#worker/orgs/billing.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -116,6 +118,7 @@ export type InviteLinkRedeemBlockReason =
 	| 'inviter_gone'
 	| 'target_gone'
 	| 'already_used'
+	| 'seat_limit'
 
 export type InviteLinkRow = {
 	id: string
@@ -544,6 +547,12 @@ export async function createOrgInviteLink(input: {
 	if (!(await isOrgActive(input.db, input.orgId))) {
 		throw new Error('This organization is not active.')
 	}
+	if (
+		(input.target.kind === 'membership' && isSeatRole(input.target.role)) ||
+		input.target.kind === 'team'
+	) {
+		await assertCompedSeatAvailable(input.db, input.orgId)
+	}
 	if (!(await targetIsLive(input.db, input.orgId, input.target))) {
 		throw new Error(
 			input.target.kind === 'team'
@@ -846,6 +855,8 @@ export function inviteLinkBlockMessage(
 			return 'This invite link is no longer valid because what it shared was removed.'
 		case 'already_used':
 			return 'You already used this invite link. Ask for a new one if you need access again.'
+		case 'seat_limit':
+			return 'This organization has no complimentary seats left. Ask an Owner or Admin to free a seat.'
 		default: {
 			const exhaustive: never = reason
 			return exhaustive

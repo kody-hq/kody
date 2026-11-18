@@ -267,6 +267,48 @@ test('domain limits require a matching verified email', async () => {
 	).toMatchObject({ ok: true })
 })
 
+test('a full comped seat cap blocks the join, keeps the use, and refuses new seat links', async () => {
+	const { tokenHash } = await createLink({ maxUses: 1 })
+	sqlite
+		.prepare(`UPDATE orgs SET plan = 'pro', comped_seats = 1 WHERE id = ?`)
+		.run(orgId)
+	const link = (await getInviteLinkByTokenHash(db, tokenHash))!
+	const result = await redeemOrgInviteLink({
+		db,
+		env: { APP_DB: db } as Env,
+		link,
+		user: {
+			userId: joiner.personId,
+			email: 'bob@partner.org',
+			emailVerified: true,
+		},
+		audit: createTestOrgAuditWriter({ db: auditDb, appDb: db }),
+	})
+	expect(result).toEqual({
+		ok: false,
+		reason: 'seat_limit',
+		error:
+			'This organization has used all 1 complimentary seat. An Owner or Admin can remove a member or move one to the Billing role to free a seat, or email support@kody.codes to ask for more seats.',
+	})
+	expect(
+		await db
+			.prepare(
+				`SELECT 1 AS ok FROM org_memberships
+				 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(orgId, joiner.personId)
+			.first(),
+	).toBeNull()
+	expect(await getInviteLinkByTokenHash(db, tokenHash)).toMatchObject({
+		useCount: 0,
+		lastUsedAt: null,
+	})
+	await expect(createLink()).rejects.toThrow('complimentary seat')
+	await expect(createLink({ role: 'billing' })).resolves.toMatchObject({
+		token: expect.any(String),
+	})
+})
+
 test('max uses blocks further joins after the limit', async () => {
 	const { tokenHash } = await createLink({ maxUses: 1 })
 	const link = (await getInviteLinkByTokenHash(db, tokenHash))!

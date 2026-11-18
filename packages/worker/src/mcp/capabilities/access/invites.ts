@@ -49,7 +49,10 @@ import {
 	credentialPermissionFamily,
 	getOrgCredential,
 } from '#worker/credentials/credential-ids.ts'
-import { assertCanAcceptFreeOrgOwnership } from '#worker/orgs/billing.ts'
+import {
+	assertCanAcceptFreeOrgOwnership,
+	assertCompedSeatAvailable,
+} from '#worker/orgs/billing.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import {
@@ -331,6 +334,13 @@ async function acceptStoredInvite(input: {
 			orgId: invite.orgId,
 			userId: input.acceptedByUserId,
 		})
+	}
+	if (invite.kind === 'membership' && isSeatRole(invite.role ?? 'member')) {
+		await assertCompedSeatAvailable(
+			input.db,
+			invite.orgId,
+			input.acceptedByUserId,
+		)
 	}
 	// Block redeem of pending team-memory grants created before personal-only.
 	if (invite.kind === 'grant' && grantTarget?.resourceType === 'memory') {

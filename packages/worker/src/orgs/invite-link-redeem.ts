@@ -18,6 +18,7 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import { addOrgMember, addTeamMember, upsertGrant } from './access-writes.ts'
+import { assertCompedSeatAvailable, CompedSeatLimitError } from './billing.ts'
 import {
 	emailMatchesInviteLinkDomains,
 	getInviteLinkByTokenHash,
@@ -376,15 +377,32 @@ export async function redeemOrgInviteLink(input: {
 	const target = link.target
 	switch (target.kind) {
 		case 'membership':
-			return await redeemMembershipLink({ ...input, target, nowIso })
+			return await seatLimitBlocked(() =>
+				redeemMembershipLink({ ...input, target, nowIso }),
+			)
 		case 'team':
-			return await redeemTeamLink({ ...input, target, nowIso })
+			return await seatLimitBlocked(() =>
+				redeemTeamLink({ ...input, target, nowIso }),
+			)
 		case 'resource':
 			return await redeemResourceLink({ ...input, target, nowIso })
 		default: {
 			const exhaustive: never = target
 			throw new Error(`Unknown invite link target: ${String(exhaustive)}`)
 		}
+	}
+}
+
+async function seatLimitBlocked(
+	redeem: () => Promise<RedeemInviteLinkResult>,
+): Promise<RedeemInviteLinkResult> {
+	try {
+		return await redeem()
+	} catch (error) {
+		if (error instanceof CompedSeatLimitError) {
+			return { ok: false, reason: 'seat_limit', error: error.message }
+		}
+		throw error
 	}
 }
 
@@ -492,6 +510,11 @@ async function redeemMembershipLink(
 		return success(true)
 	}
 
+	// Refuse a full comped seat cap before claiming, so a doomed join never
+	// holds the link's last use.
+	if (seatRole(target.role)) {
+		await assertCompedSeatAvailable(db, link.orgId, user.userId)
+	}
 	const claimed = await claimInviteLinkUse({
 		db,
 		linkId: link.id,
@@ -618,6 +641,9 @@ async function redeemTeamLink(
 	const role = await liveMembershipRole(db, link.orgId, user.userId)
 	if (role && (await isLiveTeamMember(db, target.teamId, user.userId))) {
 		return success(true)
+	}
+	if (!role && !(await hasRedeemedInviteLink(db, link.id, user.userId))) {
+		await assertCompedSeatAvailable(db, link.orgId, user.userId)
 	}
 	const claimBlock = await claimSingleUse(input)
 	if (claimBlock) return claimBlock

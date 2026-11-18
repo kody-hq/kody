@@ -29,7 +29,11 @@ import {
 	FreeOrgLimitError,
 	MAX_FREE_ORGS_PER_USER,
 	liveFreeOwnedOrgCountSql,
+	compedSeatCapFullSql,
+	CompedSeatLimitError,
+	readFullCompedSeatCap,
 } from '#worker/orgs/billing.ts'
+import { isSeatRole } from '#worker/orgs/admin-role-rules.ts'
 import { getOrgHandleClaimError } from '#worker/orgs/org-handle-claim.ts'
 import type { OrgProfileVisibility } from '#worker/orgs/org-public-profile.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -659,6 +663,7 @@ export async function updateOrgMemberRole(input: {
 		)
 		.bind(input.orgId, input.userId)
 		.first<{ role: OrgRole }>()
+	const guardSeat = isSeatRole(input.role)
 	const statement = input.protectLastOwner
 		? input.db
 				.prepare(
@@ -676,14 +681,31 @@ export async function updateOrgMemberRole(input: {
 				.prepare(
 					`UPDATE org_memberships
 					 SET role = ?
-					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL${guardSeat ? seatRoleOrCompedSeatAvailableSql : ''}`,
 				)
-				.bind(input.role, input.orgId, input.userId)
+				.bind(
+					input.role,
+					input.orgId,
+					input.userId,
+					...(guardSeat ? [input.orgId] : []),
+				)
 	const results = await runBatch(input.db, [
 		statement,
 		bumpAccessEpochStatement(input.db, input.orgId),
 	])
 	if (!changesOf(results[0])) {
+		if (guardSeat && !input.protectLastOwner) {
+			const current = await input.db
+				.prepare(
+					`SELECT role FROM org_memberships
+					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(input.orgId, input.userId)
+				.first<{ role: OrgRole }>()
+			if (current && !isSeatRole(current.role)) {
+				await throwIfCompedSeatCapFull(input.db, input.orgId)
+			}
+		}
 		throw new Error(
 			input.protectLastOwner
 				? 'The last Owner cannot be demoted.'
@@ -794,6 +816,9 @@ export async function createInvite(input: {
 }) {
 	if (!input.inviteeEmail && !input.inviteeUsername) {
 		throw new Error('An invite needs an invitee email or username.')
+	}
+	if (input.kind === 'membership' && isSeatRole(input.role ?? 'member')) {
+		await throwIfCompedSeatCapFull(input.db, input.orgId)
 	}
 	const id = crypto.randomUUID()
 	const now = new Date().toISOString()
@@ -1010,12 +1035,15 @@ export async function addOrgMember(input: {
 		.bind(input.orgId, input.userId)
 		.first<{ ok: number }>()
 	const now = new Date().toISOString()
+	const guardSeat = !alreadyLive && isSeatRole(input.role)
 	const membershipStatements = [
+		bumpAccessEpochStatement(input.db, input.orgId),
 		input.db
 			.prepare(
 				`INSERT INTO org_memberships (
 					org_id, user_id, role, invited_by_user_id, created_at
-				) VALUES (?, ?, ?, ?, ?)
+				) SELECT ?, ?, ?, ?, ?
+				WHERE 1${guardSeat ? compedSeatAvailableSql : ''}
 				ON CONFLICT(org_id, user_id) DO UPDATE SET
 					deleted_at = NULL,
 					invited_by_user_id = excluded.invited_by_user_id,
@@ -1024,17 +1052,24 @@ export async function addOrgMember(input: {
 						ELSE excluded.role
 					END`,
 			)
-			.bind(input.orgId, input.userId, input.role, input.invitedByUserId, now),
-		bumpAccessEpochStatement(input.db, input.orgId),
+			.bind(
+				input.orgId,
+				input.userId,
+				input.role,
+				input.invitedByUserId,
+				now,
+				...(guardSeat ? [input.orgId] : []),
+			),
 	]
 	if (alreadyLive) {
 		await runBatch(input.db, membershipStatements)
 		return
 	}
-	await runAccessBatchWithAudit({
-		db: input.db,
+	const result = await runAppDbBatchWithOrgAudit({
+		appDb: input.db,
 		audit: input.audit,
 		statements: membershipStatements,
+		onlyIfChanged: true,
 		event: {
 			orgId: input.orgId,
 			action: 'member.added',
@@ -1042,6 +1077,28 @@ export async function addOrgMember(input: {
 			details: { role: input.role },
 		},
 	})
+	if (!result.changed) {
+		await throwIfCompedSeatCapFull(input.db, input.orgId)
+		throw new Error('That person could not be added to this organization.')
+	}
+}
+
+/** `AND NOT` the comped seat cap is full; binds the org id once. */
+const compedSeatCapNotFullSql = `NOT EXISTS (
+		SELECT 1 FROM orgs seat_o
+		WHERE seat_o.id = ? AND ${compedSeatCapFullSql('seat_o')}
+	)`
+
+const compedSeatAvailableSql = `
+	AND ${compedSeatCapNotFullSql}`
+
+/** Role changes into a seat pass when the row already holds a seat. */
+const seatRoleOrCompedSeatAvailableSql = `
+	AND (role IN ('owner', 'admin', 'member') OR ${compedSeatCapNotFullSql})`
+
+async function throwIfCompedSeatCapFull(db: D1Database, orgId: string) {
+	const cap = await readFullCompedSeatCap(db, orgId)
+	if (cap !== null) throw new CompedSeatLimitError(cap)
 }
 
 export type StoredInvite = {
