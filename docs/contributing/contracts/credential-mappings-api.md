@@ -817,9 +817,9 @@ show. Each connection links to its row under `/@:org/-/credentials?kind=oauth`.
 
 Where they are wired:
 
-- Org index routes (`/@:org/-/secrets`, `/@:org/-/mcp-servers`) call
-  `credentialRedirectFor` in `beforeLoad` and throw a 302 when the table
-  matches.
+- Org index routes (`/@:org/-/secrets`, `/@:org/-/mcp-servers`) and
+  `/connect/secret-set` call `credentialRedirectFor` in `beforeLoad` and throw a
+  302 when the table matches.
 - `/connect/credential` redirects to the creation one-pager at
   `/@:org/-/credentials/new` in the requested org or the signed-in user's signup
   org, with the query preserved. A legacy `/connect/secret-set` link first

@@ -314,38 +314,6 @@ export function ConnectCredentialRoute({
 				</section>
 			)
 		}
-		const hostField = (
-			<Field
-				label={isKey ? 'Allowed hosts' : 'Hosts'}
-				description={
-					<>
-						{hostsHint(kind)} Enter one host per line or separate hosts with
-						commas.
-						{isKey
-							? state.replaceExisting
-								? ' Leave blank to keep the current hosts.'
-								: ' With no hosts, Kody won’t send the value to any host.'
-							: null}
-					</>
-				}
-				error={hostError}
-			>
-				<Textarea
-					id="connect-credential-hosts"
-					rows={2}
-					required={!isKey}
-					value={hosts}
-					placeholder={
-						isKey ? 'api.example.com' : 'api.example.com or *.example.com'
-					}
-					onChange={(event) => {
-						const hosts = event.currentTarget.value
-						if (isKey) setEditedKeyHosts(hosts)
-						else update({ hosts })
-					}}
-				/>
-			</Field>
-		)
 		return (
 			<section css={cardCss} data-testid="connect-credential-key-form">
 				<form
@@ -438,7 +406,31 @@ export function ConnectCredentialRoute({
 							</span>
 						</label>
 					) : null}
-					{isKey ? hostField : null}
+					{isKey ? (
+						<Field
+							label="Allowed hosts"
+							description={
+								<>
+									{hostsHint(kind)} Enter one host per line or separate hosts
+									with commas.
+									{state.replaceExisting
+										? ' Leave blank to keep the current hosts.'
+										: ' With no hosts, Kody won’t send the value to any host.'}
+								</>
+							}
+							error={hostError}
+						>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								value={hosts}
+								placeholder="api.example.com"
+								onChange={(event) =>
+									setEditedKeyHosts(event.currentTarget.value)
+								}
+							/>
+						</Field>
+					) : null}
 					{kind === 'login' ? (
 						renderLoginFields({ state, update })
 					) : (
@@ -467,7 +459,24 @@ export function ConnectCredentialRoute({
 							</span>
 						</div>
 					)}
-					{isKey ? null : hostField}
+					{isKey ? null : (
+						<div css={fieldCss}>
+							<label htmlFor="connect-credential-hosts" css={fieldLabelCss}>
+								Hosts <span css={labelHintCss}>(one per line)</span>
+							</label>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								required
+								value={state.hosts}
+								placeholder="api.example.com or *.example.com"
+								onChange={(event) =>
+									update({ hosts: event.currentTarget.value })
+								}
+							/>
+							<span css={mutedCss}>{hostsHint(kind)}</span>
+						</div>
+					)}
 					{kind === 'login' ? renderLoginExchange({ state, update }) : null}
 					<div css={fieldCss}>
 						<label htmlFor="connect-credential-provider" css={fieldLabelCss}>
