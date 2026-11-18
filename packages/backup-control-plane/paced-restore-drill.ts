@@ -5,7 +5,6 @@
  * never writes to a production database.
  */
 import { loadSealedPacedD1Manifest } from '@kody-internal/shared/backup-d1-paced-read.ts'
-import { quoteSqlIdentifier } from '@kody-internal/shared/sql-literals.ts'
 
 import {
 	BackupError,
