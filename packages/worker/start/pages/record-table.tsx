@@ -576,7 +576,10 @@ export function RecordTable(props: RecordTableProps) {
 			)
 			if (
 				documentDeepLinkFocus({
-					spaNavigated: document.documentElement.hasAttribute('data-spa-nav'),
+					// A fragment (such as #fill-placement) owns the landing spot.
+					spaNavigated:
+						document.documentElement.hasAttribute('data-spa-nav') ||
+						window.location.hash !== '',
 					hasTarget: Boolean(target),
 				}) &&
 				target
