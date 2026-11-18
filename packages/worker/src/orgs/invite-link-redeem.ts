@@ -18,7 +18,7 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import { addOrgMember, addTeamMember, upsertGrant } from './access-writes.ts'
-import { CompedSeatLimitError } from './billing.ts'
+import { assertCompedSeatAvailable, CompedSeatLimitError } from './billing.ts'
 import {
 	emailMatchesInviteLinkDomains,
 	getInviteLinkByTokenHash,
@@ -510,6 +510,11 @@ async function redeemMembershipLink(
 		return success(true)
 	}
 
+	// Refuse a full comped seat cap before claiming, so a doomed join never
+	// holds the link's last use.
+	if (seatRole(target.role)) {
+		await assertCompedSeatAvailable(db, link.orgId, user.userId)
+	}
 	const claimed = await claimInviteLinkUse({
 		db,
 		linkId: link.id,
@@ -637,6 +642,7 @@ async function redeemTeamLink(
 	if (role && (await isLiveTeamMember(db, target.teamId, user.userId))) {
 		return success(true)
 	}
+	if (!role) await assertCompedSeatAvailable(db, link.orgId, user.userId)
 	const claimBlock = await claimSingleUse(input)
 	if (claimBlock) return claimBlock
 	await withClaimReleasedOnFailure(input, async () => {
