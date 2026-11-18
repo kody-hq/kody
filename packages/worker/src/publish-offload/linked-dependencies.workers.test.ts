@@ -13,6 +13,7 @@ import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { mergePublishedArtifactDependencies } from '#worker/package-runtime/module-graph-import-rewriting.ts'
 import { resolveKodyDependenciesForEntryPoint } from '#worker/package-runtime/module-graph-workspace.ts'
 import {
+	buildKodyAppBundle,
 	buildKodyImportableModuleBundle,
 	buildKodyModuleBundle,
 } from '#worker/package-runtime/module-graph.ts'
@@ -31,6 +32,7 @@ import { buildPublishTargets } from './builder-entry.ts'
 import {
 	collectLinkedPackageImports,
 	linkUploadedPackageImports,
+	type LinkedDependencyArtifactCache,
 } from './link-dependencies.ts'
 import {
 	hashWorkerLoaderModules,
@@ -104,6 +106,9 @@ async function ensureSchema() {
 		entry_point TEXT NOT NULL,
 		kv_key TEXT NOT NULL,
 		dependencies_json TEXT NOT NULL DEFAULT '[]',
+		built_in TEXT,
+		built_context_name TEXT,
+		bundle_sha256 TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
@@ -321,7 +326,7 @@ async function commitUploadedTarget(input: {
 	uploaded: PublishBuildTargetEntry
 	modules: WorkerLoaderModules
 }) {
-	const linkedImports = collectLinkedPackageImports({
+	const linkedImports = await collectLinkedPackageImports({
 		sourceFiles: importerFiles,
 		entryPoint: input.uploaded.entryPoint,
 	})
@@ -411,7 +416,8 @@ for (const origin of ['local', 'context'] as const) {
 			expect(uploadedSources).toContain('__kody_linked__')
 			expect(uploadedSources).not.toContain(notes.packageId)
 			expect(uploadedSources).not.toContain('select name from notes')
-			// Kody's own rebuild in linked mode hashes the same (rebuild sample).
+			// The off-worker builder is deterministic: the same tree builds to the
+			// same bytes on Kody.
 			const rebuilt = await buildKodyImportableModuleBundle({
 				env,
 				baseUrl,
@@ -472,6 +478,48 @@ for (const origin of ['local', 'context'] as const) {
 		},
 	)
 }
+
+test(
+	'targets that import the same Kody package link it once per publish',
+	{ timeout: 120_000 },
+	async () => {
+		const { userId, notes, reader } = await setup()
+		const built = await buildOffWorker(userId, reader.packageId)
+		const linkedImports = await collectLinkedPackageImports({
+			sourceFiles: importerFiles,
+			entryPoint: built.target.entryPoint,
+		})
+		const { referencedLinkedImports } = await verifyUploadedTargetModules({
+			uploaded: await uploadedEntry(built),
+			modules: built.modules,
+			ownPackageId: reader.packageId,
+			linkedImports,
+		})
+		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		const link = (cache?: LinkedDependencyArtifactCache) =>
+			linkUploadedPackageImports({
+				env,
+				baseUrl,
+				userId,
+				modules: built.modules,
+				linkedImports,
+				referenced: referencedLinkedImports,
+				...(cache ? { artifactCache: cache } : {}),
+			})
+		const first = await link(artifactCache)
+		const linkedSources = Object.values(first.modules)
+			.map((module) => JSON.stringify(module))
+			.join('\n')
+		expect(artifactCache.size).toBe(1)
+		expect(linkedSources).toContain('select name from notes')
+		expect(linkedSources).toContain(notes.packageId)
+
+		const second = await link(artifactCache)
+		expect(artifactCache.size).toBe(1)
+		expect(second).toEqual(first)
+		expect(await link()).toEqual(first)
+	},
+)
 
 test(
 	'an upload that inlines the dependency or binds its id is refused',
@@ -674,5 +722,79 @@ export default async function run() {
 			catalog: ['notes'],
 			names: ['install_from_catalog', 'list_catalog'],
 		})
+	},
+)
+
+test(
+	'an app that imports kody:runtime builds to the same modules in Kody cloud and in the offload builder',
+	{ timeout: 120_000 },
+	async () => {
+		silenceIncidentalRuntimeWarnings()
+		const userId = `user-${crypto.randomUUID()}`
+		const packageId = `pkg-${crypto.randomUUID()}`
+		const files = {
+			'package.json': JSON.stringify({
+				name: '@me/runtime-app',
+				exports: { '.': './src/index.ts' },
+				kody: {
+					id: 'runtime-app',
+					description: 'App that imports kody:runtime',
+					app: { entry: './src/app.ts' },
+				},
+			}),
+			'src/index.ts': `import { packageContext } from 'kody:runtime'
+export default async function main() {
+	return packageContext?.packageId ?? null
+}`,
+			'src/app.ts': `import { packageContext } from 'kody:runtime'
+export default {
+	async fetch() {
+		return new Response(packageContext?.packageId ?? 'none')
+	},
+}`,
+		}
+		const built = await buildPublishTargets({
+			files: builderFiles(files),
+			rootPackageId: packageId,
+			userId,
+			baseUrl,
+		})
+		const cloudInput = {
+			env,
+			baseUrl,
+			userId,
+			sourceFiles: files,
+			rootPackageId: packageId,
+		}
+		const cloud = {
+			app: await buildKodyAppBundle({
+				...cloudInput,
+				entryPoint: 'src/app.ts',
+				cacheKey: null,
+			}),
+			module: await buildKodyModuleBundle({
+				...cloudInput,
+				entryPoint: 'src/index.ts',
+			}),
+			'importable-module': await buildKodyImportableModuleBundle({
+				...cloudInput,
+				entryPoint: 'src/index.ts',
+			}),
+		}
+		for (const [bundleKind, cloudBundle] of Object.entries(cloud)) {
+			const offload = built.targets.find(
+				(candidate) => candidate.target.bundleKind === bundleKind,
+			)
+			if (!offload) throw new Error(`no ${bundleKind} target`)
+			expect(offload.mainModule, bundleKind).toBe(cloudBundle.mainModule)
+			expect(offload.modules, bundleKind).toEqual(cloudBundle.modules)
+			const sources = Object.values(offload.modules).map((module) =>
+				typeof module === 'string' ? module : (module.js ?? ''),
+			)
+			expect(sources.join('\n'), bundleKind).not.toMatch(/["']kody:/)
+			expect(sources.join('\n'), bundleKind).toContain(
+				'.__kody_virtual__/runtime.js',
+			)
+		}
 	},
 )

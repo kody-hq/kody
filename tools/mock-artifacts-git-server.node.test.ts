@@ -6,6 +6,7 @@ import { promisify } from 'node:util'
 import { expect, test } from 'vitest'
 import {
 	hasRepoToken,
+	parseMockGitForkPath,
 	parseMockGitPath,
 	startMockArtifactsGitServer,
 } from './mock-artifacts-git-server.ts'
@@ -57,6 +58,54 @@ test('serves push and clone for a repo created on first use', async () => {
 		const clone = path.join(dir, 'clone')
 		await git(dir, 'clone', '--quiet', authed, clone)
 		expect(await git(clone, 'log', '--format=%s')).toBe('init\n')
+	} finally {
+		await server.close()
+		await rm(dir, { recursive: true, force: true })
+	}
+})
+
+test('forks copy the source history into a new repo', async () => {
+	expect(parseMockGitForkPath('/fork/production/a.git/b.git')).toEqual({
+		namespace: 'production',
+		source: 'a.git',
+		target: 'b.git',
+	})
+	expect(parseMockGitForkPath('/fork/production/a.git/..git')).toBeNull()
+	const dir = await mkdtemp(path.join(tmpdir(), 'mock-git-'))
+	const server = await startMockArtifactsGitServer({
+		root: path.join(dir, 'remotes'),
+	})
+	try {
+		const authed = (repo: string) =>
+			`${server.origin}/git/production/${repo}`.replace(
+				'http://',
+				'http://x:token@',
+			)
+		const git = async (cwd: string, ...args: Array<string>) =>
+			(await promisify(execFile)('git', args, { cwd, encoding: 'utf8' })).stdout
+		const work = path.join(dir, 'work')
+		await git(dir, 'init', '--quiet', '--initial-branch=main', work)
+		await writeFile(path.join(work, 'README.md'), 'origin\n')
+		await git(work, 'add', 'README.md')
+		await git(
+			work,
+			'-c',
+			'user.email=t@example.com',
+			'-c',
+			'user.name=t',
+			'commit',
+			'-qm',
+			'origin',
+		)
+		await git(work, 'push', '--quiet', authed('origin.git'), 'main')
+		const forkUrl = `${server.origin}/fork/production/origin.git/fork.git`
+		expect((await fetch(forkUrl, { method: 'POST' })).status).toBe(401)
+		const headers = { Authorization: 'Bearer tok_1' }
+		expect((await fetch(forkUrl, { method: 'POST', headers })).status).toBe(204)
+		expect((await fetch(forkUrl, { method: 'POST', headers })).status).toBe(409)
+		const clone = path.join(dir, 'clone')
+		await git(dir, 'clone', '--quiet', authed('fork.git'), clone)
+		expect(await git(clone, 'log', '--format=%s')).toBe('origin\n')
 	} finally {
 		await server.close()
 		await rm(dir, { recursive: true, force: true })

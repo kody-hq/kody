@@ -1,8 +1,9 @@
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import {
 	desktopAssetDownloadUrl,
+	desktopInstallerAsset,
 	detectDesktopDownloadTarget,
-	pickDesktopInstallerAsset,
+	versionFromDesktopLatestLocation,
 	versionFromDesktopReleaseTag,
 } from './desktop-download.ts'
 import { createDesktopDownloadHandler } from './handlers/desktop-download.ts'
@@ -12,15 +13,9 @@ const latestReleasesPage =
 const macArmDmgUrl =
 	'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.26/Kody-0.1.26-mac-arm64.dmg'
 
-const macRelease = {
-	tag_name: 'v0.1.26',
-	assets: [
-		{ name: 'Kody-0.1.26-mac-arm64.zip' },
-		{ name: 'Kody-0.1.26-mac-arm64.dmg' },
-		{ name: 'Kody-0.1.26-mac-x64.dmg' },
-		{ name: 'latest-arm64-mac.yml' },
-	],
-}
+afterEach(() => {
+	vi.unstubAllGlobals()
+})
 
 test('detects explicit Mac arch overrides and rejects ambiguous Mac agents', () => {
 	expect(
@@ -73,11 +68,30 @@ test('detects Windows and Linux targets and rejects mobile agents', () => {
 	expect(detectDesktopDownloadTarget({ userAgent: null })).toBeNull()
 })
 
-test('picks tag-specific installer assets from the GitHub latest release', () => {
+test('reads the latest tag from the releases page redirect', () => {
 	expect(versionFromDesktopReleaseTag('v0.1.26')).toBe('0.1.26')
 	expect(versionFromDesktopReleaseTag('desktop-demo')).toBeNull()
 	expect(
-		pickDesktopInstallerAsset(macRelease, { platform: 'mac', arch: 'arm64' }),
+		versionFromDesktopLatestLocation(
+			'https://github.com/kody-hq/kody-desktop/releases/tag/v0.1.26',
+		),
+	).toBe('0.1.26')
+	expect(
+		versionFromDesktopLatestLocation(
+			'/kody-hq/kody-desktop/releases/tag/v0.1.26',
+		),
+	).toBe('0.1.26')
+	expect(
+		versionFromDesktopLatestLocation(
+			'https://github.com/kody-hq/kody-desktop/releases',
+		),
+	).toBeNull()
+	expect(versionFromDesktopLatestLocation(null)).toBeNull()
+})
+
+test('Mac downloads the arch-specific DMG', () => {
+	expect(
+		desktopInstallerAsset('0.1.26', { platform: 'mac', arch: 'arm64' }),
 	).toEqual({
 		version: '0.1.26',
 		assetName: 'Kody-0.1.26-mac-arm64.dmg',
@@ -90,9 +104,67 @@ test('picks tag-specific installer assets from the GitHub latest release', () =>
 	).toBe(macArmDmgUrl)
 })
 
+test('Windows downloads the App Installer file that keeps the MSIX updated', () => {
+	expect(
+		desktopInstallerAsset('0.1.74', { platform: 'win', arch: 'arm64' }),
+	).toEqual({ version: '0.1.74', assetName: 'Kody-win-arm64.appinstaller' })
+})
+
+test('Linux downloads the AppImage for its architecture', async () => {
+	expect(
+		desktopInstallerAsset('0.1.83', { platform: 'linux', arch: 'arm64' }),
+	).toEqual({
+		version: '0.1.83',
+		assetName: 'Kody-0.1.83-linux-arm64.AppImage',
+	})
+	const handler = createDesktopDownloadHandler({
+		fetchLatestVersion: async () => '0.1.83',
+	})
+	const response = await handler({
+		request: new Request('https://kody.codes/download', {
+			headers: {
+				'user-agent':
+					'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0',
+			},
+		}),
+	})
+	expect(response.status).toBe(302)
+	expect(response.headers.get('Location')).toBe(
+		'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.83/Kody-0.1.83-linux-x86_64.AppImage',
+	)
+})
+
+test('resolves the installer while the GitHub REST API is rate limited', async () => {
+	const fetchMock = vi.fn(
+		async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input)
+			if (url.startsWith('https://api.github.com/')) {
+				return new Response('rate limited', { status: 403 })
+			}
+			expect(url).toBe(latestReleasesPage)
+			expect(init?.redirect).toBe('manual')
+			return new Response(null, {
+				status: 302,
+				headers: {
+					Location:
+						'https://github.com/kody-hq/kody-desktop/releases/tag/v0.1.83',
+				},
+			})
+		},
+	)
+	vi.stubGlobal('fetch', fetchMock)
+	const response = await createDesktopDownloadHandler()({
+		request: new Request('https://kody.codes/download?platform=linux&arch=x64'),
+	})
+	expect(response.headers.get('Location')).toBe(
+		'https://github.com/kody-hq/kody-desktop/releases/download/v0.1.83/Kody-0.1.83-linux-x86_64.AppImage',
+	)
+	expect(fetchMock).toHaveBeenCalledTimes(1)
+})
+
 test('download handler redirects to the matched installer or the releases page', async () => {
 	const handler = createDesktopDownloadHandler({
-		fetchLatestRelease: async () => macRelease,
+		fetchLatestVersion: async () => '0.1.26',
 	})
 
 	const asset = await handler({
@@ -117,13 +189,12 @@ test('download handler redirects to the matched installer or the releases page',
 	expect(unknown.headers.get('Location')).toBe(latestReleasesPage)
 	expect(unknown.headers.get('Cache-Control')).toBe('private, no-store')
 
-	const missingAsset = createDesktopDownloadHandler({
-		fetchLatestRelease: async () => ({
-			tag_name: 'v0.1.26',
-			assets: [{ name: 'latest-arm64-mac.yml' }],
-		}),
+	const unresolved = createDesktopDownloadHandler({
+		fetchLatestVersion: async () => {
+			throw new Error('network down')
+		},
 	})
-	const missing = await missingAsset({
+	const missing = await unresolved({
 		request: new Request('https://kody.codes/download?platform=win&arch=x64'),
 	})
 	expect(missing.headers.get('Location')).toBe(latestReleasesPage)

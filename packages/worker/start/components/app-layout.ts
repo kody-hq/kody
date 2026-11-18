@@ -4,7 +4,8 @@ import { mq, spacing, typography } from '#universal/styles/tokens.ts'
 
 export const appFrameCss: CSSObject = {
 	width: '100%',
-	minHeight: '100vh',
+	minHeight: 'var(--app-frame-min-height, 100vh)',
+	flex: 1,
 	display: 'flex',
 	flexDirection: 'column',
 	fontFamily: typography.fontFamily,

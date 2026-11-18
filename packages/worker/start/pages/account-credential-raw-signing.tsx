@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -6,13 +8,9 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialRawSigning } from '#start/server/credential-raw-signing'
 import type { CredentialRawSigningView } from '#universal/credentials-list.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const rawSigningAnchor = 'raw-signing'
 
@@ -25,17 +23,6 @@ const warningCss = css({
 	border: `1px solid ${colors.danger}`,
 	borderRadius: radius.md,
 	color: colors.text,
-})
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: '0.875rem',
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
 })
 
 const warningText =
@@ -78,6 +65,18 @@ function useRawSigningSwitch(input: {
 		}
 	}
 	return { enabled, change, error, pending: mutation.isPending }
+}
+
+/** Raw signing failed to load, which is not the same as "not supported". */
+export function CredentialRawSigningUnavailable() {
+	return (
+		<div css={fieldCss} id={rawSigningAnchor}>
+			<span css={fieldLabelCss}>Raw signing</span>
+			<p css={mutedCss} data-testid="raw-signing-unavailable">
+				Kody could not load raw signing right now. Reload to try again.
+			</p>
+		</div>
+	)
 }
 
 export function CredentialRawSigningSection(props: {
@@ -125,15 +124,15 @@ export function CredentialRawSigningSection(props: {
 				{view.canChange ? (
 					toggle.enabled ? (
 						<div>
-							<button
+							<Button
 								type="button"
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								disabled={toggle.pending}
 								onClick={() => void toggle.change(false)}
 								data-testid="raw-signing-toggle"
 							>
 								Turn off raw signing
-							</button>
+							</Button>
 						</div>
 					) : (
 						<div css={{ display: 'grid', gap: spacing.xs }}>
@@ -144,8 +143,7 @@ export function CredentialRawSigningSection(props: {
 									alignItems: 'flex-start',
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={confirming}
 									onChange={(event) => setConfirming(event.target.checked)}
 									data-testid="raw-signing-confirm"
@@ -156,15 +154,15 @@ export function CredentialRawSigningSection(props: {
 								</span>
 							</label>
 							<div>
-								<button
+								<Button
 									type="button"
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 									disabled={toggle.pending || !confirming}
 									onClick={() => void toggle.change(true)}
 									data-testid="raw-signing-toggle"
 								>
 									Turn on raw signing
-								</button>
+								</Button>
 							</div>
 						</div>
 					)
@@ -207,7 +205,7 @@ function RawSignaturesList(props: {
 	}
 	return (
 		<div css={{ overflowX: 'auto' }}>
-			<table css={tableCss} aria-label="Raw signatures">
+			<Table aria-label="Raw signatures">
 				<thead>
 					<tr>
 						<th>When</th>
@@ -240,7 +238,7 @@ function RawSignaturesList(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={mutedCss}>
 				Kody keeps raw signatures for 90 days. Keys, messages, and signatures
 				are never recorded.

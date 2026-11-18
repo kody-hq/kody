@@ -1,5 +1,8 @@
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
-import { collectBundlerResolvedSpecifiers } from '#worker/package-runtime/import-specifiers.ts'
+import {
+	collectBundlerResolvedSpecifiers,
+	isKodyVirtualImportSpecifier,
+} from '#worker/package-runtime/import-specifiers.ts'
 import {
 	publicRuntimeModulePath,
 	resolveRelativeModulePath,
@@ -270,10 +273,11 @@ function assertSafeModulePath(path: string) {
  * 6C: every relative import an uploaded module makes stays inside the
  * upload, is the shared runtime or this package's own runtime facade, or is
  * a linked placeholder for a Kody package the source imports. Anything else
- * (another package's facade, a linked artifact's internals) is refused.
+ * (another package's facade, a linked artifact's internals) is refused, and
+ * so is a `kody:` import the build left unrewritten.
  * Returns the placeholders the module imports.
  */
-function assertImportsStayInPackage(input: {
+async function assertImportsStayInPackage(input: {
 	path: string
 	source: string
 	label: string
@@ -281,11 +285,16 @@ function assertImportsStayInPackage(input: {
 	linkedImports: ReadonlyMap<string, string>
 	referenced: Set<string>
 }) {
-	const specifiers = collectBundlerResolvedSpecifiers(input.source)
+	const specifiers = await collectBundlerResolvedSpecifiers(input.source)
 	if (specifiers === null) {
 		fail(`${input.label} does not parse as a module.`)
 	}
 	for (const specifier of specifiers) {
+		if (isKodyVirtualImportSpecifier(specifier)) {
+			fail(
+				`${input.label} still imports "${specifier}". A build rewrites kody: imports to modules Kody supplies at load time, and this one did not, so the bundle would fail to load. Update the Kody CLI (or the execution context daemon) and build again, or publish with --context cloud.`,
+			)
+		}
 		if (!specifier.startsWith('./') && !specifier.startsWith('../')) continue
 		const resolved = resolveRelativeModulePath(input.path, specifier)
 		if (resolved && linkedPathPattern.test(resolved)) {
@@ -380,7 +389,7 @@ export async function verifyUploadedTargetModules(input: {
 				)
 			}
 		}
-		assertImportsStayInPackage({
+		await assertImportsStayInPackage({
 			path,
 			source,
 			label,
@@ -397,48 +406,30 @@ export async function verifyUploadedTargetModules(input: {
 	return { totalBytes, referencedLinkedImports }
 }
 
-/**
- * The server rebuilds a sample and compares hashes. Smallest targets first,
- * so the re-check stays cheap; browser bundles are as good a witness as
- * worker bundles.
- */
-export function pickServerRebuildSample<
-	T extends { uploaded: PublishBuildTargetEntry },
->(matched: ReadonlyArray<T>, size: number) {
-	const bytes = (entry: T) =>
-		Object.values(entry.uploaded.modules).reduce(
-			(total, module) => total + module.size,
-			0,
-		)
-	return [...matched]
-		.sort(
-			(a, b) =>
-				bytes(a) - bytes(b) ||
-				a.uploaded.entryPoint.localeCompare(b.uploaded.entryPoint),
-		)
-		.slice(0, Math.max(0, size))
-}
-
-export function assertServerRebuildMatches(input: {
-	uploaded: PublishBuildTargetEntry
-	rebuilt: { mainModule: string; moduleHashes: Record<string, string> }
-}) {
-	const uploadedHashes = Object.fromEntries(
-		Object.entries(input.uploaded.modules)
+function moduleHashesKey(entry: PublishBuildTargetEntry) {
+	return JSON.stringify(
+		Object.entries(entry.modules)
 			.map(([path, module]) => [path, module.sha256] as const)
 			.sort(([a], [b]) => a.localeCompare(b)),
 	)
-	const rebuiltHashes = Object.fromEntries(
-		Object.entries(input.rebuilt.moduleHashes).sort(([a], [b]) =>
-			a.localeCompare(b),
-		),
-	)
+}
+
+/**
+ * Targets that build the same bundle (an export and the jobs on its entry
+ * file) all serve the upload Kody keeps for that build, so every other upload
+ * for it must carry the same bytes. Otherwise a target could pass its checks
+ * on an upload Kody never serves.
+ */
+export function assertSameBuildUploadMatches(input: {
+	kept: PublishBuildTargetEntry
+	uploaded: PublishBuildTargetEntry
+}) {
 	if (
-		input.rebuilt.mainModule !== input.uploaded.mainModule ||
-		JSON.stringify(uploadedHashes) !== JSON.stringify(rebuiltHashes)
+		input.kept.mainModule !== input.uploaded.mainModule ||
+		moduleHashesKey(input.kept) !== moduleHashesKey(input.uploaded)
 	) {
 		fail(
-			`the server rebuilt "${input.uploaded.entryPoint}" from the pushed commit and got different bytes than the upload, so the upload was not built from this tree with this builder.`,
+			`two targets upload different bytes for the same ${input.uploaded.bundleKind} build of "${input.uploaded.entryPoint}", so the upload is not one build of this tree.`,
 		)
 	}
 }

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useEffect } from 'react'
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
@@ -12,14 +13,10 @@ import { SiteLink } from '../components/site-link.tsx'
 import { WorkspaceAppsEmptyState } from '../components/workspace-apps-empty-state.tsx'
 import { routes } from '#universal/routes.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	inputCss,
-} from '#universal/styles/style-primitives.ts'
 import { IdentityIconMark } from '../components/identity-icon-mark.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { filterWorkspaceApps } from '#universal/workspace-apps.ts'
+import { Input, Select } from '../components/input.tsx'
 
 const pageQuery = createPageQuery('loadOrgApps', loadOrgApps, {
 	freshAuthorization: true,
@@ -105,8 +102,7 @@ function Page() {
 				<div css={toolbarCss}>
 					<label css={searchLabelCss}>
 						<span>Search apps</span>
-						<input
-							css={inputCss}
+						<Input
 							type="search"
 							value={q}
 							onChange={(event) => {
@@ -122,8 +118,7 @@ function Page() {
 					</label>
 					<label css={controlLabelCss}>
 						Package visibility
-						<select
-							css={inputCss}
+						<Select
 							value={visibility}
 							onChange={(event) => {
 								const visibility = event.target.value as
@@ -139,12 +134,11 @@ function Page() {
 							<option value="all">All packages</option>
 							<option value="public">Public packages</option>
 							<option value="private">Private packages</option>
-						</select>
+						</Select>
 					</label>
 					<label css={controlLabelCss}>
 						Sort by
-						<select
-							css={inputCss}
+						<Select
 							value={sort}
 							onChange={(event) => {
 								const sort = event.target.value as
@@ -160,7 +154,7 @@ function Page() {
 							<option value="updated">Recently updated</option>
 							<option value="created">Recently created</option>
 							<option value="name">Name</option>
-						</select>
+						</Select>
 					</label>
 					<fieldset css={viewCss}>
 						<legend>View</legend>
@@ -266,23 +260,24 @@ function Page() {
 									)}
 									<div css={linksCss}>
 										{app.appHref && (
-											<a
+											<Button
 												href={app.appHref}
-												css={getPillButtonCss({ size: 'sm' })}
+												variant="primary"
+												reloadDocument
 											>
 												Open app
-											</a>
+											</Button>
 										)}
 										{app.canOpenDetail !== false && (
-											<SiteLink
-												css={getGhostButtonCss({ size: 'sm' })}
+											<Button
+												variant="secondary"
 												href={routes.communityPackage.href({
 													username: data.username,
 													kodyId: app.kodyId,
 												})}
 											>
 												Package
-											</SiteLink>
+											</Button>
 										)}
 									</div>
 								</div>

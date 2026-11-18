@@ -19,7 +19,10 @@ import {
 } from './capability-proxy.js'
 import { redact } from './redact.js'
 import { runSecretHeader } from './local-runtime-source.js'
-import { localBridgeTlsCheckPath } from './local-egress.js'
+import {
+	localBridgeLanAuthorizePath,
+	localBridgeTlsCheckPath,
+} from './local-egress.js'
 import {
 	certErrorCode,
 	certErrorMessage,
@@ -58,6 +61,12 @@ export type LocalRuntimeBridgeInput = {
 	}) => Promise<void>
 	/** Host-folder fs calls for an execution-context run with mounts. */
 	forwardHostFs?: (body: unknown) => Promise<unknown>
+	/** Asks Kody whether the run may use a named local network destination; rejects with the reason. */
+	authorizeLan?: (input: {
+		capability: string
+		host: string
+		port: number
+	}) => Promise<void>
 }
 
 /** False only when the hop failed before any request byte left the CLI. */
@@ -171,6 +180,44 @@ export async function startLocalRuntimeBridge(
 				})
 			} catch {
 				replyJson(200, { message: null })
+			}
+			return
+		}
+		if (
+			request.method === 'POST' &&
+			request.url === localBridgeLanAuthorizePath
+		) {
+			try {
+				const body = JSON.parse(await readBodyText(request)) as {
+					capability?: unknown
+					host?: unknown
+					port?: unknown
+				}
+				if (
+					!input.authorizeLan ||
+					typeof body.capability !== 'string' ||
+					typeof body.host !== 'string' ||
+					typeof body.port !== 'number'
+				) {
+					replyJson(200, {
+						ok: false,
+						message: 'This run has no named local network destinations.',
+					})
+					return
+				}
+				await input.authorizeLan({
+					capability: body.capability,
+					host: body.host,
+					port: body.port,
+				})
+				replyJson(200, { ok: true })
+			} catch (error) {
+				replyJson(200, {
+					ok: false,
+					message: redact(
+						error instanceof Error ? error.message : String(error),
+					),
+				})
 			}
 			return
 		}

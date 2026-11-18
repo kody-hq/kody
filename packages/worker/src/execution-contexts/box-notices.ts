@@ -10,8 +10,9 @@ import {
 	pruneElevations,
 	recordElevation,
 	recordMisconfigurations,
+	recordOpenShell,
 } from './notices.ts'
-import type { ExecutionContextRow } from './store.ts'
+import { parseGrant, type ExecutionContextRow } from './store.ts'
 
 /** Grantees whose excess Kody tracks; larger orgs are computed on read. */
 export const maxTrackedGrantees = 200
@@ -138,6 +139,40 @@ export async function contextMisconfigurations(
 }
 
 /**
+ * Raises the operator's open shell notice while host commands are on and the
+ * shell has no package list, and clears it otherwise. Never throws.
+ */
+export async function refreshOpenShellNotice(
+	db: D1Database,
+	row: Pick<
+		ExecutionContextRow,
+		'id' | 'org_id' | 'operator_user_id' | 'grant_json' | 'revoked_at'
+	>,
+) {
+	try {
+		const on = !row.revoked_at && parseGrant(row).commands?.enabled
+		const limited = on
+			? await db
+					.prepare(
+						`SELECT 1 AS ok FROM machine_capabilities
+						 WHERE context_id = ? AND kind = 'shell' AND name = 'shell'
+						   AND removed_at IS NULL AND allowed_packages_json != '[]'`,
+					)
+					.bind(row.id)
+					.first()
+			: null
+		await recordOpenShell(db, {
+			contextId: row.id,
+			orgId: row.org_id,
+			operatorId: row.operator_user_id,
+			open: Boolean(on) && !limited,
+		})
+	} catch (error) {
+		console.error('execution-context-open-shell-notice-failed', error)
+	}
+}
+
+/**
  * Recomputes every tracked grantee's excess and the context's
  * misconfigurations in `orgId`. Never throws: notices must not break the
  * share, opt-in, or update that triggered them.
@@ -171,6 +206,7 @@ export async function refreshContextNotices(
 			orgId: row.org_id,
 			codes: await contextMisconfigurations(db, row, owning),
 		})
+		await refreshOpenShellNotice(db, row)
 		return box
 	} catch (error) {
 		console.error('execution-context-notices-refresh-failed', error)

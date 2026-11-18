@@ -78,60 +78,59 @@ you only have the MCP URL.
   Authenticate. Manual includes
   `claude mcp add --transport http -s user kody <url>`, or a `.mcp.json` entry
   with `"type": "http"`.
-- **ChatGPT.com**: Sideload Kody as your own plugin. Kody's listing in the
-  public ChatGPT plugin directory is outdated and no longer updates, so do not
-  install it; if you already did, uninstall it and add Kody this way. Per
-  OpenAI's
-  [Connect and test your plugin](https://developers.openai.com/plugins/deploy/connect-chatgpt)
-  guide, in ChatGPT on the web:
+- **ChatGPT**: Add Kody as a custom MCP connection. Per OpenAI's
+  [MCP docs](https://learn.chatgpt.com/docs/extend/mcp), in the ChatGPT desktop
+  app:
 
-  1. Open [Plugins](https://chatgpt.com/plugins), select the plus button, then
-     **Add custom MCP server**.
-  2. Name it Kody and enter this deployment's MCP URL under **Connection**
-     (`https://kody.codes/mcp` on [kody.codes](https://kody.codes); preview and
-     local Get started show their own `/mcp`).
-  3. Choose OAuth for authentication, check **I understand and want to
-     continue**, then select **Create as a plugin**.
-  4. Install the Kody plugin (under **Personal**, **Created by me**), select
-     **Connect** if prompted, and approve access when ChatGPT asks you to sign
-     in to Kody.
+  1. Open **Settings**, then select **MCP servers**.
+  2. Select **Add server**, enter the name Kody, choose **Streamable HTTP**, and
+     paste this deployment's MCP URL (`https://kody.codes/mcp` on
+     [kody.codes](https://kody.codes); preview and local Get started show their
+     own `/mcp`).
+  3. Save the server, then select **Restart**.
+  4. Select **Authenticate** and sign in to Kody. Type `/mcp` in the composer to
+     see Kody connected.
 
-  You do not need to turn on Developer mode first. Custom MCP servers depend on
-  your ChatGPT plan and workspace:
-  [OpenAI's help](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt)
-  lists Business, Enterprise, and Edu, and a workspace admin may need to allow
-  **Create plugins with MCPs**. Add the server on the web; the mobile app cannot
-  add one, but the installed plugin works there. If ChatGPT asks for an icon,
-  use the connector icon (`/images/kody-app-icon.png`, 256×256 and under
-  ChatGPT's 10 KB limit); right-click Save as on the connect page, then upload
-  it. If ChatGPT shows only `search` and `execute` (no `api`), open Kody in
-  [Plugins](https://chatgpt.com/plugins) and select **Refresh**, or use the Kody
+  The ChatGPT desktop app, Codex CLI, and Codex IDE extension share
+  `~/.codex/config.toml`, so you only add Kody once.
+
+  On ChatGPT.com, OpenAI adds custom MCP servers from **Plugins**: select the
+  plus button, then **Add custom MCP server**, name it Kody, paste the MCP URL
+  under **Connection**, choose OAuth, check **I understand and want to
+  continue**, and select **Create as a plugin**. Install the new Kody connection
+  and sign in. Per
+  [OpenAI's custom MCP help](https://help.openai.com/en/articles/12584461-connecting-custom-mcp-servers-in-chatgpt),
+  this needs a Business, Enterprise, or Edu workspace, an admin may need to
+  allow **Create plugins with MCPs**, and the mobile app cannot add one. If
+  ChatGPT asks for an icon, use `/images/kody-app-icon.png` (256×256, under
+  ChatGPT's 10 KB limit) from the connect page.
+
+  The public ChatGPT plugin directory listing is unmaintained. Uninstall that
+  plugin and add Kody as a custom MCP server with this deployment’s MCP URL
+  instead. If ChatGPT shows only `search` and `execute` (no `api`), use the Kody
   CLI (`npx @kodycodes/cli api tokenList` / `tokenRevoke`).
 
-- **Codex**: Codex runs in the ChatGPT desktop app and uses the plugins
-  installed in ChatGPT, so sideload the same Kody plugin: follow the four
-  **ChatGPT.com** steps above on the web, then Kody works in Codex in the
-  ChatGPT desktop app (in a Codex task, **Sources → Use plugins** selects it).
-  Do not use the outdated ChatGPT plugin directory listing.
+- **Codex**: Add Kody as an MCP server. In the Codex CLI:
 
-  <details>
-  <summary>Or add Kody as a Codex MCP server</summary>
+  ```sh
+  codex mcp add kody --url https://kody.codes/mcp
+  ```
 
-  Get started offers **Open Codex** (`codex://mcp/add?name=kody&url=<url>`) so
-  the desktop app launches when that protocol is registered. In the ChatGPT
-  desktop app you can also open **Settings → MCP servers → Add server**, choose
-  **Streamable HTTP** with the MCP URL, then **Authenticate**. After the CLI
-  writes the shared config, run `codex mcp login kody` if OAuth does not start.
-  Manual includes `codex mcp add kody --url <url>` and the shared
-  `~/.codex/config.toml` `[mcp_servers.kody]` `url` entry. If Codex asks you to
-  log in again after about an hour, see
+  Use this deployment's MCP URL on preview or local. Run `codex mcp login kody`
+  if sign-in does not start (add `--no-browser` when there is no local browser).
+  In the ChatGPT desktop app, use the **ChatGPT** desktop steps above. In the
+  Codex IDE extension, open the gear menu, select **MCP servers**, then **Add
+  server**, name it Kody, choose **Streamable HTTP**, paste the MCP URL, save,
+  select **Restart extension**, then **Authenticate**. All three share
+  `~/.codex/config.toml` (`[mcp_servers.kody]` with a `url` entry). Get started
+  also offers **Open Codex** (`codex://mcp/add?name=kody&url=<url>`), which
+  launches the desktop app when that protocol is registered. If Codex asks you
+  to log in again after about an hour, see
   [Codex keeps asking for `codex mcp login kody`](./troubleshooting.md#codex-keeps-asking-for-codex-mcp-login-kody).
   On a remote machine or VM, see
   [Remote or headless machines](#remote-or-headless-machines). If authorize says
   Kody could not load Codex's details, see
   [Authorize says Kody couldn't load the app's details](./troubleshooting.md#authorize-says-kody-couldnt-load-the-apps-details).
-
-  </details>
 
 - **OpenCode** — After the CLI writes the remote entry, run
   `opencode mcp auth kody` if prompted. Manual includes
@@ -186,10 +185,10 @@ you only have the MCP URL.
   chat: that runs in Muse's Linux VM and cannot configure Muse. After OAuth
   succeeds, headless Muse may ask you to paste a localhost URL into the Muse
   chat.
-- **Muse chat**: Muse chat at [muse.ai](https://muse.ai) (formerly
-  agent.meta.ai) has no native MCP settings screen. Pre-register a confidential
-  client at Workspace → Agents → Advanced → MCP OAuth clients with the redirect
-  URIs `https://muse.ai/api/hatch/oauth/callback` and
+- **Muse chat**: Muse chat at [muse.ai](https://muse.ai) has no native MCP
+  settings screen. Pre-register a confidential client at Workspace → Agents →
+  Advanced → MCP OAuth clients with the redirect URIs
+  `https://muse.ai/api/hatch/oauth/callback` and
   `https://agent.meta.ai/api/hatch/oauth/callback`, ask Muse to create a custom
   connector for this deployment's MCP URL, and enter the Client ID and Client
   secret only in Muse's Secure credentials store. See

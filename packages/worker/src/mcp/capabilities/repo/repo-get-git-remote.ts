@@ -76,6 +76,7 @@ export const repoGetGitRemoteCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoGetGitRemote',
+		walletGuard: 'git',
 		contextRuns: 'deny',
 		orgPermission: 'package:read',
 		description:

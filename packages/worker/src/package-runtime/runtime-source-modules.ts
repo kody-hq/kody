@@ -7,7 +7,6 @@ import {
 	packageBoundRuntimeExportNames,
 } from './package-bound-runtime-exports.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
-import { collectLiteralImportNodes } from './import-specifiers.ts'
 import {
 	decodePathKey,
 	dirname,
@@ -42,11 +41,10 @@ export function createRuntimeModuleSource() {
 	// globalThis - the per-request runtime value is held inside the ALS, so
 	// concurrent requests do not stomp on each other's view.
 	//
-	// Hydration used to install another full copy of this module under each
-	// published-artifact prefix. Those copies now re-export this root module
+	// Prefixed published-artifact copies of this module re-export this root
 	// so the stamp ALS is created once in this closure. The ALS instance and
 	// stamp runner stay module-local (never hung off Symbol.for / globalThis);
-	// only a read-only current-stamp getter is published for host wrappers.
+	// host wrappers import `__kodyRunWithPackageBindings` from this module.
 	//
 	// This module is evaluated at most once per isolate path, but dynamic
 	// workers with identical code are cached and reused across executions
@@ -1295,8 +1293,95 @@ export const KodyRuntime = Object.freeze({ defaultValue: __kodyPackageRuntimeDef
 `.trim()
 }
 
+/**
+ * Resolved paths of the runtime modules that `modules` import. Only
+ * specifiers naming a runtime module matter, so this checks each quoted path
+ * that mentions `runtime` instead of parsing whole modules: dependency
+ * artifacts are megabytes each, and this runs in the shared API isolate on
+ * every execute. A parser's AST or a lexer's buffer for such a bundle costs
+ * tens of megabytes. A match inside a comment or a nested string only adds an
+ * unused runtime module.
+ */
+function collectResolvedRuntimeImportPaths(modules: WorkerLoaderModules) {
+	const importedPaths: Array<string> = []
+	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
+		for (const specifier of findRuntimeImportSpecifiers(source)) {
+			const resolvedPath = resolveRelativeModulePath(modulePath, specifier)
+			if (resolvedPath) importedPaths.push(resolvedPath)
+		}
+	}
+	return importedPaths
+}
+
+const runtimeSpecifierNeedle = 'runtime'
+const specifierCharacterPattern = /[\w./@+~-]/
+const identifierCharacterPattern = /[\w$]/
+const whitespacePattern = /\s/
+
+function findRuntimeImportSpecifiers(source: string): Array<string> {
+	const specifiers: Array<string> = []
+	let index = source.indexOf(runtimeSpecifierNeedle)
+	while (index !== -1) {
+		let start = index - 1
+		while (start >= 0 && specifierCharacterPattern.test(source[start]!)) {
+			start--
+		}
+		let end = index + runtimeSpecifierNeedle.length
+		while (
+			end < source.length &&
+			specifierCharacterPattern.test(source[end]!)
+		) {
+			end++
+		}
+		const quote = source[start]
+		if (
+			(quote === '"' || quote === "'" || quote === '`') &&
+			source[end] === quote &&
+			followsImportKeyword(source, start)
+		) {
+			specifiers.push(source.slice(start + 1, end))
+		}
+		index = source.indexOf(runtimeSpecifierNeedle, end)
+	}
+	return specifiers
+}
+
+/**
+ * True when the string literal opening at `quoteIndex` is an import source:
+ * `from "x"`, `import "x"`, or `import("x")`.
+ */
+function followsImportKeyword(source: string, quoteIndex: number) {
+	let index = skipTriviaBackward(source, quoteIndex - 1)
+	let openParens = 0
+	while (index >= 0 && source[index] === '(') {
+		openParens++
+		index = skipTriviaBackward(source, index - 1)
+	}
+	const keywords = openParens > 0 ? ['import'] : ['from', 'import']
+	return keywords.some((keyword) => {
+		const keywordStart = index + 1 - keyword.length
+		return (
+			keywordStart >= 0 &&
+			source.startsWith(keyword, keywordStart) &&
+			!identifierCharacterPattern.test(source[keywordStart - 1] ?? '')
+		)
+	})
+}
+
+/** Steps back over whitespace and block comments. */
+function skipTriviaBackward(source: string, index: number) {
+	for (;;) {
+		while (index >= 0 && whitespacePattern.test(source[index]!)) index--
+		if (source[index] !== '/' || source[index - 1] !== '*') return index
+		const commentStart = source.lastIndexOf('/*', index - 2)
+		if (commentStart === -1) return index
+		index = commentStart - 1
+	}
+}
+
 function collectReferencedRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 	options?: {
 		includeDefaultRuntimePath?: boolean
 	},
@@ -1309,12 +1394,9 @@ function collectReferencedRuntimeModulePaths(
 			runtimePaths.add(modulePath)
 		}
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath && isKodyRuntimeModulePath(resolvedPath)) {
-				runtimePaths.add(resolvedPath)
-			}
+	for (const resolvedPath of importedPaths) {
+		if (isKodyRuntimeModulePath(resolvedPath)) {
+			runtimePaths.add(resolvedPath)
 		}
 	}
 	return runtimePaths
@@ -1322,6 +1404,7 @@ function collectReferencedRuntimeModulePaths(
 
 function collectReferencedPackageRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 ) {
 	const packageRuntimePaths = new Map<string, string>()
 	const remember = (modulePath: string) => {
@@ -1336,19 +1419,15 @@ function collectReferencedPackageRuntimeModulePaths(
 	for (const modulePath of Object.keys(modules)) {
 		remember(modulePath)
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath) {
-				remember(resolvedPath)
-			}
-		}
+	for (const resolvedPath of importedPaths) {
+		remember(resolvedPath)
 	}
 	return packageRuntimePaths
 }
 
 function collectReferencedPublicRuntimeModulePaths(
 	modules: WorkerLoaderModules,
+	importedPaths: ReadonlyArray<string>,
 ) {
 	const publicRuntimePaths = new Set<string>()
 	const remember = (modulePath: string) => {
@@ -1360,33 +1439,29 @@ function collectReferencedPublicRuntimeModulePaths(
 	for (const modulePath of Object.keys(modules)) {
 		remember(modulePath)
 	}
-	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const node of collectLiteralImportNodes(source)) {
-			const resolvedPath = resolveRelativeModulePath(modulePath, node.specifier)
-			if (resolvedPath) {
-				remember(resolvedPath)
-			}
-		}
+	for (const resolvedPath of importedPaths) {
+		remember(resolvedPath)
 	}
 	return publicRuntimePaths
 }
 
-export function refreshKodyRuntimeModules(
+export async function refreshKodyRuntimeModules(
 	modules: WorkerLoaderModules,
 	options?: {
 		includeDefaultRuntimePath?: boolean
 	},
-): WorkerLoaderModules {
+): Promise<WorkerLoaderModules> {
 	const refreshed: WorkerLoaderModules = { ...modules }
 	const includeCanonicalRoot = options?.includeDefaultRuntimePath !== false
+	const importedPaths = collectResolvedRuntimeImportPaths(modules)
 	const runtimePaths = new Set(
-		collectReferencedRuntimeModulePaths(modules, options),
+		collectReferencedRuntimeModulePaths(modules, importedPaths, options),
 	)
 	if (includeCanonicalRoot) {
 		runtimePaths.add(runtimeModulePath)
 	}
 	const packageRuntimeEntries = [
-		...collectReferencedPackageRuntimeModulePaths(modules),
+		...collectReferencedPackageRuntimeModulePaths(modules, importedPaths),
 	]
 	for (const [modulePath] of packageRuntimeEntries) {
 		runtimePaths.add(
@@ -1395,7 +1470,10 @@ export function refreshKodyRuntimeModules(
 			),
 		)
 	}
-	const publicRuntimePaths = collectReferencedPublicRuntimeModulePaths(modules)
+	const publicRuntimePaths = collectReferencedPublicRuntimeModulePaths(
+		modules,
+		importedPaths,
+	)
 	for (const modulePath of publicRuntimePaths) {
 		runtimePaths.add(
 			normalizeWorkspaceModulePath(joinPath(dirname(modulePath), 'runtime.js')),

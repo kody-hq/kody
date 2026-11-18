@@ -1,3 +1,4 @@
+import { addInProcessExecuteBundleIsolates } from '#worker/test-support/execute-bundle-isolates.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 import type { PackageInvokeInput } from '#worker/mcp/runtime-helper-manifest.ts'
@@ -224,10 +225,12 @@ function seedFixtures(fixturesByUserId: Record<string, Fixture>) {
 }
 
 function createEnv() {
-	return {
+	const env = {
 		APP_DB: {},
 		BUNDLE_ARTIFACTS_KV: {},
 	} as Env
+	addInProcessExecuteBundleIsolates(env)
+	return env
 }
 
 async function runContractCheck(input: {

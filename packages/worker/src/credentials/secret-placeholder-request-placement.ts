@@ -7,6 +7,7 @@
  */
 import {
 	type CredentialPlacement,
+	type PackageCredentialScan,
 	scanPackageCredentials,
 } from './credential-inventory-scan.ts'
 
@@ -29,6 +30,8 @@ export type SecretPlaceholderRequestPlacementHit = {
 	nameKind: 'secret' | 'integration'
 	name: string
 	part: SecretPlaceholderRequestPart
+	/** The owner's page that allows this part, when the credential does not. */
+	approvalUrl?: string
 }
 
 const maxListedHits = 10
@@ -64,10 +67,18 @@ export function requestPartOfPlacement(
 	}
 }
 
-export function findSecretPlaceholderRequestPlacements(
+export async function findSecretPlaceholderRequestPlacements(
 	files: Record<string, string>,
+): Promise<Array<SecretPlaceholderRequestPlacementHit>> {
+	return secretPlaceholderRequestPlacementsOf(
+		await scanPackageCredentials({ files, slots: undefined, sites: true }),
+	)
+}
+
+/** The hits in a credential scan that recorded sites (`sites: true`). */
+export function secretPlaceholderRequestPlacementsOf(
+	scan: Pick<PackageCredentialScan, 'references'>,
 ): Array<SecretPlaceholderRequestPlacementHit> {
-	const scan = scanPackageCredentials({ files, slots: undefined, sites: true })
 	const seen = new Set<string>()
 	const hits: Array<SecretPlaceholderRequestPlacementHit> = []
 	for (const reference of scan.references) {
@@ -96,28 +107,57 @@ export function findSecretPlaceholderRequestPlacements(
 function formatHit(hit: SecretPlaceholderRequestPlacementHit) {
 	const where = hit.line == null ? hit.path : `${hit.path}:${hit.line}`
 	const what = hit.nameKind === 'secret' ? 'secret' : 'integration token'
-	return `- ${where}: ${what} "${hit.name}" in ${partPhrases[hit.part]}`
+	const line = `- ${where}: ${what} "${hit.name}" in ${partPhrases[hit.part]}`
+	return hit.approvalUrl
+		? `${line}\n  Owner approval: ${hit.approvalUrl}`
+		: line
 }
 
-export function formatSecretPlaceholderRequestPlacementNotice(input: {
-	hits: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
-	mode: SecretPlaceholderRequestPlacementMode
-}): string | null {
-	if (input.hits.length === 0) return null
-	const shown = input.hits.slice(0, maxListedHits)
-	const extra = input.hits.length - shown.length
-	const lead =
-		input.mode === 'fail'
-			? 'Publish failed: a fetch puts a credential placeholder in a request body, URL, or query.'
-			: 'WARNING: a fetch puts a credential placeholder in a request body, URL, or query.'
+function listHits(hits: ReadonlyArray<SecretPlaceholderRequestPlacementHit>) {
+	const shown = hits.slice(0, maxListedHits)
+	const extra = hits.length - shown.length
 	return [
-		lead,
 		...shown.map(formatHit),
 		...(extra > 0 ? [`- and ${extra} more`] : []),
-		"The fetch gateway fills a credential there only when the credential's owner allowed that part in its fill placement; otherwise Kody refuses the request (credential_placement_refused) and the run fails.",
-		"Fix: move the credential into a request header the API reads (for example headers: { Authorization: 'Bearer {{secret:name}}' }). A value that is not a credential, such as an account id, can be a constant in the package source instead.",
-		input.mode === 'fail'
-			? 'This blocks publish.'
-			: "If the API only reads it from that part, the credential's owner can allow the part on the credential page. This does not block publish.",
-	].join('\n')
+	]
+}
+
+/**
+ * `hits` are the placeholders the credential does not allow (in `warn` mode,
+ * every placeholder). `allowed` are the ones the credential's effective fill
+ * placement already allows: they only warn, even in `fail` mode.
+ */
+export function formatSecretPlaceholderRequestPlacementNotice(input: {
+	hits: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
+	allowed?: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
+	mode: SecretPlaceholderRequestPlacementMode
+}): string | null {
+	const allowed = input.allowed ?? []
+	const sections: Array<string> = []
+	if (input.hits.length > 0) {
+		const fail = input.mode === 'fail'
+		sections.push(
+			[
+				fail
+					? "Publish failed: a fetch puts a credential placeholder in a request body, URL, or query that the credential's fill placement does not allow."
+					: 'WARNING: a fetch puts a credential placeholder in a request body, URL, or query.',
+				...listHits(input.hits),
+				"The fetch gateway fills a credential there only when the credential's owner allowed that part in its fill placement; otherwise Kody refuses the request (credential_placement_refused) and the run fails.",
+				"Fix: move the credential into a request header the API reads (for example headers: { Authorization: 'Bearer {{secret:name}}' }). A value that is not a credential, such as an account id, can be a constant in the package source instead.",
+				fail
+					? "If the API only reads it from that part, the credential's owner can allow the part from the owner approval link, then publish again. A whole URL can only move. This blocks publish."
+					: "If the API only reads it from that part, the credential's owner can allow the part on the credential page. This does not block publish.",
+			].join('\n'),
+		)
+	}
+	if (allowed.length > 0) {
+		sections.push(
+			[
+				"WARNING: a fetch puts a credential placeholder in a request body, URL, or query that the credential's owner allowed.",
+				...listHits(allowed),
+				'Hosts can log or store these parts, so a request header is safer when the API reads one. Kody fills them only while the fill placement allows the part. This does not block publish.',
+			].join('\n'),
+		)
+	}
+	return sections.length > 0 ? sections.join('\n\n') : null
 }

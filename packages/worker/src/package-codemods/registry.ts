@@ -16,6 +16,8 @@ import { convertCredentialStampsCodemod } from './codemods/0015-convert-credenti
 import { shortPackageAppSubdomainPathCodemod } from './codemods/0016-short-package-app-subdomain-path.ts'
 import { detectPackageAppVisitorAuthorityCodemod } from './codemods/0017-detect-package-app-visitor-authority.ts'
 import { declarePackageAppCapabilitiesCodemod } from './codemods/0018-declare-package-app-capabilities.ts'
+import { detectPackageAppHostMigrationCodemod } from './codemods/0019-detect-package-app-host-migration.ts'
+import { packageAppHostUrlsCodemod } from './codemods/0020-package-app-host-urls.ts'
 import type { PackageCodemod } from './types.ts'
 
 const packageCodemods: Array<PackageCodemod> = [
@@ -37,6 +39,8 @@ const packageCodemods: Array<PackageCodemod> = [
 	shortPackageAppSubdomainPathCodemod,
 	detectPackageAppVisitorAuthorityCodemod,
 	declarePackageAppCapabilitiesCodemod,
+	detectPackageAppHostMigrationCodemod,
+	packageAppHostUrlsCodemod,
 ]
 
 const packageCodemodsById = new Map(

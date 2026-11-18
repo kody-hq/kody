@@ -12,9 +12,15 @@ import {
 } from '#worker/entitlements/user-meter-client.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { durableObjectInstanceInactiveCloseMessage } from '#worker/sentry-options.ts'
+import { isMcpCallerError } from '#mcp/caller-error.ts'
+import {
+	accountWriteLeaseHeartbeatMs,
+	writeLeaseTtlMs,
+} from './write-lease-timing.ts'
 import {
 	AccountDeletionInProgressError,
 	AccountWriteLeaseLostError,
+	accountDeletionWritersActive,
 	abortAccountDeleting,
 	abortAccountDeletingByStableUserId,
 	assertAccountWritableDb,
@@ -314,6 +320,9 @@ test('env is required: UserMeter authoritative for acquire/held/release with D1 
 
 	await expect(h.markDeleting()).resolves.toEqual({
 		leaseCount: 1,
+		blockingLeases: [
+			{ holder: 'test:do-repair', acquiredAt: expect.any(String) },
+		],
 		created: true,
 		deletingAt: fence,
 	})
@@ -479,10 +488,12 @@ test('long write callback does not retain a UserMeter RPC stub', async () => {
 		await vi.runAllTimersAsync()
 
 		await expect(operation).resolves.toBe('finished')
+		// Heartbeats open their own stubs in between; none is the acquire stub.
 		expect(meter.calls).toEqual([
 			{ stubId: 1, method: 'acquireWriteLease' },
-			{ stubId: 2, method: 'releaseWriteLease' },
+			{ stubId: expect.any(Number), method: 'releaseWriteLease' },
 		])
+		expect(meter.calls[1]?.stubId).not.toBe(1)
 	} finally {
 		vi.useRealTimers()
 	}
@@ -963,4 +974,148 @@ test('markAccountDeleting does not roll back a fence another attempt owns', asyn
 	).rejects.toThrow('do mark failed')
 	expect(h.d1DeletingAt()).toEqual({ deleting_at: fence })
 	expect(await h.meterA.readDeletionState()).toEqual({ deletingAt: fence })
+})
+
+test('a running write keeps renewing its lease, so deletion stays refused past the TTL', async () => {
+	vi.useFakeTimers()
+	try {
+		const h = createLeaseHarness()
+		const held = holdDoWriteLease(h, 'packageSave')
+		await held.started
+
+		await vi.advanceTimersByTimeAsync(
+			writeLeaseTtlMs + accountWriteLeaseHeartbeatMs,
+		)
+
+		const marked = await h.markDeleting()
+		expect(marked.leaseCount).toBe(1)
+		expect(marked.blockingLeases.map((lease) => lease.holder)).toEqual([
+			'packageSave',
+		])
+		await abortAccountDeleting({
+			db: h.db,
+			dbUserId: 1,
+			env: h.env,
+			expectedDeletingAt: marked.deletingAt,
+		})
+		held.finish()
+		await expect(held.operation).resolves.toBe('lost')
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('a writer that stops renewing stops blocking deletion after the TTL and then loses its lease', async () => {
+	vi.useFakeTimers()
+	try {
+		// The heartbeat never lands, as when the isolate holding the lease is killed.
+		const env = createWrappedMeterEnv(() => ({
+			renewWriteLease: async () => {
+				throw new Error('writer is gone')
+			},
+		}))
+		const h = createLeaseHarness(env)
+		const held = holdDoWriteLease(h, 'packagePublish')
+		await held.started
+
+		await vi.advanceTimersByTimeAsync(writeLeaseTtlMs - 1_000)
+		expect((await h.markDeleting()).leaseCount).toBe(1)
+
+		await vi.advanceTimersByTimeAsync(2_000)
+		const marked = await h.markDeleting(1)
+		expect(marked.leaseCount).toBe(0)
+		expect(marked.blockingLeases).toEqual([])
+
+		held.finish()
+		await expect(held.operation).rejects.toBeInstanceOf(
+			AccountWriteLeaseLostError,
+		)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('a nested write does not reuse a lease that a deletion dropped', async () => {
+	vi.useFakeTimers()
+	try {
+		// Renewals fail until the lease has lapsed, as in a stalled isolate.
+		let renewalsLand = false
+		const env = createWrappedMeterEnv((stub) => ({
+			renewWriteLease: async (args) => {
+				if (!renewalsLand) throw new Error('renewal did not land')
+				return stub.renewWriteLease(args)
+			},
+		}))
+		const h = createLeaseHarness(env)
+		let nested: Promise<unknown> | undefined
+		let resume!: () => void
+		const resumed = new Promise<void>((resolve) => {
+			resume = resolve
+		})
+		const outer = h.lease(
+			async () => {
+				await resumed
+				nested = h.lease(async () => 'nested write ran', {
+					holder: 'test:nested',
+				})
+				await nested.catch(() => {})
+				return 'outer'
+			},
+			{ holder: 'test:outer' },
+		)
+		await vi.advanceTimersByTimeAsync(writeLeaseTtlMs + 1_000)
+		expect((await h.markDeleting()).leaseCount).toBe(0)
+
+		renewalsLand = true
+		await vi.advanceTimersByTimeAsync(accountWriteLeaseHeartbeatMs)
+		resume()
+
+		await expect(outer).rejects.toBeInstanceOf(AccountWriteLeaseLostError)
+		await expect(nested).rejects.toBeInstanceOf(AccountDeletionInProgressError)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('the heartbeat stops once the write finishes', async () => {
+	vi.useFakeTimers()
+	try {
+		let renewals = 0
+		const env = createWrappedMeterEnv((stub) => ({
+			renewWriteLease: async (args) => {
+				renewals += 1
+				return stub.renewWriteLease(args)
+			},
+		}))
+		const h = createLeaseHarness(env)
+		const held = holdDoWriteLease(h, 'packageSave')
+		await held.started
+		await vi.advanceTimersByTimeAsync(accountWriteLeaseHeartbeatMs * 2)
+		expect(renewals).toBe(2)
+
+		held.finish()
+		await held.operation
+		await vi.advanceTimersByTimeAsync(accountWriteLeaseHeartbeatMs * 3)
+		expect(renewals).toBe(2)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('a deletion refused by active writes names the holders and is a caller conflict', () => {
+	const nowMs = Date.UTC(2099, 0, 1, 0, 1, 0)
+	const error = accountDeletionWritersActive(
+		{
+			leaseCount: 3,
+			blockingLeases: [
+				{ holder: 'packagePublish', acquiredAt: '2099-01-01 00:00:48' },
+				{ holder: 'packageSave', acquiredAt: '2099-01-01T00:00:55.000Z' },
+			],
+		},
+		nowMs,
+	)
+	expect(error.message).toBe(
+		'Deletion is waiting for 3 write(s) on this account to finish. Held by: packagePublish (started 12s ago), packageSave (started 5s ago), and 1 more. The delete did not finish. Retry in a few seconds; a write that stopped without finishing stops blocking within 2 minutes.',
+	)
+	expect(isMcpCallerError(error)).toBe(true)
 })

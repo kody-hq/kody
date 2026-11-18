@@ -55,7 +55,7 @@ async function loadDependencyStamps(input: {
 	const files = omitOversizedCredentialStampModules(input.files)
 	const names = [
 		...new Set(
-			collectStaticKodyPackageImportsFromFiles(files)
+			(await collectStaticKodyPackageImportsFromFiles(files))
 				.map((imported) => imported.packageName)
 				.filter((name) => name !== input.packageName),
 		),
@@ -135,7 +135,7 @@ export async function storePublishedCredentialStamp(input: {
 			content: manifestContent,
 			mode: 'published',
 		})
-		const scanned = scanCredentialStamp(files, {
+		const scanned = await scanCredentialStamp(files, {
 			secretProviders: await resolveSecretProviderSlots({
 				env: input.env,
 				userId: input.source.user_id,

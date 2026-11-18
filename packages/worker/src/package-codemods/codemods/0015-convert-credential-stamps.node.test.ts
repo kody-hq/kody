@@ -16,13 +16,16 @@ function manifest(kody: Record<string, unknown> = {}) {
 	)}\n`
 }
 
-test('0015 leaves |scope=package alone and does not rewrite', () => {
+test('0015 leaves |scope=package alone and does not rewrite', async () => {
 	const files = {
 		'package.json': manifest(),
 		'index.ts':
 			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' }",
 	}
-	const result = convertCredentialStampsCodemod.transform(files, packageContext)
+	const result = await convertCredentialStampsCodemod.transform(
+		files,
+		packageContext,
+	)
 	expect(result.changed).toBe(false)
 	expect(result.files).toEqual(files)
 	expect(result.needsManual[0]?.message).toBe(
@@ -30,8 +33,8 @@ test('0015 leaves |scope=package alone and does not rewrite', () => {
 	)
 })
 
-test('0015 seals literal credential() and declares side-effect remix', () => {
-	const result = convertCredentialStampsCodemod.transform(
+test('0015 seals literal credential() and declares side-effect remix', async () => {
+	const result = await convertCredentialStampsCodemod.transform(
 		{
 			'package.json': manifest(),
 			'index.ts': [
@@ -51,13 +54,13 @@ test('0015 seals literal credential() and declares side-effect remix', () => {
 	expect(parsed.kody.credentials.TOKEN.description).toMatch(/TOKEN/)
 })
 
-test('0015 skips holdouts', () => {
+test('0015 skips holdouts', async () => {
 	const files = {
 		'package.json': manifest(),
 		'index.ts':
 			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' }",
 	}
-	const result = convertCredentialStampsCodemod.transform(files, {
+	const result = await convertCredentialStampsCodemod.transform(files, {
 		packageName: '@kentcdodds/oauth-integration-health',
 	})
 	expect(result.changed).toBe(false)
@@ -67,8 +70,8 @@ test('0015 skips holdouts', () => {
 	expect(result.files).toEqual(files)
 })
 
-test('0015 skips unconvertible computed names', () => {
-	const result = convertCredentialStampsCodemod.transform(
+test('0015 skips unconvertible computed names', async () => {
+	const result = await convertCredentialStampsCodemod.transform(
 		{
 			'package.json': manifest(),
 			'index.ts': [
@@ -86,7 +89,7 @@ test('0015 skips unconvertible computed names', () => {
 	)
 })
 
-test('0015 nested manifest remap does not clobber sealed package.json', () => {
+test('0015 nested manifest remap does not clobber sealed package.json', async () => {
 	const nestedManifest = `${JSON.stringify(
 		{
 			name: '@acme/nested',
@@ -107,7 +110,7 @@ test('0015 nested manifest remap does not clobber sealed package.json', () => {
 		'packages/nested/index.ts': index,
 		'unrelated.txt': 'keep',
 	}
-	const result = convertCredentialStampsCodemod.transform(files, {
+	const result = await convertCredentialStampsCodemod.transform(files, {
 		packageName: '@acme/nested',
 		manifestPath: 'packages/nested/package.json',
 		sourceRoot: 'packages/nested',
@@ -122,7 +125,7 @@ test('0015 nested manifest remap does not clobber sealed package.json', () => {
 	expect(result.files['package.json']).toBeUndefined()
 })
 
-test('0015 aliased nested manifest write does not restore stale copy', () => {
+test('0015 aliased nested manifest write does not restore stale copy', async () => {
 	// locatePackage without sourceRoot aliases package.json while leaving the
 	// nested key in the convert map — remapping every key would clobber.
 	const nestedManifest = `${JSON.stringify(
@@ -143,7 +146,7 @@ test('0015 aliased nested manifest write does not restore stale copy', () => {
 			'}',
 		].join('\n'),
 	}
-	const result = convertCredentialStampsCodemod.transform(files, {
+	const result = await convertCredentialStampsCodemod.transform(files, {
 		packageName: '@acme/nested',
 		manifestPath: 'packages/nested/package.json',
 	})

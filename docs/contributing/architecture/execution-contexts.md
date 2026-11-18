@@ -21,6 +21,7 @@ cloud.
 | API edge WebSocket forward (rate limited per context and IP)                              | `packages/api-worker/src/edge.ts`                                                                           |
 | CLI (`kody context`, `kody chain`, `kody daemon`)                                         | `packages/cli/src/execution-context/`                                                                       |
 | Website Start functions (page, chain, daemon card, desktop setup)                         | `packages/worker/start/server/execution-contexts.ts`                                                        |
+| Website capability hops, page data, machine-access grants                                 | `packages/worker/src/app/handlers/execution-contexts.ts`                                                    |
 | Host commands (ADR 0093): process manager, authorize hop, opt-in route                    | `packages/cli/src/execution-context/host-commands.ts`, `packages/worker/src/execution-contexts/commands.ts` |
 
 ## Lifecycle
@@ -137,9 +138,10 @@ uninstall, `kody update`), `auto-update.ts`, and `runner-lock.ts`.
   org, and refuses a context that is not revoked with `context_not_revoked`.
 - `deleteContext` in `service.ts` drops the context from every chain (cloud
   stays last, an emptied chain falls back to cloud), soft-deletes its
-  `execution_context` grants and bumps each affected org's access epoch, then
-  deletes its opt-ins, org attachments, chain entries and row. There are no
-  foreign keys on these tables, so add any new dependent table to that batch.
+  `execution_context` grants and its machine capabilities' grants, bumps each
+  affected org's access epoch, then deletes its machine capabilities, opt-ins,
+  org attachments, chain entries and row. There are no foreign keys on these
+  tables, so add any new dependent table to that batch.
 - Run records keep their own copy of the context id and name in
   `metadata.executionContext`, so `ranOn` still renders the deleted machine. The
   context's session Durable Object history is unreachable once the row is gone;
@@ -202,6 +204,13 @@ sequenceDiagram
   stays valid JSON), cwd, env keys, run id, and background flag. Authorization
   requests and audit rows never carry env values; command output can, if the
   command prints them.
+- When a run loads saved packages, origin records them on the run's lease as the
+  package graph is served (`recordRunPackages`, `run-packages.ts`): `entries`
+  (imported directly by the run's code) and `all` (entries plus what they
+  import). `command_started` carries `entryPackageIds` (first 8) and
+  `packageCount`. Code on the machine cannot be trusted to say which package it
+  is, so this set, not the call, is what attribution uses. Ad hoc code has
+  neither field.
 - Saved package code gets the same `kody.command`: the package-bound `kody`
   wrapper (`__kodyCreatePackageBoundKody` in `local-execute-runtime-support.ts`)
   passes `command` through like `mcp`, so the opt-in, grant, and authorize hop
@@ -223,6 +232,169 @@ Windows ARM (`host-commands` jobs in `validate.yml`). On main pushes, Validate
 skips the macOS jobs and `macos-main.yml` runs them outside the deploy gate, so
 a macOS runner shortage cannot hold production. A failure there opens the "main:
 macOS host commands failing" issue.
+
+### Machine access data model
+
+Machine access narrows these powers per person, profile and package.
+
+- `machine_capabilities` (migration `0276-machine-capabilities.sql`) holds one
+  row per power a machine offers: kind `shell`, `command`, `lan` or `fs`, plus a
+  name unique within the context and kind. The machine defines a capability;
+  Kody stores who may use it.
+- A grant on one is a `grants` row with resource type `machine_capability` and
+  the permission `machine_capability:use`. Like `execution_context:execute`, it
+  counts only as a grant on the capability, never from a role, so checks must
+  read the grant directly. `allowed_packages_json` is the capability's package
+  list.
+- Who may change those grants is decided on the context
+  (`execution_context:manage_access`). `accessGrant` refuses to add one, and
+  `accessRevoke` removes one.
+- Org transfer leaves capabilities and their grants in the owning org, like the
+  context.
+- The machine layer lives in the local policy file under `capabilities`
+  (`packages/cli/src/execution-context/machine-capabilities.ts`), edited with
+  `kody context capability`. A named command is a fixed `exec` plus a list of
+  allowed argument shapes (exact words, or a pattern the whole argument must
+  match); `resolveMachineCommand` returns the `execFile` call or refuses with
+  `machine_command_args_refused`. A local network entry is IP addresses or CIDR
+  ranges plus ports. Executable paths stay on the machine.
+- A run uses a named command with `kody.command.run({ capability, args })`. The
+  daemon (`HostCommands`) resolves it from local policy, refuses any field but
+  `args`, `timeoutMs` and `maxOutputBytes`, and sends `kody.command.authorize`
+  the name and arguments. Origin (`assertNamedCapabilityAccess`) requires a live
+  `command` row, the operator or a grant (next item), the profile chain and
+  token scope for `machine_capability:use`, and the package rule over the
+  lease's entry packages (`packagesNotAllowed`, a copy of a credential's
+  `allowed_packages` rule; a truncated package set is refused). It does not need
+  the shell opt-in, and turning the shell off leaves named-command jobs running.
+- The unrestricted shell is the entry `shell` / `shell`. Migration 0283 adds it
+  to every context with host commands on and `ensureShellCapability` adds it
+  when a machine turns them on. It is listed only while commands are on and
+  keeps its package list across off and on. With an empty list, shell commands
+  only log the packages the default rule would refuse (`wouldBlockPackageIds` on
+  `command_started`); a list the operator set is enforced.
+- While host commands are on and the shell's package list is empty, the operator
+  holds an `open_shell` notice (`refreshOpenShellNotice` in `box-notices.ts`,
+  backfilled by migration 0286). It is recomputed when the machine turns host
+  commands on or off, when the shell's package list changes, and with the other
+  notices. Its fingerprint is the constant `open-shell`, so a dismissal ("keep
+  the shell") holds until the notice is cleared and raised again.
+- `executionContextShellSuggestions` (`suggestShellNarrowing` in
+  `machine-access.ts`, operator only) reads the newest 1000 `command_started`
+  audit rows of the caller's org that carry no `capability` (shell calls, not
+  named commands) from the session DO and groups them by entry package and by
+  the program each command starts with (`shell-suggestions.ts`). The context
+  page shows the counts inside the open shell notice. It is computed on read and
+  stored nowhere, so it never outlives the 30 day audit retention.
+- The machine wide local network switch (`grant.egress.mode` `public-and-lan`)
+  is the entry `lan` / `*`, a name no machine can define. Migration 0284 adds it
+  to every context with the switch on, and `ensureNetworkCapability` adds it
+  when the switch is turned on or first used. It is listed only while the switch
+  is on and is never shareable. `authorizeContextLan` with capability `*` lets
+  anyone who can run on the context through, records `lan_used` with
+  `wholeNetwork` and `wouldBlockPackageIds`, and enforces a non-empty package
+  list. On a context run in `public-and-lan` mode the egress gate asks through
+  the same bridge route with capability `*` before the run's first request to
+  each local address or local name (`localhost`, `.localhost`, `.local`) and
+  port, and blocks the request on a refusal. Parallel first requests to one
+  address ask once. Any other host name that resolves to a local address is not
+  asked about. `kody execute --local --allow-private-network` never asks.
+  `setMachineAccessPackages` saves a list for it only when the context's last
+  reported client is Kody CLI 3.44.0 or newer (`wholeNetworkAskCliVersion`), and
+  refuses with `daemon_outdated` otherwise, since an older machine does not ask.
+  A machine downgraded after the list is saved stops asking.
+- The operator sets an entry's package list with
+  `executionContextMachineAccessPackagesSet` (`setMachineAccessPackages`,
+  `shell`, `command`, `lan` and `fs` kinds, saved package ids, at most 50,
+  audited as `machine_access_packages_changed`). The list lives in
+  `machine_capabilities.allowed_packages_json`, survives the machine's reports
+  and is cleared when the machine removes the entry.
+- Someone other than the operator needs the context shared with them
+  (`access.usable`) and a live `machine_capability` grant holding
+  `machine_capability:use` that reaches them as a user, a team member, or an org
+  member (`hasMachineAccessGrant` in `machine-access.ts`). Only the operator
+  adds one (`grantMachineAccess`, `command` and `lan` kinds only); the operator,
+  Manage holders and org owners list and revoke. The check runs on every use, so
+  a revoke or an unshare stops the next call. On the machine a `sharedRun` gets
+  `HostCommands` with `namedOnly`, which refuses every shell call before asking
+  Kody, and the machine's `lan` entries; host folders stay unmounted.
+- A profile gets a `machine_capability` grant from the person it acts for, who
+  must be the operator or hold a grant themselves (`grantMachineAccess` with a
+  `profile` subject, written by `grantResourceToProfile`, the same writer as
+  package grants to profiles: own active profile, every parent holds it first).
+  `hasMachineAccessGrant` never matches a profile grant; the profile chain check
+  in `assertNamedCapabilityAccess` reads it. That person revokes it, as do the
+  operator, Manage holders and org owners. The three machine access tools pass
+  the surface gate with `execution_context:manage_access` or
+  `execution_context:execute`; without `manage_access`
+  (`MachineAccessScope.withoutManageAccess`) a caller only grants, lists and
+  revokes on their own profiles. A caller acting as a profile grants only to its
+  sub-profiles (`grantResourceToProfile`, packages too). Someone who neither
+  manages the machine nor has it shared with them is refused before any
+  definition is read.
+- Every entry package of a run that uses a named command or local network
+  destination must declare it in its own published `kody.machine`, by name and
+  kind (`packagesNotDeclaring` in `machine-needs.ts`, reading the commit runs
+  are served, not a publish still building), or the call fails with
+  `machine_need_undeclared`, which names the packages and the JSON to add.
+  Packages an entry imports are not asked and do not declare for it; ad hoc code
+  has nothing to declare. For host folders a missing declaration is only logged
+  (`undeclaredPackageIds` on `fs_used`) when a live `fs` row exists. With none,
+  `authorizeContextFolder` returns `machine_capability_off` before checking
+  declarations or writing `fs_used`; the daemon still allows the folder call.
+- A run reaches a named local network destination with a plain `fetch`. The
+  egress gate worker (`packages/cli/src/local-egress.ts`) gets the machine's
+  `lan` entries in its policy. When the grant's egress mode would refuse a
+  request and its host is an IP literal inside an entry's addresses and ports,
+  the gate asks the bridge (`/lan-authorize`), which sends `kody.lan.authorize`
+  with the name, address and port. Origin (`authorizeContextLan`) applies the
+  same checks as a named command against the `lan` row and records `lan_used`.
+  Allowed requests leave through a second workerd network service (`lan`) that
+  only the gate is bound to, with redirects handed back to the run so each hop
+  is checked. The bridge re-reads local policy before each ask
+  (`machineLanCovers`), so an entry narrowed or removed during a run stops
+  working. Host names are never matched, so DNS rebinding cannot widen an entry.
+- Origin also accepts `fs` entries in a machine's report (one per host folder,
+  summary: path and mode) and `kody.fs.authorize` with a folder's name
+  (`authorizeContextFolder`). Folders predate machine capabilities, so that hop
+  requires a live `fs` row and the operator, records `fs_used`, and only logs
+  the packages the default rule would refuse (`wouldBlockPackageIds`); a
+  non-empty `allowed_packages` list is enforced. It asks for no new token scope.
+  The CLI reports each folder in the local policy under a name
+  (`folderCapabilityNames`): the one `kody context policy allow` saved with the
+  rule, else the folder's own name, with a hash of the path when another folder
+  shares it. Names never depend on rule order. Folders count toward the 100
+  entry report limit, checked when one is allowed or defined. `resolveHostPath`
+  asks once per folder per run before the first call that uses it, and a write
+  also asks for every allowed folder inside the path. A refusal fails that call
+  with `EACCES` and is asked again on the next. `machine_capability_off` (Kody
+  has no `fs` row yet) lets the call through, since there is no list to enforce.
+  Run code cannot call `kody.fs.authorize` itself.
+- The machine reports its definitions to Kody with
+  `POST /v1/execution-contexts/capabilities`, signed with the context key like
+  the host commands opt-in, so only the machine can add or widen one. It sends
+  the full set (kind, name, description, and a summary: argument shapes, or
+  hosts and ports); `syncMachineDefinedCapabilities` upserts `command` and `lan`
+  rows, and a definition the machine dropped is marked `removed_at`, its grants
+  are soft-deleted and its package list is cleared.
+  `kody context capability add|remove` reports right away, and the daemon
+  reports when it starts and when the policy file changes. Changes are audited
+  as `machine_capabilities_changed`.
+
+  ```json
+  {
+  	"name": "kdocker",
+  	"description": "Inspect and restart containers on the NAS",
+  	"exec": ["node", "/volume1/docker/kody-docker-helper/kdocker.mjs"],
+  	"args": [
+  		["ps"],
+  		["logs", { "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$" }],
+  		["compose", "rebuild"]
+  	],
+  	"background": false,
+  	"timeoutMs": 120000
+  }
+  ```
 
 ### End-to-end check
 
@@ -363,10 +535,14 @@ preview (see the TEST ONLY rule below).
   60, max 1440), re-checks access and the grant on reconnect, and fails with
   `execution_context_queue_expired` when the time runs out.
 - A committed run that the daemon stops answering for ends `lost` 30s after its
-  deadline. A reconnecting daemon lists the committed runs it still holds
-  (`heldRuns`) and finished results (`pendingResults`) in `hello`; Kody ends the
-  rest as `lost` at once. A started run is never re-run. Daemons that omit
-  `heldRuns` keep the deadline timer.
+  deadline. A socket drop does not stop the daemon's runs: a reconnecting daemon
+  lists in `hello` the committed runs it still holds plus finished ones Kody has
+  not acked (`heldRuns`), then sends each queued `run.result` over the new
+  socket until Kody sends `run.result.ack`. Kody ends the rest as `lost` at once
+  and sends `run.cancel` for held runs it already ended while the daemon was
+  away. Kody also applies finished results sent inline in `pendingResults`. A
+  started run is never re-run. Daemons that omit `heldRuns` keep the deadline
+  timer.
 - A daemon runs up to `--max-concurrent` runs at once (or
   `KODY_CONTEXT_MAX_CONCURRENT`; default 2, max 8), capped by the grant's
   `limits.maxConcurrent`. It advertises that number in `capabilities` and in

@@ -1,21 +1,23 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import type { FormFlowState } from '#client/ui-actor.ts'
 import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
+import { TextLink } from './text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { ReactNode } from 'react'
 import { CopyTextButton } from './copy-text-button.tsx'
 import { routes } from '#universal/routes.ts'
 
-import { colors, transitions, typography } from '#universal/styles/tokens.ts'
+import { colors, transitions } from '#universal/styles/tokens.ts'
 import {
-	getGhostButtonCss,
 	getSurfaceCardCss,
 	packageDetailPageCss,
 	proseCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import type { CommunityInstallOutcome } from '../community-types.ts'
+import { Textarea } from './input.tsx'
 
 export function renderMissingListing(title: string, message: string) {
 	return (
@@ -143,10 +145,10 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 					: 'Featuring offers this listing during onboarding. Featured is editorial placement, not a safety review.'}
 			</p>
 			<div css={sectionActionCss}>
-				<button
+				<Button
 					disabled={props.featureState.status === 'submitting'}
 					aria-busy={props.featureState.status === 'submitting'}
-					css={smallGhostButtonCss}
+					variant="secondary"
 					onClick={props.onToggleFeature}
 				>
 					{props.featureState.status === 'submitting'
@@ -154,7 +156,7 @@ export function renderAdminFeatureSection(props: AdminFeatureSectionProps) {
 						: props.featured
 							? 'Remove from onboarding'
 							: 'Feature in onboarding'}
-				</button>
+				</Button>
 			</div>
 			{('message' in props.featureState ? props.featureState.message : null) ? (
 				<p css={errorTextCss} role="alert">
@@ -181,30 +183,29 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 				<div css={reportFormCss}>
 					<label css={reportFieldCss}>
 						<span>Reason</span>
-						<textarea
+						<Textarea
 							value={props.reportReason}
 							rows={4}
 							maxLength={2000}
 							placeholder="Describe why this listing should be reviewed."
-							css={reportTextareaCss}
 							onChange={(event) =>
 								props.onReasonInput(event.currentTarget.value)
 							}
 						/>
 					</label>
-					<button
+					<Button
 						disabled={
 							props.reportState.status === 'submitting' ||
 							!props.reportReason.trim()
 						}
-						css={smallGhostButtonCss}
+						variant="secondary"
 						onClick={props.onSubmitReport}
 						aria-busy={props.reportState.status === 'submitting'}
 					>
 						{props.reportState.status === 'submitting'
 							? 'Submitting…'
 							: 'Submit report'}
-					</button>
+					</Button>
 					{(
 						'message' in props.reportState ? props.reportState.message : null
 					) ? (
@@ -224,9 +225,9 @@ export function renderReportDisclosure(props: ReportDisclosureProps) {
 				</div>
 			) : (
 				<p css={reportLoginNoteCss}>
-					<SiteLink href="/login" css={inlineLinkCss}>
+					<TextLink tone="prose" href="/login">
 						Log in
-					</SiteLink>{' '}
+					</TextLink>{' '}
 					to report this listing.
 				</p>
 			)}
@@ -302,8 +303,6 @@ const installStripCss = {
 	gap: '0.75rem',
 } satisfies CSSObject
 
-const smallGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-
 const nextStepsCardCss = mergeCss(getSurfaceCardCss(), {
 	marginTop: '1.2rem',
 	padding: '1.1rem 1.3rem',
@@ -318,12 +317,6 @@ const buttonRowCss = {
 	display: 'flex',
 	gap: '0.5rem',
 	flexWrap: 'wrap' as const,
-} satisfies CSSObject
-
-const inlineLinkCss = {
-	color: colors.primaryText,
-	textDecorationThickness: '1.5px',
-	textUnderlineOffset: '3px',
 } satisfies CSSObject
 
 const errorTextCss = {
@@ -416,28 +409,6 @@ const reportFieldCss = {
 		fontSize: '0.92rem',
 		fontWeight: 600,
 		color: colors.text,
-	},
-} satisfies CSSObject
-
-const reportTextareaCss = {
-	font: `400 1rem/1.5 ${typography.fontFamilyBody}`,
-	color: colors.text,
-	backgroundColor: colors.surface,
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: '12px',
-	padding: '0.85rem 1.05rem',
-	width: '100%',
-	minHeight: '6.5rem',
-	resize: 'vertical' as const,
-	boxSizing: 'border-box' as const,
-	'&::placeholder': {
-		color: colors.textMuted,
-		opacity: 1,
-	},
-	'&:focus': {
-		outline: 'none',
-		borderColor: colors.primary,
-		boxShadow: `0 0 0 3px oklch(from ${colors.primary} l c h / 0.25)`,
 	},
 } satisfies CSSObject
 

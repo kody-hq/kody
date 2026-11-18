@@ -17,9 +17,9 @@ const source = [
 	'}',
 ].join('\n')
 
-test('lists body, query, and path placeholders with file, line, and name, never headers', () => {
+test('lists body, query, and path placeholders with file, line, and name, never headers', async () => {
 	expect(
-		findSecretPlaceholderRequestPlacements({ 'src/index.ts': source }),
+		await findSecretPlaceholderRequestPlacements({ 'src/index.ts': source }),
 	).toEqual([
 		{
 			path: 'src/index.ts',
@@ -45,9 +45,9 @@ test('lists body, query, and path placeholders with file, line, and name, never 
 	])
 })
 
-test('skips test files and packages with header-only placeholders', () => {
+test('skips test files and packages with header-only placeholders', async () => {
 	expect(
-		findSecretPlaceholderRequestPlacements({
+		await findSecretPlaceholderRequestPlacements({
 			'src/index.ts':
 				"export const go = () => fetch('https://api.example.com', { headers: { 'x-api-key': '{{secret:apiKey}}' } })",
 			'src/index.test.ts':
@@ -56,8 +56,8 @@ test('skips test files and packages with header-only placeholders', () => {
 	).toEqual([])
 })
 
-test('the notice names the fix and the switch decides whether it blocks', () => {
-	const hits = findSecretPlaceholderRequestPlacements({
+test('the notice names the fix and the switch decides whether it blocks', async () => {
+	const hits = await findSecretPlaceholderRequestPlacements({
 		'src/index.ts': source,
 	})
 	const warning = formatSecretPlaceholderRequestPlacementNotice({
@@ -79,20 +79,22 @@ test('the notice names the fix and the switch decides whether it blocks', () => 
 	})
 	expect(failure).toContain('Publish failed:')
 	expect(failure).toContain('This blocks publish.')
-	expect(failure).not.toContain('owner can allow')
+	expect(failure).toContain('owner approval link')
 	expect(
 		formatSecretPlaceholderRequestPlacementNotice({ hits: [], mode: 'warn' }),
 	).toBeNull()
 })
 
-test('caps the listed sites', () => {
+test('caps the listed sites', async () => {
 	const many = Array.from(
 		{ length: 12 },
 		(_, index) =>
 			`fetch('https://api.example.com', { body: '{{secret:key${index}}}' })`,
 	).join('\n')
 	const notice = formatSecretPlaceholderRequestPlacementNotice({
-		hits: findSecretPlaceholderRequestPlacements({ 'src/index.ts': many }),
+		hits: await findSecretPlaceholderRequestPlacements({
+			'src/index.ts': many,
+		}),
 		mode: 'warn',
 	})
 	expect(notice).toContain('- and 2 more')

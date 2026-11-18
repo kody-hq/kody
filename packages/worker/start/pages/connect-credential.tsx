@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { SaveSecretInput } from '#universal/secret-mutations.ts'
 import { saveSecret } from '#start/server/account-mutations'
 import { readAccountSecretsSaveWarning } from './account-secrets-shared.ts'
@@ -39,6 +40,7 @@ import {
 	keyFormPackageId,
 	keyFormProblem,
 	keyLinkProblem,
+	parseKeyHosts,
 	type KeyFormState,
 	type ValueFormKind,
 } from '#client/routes/connect-credential-shared.ts'
@@ -67,9 +69,6 @@ import {
 	cardTitleCss,
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	inputCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -77,18 +76,12 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input, Textarea } from '../components/input.tsx'
+import { Field } from '../components/field.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 const primaryButtonCss = {
-	...getPrimaryButtonCss({
-		size: 'lg',
-		weight: 'semibold',
-		mobileFullWidth: true,
-	}),
 	justifySelf: 'start',
 }
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const mutedCss = { margin: 0, color: colors.textMuted }
 const errorCss = { margin: 0, color: colors.danger }
 const labelHintCss = {
@@ -140,18 +133,18 @@ function hostsHint(kind: ValueFormKind) {
 export function ConnectCredentialRoute({
 	data,
 	currentHref: href,
+	search,
 }: {
 	data: AccountCredentialsResponse
 	currentHref: string
+	search: URLSearchParams
 }) {
+	const query = parseCredentialCreateQuery(search)
 	const [form, setForm] = useState<KeyFormState>(() =>
-		createKeyFormState(
-			parseCredentialCreateQuery(
-				new URL(href, 'https://kody.local').searchParams,
-			),
-		),
+		createKeyFormState(query),
 	)
 	const [showValue, setShowValue] = useState(false)
+	const [editedKeyHosts, setEditedKeyHosts] = useState<string | null>(null)
 	const [saving, setSaving] = useState(false)
 	const [savedWarning, setSavedWarning] = useState<string | null>(null)
 	const [seededReplaceLocksForId, setSeededReplaceLocksForId] = useState<
@@ -174,10 +167,10 @@ export function ConnectCredentialRoute({
 	async function saveKey(
 		event: FormEvent<HTMLFormElement>,
 		kind: ValueFormKind,
+		current: KeyFormState,
 	) {
 		event.preventDefault()
-		if (saving || mutation.isPending || !form) return
-		const current = form
+		if (saving || mutation.isPending) return
 		const isCurrent = capture()
 		const problem = keyFormProblem(current, kind)
 		if (problem) {
@@ -245,6 +238,21 @@ export function ConnectCredentialRoute({
 		const { kind, state, existing } = input
 		const isKey = kind === 'secret'
 		const kindConflict = existingKindConflict(existing, kind)
+		const existingHosts =
+			isKey && !kindConflict && state.replaceExisting
+				? (existing?.hosts ?? [])
+				: []
+		const hosts = isKey
+			? (editedKeyHosts ??
+				[
+					...new Set([
+						...state.hosts.split('\n').filter(Boolean),
+						...existingHosts,
+					]),
+				].join('\n'))
+			: state.hosts
+		const keyHostResult = isKey ? parseKeyHosts(hosts, existingHosts) : null
+		const hostError = keyHostResult?.ok === false ? keyHostResult.error : null
 		const update = (patch: Partial<KeyFormState>) => {
 			setForm({ ...state, ...patch })
 		}
@@ -290,16 +298,17 @@ export function ConnectCredentialRoute({
 						</p>
 					) : null}
 					{saved ? (
-						<SiteLink
+						<Button
 							href={orgResourcePath(
 								input.orgSlug,
 								'credentials',
 								encodeURIComponent(saved.id),
 							)}
-							css={secondaryButtonCss}
+							variant="secondary"
+							size="md"
 						>
 							View credential
-						</SiteLink>
+						</Button>
 					) : null}
 				</section>
 			)
@@ -310,20 +319,19 @@ export function ConnectCredentialRoute({
 					{...passwordManagerIgnoreProps}
 					css={{ display: 'grid', gap: spacing.md }}
 					onSubmit={(event) => {
-						void saveKey(event, kind)
+						void saveKey(event, kind, { ...state, hosts })
 					}}
 				>
 					<div css={fieldCss}>
 						<label htmlFor="connect-credential-name" css={fieldLabelCss}>
 							Name
 						</label>
-						<input
+						<Input
 							id="connect-credential-name"
 							required
 							pattern="[a-zA-Z0-9._\-]+"
 							value={state.name}
 							placeholder="OPENAI_API_KEY"
-							css={inputCss}
 							onChange={(event) => {
 								setSeededReplaceLocksForId(null)
 								update({
@@ -355,8 +363,7 @@ export function ConnectCredentialRoute({
 								alignItems: 'center',
 							}}
 						>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={state.replaceExisting}
 								data-testid="connect-credential-replace"
 								onChange={(event) => {
@@ -385,8 +392,8 @@ export function ConnectCredentialRoute({
 								{isKey ? (
 									<>
 										A credential named <code>{existing.name}</code> already
-										exists. Replace it (its hosts stay; edit package locks
-										below).
+										exists. Replace it using the allowed hosts and package
+										access below.
 									</>
 								) : (
 									<>
@@ -398,6 +405,31 @@ export function ConnectCredentialRoute({
 							</span>
 						</label>
 					) : null}
+					{isKey ? (
+						<Field
+							label="Allowed hosts"
+							description={
+								<>
+									{hostsHint(kind)} Enter one host per line or separate hosts
+									with commas.
+									{state.replaceExisting
+										? ' Leave blank to keep the current hosts.'
+										: ' With no hosts, Kody won’t send the value to any host.'}
+								</>
+							}
+							error={hostError}
+						>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								value={hosts}
+								placeholder="api.example.com"
+								onChange={(event) =>
+									setEditedKeyHosts(event.currentTarget.value)
+								}
+							/>
+						</Field>
+					) : null}
 					{kind === 'login' ? (
 						renderLoginFields({ state, update })
 					) : (
@@ -408,7 +440,7 @@ export function ConnectCredentialRoute({
 							<PasswordRevealInput
 								id="connect-credential-value"
 								required
-								autoFocus={Boolean(state.name)}
+								autoFocus={!isKey && Boolean(state.name)}
 								{...passwordManagerIgnoreProps}
 								value={state.value}
 								placeholder={valuePlaceholder(kind)}
@@ -417,7 +449,6 @@ export function ConnectCredentialRoute({
 								onRevealedChange={(next) => {
 									setShowValue(next)
 								}}
-								css={inputCss}
 								onChange={(event) =>
 									update({ value: event.currentTarget.value })
 								}
@@ -427,34 +458,33 @@ export function ConnectCredentialRoute({
 							</span>
 						</div>
 					)}
-					<div css={fieldCss}>
-						<label htmlFor="connect-credential-hosts" css={fieldLabelCss}>
-							{isKey ? 'Allowed hosts' : 'Hosts'}{' '}
-							<span css={labelHintCss}>(one per line)</span>
-						</label>
-						<textarea
-							id="connect-credential-hosts"
-							rows={2}
-							required={!isKey}
-							value={state.hosts}
-							placeholder={
-								isKey ? 'api.example.com' : 'api.example.com or *.example.com'
-							}
-							css={inputCss}
-							onChange={(event) => update({ hosts: event.currentTarget.value })}
-						/>
-						<span css={mutedCss}>{hostsHint(kind)}</span>
-					</div>
+					{isKey ? null : (
+						<div css={fieldCss}>
+							<label htmlFor="connect-credential-hosts" css={fieldLabelCss}>
+								Hosts <span css={labelHintCss}>(one per line)</span>
+							</label>
+							<Textarea
+								id="connect-credential-hosts"
+								rows={2}
+								required
+								value={state.hosts}
+								placeholder="api.example.com or *.example.com"
+								onChange={(event) =>
+									update({ hosts: event.currentTarget.value })
+								}
+							/>
+							<span css={mutedCss}>{hostsHint(kind)}</span>
+						</div>
+					)}
 					{kind === 'login' ? renderLoginExchange({ state, update }) : null}
 					<div css={fieldCss}>
 						<label htmlFor="connect-credential-provider" css={fieldLabelCss}>
 							Provider <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-provider"
 							value={state.provider}
 							placeholder="openai"
-							css={inputCss}
 							onChange={(event) =>
 								update({ provider: event.currentTarget.value })
 							}
@@ -464,10 +494,9 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-description" css={fieldLabelCss}>
 							Description <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-description"
 							value={state.description}
-							css={inputCss}
 							onChange={(event) =>
 								update({ description: event.currentTarget.value })
 							}
@@ -483,11 +512,10 @@ export function ConnectCredentialRoute({
 						<label htmlFor="connect-credential-expires" css={fieldLabelCss}>
 							Expires <span css={labelHintCss}>(optional)</span>
 						</label>
-						<input
+						<Input
 							id="connect-credential-expires"
 							type="date"
 							value={expiresAtDateValue(state.expiresAt)}
-							css={inputCss}
 							onChange={(event) =>
 								update({ expiresAt: event.currentTarget.value })
 							}
@@ -531,23 +559,27 @@ export function ConnectCredentialRoute({
 							/>
 						</div>
 					) : null}
-					<button
+					<Button
 						type="submit"
 						disabled={
-							saving || input.linkProblem !== null || kindConflict !== null
+							saving ||
+							hostError !== null ||
+							input.linkProblem !== null ||
+							kindConflict !== null
 						}
 						data-testid="connect-credential-save"
+						variant="primary"
+						size="md"
+						mobileFullWidth
 						css={primaryButtonCss}
 					>
 						{saving ? 'Saving…' : isKey ? 'Save key' : 'Save credential'}
-					</button>
+					</Button>
 				</form>
 			</section>
 		)
 	}
 	const state = form as KeyFormState
-	const search = new URL(href, 'http://localhost').searchParams
-	const query = parseCredentialCreateQuery(search)
 	const pathOrgSlug = orgSlugFromPathname(
 		new URL(href, 'http://localhost').pathname,
 	)
@@ -637,14 +669,15 @@ export function ConnectCredentialRoute({
 								idleLabel="Copy prompt"
 								variant="primary"
 							/>
-							<button
+							<Button
 								type="button"
-								css={secondaryButtonCss}
+								variant="secondary"
+								size="md"
 								data-testid="connect-credential-manual"
 								onClick={() => setManual(true)}
 							>
 								Create one manually
-							</button>
+							</Button>
 						</div>
 					</section>
 				) : (
@@ -727,12 +760,15 @@ function renderKindBody(input: {
 							: 'Add the server’s URL. Kody connects to it and asks you to sign in when the server needs it.'}
 					</p>
 
-					<SiteLink
+					<Button
 						href={credentialCreateHandoffHref({
 							kind,
 							search: input.search,
 							orgSlug: input.orgSlug,
 						})}
+						variant="primary"
+						size="md"
+						mobileFullWidth
 						css={primaryButtonCss}
 						data-testid="connect-credential-continue"
 						onClick={() => {
@@ -742,7 +778,7 @@ function renderKindBody(input: {
 						{kind === 'oauth'
 							? 'Continue to connect'
 							: 'Continue to add server'}
-					</SiteLink>
+					</Button>
 				</section>
 			)
 		}

@@ -99,6 +99,8 @@ async function createEnv() {
 				stable_user_id TEXT NOT NULL UNIQUE,
 			personal_org_id TEXT,
 				email TEXT,
+				display_name TEXT,
+				username TEXT,
 				email_verified_at TEXT,
 				deleting_at TEXT,
 				deleted_at TEXT
@@ -451,7 +453,7 @@ test('owners page by cursor in id order', async () => {
 	expect(second.nextCursor).toBeNull()
 })
 
-test('the email lists at most 25 packages and counts the rest', () => {
+test('the email lists at most 25 packages and counts the rest', async () => {
 	const packages = Array.from({ length: 27 }, (_, index) => ({
 		packageId: `pkg-${index}`,
 		kodyId: `@alice/pkg-${index}`,
@@ -502,4 +504,31 @@ test('the admin capability defaults to a dry run and reports bad input as a call
 		.handler({ ...args, runId: 'missing-run' }, ctx as never)
 		.catch((caught: unknown) => caught)
 	expect(isMcpCallerError(error)).toBe(true)
+})
+
+test('a failed claim write is reported even when another recipient of the owner was not delivered', async () => {
+	const { env, kv } = await createEnv()
+	mocks.items = [item('01', 'org-acme', '@acme/billing', [bodyFinding])]
+	mocks.sendCloudflareEmail.mockImplementation(
+		async (_config: unknown, message: { to: string }) =>
+			message.to === 'bob@example.com'
+				? { ok: false, error: 'rejected' }
+				: { ok: true },
+	)
+	vi.spyOn(kv, 'put').mockRejectedValue(new Error('kv down'))
+	consoleWarn.mockImplementation(() => {})
+
+	const result = await runPackageOwnerNotice({
+		env,
+		runId: 'run-1',
+		noticeId: '2026-10-body-placeholders',
+		content,
+		dryRun: false,
+	})
+
+	// A re-run would email the delivered recipient again, so that wins.
+	expect(result.owners[0]).toMatchObject({
+		status: 'claim_failed',
+		recipientCount: 1,
+	})
 })

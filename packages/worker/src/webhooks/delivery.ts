@@ -11,24 +11,177 @@ import {
 } from '#worker/request-context/request-context.ts'
 import { sanitizeInvocationErrorMessage } from '#worker/package-invocations/invocation-error-summary.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
-import { recordRunRecord } from '#worker/run-records/service.ts'
-import type { RunRecordLogInput } from '#worker/run-records/types.ts'
+import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import {
+	createRunRecordHandle,
+	ensureRunRecordStarted,
+	startWebhookDeliveryAttemptRecord,
+	recordRunRecord,
+	updateRunningRunRecordMetadata,
+} from '#worker/run-records/service.ts'
+import type {
+	RunRecordContext,
+	RunRecordLogInput,
+} from '#worker/run-records/types.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
-import type { WebhookDeliveryOutcome, WebhookEndpointRecord } from './types.ts'
+import type {
+	WebhookDeliveryInFlightState,
+	WebhookDeliveryOutcome,
+	WebhookDeliveryState,
+	WebhookEndpointRecord,
+} from './types.ts'
 import { describeWebhookNotOn } from './approval.ts'
+
+type WebhookDeliveryEndpoint = Pick<
+	WebhookEndpointRecord,
+	'id' | 'userId' | 'packageId' | 'webhookName'
+>
+
+const webhookDeliveryStateByOutcome = {
+	delivered: 'succeeded',
+	rejected: 'rejected',
+	failed: 'failed',
+} as const satisfies Record<WebhookDeliveryOutcome, WebhookDeliveryState>
+
+/**
+ * How long an accepted or queued ack delivery keeps its `running` row before
+ * the RunLog marks it interrupted: shared-queue backlog plus the consumer's
+ * retry budget. A late finish still replaces the interrupt with the outcome.
+ */
+export const webhookAckQueuedHoldMs = 60 * 60 * 1000
+/** A started attempt runs at most the background budget, plus persistence. */
+export const webhookAckStartedHoldMs =
+	backgroundExecutorTimeoutMs + 5 * 60 * 1000
+
+function webhookDeliveryRunContext(input: {
+	endpoint: WebhookDeliveryEndpoint
+	kodyId: string
+	invocationId: string
+	metadata: Record<string, unknown>
+}): RunRecordContext {
+	return {
+		surface: 'webhook',
+		name: input.endpoint.webhookName,
+		packageId: input.endpoint.packageId,
+		kodyId: input.kodyId,
+		invocationId: input.invocationId,
+		metadata: { endpointId: input.endpoint.id, ...input.metadata },
+	}
+}
+
+export type AckWebhookDelivery = {
+	endpoint: WebhookDeliveryEndpoint
+	kodyId: string
+	deliveryId: string
+	payloadBytes: number
+	receivedAt: string
+}
+
+/**
+ * How many ack deliveries one owner may have started at once. The dispatch
+ * consumer runs 16 at a time for everyone, so this leaves most of it to other
+ * owners when one owner's webhook floods.
+ */
+export const webhookAckOwnerStartedLimit = 4
+
+/**
+ * Mark an ack delivery `started` unless the owner already has
+ * {@link webhookAckOwnerStartedLimit} other deliveries started. Returns false
+ * when the owner is at the limit; the row is left as it was. Never throws.
+ */
+export async function startAckWebhookDeliveryAttempt(input: {
+	env: Env
+	delivery: AckWebhookDelivery
+	attempts?: number
+}): Promise<boolean> {
+	const handle = await ackWebhookDeliveryRunHandle({
+		...input,
+		state: 'started',
+	})
+	const { started } = await startWebhookDeliveryAttemptRecord({
+		env: input.env,
+		handle,
+		staleAfter: new Date(Date.now() + webhookAckStartedHoldMs).toISOString(),
+		limit: webhookAckOwnerStartedLimit,
+	})
+	return started
+}
+
+/**
+ * Write an ack delivery's in-flight state onto its run row (id = deliveryId),
+ * so Activity and `webhookDeliveryList` show it from the moment Kody accepts
+ * it. `accepted` inserts the row; later states update it and extend its hold.
+ * A row that already finished is left alone. Never throws.
+ */
+async function ackWebhookDeliveryRunHandle(input: {
+	env: Env
+	delivery: AckWebhookDelivery
+	state: WebhookDeliveryInFlightState
+	attempts?: number
+	lastError?: string | null
+	enablement?: EnablementRun
+}) {
+	const { delivery } = input
+	const request = input.enablement
+		? await webhookRequestForEnablement({
+				env: input.env,
+				endpoint: delivery.endpoint,
+				enablement: input.enablement,
+			}).catch(() => null)
+		: null
+	return createRunRecordHandle({
+		env: input.env,
+		userId: delivery.endpoint.userId,
+		request,
+		id: delivery.deliveryId,
+		startedAt: delivery.receivedAt,
+		context: webhookDeliveryRunContext({
+			endpoint: delivery.endpoint,
+			kodyId: delivery.kodyId,
+			invocationId: delivery.deliveryId,
+			metadata: {
+				httpStatus: 202,
+				payloadBytes: delivery.payloadBytes,
+				receivedAt: delivery.receivedAt,
+				state: input.state,
+				...(input.attempts ? { attempts: input.attempts } : {}),
+				...(input.lastError ? { lastError: input.lastError } : {}),
+			},
+		}),
+	})
+}
+
+export async function markAckWebhookDelivery(input: {
+	env: Env
+	delivery: AckWebhookDelivery
+	state: WebhookDeliveryInFlightState
+	holdMs: number
+	attempts?: number
+	lastError?: string | null
+	enablement?: EnablementRun
+}): Promise<boolean> {
+	const handle = await ackWebhookDeliveryRunHandle(input)
+	const started = await ensureRunRecordStarted({
+		env: input.env,
+		handle,
+		staleAfter: new Date(Date.now() + input.holdMs).toISOString(),
+	})
+	if (!started || input.state === 'accepted') return started
+	return await updateRunningRunRecordMetadata({ env: input.env, handle })
+}
 
 export async function recordWebhookDelivery(input: {
 	env: Env
-	endpoint: Pick<
-		WebhookEndpointRecord,
-		'id' | 'userId' | 'packageId' | 'webhookName'
-	>
+	endpoint: WebhookDeliveryEndpoint
 	kodyId: string
 	outcome: WebhookDeliveryOutcome
 	httpStatus: number
 	error?: string | null
 	payloadBytes: number
+	/** Also the run id, so an ack delivery finishes the row it wrote at accept. */
 	invocationId?: string
+	/** Queue delivery attempt that reached this outcome. */
+	attempts?: number
 	/** Handler return value from the bound package export (bounded on finish). */
 	result?: unknown
 	startedAt: string
@@ -68,28 +221,29 @@ export async function recordWebhookDelivery(input: {
 			env: input.env,
 			endpoint: input.endpoint,
 		}))
+	const invocationId = input.invocationId ?? crypto.randomUUID()
 	const record = await recordRunRecord({
 		env: input.env,
 		userId: input.endpoint.userId,
 		request,
-		context: {
-			surface: 'webhook',
-			name: input.endpoint.webhookName,
-			packageId: input.endpoint.packageId,
+		id: invocationId,
+		context: webhookDeliveryRunContext({
+			endpoint: input.endpoint,
 			kodyId: input.kodyId,
-			invocationId: input.invocationId ?? crypto.randomUUID(),
+			invocationId,
 			metadata: {
-				endpointId: input.endpoint.id,
 				httpStatus: input.httpStatus,
 				payloadBytes: input.payloadBytes,
 				outcome: input.outcome,
+				state: webhookDeliveryStateByOutcome[input.outcome],
+				...(input.attempts ? { attempts: input.attempts } : {}),
 				...(input.receivedAt ? { receivedAt: input.receivedAt } : {}),
 				...(input.invocationErrorCode
 					? { invocationErrorCode: input.invocationErrorCode }
 					: {}),
 				...(input.synthetic === true ? { synthetic: true } : {}),
 			},
-		},
+		}),
 		status,
 		error: failure?.error ?? input.error ?? undefined,
 		result: input.result,

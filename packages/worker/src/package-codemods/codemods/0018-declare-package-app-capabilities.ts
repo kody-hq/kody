@@ -77,10 +77,10 @@ type Plan = {
 	manual: Array<PackageCodemodFinding>
 }
 
-function planDeclarations(
+async function planDeclarations(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Plan | null {
+): Promise<Plan | null> {
 	const source = Object.hasOwn(files, packageManifestPath)
 		? files[packageManifestPath]
 		: undefined
@@ -94,8 +94,8 @@ function planDeclarations(
 	let computedCalls = facts.closure.computedCalls
 	let mcpCalls = facts.closure.mcpCalls
 	let unresolvedImports = facts.closure.unresolvedImports
-	for (const path of listScannableModulePaths(files)) {
-		const parsed = parseModule(files[path]!)
+	for (const path of await listScannableModulePaths(files)) {
+		const parsed = await parseModule(files[path]!)
 		if (!parsed) {
 			unresolvedImports += 1
 			continue
@@ -155,11 +155,11 @@ function hasUnresolved(detail: DeclarePackageAppCapabilitiesOwnerDetail) {
 	return Object.values(detail.unresolved).some((count) => count > 0)
 }
 
-function detectDeclarePackageAppCapabilities(
+async function detectDeclarePackageAppCapabilities(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): Array<PackageCodemodFinding> {
-	const plan = planDeclarations(files, context)
+): Promise<Array<PackageCodemodFinding>> {
+	const plan = await planDeclarations(files, context)
 	if (!plan) return []
 	return [
 		...(plan.detail.addedCapabilities.length > 0
@@ -174,11 +174,11 @@ function detectDeclarePackageAppCapabilities(
 	]
 }
 
-function transformDeclarePackageAppCapabilities(
+async function transformDeclarePackageAppCapabilities(
 	files: Record<string, string>,
 	context: PackageCodemodContext,
-): PackageCodemodTransformResult {
-	const plan = planDeclarations(files, context)
+): Promise<PackageCodemodTransformResult> {
+	const plan = await planDeclarations(files, context)
 	if (!plan) {
 		return { files, changed: false, changedPaths: [], needsManual: [] }
 	}

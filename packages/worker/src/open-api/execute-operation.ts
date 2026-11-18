@@ -3,6 +3,10 @@ import { z } from 'zod'
 import { hasRemovedExecuteInvoke } from '#mcp/execute-invoke-removed.ts'
 import { runExecuteToolCall } from '#mcp/tools/execute.ts'
 import {
+	isWalletGuardLimitErrorDetails,
+	WalletGuardLimitError,
+} from '#worker/wallet-guard/enforce.ts'
+import {
 	detachedExecuteWorkLimitMs,
 	openApiExecuteTransportBudgetMs,
 } from '#mcp/execute-transport-budget.ts'
@@ -65,7 +69,7 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 			: {}
 		const startedByLabel =
 			ctx.principal.kind === 'token' ? ctx.principal.token.name : null
-		return runExecuteToolCall({
+		const result = await runExecuteToolCall({
 			env: ctx.env,
 			callerContext: ctx.callerContext,
 			loopbackExports: ctx.loopbackExports ?? ({} as Cloudflare.Exports),
@@ -75,5 +79,14 @@ export const executeOperationDefinition: NativeApiOperationDefinition = {
 			transportBudgetMs: openApiExecuteTransportBudgetMs,
 			detachedWorkLimitMs: detachedExecuteWorkLimitMs,
 		})
+		// A denial-of-wallet ceiling refused the call before any module ran,
+		// so it is a 429 with Retry-After, not a module failure.
+		const rateLimit = (
+			result.structuredContent as { rateLimit?: unknown } | undefined
+		)?.rateLimit
+		if (result.isError && isWalletGuardLimitErrorDetails(rateLimit)) {
+			throw new WalletGuardLimitError(rateLimit)
+		}
+		return result
 	},
 }

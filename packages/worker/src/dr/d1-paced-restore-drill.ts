@@ -471,25 +471,49 @@ async function drillOneTable(input: {
 		let restoredCount = 0
 		if (baseIndex >= 0) {
 			const base = input.chain[baseIndex]!
-			await streamSealedTableLines({
-				s3: input.s3,
-				source: input.source,
-				day: base.manifest.day,
-				table: input.table,
-				tableManifest: base.manifest.tables[input.table]!,
-				onLine: (line) => {
-					const { rowid, hash } = readCompactLine(line)
-					if (hash === null) {
-						throw new Error(
-							`paced D1 unexpected delete line in full base for ${input.source.name}.${input.table}`,
-						)
-					}
-					if (touched.has(rowid)) return
+			// A restore replays lines into a rowid map, so a rowid the base
+			// carries twice restores once with its last line. Bases are written
+			// in rowid order, so the first pass only notes rowids that arrive
+			// out of order; a base with any is streamed again to settle them.
+			const streamBase = async (repeated: ReadonlySet<number> | null) => {
+				const lastLine = new Map<number, bigint>()
+				const outOfOrder = new Set<number>()
+				let maxRowid = -Infinity
+				sum = 0n
+				restoredCount = 0
+				await streamSealedTableLines({
+					s3: input.s3,
+					source: input.source,
+					day: base.manifest.day,
+					table: input.table,
+					tableManifest: base.manifest.tables[input.table]!,
+					onLine: (line) => {
+						const { rowid, hash } = readCompactLine(line)
+						if (hash === null) {
+							throw new Error(
+								`paced D1 unexpected delete line in full base for ${input.source.name}.${input.table}`,
+							)
+						}
+						if (rowid <= maxRowid) outOfOrder.add(rowid)
+						else maxRowid = rowid
+						if (touched.has(rowid)) return
+						if (repeated?.has(rowid)) {
+							lastLine.set(rowid, hash)
+							return
+						}
+						sum = (sum + hash) & checksumMask
+						restoredCount += 1
+					},
+					onPart,
+				})
+				for (const hash of lastLine.values()) {
 					sum = (sum + hash) & checksumMask
 					restoredCount += 1
-				},
-				onPart,
-			})
+				}
+				return outOfOrder
+			}
+			const outOfOrder = await streamBase(null)
+			if (outOfOrder.size > 0) await streamBase(outOfOrder)
 		}
 		for (const hash of touched.values()) {
 			if (hash === null) continue

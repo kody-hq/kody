@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
 	getSavedPackageByIdInAnyOrg: vi.fn(),
 	getEntitySourceById: vi.fn(),
 	resolveArtifactSourceHead: vi.fn(),
+	resolveArtifactSourceKodyPublishedTip: vi.fn(),
 	publishedPublishChecksAreCurrent: vi.fn(),
 	listJobsForUser: vi.fn(),
 	readPublishGitNoteFromArtifactsRepo: vi.fn(),
@@ -24,8 +25,11 @@ vi.mock('#worker/repo/entity-sources.ts', () => ({
 		mocks.getEntitySourceById(...args),
 }))
 vi.mock('#worker/repo/artifacts.ts', () => ({
+	kodyPublishedBranchName: 'kody-published',
 	resolveArtifactSourceHead: (...args: Array<unknown>) =>
 		mocks.resolveArtifactSourceHead(...args),
+	resolveArtifactSourceKodyPublishedTip: (...args: Array<unknown>) =>
+		mocks.resolveArtifactSourceKodyPublishedTip(...args),
 }))
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', () => ({
 	publishedPublishChecksAreCurrent: (...args: Array<unknown>) =>
@@ -89,6 +93,7 @@ beforeEach(() => {
 		branch: 'main',
 		commit: 'commit-new',
 	})
+	mocks.resolveArtifactSourceKodyPublishedTip.mockResolvedValue(null)
 	mocks.publishedPublishChecksAreCurrent.mockResolvedValue(false)
 	mocks.listJobsForUser.mockResolvedValue([
 		{ source_id: 'source-1', record: { publishedCommit: 'commit-old' } },
@@ -163,6 +168,10 @@ test('apply finishes the live commit and rebuilds its artifacts without moving t
 			resumeFinalize: true,
 		}),
 	)
+	expect(mocks.publishFromExternalRef.mock.calls[0]?.[0]).not.toHaveProperty(
+		'branch',
+	)
+	expect(mocks.resolveArtifactSourceKodyPublishedTip).not.toHaveBeenCalled()
 	expect(
 		mocks.rebuildPublishedPackageArtifactsViaRepoSession,
 	).toHaveBeenCalledWith(
@@ -192,17 +201,47 @@ test('apply with maxTargets reports a partial rebuild so the caller can call aga
 	).toHaveBeenCalledWith(expect.objectContaining({ maxTargets: 25 }))
 })
 
-test('apply skips a package whose Artifacts HEAD differs from published_commit', async () => {
+test('apply skips a package whose Artifacts HEAD and kody-published tip both differ from published_commit', async () => {
 	mocks.resolveArtifactSourceHead.mockResolvedValue({
 		branch: 'main',
 		commit: 'commit-newer',
 	})
+	mocks.resolveArtifactSourceKodyPublishedTip.mockResolvedValue('commit-older')
 	const result = await adminPublishFinalizeResumeCapability.handler(
 		{ packageIds: ['package-1'], dryRun: false },
 		createContext(['admin']),
 	)
 	expect(result.outcomes[0]).toMatchObject({ outcome: 'skipped_head_differs' })
 	expect(mocks.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('apply finishes a published-only codemod publish from the kody-published branch when HEAD drifted', async () => {
+	mocks.resolveArtifactSourceHead.mockResolvedValue({
+		branch: 'main',
+		commit: 'commit-owner-head',
+	})
+	mocks.resolveArtifactSourceKodyPublishedTip.mockResolvedValue('commit-new')
+	const result = await adminPublishFinalizeResumeCapability.handler(
+		{ packageIds: ['package-1'], dryRun: false },
+		createContext(['admin']),
+	)
+	expect(result.outcomes[0]).toMatchObject({
+		outcome: 'resumed',
+		rebuiltTargetCount: 3,
+	})
+	expect(mocks.publishFromExternalRef).toHaveBeenCalledWith(
+		expect.objectContaining({
+			newCommit: 'commit-new',
+			branch: 'kody-published',
+			expectedHead: 'commit-new',
+			resumeFinalize: true,
+		}),
+	)
+	expect(
+		mocks.rebuildPublishedPackageArtifactsViaRepoSession,
+	).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'commit-new' }),
+	)
 })
 
 test('dry-run reports complete only once sealed, jobs attributed, note attached, and artifacts built', async () => {

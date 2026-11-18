@@ -16,6 +16,8 @@ import {
 	setLocalCommandsEnabled,
 } from '../src/execution-context/fs-access.js'
 
+import { parseMachineCommandDefinition } from '../src/execution-context/machine-capabilities.js'
+
 type Authorized = Parameters<HostCommandRunContext['authorize']>[0]
 
 function runContext(overrides: Partial<HostCommandRunContext> = {}) {
@@ -428,7 +430,10 @@ test('local policy keeps the commands opt-in alongside host folders', async () =
 	await allowLocalPath({ path: dir, mode: 'ro', policyPath })
 	const policy = await readLocalPolicy(policyPath)
 	assert.equal(policy.commands?.enabled, true)
-	assert.deepEqual(policy.fs, [{ path: dir, mode: 'ro' }])
+	assert.deepEqual(
+		policy.fs.map(({ path, mode }) => ({ path, mode })),
+		[{ path: dir, mode: 'ro' }],
+	)
 	await setLocalCommandsEnabled({ enabled: false, policyPath })
 	assert.equal(await readLocalCommandsEnabled(policyPath), false)
 })
@@ -458,4 +463,224 @@ test('a command cannot use a credential folder as its cwd', async () => {
 		/holds credentials/,
 	)
 	assert.equal(authorized.length, 0)
+})
+
+function namedCommands(input: { shell?: boolean } = {}) {
+	const definitions = [
+		parseMachineCommandDefinition({
+			name: 'echo',
+			description: 'Print one word',
+			exec: [
+				process.execPath,
+				'-e',
+				'console.log(process.argv.slice(1).join(" "))',
+			],
+			args: [[{ pattern: 'hello|bye' }, { pattern: '[a-z]+' }]],
+			timeoutMs: 20_000,
+		}),
+		parseMachineCommandDefinition({
+			name: 'wait',
+			exec: [process.execPath, '-e', 'setTimeout(() => {}, 60000)'],
+			args: [[]],
+			background: true,
+		}),
+		parseMachineCommandDefinition({
+			name: 'wait-too',
+			exec: [process.execPath, '-e', 'setTimeout(() => {}, 60000)'],
+			args: [[]],
+			background: true,
+		}),
+	]
+	const commands = new HostCommands({
+		localEnabled: input.shell === true,
+		namedCommand: async (name) =>
+			definitions.find((definition) => definition.name === name),
+	})
+	commands.setGrantEnabled(input.shell === true)
+	return commands
+}
+
+test('a named command runs with the shell off, from the definition and the caller arguments only', async () => {
+	const commands = namedCommands()
+	const { run, authorized } = runContext()
+	const result = (await commands.call(
+		'run',
+		{ capability: 'echo', args: ['hello', 'world'] },
+		run,
+	)) as { stdout: string; exitCode: number }
+	assert.equal(result.exitCode, 0)
+	assert.equal(result.stdout.trim(), 'hello world')
+	const [sent] = authorized as Array<Record<string, unknown>>
+	assert.equal(sent?.capability, 'echo')
+	assert.deepEqual(sent?.args, ['hello', 'world'])
+	// Kody sees the name and arguments, not the executable or its folder.
+	assert.equal(sent?.command, 'echo hello world')
+	assert.equal(sent?.cwd, '')
+	// The shell is still off.
+	await assert.rejects(
+		commands.call('run', 'echo hi', run),
+		/execution_context_commands_off/,
+	)
+})
+
+test('a named command refuses arguments outside its shapes, unknown names and shell fields, before asking Kody', async () => {
+	const commands = namedCommands({ shell: true })
+	const { run, authorized } = runContext()
+	await assert.rejects(
+		commands.call(
+			'run',
+			{ capability: 'echo', args: ['hello', 'a; rm -rf /'] },
+			run,
+		),
+		/machine_command_args_refused/,
+	)
+	await assert.rejects(
+		commands.call('run', { capability: 'nope', args: [] }, run),
+		/machine_capability_off/,
+	)
+	for (const extra of [
+		{ cwd: tmpdir() },
+		{ env: { PATH: '/tmp' } },
+		{ command: 'echo hi' },
+		{ file: '/bin/sh' },
+		{ stdin: 'x' },
+	]) {
+		await assert.rejects(
+			commands.call(
+				'run',
+				{ capability: 'echo', args: ['hello', 'world'], ...extra },
+				run,
+			),
+			/invalid_request/,
+		)
+	}
+	await assert.rejects(
+		commands.call(
+			'start',
+			{ capability: 'echo', args: ['hello', 'world'] },
+			run,
+		),
+		/does not run in the background/,
+	)
+	assert.equal(authorized.length, 0)
+})
+
+test('a named command is not run when Kody refuses it', async () => {
+	const commands = namedCommands()
+	const { run } = runContext({
+		authorize: async () => {
+			throw new Error('nope (machine_capability_not_granted)')
+		},
+	})
+	await assert.rejects(
+		commands.call('run', { capability: 'echo', args: ['hello', 'world'] }, run),
+		/machine_capability_not_granted/,
+	)
+})
+
+test('a named background job is polled and killed against its own command, and survives the shell turning off', async () => {
+	const commands = namedCommands({ shell: true })
+	const { run, authorized } = runContext()
+	const started = (await commands.call(
+		'start',
+		{ capability: 'wait' },
+		run,
+	)) as {
+		commandId: string
+	}
+	const shell = (await commands.call(
+		'start',
+		{ file: process.execPath, args: ['-e', 'setTimeout(() => {}, 60000)'] },
+		run,
+	)) as { commandId: string }
+	commands.setGrantEnabled(false)
+	const status = (await commands.call('status', started.commandId, run)) as {
+		state: string
+		capability?: string
+	}
+	assert.equal(status.state, 'running')
+	assert.equal(status.capability, 'wait')
+	assert.deepEqual(authorized.at(-1), {
+		lifecycle: 'status',
+		capability: 'wait',
+	})
+	// The shell job ended with the shell, and is not reachable with it off.
+	await assert.rejects(
+		commands.call('status', shell.commandId, run),
+		/execution_context_commands_off/,
+	)
+	const listed = (await commands.call('list', undefined, run)) as {
+		commands: Array<{ commandId: string }>
+	}
+	assert.deepEqual(
+		listed.commands.map((entry) => entry.commandId),
+		[started.commandId],
+	)
+	const killed = (await commands.call('kill', started.commandId, run)) as {
+		state: string
+	}
+	assert.equal(killed.state, 'killed')
+	await commands.idle()
+})
+
+test('list shows the named jobs the caller may still use when the shell rules or one command refuse', async () => {
+	const commands = namedCommands({ shell: true })
+	const refuse = new Set<string>(['shell'])
+	const { run } = runContext({
+		authorize: async (input) => {
+			const key =
+				'capability' in input && input.capability ? input.capability : 'shell'
+			if (refuse.has(key)) throw new Error(`refused ${key}`)
+		},
+	})
+	const wait = (await commands.call('start', { capability: 'wait' }, run)) as {
+		commandId: string
+	}
+	const other = (await commands.call(
+		'start',
+		{ capability: 'wait-too' },
+		run,
+	)) as { commandId: string }
+	const ids = async () =>
+		(
+			(await commands.call('list', undefined, run)) as {
+				commands: Array<{ commandId: string }>
+			}
+		).commands.map((entry) => entry.commandId)
+	// The shell is on here, but this caller's token is refused the shell.
+	assert.deepEqual(await ids(), [wait.commandId, other.commandId])
+	// One command was removed: only its jobs disappear.
+	refuse.add('wait-too')
+	assert.deepEqual(await ids(), [wait.commandId])
+	refuse.add('wait')
+	await assert.rejects(ids(), /refused shell/)
+	commands.killAll('shutdown')
+	await commands.idle()
+})
+
+test("another person's run uses the named commands Kody allows and never the shell, even with the shell on", async () => {
+	const commands = namedCommands({ shell: true })
+	const { run, authorized } = runContext({
+		requesterUserId: 'user_b',
+		namedOnly: true,
+	})
+	const result = (await commands.call(
+		'run',
+		{ capability: 'echo', args: ['hello', 'world'] },
+		run,
+	)) as { stdout: string }
+	assert.equal(result.stdout.trim(), 'hello world')
+	for (const call of [
+		() => commands.call('run', 'echo hi', run),
+		() => commands.call('start', { file: 'echo', args: ['hi'] }, run),
+		() => commands.call('status', 'cmd_missing', run),
+		() => commands.call('list', undefined, run),
+	]) {
+		await assert.rejects(call(), /execution_context_command_not_granted/)
+	}
+	// Kody was only ever asked about the named command.
+	assert.deepEqual(
+		authorized.map((entry) => (entry as { capability?: string }).capability),
+		['echo'],
+	)
 })

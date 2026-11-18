@@ -10,6 +10,8 @@ export const scheduledLaneLeaseMs: Partial<Record<ScheduledLaneName, number>> =
 	{
 		// Lane budget (60s) plus one source deadline (45s), with headroom.
 		reconcile_artifacts_pushes: 3 * 60_000,
+		// One tick at a time: 40s budget plus one slow scan or mail page.
+		package_app_host_migration_reminder: 4 * 60_000,
 	}
 
 export async function acquireScheduledLaneLease(
@@ -34,6 +36,32 @@ export async function acquireScheduledLaneLease(
 				WHERE scheduled_lane_leases.expires_at <= ?`,
 			)
 			.bind(input.lane, input.holder, expiresAt, nowIso)
+			.run(),
+	)
+	return (result.meta.changes ?? 0) > 0
+}
+
+/**
+ * Extend a lease this holder still owns. False means another holder took the
+ * lane after this one expired, so the caller is stale and must stop writing.
+ */
+export async function renewScheduledLaneLease(
+	db: D1Database,
+	input: {
+		lane: ScheduledLaneName
+		holder: string
+		leaseMs: number
+		now: Date
+	},
+): Promise<boolean> {
+	const expiresAt = new Date(input.now.getTime() + input.leaseMs).toISOString()
+	const result = await runD1WithRetry(() =>
+		db
+			.prepare(
+				`UPDATE scheduled_lane_leases SET expires_at = ?
+				WHERE lane = ? AND holder = ?`,
+			)
+			.bind(expiresAt, input.lane, input.holder)
 			.run(),
 	)
 	return (result.meta.changes ?? 0) > 0

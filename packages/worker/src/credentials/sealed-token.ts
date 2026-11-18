@@ -11,6 +11,11 @@
  * (ADR 0068, 2026-10-28 amendment). A token from a token endpoint may be
  * saved as a Key through `secretSet({ sealed_token })`; the host opens it
  * and stores the value, which code still never holds.
+ *
+ * A sealed token remembers the stored secrets it was minted with and their
+ * approved hosts, so a token exchanged for it (a `secretJwtSign` JWT sent to
+ * Google's token endpoint) fills on those hosts too (ADR 0068, 2026-11-14
+ * amendment).
  */
 import {
 	base64UrlToBytes,
@@ -22,6 +27,9 @@ import { McpCallerError } from '#mcp/caller-error.ts'
 import { withLanding } from '#mcp/secrets/echo-redaction.ts'
 import { SecretPlacementError } from '#mcp/secrets/secret-placement.ts'
 import { buildIntegrationTokenPlaceholder } from '#mcp/secrets/placeholders.ts'
+import { credentialHostsAllow } from '#worker/credentials/credential-request.ts'
+import { type SecretScope, secretScopeValues } from '#mcp/secrets/types.ts'
+import type { StorageContext } from '#mcp/storage.ts'
 
 export const sealedTokenNamePrefix = 'kody-sealed.'
 /** A `domains` entry that lets a sealed token fill on any host. */
@@ -63,6 +71,20 @@ const sealedPayloadSchema = z.object({
 	 */
 	save: z.array(z.string().min(1)).optional(),
 	/**
+	 * Stored secrets this token was minted with, and their approved hosts. A
+	 * token a request filled with this one returns is sealed to them too.
+	 */
+	via: z
+		.array(
+			z.object({
+				secret: z.string().min(1),
+				scope: z.enum(secretScopeValues),
+				bucket: z.string().min(1).optional(),
+				hosts: z.array(z.string().min(1)),
+			}),
+		)
+		.optional(),
+	/**
 	 * Package that minted an any-host JWT ('' outside a package), so each
 	 * fill host is counted per caller (kody-hq/kody#4456).
 	 */
@@ -70,6 +92,40 @@ const sealedPayloadSchema = z.object({
 })
 
 type SealedTokenEnv = Pick<Env, 'SECRET_STORE_KEY'>
+
+/** A stored secret a token was minted with, and the hosts it is approved for. */
+export type SealedTokenMinter = {
+	secret: string
+	scope: SecretScope
+	/** Package or session id a package- or session-scope secret lives in. */
+	bucket?: string
+	hosts: ReadonlyArray<string>
+}
+
+export function sealedTokenMinter(input: {
+	secret: string
+	scope: SecretScope
+	hosts: ReadonlyArray<string>
+	storageContext: StorageContext | null
+}): SealedTokenMinter {
+	const bucket = sealedTokenMinterBucket(input.scope, input.storageContext)
+	return {
+		secret: input.secret,
+		scope: input.scope,
+		...(bucket ? { bucket } : {}),
+		hosts: input.hosts,
+	}
+}
+
+/** The package or session a secret of `scope` resolves in for `storageContext`. */
+export function sealedTokenMinterBucket(
+	scope: SecretScope,
+	storageContext: StorageContext | null,
+) {
+	if (scope === 'package') return storageContext?.packageId ?? undefined
+	if (scope === 'session') return storageContext?.sessionId ?? undefined
+	return undefined
+}
 
 export type SealedTokenBinding = {
 	org: string
@@ -80,6 +136,8 @@ export type SealedTokenBinding = {
 	saveHosts?: ReadonlyArray<string>
 	/** Set on an any-host JWT: the package that minted it, '' outside one. */
 	anyHostPackageId?: string
+	/** Stored secrets the token was minted with (see `SealedTokenMinter`). */
+	mintedWith?: ReadonlyArray<SealedTokenMinter>
 }
 
 async function sealingKey(env: SealedTokenEnv) {
@@ -143,6 +201,16 @@ export async function sealToken(input: {
 		...(input.to.source ? { src: input.to.source } : {}),
 		...(audienceHosts.length > 0 ? { aud: [...audienceHosts] } : {}),
 		...(input.to.saveHosts ? { save: [...new Set(input.to.saveHosts)] } : {}),
+		...(input.to.mintedWith?.length
+			? {
+					via: input.to.mintedWith.map((minter) => ({
+						secret: minter.secret,
+						scope: minter.scope,
+						...(minter.bucket ? { bucket: minter.bucket } : {}),
+						hosts: [...new Set(minter.hosts)],
+					})),
+				}
+			: {}),
 		...(input.to.anyHostPackageId === undefined
 			? {}
 			: { pkg: input.to.anyHostPackageId }),
@@ -211,7 +279,9 @@ async function openSealedPayload(
 
 /**
  * Opens a sealed token for a gateway fill. Refuses another org, another
- * run, an expired token, a host outside its domains, and the URL.
+ * run, an expired token, a host outside its domains, and the URL. Returns
+ * the value and the stored secrets it was minted with, so a token the
+ * request returns is sealed to their approved hosts too.
  */
 export async function openSealedToken(
 	input: OpenSealedTokenInput & {
@@ -219,8 +289,10 @@ export async function openSealedToken(
 		parts: ReadonlyArray<string>
 		/** Called when an any-host JWT fills, with the caller that minted it. */
 		onAnyHostFill?: (caller: { ownerId: string; packageId: string }) => void
+		/** Link that approves the request host on a minting secret, if one can. */
+		hostApprovalUrl?: (minter: SealedTokenMinter) => string | undefined
 	},
-) {
+): Promise<{ value: string; mintedWith: Array<SealedTokenMinter> }> {
 	const payload = await openSealedPayload(input, refuse)
 	const host = input.requestHost.toLowerCase()
 	const anyHost = jwtSignMayFillAnyHost(input.now)
@@ -231,10 +303,16 @@ export async function openSealedToken(
 				host === domain ||
 				host.endsWith(`.${domain}`),
 		) &&
-		!payload.aud?.includes(host)
+		!payload.aud?.includes(host) &&
+		!payload.via?.some((minter) => credentialHostsAllow(minter.hosts, host))
 	) {
+		const allowed = new Set([
+			...payload.domains,
+			...(payload.aud ?? []),
+			...(payload.via ?? []).flatMap((minter) => minter.hosts),
+		])
 		refuse(
-			`A sealed token may only be sent to ${[...payload.domains, ...(payload.aud ?? [])].join(', ')}, not ${host}. ${refusedHostHint(payload, host)}`,
+			`A sealed token may only be sent to ${[...allowed].join(', ')}, not ${host}. ${refusedHostHint(payload, host, input.hostApprovalUrl)}`,
 		)
 	}
 	const urlPart = input.parts.find(
@@ -251,20 +329,45 @@ export async function openSealedToken(
 	) {
 		input.onAnyHostFill?.({ ownerId: payload.org, packageId: payload.pkg })
 	}
-	return payload.v
+	return { value: payload.v, mintedWith: payload.via ?? [] }
 }
 
 function refusedHostHint(
 	payload: z.infer<typeof sealedPayloadSchema>,
 	host: string,
+	hostApprovalUrl:
+		| ((minter: SealedTokenMinter) => string | undefined)
+		| undefined,
 ) {
+	const hints: Array<string> = []
 	if (payload.src === 'jwt-sign') {
-		return `If ${host} is where this JWT goes, set its "aud" claim to https://${host} or pass send_to_host: "${host}" to secretJwtSign.`
+		hints.push(
+			`If ${host} is where this JWT goes, set its "aud" claim to https://${host} or pass send_to_host: "${host}" to secretJwtSign.`,
+		)
+	} else if (payload.aud?.length) {
+		hints.push(
+			`It was issued for ${payload.aud.map((aud) => `https://${aud}`).join(', ')}; if ${host} is a different API, mint a token whose scope or resource is ${host}'s API.`,
+		)
+	} else {
+		hints.push(
+			`It names no https audience Kody can read. If ${host} is the API it is for, have the identity provider issue a JWT access token whose "aud" is https://${host}.`,
+		)
 	}
-	if (payload.aud?.length) {
-		return `It was issued for ${payload.aud.map((aud) => `https://${aud}`).join(', ')}; if ${host} is a different API, mint a token whose scope or resource is ${host}'s API.`
+	const minters = payload.via ?? []
+	if (minters.length) {
+		const approvals = minters.map((minter) => {
+			const url = hostApprovalUrl?.(minter)
+			return `"${minter.secret}"${url ? ` (${url})` : ''}`
+		})
+		hints.push(
+			`It was minted with ${minters.map((minter) => `secret "${minter.secret}", approved for ${minter.hosts.join(', ') || 'no hosts'}`).join('; ')}. None of those approves ${host}; to send it there, approve ${host} on ${approvals.join(' or ')}.`,
+		)
+	} else if (payload.src !== 'jwt-sign') {
+		hints.push(
+			`No stored secret filled the request that minted it, so no secret's approved hosts apply.`,
+		)
 	}
-	return `It names no https audience Kody can read. If ${host} is the API it is for, have the identity provider issue a JWT access token whose "aud" is https://${host}, or approve ${host} on the credential that minted it.`
+	return hints.join(' ')
 }
 
 /**
@@ -279,9 +382,11 @@ function refusedHostHint(
 export function sealedTokenAudienceHosts(
 	token: string,
 	domains: ReadonlyArray<string> = [],
+	approvedHosts: ReadonlyArray<string> = [],
 ) {
 	const covered = (host: string) =>
-		domains.some((domain) => host === domain || host.endsWith(`.${domain}`))
+		domains.some((domain) => host === domain || host.endsWith(`.${domain}`)) ||
+		credentialHostsAllow(approvedHosts, host)
 	const outside = new Map<string, Array<string>>()
 	for (const host of readJwtAudiences(token).map(audienceHost)) {
 		if (host === null) continue
@@ -400,7 +505,11 @@ function audienceHostsFor(
 	input: { to: SealedTokenBinding; filledValues?: ReadonlyArray<string> },
 ) {
 	if (repeatsFilledValue(token, input.filledValues)) return []
-	return sealedTokenAudienceHosts(token, input.to.domains)
+	return sealedTokenAudienceHosts(
+		token,
+		input.to.domains,
+		(input.to.mintedWith ?? []).flatMap((minter) => minter.hosts),
+	)
 }
 
 function repeatsFilledValue(
@@ -435,8 +544,8 @@ export async function sealTokenResponse(input: {
 	env: SealedTokenEnv
 	response: Response
 	requestUrl: string
-	/** The filled credentials' approved hosts; the token may also go there. */
-	approvedHosts?: ReadonlyArray<string>
+	/** Stored secrets the request was filled with; the token may go to their hosts. */
+	mintedWith?: ReadonlyArray<SealedTokenMinter>
 	/** Credential values filled into the request. */
 	filledValues?: ReadonlyArray<string>
 	org: string
@@ -473,17 +582,20 @@ export async function sealTokenResponse(input: {
 	} catch {
 		return rebuilt(text)
 	}
+	const mintedWith = input.mintedWith ?? []
+	const approvedHosts = mintedWith.flatMap((minter) => minter.hosts)
 	const sealed = await sealTokenFields({
 		env: input.env,
 		payload: parsed,
 		to: {
 			org: input.org,
 			binding: input.binding,
-			domains: [domain, ...approvedHostDomains(input.approvedHosts ?? [])],
+			domains: [domain],
 			saveHosts: [
 				new URL(input.requestUrl).hostname.toLowerCase(),
-				...(input.approvedHosts ?? []).filter((host) => !host.startsWith('*.')),
+				...approvedHosts.filter((host) => !host.startsWith('*.')),
 			],
+			...(mintedWith.length > 0 ? { mintedWith } : {}),
 		},
 		filledValues: input.filledValues,
 	})
@@ -554,15 +666,6 @@ async function readUpTo(body: ReadableStream<Uint8Array>, limit: number) {
 		offset += chunk.byteLength
 	}
 	return { bytes, rest: null }
-}
-
-function approvedHostDomains(hosts: ReadonlyArray<string>) {
-	return hosts.flatMap((host) => {
-		const domain = sealedTokenDomainForUrl(
-			`https://${host.replace(/^\*\./, '')}`,
-		)
-		return domain ? [domain] : []
-	})
 }
 
 /**

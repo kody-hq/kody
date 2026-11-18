@@ -7,6 +7,7 @@ import type {
 	AuthoredPackageJson,
 	SavedPackageRecord,
 } from '#worker/package-registry/types.ts'
+import { toUnheldSourceView } from '#worker/repo/serving-commit.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 
 const savedPackageManifestDiscoveryConcurrency = 5
@@ -75,7 +76,7 @@ export async function loadManifestsForSavedPackages(input: {
 		const loaded = await loadPackageManifestForSource({
 			env: input.env as Env,
 			userId: input.userId,
-			source,
+			source: toUnheldSourceView(source),
 		})
 		return {
 			savedPackage,

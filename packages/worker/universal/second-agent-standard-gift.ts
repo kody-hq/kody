@@ -6,11 +6,16 @@
  * purchasable Pro subscription.
  *
  * Enforcement composes {@link resolveEffectivePlan}. The overlay only
- * raises Free; paid and manual plans are a no-op (no Stripe period
- * extension — there is no existing trial helper for that).
+ * raises Free. An account with a paid Kody Stripe subscription gets the same
+ * 2 weeks as a Stripe invoice credit (14 days of its subscription price)
+ * instead. Manual standard/pro/max grants without Stripe are a no-op.
  */
 
-import { resolveEffectivePlan, type PlanName } from '#universal/plans.ts'
+import {
+	parseStripePlanName,
+	resolveEffectivePlan,
+	type PlanName,
+} from '#universal/plans.ts'
 
 const secondAgentStandardGiftPlan = 'pro' satisfies PlanName
 
@@ -21,6 +26,7 @@ const secondAgentStandardGiftStatuses = [
 	'none',
 	'active',
 	'expired',
+	'invoice_credit',
 	'already_paid',
 ] as const
 
@@ -53,6 +59,7 @@ export function isSecondAgentStandardGiftActive(
 export function describeSecondAgentStandardGift(input: {
 	grantedAt?: string | null
 	expiresAt?: string | null
+	invoiceCreditRequestedAt?: string | null
 	now?: Date
 }): SecondAgentStandardGiftState {
 	const grantedAt = input.grantedAt?.trim() || null
@@ -70,7 +77,9 @@ export function describeSecondAgentStandardGift(input: {
 		return {
 			received: true,
 			active: false,
-			status: 'already_paid',
+			status: input.invoiceCreditRequestedAt?.trim()
+				? 'invoice_credit'
+				: 'already_paid',
 			expiresAt: null,
 			grantedAt,
 		}
@@ -120,19 +129,63 @@ export function resolvePlanOverlay(
 }
 
 /**
- * Whether the gift should overlay Pro (`applied`) or record a no-op
- * (`already_paid`). Paid Standard/Pro and manual standard/pro/max no-op:
- * there is no existing helper that extends a remaining Stripe period, and
- * mutating `trial_end` / period end is payment-adjacent.
+ * How the one gift is delivered:
+ * - `invoice_credit`: a paid Kody Stripe subscription. Stripe credits the
+ *   customer balance with 14 days of the subscription price, so the next
+ *   invoice is lower by 2 weeks of the plan.
+ * - `overlay`: the base plan is Free, so Pro overlays for 14 days.
+ * - `included`: a manual standard/pro/max grant without Stripe. Nothing to
+ *   extend; the ledger row is still written once.
  */
+export type SecondAgentStandardGiftWrite =
+	| { kind: 'invoice_credit'; expiresAt: null }
+	| { kind: 'overlay'; expiresAt: string }
+	| { kind: 'included'; expiresAt: null }
+
 export function resolveSecondAgentStandardGiftWrite(input: {
 	manualPlan: PlanName
 	stripePlan: string | null
+	hasStripeCustomer: boolean
 	now: Date
-}): { expiresAt: string | null } {
-	const effective = resolveEffectivePlan(input.manualPlan, input.stripePlan)
-	if (effective !== 'free') return { expiresAt: null }
+}): SecondAgentStandardGiftWrite {
+	if (input.hasStripeCustomer && parseStripePlanName(input.stripePlan)) {
+		return { kind: 'invoice_credit', expiresAt: null }
+	}
+	if (resolveEffectivePlan(input.manualPlan, input.stripePlan) !== 'free') {
+		return { kind: 'included', expiresAt: null }
+	}
 	return {
+		kind: 'overlay',
 		expiresAt: addSecondAgentStandardGiftDuration(input.now).toISOString(),
 	}
+}
+
+const daysPerBillingInterval = {
+	day: 1,
+	week: 7,
+	month: 30,
+	year: 365,
+} as const
+
+/**
+ * 14 days of a recurring price, in the price's minor currency unit. Returns
+ * 0 for an unknown interval or a free price.
+ */
+export function secondAgentGiftInvoiceCreditMinor(input: {
+	unitAmountMinor: number
+	quantity: number
+	interval: string
+	intervalCount: number
+}): number {
+	const days =
+		daysPerBillingInterval[
+			input.interval as keyof typeof daysPerBillingInterval
+		]
+	if (!days || input.intervalCount < 1) return 0
+	const periodDays = days * input.intervalCount
+	const giftDays = secondAgentStandardGiftDurationMs / (24 * 60 * 60 * 1000)
+	const amount =
+		(input.unitAmountMinor * Math.max(1, input.quantity) * giftDays) /
+		periodDays
+	return Math.max(0, Math.round(amount))
 }

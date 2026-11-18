@@ -32,6 +32,7 @@ export const waitingItemKinds = [
 	'first-use',
 	'context-elevation',
 	'context-misconfigured',
+	'context-open-shell',
 ] as const
 
 type WaitingItemKind = (typeof waitingItemKinds)[number]
@@ -179,7 +180,7 @@ export type WaitingSignals = {
 type WaitingContextNoticeSignal = {
 	contextId: string
 	contextName: string
-	kind: 'elevation' | 'misconfigured'
+	kind: 'elevation' | 'misconfigured' | 'open_shell'
 	summary: string
 }
 
@@ -203,6 +204,7 @@ const kindRank: Record<WaitingItemKind, number> = {
 	'first-use': 10,
 	'context-misconfigured': 11,
 	'context-elevation': 12,
+	'context-open-shell': 13,
 }
 
 const firstUseRank = Object.fromEntries(
@@ -232,16 +234,20 @@ export function buildWaitingItems(
 			kind:
 				notice.kind === 'elevation'
 					? 'context-elevation'
-					: 'context-misconfigured',
+					: notice.kind === 'open_shell'
+						? 'context-open-shell'
+						: 'context-misconfigured',
 			title:
 				notice.kind === 'elevation'
 					? `${notice.contextName} can do more than you can`
-					: `Fix ${notice.contextName}`,
+					: notice.kind === 'open_shell'
+						? `${notice.contextName} has an unrestricted shell`
+						: `Fix ${notice.contextName}`,
 			why: notice.summary,
 			who: 'you',
-			doLabel: notice.kind === 'elevation' ? 'Review' : 'Fix it',
+			doLabel: notice.kind === 'misconfigured' ? 'Fix it' : 'Review',
 			href: orgResourcePath(orgSlug, 'execution-contexts', notice.contextId),
-			severity: notice.kind === 'elevation' ? 'setup' : 'degraded',
+			severity: notice.kind === 'misconfigured' ? 'degraded' : 'setup',
 		})
 	}
 

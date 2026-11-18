@@ -13,8 +13,8 @@ const mocks = vi.hoisted(() => ({
 	init: vi.fn(),
 	log: vi.fn(),
 	resolveExistingArtifactSourceRepo: vi.fn(),
-	isLoopbackArtifactsRemote: vi.fn<
-		typeof artifactsModule.isLoopbackArtifactsRemote
+	isSnapshotOnlyArtifactsRemote: vi.fn<
+		typeof artifactsModule.isSnapshotOnlyArtifactsRemote
 	>(() => false),
 }))
 
@@ -33,9 +33,9 @@ vi.mock('#worker/repo/isomorphic-git-lazy.ts', () => ({
 vi.mock('#worker/repo/artifacts.ts', () => ({
 	buildArtifactsGitAuth: () => ({ username: 'x', password: 'token' }),
 	buildAuthenticatedArtifactsRemote: ({ remote }: { remote: string }) => remote,
-	isLoopbackArtifactsRemote: (
-		...args: Parameters<typeof artifactsModule.isLoopbackArtifactsRemote>
-	) => mocks.isLoopbackArtifactsRemote(...args),
+	isSnapshotOnlyArtifactsRemote: (
+		...args: Parameters<typeof artifactsModule.isSnapshotOnlyArtifactsRemote>
+	) => mocks.isSnapshotOnlyArtifactsRemote(...args),
 	resolveExistingArtifactSourceRepo: (...args: Array<unknown>) =>
 		mocks.resolveExistingArtifactSourceRepo(...args),
 }))
@@ -129,7 +129,7 @@ test('listing pin ancestry walks the origin absorb marker and treats missing his
 		}),
 	).toBe(false)
 
-	mocks.isLoopbackArtifactsRemote.mockReturnValueOnce(true)
+	mocks.isSnapshotOnlyArtifactsRemote.mockReturnValueOnce(true)
 	expect(
 		await listingPinIsAncestorOfForkTip({
 			env: {} as Env,

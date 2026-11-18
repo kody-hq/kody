@@ -5,20 +5,16 @@ import {
 	readAdminFileStorageQuota,
 	updateAdminFileStorageQuota,
 } from '#start/server/admin-controls'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
 
+import { Input } from '../components/input.tsx'
+import { Button } from '../components/button.tsx'
+
 const bytesPerMiB = 1024 * 1024
-const inputCss = getAuthInputCss()
-const buttonCss = getPillButtonCss({ size: 'sm' })
 
 export function AdminFileStorageQuota({ orgId }: { orgId?: string }) {
 	const client = useQueryClient()
@@ -68,7 +64,7 @@ export function AdminFileStorageQuota({ orgId }: { orgId?: string }) {
 				>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Included storage (MiB)</span>
-						<input
+						<Input
 							key={data.includedBytes}
 							name="quota"
 							type="number"
@@ -77,31 +73,36 @@ export function AdminFileStorageQuota({ orgId }: { orgId?: string }) {
 							step="any"
 							required
 							defaultValue={data.includedBytes / bytesPerMiB}
-							css={inputCss}
 						/>
 					</label>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Reason</span>
-						<input
+						<Input
 							required
 							maxLength={500}
 							value={reason}
 							onChange={(event) => setReason(event.target.value)}
-							css={inputCss}
 						/>
 					</label>
-					<button type="submit" css={buttonCss} disabled={save.isPending}>
+					<Button
+						variant="secondary"
+						size="sm"
+						type="submit"
+						disabled={save.isPending}
+					>
 						{orgId ? 'Save override' : 'Save default'}
-					</button>
+					</Button>
 					{orgId && data.overrideBytes !== null && (
-						<button
+						<Button
+							variant="secondary"
+							size="sm"
 							type="button"
-							css={buttonCss}
+
 							disabled={save.isPending || !reason.trim()}
 							onClick={() => save.mutate(null)}
 						>
 							Use default ({data.defaultBytes / bytesPerMiB} MiB)
-						</button>
+						</Button>
 					)}
 					{save.isSuccess && <span role="status">Quota saved.</span>}
 				</form>

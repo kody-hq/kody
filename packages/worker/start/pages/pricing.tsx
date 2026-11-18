@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { revealRef } from '../components/reveal.ts'
@@ -22,8 +23,6 @@ import { docHref } from '#universal/docs-nav.ts'
 import { orgBillingPath } from '#universal/org-pages.ts'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
 	getSurfaceCardCss,
 	layoutMaxWidths,
 	pageHeadCss,
@@ -168,13 +167,23 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 						minutes.
 					</p>
 					{isSignedIn ? (
-						<SiteLink href="/account" css={planPillButtonCss}>
+						<Button
+							href="/account"
+							variant="primary"
+							size="lg"
+							css={planPillButtonCss}
+						>
 							Open your account
-						</SiteLink>
+						</Button>
 					) : (
-						<SiteLink href={signedOutCta.href} css={planPillButtonCss}>
+						<Button
+							href={signedOutCta.href}
+							variant="primary"
+							size="lg"
+							css={planPillButtonCss}
+						>
 							{signedOutCta.label}
-						</SiteLink>
+						</Button>
 					)}
 				</section>
 
@@ -221,9 +230,14 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 							we&rsquo;re shaping that offering and want to hear your needs.
 						</p>
 					</div>
-					<SiteLink href="mailto:kody@kody.codes" css={teamsInviteButtonCss}>
+					<Button
+						href="mailto:kody@kody.codes"
+						variant="secondary"
+						size="lg"
+						css={teamsInviteButtonCss}
+					>
 						Email us
-					</SiteLink>
+					</Button>
 				</section>
 			</div>
 
@@ -232,6 +246,7 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 					Here&rsquo;s what you get
 				</h2>
 				<div css={limitsScrollCss}>
+					{/* oxlint-disable-next-line kody-custom/no-raw-table -- the pricing comparison has its own marketing typography and column widths. */}
 					<table css={limitsTableCss}>
 						<thead>
 							<tr>
@@ -311,13 +326,13 @@ export function PricingPage({ isSignedIn }: { isSignedIn: boolean }) {
 
 			<p css={limitsCtaCss}>
 				{isSignedIn ? (
-					<SiteLink href="/account" css={limitsCtaButtonCss}>
+					<Button href="/account" variant="primary" size="lg">
 						Open your account
-					</SiteLink>
+					</Button>
 				) : (
-					<SiteLink href={signedOutCta.href} css={limitsCtaButtonCss}>
+					<Button href={signedOutCta.href} variant="primary" size="lg">
 						{signedOutCta.label}
-					</SiteLink>
+					</Button>
 				)}
 			</p>
 		</section>
@@ -344,15 +359,25 @@ function renderPaidPlanCta(
 ) {
 	if (isSignedIn) {
 		return (
-			<SiteLink href={signedInBillingHref} css={planGhostButtonCss}>
+			<Button
+				href={signedInBillingHref}
+				variant="secondary"
+				size="lg"
+				css={planGhostButtonCss}
+			>
 				Upgrade in billing
-			</SiteLink>
+			</Button>
 		)
 	}
 	return (
-		<SiteLink href={signedOutCta.href} css={planGhostButtonCss}>
+		<Button
+			href={signedOutCta.href}
+			variant="secondary"
+			size="lg"
+			css={planGhostButtonCss}
+		>
 			{signedOutCta.label}
-		</SiteLink>
+		</Button>
 	)
 }
 
@@ -501,12 +526,10 @@ const planButtonSizeCss: CSSObject = {
 }
 
 const planPillButtonCss: CSSObject = {
-	...getPillButtonCss(),
 	...planButtonSizeCss,
 }
 
 const planGhostButtonCss: CSSObject = {
-	...getGhostButtonCss(),
 	...planButtonSizeCss,
 }
 
@@ -535,7 +558,6 @@ const teamsInviteCopyCss: CSSObject = {
 }
 
 const teamsInviteButtonCss: CSSObject = {
-	...getGhostButtonCss(),
 	...planButtonSizeCss,
 	marginTop: 0,
 	flexShrink: 0,
@@ -581,8 +603,6 @@ const creditsTitleCss: CSSObject = {
 	letterSpacing: '-0.01em',
 	color: colors.text,
 }
-
-const limitsCtaButtonCss = getPillButtonCss()
 
 const limitsTableCss: CSSObject = {
 	width: '100%',

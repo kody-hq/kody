@@ -112,3 +112,61 @@ test('package-local kody.mcp calls without a binding are unchanged', async () =>
 		{ path: ['kody', 'mcp', 'home', 'lights_on'], args: [{ room: 'office' }] },
 	])
 })
+
+async function importPackageRuntime(mockStorage: boolean) {
+	const source = createPackageLocalRuntimeModuleSource({
+		packageContext: samplePackageContext,
+		mockStorage,
+	})
+	return (await import(
+		`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
+	)) as {
+		packageStorage: () => { get?: (key: string) => Promise<unknown> }
+		packageSecrets: {
+			get: (alias: string) => Promise<unknown>
+			has: (alias: string) => Promise<unknown>
+		}
+		email: unknown
+		events: unknown
+		packages: unknown
+	}
+}
+
+function assertProdUnsupported(error: unknown, exportName: string) {
+	assert.ok(error instanceof Error)
+	assert.match(
+		error.message,
+		new RegExp(`${exportName} is intentionally unsupported on --target prod`),
+	)
+	assert.match(error.message, /--target mock/)
+	assert.match(error.message, /publish and use packageAppFetch/)
+	assert.match(
+		error.message,
+		/https:\/\/kody\.codes\/docs\/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod/,
+	)
+}
+
+test('--target prod refuses working-tree storage, secrets, email, events and packages', async () => {
+	const mockRuntime = await importPackageRuntime(true)
+	assert.equal(typeof mockRuntime.packageStorage().get, 'function')
+
+	const runtime = await importPackageRuntime(false)
+	assert.throws(
+		() => runtime.packageStorage(),
+		(error: unknown) => {
+			assertProdUnsupported(error, 'packageStorage\\(\\)')
+			return true
+		},
+	)
+	await assert.rejects(runtime.packageSecrets.get('api'), (error: unknown) => {
+		assertProdUnsupported(error, 'packageSecrets')
+		return true
+	})
+	await assert.rejects(runtime.packageSecrets.has('api'), (error: unknown) => {
+		assertProdUnsupported(error, 'packageSecrets')
+		return true
+	})
+	assert.equal(runtime.email, null)
+	assert.equal(runtime.events, null)
+	assert.equal(runtime.packages, null)
+})

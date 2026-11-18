@@ -112,6 +112,26 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 		.run()
 	await db
 		.prepare(
+			`CREATE TABLE IF NOT EXISTS credential_attribution_log (
+				day TEXT NOT NULL,
+				owner_id TEXT NOT NULL,
+				credential_id TEXT NOT NULL,
+				kind TEXT NOT NULL,
+				surface TEXT NOT NULL,
+				pattern TEXT NOT NULL,
+				run_package_id TEXT NOT NULL DEFAULT '',
+				bound_package_id TEXT NOT NULL DEFAULT '',
+				changed_intrinsics TEXT NOT NULL DEFAULT '',
+				credential_name TEXT NOT NULL,
+				first_seen_at TEXT NOT NULL,
+				last_seen_at TEXT NOT NULL,
+				observations INTEGER NOT NULL DEFAULT 0,
+				PRIMARY KEY (day, owner_id, credential_id, kind, surface, pattern, run_package_id, bound_package_id, changed_intrinsics)
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
 			`CREATE TABLE IF NOT EXISTS secret_provider_bindings (
 				id TEXT UNIQUE DEFAULT (lower(hex(randomblob(16)))),
 				user_id TEXT NOT NULL,
@@ -149,6 +169,18 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				published_by_person_id TEXT,
 				publisher_unknown INTEGER NOT NULL DEFAULT 0,
 				updated_at TEXT NOT NULL
+			)`,
+		)
+		.run()
+	await db
+		.prepare(
+			`CREATE TABLE IF NOT EXISTS package_app_publish_requests (
+				package_id TEXT NOT NULL,
+				commit_sha TEXT NOT NULL,
+				owner_id TEXT NOT NULL,
+				person_id TEXT NOT NULL,
+				created_at TEXT NOT NULL,
+				PRIMARY KEY (package_id, commit_sha)
 			)`,
 		)
 		.run()

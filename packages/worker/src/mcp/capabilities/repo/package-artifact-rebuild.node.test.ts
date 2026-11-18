@@ -4,6 +4,21 @@ import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as IsolatedArtifactRebuildModule from '#worker/repo/isolated-artifact-rebuild.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 const mockModule = vi.hoisted(() => ({
 	listPublishedPackageArtifactTargets: vi.fn(),
 	stagePublishedPackageArtifactRebuild: vi.fn(),
@@ -661,7 +676,6 @@ test('an uploaded build advances serving_commit only after every target is writt
 	mockModule.persistUploadedPublishBuild.mockResolvedValueOnce({
 		ok: true,
 		targetCount: 3,
-		sampledTargetCount: 1,
 	})
 	await expect(rebuild({ uploadedBuild })).resolves.toEqual({
 		rebuiltTargetCount: 3,

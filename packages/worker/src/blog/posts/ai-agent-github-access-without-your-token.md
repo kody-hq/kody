@@ -56,8 +56,11 @@ For the morning PR summary:
 3. Under **Repository access**, choose **Only select repositories** and pick the
    four repos.
 4. Under **Repository permissions**, set **Pull requests** and **Contents** to
-   **Read-only**. Add **Commit statuses** or **Checks** read-only if you want CI
-   results. Leave everything else at **No access**.
+   **Read-only**. That already covers the PR's overall CI verdict (the GraphQL
+   status check rollup). Fine-grained tokens have no Checks permission, so they
+   can't read individual check runs. Add **Commit statuses** and **Actions**
+   read-only if you want status and GitHub Actions job names. Leave everything
+   else at **No access**.
 5. Pick an expiration. 90 days is a sensible default for something you'll
    revisit.
 

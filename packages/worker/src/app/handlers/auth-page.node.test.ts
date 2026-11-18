@@ -49,7 +49,7 @@ function createAuthPageTestEnv(user?: {
 	email: string
 	username: string
 	stable_user_id: string
-	deleting_at: string
+	deleting_at: string | null
 }) {
 	return {
 		COOKIE_SECRET: testCookieSecret,
@@ -146,4 +146,34 @@ test('auth page keeps stale and deleting sessions on the login form', async () =
 		'Set-Cookie',
 		expect.stringContaining('Max-Age=0'),
 	)
+})
+
+test('auth page sends a live session back to the marked authorize URL once', async () => {
+	setAuthSessionSecret(testCookieSecret)
+	const liveSession: AuthSession = {
+		stableUserId: ownerIdFromStored('b').repeat(64),
+		email: 'live@example.com',
+		rememberMe: false,
+	}
+	const liveCookie = await createAuthCookie(liveSession, false)
+	native.env = createAuthPageTestEnv({
+		id: 8,
+		email: 'live@example.com',
+		username: 'live-user',
+		stable_user_id: 'b'.repeat(64),
+		deleting_at: null,
+	})
+	const authorize =
+		'/oauth/package-app/authorize?client_id=kody%2Fnewsletter&login_attempt=1'
+	native.request = new Request(
+		`https://example.com/login?redirectTo=${encodeURIComponent(authorize)}`,
+		{ headers: { Cookie: liveCookie } },
+	)
+	const thrown = await loadAuthPage({ data: { redirectTo: authorize } }).then(
+		() => null,
+		(error: unknown) => error,
+	)
+	expect(thrown).toMatchObject({
+		options: { href: authorize, statusCode: 302 },
+	})
 })

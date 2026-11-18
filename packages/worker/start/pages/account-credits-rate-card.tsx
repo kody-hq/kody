@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import type { CSSObject } from '@emotion/react'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
@@ -80,9 +81,9 @@ export function renderCreditsDebitRateCard(
 			</ul>
 			{/* Wider viewports: readable multi-column table. */}
 			<div css={debitRateTableScrollCss}>
-				<table
+				<Table
 					aria-label="Credit debit rates and usage this period"
-					css={debitRateTableCss}
+					css={{ '& th, & td': { verticalAlign: 'middle' } }}
 				>
 					<thead>
 						<tr>
@@ -132,7 +133,7 @@ export function renderCreditsDebitRateCard(
 							)
 						})}
 					</tbody>
-				</table>
+				</Table>
 			</div>
 		</details>
 	)
@@ -234,24 +235,6 @@ const debitRateTableScrollCss: CSSObject = {
 	overflowX: 'auto' as const,
 	[mq.mobile]: {
 		display: 'none',
-	},
-}
-
-const debitRateTableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse' as const,
-	fontSize: typography.fontSize.sm,
-	color: colors.text,
-	'& th, & td': {
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		textAlign: 'start' as const,
-		verticalAlign: 'middle' as const,
-	},
-	'& thead th': {
-		color: colors.textMuted,
-		fontWeight: typography.fontWeight.semibold,
-		whiteSpace: 'nowrap' as const,
 	},
 }
 

@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
@@ -34,18 +36,9 @@ import type {
 	AdminCodemodRunListItem,
 	AdminCodemodsLoaderData,
 } from '#universal/loader-data.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -56,7 +49,7 @@ import {
 	renderRegisteredCodemodsPanel,
 	RunHistoryPanel,
 } from './admin-codemods-sections.tsx'
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
 export function AdminCodemodsPage(props: {
 	payload: AdminCodemodsLoaderData
 	currentHref: string
@@ -389,9 +382,6 @@ export function AdminCodemodsPage(props: {
 			codemodId: selectedCodemodId,
 		})
 	}
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const currentHref = props.currentHref
 	const pending = false
 	const status: string = 'ready'
@@ -446,10 +436,8 @@ export function AdminCodemodsPage(props: {
 								},
 							}}
 						>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Codemod</span>
-								<select
-									data-field-ring
+							<Field label="Codemod">
+								<Select
 									name="codemodId"
 									value={selectedCodemodId}
 									disabled={!canMutate}
@@ -458,19 +446,16 @@ export function AdminCodemodsPage(props: {
 											return
 										setSelectedCodemodId(event.currentTarget.value)
 									}}
-									css={selectCss}
 								>
 									{codemods.map((codemod) => (
 										<option key={codemod.id} value={codemod.id}>
 											{codemod.id}
 										</option>
 									))}
-								</select>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Mode</span>
-								<select
-									data-field-ring
+								</Select>
+							</Field>
+							<Field label="Mode">
+								<Select
 									name="mode"
 									value={selectedMode}
 									disabled={!canMutate}
@@ -485,19 +470,16 @@ export function AdminCodemodsPage(props: {
 											}
 										}
 									}}
-									css={selectCss}
 								>
 									{runModes.map((mode) => (
 										<option key={mode} value={mode}>
 											{mode}
 										</option>
 									))}
-								</select>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>User IDs filter</span>
-								<input
-									data-field-ring
+								</Select>
+							</Field>
+							<Field label="User IDs filter">
+								<Input
 									name="userIds"
 									type="text"
 									placeholder="comma-separated stable user ids"
@@ -508,13 +490,10 @@ export function AdminCodemodsPage(props: {
 											return
 										setUserIdsFilter(event.currentTarget.value)
 									}}
-									css={accountInputCss}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Package IDs filter</span>
-								<input
-									data-field-ring
+							</Field>
+							<Field label="Package IDs filter">
+								<Input
 									name="packageIds"
 									type="text"
 									placeholder="comma-separated package ids"
@@ -525,15 +504,12 @@ export function AdminCodemodsPage(props: {
 											return
 										setPackageIdsFilter(event.currentTarget.value)
 									}}
-									css={accountInputCss}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Credential enforcement scope</span>
-								<select
+							</Field>
+							<Field label="Credential enforcement scope">
+								<Select
 									value={enforcementOnly ? 'enforcement' : 'all'}
 									disabled={!canMutate || selectedMode === 'revert'}
-									css={selectCss}
 									onChange={(event) => {
 										setEnforcementOnly(
 											event.currentTarget.value === 'enforcement',
@@ -545,13 +521,11 @@ export function AdminCodemodsPage(props: {
 									<option value="enforcement">
 										Packages subject to credential-need enforcement
 									</option>
-								</select>
-							</label>
+								</Select>
+							</Field>
 							{selectedMode === 'revert' ? (
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Revert of run ID</span>
-									<input
-										data-field-ring
+								<Field label="Revert of run ID">
+									<Input
 										name="revertOfRunId"
 										type="text"
 										required
@@ -563,9 +537,8 @@ export function AdminCodemodsPage(props: {
 												return
 											setRevertOfRunId(event.currentTarget.value)
 										}}
-										css={accountInputCss}
 									/>
-								</label>
+								</Field>
 							) : null}
 						</div>
 						<div
@@ -577,7 +550,7 @@ export function AdminCodemodsPage(props: {
 							}}
 						>
 							{selectedMode === 'apply' ? (
-								<button
+								<Button
 									type="button"
 									disabled={!canMutate || !selectedCodemodId}
 									{...{
@@ -608,16 +581,16 @@ export function AdminCodemodsPage(props: {
 											})()
 										},
 									}}
-									css={dangerButtonCss}
+									variant="danger"
 								>
 									{isRunning
 										? 'Running…'
 										: applyConfirmActive
 											? 'Confirm apply'
 											: 'Apply'}
-								</button>
+								</Button>
 							) : selectedMode === 'revert' ? (
-								<button
+								<Button
 									type="button"
 									disabled={
 										!canMutate || !selectedCodemodId || !revertOfRunId.trim()
@@ -651,34 +624,34 @@ export function AdminCodemodsPage(props: {
 											})()
 										},
 									}}
-									css={dangerButtonCss}
+									variant="danger"
 								>
 									{isRunning
 										? 'Running…'
 										: revertFormConfirmActive
 											? 'Confirm revert'
 											: 'Revert'}
-								</button>
+								</Button>
 							) : (
-								<button
+								<Button
 									type="submit"
 									disabled={!canMutate || !selectedCodemodId}
-									css={primaryButtonCss}
+									variant="primary"
 								>
 									{isRunning ? 'Running…' : 'Run'}
-								</button>
+								</Button>
 							)}
 							{isRunning ? (
-								<button
+								<Button
 									type="button"
 									disabled={stopRequested}
 									onClick={() => {
 										requestStop()
 									}}
-									css={secondaryButtonCss}
+									variant="secondary"
 								>
 									{stopRequested ? 'Stopping…' : 'Stop'}
-								</button>
+								</Button>
 							) : null}
 							{liveRunId ? (
 								<p css={{ margin: 0, color: colors.textMuted }}>

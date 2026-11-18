@@ -1,10 +1,10 @@
 /**
  * Short-lived signed visit ticket for one package-app request.
  *
- * Visitor identity and authority no longer live on the cached worker template.
- * The host mints this ticket after authenticating the visitor, sets it on the
- * request (inbound `X-Kody-*` already stripped), and the wrapper attaches it
- * to every bridge and gateway call. The ticket is HMAC-signed with a
+ * Visitor identity and authority live on this ticket, not the cached worker
+ * template. The host mints this ticket after authenticating the visitor, sets
+ * it on the request (inbound `X-Kody-*` already stripped), and the wrapper
+ * attaches it to every bridge and gateway call. The ticket is HMAC-signed with a
  * host-held key package code never sees, bound to one request nonce, and
  * capped at 60 seconds. Verify is HMAC + audience + not burned + (unexpired
  * or still live on this isolate). Live is not required: mint and verify may

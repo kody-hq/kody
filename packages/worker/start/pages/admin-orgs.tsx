@@ -1,10 +1,13 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useRouter } from '@tanstack/react-router'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
 	grantAdminCreditsToOrg,
+	setAdminOrgCompedSeats,
 	setAdminOrgCreditEligibility,
 	setAdminOrgPlan,
 } from '#start/server/admin-controls'
@@ -16,14 +19,7 @@ import {
 } from '#universal/credits.ts'
 import { planNames, type PlanName } from '#universal/plans.ts'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss } from '#universal/styles/style-primitives.ts'
 import { isWithinSoftDeleteRestoreWindow } from '#worker/soft-delete/window.ts'
 import type {
 	AdminOrgDetail,
@@ -52,12 +48,10 @@ import {
 	RecordTableSearch,
 	RecordTableSelect,
 } from './record-table.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
-const billingInputCss = getAuthInputCss()
-const billingSelectCss = getSelectCss()
-const billingButtonCss = getPillButtonCss({ size: 'sm' })
 const secondaryButtonCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	justifySelf: 'start',
 }
 
@@ -124,14 +118,15 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 			) : (
 				<LoadingIndicator label="Loading seat changes…" />
 			)}
-			<button
+			<Button
 				type="button"
+				variant="secondary"
 				css={secondaryButtonCss}
 				disabled={stripe.isPending}
 				onClick={() => stripe.mutate(0)}
 			>
 				{stripe.isPending ? 'Comparing…' : 'Compare with Stripe'}
-			</button>
+			</Button>
 			{stripe.isError ? (
 				<AccountManagementMessage tone="error">
 					{stripe.error.message}
@@ -166,14 +161,14 @@ function AdminOrgSeatSyncPanel(props: { currentHref: string }) {
 						}))}
 					/>
 					{stripeReport.nextOffset !== null ? (
-						<button
+						<Button
 							type="button"
-							css={billingButtonCss}
+							variant="primary"
 							disabled={stripe.isPending}
 							onClick={() => stripe.mutate(stripeReport.nextOffset!)}
 						>
 							Next page
-						</button>
+						</Button>
 					) : null}
 				</>
 			) : null}
@@ -222,10 +217,8 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 				[mq.mobile]: { gridTemplateColumns: '1fr' },
 			}}
 		>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Manual grant</span>
-				<select
-					css={billingSelectCss}
+			<Field label="Manual grant">
+				<Select
 					value={plan}
 					onChange={(event) => setPlan(event.currentTarget.value as PlanName)}
 					disabled={mutation.isPending}
@@ -235,25 +228,108 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 							{formatAdminPlanLabel(name)}
 						</option>
 					))}
-				</select>
-			</label>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Reason</span>
-				<input
-					css={billingInputCss}
+				</Select>
+			</Field>
+			<Field label="Reason">
+				<Input
 					required
 					value={reason}
 					onChange={(event) => setReason(event.currentTarget.value)}
 					disabled={mutation.isPending}
 				/>
-			</label>
-			<button
-				type="submit"
-				css={billingButtonCss}
-				disabled={mutation.isPending}
-			>
+			</Field>
+			<Button type="submit" variant="primary" disabled={mutation.isPending}>
 				{mutation.isPending ? 'Saving…' : 'Save'}
-			</button>
+			</Button>
+			{message ? (
+				<div css={{ gridColumn: '1 / -1' }}>
+					<AccountManagementMessage tone={mutation.isError ? 'error' : 'info'}>
+						{message}
+					</AccountManagementMessage>
+				</div>
+			) : null}
+		</form>
+	)
+}
+
+function compedSeatsDormantNote(plan: AdminOrgDetail['plan']): string {
+	if (plan.manualPlan === 'free') return ' (not binding: free manual plan)'
+	if (plan.stripePlan != null && plan.stripePlan !== 'free') {
+		return ' (not binding: paid Stripe plan)'
+	}
+	return ''
+}
+
+function AdminOrgCompedSeatsForm(props: {
+	orgId: string
+	compedSeats: number | null
+}) {
+	const router = useRouter()
+	const [seats, setSeats] = useState(
+		props.compedSeats === null ? '' : String(props.compedSeats),
+	)
+	const [reason, setReason] = useState('')
+	const [message, setMessage] = useState<string | null>(null)
+	const mutation = useMutation({
+		mutationFn: () => {
+			const trimmed = seats.trim()
+			return setAdminOrgCompedSeats({
+				data: {
+					orgId: props.orgId,
+					compedSeats: trimmed === '' ? null : Number(trimmed),
+					reason,
+				},
+			})
+		},
+		onSuccess: async (result) => {
+			setMessage(
+				result.changed
+					? 'Comped seats updated.'
+					: 'Organization already has that seat comp.',
+			)
+			setReason('')
+			await router.invalidate()
+		},
+		onError: (error) => setMessage(error.message),
+	})
+	return (
+		<form
+			aria-label="Set organization comped seats"
+			onSubmit={(event) => {
+				event.preventDefault()
+				setMessage(null)
+				mutation.mutate()
+			}}
+			css={{
+				display: 'grid',
+				gap: spacing.md,
+				gridTemplateColumns: 'minmax(0, 12rem) minmax(0, 1fr) auto',
+				alignItems: 'end',
+				[mq.mobile]: { gridTemplateColumns: '1fr' },
+			}}
+		>
+			<Field label="Comped seats" description="Leave empty for no cap.">
+				<Input
+					type="number"
+					inputMode="numeric"
+					min={1}
+					step={1}
+					value={seats}
+					onChange={(event) => setSeats(event.currentTarget.value)}
+					disabled={mutation.isPending}
+				/>
+			</Field>
+			<Field label="Reason">
+				<Input
+					required
+					value={reason}
+					onChange={(event) => setReason(event.currentTarget.value)}
+					disabled={mutation.isPending}
+				/>
+			</Field>
+			<Button type="submit" variant="primary" disabled={mutation.isPending}>
+				{mutation.isPending ? 'Saving…' : 'Save'}
+			</Button>
 			{message ? (
 				<div css={{ gridColumn: '1 / -1' }}>
 					<AccountManagementMessage tone={mutation.isError ? 'error' : 'info'}>
@@ -334,30 +410,26 @@ function AdminOrgCreditsForms(props: {
 					[mq.mobile]: { gridTemplateColumns: '1fr' },
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Amount ($)</span>
-					<input
-						css={billingInputCss}
+				<Field label="Amount ($)">
+					<Input
 						inputMode="decimal"
 						required
 						value={amountText}
 						onChange={(event) => setAmountText(event.currentTarget.value)}
 						disabled={grant.isPending}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+				</Field>
+				<Field label="Reason">
+					<Input
 						required
 						value={grantReason}
 						onChange={(event) => setGrantReason(event.currentTarget.value)}
 						disabled={grant.isPending}
 					/>
-				</label>
-				<button type="submit" css={billingButtonCss} disabled={grant.isPending}>
+				</Field>
+				<Button type="submit" variant="primary" disabled={grant.isPending}>
 					{grant.isPending ? 'Granting…' : 'Grant'}
-				</button>
+				</Button>
 				{grantMessage ? (
 					<div css={{ gridColumn: '1 / -1' }}>
 						<AccountManagementMessage
@@ -395,18 +467,15 @@ function AdminOrgCreditsForms(props: {
 				}}
 			>
 				<label css={{ ...fieldCss, display: 'flex', alignItems: 'center' }}>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={eligible}
 						onChange={(event) => setEligible(event.currentTarget.checked)}
 						disabled={eligibility.isPending}
 					/>
 					<span>Admin credits eligible</span>
 				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Reason</span>
-					<input
-						css={billingInputCss}
+				<Field label="Reason">
+					<Input
 						required
 						value={eligibilityReason}
 						onChange={(event) =>
@@ -414,14 +483,14 @@ function AdminOrgCreditsForms(props: {
 						}
 						disabled={eligibility.isPending}
 					/>
-				</label>
-				<button
+				</Field>
+				<Button
 					type="submit"
-					css={billingButtonCss}
+					variant="primary"
 					disabled={eligibility.isPending}
 				>
 					{eligibility.isPending ? 'Saving…' : 'Save eligibility'}
-				</button>
+				</Button>
 				{eligibilityMessage ? (
 					<div css={{ gridColumn: '1 / -1' }}>
 						<AccountManagementMessage
@@ -705,16 +774,30 @@ export function AdminOrgDetailPage(props: {
 							label: 'Credits eligible',
 							value: data.plan.creditsEligible ? 'Yes' : 'No',
 						},
+						{
+							label: 'Comped seats',
+							value:
+								data.seats.comped === null
+									? 'No cap'
+									: `${data.seats.live} of ${data.seats.comped} used${compedSeatsDormantNote(data.plan)}`,
+						},
 					]}
 				/>
 				{isDeleted ? (
 					<p>Billing changes are unavailable for a deleted organization.</p>
 				) : (
-					<AdminOrgPlanForm
-						key={org.id}
-						orgId={org.id}
-						manualPlan={data.plan.manualPlan}
-					/>
+					<>
+						<AdminOrgPlanForm
+							key={org.id}
+							orgId={org.id}
+							manualPlan={data.plan.manualPlan}
+						/>
+						<AdminOrgCompedSeatsForm
+							key={`${org.id}-seats`}
+							orgId={org.id}
+							compedSeats={data.seats.comped}
+						/>
+					</>
 				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Seats & members">

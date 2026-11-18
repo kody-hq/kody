@@ -70,6 +70,9 @@ async function ensureSavedPackageArtifactSchema() {
 		entry_point TEXT NOT NULL,
 		kv_key TEXT NOT NULL,
 		dependencies_json TEXT NOT NULL DEFAULT '[]',
+		built_in TEXT,
+		built_context_name TEXT,
+		bundle_sha256 TEXT,
 		created_at TEXT NOT NULL,
 		updated_at TEXT NOT NULL
 	)`)
@@ -345,7 +348,8 @@ test(
 	{ timeout: 40_000 },
 	async () => {
 		silenceIncidentalRuntimeWarnings()
-		const sourceFiles = createAdHocExecuteSourceFiles(`import kleur from 'kleur'
+		const sourceFiles =
+			await createAdHocExecuteSourceFiles(`import kleur from 'kleur'
 export default function main() {
 	return { formatted: kleur.green('ad-hoc-dependency-ok') }
 }`)

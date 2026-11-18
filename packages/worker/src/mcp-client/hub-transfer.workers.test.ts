@@ -5,6 +5,10 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { mcpClientHubDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { mcpClientHubTransferStub } from './hub-transfer.ts'
 import { mcpOAuthRefreshTokenStorageKey } from './oauth-token-recovery.ts'
+import {
+	openMcpOAuthStorageValue,
+	sealMcpOAuthStorageValue,
+} from './sealed-oauth-storage.ts'
 
 function hubFor(userId: ReturnType<typeof ownerIdFromStored>) {
 	return env.MCP_CLIENT_HUB.get(
@@ -33,11 +37,20 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 			'https://auth.example.com/authorize',
 			JSON.stringify({ transport: { type: 'streamable-http' } }),
 		)
-		await state.storage.put({
+		const seeded: Record<string, unknown> = {
 			[tokenKey]: { access_token: 'tok', token_type: 'Bearer' },
 			[mcpOAuthRefreshTokenStorageKey(serverId)]: { refresh_token: 'r' },
 			'/Kody/other-server/client-2/token': { access_token: 'other' },
-		})
+		}
+		for (const [key, value] of Object.entries(seeded)) {
+			seeded[key] = await sealMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key,
+				value,
+			})
+		}
+		await state.storage.put(seeded)
 	})
 
 	const from = mcpClientHubTransferStub({ env, userId: fromUserId })
@@ -56,10 +69,22 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 		expect(
 			state.storage.sql.exec('SELECT id FROM cf_agents_mcp_servers').toArray(),
 		).toEqual([])
-		expect(await state.storage.get(tokenKey)).toEqual({
-			access_token: 'tok',
-			token_type: 'Bearer',
-		})
+		// Resealed for the destination owner: ciphertext at rest, never the
+		// source hub's ciphertext.
+		const raw = await state.storage.get(tokenKey)
+		expect(raw).toMatch(/^v2\./)
+		expect(JSON.stringify(raw)).not.toContain('tok')
+		expect(
+			await openMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key: tokenKey,
+				value: raw,
+			}),
+		).toEqual({ access_token: 'tok', token_type: 'Bearer' })
+		expect(
+			await state.storage.get(mcpOAuthRefreshTokenStorageKey(serverId)),
+		).toMatch(/^v2\./)
 	})
 	expect(await to.importServerForTransfer(exported!)).toEqual({
 		ok: false,
@@ -82,10 +107,14 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 	).resolves.toMatchObject({ serverId, state: 'authenticating' })
 	expect(await to.listServerIdsForTransfer()).toEqual([serverId])
 	await runInDurableObject(hubFor(toUserId), async (_instance, state) => {
-		expect(await state.storage.get(tokenKey)).toEqual({
-			access_token: 'tok',
-			token_type: 'Bearer',
-		})
+		expect(
+			await openMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key: tokenKey,
+				value: await state.storage.get(tokenKey),
+			}),
+		).toEqual({ access_token: 'tok', token_type: 'Bearer' })
 		expect(
 			state.storage.sql
 				.exec('SELECT id, client_id FROM cf_agents_mcp_servers')
@@ -116,7 +145,53 @@ test('a server moves between hubs with its stored OAuth state', async () => {
 			await state.storage.get(mcpOAuthRefreshTokenStorageKey(serverId)),
 		).toBeUndefined()
 		expect(
-			await state.storage.get('/Kody/other-server/client-2/token'),
+			await openMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key: '/Kody/other-server/client-2/token',
+				value: await state.storage.get('/Kody/other-server/client-2/token'),
+			}),
 		).toEqual({ access_token: 'other' })
 	})
+})
+
+test('transfer carries sealed static headers as a sidecar, never in the row', async () => {
+	const userId = ownerIdFromStored(`hub-headers-${crypto.randomUUID()}`)
+	const serverId = 'bearer-server'
+	const bearer = 'Bearer static-secret-value'
+	await hubFor(userId).getSnapshot()
+	await runInDurableObject(hubFor(userId), async (_instance, state) => {
+		state.storage.sql.exec(
+			`INSERT INTO cf_agents_mcp_servers
+				(id, name, server_url, callback_url, client_id, auth_url, server_options)
+			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			serverId,
+			'Bearer Server',
+			'https://mcp.example.com/mcp',
+			'https://kody.example.com/mcp-oauth/callback',
+			null,
+			'https://auth.example.com/authorize',
+			JSON.stringify({ transport: { type: 'streamable-http' } }),
+		)
+		const key = `mcp-static-transport-headers/${serverId}`
+		await state.storage.put(
+			key,
+			await sealMcpOAuthStorageValue({
+				env,
+				ownerId: state.id.name!,
+				key,
+				value: { authorization: bearer },
+			}),
+		)
+	})
+	// Transfer carries the sealed headers as a sidecar, never in the row.
+	const exported = await mcpClientHubTransferStub({
+		env,
+		userId,
+	}).exportServerForTransfer({ serverId })
+	expect(exported?.row.server_options).not.toContain('static-secret-value')
+	expect(exported?.entries).toContainEqual([
+		`mcp-static-transport-headers/${serverId}`,
+		{ authorization: bearer },
+	])
 })

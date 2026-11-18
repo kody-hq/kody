@@ -763,3 +763,108 @@ test('renewed consent recommends the credential the grant already maps', async (
 		usableCredentials.mockResolvedValue([])
 	}
 })
+
+async function buildDemoAuthorizeUrl() {
+	const authorizeUrl = new URL(packageAppOauthPaths.authorize, appOrigin)
+	authorizeUrl.searchParams.set('response_type', 'code')
+	authorizeUrl.searchParams.set('client_id', `${ownerUsername}/demo`)
+	authorizeUrl.searchParams.set(
+		'redirect_uri',
+		`https://${ownerUsername}.packages.isolated.test${packageAppOauthPaths.callback}`,
+	)
+	authorizeUrl.searchParams.set(
+		'code_challenge',
+		await createS256CodeChallenge('oauth-workers-test-verifier-32chars!!'),
+	)
+	authorizeUrl.searchParams.set('code_challenge_method', 'S256')
+	authorizeUrl.searchParams.set('scope', 'profile')
+	return authorizeUrl
+}
+
+function expectDemoRetryLink(html: string) {
+	const href = /href="([^"]+)"/.exec(html)?.[1]?.replaceAll('&amp;', '&')
+	const retry = new URL(href ?? '')
+	expect(retry.origin).toBe(`https://${ownerUsername}.packages.isolated.test`)
+	expect(retry.pathname).toBe(packageAppOauthPaths.login)
+	expect(retry.searchParams.get('org')).toBe(ownerUsername)
+	expect(retry.searchParams.get('app')).toBe('demo')
+	expect(retry.searchParams.get('return_to')).toMatch(/^\/demo\/?$/)
+}
+
+test('signed-out authorize sends to /login once, then renders a retry page instead of looping', async () => {
+	configureOrigins()
+	await seedOwnerSessionCookie()
+	const authorizeUrl = await buildDemoAuthorizeUrl()
+
+	const first = await workerFetch(authorizeUrl)
+	if (!(first instanceof Response)) throw new Error('Expected login redirect')
+	expect(first.status).toBe(302)
+	const login = new URL(first.headers.get('Location') ?? '')
+	expect(login.pathname).toBe('/login')
+	const redirectTo = new URL(
+		login.searchParams.get('redirectTo') ?? '',
+		appOrigin,
+	)
+	expect(redirectTo.pathname).toBe(packageAppOauthPaths.authorize)
+	expect(redirectTo.searchParams.get('login_attempt')).toBe('1')
+	expect(redirectTo.searchParams.get('client_id')).toBe(`${ownerUsername}/demo`)
+
+	const second = await workerFetch(redirectTo)
+	if (!(second instanceof Response)) throw new Error('Expected error page')
+	expect(second.status).toBe(400)
+	expect(second.headers.get('Location')).toBeNull()
+	expect(second.headers.get('Content-Type')).toContain('text/html')
+	expectDemoRetryLink(await second.text())
+})
+
+test('authorize clears a live session the app gate refuses instead of bouncing through /login', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	await env.APP_DB.prepare(
+		`UPDATE users SET suspended_at = '2026-11-14 00:00:00' WHERE email = ?`,
+	)
+		.bind(ownerEmail)
+		.run()
+	try {
+		const response = await workerFetch(await buildDemoAuthorizeUrl(), {
+			headers: { Cookie: cookie },
+		})
+		if (!(response instanceof Response)) throw new Error('Expected error page')
+		expect(response.status).toBe(400)
+		expect(response.headers.get('Location')).toBeNull()
+		const setCookie = response.headers.get('Set-Cookie') ?? ''
+		expect(setCookie).toContain('kody_session=')
+		expect(setCookie).toContain('Max-Age=0')
+		expectDemoRetryLink(await response.text())
+	} finally {
+		await env.APP_DB.prepare(
+			`UPDATE users SET suspended_at = NULL WHERE email = ?`,
+		)
+			.bind(ownerEmail)
+			.run()
+	}
+})
+
+test('issued codes carry the expiry of the session authorize already accepted', async () => {
+	configureOrigins()
+	const cookie = await seedOwnerSessionCookie()
+	const before = Date.now()
+	const response = await handlePackageAppOauthAuthorizeRequest(
+		new Request(await buildDemoAuthorizeUrl(), { headers: { Cookie: cookie } }),
+		env,
+	)
+	if (!(response instanceof Response)) throw new Error('Expected code redirect')
+	expect(response.status).toBe(302)
+	const location = new URL(response.headers.get('Location') ?? '')
+	expect(location.searchParams.get('code')).toBeTruthy()
+	const rows = await env.APP_DB.prepare(
+		'SELECT payload FROM package_app_oauth_codes',
+	).all<{ payload: string }>()
+	const expiries = rows.results.map(
+		(row) =>
+			(JSON.parse(row.payload) as { sessionExpiresAt: number })
+				.sessionExpiresAt,
+	)
+	expect(expiries.some((expiresAt) => expiresAt > before)).toBe(true)
+	expect(expiries.every((expiresAt) => expiresAt > 0)).toBe(true)
+})

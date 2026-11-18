@@ -1,3 +1,5 @@
+import { loadModuleSourceParser } from '#worker/module-source.ts'
+import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
 import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
@@ -5,11 +7,7 @@ import { callerHasRole } from '#mcp/capabilities/access-control.ts'
 import type { McpRegistrationAgent } from '#mcp/mcp-registration-agent.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { importGuideCatalog } from '#worker/guide-catalog-modules.ts'
-import {
-	guideNotFoundMessage,
-	resolveCatalogGuide,
-	suggestCatalogGuideIds,
-} from '#worker/guides/resolve-catalog-guide.ts'
+import { resolveVisibleCatalogGuide } from '#worker/guides/resolve-catalog-guide.ts'
 import {
 	getJoinedIntegration,
 	toJoinedIntegrationConfig,
@@ -95,20 +93,10 @@ export async function resolveEntityDetail(input: {
 		const { guides } = await importGuideCatalog()
 		// Entity lookup: catalog id, slug, or a merged-doc alias.
 		const includeAdmin = callerHasRole(input.callerContext, 'admin')
-		const resolved = resolveCatalogGuide(guides, ref.id)
-		if (!resolved) {
-			throw new McpCallerError(
-				guideNotFoundMessage(
-					suggestCatalogGuideIds(guides, ref.id, { includeAdmin }),
-				),
-			)
-		}
-		const guide =
-			guides.find((candidate) => candidate.id === resolved.id) ?? null
-		if (!guide || (guide.adminOnly && !includeAdmin)) {
-			throw new McpCallerError('Guide not found.')
-		}
-		const section = ref.section ?? resolved.aliasSection
+		const { guide, aliasSection } = resolveVisibleCatalogGuide(guides, ref.id, {
+			includeAdmin,
+		})
+		const section = ref.section ?? aliasSection
 		return {
 			type: 'guide' as const,
 			id: guide.id,
@@ -164,6 +152,10 @@ export async function resolveEntityDetail(input: {
 			record,
 			manifest: loaded.manifest,
 			files: loaded.files,
+			exports: buildPackageSearchProjection(loaded.manifest, {
+				files: loaded.files,
+				parser: await loadModuleSourceParser(),
+			}).exports,
 			publishedCommit: loaded.source?.published_commit ?? null,
 			baseUrl: input.callerContext.baseUrl,
 			ownerUsername,

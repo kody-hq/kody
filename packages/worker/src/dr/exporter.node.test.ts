@@ -1,5 +1,7 @@
+import * as Sentry from '@sentry/cloudflare'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
+import { createHash } from 'node:crypto'
 import { expect, test, vi } from 'vitest'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
@@ -15,8 +17,10 @@ import {
 	stagingRunLogDumpKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
+	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
+	type StorageIndex,
 } from '@kody-internal/shared/backup-staging.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 import {
@@ -37,6 +41,10 @@ import {
 } from '#worker/dr/exporter-inventory.ts'
 import { encodeStorageIdentity } from '#worker/dr/storage-identity.ts'
 import {
+	__testOnlySealedObjectKey,
+	runDrRestoreTick,
+} from '#worker/dr/dr-restore.ts'
+import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
 	type DrBackupS3PutOptions,
@@ -44,6 +52,7 @@ import {
 
 const storageMocks = vi.hoisted(() => ({
 	exportStorage: vi.fn(),
+	importStorage: vi.fn(),
 }))
 
 const mailboxMocks = vi.hoisted(() => ({
@@ -63,6 +72,7 @@ const storageBucketMocks = vi.hoisted(() => ({
 vi.mock('#worker/storage-runner.ts', () => ({
 	storageRunnerRpc: () => ({
 		exportStorage: storageMocks.exportStorage,
+		importStorage: storageMocks.importStorage,
 	}),
 }))
 
@@ -83,6 +93,22 @@ vi.mock('#worker/storage-buckets/service.ts', () => ({
 	listUserStorageBucketIds: vi.fn(async () => []),
 	registerStorageBucket: vi.fn(),
 }))
+
+// Node has no `crypto.DigestStream` (a Workers runtime extension).
+class NodeDigestStream extends WritableStream<Uint8Array> {
+	readonly digest: Promise<ArrayBuffer>
+
+	constructor() {
+		const hash = createHash('sha256')
+		const done = Promise.withResolvers<ArrayBuffer>()
+		super({
+			write: (chunk) => void hash.update(chunk),
+			close: () => done.resolve(new Uint8Array(hash.digest()).buffer),
+		})
+		this.digest = done.promise
+	}
+}
+Object.assign(crypto as object, { DigestStream: NodeDigestStream })
 
 const day = '2026-07-23'
 const progressKey = `staging/${day}/exporter/progress.json`
@@ -231,6 +257,27 @@ function createR2(...pages: Array<Record<string, Uint8Array>>) {
 	}
 }
 
+/**
+ * Published source snapshots by KV key. Records every read with its type and
+ * the most snapshots that were buffered (`arrayBuffer`) at the same time.
+ */
+function createSnapshotKv(snapshots: Record<string, string>) {
+	const reads: Array<{ key: string; type: string }> = []
+	return {
+		reads,
+		async get(key: string, type?: string) {
+			reads.push({ key, type: type ?? 'text' })
+			const snapshot = snapshots[key]
+			if (snapshot === undefined) return null
+			if (type === 'stream') return new Blob([snapshot]).stream()
+			if (type === 'arrayBuffer') return encode(snapshot).buffer
+			// A text read plus re-encode held each snapshot twice and OOMed
+			// the shared isolate.
+			throw new Error(`artifact snapshot read as ${type ?? 'text'}`)
+		},
+	}
+}
+
 const s3Env = {
 	DR_EXPORT_ENABLED: 'true',
 	DR_BACKUP_ACCOUNT_ID: 'acct',
@@ -360,18 +407,9 @@ test('exporter progresses phases with mocked bindings and S3, writing summary la
 			],
 		}),
 		EMAIL_BLOBS: createR2({ 'raw/one': blobBytes }),
-		BUNDLE_ARTIFACTS_KV: {
-			// Snapshots must be read as raw bytes; a text read plus re-encode
-			// held each snapshot twice and OOMed the shared isolate.
-			get: async (key: string, type?: string) => {
-				if (type !== 'arrayBuffer') {
-					throw new Error(`artifact snapshot read as ${type ?? 'text'}`)
-				}
-				return key === 'source-snapshot:v1:src-1:commit-1'
-					? encode(kvSnapshot).buffer
-					: null
-			},
-		},
+		BUNDLE_ARTIFACTS_KV: createSnapshotKv({
+			'source-snapshot:v1:src-1:commit-1': kvSnapshot,
+		}),
 	})
 
 	const first = await runDrExportTick({
@@ -1125,6 +1163,7 @@ test('storage pages are byte-bounded and a single-page dump skips the chunk roun
 test('a storage identity whose serial attempts keep aborting is skipped', async () => {
 	const bad = encodeStorageIdentity('user-a', 'job:1')
 	consoleError.mockImplementation(() => {})
+	const captureMessage = vi.spyOn(Sentry, 'captureMessage')
 	storageMocks.exportStorage.mockReset()
 	storageMocks.exportStorage.mockImplementation(async () => {
 		throw new Error('page too large')
@@ -1169,36 +1208,96 @@ test('a storage identity whose serial attempts keep aborting is skipped', async 
 		'dr_export_storage_identity_skipped',
 		expect.stringContaining(bad),
 	)
+	expect(captureMessage).toHaveBeenCalledWith(
+		'DR export left out a storage identity whose dump kept aborting the exporter',
+		'error',
+	)
+	captureMessage.mockRestore()
 })
 
-test('exporter skips oversized storage dumps with a summary warning', async () => {
-	const hugeValue = 'x'.repeat(drExportMaxStorageDumpBufferBytes + 1)
+test('a storage dump over the buffer is exported in parts and restores whole', async () => {
+	const value = 'x'.repeat(7 * 1024 * 1024)
+	const pages: Record<string, { key: string; next: string | null }> = {
+		start: { key: 'k1', next: 'k1' },
+		k1: { key: 'k2', next: 'k2' },
+		k2: { key: 'k3', next: null },
+	}
+	storageMocks.exportStorage.mockReset()
 	storageMocks.exportStorage.mockImplementation(
-		async (input: { startAfter?: string | null }) => ({
-			entries: input.startAfter ? [] : [{ key: 'huge', value: hugeValue }],
-			truncated: false,
-			nextStartAfter: null,
-		}),
+		async (input: { startAfter?: string | null }) => {
+			const page = pages[input.startAfter ?? 'start']!
+			return {
+				entries: [{ key: page.key, value }],
+				truncated: page.next !== null,
+				nextStartAfter: page.next,
+			}
+		},
 	)
-	const { client, readText } = createMemoryS3()
-	const identity = encodeStorageIdentity('user-a', 'job:huge')
+	const { client, objects, readText } = createMemoryS3()
 	const env = createEnv({
 		APP_DB: createDb({
-			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:huge' }],
+			jobs: [{ userId: ownerIdFromStored('user-a'), storageId: 'job:big' }],
 		}),
 	})
 
-	const result = await runDrExportTick({
+	const exported = await runDrExportTick({
 		env,
 		now: at('01:00'),
 		timeBudgetMs: 60_000,
 		s3: client,
 	})
-	expect(result.summaryWritten).toBe(true)
-	expect(JSON.parse(await readText(stagingSummaryKey(day))).warnings).toContain(
-		`storage dump too large: ${identity}`,
+	expect(exported.summaryWritten).toBe(true)
+	const index = JSON.parse(
+		await readText(stagingStorageIndexKey(day)),
+	) as StorageIndex
+	expect(index.entries.map((entry) => [entry.part, entry.entryCount])).toEqual([
+		[0, 2],
+		[1, 1],
+	])
+	for (const entry of index.entries) {
+		expect(entry.objectKey).toBe(
+			stagingStorageDumpPartKey(day, entry.storageId, entry.sha256),
+		)
+	}
+	const dumpBytes = index.entries.map((entry) => entry.bytes)
+	expect(dumpBytes.reduce((sum, bytes) => sum + bytes, 0)).toBeGreaterThan(
+		drExportMaxStorageDumpBufferBytes,
 	)
-	expect(await client.getText(stagingStorageDumpKey(day, identity))).toBeNull()
+	for (const bytes of dumpBytes) {
+		expect(bytes).toBeLessThanOrEqual(drExportMaxStorageDumpBufferBytes)
+	}
+
+	for (const [key, entry] of Array.from(objects)) {
+		if (key.startsWith(`staging/${day}/`) && !key.includes('/exporter/')) {
+			objects.set(__testOnlySealedObjectKey(day, key), entry)
+		}
+	}
+	const imported: Array<{ replacePage: string; keys: Array<string> }> = []
+	storageMocks.importStorage.mockImplementation(
+		async (input: { replacePage: string; entries: Array<{ key: string }> }) => {
+			imported.push({
+				replacePage: input.replacePage,
+				keys: input.entries.map((entry) => entry.key),
+			})
+			return { ok: true }
+		},
+	)
+	let cursor: string | undefined
+	for (let tick = 0; tick < 10; tick += 1) {
+		const restored = await runDrRestoreTick({
+			env,
+			day,
+			cursor,
+			timeBudgetMs: 60_000,
+			s3: client,
+		})
+		if (restored.done) break
+		cursor = restored.nextCursor ?? undefined
+	}
+	expect(imported).toEqual([
+		{ replacePage: 'first', keys: ['k1', 'k2'] },
+		{ replacePage: 'continue', keys: ['k3'] },
+	])
 })
 
 test('exporter aborts quietly when progress If-Match precondition fails', async () => {
@@ -1395,6 +1494,177 @@ test('R2 export reuses unchanged objects from the latest sealed index', async ()
 			sha256: await sha256Hex(changedBytes),
 		}),
 	])
+})
+
+test('artifact snapshots are settled in waves and only a new blob is buffered', async () => {
+	const count = 20
+	const pad = (index: number) => String(index).padStart(2, '0')
+	const snapshotFor = (index: number) =>
+		JSON.stringify({ version: 1, files: { 'a.ts': `export default ${index}` } })
+	const kvKeyFor = (index: number) =>
+		`source-snapshot:v1:src-${pad(index)}:commit-${pad(index)}`
+	const newIndex = 5
+	const missingIndex = 11
+	const { client, readText } = createMemoryS3()
+	const snapshots: Record<string, string> = {}
+	for (let index = 0; index < count; index += 1) {
+		if (index === missingIndex) continue
+		snapshots[kvKeyFor(index)] = snapshotFor(index)
+		// Every blob but one is already stored from an earlier night.
+		if (index === newIndex) continue
+		const bytes = encode(snapshotFor(index))
+		await client.put(backupBlobKey(await sha256Hex(bytes)), bytes)
+	}
+	const kv = createSnapshotKv(snapshots)
+	let headsInFlight = 0
+	let mostHeadsInFlight = 0
+	const originalHead = client.head.bind(client)
+	client.head = async (key) => {
+		headsInFlight += 1
+		mostHeadsInFlight = Math.max(mostHeadsInFlight, headsInFlight)
+		await new Promise((resolve) => setTimeout(resolve, 1))
+		try {
+			return await originalHead(key)
+		} finally {
+			headsInFlight -= 1
+		}
+	}
+	let artifactProgressPuts = 0
+	const originalPut = client.put.bind(client)
+	client.put = async (key, body, options) => {
+		if (
+			key === progressKey &&
+			typeof body === 'string' &&
+			(JSON.parse(body) as { phase: string }).phase === 'artifacts'
+		) {
+			artifactProgressPuts += 1
+		}
+		return originalPut(key, body, options)
+	}
+	const env = createEnv({
+		APP_DB: createDb({
+			artifacts: Array.from({ length: count }, (_, index) => ({
+				sourceId: `src-${pad(index)}`,
+				userId: ownerIdFromStored('user-a'),
+				entityKind: 'package',
+				entityId: `pkg-${pad(index)}`,
+				publishedCommit: `commit-${pad(index)}`,
+			})),
+		}),
+		BUNDLE_ARTIFACTS_KV: kv,
+	})
+
+	const result = await runDrExportTick({
+		env,
+		now: at('01:00'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+
+	expect(result).toMatchObject({
+		summaryWritten: true,
+		artifactsProcessed: count,
+		blobsWritten: 1,
+		blobsReused: count - 2,
+		warnings: 1,
+	})
+	// Serial export persisted progress once per snapshot (20 here). Waves of
+	// 8 persist three times, plus the transition into the phase.
+	expect(artifactProgressPuts).toBeLessThanOrEqual(4)
+	expect(mostHeadsInFlight).toBeGreaterThan(1)
+	// Stored snapshots are hashed as a stream; only the new one is buffered.
+	expect(kv.reads.filter((read) => read.type === 'arrayBuffer')).toEqual([
+		{ key: kvKeyFor(newIndex), type: 'arrayBuffer' },
+	])
+	const newBlob = await client.getBytes(
+		backupBlobKey(await sha256Hex(encode(snapshotFor(newIndex)))),
+	)
+	expect(newBlob && new TextDecoder().decode(newBlob)).toBe(
+		snapshotFor(newIndex),
+	)
+	const index = JSON.parse(await readText(stagingArtifactsIndexKey(day))) as {
+		entries: Array<{ sourceId: string; snapshotSha256: string }>
+	}
+	const expectedEntries = []
+	for (let position = 0; position < count; position += 1) {
+		if (position === missingIndex) continue
+		expectedEntries.push({
+			sourceId: `src-${pad(position)}`,
+			snapshotSha256: await sha256Hex(encode(snapshotFor(position))),
+		})
+	}
+	expect(
+		index.entries.map(({ sourceId, snapshotSha256 }) => ({
+			sourceId,
+			snapshotSha256,
+		})),
+	).toEqual(expectedEntries)
+	const summary = JSON.parse(await readText(stagingSummaryKey(day))) as {
+		warnings: Array<string>
+	}
+	expect(summary.warnings).toEqual([
+		`Missing source snapshot KV key ${kvKeyFor(missingIndex)} for source src-${pad(missingIndex)}`,
+	])
+})
+
+test('artifact export resumes at the next wave after the tick budget runs out', async () => {
+	const count = 20
+	const pad = (index: number) => String(index).padStart(2, '0')
+	const snapshots: Record<string, string> = {}
+	for (let index = 0; index < count; index += 1) {
+		snapshots[`source-snapshot:v1:src-${pad(index)}:commit-1`] =
+			`snapshot-${index}`
+	}
+	const { client, readText } = createMemoryS3()
+	const kv = createSnapshotKv(snapshots)
+	const env = createEnv({
+		APP_DB: createDb({
+			artifacts: Array.from({ length: count }, (_, index) => ({
+				sourceId: `src-${pad(index)}`,
+				userId: ownerIdFromStored('user-a'),
+				entityKind: 'package',
+				entityId: `pkg-${pad(index)}`,
+				publishedCommit: 'commit-1',
+			})),
+		}),
+		BUNDLE_ARTIFACTS_KV: kv,
+	})
+	{
+		// The first wave's progress write spends the whole tick budget.
+		using _clock = useBudgetClock(
+			client,
+			(key, body) =>
+				key === progressKey &&
+				typeof body === 'string' &&
+				(JSON.parse(body) as { artifactsIndex: number }).artifactsIndex === 8,
+		)
+		const first = await runDrExportTick({
+			env,
+			now: at('01:00'),
+			timeBudgetMs: 45_000,
+			s3: client,
+		})
+		expect(first).toMatchObject({
+			phase: 'artifacts',
+			timeBudgetExhausted: true,
+			artifactsProcessed: 8,
+			summaryWritten: false,
+		})
+	}
+	const second = await runDrExportTick({
+		env,
+		now: at('01:05'),
+		timeBudgetMs: 60_000,
+		s3: client,
+	})
+	expect(second).toMatchObject({ summaryWritten: true, artifactsProcessed: 12 })
+	const index = JSON.parse(await readText(stagingArtifactsIndexKey(day))) as {
+		entries: Array<{ sourceId: string }>
+	}
+	expect(index.entries.map((entry) => entry.sourceId)).toEqual(
+		Array.from({ length: count }, (_, position) => `src-${pad(position)}`),
+	)
+	expect(kv.reads.filter((read) => read.type === 'stream')).toHaveLength(count)
 })
 
 test('DR inventory includes registry storage and excludes deleting owners', async () => {

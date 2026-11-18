@@ -1,4 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import {
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import type {
 	OrgGrantRevokeResult,
 	OrgSubjectAccessGrant,
@@ -14,10 +20,6 @@ import {
 	orgTeamGrantAccessPath,
 } from '#universal/org-pages.ts'
 import type { OrgSubjectAccessItem } from '#universal/org-people-mutations.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -37,10 +39,6 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import {
 	grantOrganizationSubjectAccess,
@@ -61,6 +59,8 @@ import {
 	type RecordTableColumn,
 	type RecordTableRow,
 } from './record-table.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type Preset = OrgSubjectAccessItem['preset']
 type Message = { tone: 'info' | 'error'; text: string }
@@ -461,10 +461,10 @@ function AccessGrantTable(props: {
 								},
 								canSelect: (row) => row.values?.canRevoke === true,
 								actions: (_selected, selectedIds) => (
-									<button
+									<Button
 										type="button"
 										data-testid="access-bulk-remove"
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										disabled={bulk.isPending}
 										onBlur={() => setArmed(false)}
 										onKeyDown={(event) => {
@@ -500,7 +500,7 @@ function AccessGrantTable(props: {
 										{armed
 											? `Confirm remove ${selectedIds.length}`
 											: 'Remove selected'}
-									</button>
+									</Button>
 								),
 							}
 						: undefined,
@@ -597,7 +597,7 @@ function GrantAccessCell({
 		isEditableType(resourceType)
 	) {
 		return (
-			<select
+			<Select
 				aria-label={`Access to ${grant.resourceLabel}`}
 				data-testid="access-grant-preset"
 				value={
@@ -606,7 +606,6 @@ function GrantAccessCell({
 						: (grant.preset ?? '')
 				}
 				disabled={change.isPending}
-				data-field-ring
 				css={selectCss}
 				onChange={(event) => {
 					const preset = event.currentTarget.value as Preset
@@ -640,7 +639,7 @@ function GrantAccessCell({
 						{choice.label.split(':')[0]}
 					</option>
 				))}
-			</select>
+			</Select>
 		)
 	}
 	const groups =
@@ -681,11 +680,11 @@ function RemoveGrantButton({
 	const [armed, setArmed] = useState(false)
 	const revoke = useOrgPeopleMutation(queryKey, revokeOrganizationGrant)
 	return (
-		<button
+		<Button
 			type="button"
 			data-testid="access-grant-remove"
 			aria-label={`${armed ? 'Confirm remove' : 'Remove'} ${grant.resourceLabel}`}
-			css={getDangerPillCss({ size: 'sm' })}
+			variant="danger"
 			disabled={revoke.isPending}
 			onBlur={() => setArmed(false)}
 			onKeyDown={(event) => {
@@ -719,7 +718,7 @@ function RemoveGrantButton({
 		>
 			{renderIcon('close', { size: '1.05rem' })}
 			{armed ? 'Confirm' : 'Remove'}
-		</button>
+		</Button>
 	)
 }
 
@@ -836,35 +835,31 @@ function AddAccessForm({
 						)
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Organization</span>
-						<select
-							disabled
-							value={data.org.slug}
-							data-field-ring
-							css={selectCss}
-						>
+					<Field
+						label="Organization"
+						description={
+							<>
+								Access is granted inside @{data.org.slug}. Credentials are not
+								moved or copied to another organization.
+							</>
+						}
+					>
+						<Select disabled value={data.org.slug} css={selectCss}>
 							<option value={data.org.slug}>@{data.org.slug}</option>
-						</select>
-						<span css={accountFieldNoteCss}>
-							Access is granted inside @{data.org.slug}. Credentials are not
-							moved or copied to another organization.
-						</span>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Filter</span>
-						<input
+						</Select>
+					</Field>
+					<Field label="Filter">
+						<Input
 							type="search"
 							value={filter}
 							placeholder="Search packages and credentials"
 							data-testid="access-add-filter"
-							css={accountInputCss}
 							onChange={(event) => setFilter(event.currentTarget.value)}
 						/>
-					</label>
+					</Field>
 					{options.packages.length > 0 ? (
 						<fieldset css={fieldsetCss} disabled={mutation.isPending}>
-							<legend css={accountFieldLabelCss}>Packages</legend>
+							<legend css={fieldLabelCss}>Packages</legend>
 							<div css={checkListCss}>
 								{options.packages.filter(matches).map((option) => {
 									const checked = packageIds.includes(option.resourceId)
@@ -875,8 +870,7 @@ function AddAccessForm({
 												data-testid="access-add-package"
 												data-resource-id={option.resourceId}
 											>
-												<input
-													type="checkbox"
+												<Checkbox
 													checked={checked}
 													css={checkboxCss}
 													onChange={() =>
@@ -887,7 +881,7 @@ function AddAccessForm({
 													<span css={checkLabelCss}>{option.label}</span>
 													{option.detail &&
 													!option.label.includes(option.detail) ? (
-														<span css={accountFieldNoteCss}>
+														<span css={fieldDescriptionCss}>
 															{option.detail}
 														</span>
 													) : null}
@@ -898,8 +892,7 @@ function AddAccessForm({
 													css={[checkRowCss, nestedCheckCss]}
 													data-testid="access-add-app"
 												>
-													<input
-														type="checkbox"
+													<Checkbox
 														checked={appIds.includes(option.resourceId)}
 														css={checkboxCss}
 														onChange={() =>
@@ -915,12 +908,18 @@ function AddAccessForm({
 									)
 								})}
 							</div>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Package access</span>
-								<select
+							<Field
+								label="Package access"
+								description={
+									<>
+										Packages run with {label}'s own credential access. Add the
+										credentials those packages read too.
+									</>
+								}
+							>
+								<Select
 									value={packagePreset}
 									data-testid="access-add-package-preset"
-									data-field-ring
 									css={selectCss}
 									onChange={(event) =>
 										setPackagePreset(event.currentTarget.value as Preset)
@@ -931,17 +930,13 @@ function AddAccessForm({
 											{choice.label}
 										</option>
 									))}
-								</select>
-								<span css={accountFieldNoteCss}>
-									Packages run with {label}'s own credential access. Add the
-									credentials those packages read too.
-								</span>
-							</label>
+								</Select>
+							</Field>
 						</fieldset>
 					) : null}
 					{options.credentials.length > 0 ? (
 						<fieldset css={fieldsetCss} disabled={mutation.isPending}>
-							<legend css={accountFieldLabelCss}>Credentials</legend>
+							<legend css={fieldLabelCss}>Credentials</legend>
 							<div css={checkListCss}>
 								{options.credentials.filter(matches).map((option) => (
 									<label
@@ -950,8 +945,7 @@ function AddAccessForm({
 										data-testid="access-add-credential"
 										data-resource-id={option.resourceId}
 									>
-										<input
-											type="checkbox"
+										<Checkbox
 											checked={credentialIds.includes(option.resourceId)}
 											css={checkboxCss}
 											onChange={() =>
@@ -962,18 +956,16 @@ function AddAccessForm({
 											<span css={checkLabelCss}>{option.label}</span>
 											{option.detail &&
 											!option.label.includes(option.detail) ? (
-												<span css={accountFieldNoteCss}>{option.detail}</span>
+												<span css={fieldDescriptionCss}>{option.detail}</span>
 											) : null}
 										</span>
 									</label>
 								))}
 							</div>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Credential access</span>
-								<select
+							<Field label="Credential access">
+								<Select
 									value={credentialPreset}
 									data-testid="access-add-credential-preset"
-									data-field-ring
 									css={selectCss}
 									onChange={(event) =>
 										setCredentialPreset(event.currentTarget.value as Preset)
@@ -984,8 +976,8 @@ function AddAccessForm({
 											{choice.label}
 										</option>
 									))}
-								</select>
-							</label>
+								</Select>
+							</Field>
 						</fieldset>
 					) : null}
 					{message ? (
@@ -994,11 +986,11 @@ function AddAccessForm({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="access-add-save"
 							disabled={items.length === 0 || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('plus', { size: '1.05rem' })}
 							{mutation.isPending
@@ -1006,7 +998,7 @@ function AddAccessForm({
 								: items.length > 0
 									? `Give access to ${items.length}`
 									: 'Give access'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}
@@ -1120,7 +1112,6 @@ const formCss = {
 }
 
 const selectCss = {
-	...accountInputCss,
 	padding: '0.55rem 0.7rem',
 }
 

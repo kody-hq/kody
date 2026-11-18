@@ -28,10 +28,15 @@ test('an undeclared literal call in a library package warns without failing', as
 		'src/index.ts':
 			"import { kody } from 'kody:runtime'\nexport default async () => { await kody.secretList({}); await kody.visitorNeed({}) }\n",
 	}
-	expect(findCapabilityDeclarationGaps({ manifest, sourceFiles })).toEqual([
+	expect(
+		await findCapabilityDeclarationGaps({ manifest, sourceFiles }),
+	).toEqual([
 		{ kind: 'undeclared', path: 'src/index.ts', names: ['secretList'] },
 	])
-	const check = await buildCapabilityDeclarationCheck({ manifest, sourceFiles })
+	const check = await buildCapabilityDeclarationCheck({
+		manifest,
+		sourceFiles,
+	})
 	expect(check).toMatchObject({ kind: 'capabilities', ok: true })
 	expect(check?.message).toContain('`src/index.ts` calls `secretList`')
 	expect(check?.message).toContain('`kody.capabilities`')
@@ -86,13 +91,13 @@ test('computed names warn only while nothing is declared', async () => {
 			"import { kody } from 'kody:runtime'\nexport default async (name) => { await kody[name]({}); return kody.mcp }\n",
 	}
 	expect(
-		findCapabilityDeclarationGaps({
+		await findCapabilityDeclarationGaps({
 			manifest: kodyManifest(),
 			sourceFiles,
 		}),
 	).toEqual([{ kind: 'unverifiable', path: 'src/index.ts', calls: 2 }])
 	expect(
-		findCapabilityDeclarationGaps({
+		await findCapabilityDeclarationGaps({
 			manifest: kodyManifest({ capabilities: ['secretList'] }),
 			sourceFiles,
 		}),
@@ -275,4 +280,35 @@ test('a failing import keeps the gaps already found in other imports', async () 
 	expect(check?.message).toContain('secretList')
 	expect(check?.message).toContain('could not be resolved statically')
 	expect(check?.message).not.toContain('boom')
+})
+
+test('a bundled module that reuses the renamed kody import for locals reports only real bridge calls', async () => {
+	const bundled = [
+		'import{kody as a}from"kody:runtime";',
+		'function rows(e){let a=[];a.push(e);return a.map(e=>e.id)}',
+		'function pick(a){return a.filter(Boolean).at(0)}',
+		'var last=a=>a.find(e=>e.done);',
+		'function hoisted(e){if(e){var a=[e]}return a.map(String)}',
+		'function loop(e){for(let a of e)a.push(1);try{}catch(a){a.at(0)}}',
+		'class Box{static{let a=[];a.push(1)}run(a){return a.map(String)}}',
+		'export async function load(e){return[rows(e),await a.secretList({}),await a.metaGetCurrentUser({})]}',
+		'export function later(e){{let a=e;a.push(1)}return a.valueGet({})}',
+		'export function early(e=a.emailSend({})){var a=[e];return a.map(String)}',
+		'export class Keyed{[a.secretSet({})](a){return a.map(String)}}',
+	].join('')
+	expect(
+		await findCapabilityDeclarationGaps({
+			manifest: kodyManifest(),
+			sourceFiles: {
+				'package.json': manifestFiles({}),
+				'src/index.ts': bundled,
+			},
+		}),
+	).toEqual([
+		{
+			kind: 'undeclared',
+			path: 'src/index.ts',
+			names: ['emailSend', 'secretList', 'secretSet', 'valueGet'],
+		},
+	])
 })

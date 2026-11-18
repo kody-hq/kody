@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Table } from '../components/table.tsx'
+import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import { formatTimestamp } from '#client/format-timestamp.ts'
 import {
@@ -23,9 +25,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -41,8 +40,6 @@ import {
 	statusColor,
 	statusLabel,
 } from './account-jobs-shared.ts'
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 function packageValue(
 	username: string,
 	job: Pick<AccountJobDetail, 'packageName' | 'packageKodyId'>,
@@ -54,9 +51,7 @@ function packageValue(
 	})
 	if (scope && job.packageName) {
 		return (
-			<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
-				{job.packageName}
-			</SiteLink>
+			<TextLink href={packageHrefFromScope(scope)}>{job.packageName}</TextLink>
 		)
 	}
 	return job.packageName ?? 'Package'
@@ -225,13 +220,7 @@ export function renderAccountJobDetail(input: {
 							borderRadius: radius.md,
 						}}
 					>
-						<table
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table>
 							<thead>
 								<tr>
 									{[
@@ -324,20 +313,19 @@ export function renderAccountJobDetail(input: {
 												borderBottom: `1px solid ${colors.border}`,
 											}}
 										>
-											<SiteLink
+											<TextLink
 												href={relocateAccountHref(
 													`/account/activity/${encodeURIComponent(run.id)}`,
 													input.currentHref,
 												)}
-												css={primaryLinkCss}
 											>
 												Logs
-											</SiteLink>
+											</TextLink>
 										</td>
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					</div>
 				)}
 			</div>
@@ -377,7 +365,7 @@ export function renderAccountJobDetail(input: {
 					flexWrap: 'wrap',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={() =>
@@ -388,11 +376,11 @@ export function renderAccountJobDetail(input: {
 							failureMessage: 'Unable to run job now.',
 						})
 					}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					Run now
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={() =>
@@ -406,12 +394,12 @@ export function renderAccountJobDetail(input: {
 							failureMessage: 'Unable to update kill switch.',
 						})
 					}
-					css={secondaryButtonCss}
+					variant="secondary"
 				>
 					{detail.killSwitchEnabled
 						? 'Clear kill switch'
 						: 'Enable kill switch'}
-				</button>
+				</Button>
 			</div>
 		</section>
 	)

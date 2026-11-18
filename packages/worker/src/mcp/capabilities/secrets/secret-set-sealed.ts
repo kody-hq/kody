@@ -61,7 +61,7 @@ export async function saveSealedTokenSecret(
 		loginExchange?: z.infer<typeof loginExchangeSchema>
 		description?: string
 		expiresAt?: string | null
-		userEmail: string
+		userEmail: string | null
 		storageContext: StorageContext | null
 	},
 ) {
@@ -196,7 +196,7 @@ async function saveSealedRefreshTokenLogin(
 		loginExchange: z.infer<typeof loginExchangeSchema>
 		description?: string
 		expiresAt?: string | null
-		userEmail: string
+		userEmail: string | null
 		storageContext: StorageContext | null
 	},
 ) {

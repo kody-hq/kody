@@ -1,9 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { MetadataGrid } from './account-management-components.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
-import { CredentialLocalReadsSection } from './account-credential-local-reads.tsx'
+import {
+	CredentialLocalReadsSection,
+	CredentialLocalReadsUnavailable,
+} from './account-credential-local-reads.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import { fillPlacementAnchor } from '#universal/credential-placement-approval.ts'
 import type {
@@ -16,7 +19,6 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
@@ -28,6 +30,8 @@ export function renderVaultCredentialDetail(input: {
 	packageName: string
 	orgSlug: string
 	localReads?: CredentialLocalReadsView | null
+	/** The binding id whose local reads failed to load, if any. */
+	localReadsUnavailableFor?: string | null
 }) {
 	const { binding } = input
 	const name = binding.provider ?? binding.providerId
@@ -76,15 +80,17 @@ export function renderVaultCredentialDetail(input: {
 					orgSlug={input.orgSlug}
 					vault
 				/>
+			) : input.localReadsUnavailableFor === binding.id ? (
+				<CredentialLocalReadsUnavailable />
 			) : null}
 
 			<div>
-				<SiteLink
+				<Button
 					href={orgResourcePath(input.orgSlug, 'secret-providers')}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 				>
 					Manage secret providers
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

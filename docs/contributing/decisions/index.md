@@ -52,6 +52,8 @@ Add new steering records to the steering list, not a catch-all numbered dump.
 
 ## Steering list
 
+- [0102: Newsletter consent and a dedicated sender](./0102-whats-new-email.md)
+
 - [0101: Model operations, not arbitrary status-pair graphs](./0101-xstate-lifecycles.md)
   XState lifecycles and actors; status enums for unconstrained replacement
 
@@ -218,8 +220,9 @@ Open these before proposing a new primitive, surface, or storage home.
   `any_authenticated`
 - [0075 — Repo pushes serialize through a per-repo Durable Object in a dedicated worker](./0075-repo-push-queue-worker.md)
   — `kody-push-queue` owns `RepoPushQueueV1`; pack lands before enqueue; FIFO
-  one push at a time; 90s budget then 503 `Retry-After: 2`; no fallback; gated
-  by the repo-scoped `repo-push-queue` flag
+  one push at a time; 90s budget then 503 `Retry-After: 2`; known-stale old-oids
+  get `ng fetch first` when the client asked for report-status; no fallback;
+  gated by the repo-scoped `repo-push-queue` flag
 - [0076 — CLI login mints a device API token](./0076-cli-login-device-token.md)
   — `POST /v1/tokens/device` exchanges official CLI OAuth for a user-owned
   `kody_at_…`; `POST /v1/execute` is that token with `org:execute`; MCP and

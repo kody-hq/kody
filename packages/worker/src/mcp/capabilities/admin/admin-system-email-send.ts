@@ -4,7 +4,7 @@ import {
 	maxSystemOutboundRecipients,
 	sendSystemEmail,
 } from '#worker/email/system-outbound.ts'
-import { systemEmailLocals } from '#worker/email/system-email.ts'
+import { transactionalSystemEmailLocals } from '#worker/email/system-email.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import {
@@ -26,7 +26,7 @@ const inputSchema = z
 		text: z.string().min(1).optional(),
 		html: z.string().min(1).optional(),
 		from_local: z
-			.enum(systemEmailLocals)
+			.enum(transactionalSystemEmailLocals)
 			.optional()
 			.describe(
 				'Reserved system sender local part. Defaults to kody, the transactional sender.',
@@ -42,7 +42,7 @@ const inputSchema = z
 			.record(z.string(), z.string())
 			.optional()
 			.describe(
-				'Optional extra MIME headers. Use for campaign previews that need List-Unsubscribe.',
+				'Optional extra MIME headers, for example List-Unsubscribe on campaign previews. Headers with their own field (Reply-To, From, To, Cc, Bcc, Subject) or that Cloudflare generates (Message-ID, Date) are rejected.',
 			),
 	})
 	.refine((value) => value.text || value.html, {

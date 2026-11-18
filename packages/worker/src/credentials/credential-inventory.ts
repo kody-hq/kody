@@ -265,7 +265,7 @@ export async function attributePackageCredentials(input: {
 	files: Record<string, string>
 	slots: Parameters<typeof scanPackageCredentials>[0]['slots']
 }): Promise<InventoryItemResult> {
-	const scan = scanPackageCredentials({
+	const scan = await scanPackageCredentials({
 		files: input.files,
 		slots: input.slots,
 	})

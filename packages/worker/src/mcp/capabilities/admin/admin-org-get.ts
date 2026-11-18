@@ -35,7 +35,11 @@ export const adminOrgDetailSchema = z.object({
 		stripeCreditsEligible: z.boolean(),
 		creditsEligible: z.boolean(),
 	}),
-	seats: z.object({ live: z.number().int(), billingOnly: z.number().int() }),
+	seats: z.object({
+		live: z.number().int(),
+		billingOnly: z.number().int(),
+		comped: z.number().int().nullable(),
+	}),
 	members: z.array(
 		z.object({
 			stableUserId: z.string(),

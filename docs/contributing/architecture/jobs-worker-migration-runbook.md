@@ -13,13 +13,14 @@ Object transfer or a bounded D1 copy against live production.
 
 ## Ownership
 
-| Concern                                                          | Owner                                                              |
-| ---------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `JobManager` Durable Object (per-user scheduling state + alarms) | `kody-jobs`                                                        |
-| `jobs` table                                                     | `JOBS_DB` on `kody-jobs`                                           |
-| Five-minute cron and `kody-scheduled-dispatch` queues            | `kody-jobs`                                                        |
-| Job execution / scheduled lanes (`JobsHost`)                     | `kody` (origin); `kody-jobs` calls back through the `HOST` binding |
-| Job reads and writes from origin / MCP / dashboards              | `JOBS` service binding (`JobsService`) on origin                   |
+| Concern                                                          | Owner                                                               |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `JobManager` Durable Object (per-user scheduling state + alarms) | `kody-jobs`                                                         |
+| `jobs` table                                                     | `JOBS_DB` on `kody-jobs`                                            |
+| Five-minute cron and `kody-scheduled-dispatch` queues            | `kody-jobs`                                                         |
+| Job schedule watchdog (`job_schedule_watchdog`, every 15 min)    | `kody-jobs` (`runJobScheduleWatchdogTick`; not forwarded to origin) |
+| Job execution / scheduled lanes (`JobsHost`)                     | `kody` (origin); `kody-jobs` calls back through the `HOST` binding  |
+| Job reads and writes from origin / MCP / dashboards              | `JOBS` service binding (`JobsService`) on origin                    |
 
 `APP_DB` has no `jobs` table. The schema change is
 `packages/worker/migrations/0010-drop-jobs-tables.sql`. Live authority is

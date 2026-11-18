@@ -1,4 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -7,14 +11,8 @@ import type { DevicePageData, DevicePageError } from '#start/server/device'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
 	fieldLabelCss,
-	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
-	inputCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -25,8 +23,9 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const deviceAntiPhishingMessage =
 	'Only continue if you started this sign-in yourself on a device you control.'
@@ -64,9 +63,9 @@ export function DeviceRoute(props: { data: DevicePageData }) {
 				<p css={pageDescriptionCss}>{deviceLead(data)}</p>
 			</header>
 			{renderDeviceBody(data)}
-			<SiteLink href="/" css={mutedLinkCss}>
+			<TextLink tone="muted" href="/">
 				Back home
-			</SiteLink>
+			</TextLink>
 		</section>
 	)
 }
@@ -139,15 +138,22 @@ function SignedOutCard(props: {
 			) : null}
 			<p css={descriptionCss}>{deviceAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<a href={buildAuthLink('/login', data.redirectTo)} css={primaryLinkCss}>
+				<Button
+					href={buildAuthLink('/login', data.redirectTo)}
+					variant="primary"
+					size="md"
+					reloadDocument
+				>
 					Sign in to continue
-				</a>
-				<a
+				</Button>
+				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
-					css={secondaryLinkCss}
+					variant="secondary"
+					size="md"
+					reloadDocument
 				>
 					Create an account
-				</a>
+				</Button>
 			</div>
 		</section>
 	)
@@ -161,9 +167,9 @@ function CodeEntryCard(props: {
 	return (
 		<>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="get"
@@ -171,9 +177,8 @@ function CodeEntryCard(props: {
 				css={cardCss}
 				data-testid="device-code-form"
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Device code</span>
-					<input
+				<Field label="Device code">
+					<Input
 						type="text"
 						name="user_code"
 						required
@@ -186,10 +191,10 @@ function CodeEntryCard(props: {
 						placeholder="BCDF-GHJK"
 						css={codeInputCss}
 					/>
-				</label>
-				<button type="submit" css={primaryButtonCss}>
+				</Field>
+				<Button type="submit" variant="primary" size="md">
 					Continue
-				</button>
+				</Button>
 			</form>
 		</>
 	)
@@ -243,26 +248,22 @@ function ConsentCard(props: {
 					</details>
 				) : null}
 			</section>
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="device-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="device-anti-phishing">
 				{deviceAntiPhishingMessage}
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{orgUnavailableMessage ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{orgUnavailableMessage}
-				</p>
+				</Alert>
 			) : null}
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"
@@ -286,24 +287,26 @@ function ConsentCard(props: {
 					/>
 				)}
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						css={primaryButtonCss}
+						variant="primary"
+						size="md"
 					>
 						Approve
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary"
+						size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -359,32 +362,28 @@ function AccountConsentCard(props: {
 				</p>
 			</section>
 			{request.differentCountry ? (
-				<p
+				<Alert
 					role="alert"
-					css={getAlertCardCss('error')}
+					tone="error"
 					data-testid="account-device-different-country"
 				>
 					That browser looks like it is in a different country from you. If you
 					are not holding it right now, deny.
-				</p>
+				</Alert>
 			) : null}
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="device-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="device-anti-phishing">
 				Only approve a browser you are holding right now. Kody never asks you to
 				approve a code someone sent you, read to you, or showed you on a
 				website.
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"
@@ -394,8 +393,7 @@ function AccountConsentCard(props: {
 			>
 				<input type="hidden" name="user_code" value={request.userCode} />
 				<label css={confirmCss}>
-					<input
-						type="checkbox"
+					<Checkbox
 						name="confirm"
 						value="full_account"
 						required
@@ -406,23 +404,25 @@ function AccountConsentCard(props: {
 					</span>
 				</label>
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
-						css={primaryButtonCss}
+						variant="primary"
+						size="md"
 					>
 						Sign that browser in
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary"
+						size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -433,24 +433,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '28rem',
 	margin: '0 auto',
-}
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const primaryLinkCss = {
-	...primaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	...secondaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',
@@ -463,7 +445,6 @@ const inlineCodeCss = {
 	color: colors.text,
 }
 const codeInputCss = {
-	...inputCss,
 	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.lg,
 	letterSpacing: '0.12em',

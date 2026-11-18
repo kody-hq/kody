@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useState } from 'react'
+import { Button } from '../components/button.tsx'
 import {
 	useAppHotkeyList,
 	useCustomHotkeys,
@@ -8,7 +9,6 @@ import {
 	useHotkeyRegistrations,
 	type AppHotkeyId,
 } from '@tanstack/react-hotkeys'
-import { smallButtonCss } from './styles.ts'
 import { colors } from '#universal/styles/tokens.ts'
 
 export function ShortcutSettings({ onBack }: { onBack: () => void }) {
@@ -62,15 +62,17 @@ export function ShortcutSettings({ onBack }: { onBack: () => void }) {
 				}}
 			>
 				<h2 css={{ fontSize: 18, margin: 0 }}>Keyboard shortcuts</h2>
-				<button
-					css={smallButtonCss}
+				<Button
+					variant="secondary"
+					size="xs"
+
 					onClick={() => {
 						recorder.cancelRecording()
 						onBack()
 					}}
 				>
 					Back to search
-				</button>
+				</Button>
 			</div>
 			<p css={{ fontSize: 12, color: colors.textMuted }}>
 				Record a shortcut or a two-key sequence. Enter saves, Escape cancels,
@@ -91,8 +93,10 @@ export function ShortcutSettings({ onBack }: { onBack: () => void }) {
 						}}
 					>
 						<span css={{ flex: 1 }}>{appHotkey.meta?.name}</span>
-						<button
-							css={smallButtonCss}
+						<Button
+							variant="secondary"
+							size="xs"
+
 							aria-label={`Change ${appHotkey.meta?.name} shortcut`}
 							onClick={() => {
 								setRecordingId(appHotkey.id)
@@ -107,10 +111,12 @@ export function ShortcutSettings({ onBack }: { onBack: () => void }) {
 								: appHotkey.hotkey
 									? formatForDisplay(appHotkey.hotkey)
 									: 'Set shortcut'}
-						</button>
+						</Button>
 						{isCustom ? (
-							<button
-								css={smallButtonCss}
+							<Button
+								variant="secondary"
+								size="xs"
+
 								aria-label={`Reset ${appHotkey.meta?.name} shortcut`}
 								onClick={() => {
 									const conflict = appHotkey.defaultHotkey
@@ -127,7 +133,7 @@ export function ShortcutSettings({ onBack }: { onBack: () => void }) {
 								}}
 							>
 								Reset
-							</button>
+							</Button>
 						) : null}
 					</div>
 				))}

@@ -8,20 +8,28 @@ import { colors, radius } from '#universal/styles/tokens.ts'
 /**
  * Docs figure for a `[!WATCH]` block: click-to-play lite player (poster
  * first, privacy-enhanced iframe after the click) plus a caption link to
- * the watch page. The iframe title is the real video title.
+ * the watch page. The iframe title is the real video title. `vertical`
+ * renders a centered 9:16 stage for phone-shot video; the 16:9 poster is
+ * cover-cropped to its center, where YouTube places a vertical frame.
  */
 export function DocYoutubeEmbed({
 	videoId,
 	title,
 	label,
+	vertical = false,
 }: {
 	videoId: string
 	title: string
 	label: string
+	vertical?: boolean
 }) {
 	return (
-		<figure data-doc-youtube="" css={figureCss}>
-			<div css={stageCss}>
+		<figure
+			data-doc-youtube=""
+			data-doc-youtube-vertical={vertical ? '' : undefined}
+			css={[figureCss, vertical ? verticalFigureCss : null]}
+		>
+			<div css={[stageCss, vertical ? verticalStageCss : null]}>
 				<YouTubeLightPlayer
 					videoId={videoId}
 					title={title}
@@ -53,6 +61,16 @@ const stageCss = {
 	borderRadius: radius.md,
 	overflow: 'hidden' as const,
 	border: `1px solid ${colors.border}`,
+} satisfies CSSObject
+
+const verticalFigureCss = {
+	maxWidth: '22rem',
+	marginInline: 'auto',
+	textAlign: 'center' as const,
+} satisfies CSSObject
+
+const verticalStageCss = {
+	aspectRatio: '9 / 16',
 } satisfies CSSObject
 
 const captionCss = {

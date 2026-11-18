@@ -42,6 +42,7 @@ import {
 	isBucketLockPolicyPutError,
 	readManifest,
 } from './immutable-storage.ts'
+import { captureFullSealBlocked } from './sentry.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import { readSqlRestorability } from './sql-statement-stats.ts'
 
@@ -78,7 +79,9 @@ function parseStorageIndex(value: unknown, day: string): StorageIndex {
 			!Number.isSafeInteger(entry.entryCount) ||
 			!Number.isSafeInteger(entry.bytes) ||
 			typeof entry.sha256 !== 'string' ||
-			!sha256Pattern.test(entry.sha256)
+			!sha256Pattern.test(entry.sha256) ||
+			(entry.part !== undefined &&
+				!(Number.isSafeInteger(entry.part) && Number(entry.part) >= 0))
 		) {
 			throw new BackupError(
 				'storage-index-corrupt',
@@ -836,6 +839,12 @@ export async function sealRecentCompleteDays(
 						day,
 						errorCode: result.reason,
 					})
+					// Yesterday's REST exports and staging are done, so an unsealed
+					// day is blocked, not pending. A missing staging summary already
+					// pages from the worker's staging watchdog.
+					if (offset === 1 && result.reason !== 'staging-summary-missing') {
+						captureFullSealBlocked({ day, reason: result.reason })
+					}
 					break
 				default: {
 					const exhaustive: never = result

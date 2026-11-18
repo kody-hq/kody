@@ -45,6 +45,10 @@ const mockModule = vi.hoisted(() => ({
 	deleteEntitySource: vi.fn(),
 	loadPriorPackageManifestContent: vi.fn(),
 	insertSavedPackage: vi.fn(),
+	buildHeldForApprovalPublishNotice: vi.fn(),
+	loadHeldForApproval: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 	realInsertSavedPackage: null as
 		| null
 		| typeof packageRegistryRepoModule.insertSavedPackage,
@@ -109,7 +113,23 @@ vi.mock(
 	}),
 )
 
+vi.mock('#worker/package-capabilities/held-for-approval.ts', () => ({
+	loadHeldForApproval: (...args: Array<unknown>) =>
+		mockModule.loadHeldForApproval(...args),
+}))
+
+vi.mock('./held-for-approval-publish-notice.ts', async (importOriginal) => ({
+	...(await importOriginal<
+		typeof import('./held-for-approval-publish-notice.ts')
+	>()),
+	buildHeldForApprovalPublishNotice: (...args: Array<unknown>) =>
+		mockModule.buildHeldForApprovalPublishNotice(...args),
+}))
+
 const { savePackageCapability } = await import('./save-package.ts')
+const realHeldForApprovalNotice = await vi.importActual<
+	typeof import('./held-for-approval-publish-notice.ts')
+>('./held-for-approval-publish-notice.ts')
 
 type Row = Record<string, unknown>
 const now = '2026-04-18T00:00:00.000Z'
@@ -313,9 +333,15 @@ async function setup({
 		mockModule.deleteEntitySource,
 		mockModule.loadPriorPackageManifestContent,
 		mockModule.insertSavedPackage,
+		mockModule.buildHeldForApprovalPublishNotice,
+		mockModule.loadHeldForApproval,
 	]) {
 		mock.mockReset()
 	}
+	mockModule.buildHeldForApprovalPublishNotice.mockImplementation(
+		realHeldForApprovalNotice.buildHeldForApprovalPublishNotice,
+	)
+	mockModule.loadHeldForApproval.mockResolvedValue(null)
 	mockModule.ensureEntitySource.mockImplementation(async (input) => ({
 		...sourceRow(input),
 		bootstrapAccess: null,
@@ -894,6 +920,36 @@ test('packageSave lists placeholder references from the published files, not onl
 
 	expect(result.next_steps).toContain('Credential stamp publish gate')
 	expect(result.next_steps).toMatch(/missing a description|OLD_KEY/)
+})
+
+test('packageSave reports when everyone stays on the previous approved version', async () => {
+	const { save } = await setup({ plan: 'max' })
+
+	const plain = await save({ files: buildPackageFiles('plain-package') })
+	expect(plain).not.toHaveProperty('held_for_approval')
+
+	const servingCommit = 'approved0deadbeef'
+	const heldCommit = 'heldnew1cafebabe'
+	mockModule.loadHeldForApproval.mockResolvedValueOnce({
+		servingCommit,
+		heldCommit,
+	})
+	const held = await save({ files: buildPackageFiles('held-package') })
+	expect(held.kody_id).toBe('pkg')
+	const notice = held.held_for_approval
+	expect(notice).toMatchObject({
+		serving_commit: servingCommit,
+		held_commit: heldCommit,
+	})
+	if (!notice) throw new Error('expected held_for_approval')
+	const approval = new URL(notice.approval_url)
+	expect(approval.origin).toBe('https://example.com')
+	expect(approval.pathname).toBe(
+		`/@planned/${held.kody_id}/approve-capabilities`,
+	)
+	expect(notice.message).toContain(servingCommit.slice(0, 7))
+	expect(notice.message).toContain(heldCommit.slice(0, 7))
+	expect(notice.message).toContain(notice.approval_url)
 })
 
 const maintainersOrg = { id: 'd'.repeat(64), slug: 'kody', plan: 'max' }

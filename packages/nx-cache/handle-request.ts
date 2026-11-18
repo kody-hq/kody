@@ -1,7 +1,9 @@
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import type { NxCacheEnv, NxCacheStore } from './nx-cache-types.ts'
 
-const HASH_PATTERN = /^[a-fA-F0-9]{16,128}$/
+// Nx task hashes are decimal u64 strings, so short ones (15 digits or
+// fewer) are valid too.
+const HASH_PATTERN = /^[a-fA-F0-9]{1,128}$/
 export const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 
 function readBearerToken(request: Request): string | null {

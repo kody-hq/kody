@@ -16,8 +16,11 @@ import {
 	type PacedD1RetentionTier,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
+	createPacedD1IndexOrderCheck,
+	parsePacedD1IndexLine,
 	sha256HexOfBytes,
 	sha256HexOfText,
+	type PacedD1IndexEntry,
 } from '@kody-internal/shared/backup-d1-paced-encode.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 import {
@@ -178,6 +181,16 @@ async function isTableAlreadySealed(input: {
 	return data.exists && index.exists
 }
 
+function assertIndexBodyAscending(
+	body: string,
+	assertAscending: (entry: PacedD1IndexEntry) => void,
+) {
+	if (body.length === 0) return
+	for (const line of body.replace(/\n$/, '').split('\n')) {
+		assertAscending(parsePacedD1IndexLine(line))
+	}
+}
+
 async function sealTableArtifacts(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
@@ -218,6 +231,9 @@ async function sealTableArtifacts(input: {
 		)
 	}
 
+	const assertAscending = createPacedD1IndexOrderCheck(
+		`${input.source.name}.${input.table} on ${input.day}`,
+	)
 	const dataPointer = parsePacedD1PartsPointer(stagingDataText.text)
 	const indexPointer = parsePacedD1PartsPointer(stagingIndexText.text)
 	if (dataPointer || indexPointer) {
@@ -238,6 +254,24 @@ async function sealTableArtifacts(input: {
 		) {
 			throw new Error(
 				`paced D1 parts pointer digests disagree with manifest for ${input.source.name}.${input.table}`,
+			)
+		}
+
+		// Whole index first: a table whose index repeats a rowid must not leave
+		// any immutable sealed object behind.
+		for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
+			const indexPart = await readStagingBytes({
+				s3: input.s3,
+				stagingKey: pacedD1StagingIndexPartKey(
+					input.day,
+					input.source.name,
+					input.table,
+					partIndex,
+				),
+			})
+			assertIndexBodyAscending(
+				new TextDecoder().decode(indexPart),
+				assertAscending,
 			)
 		}
 
@@ -322,6 +356,8 @@ async function sealTableArtifacts(input: {
 		])
 		return
 	}
+
+	assertIndexBodyAscending(stagingIndexText.text, assertAscending)
 
 	// Legacy monolithic staging bodies (pre-parts-pointer nights). Sequential
 	// verify-before-write so reseal never holds data+index together.

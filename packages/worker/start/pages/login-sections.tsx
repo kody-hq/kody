@@ -1,10 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, FormEvent } from 'react'
 import { KodyMark } from '../components/kody-mark.tsx'
 import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	fieldErrorProps,
 	invalidFieldsForMessage,
@@ -16,13 +18,11 @@ import { renderIcon } from '../components/icon.tsx'
 import { turnstileWidgetClassName } from '#client/public-form-protection.ts'
 import { colors, transitions, typography } from '#universal/styles/tokens.ts'
 import {
-	authFieldCss,
-	authFieldLabelCss,
-	authFieldLabelRowCss,
-	getAuthInputCss,
-	getGhostButtonCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldLabelRowCss,
+	getFieldControlCss,
 	getLanternGlowCss,
-	getPillButtonCss,
 	getSwapLabelCss,
 	hoverMq,
 	visuallyHiddenCss,
@@ -32,6 +32,8 @@ import {
 	type UsernameAvailabilityView,
 } from '../components/username-choice-field.tsx'
 import type { AuthStatus } from './login.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const motionOk = '@media (prefers-reduced-motion: no-preference)'
 const mobileMq = '@media (max-width: 900px)'
@@ -171,7 +173,7 @@ export function AuthForm(
 				if (isTextEntryTarget(event.target)) props.onFieldEdit()
 			}}
 		>
-			<input
+			<Input
 				type="text"
 				name={honeypotFieldName}
 				tabIndex={-1}
@@ -200,28 +202,27 @@ export function AuthForm(
 					statusId={statusId}
 				/>
 			) : null}
-			<div css={authFieldCss}>
-				<label htmlFor={`${props.handleId}-email`} css={authFieldLabelCss}>
+			<div css={fieldCss}>
+				<label htmlFor={`${props.handleId}-email`} css={fieldLabelCss}>
 					Email
 				</label>
 				{props.isSignup ? (
-					<input
+					<Input
 						id={`${props.handleId}-email`}
 						type="email"
 						name="email"
 						required
 						autoComplete="email"
 						placeholder="you@yourdomain.dev"
-						data-field-ring
 						value={props.signupEmail}
 						onChange={(event) =>
 							props.onSignupEmailInput(event.currentTarget.value)
 						}
 						{...fieldErrorProps('email', invalidFields, statusId)}
-						css={authInputCss}
+						background="canvas"
 					/>
 				) : (
-					<input
+					<Input
 						id={`${props.handleId}-email`}
 						type="email"
 						name="email"
@@ -231,28 +232,24 @@ export function AuthForm(
 						// in the username field (1Password's default) can autofill.
 						autoComplete="username"
 						placeholder="you@yourdomain.dev"
-						data-field-ring
 						{...fieldErrorProps('email', invalidFields, statusId)}
-						css={authInputCss}
+						background="canvas"
 					/>
 				)}
 			</div>
-			<div css={authFieldCss}>
+			<div css={fieldCss}>
 				{props.isSignup ? (
-					<label htmlFor={`${props.handleId}-password`} css={authFieldLabelCss}>
+					<label htmlFor={`${props.handleId}-password`} css={fieldLabelCss}>
 						Password
 					</label>
 				) : (
-					<div css={authFieldLabelRowCss}>
-						<label
-							htmlFor={`${props.handleId}-password`}
-							css={authFieldLabelCss}
-						>
+					<div css={fieldLabelRowCss}>
+						<label htmlFor={`${props.handleId}-password`} css={fieldLabelCss}>
 							Password
 						</label>
-						<SiteLink href="/reset-password" css={fieldAsideCss}>
+						<TextLink tone="prose" href="/reset-password" css={fieldAsideCss}>
 							Forgot password?
-						</SiteLink>
+						</TextLink>
 					</div>
 				)}
 				<PasswordRevealInput
@@ -277,28 +274,30 @@ export function AuthForm(
 					data-sitekey={props.turnstileSiteKey}
 				></div>
 			) : null}
-			{!props.isSignup ? (
+			{props.isSignup ? (
 				<label css={rememberCss}>
-					<input
-						type="checkbox"
-						name="rememberMe"
-						defaultChecked
-						css={rememberInputCss}
-					/>
+					<Checkbox name="whatsNewEmailOptIn" css={rememberInputCss} />
+					<span>Send me What's New in Kody emails</span>
+				</label>
+			) : (
+				<label css={rememberCss}>
+					<Checkbox name="rememberMe" defaultChecked css={rememberInputCss} />
 					<span>Remember me on this device</span>
 				</label>
-			) : null}
+			)}
 			{renderStatusMessage(props.handleId, props.status, props.message)}
 			{/*
 			 * Sign-in submit works before (or without) hydration: the form posts
 			 * to `/login` as plain HTML (ADR 0094). Sign-up has no plain HTML
 			 * handler, so it waits for the page JavaScript.
 			 */}
-			<button
+			<Button
 				type="submit"
 				disabled={
 					props.isSubmitting || (props.isSignup && !props.isInteractive)
 				}
+				variant="primary"
+				size="lg"
 				css={authSubmitCss}
 			>
 				<span
@@ -315,7 +314,7 @@ export function AuthForm(
 				>
 					{props.submitBusyLabel}
 				</span>
-			</button>
+			</Button>
 			{props.isSignup ? (
 				<p css={signupConsentCss}>
 					By creating an account you agree to the{' '}
@@ -324,15 +323,16 @@ export function AuthForm(
 				</p>
 			) : null}
 			{!props.isSignup ? (
-				<button
+				<Button
 					type="button"
 					disabled={!props.isInteractive || props.isSubmitting}
-					css={ghostButtonCss}
+					variant="secondary"
+					size="lg"
 					onClick={props.onPasskeySignIn}
 				>
 					{renderIcon('key', { size: '17' })}
 					Sign in with a passkey
-				</button>
+				</Button>
 			) : null}
 		</form>
 	)
@@ -347,8 +347,6 @@ const authVisualCss: CSSObject = {
 	justifyContent: 'space-between',
 	gap: '2rem',
 	padding: 'clamp(1.5rem, 3vw, 2.5rem)',
-	paddingTop:
-		'calc(clamp(1.5rem, 3vw, 2.5rem) + var(--desktop-corner-height, 0px))',
 	borderRight: `1px solid ${colors.border}`,
 	backgroundColor: colors.background,
 	overflow: 'hidden',
@@ -400,7 +398,6 @@ const authBrandMobileCss: CSSObject = {
 	[mobileMq]: {
 		display: 'inline-flex',
 		marginInline: 'auto',
-		marginTop: 'var(--desktop-corner-height, 0px)',
 	},
 }
 
@@ -452,17 +449,9 @@ const authFormCss: CSSObject = {
 
 /* Fields sit on the lighter surface, so they take the canvas tone and read
    as wells in both themes. */
-const authInputCss = getAuthInputCss({ background: 'canvas' })
-
-const inlineLinkCss: CSSObject = {
-	color: colors.primaryText,
-	textDecorationThickness: '1.5px',
-	textUnderlineOffset: '3px',
-	'&:hover': { color: colors.text },
-}
+const authInputCss = getFieldControlCss({ background: 'canvas' })
 
 const fieldAsideCss: CSSObject = {
-	...inlineLinkCss,
 	fontSize: '0.88rem',
 }
 
@@ -524,7 +513,6 @@ export const formMessageCss: CSSObject = {
 }
 
 const authSubmitCss = [
-	getPillButtonCss(),
 	getSwapLabelCss(),
 	{
 		marginTop: '0.3rem',
@@ -541,5 +529,3 @@ const authSubmitCss = [
 		},
 	},
 ]
-
-const ghostButtonCss = getGhostButtonCss()

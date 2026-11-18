@@ -1,3 +1,4 @@
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
 import { isNonProductionRuntime } from '#app/deployment-env.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
@@ -343,7 +344,9 @@ export async function finishGuestClaim(input: {
 		)
 	}
 	const code = input.code.replace(/\D/g, '')
-	if ((await hashClaimCode(code)) !== row.code_hash) {
+	if (
+		!(await timingSafeEqualString(await hashClaimCode(code), row.code_hash))
+	) {
 		await db
 			.prepare(
 				`UPDATE guest_claim_codes SET attempts = attempts + 1 WHERE person_id = ?`,

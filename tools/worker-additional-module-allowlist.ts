@@ -23,6 +23,7 @@ export const kodyGeneratedEsModuleNames = [
 	'isomorphic-git.mjs',
 	'postal-mime.mjs',
 	'codemode-normalize.mjs',
+	'module-source-parser.mjs',
 	'disposable-email-domains.mjs',
 ] as const
 

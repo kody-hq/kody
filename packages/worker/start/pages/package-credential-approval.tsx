@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useParams } from '@tanstack/react-router'
 import {
@@ -36,8 +37,6 @@ import { routes } from '#universal/routes.ts'
 import {
 	cardCss,
 	cardTitleCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -46,14 +45,6 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 const mutedCss = { margin: 0, color: colors.textMuted }
 const listCss = {
 	margin: 0,
@@ -525,25 +516,24 @@ export function PackageCredentialApprovalRoute({
 						/>
 					) : null}
 					<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm }}>
-						<button
+						<Button
 							type="button"
 							data-testid="credential-approval-approve"
 							disabled={!view.canApprove || approving}
-							css={primaryButtonCss}
+							variant="primary"
+							size="md"
 							onClick={() => void approve(path, view)}
 						>
 							{approving ? 'Approving…' : approvalSummary(view)}
-						</button>
-						<SiteLink
+						</Button>
+						<Button
 							href={credentialsHref}
-							css={{
-								...secondaryButtonCss,
-								display: 'inline-flex',
-								textDecoration: 'none',
-							}}
+							variant="secondary"
+							size="md"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Cancel
-						</SiteLink>
+						</Button>
 					</div>
 				</section>
 			) : null}

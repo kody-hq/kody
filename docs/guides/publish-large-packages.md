@@ -16,6 +16,12 @@ Kody publishes run in Cloudflare Worker isolates (about 128 MB of memory). A
 package with a large npm graph can run out of memory or CPU while Kody bundles
 it, and the publish fails with a resource-limit error that links here.
 
+Kody also checks size before a cloud build starts. When the runtime code
+reachable from a package's entry points is over 8 MiB, the publish stops before
+bundling and the error names the largest files. That check covers the package's
+own source only; npm dependencies are not known until the build runs. A local or
+execution context build is not held to it.
+
 You can move the heavy part, bundling, off Kody cloud:
 
 ```sh
@@ -34,6 +40,10 @@ cloud runs out of room. Agents and CI get these commands instead of a prompt.
 > it on at [Experiments](https://kody.codes/account/experiments); the same
 > switch covers `--build local`, `--context`, and package bindings. See
 > [try publishing from a context](./execution-contexts.md#try-publishing-from-a-context).
+
+To try the build before you publish, run `kody dev check --build local`. It runs
+the same build on your machine over the working tree, uploads nothing, and works
+without the experiment.
 
 ## Where a publish builds
 
@@ -72,12 +82,12 @@ included, and naming a context other than `cloud` is refused.
 
 ## What runs where
 
-| Step                                                                    | Where                                           |
-| ----------------------------------------------------------------------- | ----------------------------------------------- |
-| Typecheck, and bundling every export, job, handler, and app target      | Your machine or context (same code as Kody)     |
-| File manifest check, cheap publish checks, credential stamp             | Kody                                            |
-| Hash, size, and package-identity checks for each target, sample rebuild | Kody                                            |
-| Writing the registry and switching the serving version                  | Kody, only after every check and write succeeds |
+| Step                                                               | Where                                           |
+| ------------------------------------------------------------------ | ----------------------------------------------- |
+| Typecheck, and bundling every export, job, handler, and app target | Your machine or context (same code as Kody)     |
+| File manifest check, cheap publish checks, credential stamp        | Kody                                            |
+| Hash, size, and package-identity checks for each target            | Kody                                            |
+| Writing the registry and switching the serving version             | Kody, only after every check and write succeeds |
 
 Kody never publishes a commit it cannot see. `--build local` refuses uncommitted
 changes, pushes HEAD to its upstream branch on the package's Kody remote if it
@@ -86,23 +96,39 @@ that exact commit is the head of the package repo. If Kody reports a different
 commit, nothing is built or uploaded. `--build context` builds the commit Kody
 sees, so push first.
 
-Kody trusts nothing it did not compute itself:
+What Kody checks before it serves an uploaded build:
 
 - The build's per-file SHA-256 manifest must match the pushed commit's tree
   exactly.
 - Every target must be one the commit's `package.json` declares, with the right
   hashes and sizes and no platform-reserved module names.
-- Kody rebuilds a sample of targets itself and compares hashes (more for
-  community-listed packages).
+- Kody does not build your package again. The build you upload is the published
+  artifact, so Kody cloud's build memory and CPU limits never apply to a
+  `--build local` or `--build context` publish. Kody checks that the build
+  describes the pushed commit and declares the right targets; it does not prove
+  the uploaded bundles were compiled from that source. Package info and the
+  publish result show where each version was built.
 - A build never contains another Kody package. Each `kody:@` import stays a
   linked placeholder, and Kody fills it in when it commits the upload: the
   dependency's own published artifact, resolved for you the same way a cloud
   build resolves it, behind the same metered proxy. The dependency's package id,
   storage, secrets, and capabilities come from Kody, so you can import packages
   you can use but not write.
+- Filling a placeholder stores that dependency's modules as linked artifacts on
+  your package, so a large dependency still adds its size (and the size of the
+  `kody:@` packages it imports) to your publish. Kody loads each dependency once
+  per publish. Several targets that import the same dependency share one linked
+  blob when the content hash matches. Kody also builds an export and the jobs
+  that share its entry file once.
 - Uploaded modules may bind only your own package. A build that inlines another
   package's code, binds another package's id, or ships its own module at a
   linked placeholder path is refused.
+- A build rewrites every `kody:runtime` and `kody:@` import to a module Kody
+  supplies when it loads the bundle. An uploaded bundle that still has a raw
+  `kody:` import could not load, so Kody refuses it and names the module and the
+  import. That means the builder is out of date: run `kody update` on the
+  machine that built it (then `kody daemon restart` on an execution context) and
+  build again, or publish with `--context cloud`.
 
 ## When a build is refused
 

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 
-import { SiteLink } from '../components/site-link.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
@@ -14,7 +14,6 @@ import {
 	detailValueCss as sourceDetailValueCss,
 	insetCardCss,
 	listCss,
-	primaryLinkCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -84,14 +83,13 @@ export function renderProviderInstructions(input: {
 			) : null}
 			{input.config.dashboardUrl &&
 			isSafeExternalUrl(input.config.dashboardUrl) ? (
-				<SiteLink
+				<TextLink
 					href={input.config.dashboardUrl}
 					target="_blank"
 					rel="noreferrer noopener"
-					css={primaryLinkCss}
 				>
 					Open {input.config.provider} developer settings
-				</SiteLink>
+				</TextLink>
 			) : null}
 		</>
 	)
@@ -278,14 +276,9 @@ export function renderSuccessAdvancedDetails(input: {
 					</div>
 				</div>
 				{renderAllowedHosts(input.config)}
-				<SiteLink
-					href="/account/secrets"
-					target="_blank"
-					rel="noreferrer"
-					css={primaryLinkCss}
-				>
+				<TextLink href="/account/secrets" target="_blank" rel="noreferrer">
 					Open account secrets
-				</SiteLink>
+				</TextLink>
 			</div>
 		</details>
 	)

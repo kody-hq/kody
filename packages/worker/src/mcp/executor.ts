@@ -1,3 +1,4 @@
+import { createIntrinsicChangeDetectorSource } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
 import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	sanitizeToolName,
@@ -21,6 +22,15 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { defaultExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import {
+	executeLocallyCommand,
+	isExecuteBundleTooLargeMessage,
+} from '#mcp/execute-bundle-limit-messages.ts'
+import {
+	executionContextsExperimentUrl,
+	hasPublishOutsideCloudAdvice,
+	publishLocalBuildCommand,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { pathSegmentEncodingWarningHeaderName } from '#mcp/secrets/path-segment-encoding-warning.ts'
 import {
@@ -79,6 +89,7 @@ import {
 } from '#mcp/kody-provider-proxy-source.ts'
 import {
 	grantedSecretAuthorityPackageIdSet,
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityArgName,
@@ -1226,6 +1237,10 @@ function createPackageBindingSandboxSource() {
 		'      fetch: async (input, init) => {',
 		'        if (!fetcher) throw new __kodyErrorCaptured("Outbound fetch is unavailable for this package.");',
 		'        await recordFetch();',
+		'        const changed = __kodyChangedIntrinsics();',
+		'        if (changed.length > 0) {',
+		'          return await __kodyUnwrapGatewayResponse(await fetcher.fetchWithChangedIntrinsics(new __kodyRequestCaptured(input, init), changed));',
+		'        }',
 		'        return await __kodyUnwrapGatewayResponse(await fetcher.fetch(input, init));',
 		'      },',
 		'      kodyCall: (dispatchName, args) => kodyCall(dispatchName, args),',
@@ -1321,6 +1336,7 @@ function createExecutorModule(input: {
 		'const __kodyErrorCaptured = Error;',
 		'const __kodyArrayIsArrayCaptured = Array.isArray;',
 		'const __kodyStringCaptured = String;',
+		'const __kodyRequestCaptured = Request;',
 		...createPackageBindingSandboxSource(),
 		createGatewayResponseUnwrapSource(),
 		'const __kodyNativeFetch = globalThis.fetch.bind(globalThis);',
@@ -1335,6 +1351,7 @@ function createExecutorModule(input: {
 		'  };',
 		'  globalThis[__kodyEvaluateFetchPatchedSymbol] = true;',
 		'}',
+		createIntrinsicChangeDetectorSource(),
 		'const __kodyEvaluateConsoleStorage =',
 		'  globalThis[__kodyEvaluateConsoleStorageSymbol] ??',
 		'  (globalThis[__kodyEvaluateConsoleStorageSymbol] = new AsyncLocalStorage());',
@@ -1422,7 +1439,10 @@ export async function createExecutorModuleSource({
 	excludedHostname?: string
 }) {
 	const normalizeCode = await loadNormalizeCode()
-	return createExecutorModule({ ...input, normalizedCode: normalizeCode(code) })
+	return createExecutorModule({
+		...input,
+		normalizedCode: normalizeCode(code),
+	})
 }
 
 function createProviderProxySource(provider: ResolvedProvider) {
@@ -1547,7 +1567,18 @@ export function createToolDispatchers(
 						// stamp. Without grants, a peeled stamp installs an empty
 						// set and resolveCallerSecretAuthority fails closed.
 						const withStamp = () =>
-							runWithCurrentSecretAuthority(requestedPackageId, invoke)
+							runAsSandboxCall(
+								requestedPackageId
+									? null
+									: {
+											surface: 'hosted',
+											pattern: 'shared_capability',
+											loadedPackageIds: capturedGrantedPackageIds
+												? [...capturedGrantedPackageIds]
+												: null,
+										},
+								() => runWithCurrentSecretAuthority(requestedPackageId, invoke),
+							)
 						return capturedGrantedPackageIds
 							? await runWithSecretAuthorityScope(
 									capturedGrantedPackageIds,
@@ -1747,6 +1778,28 @@ export type ExecutionErrorDetails =
 			}
 	  }
 	| {
+			kind: 'execute_bundle_too_large'
+			message: string
+			nextStep: string
+			suggestedAction: {
+				type: 'run_locally'
+				/** Shell command that runs the same module on the caller's machine. */
+				command: string
+				requires: Array<string>
+			}
+	  }
+	| {
+			kind: 'package_build_limit'
+			message: string
+			nextStep: string
+			suggestedAction: {
+				type: 'publish_local_build'
+				/** Shell command that builds and publishes on the caller's machine. */
+				command: string
+				requires: Array<string>
+			}
+	  }
+	| {
 			kind: 'execution_timed_out'
 			message: string
 			nextStep: string
@@ -1754,6 +1807,15 @@ export type ExecutionErrorDetails =
 			timedOutAfterMs: number | null
 			suggestedAction: {
 				type: 'fix_code'
+			}
+			/**
+			 * Present only for ad hoc execute, where the caller can rerun the
+			 * same module on its own machine with no execution time budget.
+			 */
+			alternativeAction?: {
+				type: 'run_locally'
+				command: string
+				requires: Array<string>
 			}
 	  }
 
@@ -1801,7 +1863,11 @@ function parseTrustedReconnectLoginHint(
 
 export function getExecutionErrorDetails(
 	error: unknown,
-	options: { orgSlug?: string | null } = {},
+	options: {
+		orgSlug?: string | null
+		/** The failed run was an ad hoc execute module the caller holds. */
+		adHocExecute?: boolean
+	} = {},
 ): ExecutionErrorDetails | null {
 	const message = getErrorMessage(error)
 
@@ -1862,19 +1928,58 @@ export function getExecutionErrorDetails(
 		}
 	}
 
+	if (causeMessages.some(isExecuteBundleTooLargeMessage)) {
+		return {
+			kind: 'execute_bundle_too_large',
+			message,
+			nextStep: `Nothing ran. Save the module to a file and run \`${executeLocallyCommand}\` to bundle and run it on this machine with the same Kody capabilities. Retrying the identical call on Kody cloud will fail the same way; to stay on Kody cloud, import fewer or smaller packages in one module.`,
+			suggestedAction: {
+				type: 'run_locally',
+				command: executeLocallyCommand,
+				requires: runLocallyRequirements,
+			},
+		}
+	}
+
+	if (causeMessages.some(hasPublishOutsideCloudAdvice)) {
+		return {
+			kind: 'package_build_limit',
+			message,
+			nextStep: `Retrying the same build on Kody cloud is likely to hit the same limit. Build and publish from the package's checkout on this machine, naming the package, with \`${publishLocalBuildCommand}\`, which needs the Execution contexts experiment (${executionContextsExperimentUrl}). To stay on Kody cloud, shrink what the package's entry points import.`,
+			suggestedAction: {
+				type: 'publish_local_build',
+				command: publishLocalBuildCommand,
+				requires: [
+					'node>=22',
+					'kody_cli_signed_in',
+					'execution_contexts_experiment',
+				],
+			},
+		}
+	}
+
 	for (const causeMessage of causeMessages) {
 		const timeoutDetails = parseExecutorSandboxTimeoutErrorMessage(causeMessage)
 		if (timeoutDetails) {
 			return {
 				kind: 'execution_timed_out',
 				message,
-				nextStep: createExecutionTimedOutNextStep(
+				nextStep: `${createExecutionTimedOutNextStep(
 					timeoutDetails.timedOutAfterMs,
-				),
+				)}${options.adHocExecute ? ` ${executionTimedOutRunLocallyNextStep}` : ''}`,
 				timedOutAfterMs: timeoutDetails.timedOutAfterMs,
 				suggestedAction: {
 					type: 'fix_code',
 				},
+				...(options.adHocExecute
+					? {
+							alternativeAction: {
+								type: 'run_locally',
+								command: executeLocallyCommand,
+								requires: runLocallyRequirements,
+							},
+						}
+					: {}),
 			}
 		}
 	}
@@ -2140,6 +2245,10 @@ function parseExecutorSandboxTimeoutErrorMessage(message: string) {
 	const value = Number(amount)
 	return { timedOutAfterMs: unit === 'ms' ? value : value * 1000 }
 }
+
+const runLocallyRequirements = ['node>=22', 'kody_cli_signed_in']
+
+const executionTimedOutRunLocallyNextStep = `To run it as written, save the module to a file and run \`${executeLocallyCommand}\`: local runs have no execution time budget and call the same Kody capabilities.`
 
 function createExecutionTimedOutNextStep(timedOutAfterMs: number | null) {
 	const budgetSentence =

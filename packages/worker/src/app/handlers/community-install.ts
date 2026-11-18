@@ -122,7 +122,7 @@ export async function installWebsiteCommunityPackage(input: {
 			followerOrgId: installOwnerId,
 			creatorUserId: user.mcpUser.userId,
 			userEmail: entitlementEmailForOwner(
-				{ user: { userId: user.mcpUser.userId, email: user.email } },
+				{ user: { ...user.mcpUser, email: user.email } },
 				installOwnerId,
 			),
 			expectedPackageScope,
@@ -198,7 +198,7 @@ export async function installWebsitePrivatePackageFork(input: {
 			followerOrgId: installOwnerId,
 			creatorUserId: user.mcpUser.userId,
 			userEmail: entitlementEmailForOwner(
-				{ user: { userId: user.mcpUser.userId, email: user.email } },
+				{ user: { ...user.mcpUser, email: user.email } },
 				installOwnerId,
 			),
 			expectedPackageScope,

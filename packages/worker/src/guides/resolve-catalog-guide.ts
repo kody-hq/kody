@@ -1,3 +1,4 @@
+import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	legacyDocSlugAliases,
 	legacyGuideIdAliases,
@@ -124,17 +125,47 @@ export function suggestCatalogGuideIds(
 		.map((row) => row.id)
 }
 
+/**
+ * `guide:{id}` and `codingGuideGet` lookup for one caller. An admin-only
+ * guide is reported exactly like a missing id to non-admins, suggestions
+ * included, so the message never reveals that a hidden guide exists.
+ */
+export function resolveVisibleCatalogGuide<Guide extends GuideIdentity>(
+	guides: ReadonlyArray<Guide>,
+	requestedId: string,
+	options: { includeAdmin: boolean },
+): { guide: Guide; aliasSection?: string } {
+	const resolved = resolveCatalogGuide(guides, requestedId)
+	const guide = resolved
+		? guides.find((candidate) => candidate.id === resolved.id)
+		: undefined
+	if (!resolved || !guide || (guide.adminOnly && !options.includeAdmin)) {
+		throw new McpCallerError(
+			guideNotFoundMessage(
+				requestedId,
+				suggestCatalogGuideIds(guides, requestedId, options),
+			),
+		)
+	}
+	return resolved.aliasSection
+		? { guide, aliasSection: resolved.aliasSection }
+		: { guide }
+}
+
 export function guideNotFoundMessage(
+	requestedId: string,
 	suggestions: ReadonlyArray<string>,
 ): string {
-	if (suggestions.length === 0) return 'Guide not found.'
+	const notFound = `Guide ${JSON.stringify(requestedId)} not found.`
+	const discover = 'Find guides with `search({ query: "<topic> guide" })`.'
+	if (suggestions.length === 0) return `${notFound} ${discover}`
 	const refs = suggestions.map((id) => `\`guide:${id}\``)
-	const only = refs[0]
-	if (refs.length === 1 && only) return `Guide not found. Did you mean ${only}?`
-	const second = refs[1]
-	if (refs.length === 2 && only && second) {
-		return `Guide not found. Did you mean ${only} or ${second}?`
-	}
 	const last = refs[refs.length - 1]
-	return `Guide not found. Did you mean ${refs.slice(0, -1).join(', ')}, or ${last}?`
+	const didYouMean =
+		refs.length === 1
+			? `Did you mean ${last}?`
+			: refs.length === 2
+				? `Did you mean ${refs[0]} or ${last}?`
+				: `Did you mean ${refs.slice(0, -1).join(', ')}, or ${last}?`
+	return `${notFound} ${didYouMean} ${discover}`
 }

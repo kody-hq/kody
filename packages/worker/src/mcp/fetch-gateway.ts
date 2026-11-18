@@ -66,6 +66,8 @@ import {
 	grantedSecretAuthorityPackageIdSet,
 	secretAuthorityHeaderName,
 	storageContextWithSecretAuthority,
+	runAsSandboxCall,
+	type UnboundSandboxCall,
 } from '#mcp/secrets/secret-authority.ts'
 import { verifyPackageSecretRef } from '#mcp/secrets/package-secret-ref.ts'
 import {
@@ -88,6 +90,9 @@ import { credentialClientHeaderName } from '#worker/credentials/credential-clien
 import {
 	isSealedTokenName,
 	openSealedToken,
+	type SealedTokenMinter,
+	sealedTokenMinter,
+	sealedTokenMinterBucket,
 	sealTokenResponse,
 } from '#worker/credentials/sealed-token.ts'
 import {
@@ -121,10 +126,7 @@ import {
 	type PackageAppAuthorityScope,
 	type PackageAppVisitorGrantScope,
 } from '#worker/package-runtime/package-app-authority.ts'
-import {
-	consumeDailyEntitlement,
-	findCachedUserAccountByStableUserId,
-} from '#worker/entitlements/service.ts'
+import { consumeDailyEntitlement } from '#worker/entitlements/service.ts'
 import {
 	recordUsage,
 	usageAttributionFieldsFromRequest,
@@ -135,6 +137,7 @@ import {
 	requestContextFromVisitClaims,
 	verifyPackageAppVisitTicket,
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
+import { normalizeChangedIntrinsicNames } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
 import { kodyDevOutboundFetch } from '#worker/package-runtime/kody-dev-simulation.ts'
 
 type FetchGatewayProps = {
@@ -173,6 +176,8 @@ type FetchGatewayProps = {
 	 * Must name a package in `grantedSecretAuthorityPackageIds`.
 	 */
 	boundPackageId?: string | null
+	/** Shared globals a package app's bound fetch reported as changed. */
+	changedIntrinsics?: ReadonlyArray<string> | null
 	/**
 	 * The run (or CapabilityProxy credential) `credential()` client handles
 	 * must be bound to. Without it, a client fetch is refused.
@@ -328,14 +333,51 @@ async function applyPackageAppVisitTicketToGateway(input: {
 export class KodyFetchGateway extends WorkerEntrypoint<Env, FetchGatewayProps> {
 	/** Refusals come back as a marked response; see `sandbox-rpc-outcome.ts`. */
 	async fetch(request: Request) {
+		return await this.gatewayFetch(request, this.ctx.props?.changedIntrinsics)
+	}
+
+	/**
+	 * A package-bound fetch from a run whose shared globals changed since the
+	 * sandbox started. The names are recorded, never acted on.
+	 */
+	async fetchWithChangedIntrinsics(request: Request, changed: unknown) {
+		return await this.gatewayFetch(
+			request,
+			normalizeChangedIntrinsicNames(changed),
+		)
+	}
+
+	private async gatewayFetch(
+		request: Request,
+		changedIntrinsics: ReadonlyArray<string> | null | undefined,
+	) {
 		try {
+			const props = this.ctx.props
+			const surface = props?.packageAppAuthority ? 'app' : 'hosted'
+			const boundPackageId = props?.boundPackageId?.trim() || null
+			// Run code reaches this entrypoint. Only the per-package binding
+			// says which package's code is fetching.
+			const unboundCall: UnboundSandboxCall | null = boundPackageId
+				? null
+				: {
+						surface,
+						pattern: 'shared_fetch',
+						loadedPackageIds: props?.grantedSecretAuthorityPackageIds ?? null,
+					}
 			return withoutForgedGatewayErrorHeader(
-				await executeGatewayFetch({
-					env: this.env,
-					props: this.ctx.props,
-					request,
-					waitUntil: (promise) => this.ctx.waitUntil(promise),
-				}),
+				await runAsSandboxCall(
+					unboundCall,
+					() =>
+						executeGatewayFetch({
+							env: this.env,
+							props,
+							request,
+							waitUntil: (promise) => this.ctx.waitUntil(promise),
+						}),
+					boundPackageId && changedIntrinsics?.length
+						? { surface, packageId: boundPackageId, changedIntrinsics }
+						: null,
+				),
 			)
 		} catch (error) {
 			return gatewayErrorResponse(error)
@@ -391,21 +433,10 @@ async function fetchThroughGateway(
 		// org's quota and meter (ADR 0095).
 		const billedUserId = billedOrgIdOf(input.props.request, input.props.userId)
 		if (billedUserId) {
-			// Plan lookup requires the account email. Callers that cannot
-			// carry one (MCP provider requests, package runtime) get it
-			// reverse-resolved from the stable userId so authenticated
-			// fetches count against the caller's real plan rather than
-			// failing open to `max` (whose limit is still finite for
-			// genuinely accountless synthetic contexts).
+			// Without an email the plan resolves from the billed org row
+			// itself, so team orgs and converted orgs bill their own plan.
 			const email =
-				(billedUserId === input.props.userId ? input.props.email : null) ??
-				(
-					await findCachedUserAccountByStableUserId(
-						input.env.APP_DB,
-						billedUserId,
-					)
-				)?.email ??
-				null
+				billedUserId === input.props.userId ? input.props.email : null
 			await consumeDailyEntitlement({
 				db: input.env.APP_DB,
 				env: input.env,
@@ -547,7 +578,7 @@ async function fetchThroughGateway(
 					env: input.env,
 					response,
 					requestUrl: transformed.url,
-					approvedHosts: expanded.approvedHosts,
+					mintedWith: expanded.mintedWith,
 					filledValues: substitutedValues,
 					org: input.props.userId,
 					binding: input.props.credentialClientBinding ?? null,
@@ -708,8 +739,11 @@ export async function expandSecretPlaceholders(input: {
 	 * Used to warn on a 4xx; never includes values.
 	 */
 	pathSegmentEncodedNames: Array<string>
-	/** Approved hosts of the stored secrets this request filled. */
-	approvedHosts: Array<string>
+	/**
+	 * Stored secrets this request filled, directly or through a sealed token
+	 * minted with them, and their approved hosts.
+	 */
+	mintedWith: Array<SealedTokenMinter>
 }> {
 	const headers = new Headers(input.request.headers)
 	// A client handle is for the gateway only; it never leaves.
@@ -756,7 +790,7 @@ export async function expandSecretPlaceholders(input: {
 			bodyFillDone: Promise.resolve(),
 			deferRedirectFollow: false,
 			pathSegmentEncodedNames: [],
-			approvedHosts: [],
+			mintedWith: [],
 		}
 	}
 
@@ -784,7 +818,7 @@ export async function expandSecretPlaceholders(input: {
 	const credentialNamesByPlaceholder = new Map<string, string>()
 	const encodedBasicCredentials: Array<string> = []
 	const substitutedValues: Array<string> = []
-	const approvedHosts: Array<string> = []
+	const mintedWith: Array<SealedTokenMinter> = []
 	let referencedAnyCredential = false
 
 	const requestHost = normalizeHost(requestUrl.hostname)
@@ -964,7 +998,7 @@ export async function expandSecretPlaceholders(input: {
 				continue
 			}
 			const anyHostFill: { caller?: JwtSignAnyHostCaller } = {}
-			const value = await openSealedToken({
+			const opened = await openSealedToken({
 				env: input.env,
 				name,
 				org: requireFetchUserId(batchProps),
@@ -976,7 +1010,22 @@ export async function expandSecretPlaceholders(input: {
 				onAnyHostFill: (caller) => {
 					anyHostFill.caller = caller
 				},
+				// A package or session secret is approved in its own bucket, so
+				// only link when this run resolves the minter's bucket.
+				hostApprovalUrl: (minter) =>
+					minter.bucket ===
+					sealedTokenMinterBucket(minter.scope, storageContext)
+						? buildSecretHostApprovalUrl({
+								baseUrl: batchProps.baseUrl,
+								name: minter.secret,
+								scope: minter.scope,
+								requestedHost: requestHost,
+								storageContext,
+							})
+						: undefined,
 			})
+			const value = opened.value
+			mintedWith.push(...opened.mintedWith)
 			if (anyHostFill.caller) {
 				const recorded = recordJwtSignAnyHostDestination({
 					env: input.env,
@@ -1214,7 +1263,14 @@ export async function expandSecretPlaceholders(input: {
 			}),
 		)
 		for (const { referenced, resolved, value } of resolvedSecretResults) {
-			approvedHosts.push(...resolved.allowedHosts)
+			mintedWith.push(
+				sealedTokenMinter({
+					secret: referenced.name,
+					scope: resolved.scope ?? referenced.scope ?? 'user',
+					hosts: resolved.allowedHosts,
+					storageContext,
+				}),
+			)
 			const placeholder = buildSecretPlaceholder(referenced)
 			credentialNamesByPlaceholder.set(placeholder, referenced.name)
 			if (!replacements.has(placeholder)) {
@@ -1352,7 +1408,7 @@ export async function expandSecretPlaceholders(input: {
 		bodyFillDone,
 		deferRedirectFollow,
 		pathSegmentEncodedNames,
-		approvedHosts,
+		mintedWith,
 	}
 }
 

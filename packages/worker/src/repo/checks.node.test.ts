@@ -1,3 +1,4 @@
+import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
 
@@ -31,16 +32,22 @@ vi.mock('#worker/package-runtime/module-graph.ts', () => ({
 
 import {
 	createSnapshotFilesWorkspace,
+	isolatedCredentialScanChunkAstNodes,
 	isolatedCredentialScanMinSourceBytes,
 	repoChecksSourceMaxFiles,
+	repoChecksCloudBuildMaxRuntimeSourceBytes,
 	repoChecksSourceMaxTotalBytes,
 	runRepoChecks,
 	runRepoSourceWalkChecks,
 } from './checks.ts'
 import { withRequiredPackageDocs } from './checks-test-docs.ts'
 import {
+	buildCredentialPatternCheck,
+	type CredentialTreeChunkRequest,
 	credentialPatternFindingsNotice,
 	credentialPatternNoticeForFiles,
+	planCredentialTreeScan,
+	scanCredentialTreeChunk,
 } from './credential-pattern-check.ts'
 import {
 	createMalformedPackageSkillsFixtureFiles,
@@ -51,6 +58,8 @@ import {
 	isolatedBundleChunkSize,
 } from './isolated-check-phases.ts'
 import { maxRepoSourceFileBytes } from './large-file-policy.ts'
+import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 type RepoCheckRun = Awaited<ReturnType<typeof runRepoChecks>>
 
@@ -226,6 +235,49 @@ test('runRepoChecks fails when the source root exceeds publish file-count, total
 	expect(bundleCheck?.ok).toBe(false)
 	expect(bundleCheck?.message).toContain('"assets/dataset.csv"')
 	expect(bundleCheck?.message).toContain('per-file limit')
+})
+
+test('runRepoChecks refuses a cloud build before it starts when reachable runtime source is over the cloud build limit', async () => {
+	const half = `export const data = '${'x'.repeat(repoChecksCloudBuildMaxRuntimeSourceBytes / 2)}'\n`
+	const index = `import './a.ts'\nimport './b.ts'\n${ready}`
+	const tooLarge = () =>
+		packageFiles(manifest('big-runtime'), {
+			'src/index.ts': index,
+			'src/a.ts': half,
+			'src/b.ts': half,
+		})
+
+	const cloud = await runChecks(tooLarge())
+	expect(cloud.result.ok).toBe(false)
+	expect(cloud.result.sourceFiles).toEqual({})
+	expect(cloud.result.results).toEqual([
+		expect.objectContaining({ kind: 'manifest', ok: true }),
+		expect.objectContaining({ kind: 'bundle', ok: false }),
+	])
+	const message = findCheck(cloud.result, 'bundle')?.message ?? ''
+	expect(message).toContain('stopped before the build')
+	expect(message).toContain('8.0 MiB limit for a build in Kody cloud')
+	expect(message).toContain('`src/a.ts`')
+	expect(message).toContain('--build local')
+	expect(message).toContain('--context <name>')
+
+	// A local or execution-context build is not held to the cloud limit.
+	const uploaded = await runChecks(tooLarge(), { typecheckRanOffWorker: true })
+	expect(findCheck(uploaded.result, 'bundle')?.message ?? '').not.toContain(
+		'stopped before the build',
+	)
+	expect(Object.keys(uploaded.result.sourceFiles)).toContain('src/a.ts')
+
+	// Files the entry points never import do not count.
+	const unreachable = await runChecks(
+		packageFiles(manifest('big-assets'), {
+			'data/a.ts': half,
+			'data/b.ts': half,
+		}),
+	)
+	expect(findCheck(unreachable.result, 'bundle')?.message ?? '').not.toContain(
+		'stopped before the build',
+	)
 })
 
 test('runRepoChecks keeps non-code source files for publish snapshots while excluding git internals', async () => {
@@ -1154,114 +1206,177 @@ test('an isolate reset during a check phase becomes a failed check, not a crash'
 	)
 })
 
-test('large source trees run the credential stamp scan in its own isolate', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
+/** Enough modules and syntax nodes for the credential scan to need chunks. */
+function largeCredentialScanTree(indexSource: string) {
+	const statements = Array.from(
+		{ length: 400 },
+		(_, index) => `export const value${index} = [${index}, ${index + 1}]`,
+	).join('\n')
+	const moduleCount = Math.max(
+		Math.ceil(isolatedCredentialScanMinSourceBytes / statements.length),
+		Math.ceil((isolatedCredentialScanChunkAstNodes * 3) / (400 * 6)),
+	)
+	return {
+		'src/index.ts': indexSource,
+		...Object.fromEntries(
+			Array.from({ length: moduleCount }, (_, index) => [
+				`src/generated/filler-${String(index).padStart(3, '0')}.ts`,
+				`${statements}\n`,
+			]),
 		),
+	}
+}
+
+/** Runs the credential scan phases for real over the tree the run staged. */
+function credentialScanPhases(
+	kv: { put: { mock: { calls: Array<[string, string, unknown]> } } },
+	request: Record<string, unknown>,
+) {
+	const staged = kv.put.mock.calls.find(([key]) => key === request.stagingKey)
+	const { sourceFiles } = JSON.parse(staged![1]) as {
+		sourceFiles: Record<string, string>
+	}
+	if (request.phase === 'credentials-plan') {
+		return planCredentialTreeScan(
+			sourceFiles,
+			request.maxChunkAstNodes as number,
+		).then((credentialPlan) => ({ ok: true, message: '', credentialPlan }))
+	}
+	if (request.phase === 'credentials-chunk') {
+		return scanCredentialTreeChunk(
+			sourceFiles,
+			request.chunk as CredentialTreeChunkRequest,
+		).then((credentialChunk) => ({ ok: true, message: '', credentialChunk }))
+	}
+	return null
+}
+
+test('large source trees run the credential stamp scan in chunks, each in its own isolate', async () => {
+	const tree = largeCredentialScanTree(
+		[
+			"import { credential } from 'kody:runtime'",
+			'export default async function main() {',
+			'\treturn await credential("BILLING")',
+			'}',
+		].join('\n'),
+	)
+	const files = packageFiles(
+		manifest('large-tree-package', {
+			credentials: { BILLING: { description: 'Billing API key.' } },
+		}),
+		tree,
 	)
 	const phaseRequests: Array<Record<string, unknown>> = []
-	const { env } = isolatedEnv(async (request) => {
+	const { env, kv, namespace } = isolatedEnv(async (request) => {
 		phaseRequests.push(request)
-		if (request.phase === 'credentials') {
-			return {
+		return (
+			(await credentialScanPhases(kv, request)) ?? {
 				ok: true,
-				message: 'credentials ok (isolated)',
-				changedFiles: { 'src/index.ts': '// stamped\n' },
-				stampKeys: [],
+				message: 'ok (isolated)',
 			}
-		}
-		return { ok: true, message: 'ok (isolated)' }
+		)
 	})
-	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
-		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
-	)
+	const { result } = await runChecks(files, {
+		env,
+		baseUrl: '/',
+		userId: ownerIdFromStored('user-123'),
+	})
 
-	expect(phaseRequests.map((request) => request.phase)).toContain('credentials')
+	const chunks = phaseRequests
+		.filter((request) => request.phase === 'credentials-chunk')
+		.map((request) => (request.chunk as CredentialTreeChunkRequest).visit)
+	expect(
+		phaseRequests.filter((request) => request.phase === 'credentials-plan'),
+	).toHaveLength(1)
+	expect(chunks.length).toBeGreaterThanOrEqual(3)
+	for (const chunk of chunks) {
+		expect(
+			chunk.reduce((sum, module) => sum + module.astNodes, 0),
+		).toBeLessThanOrEqual(isolatedCredentialScanChunkAstNodes)
+	}
+	expect(chunks.flat().map((module) => module.path)).toEqual(
+		Object.keys(tree).sort(),
+	)
+	// One throwaway isolate per phase call.
+	expect(
+		new Set(namespace.idFromName.mock.calls.map(([name]) => name)).size,
+	).toBe(phaseRequests.length)
+
+	const inProcess = await buildCredentialPatternCheck(Object.fromEntries(files))
 	expect(findCheck(result, 'credentials')).toMatchObject({
 		ok: true,
-		message: 'credentials ok (isolated)',
+		message: inProcess.message,
 	})
-	expect(result.sourceFiles['src/index.ts']).toBe('// stamped\n')
+	expect(inProcess.stampKeys).toEqual(['BILLING'])
 })
 
-test('an isolate reset during the credential scan names that step', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
-		),
-	)
-	const { env } = isolatedEnv(async (request) => {
-		if (request.phase === 'credentials') {
+test('an isolate reset during one credential scan chunk names that step', async () => {
+	const { env, kv } = isolatedEnv(async (request) => {
+		if (request.phase === 'credentials-chunk') {
 			throw new Error(
-				"Durable Object's isolate exceeded its memory limit and was reset.",
+				'Durable Object exceeded its CPU time limit and was reset.',
 			)
 		}
-		return { ok: true, message: 'ok (isolated)' }
+		return (
+			(await credentialScanPhases(kv, request)) ?? {
+				ok: true,
+				message: 'ok (isolated)',
+			}
+		)
 	})
 	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
+		packageFiles(
+			manifest('large-tree-package'),
+			largeCredentialScanTree(
+				`export default async function main() {\n\treturn 'ok'\n}\n`,
+			),
+		),
 		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
 	)
 
 	expect(result.ok).toBe(false)
 	const credentials = findCheck(result, 'credentials')
 	expect(credentials?.ok).toBe(false)
-	expect(credentials?.message).toContain('credential stamp scan')
+	expect(credentials?.message).toContain('The credential stamp scan of')
+	expect(credentials?.message).toContain("exceeded the isolated check runner's")
 })
 
-test('the request-placement scan comes from the isolated credentials phase, not this isolate', async () => {
-	const filler = `export const filler = ${JSON.stringify('x'.repeat(1024))}\n`
-	const fillerFiles = Object.fromEntries(
-		Array.from(
-			{
-				length: Math.ceil(isolatedCredentialScanMinSourceBytes / filler.length),
-			},
-			(_, index) => [`src/generated/filler-${index}.ts`, filler],
-		),
-	)
-	const { env } = isolatedEnv(async (request) => {
-		if (request.phase === 'credentials') {
-			return {
-				ok: true,
-				message: 'Credential stamp ok (isolated).',
-				changedFiles: {},
-				stampKeys: [],
-				requestPlacementHits: [
-					{
-						path: 'src/index.ts',
-						line: 2,
-						nameKind: 'secret',
-						name: 'apiKey',
-						part: 'query',
-					},
-				],
-				fetchBodyHits: [],
-			}
+test('the request-placement scan comes from the isolated credential chunks, not this isolate', async () => {
+	const placement =
+		"export default async function main() {\n\treturn await fetch('https://api.example.com/items?key={{secret:apiKey}}')\n}\n"
+	const { env, kv } = isolatedEnv(async (request) => {
+		const answer = await credentialScanPhases(kv, request)
+		if (request.phase !== 'credentials-chunk' || !answer) {
+			return answer ?? { ok: true, message: 'ok (isolated)' }
 		}
-		return { ok: true, message: 'ok (isolated)' }
+		// Only the chunk isolates see a placement: the staged tree has none.
+		const chunk = request.chunk as CredentialTreeChunkRequest
+		return {
+			ok: true,
+			message: '',
+			credentialChunk: await scanCredentialTreeChunk(
+				{
+					...Object.fromEntries(
+						chunk.visit.map((module) => [module.path, 'export {}\n']),
+					),
+					'package.json': manifest('large-tree-package', {
+						credentials: { apiKey: { description: 'API key.' } },
+					}),
+					'src/index.ts': placement,
+				},
+				chunk,
+			),
+		}
 	})
-	// The source itself has no placement: only the phase's hits can fail it.
 	const { result } = await runChecks(
-		packageFiles(manifest('large-tree-package'), {
-			'src/index.ts': `export default async function main() {\n\treturn 'ok'\n}\n`,
-			...fillerFiles,
-		}),
+		packageFiles(
+			manifest('large-tree-package', {
+				credentials: { apiKey: { description: 'API key.' } },
+			}),
+			largeCredentialScanTree(
+				`export default async function main() {\n\treturn 'ok'\n}\n`,
+			),
+		),
 		{ env, baseUrl: '/', userId: ownerIdFromStored('user-123') },
 	)
 	const credentials = findCheck(result, 'credentials')
@@ -1515,6 +1630,108 @@ test('runRepoChecks fails publish on credential placeholders in a fetch body', a
 	expect(check?.message).toContain('This blocks publish.')
 })
 
+function placementDbEnv(
+	ownerId: string,
+	keys: ReadonlyArray<{
+		name: string
+		placement: string | null
+		optInBody?: 'owner' | 'observed'
+	}>,
+) {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	sqlite.exec('PRAGMA foreign_keys = OFF')
+	sqlite
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key) VALUES ('b1', ?, 'user', '')`,
+		)
+		.run(ownerId)
+	for (const key of keys) {
+		sqlite
+			.prepare(
+				`INSERT INTO secret_entries (bucket_id, id, name, encrypted_value, placement_json, created_at) VALUES ('b1', ?, ?, 'x', ?, '2026-10-01 00:00:00')`,
+			)
+			.run(`cred-${key.name}`, key.name, key.placement)
+		if (key.optInBody) {
+			sqlite
+				.prepare(
+					`INSERT INTO credential_fill_placement_opt_ins (credential_id, query, path, body, source, updated_at) VALUES (?, 0, 0, 1, ?, '2026-10-28T16:41:58.414Z')`,
+				)
+				.run(`cred-${key.name}`, key.optInBody)
+		}
+	}
+	return { APP_DB: createD1FromSqlite(sqlite) } as unknown as Env
+}
+
+const bodyPlaceholderPackage = () =>
+	packageFiles(
+		manifest('body-placeholder-allowed', {
+			credentials: {
+				accountPassword: { kind: 'secret', description: 'Password.' },
+			},
+		}),
+		{
+			'src/index.ts': [
+				'export const ready = true',
+				'export async function login() {',
+				"  await fetch('https://api.example.com/login', {",
+				"    method: 'POST',",
+				"    body: JSON.stringify({ password: '{{secret:accountPassword}}' }),",
+				'  })',
+				'}',
+			].join('\n'),
+		},
+	)
+
+test('runRepoChecks passes a body placeholder the Key already allows, including a legacy Key', async () => {
+	const ownerId = 'user-placement-owner'
+	for (const key of [
+		{
+			name: 'accountPassword',
+			placement: JSON.stringify({ headers: true, body: true }),
+			optInBody: 'owner' as const,
+		},
+		// No stored placement, body observed before placement existed.
+		{
+			name: 'accountPassword',
+			placement: null,
+			optInBody: 'observed' as const,
+		},
+	]) {
+		const { result } = await runChecks(bodyPlaceholderPackage(), {
+			env: placementDbEnv(ownerId, [key]),
+			baseUrl: 'https://kody.dev',
+			userId: ownerIdFromStored(ownerId),
+		})
+		const check = findCheck(result, 'credentials')
+		expect(check?.ok).toBe(true)
+		expect(check?.message).toContain('WARNING:')
+		expect(check?.message).toContain(
+			'- src/index.ts:5: secret "accountPassword" in the request body',
+		)
+		expect(check?.message).not.toContain('Publish failed:')
+	}
+})
+
+test('runRepoChecks fails a body placeholder the Key does not allow and links its approval page', async () => {
+	const ownerId = 'user-placement-owner'
+	const { result } = await runChecks(bodyPlaceholderPackage(), {
+		env: placementDbEnv(ownerId, [
+			{ name: 'accountPassword', placement: JSON.stringify({ headers: true }) },
+		]),
+		baseUrl: 'https://kody.dev',
+		userId: ownerIdFromStored(ownerId),
+	})
+	expect(result.ok).toBe(false)
+	const check = findCheck(result, 'credentials')
+	expect(check?.ok).toBe(false)
+	expect(check?.message).toContain('Publish failed:')
+	expect(check?.message).toContain(
+		'  Owner approval: https://kody.dev/connect/secrets?name=accountPassword&placement=body&credential=cred-accountPassword',
+	)
+	expect(check?.message).toContain('This blocks publish.')
+})
+
 test('community installs and platform codemods only warn on credential placeholders in a fetch body', async () => {
 	const { result } = await runChecks(
 		packageFiles(
@@ -1648,7 +1865,7 @@ test('runRepoChecks offers optional credential types only for placements one fit
 	expect(unfitMessage).not.toContain('Optional, if you want')
 })
 
-test('credentialPatternNoticeForFiles reads repo paths under the source root', () => {
+test('credentialPatternNoticeForFiles reads repo paths under the source root', async () => {
 	const files = {
 		'packages/app/package.json': manifest('rooted', {
 			credentials: {
@@ -1658,12 +1875,14 @@ test('credentialPatternNoticeForFiles reads repo paths under the source root', (
 		'packages/app/src/send.ts': "export const h = { a: '{{secret:T}}' }",
 		'other/src/x.ts': "export const h = { a: '{{secret:X}}' }",
 	}
-	const notice = credentialPatternNoticeForFiles(files, '/packages/app/')
+	const notice = await credentialPatternNoticeForFiles(files, '/packages/app/')
 	expect(notice).toMatch(/Credential stamp/)
 	expect(notice).toMatch(/T/)
 	expect(notice).not.toContain('other/')
 	expect(
-		credentialPatternNoticeForFiles({ 'package.json': manifest('clean') }),
+		await credentialPatternNoticeForFiles({
+			'package.json': manifest('clean'),
+		}),
 	).toMatch(/Credential stamp is empty/)
 })
 

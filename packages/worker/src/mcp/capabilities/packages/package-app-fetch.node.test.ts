@@ -26,10 +26,16 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 		mockModule.resolveSavedPackageRef(...args),
 }))
 
-vi.mock('#worker/package-registry/package-owner.ts', () => ({
-	resolvePackageOwnerContext: (...args: Array<unknown>) =>
-		mockModule.resolvePackageOwnerContext(...args),
-}))
+vi.mock(
+	'#worker/package-registry/package-owner.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<
+			typeof import('#worker/package-registry/package-owner.ts')
+		>()),
+		resolvePackageOwnerContext: (...args: Array<unknown>) =>
+			mockModule.resolvePackageOwnerContext(...args),
+	}),
+)
 
 vi.mock('#worker/repo/user-repos.ts', () => ({
 	findPlainRepoPromotionHint: (...args: Array<unknown>) =>
@@ -201,6 +207,35 @@ test('packageAppFetch serves a team org app as the calling person, with their ro
 			visitor: expect.objectContaining({
 				userId: personIdFromStored('user-1'),
 				role: 'owner',
+			}),
+		}),
+	)
+})
+
+test('packageAppFetch never pairs a team org app with the member email', async () => {
+	// The app's storage quota resolves the owner plan from owner.email. A
+	// member email against the team org id reads the Free plan.
+	invalidateDemoPackageCache()
+	mockModule.resolveSavedPackageRef.mockResolvedValue(savedPackage())
+	mockModule.servePackageAppRequest.mockResolvedValue(new Response('ok'))
+	mockModule.resolvePackageOwnerContext.mockResolvedValueOnce({
+		ownerUserId: ownerIdFromStored('org-team'),
+		ownerScope: 'team',
+		ownerEmail: 'kody@example.com',
+		actorUserId: 'user-1',
+		actorPersonalOrgId: ownerIdFromStored('user-1-personal'),
+	})
+
+	await fetchApp(
+		{ kody_id: 'demo-app' },
+		{ orgBinding: { org: { id: 'org-team', slug: 'team' }, role: 'owner' } },
+	)
+
+	expect(mockModule.servePackageAppRequest).toHaveBeenCalledWith(
+		expect.objectContaining({
+			owner: expect.objectContaining({
+				userId: ownerIdFromStored('org-team'),
+				email: '',
 			}),
 		}),
 	)

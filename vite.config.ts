@@ -186,7 +186,20 @@ export default defineConfig(async ({ command }) => {
 			ssr: {
 				// Keep server mappings under Cloudflare's aggregate upload limit.
 				build: {
-					rolldownOptions: { output: { sourcemapExcludeSources: true } },
+					rolldownOptions: {
+						output: {
+							sourcemapExcludeSources: true,
+							// workerd keeps every module's source text on the isolate
+							// heap and V8 doubles any source holding a character above
+							// U+00FF. Escaping them (and dropping whitespace) took the
+							// idle isolate from 95 MB to 56 MB of the 128 MB limit.
+							minify: {
+								compress: false,
+								mangle: false,
+								codegen: { asciiOnly: true },
+							},
+						},
+					},
 				},
 				optimizeDeps: { noDiscovery: true, include: [] },
 				resolve: { noExternal: ['@tanstack/redact'] },

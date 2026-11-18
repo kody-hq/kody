@@ -462,6 +462,13 @@ export const runRecordRetentionAlarmMs = 60 * 60 * 1000
  */
 export const runRecordRetentionEmptyBackoffMinMs = 15_000
 
+/**
+ * Retention alarm passes run at most this often. Busy objects otherwise woke
+ * once per run (cap eviction, short stale TTLs); stale heal and cap eviction
+ * may lag by up to this long.
+ */
+export const runRecordRetentionMinPassIntervalMs = 15_000
+
 /** Cap for empty-pass alarm backoff. Doubles from the min on each empty pass. */
 export const runRecordRetentionEmptyBackoffMaxMs = 15 * 60 * 1000
 

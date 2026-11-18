@@ -6,7 +6,9 @@ import {
 	kodyDevAllowlist,
 	kodyDevBoundaryBridgeMethods,
 	kodyDevBoundaryMocks,
+	kodyDevWontDo,
 } from '../../../dev-runtime/src/surface.ts'
+import { slugifyDocumentHeading } from '../guides/document-sections.ts'
 import { packageAppSandboxBridgeMethods } from './package-app.ts'
 import { kodyRuntimeSharedExportNames } from './runtime-source-modules.ts'
 
@@ -14,32 +16,40 @@ import { kodyRuntimeSharedExportNames } from './runtime-source-modules.ts'
  * Drift guard for `kody dev`. The mock target runs the hosted package runtime
  * on local workers, so every runtime export and bridge method is real unless it
  * is a named boundary mock. The working-tree bridge used by `--target prod`
- * must export the same names, and anything it nulls or refuses must be on the
- * allowlist with a docs entry.
+ * must export the same names, and anything it nulls or refuses must be an open
+ * gap on the allowlist or an intentional won't-do, each with a docs entry.
  */
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const read = (path: string) => readFileSync(`${repoRoot}${path}`, 'utf8')
 
-function headingSlugs(markdown: string) {
-	return new Set(
-		[...markdown.matchAll(/^#{1,6} (.+)$/gm)].map(([, heading]) =>
+function headingsBySlug(markdown: string) {
+	return new Map(
+		[...markdown.matchAll(/^#{1,6} (.+)$/gm)].map(([, heading]) => [
 			heading!
 				.trim()
 				.toLowerCase()
 				.replace(/[^a-z0-9 -]/g, '')
 				.replace(/ /g, '-'),
-		),
+			heading!.trim(),
+		]),
 	)
+}
+
+function headingSlugs(markdown: string) {
+	return new Set(headingsBySlug(markdown).keys())
 }
 
 const legacyRuntimeSource = read(
 	'packages/cli/src/package-local-runtime-source.ts',
 )
-const allowlistedExports = new Set(kodyDevAllowlist.flatMap((e) => e.exports))
+const openGapExports = kodyDevAllowlist.flatMap((e) => e.exports)
+const wontDoExports = kodyDevWontDo.flatMap((e) => e.exports)
+const acceptedExports = new Set([...openGapExports, ...wontDoExports])
 
-test('every allowlist and boundary mock entry links a docs heading', () => {
+test("every allowlist, won't-do and boundary mock entry links a docs heading", () => {
 	const links = [
 		...kodyDevAllowlist.map((entry) => entry.docs),
+		...kodyDevWontDo.map((entry) => entry.docs),
 		...Object.values(kodyDevBoundaryMocks),
 	]
 	for (const link of links) {
@@ -93,10 +103,27 @@ test('nulled or refused working-tree exports are allowlisted', () => {
 	]
 	for (const name of [...nulled, ...refused]) {
 		expect(
-			allowlistedExports,
+			acceptedExports,
 			`${name} is null or refused in package-local-runtime-source.ts`,
 		).toContain(name)
 	}
-	// Entries come off the allowlist as soon as the bridge serves them.
-	expect([...allowlistedExports].sort()).toEqual([...nulled, ...refused].sort())
+	// Entries come off both lists as soon as the bridge serves them.
+	expect([...acceptedExports].sort()).toEqual([...nulled, ...refused].sort())
+})
+
+test("open gaps and won't-do entries do not overlap", () => {
+	expect(openGapExports.filter((name) => wontDoExports.includes(name))).toEqual(
+		[],
+	)
+	expect(new Set(wontDoExports).size).toBe(wontDoExports.length)
+})
+
+test("prod refusals link the won't-do section on kody.codes", () => {
+	for (const entry of kodyDevWontDo) {
+		const [path, anchor] = entry.docs.split('#')
+		const heading = headingsBySlug(read(path!)).get(anchor!)
+		expect(heading, entry.docs).toBeTruthy()
+		const url = `https://kody.codes/docs/package-apps#${slugifyDocumentHeading(heading!)}`
+		expect(legacyRuntimeSource, entry.title).toContain(url)
+	}
 })

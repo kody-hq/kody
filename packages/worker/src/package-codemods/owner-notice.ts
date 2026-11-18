@@ -1,5 +1,8 @@
 import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
-import { renderTransactionalEmail } from '#app/email/template.ts'
+import {
+	renderTransactionalEmail,
+	type RenderedEmail,
+} from '#app/email/template.ts'
 import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
@@ -38,7 +41,10 @@ export type PackageOwnerNoticeStatus =
 	| 'already_sent'
 	| 'no_recipients'
 	| 'send_failed'
-	/** Delivered, but a claim write failed, so a re-run may email again. */
+	/**
+	 * Delivered to someone whose claim write failed, so a re-run may email them
+	 * again. Reported ahead of `send_failed` when both happen for one owner.
+	 */
 	| 'claim_failed'
 
 export type PackageOwnerNoticePackage = {
@@ -78,7 +84,13 @@ export type PackageOwnerNoticeContent = {
 
 export class PackageOwnerNoticeError extends Error {}
 
-type Recipient = { userId: string; email: string }
+export type PackageOwnerNoticeRecipient = {
+	userId: string
+	email: string
+	/** Display name, else username, for the greeting. */
+	name: string
+}
+type Recipient = PackageOwnerNoticeRecipient
 
 /**
  * Owners of the owning org with a verified address. A personal org has no
@@ -103,7 +115,7 @@ async function loadOwnerRecipients(
 	const placeholders = userIds.map(() => '?').join(', ')
 	const { results } = await db
 		.prepare(
-			`SELECT stable_user_id AS user_id, email
+			`SELECT stable_user_id AS user_id, email, display_name, username
 			 FROM users
 			 WHERE stable_user_id IN (${placeholders})
 			   AND deleting_at IS NULL
@@ -112,10 +124,16 @@ async function loadOwnerRecipients(
 			   AND TRIM(email) != ''${andLiveDeletedAtSql()}`,
 		)
 		.bind(...userIds)
-		.all<{ user_id: string; email: string }>()
+		.all<{
+			user_id: string
+			email: string
+			display_name: string | null
+			username: string | null
+		}>()
 	return results.map((row) => ({
 		userId: row.user_id,
 		email: row.email.trim(),
+		name: row.display_name?.trim() || row.username?.trim() || '',
 	}))
 }
 
@@ -278,8 +296,12 @@ export async function runPackageOwnerNotice(input: {
 			emailConfig,
 			noticeId: input.noticeId,
 			ownerId,
-			packages,
-			content: input.content,
+			buildEmail: () =>
+				buildPackageOwnerNoticeEmail({
+					appBaseUrl: emailConfig.appBaseUrl,
+					content: input.content,
+					packages,
+				}),
 			dryRun: input.dryRun,
 			onPreview: (email) => {
 				preview ??= { subject: email.subject, text: email.text }
@@ -306,14 +328,13 @@ export async function runPackageOwnerNotice(input: {
  * so a re-run skips delivered recipients and retries failed ones. KV has no
  * atomic claim, so run one notice from one place at a time.
  */
-async function noticeOneOwner(input: {
+export async function noticeOneOwner(input: {
 	env: Env
 	kv: KVNamespace | undefined
 	emailConfig: { appBaseUrl: string; fromEmail: string }
 	noticeId: string
 	ownerId: string
-	packages: Array<PackageOwnerNoticePackage>
-	content: PackageOwnerNoticeContent
+	buildEmail: (recipient: PackageOwnerNoticeRecipient) => RenderedEmail
 	dryRun: boolean
 	onPreview: (email: { subject: string; text: string }) => void
 }): Promise<{ status: PackageOwnerNoticeStatus; recipientCount: number }> {
@@ -334,19 +355,15 @@ async function noticeOneOwner(input: {
 	if (pending.length === 0) {
 		return { status: 'already_sent', recipientCount: 0 }
 	}
-	const email = buildPackageOwnerNoticeEmail({
-		appBaseUrl: input.emailConfig.appBaseUrl,
-		content: input.content,
-		packages: input.packages,
-	})
 	if (input.dryRun) {
-		input.onPreview(email)
+		input.onPreview(input.buildEmail(pending[0]!))
 		return { status: 'would_send', recipientCount: pending.length }
 	}
 
 	let delivered = 0
 	let claimFailures = 0
 	for (const recipient of pending) {
+		const email = input.buildEmail(recipient)
 		try {
 			const result = await sendGatedTransactionalEmail({
 				db: input.env.APP_DB,
@@ -397,10 +414,10 @@ async function noticeOneOwner(input: {
 	}
 	return {
 		status:
-			delivered < pending.length
-				? 'send_failed'
-				: claimFailures > 0
-					? 'claim_failed'
+			claimFailures > 0
+				? 'claim_failed'
+				: delivered < pending.length
+					? 'send_failed'
 					: 'sent',
 		recipientCount: delivered,
 	}

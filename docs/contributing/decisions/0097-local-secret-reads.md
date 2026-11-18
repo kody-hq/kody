@@ -32,7 +32,11 @@ Kent decided:
    all or nothing. Provider values are fetched live.
 4. **Refusals help.** A refused read says why in plain language. When the switch
    is off it links to a page that turns local reads on for that exact secret in
-   one click. Opening the page changes nothing.
+   one click. Opening the page changes nothing. A secret that can never be read
+   locally (a package or session secret, a URL, login, or signing credential, or
+   a connection) gets no link. The CLI, that page, and the credential page name
+   the exact cause and the next step, such as saving the value as an account
+   secret locked to the package.
 5. **Every read is recorded, never the value.** Secret, time, person, token or
    device, profile, command, real IP, and outcome go to a Local reads list on
    that secret's page, kept 90 days. The last local read time is kept for good.

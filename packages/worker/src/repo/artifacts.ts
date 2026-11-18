@@ -991,10 +991,25 @@ export function isLoopbackHostname(hostname: string) {
 	)
 }
 
-export function isLoopbackArtifactsRemote(remote: string) {
+/**
+ * Local dev without a git backend: the Cloudflare API stand-in hands out
+ * remotes on its own origin, which serves no git, so these repos only hold
+ * mock source snapshots. A loopback remote on any other origin is real git
+ * (`tools/mock-artifacts-git-server.ts`) and takes the production lanes.
+ */
+export function isSnapshotOnlyArtifactsRemote(
+	env: Pick<Env, 'CLOUDFLARE_API_BASE_URL'>,
+	remote: string,
+) {
+	const apiBaseUrl = env.CLOUDFLARE_API_BASE_URL?.trim()
+	if (!apiBaseUrl) return false
 	try {
 		const url = new URL(remote)
-		return url.protocol === 'http:' && isLoopbackHostname(url.hostname)
+		return (
+			url.protocol === 'http:' &&
+			isLoopbackHostname(url.hostname) &&
+			url.origin === new URL(apiBaseUrl).origin
+		)
 	} catch {
 		return false
 	}
@@ -1153,6 +1168,45 @@ export async function resolveExistingArtifactSourceRepo(
 	throw new Error(
 		`Artifacts repo "${repoId}" is ${result.status}. Retry after ${result.retryAfter}s.`,
 	)
+}
+
+/**
+ * Durable non-default ref that keeps published-only codemod commits fetchable
+ * without moving the Artifacts default-branch tip (owner unpublished work).
+ * Prior published OIDs stay ancestors when this tip advances by fast-forward.
+ */
+export const kodyPublishedBranchName = 'kody-published'
+export const kodyPublishedRef = `refs/heads/${kodyPublishedBranchName}`
+
+/** Tip of {@link kodyPublishedRef}, or null when the repo or ref is missing. */
+export async function resolveArtifactSourceKodyPublishedTip(
+	env: Env,
+	repoId: string,
+) {
+	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
+	if (!repo) return null
+	const [info, token] = await Promise.all([
+		repo.info(),
+		repo.createToken('read', 300),
+	])
+	if (!info?.remote) {
+		throw new Error('Artifact repo remote URL is unavailable.')
+	}
+	let refs: Awaited<ReturnType<typeof listArtifactServerRefs>>
+	try {
+		refs = await listArtifactServerRefs({
+			remote: info.remote,
+			token: token.plaintext,
+			prefix: kodyPublishedRef,
+		})
+	} catch (error) {
+		throw wrapArtifactsGitHttpError({
+			operation: 'listServerRefs',
+			remote: info.remote,
+			error,
+		})
+	}
+	return refs.find((ref) => ref.ref === kodyPublishedRef)?.oid ?? null
 }
 
 export async function resolveArtifactSourceHead(env: Env, repoId: string) {

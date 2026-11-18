@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { deletePackage } from '#start/server/package-mutations'
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -15,7 +17,7 @@ import { mergeCss } from '../components/merge-css.ts'
 
 import { writeClipboardText } from '#client/clipboard.ts'
 import { useRouter } from '@tanstack/react-router'
-import { copyPromptTooltipCss } from '../components/fork-outdated-copy-button.tsx'
+import { Tooltip } from '../components/tooltip.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { ownerWorkspaceHref } from '#client/routes/account-rail.ts'
 import { useShellData } from '../routes/__root.tsx'
@@ -27,18 +29,12 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
 	hoverMq,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import type { AccountPackageDetail } from '#universal/loader-data.ts'
+import { Input } from '../components/input.tsx'
 
 const packageDeleteCopyTooltip = 'Copy'
 const packageDeleteCopyTooltipId = 'package-delete-copy-name-tooltip'
@@ -54,7 +50,11 @@ export function AccountPackageDeleteDialog(props: {
 		async ({
 			data,
 		}: {
-			data: { packageId: string; confirmName: string; isCurrent: () => boolean }
+			data: {
+				packageId: string
+				confirmName: string
+				isCurrent: () => boolean
+			}
 		}) => {
 			const result = await deletePackage({
 				data: { packageId: data.packageId, confirmName: data.confirmName },
@@ -156,29 +156,30 @@ export function AccountPackageDeleteDialog(props: {
 				css={{ display: 'grid', gap: spacing.sm }}
 				data-testid="package-delete-controls"
 			>
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					Permanently delete this package, its jobs, storage, secrets, tokens,
 					and public listing if it has one. Existing forks keep their copies.
 					This cannot be undone.
 				</p>
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
 						data-testid="package-delete"
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onClick={openDialog}
 					>
 						Delete package
-					</button>
+					</Button>
 				</div>
 			</div>
 			{open && (
-				<ModalDialog
-					alert
+				<Dialog
+					open
+					role="alertdialog"
 					flush
-					label={`Delete ${packageName}`}
-					width={512}
-					testId="package-delete-dialog"
+					aria-label={`Delete ${packageName}`}
+					size="md"
+					data-testid="package-delete-dialog"
 					onClose={closeDialog}
 				>
 					<form css={deleteDialogFormCss} onSubmit={handleDeleteSubmit}>
@@ -197,13 +198,9 @@ export function AccountPackageDeleteDialog(props: {
 								onClick={() => void copyName()}
 							>
 								{renderIcon('copy', { size: '0.85em' })}
-								<span
-									id={packageDeleteCopyTooltipId}
-									role="tooltip"
-									aria-hidden="true"
-								>
+								<Tooltip id={packageDeleteCopyTooltipId}>
 									{copyFeedback ?? packageDeleteCopyTooltip}
-								</span>
+								</Tooltip>
 							</button>
 							?
 						</h3>
@@ -217,24 +214,19 @@ export function AccountPackageDeleteDialog(props: {
 								confirm.
 							</p>
 						</div>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type the name of the package
-							</span>
-							<input
+						<Field label="Type the name of the package">
+							<Input
 								type="text"
 								name="confirmation"
 								data-testid="package-delete-confirmation"
-								data-field-ring
 								autoComplete="off"
 								spellCheck={false}
 								required
 								placeholder={packageName}
 								value={confirmation}
-								css={accountInputCss}
 								onChange={updateConfirmation}
 							/>
-						</label>
+						</Field>
 						{error ? (
 							<p
 								role="alert"
@@ -248,25 +240,25 @@ export function AccountPackageDeleteDialog(props: {
 							</p>
 						) : null}
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="button"
 								disabled={isDeleting}
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								onClick={closeDialog}
 							>
 								Cancel
-							</button>
-							<button
+							</Button>
+							<Button
 								type="submit"
 								disabled={!canSubmit}
 								data-testid="package-delete-confirm"
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 							>
 								{isDeleting ? 'Deleting…' : 'Delete package'}
-							</button>
+							</Button>
 						</div>
 					</form>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)
@@ -286,7 +278,7 @@ const deleteDialogTitleCss = {
 	lineHeight: 1.2,
 } satisfies CSSObject
 
-const packageDeleteCopyButtonCss = mergeCss(copyPromptTooltipCss, {
+const packageDeleteCopyButtonCss = {
 	position: 'relative' as const,
 	display: 'inline-flex',
 	alignItems: 'center',
@@ -312,4 +304,4 @@ const packageDeleteCopyButtonCss = mergeCss(copyPromptTooltipCss, {
 		outline: `2px solid ${colors.primary}`,
 		outlineOffset: '2px',
 	},
-})
+} satisfies CSSObject

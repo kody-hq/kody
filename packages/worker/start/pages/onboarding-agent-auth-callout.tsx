@@ -25,9 +25,7 @@ export function AgentAuthCallout(props: {
 			data-testid="onboarding-authenticate-callout"
 		>
 			<strong>Authenticate Kody before you continue</strong>
-			<span>
-				{renderAgentAuthHint(props.agent, props.surface, props.mcpServerUrl)}
-			</span>
+			<span>{renderAgentAuthHint(props.agent, props.surface)}</span>
 			<span>
 				Approve the <strong>{new URL(props.mcpServerUrl).host}</strong> OAuth
 				window. This is the step that connects your agent to your factory.
@@ -39,7 +37,6 @@ export function AgentAuthCallout(props: {
 function renderAgentAuthHint(
 	kind: McpClientKind,
 	surface: OnboardingAgentSurface,
-	_mcpServerUrl: string,
 ) {
 	switch (kind) {
 		case 'cursor-local':
@@ -80,24 +77,16 @@ function renderAgentAuthHint(
 		case 'chatgpt':
 			return (
 				<>
-					After you install the Kody plugin, select <strong>Connect</strong> if
-					prompted and complete OAuth when ChatGPT prompts you.
+					After you add the MCP server, select <strong>Authenticate</strong> and
+					sign in to Kody when ChatGPT asks.
 				</>
 			)
 		case 'codex':
-			if (surface === 'mobile') {
-				return (
-					<>
-						After you install the Kody plugin, select <strong>Connect</strong>{' '}
-						if prompted and complete OAuth when ChatGPT prompts you.
-					</>
-				)
-			}
 			return (
 				<>
-					After you install the Kody plugin, select <strong>Connect</strong> if
-					prompted and complete OAuth when ChatGPT prompts you. If you used the
-					Codex CLI instead, run <code>{codexMcpLoginCommand}</code>.
+					After you add the MCP server, run <code>{codexMcpLoginCommand}</code>{' '}
+					if sign-in does not start, or select <strong>Authenticate</strong> in
+					the MCP servers list.
 				</>
 			)
 		case 'claude-desktop':

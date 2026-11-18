@@ -1,3 +1,4 @@
+import { walletGuardActorUserId } from '#worker/wallet-guard/enforce.ts'
 import { attachGuestResultBlock } from '#worker/guest/guest-result-block.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
@@ -30,7 +31,7 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
-	callerFeatureFlagEvaluationFailed,
+	callerFeatureFlagEvaluationFailure,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
@@ -137,6 +138,8 @@ import {
 	type RunRecordHandle,
 } from '#worker/run-records/types.ts'
 import { scheduleFleetExecuteLastSuccess } from '#worker/execute-health-heartbeat.ts'
+import { recordApiRequestProgress } from '#worker/open-api/request-progress.ts'
+import { executeRunProgressStep } from '@kody-internal/shared/api-request-progress.ts'
 import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
@@ -237,13 +240,19 @@ export const executeToolOutputSchema = {
 		.array(z.unknown())
 		.optional()
 		.describe(
-			'Execution-context notices that are new or changed since you last saw them: `context-elevation` (the machine this ran on can do more than you can personally) and `context-misconfigured`. Each has contextId, contextName, fingerprint, summary, entries or codes, href, and dismissible.',
+			'Execution-context notices that are new or changed since you last saw them: `context-elevation` (the machine this ran on can do more than you can personally) `context-misconfigured`, and `context-open-shell` (a machine you operate gives your runs an unrestricted shell with no package list). Each has contextId, contextName, fingerprint, summary, href, dismissible, and entries or codes where they apply.',
 		),
 	usage: z
 		.unknown()
 		.optional()
 		.describe(
 			'Hosted execute allowance after this call: unit, and per window (day, plus week when the plan has one) used, limit, remaining, resetsAt. Repeats of code already run today do not count.',
+		),
+	rateLimit: z
+		.unknown()
+		.optional()
+		.describe(
+			'Set when a safety ceiling (denial-of-wallet guard) refused the call before it ran: the limit key, scope (user or org), window, limit, retryAfterSeconds, and the support address.',
 		),
 	admission: z
 		.object({
@@ -448,7 +457,7 @@ export async function runExecuteToolCall(input: {
 		await attachExecuteUsage(
 			attachWorkerUnits(await runExecuteToolWithErrorBoundary()),
 		),
-		{ db: env.APP_DB, callerContext },
+		{ env, callerContext },
 	)
 	// Detach only after the follow response is built, including the
 	// usage read. A caller cancel before that still stops the sandbox.
@@ -586,6 +595,7 @@ export async function runExecuteToolCall(input: {
 			const { errorName, errorMessage } = errorFields(error)
 			const errorDetails = getExecutionErrorDetails(error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			logMcpEvent({
 				category: 'mcp',
@@ -641,6 +651,7 @@ export async function runExecuteToolCall(input: {
 				const timing = finishToolTiming(timingStart)
 				return buildKeyedExecuteLookupResponse({
 					run: existing,
+					orgSlug: callerContext.request?.org.slug,
 					conversationId: resolvedConversationId,
 					timing,
 				})
@@ -662,8 +673,14 @@ export async function runExecuteToolCall(input: {
 				)
 			: null
 		const liveFlags = await liveFlagsPromise
-		if (await callerFeatureFlagEvaluationFailed(env, callerContext)) {
-			throw new Error('Feature flag evaluation failed')
+		const flagFailure = await callerFeatureFlagEvaluationFailure(
+			env,
+			callerContext,
+		)
+		if (flagFailure) {
+			throw new Error('Feature flag evaluation failed', {
+				cause: flagFailure.cause,
+			})
 		}
 		void entitlementPrefetch
 		// Registry assembly starts before quota to overlap the quota check.
@@ -725,6 +742,7 @@ export async function runExecuteToolCall(input: {
 						env,
 						ownerId: storageOwnerId,
 						email: entitlementEmail,
+						actorUserId: walletGuardActorUserId(callerContext.request),
 						repeatKey: await executeRepeatKey({
 							credential: callerContext.request?.credential ?? null,
 							actorUserId:
@@ -773,6 +791,7 @@ export async function runExecuteToolCall(input: {
 				const timing = finishToolTiming(timingStart)
 				return buildKeyedExecuteLookupResponse({
 					run: claim.run,
+					orgSlug: callerContext.request?.org.slug,
 					conversationId: resolvedConversationId,
 					timing,
 				})
@@ -795,6 +814,19 @@ export async function runExecuteToolCall(input: {
 					metadata: executeRunMetadata,
 				},
 			})
+		}
+		if (claimedRunHandle) {
+			// Over the Open API, if this isolate dies while the run goes on
+			// (a run on an execution context keeps going), the edge's 503 can
+			// still name the run. A generated key is not named: its running
+			// row may not be written yet, so a retry with it could run twice.
+			const recorded = recordApiRequestProgress({
+				step: executeRunProgressStep,
+				runId: claimedRunHandle.id,
+				idempotencyKey: runRowOwned ? normalizedIdempotencyKey : null,
+			})
+			if (waitUntil) waitUntil(recorded)
+			else void recorded
 		}
 
 		// Registry assembly and memory retrieval can run package code.
@@ -1168,6 +1200,7 @@ export async function runExecuteToolCall(input: {
 			})
 			return buildKeyedExecuteLookupResponse({
 				run: spanned.run,
+				orgSlug: callerContext.request?.org.slug,
 				conversationId: resolvedConversationId,
 				timing,
 			})
@@ -1252,6 +1285,7 @@ export async function runExecuteToolCall(input: {
 		if (result.error) {
 			const errorDetails = getExecutionErrorDetails(result.error, {
 				orgSlug: callerContext.request?.org.slug,
+				adHocExecute: true,
 			})
 			const { errorName, errorMessage } = errorFields(result.error)
 			logMcpEvent({
@@ -1562,6 +1596,7 @@ function buildTransportBudgetFollowResponse(input: {
 
 function buildKeyedExecuteLookupResponse(input: {
 	run: RunRecord
+	orgSlug?: string | null
 	conversationId: string
 	timing: {
 		startedAt: string
@@ -1605,6 +1640,10 @@ function buildKeyedExecuteLookupResponse(input: {
 			input.run.errorMessage ?? 'Execute failed (replayed from run record).'
 		const replayedError = new Error(errorMessage)
 		if (input.run.errorName) replayedError.name = input.run.errorName
+		const errorDetails = getExecutionErrorDetails(replayedError, {
+			orgSlug: input.orgSlug,
+			adHocExecute: true,
+		})
 		return {
 			content: prependToolMetadataContent(input.conversationId, [
 				{
@@ -1624,6 +1663,7 @@ function buildKeyedExecuteLookupResponse(input: {
 				returnedBytes: 0,
 				error: errorMessage,
 				...(input.run.errorName ? { errorName: input.run.errorName } : {}),
+				...(errorDetails ? { errorDetails } : {}),
 				...entitlementStructuredContent(replayedError),
 				...(retainedResult !== undefined ? { result: retainedResult } : {}),
 				logs: [] as Array<unknown>,

@@ -178,16 +178,48 @@ workflows.
 
 Sandbox budgets are the same on every plan:
 
-| Run                                                                     | Budget                       |
-| ----------------------------------------------------------------------- | ---------------------------- |
-| MCP / ad-hoc execute, package export HTTP invokes, `sync` webhooks      | ~90s                         |
-| Jobs (scheduled and `jobRunNow`, including package exports they import) | 5 minutes                    |
-| Ack (queued) webhook deliveries                                         | 5 minutes                    |
-| Each workflow step                                                      | 5 minutes                    |
-| `execute --local`                                                       | none (fetch deadlines apply) |
+| Run                                                                       | Budget                                                          |
+| ------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| MCP / ad-hoc execute, package export HTTP invokes, `sync` webhooks        | ~90s                                                            |
+| Jobs (scheduled and `jobRunNow`, including package exports they import)   | 5 minutes                                                       |
+| Ack (queued) webhook deliveries                                           | 5 minutes                                                       |
+| Each workflow step                                                        | 5 minutes                                                       |
+| `execute --local`                                                         | none (fetch deadlines apply)                                    |
+| Any run on an execution context (execute, jobs, webhooks, workflow steps) | the context grant's `timeoutMs` (default 90s, up to 15 minutes) |
 
 A `sync` webhook's HTTP response stops waiting after 30s. Work that does not fit
 the interactive budget goes in a workflow or a job.
+
+### Modules too large to bundle on Kody cloud
+
+Hosted execute bundles a module that imports saved packages (`kody:@…`) or npm
+packages in its own short-lived isolate. Only your module's own code goes
+through the bundler there. Each imported export's published build is loaded as
+is, and npm packages or a saved package with no usable published build are
+bundled from source. If that build exceeds the isolate's memory or CPU limit, or
+takes longer than 90s, only that call fails and nothing runs. The error says so,
+and its structured `errorDetails` has `kind: "execute_bundle_too_large"` and a
+`suggestedAction: { type: "run_locally", command, requires }`. An agent with a
+shell can save the module to a file and run that command
+(`npx -y @kodycodes/cli@latest execute --local --file <file>`), which bundles on
+its own machine and calls the same Kody capabilities
+([local execute](../guides/local-execute.md)). To stay on Kody cloud, import
+fewer or smaller packages in one module.
+
+Two more failures add a local rerun command in `errorDetails` (`suggestedAction`
+/ `alternativeAction`):
+
+- `kind: "execution_timed_out"` from an ad hoc execute adds
+  `alternativeAction: { type: "run_locally", command, requires }` beside its
+  `suggestedAction`. Local runs have no execution time budget, so the same
+  module runs as written. Durable workflows remain the hosted path for long
+  work.
+- `kind: "package_build_limit"` means a package build or check ran out of memory
+  or CPU on Kody cloud. Its
+  `suggestedAction: { type: "publish_local_build", command, requires }` carries
+  `npx -y @kodycodes/cli@latest package publish <package> --build local`, which
+  needs the Execution contexts experiment
+  ([Publish packages too big for Kody cloud](../guides/publish-large-packages.md)).
 
 ### Long calls: start a workflow and check back
 
@@ -218,6 +250,13 @@ report that outcome right away. The CLI's cloud execute (`POST /v1/execute`)
 waits out the whole sandbox budget instead of returning a follow handle. Work
 that needs longer belongs in a workflow, a job, or `execute --local`.
 
+If the API stops before it answers (a 503 `internal_error`, for example when it
+runs out of server memory) after execute already started the run, the error
+names that run in `error.details.run_id` (and `idempotency_key` when you passed
+one), and the CLI's `--json` error carries them as `runId` and `idempotencyKey`.
+The run may still be going or may have finished, so read it with `runGet`
+instead of starting the work again.
+
 You can omit **`idempotencyKey`**. When Kody can record the run, it assigns one
 (`execute:…`) and returns it on that follow response. Pass your own key (string,
 max 256 characters) when you want to choose the retry token on the first call.
@@ -237,11 +276,13 @@ max 256 characters) when you want to choose the retry token on the first call.
 - If a keyed run is stranded as `running` (for example the Worker isolate reset
   before the terminal write), Kody reconciles it to an error with
   **`errorName=platform_interrupted`** after a few minutes (platform weather;
-  outcome unknown — not a user-authored package failure). Keyed package
-  invocations write `package invocation started: …` onto the running row before
-  sandbox work, so that reconciled row is not an empty log. Polling **`runGet`**
-  or retrying the same key then returns that terminal outcome instead of
-  `inProgress` forever.
+  outcome unknown — not a user-authored package failure). A run on an execution
+  context is not stranded while it is inside its grant's `timeoutMs`: it stays
+  `running` until it ends, and is reconciled only a few minutes after its
+  deadline. Keyed package invocations write `package invocation started: …` onto
+  the running row before sandbox work, so that reconciled row is not an empty
+  log. Polling **`runGet`** or retrying the same key then returns that terminal
+  outcome instead of `inProgress` forever.
 
 Ordinary short calls can omit the key. Those runs are still listed in Activity
 when they finish. A call that is still running at the transport budget returns
@@ -370,10 +411,15 @@ read include. `warning` is a string once the statement examines at least
 after 1,000,000,000 rows examined, with `storage.sql read stopped…`. Narrow with
 `LIMIT` or `WHERE`. The 1,000-row cap limits the response, not the scan.
 
+Pass bindings as one array: `sql(query, [a, b])` binds `a` to the first slot and
+`b` to the second, and `sql(query, [])` binds nothing. A non-array second
+argument binds nothing, so `sql(query, a, b)` does not bind `a` or `b`.
+
 Several `;`-separated statements run in order in one call. Only the last one may
 take bindings, and the result describes the last statement. Bindings are
 positional (named `:name` slots bind in order) and accept strings, numbers,
-booleans (stored as `1` / `0`), and `null`.
+booleans (stored as `1` / `0`), and `null`. An array or object element throws;
+`JSON.stringify` it first to store it as text.
 
 Under `kody execute --target mock` and `kody dev`, `sql(...)` runs on a local
 SQLite file and returns the same fields, row cap, `truncated`, warning, and

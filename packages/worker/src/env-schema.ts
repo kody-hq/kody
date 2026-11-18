@@ -318,6 +318,10 @@ export const EnvSchema = object({
 	// the Fathom tracker script; when unset (local dev, preview, tests) no
 	// analytics script is rendered.
 	FATHOM_SITE_ID: optionalNonEmptyStringSchema,
+	// Comma-separated org ids whose packages receive `whats_new.consent.changed`
+	// in addition to site admins' own packages. The payload carries subscriber
+	// emails, so only first-party orgs belong here.
+	WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS: optionalNonEmptyStringSchema,
 	// Comma-separated YouTube playlist ids whose latest Atom-feed videos
 	// (typically ~15 each) may open in the site-wide `/?youtubeId=` overlay.
 	// `none` disables playlists. Unset means no playlist fetch (tests).

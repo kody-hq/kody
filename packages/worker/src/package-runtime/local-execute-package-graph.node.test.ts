@@ -5,10 +5,12 @@ import {
 	moduleGraphMockModule as mockModule,
 	createSavedPackageRecord,
 } from '#worker/test-support/module-graph.ts'
+import { buildLocalExecutePackageGraph } from '#worker/test-support/local-execute-package-graph.ts'
 import {
-	buildLocalExecutePackageGraph,
+	shouldOmitLocalExecutePreparedModule,
 	type LocalExecutePackageGraphError,
 } from './local-execute-package-graph.ts'
+import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
 import {
 	createLocalExecutePackageRuntimeModuleSource,
 	createLocalExecuteRuntimeShimSource,
@@ -19,6 +21,8 @@ import {
 	resolveRelativeModulePath,
 	runtimeModulePath,
 } from './module-graph-paths.ts'
+import { linkedArtifactPrefix } from './module-graph-artifacts.ts'
+import { createRelativeImportSpecifier } from './module-graph-path-basics.ts'
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	resolveSavedPackageRef: (...args: Array<unknown>) =>
@@ -207,6 +211,314 @@ export default async function main(params) { return greet(params.name) }`
 	expect(
 		graph.modules.some((module) => module.name.startsWith('.__kody_root__/')),
 	).toBe(false)
+})
+
+const linkedDependencyPrefixes = {
+	discord: linkedArtifactPrefix({
+		specifier: 'kody:@kentcdodds/discord/edit-message',
+		sourceId: 'source-discord',
+		publishedCommit: 'commit-discord',
+	}),
+	github: linkedArtifactPrefix({
+		specifier: 'kody:@kentcdodds/github/comment',
+		sourceId: 'source-github',
+		publishedCommit: 'commit-github',
+	}),
+}
+const grokPrefix = linkedArtifactPrefix({
+	specifier: 'kody:@kentcdodds/grok-bot/wake',
+	sourceId: 'source-grok',
+	publishedCommit: 'commit-grok',
+})
+const linkedRuntimeStub =
+	'export function __kodyMeterStaticPackageExport(_id, value) { return value }'
+
+function linkedProxyTo(target: string) {
+	return `import * as __kodyPackageModule from ${JSON.stringify(target)};\nimport { __kodyMeterStaticPackageExport } from "../.__kody_virtual__/runtime.js";\nexport default __kodyMeterStaticPackageExport("pkg", __kodyPackageModule.default);\n`
+}
+
+/**
+ * An `./advance` artifact that links discord and github, which both link
+ * grok-bot. `nested` is how linking wrote it before #5153 (a grok-bot copy
+ * inside each dependency's prefix); `hoisted` is how it writes it since (one
+ * grok-bot at the artifact's own `.__kody_linked__/artifacts/` root).
+ */
+function advanceArtifactModules(layout: 'nested' | 'hoisted') {
+	const modules: Record<string, string> = {
+		'dist/advance.js':
+			'import editMessage from "../.__kody_linked__/discord.js";\nimport comment from "../.__kody_linked__/github.js";\nexport default async function advance() { return [editMessage(), comment()] }\n',
+		'.__kody_virtual__/runtime.js': linkedRuntimeStub,
+	}
+	for (const [name, prefix] of Object.entries(linkedDependencyPrefixes)) {
+		const grokInDependency =
+			layout === 'nested' ? `${prefix}/${grokPrefix}` : grokPrefix
+		Object.assign(modules, {
+			[`.__kody_linked__/${name}.js`]: linkedProxyTo(
+				`./artifacts/${prefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`,
+			),
+			[`${prefix}/bundle.js`]:
+				'import wake from "./.__kody_linked__/grok.js";\nexport default function run() { return wake() }\n',
+			[`${prefix}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+			[`${prefix}/.__kody_linked__/grok.js`]: linkedProxyTo(
+				layout === 'nested'
+					? `./artifacts/${grokPrefix.slice('.__kody_linked__/artifacts/'.length)}/bundle.js`
+					: createRelativeImportSpecifier(
+							`${prefix}/.__kody_linked__/grok.js`,
+							`${grokInDependency}/bundle.js`,
+						),
+			),
+			[`${grokInDependency}/bundle.js`]:
+				'export default function wake() { return "woke" }\n',
+			[`${grokInDependency}/.__kody_virtual__/runtime.js`]: linkedRuntimeStub,
+		})
+	}
+	return modules
+}
+
+test.each(['nested', 'hoisted'] as const)(
+	'buildLocalExecutePackageGraph loads a %s-layout artifact whose linked kody:@ dependencies share a linked package once',
+	async (layout) => {
+		mockModule.getSavedPackageByName.mockResolvedValue(
+			createSavedPackageRecord(),
+		)
+		mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+			makeLoadedSource({
+				exports: { './advance': './src/advance.ts' },
+				files: {
+					'src/advance.ts':
+						"import editMessage from 'kody:@kentcdodds/discord/edit-message'\nexport default async function advance() { return editMessage() }",
+				},
+			}),
+		)
+		mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+			makeArtifactHit({
+				artifactName: './advance',
+				entryPoint: 'src/advance.ts',
+				mainModule: 'dist/advance.js',
+				modules: advanceArtifactModules(layout),
+			}),
+		)
+
+		const graph = await buildLocalExecutePackageGraph({
+			...graphInput,
+			code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+		})
+
+		const moduleNames = new Set(graph.modules.map((module) => module.name))
+		const grokBundles = graph.modules.filter((module) =>
+			module.esModule.includes('return "woke"'),
+		)
+		expect(grokBundles).toHaveLength(1)
+		expect(grokBundles[0]?.name).toContain('/.__published_bundle__/')
+		for (const module of graph.modules) {
+			for (const [, specifier] of module.esModule.matchAll(
+				/(?:from|import) ["'](\.[^"']*(?:__kody_linked__|bundle\.js)[^"']*)["']/g,
+			)) {
+				expect(
+					moduleNames.has(resolveRelativeModulePath(module.name, specifier!)!),
+					`${module.name} imports ${specifier}`,
+				).toBe(true)
+			}
+		}
+	},
+)
+
+test('buildLocalExecutePackageGraph fails on the server when a served module imports a module the graph does not serve', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				// A quoted relative path in a string is not an import.
+				'dist/advance.js':
+					'import helper from "./missing-helper.js";\nexport default async function advance() { return [helper, "./not-an-import.js"] }\n',
+			},
+		}),
+	)
+
+	const error = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+	}).catch((caught: unknown) => caught)
+
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).name).toBe('Error')
+	expect((error as Error).message).toMatch(
+		/Local execute package graph is incomplete: ".*\/dist\/advance\.js" imports "\.\/missing-helper\.js", but ".*\/dist\/missing-helper\.js" is not among the served modules\./,
+	)
+})
+
+test('buildLocalExecutePackageGraph fails on the server when the missing module is behind an import whose specifier is written with an escape', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				'dist/advance.js':
+					'import helper from "./hel\\u0070er.js";\nexport default async function advance() { return helper }\n',
+				'dist/helper.js':
+					'import missing from "./missing-helper.js";\nexport default missing\n',
+			},
+		}),
+	)
+
+	const error = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+	}).catch((caught: unknown) => caught)
+
+	expect(error).toBeInstanceOf(Error)
+	expect((error as Error).name).toBe('Error')
+	expect((error as Error).message).toMatch(
+		/Local execute package graph is incomplete: ".*\/dist\/helper\.js" imports "\.\/missing-helper\.js", but ".*\/dist\/missing-helper\.js" is not among the served modules\./,
+	)
+})
+
+test('buildLocalExecutePackageGraph serves a graph whose only unresolved relative paths are a string or in a module nothing imports', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				// The string names a served module, which is still not an import
+				// of it, and workerd never links a module that nothing imports.
+				'dist/advance.js':
+					'export default async function advance() { return ["./not-an-import.js", "./unreached.js"] }\n',
+				'dist/unreached.js': 'import "./also-missing.js"\n',
+			},
+		}),
+	)
+
+	const graph = await buildLocalExecutePackageGraph({
+		...graphInput,
+		code: `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+	})
+
+	expect(
+		graph.modules.some((module) =>
+			module.esModule.includes('./not-an-import.js'),
+		),
+	).toBe(true)
+})
+
+test('prepareKodyGraphFiles records a role for every module it composes, apart from runtime modules', async () => {
+	mockModule.getSavedPackageByName.mockResolvedValue(createSavedPackageRecord())
+	mockModule.loadPackageSourceBySourceId.mockResolvedValue(
+		makeLoadedSource({
+			exports: { './advance': './src/advance.ts' },
+			files: {
+				'src/advance.ts': 'export default async function advance() {}',
+			},
+		}),
+	)
+	mockModule.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifactHit({
+			artifactName: './advance',
+			entryPoint: 'src/advance.ts',
+			mainModule: 'dist/advance.js',
+			modules: {
+				'dist/advance.js':
+					'import "./helper.js"\nexport default async function advance() {}\n',
+				'dist/helper.js': 'export const helper = 1\n',
+			},
+		}),
+	)
+
+	const prepared = await prepareKodyGraphFiles({
+		env: graphInput.env,
+		baseUrl: graphInput.baseUrl,
+		userId: graphInput.userId,
+		sourceFiles: {
+			'entry.ts': `import advance from 'kody:@kentcdodds/example-package/advance'
+export default async function main() { return typeof advance }`,
+		},
+		entryPoint: 'entry.ts',
+	})
+
+	const roles = Object.keys(prepared.files).map((modulePath) => [
+		modulePath,
+		prepared.moduleRoles.get(modulePath),
+	])
+	expect(
+		roles.filter(
+			([modulePath, role]) =>
+				role == null && !/(^|\/)runtime\.js$/.test(modulePath ?? ''),
+		),
+	).toEqual([])
+	const roleSet = new Set(roles.map(([, role]) => role))
+	expect(roleSet).toContain('root-source')
+	expect(roleSet).toContain('import-proxy')
+	expect(roleSet).toContain('published-artifact')
+	expect(
+		roles.filter(([, role]) => role === 'published-artifact'),
+	).toHaveLength(2)
+})
+
+test('local execute picks prepared modules by role and serves a module that has none', () => {
+	const artifactModule =
+		'.__kody_packages__/pkg/.__published_bundle__/advance/dist/advance.js'
+	expect(
+		shouldOmitLocalExecutePreparedModule(artifactModule, 'published-artifact'),
+	).toBe(false)
+	// A published artifact module is served wherever a layout puts it.
+	expect(
+		shouldOmitLocalExecutePreparedModule(
+			'some/new/layout/advance.js',
+			'published-artifact',
+		),
+	).toBe(false)
+	expect(
+		shouldOmitLocalExecutePreparedModule(
+			'some/new/layout/advance.js',
+			undefined,
+		),
+	).toBe(false)
+	for (const role of [
+		'root-config',
+		'root-dependency',
+		'root-source',
+		'import-proxy',
+		'package-source',
+		'public-runtime',
+	] as const) {
+		expect(shouldOmitLocalExecutePreparedModule('some/module.js', role)).toBe(
+			true,
+		)
+	}
 })
 
 test('buildLocalExecutePackageGraph rewrites inlined virtual runtime onto the CapabilityProxy shim', async () => {

@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { PasswordRevealInput } from '../components/password-reveal-input.tsx'
 import type { CSSObject } from '@emotion/react'
@@ -13,16 +15,12 @@ import { deleteOwnAccount } from '#start/server/security-mutations'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 	const [confirmation, setConfirmation] = useState('')
@@ -98,29 +96,30 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 		return (
 			<>
 				<div css={{ display: 'grid', gap: spacing.md, maxWidth: '36rem' }}>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						This permanently deletes your account, packages, jobs, email,
 						secrets, and stored data. Download an export first if you want a
 						copy.
 					</p>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="button"
 							data-testid="delete-account"
-							css={getDangerPillCss({ size: 'sm' })}
+							variant="danger"
 							onClick={openDialog}
 						>
 							Delete account
-						</button>
+						</Button>
 					</div>
 				</div>
 				{open && (
-					<ModalDialog
-						alert
+					<Dialog
+						open
+						role="alertdialog"
 						flush
-						label="Delete your Kody account?"
-						width={512}
-						testId="delete-account-dialog"
+						aria-label="Delete your Kody account?"
+						size="md"
+						data-testid="delete-account-dialog"
 						onClose={closeDialog}
 					>
 						<form css={deleteDialogFormCss} onSubmit={handleDeleteSubmit}>
@@ -138,28 +137,23 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 									confirm.
 								</p>
 							</div>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>
-									Type {accountDeletionConfirmationPhrase}
-								</span>
-								<input
+							<Field label={<>Type {accountDeletionConfirmationPhrase}</>}>
+								<Input
 									type="text"
 									name="confirmation"
 									data-testid="delete-account-confirmation"
-									data-field-ring
 									autoComplete="off"
 									spellCheck={false}
 									required
 									value={confirmation}
-									css={accountInputCss}
 									onInput={updateConfirmation}
 								/>
-							</label>
+							</Field>
 							{props.hasUsablePassword ? (
-								<div css={accountFieldCss}>
+								<div css={fieldCss}>
 									<label
 										htmlFor="delete-account-current-password"
-										css={accountFieldLabelCss}
+										css={fieldLabelCss}
 									>
 										Current password
 									</label>
@@ -171,7 +165,6 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 										required
 										{...passwordManagerIgnoreProps}
 										value={password}
-										css={accountInputCss}
 										onInput={updatePassword}
 									/>
 								</div>
@@ -189,25 +182,25 @@ export function AccountDeletePanel(props: { hasUsablePassword: boolean }) {
 								</p>
 							) : null}
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="button"
 									disabled={isDeleting}
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									onClick={closeDialog}
 								>
 									Cancel
-								</button>
-								<button
+								</Button>
+								<Button
 									type="submit"
 									disabled={!canSubmit}
 									data-testid="delete-account-confirm"
-									css={getDangerPillCss({ size: 'sm' })}
+									variant="danger"
 								>
 									{isDeleting ? 'Deleting…' : 'Delete account'}
-								</button>
+								</Button>
 							</div>
 						</form>
-					</ModalDialog>
+					</Dialog>
 				)}
 			</>
 		)

@@ -19,8 +19,11 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				stripe_plan_refreshed_at TEXT,
 				stripe_credits_eligible INTEGER NOT NULL DEFAULT 0,
 				admin_credits_eligible INTEGER NOT NULL DEFAULT 0,
+				comped_seats INTEGER,
 				second_agent_standard_gift_granted_at TEXT,
 				second_agent_standard_gift_expires_at TEXT,
+				second_agent_gift_invoice_credit_requested_at TEXT,
+				second_agent_gift_invoice_credit_id TEXT,
 				referral_standard_credit_expires_at TEXT,
 				referral_first_paid_at TEXT,
 				signup_welcome_credits_pending INTEGER NOT NULL DEFAULT 0,
@@ -56,6 +59,8 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 		'members_can_create_packages INTEGER NOT NULL DEFAULT 0',
 		'members_can_create_credentials INTEGER NOT NULL DEFAULT 1',
 		'usage_warnings_enabled INTEGER NOT NULL DEFAULT 1',
+		'second_agent_gift_invoice_credit_requested_at TEXT',
+		'second_agent_gift_invoice_credit_id TEXT',
 	]) {
 		try {
 			await db.prepare(`ALTER TABLE orgs ADD COLUMN ${column}`).run()

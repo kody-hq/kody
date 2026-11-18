@@ -3,7 +3,7 @@ import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
-	guestClaimUrl,
+	readGuestClaimUrl,
 	readGuestAccountByPerson,
 } from '#worker/guest/guest-accounts.ts'
 import { GuestClaimError } from '#worker/guest/guest-claim.ts'
@@ -29,6 +29,18 @@ async function requireGuest(ctx: {
 		)
 	}
 	return guest
+}
+
+async function requireGuestClaimUrl(
+	env: Env,
+	baseUrl: string,
+	guest: Awaited<ReturnType<typeof requireGuest>>,
+) {
+	const claimUrl = await readGuestClaimUrl(env, baseUrl, guest)
+	if (!claimUrl) {
+		throw new Error('Guest claim link is unavailable.')
+	}
+	return claimUrl
 }
 
 function asCallerError(error: unknown, claimUrl: string): never {
@@ -106,7 +118,7 @@ export const guestClaimStartCapability = defineDomainCapability(
 				env: ctx.env,
 				requestUrl: ctx.callerContext.baseUrl,
 			})
-			const claimUrl = guestClaimUrl(baseUrl, guest.claimCode)
+			const claimUrl = await requireGuestClaimUrl(ctx.env, baseUrl, guest)
 			const started = await startGuestClaim({
 				env: ctx.env,
 				guest,
@@ -167,8 +179,11 @@ export const guestClaimFinishCapability = defineDomainCapability(
 				code: args.code,
 				baseUrl,
 				method: 'agent',
-			}).catch((error: unknown) =>
-				asCallerError(error, guestClaimUrl(baseUrl, guest.claimCode)),
+			}).catch(async (error: unknown) =>
+				asCallerError(
+					error,
+					await requireGuestClaimUrl(ctx.env, baseUrl, guest),
+				),
 			)
 			return {
 				claimed: true as const,

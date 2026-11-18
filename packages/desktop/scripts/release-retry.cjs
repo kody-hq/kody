@@ -42,6 +42,26 @@ function classifyFailure(output) {
 	return 'fatal'
 }
 
+// Packaging a Mac build also trips on runner-local hiccups: Apple's
+// timestamp service not answering codesign, and macOS keeping the dmg image
+// busy at detach (#5292). Re-running electron-builder clears both.
+const macPackagingTransientPatterns = [
+	/A timestamp was expected but was not found/,
+	/The timestamp service is not available/,
+	/Unable to detach device cleanly/,
+	/hdiutil: (?:couldn't eject|detach failed)[^\n]*Resource busy/,
+]
+
+function classifyMacPackagingFailure(output) {
+	const text = String(output ?? '')
+	if (fatalPatterns.some((pattern) => pattern.test(text))) return 'fatal'
+	if (macPackagingTransientPatterns.some((pattern) => pattern.test(text)))
+		return 'transient'
+	return classifyFailure(text)
+}
+
+const macPackagingDelaysMs = [30_000, 90_000]
+
 function isTransientFailure(output) {
 	return classifyFailure(output) === 'transient'
 }
@@ -108,27 +128,46 @@ function runWithRetry(command, args, options = {}) {
 module.exports = {
 	appleDelaysMs,
 	classifyFailure,
+	classifyMacPackagingFailure,
 	defaultRun,
 	githubDelaysMs,
 	isTransientFailure,
+	macPackagingDelaysMs,
 	runWithRetry,
 	sleepSync,
 }
 
 // `node release-retry.cjs gh <args>` runs one GitHub CLI call with the GitHub
 // backoff and passes its stdout through, for workflow shell steps.
+// `node release-retry.cjs --mac-packaging <command> [args...]` runs a Mac
+// electron-builder build, logging every attempt and retrying the packaging
+// hiccups above.
 if (require.main === module) {
-	const [command, ...args] = process.argv.slice(2)
-	if (!command) throw new Error('Usage: release-retry.cjs <command> [args...]')
+	const argv = process.argv.slice(2)
+	const macPackaging = argv[0] === '--mac-packaging'
+	const [command, ...args] = macPackaging ? argv.slice(1) : argv
+	if (!command)
+		throw new Error(
+			'Usage: release-retry.cjs [--mac-packaging] <command> [args...]',
+		)
 	try {
-		const { result } = runWithRetry(command, args, {
-			delaysMs: githubDelaysMs,
-			echo: false,
-		})
-		process.stdout.write(result.stdout ?? '')
-		process.stderr.write(result.stderr ?? '')
+		if (macPackaging) {
+			runWithRetry(command, args, {
+				delaysMs: macPackagingDelaysMs,
+				classify: classifyMacPackagingFailure,
+				label: [command, ...args].join(' '),
+			})
+		} else {
+			const { result } = runWithRetry(command, args, {
+				delaysMs: githubDelaysMs,
+				echo: false,
+			})
+			process.stdout.write(result.stdout ?? '')
+			process.stderr.write(result.stderr ?? '')
+		}
 	} catch (error) {
-		process.stderr.write(`${error.output ?? ''}\n${error.message}\n`)
+		if (!macPackaging) process.stderr.write(`${error.output ?? ''}\n`)
+		process.stderr.write(`${error.message}\n`)
 		process.exitCode = 1
 	}
 }

@@ -136,3 +136,24 @@ test('the help tree covers exactly the commands the CLI dispatches', () => {
 	}
 	assert.throws(() => resolveCommand(['not-a-command']), /Unknown command/)
 })
+
+test('dev check help lists --build local, and the limit advice says it needs no experiment', async () => {
+	const help = await capture(['dev', 'check', '--help'])
+	assert.equal(help.code, 0)
+	assert.match(help.stdout, /kody dev check .*\[--build local\]/)
+	assert.ok(
+		section(help.stdout, 'Flags').some((line) =>
+			line.trimStart().startsWith('--build local'),
+		),
+	)
+	const { publishOutsideCloudAdvice } =
+		await import('../src/publish-limit-advice.ts')
+	assert.match(
+		publishOutsideCloudAdvice,
+		/Both of those publish commands need the Execution contexts experiment/,
+	)
+	assert.match(
+		publishOutsideCloudAdvice,
+		/`kody dev check --build local` [^.]* works without the experiment\./,
+	)
+})

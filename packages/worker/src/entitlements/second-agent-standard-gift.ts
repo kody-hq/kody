@@ -1,7 +1,9 @@
 /**
- * Durable one-gift-per-user Standard overlay. Triggered when known connected
- * agent ecosystems first reach 2. Callers pass that count; this module does
- * not recount grants.
+ * Durable one-gift-per-account ledger. Triggered when known connected agent
+ * ecosystems first reach 2. Free accounts get the Pro overlay; paid Kody
+ * Stripe accounts get a queued invoice credit that
+ * `second-agent-gift-invoice-credit.ts` applies. Callers pass the ecosystem
+ * count; this module does not recount grants.
  */
 
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
@@ -51,8 +53,10 @@ export type SecondAgentStandardGiftEvaluation =
 type GiftUserRow = {
 	plan: string
 	stripe_plan: string | null
+	stripe_customer_id: string | null
 	second_agent_standard_gift_granted_at: string | null
 	second_agent_standard_gift_expires_at: string | null
+	second_agent_gift_invoice_credit_requested_at: string | null
 }
 
 /**
@@ -101,7 +105,8 @@ export async function loadSecondAgentStandardGift(
 	const row = await db
 		.prepare(
 			`SELECT second_agent_standard_gift_granted_at,
-			        second_agent_standard_gift_expires_at
+			        second_agent_standard_gift_expires_at,
+			        second_agent_gift_invoice_credit_requested_at
 			 FROM orgs
 			 WHERE id = ? AND deleted_at IS NULL`,
 		)
@@ -109,10 +114,13 @@ export async function loadSecondAgentStandardGift(
 		.first<{
 			second_agent_standard_gift_granted_at: string | null
 			second_agent_standard_gift_expires_at: string | null
+			second_agent_gift_invoice_credit_requested_at: string | null
 		}>()
 	return describeSecondAgentStandardGift({
 		grantedAt: row?.second_agent_standard_gift_granted_at,
 		expiresAt: row?.second_agent_standard_gift_expires_at,
+		invoiceCreditRequestedAt:
+			row?.second_agent_gift_invoice_credit_requested_at,
 		now,
 	})
 }
@@ -120,7 +128,7 @@ export async function loadSecondAgentStandardGift(
 /**
  * Record the one gift when known ecosystems first reach 2.
  * Idempotent: a second event returns the existing row and does not rewrite
- * expires_at or Stripe.
+ * expires_at or queue another invoice credit.
  */
 export async function evaluateSecondAgentStandardGift(input: {
 	db: D1Database
@@ -136,9 +144,10 @@ export async function evaluateSecondAgentStandardGift(input: {
 	if (!orgId) return { outcome: 'no_user' }
 	const row = await input.db
 		.prepare(
-			`SELECT plan, stripe_plan,
+			`SELECT plan, stripe_plan, stripe_customer_id,
 			        second_agent_standard_gift_granted_at,
-			        second_agent_standard_gift_expires_at
+			        second_agent_standard_gift_expires_at,
+			        second_agent_gift_invoice_credit_requested_at
 			 FROM orgs
 			 WHERE id = ? AND deleted_at IS NULL`,
 		)
@@ -152,6 +161,8 @@ export async function evaluateSecondAgentStandardGift(input: {
 			gift: describeSecondAgentStandardGift({
 				grantedAt: row.second_agent_standard_gift_granted_at,
 				expiresAt: row.second_agent_standard_gift_expires_at,
+				invoiceCreditRequestedAt:
+					row.second_agent_gift_invoice_credit_requested_at,
 				now,
 			}),
 		}
@@ -160,17 +171,21 @@ export async function evaluateSecondAgentStandardGift(input: {
 	const write = resolveSecondAgentStandardGiftWrite({
 		manualPlan: parseStoredPlanName(row.plan),
 		stripePlan: row.stripe_plan,
+		hasStripeCustomer: Boolean(row.stripe_customer_id?.trim()),
 		now,
 	})
 	const grantedAt = now.toISOString()
+	const invoiceCreditRequestedAt =
+		write.kind === 'invoice_credit' ? grantedAt : null
 	const updatedAt = utcSqliteTimestamp(now)
 	const updated = await updateOrgBillingColumns({
 		db: input.db,
 		orgId,
 		setClause: `second_agent_standard_gift_granted_at = ?,
 				     second_agent_standard_gift_expires_at = ?,
+				     second_agent_gift_invoice_credit_requested_at = ?,
 				     updated_at = ?`,
-		values: [grantedAt, write.expiresAt, updatedAt],
+		values: [grantedAt, write.expiresAt, invoiceCreditRequestedAt, updatedAt],
 		orgWhereSuffix: ` AND second_agent_standard_gift_granted_at IS NULL
 			AND deleting_at IS NULL
 			AND EXISTS (
@@ -198,6 +213,7 @@ export async function evaluateSecondAgentStandardGift(input: {
 		gift: describeSecondAgentStandardGift({
 			grantedAt,
 			expiresAt: write.expiresAt,
+			invoiceCreditRequestedAt,
 			now,
 		}),
 	}

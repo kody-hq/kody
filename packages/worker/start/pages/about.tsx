@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -46,39 +45,40 @@ export function AboutRoute() {
 			<p css={descriptionCss}>
 				Kent C. Dodds operates the hosted service at kody.codes and is the data
 				controller for that deployment. The project is open on{' '}
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href="https://github.com/kody-hq/kody"
-					css={mutedLinkCss}
+
 					target="_blank"
 					rel="noreferrer noopener"
 				>
 					GitHub
-				</SiteLink>
+				</TextLink>
 				. A free plan is available with no card required to start; plan caps and
 				paid options are on{' '}
-				<SiteLink href="/pricing" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/pricing">
 					Pricing
-				</SiteLink>
+				</TextLink>
 				. Privacy, retention, and subprocessors are described on{' '}
-				<SiteLink href="/privacy" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/privacy">
 					Privacy
-				</SiteLink>
+				</TextLink>
 				.
 			</p>
 
 			<p css={descriptionCss}>
 				Want the capability tour before connecting? Read{' '}
-				<SiteLink href="/docs/what-is-kody" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/docs/what-is-kody">
 					What is Kody?
-				</SiteLink>{' '}
+				</TextLink>{' '}
 				or the compact index at{' '}
-				<SiteLink href="/llms.txt" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/llms.txt">
 					/llms.txt
-				</SiteLink>
+				</TextLink>
 				. Questions and support channels are listed on{' '}
-				<SiteLink href="/contact" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/contact">
 					Contact
-				</SiteLink>
+				</TextLink>
 				.
 			</p>
 		</section>

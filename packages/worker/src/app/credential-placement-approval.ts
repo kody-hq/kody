@@ -22,7 +22,10 @@ import {
 	credentialResource,
 	getOrgCredential,
 } from '#worker/credentials/credential-ids.ts'
-import { effectiveFillPlacement } from '#worker/credentials/fill-placement-enforcement.ts'
+import {
+	effectiveFillPlacement,
+	pendingPlacementApprovalParts,
+} from '#worker/credentials/fill-placement-enforcement.ts'
 import {
 	type FillPlacementOptIn,
 	readFillPlacementOptIn,
@@ -37,7 +40,7 @@ import {
 } from '#universal/credential-placement-approval.ts'
 
 export type CredentialPlacementApprovalPlan = {
-	/** Requested parts the credential cannot fill yet. */
+	/** Requested parts the owner has not approved yet. */
 	pendingParts: Array<PlacementApprovalPart>
 	placement: CredentialFillPlacement
 	optIn: FillPlacementOptIn
@@ -45,8 +48,10 @@ export type CredentialPlacementApprovalPlan = {
 
 /**
  * The placement and opt-in after approving `parts`. A legacy (null)
- * placement becomes explicit: what it already fills, plus `parts`. Parts the
- * stored placement lists but the owner never opted in stay un-opted.
+ * placement becomes explicit: what it already fills, plus `parts`, so the
+ * approval is recorded even when an observed opt-in already fills the part.
+ * Parts the stored placement lists but the owner never opted in stay
+ * un-opted.
  */
 export function planCredentialPlacementApproval(input: {
 	stored: CredentialFillPlacement | null
@@ -54,7 +59,11 @@ export function planCredentialPlacementApproval(input: {
 	parts: ReadonlyArray<PlacementApprovalPart>
 }): CredentialPlacementApprovalPlan {
 	const effective = effectiveFillPlacement(input.stored, input.optIn) ?? {}
-	const pendingParts = input.parts.filter((part) => effective[part] !== true)
+	const pendingParts = pendingPlacementApprovalParts(
+		input.stored,
+		input.optIn,
+		input.parts,
+	)
 	const base: CredentialFillPlacement =
 		input.stored === null ? { ...effective } : { ...input.stored }
 	const placement: CredentialFillPlacement = { ...base }

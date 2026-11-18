@@ -2351,12 +2351,19 @@ html.is-settled {
 	min-height: 2.25rem;
 	min-width: 3.5rem;
 	border: 1px solid var(--color-border);
-	border-radius: var(--radius-full);
+	border-radius: 0.625rem;
 	background: var(--color-surface);
 	color: var(--color-text);
 	font-size: 0.95rem;
 	line-height: 1;
 	cursor: pointer;
+}
+
+@supports (corner-shape: squircle) {
+	.landing-loop-toggle {
+		border-radius: 1.125rem;
+		corner-shape: squircle;
+	}
 }
 
 .landing-loop-toggle svg {
@@ -2763,10 +2770,17 @@ html.is-settled {
 		margin: 0;
 		padding: 0;
 		border: 1px solid var(--color-border);
-		border-radius: var(--radius-full);
+		border-radius: 0.625rem;
 		background: var(--color-surface);
 		color: var(--color-text);
 		cursor: pointer;
+	}
+
+	@supports (corner-shape: squircle) {
+		html.js .landing-testimonials-nav-button {
+			border-radius: 1.125rem;
+			corner-shape: squircle;
+		}
 	}
 
 	html.js .landing-testimonials-nav-button svg {

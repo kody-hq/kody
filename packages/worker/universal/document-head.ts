@@ -521,6 +521,26 @@ const routeDocumentHeads = {
 		'Package apps for your AI agents | Kody',
 		'apps',
 	),
+	featureSkills: featurePageHead(
+		'feature-skills',
+		'Agent Skills for your AI agents | Kody',
+	),
+	featureAgentProfiles: featurePageHead(
+		'feature-agent-profiles',
+		'Agent profiles: scoped identities for AI agents | Kody',
+	),
+	featureContext: featurePageHead(
+		'feature-context',
+		'Execution contexts: run agent work on your machine | Kody',
+	),
+	featureEmail: featurePageHead(
+		'feature-email',
+		'Email for your AI agents | Kody',
+	),
+	featureFiles: featurePageHead(
+		'feature-files',
+		'Workspace files for you and your AI agents | Kody',
+	),
 	business: publicPageHead(
 		'business',
 		'AI Agent Cloud for Business and Agencies | Kody',
@@ -543,6 +563,8 @@ const routeDocumentHeads = {
 	withAgent: withAgentHead,
 	support: publicPageHead('support', 'Support'),
 	about: publicPageHead('about', 'About Kody'),
+	newsletter: publicPageHead('newsletter', "What's New in Kody newsletter"),
+	newsletterConfirm: titleOnly('Confirm your subscription'),
 	brandGuide: publicPageHead('brand-guide', 'Brand guide'),
 	contact: publicPageHead('contact', 'Contact Kody'),
 	privacy: publicPageHead('privacy', 'Privacy'),
@@ -570,8 +592,8 @@ const routeDocumentHeads = {
 	device: titleOnly('Sign in on a device'),
 	agentClaim: titleOnly('Connect an agent'),
 	packageAppOauthAuthorize: titleOnly('Allow package app'),
-	packageAppDeviceSignIn: titleOnly('Sign in on another device'),
-	accountDeviceSignIn: titleOnly('Sign in on another device'),
+	packageAppDeviceSignIn: titleOnly('Sign in with another device'),
+	accountDeviceSignIn: titleOnly('Sign in with another device'),
 	oauthCallback: titleOnly('OAuth callback'),
 } as const satisfies Record<string, DocumentHeadResolver>
 

@@ -79,12 +79,14 @@ Usage:
   kody context revoke <name|ec id> | kody context delete <name|ec id> [--org <slug>] [--json]
   kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]
   kody context policy [show] | allow <path> [--mode ro|rw] | remove <path> [--json]
+  kody context capability [list] | add command|lan <file.json> | remove command|lan <name> [--json]
   kody context grant [show] | allow <path> [--mode ro|rw] | remove <path> | lan on|off [--context <name|ec id>] [--json]
   kody chain show | add <name> | remove <name> [--org <slug>] [--json]
   kody connect --name <name> [--org <slug>] [--no-install] [--key-storage keyring|file] [--yes]
   kody daemon [--context <ec id>] [--max-concurrent <n>]
   kody daemon install [--context <ec id>] [--max-concurrent <n>] [--key-storage keyring|file] [--yes]
   kody daemon status [--context <ec id>] [--json] | logs [--lines <n>] [--follow] | restart | start | stop
+  kody daemon health [--context <ec id>] [--max-age <seconds>] [--json]
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
@@ -94,7 +96,7 @@ Usage:
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
   kody dev webhook <name> --body <file.json> [--target prod|mock] [--dry-run] [--json]
   kody dev emit <event> --body <event.json> [--target prod|mock] [--dry-run] [--json]
-  kody dev check [--target prod|mock] [--offline] [--debug] [--json]
+  kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]
   kody install [--mcp-url <url>] [--clients <ids>] [--yes] [--project] [--json]
   kody skill install [--project]
 
@@ -162,10 +164,11 @@ ${orgBlock}
 
   auth bootstrap
              Agents on Kody MCP: call the MCP \`api\` tool with operationId
-             \`cliCredentialBootstrap\` and params \`{ lifetime: "short",
-             scopes: [...] }\` (\`execute\` is refused) and run the returned
-             \`cli_command\`
-             (never ask a human to paste a token). Humans: \`kody login\`.
+             \`cliCredentialBootstrap\` with no params (\`execute\` is
+             refused) and run the returned \`cli_command\` (never ask a
+             human to paste a token). \`lifetime: "short"\` has no refresh
+             and expires mid-task in waiting loops such as ship-pr.
+             Humans: \`kody login\`.
              This command redeems a one-shot \`kody_bc_…\` (POST
              /v1/tokens/bootstrap/redeem, no Authorization header).
              Saves the same credential \`kody login\` saves (every scope
@@ -346,22 +349,25 @@ ${orgBlock}
              ambient fetch can still reach the public network (not
              offline). \`--target prod\` keeps the process local but does
              **not** give the working-tree package hosted
-             \`packageStorage\` / \`packageSecrets\` — those need a published
-             package id; imported published deps still use their own
-             hosted storage/secrets. See the package apps guide target
-             table.
+             \`packageStorage\` / \`packageSecrets\`. That is intentionally
+             unsupported: publish is the trust boundary. Imported published
+             deps still use their own hosted storage/secrets. See the
+             package apps guide target table.
 
   --reset-storage
              With \`--target mock\`, wipe the mock session's scratch storage
              before the command.
 
   --app-base-path <path>
-             With \`kody dev\`, public mount path the Node proxy strips
-             before workerd (also \`packageContext.appBasePath\`; the
-             \`--ready-file\` JSON reports the same value as \`basePath\`).
-             Default is empty (serve at \`/\`). Use
-             \`--app-base-path /<package-name>\` to match the
-             hosted app mount while iterating locally.
+             With \`kody dev\`, serve the old path address instead of the
+             app's own origin. By default the app is at the root of
+             \`http://<package-name>--<scope>.localhost:<port>/\` with an
+             empty \`packageContext.appBasePath\`. With
+             \`--app-base-path /<package-name>\` it is under that path on
+             \`http://<scope>.localhost:<port>\`, like the hosted path
+             address (the \`--ready-file\` JSON reports it as
+             \`basePath\`). With \`--target mock\` that is the only path
+             accepted.
 
   --host <addr>
              With \`kody dev serve\`, the address the dev server listens on

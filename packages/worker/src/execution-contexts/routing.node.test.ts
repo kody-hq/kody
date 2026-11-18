@@ -13,6 +13,7 @@ import {
 	planTargets,
 	withRunTiming,
 	sharedRunHostRefusal,
+	typeScriptSourceRefusal,
 } from './routing.ts'
 import type { ExecutionContextRow } from './store.ts'
 
@@ -511,4 +512,28 @@ test('a paused context is described as paused, not offline', () => {
 			{ target: 'ec_b', name: 'desk', outcome: 'offline' },
 		]),
 	).toContain('laptop: paused')
+})
+
+test('TypeScript skips a daemon too old to run it, with a please update reason', async () => {
+	const typed = 'export default (params: { n: number }) => params.n * 2'
+	const plain = 'export default async (params) => { await 0; return params?.n }'
+	await expect(typeScriptSourceRefusal(typed, {})).resolves.toBe(
+		'typescript_daemon_outdated',
+	)
+	await expect(typeScriptSourceRefusal(plain, {})).resolves.toBeNull()
+	await expect(
+		typeScriptSourceRefusal(typed, {
+			features: ['typescript-source'],
+		}),
+	).resolves.toBeNull()
+	const text = describeAttempts([
+		{
+			target: 'ec_old',
+			name: 'old-box',
+			outcome: 'skipped',
+			reason: 'typescript_daemon_outdated',
+		},
+	])
+	expect(text).toContain('old-box')
+	expect(text).toContain('kody daemon update')
 })

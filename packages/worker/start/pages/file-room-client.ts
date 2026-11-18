@@ -77,6 +77,21 @@ async function openCache() {
 		request.onerror = () => reject(request.error)
 	})
 }
+
+function readPresenceCursor(selection: FilePresence['selection']) {
+	if (!selection) return null
+	try {
+		const anchor = JSON.parse(selection.anchor)
+		const head = JSON.parse(selection.head)
+		if (!anchor || typeof anchor !== 'object' || Array.isArray(anchor))
+			return null
+		if (!head || typeof head !== 'object' || Array.isArray(head)) return null
+		return { anchor, head }
+	} catch {
+		return null
+	}
+}
+
 export class FileRoomClient {
 	readonly doc = new Y.Doc()
 	readonly awareness = new Awareness(this.doc)
@@ -360,15 +375,21 @@ export class FileRoomClient {
 		this.persistTimer = setTimeout(() => void this.persist(), 100)
 	}
 	private presence(participants: FilePresence[], recent: RecentParticipant[]) {
+		const sessions = new Map<string, FilePresence>()
+		for (const participant of participants) {
+			const previous = sessions.get(participant.sessionId)
+			if (!previous || participant.lastSeen >= previous.lastSeen)
+				sessions.set(participant.sessionId, participant)
+		}
 		this.participants.replace(
-			participants.map((p) => ({ ...p, id: p.sessionId })),
+			Array.from(sessions.values(), (p) => ({ ...p, id: p.sessionId })),
 		)
 		this.recent.replace(recent)
 		const remote = new Map<
 			number,
 			{ clock: number; state: Record<string, unknown> | null }
 		>()
-		for (const p of participants) {
+		for (const p of sessions.values()) {
 			if (p.sessionId === this.sessionId) continue
 			const id = sessionNumber(p.sessionId)
 			remote.set(id, {
@@ -379,12 +400,7 @@ export class FileRoomClient {
 						color: actorColor(p.actor.id),
 						sessionId: p.sessionId,
 					},
-					cursor: p.selection
-						? {
-								anchor: JSON.parse(p.selection.anchor),
-								head: JSON.parse(p.selection.head),
-							}
-						: null,
+					cursor: readPresenceCursor(p.selection),
 				},
 			})
 		}

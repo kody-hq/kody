@@ -41,7 +41,8 @@ sequenceDiagram
   `/openapi.json`, and `/v1/*`, applies per-IP (`API_IP_RATE_LIMITER`, 600/min)
   and per-token (`API_TOKEN_RATE_LIMITER`, 300/min, keyed by API token id or a
   SHA-256 of an opaque Bearer such as CLI MCP OAuth — never the secret
-  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes, and
+  plaintext) limits, caps buffered bodies at 5 MiB (413) on JSON routes (24 MiB
+  on `POST /v1/packages/check`, whose body is a whole package tree), and
   forwards only `Authorization`, `Content-Type`, `Accept`, `User-Agent`, and
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,
@@ -218,6 +219,14 @@ module and does not silently hop to `kody.execute`. See
   (or `kody dev` worker bundles that only need stamped deps) pass `imports`
   alone; origin synthesizes a tiny entry from that list so the multi-megabyte
   bundle never crosses the wire.
+- Package-graph builds never run in the API isolate. Origin caches unsigned
+  graphs by import identity and builds misses in a throwaway `RepoSession`
+  isolate
+  (`packages/worker/src/package-runtime/isolated-local-execute-package-graph.ts`).
+  Isolate memory or CPU limits fail only that request with
+  `400 package_graph_resource_limit`. A graph is served only when every
+  reachable static relative import names a module in the response; otherwise
+  `500 internal_error`.
 - Calls dispatch through the same `kody.*` tool map as ad hoc cloud execute, so
   capability behavior, `kody.mcp`, and workflows match the cloud. Caller errors
   from a capability keep their status and message. Unexpected capability
@@ -308,7 +317,7 @@ Every error is `{ error: { code, message, details? } }` with
 
 | Status | `code`                                                                                                                                                     |
 | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import`                                         |
+| 400    | `invalid_request`, `package_import_unresolved`, `package_import_unpublished`, `unsupported_dynamic_package_import`, `package_graph_resource_limit`         |
 | 401    | `unauthorized` (missing, invalid, expired, or revoked token)                                                                                               |
 | 403    | `insufficient_scope`, `profile_grant`, `profile_inactive`, `email_verification_required`, `account_suspended`, `guest_not_allowed`, `guest_claim_required` |
 | 404    | `not_found`, `feature_unavailable` (capability or MCP gate)                                                                                                |

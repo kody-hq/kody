@@ -1,3 +1,5 @@
+import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { isSecureRequest } from '#app/auth-session.ts'
 import {
 	getAppBaseUrl,
@@ -191,7 +193,16 @@ async function resolveLogoutAppSlug(input: {
 		input.url,
 		{ packageAppHost: !inlineServing },
 	)
+	if (requestHost?.kind === 'app-subdomain') return requestHost.kodyId
 	if (requestHost?.kind === 'user-subdomain') {
+		if (
+			await hasProfilePackageApp({
+				env: input.env,
+				username: requestHost.username,
+			})
+		) {
+			return requestHost.username
+		}
 		return fromReferer ?? null
 	}
 
@@ -237,8 +248,22 @@ async function resolveHostApp(input: {
 		env: input.env,
 		url: input.url,
 	})
+	if (requestHost?.kind === 'app-subdomain') {
+		const resolved = await resolveVerifiedHostApp({
+			env: input.env,
+			orgUsername: requestHost.username,
+			kodyId: requestHost.kodyId,
+		})
+		return resolved ? { ...resolved, useConfiguredAppOrigin: false } : null
+	}
 	if (requestHost?.kind === 'user-subdomain') {
-		const app = readAppSlugParam(input.url)
+		// A profile package owns the whole host, so `?app=` cannot pick a sibling.
+		const app = (await hasProfilePackageApp({
+			env: input.env,
+			username: requestHost.username,
+		}))
+			? requestHost.username
+			: readAppSlugParam(input.url)
 		if (!app) return null
 		const resolved = await resolveVerifiedHostApp({
 			env: input.env,
@@ -365,7 +390,7 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 	}
 	// Only clear the PKCE cookie when `state` matches — an unauthenticated
 	// `?error=` navigation must not cancel a different pending sign-in.
-	if (!state || state !== pkce.state) {
+	if (!state || !(await timingSafeEqualString(state, pkce.state))) {
 		return badRequest('Sign-in state mismatch. Start again from the app.')
 	}
 	const clearPkce = await destroyPackageAppOauthPkceCookie({

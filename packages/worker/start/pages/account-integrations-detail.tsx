@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Tooltip } from '../components/tooltip.tsx'
+import { Button } from '../components/button.tsx'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import type {
 	AccountIntegrationListItem,
@@ -6,7 +9,6 @@ import type {
 } from '#universal/loader-data.ts'
 import type { ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { OrgAppMemberConnections } from './account-integrations-member-connections.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
@@ -41,11 +43,8 @@ import {
 	detailLabelCss,
 	detailValueCss,
 	getAccentCalloutCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	hoverMq,
 	insetCardCss,
-	primaryLinkCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -55,7 +54,6 @@ import {
 	connectionLabel,
 	connectionStatusLabel,
 	credentialsConnectionsHref,
-	dangerButtonCss,
 	shouldShowReconnectAction,
 	formatList,
 	formatOptional,
@@ -117,9 +115,7 @@ function renderBuiltInIndicator(input?: { tooltipId?: string }) {
 			css={builtInIndicatorCss}
 		>
 			{BuiltInIcon()}
-			<span id={tooltipId} role="tooltip" aria-hidden="true">
-				Provided by Kody
-			</span>
+			<Tooltip id={tooltipId}>Provided by Kody</Tooltip>
 		</button>
 	)
 }
@@ -203,47 +199,6 @@ const builtInIndicatorCss: CSSObject = {
 	backgroundColor: colors.primarySoft,
 	color: colors.primaryText,
 	cursor: 'help',
-	'& [role="tooltip"]': {
-		position: 'absolute' as const,
-		left: '50%',
-		bottom: 'calc(100% + 0.45rem)',
-		transform: 'translateX(-50%)',
-		width: 'max-content',
-		maxWidth: 'min(16rem, calc(100vw - 2rem))',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderRadius: radius.md,
-		backgroundColor: colors.surface,
-		color: colors.text,
-		fontSize: typography.fontSize.sm,
-		fontWeight: 400,
-		lineHeight: 1.4,
-		textAlign: 'left' as const,
-		boxShadow: shadows.md,
-		border: `1px solid ${colors.border}`,
-		pointerEvents: 'none' as const,
-		opacity: 0,
-		visibility: 'hidden' as const,
-		zIndex: 3,
-	},
-	'& [role="tooltip"]::after': {
-		content: '""',
-		position: 'absolute' as const,
-		top: '100%',
-		left: '50%',
-		transform: 'translateX(-50%)',
-		border: '6px solid transparent',
-		borderTopColor: colors.surface,
-	},
-	[hoverMq]: {
-		'&:hover [role="tooltip"]': {
-			opacity: 1,
-			visibility: 'visible' as const,
-		},
-	},
-	'&:focus-visible [role="tooltip"]': {
-		opacity: 1,
-		visibility: 'visible' as const,
-	},
 }
 
 const connectionCardCss: CSSObject = {
@@ -356,7 +311,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 						{accountsConnectedCopy(selectedApp.connections.length)}
 					</p>
 					{isBuiltInApp(selectedApp) ? null : (
-						<button
+						<Button
 							type="button"
 							data-testid="delete-integration"
 							aria-label={
@@ -369,7 +324,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 									? `Click again to delete "${oauthAppTitle(selectedApp)}" and every connected account`
 									: `Delete "${oauthAppTitle(selectedApp)}" and every connected account`
 							}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={deleteAppConfirmation.reset}
 							onClick={() => {
 								if (deleteAppConfirmation.armed)
@@ -380,7 +335,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 							{deleteAppConfirmation.armed
 								? 'Confirm delete'
 								: 'Delete integration'}
-						</button>
+						</Button>
 					)}
 				</div>
 			</header>
@@ -399,20 +354,17 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 						}}
 					>
 						<p css={descriptionCss}>No accounts connected yet.</p>
-						<SiteLink
+						<Button
 							href={buildConnectOauthHref({
 								name: selectedApp.slug,
 								appSlug: selectedApp.slug,
 								orgSlug,
 							})}
-							css={{
-								...getPillButtonCss({ size: 'sm' }),
-								display: 'inline-flex',
-								textDecoration: 'none',
-							}}
+							variant="primary"
+							css={{ display: 'inline-flex', textDecoration: 'none' }}
 						>
 							Connect
-						</SiteLink>
+						</Button>
 					</div>
 				) : (
 					<div
@@ -470,19 +422,18 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 											gap: spacing.xs,
 										}}
 									>
-										<SiteLink
+										<TextLink
 											href={integrationsRoute.buildDetailHref(
 												connectionRef.name,
 												currentSearch,
 											)}
 											resetScroll={false}
-											css={primaryLinkCss}
 										>
 											{connection
 												? integrationDisplayName(connection)
 												: connectionRef.accountLabel?.trim() ||
 													connectionRef.name}
-										</SiteLink>
+										</TextLink>
 										<p
 											css={{
 												...descriptionCss,
@@ -550,31 +501,26 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 										}}
 									>
 										{showReconnect ? (
-											<SiteLink
+											<Button
 												href={connectHref}
-												css={{
-													...getPillButtonCss({
-														size: 'sm',
-													}),
-													display: 'inline-flex',
-													textDecoration: 'none',
-												}}
+												variant="primary"
+												css={{ display: 'inline-flex', textDecoration: 'none' }}
 											>
 												{connectActionLabel(status)}
-											</SiteLink>
+											</Button>
 										) : null}
 										{orgSlug ? (
-											<SiteLink
+											<Button
 												href={credentialsConnectionsHref(
 													orgSlug,
 													connectionRef.name,
 												)}
-												css={getGhostButtonCss({ size: 'sm' })}
+												variant="secondary"
 											>
 												Open in Credentials
-											</SiteLink>
+											</Button>
 										) : null}
-										<button
+										<Button
 											type="button"
 											data-testid="disconnect-connection"
 											aria-label={
@@ -587,7 +533,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 													? `Click again to disconnect ${disconnectLabel}`
 													: `Disconnect ${disconnectLabel}`
 											}
-											css={dangerButtonCss}
+											variant="danger"
 											onBlur={disconnectConfirmation.reset}
 											onClick={() => {
 												if (disconnectConfirmation.armed)
@@ -598,7 +544,7 @@ export function renderIntegrationRecord(props: IntegrationRecordProps) {
 											{confirmingDisconnect
 												? 'Confirm disconnect'
 												: 'Disconnect'}
-										</button>
+										</Button>
 									</div>
 								</article>
 							)

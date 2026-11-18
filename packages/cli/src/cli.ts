@@ -232,6 +232,7 @@ const cliFlagOptions = {
 	'no-install': { type: 'boolean' },
 	'key-storage': { type: 'string' },
 	lines: { type: 'string' },
+	'max-age': { type: 'string' },
 	follow: { type: 'boolean', short: 'f' },
 	unregister: { type: 'boolean' },
 	'no-unregister': { type: 'boolean' },
@@ -445,24 +446,23 @@ export function argvIncludesJsonFlag(argv: Array<string>): boolean {
 	return argv.includes('--json')
 }
 
-/**
- * Structured `--json` error body. Additive `sent` when a network hop failed
- * before an HTTP response (`false` = connect phase; `"unknown"` otherwise).
- */
-export function formatCliErrorJson(error: Error): {
+type CliErrorJson = {
 	error: true
 	message: string
 	status?: number
 	code?: string
 	sent?: false | 'unknown'
-} {
-	const body: {
-		error: true
-		message: string
-		status?: number
-		code?: string
-		sent?: false | 'unknown'
-	} = {
+	runId?: string
+	idempotencyKey?: string
+}
+
+/**
+ * Structured `--json` error body. Additive `sent` when a network hop failed
+ * before an HTTP response (`false` = connect phase; `"unknown"` otherwise),
+ * and `runId` / `idempotencyKey` only when the API error body includes them.
+ */
+export function formatCliErrorJson(error: Error): CliErrorJson {
+	const body: CliErrorJson = {
 		error: true,
 		message: error.message,
 	}
@@ -470,6 +470,8 @@ export function formatCliErrorJson(error: Error): {
 		sent?: unknown
 		status?: unknown
 		code?: unknown
+		runId?: unknown
+		idempotencyKey?: unknown
 	}
 	if (record.sent === false || record.sent === 'unknown') {
 		body.sent = record.sent
@@ -479,6 +481,10 @@ export function formatCliErrorJson(error: Error): {
 	}
 	if (typeof record.code === 'string') {
 		body.code = record.code
+	}
+	if (typeof record.runId === 'string') body.runId = record.runId
+	if (typeof record.idempotencyKey === 'string') {
+		body.idempotencyKey = record.idempotencyKey
 	}
 	return body
 }
@@ -647,6 +653,9 @@ async function dispatch(
 					...(typeof parsed.values.lines === 'string'
 						? { lines: parsed.values.lines }
 						: {}),
+					...(typeof parsed.values['max-age'] === 'string'
+						? { maxAge: parsed.values['max-age'] }
+						: {}),
 					...(parsed.values.follow === true ? { follow: true } : {}),
 					...(typeof parsed.values.reason === 'string'
 						? { reason: parsed.values.reason }
@@ -811,6 +820,9 @@ async function dispatch(
 				process.env,
 				mcpUrl,
 			)
+			// Resolve first: adopting an old-slot token changes what the lines below
+			// show, and they must match what every command will send.
+			const inUse = resolveCliCredential({ mcpUrl, apiUrl })
 			// Status always reports the active (or pending) login — not KODY_ORG.
 			const credentials = loadCredentials(mcpUrl)
 			const orgs = listStoredOrgs(mcpUrl)
@@ -821,8 +833,10 @@ async function dispatch(
 			}
 			const lines: Array<string> = []
 			if (credentials || orgs.length > 0) {
+				const { isAccessTokenExpired } = await import('./auth.js')
+				const expired = credentials ? isAccessTokenExpired(credentials) : false
 				const expires = credentials?.expiresAt
-					? new Date(credentials.expiresAt).toISOString()
+					? `${new Date(credentials.expiresAt).toISOString()}${expired ? (credentials.refreshToken ? ' (expired; refreshes on next use)' : ' (expired; no refresh token, run `kody login` if `kody whoami` fails)') : ''}`
 					: 'unknown'
 				lines.push(
 					`mcp: ${credentials?.mcpUrl ?? mcpUrl}`,
@@ -848,10 +862,9 @@ async function dispatch(
 			} else {
 				lines.push(`api: ${apiUrl}`, `stored API token: no`)
 			}
-			const inUse = resolveCliCredential({ mcpUrl, apiUrl })
 			if (inUse) {
 				lines.push(
-					`credential in use (api, whoami, package): ${describeCliCredential(inUse)}`,
+					`credential in use (every command): ${describeCliCredential(inUse)}`,
 				)
 			}
 			lines.push('')
@@ -1788,10 +1801,11 @@ async function dispatch(
 								: {}),
 							...(target === 'mock' && process.env.KODY_DEV_STUB_RUNTIME !== '1'
 								? {
-										startLocalKody: async (manifest) => {
+										startLocalKody: async (manifest, packageAppPort) => {
 											const local = await import('./dev/local-kody.js')
 											const kody = await local.startLocalKody({
 												manifest,
+												packageAppPort,
 												passthroughHosts,
 												allowPrivateNetwork,
 												simulation: local.parseDevSimulation({

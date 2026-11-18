@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	assertBackupDay,
@@ -14,6 +15,7 @@ import {
 	stagingRunLogDumpKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
+	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
 	type ArtifactsIndex,
@@ -40,7 +42,7 @@ import {
 	readDrBackupS3Config,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
-import { sha256Hex } from '#worker/dr/sha256.ts'
+import { sha256Hex, sha256HexOfStream } from '#worker/dr/sha256.ts'
 import {
 	loadPreviousR2Index,
 	putImmutableOutput,
@@ -92,7 +94,10 @@ export const drExportRunTimeBudgetMs = 45_000
 const ownerExportConcurrency = 8
 /** Skip individual R2 objects larger than this (full-buffer ceiling). */
 export const drExportMaxObjectBytes = 25 * 1024 * 1024
-/** Cap for an assembled storage dump before it is admitted to the index. */
+/**
+ * Most bytes of one storage dump part assembled in memory. A larger dump is
+ * split into consecutive parts, so no storage identity is ever left out.
+ */
 export const drExportMaxStorageDumpBufferBytes = 16 * 1024 * 1024
 const storageExportPageSize = 250
 /**
@@ -103,6 +108,14 @@ const storageExportPageSize = 250
 export const drExportStoragePageMaxBytes = 1024 * 1024
 /** StorageRunner first pages fetched at once; commits stay serial. */
 const storageExportConcurrency = 4
+/**
+ * Artifact snapshots and unchanged R2 objects are settled this many at once.
+ * Run serially (one KV read, one blob HEAD and one progress PUT per item),
+ * ~1,600 snapshots took ~21 ticks and ~4,200 unchanged R2 objects ~10, so
+ * every night from 2026-11-10 to 2026-11-16 was still in the artifacts phase
+ * when the 06:10 window closed and the 06:15 watchdog paged.
+ */
+const blobReuseConcurrency = 8
 /**
  * After a tick aborts (lease left set) on an unchanged storage cursor, the
  * next ticks run one identity at a time and record the head identity as the
@@ -197,6 +210,11 @@ export type DrExporterProgress = {
 	storageEntryChunkHead: string | null
 	/** Bounded tail; full chunks live under exporter/chunks/storage-index/. */
 	storagePendingEntries: Array<StorageIndexEntry>
+	/**
+	 * Parts already written for the in-progress storage dump. They join the
+	 * index together once the identity's last page is written.
+	 */
+	storageDumpParts?: Array<StorageIndexEntry>
 	/**
 	 * Storage cursor seen at the start of recent ticks and how many ticks in a
 	 * row began there. Unchanged across ticks means no storage progress.
@@ -339,6 +357,7 @@ function createInitialProgress(day: string, now: Date): DrExporterProgress {
 		storageEntryChunkCount: 0,
 		storageEntryChunkHead: null,
 		storagePendingEntries: [],
+		storageDumpParts: [],
 		storageStall: null,
 		r2LabelIndex: 0,
 		r2ListCursor: null,
@@ -836,7 +855,6 @@ function runLogDumpEntries(page: {
 	]
 }
 
-const oversizedStorageDumpWarningPrefix = 'storage dump too large: '
 const failedStorageDumpWarningPrefix = 'storage dump failed: '
 
 function storageStallKey(progress: DrExporterProgress) {
@@ -845,6 +863,7 @@ function storageStallKey(progress: DrExporterProgress) {
 		progress.storagePartialIdentity ?? null,
 		progress.storagePageStartAfter,
 		progress.storageDumpChunkCount,
+		progress.storageDumpParts?.length ?? 0,
 		progress.storageEntryChunkCount,
 		progress.storagePendingEntries.length,
 		progress.warnings.length,
@@ -873,15 +892,7 @@ function resetPartialStorageState(progress: DrExporterProgress) {
 	progress.storageDumpChunkHead = null
 	progress.storagePartialEntryCount = 0
 	progress.storagePartialBytes = 0
-}
-
-function skipOversizedStorageDump(
-	progress: DrExporterProgress,
-	identity: string,
-) {
-	progress.warnings.push(`${oversizedStorageDumpWarningPrefix}${identity}`)
-	progress.storageIndex += 1
-	resetPartialStorageState(progress)
+	progress.storageDumpParts = []
 }
 
 async function collectHandledStorageIdentities(input: {
@@ -898,9 +909,6 @@ async function collectHandledStorageIdentities(input: {
 		...input.progress.storagePendingEntries.map((entry) => entry.storageId),
 	])
 	for (const warning of input.progress.warnings) {
-		if (warning.startsWith(oversizedStorageDumpWarningPrefix)) {
-			handled.add(warning.slice(oversizedStorageDumpWarningPrefix.length))
-		}
 		if (warning.startsWith(failedStorageDumpWarningPrefix)) {
 			handled.add(warning.slice(failedStorageDumpWarningPrefix.length))
 		}
@@ -1067,6 +1075,16 @@ async function exportStoragePhase(input: {
 					abortedAttempts: stall.attempts,
 				}),
 			)
+			Sentry.withScope((scope) => {
+				scope.setFingerprint(['dr', 'export-storage-identity-skipped'])
+				scope.setTag('dr.cause', 'export-storage-identity-skipped')
+				scope.setTag('dr.day', progress.day)
+				scope.setContext('dr_export', { identity: suspect.identity })
+				Sentry.captureMessage(
+					'DR export left out a storage identity whose dump kept aborting the exporter',
+					'error',
+				)
+			})
 			progress.warnings.push(
 				`${failedStorageDumpWarningPrefix}${suspect.identity}`,
 			)
@@ -1084,6 +1102,43 @@ async function exportStoragePhase(input: {
 			}
 			await persistProgress(s3, session, { advanced: false })
 		}
+	}
+
+	async function closeStorageDumpPart(
+		item: StorageInventoryEntry,
+		body: string,
+		options: { split: boolean },
+	) {
+		const parts = progress.storageDumpParts ?? []
+		const part = parts.length
+		const objectKey = options.split
+			? stagingStorageDumpPartKey(
+					progress.day,
+					item.identity,
+					await sha256Hex(body),
+				)
+			: stagingStorageDumpKey(progress.day, item.identity)
+		const storedBody = await putImmutableOutput({
+			s3,
+			key: objectKey,
+			body,
+			contentType: 'application/x-ndjson',
+		})
+		const summary = await fileSummary(objectKey, storedBody)
+		progress.storageDumpParts = [
+			...parts,
+			{
+				storageId: item.identity,
+				part,
+				objectKey,
+				entryCount: ndjsonEntryCount(storedBody),
+				bytes: summary.bytes,
+				sha256: summary.sha256,
+			},
+		]
+		progress.storageDumpChunkHead = null
+		progress.storageDumpChunkCount = 0
+		progress.storagePartialBytes = 0
 	}
 
 	async function consumeStoragePage(
@@ -1107,12 +1162,19 @@ async function exportStoragePhase(input: {
 		}
 		const pageBytes = utf8ByteLength(pageBody)
 		if (
+			progress.storagePartialBytes > 0 &&
 			progress.storagePartialBytes + pageBytes >
-			drExportMaxStorageDumpBufferBytes
+				drExportMaxStorageDumpBufferBytes
 		) {
-			skipOversizedStorageDump(progress, item.identity)
-			handledIdentities.add(item.identity)
-			return
+			await closeStorageDumpPart(
+				item,
+				await readLinkedChunkBody({
+					s3,
+					headKey: progress.storageDumpChunkHead,
+					chunkCount: progress.storageDumpChunkCount,
+				}),
+				{ split: true },
+			)
 		}
 		const finalPage = !(page.truncated && page.nextStartAfter)
 		let body: string
@@ -1141,21 +1203,11 @@ async function exportStoragePhase(input: {
 				chunkCount: progress.storageDumpChunkCount,
 			})
 		}
-		const objectKey = stagingStorageDumpKey(progress.day, item.identity)
-		const storedBody = await putImmutableOutput({
-			s3,
-			key: objectKey,
-			body,
-			contentType: 'application/x-ndjson',
-		})
-		const summary = await fileSummary(objectKey, storedBody)
-		progress.storagePendingEntries.push({
-			storageId: item.identity,
-			objectKey,
-			entryCount: ndjsonEntryCount(storedBody),
-			bytes: summary.bytes,
-			sha256: summary.sha256,
-		})
+		const split = (progress.storageDumpParts?.length ?? 0) > 0
+		if (body.length > 0 || !split) {
+			await closeStorageDumpPart(item, body, { split })
+		}
+		progress.storagePendingEntries.push(...(progress.storageDumpParts ?? []))
 		if (progress.storagePendingEntries.length >= indexChunkEntryLimit) {
 			await flushStorageEntryChunk({ s3, progress })
 		}
@@ -1245,6 +1297,46 @@ async function exportStoragePhase(input: {
 	return false
 }
 
+/**
+ * Entries of one R2 list page whose source object is unchanged since the
+ * previous sealed day and whose content-addressed blob is still stored. The
+ * blob HEADs are the only cost of an unchanged object, so they run in waves.
+ */
+async function findReusableR2Entries(input: {
+	s3: DrBackupS3Client
+	objects: Array<R2Object>
+	previousEntries: Map<string, IncrementalR2IndexEntry>
+}) {
+	const candidates: Array<IncrementalR2IndexEntry> = []
+	for (const object of input.objects) {
+		if (object.size > drExportMaxObjectBytes) continue
+		const previous = input.previousEntries.get(object.key)
+		if (
+			previous &&
+			previous.size === object.size &&
+			previous.etag === object.etag &&
+			previous.uploaded === object.uploaded.toISOString()
+		) {
+			candidates.push(previous)
+		}
+	}
+	const reusable = new Map<string, IncrementalR2IndexEntry>()
+	for (
+		let start = 0;
+		start < candidates.length;
+		start += blobReuseConcurrency
+	) {
+		const wave = candidates.slice(start, start + blobReuseConcurrency)
+		const heads = await Promise.all(
+			wave.map((entry) => input.s3.head(backupBlobKey(entry.sha256))),
+		)
+		for (const [offset, head] of heads.entries()) {
+			if (head.exists) reusable.set(wave[offset]!.key, wave[offset]!)
+		}
+	}
+	return reusable
+}
+
 async function exportR2Phase(input: {
 	env: Env
 	s3: DrBackupS3Client
@@ -1282,6 +1374,11 @@ async function exportR2Phase(input: {
 				// Finish the whole list page before checking the tick budget.
 				// Persisting mid-page without advancing r2ListCursor would replay
 				// its index lines. List pages are bounded (≤100).
+				const reusablePrevious = await findReusableR2Entries({
+					s3,
+					objects: listed.objects,
+					previousEntries,
+				})
 				let pageIndexBody = ''
 				for (const object of listed.objects) {
 					if (object.size > drExportMaxObjectBytes) {
@@ -1292,14 +1389,8 @@ async function exportR2Phase(input: {
 						continue
 					}
 					const uploaded = object.uploaded.toISOString()
-					const previous = previousEntries.get(object.key)
-					if (
-						previous &&
-						previous.size === object.size &&
-						previous.etag === object.etag &&
-						previous.uploaded === uploaded &&
-						(await s3.head(backupBlobKey(previous.sha256))).exists
-					) {
+					const previous = reusablePrevious.get(object.key)
+					if (previous) {
 						const indexEntry = {
 							key: object.key,
 							size: object.size,
@@ -1377,6 +1468,23 @@ async function exportR2Phase(input: {
 	return false
 }
 
+/**
+ * Hash one snapshot as a stream and check whether its blob is already stored.
+ * Nothing is buffered, so a wave of probes costs no heap; only a snapshot
+ * whose blob is new is read into memory, one at a time.
+ */
+async function probeArtifactSnapshot(input: {
+	env: Env
+	s3: DrBackupS3Client
+	kvKey: string
+}) {
+	const stream = await input.env.BUNDLE_ARTIFACTS_KV.get(input.kvKey, 'stream')
+	if (stream === null) return null
+	const sha256 = await sha256HexOfStream(stream)
+	const head = await input.s3.head(backupBlobKey(sha256))
+	return { sha256, stored: head.exists }
+}
+
 async function exportArtifactsPhase(input: {
 	env: Env
 	s3: DrBackupS3Client
@@ -1390,40 +1498,62 @@ async function exportArtifactsPhase(input: {
 	const { progress } = session
 	while (progress.artifactsIndex < inventory.length) {
 		if (Date.now() - input.startedAtMs >= input.timeBudgetMs) return true
-		const item = inventory[progress.artifactsIndex]!
-		const kvKey = buildPublishedSourceSnapshotKvKey({
-			sourceId: item.sourceId,
-			publishedCommit: item.publishedCommit,
-		})
-		// Read raw bytes: a text read plus re-encode held the snapshot twice
-		// (string + Uint8Array) and pushed the shared JobsHost isolate past
-		// its memory limit on large snapshots.
-		const snapshot = await env.BUNDLE_ARTIFACTS_KV.get(kvKey, 'arrayBuffer')
-		if (snapshot === null) {
-			progress.warnings.push(
-				`Missing source snapshot KV key ${kvKey} for source ${item.sourceId}`,
+		const wave = inventory
+			.slice(
+				progress.artifactsIndex,
+				progress.artifactsIndex + blobReuseConcurrency,
 			)
-			progress.artifactsIndex += 1
-			input.counts.artifactsProcessed += 1
-			await persistProgress(s3, session)
-			continue
+			.map((item) => ({
+				item,
+				kvKey: buildPublishedSourceSnapshotKvKey({
+					sourceId: item.sourceId,
+					publishedCommit: item.publishedCommit,
+				}),
+			}))
+		const probes = await Promise.all(
+			wave.map(({ kvKey }) => probeArtifactSnapshot({ env, s3, kvKey })),
+		)
+		// Entries are committed in inventory order and progress is persisted
+		// once per wave. A tick that dies mid-wave replays the wave; blob
+		// writes are content-addressed, so the replay is idempotent.
+		for (const [offset, probe] of probes.entries()) {
+			const { item, kvKey } = wave[offset]!
+			let snapshotSha256 = probe?.sha256 ?? null
+			if (probe?.stored) {
+				progress.blobsReused += 1
+			} else if (probe) {
+				// Raw bytes, one snapshot at a time: a text read plus re-encode
+				// held the snapshot twice and pushed the shared JobsHost isolate
+				// past its memory limit on large snapshots.
+				const snapshot = await env.BUNDLE_ARTIFACTS_KV.get(kvKey, 'arrayBuffer')
+				if (snapshot === null) {
+					snapshotSha256 = null
+				} else {
+					const bytes = new Uint8Array(snapshot)
+					snapshotSha256 = await sha256Hex(bytes)
+					await putBlobIfAbsent({ s3, sha256: snapshotSha256, bytes, progress })
+				}
+			}
+			if (snapshotSha256 === null) {
+				progress.warnings.push(
+					`Missing source snapshot KV key ${kvKey} for source ${item.sourceId}`,
+				)
+				continue
+			}
+			progress.artifactPendingEntries.push({
+				sourceId: item.sourceId,
+				entityKind: item.entityKind,
+				entityId: item.entityId,
+				userId: item.userId,
+				publishedCommit: item.publishedCommit,
+				snapshotSha256,
+			})
+			if (progress.artifactPendingEntries.length >= indexChunkEntryLimit) {
+				await flushArtifactEntryChunk({ s3, progress })
+			}
 		}
-		const bytes = new Uint8Array(snapshot)
-		const digest = await sha256Hex(bytes)
-		await putBlobIfAbsent({ s3, sha256: digest, bytes, progress })
-		progress.artifactPendingEntries.push({
-			sourceId: item.sourceId,
-			entityKind: item.entityKind,
-			entityId: item.entityId,
-			userId: item.userId,
-			publishedCommit: item.publishedCommit,
-			snapshotSha256: digest,
-		})
-		if (progress.artifactPendingEntries.length >= indexChunkEntryLimit) {
-			await flushArtifactEntryChunk({ s3, progress })
-		}
-		progress.artifactsIndex += 1
-		input.counts.artifactsProcessed += 1
+		progress.artifactsIndex += wave.length
+		input.counts.artifactsProcessed += wave.length
 		await persistProgress(s3, session)
 	}
 	await flushArtifactEntryChunk({ s3, progress })

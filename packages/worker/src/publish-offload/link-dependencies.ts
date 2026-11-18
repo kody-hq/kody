@@ -9,15 +9,16 @@ import type { ModuleImportNodesCache } from '#worker/package-runtime/import-spec
  * the registry, never from the upload.
  */
 import { collectModuleExportNames } from '#worker/package-runtime/module-export-names.ts'
-import { materializePublishedArtifactModules } from '#worker/package-runtime/module-graph-artifacts.ts'
+import {
+	linkedArtifactPrefix,
+	materializeDependencyArtifactModules,
+} from '#worker/package-runtime/module-graph-artifacts.ts'
 import { resolveCurrentDynamicPackageArtifact } from '#worker/package-runtime/module-graph-hydration.ts'
 import { runtimeModulePath } from '#worker/package-runtime/module-graph-path-basics.ts'
 import {
 	createRelativeImportSpecifier,
-	encodePathKeyAsPath,
 	joinPath,
 	linkedPackageImportPath,
-	linkedPackageImportPrefix,
 	resolveWorkspaceSourceFilePath,
 } from '#worker/package-runtime/module-graph-paths.ts'
 import {
@@ -39,7 +40,7 @@ import { PublishBuildVerificationError } from './verify.ts'
  * entry reaches in source. The server derives this; an upload may only
  * import placeholders in this map.
  */
-export function collectLinkedPackageImports(input: {
+export async function collectLinkedPackageImports(input: {
 	sourceFiles: Record<string, string>
 	entryPoint: string
 	importNodesCache?: ModuleImportNodesCache
@@ -50,7 +51,7 @@ export function collectLinkedPackageImports(input: {
 			files: input.sourceFiles,
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
-	const reachable = collectReachableSourceFilePaths({
+	const reachable = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
@@ -59,7 +60,7 @@ export function collectLinkedPackageImports(input: {
 			: {}),
 	})
 	const linked = new Map<string, string>()
-	for (const imported of collectStaticKodyPackageImportsFromFiles(
+	for (const imported of await collectStaticKodyPackageImportsFromFiles(
 		Object.fromEntries(
 			Object.entries(input.sourceFiles).filter(([path]) => reachable.has(path)),
 		),
@@ -68,6 +69,71 @@ export function collectLinkedPackageImports(input: {
 		linked.set(linkedPackageImportPath(imported.specifier), imported.specifier)
 	}
 	return linked
+}
+
+/** One `kody:@` import, ready to write into any target that references it. */
+type LinkedDependency = {
+	modules: Record<string, string>
+	dependencies: Array<BundleArtifactDependency>
+}
+
+/**
+ * One publish's linked dependencies by `kody:@` specifier. Linking parses
+ * the whole dependency artifact, and the result is the same for every
+ * target, so targets that import the same package share one.
+ */
+export type LinkedDependencyArtifactCache = Map<
+	string,
+	Promise<LinkedDependency>
+>
+
+async function linkDependency(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	placeholder: string
+	specifier: string
+}): Promise<LinkedDependency> {
+	const { placeholder, specifier } = input
+	const artifact = await resolveCurrentDynamicPackageArtifact({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		userId: input.userId,
+		specifier,
+	})
+	const packageId = artifact.packageContext?.packageId
+	if (!packageId) {
+		throw new PublishBuildVerificationError(
+			`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
+		)
+	}
+	const artifactPrefix = linkedArtifactPrefix({
+		specifier,
+		sourceId: artifact.sourceId,
+		publishedCommit: artifact.publishedCommit,
+	})
+	const modules = await materializeDependencyArtifactModules({
+		artifactPrefix,
+		modules: artifact.modules,
+		linkedRoot: '',
+		// linkUploadedPackageImports strips runtime modules from the result.
+		omitRuntimeModules: true,
+	})
+	const mainPath = joinPath(artifactPrefix, artifact.mainModule)
+	const exportNames = await collectModuleExportNames({
+		files: modules,
+		modulePath: mainPath,
+	})
+	modules[placeholder] = createMeteredPackageImportProxySource({
+		targetPath: createRelativeImportSpecifier(placeholder, mainPath),
+		runtimeSpecifier: createRelativeImportSpecifier(
+			placeholder,
+			runtimeModulePath,
+		),
+		packageId,
+		exportNames,
+	})
+	return { modules, dependencies: artifact.dependencies }
 }
 
 /**
@@ -83,6 +149,7 @@ export async function linkUploadedPackageImports(input: {
 	modules: WorkerLoaderModules
 	linkedImports: ReadonlyMap<string, string>
 	referenced: ReadonlySet<string>
+	artifactCache?: LinkedDependencyArtifactCache
 }) {
 	const modules: WorkerLoaderModules = { ...input.modules }
 	const publishedArtifactDependencies: Array<BundleArtifactDependency> = []
@@ -93,44 +160,20 @@ export async function linkUploadedPackageImports(input: {
 				`the build imports "${placeholder}", which is not a Kody package this source imports.`,
 			)
 		}
-		const artifact = await resolveCurrentDynamicPackageArtifact({
-			env: input.env,
-			baseUrl: input.baseUrl,
-			userId: input.userId,
-			specifier,
-		})
-		const packageId = artifact.packageContext?.packageId
-		if (!packageId) {
-			throw new PublishBuildVerificationError(
-				`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
-			)
-		}
-		const artifactPrefix = joinPath(
-			linkedPackageImportPrefix,
-			'artifacts',
-			encodePathKeyAsPath(
-				`${specifier}#${artifact.sourceId}#${artifact.publishedCommit}`,
-			),
-		)
-		const materialized = materializePublishedArtifactModules({
-			artifactPrefix,
-			modules: artifact.modules,
-		})
-		Object.assign(modules, materialized)
-		const mainPath = joinPath(artifactPrefix, artifact.mainModule)
-		modules[placeholder] = createMeteredPackageImportProxySource({
-			targetPath: createRelativeImportSpecifier(placeholder, mainPath),
-			runtimeSpecifier: createRelativeImportSpecifier(
+		let pending = input.artifactCache?.get(specifier)
+		if (!pending) {
+			pending = linkDependency({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
 				placeholder,
-				runtimeModulePath,
-			),
-			packageId,
-			exportNames: collectModuleExportNames({
-				files: materialized,
-				modulePath: mainPath,
-			}),
-		})
-		publishedArtifactDependencies.push(...artifact.dependencies)
+				specifier,
+			})
+			input.artifactCache?.set(specifier, pending)
+		}
+		const linked = await pending
+		Object.assign(modules, linked.modules)
+		publishedArtifactDependencies.push(...linked.dependencies)
 	}
 	return {
 		modules: stripKodyRuntimeModules(modules),

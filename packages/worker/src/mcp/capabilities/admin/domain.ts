@@ -1,4 +1,10 @@
 import { defineDomain } from '#mcp/capabilities/define-domain.ts'
+import {
+	adminWhatsNewRecipientListCapability,
+	adminWhatsNewOptInSetCapability,
+	adminWhatsNewEmailSendCapability,
+	adminWhatsNewDeliveryEventListCapability,
+} from './admin-whats-new.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import { adminAuditLogQueryCapability } from './admin-audit-log-query.ts'
 import { adminCommunityActivityListCapability } from './admin-community-activity-list.ts'
@@ -8,6 +14,7 @@ import { adminCreditWalletGetCapability } from './admin-credit-wallet-get.ts'
 import { adminOrgLimitOverridesSetCapability } from './admin-org-limit-overrides-set.ts'
 import { adminOrgPlanSetCapability } from './admin-org-plan-set.ts'
 import { adminOrgCreditGrantCapability } from './admin-org-credit-grant.ts'
+import { adminOrgCompedSeatsSetCapability } from './admin-org-comped-seats-set.ts'
 import { adminOrgCreditEligibilitySetCapability } from './admin-org-credit-eligibility-set.ts'
 import { adminOrgLimitsGetCapability } from './admin-org-limits-get.ts'
 import { adminOrgGetCapability } from './admin-org-get.ts'
@@ -26,6 +33,7 @@ import {
 } from './admin-feature-flag-repo-override.ts'
 import { adminFeatureFlagSetCapability } from './admin-feature-flag-set.ts'
 import { adminRepoPushQueueCostCapability } from './admin-repo-push-queue-cost.ts'
+import { adminPackageAppHostMigrationOwnerNoticeCapability } from './admin-package-app-host-migration-owner-notice.ts'
 import { adminPackageCodemodApplyCapability } from './admin-package-codemod-apply.ts'
 import { adminPackageCodemodDryRunCapability } from './admin-package-codemod-dry-run.ts'
 import { adminPackageCodemodOwnerNoticeCapability } from './admin-package-codemod-owner-notice.ts'
@@ -99,6 +107,9 @@ import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admi
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
 import { adminCreatorAccessBackfillCapability } from './admin-creator-access-backfill.ts'
 import { adminPreBindingArtifactRebuildCapability } from './admin-pre-binding-artifact-rebuild.ts'
+import { adminListedPackageFetchBindingScanCapability } from './admin-listed-package-fetch-binding-scan.ts'
+import { adminCredentialAttributionLogReportCapability } from './admin-credential-attribution-log-report.ts'
+import { adminListedPackageCredentialUseDetailCapability } from './admin-listed-package-credential-use-detail.ts'
 import { adminPackageAppCapabilityMigrationReportCapability } from './admin-package-app-capability-migration-report.ts'
 import { adminPackageCredentialSupplierReportCapability } from './admin-package-credential-supplier-report.ts'
 import { adminPackageScopedSecretReportCapability } from './admin-package-scoped-secret-report.ts'
@@ -220,9 +231,13 @@ export const adminDomain = defineDomain({
 		adminPackageCodemodApplyCapability,
 		adminPackageCodemodRevertCapability,
 		adminPackageCodemodOwnerNoticeCapability,
+		adminPackageAppHostMigrationOwnerNoticeCapability,
 		adminPublishedImportableArtifactBackfillCapability,
 		adminPublishFinalizeResumeCapability,
 		adminPreBindingArtifactRebuildCapability,
+		adminListedPackageFetchBindingScanCapability,
+		adminCredentialAttributionLogReportCapability,
+		adminListedPackageCredentialUseDetailCapability,
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,
@@ -256,6 +271,7 @@ export const adminDomain = defineDomain({
 		adminOrgPlanSetCapability,
 		adminOrgCreditGrantCapability,
 		adminOrgCreditEligibilitySetCapability,
+		adminOrgCompedSeatsSetCapability,
 		adminFeatureFlagListCapability,
 		adminFeatureFlagSetCapability,
 		adminFeatureFlagOverrideCapability,
@@ -271,6 +287,10 @@ export const adminDomain = defineDomain({
 		adminSystemEmailClassifyCapability,
 		adminSystemEmailDeleteCapability,
 		adminSystemEmailSendCapability,
+		adminWhatsNewRecipientListCapability,
+		adminWhatsNewOptInSetCapability,
+		adminWhatsNewEmailSendCapability,
+		adminWhatsNewDeliveryEventListCapability,
 		adminSystemEmailSendListCapability,
 		adminSystemEmailSenderRuleListCapability,
 		adminSystemEmailSenderRuleSetCapability,

@@ -1,6 +1,8 @@
 import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { toApiError } from '#worker/open-api/errors.ts'
 import type { CapabilityContext } from '../types.ts'
 import { kodyOfficialGuideCapability } from './kody-official-guide.ts'
 import { guides } from '#worker/guides/catalog.ts'
@@ -64,12 +66,26 @@ test('codingGuideGet serves public bundled guides and hides admin-only docs from
 			},
 			(error: unknown) => error,
 		)
-	expect(missingError).toBeInstanceOf(Error)
-	expect(hiddenAdminError).toBeInstanceOf(Error)
-	expect((missingError as Error).message).toBe('Unknown Kody guide.')
-	expect((hiddenAdminError as Error).message).toBe(
-		(missingError as Error).message,
+	expect(missingError).toBeInstanceOf(McpCallerError)
+	expect(hiddenAdminError).toBeInstanceOf(McpCallerError)
+	expect((missingError as Error).message).toBe(
+		'Guide "definitely_not_a_guide" not found. Find guides with `search({ query: "<topic> guide" })`.',
 	)
+	expect((hiddenAdminError as Error).message).toBe(
+		'Guide "admin_events" not found. Find guides with `search({ query: "<topic> guide" })`.',
+	)
+	expect(toApiError(missingError).status).toBe(404)
+	await expect(
+		kodyOfficialGuideCapability.handler({ guide: 'search' }, ctx),
+	).rejects.toThrow('Did you mean `guide:search_and_execute`?')
+	expect(
+		(
+			await kodyOfficialGuideCapability.handler(
+				{ guide: 'package-authoring' },
+				ctx,
+			)
+		).title,
+	).toBe(guides.find((guide) => guide.id === 'package_authoring')?.title)
 	expect(JSON.stringify(kodyOfficialGuideCapability.inputSchema)).not.toContain(
 		'admin_events',
 	)
@@ -110,4 +126,10 @@ test('codingGuideGet focuses line anchors and rejects lines past the end', async
 			ctx,
 		),
 	).rejects.toThrow(/past the end/)
+	await expect(
+		kodyOfficialGuideCapability.handler(
+			{ guide: 'package_authoring', section: 'not-a-heading' },
+			ctx,
+		),
+	).rejects.toThrow(McpCallerError)
 })

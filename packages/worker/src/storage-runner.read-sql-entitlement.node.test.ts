@@ -73,6 +73,7 @@ const {
 	createStorageBytesEntitlementRunCache,
 	createStorageKodyTools,
 	isReadOnlyStorageSqlQuery,
+	writeStorageWithinEntitlement,
 	readOnlyStorageSqlDeniedMessage,
 	storageEstimateReadRetryDelaysMs,
 } = await import('#worker/storage-runner.ts')
@@ -95,6 +96,16 @@ function createEstimateEnv() {
 					params?: Array<unknown>
 					writable?: boolean
 				}) => mockModule.sqlQuery(input),
+				sqlQueryWithinLimit: async (input: {
+					query: string
+					params?: Array<unknown>
+					maxDatabaseBytes: number
+				}) => ({
+					withinLimit: true as const,
+					result: await mockModule.sqlQuery({ ...input, writable: true }),
+					databaseBytes: 64,
+					previousDatabaseBytes: 0,
+				}),
 				getValue: async ({ key }: { key: string }) => ({
 					key,
 					value: null,
@@ -178,6 +189,9 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		['CREATE TABLE skills (id TEXT)', false],
 		['SELECT 1; CREATE TABLE skills (id TEXT)', false],
 		['', false],
+		['/* newest first */ SELECT 1', true],
+		['-- newest first\nselect 1', true],
+		['/* select */ DELETE FROM skills', false],
 	]
 	expect(
 		readOnlyCases.filter(
@@ -198,6 +212,8 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		["WITH c AS (SELECT 'insert' AS label) SELECT label FROM c", false],
 		['WITH c AS (SELECT 1) /* insert */ SELECT 1', false],
 		['CREATE TABLE snapshot AS SELECT * FROM source', false],
+		["WITH c AS (SELECT 'a' AS v) SELECT replace(v, 'a', 'b') FROM c", false],
+		['WITH s AS (SELECT 1 AS i) REPLACE INTO t SELECT i FROM s', true],
 	]
 	const writeCases: Array<[string, boolean]> = [
 		['CREATE TABLE snapshot AS SELECT * FROM source', true],
@@ -207,6 +223,7 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		['SELECT created FROM t', false],
 		['WITH create AS (SELECT 1) SELECT * FROM create', false],
 		['WITH drop AS (SELECT 1 AS alter) SELECT alter FROM drop', false],
+		['WITH s AS (SELECT 1 AS i) REPLACE INTO t SELECT i FROM s', true],
 	]
 	expect(
 		returningMutationCases.filter(
@@ -251,10 +268,10 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		}),
 	).resolves.toMatchObject({ rowsWritten: 1 })
 	expect(mockModule.listUserStorageBucketEstimates).toHaveBeenCalledTimes(1)
-	// Inventoried buckets without stored estimates plus the
-	// not-yet-registered target id.
-	expect(mockModule.getEstimatedBytes).toHaveBeenCalledTimes(3)
-	expect(mockModule.recordStorageBucketEstimate).toHaveBeenCalledTimes(3)
+	// Only inventoried peers without stored estimates are probed; the
+	// StorageRunner checks the target bucket inside the write.
+	expect(mockModule.getEstimatedBytes).toHaveBeenCalledTimes(2)
+	expect(mockModule.recordStorageBucketEstimate).toHaveBeenCalledTimes(2)
 	expect(mockModule.maybeRefreshStorageBucketEstimate).toHaveBeenCalledTimes(1)
 
 	clearCalls()
@@ -303,6 +320,133 @@ test('writable storageSql skips read-only fan-out and enforces mutating entitlem
 		current: freeStorageBytes + 64,
 	})
 	expect(mockModule.getEstimatedBytes).toHaveBeenCalledTimes(1)
+})
+
+function writeWithinLimit(
+	options: Pick<
+		Parameters<typeof writeStorageWithinEntitlement<string>>[0],
+		'write'
+	> & { legacyWrite?: () => Promise<string> },
+) {
+	return writeStorageWithinEntitlement<string>({
+		env: createEstimateEnv(),
+		userId: ownerIdFromStored('user-1'),
+		email: null,
+		storageId: 'package:skills',
+		method: 'sqlQueryWithinLimit',
+		legacyRequested: () => 1,
+		legacyWrite: options.legacyWrite ?? (async () => 'legacy'),
+		write: options.write,
+	})
+}
+
+const olderRunnerError = () =>
+	new TypeError(
+		'The RPC receiver does not implement the method "sqlQueryWithinLimit".',
+	)
+
+test('in-write check sends the room left outside the target bucket', async () => {
+	clearCalls()
+	const freeStorageBytes = planLimits.free.maxStorageBytes
+	mockModule.readStorageBytesFromUserMeter.mockResolvedValueOnce(50)
+	mockModule.listUserStorageBucketEstimates.mockResolvedValueOnce([
+		{ storageId: 'bucket-a', kind: 'unknown', estimatedBytes: 100 },
+		{ storageId: 'bucket-b', kind: 'unknown', estimatedBytes: null },
+		{ storageId: 'package:skills', kind: 'unknown', estimatedBytes: 999 },
+	])
+	const write = vi.fn(async (_maxDatabaseBytes: number) => ({
+		withinLimit: true as const,
+		result: 'written',
+		databaseBytes: 2_000,
+		previousDatabaseBytes: 1_000,
+	}))
+	await expect(writeWithinLimit({ write })).resolves.toBe('written')
+	// Meter + stored peer + probed peer; the target is measured in-write.
+	expect(write).toHaveBeenCalledWith(freeStorageBytes - (50 + 100 + 64))
+	expect(mockModule.getEstimatedBytes).toHaveBeenCalledTimes(1)
+})
+
+test('in-write check rejects a rolled-back write with the entitlement error', async () => {
+	clearCalls()
+	const freeStorageBytes = planLimits.free.maxStorageBytes
+	const peers = [
+		{ storageId: 'bucket-a', kind: 'unknown' as const, estimatedBytes: 100 },
+	]
+	// Once for the usage read, once for the bucket summary on the error.
+	mockModule.listUserStorageBucketEstimates
+		.mockResolvedValueOnce(peers)
+		.mockResolvedValueOnce(peers)
+	const denied = await writeWithinLimit({
+		write: async (maxDatabaseBytes) => ({
+			withinLimit: false,
+			databaseBytes: maxDatabaseBytes + 10,
+			previousDatabaseBytes: 64,
+		}),
+	}).then(
+		() => null,
+		(thrown: unknown) => thrown,
+	)
+	if (!(denied instanceof EntitlementLimitError)) {
+		throw new Error('Expected an EntitlementLimitError.')
+	}
+	expect(denied.details).toMatchObject({
+		resource: 'storage_bytes',
+		limit: freeStorageBytes,
+		current: 100 + 64,
+	})
+	expect(mockModule.getEstimatedBytes).not.toHaveBeenCalled()
+})
+
+test('an older StorageRunner falls back to the pre-write check, which still fails closed', async () => {
+	clearCalls()
+	// Once for the in-write usage read, once for the pre-write baseline.
+	mockModule.listUserStorageBucketEstimates
+		.mockResolvedValueOnce([])
+		.mockResolvedValueOnce([])
+	const legacyWrite = vi.fn(async () => 'legacy')
+	await expect(
+		writeWithinLimit({
+			write: async () => {
+				throw olderRunnerError()
+			},
+			legacyWrite,
+		}),
+	).resolves.toBe('legacy')
+	// The pre-write check probes the target bucket live.
+	expect(mockModule.getEstimatedBytes).toHaveBeenCalledTimes(1)
+	expect(legacyWrite).toHaveBeenCalledTimes(1)
+
+	clearCalls()
+	legacyWrite.mockClear()
+	const fullPeer = [
+		{
+			storageId: 'bucket-a',
+			kind: 'unknown' as const,
+			estimatedBytes: planLimits.free.maxStorageBytes,
+		},
+	]
+	mockModule.listUserStorageBucketEstimates
+		.mockResolvedValueOnce(fullPeer)
+		.mockResolvedValueOnce(fullPeer)
+	await expect(
+		writeWithinLimit({
+			write: async () => {
+				throw olderRunnerError()
+			},
+			legacyWrite,
+		}),
+	).rejects.toBeInstanceOf(EntitlementLimitError)
+	expect(legacyWrite).not.toHaveBeenCalled()
+
+	await expect(
+		writeWithinLimit({
+			write: async () => {
+				throw new Error('storage runner reset')
+			},
+			legacyWrite,
+		}),
+	).rejects.toThrow('storage runner reset')
+	expect(legacyWrite).not.toHaveBeenCalled()
 })
 
 test('entitlement run cache pays the fan-out once across mutating writes', async () => {
@@ -355,12 +499,13 @@ test('entitlement run cache drops a rejected baseline so later writes retry', as
 	expect(cache.reservedBytes).toBe(1)
 })
 
-test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write entitlement', async () => {
+test('only a single CREATE TABLE IF NOT EXISTS that stores no rows skips the write entitlement', async () => {
 	const { isIdempotentStorageSqlDdl, storageSqlNeedsWriteEntitlement } =
 		await import('./storage-runner.ts')
 	for (const query of [
 		'CREATE TABLE IF NOT EXISTS skills (id TEXT)',
 		'  create table if not exists notes (name text)',
+		'CREATE TABLE IF NOT EXISTS totals (a INTEGER, b INTEGER AS (a + 1))',
 	]) {
 		expect(isIdempotentStorageSqlDdl(query)).toBe(true)
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(false)
@@ -371,6 +516,9 @@ test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write en
 		'create index if not exists by_name on notes (name)',
 		'CREATE UNIQUE INDEX IF NOT EXISTS skills_id ON skills (id)',
 		'CREATE TABLE IF NOT EXISTS copy AS SELECT * FROM skills',
+		// VALUES stores rows without the word SELECT.
+		'CREATE TABLE IF NOT EXISTS copy AS VALUES (1), (2)',
+		'create table if not exists copy as with c (a) as (values (1)) values (2)',
 		'CREATE TABLE IF NOT EXISTS a (id TEXT); INSERT INTO a VALUES (1)',
 		'CREATE TRIGGER IF NOT EXISTS t AFTER INSERT ON a BEGIN SELECT 1; END',
 		'INSERT INTO skills (id) VALUES (1)',
@@ -378,5 +526,4 @@ test('only a single CREATE TABLE IF NOT EXISTS without SELECT skips the write en
 		expect(isIdempotentStorageSqlDdl(query)).toBe(false)
 		expect(storageSqlNeedsWriteEntitlement(query)).toBe(true)
 	}
-	expect(storageSqlNeedsWriteEntitlement('SELECT 1')).toBe(false)
 })

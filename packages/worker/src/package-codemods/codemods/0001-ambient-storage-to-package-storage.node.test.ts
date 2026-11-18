@@ -19,18 +19,18 @@ function manifest(kodyId: string, app?: { entry: string }) {
 
 const importStorage = "import { storage } from 'kody:runtime'\n"
 
-test('0001 rewrites member call sites, gates apps, verifies AST, and handles parse failures', () => {
+test('0001 rewrites member call sites, gates apps, verifies AST, and handles parse failures', async () => {
 	const plain = {
 		'package.json': manifest('demo'),
 		'index.ts': `${importStorage}\nexport async function run() {\n\treturn storage.get('k')\n}\n`,
 	}
-	expect(codemod.detect(plain)).toEqual([
+	expect(await codemod.detect(plain)).toEqual([
 		{
 			path: 'index.ts',
 			message: expect.stringContaining('ambient `storage`'),
 		},
 	])
-	const plainTransform = codemod.transform(plain)
+	const plainTransform = await codemod.transform(plain)
 	expect(plainTransform).toMatchObject({
 		changed: true,
 		changedPaths: ['index.ts'],
@@ -41,7 +41,7 @@ test('0001 rewrites member call sites, gates apps, verifies AST, and handles par
 	expect(plainOutput).toContain("packageStorage().get('k')")
 	expect(plainOutput).not.toContain('const storage = packageStorage()')
 	expect(plainOutput).not.toMatch(/(?<!package)storage\.get/)
-	const secondPass = codemod.transform(plainTransform.files)
+	const secondPass = await codemod.transform(plainTransform.files)
 	expect(secondPass.changed).toBe(false)
 	expect(secondPass.files['index.ts']).toBe(plainOutput)
 
@@ -76,7 +76,7 @@ test('0001 rewrites member call sites, gates apps, verifies AST, and handles par
 		},
 	]
 	for (const { kodyId, source, contains, excludes } of rewrites) {
-		const result = codemod.transform({
+		const result = await codemod.transform({
 			'package.json': manifest(kodyId),
 			'lib.ts': source,
 		})
@@ -120,7 +120,7 @@ test('0001 rewrites member call sites, gates apps, verifies AST, and handles par
 	]
 	for (const { kodyId, source, message, app } of manual) {
 		const files = { 'package.json': manifest(kodyId, app), 'lib.ts': source }
-		const result = codemod.transform(files)
+		const result = await codemod.transform(files)
 		expect({ kodyId, ...result }).toMatchObject({
 			kodyId,
 			changed: false,
@@ -131,7 +131,7 @@ test('0001 rewrites member call sites, gates apps, verifies AST, and handles par
 		})
 	}
 	expect(
-		codemod.detect({
+		await codemod.detect({
 			'package.json': manifest('bad'),
 			'bad.ts': `${importStorage}export function broken( {\n`,
 		}),
@@ -144,6 +144,6 @@ test('0001 rewrites member call sites, gates apps, verifies AST, and handles par
 		'clean.ts':
 			"import { packageStorage } from 'kody:runtime'\nexport const run = () => packageStorage().get('k')\n",
 	}
-	expect(codemod.detect(clean)).toEqual([])
-	expect(codemod.transform(clean).changed).toBe(false)
+	expect(await codemod.detect(clean)).toEqual([])
+	expect((await codemod.transform(clean)).changed).toBe(false)
 })

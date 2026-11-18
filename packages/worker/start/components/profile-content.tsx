@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from './text-link.tsx'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
 import type { CSSObject } from '@emotion/react'
@@ -45,7 +46,7 @@ import {
 	cardCss,
 	descriptionCss,
 	hoverMq,
-	mutedLinkCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 
 export type ProfileContentProps = {
@@ -514,16 +515,16 @@ export function ProfileContent(props: ProfileContentProps) {
 										/>
 										<span>
 											{communityActivityVerb(item.type)}{' '}
-											<SiteLink
+											<TextLink
+												tone="muted"
 												href={getCommunityListingHref({
 													listingId: item.listingId,
 													listingName: item.listingName,
 													kodyId: item.listingKodyId,
 												})}
-												css={mutedLinkCss}
 											>
 												{item.listingName}
-											</SiteLink>
+											</TextLink>
 										</span>
 									</span>
 									<time
@@ -589,7 +590,7 @@ const filterNavCss = {
 		minHeight: '1.75rem',
 		backgroundColor: colors.surface,
 		border: `1px solid ${colors.border}`,
-		borderRadius: '999px',
+		...getSquircleCss('xs'),
 		padding: '0.1rem 0.5rem',
 	},
 } satisfies CSSObject
@@ -609,7 +610,7 @@ const filterLinkCss = {
 	justifyContent: 'center',
 	minHeight: '1.75rem',
 	padding: '0.1rem 0.55rem',
-	borderRadius: '999px',
+	...getSquircleCss('xs'),
 	color: colors.textMuted,
 	fontSize: '0.75rem',
 	fontWeight: 650,

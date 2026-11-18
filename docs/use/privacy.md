@@ -52,12 +52,14 @@ metadata, and public activity are visible on `/@username`. When visibility is
 
 The only cookies are the session cookie (`kody_session`), the one-week last-wins
 referral cookie (`kody_ref`) set by share links that add `?ref=` to any page
-(for example `/?ref=<username>`), and the package-app session cookie on
-`kody.run` (`__Host-kody_pkg_session_<hash>` on HTTPS, `kody_pkg_session_<hash>`
-on HTTP; one cookie per package app on shared hosts). Short-lived cookies
-support two-factor verification, passkey challenges, and OAuth login. Analytics
-(Fathom and Scarf) are cookieless. The browser uses sessionStorage for
-first-touch signup attribution and scroll restoration, not tracking cookies.
+(for example `/?ref=<username>`), the one-week first-party first-touch cookie
+(`kody_first_touch`) that keeps the UTMs, landing path, and referrer of your
+first visit until signup reads and clears it, and the package-app session cookie
+on `kody.run` (`__Host-kody_pkg_session_<hash>` on HTTPS,
+`kody_pkg_session_<hash>` on HTTP; one cookie per package app on shared hosts).
+Short-lived cookies support two-factor verification, passkey challenges, and
+OAuth login. Analytics (Fathom and Scarf) are cookieless. The browser uses
+sessionStorage for scroll restoration, not tracking cookies.
 
 Account export includes your profile columns and activity you authored. The
 browser download is a bounded metadata manifest; use its `accountExportSection`

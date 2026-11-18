@@ -28,7 +28,9 @@ export function ownerIdFromCaller(caller: {
  * Email to pair with `ownerId` for entitlement lookup. Plan resolution
  * requires email and stable id to name one users row, so a team member's
  * email against the team org id would resolve Free. Only the caller's
- * personal org gets the email; other orgs resolve by id.
+ * personal org gets the email; other orgs resolve by id. Without a stamped
+ * personal org id there is no proof the owner is personal (a converted org
+ * keeps its founder's person id), so the plan resolves by id.
  */
 export function entitlementEmailForOwner(
 	caller: {
@@ -40,8 +42,7 @@ export function entitlementEmailForOwner(
 	},
 	ownerId: OwnerId,
 ): string | null {
-	if (!caller.user) return null
-	return ownerId === personalOrgIdForPerson(caller.user)
-		? caller.user.email
-		: null
+	const user = caller.user
+	if (!user?.personalOrgId) return null
+	return ownerId === user.personalOrgId ? user.email : null
 }

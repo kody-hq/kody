@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Badge, type BadgeTone } from '../components/badge.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { sendCancellationFeedback } from '#start/server/billing-mutations'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
@@ -12,7 +15,6 @@ import {
 	orgIdentity,
 	orgOverviewPath,
 } from '#universal/org-pages.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import type {
@@ -20,9 +22,6 @@ import type {
 	AdminPlanName,
 } from '#universal/loader-data.ts'
 import {
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -51,13 +50,12 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
-	mutedLinkCss,
-	primaryLinkCss,
 	visuallyHiddenCss,
+	fieldCss,
+	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input, Textarea } from '../components/input.tsx'
 
 type SubscriptionStatusTone = 'ok' | 'warn' | 'action' | 'muted'
 
@@ -140,31 +138,12 @@ function describeSubscriptionStatus(status: string): {
 	}
 }
 
-function subscriptionStatusBadgeCss(tone: SubscriptionStatusTone) {
-	const accent =
-		tone === 'action'
-			? colors.error
-			: tone === 'warn'
-				? colors.primaryText
-				: tone === 'ok'
-					? colors.primary
-					: colors.textMuted
-	return {
-		display: 'inline-flex',
-		alignItems: 'center',
-		padding: `0.2rem ${spacing.sm}`,
-		borderRadius: radius.md,
-		border: `1px solid ${accent}`,
-		backgroundColor:
-			tone === 'action'
-				? 'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))'
-				: colors.surface,
-		color: accent,
-		fontSize: typography.fontSize.xs,
-		fontWeight: typography.fontWeight.semibold,
-		textTransform: 'capitalize' as const,
-	}
-}
+const subscriptionStatusBadgeTone = {
+	action: 'danger',
+	warn: 'warning',
+	ok: 'accent',
+	muted: 'neutral',
+} satisfies Record<SubscriptionStatusTone, BadgeTone>
 
 export function AccountBillingPage({
 	payload,
@@ -401,16 +380,19 @@ export function AccountBillingPage({
 								{formatPlanLabel(billing.effectivePlan, 'Free')}
 							</p>
 							{statusInfo ? (
-								<span css={subscriptionStatusBadgeCss(statusInfo.tone)}>
+								<Badge
+									tone={subscriptionStatusBadgeTone[statusInfo.tone]}
+									css={{ textTransform: 'capitalize' }}
+								>
 									{statusInfo.label}
-								</span>
+								</Badge>
 							) : null}
-							<SiteLink
+							<TextLink
+								tone="muted"
 								href={billing.usageHref ?? orgOverviewPath(billing.org.slug)}
-								css={mutedLinkCss}
 							>
 								view usage
-							</SiteLink>
+							</TextLink>
 						</div>
 						{statusInfo && statusInfo.tone !== 'action' ? (
 							<p css={descriptionCss}>{statusInfo.detail}</p>
@@ -432,9 +414,7 @@ export function AccountBillingPage({
 						) : null}
 						{billing.creditsEligible && billing.creditsHref ? (
 							<p css={{ margin: 0 }}>
-								<SiteLink href={billing.creditsHref} css={primaryLinkCss}>
-									Manage credits
-								</SiteLink>
+								<TextLink href={billing.creditsHref}>Manage credits</TextLink>
 							</p>
 						) : null}
 						{retiredPlan ? (
@@ -442,7 +422,7 @@ export function AccountBillingPage({
 								<p css={descriptionCss}>Credits are available on Pro.</p>
 								{canSwitchToPro ? (
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={checkoutPending !== null}
 											onClick={() =>
@@ -452,10 +432,10 @@ export function AccountBillingPage({
 													'page',
 												)
 											}
-											css={primaryButtonCss}
+											variant="primary"
 										>
 											{checkoutPending ? 'Opening Stripe…' : 'Switch to Pro'}
-										</button>
+										</Button>
 									</div>
 								) : null}
 							</>
@@ -473,11 +453,8 @@ export function AccountBillingPage({
 									gap: spacing.sm,
 								}}
 							>
-								<div css={accountFieldCss}>
-									<label
-										htmlFor="referral-share-url"
-										css={accountFieldLabelCss}
-									>
+								<div css={fieldCss}>
+									<label htmlFor="referral-share-url" css={fieldLabelCss}>
 										Your referral link
 									</label>
 									<div
@@ -488,14 +465,12 @@ export function AccountBillingPage({
 											alignItems: 'center',
 										}}
 									>
-										<input
+										<Input
 											id="referral-share-url"
 											type="url"
 											readOnly
 											value={billing.referralProgram.shareUrl}
-											data-field-ring
 											css={{
-												...accountInputCss,
 												flex: '1 1 16rem',
 											}}
 										/>
@@ -588,7 +563,7 @@ export function AccountBillingPage({
 								<div css={{ display: 'grid', gap: spacing.sm }}>
 									<label css={{ display: 'grid', gap: spacing.xs }}>
 										<span css={visuallyHiddenCss}>Cancellation feedback</span>
-										<textarea
+										<Textarea
 											rows={3}
 											maxLength={8000}
 											placeholder="Too expensive, missing a feature, not useful enough…"
@@ -616,16 +591,16 @@ export function AccountBillingPage({
 										</AccountManagementMessage>
 									) : null}
 									<div>
-										<button
+										<Button
 											type="button"
 											disabled={cancellationFeedbackPending}
 											onClick={() => void submitCancellationFeedback()}
-											css={secondaryButtonCss}
+											variant="secondary"
 										>
 											{cancellationFeedbackPending
 												? 'Sending…'
 												: 'Send feedback'}
-										</button>
+										</Button>
 									</div>
 								</div>
 							)}
@@ -645,7 +620,7 @@ export function AccountBillingPage({
 									alignItems: 'center',
 								}}
 							>
-								<button
+								<Button
 									type="button"
 									disabled={portalPending}
 									onClick={async () => {
@@ -668,27 +643,27 @@ export function AccountBillingPage({
 											)
 										}
 									}}
+									variant={
+										statusInfo?.tone === 'action' ? 'primary' : 'secondary'
+									}
 									css={{
-										...(statusInfo?.tone === 'action'
-											? primaryButtonCss
-											: secondaryButtonCss),
 										display: 'inline-block',
 										textDecoration: 'none',
 										textAlign: 'center',
 									}}
 								>
 									Manage subscription
-								</button>
+								</Button>
 								{billing.creditsEligible &&
 								billing.manualPlan === 'free' &&
 								billing.stripePlan === 'pro' &&
 								!billing.cancelAt ? (
-									<SiteLink
+									<TextLink
+										tone="muted"
 										href={`${orgBillingPath(payload.org.slug)}/move-plan`}
-										css={mutedLinkCss}
 									>
 										Move this plan to another organization
-									</SiteLink>
+									</TextLink>
 								) : null}
 							</div>
 						</AccountManagementPanel>
@@ -719,20 +694,16 @@ export function AccountBillingPage({
 			) : null}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink
+				<TextLink
 					href={
 						payload.org.personal
 							? '/account'
 							: orgOverviewPath(payload.org.slug)
 					}
-					css={primaryLinkCss}
 				>
 					{payload.org.personal ? 'Back to account' : `Back to ${orgName}`}
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })

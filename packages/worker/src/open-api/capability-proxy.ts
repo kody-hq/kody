@@ -35,6 +35,8 @@ import { maxApiRequestBodyBytes } from './request-params.ts'
 import { runCapabilityProxyAuthenticatedFetch } from './capability-proxy-authenticated-fetch.ts'
 import {
 	authorizeContextCommand,
+	authorizeContextFolder,
+	authorizeContextLan,
 	commandRequiresContextError,
 	commandRuntimeName,
 } from '#worker/execution-contexts/commands.ts'
@@ -398,6 +400,22 @@ async function dispatchCapabilityProxyCall(input: {
 			return await authorizeContextCommand(ctx, call.args[0])
 		}
 		throw commandRequiresContextError()
+	}
+	if (
+		root === 'kody' &&
+		name === 'lan' &&
+		call.path.length === 3 &&
+		call.path[2] === 'authorize'
+	) {
+		return await authorizeContextLan(ctx, call.args[0])
+	}
+	if (
+		root === 'kody' &&
+		name === 'fs' &&
+		call.path.length === 3 &&
+		call.path[2] === 'authorize'
+	) {
+		return await authorizeContextFolder(ctx, call.args[0])
 	}
 	if (root === 'kody') {
 		return callKodyPath({

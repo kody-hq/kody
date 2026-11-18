@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { connectSecretsInput } from '../connect-input.ts'
 import { saveSecret as saveSecretRecord } from '#start/server/account-mutations'
 import { routes } from '#universal/routes.ts'
@@ -17,7 +18,6 @@ import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { connectSecretSetQuery } from '../connect-secret-set-query.ts'
 import { usePageQuery } from '../page-query.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
 import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
@@ -34,9 +34,7 @@ import {
 	cardCss,
 	fieldCss,
 	fieldLabelCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-	inputCss,
+	getFieldControlCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -53,14 +51,6 @@ const headerCss = {
 	justifyItems: 'center',
 	textAlign: 'center' as const,
 }
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 export function ConnectSecretSetRoute({
 	actorKey,
 	currentHref,
@@ -381,18 +371,19 @@ export function ConnectSecretSetRoute({
 									setShowSecretValue(next)
 								}}
 								onInput={(event) => setValue(event.currentTarget.value)}
-								css={inputCss}
+								css={getFieldControlCss()}
 							/>
 						</div>
 
-						<button
+						<Button
 							type="submit"
 							disabled={saving}
 							data-testid="connect-secret-set-save"
-							css={primaryButtonCss}
+							variant="primary"
+							size="md"
 						>
 							{saving ? 'Saving…' : 'Save secret'}
-						</button>
+						</Button>
 					</form>
 				</section>
 			) : null}
@@ -414,22 +405,24 @@ export function ConnectSecretSetRoute({
 							<code>{state.name}</code>
 						</div>
 					</div>
-					<SiteLink
+					<Button
 						href={routes.accountCredentials.href()}
-						css={secondaryButtonCss}
+						variant="secondary"
+						size="md"
 						data-testid="connect-secret-set-back"
 					>
 						Back to credentials
-					</SiteLink>
+					</Button>
 				</section>
 			) : view.showBackToSecrets ? (
-				<SiteLink
+				<Button
 					href={routes.accountCredentials.href()}
-					css={secondaryButtonCss}
+					variant="secondary"
+					size="md"
 					data-testid="connect-secret-set-back"
 				>
 					Back to credentials
-				</SiteLink>
+				</Button>
 			) : null}
 		</section>
 	)

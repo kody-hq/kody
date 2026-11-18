@@ -117,6 +117,7 @@ test('community install POST enforces gates and maps install outcomes', async ()
 		mcpUser: {
 			userId: personIdFromStored('stable-user-b'),
 			email: 'userb@example.com',
+			personalOrgId: personalOwnerId,
 		},
 	})
 	mockModule.getPackageScopeByUserId.mockResolvedValue('userb')

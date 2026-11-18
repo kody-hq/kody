@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
@@ -21,10 +22,6 @@ import { validateAuthFormFields } from '#client/auth-form-validation.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { fathomEventNames, trackFathomEvent } from '#client/fathom-events.ts'
 import {
-	clearStoredFirstTouchAttribution,
-	readSignupFirstTouchAttribution,
-} from '#client/first-touch-attribution.ts'
-import {
 	emptyPublicFormProtection,
 	readPublicFormProtection,
 	renderTurnstileWidgets,
@@ -38,12 +35,10 @@ import {
 } from '#start/server/auth-mutations'
 import { buildOauthLoginErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
-import { serializeFirstTouchAttributionForTransport } from '#universal/first-touch-attribution.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-permanence.ts'
@@ -130,7 +125,6 @@ export function LoginPage({
 		lifecycle.current = controller
 		if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
 		if (mode === 'signup' && !signupStartedTracked.current) {
-			readSignupFirstTouchAttribution()
 			signupStartedTracked.current = trackFathomEvent(
 				fathomEventNames.signupStarted,
 			)
@@ -176,6 +170,7 @@ export function LoginPage({
 		const username =
 			mode === 'signup' ? String(formData.get('username') ?? '').trim() : ''
 		const rememberMe = mode === 'login' && formData.get('rememberMe') === 'on'
+		const whatsNewEmailOptIn = formData.get('whatsNewEmailOptIn') === 'on'
 		const protection = readPublicFormProtection(formData, form)
 
 		const clientValidation = validateAuthFormFields({
@@ -231,8 +226,6 @@ export function LoginPage({
 		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 
 		try {
-			const attribution =
-				mode === 'signup' ? readSignupFirstTouchAttribution() : null
 			const payload = await authenticateWebsite({
 				signal: lifecycle.current?.signal,
 				data: {
@@ -244,8 +237,8 @@ export function LoginPage({
 					...(mode === 'signup'
 						? {
 								username,
+								whatsNewEmailOptIn,
 								redirectTo: redirectTo,
-								...serializeFirstTouchAttributionForTransport(attribution),
 							}
 						: {}),
 				},
@@ -264,7 +257,6 @@ export function LoginPage({
 
 			if (mode === 'signup') {
 				const tracked = trackFathomEvent(fathomEventNames.accountCreated)
-				clearStoredFirstTouchAttribution()
 				if (typeof window !== 'undefined') {
 					const destination = resolvePasswordAuthRedirect({
 						mode,
@@ -309,7 +301,6 @@ export function LoginPage({
 				providerId,
 				redirectTo,
 				protection,
-				mode === 'signup' ? readSignupFirstTouchAttribution() : null,
 				lifecycle.current?.signal,
 			)
 			if (errorMessage) {
@@ -486,12 +477,6 @@ export function LoginPage({
 
 			{turnstileSiteKey ? <HumanCheckHelp deviceSignIn={deviceSignIn} /> : null}
 
-			{deviceSignInTarget ? (
-				<DeviceSignInOption target={deviceSignInTarget} rise={2} />
-			) : accountDeviceSignIn ? (
-				<AccountDeviceSignInOption redirectTo={redirectTo} rise={2} />
-			) : null}
-
 			{showSocial ? (
 				<>
 					<div
@@ -509,20 +494,28 @@ export function LoginPage({
 						css={authOauthCss}
 					>
 						{authProviders.map((provider) => (
-							<button
+							<Button
 								key={provider.id}
 								type="button"
 								disabled={!hydrated || isSubmitting}
 								aria-label={`Continue with ${provider.label}`}
 								data-testid={`social-sign-in-${provider.id}`}
+								variant="secondary"
+								size="lg"
 								css={oauthButtonCss}
 								onClick={() => handleProviderSignIn(provider.id)}
 							>
 								<ProviderIcon providerId={provider.id} size="1.4rem" />
-							</button>
+							</Button>
 						))}
 					</div>
 				</>
+			) : null}
+
+			{deviceSignInTarget ? (
+				<DeviceSignInOption target={deviceSignInTarget} rise={4} />
+			) : accountDeviceSignIn ? (
+				<AccountDeviceSignInOption redirectTo={redirectTo} rise={4} />
 			) : null}
 
 			<AuthFormFallback
@@ -532,10 +525,10 @@ export function LoginPage({
 						? 'JavaScript is off. Creating an account needs JavaScript. If you already have an account, sign in instead.'
 						: turnstileSiteKey
 							? deviceSignIn
-								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+								? 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so use Sign in with another device, or turn JavaScript on.'
 								: 'JavaScript is off. Email and password sign-in needs a quick human check that uses JavaScript, so turn JavaScript on to sign in.'
 							: deviceSignIn
-								? 'JavaScript is off. Sign in with your email and password, or use Sign in on another device. Passkeys and social sign-in need JavaScript.'
+								? 'JavaScript is off. Sign in with your email and password, or use Sign in with another device. Passkeys and social sign-in need JavaScript.'
 								: 'JavaScript is off. Sign in with your email and password. Passkeys and social sign-in need JavaScript.'
 				}
 			/>
@@ -603,7 +596,6 @@ const authOauthCss: CSSObject = {
 }
 
 const oauthButtonCss: CSSObject = {
-	...getGhostButtonCss(),
 	flex: '0 0 auto',
 	width: '3rem',
 	height: '3rem',

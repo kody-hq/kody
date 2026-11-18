@@ -21,15 +21,18 @@ The default `fetch` handler delegates to `OAuthProvider` from
 infrastructure are available alongside normal app routes.
 
 The provider requires `resourceMetadata.resource` (canonical `<origin>/mcp`).
-That pins grant and access-token audiences and is the sole RFC 9728
-protected-resource metadata document, served at
-`/.well-known/oauth-protected-resource/mcp`. The root
-`/.well-known/oauth-protected-resource` path is not an alias. Preview, local,
-and production each construct a per-origin provider so the resource matches the
-host the client connected to (`getAppBaseUrl`). Production refuses non-canonical
-hosts (see [Non-canonical hosts](../security.md#non-canonical-hosts)), so MCP is
-not served on the production `workers.dev` trigger. `APP_BASE_URL` is only the
-fallback for background work with no request URL.
+That pins grant and access-token audiences. Its RFC 9728 protected-resource
+metadata document is served at `/.well-known/oauth-protected-resource/mcp`, and
+the `/mcp` challenge names that URL. The root
+`/.well-known/oauth-protected-resource` path is not an alias: it is a separate
+document for the origin (`resource` is `<origin>`, same authorization server and
+scopes) so scanners that probe the root find metadata. Tokens are still issued
+only for `<origin>/mcp`. Preview, local, and production each construct a
+per-origin provider so the resource matches the host the client connected to
+(`getAppBaseUrl`). Production refuses non-canonical hosts (see
+[Non-canonical hosts](../security.md#non-canonical-hosts)), so MCP is not served
+on the production `workers.dev` trigger. `APP_BASE_URL` is only the fallback for
+background work with no request URL.
 
 ## Routing order
 
@@ -82,8 +85,9 @@ Requests are handled in this order:
    - `/oauth/callback`
 4. Browser noise endpoint:
    - `/.well-known/appspecific/com.chrome.devtools.json` (returns 204)
-5. OAuth protected resource metadata (inside `OAuthProvider`, path-aware only):
-   - `/.well-known/oauth-protected-resource/mcp`
+5. OAuth protected resource metadata:
+   - `/.well-known/oauth-protected-resource/mcp` (inside `OAuthProvider`)
+   - `/.well-known/oauth-protected-resource` (origin document, `origin-handler`)
 6. MCP endpoint:
    - `/mcp` (requires OAuth bearer token; `OAuthProvider` `apiRoute`). Missing
      Bearer credentials are short-circuited with a JSON `401` (Gemini-friendly)
@@ -389,7 +393,9 @@ The runtime capability registry **merges** synthesized domains from enabled
 Shared options are built in `packages/worker/src/sentry-options.ts`: **release**
 comes from `APP_COMMIT_SHA` when set (deploy workflows pass it as a var), and
 **environment** defaults from `SENTRY_ENVIRONMENT` in
-`packages/worker/wrangler.jsonc` per deploy target.
+`packages/worker/wrangler.jsonc` per deploy target. `beforeSend`,
+`beforeSendTransaction`, and `beforeBreadcrumb` deep-redact credentials, auth
+schemes, sensitive field names, and secret query params before ingest.
 
 MCP tools emit structured `mcp-event` logs via
 `packages/worker/src/mcp/observability.ts`. On failures, the same module sends

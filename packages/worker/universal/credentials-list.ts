@@ -99,6 +99,8 @@ export type AccountCredentialDetail = {
 	placeholder: string | null
 	/** Team orgs a personal credential is granted to. */
 	grants: Array<{ orgSlug: string; orgName: string; grantedAt: string }>
+	/** True when `grants` could not be read, so an empty list is not "none". */
+	grantsUnavailable: boolean
 	/** Needs of this org's packages this credential can fill. */
 	usage: Array<{
 		packageId: string
@@ -199,8 +201,15 @@ export type AccountCredentialsResponse = CredentialListResponse & {
 	selected: AccountCredentialDetail | null
 	/** Local reads for the selected secret or vault, when it supports them. */
 	selectedLocalReads: CredentialLocalReadsView | null
+	/**
+	 * The selected credential's id when its local reads failed to load, so a
+	 * null `selectedLocalReads` is not mistaken for "not supported".
+	 */
+	selectedLocalReadsUnavailableFor: string | null
 	/** Raw RSA signing for the selected signing credential. */
 	selectedRawSigning: CredentialRawSigningView | null
+	/** The selected credential's id when its raw signing failed to load. */
+	selectedRawSigningUnavailableFor: string | null
 	/** Secrets and vaults with local reads on, by credential. */
 	localReadBadges: Record<string, CredentialLocalReadBadge>
 	orgSlug: string

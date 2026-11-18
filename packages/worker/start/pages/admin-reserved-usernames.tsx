@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
@@ -6,14 +8,7 @@ import {
 	removeAdminReservedUsernames,
 } from '#start/server/admin-mutations'
 import type { AdminReservedUsernamesLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
@@ -25,9 +20,8 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 	IdValue,
-	accountInputCss,
-	accountTextareaCss,
 } from './account-management-components.tsx'
+import { Input, Textarea } from '../components/input.tsx'
 type ActionState = 'idle' | 'adding' | 'removing'
 export function AdminReservedUsernamesPage(props: {
 	payload: AdminReservedUsernamesLoaderData
@@ -109,8 +103,6 @@ export function AdminReservedUsernamesPage(props: {
 		)
 		if (saved) form.reset()
 	}
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 	const currentHref = props.currentHref
 	const pending = false
 	const status: string = 'ready'
@@ -144,24 +136,22 @@ export function AdminReservedUsernamesPage(props: {
 				asForm
 				onSubmit={handleAddSubmit}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Usernames</span>
-					<textarea
-						data-field-ring
+				<Field label="Usernames">
+					<Textarea
 						name="usernames"
 						rows={4}
 						placeholder="autodiscover, mta-sts"
 						disabled={isMutating}
-						css={accountTextareaCss}
 					/>
-				</label>
-				<button
+				</Field>
+				<Button
 					type="submit"
 					disabled={isMutating}
-					css={{ ...primaryButtonCss, justifySelf: 'start' }}
+					variant="primary"
+					css={{ justifySelf: 'start' }}
 				>
 					{actionState === 'adding' ? 'Adding…' : 'Add'}
-				</button>
+				</Button>
 			</AccountManagementPanel>
 			<section css={cardCss}>
 				<h2
@@ -230,7 +220,7 @@ export function AdminReservedUsernamesPage(props: {
 							}}
 						>
 							<code>{username}</code>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								onClick={() =>
@@ -244,10 +234,10 @@ export function AdminReservedUsernamesPage(props: {
 										'removing',
 									)
 								}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								{actionState === 'removing' ? 'Removing…' : 'Remove'}
-							</button>
+							</Button>
 						</div>
 					))}
 				</div>
@@ -283,7 +273,7 @@ export function AdminReservedUsernamesPage(props: {
 							}}
 						>
 							<code>{username}</code>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								onClick={() =>
@@ -297,10 +287,10 @@ export function AdminReservedUsernamesPage(props: {
 										'adding',
 									)
 								}
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Restore
-							</button>
+							</Button>
 						</div>
 					))}
 				</div>
@@ -319,10 +309,8 @@ export function AdminReservedUsernamesPage(props: {
 					Code-defined denylist. Search to filter. These stay reserved unless
 					moved to Unreserved built-ins.
 				</p>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Search</span>
-					<input
-						data-field-ring
+				<Field label="Search">
+					<Input
 						type="text"
 						role="searchbox"
 						inputMode="search"
@@ -332,9 +320,8 @@ export function AdminReservedUsernamesPage(props: {
 							if (!(event.currentTarget instanceof HTMLInputElement)) return
 							setBuiltInQuery(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
-				</label>
+				</Field>
 				<p css={{ color: colors.textMuted, margin: 0 }}>
 					{visibleBuiltIn.length} of {builtIn.length} names
 				</p>

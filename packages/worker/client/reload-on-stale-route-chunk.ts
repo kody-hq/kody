@@ -1,8 +1,8 @@
 /**
  * One-shot hard reload when a stale tab's hashed route chunk 404s after a
- * deploy (KODY-5W, KODY-9S, KODY-9V, KODY-9Y, KODY-A1). Mirrors
- * `reload-on-unknown-start-release.ts`: set the session flag before reload,
- * clear it after a successful boot so a later deploy can recover again.
+ * deploy (KODY-5W, KODY-9S, KODY-9V, KODY-9Y, KODY-A1). Set the session flag
+ * before reload, clear it after a successful boot so a later deploy can
+ * recover again.
  *
  * Match only the three browser dynamic-import failure messages. A blanket
  * TypeError ("Failed to fetch", "Load failed") is a different failure and

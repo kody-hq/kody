@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Table } from '../components/table.tsx'
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import type { CSSObject } from '@emotion/react'
@@ -23,16 +26,10 @@ import {
 } from '#universal/plans.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
-	fieldCss,
-	fieldLabelCss,
-	getAuthInputCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 function formatLimit(limit: number | null) {
 	if (limit === null) return 'No window'
@@ -161,16 +158,17 @@ export function AdminOrgLimitsPanel({
 							<span css={{ color: colors.textMuted }}>
 								{row.override.reason}
 							</span>
-							<button
+							<Button
 								type="button"
 								disabled={saving}
+								variant="secondary"
 								css={removeButtonCss}
 								onClick={() =>
 									void save({ key: row.key, value: null, expiresAt: null })
 								}
 							>
 								Remove
-							</button>
+							</Button>
 						</span>
 					) : (
 						<span css={{ color: colors.textMuted }}>None</span>
@@ -213,14 +211,7 @@ export function AdminOrgLimitsPanel({
 			{limits ? (
 				<>
 					<div css={{ overflowX: 'auto' }}>
-						<table
-							aria-label="Org limits"
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table aria-label="Org limits">
 							<thead>
 								<tr>
 									<th css={headCss}>Limit</th>
@@ -230,7 +221,7 @@ export function AdminOrgLimitsPanel({
 								</tr>
 							</thead>
 							<tbody>{limits.limits.map(renderRow)}</tbody>
-						</table>
+						</Table>
 					</div>
 					<form
 						noValidate
@@ -244,12 +235,10 @@ export function AdminOrgLimitsPanel({
 						}}
 						onSubmit={submit}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Limit</span>
-							<select
+						<Field label="Limit">
+							<Select
 								value={key}
 								disabled={saving}
-								css={inputCss}
 								onChange={(event) =>
 									setKey(event.currentTarget.value as LimitOverrideKey)
 								}
@@ -259,51 +248,42 @@ export function AdminOrgLimitsPanel({
 										{row.label}
 									</option>
 								))}
-							</select>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Value (or "unlimited")</span>
-							<input
+							</Select>
+						</Field>
+						<Field label={<>Value (or "unlimited")</>}>
+							<Input
 								type="text"
 								autoComplete="off"
 								value={valueText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setValueText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Expires (optional)</span>
-							<input
+						</Field>
+						<Field label="Expires (optional)">
+							<Input
 								type="datetime-local"
 								value={expiresText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setExpiresText(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Reason (required)</span>
-							<input
+						</Field>
+						<Field label="Reason (required)">
+							<Input
 								type="text"
 								autoComplete="off"
 								maxLength={500}
 								value={reasonText}
 								disabled={saving}
-								data-field-ring
-								css={inputCss}
 								onChange={(event) => setReasonText(event.currentTarget.value)}
 							/>
-						</label>
-						<button
+						</Field>
+						<Button
 							type="submit"
 							disabled={saving || valueText.trim() === ''}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{saving ? 'Saving…' : 'Save override'}
-						</button>
+						</Button>
 					</form>
 				</>
 			) : message || query.error ? null : (
@@ -313,10 +293,7 @@ export function AdminOrgLimitsPanel({
 	)
 }
 
-const inputCss: CSSObject = { ...getAuthInputCss(), width: '100%' }
-const primaryButtonCss: CSSObject = getPillButtonCss({ size: 'sm' })
 const removeButtonCss: CSSObject = {
-	...getGhostButtonCss({ size: 'sm' }),
 	justifySelf: 'start',
 }
 const headCss: CSSObject = {

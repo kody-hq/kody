@@ -43,11 +43,11 @@ export function moduleSourceHasInlinedKodyRuntime(source: string) {
  * original source when no rewrite is needed or the runtime sections cannot be
  * identified safely (CLI ALS install remains the fallback for those shapes).
  */
-export function rewriteInlinedLocalExecuteBundleSource(input: {
+export async function rewriteInlinedLocalExecuteBundleSource(input: {
 	modulePath: string
 	source: string
 	primaryRuntimePath: string
-}): { source: string; rewritten: boolean; packageId: string | null } {
+}): Promise<{ source: string; rewritten: boolean; packageId: string | null }> {
 	if (!moduleSourceHasInlinedKodyRuntime(input.source)) {
 		return { source: input.source, rewritten: false, packageId: null }
 	}
@@ -65,7 +65,7 @@ export function rewriteInlinedLocalExecuteBundleSource(input: {
 		.filter((section) => !isRemovableRuntimeSection(section.banner))
 		.map((section) => section.source)
 		.join('')
-	const authorBindings = collectTopLevelBindingNames(retained)
+	const authorBindings = await collectTopLevelBindingNames(retained)
 	if (authorBindings == null) {
 		// Retained author source is not parseable as a module; refuse rather
 		// than emit aliases that might collide with undetectable bindings.
@@ -581,10 +581,12 @@ function collectPatternBoundNames(node: unknown, names: Set<string>) {
  * Top-level value bindings in retained author source. Returns `null` when the
  * source cannot be parsed (caller should refuse the rewrite).
  */
-function collectTopLevelBindingNames(source: string): Set<string> | null {
+async function collectTopLevelBindingNames(
+	source: string,
+): Promise<Set<string> | null> {
 	if (!source.trim()) return new Set()
 	try {
-		const parsed = parseModuleSource(source) as unknown as ModuleAstNode
+		const parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
 		const program = parsed.program as
 			| { body?: Array<ModuleAstNode> }
 			| undefined

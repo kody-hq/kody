@@ -58,6 +58,60 @@ step (`security-audit-next-step.ts`): audit, record with
 `published_commit`, and `fingerprint`, then hand the owner the approval link.
 The audit is informational and approves nothing.
 
+## Republishing an approved app
+
+Every runtime reader (members, the owner, jobs, module calls, and anonymous
+visitors) runs `serving_commit`, so members and the public never run different
+commits. A publish moves `published_commit` before its build finishes, so
+everyone keeps the previous commit until `serving_commit` advances.
+
+`advanceServingCommit` (`package-capabilities/serving-commit-advance.ts`) moves
+the serving pointer once a build is complete. For an internet-visible app with
+an approved commit that served (`getServedPackageCapabilityApproval`), it
+computes the new commit's capability set first:
+
+- When every entry is already in that approval (the same set or a narrower one),
+  it inserts the carried forward approval in the same D1 batch as the pointer
+  move, so no request sees the new serving commit without its approval.
+- When the set asks for more, or cannot be checked, the pointer does not move.
+  The source records the commit as `entity_sources.held_commit` and everyone
+  stays on the approved commit. Approving it (`approvePackageCapabilitySet`) or
+  turning internet-visible off (`clearInternetVisible`) calls
+  `releaseHeldServingCommit`, which advances to the held commit. A newer publish
+  replaces the hold.
+- A commit that already has its own approval (approved while it built) advances
+  and is marked served.
+
+Anonymous HTTP visitors still read the commit their cached approval names
+(`toPinnedSourceView`), which only differs from the serving commit while that
+cache trails an advance. Anonymous realtime sockets need the approved commit to
+be the serving commit. An app that was never approved keeps returning 403 to
+anonymous visitors, and its republishes advance for members. Apps that are not
+internet-visible never hold a commit. There is no members-only preview of a held
+commit; test it with local dev or a dev check.
+
+Everything else an app runs follows the same commit. Jobs sync only when a
+commit starts serving: `advanceServingCommit` syncs them to that commit
+(`syncPublishedPackageJobs` with `commit`) before it moves the pointer, as the
+publisher or, on release, the approver. A sync that fails throws before the
+pointer moves, so the hold stays and approving again retries it. Publish-time
+projection syncs jobs to the serving commit only, so a held build never adds,
+removes, re-enables, or rewrites a job. Subscriptions, skills, and package
+metadata are projected at publish and settled back on hold through the settle a
+failed rebuild uses (`refreshSavedPackageProjection` with
+`rebuildArtifacts: false`), then projected again on release. Readers that load a
+manifest by source (`loadPackageManifestBySourceId`,
+`loadManifestsForSavedPackages`) read `toUnheldSourceView`, the serving commit
+while the published one is held, so webhooks, events, subscription dispatch,
+secret access, and enablements follow it too. Capability checks pin the commit
+they inspect (`commit`).
+
+`loadHeldForApproval` (`package-capabilities/held-for-approval.ts`) reports the
+held state from `held_commit`: an internet-visible app whose held commit is the
+published commit and not the serving one. The owner package page renders it as a
+notice with the approval link, and every publish result (`packageSave`,
+`publishExternalPush`, `repoPublishSession`) returns it as `held_for_approval`.
+
 ## Self-publish
 
 `packageUpdate` (`internet_visible: true`) and the settings toggle approve going

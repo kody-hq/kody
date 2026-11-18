@@ -1,6 +1,7 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { expect, test } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
+import { AccountDeletionWritersActiveError } from '#worker/account/deletion-state.ts'
 import {
 	AuthorizationError,
 	LivePersonRequiredError,
@@ -8,7 +9,10 @@ import {
 import { wrapArtifactsGitHttpError } from '#worker/repo/artifacts-git-retry.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { QuarantinedInboundReplyError } from '#worker/email/quarantined-inbound-reply.ts'
-import { publishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	publishComputeLimitMessage,
+	uploadedBuildPersistLimitMessage,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import { RemoteRefNotConfirmedError } from '#worker/repo/remote-ref-not-confirmed-error.ts'
 import {
 	ApiError,
@@ -353,6 +357,19 @@ test('toApiError maps a bare deploy reset to a retryable server-restart 503', ()
 	})
 })
 
+test('toApiError keeps the uploaded-build limit message when its cause is a raw reset', () => {
+	const message = uploadedBuildPersistLimitMessage()
+	const apiError = toApiError(
+		new McpCallerError(message, {
+			cause: new Error(
+				'Durable Object exceeded its CPU time limit and was reset.',
+			),
+		}),
+	)
+	expect(apiError).toMatchObject({ status: 400, code: 'invalid_request' })
+	expect(apiError.message).toBe(message)
+})
+
 test('toApiError surfaces a publish compute-limit caller error as-is even when its cause is a raw reset', () => {
 	const message = publishComputeLimitMessage('credentials')
 	const apiError = toApiError(
@@ -456,4 +473,26 @@ test('toApiError reports a profile denial as profile_grant, not insufficient_sco
 			}),
 		),
 	).toMatchObject({ status: 403, code: 'profile_inactive' })
+})
+
+test('toApiError maps a deletion refused by active writes to a retryable 409 naming the holders', () => {
+	const error = new AccountDeletionWritersActiveError(
+		1,
+		[{ holder: 'packagePublish', acquiredAt: '2099-01-01 00:00:00' }],
+		Date.UTC(2099, 0, 1, 0, 0, 30),
+	)
+	expect(toApiError(error)).toMatchObject({
+		status: 409,
+		code: 'account_writes_active',
+		message: expect.stringContaining(
+			'Held by: packagePublish (started 30s ago).',
+		),
+		details: {
+			active_writes: 1,
+			held_by: [
+				{ holder: 'packagePublish', acquired_at: '2099-01-01 00:00:00' },
+			],
+			retryable: true,
+		},
+	})
 })

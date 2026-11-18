@@ -27,13 +27,13 @@ type InvocationExpressionNode = {
 	expression?: InvocationExpressionNode
 }
 
-function collectDeprecatedPackagesMemberKinds(
+async function collectDeprecatedPackagesMemberKinds(
 	source: string,
-): Set<DeprecatedInvocationUsageKind> {
+): Promise<Set<DeprecatedInvocationUsageKind>> {
 	const kinds = new Set<DeprecatedInvocationUsageKind>()
 	let program: unknown
 	try {
-		program = parseModuleSource(source)
+		program = await parseModuleSource(source)
 	} catch {
 		return kinds
 	}
@@ -112,29 +112,29 @@ function collectDeprecatedPackagesMemberKinds(
 	return kinds
 }
 
-function moduleHasLiteralDynamicKodyImport(source: string) {
-	return collectLiteralImportNodes(source).some(
+async function moduleHasLiteralDynamicKodyImport(source: string) {
+	return (await collectLiteralImportNodes(source)).some(
 		(node) =>
 			node.kind === 'dynamic' &&
 			node.specifier.startsWith(packageSpecifierPrefix),
 	)
 }
 
-export function collectDeprecatedInvocationUsage(
+export async function collectDeprecatedInvocationUsage(
 	sourceFiles: Record<string, string>,
-): Array<DeprecatedInvocationUsage> {
+): Promise<Array<DeprecatedInvocationUsage>> {
 	const usages: Array<DeprecatedInvocationUsage> = []
 	for (const [filePath, source] of Object.entries(sourceFiles)) {
 		if (!scannableModuleFilePattern.test(filePath)) continue
 		if (isTypeDeclarationFilePath(filePath)) continue
 		if (source.includes('packages')) {
-			for (const kind of collectDeprecatedPackagesMemberKinds(source)) {
+			for (const kind of await collectDeprecatedPackagesMemberKinds(source)) {
 				usages.push({ filePath, kind })
 			}
 		}
 		if (
 			source.includes(packageSpecifierPrefix) &&
-			moduleHasLiteralDynamicKodyImport(source)
+			(await moduleHasLiteralDynamicKodyImport(source))
 		) {
 			usages.push({ filePath, kind: 'dynamic-kody-import' })
 		}

@@ -6,6 +6,7 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks'
+import * as Sentry from '@sentry/cloudflare'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
 import {
 	ownerIdFromStored,
@@ -18,6 +19,12 @@ import {
 	type UserMeterRpc,
 } from '#worker/entitlements/user-meter-client.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
+import {
+	accountWriteLeaseHeartbeatMs,
+	staleBlockingAccountWriteLeaseMs,
+	writeLeaseTtlMs,
+} from './write-lease-timing.ts'
 import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-reset-retry.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -28,16 +35,93 @@ export class AccountDeletionInProgressError extends Error {
 	}
 }
 
-export class AccountDeletionWritersActiveError extends Error {
-	readonly activeWriteCount: number
+export type BlockingAccountWriteLease = { holder: string; acquiredAt: string }
 
-	constructor(activeWriteCount: number) {
+function blockingAccountWriteLeaseAgeMs(
+	lease: BlockingAccountWriteLease,
+	nowMs: number,
+) {
+	const acquiredAt = lease.acquiredAt.includes('T')
+		? lease.acquiredAt
+		: `${lease.acquiredAt.replace(' ', 'T')}Z`
+	const acquiredMs = Date.parse(acquiredAt)
+	return Number.isFinite(acquiredMs) ? Math.max(0, nowMs - acquiredMs) : null
+}
+
+function describeBlockingAccountWriteLease(
+	lease: BlockingAccountWriteLease,
+	nowMs: number,
+) {
+	const ageMs = blockingAccountWriteLeaseAgeMs(lease, nowMs)
+	return ageMs == null
+		? lease.holder
+		: `${lease.holder} (started ${Math.round(ageMs / 1000)}s ago)`
+}
+
+/**
+ * Deletion refused because writes are still running. This is a conflict the
+ * caller resolves by retrying, so it is a caller error, not a server fault.
+ */
+export class AccountDeletionWritersActiveError extends McpCallerError {
+	readonly activeWriteCount: number
+	readonly blockingLeases: ReadonlyArray<BlockingAccountWriteLease>
+
+	constructor(
+		activeWriteCount: number,
+		blockingLeases: ReadonlyArray<BlockingAccountWriteLease> = [],
+		nowMs = Date.now(),
+	) {
+		const named = blockingLeases
+			.map((lease) => describeBlockingAccountWriteLease(lease, nowMs))
+			.join(', ')
+		const unnamed = activeWriteCount - blockingLeases.length
+		const holders =
+			named.length === 0
+				? ''
+				: ` Held by: ${named}${unnamed > 0 ? `, and ${unnamed} more` : ''}.`
 		super(
-			`Account deletion is waiting for ${activeWriteCount} active user write(s) to finish.`,
+			`Deletion is waiting for ${activeWriteCount} write(s) on this account to finish.${holders} The delete did not finish. Retry in a few seconds; a write that stopped without finishing stops blocking within ${Math.round(writeLeaseTtlMs / 60_000)} minutes.`,
 		)
 		this.name = 'AccountDeletionWritersActiveError'
 		this.activeWriteCount = activeWriteCount
+		this.blockingLeases = blockingLeases
 	}
+}
+
+/**
+ * The refusal to throw for a fenced deletion with active writers. A short
+ * wait is routine; a lease that is still renewing after minutes is a writer
+ * that will not finish, which operators need to hear about.
+ */
+export function accountDeletionWritersActive(
+	marked: {
+		leaseCount: number
+		blockingLeases?: ReadonlyArray<BlockingAccountWriteLease>
+	},
+	nowMs = Date.now(),
+) {
+	const error = new AccountDeletionWritersActiveError(
+		marked.leaseCount,
+		marked.blockingLeases ?? [],
+		nowMs,
+	)
+	const stale = error.blockingLeases.flatMap((lease) => {
+		const ageMs = blockingAccountWriteLeaseAgeMs(lease, nowMs)
+		return ageMs != null && ageMs >= staleBlockingAccountWriteLeaseMs
+			? [{ holder: lease.holder, ageSeconds: Math.round(ageMs / 1000) }]
+			: []
+	})
+	if (stale.length > 0) {
+		Sentry.withScope((scope) => {
+			scope.setLevel('warning')
+			scope.setFingerprint(['account-write-lease-stuck'])
+			scope.setContext('account_write_leases', { stale })
+			Sentry.captureMessage(
+				`Account write lease still held after ${Math.round(staleBlockingAccountWriteLeaseMs / 60_000)} minutes: ${stale.map((lease) => lease.holder).join(', ')}.`,
+			)
+		})
+	}
+	return error
 }
 
 export class AccountWriteLeaseLostError extends Error {
@@ -175,6 +259,7 @@ async function findMatchingRepairAudit(input: {
 
 export type MarkAccountDeletingResult = {
 	leaseCount: number
+	blockingLeases: Array<BlockingAccountWriteLease>
 	/** True when this invocation wrote `users.deleting_at`. */
 	created: boolean
 	deletingAt: string
@@ -226,6 +311,7 @@ export async function markAccountDeleting(input: {
 		})
 		return {
 			leaseCount: marked.leaseCount,
+			blockingLeases: marked.blockingLeases ?? [],
 			created,
 			deletingAt,
 		}
@@ -361,6 +447,7 @@ export async function abortAccountDeletingByStableUserId(input: {
 
 export type MarkOrgDeletingResult = {
 	leaseCount: number
+	blockingLeases: Array<BlockingAccountWriteLease>
 	/** True when this invocation wrote `orgs.deleting_at`. */
 	created: boolean
 	deletingAt: string
@@ -412,6 +499,7 @@ export async function markOrgDeleting(input: {
 		})
 		return {
 			leaseCount: marked.leaseCount,
+			blockingLeases: marked.blockingLeases ?? [],
 			created,
 			deletingAt,
 		}
@@ -720,14 +808,35 @@ async function acquireDoAccountWriteLeaseAndWrite<T>(input: {
 			operation: async (meter) =>
 				await meter.releaseWriteLease({ token: lease.token }),
 		})
+	// Without renewal the lease lapses, which is how a killed writer stops
+	// blocking deletion. A failed renewal is retried on the next beat.
+	const heartbeat = setInterval(() => {
+		void runUserMeterRpc({
+			env: input.env,
+			stableUserId: lease.stableUserId,
+			operation: async (meter) =>
+				await meter.renewWriteLease({ token: lease.token }),
+		}).then(
+			(renewed) => {
+				if (renewed.renewed) return
+				// A deletion dropped the lease. The write in flight fails at
+				// release; nested writes must not ride on a lease that is gone.
+				clearInterval(heartbeat)
+				input.frame.active = false
+			},
+			() => {},
+		)
+	}, accountWriteLeaseHeartbeatMs)
 	let result: T
 	try {
 		result = await input.write()
 	} catch (error) {
+		clearInterval(heartbeat)
 		input.frame.active = false
 		await release()
 		throw error
 	}
+	clearInterval(heartbeat)
 	input.frame.active = false
 	const released = await release()
 	if (!released.released) throw new AccountWriteLeaseLostError()

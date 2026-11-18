@@ -418,7 +418,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					['--port <n>', 'Exact port (0 = any; default is stable per package)'],
 					[
 						'--app-base-path <path>',
-						'Public mount path stripped before workerd',
+						"Serve the old path address (/<package-name> on the scope host) instead of the app's own origin",
 					],
 					[
 						'--allow-private-network',
@@ -520,10 +520,14 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				summary:
 					'Bundle and run the publish checks without running the package',
 				usage: [
-					'kody dev check [--target prod|mock] [--offline] [--debug] [--json]',
+					'kody dev check [--target prod|mock] [--build local] [--offline] [--debug] [--json]',
 				],
 				flags: [
 					devTargetFlag,
+					[
+						'--build local',
+						'Also run the publish build on this machine (no upload, no experiment needed)',
+					],
 					['--offline', 'Skip the server publish checks'],
 					['--debug', 'Print the publish checks call to stderr'],
 					jsonFlag,
@@ -606,6 +610,45 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 					'kody context cancel-run <name|ec id> <run id> [--org <slug>] [--json]',
 				],
 				flags: [orgFlag, jsonFlag],
+			},
+			{
+				name: 'capability',
+				summary:
+					'Define the named commands and local network destinations this machine offers',
+				usage: ['kody context capability [<command>] [flags]'],
+				notes: [
+					'With no command, lists the definitions. Defining one does not let any run use it yet.',
+				],
+				subcommands: [
+					{
+						name: 'list',
+						summary: 'List the definitions on this machine',
+						usage: ['kody context capability list [--json]'],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'add',
+						summary: 'Add or replace a definition from a JSON file',
+						usage: [
+							'kody context capability add command <file.json> [--json]',
+							'kody context capability add lan <file.json> [--json]',
+						],
+						notes: [
+							'command: {"name", "exec": ["program", "fixed args"], "args": [["word", {"pattern": "[a-z0-9-]+"}]], "cwd"?, "background"?, "timeoutMs"?}. A call must match one "args" entry exactly.',
+							'lan: {"name", "hosts": ["192.168.1.10", "10.0.0.0/24"], "ports": [443]}.',
+						],
+						flags: [jsonFlag],
+					},
+					{
+						name: 'remove',
+						summary: 'Remove a definition',
+						usage: [
+							'kody context capability remove command <name> [--json]',
+							'kody context capability remove lan <name> [--json]',
+						],
+						flags: [jsonFlag],
+					},
+				],
 			},
 			{
 				name: 'policy',
@@ -762,8 +805,28 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 				usage: ['kody daemon status [--context <name>] [--remote] [--json]'],
 				flags: [anyContextFlag, remoteFlag, jsonFlag],
 				notes: [
-					'Exits 0 when the service is running or was stopped on purpose (`kody daemon stop`), and 1 when it crashed or has another problem.',
+					'Exits 0 when the service is running or was stopped on purpose (`kody daemon stop`), and 1 when it crashed, has another problem, or the running daemon has lost Kody (see `kody daemon health`).',
 					remoteNote,
+				],
+			},
+			{
+				name: 'health',
+				summary: 'Check that the daemon on this machine is connected to Kody',
+				usage: [
+					'kody daemon health [--context <ec id>] [--max-age <seconds>] [--json]',
+				],
+				flags: [
+					ecContextFlag,
+					[
+						'--max-age <seconds>',
+						'How long ago Kody may last have been heard (default: 120)',
+					],
+					jsonFlag,
+				],
+				notes: [
+					'Exits 0 when a daemon is running here and heard Kody within --max-age, and 1 when none is running, it is frozen, or it has been disconnected or unanswered for longer.',
+					'Reads only local state, so it suits a Docker HEALTHCHECK: HEALTHCHECK --interval=60s --timeout=20s --start-period=60s --retries=3 CMD kody daemon health',
+					'--json adds the connection, the last heartbeat and its age in seconds, and the last auto-update check with its error.',
 				],
 			},
 			{

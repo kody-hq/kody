@@ -1,4 +1,7 @@
-import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
+import {
+	publishedPackageArtifactBuildKey,
+	type PublishedPackageArtifactBuildTarget,
+} from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	persistPublishedPackageArtifactTargets,
 	type PublishedPackageArtifactBuilders,
@@ -13,15 +16,15 @@ import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
-import { serverRebuildSampleSize } from './policy.ts'
 import {
 	finishPublishBuild,
 	getPublishBuild,
-	parsePublishBuildDocument,
+	readPublishBuildDocument,
 	publishBuildBlobKey,
 } from './store.ts'
 import {
 	collectLinkedPackageImports,
+	type LinkedDependencyArtifactCache,
 	linkUploadedPackageImports,
 } from './link-dependencies.ts'
 import type {
@@ -30,10 +33,9 @@ import type {
 	PublishBuildTargetEntry,
 } from './types.ts'
 import {
-	assertServerRebuildMatches,
+	assertSameBuildUploadMatches,
 	assertSupportedBuilderVersion,
 	matchUploadedTargets,
-	pickServerRebuildSample,
 	PublishBuildVerificationError,
 	verifySourceManifest,
 	verifyUploadedTargetModules,
@@ -147,15 +149,14 @@ export function createUploadedTargetBuilders(
 /**
  * Publish offload commit step, run on the RepoSession that owns the publish:
  * verify the sealed upload against the pushed commit, link the Kody
- * packages it imports (6C), re-check a sample by rebuilding it here, then
- * write every target the same way a rebuild does
- * (one KV value per target, then the batched D1 rows). The caller advances
+ * packages it imports (6C), then write every target the same way a rebuild
+ * does (one KV value per target, then the batched D1 rows). Nothing is built
+ * here: the upload is the artifact, so no cloud build limit applies to it. The caller advances
  * `serving_commit` only after this returns ok.
  */
 export async function persistUploadedPublishBuild(input: {
 	env: Env
 	buildId: string
-	communityListed: boolean
 	baseUrl: string
 	userId: string
 	source: EntitySourceRow
@@ -163,11 +164,6 @@ export async function persistUploadedPublishBuild(input: {
 	publishedCommit: string
 	sourceFiles: Record<string, string>
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
-	rebuildSample: (
-		targets: Array<PublishedPackageArtifactBuildTarget>,
-	) => Promise<
-		Array<{ mainModule: string; moduleHashes: Record<string, string> } | Error>
-	>
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
 	const reject = async (message: string) => {
@@ -182,9 +178,33 @@ export async function persistUploadedPublishBuild(input: {
 			message: `Publish build rejected: ${message}`,
 		}
 	}
+	// Wall time per step: the clock only advances at I/O, so a step that
+	// does no I/O is counted with the next one that does.
+	let stepStartedAt = Date.now()
+	const stepMs: Record<string, number> = {}
+	const endStep = (step: string) => {
+		const now = Date.now()
+		stepMs[step] = (stepMs[step] ?? 0) + (now - stepStartedAt)
+		stepStartedAt = now
+		// Logged as it goes: a CPU limit reset loses anything held for later.
+		console.info(
+			JSON.stringify({
+				event: 'publish_upload_persist_step',
+				sourceId: input.source.id,
+				buildId: input.buildId,
+				step,
+				totalMs: stepMs[step],
+			}),
+		)
+	}
 	try {
 		const row = await getPublishBuild(db, input.buildId)
-		const document = row ? parsePublishBuildDocument(row) : null
+		const document = row
+			? await readPublishBuildDocument({
+					bucket: input.env.REPO_SESSION_BLOBS,
+					row,
+				})
+			: null
 		if (
 			!row ||
 			!document ||
@@ -199,6 +219,7 @@ export async function persistUploadedPublishBuild(input: {
 			serverFiles: input.sourceFiles,
 			claimed: document.files,
 		})
+		endStep('verify-source')
 		const matched = matchUploadedTargets({
 			expected: input.targets,
 			uploaded: document.targets,
@@ -213,7 +234,18 @@ export async function persistUploadedPublishBuild(input: {
 		// build, instead of once per target (about 100 targets on big packages).
 		const importNodesCache: ModuleImportNodesCache = new Map()
 		const loadedPackages = new Map<string, LoadedDependencyPackage>()
+		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		// Targets that share a build (an export and the jobs on its file) get
+		// the first one's verified, linked upload; see createUploadedTargetBuilders.
+		const linkedBuilds = new Map<string, PublishBuildTargetEntry>()
 		for (const { target, uploaded } of matched) {
+			const buildKey = publishedPackageArtifactBuildKey(target)
+			const kept = linkedBuilds.get(buildKey)
+			if (kept) {
+				assertSameBuildUploadMatches({ kept, uploaded })
+				continue
+			}
+			linkedBuilds.set(buildKey, uploaded)
 			const dependencies =
 				target.bundleKind === 'app-client'
 					? []
@@ -226,10 +258,11 @@ export async function persistUploadedPublishBuild(input: {
 							importNodesCache,
 							loadedPackages,
 						})
+			endStep('resolve-dependencies')
 			const linkedImports =
 				target.bundleKind === 'app-client'
 					? new Map<string, string>()
-					: collectLinkedPackageImports({
+					: await collectLinkedPackageImports({
 							sourceFiles: input.sourceFiles,
 							entryPoint: target.entryPoint,
 							importNodesCache,
@@ -239,12 +272,14 @@ export async function persistUploadedPublishBuild(input: {
 				buildId: input.buildId,
 				uploaded,
 			})
+			endStep('read-modules')
 			const { referencedLinkedImports } = await verifyUploadedTargetModules({
 				uploaded,
 				modules,
 				ownPackageId,
 				linkedImports,
 			})
+			endStep('verify-modules')
 			const linked = await linkUploadedPackageImports({
 				env: input.env,
 				baseUrl: input.baseUrl,
@@ -252,7 +287,9 @@ export async function persistUploadedPublishBuild(input: {
 				modules,
 				linkedImports,
 				referenced: referencedLinkedImports,
+				artifactCache,
 			})
+			endStep('link-imports')
 			prepared.set(target, {
 				mainModule: uploaded.mainModule,
 				modules: linked.modules,
@@ -262,30 +299,16 @@ export async function persistUploadedPublishBuild(input: {
 				}),
 			})
 		}
-		const sample = pickServerRebuildSample(
-			matched,
-			serverRebuildSampleSize({ communityListed: input.communityListed }),
-		)
-		const rebuilt = await input.rebuildSample(
-			sample.map((entry) => entry.target),
-		)
-		for (const [index, entry] of sample.entries()) {
-			const result = rebuilt[index]
-			if (!result || result instanceof Error) {
-				return await reject(
-					`the server could not rebuild "${entry.uploaded.entryPoint}" to compare it: ${result ? result.message : 'no result'}.`,
-				)
-			}
-			assertServerRebuildMatches({ uploaded: entry.uploaded, rebuilt: result })
-		}
 		const results = await persistPublishedPackageArtifactTargets({
 			env: input.env,
 			userId: input.userId,
 			source: { ...input.source, published_commit: input.publishedCommit },
 			savedPackage: input.savedPackage,
 			targets: input.targets,
+			builtIn: { origin: row.origin, contextName: row.context_name },
 			...createUploadedTargetBuilders(prepared),
 		})
+		endStep('write-artifacts')
 		const failed = results.filter((result) => !result.ok)
 		if (failed.length > 0) {
 			// Not a verification verdict: storage failed. Leave the build sealed
@@ -305,7 +328,6 @@ export async function persistUploadedPublishBuild(input: {
 		return {
 			ok: true,
 			targetCount: matched.length,
-			sampledTargetCount: sample.length,
 		}
 	} catch (error) {
 		if (error instanceof PublishBuildVerificationError) {

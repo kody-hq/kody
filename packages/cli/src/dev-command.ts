@@ -43,8 +43,12 @@ import {
 	unpublishedBundleInputPaths,
 } from './package-check-files.js'
 import { formatDevEvent, type DevEvent } from './dev/dev-events.js'
-import { defaultDevPort } from './dev/dev-port.js'
-import { assertDevHostAllowed, devHostExposureWarning } from './dev/dev-host.js'
+import { defaultDevPort, reserveDevPort } from './dev/dev-port.js'
+import {
+	assertDevHostAllowed,
+	defaultDevHost,
+	devHostExposureWarning,
+} from './dev/dev-host.js'
 import {
 	devStatusPath,
 	devCallPath,
@@ -148,7 +152,7 @@ export async function runDevServe(input: {
 	cpuLimitMs?: number
 	/** NDJSON events on stdout instead of human output. */
 	json?: boolean
-	/** Write `{ url, port, basePath, pid, statusUrl }` here once the first build settles. */
+	/** Write `{ url, localUrl, port, basePath, pid, statusUrl }` here once the first build settles. */
 	readyFile?: string
 	cwd?: string
 	io: DevIo
@@ -157,6 +161,8 @@ export async function runDevServe(input: {
 	/** Start the real local Kody workers (`@kodycodes/dev-runtime`) for this package. */
 	startLocalKody?: (
 		manifest: Awaited<ReturnType<typeof loadPackageManifest>>,
+		/** Port the app will be served on; local Kody builds its origin from it. */
+		packageAppPort: number,
 	) => Promise<{ upstream: LocalKodyUpstream; close: () => Promise<void> }>
 }): Promise<number> {
 	if (input.host !== undefined) {
@@ -187,9 +193,19 @@ export async function runDevServe(input: {
 		: (event: DevEvent) => writeDevEvent(input.io, event)
 	let registered = false
 	let server: Awaited<ReturnType<typeof startPackageAppDev>>
-	const localKody = input.startLocalKody
-		? await input.startLocalKody(manifest)
-		: null
+	// Local Kody is configured with the app's origin, so the port is settled
+	// before it starts and the dev server then binds exactly that port.
+	const localKodyPort = input.startLocalKody
+		? await reserveDevPort({
+				host: input.host ?? defaultDevHost,
+				port: input.port ?? defaultDevPort(manifest.kodyId),
+				explicit: input.port !== undefined,
+			})
+		: undefined
+	const localKody =
+		input.startLocalKody && localKodyPort !== undefined
+			? await input.startLocalKody(manifest, localKodyPort)
+			: null
 	try {
 		server = await startPackageAppDev({
 			manifest,
@@ -198,7 +214,7 @@ export async function runDevServe(input: {
 			apiUrl: input.auth.apiUrl,
 			target: input.target,
 			...(input.host !== undefined ? { host: input.host } : {}),
-			port: input.port,
+			port: localKodyPort ?? input.port,
 			defaultPort: defaultDevPort(manifest.kodyId),
 			appBasePath: input.appBasePath,
 			...(input.auth.org ? { org: input.auth.org } : {}),
@@ -264,6 +280,7 @@ export async function runDevServe(input: {
 		)
 		const ready = {
 			url: status.url,
+			localUrl: `${server.localUrl}${server.appBasePath || '/'}`,
 			port: server.port,
 			basePath: server.appBasePath,
 			pid: process.pid,
@@ -528,6 +545,7 @@ async function tryAttachedDevCall(input: {
 		const local = await import('./dev/local-kody.js')
 		const kody = await local.startLocalKody({
 			manifest,
+			packageAppPort: defaultDevPort(manifest.kodyId),
 			onStatus: (message) => input.io.stderr(`${message}\n`),
 		})
 		closeLocal = kody.close
@@ -1463,7 +1481,9 @@ export async function removeOwnedReadyFile(
 	ownerPid: number,
 ): Promise<void> {
 	try {
-		const parsed = JSON.parse(await readFile(path, 'utf8')) as { pid?: unknown }
+		const parsed = JSON.parse(await readFile(path, 'utf8')) as {
+			pid?: unknown
+		}
 		if (parsed.pid !== ownerPid) return
 		await rm(path, { force: true })
 	} catch {

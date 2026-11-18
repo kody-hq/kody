@@ -34,18 +34,49 @@ function normalizePath(path: string) {
 	return parts.join('/')
 }
 
-function collectManifestEntryPaths(value: unknown, into: Set<string>) {
+const typeOnlyManifestKeys = new Set(['types', 'typings'])
+const typeOnlyStatementPattern =
+	/\b(?:import|export)\b(\s+type\b(?!\s+from\b))?/g
+
+/** Whether the `from` at `index` ends an `import type` or `export type`. */
+function isTypeOnlyStatement(source: string, index: number) {
+	const head = source.slice(Math.max(0, index - 4000), index)
+	let typeOnly = false
+	for (const match of head.matchAll(typeOnlyStatementPattern)) {
+		typeOnly = match[1] !== undefined
+	}
+	return typeOnly
+}
+
+function collectManifestEntryPaths(
+	value: unknown,
+	into: Set<string>,
+	files: Record<string, string>,
+	runtimeOnly: boolean,
+) {
 	if (typeof value === 'string') {
-		if (moduleFilePattern.test(value)) into.add(normalizePath(value))
+		const path = normalizePath(value)
+		if (moduleFilePattern.test(path)) into.add(path)
+		else if (value.startsWith('./')) {
+			// An extensionless entry such as `./src/index` resolves like an import.
+			const resolved = resolvableExtensions
+				.slice(1)
+				.map((extension) => `${path}${extension}`)
+				.find((candidate) => Object.hasOwn(files, candidate))
+			if (resolved) into.add(resolved)
+		}
 		return
 	}
 	if (Array.isArray(value)) {
-		for (const item of value) collectManifestEntryPaths(item, into)
+		for (const item of value) {
+			collectManifestEntryPaths(item, into, files, runtimeOnly)
+		}
 		return
 	}
 	if (value && typeof value === 'object') {
-		for (const item of Object.values(value)) {
-			collectManifestEntryPaths(item, into)
+		for (const [key, item] of Object.entries(value)) {
+			if (runtimeOnly && typeOnlyManifestKeys.has(key)) continue
+			collectManifestEntryPaths(item, into, files, runtimeOnly)
 		}
 	}
 }
@@ -84,7 +115,10 @@ const requiredRootDocPaths = new Set<string>(
 function scanPackageFiles(input: {
 	files: Record<string, string>
 	sourceRoot?: string
+	/** Leave out what only `import type`, `export type` or `types` reach. */
+	runtimeOnly?: boolean
 }) {
+	const runtimeOnly = input.runtimeOnly === true
 	const trimmed = (input.sourceRoot ?? '').replace(/^(?:\.\/|\/)+|\/+$/g, '')
 	const root = trimmed === '.' ? '' : trimmed
 	const prefix = root === '' ? '' : `${root}/`
@@ -104,7 +138,13 @@ function scanPackageFiles(input: {
 			unknown
 		>
 		for (const field of ['exports', 'main', 'module', 'kody']) {
-			collectManifestEntryPaths(manifest[field], entries)
+			collectManifestEntryPaths(
+				manifest[field],
+				entries,
+				packageFiles,
+				// Under `kody`, `types` can be the name of a job or another entry.
+				runtimeOnly && field !== 'kody',
+			)
 		}
 	} catch {
 		// An unparseable manifest leaves every file listed as a candidate.
@@ -119,6 +159,13 @@ function scanPackageFiles(input: {
 		for (const match of packageFiles[path]!.matchAll(
 			relativeSpecifierPattern,
 		)) {
+			if (
+				runtimeOnly &&
+				match[0].startsWith('from') &&
+				isTypeOnlyStatement(packageFiles[path]!, match.index)
+			) {
+				continue
+			}
 			const resolved = resolveRelativeModule(packageFiles, path, match[1]!)
 			if (resolved && !reachable.has(resolved)) queue.push(resolved)
 		}
@@ -185,6 +232,8 @@ export type PublishSizeHints = {
 export function publishSizeHints(input: {
 	files: Record<string, string>
 	sourceRoot?: string
+	/** Count only what a bundle would contain, for an enforced limit. */
+	runtimeOnly?: boolean
 }): PublishSizeHints {
 	const { reachable, sized, dependencies } = scanPackageFiles(input)
 	const runtime = sized.filter((hint) => reachable.has(hint.path))
@@ -246,13 +295,13 @@ export function formatPublishSizeHints(
 	return parts.join(' ')
 }
 
-function formatHintList(hints: Array<LargePathHint>) {
+export function formatHintList(hints: Array<LargePathHint>) {
 	return hints
 		.map((hint) => `\`${hint.path}\` (${formatBytes(hint.bytes)})`)
 		.join(', ')
 }
 
-function formatBytes(bytes: number) {
+export function formatBytes(bytes: number) {
 	if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 	return `${Math.max(1, Math.round(bytes / 1024))} KiB`
 }

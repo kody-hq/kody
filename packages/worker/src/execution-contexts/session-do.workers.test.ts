@@ -6,8 +6,10 @@ import {
 } from 'cloudflare:test'
 import { beforeAll, expect, test } from 'vitest'
 import {
+	ecpDeadlineCancelGraceMs,
 	ecpDefaultGrant,
 	ecpHttpSignaturePrefix,
+	ecpPingFrame,
 	importEd25519PrivateKey,
 	parseEnvelope,
 	decodeEnvelopePayload,
@@ -20,7 +22,13 @@ import testKeys from '@kody-internal/shared/execution-context-protocol/vectors/t
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beginRunRecord, getRunRecord } from '#worker/run-records/service.ts'
-import type { RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	type RunRecordHandle,
+	runRecordStaleRunningTtlMsShortLived,
+} from '#worker/run-records/types.ts'
+import { runLogDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
+import { executionContextsFlagKey } from './flag.ts'
+import { insertExecutionContext, setOptIn } from './store.ts'
 import {
 	ExecutionContextSessionV1,
 	type ExecutionContextLease,
@@ -152,6 +160,55 @@ function lease(ecid: string, runId: string): ExecutionContextLease {
 	}
 }
 
+/**
+ * Seed the APP_DB rows a queue drain checks before it redispatches: the
+ * context row, live org memberships for the requester and operator, the
+ * requester's opt-in under all-members access, and the feature flag.
+ */
+async function seedRunnableContext(ecid: string) {
+	const { orgId, operatorUserId, name, publicKeyJwk, grant, grantVersion } =
+		snapshot(ecid)
+	const requester = lease(ecid, 'seed').requester.userId
+	const now = new Date().toISOString()
+	await insertExecutionContext(env.APP_DB, {
+		id: ecid,
+		org_id: orgId,
+		operator_user_id: operatorUserId,
+		name,
+		public_key_jwk: JSON.stringify(publicKeyJwk),
+		thumbprint: `thumb-${ecid}`,
+		created_at: now,
+		client_name: null,
+		client_version: null,
+		capabilities_json: null,
+		grant_json: JSON.stringify(grant),
+		grant_version: grantVersion,
+	})
+	await env.APP_DB.batch([
+		env.APP_DB.prepare(
+			`UPDATE execution_contexts SET all_members = 1 WHERE id = ?`,
+		).bind(ecid),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO org_memberships (org_id, user_id, role, created_at)
+			 VALUES (?, ?, 'member', ?), (?, ?, 'member', ?)`,
+		).bind(orgId, requester, now, orgId, operatorUserId, now),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO users (username, email, password_hash, stable_user_id)
+			 VALUES (?, ?, 'test-password-hash', ?)`,
+		).bind(requester, `${requester}@example.com`, requester),
+		env.APP_DB.prepare(
+			`INSERT OR IGNORE INTO feature_flag_user_overrides (flag_key, user_id, enabled)
+			 SELECT ?, id, 1 FROM users WHERE stable_user_id = ?`,
+		).bind(executionContextsFlagKey, requester),
+	])
+	await setOptIn(env.APP_DB, {
+		contextId: ecid,
+		userId: requester,
+		orgId,
+		now,
+	})
+}
+
 function runRequest(runId: string) {
 	return {
 		runId,
@@ -218,6 +275,72 @@ test('tickets are single use, a dispatch with no socket is offline, and nothing 
 	)
 	expect(second.status).toBe(401)
 	first.webSocket!.close()
+})
+
+test('packages served to a committed run are kept on its lease, and refused for a run that is not committed', async () => {
+	const ecid = 'ec_run_packages'
+	const { stub, next, send, key } = await connect(ecid)
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a'],
+		}),
+	).toEqual({ ok: false })
+	const dispatching = stub.dispatch({
+		request: runRequest('run_pkgs'),
+		lease: lease(ecid, 'run_pkgs'),
+		runRecord: null,
+		position: 1,
+	})
+	const request = await next('run.request')
+	await send('run.accept', { runId: 'run_pkgs' }, { re: request.seq })
+	expect(await dispatching).toEqual({ outcome: 'committed' })
+	await next('run.commit')
+
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_a'],
+			packageIds: ['pkg_a', 'pkg_dep'],
+		}),
+	).toEqual({ ok: true })
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_other',
+			entryPackageIds: ['pkg_x'],
+			packageIds: ['pkg_x'],
+		}),
+	).toEqual({ ok: false })
+	expect(
+		await stub.recordRunPackages({
+			runId: 'run_pkgs',
+			entryPackageIds: ['pkg_b'],
+			packageIds: ['pkg_b'],
+		}),
+	).toEqual({ ok: true })
+
+	const ts = Date.now()
+	const n = crypto.randomUUID().replaceAll('-', '')
+	const bodySha256 = await sha256Base64Url('{}')
+	const s = await signDetached({
+		prefix: ecpHttpSignaturePrefix,
+		message: ['POST', '/v1/capability-proxy', String(ts), n, bodySha256].join(
+			'\n',
+		),
+		privateKey: key,
+	})
+	const authorized = await stub.authorizeRunCall({
+		runId: 'run_pkgs',
+		signature: { ec: ecid, ts, n, s },
+		method: 'POST',
+		pathAndQuery: '/v1/capability-proxy',
+		bodySha256,
+	})
+	expect(authorized.ok && authorized.lease.packages).toEqual({
+		entries: ['pkg_a', 'pkg_b'],
+		all: ['pkg_a', 'pkg_b', 'pkg_dep'],
+	})
 })
 
 test('two-phase dispatch: accept, commit, result, then per-hop authorization ends with the lease', async () => {
@@ -403,6 +526,91 @@ test('a reject falls through, and cancel and revocation end leases', async () =>
 			})
 		).ok,
 	).toBe(false)
+	ws.close()
+}, 60_000)
+
+test('an unanswered run offer reads the context offline until its next heartbeat', async () => {
+	const ecid = 'ec_unanswered'
+	const { stub, next, send, ws } = await connect(ecid)
+	const dispatch = (runId: string, acceptWithinMs: number) =>
+		stub.dispatch({
+			request: { ...runRequest(runId), acceptBy: Date.now() + acceptWithinMs },
+			lease: lease(ecid, runId),
+			runRecord: null,
+			position: 1,
+		})
+	expect(await dispatch('run_asleep', 100)).toEqual({
+		outcome: 'timeout',
+		code: 'timeout',
+	})
+	await next('run.request')
+	expect(await dispatch('run_next', frameWaitMs)).toEqual({
+		outcome: 'offline',
+	})
+	expect((await stub.getStatus()).online).toBe(false)
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	const awake = dispatch('run_awake', frameWaitMs)
+	const offered = await next('run.request')
+	expect(offered.body).toMatchObject({ runId: 'run_awake' })
+	await send(
+		'run.reject',
+		{ runId: 'run_awake', code: 'busy' },
+		{ re: offered.seq },
+	)
+	expect(await awake).toEqual({ outcome: 'busy' })
+	ws.close()
+}, 60_000)
+
+test('a run queued behind an unanswered offer is rechecked soon and redispatched once heartbeats resume', async () => {
+	const ecid = 'ec_unanswered_queue'
+	await seedRunnableContext(ecid)
+	const { stub, next, send, ws } = await connect(ecid)
+	expect(
+		await stub.dispatch({
+			request: { ...runRequest('run_asleep'), acceptBy: Date.now() + 100 },
+			lease: lease(ecid, 'run_asleep'),
+			runRecord: null,
+			position: 1,
+		}),
+	).toEqual({ outcome: 'timeout', code: 'timeout' })
+	await next('run.request')
+	const before = Date.now()
+	await stub.enqueue({
+		request: runRequest('run_waiting'),
+		lease: lease(ecid, 'run_waiting'),
+		runRecord: null,
+		requires: [],
+		position: 1,
+		expiresAt: before + 10 * 60_000,
+	})
+	await runInDurableObject(stub, async (_instance, state) => {
+		const alarm = await state.storage.getAlarm()
+		expect(alarm ?? Infinity).toBeGreaterThanOrEqual(before)
+		expect(alarm ?? Infinity).toBeLessThan(before + 60_000)
+	})
+	await new Promise((resolve) => setTimeout(resolve, 5))
+	ws.send(ecpPingFrame)
+	await expect
+		.poll(async () => (await stub.getStatus()).online, {
+			timeout: frameWaitMs,
+		})
+		.toBe(true)
+	// The alarm drains only for a live socket.
+	const drained = runInDurableObject(stub, async (instance) => {
+		await instance.alarm()
+	})
+	const offered = await next('run.request')
+	expect(offered.body).toMatchObject({ runId: 'run_waiting' })
+	await send('run.accept', { runId: 'run_waiting' }, { re: offered.seq })
+	await drained
+	expect((await next('run.commit')).body.runId).toBe('run_waiting')
+	expect(await stub.listQueued()).toEqual([])
 	ws.close()
 }, 60_000)
 
@@ -792,6 +1000,58 @@ async function drainWaitUntil(pending: Array<Promise<unknown>>) {
 	while (pending.length > 0) await pending.shift()
 }
 
+test('a committed run holds its run record running until the context deadline', async () => {
+	const ecid = 'ec_hold'
+	const { stub, next, send } = await connect(ecid)
+	const userId = 'user_requester'
+	const owner = ownerIdFromStored(userId)
+	const handle: RunRecordHandle = {
+		id: crypto.randomUUID(),
+		userId: owner,
+		// Already past the 3-minute execute TTL, like a long run on a context.
+		startedAt: new Date(
+			Date.now() - runRecordStaleRunningTtlMsShortLived - 1_000,
+		).toISOString(),
+		persistence: 'eager',
+		context: { surface: 'execute', name: null },
+	}
+	const runId = 'run_hold'
+	const request = { ...runRequest(runId), deadline: Date.now() + 15 * 60_000 }
+	const dispatching = stub.dispatch({
+		request,
+		lease: { ...lease(ecid, runId), deadline: request.deadline },
+		runRecord: handle,
+		position: 1,
+	})
+	const offered = await next('run.request')
+	await send('run.accept', { runId }, { re: offered.seq })
+	expect((await dispatching).outcome).toBe('committed')
+	await next('run.commit')
+
+	expect(
+		(await getRunRecord({ env, userId: owner, runId: handle.id }))?.run,
+	).toMatchObject({ id: handle.id, status: 'running', finishedAt: null })
+	const runLog = env.RUN_LOG.get(
+		env.RUN_LOG.idFromName(runLogDurableObjectName(owner)),
+	)
+	const staleAfter = await runInDurableObject(
+		runLog,
+		async (_instance, state) =>
+			state.storage.sql
+				.exec<{
+					stale_after: string | null
+				}>(`SELECT stale_after FROM runs WHERE id = ?`, handle.id)
+				.one().stale_after,
+	)
+	expect(staleAfter).toBe(
+		new Date(
+			request.deadline +
+				ecpDeadlineCancelGraceMs +
+				runRecordStaleRunningTtlMsShortLived,
+		).toISOString(),
+	)
+})
+
 test('a live session reports when it last heard from the daemon', async () => {
 	const before = Date.now()
 	const { stub, ws } = await connect('ec_last_seen')
@@ -809,7 +1069,7 @@ test('a live session reports when it last heard from the daemon', async () => {
 test('a reconnecting daemon ends the committed runs it no longer holds at once', async () => {
 	const ecid = 'ec_reconnect'
 	const first = await connect(ecid, {
-		status: { acceptingRuns: true, running: 0, maxConcurrent: 3 },
+		status: { acceptingRuns: true, running: 0, maxConcurrent: 4 },
 	})
 	const commit = async (runId: string) => {
 		const dispatching = first.stub.dispatch({
@@ -826,9 +1086,15 @@ test('a reconnecting daemon ends the committed runs it no longer holds at once',
 	await commit('run_dropped')
 	await commit('run_finished_offline')
 	await commit('run_still_held')
+	await commit('run_cancelled_offline')
+	// The daemon never saw this cancel: its socket had already dropped.
+	await first.stub.cancel({
+		runId: 'run_cancelled_offline',
+		reason: 'user_cancelled',
+	})
 
 	const second = await connect(ecid, {
-		heldRuns: ['run_still_held'],
+		heldRuns: ['run_still_held', 'run_cancelled_offline'],
 		pendingResults: [
 			{
 				runId: 'run_finished_offline',
@@ -850,6 +1116,10 @@ test('a reconnecting daemon ends the committed runs it no longer holds at once',
 	expect(
 		await second.stub.awaitResult({ runId: 'run_still_held', waitMs: 0 }),
 	).toEqual({ state: 'pending' })
+	expect((await second.next('run.cancel')).body).toEqual({
+		runId: 'run_cancelled_offline',
+		reason: 'user_cancelled',
+	})
 	const rows = new Map(
 		(await second.stub.listHistory({})).rows.map((row) => [row.runId, row]),
 	)
@@ -1261,4 +1531,27 @@ test('control requests round-trip over the signed socket, and fail fast when the
 		ok: false,
 		code: 'daemon_timeout',
 	})
+})
+
+test('shell commands are listed newest first for one org, without named commands', async () => {
+	const stub = env.EXECUTION_CONTEXT_SESSION.get(
+		env.EXECUTION_CONTEXT_SESSION.idFromName('ec_shell_use'),
+	)
+	const started = (orgId: string, detail: Record<string, unknown>) =>
+		stub.recordAudit({ event: 'command_started', orgId, detail })
+	await started('org_a', { command: 'ls' })
+	await started('org_a', { command: 'kdocker', capability: 'kdocker' })
+	await started('org_b', { command: 'whoami' })
+	await started('org_a', { command: 'docker ps', entryPackageIds: ['pkg_1'] })
+	await stub.recordAudit({ event: 'command_finished', orgId: 'org_a' })
+
+	const all = await stub.listShellCommands({ orgId: 'org_a', limit: 10 })
+	expect(all.more).toBe(false)
+	expect(all.rows.map((row) => JSON.parse(row.detailJson).command)).toEqual([
+		'docker ps',
+		'ls',
+	])
+	const first = await stub.listShellCommands({ orgId: 'org_a', limit: 1 })
+	expect(first.rows).toHaveLength(1)
+	expect(first.more).toBe(true)
 })

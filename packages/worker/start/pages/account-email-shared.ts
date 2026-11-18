@@ -1,11 +1,6 @@
 import type { CSSObject } from '@emotion/react'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { spacing } from '#universal/styles/tokens.ts'
 import type { AccountEmailMessageListItem } from '#universal/loader-data.ts'
 export type ClassifyState = 'idle' | 'saving'
 export type DeleteState = 'idle' | 'deleting'
@@ -29,30 +24,6 @@ export function senderClassificationLabel(
 		}
 	}
 }
-
-export const senderBadgeCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: `0.2rem ${spacing.sm}`,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.semibold,
-} as const
-
-export const quarantinedBadgeCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: `0.2rem ${spacing.sm}`,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.danger}`,
-	backgroundColor:
-		'color-mix(in srgb, var(--color-danger) 10%, var(--color-surface))',
-	color: colors.danger,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.semibold,
-} as const
 
 export const truncatedTextCss: CSSObject = {
 	minWidth: 0,

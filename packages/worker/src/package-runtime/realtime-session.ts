@@ -1,3 +1,4 @@
+import { servingCommitForSource } from '#worker/repo/serving-commit.ts'
 import { DurableObject } from 'cloudflare:workers'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
@@ -10,7 +11,7 @@ import {
 import { loadOrgBindingForOrg } from '#worker/orgs/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
-import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { packageRealtimeSessionDurableObjectName } from '#worker/user-scoped-durable-object-name.ts'
 import { resolveInternetVisibleApprovedCommit } from '#worker/app/package-app-internet-visible.ts'
 import { recordUsage } from '#worker/usage/record-usage.ts'
@@ -498,7 +499,7 @@ export async function resolvePackageAppWorkerBuildInput(input: {
 	if (!savedPackage || !savedPackage.hasApp) {
 		throw new Error('Saved package app was not found.')
 	}
-	const packageSource = await loadPackageSourceBySourceId({
+	const packageSource = await loadServingPackageSourceBySourceId({
 		env: input.env,
 		baseUrl: input.binding.baseUrl,
 		userId: input.binding.userId,
@@ -541,8 +542,8 @@ export async function resolvePackageAppWorkerBuildInput(input: {
 }
 
 /**
- * The approved internet-visible commit when it is also the live published
- * commit, else null. Same rule as `refuseUnapprovedAnonymousServe`.
+ * The approved internet-visible commit when it is also the serving commit,
+ * else null. Same rule as `refuseUnapprovedAnonymousServe`.
  */
 export async function resolvePublicRealtimeCommit(input: {
 	env: Env
@@ -557,11 +558,14 @@ export async function resolvePublicRealtimeCommit(input: {
 		resolveInternetVisibleApprovedCommit({
 			env: input.env,
 			lookup: { savedPackage, retired: false },
-			requestUrl: input.binding.baseUrl,
 		}),
 		getEntitySourceById(input.env.APP_DB, savedPackage.sourceId),
 	])
-	if (!approvedCommit || source?.published_commit !== approvedCommit) {
+	if (
+		!approvedCommit ||
+		!source ||
+		servingCommitForSource(source) !== approvedCommit
+	) {
 		return null
 	}
 	return approvedCommit
@@ -583,7 +587,7 @@ export async function resolvePackageAppWorkerCacheKey(input: {
 		input.binding.packageId,
 		input.binding.sourceId,
 		input.binding.baseUrl,
-		source.published_commit ?? null,
+		servingCommitForSource(source),
 	])
 }
 

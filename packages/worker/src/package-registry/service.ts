@@ -65,7 +65,10 @@ import {
 import { invalidateInvokeContractFreshness } from '#worker/package-invocations/invoke-contract-cache.ts'
 import { refreshPackageSubscriptionTopicMap } from '#worker/package-invocations/subscription-topic-cache.ts'
 import { cleanupArtifactReposForPackage } from '#worker/repo/artifact-repo-cleanup.ts'
-import { deleteEntitySource } from '#worker/repo/entity-sources.ts'
+import {
+	deleteEntitySource,
+	getEntitySourceByIdForUser,
+} from '#worker/repo/entity-sources.ts'
 import {
 	assertWithinEntitlement,
 	assertWithinStorageBytesEntitlement,
@@ -494,6 +497,10 @@ export async function refreshSavedPackageProjection(input: {
 						source: loaded.source,
 						savedPackage,
 						manifest: loaded.manifest,
+						actor: {
+							userId: input.actorUserId,
+							credential: input.actorCredential ?? null,
+						},
 						buildAppBundle: async ({ entryPoint }) => {
 							const { buildKodyAppBundle } =
 								await import('#worker/package-runtime/module-graph.ts')
@@ -543,6 +550,21 @@ export async function refreshSavedPackageProjection(input: {
 							})
 						},
 					})
+					// A complete build that asks for wider capabilities is held, and
+					// holding it already settled the projection to the commit
+					// everyone still runs (`advanceServingCommit`).
+					const built = await getEntitySourceByIdForUser(input.env.APP_DB, {
+						id: input.sourceId,
+						userId: input.userId,
+					})
+					const builtCommit = loaded.source?.published_commit
+					if (builtCommit && built?.held_commit === builtCommit) {
+						return {
+							record: savedPackage,
+							manifest: loaded.manifest,
+							files: loadedFiles,
+						}
+					}
 				}
 				// Vector upsert is searchable but not needed for the publish
 				// response. Defer via waitUntil with durable debt + Sentry so a
@@ -587,24 +609,21 @@ export async function refreshSavedPackageProjection(input: {
 				} else {
 					await skillsIndexTask
 				}
-				const { syncPackageJobsForPackage } =
-					await import('#worker/jobs/service.ts')
-				const schedulerStateChanged = await syncPackageJobsForPackage({
-					env: input.env,
+				// Jobs follow the serving commit: a publish switches them when its
+				// build starts serving (`advanceServingCommit`), never before.
+				const { updatePackageServing } =
+					await import('#worker/repo/package-serving-update.ts')
+				await updatePackageServing(input.env, {
+					kind: 'refresh-jobs',
 					userId: input.userId,
 					baseUrl: input.baseUrl,
 					packageId: input.packageId,
 					sourceId: input.sourceId,
-					manifest: loaded.manifest,
-					actorUserId: input.actorUserId,
-					actorCredential: input.actorCredential ?? null,
+					actor: {
+						userId: input.actorUserId,
+						credential: input.actorCredential ?? null,
+					},
 				})
-				if (schedulerStateChanged) {
-					await syncJobManagerAlarm({
-						env: input.env,
-						userId: input.userId,
-					})
-				}
 				// Same-isolate invoke paths must observe this refresh immediately;
 				// other isolates converge within the freshness-cache TTL.
 				const retiredPackageAppSlugs = await listPackageSlugRedirects({

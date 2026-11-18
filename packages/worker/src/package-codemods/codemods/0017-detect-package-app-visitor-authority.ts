@@ -4,6 +4,7 @@ import {
 	getNodeName,
 	listScannableModulePaths,
 	parseModule,
+	shadowedConstantNames,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import type {
@@ -163,8 +164,22 @@ function isMemberExpression(node: AstNode | undefined) {
 	)
 }
 
-function isKodyObject(node: AstNode | undefined, aliases: Set<string>) {
-	return node?.type === 'Identifier' && aliases.has(getNodeName(node) ?? '')
+/**
+ * True when `node` reads the runtime bridge. A bundler renames the import
+ * (`import { kody as a }`) and reuses that short name for locals, so a name
+ * an enclosing scope rebinds is not the bridge.
+ */
+function isKodyObject(
+	node: AstNode | undefined,
+	aliases: Set<string>,
+	ancestors: ReadonlyArray<AstNode>,
+	usedIn: AstNode,
+) {
+	if (node?.type !== 'Identifier') return false
+	const name = getNodeName(node) ?? ''
+	return (
+		aliases.has(name) && !shadowedConstantNames(ancestors, usedIn).has(name)
+	)
 }
 
 export type ModuleKodyCalls = {
@@ -189,7 +204,7 @@ export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 		mcpCalls: 0,
 		readsEmail: false,
 	}
-	walkAst(parsed, (node) => {
+	walkAst(parsed, (node, ancestors) => {
 		if (
 			node.type === 'CallExpression' ||
 			node.type === 'OptionalCallExpression'
@@ -197,7 +212,7 @@ export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 			const callee = node.callee
 			if (
 				!isMemberExpression(callee) ||
-				!isKodyObject(callee?.object, aliases)
+				!isKodyObject(callee?.object, aliases, ancestors, node)
 			) {
 				return
 			}
@@ -216,7 +231,7 @@ export function collectModuleKodyCalls(parsed: AstNode): ModuleKodyCalls {
 		}
 		if (isMemberExpression(node)) {
 			if (
-				isKodyObject(node.object, aliases) &&
+				isKodyObject(node.object, aliases, ancestors, node) &&
 				getNodeName(node.property) === 'mcp'
 			) {
 				calls.mcpCalls += 1
@@ -289,9 +304,9 @@ function usesCredentialHelper(parsed: AstNode) {
 	return uses
 }
 
-function detectPackageAppVisitorAuthority(
+async function detectPackageAppVisitorAuthority(
 	files: Record<string, string>,
-): Array<PackageCodemodFinding> {
+): Promise<Array<PackageCodemodFinding>> {
 	const app = readPackageAppManifest(
 		Object.hasOwn(files, packageManifestPath)
 			? files[packageManifestPath]
@@ -311,13 +326,13 @@ function detectPackageAppVisitorAuthority(
 		return patterns
 	}
 	const credentialPaths = new Set<string>()
-	for (const path of listScannableModulePaths(files)) {
-		const parsed = parseModule(files[path]!)
+	for (const path of await listScannableModulePaths(files)) {
+		const parsed = await parseModule(files[path]!)
 		if (!parsed) continue
 		detectInModule(parsed, app, (pattern) => patternsFor(path).add(pattern))
 		if (usesCredentialHelper(parsed)) credentialPaths.add(path)
 	}
-	scanModuleCredentialReferences(files, (path) => {
+	await scanModuleCredentialReferences(files, (path) => {
 		const note = () => credentialPaths.add(path)
 		return { add: () => {}, named: note, computed: note, unnamed: note }
 	})
@@ -341,14 +356,14 @@ function detectPackageAppVisitorAuthority(
 	)
 }
 
-function transformPackageAppVisitorAuthority(
+async function transformPackageAppVisitorAuthority(
 	files: Record<string, string>,
-): PackageCodemodTransformResult {
+): Promise<PackageCodemodTransformResult> {
 	return {
 		files,
 		changed: false,
 		changedPaths: [],
-		needsManual: detectPackageAppVisitorAuthority(files),
+		needsManual: await detectPackageAppVisitorAuthority(files),
 	}
 }
 

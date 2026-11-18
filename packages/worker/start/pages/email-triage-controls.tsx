@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import {
 	emailMessageViewLabel,
 	emailMessageViewValues,
 	type EmailClassification,
 } from '#universal/email-message-view.ts'
-import { quarantinedBadgeCss, senderBadgeCss } from './account-email-shared.ts'
 
 export function EmailTriageBadges({
 	classification,
@@ -18,22 +18,17 @@ export function EmailTriageBadges({
 	return (
 		<>
 			{classification === 'quarantined' ? (
-				<span
-					title={classificationReason ?? 'Quarantined'}
-					css={quarantinedBadgeCss}
-				>
+				<Badge title={classificationReason ?? 'Quarantined'} tone="danger">
 					Quarantined
-				</span>
+				</Badge>
 			) : null}
 			{classification === 'spam' ? (
-				<span title={classificationReason ?? 'Spam'} css={quarantinedBadgeCss}>
+				<Badge title={classificationReason ?? 'Spam'} tone="danger">
 					Spam
-				</span>
+				</Badge>
 			) : null}
 			{archivedAt ? (
-				<span title={`Archived ${archivedAt}`} css={senderBadgeCss}>
-					Archived
-				</span>
+				<Badge title={`Archived ${archivedAt}`}>Archived</Badge>
 			) : null}
 		</>
 	)

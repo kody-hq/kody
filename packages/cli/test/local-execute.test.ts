@@ -17,7 +17,10 @@ import { fileURLToPath } from 'node:url'
 import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
-import { egressPolicyFromGrant } from '../src/local-egress.js'
+import {
+	egressPolicyFromGrant,
+	localExecuteEgressPolicy,
+} from '../src/local-egress.js'
 import { startSelfSignedHttps } from './self-signed-https.js'
 import { reapLeftoverWorkers } from '../src/execution-context/worker-tracker.js'
 import {
@@ -181,6 +184,40 @@ before(async () => {
 					},
 				})
 				return
+			}
+			if (
+				path.join('.') === 'kody.lan.authorize' &&
+				((args[0] as { capability?: string }).capability === 'refused' ||
+					// The whole local network, refused for one address.
+					((args[0] as { capability?: string }).capability === '*' &&
+						(args[0] as { host?: string }).host === '127.0.0.2'))
+			) {
+				send(403, {
+					error: {
+						code: 'machine_capability_not_granted',
+						message: 'You are not granted this local network destination.',
+					},
+				})
+				return
+			}
+			if (path.join('.') === 'kody.fs.authorize') {
+				const folder = (args[0] as { capability?: string }).capability
+				if (folder === 'refused' || folder === 'unreported') {
+					send(403, {
+						error:
+							folder === 'refused'
+								? {
+										code: 'machine_capability_package_not_allowed',
+										message: 'Host folder "refused" is not allowed for pkg.',
+									}
+								: {
+										code: 'machine_capability_off',
+										message:
+											'This machine allows no host folder named "unreported".',
+									},
+					})
+					return
+				}
 			}
 			send(200, { result: { echoed: path.join('.'), args } })
 			return
@@ -549,6 +586,76 @@ export default async function main(params) {
 			path: ['kody', 'emailSend'],
 			args: [{ to: 'kent' }],
 			conversationId: 'conv-local',
+		})
+	},
+)
+
+test(
+	'runLocalExecute runs TypeScript passed as code, like Kody cloud execute',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const code = `
+import { kody } from 'kody:runtime'
+import type { KodyCredentialClient } from 'kody:runtime'
+type Params = { name: string }
+export default async function main(params: Params) {
+	const greeting: string = 'hello ' + params.name
+	const client = null as KodyCredentialClient | null
+	const sent = await kody.emailSend({ to: params.name })
+	return { greeting, client, sent }
+}
+`
+		const result = await runLocalExecute({
+			code,
+			params: { name: 'kent' },
+			token: goodToken,
+			apiUrl,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		assert.deepEqual((result.structuredContent as { result: unknown }).result, {
+			greeting: 'hello kent',
+			client: null,
+			sent: { echoed: 'kody.emailSend', args: [{ to: 'kent' }] },
+		})
+	},
+)
+
+test(
+	'run code cannot read the run secret or the bridge binding, or replace the bridge',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const code = `
+import { kody } from 'kody:runtime'
+import * as runtime from 'kody:runtime'
+export default async function main() {
+	const workers = await import(['cloud', 'flare:workers'].join(''))
+	let replaced = 'not exported'
+	if (typeof runtime.__kodyInstallLocalBridge === 'function') {
+		try {
+			runtime.__kodyInstallLocalBridge({ call: async () => 'hijacked' })
+			replaced = 'accepted'
+		} catch {
+			replaced = 'refused'
+		}
+	}
+	const sent = await kody.emailSend({ to: 'kent' })
+	return { envKeys: Object.keys(workers.env ?? {}), replaced, sent }
+}
+`
+		const result = await runLocalExecute({
+			code,
+			token: goodToken,
+			apiUrl,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const value = (result.structuredContent as { result: any }).result
+		assert.deepEqual(value.envKeys, [])
+		assert.notEqual(value.replaced, 'accepted')
+		assert.deepEqual(value.sent, {
+			echoed: 'kody.emailSend',
+			args: [{ to: 'kent' }],
 		})
 	},
 )
@@ -953,7 +1060,7 @@ test(
 		assert.equal(syntaxError.isError, true)
 		assert.match(
 			String(syntaxError.content[0]?.text),
-			/^Error: Local execute could not load the module \(workerd exit 1\)\n[\s\S]*SyntaxError/,
+			/^Error: Local execute could not load the module: SyntaxError\nentry\.ts:1:23: Unexpected end of file/,
 		)
 	},
 )
@@ -1393,6 +1500,234 @@ test(
 )
 
 test(
+	'a named local network destination lets a run reach that address and port only, after Kody authorizes it',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((request, response) => {
+			if (request.url === '/redirect') {
+				response.writeHead(302, { location: 'http://127.0.0.2:9/' }).end()
+				return
+			}
+			response.end('lan ok')
+		})
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const port = (lan.address() as AddressInfo).port
+		const code = `export default async function main({ url }) {
+	try {
+		const response = await fetch(url)
+		return 'ok: ' + (await response.text())
+	} catch (error) {
+		return String(error?.message ?? error)
+	}
+}`
+		const run = async (
+			rules: Parameters<typeof egressPolicyFromGrant>[1],
+			url: string,
+			mode = 'public',
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode }, rules),
+			})
+			assert.equal(result.isError, false)
+			return String((result.structuredContent as { result: unknown }).result)
+		}
+		const authorizations = () =>
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.lan.authorize' ? [body.args] : []
+			})
+		try {
+			const nas = { name: 'nas', hosts: ['127.0.0.0/30'], ports: [port] }
+			assert.equal(await run([nas], `http://127.0.0.1:${port}/`), 'ok: lan ok')
+			assert.deepEqual(authorizations(), [
+				[{ capability: 'nas', host: '127.0.0.1', port }],
+			])
+			// An IPv4-mapped address is matched as the IPv4 address it carries.
+			// Windows does not connect a mapped address to an IPv4 listener.
+			const mapped = await run([nas], `http://[::ffff:127.0.0.1]:${port}/`)
+			if (process.platform === 'win32') assert.doesNotMatch(mapped, /^Blocked/)
+			else assert.equal(mapped, 'ok: lan ok')
+			assert.equal(authorizations().length, 2)
+
+			proxyRequests.length = 0
+			assert.match(
+				await run([nas], `http://127.0.0.1:${port + 1}/`),
+				new RegExp(
+					`127\\.0\\.0\\.1 is a private or local network address \\(this machine's local network destination "nas" covers that address on port ${port} only\\)`,
+				),
+			)
+			assert.match(
+				await run([nas], `http://127.0.0.9:${port}/`),
+				/127\.0\.0\.9 is a private or local network address\. /,
+			)
+			// A name is never matched, even one that resolves to a covered address.
+			assert.match(
+				await run([nas], `http://localhost:${port}/`),
+				/localhost is a private or local network address/,
+			)
+			// The redirect comes back to the run, whose next hop is checked again.
+			assert.match(
+				await run(
+					[{ ...nas, hosts: ['127.0.0.1'] }],
+					`http://127.0.0.1:${port}/redirect`,
+				),
+				/127\.0\.0\.2:9 was refused/,
+			)
+			assert.match(
+				await run([nas], `http://127.0.0.1:${port}/`, 'none'),
+				/allows no network access/,
+			)
+
+			proxyRequests.length = 0
+			assert.match(
+				await run([{ ...nas, name: 'refused' }], `http://127.0.0.1:${port}/`),
+				new RegExp(
+					`^Blocked: the request to 127\\.0\\.0\\.1:${port} needs this machine's local network destination "refused", and Kody refused it\\. .*You are not granted this local network destination\\.`,
+				),
+			)
+			assert.equal(authorizations().length, 1)
+
+			// Two destinations cover the address; the run is granted only the second.
+			proxyRequests.length = 0
+			assert.equal(
+				await run(
+					[{ ...nas, name: 'refused' }, nas],
+					`http://127.0.0.1:${port}/`,
+				),
+				'ok: lan ok',
+			)
+			assert.deepEqual(
+				authorizations().map(
+					(args) => (args as Array<{ capability: string }>)[0]?.capability,
+				),
+				['refused', 'nas'],
+			)
+
+			proxyRequests.length = 0
+			const direct = await runLocalExecute({
+				code: `import { kody } from 'kody:runtime'
+export default async () => {
+	try { return await kody.lan.authorize({ capability: 'nas', host: '127.0.0.1', port: 1 }) } catch (error) { return error.message }
+}`,
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [nas]),
+			})
+			assert.match(
+				String((direct.structuredContent as { result: unknown }).result),
+				/kody\.lan\.authorize is internal/,
+			)
+			assert.equal(authorizations().length, 0)
+
+			const narrowed = await runLocalExecute({
+				code,
+				params: { url: `http://127.0.0.1:${port}/` },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [nas]),
+				lanStillCovers: async () => false,
+			})
+			assert.match(
+				String((narrowed.structuredContent as { result: unknown }).result),
+				new RegExp(
+					`This machine no longer allows 127\\.0\\.0\\.1:${port} for local network destination "nas"\\. \\(machine_capability_off\\)`,
+				),
+			)
+			assert.equal(authorizations().length, 0)
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
+	'with the whole local network on, a context run asks Kody once per address and port, and a refusal blocks the request',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const lan = createServer((_request, response) => response.end('lan ok'))
+		await new Promise<void>((resolve) => lan.listen(0, '127.0.0.1', resolve))
+		const port = (lan.address() as AddressInfo).port
+		const code = `export default async function main({ urls }) {
+	const out = []
+	for (const url of urls) {
+		try {
+			out.push('ok: ' + (await (await fetch(url)).text()))
+		} catch (error) {
+			out.push(String(error?.message ?? error))
+		}
+	}
+	return out
+}`
+		const run = async (
+			egress: Parameters<typeof runLocalExecute>[0]['egress'],
+			urls: Array<string>,
+		) => {
+			const result = await runLocalExecute({
+				code,
+				params: { urls },
+				token: goodToken,
+				apiUrl,
+				...(egress ? { egress } : {}),
+			})
+			assert.equal(result.isError, false)
+			return (result.structuredContent as { result: Array<string> }).result
+		}
+		const authorizations = () =>
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.lan.authorize' ? [body.args] : []
+			})
+		try {
+			const url = `http://127.0.0.1:${port}/`
+			const out = await run(egressPolicyFromGrant({ mode: 'public-and-lan' }), [
+				url,
+				url,
+				`http://127.0.0.2:${port}/`,
+			])
+			assert.deepEqual(out.slice(0, 2), ['ok: lan ok', 'ok: lan ok'])
+			assert.match(
+				out[2]!,
+				/uses this machine's whole local network, and Kody refused it\. .*not granted/,
+			)
+			assert.deepEqual(authorizations(), [
+				[{ capability: '*', host: '127.0.0.1', port }],
+				[{ capability: '*', host: '127.0.0.2', port }],
+			])
+
+			// Parallel first requests to one address ask once.
+			proxyRequests.length = 0
+			const parallel = await runLocalExecute({
+				code: `export default async ({ url }) => Promise.all([1, 2, 3].map(async () => (await fetch(url)).text()))`,
+				params: { url },
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public-and-lan' }),
+			})
+			assert.deepEqual(
+				(parallel.structuredContent as { result: unknown }).result,
+				['lan ok', 'lan ok', 'lan ok'],
+			)
+			assert.equal(authorizations().length, 1)
+
+			// kody execute --local --allow-private-network is not a Kody entry.
+			proxyRequests.length = 0
+			assert.deepEqual(await run(localExecuteEgressPolicy(true), [url]), [
+				'ok: lan ok',
+			])
+			assert.equal(authorizations().length, 0)
+		} finally {
+			await new Promise((resolve) => lan.close(resolve))
+		}
+	},
+)
+
+test(
 	'a TLS cert failure names the cert problem and the fix instead of internal error',
 	{ timeout: 180_000 },
 	async (t) => {
@@ -1417,6 +1752,21 @@ test(
 			)
 			assert.match(message, /kody daemon env set NODE_OPTIONS=--use-system-ca/)
 			assert.doesNotMatch(message, /internal error|BEGIN CERTIFICATE/)
+
+			const named = await runLocalExecute({
+				code: `export default async () => {
+	try { await fetch('https://127.0.0.1:${https.port}/'); return 'ok' } catch (error) { return error.message }
+}`,
+				token: goodToken,
+				apiUrl,
+				egress: egressPolicyFromGrant({ mode: 'public' }, [
+					{ name: 'nas', hosts: ['127.0.0.1'], ports: [https.port] },
+				]),
+			})
+			assert.match(
+				String((named.structuredContent as { result: unknown }).result),
+				/^HTTPS request to 127\.0\.0\.1 failed: its TLS certificate could not be verified/,
+			)
 		} finally {
 			await new Promise((resolve) => https.server.close(resolve))
 		}
@@ -1568,6 +1918,68 @@ export default async function main(p) {
 		)
 		assert.equal(readFileSync(join(root, 'first.txt'), 'utf8'), 'ok')
 		assert.equal(existsSync(join(root, 'second.txt')), false)
+	},
+)
+
+test(
+	'runLocalExecute asks Kody once per host folder a run touches, and a refusal keeps the run out of that folder',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const { effectiveFs } =
+			await import('../src/execution-context/fs-access.js')
+		const root = realpathSync.native(
+			mkdtempSync(join(tmpdir(), 'kody-host-fs-')),
+		)
+		const folders = ['granted', 'refused', 'unreported', 'untouched'].map(
+			(name) => ({ path: join(root, name), mode: 'rw' as const }),
+		)
+		for (const folder of folders) mkdirSync(folder.path)
+		const hostFs = await effectiveFs(folders, folders)
+		const result = await runLocalExecute({
+			code: `import { promises as fsp } from 'node:fs'
+import { kody } from 'kody:runtime'
+const attempt = async (fn) => { try { return await fn() } catch (error) { return (error.code ?? '') + ': ' + error.message } }
+export default async function main(p) {
+	await fsp.writeFile(p.root + '/granted/a.txt', 'one')
+	await fsp.writeFile(p.root + '/granted/b.txt', 'two')
+	return {
+		refused: await attempt(() => fsp.writeFile(p.root + '/refused/a.txt', 'nope')),
+		refusedAgain: await attempt(() => fsp.readdir(p.root + '/refused')),
+		unreported: await attempt(() => fsp.writeFile(p.root + '/unreported/a.txt', 'kept')),
+		direct: await attempt(() => kody.fs.authorize({ capability: 'refused' })),
+	}
+}`,
+			params: { root },
+			token: goodToken,
+			apiUrl,
+			hostFs: () => hostFs,
+		})
+		assert.equal(result.isError, false, JSON.stringify(result.content))
+		const out = (result.structuredContent as { result: Record<string, string> })
+			.result
+		assert.match(out.refused!, /^EACCES: Host folder "refused" is not allowed/)
+		assert.match(out.refusedAgain!, /^EACCES: Host folder "refused"/)
+		assert.equal(existsSync(join(root, 'refused', 'a.txt')), false)
+		// A folder Kody has no entry for yet still works: nothing to enforce.
+		assert.equal(out.unreported, undefined)
+		assert.equal(
+			readFileSync(join(root, 'unreported', 'a.txt'), 'utf8'),
+			'kept',
+		)
+		assert.match(out.direct!, /kody\.fs\.authorize is internal/)
+		assert.deepEqual(
+			proxyRequests.flatMap((request) => {
+				const body = request.body as { path?: Array<string>; args?: unknown }
+				return body?.path?.join('.') === 'kody.fs.authorize' ? [body.args] : []
+			}),
+			[
+				[{ capability: 'granted' }],
+				[{ capability: 'refused' }],
+				[{ capability: 'refused' }],
+				[{ capability: 'unreported' }],
+			],
+		)
 	},
 )
 

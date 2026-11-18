@@ -3,8 +3,15 @@ import { isRetryableD1LockError } from '#worker/d1-retry.ts'
 import { loadLocalExecuteRuntimeSupport } from '#worker/local-execute-runtime-support-load.ts'
 import { signLocalExecutePackageBindings } from './local-execute-package-binding.ts'
 import { packageSpecifierPrefix } from './package-import-resolution.ts'
-import { collectDynamicImportExpressionNodes } from './import-specifiers.ts'
-import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
+import {
+	collectDynamicImportExpressionNodes,
+	collectLiteralImportNodes,
+} from './import-specifiers.ts'
+import {
+	assertNoKodyVirtualModuleReference,
+	prepareKodyGraphFiles,
+	type KodyGraphModuleRole,
+} from './module-graph-import-rewriting.ts'
 import {
 	createPackageProxyPathSegment,
 	createRelativeImportSpecifier,
@@ -14,7 +21,6 @@ import {
 	packageRuntimeModulePrefix,
 	packageSourcePrefix,
 	resolveRelativeModulePath,
-	rootSourcePrefix,
 	runtimeModulePath,
 } from './module-graph-paths.ts'
 import { rewriteLocalExecuteModuleForSecretAwareFetch } from './rewrite-local-execute-secret-fetch.ts'
@@ -51,6 +57,36 @@ export type LocalExecutePackageGraph = {
 	 * pick the binding for a local package run / facade rewrite.
 	 */
 	packageIdsByImport: Record<string, string>
+	/**
+	 * Saved packages the code imports directly. Origin keeps this for run
+	 * attribution; it is not part of the HTTP response.
+	 */
+	entryPackageIds: Array<string>
+}
+
+/**
+ * A package graph before it is signed for one caller: the heavy part of a
+ * graph build. It depends only on the org, the base URL, the imports, and
+ * each imported package's serving commit, so it is what the package graph
+ * cache stores. {@link signLocalExecutePackageGraph} adds the caller's
+ * signed package bindings and the primary runtime shim.
+ */
+export type UnsignedLocalExecutePackageGraph = {
+	/** Sorted, without the primary runtime shim. */
+	modules: Array<LocalExecutePackageModule>
+	primaryRuntimePath: string
+	/** True when the graph needs the primary shim even with no bindings. */
+	includesPrimaryRuntime: boolean
+	imports: Array<string>
+	packageIdsByImport: Record<string, string>
+	graphPackageIds: Array<string>
+	entryPackageIds: Array<string>
+	/**
+	 * Saved packages the build resolved live (by name, at their serving
+	 * commit). Published artifact dependencies are pinned by the artifact
+	 * and are not listed.
+	 */
+	resolvedPackageIds: Array<string>
 }
 
 export class LocalExecutePackageGraphError extends Error {
@@ -58,6 +94,7 @@ export class LocalExecutePackageGraphError extends Error {
 		| 'package_import_unresolved'
 		| 'package_import_unpublished'
 		| 'unsupported_dynamic_package_import'
+		| 'package_graph_resource_limit'
 
 	constructor(
 		code: LocalExecutePackageGraphError['code'],
@@ -88,57 +125,65 @@ export function synthesizeLocalExecutePackageGraphEntry(
 }
 
 /**
- * Resolve published, stamped `kody:@…` modules for CLI `execute --local`
- * embedding. Does not execute the user module and does not claim a dynamic
- * worker day — callers meter this as an Open API prep operation.
+ * The static `kody:@…` imports a package graph build serves for `code`.
+ * Rejects literal dynamic saved-package imports, which it cannot bind.
  */
-export async function buildLocalExecutePackageGraph(input: {
-	env: Env
-	baseUrl: string
-	userId: string
-	/**
-	 * Org actor the CLI authenticated as. Each package in the graph gets a
-	 * binding signed for this org and actor; the shim sends that binding in
-	 * place of the bare package id, so CapabilityProxy can tell which package
-	 * a call comes from without trusting sandbox code.
-	 */
-	actorUserId: string | null
-	code: string
-}): Promise<LocalExecutePackageGraph> {
-	assertNoLiteralDynamicSavedPackageImports(input.code)
-
-	const sourceFiles = { 'entry.ts': input.code }
-	const staticImports = uniqueSpecifiers(
-		collectStaticKodyPackageImportsFromFiles(sourceFiles).map(
+export async function collectLocalExecutePackageGraphImports(code: string) {
+	await assertNoLiteralDynamicSavedPackageImports(code)
+	const imports = uniqueSpecifiers(
+		(await collectStaticKodyPackageImportsFromFiles({ 'entry.ts': code })).map(
 			(entry) => entry.specifier,
 		),
 	)
+	// Cached graphs skip the build's source checks, so check the entry here.
+	try {
+		await assertNoKodyVirtualModuleReference('entry.ts', code)
+	} catch (error) {
+		throw mapPrepareFailure(error, imports)
+	}
+	return imports
+}
+
+/**
+ * The graph for an entry with no `kody:@` imports: only the gateway-fetch
+ * runtime shim. Ad-hoc scripts that call ambient `fetch` with `{{secret:…}}`
+ * placeholders still need globalThis.fetch wrapped so the hop expands on
+ * origin (or fails closed) instead of sending the raw template to a third
+ * party (kody#3020).
+ */
+export const emptyUnsignedLocalExecutePackageGraph: UnsignedLocalExecutePackageGraph =
+	{
+		modules: [],
+		primaryRuntimePath: runtimeModulePath,
+		includesPrimaryRuntime: true,
+		imports: [],
+		packageIdsByImport: {},
+		graphPackageIds: [],
+		entryPackageIds: [],
+		resolvedPackageIds: [],
+	}
+
+/**
+ * Resolve published, stamped `kody:@…` modules for CLI `execute --local`
+ * embedding. Does not execute the user module and does not claim a dynamic
+ * worker day. This is the heavy, memory-hungry part of a graph build, so it
+ * runs only in a throwaway isolate
+ * (`#worker/package-runtime/isolated-local-execute-package-graph.ts`).
+ */
+export async function buildUnsignedLocalExecutePackageGraph(input: {
+	env: Env
+	baseUrl: string
+	userId: string
+	code: string
+}): Promise<UnsignedLocalExecutePackageGraph> {
+	const staticImports = await collectLocalExecutePackageGraphImports(input.code)
+	if (staticImports.length === 0) return emptyUnsignedLocalExecutePackageGraph
+	const sourceFiles = { 'entry.ts': input.code }
 
 	const {
 		rewriteInlinedLocalExecuteBundleSource,
-		createLocalExecuteRuntimeShimSource,
 		createLocalExecutePackageRuntimeModuleSource,
 	} = await loadLocalExecuteRuntimeSupport()
-
-	// Always embed the gateway-fetch runtime shim, even when the entry has no
-	// `kody:@` imports. Ad-hoc scripts that call ambient `fetch` with
-	// `{{secret:…}}` placeholders still need globalThis.fetch wrapped so the
-	// hop expands on origin (or fails closed) instead of sending the raw
-	// template to a third party (kody#3020).
-	if (staticImports.length === 0) {
-		return {
-			modules: [
-				{
-					name: runtimeModulePath,
-					esModule: createLocalExecuteRuntimeShimSource(runtimeModulePath),
-				},
-			],
-			imports: [],
-			warnings: [],
-			packageBindings: {},
-			packageIdsByImport: {},
-		}
-	}
 
 	let prepared: Awaited<ReturnType<typeof prepareKodyGraphFiles>>
 	try {
@@ -157,7 +202,14 @@ export async function buildLocalExecutePackageGraph(input: {
 	const runtimeModulePaths: Array<string> = []
 	for (const [modulePath, source] of Object.entries(prepared.files)) {
 		const normalized = normalizeWorkspaceModulePath(modulePath)
-		if (shouldOmitPreparedModule(normalized)) continue
+		if (
+			shouldOmitLocalExecutePreparedModule(
+				normalized,
+				prepared.moduleRoles.get(modulePath),
+			)
+		) {
+			continue
+		}
 		if (isKodyRuntimeModulePath(normalized)) {
 			runtimeModulePaths.push(normalized)
 			continue
@@ -179,11 +231,10 @@ export async function buildLocalExecutePackageGraph(input: {
 	const primaryRuntimePath =
 		pickLocalExecutePrimaryRuntimePath(runtimeModulePaths)
 	for (const modulePath of runtimeModulePaths) {
+		if (modulePath === primaryRuntimePath) continue
 		modulesByName.set(
 			modulePath,
-			modulePath === primaryRuntimePath
-				? createLocalExecuteRuntimeShimSource(modulePath)
-				: createRuntimeModuleReexportSource(modulePath, primaryRuntimePath),
+			createRuntimeModuleReexportSource(modulePath, primaryRuntimePath),
 		)
 	}
 
@@ -244,7 +295,7 @@ export async function buildLocalExecutePackageGraph(input: {
 	for (const [modulePath, source] of modulesByName.entries()) {
 		if (isKodyRuntimeModulePath(modulePath)) continue
 		if (parsePackageRuntimeModulePathPackageId(modulePath) != null) continue
-		const rewritten = rewriteInlinedLocalExecuteBundleSource({
+		const rewritten = await rewriteInlinedLocalExecuteBundleSource({
 			modulePath,
 			source,
 			primaryRuntimePath,
@@ -285,7 +336,7 @@ export async function buildLocalExecutePackageGraph(input: {
 		const packageId =
 			packageIdByModulePath.get(modulePath) ??
 			packageIdForModulePath(modulePath, packageIdsByPrefix)
-		const rewritten = rewriteLocalExecuteModuleForSecretAwareFetch({
+		const rewritten = await rewriteLocalExecuteModuleForSecretAwareFetch({
 			modulePath,
 			source,
 			primaryRuntimePath,
@@ -296,9 +347,7 @@ export async function buildLocalExecutePackageGraph(input: {
 		}
 	}
 
-	// Sign one binding per package this graph serves and embed them in the
-	// primary shim (module-private, never exported). Nested runtime copies
-	// re-export the primary, so they share its bindings.
+	// Every package this graph serves gets a binding at sign time.
 	const graphPackageIds = new Set<string>([
 		...packageIdsByPrefix.values(),
 		...packageIdByModulePath.values(),
@@ -342,40 +391,80 @@ export async function buildLocalExecutePackageGraph(input: {
 			(a?.sourceId ?? left).localeCompare(b?.sourceId ?? right)
 		)
 	})
-	const packageBindings = await signLocalExecutePackageBindings({
-		env: input.env,
-		packageIds: graphPackageIds,
-		subject: { org: input.userId, actor: input.actorUserId },
-		entryPackageIds,
-	})
-	if (modulesByName.has(primaryRuntimePath) || packageBindings.size > 0) {
-		modulesByName.set(
-			primaryRuntimePath,
-			createLocalExecuteRuntimeShimSource(primaryRuntimePath, {
-				packageBindings: Object.fromEntries(packageBindings),
-			}),
-		)
-	}
-
+	await assertLocalExecuteModuleGraphIsClosed(
+		modulesByName,
+		staticImports,
+		primaryRuntimePath,
+	)
 	const modules = [...modulesByName.entries()]
 		.sort(([left], [right]) => left.localeCompare(right))
 		.map(([name, esModule]) => ({ name, esModule }))
 
 	return {
 		modules,
+		primaryRuntimePath,
+		includesPrimaryRuntime: runtimeModulePaths.includes(primaryRuntimePath),
 		imports: staticImports,
-		warnings: [],
-		packageBindings: Object.fromEntries(packageBindings),
 		packageIdsByImport: Object.fromEntries(
 			[...packageIdsByImport.entries()].sort(([left], [right]) =>
 				left.localeCompare(right),
 			),
 		),
+		graphPackageIds: [...graphPackageIds].sort(),
+		entryPackageIds,
+		resolvedPackageIds: [...prepared.packages.values()]
+			.map((loaded) => loaded.row.id)
+			.sort(),
 	}
 }
 
-function assertNoLiteralDynamicSavedPackageImports(code: string) {
-	for (const node of collectDynamicImportExpressionNodes(code)) {
+/**
+ * Sign one binding per package the graph serves for this caller and embed
+ * them in the primary shim (module-private, never exported). Nested runtime
+ * copies re-export the primary, so they share its bindings. Cheap: runs in
+ * the API isolate for every request, cached graph or not.
+ */
+export async function signLocalExecutePackageGraph(input: {
+	env: Pick<Env, 'SECRET_STORE_KEY'>
+	graph: UnsignedLocalExecutePackageGraph
+	/**
+	 * Org and actor the CLI authenticated as. The shim sends the signed
+	 * binding in place of the bare package id, so CapabilityProxy can tell
+	 * which package a call comes from without trusting sandbox code.
+	 */
+	subject: { org: string; actor: string | null }
+}): Promise<LocalExecutePackageGraph> {
+	const { graph } = input
+	const { createLocalExecuteRuntimeShimSource } =
+		await loadLocalExecuteRuntimeSupport()
+	const packageBindings = await signLocalExecutePackageBindings({
+		env: input.env,
+		packageIds: graph.graphPackageIds,
+		subject: input.subject,
+		entryPackageIds: graph.entryPackageIds,
+	})
+	const modules = [...graph.modules]
+	if (graph.includesPrimaryRuntime || packageBindings.size > 0) {
+		modules.push({
+			name: graph.primaryRuntimePath,
+			esModule: createLocalExecuteRuntimeShimSource(graph.primaryRuntimePath, {
+				packageBindings: Object.fromEntries(packageBindings),
+			}),
+		})
+		modules.sort((left, right) => left.name.localeCompare(right.name))
+	}
+	return {
+		modules,
+		imports: [...graph.imports],
+		warnings: [],
+		packageBindings: Object.fromEntries(packageBindings),
+		packageIdsByImport: { ...graph.packageIdsByImport },
+		entryPackageIds: [...graph.entryPackageIds],
+	}
+}
+
+async function assertNoLiteralDynamicSavedPackageImports(code: string) {
+	for (const node of await collectDynamicImportExpressionNodes(code)) {
 		if (node.literalSpecifier?.startsWith(packageSpecifierPrefix)) {
 			throw new LocalExecutePackageGraphError(
 				'unsupported_dynamic_package_import',
@@ -391,20 +480,115 @@ function uniqueSpecifiers(specifiers: ReadonlyArray<string>) {
 	)
 }
 
-function shouldOmitPreparedModule(modulePath: string) {
+const relativeSpecifierCandidatePattern = /["'`](\.\.?\/[^"'`\n]*)["'`]/g
+
+/**
+ * Every relative import reachable from the entry's `kody:@…` aliases must
+ * name a served module. workerd would otherwise fail on the caller's machine
+ * with "No such module" after this route answered 200, which is how a layout
+ * that `shouldOmitLocalExecutePreparedModule` did not know went unnoticed. This throws a
+ * plain error, a server fault, because the caller cannot fix a dropped module.
+ *
+ * The first pass avoids parsing: it follows every quoted relative string that
+ * names a served module and parses a module only when one names nothing. That
+ * can reach modules no import reaches, so a miss it finds is confirmed by a
+ * second pass that follows parsed static imports only, the ones workerd links
+ * before running anything. A complete graph costs no parse.
+ */
+async function assertLocalExecuteModuleGraphIsClosed(
+	modulesByName: ReadonlyMap<string, string>,
+	entryModuleNames: ReadonlyArray<string>,
+	primaryRuntimePath: string,
+) {
+	const scan = { modulesByName, entryModuleNames, primaryRuntimePath }
+	if ((await findUnservedImport({ ...scan, parseEveryModule: false })) == null)
+		return
+	const unserved = await findUnservedImport({
+		...scan,
+		parseEveryModule: true,
+	})
+	if (unserved == null) return
+	throw new Error(
+		`Local execute package graph is incomplete: "${unserved.modulePath}" imports "${unserved.specifier}", but "${unserved.target}" is not among the served modules.`,
+	)
+}
+
+async function findUnservedImport(input: {
+	modulesByName: ReadonlyMap<string, string>
+	entryModuleNames: ReadonlyArray<string>
+	primaryRuntimePath: string
+	parseEveryModule: boolean
+}) {
+	const { modulesByName, primaryRuntimePath } = input
+	const visited = new Set<string>()
+	const pending = [...input.entryModuleNames]
+	while (pending.length > 0) {
+		const modulePath = pending.pop()!
+		if (visited.has(modulePath)) continue
+		visited.add(modulePath)
+		// The primary runtime shim joins the graph when it is signed.
+		const source = modulesByName.get(modulePath)
+		if (source == null) continue
+		if (!input.parseEveryModule) {
+			const candidateTargets: Array<string> = []
+			let hasUnservedCandidate = false
+			for (const match of source.matchAll(relativeSpecifierCandidatePattern)) {
+				const target = resolveRelativeModulePath(modulePath, match[1] ?? '')
+				if (target == null) continue
+				if (modulesByName.has(target)) candidateTargets.push(target)
+				else if (target !== primaryRuntimePath) hasUnservedCandidate = true
+			}
+			if (!hasUnservedCandidate) {
+				pending.push(...candidateTargets)
+				continue
+			}
+		}
+		// A module that does not parse yields no imports; workerd reports it.
+		for (const { specifier, kind } of await collectLiteralImportNodes(source, {
+			filePath: modulePath,
+		})) {
+			if (kind !== 'static') continue
+			const target = resolveRelativeModulePath(modulePath, specifier)
+			if (target == null || target === primaryRuntimePath) continue
+			if (!modulesByName.has(target)) return { modulePath, specifier, target }
+			pending.push(target)
+		}
+	}
+	return null
+}
+
+/**
+ * Whether local execute leaves a prepared module out of the served graph. It
+ * serves published artifacts and the runtime modules they import; root and
+ * package source, npm dependency copies, and cloud import proxies stay out.
+ * A module with no role is served: an unneeded module costs bytes, a dropped
+ * one fails in the caller's workerd.
+ */
+export function shouldOmitLocalExecutePreparedModule(
+	modulePath: string,
+	role: KodyGraphModuleRole | undefined,
+) {
 	if (modulePath === 'package.json') return true
-	if (modulePath.startsWith(`${rootSourcePrefix}/`)) return true
 	if (isKodyPublicRuntimeModulePath(modulePath)) return true
-	// Cloud import proxies are replaced by `kody:@…` aliases in the response.
-	if (modulePath.startsWith(`${packageImportProxyPrefix}/`)) return true
 	if (isKodyRuntimeModulePath(modulePath)) return false
 	if (parsePackageRuntimeModulePathPackageId(modulePath) != null) return false
-	// Prefer published importable-module artifacts only — omit live package
-	// source and npm dependency copies from a rebuild miss.
-	if (modulePath.includes('/.__published_bundle__/')) return false
-	if (modulePath.startsWith(`${packageSourcePrefix}/`)) return true
-	if (modulePath.startsWith('.__kody_virtual__/')) return false
-	return true
+	switch (role) {
+		case 'root-config':
+		case 'root-dependency':
+		case 'root-source':
+		case 'public-runtime':
+		// Cloud import proxies are replaced by `kody:@…` aliases in the response.
+		case 'import-proxy':
+		// Prefer published importable-module artifacts only: omit live package
+		// source and npm dependency copies from a rebuild miss.
+		case 'package-source':
+			return true
+		case 'runtime':
+		case 'package-runtime':
+		case 'published-artifact':
+		case undefined:
+			return false
+	}
 }
 
 function shouldRewritePublishedModuleForSecretAwareFetch(modulePath: string) {
@@ -565,8 +749,9 @@ function mapPrepareFailure(
 
 /**
  * Local workerd supplies `kody:runtime` (CapabilityProxy bridge). Stamped
- * package moka published-bundle copies re-export one shim (and one relative hop to
- * host `kody:runtime`). Artifact-only graphs fall back to the shortest path.
+ * packages' published-bundle copies re-export one shim (and one relative hop
+ * to host `kody:runtime`). Artifact-only graphs fall back to the shortest
+ * path.
  */
 export function pickLocalExecutePrimaryRuntimePath(
 	paths: ReadonlyArray<string>,

@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { xyChartDefaults } from '../charts/xy-chart-defaults.ts'
+import { Table } from '../components/table.tsx'
 import { tooltipRows } from '../charts/tooltip-content.ts'
 import { useMemo } from 'react'
 import { useRouter } from '@tanstack/react-router'
@@ -91,26 +92,26 @@ export function ExecutionHistoryChart({
 			/>
 			<details css={detailsCss}>
 				<summary>Daily values</summary>
-				<table>
+				<Table>
 					<thead>
 						<tr>
-							<th>Date (UTC)</th>
-							<th>Success</th>
-							<th>Error</th>
-							<th>Running</th>
+							<th scope="col">Date (UTC)</th>
+							<th scope="col">Success</th>
+							<th scope="col">Error</th>
+							<th scope="col">Running</th>
 						</tr>
 					</thead>
 					<tbody>
 						{days.map((day) => (
 							<tr key={day.day}>
-								<th>{day.day}</th>
+								<th scope="row">{day.day}</th>
 								<td>{day.success}</td>
 								<td>{day.error}</td>
 								<td>{day.running}</td>
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			</details>
 		</>
 	)

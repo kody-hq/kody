@@ -25,3 +25,20 @@ export function loadNormalizeCode(): Promise<NormalizeCode> {
 	)
 	return memo
 }
+
+export type ParseJavaScript = typeof import('acorn').parse
+
+let parserMemo: Promise<ParseJavaScript> | null = null
+
+/** Acorn's `parse`, from the same deferred module as `normalizeCode`. */
+export function loadJavaScriptParser(): Promise<ParseJavaScript> {
+	parserMemo ??=
+		import('./node_modules/.kody-generated/codemode-normalize.mjs').then(
+			(module) => module.parseJavaScript,
+			(error: unknown) => {
+				parserMemo = null
+				throw error
+			},
+		)
+	return parserMemo
+}

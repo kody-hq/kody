@@ -125,7 +125,7 @@ export type AdminOrgDetail = {
 		stripeCreditsEligible: boolean
 		creditsEligible: boolean
 	}
-	seats: { live: number; billingOnly: number }
+	seats: { live: number; billingOnly: number; comped: number | null }
 	members: Array<{
 		stableUserId: string
 		username: string
@@ -374,6 +374,7 @@ type OrgDetailRow = {
 	live_seats: number
 	billing_only: number
 	teams_count: number
+	comped_seats: number | null
 }
 
 export async function loadAdminOrgDetail(
@@ -388,7 +389,7 @@ export async function loadAdminOrgDetail(
 		.prepare(
 			`SELECT o.id, o.slug, o.display_name, o.plan, o.stripe_plan,
 			        o.entitlement_ladder, o.stripe_customer_id, o.admin_credits_eligible,
-			        o.stripe_credits_eligible, o.second_agent_standard_gift_expires_at,
+			        o.stripe_credits_eligible, o.comped_seats, o.second_agent_standard_gift_expires_at,
 			        o.referral_standard_credit_expires_at, o.default_user_budget_micro_usd,
 			        o.automation_budget_micro_usd, o.created_at, o.updated_at,
 			        o.suspended_at, o.deleted_at, o.deleting_at,
@@ -464,7 +465,11 @@ export async function loadAdminOrgDetail(
 			stripeCreditsEligible: Number(row.stripe_credits_eligible) === 1,
 			creditsEligible: entitlement.creditsEligible,
 		},
-		seats: { live: row.live_seats, billingOnly: row.billing_only },
+		seats: {
+			live: row.live_seats,
+			billingOnly: row.billing_only,
+			comped: row.comped_seats,
+		},
 		members: (members.results ?? []).flatMap((member: AdminOrgMemberRow) => {
 			if (
 				member.role !== 'owner' &&

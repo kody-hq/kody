@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	bindSecretProvider,
 	unbindSecretProvider,
@@ -8,12 +10,7 @@ import {
 import type { AccountSecretProvidersLoaderData } from '#universal/loader-data.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import {
-	fieldCss,
-	fieldLabelCss,
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	pageDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -28,8 +25,8 @@ import {
 	AccountManagementPanel,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 export function AccountSecretProvidersPage({
 	payload,
@@ -48,7 +45,6 @@ export function AccountSecretProvidersPage({
 	const [bindPackageId, setBindPackageId] = useState('')
 	const [bindDoorSecret, setBindDoorSecret] = useState('')
 	const [bindConfig, setBindConfig] = useState('')
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function grantKey(grant: {
 		provider: string
@@ -178,10 +174,10 @@ export function AccountSecretProvidersPage({
 						<p css={{ margin: 0, color: colors.error }}>{approval.error}</p>
 					) : null}
 					{approval.error ? null : approval.alreadyGranted ? (
-						<button
+						<Button
 							type="button"
 							disabled={disabled}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={() => setRevokeArmed(null)}
 							onClick={() => {
 								if (revokeArmed !== grantKey(approval)) {
@@ -201,9 +197,9 @@ export function AccountSecretProvidersPage({
 							}}
 						>
 							{revokeArmed === grantKey(approval) ? 'Revoke now' : 'Revoke'}
-						</button>
+						</Button>
 					) : (
-						<button
+						<Button
 							type="button"
 							disabled={disabled}
 							onClick={() => {
@@ -218,10 +214,11 @@ export function AccountSecretProvidersPage({
 									relocateAccountHref('/account/secret-providers', currentHref),
 								)
 							}}
-							css={getPrimaryButtonCss()}
+							variant="primary"
+							size="md"
 						>
 							Allow
-						</button>
+						</Button>
 					)}
 				</section>
 			) : null}
@@ -250,7 +247,7 @@ export function AccountSecretProvidersPage({
 								<p css={pageDescriptionCss}>
 									Package {binding.kodyId}. Door key {binding.doorSecretName}.
 								</p>
-								<button
+								<Button
 									type="button"
 									disabled={disabled}
 									onClick={() => {
@@ -266,10 +263,11 @@ export function AccountSecretProvidersPage({
 											),
 										)
 									}}
-									css={getSecondaryButtonCss()}
+									variant="secondary"
+									size="md"
 								>
 									Unbind
-								</button>
+								</Button>
 							</li>
 						))}
 					</ul>
@@ -302,10 +300,10 @@ export function AccountSecretProvidersPage({
 								<p css={pageDescriptionCss}>
 									<code>{grant.canonicalRef}</code> · package {grant.kodyId}
 								</p>
-								<button
+								<Button
 									type="button"
 									disabled={disabled}
-									css={dangerButtonCss}
+									variant="danger"
 									onBlur={() => setRevokeArmed(null)}
 									onClick={() => {
 										if (revokeArmed !== grantKey(grant)) {
@@ -328,31 +326,27 @@ export function AccountSecretProvidersPage({
 									}}
 								>
 									{revokeArmed === grantKey(grant) ? 'Revoke now' : 'Revoke'}
-								</button>
+								</Button>
 							</li>
 						))}
 					</ul>
 				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Bind a provider">
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Provider id</span>
-					<input
+				<Field label="Provider id">
+					<Input
 						onInput={(event) => {
 							setBindProvider(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindProvider}
 						disabled={disabled}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Package</span>
-					<select
+				</Field>
+				<Field label="Package">
+					<Select
 						onChange={(event) => {
 							setBindPackageId(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindPackageId}
 						disabled={disabled}
 					>
@@ -362,15 +356,13 @@ export function AccountSecretProvidersPage({
 								{savedPackage.kodyId}
 							</option>
 						))}
-					</select>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Door-key secret</span>
-					<select
+					</Select>
+				</Field>
+				<Field label="Door-key secret">
+					<Select
 						onChange={(event) => {
 							setBindDoorSecret(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindDoorSecret}
 						disabled={disabled}
 					>
@@ -380,22 +372,18 @@ export function AccountSecretProvidersPage({
 								{name}
 							</option>
 						))}
-					</select>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>
-						Optional config JSON (non-secret, for example a Connect base URL)
-					</span>
-					<input
+					</Select>
+				</Field>
+				<Field label="Optional config JSON (non-secret, for example a Connect base URL)">
+					<Input
 						onInput={(event) => {
 							setBindConfig(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 						value={bindConfig}
 						disabled={disabled}
 					/>
-				</label>
-				<button
+				</Field>
+				<Button
 					type="button"
 					disabled={disabled}
 					onClick={() => {
@@ -434,13 +422,13 @@ export function AccountSecretProvidersPage({
 							relocateAccountHref('/account/secret-providers', currentHref),
 						)
 					}}
-					css={{
-						...getPrimaryButtonCss({ mobileFullWidth: true }),
-						justifySelf: 'start',
-					}}
+					variant="primary"
+					size="md"
+					mobileFullWidth
+					css={{ justifySelf: 'start' }}
 				>
 					Bind provider
-				</button>
+				</Button>
 			</AccountManagementPanel>
 		</AccountManagementShell>
 	)

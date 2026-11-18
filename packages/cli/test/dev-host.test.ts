@@ -13,6 +13,7 @@ import {
 	parseDevHost,
 	planDevListen,
 } from '../src/dev/dev-host.js'
+import { devPackageAppOrigin } from '../src/dev/dev-app-origin.js'
 import { resolveAllowedDevHost } from '../src/dev/dev-proxy-origin.js'
 import { StructuredCliError } from '../src/structured-error.js'
 import { withDevServer } from './dev-server-harness.js'
@@ -103,6 +104,71 @@ test('planDevListen: loopback default is unchanged', () => {
 	assert.equal(plan.localUrl, 'http://127.0.0.1:4777')
 	assert.deepEqual(plan.networkUrls, [])
 	assert.deepEqual(plan.extraAllowedHosts(), [])
+})
+
+test('the local app origin is the hosted shape on localhost and the port', () => {
+	const origin = (input: {
+		username: string
+		kodyId: string
+		appBasePath?: string
+	}) => devPackageAppOrigin({ port: 4777, appBasePath: '', ...input })
+	assert.equal(
+		origin({ username: 'kent', kodyId: 'notes' }),
+		'http://notes--kent.localhost:4777',
+	)
+	// A profile package owns the owner's bare host.
+	assert.equal(
+		origin({ username: 'kent', kodyId: 'kent' }),
+		'http://kent.localhost:4777',
+	)
+	// The old path address lives on the owner's host.
+	assert.equal(
+		origin({ username: 'kent', kodyId: 'notes', appBasePath: '/notes' }),
+		'http://kent.localhost:4777',
+	)
+	// Names the hosted grammar rejects have no app host.
+	assert.equal(origin({ username: 'kent', kodyId: 'xn' }), null)
+	assert.equal(origin({ username: 'a--b', kodyId: 'notes' }), null)
+	assert.equal(
+		origin({ username: 'kent', kodyId: 'n'.repeat(60) }),
+		null,
+		'label over 63 characters',
+	)
+})
+
+test('planDevListen: a loopback bind serves the app origin and still answers on loopback', () => {
+	const plan = planDevListen({
+		bindHost: '127.0.0.1',
+		port: 4777,
+		appOrigin: 'http://notes--kent.localhost:4777',
+		interfaces: () => fakeInterfaces,
+	})
+	assert.equal(plan.hostedUrl, 'http://notes--kent.localhost:4777')
+	assert.equal(plan.localUrl, 'http://127.0.0.1:4777')
+	assert.deepEqual(plan.networkUrls, [])
+	assert.deepEqual(plan.extraAllowedHosts(), [
+		'127.0.0.1:4777',
+		'localhost:4777',
+		'[::1]:4777',
+	])
+	// Another loopback address is not where `*.localhost` resolves.
+	const other = planDevListen({
+		bindHost: '127.0.0.2',
+		port: 4777,
+		appOrigin: 'http://notes--kent.localhost:4777',
+		interfaces: () => fakeInterfaces,
+	})
+	assert.equal(other.hostedUrl, 'http://127.0.0.2:4777')
+	assert.equal(other.localUrl, 'http://127.0.0.2:4777')
+	// A wildcard bind keeps the LAN URL other devices can open.
+	const lan = planDevListen({
+		bindHost: '0.0.0.0',
+		port: 4777,
+		appOrigin: 'http://notes--kent.localhost:4777',
+		interfaces: () => fakeInterfaces,
+	})
+	assert.equal(lan.hostedUrl, 'http://192.168.1.20:4777')
+	assert.ok(lan.extraAllowedHosts().includes('notes--kent.localhost:4777'))
 })
 
 test('planDevListen: 0.0.0.0 serves the LAN URL and allows only own addresses', () => {

@@ -29,9 +29,11 @@ import {
 	isDurableObjectIsolateResourceLimitResetError,
 	isTransientDurableObjectResetError,
 } from '#worker/durable-object-reset-retry.ts'
+import { notePackageAppPublishRequester } from '#worker/package-runtime/package-app-authority.ts'
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
+	uploadedBuildPersistLimitMessage,
 	isPublishComputeLimitMessage,
 	type RepoCheckStep,
 } from '#worker/repo/isolated-runner-limit-message.ts'
@@ -74,6 +76,8 @@ import {
 } from '#worker/package-registry/package-test-hints.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
+import { buildArtifactsHeadChangedBeforePublishMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
+import { assertPackagePublishCurrent } from '#mcp/capabilities/repo/assert-package-publish-current.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from '#mcp/capabilities/repo/settle-failed-publish-rebuild.ts'
 import {
@@ -102,6 +106,10 @@ import {
 	pausedPublishBundleMessage,
 } from '#worker/approval-bundles/paused-publishes.ts'
 import { optionalApprovalViewerForCaller } from './approval-bundle-shared.ts'
+import {
+	buildHeldForApprovalPublishNotice,
+	heldForApprovalSchema,
+} from './held-for-approval-publish-notice.ts'
 import {
 	credentialNeedChangeSchema,
 	pendingPackageSecretApprovalsSchema,
@@ -139,6 +147,8 @@ const inputSchema = z.object({
 	 * capability stamps this into durableParams; agents must not set it.
 	 */
 	baseline_published_commit: z.string().nullable().optional(),
+	/** The Artifacts HEAD this durable run was enqueued for. */
+	expected_head: z.string().min(1).optional(),
 	publish_build_id: z
 		.string()
 		.min(1)
@@ -194,12 +204,16 @@ function isExternalPublishResourceLimitError(error: unknown) {
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
 	step: RepoCheckStep | null = null,
+	uploadedBuild = false,
 ): never | void {
 	if (error instanceof McpCallerError) throw error
 	if (isDurableObjectIsolateResourceLimitResetError(error)) {
-		throw new McpCallerError(externalPublishResourceLimitMessage(step), {
-			cause: error,
-		})
+		throw new McpCallerError(
+			uploadedBuild
+				? uploadedBuildPersistLimitMessage()
+				: externalPublishResourceLimitMessage(step),
+			{ cause: error },
+		)
 	}
 	const message = getErrorMessage(error)
 	// A publish step that hit the limit in its own throwaway isolate: the
@@ -540,6 +554,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
+		held_for_approval: heldForApprovalSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
@@ -617,6 +632,7 @@ const outputSchema = z.discriminatedUnion('status', [
 		static_dependents: staticDependentsSchema,
 		pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
 		allowed_packages_publish_notice: allowedPackagesPublishNoticeSchema,
+		held_for_approval: heldForApprovalSchema,
 		listing: communityListingBehindHintSchema.optional(),
 		phase_timings: publishPhaseTimingsSchema,
 		build_origin: publishBuildOriginSchema.optional(),
@@ -664,6 +680,7 @@ function publishSuccessFields(input: {
 		static_dependents: PublishedResult['static_dependents']
 		pending_secret_package_approvals: PublishedResult['pending_secret_package_approvals']
 		allowed_packages_publish_notice: PublishedResult['allowed_packages_publish_notice']
+		held_for_approval: PublishedResult['held_for_approval']
 		listing?: PublishedResult['listing'] | null
 	}
 	phaseTimings: PublishPhaseTimings
@@ -676,6 +693,9 @@ function publishSuccessFields(input: {
 		static_dependents: extras.static_dependents,
 		pending_secret_package_approvals: extras.pending_secret_package_approvals,
 		allowed_packages_publish_notice: extras.allowed_packages_publish_notice,
+		...(extras.held_for_approval
+			? { held_for_approval: extras.held_for_approval }
+			: {}),
 		...(extras.listing ? { listing: extras.listing } : {}),
 		phase_timings: input.phaseTimings,
 		...buildOriginField(input.uploadedBuild),
@@ -999,12 +1019,11 @@ export function buildExternalPublishIdempotencyParts(
 	// runs still dedupe on this key; a terminal failure (including a durable
 	// run whose publish did not publish) releases it so the same commit can
 	// publish again.
-	// `v2`: runs from before non-published outcomes failed the workflow were
-	// recorded complete even when checks failed, so they must not keep
-	// deduping a retry of the same commit.
+	// Older workflow runs could publish a different HEAD from the one they
+	// were enqueued for. Only dedupe against runs with the commit check.
 	return [
 		'packagePublishExternalPush',
-		'v2',
+		'v3',
 		canonicalJsonStringify(input),
 	] as const
 }
@@ -1052,6 +1071,13 @@ async function runExternalPublishAttempt(input: {
 	/** Publish offload: persist this verified upload instead of rebuilding. */
 	uploadedBuild?: UploadedPublishBuildRef | null
 }): Promise<Exclude<PublishExternalPushResult, { status: 'dispatched' }>> {
+	const assertCurrent = (commit: string) =>
+		assertPackagePublishCurrent({
+			env: input.env,
+			sourceId: input.source.id,
+			userId: input.ownerUserId,
+			commit,
+		})
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
 	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
@@ -1157,13 +1183,14 @@ async function runExternalPublishAttempt(input: {
 										packageId: input.packageId,
 										sourceId: input.source.id,
 										failedCommit: publishedCommit,
-										restoreCommit: tipMoved
-											? input.baselinePublishedCommit
-											: null,
 										sentryScope: externalPushRestoreSentryScope,
 									})
 								}
-								throwIfExternalPublishResourceLimit(error, 'rebuild')
+								throwIfExternalPublishResourceLimit(
+									error,
+									'rebuild',
+									input.uploadedBuild != null,
+								)
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
@@ -1182,8 +1209,6 @@ async function runExternalPublishAttempt(input: {
 						packageId: input.packageId,
 						sourceId: input.source.id,
 						failedCommit: publishedCommit,
-						// Only a tip this request advanced is rolled back.
-						restoreCommit: tipMoved ? input.baselinePublishedCommit : null,
 						sentryScope: externalPushRestoreSentryScope,
 					})
 					return {
@@ -1249,6 +1274,14 @@ async function runExternalPublishAttempt(input: {
 										kodyId: input.kodyId,
 										sourceId: input.source.id,
 									}),
+								held_for_approval: await buildHeldForApprovalPublishNotice({
+									env: input.env,
+									baseUrl: input.baseUrl,
+									ownerUserId: input.ownerUserId,
+									ownerScope: input.ownerScope,
+									packageId: input.packageId,
+									kodyId: input.kodyId,
+								}),
 								allowed_packages_publish_notice:
 									await getAllowedPackagesPublishNoticeForPublishedPackage({
 										env: input.env,
@@ -1277,12 +1310,13 @@ async function runExternalPublishAttempt(input: {
 						uploadedBuild: input.uploadedBuild,
 					}),
 				}
+				await reportCapabilityProgress(input.reportProgress, {
+					progress: maxAttempts + 1,
+					total: maxAttempts + 1,
+					message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
+				})
+				await assertCurrent(publishedCommit)
 				if (tipMoved) {
-					await reportCapabilityProgress(input.reportProgress, {
-						progress: maxAttempts + 1,
-						total: maxAttempts + 1,
-						message: `Published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
-					})
 					return {
 						status: 'published' as const,
 						previous_commit: input.baselinePublishedCommit,
@@ -1292,13 +1326,6 @@ async function runExternalPublishAttempt(input: {
 					}
 				}
 				const checksRerun = result.checks_rerun === true
-				await reportCapabilityProgress(input.reportProgress, {
-					progress: maxAttempts + 1,
-					total: maxAttempts + 1,
-					message: checksRerun
-						? `Already published (checks re-run for current checker) — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`
-						: `Already published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
-				})
 				return {
 					status: 'already_published' as const,
 					artifacts_rebuilt: artifactsRebuilt,
@@ -1415,11 +1442,14 @@ async function runExternalPublishAttempt(input: {
 									packageId: input.packageId,
 									sourceId: input.source.id,
 									failedCommit: result.published_commit,
-									restoreCommit: input.baselinePublishedCommit,
 									sentryScope: externalPushRestoreSentryScope,
 								})
 							}
-							throwIfExternalPublishResourceLimit(error, 'rebuild')
+							throwIfExternalPublishResourceLimit(
+								error,
+								'rebuild',
+								input.uploadedBuild != null,
+							)
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}
@@ -1438,7 +1468,6 @@ async function runExternalPublishAttempt(input: {
 					packageId: input.packageId,
 					sourceId: input.source.id,
 					failedCommit: result.published_commit,
-					restoreCommit: input.baselinePublishedCommit,
 					sentryScope: externalPushRestoreSentryScope,
 				})
 				return {
@@ -1506,6 +1535,14 @@ async function runExternalPublishAttempt(input: {
 									kodyId: input.kodyId,
 									sourceId: input.source.id,
 								}),
+							held_for_approval: await buildHeldForApprovalPublishNotice({
+								env: input.env,
+								baseUrl: input.baseUrl,
+								ownerUserId: input.ownerUserId,
+								ownerScope: input.ownerScope,
+								packageId: input.packageId,
+								kodyId: input.kodyId,
+							}),
 							allowed_packages_publish_notice:
 								result.allowed_packages_publish_notice ??
 								(await getAllowedPackagesPublishNoticeForPublishedPackage({
@@ -1524,8 +1561,9 @@ async function runExternalPublishAttempt(input: {
 			await reportCapabilityProgress(input.reportProgress, {
 				progress: maxAttempts + 1,
 				total: maxAttempts + 1,
-				message: `Published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
+				message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
 			})
+			await assertCurrent(result.published_commit)
 			return {
 				...result,
 				...publishSuccessFields({
@@ -1588,6 +1626,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packagePublishExternalPush',
+		walletGuard: 'publish',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
@@ -1672,6 +1711,18 @@ export const publishExternalPushCapability = defineDomainCapability(
 			const durableReentry =
 				ctx.callerContext.executionOrigin === 'background' &&
 				args.baseline_published_commit !== undefined
+			if (
+				durableReentry &&
+				args.expected_head &&
+				args.expected_head !== newCommit
+			) {
+				throw new McpCallerError(
+					buildArtifactsHeadChangedBeforePublishMessage(
+						args.expected_head,
+						newCommit,
+					),
+				)
+			}
 			const route =
 				args.publish_build_id || durableReentry
 					? null
@@ -1787,6 +1838,15 @@ export const publishExternalPushCapability = defineDomainCapability(
 				case 'completed':
 					return withUnmappableNotice(outcome.value)
 				case 'dispatched':
+					// The durable run finishes as the owning org, which is not a
+					// person. Note who asked, so the finish step can record them
+					// as publisher once this commit is published.
+					await notePackageAppPublishRequester({
+						db: ctx.env.APP_DB,
+						scope: { orgId: owner.ownerUserId, packageId },
+						personId: user.userId,
+						commit: newCommit,
+					})
 					return {
 						...outcome.handle,
 						phase_timings: withPublishAttemptTotalMs({}, escalateStartedAt),

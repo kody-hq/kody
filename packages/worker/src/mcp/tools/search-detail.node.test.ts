@@ -17,6 +17,11 @@ const mockModule = vi.hoisted(() => ({
 	collectIntegrationPackageSuggestions: vi.fn(),
 }))
 
+// These fixtures have no owner or package rows, so no profile package exists.
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
+}))
+
 vi.mock('#worker/community/fork-listing-relation.ts', () => ({
 	applySavedPackageForkListingAncestry: async ({
 		records,
@@ -262,12 +267,13 @@ test('resolveEntityDetail loads official guides without a signed-in user and gat
 		section: 'repo.pushed',
 	})
 
-	for (const entity of ['guide:not_a_real_guide', 'guide:admin_events']) {
-		await expect(resolve(entity, anonymous)).rejects.toThrow('Guide not found.')
+	for (const id of ['not_a_real_guide', 'admin_events']) {
+		await expect(resolve(`guide:${id}`, anonymous)).rejects.toThrow(
+			new McpCallerError(
+				`Guide "${id}" not found. Find guides with \`search({ query: "<topic> guide" })\`.`,
+			),
+		)
 	}
-	await expect(resolve('guide:not_a_real_guide', anonymous)).rejects.toThrow(
-		/^Guide not found\.$/,
-	)
 	await expect(resolve('guide:search', anonymous)).rejects.toThrow(
 		'Did you mean `guide:search_and_execute`?',
 	)
@@ -387,7 +393,7 @@ test('resolveEntityDetail hostedUrl uses PACKAGE_APP_BASE_URL when configured', 
 	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
-		manifest: { kody: {} },
+		manifest: { kody: {}, exports: {} },
 		files: {},
 	})
 
@@ -417,7 +423,7 @@ test('resolveEntityDetail hostedUrl uses the package name leaf when kodyId lags'
 	})
 	mockModule.getSavedPackageById.mockResolvedValue(null)
 	mockModule.loadPackageSourceBySourceId.mockResolvedValue({
-		manifest: { kody: {} },
+		manifest: { kody: {}, exports: {} },
 		files: {},
 	})
 

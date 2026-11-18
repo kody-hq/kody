@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { Popover } from '@base-ui/react/popover'
 import {
 	overlayPopupCss,
@@ -7,7 +8,6 @@ import {
 import type { QueryKey } from '@tanstack/react-query'
 import { WhereItWentPanel } from './account-usage-where-it-went.tsx'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { adminGrantDiffersFromSubscription } from '#universal/account-plan-display.ts'
 import type {
@@ -32,7 +32,7 @@ import {
 import {
 	descriptionCss,
 	hoverMq,
-	primaryLinkCss,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import { warningOffersCredits } from '#universal/compute-overage.ts'
 import { orgBillingPath, orgUsageCreditsPath } from '#universal/org-pages.ts'
@@ -269,7 +269,7 @@ const usageTipButtonCss: CSSObject = {
 	height: '1.75rem',
 	padding: 0,
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	background: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',
@@ -415,13 +415,9 @@ export function AccountUsagePage({
 								gap: spacing.md,
 							}}
 						>
-							<SiteLink href={billingPath} css={primaryLinkCss}>
-								Manage billing
-							</SiteLink>
+							<TextLink href={billingPath}>Manage billing</TextLink>
 							{usage.computeOverage.creditWallet !== 'none' ? (
-								<SiteLink href={accountCreditsPath} css={primaryLinkCss}>
-									Manage credits
-								</SiteLink>
+								<TextLink href={accountCreditsPath}>Manage credits</TextLink>
 							) : null}
 						</p>
 					</AccountManagementPanel>
@@ -465,12 +461,9 @@ export function AccountUsagePage({
 										{warningAction && warningOffersCredits(item.resource) ? (
 											<>
 												{' '}
-												<SiteLink
-													href={warningAction.href}
-													css={primaryLinkCss}
-												>
+												<TextLink href={warningAction.href}>
 													{warningAction.label}
-												</SiteLink>
+												</TextLink>
 											</>
 										) : null}
 									</li>

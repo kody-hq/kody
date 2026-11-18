@@ -22,6 +22,7 @@ import {
 	createMcpBrowserLandingResponse,
 	createMcpMissingCredentialResponse,
 	handleMcpRequest,
+	handleOriginProtectedResourceMetadataRequest,
 	hasMcpBearerCredential,
 	isBrowserMcpNavigation,
 	mcpCorsHeadersForRequest,
@@ -994,10 +995,6 @@ async function handleOriginAppFetch(
 	const legacyHostRedirect = getLegacyHostRedirectResponse({ request, env })
 	if (legacyHostRedirect) return legacyHostRedirect
 
-	// OAuthProvider serves this URL first and defaults `resource` to the origin only.
-	// MCP clients must use `<origin>/mcp` as the resource (RFC 8707) to match our
-	// token audience; otherwise authorize stores origin but the token request sends
-	// `/mcp` → invalid_target. Serve the same document as the `/mcp` metadata path.
 	const clientIdMetadataResponse =
 		handleMcpClientIdMetadataRequest(request) ??
 		handleCliClientIdMetadataRequest(request)
@@ -1046,9 +1043,9 @@ async function handleOriginAppFetch(
 	}
 
 	// RFC 9728 PRM for `/mcp` is served by OAuthProvider once
-	// `resourceMetadata.resource` is set (path-aware URL only:
+	// `resourceMetadata.resource` is set (path-aware URL:
 	// `/.well-known/oauth-protected-resource/mcp`). Do not serve a second
-	// custom document here — it would diverge from the library's audience.
+	// `/mcp` document here: it would diverge from the library's audience.
 
 	// OAuthProvider v1 rejects a non-loopback `http:` resource URI, and the
 	// resource is derived from the request origin. Upgrade plain-HTTP requests
@@ -1056,6 +1053,15 @@ async function handleOriginAppFetch(
 	const appOrigin = getAppBaseUrl({ env, requestUrl: request.url })
 	const insecureRedirect = getInsecureOriginRedirect(appOrigin, url)
 	if (insecureRedirect) return insecureRedirect
+
+	// The provider only knows the `/mcp` resource, so the origin's own PRM (a
+	// different resource identifier, not an alias) is answered here.
+	if (url.pathname === protectedResourceMetadataPath) {
+		return addOAuthDiscoveryCorsHeaders(
+			handleOriginProtectedResourceMetadataRequest(request, appOrigin),
+			request,
+		)
+	}
 
 	const meHandleRedirect = await handleMeHandleRedirect(request, env, url)
 	if (meHandleRedirect) return meHandleRedirect

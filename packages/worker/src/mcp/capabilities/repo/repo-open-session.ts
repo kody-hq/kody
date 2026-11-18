@@ -65,6 +65,7 @@ export const repoOpenSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoOpenSession',
+		walletGuard: 'repo_change',
 		contextRuns: 'allow',
 		orgPermission: 'package:write',
 		description:

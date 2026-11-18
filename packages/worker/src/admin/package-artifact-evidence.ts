@@ -12,6 +12,7 @@ import {
 	normalizeArtifactName,
 	normalizeEntryPoint,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
+import { restoreLinkedArtifactGroups } from '#worker/package-runtime/linked-artifact-store.ts'
 import { isUnrepairablePreBindingArtifact } from '#worker/package-runtime/pre-binding-artifact-repair.ts'
 import {
 	buildPackageAppClientPointerKvKey,
@@ -328,6 +329,21 @@ async function inspectPayload(input: {
 			sizeBytes,
 		})
 	}
+	// Linked dependency modules are stored apart from the payload; evidence
+	// describes the modules the artifact serves.
+	try {
+		stored = await restoreLinkedArtifactGroups({ kv: input.kv, stored })
+	} catch {
+		return emptyEvidence({ ...base, status: 'kv_unavailable' })
+	}
+	if (stored == null) {
+		return emptyEvidence({
+			...base,
+			status: 'malformed',
+			malformedReason: 'invalid_modules',
+			sizeBytes,
+		})
+	}
 	const artifact = stored as Record<string, unknown>
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
 		return emptyEvidence({
@@ -502,7 +518,8 @@ async function inspectAppTemplate(input: {
 				clientEntry: input.clientEntry,
 			})
 			servesApp =
-				parts.app != null && !isUnrepairablePreBindingArtifact(parts.app)
+				parts.app != null &&
+				!(await isUnrepairablePreBindingArtifact(parts.app))
 			runtimeClient = parts.client
 		} catch {
 			servesApp = false

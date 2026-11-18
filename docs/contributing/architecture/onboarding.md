@@ -49,22 +49,27 @@ the onboarding payload has a known memory subject or saved-package name, Step 3
 shows a short "You made …" chip (truncated subject and `@scope/kody-id`, or
 hidden if nothing sensible). `hasSecondMcpClient` is two known ecosystems, not
 raw grant count, not unique `clientId`s, and not attribution to the selected
-host — Cursor hosts and Grok hosts are one ecosystem, and an unlabeled client
-does not count as its own. The connected label stays "You've connected a second
-agent." When the second-agent Pro gift is active, that status adds "Pro is free
-for 2 weeks." Step 3 copy advertises "Connect a second agent and get Pro free
-for 2 weeks." `/onboarding` resumes at that step instead of always opening the
-Step 1 picker. The Step 1 and Step 3 pickers, and Step 2, list already-connected
-hosts so a return visit cannot hide Cursor or Claude Desktop. A selected-agent
-card names only that host: another client's connection does not mark this one
-connected and does not put its logo on the card. A remembered picker choice is
-not a grant. When a different host actually authorized, Step 2 and Step 3 follow
-that grant instead of the pick. Account → Agents (`/@<slug>/-/agents`) lists
-those inbound hosts grouped by display name, with public logos for known kinds,
-newest-first sort, best-effort labels, per-`clientId` revoke, and **View connect
-steps** for known kinds (same install path as Connect an agent). That list is
-not `users.mcp_client_name` (first-touch) and not `/account/mcp-oauth-clients`
-(user-minted confidential clients).
+host — Cursor hosts and Grok hosts are one ecosystem, Claude Code and Claude
+Desktop are one ecosystem, and an unlabeled client does not count as its own.
+The Step 3 lede says two Claude apps count as one, and a selected host that
+shares an ecosystem with a connected one shows a note that it will not count.
+The connected label stays "You've connected a second agent." When the
+second-agent Pro gift is active, that status adds "Pro is free for 2 weeks."
+When it was delivered as a paid-plan invoice credit, it adds "You get 2 weeks of
+your plan as an invoice credit." Step 3 copy advertises the Free overlay and the
+paid invoice credit. `/onboarding` resumes at that step instead of always
+opening the Step 1 picker. The Step 1 and Step 3 pickers, and Step 2, list
+already-connected hosts so a return visit cannot hide Cursor or Claude Desktop.
+A selected-agent card names only that host: another client's connection does not
+mark this one connected and does not put its logo on the card. A remembered
+picker choice is not a grant. When a different host actually authorized, Step 2
+and Step 3 follow that grant instead of the pick. Account → Agents
+(`/@<slug>/-/agents`) lists those inbound hosts grouped by display name, with
+public logos for known kinds, newest-first sort, best-effort labels,
+per-`clientId` revoke, and **View connect steps** for known kinds (same install
+path as Connect an agent). That list is not `users.mcp_client_name`
+(first-touch) and not `/account/mcp-oauth-clients` (user-minted confidential
+clients).
 
 The gift ledger is written at OAuth authorization completion. Website reads only
 load that ledger. The `second_agent_gift_reconciliation` scheduled lane repairs
@@ -74,8 +79,10 @@ independent `OAUTH_KV` cursor. At N ungranted people, a full sweep takes roughly
 `5 × ceil(N / 8)` minutes, plus a tail tick for an exact batch multiple; failed
 people retry on the next sweep. Normal authorization grants remain immediate.
 The D1 conditional write prevents replay from extending a gift, and excludes
-people or orgs whose deletion began while grants were loading. The cursor is
-only a progress hint, so stale KV reads can repeat work safely. See
+people or orgs whose deletion began while grants were loading. Each tick then
+applies up to eight queued paid-plan invoice credits
+(`src/entitlements/second-agent-gift-invoice-credit.ts`). The cursor is only a
+progress hint, so stale KV reads can repeat work safely. See
 `src/entitlements/second-agent-gift-reconciliation.ts` in the worker package.
 
 `first-win` is not a wizard step and is not a checklist item. Signed-in

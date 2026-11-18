@@ -29,6 +29,10 @@ export type WebhookDispatchQueueMessage = {
 	payloadBytes: number
 	receivedAt: string
 	payloadKvKey?: string
+	/** Times the consumer put this delivery back because its owner was at the started limit. */
+	deferrals?: number
+	/** Queue attempts used before the latest deferral; a re-sent message restarts its own count. */
+	priorAttempts?: number
 }
 
 export function webhookDispatchPayloadKvKey(
@@ -90,6 +94,10 @@ export function withSpilledWebhookDispatchPayload(
 			},
 		},
 	}
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -164,6 +172,14 @@ export function parseWebhookDispatchQueueMessage(
 	if (callerIdempotency !== undefined && callerIdempotency !== true) {
 		return null
 	}
+	const deferrals = message['deferrals']
+	const priorAttempts = message['priorAttempts']
+	if (
+		(deferrals !== undefined && !isNonNegativeInteger(deferrals)) ||
+		(priorAttempts !== undefined && !isNonNegativeInteger(priorAttempts))
+	) {
+		return null
+	}
 	return {
 		endpoint: {
 			id,
@@ -184,6 +200,8 @@ export function parseWebhookDispatchQueueMessage(
 		payloadBytes,
 		receivedAt,
 		...(payloadKvKey ? { payloadKvKey } : {}),
+		...(deferrals ? { deferrals } : {}),
+		...(priorAttempts ? { priorAttempts } : {}),
 	}
 }
 

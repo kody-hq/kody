@@ -491,6 +491,92 @@ test('hosted package apps move to the owner subdomain behind a single-use handof
 	)
 })
 
+test('a package app serves at the root of its own {leaf}--{handle} host and signs in back to it', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	const sessionCookie = await seedOwnerSessionCookie()
+	const appHostOrigin = `https://demo--${ownerUsername}.packages.isolated.test`
+
+	// 1. No session: the terminal page links to the app origin, marked so the
+	// handoff comes back to this host instead of the owner's shared subdomain.
+	const signedOut = await workerFetch(`${appHostOrigin}/report?tab=1`, {
+		headers: { Accept: 'application/json' },
+	})
+	expect(signedOut.status).toBe(403)
+	const nextStep = ((await signedOut.json()) as { next_step: string }).next_step
+	const entryUrl = new URL(
+		/https:\/\/\S+/.exec(nextStep)?.[0].replace(/\.$/, '') ?? '',
+	)
+	expect(`${entryUrl.origin}${entryUrl.pathname}`).toBe(
+		`${appOrigin}/@${ownerUsername}/packages/demo/open/report`,
+	)
+	expect(entryUrl.searchParams.get('tab')).toBe('1')
+
+	// 2. The app origin hands off to the app host root: no `/demo` prefix, the
+	// query is kept and the marker does not reach the app.
+	const appOriginResponse = await workerFetch(entryUrl, {
+		headers: { Cookie: sessionCookie },
+	})
+	expect(appOriginResponse.status).toBe(302)
+	const handoffLocation = new URL(
+		appOriginResponse.headers.get('Location') ?? '',
+	)
+	expect(handoffLocation.origin).toBe(appHostOrigin)
+	expect(handoffLocation.pathname).toBe('/report')
+	expect([...handoffLocation.searchParams.keys()].sort()).toEqual(
+		[packageAppHandoffQueryParam, 'tab'].sort(),
+	)
+
+	// An unmarked entry URL still hands off to the owner's shared subdomain.
+	const unmarked = new URL(entryUrl)
+	unmarked.search = ''
+	const unmarkedResponse = await workerFetch(unmarked, {
+		headers: { Cookie: sessionCookie },
+	})
+	expect(new URL(unmarkedResponse.headers.get('Location') ?? '').origin).toBe(
+		ownerPackageAppOrigin,
+	)
+
+	// 3. The app host exchanges the token for its own host-only cookie.
+	const handoffResponse = await workerFetch(handoffLocation)
+	expect(handoffResponse.status).toBe(302)
+	const setCookie =
+		handoffResponse.headers
+			.getSetCookie()
+			.find((cookie) => cookie.startsWith('__Host-kody_pkg_session_')) ?? ''
+	expect(setCookie).not.toContain('Domain=')
+	const cleanLocation = new URL(handoffResponse.headers.get('Location') ?? '')
+	expect(cleanLocation.toString()).toBe(`${appHostOrigin}/report?tab=1`)
+	const packageSessionCookie = setCookie.split(';')[0] ?? ''
+
+	// 4. With the session, requests reach package-app serving for the app named
+	// by the host (none is seeded, so the saved package lookup 404s). A
+	// cross-origin mutating request, including one from the owner's shared
+	// subdomain, is refused before package code runs.
+	const served = await outcome(
+		await workerFetch(cleanLocation, {
+			headers: { Cookie: packageSessionCookie },
+		}),
+	)
+	expect(served.status).toBe(404)
+	expect(served.body).toContain('Saved package app not found')
+	const crossOrigin = await workerFetch(cleanLocation, {
+		method: 'POST',
+		headers: { Cookie: packageSessionCookie, Origin: ownerPackageAppOrigin },
+	})
+	expect(crossOrigin.status).toBe(403)
+
+	// 5. Platform routes stay under `/-/`, and labels that are not an app host
+	// fail closed.
+	expect((await workerFetch(`${appHostOrigin}/-/health`)).status).toBe(200)
+	expect(
+		(await workerFetch(`https://xn--${ownerUsername}.packages.isolated.test/`))
+			.status,
+	).toBe(404)
+})
+
 test('production package apps fail closed when origin isolation is missing or unsafe', async () => {
 	for (const packageAppBaseUrl of [
 		undefined,
@@ -905,6 +991,22 @@ test('internet-visible apps serve signed-out visitors anonymously; private apps 
 			'2026-10-14T00:00:00.000Z',
 		)
 		.run()
+	await env.APP_DB.prepare(
+		`INSERT OR REPLACE INTO entity_sources (
+			id, user_id, entity_kind, entity_id, repo_id, published_commit,
+			serving_commit, manifest_path, source_root, created_at, updated_at
+		) VALUES (?, ?, 'package', ?, ?, 'commit-open-site', 'commit-open-site',
+			'package.json', '/', ?, ?)`,
+	)
+		.bind(
+			`src-${openSiteId}`,
+			accessFixture.orgId,
+			openSiteId,
+			`repo-${openSiteId}`,
+			'2026-10-14T00:00:00.000Z',
+			'2026-10-14T00:00:00.000Z',
+		)
+		.run()
 	const openSiteHeaders: Array<HeadersInit> = [{}, { Cookie: outsiderSession }]
 	for (const headers of openSiteHeaders) {
 		const openSite = await workerFetch(
@@ -977,3 +1079,56 @@ async function sessionCookieForFixtureOutsider(
 	})
 	return setCookies[0]?.split(';')[0] ?? ''
 }
+
+test('from the cutover the path address answers every method with a 308 to the app host', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	const sessionCookie = await seedOwnerSessionCookie()
+	const mutableEnv = env as unknown as Record<string, string | undefined>
+	const appHostOrigin = `https://demo--${ownerUsername}.packages.isolated.test`
+	const pathAddress = `${ownerPackageAppOrigin}/demo/report?tab=1`
+	try {
+		// Before the cutover moment the path address is still served (a signed-out
+		// request reaches the app gate, not a redirect).
+		mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT = new Date(Date.now() + 60_000)
+			.toISOString()
+			.replace(/\.\d{3}Z$/, 'Z')
+		const before = await workerFetch(pathAddress, {
+			headers: { Accept: 'application/json' },
+		})
+		expect(before.status).toBe(403)
+
+		mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT = '2020-01-01T00:00:00Z'
+		for (const method of ['GET', 'POST', 'DELETE']) {
+			const after = await workerFetch(pathAddress, { method })
+			expect(after.status).toBe(308)
+			expect(after.headers.get('Location')).toBe(
+				`${appHostOrigin}/report?tab=1`,
+			)
+		}
+		const legacyMount = await workerFetch(
+			`${ownerPackageAppOrigin}/packages/demo/report`,
+			{ method: 'POST' },
+		)
+		expect(legacyMount.status).toBe(308)
+		expect(legacyMount.headers.get('Location')).toBe(`${appHostOrigin}/report`)
+
+		// Reserved platform paths stay on the owner's host.
+		const health = await workerFetch(`${ownerPackageAppOrigin}/-/health`)
+		expect(health.status).not.toBe(308)
+
+		// "Open app" hands off straight to the app host, not through the redirect.
+		const open = await workerFetch(
+			`${appOrigin}/@${ownerUsername}/packages/demo/open/report`,
+			{ headers: { Cookie: sessionCookie } },
+		)
+		expect(open.status).toBe(302)
+		const handoff = new URL(open.headers.get('Location') ?? '')
+		expect(handoff.origin).toBe(appHostOrigin)
+		expect(handoff.pathname).toBe('/report')
+	} finally {
+		delete mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT
+	}
+})

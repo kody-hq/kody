@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { textSearch } from '../filter-search.ts'
@@ -19,7 +20,6 @@ import type {
 	AdminPlatformIntegrationApp,
 	AdminPlatformIntegrationsLoaderData,
 } from '#universal/loader-data.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { css } from '@emotion/react'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
@@ -121,7 +121,6 @@ export function AdminPlatformIntegrationsPage(props: {
 		/** Bumped after a successful edit save so uncontrolled fields remount. */
 	)
 	const [formRevision, setFormRevision] = useState(0)
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
 	function applyData() {
 		setFeedback(createUiFeedback(null, 'info'))
 	}
@@ -455,14 +454,14 @@ export function AdminPlatformIntegrationsPage(props: {
 									return updateSearch(value)
 								}}
 							/>
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								onClick={startCreateIntegration}
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Create integration
-							</button>
+							</Button>
 						</>
 					}
 					columns={[

@@ -4,6 +4,7 @@ import {
 	nextState,
 } from '@kody-internal/shared/state-machine.ts'
 import {
+	packageInvocationLedgerTerminalStatuses,
 	packageInvocationState,
 	type PackageInvocationLedgerStatus,
 } from './package-invocation-state.ts'
@@ -102,6 +103,7 @@ import {
 	runRecordRetentionDays,
 	runRecordRetentionEmptyBackoffMaxMs,
 	runRecordRetentionEmptyBackoffMinMs,
+	runRecordRetentionMinPassIntervalMs,
 	runRecordRetentionEveryNFinishes,
 	runRecordStaleRunningTtlMsForSurface,
 	runRecordStaleRunningTtlMsScheduledJob,
@@ -112,6 +114,10 @@ import {
 import { normalizeRunStartedBy, type RunStartedBy } from './run-started-by.ts'
 import { runState } from './run-state.ts'
 import { recordDurableObjectPlatformRowsRead } from '#worker/usage/durable-object-rows.ts'
+import {
+	RunLogSqlStats,
+	type RunLogSqlStatsSnapshot,
+} from './run-log-sql-stats.ts'
 
 const textEncoder = new TextEncoder()
 const interruptGuard = runState.sql(['running'])
@@ -129,7 +135,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-const runLogSchemaVersion = 20
+export const runLogSchemaVersion = 23
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -140,50 +146,8 @@ function metaIntToUtcDay(value: number): string {
 	return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
 }
 
-type RunLogSqlBillingOp =
-	| 'listRuns'
-	| 'getRun'
-	| 'summarize'
-	| 'enforceRetention'
-	| 'reconcileStaleRunning'
-	| 'finishRun'
-	| 'exportRuns'
-	| 'findRunByIdempotencyKey'
-	| 'healStaleRunning'
-	| 'updateRunErrorTriage'
-
-export const runLogSqlBillingOps = [
-	'listRuns',
-	'getRun',
-	'summarize',
-	'enforceRetention',
-	'reconcileStaleRunning',
-	'finishRun',
-	'exportRuns',
-	'findRunByIdempotencyKey',
-	'healStaleRunning',
-	'updateRunErrorTriage',
-] as const satisfies ReadonlyArray<RunLogSqlBillingOp>
-
-function sqlBillingMetaKey(
-	op: RunLogSqlBillingOp,
-	kind: 'rr' | 'rw' | 'n',
-): string {
-	return `sql_${kind}_${op}`
-}
-
-export type RunLogSqlBillingOpStats = {
-	op: RunLogSqlBillingOp
-	rowsRead: number
-	rowsWritten: number
-	calls: number
-}
-
-export type RunLogSqlBillingStats = {
+export type RunLogSqlBillingStats = RunLogSqlStatsSnapshot & {
 	databaseSize: number
-	rowsReadTotal: number
-	rowsWrittenTotal: number
-	ops: Array<RunLogSqlBillingOpStats>
 }
 
 type RunLogSqlIndexInfo = {
@@ -822,6 +786,8 @@ class RunLogBase extends DurableObject<Env> {
 	 * row's due-time instead of trusting a stale idle conclusion.
 	 */
 	private retentionIdleConfirmed = false
+	/** In-isolate start of the last alarm retention pass (debounce floor). */
+	private lastRetentionPassAtMs = 0
 	/**
 	 * In-isolate memo for `run_log_meta` counters. Durable Object handlers are
 	 * single-threaded and these keys are only written through setMeta helpers
@@ -832,17 +798,9 @@ class RunLogBase extends DurableObject<Env> {
 	 */
 	private runCountCache: number | null = null
 	private finishesSinceRetentionCache: number | null = null
-	/**
-	 * Per-op SqlStorageCursor.rowsRead/rowsWritten accumulators for this
-	 * isolate. Durable totals use atomic run_log_meta increments. Rows read
-	 * also stream to `durable_object_platform_rows_read` (observe-only, never
-	 * in include or overage math) keyed by the DO name, which is the user's
-	 * stable id.
-	 */
-	private sqlBillingByOp = new Map<
-		RunLogSqlBillingOp,
-		{ rowsRead: number; rowsWritten: number; calls: number }
-	>()
+	/** Per-statement rows read/written; every statement goes through `sql`. */
+	private readonly sqlStats: RunLogSqlStats
+	private readonly sql: SqlStorage
 	/** Same-isolate summarize reuse; cleared on any run-row mutation. */
 	private summarizeMemo: {
 		cacheKey: string
@@ -851,6 +809,37 @@ class RunLogBase extends DurableObject<Env> {
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env)
+		this.sqlStats = new RunLogSqlStats({
+			onRowsRead: (rowsRead) => {
+				const userId = this.ctx.id.name
+				if (!userId) return
+				recordDurableObjectPlatformRowsRead({
+					env: this.env,
+					userId,
+					doClass: 'RunLog',
+					rowsRead,
+				})
+			},
+			onWindow: (window) => {
+				console.info(
+					JSON.stringify({
+						event: 'run_log_sql_rows',
+						objectId: this.ctx.id.toString(),
+						...window,
+					}),
+				)
+			},
+			onLargeScan: (scan) => {
+				console.warn(
+					JSON.stringify({
+						event: 'run_log_sql_large_scan',
+						objectId: this.ctx.id.toString(),
+						...scan,
+					}),
+				)
+			},
+		})
+		this.sql = this.sqlStats.wrap(ctx.storage.sql)
 		this.ctx.blockConcurrencyWhile(async () => {
 			this.initializeSchema()
 			this.ensureRunCountMeta()
@@ -862,19 +851,19 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	async recordSkillRead(event: SkillReadEvent): Promise<void> {
-		insertSkillRead(this.ctx.storage.sql, event)
+		insertSkillRead(this.sql, event)
 	}
 	async skillReadSummary(input: {
 		since: string
 		packageIds: Array<string>
 	}): Promise<SkillReadSummary> {
-		return summarizeSkillReads(this.ctx.storage.sql, input)
+		return summarizeSkillReads(this.sql, input)
 	}
 	async recordPackageAppCpuSample(sample: PackageAppCpuSample): Promise<void> {
-		insertPackageAppCpuSample(this.ctx.storage.sql, sample)
+		insertPackageAppCpuSample(this.sql, sample)
 	}
 	async packageAppCpuSummary(): Promise<PackageAppCpuSummary> {
-		return summarizePackageAppCpuSampleRows(this.ctx.storage.sql)
+		return summarizePackageAppCpuSampleRows(this.sql)
 	}
 
 	private initializeSchema() {
@@ -883,7 +872,7 @@ class RunLogBase extends DurableObject<Env> {
 		this.runCountCache = null
 		this.finishesSinceRetentionCache = null
 		this.summarizeMemo = null
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS run_log_meta (
 				key TEXT PRIMARY KEY NOT NULL,
 				value INTEGER NOT NULL
@@ -892,7 +881,7 @@ class RunLogBase extends DurableObject<Env> {
 		const installedVersion = this.getMeta(metaSchemaVersionKey)
 		if (installedVersion === runLogSchemaVersion) return
 
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS runs (
 				id TEXT PRIMARY KEY NOT NULL,
 				surface TEXT NOT NULL,
@@ -927,7 +916,8 @@ class RunLogBase extends DurableObject<Env> {
 				started_by_label TEXT,
 				started_by_profile_id TEXT,
 				started_by_profile_chain TEXT,
-				log_count INTEGER NOT NULL DEFAULT 0
+				log_count INTEGER NOT NULL DEFAULT 0,
+				stale_after TEXT
 			)
 		`)
 		if (installedVersion != null && installedVersion < 10) {
@@ -939,42 +929,45 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 18) {
 			this.migrateRunsStartedByProfileForV18()
 		}
-		this.ctx.storage.sql.exec(
+		if (installedVersion != null && installedVersion < 21) {
+			this.migrateRunsStaleAfterForV21()
+		}
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_started ON runs(started_at DESC, id DESC)`,
 		)
 		// Replace pre-id composites so keyset list filters can use covering indexes.
-		this.ctx.storage.sql.exec(`DROP INDEX IF EXISTS idx_runs_surface_started`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(`DROP INDEX IF EXISTS idx_runs_surface_started`)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_surface_started_id ON runs(surface, started_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(`DROP INDEX IF EXISTS idx_runs_status_started`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(`DROP INDEX IF EXISTS idx_runs_status_started`)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_status_started_id ON runs(status, started_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(`DROP INDEX IF EXISTS idx_runs_job_started`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(`DROP INDEX IF EXISTS idx_runs_job_started`)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_job_started_id ON runs(job_id, started_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(`DROP INDEX IF EXISTS idx_runs_package_started`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(`DROP INDEX IF EXISTS idx_runs_package_started`)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_package_started_id ON runs(package_id, started_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_name_started_id ON runs(name, started_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_started_by_user_started_id ON runs(started_by_user_id, started_at DESC, id DESC)`,
 		)
 		// Non-unique: package invocations / workflows may reuse the same
 		// idempotency key across history. Keyed execute claim/replay stays
 		// race-free because claimRun select-then-insert runs in one DO RPC.
 		// Drop any unique index from schema v3 so warm objects can migrate.
-		this.ctx.storage.sql.exec(`DROP INDEX IF EXISTS idx_runs_idempotency_key`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(`DROP INDEX IF EXISTS idx_runs_idempotency_key`)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_runs_idempotency_key
 			ON runs(idempotency_key) WHERE idempotency_key IS NOT NULL`,
 		)
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS run_logs (
 				run_id TEXT NOT NULL,
 				sequence INTEGER NOT NULL,
@@ -992,7 +985,7 @@ class RunLogBase extends DurableObject<Env> {
 		// package_invocations table). No user_id column: the DO identity is the
 		// user. The unique index is the exactly-once claim scope; unlike D1's
 		// INSERT OR IGNORE it never races because DO execution is serialized.
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS package_invocation_ledger (
 				id TEXT PRIMARY KEY NOT NULL,
 				token_id TEXT NOT NULL,
@@ -1013,18 +1006,18 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 12) {
 			this.migrateInvocationLedgerClaimOwnerForV12()
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE UNIQUE INDEX IF NOT EXISTS idx_invocation_ledger_key
 			ON package_invocation_ledger(token_id, package_id, export_name, idempotency_key)`,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_invocation_ledger_status_created
 			ON package_invocation_ledger(status, created_at ASC)`,
 		)
 		// Dedicated unpruned workflow projections (binding_name scopes concurrent
 		// occupancy per Cloudflare Workflow binding). Correctness state for
 		// idempotency and concurrent_workflows — never derived from pruned runs.
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS workflow_projections (
 				id TEXT PRIMARY KEY NOT NULL,
 				binding_name TEXT NOT NULL,
@@ -1052,20 +1045,25 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 19) {
 			this.backfillPublishWorkflowProvenanceForV19()
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_created
 			ON workflow_projections(created_at DESC, id DESC)`,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_status
 			ON workflow_projections(status)`,
 		)
-		this.ctx.storage.sql.exec(
+		// Terminal-row retention seeks by status in due order.
+		this.sql.exec(
+			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_status_due
+			ON workflow_projections(status, COALESCE(completed_at, updated_at))`,
+		)
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_idempotency
 			ON workflow_projections(idempotency_key, created_at ASC)`,
 		)
 		// Dedicated unpruned per-job last-run outcome + counters. Not runs.
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS job_run_observability (
 				job_id TEXT PRIMARY KEY NOT NULL,
 				last_run_at TEXT,
@@ -1081,19 +1079,19 @@ class RunLogBase extends DurableObject<Env> {
 		if (installedVersion != null && installedVersion < 9) {
 			this.rebuildJobRunObservabilityForV9()
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_binding_idempotency
 			ON workflow_projections(binding_name, idempotency_key, created_at ASC)`,
 		)
 		// Dedicated unpruned package activation counters + milestones.
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS package_run_successes (
 				package_id TEXT PRIMARY KEY NOT NULL,
 				success_count INTEGER NOT NULL CHECK (success_count >= 0),
 				updated_at TEXT NOT NULL
 			)
 		`)
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS activation_milestones (
 				milestone TEXT PRIMARY KEY NOT NULL CHECK (
 					milestone IN ('package_run_succeeded', 'package_activated')
@@ -1105,7 +1103,7 @@ class RunLogBase extends DurableObject<Env> {
 		// Durable per-UTC-day Overview aggregates. Survives the 2,000-run cap so
 		// busy workspaces keep a complete 7-day chart. Top-level non-export only;
 		// no backfill (pre-deploy history cannot be recovered).
-		this.ctx.storage.sql.exec(`
+		this.sql.exec(`
 			CREATE TABLE IF NOT EXISTS run_day_counts (
 				day TEXT NOT NULL,
 				surface TEXT NOT NULL,
@@ -1114,10 +1112,17 @@ class RunLogBase extends DurableObject<Env> {
 				PRIMARY KEY (day, surface, status)
 			)
 		`)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_run_day_counts_day
 			ON run_day_counts(day)`,
 		)
+		// One row per package event delivery in progress for this owner.
+		this.sql.exec(`
+			CREATE TABLE IF NOT EXISTS package_event_slots (
+				id TEXT PRIMARY KEY NOT NULL,
+				expires_at TEXT NOT NULL
+			)
+		`)
 		if (installedVersion != null && installedVersion < 16) {
 			this.migrateRetrieverRunsForV16()
 		}
@@ -1131,14 +1136,20 @@ class RunLogBase extends DurableObject<Env> {
 				)
 			}
 		}
-		initializeSkillReads(this.ctx.storage.sql)
-		initializePackageAppCpuSamples(this.ctx.storage.sql)
+		// Per-op SQL counters moved in-isolate (RunLogSqlStats).
+		if (installedVersion != null && installedVersion < 23) {
+			this.sql.exec(
+				`DELETE FROM run_log_meta WHERE key LIKE 'sql\\_%' ESCAPE '\\'`,
+			)
+		}
+		initializeSkillReads(this.sql)
+		initializePackageAppCpuSamples(this.sql)
 		this.setMeta(metaSchemaVersionKey, runLogSchemaVersion)
 	}
 
 	private rebuildJobRunObservabilityForV9() {
 		this.ctx.storage.transactionSync(() => {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`CREATE TABLE job_run_observability_v9 (
 					job_id TEXT PRIMARY KEY NOT NULL,
 					last_run_at TEXT,
@@ -1151,7 +1162,7 @@ class RunLogBase extends DurableObject<Env> {
 					updated_at TEXT NOT NULL
 				)`,
 			)
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`INSERT INTO job_run_observability_v9 (
 					job_id, last_run_at, last_run_status, last_run_error,
 					last_duration_ms, run_count, success_count, error_count, updated_at
@@ -1161,8 +1172,8 @@ class RunLogBase extends DurableObject<Env> {
 					last_duration_ms, run_count, success_count, error_count, updated_at
 				FROM job_run_observability`,
 			)
-			this.ctx.storage.sql.exec(`DROP TABLE job_run_observability`)
-			this.ctx.storage.sql.exec(
+			this.sql.exec(`DROP TABLE job_run_observability`)
+			this.sql.exec(
 				`ALTER TABLE job_run_observability_v9 RENAME TO job_run_observability`,
 			)
 		})
@@ -1182,7 +1193,7 @@ class RunLogBase extends DurableObject<Env> {
 			'triaged_by',
 		] as const) {
 			try {
-				this.ctx.storage.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
+				this.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
 			} catch {
 				// Column already present on a partially migrated object.
 			}
@@ -1203,10 +1214,23 @@ class RunLogBase extends DurableObject<Env> {
 			'started_by_profile_chain',
 		] as const) {
 			try {
-				this.ctx.storage.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
+				this.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
 			} catch {
 				// Column already present on a partially migrated object.
 			}
+		}
+	}
+
+	/**
+	 * `stale_after`: the time until which the row's owner holds a `running`
+	 * row, past the surface TTL (an execution context holds its runs until
+	 * their deadline). Existing rows keep NULL.
+	 */
+	private migrateRunsStaleAfterForV21() {
+		try {
+			this.sql.exec(`ALTER TABLE runs ADD COLUMN stale_after TEXT`)
+		} catch {
+			// Column already present on a partially migrated object.
 		}
 	}
 
@@ -1218,7 +1242,7 @@ class RunLogBase extends DurableObject<Env> {
 			'started_by_label',
 		] as const) {
 			try {
-				this.ctx.storage.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
+				this.sql.exec(`ALTER TABLE runs ADD COLUMN ${column} TEXT`)
 			} catch {
 				// Column already present on a partially migrated object.
 			}
@@ -1232,13 +1256,13 @@ class RunLogBase extends DurableObject<Env> {
 	 */
 	private migrateRunsLogCountForV11() {
 		try {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`ALTER TABLE runs ADD COLUMN log_count INTEGER NOT NULL DEFAULT 0`,
 			)
 		} catch {
 			// Column already present on a partially migrated object.
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE runs
 			SET log_count = (
 				SELECT COUNT(*) FROM run_logs l WHERE l.run_id = runs.id
@@ -1253,7 +1277,7 @@ class RunLogBase extends DurableObject<Env> {
 	 */
 	private migrateInvocationLedgerClaimOwnerForV12() {
 		try {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`ALTER TABLE package_invocation_ledger ADD COLUMN claim_owner TEXT`,
 			)
 		} catch {
@@ -1269,7 +1293,7 @@ class RunLogBase extends DurableObject<Env> {
 	private migrateWorkflowProjectionSourceRevisionForV14() {
 		for (const column of ['enqueued_commit', 'source_revision']) {
 			try {
-				this.ctx.storage.sql.exec(
+				this.sql.exec(
 					`ALTER TABLE workflow_projections ADD COLUMN ${column} TEXT`,
 				)
 			} catch {
@@ -1284,7 +1308,7 @@ class RunLogBase extends DurableObject<Env> {
 	 * columns are filled; keys and timestamps are untouched.
 	 */
 	private backfillPublishWorkflowProvenanceForV19() {
-		const rows = this.ctx.storage.sql
+		const rows = this.sql
 			.exec<{ id: string; idempotency_key: string }>(
 				`SELECT id, idempotency_key FROM workflow_projections
 				WHERE workflow_name = 'packagePublishExternalPush'
@@ -1297,7 +1321,7 @@ class RunLogBase extends DurableObject<Env> {
 				String(row.idempotency_key),
 			)
 			if (!provenance) continue
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`UPDATE workflow_projections
 				SET package_id = ?, enqueued_commit = COALESCE(enqueued_commit, ?)
 				WHERE id = ? AND package_id IS NULL`,
@@ -1311,16 +1335,14 @@ class RunLogBase extends DurableObject<Env> {
 	private migrateRetrieverRunsForV16() {
 		this.transactionSyncWithMetaCache(() => {
 			const runCount = this.getMeta(metaRunCountKey)
-			this.ctx.storage.sql.exec(`
+			this.sql.exec(`
 				DELETE FROM run_logs
 				WHERE run_id IN (SELECT id FROM runs WHERE surface = 'retriever')
 			`)
-			this.ctx.storage.sql.exec(`DELETE FROM runs WHERE surface = 'retriever'`)
-			this.ctx.storage.sql.exec(
-				`DELETE FROM run_day_counts WHERE surface = 'retriever'`,
-			)
+			this.sql.exec(`DELETE FROM runs WHERE surface = 'retriever'`)
+			this.sql.exec(`DELETE FROM run_day_counts WHERE surface = 'retriever'`)
 			if (runCount != null) {
-				const countRow = this.ctx.storage.sql
+				const countRow = this.sql
 					.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
 					.one()
 				this.setMeta(metaRunCountKey, Number(countRow.n ?? 0) || 0)
@@ -1329,7 +1351,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private getMeta(key: string): number | null {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ value: number }>(
 				`SELECT value FROM run_log_meta WHERE key = ? LIMIT 1`,
 				key,
@@ -1339,7 +1361,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private setMeta(key: string, value: number) {
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO run_log_meta (key, value) VALUES (?, ?)
 			ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
 			key,
@@ -1348,83 +1370,6 @@ class RunLogBase extends DurableObject<Env> {
 		if (key === metaRunCountKey) this.runCountCache = value
 		if (key === metaFinishesSinceRetentionKey) {
 			this.finishesSinceRetentionCache = value
-		}
-	}
-
-	/** Atomic increment — no prior SELECT, so instrumentation stays cheap. */
-	private adjustMeta(key: string, delta: number) {
-		if (delta === 0) return
-		this.ctx.storage.sql.exec(
-			`INSERT INTO run_log_meta (key, value) VALUES (?, ?)
-			ON CONFLICT(key) DO UPDATE SET value = value + excluded.value`,
-			key,
-			delta,
-		)
-	}
-
-	private recordSqlBilling(
-		op: RunLogSqlBillingOp,
-		cursor: Pick<
-			SqlStorageCursor<Record<string, SqlStorageValue>>,
-			'rowsRead' | 'rowsWritten'
-		>,
-	) {
-		const rowsRead = Number(cursor.rowsRead) || 0
-		const rowsWritten = Number(cursor.rowsWritten) || 0
-		const prev = this.sqlBillingByOp.get(op) ?? {
-			rowsRead: 0,
-			rowsWritten: 0,
-			calls: 0,
-		}
-		prev.rowsRead += rowsRead
-		prev.rowsWritten += rowsWritten
-		prev.calls += 1
-		this.sqlBillingByOp.set(op, prev)
-		const userId = this.ctx.id.name
-		if (userId) {
-			recordDurableObjectPlatformRowsRead({
-				env: this.env,
-				userId,
-				doClass: 'RunLog',
-				rowsRead,
-			})
-		}
-		this.adjustMeta(sqlBillingMetaKey(op, 'rr'), rowsRead)
-		this.adjustMeta(sqlBillingMetaKey(op, 'rw'), rowsWritten)
-		this.adjustMeta(sqlBillingMetaKey(op, 'n'), 1)
-	}
-
-	/**
-	 * Run a SQL statement and attribute its cursor rowsRead/rowsWritten to `op`
-	 * after the cursor is consumed. Mutations that return no rows still expose
-	 * billing counters on the cursor after exec.
-	 */
-	private execSqlTracked<T extends Record<string, SqlStorageValue>>(
-		op: RunLogSqlBillingOp,
-		query: string,
-		...bindings: Array<SqlStorageValue>
-	): {
-		toArray: () => Array<T>
-		one: () => T
-		run: () => void
-	} {
-		const cursor = this.ctx.storage.sql.exec<T>(query, ...bindings)
-		return {
-			toArray: () => {
-				const rows = cursor.toArray()
-				this.recordSqlBilling(op, cursor)
-				return rows
-			},
-			one: () => {
-				const row = cursor.one()
-				this.recordSqlBilling(op, cursor)
-				return row
-			},
-			run: () => {
-				// Drain so rowsWritten/rowsRead settle for write statements.
-				cursor.toArray()
-				this.recordSqlBilling(op, cursor)
-			},
 		}
 	}
 
@@ -1450,7 +1395,7 @@ class RunLogBase extends DurableObject<Env> {
 			this.runCountCache = existing
 			return
 		}
-		const countRow = this.ctx.storage.sql
+		const countRow = this.sql
 			.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
 			.one()
 		const count = Number(countRow.n ?? 0) || 0
@@ -1522,7 +1467,7 @@ class RunLogBase extends DurableObject<Env> {
 
 	private hasCapEvictableRun(): boolean {
 		return (
-			this.ctx.storage.sql
+			this.sql
 				.exec<{ ok: number }>(
 					`SELECT 1 AS ok FROM runs WHERE status != 'running' LIMIT 1`,
 				)
@@ -1531,7 +1476,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private runExists(runId: string) {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ ok: number }>(
 				`SELECT 1 AS ok FROM runs WHERE id = ? LIMIT 1`,
 				runId,
@@ -1554,15 +1499,16 @@ class RunLogBase extends DurableObject<Env> {
 			clauses.push('r.surface = ?')
 			params.push(input.surface)
 		}
-		const row = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'findRunByIdempotencyKey',
-			`SELECT r.*
+		const row = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE ${clauses.join(' AND ')}
 			ORDER BY (r.status = 'running') DESC, r.started_at DESC, r.id DESC
 			LIMIT 1`,
-			...params,
-		).toArray()[0]
+				...params,
+			)
+			.toArray()[0]
 		if (!row) return null
 		return mapRunRow(row, Number(row['log_count'] ?? 0) || 0)
 	}
@@ -1591,7 +1537,7 @@ class RunLogBase extends DurableObject<Env> {
 	}) {
 		if (input.delta === 0) return
 		if (input.delta > 0) {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`INSERT INTO run_day_counts (day, surface, status, count)
 				VALUES (?, ?, ?, ?)
 				ON CONFLICT(day, surface, status) DO UPDATE SET
@@ -1604,7 +1550,7 @@ class RunLogBase extends DurableObject<Env> {
 			return
 		}
 		const remove = -input.delta
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE run_day_counts
 			SET count = count - ?
 			WHERE day = ? AND surface = ? AND status = ? AND count >= ?`,
@@ -1614,7 +1560,7 @@ class RunLogBase extends DurableObject<Env> {
 			input.status,
 			remove,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`DELETE FROM run_day_counts
 			WHERE day = ? AND surface = ? AND status = ? AND count <= 0`,
 			input.day,
@@ -1643,6 +1589,8 @@ class RunLogBase extends DurableObject<Env> {
 
 	private applyRunDayCountTransition(input: {
 		previousStatus: RunStatus | null
+		/** Stored startedAt when a finish rewrites it (ack webhook consumers). */
+		previousStartedAt?: string | null
 		run: Pick<
 			RunLogRowInput,
 			'surface' | 'parentRunId' | 'startedAt' | 'status'
@@ -1664,9 +1612,12 @@ class RunLogBase extends DurableObject<Env> {
 			this.adjustRunDayCount({ day, surface, status: next, delta: 1 })
 			return
 		}
-		if (input.previousStatus === next) return
+		const previousDay = input.previousStartedAt
+			? this.runDayCountDayFromStartedAt(input.previousStartedAt)
+			: day
+		if (input.previousStatus === next && previousDay === day) return
 		this.adjustRunDayCount({
-			day,
+			day: previousDay,
 			surface,
 			status: input.previousStatus,
 			delta: -1,
@@ -1767,7 +1718,7 @@ class RunLogBase extends DurableObject<Env> {
 					started_by_label = COALESCE(excluded.started_by_label, runs.started_by_label),
 					started_by_profile_id = COALESCE(excluded.started_by_profile_id, runs.started_by_profile_id),
 					started_by_profile_chain = COALESCE(excluded.started_by_profile_chain, runs.started_by_profile_chain)`
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			statement,
 			run.id,
 			run.surface,
@@ -1807,7 +1758,7 @@ class RunLogBase extends DurableObject<Env> {
 		run: Pick<RunLogRowInput, 'id' | 'status'>,
 	) {
 		if (run.status !== 'error') return
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE runs
 			SET error_triage = NULL,
 				triage_note = NULL,
@@ -1823,11 +1774,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private replaceLogs(runId: string, logs: Array<RunLogEntryInput>) {
-		this.execSqlTracked(
-			'finishRun',
-			`DELETE FROM run_logs WHERE run_id = ?`,
-			runId,
-		).run()
+		this.sql.exec(`DELETE FROM run_logs WHERE run_id = ?`, runId)
 		this.insertLogRows(runId, logs)
 	}
 
@@ -1842,15 +1789,13 @@ class RunLogBase extends DurableObject<Env> {
 
 	private insertLogRows(runId: string, logs: Array<RunLogEntryInput>) {
 		const kept = logs.slice(-runRecordMaxLogEntriesPerRun)
-		let insertRowsRead = 0
-		let insertRowsWritten = 0
 		for (const [index, log] of kept.entries()) {
 			const message = truncateUtf8(String(log.message), runRecordMaxTextBytes)
 			const fieldsJson =
 				log.fieldsJson == null
 					? null
 					: clampMetadataJson(String(log.fieldsJson))
-			const cursor = this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`INSERT INTO run_logs (run_id, sequence, level, message, fields_json)
 				VALUES (?, ?, ?, ?, ?)`,
 				runId,
@@ -1859,50 +1804,87 @@ class RunLogBase extends DurableObject<Env> {
 				message,
 				fieldsJson,
 			)
-			cursor.toArray()
-			insertRowsRead += Number(cursor.rowsRead) || 0
-			insertRowsWritten += Number(cursor.rowsWritten) || 0
 		}
-		if (kept.length > 0) {
-			this.recordSqlBilling('finishRun', {
-				rowsRead: insertRowsRead,
-				rowsWritten: insertRowsWritten,
-			})
-		}
-		this.execSqlTracked(
-			'finishRun',
-			`UPDATE runs SET log_count = ? WHERE id = ?`,
-			kept.length,
-			runId,
-		).run()
+		this.sql
+			.exec(`UPDATE runs SET log_count = ? WHERE id = ?`, kept.length, runId)
+			.toArray()
 	}
 
 	private deleteRunsByIds(ids: Array<string>) {
 		// Cap/age eviction deletes runs rows only. Durable run_day_counts keep
 		// Overview history for the retention window.
 		for (const id of ids) {
-			this.ctx.storage.sql.exec(`DELETE FROM run_logs WHERE run_id = ?`, id)
-			this.ctx.storage.sql.exec(`DELETE FROM runs WHERE id = ?`, id)
+			this.sql.exec(`DELETE FROM run_logs WHERE run_id = ?`, id)
+			this.sql.exec(`DELETE FROM runs WHERE id = ?`, id)
 		}
 		this.adjustRunCount(-ids.length)
 		if (ids.length > 0) this.invalidateReadMemos()
 	}
 
-	private isStaleRunning(input: {
+	/**
+	 * When a `running` row counts as stranded: its surface TTL after start, or
+	 * its `stale_after` when the row's owner holds it longer.
+	 */
+	private staleRunningDueAtMs(input: {
 		surface: string
 		startedAt: string
-		nowMs?: number
 		idempotencyKey?: string | null
-	}): boolean {
+		staleAfter: string | null
+	}): number | null {
 		const surface = isRunSurface(input.surface) ? input.surface : 'execute'
 		const startedMs = Date.parse(input.startedAt)
-		if (!Number.isFinite(startedMs)) return false
-		const nowMs = input.nowMs ?? Date.now()
+		if (!Number.isFinite(startedMs)) return null
 		const ttlMs =
 			surface === 'job' && isScheduledJobIdempotencyKey(input.idempotencyKey)
 				? runRecordStaleRunningTtlMsScheduledJob
 				: runRecordStaleRunningTtlMsForSurface(surface)
-		return nowMs - startedMs >= ttlMs
+		const heldUntilMs = input.staleAfter
+			? Date.parse(input.staleAfter)
+			: Number.NaN
+		return Number.isFinite(heldUntilMs)
+			? Math.max(startedMs + ttlMs, heldUntilMs)
+			: startedMs + ttlMs
+	}
+
+	/**
+	 * `staleAfter` omitted: read it for this row, only once the surface TTL
+	 * has passed (the common fresh row costs no read).
+	 */
+	private isStaleRunning(input: {
+		id: string
+		surface: string
+		startedAt: string
+		nowMs?: number
+		idempotencyKey?: string | null
+		staleAfter?: string | null
+	}): boolean {
+		const nowMs = input.nowMs ?? Date.now()
+		const ttlDueAtMs = this.staleRunningDueAtMs({ ...input, staleAfter: null })
+		if (ttlDueAtMs == null || nowMs < ttlDueAtMs) return false
+		const staleAfter =
+			input.staleAfter !== undefined
+				? input.staleAfter
+				: (this.sql
+						.exec<{
+							stale_after: string | null
+						}>(`SELECT stale_after FROM runs WHERE id = ?`, input.id)
+						.toArray()[0]?.stale_after ?? null)
+		const dueAtMs = this.staleRunningDueAtMs({ ...input, staleAfter })
+		return dueAtMs != null && nowMs >= dueAtMs
+	}
+
+	/** Hold a still-`running` row until `staleAfter`; a finished row is left alone. */
+	private holdRunningUntil(runId: string, staleAfter: string) {
+		const held = this.sql.exec(
+			`UPDATE runs SET stale_after = ? WHERE id = ? AND status = 'running'`,
+			staleAfter,
+			runId,
+		).rowsWritten
+		if (held > 0) {
+			// The stale due-time moved later; re-arm for it.
+			this.retentionIdleConfirmed = false
+			this.retentionAlarmArmed = false
+		}
 	}
 
 	private markRunningInterrupted(input: {
@@ -1921,7 +1903,7 @@ class RunLogBase extends DurableObject<Env> {
 			triagedBy: string | null
 		}
 	}) {
-		const existing = this.ctx.storage.sql
+		const existing = this.sql
 			.exec<{
 				status: string
 				surface: string
@@ -1962,7 +1944,7 @@ class RunLogBase extends DurableObject<Env> {
 		const releaseScheduledJobKey = isScheduledJobIdempotencyKey(
 			input.idempotencyKey,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE runs
 			SET status = 'error',
 				finished_at = ?,
@@ -2057,14 +2039,15 @@ class RunLogBase extends DurableObject<Env> {
 		const longLivedCutoff = new Date(
 			nowMs - runRecordStaleRunningTtlMsForSurface('workflow'),
 		).toISOString()
-		const candidates = this.execSqlTracked<{
-			id: string
-			started_at: string
-			surface: RunSurface
-			idempotency_key: string | null
-		}>(
-			'reconcileStaleRunning',
-			`SELECT id, started_at, surface, idempotency_key FROM runs
+		const candidates = this.sql
+			.exec<{
+				id: string
+				started_at: string
+				surface: RunSurface
+				idempotency_key: string | null
+				stale_after: string | null
+			}>(
+				`SELECT id, started_at, surface, idempotency_key, stale_after FROM runs
 			WHERE status = 'running' AND (
 				(surface IN ('execute', 'export', 'subscription', 'app_fetch', 'app_realtime')
 					AND started_at < ?)
@@ -2080,23 +2063,28 @@ class RunLogBase extends DurableObject<Env> {
 				)
 				OR (surface = 'workflow' AND started_at < ?)
 			)
+			AND (stale_after IS NULL OR stale_after <= ?)
 			ORDER BY started_at ASC
 			LIMIT ?`,
-			shortLivedCutoff,
-			backgroundCutoff,
-			scheduledJobCutoff,
-			jobCutoff,
-			longLivedCutoff,
-			maxStaleRunningReconcilesPerPass,
-		).toArray()
+				shortLivedCutoff,
+				backgroundCutoff,
+				scheduledJobCutoff,
+				jobCutoff,
+				longLivedCutoff,
+				finishedAt,
+				maxStaleRunningReconcilesPerPass,
+			)
+			.toArray()
 		let reconciled = 0
 		for (const row of candidates) {
 			if (
 				!this.isStaleRunning({
+					id: row.id,
 					surface: row.surface,
 					startedAt: row.started_at,
 					nowMs,
 					idempotencyKey: row.idempotency_key,
+					staleAfter: row.stale_after,
 				})
 			) {
 				continue
@@ -2122,6 +2110,7 @@ class RunLogBase extends DurableObject<Env> {
 		if (run.status !== 'running') return run
 		if (
 			!this.isStaleRunning({
+				id: run.id,
 				surface: run.surface,
 				startedAt: run.startedAt,
 				idempotencyKey: run.idempotencyKey,
@@ -2135,14 +2124,15 @@ class RunLogBase extends DurableObject<Env> {
 			idempotencyKey: run.idempotencyKey,
 			startedAt: run.startedAt,
 		})
-		const healed = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'healStaleRunning',
-			`SELECT r.*
+		const healed = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE r.id = ?
 			LIMIT 1`,
-			run.id,
-		).toArray()[0]
+				run.id,
+			)
+			.toArray()[0]
 		if (!healed) return run
 		return mapRunRow(healed, Number(healed['log_count'] ?? 0) || 0)
 	}
@@ -2159,7 +2149,7 @@ class RunLogBase extends DurableObject<Env> {
 				: triage === 'open'
 					? 'AND error_triage IS NULL'
 					: ''
-		return this.ctx.storage.sql
+		return this.sql
 			.exec<{ id: string }>(
 				`SELECT id FROM runs
 				WHERE status = ? ${triageClause}
@@ -2205,7 +2195,7 @@ class RunLogBase extends DurableObject<Env> {
 			if (next == null || at < next) next = at
 		}
 
-		const oldestFinished = this.ctx.storage.sql
+		const oldestFinished = this.sql
 			.exec<{ started_at: string }>(
 				`SELECT started_at FROM runs
 				WHERE status != 'running'
@@ -2217,7 +2207,7 @@ class RunLogBase extends DurableObject<Env> {
 			consider(Date.parse(oldestFinished.started_at) + retentionMs)
 		}
 
-		const oldestDayCount = this.ctx.storage.sql
+		const oldestDayCount = this.sql
 			.exec<{ day: string }>(`SELECT MIN(day) AS day FROM run_day_counts`)
 			.toArray()[0]
 		if (oldestDayCount?.day) {
@@ -2230,44 +2220,41 @@ class RunLogBase extends DurableObject<Env> {
 			)
 		}
 
-		const oldestTerminalLedgerRow = this.ctx.storage.sql
-			.exec<{ created_at: string }>(
-				`SELECT created_at FROM package_invocation_ledger
-				WHERE status != 'in_progress'
-				ORDER BY created_at ASC
-				LIMIT 1`,
-			)
-			.toArray()[0]
-		if (oldestTerminalLedgerRow) {
-			consider(
-				Date.parse(oldestTerminalLedgerRow.created_at) + ledgerRetentionMs,
-			)
+		// One index seek per terminal status. `status != ?` or `status IN (...)`
+		// with ORDER BY cannot use the index order and reads every row.
+		for (const status of packageInvocationLedgerTerminalStatuses) {
+			const row = this.sql
+				.exec<{ created_at: string }>(
+					`SELECT created_at FROM package_invocation_ledger
+					WHERE status = ?
+					ORDER BY created_at ASC
+					LIMIT 1`,
+					status,
+				)
+				.toArray()[0]
+			if (row) consider(Date.parse(row.created_at) + ledgerRetentionMs)
 		}
 
-		const terminalPlaceholders = workflowProjectionTerminalStatuses
-			.map(() => '?')
-			.join(', ')
-		const oldestTerminalWorkflowProjection = this.ctx.storage.sql
-			.exec<{ due_at: string }>(
-				`SELECT COALESCE(completed_at, updated_at) AS due_at
-				FROM workflow_projections
-				WHERE status IN (${terminalPlaceholders})
-				ORDER BY COALESCE(completed_at, updated_at) ASC
-				LIMIT 1`,
-				...workflowProjectionTerminalStatuses,
-			)
-			.toArray()[0]
-		if (oldestTerminalWorkflowProjection) {
-			consider(
-				Date.parse(oldestTerminalWorkflowProjection.due_at) +
-					workflowProjectionRetentionMs,
-			)
+		for (const status of workflowProjectionTerminalStatuses) {
+			const row = this.sql
+				.exec<{ due_at: string }>(
+					`SELECT COALESCE(completed_at, updated_at) AS due_at
+					FROM workflow_projections
+					WHERE status = ?
+					ORDER BY COALESCE(completed_at, updated_at) ASC
+					LIMIT 1`,
+					status,
+				)
+				.toArray()[0]
+			if (row) {
+				consider(Date.parse(row.due_at) + workflowProjectionRetentionMs)
+			}
 		}
 
-		const oldestStaleCreatingProjection = this.ctx.storage.sql
+		const oldestStaleCreatingProjection = this.sql
 			.exec<{ updated_at: string }>(
 				`SELECT updated_at FROM workflow_projections
-				WHERE COALESCE(status, '') = ?
+				WHERE status = ?
 				ORDER BY updated_at ASC
 				LIMIT 1`,
 				creatingWorkflowProjectionStatus,
@@ -2283,10 +2270,10 @@ class RunLogBase extends DurableObject<Env> {
 		// Soonest stale due-time can belong to a newer short-lived surface
 		// (execute) even when an older long-lived workflow/job row exists.
 		// Only the earliest row per surface can produce that due-time.
-		const oldestRunningPerSurface = this.ctx.storage.sql
+		const oldestRunningPerSurface = this.sql
 			.exec<{ surface: string; started_at: string }>(
 				`SELECT surface, MIN(started_at) AS started_at FROM runs
-				WHERE status = 'running'
+				WHERE status = 'running' AND stale_after IS NULL
 				GROUP BY surface`,
 			)
 			.toArray()
@@ -2301,10 +2288,11 @@ class RunLogBase extends DurableObject<Env> {
 		// Scheduled ticks heal on the execution-lease TTL, not the job-surface
 		// TTL. Arm the RunLog alarm at that deadline so a hung tick is
 		// interrupted and re-claimable without waiting six hours.
-		const oldestScheduledJobRunning = this.ctx.storage.sql
+		const oldestScheduledJobRunning = this.sql
 			.exec<{ started_at: string }>(
 				`SELECT MIN(started_at) AS started_at FROM runs
 				WHERE status = 'running'
+					AND stale_after IS NULL
 					AND surface = 'job'
 					AND idempotency_key LIKE 'scheduled-job:%'`,
 			)
@@ -2314,6 +2302,28 @@ class RunLogBase extends DurableObject<Env> {
 				Date.parse(oldestScheduledJobRunning.started_at) +
 					runRecordStaleRunningTtlMsScheduledJob,
 			)
+		}
+
+		// Held rows (execution-context runs) are few: one per live run.
+		const heldRunning = this.sql
+			.exec<{
+				surface: string
+				started_at: string
+				idempotency_key: string | null
+				stale_after: string
+			}>(
+				`SELECT surface, started_at, idempotency_key, stale_after FROM runs
+				WHERE status = 'running' AND stale_after IS NOT NULL`,
+			)
+			.toArray()
+		for (const row of heldRunning) {
+			const dueAtMs = this.staleRunningDueAtMs({
+				surface: row.surface,
+				startedAt: row.started_at,
+				idempotencyKey: row.idempotency_key,
+				staleAfter: row.stale_after,
+			})
+			if (dueAtMs != null) consider(dueAtMs)
 		}
 
 		return next
@@ -2326,15 +2336,15 @@ class RunLogBase extends DurableObject<Env> {
 		this.reconcileStaleRunning()
 
 		const cutoff = new Date(Date.now() - retentionMs).toISOString()
-		const expired = this.execSqlTracked<{ id: string }>(
-			'enforceRetention',
-			`SELECT id FROM runs
+		const expired = this.sql
+			.exec<{ id: string }>(
+				`SELECT id FROM runs
 			WHERE started_at < ? AND status != 'running'
 			ORDER BY started_at ASC
 			LIMIT ?`,
-			cutoff,
-			maxAgeDeletesPerFinish,
-		)
+				cutoff,
+				maxAgeDeletesPerFinish,
+			)
 			.toArray()
 			.map((row) => row.id)
 		this.deleteRunsByIds(expired)
@@ -2391,10 +2401,7 @@ class RunLogBase extends DurableObject<Env> {
 		const cutoffDay = new Date(Date.now() - retentionMs)
 			.toISOString()
 			.slice(0, 10)
-		this.ctx.storage.sql.exec(
-			`DELETE FROM run_day_counts WHERE day < ?`,
-			cutoffDay,
-		)
+		this.sql.exec(`DELETE FROM run_day_counts WHERE day < ?`, cutoffDay)
 	}
 
 	/**
@@ -2405,17 +2412,20 @@ class RunLogBase extends DurableObject<Env> {
 	 */
 	private pruneInvocationLedgerForRetention() {
 		const cutoff = new Date(Date.now() - ledgerRetentionMs).toISOString()
-		this.ctx.storage.sql.exec(
-			`DELETE FROM package_invocation_ledger
-			WHERE id IN (
-				SELECT id FROM package_invocation_ledger
-				WHERE status != 'in_progress' AND created_at < ?
-				ORDER BY created_at ASC
-				LIMIT ?
-			)`,
-			cutoff,
-			maxLedgerAgeDeletesPerPass,
-		)
+		for (const status of packageInvocationLedgerTerminalStatuses) {
+			this.sql.exec(
+				`DELETE FROM package_invocation_ledger
+				WHERE id IN (
+					SELECT id FROM package_invocation_ledger
+					WHERE status = ? AND created_at < ?
+					ORDER BY created_at ASC
+					LIMIT ?
+				)`,
+				status,
+				cutoff,
+				maxLedgerAgeDeletesPerPass,
+			)
+		}
 	}
 
 	/**
@@ -2429,22 +2439,21 @@ class RunLogBase extends DurableObject<Env> {
 		const cutoff = new Date(
 			Date.now() - workflowProjectionRetentionMs,
 		).toISOString()
-		const placeholders = workflowProjectionTerminalStatuses
-			.map(() => '?')
-			.join(', ')
-		this.ctx.storage.sql.exec(
-			`DELETE FROM workflow_projections
-			WHERE id IN (
-				SELECT id FROM workflow_projections
-				WHERE status IN (${placeholders})
-					AND COALESCE(completed_at, updated_at) < ?
-				ORDER BY COALESCE(completed_at, updated_at) ASC
-				LIMIT ?
-			)`,
-			...workflowProjectionTerminalStatuses,
-			cutoff,
-			maxWorkflowProjectionAgeDeletesPerPass,
-		)
+		for (const status of workflowProjectionTerminalStatuses) {
+			this.sql.exec(
+				`DELETE FROM workflow_projections
+				WHERE id IN (
+					SELECT id FROM workflow_projections
+					WHERE status = ?
+						AND COALESCE(completed_at, updated_at) < ?
+					ORDER BY COALESCE(completed_at, updated_at) ASC
+					LIMIT ?
+				)`,
+				status,
+				cutoff,
+				maxWorkflowProjectionAgeDeletesPerPass,
+			)
+		}
 	}
 
 	/** Drop `creating` rows whose `updated_at` is older than the creating TTL. */
@@ -2452,11 +2461,11 @@ class RunLogBase extends DurableObject<Env> {
 		const cutoff = new Date(
 			Date.now() - workflowProjectionCreatingTtlMs,
 		).toISOString()
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`DELETE FROM workflow_projections
 			WHERE id IN (
 				SELECT id FROM workflow_projections
-				WHERE COALESCE(status, '') = ?
+				WHERE status = ?
 					AND updated_at < ?
 				ORDER BY updated_at ASC
 				LIMIT ?
@@ -2490,7 +2499,7 @@ class RunLogBase extends DurableObject<Env> {
 		}
 
 		this.retentionIdleConfirmed = false
-		const alarmAt = Math.max(next, Date.now() + 1_000)
+		const alarmAt = this.retentionAlarmAt(next)
 		const existing = await this.ctx.storage.getAlarm()
 		// Keep a soon-enough existing wake only when it is not later than the
 		// new due-time. A leftover empty-pass backoff (15s–15min) must not
@@ -2507,7 +2516,17 @@ class RunLogBase extends DurableObject<Env> {
 		this.retentionAlarmArmed = true
 	}
 
+	/** Soonest allowed wake for a due-time: not in the past, not before the pass floor. */
+	private retentionAlarmAt(dueAtMs: number): number {
+		return Math.max(
+			dueAtMs,
+			Date.now() + 1_000,
+			this.lastRetentionPassAtMs + runRecordRetentionMinPassIntervalMs,
+		)
+	}
+
 	async alarm(): Promise<void> {
+		this.lastRetentionPassAtMs = Date.now()
 		const { runDeletes } = this.enforceRetention()
 		const overCap = this.getRunCount() > runRecordMaxRunsPerUser
 		const next = this.nextRetentionDueAtMs()
@@ -2526,7 +2545,7 @@ class RunLogBase extends DurableObject<Env> {
 			return
 		}
 		this.resetRetentionEmptyBackoff()
-		await this.ctx.storage.setAlarm(Math.max(next, Date.now() + 1_000))
+		await this.ctx.storage.setAlarm(this.retentionAlarmAt(next))
 		this.retentionAlarmArmed = true
 		this.retentionIdleConfirmed = false
 	}
@@ -2548,10 +2567,123 @@ class RunLogBase extends DurableObject<Env> {
 		})
 	}
 
-	async startRun(input: { run: RunLogRowInput }): Promise<{ ok: true }> {
+	/**
+	 * `staleAfter` holds the running row past its surface TTL until then (an
+	 * execution context ends its runs by their deadline).
+	 */
+	async startRun(input: {
+		run: RunLogRowInput
+		staleAfter?: string | null
+	}): Promise<{ ok: true }> {
 		this.insertRunningRun(input.run)
+		if (input.staleAfter) this.holdRunningUntil(input.run.id, input.staleAfter)
 		await this.ensureRetentionAlarm()
 		return { ok: true }
+	}
+
+	/**
+	 * Take one of this owner's package event delivery slots unless `limit`
+	 * other deliveries hold one. A slot expires on its own, so a consumer that
+	 * was killed frees it without a release call. DO RPCs are serialized, so
+	 * count-then-insert is race-free.
+	 */
+	async claimPackageEventSlot(input: {
+		id: string
+		limit: number
+		expiresAt: string
+	}): Promise<{ claimed: boolean; inFlight: number }> {
+		const sql = this.sql
+		sql.exec(
+			`DELETE FROM package_event_slots WHERE expires_at <= ?`,
+			new Date().toISOString(),
+		)
+		const inFlight =
+			Number(
+				sql
+					.exec<{ count: number }>(
+						`SELECT COUNT(*) AS count FROM package_event_slots WHERE id != ?`,
+						input.id,
+					)
+					.one().count,
+			) || 0
+		if (inFlight >= input.limit) return { claimed: false, inFlight }
+		sql.exec(
+			`INSERT INTO package_event_slots (id, expires_at) VALUES (?, ?)
+			ON CONFLICT(id) DO UPDATE SET expires_at = excluded.expires_at`,
+			input.id,
+			input.expiresAt,
+		)
+		return { claimed: true, inFlight }
+	}
+
+	async releasePackageEventSlot(input: { id: string }): Promise<void> {
+		this.sql.exec(`DELETE FROM package_event_slots WHERE id = ?`, input.id)
+	}
+
+	/**
+	 * Start a webhook delivery attempt only while fewer than `limit` of this
+	 * owner's other deliveries are started. A started delivery is a `running`
+	 * webhook row whose metadata state is `started` and whose hold has not
+	 * lapsed, so a finished, requeued, or killed attempt frees its slot without
+	 * a release call. DO RPCs are serialized, so count-then-start is race-free.
+	 *
+	 * A delivery whose accepted or queued hold lapsed while it waited was
+	 * healed to interrupted; its attempt is real, so the row goes back to
+	 * `running` and takes a slot (the finish replaces it as usual). A row that
+	 * finished with a real outcome is left alone, so a redelivery after the
+	 * finish still finds that outcome.
+	 */
+	async startWebhookDeliveryAttempt(input: {
+		run: RunLogRowInput
+		staleAfter: string
+		limit: number
+	}): Promise<{ started: boolean; inFlight: number }> {
+		const inFlight =
+			Number(
+				this.sql
+					.exec<{ count: number }>(
+						`SELECT COUNT(*) AS count FROM runs
+						WHERE status = 'running' AND surface = 'webhook' AND id != ?
+							AND stale_after > ?
+							AND json_extract(metadata_json, '$.state') = 'started'`,
+						input.run.id,
+						new Date().toISOString(),
+					)
+					.one().count,
+			) || 0
+		if (inFlight >= input.limit) return { started: false, inFlight }
+		const previous = this.getRunStatusAndStartedAt(input.run.id)
+		const healed =
+			previous?.status === 'error' &&
+			this.sql
+				.exec<{ error_name: string | null }>(
+					`SELECT error_name FROM runs WHERE id = ? LIMIT 1`,
+					input.run.id,
+				)
+				.toArray()[0]?.error_name === runRecordPlatformInterruptedErrorName
+		if (previous && healed) {
+			this.transactionSyncWithMetaCache(() => {
+				this.upsertRun(input.run, 'replace')
+				this.applyRunDayCountTransition({
+					previousStatus: previous.status,
+					previousStartedAt: previous.startedAt,
+					run: input.run,
+				})
+			})
+			this.retentionIdleConfirmed = false
+			this.retentionAlarmArmed = false
+			this.invalidateReadMemos()
+			this.resetRetentionEmptyBackoff()
+		} else {
+			this.insertRunningRun(input.run)
+		}
+		this.holdRunningUntil(input.run.id, input.staleAfter)
+		await this.updateRunningMetadata({
+			runId: input.run.id,
+			metadataJson: input.run.metadataJson,
+		})
+		await this.ensureRetentionAlarm()
+		return { started: true, inFlight }
 	}
 
 	/**
@@ -2575,6 +2707,7 @@ class RunLogBase extends DurableObject<Env> {
 					existing.status === 'running' &&
 					isScheduledJobIdempotencyKey(existing.idempotencyKey) &&
 					this.isStaleRunning({
+						id: existing.id,
 						surface: existing.surface,
 						startedAt: existing.startedAt,
 						idempotencyKey: existing.idempotencyKey,
@@ -2642,7 +2775,7 @@ class RunLogBase extends DurableObject<Env> {
 		runId: string
 		metadataJson: string
 	}): Promise<{ updated: boolean }> {
-		const cursor = this.ctx.storage.sql.exec(
+		const cursor = this.sql.exec(
 			`UPDATE runs SET metadata_json = ?, updated_at = ?
 			WHERE id = ? AND status = 'running'`,
 			clampMetadataJson(input.metadataJson || '{}'),
@@ -2675,7 +2808,7 @@ class RunLogBase extends DurableObject<Env> {
 	async deleteRunIfRunning(input: {
 		runId: string
 	}): Promise<{ deleted: boolean }> {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{
 				status: string
 				surface: string
@@ -2709,8 +2842,24 @@ class RunLogBase extends DurableObject<Env> {
 		return { deleted: true }
 	}
 
+	private getRunStatusAndStartedAt(
+		runId: string,
+	): { status: RunStatus; startedAt: string } | null {
+		const row = this.sql
+			.exec<{ status: string; started_at: string }>(
+				`SELECT status, started_at FROM runs WHERE id = ? LIMIT 1`,
+				runId,
+			)
+			.toArray()[0]
+		if (!row) return null
+		const status = String(row.status)
+		return runState.is(status)
+			? { status, startedAt: String(row.started_at) }
+			: null
+	}
+
 	private getRunStatus(runId: string): RunStatus | null {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ status: string }>(
 				`SELECT status FROM runs WHERE id = ? LIMIT 1`,
 				runId,
@@ -2722,7 +2871,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	private hasActivationMilestone(milestone: ActivationMilestone): boolean {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ ok: number }>(
 				`SELECT 1 AS ok FROM activation_milestones WHERE milestone = ? LIMIT 1`,
 				milestone,
@@ -2751,7 +2900,7 @@ class RunLogBase extends DurableObject<Env> {
 		// success_count rows or milestones after the user is already activated.
 		if (this.hasActivationMilestone('package_activated')) return
 
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO package_run_successes (package_id, success_count, updated_at)
 			VALUES (?, 1, ?)
 			ON CONFLICT(package_id) DO UPDATE SET
@@ -2760,13 +2909,13 @@ class RunLogBase extends DurableObject<Env> {
 			packageId,
 			updatedAt,
 		)
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT OR IGNORE INTO activation_milestones (milestone, reached_at, package_id)
 			VALUES ('package_run_succeeded', ?, ?)`,
 			updatedAt,
 			packageId,
 		)
-		const countRow = this.ctx.storage.sql
+		const countRow = this.sql
 			.exec<{ success_count: number }>(
 				`SELECT success_count FROM package_run_successes
 				WHERE package_id = ? LIMIT 1`,
@@ -2775,7 +2924,7 @@ class RunLogBase extends DurableObject<Env> {
 			.toArray()[0]
 		const successCount = Number(countRow?.success_count ?? 0) || 0
 		if (successCount < 2) return
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT OR IGNORE INTO activation_milestones (milestone, reached_at, package_id)
 			VALUES ('package_activated', ?, ?)`,
 			updatedAt,
@@ -2833,7 +2982,7 @@ class RunLogBase extends DurableObject<Env> {
 		const error = input.status === 'error' ? input.error?.trim() || null : null
 		const successDelta = input.status === 'success' ? 1 : 0
 		const errorDelta = input.status === 'error' ? 1 : 0
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO job_run_observability (
 				job_id, last_run_at, last_run_status, last_run_error, last_duration_ms,
 				run_count, success_count, error_count, updated_at
@@ -2856,7 +3005,7 @@ class RunLogBase extends DurableObject<Env> {
 			errorDelta,
 			updatedAt,
 		)
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM job_run_observability WHERE job_id = ? LIMIT 1`,
 				jobId,
@@ -2941,7 +3090,7 @@ class RunLogBase extends DurableObject<Env> {
 		if (!jobId) return
 		const triagedAt =
 			input.run.finishedAt ?? input.run.updatedAt ?? new Date().toISOString()
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE runs
 			SET error_triage = 'resolved',
 				triage_note = 'auto-resolved: later success of the same job',
@@ -2964,7 +3113,8 @@ class RunLogBase extends DurableObject<Env> {
 		run: RunLogRowInput
 		logs: Array<RunLogEntryInput>
 	}): Promise<{ ok: true; wrote: boolean }> {
-		const previousStatus = this.getRunStatus(input.run.id)
+		const previous = this.getRunStatusAndStartedAt(input.run.id)
+		const previousStatus = previous?.status ?? null
 		const existed = previousStatus != null
 		// Scheduled ticks release their idempotency key on platform interrupt so
 		// the occurrence can be claimed again. A late finish from the stranded
@@ -2989,6 +3139,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 			this.applyRunDayCountTransition({
 				previousStatus,
+				previousStartedAt: previous?.startedAt,
 				run: input.run,
 			})
 			this.recordTerminalRunSideEffects({
@@ -3010,7 +3161,7 @@ class RunLogBase extends DurableObject<Env> {
 	private findInvocationLedgerRow(
 		key: PackageInvocationLedgerKey,
 	): PackageInvocationLedgerRecord | null {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM package_invocation_ledger
 				WHERE token_id = ?
@@ -3030,7 +3181,7 @@ class RunLogBase extends DurableObject<Env> {
 	private getInvocationLedgerRowById(
 		id: string,
 	): PackageInvocationLedgerRecord | null {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM package_invocation_ledger WHERE id = ? LIMIT 1`,
 				id,
@@ -3090,7 +3241,7 @@ class RunLogBase extends DurableObject<Env> {
 				return { outcome: 'existing', record: existing }
 			}
 			nextState(packageInvocationState, existing.status, { type: 'CLAIM' })
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`UPDATE package_invocation_ledger
 				SET updated_at = ?, claim_owner = ?
 				WHERE id = ?`,
@@ -3110,7 +3261,7 @@ class RunLogBase extends DurableObject<Env> {
 				reclaimed: true,
 			}
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO package_invocation_ledger (
 				id, token_id, package_id, package_kody_id, export_name,
 				idempotency_key, request_hash, source, topic, claim_owner, status,
@@ -3201,7 +3352,7 @@ class RunLogBase extends DurableObject<Env> {
 						}
 					})(),
 				})
-				this.ctx.storage.sql.exec(
+				this.sql.exec(
 					`UPDATE package_invocation_ledger
 					SET status = ?, response_json = ?, updated_at = ?
 					WHERE id = ?`,
@@ -3280,7 +3431,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 		this.transactionSyncWithMetaCache(() => {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`UPDATE package_invocation_ledger
 				SET response_json = ?, updated_at = ?
 				WHERE id = ?`,
@@ -3351,7 +3502,7 @@ class RunLogBase extends DurableObject<Env> {
 				record: current,
 			}
 		}
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE package_invocation_ledger SET updated_at = ? WHERE id = ?`,
 			now,
 			input.invocationId,
@@ -3391,7 +3542,7 @@ class RunLogBase extends DurableObject<Env> {
 			current.status === 'in_progress' &&
 			current.updatedAt === input.claimUpdatedAt
 		if (released) {
-			this.ctx.storage.sql.exec(
+			this.sql.exec(
 				`DELETE FROM package_invocation_ledger WHERE id = ?`,
 				input.invocationId,
 			)
@@ -3450,7 +3601,7 @@ class RunLogBase extends DurableObject<Env> {
 		const terminalPlaceholders = workflowProjectionTerminalStatuses
 			.map(() => '?')
 			.join(', ')
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO workflow_projections (
 				id, binding_name, source_type, package_id, kody_id, source_id,
 				workflow_name, export_name, idempotency_key, run_at, plan_date,
@@ -3523,7 +3674,7 @@ class RunLogBase extends DurableObject<Env> {
 		}
 		const releasedKey = releasedWorkflowProjectionIdempotencyKey(id)
 		const now = new Date().toISOString()
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE workflow_projections
 			SET idempotency_key = ?, updated_at = ?
 			WHERE id = ?`,
@@ -3539,7 +3690,7 @@ class RunLogBase extends DurableObject<Env> {
 	async getWorkflowProjection(input: {
 		id: string
 	}): Promise<WorkflowProjectionRecord | null> {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM workflow_projections WHERE id = ? LIMIT 1`,
 				input.id,
@@ -3556,7 +3707,7 @@ class RunLogBase extends DurableObject<Env> {
 		if (!trimmedKey) return null
 		const bindingName = input.bindingName?.trim() || null
 		const row = bindingName
-			? this.ctx.storage.sql
+			? this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT *
 						FROM workflow_projections
@@ -3570,7 +3721,7 @@ class RunLogBase extends DurableObject<Env> {
 						creatingWorkflowProjectionStatus,
 					)
 					.toArray()[0]
-			: this.ctx.storage.sql
+			: this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT *
 						FROM workflow_projections
@@ -3596,7 +3747,7 @@ class RunLogBase extends DurableObject<Env> {
 		const bindingName = input.bindingName.trim()
 		const trimmedKey = input.idempotencyKey.trim()
 		if (!bindingName || !trimmedKey) return null
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT *
 				FROM workflow_projections
@@ -3658,7 +3809,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 		params.push(limit + 1)
-		const rows = this.ctx.storage.sql
+		const rows = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM workflow_projections
 				WHERE ${clauses.join(' AND ')}
@@ -3685,7 +3836,7 @@ class RunLogBase extends DurableObject<Env> {
 		const placeholders = workflowProjectionActiveStatuses
 			.map(() => '?')
 			.join(', ')
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ count: number }>(
 				`SELECT COUNT(*) AS count FROM workflow_projections
 				WHERE status IN (${placeholders})`,
@@ -3708,7 +3859,7 @@ class RunLogBase extends DurableObject<Env> {
 		const now = new Date().toISOString()
 		this.pruneStaleCreatingWorkflowProjections()
 
-		const existing = this.ctx.storage.sql
+		const existing = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM workflow_projections WHERE id = ? LIMIT 1`,
 				input.id,
@@ -3722,7 +3873,7 @@ class RunLogBase extends DurableObject<Env> {
 		const reservationPlaceholders = workflowProjectionReservationStatuses
 			.map(() => '?')
 			.join(', ')
-		const countRow = this.ctx.storage.sql
+		const countRow = this.sql
 			.exec<{ count: number }>(
 				`SELECT COUNT(*) AS count FROM workflow_projections
 				WHERE status IN (${reservationPlaceholders})
@@ -3752,7 +3903,7 @@ class RunLogBase extends DurableObject<Env> {
 			(existing ? String(existing['created_at']) : now)
 		const updatedAt = input.updatedAt?.trim() || now
 		const inserted = existing == null
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`INSERT INTO workflow_projections (
 				id, binding_name, source_type, package_id, kody_id, source_id,
 				workflow_name, export_name, idempotency_key, run_at, plan_date,
@@ -3802,7 +3953,7 @@ class RunLogBase extends DurableObject<Env> {
 	async deleteWorkflowProjectionIfCreating(input: {
 		id: string
 	}): Promise<{ deleted: boolean }> {
-		const deleted = this.ctx.storage.sql.exec(
+		const deleted = this.sql.exec(
 			`DELETE FROM workflow_projections
 			WHERE id = ? AND COALESCE(status, '') = ?`,
 			input.id,
@@ -3823,7 +3974,7 @@ class RunLogBase extends DurableObject<Env> {
 	 * reporting — never names, errors, logs, or user content.
 	 */
 	async getAdminInsightsSnapshot(): Promise<RunLogAdminInsightsSnapshot> {
-		const workflowRows = this.ctx.storage.sql
+		const workflowRows = this.sql
 			.exec<{ status: string; n: number }>(
 				`SELECT COALESCE(NULLIF(TRIM(status), ''), 'unknown') AS status,
 					COUNT(*) AS n
@@ -3832,13 +3983,13 @@ class RunLogBase extends DurableObject<Env> {
 				ORDER BY n DESC, status ASC`,
 			)
 			.toArray()
-		const milestones = this.ctx.storage.sql
+		const milestones = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM activation_milestones ORDER BY milestone ASC`,
 			)
 			.toArray()
 			.map(mapActivationMilestoneRow)
-		const jobRunCounts = this.ctx.storage.sql
+		const jobRunCounts = this.sql
 			.exec<{ error: number; success: number }>(
 				`SELECT
 					COALESCE(SUM(success_count), 0) AS success,
@@ -3885,7 +4036,7 @@ class RunLogBase extends DurableObject<Env> {
 		const refusalMatch = headerOnlyPlacementRefusalMarkers
 			.map(() => 'instr(error_message, ?) > 0')
 			.join(' OR ')
-		const refusalRows = this.ctx.storage.sql
+		const refusalRows = this.sql
 			.exec<CountRow>(
 				`SELECT package_id, COUNT(*) AS n,
 					MIN(started_at) AS first_at, MAX(started_at) AS last_at
@@ -3904,7 +4055,7 @@ class RunLogBase extends DurableObject<Env> {
 		const failedRows =
 			packageIds.length === 0
 				? []
-				: this.ctx.storage.sql
+				: this.sql
 						.exec<CountRow>(
 							`SELECT package_id, COUNT(*) AS n,
 								MIN(started_at) AS first_at, MAX(started_at) AS last_at
@@ -3943,39 +4094,23 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	/**
-	 * RunLog-only SQLite billing counters (SqlStorageCursor.rowsRead /
-	 * rowsWritten) for hot ops. Durable totals live in run_log_meta; the
-	 * isolate map is a fast path for the current lifetime.
+	 * Per-statement SqlStorageCursor.rowsRead / rowsWritten since stats were
+	 * initialized or last reset (including `clearAll()`), highest rows read
+	 * first. In-isolate only; `run_log_sql_rows` is partial history (top ten
+	 * statements per flushed window; the final window may remain unflushed).
 	 */
 	async getSqlBillingStats(): Promise<RunLogSqlBillingStats> {
-		const ops: Array<RunLogSqlBillingOpStats> = []
-		let rowsReadTotal = 0
-		let rowsWrittenTotal = 0
-		for (const op of runLogSqlBillingOps) {
-			const cached = this.sqlBillingByOp.get(op)
-			const rowsRead =
-				this.getMeta(sqlBillingMetaKey(op, 'rr')) ?? cached?.rowsRead ?? 0
-			const rowsWritten =
-				this.getMeta(sqlBillingMetaKey(op, 'rw')) ?? cached?.rowsWritten ?? 0
-			const calls =
-				this.getMeta(sqlBillingMetaKey(op, 'n')) ?? cached?.calls ?? 0
-			if (rowsRead === 0 && rowsWritten === 0 && calls === 0) continue
-			ops.push({ op, rowsRead, rowsWritten, calls })
-			rowsReadTotal += rowsRead
-			rowsWrittenTotal += rowsWritten
-		}
 		return {
 			databaseSize: this.ctx.storage.sql.databaseSize,
-			rowsReadTotal,
-			rowsWrittenTotal,
-			ops,
+			...this.sqlStats.snapshot(),
 		}
 	}
 
 	/**
 	 * Content-free schema + SQL-plan snapshot for cost diagnosis. Counts and
 	 * planner text only — never run rows, logs, or other user-authored values.
-	 * Uses raw `sql.exec` so these one-off scans do not increment billing ops.
+	 * Uses raw `ctx.storage.sql.exec` so these one-off scans skip the wrapped
+	 * `sql` and do not increment per-statement counters or platform rows-read.
 	 * First RPC on a never-used account initializes the same empty schema as
 	 * any other RunLog read.
 	 */
@@ -4046,7 +4181,7 @@ class RunLogBase extends DurableObject<Env> {
 	private getJobRunObservabilitySync(
 		jobId: string,
 	): JobRunObservabilityRecord | null {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM job_run_observability WHERE job_id = ? LIMIT 1`,
 				jobId,
@@ -4071,7 +4206,7 @@ class RunLogBase extends DurableObject<Env> {
 		]
 		if (ids.length === 0) return []
 		const placeholders = ids.map(() => '?').join(', ')
-		return this.ctx.storage.sql
+		return this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM job_run_observability
 				WHERE job_id IN (${placeholders})
@@ -4083,7 +4218,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	async listPackageRunSuccesses(): Promise<Array<PackageRunSuccessRecord>> {
-		return this.ctx.storage.sql
+		return this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM package_run_successes ORDER BY package_id ASC`,
 			)
@@ -4092,7 +4227,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	async listActivationMilestones(): Promise<Array<ActivationMilestoneRecord>> {
-		return this.ctx.storage.sql
+		return this.sql
 			.exec<Record<string, SqlStorageValue>>(
 				`SELECT * FROM activation_milestones ORDER BY milestone ASC`,
 			)
@@ -4102,7 +4237,7 @@ class RunLogBase extends DurableObject<Env> {
 
 	/** Guest merge: page every run (with its log lines) out of this owner. */
 	async countRunHistory(): Promise<number> {
-		const row = this.ctx.storage.sql
+		const row = this.sql
 			.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM runs`)
 			.one()
 		return Number(row.n ?? 0) || 0
@@ -4113,7 +4248,7 @@ class RunLogBase extends DurableObject<Env> {
 		limit: number
 	}): Promise<RunHistoryTransferPage> {
 		const limit = Math.max(1, Math.min(Math.floor(input.limit), 50))
-		const runs = this.ctx.storage.sql
+		const runs = this.sql
 			.exec(
 				`SELECT * FROM runs WHERE id > ? ORDER BY id LIMIT ?`,
 				input.afterId ?? '',
@@ -4123,7 +4258,7 @@ class RunLogBase extends DurableObject<Env> {
 		const ids = runs.map((row) => String(row.id))
 		const logs =
 			ids.length > 0
-				? (this.ctx.storage.sql
+				? (this.sql
 						.exec(
 							`SELECT * FROM run_logs WHERE run_id IN (${ids.map(() => '?').join(', ')})`,
 							...ids,
@@ -4148,7 +4283,7 @@ class RunLogBase extends DurableObject<Env> {
 			['run_logs', input.logs],
 		] as const) {
 			const known = new Set(
-				this.ctx.storage.sql
+				this.sql
 					.exec(`PRAGMA table_info(${table})`)
 					.toArray()
 					.map((column) => String(column.name)),
@@ -4156,7 +4291,7 @@ class RunLogBase extends DurableObject<Env> {
 			for (const row of rows) {
 				const columns = Object.keys(row).filter((key) => known.has(key))
 				if (columns.length === 0) continue
-				const cursor = this.ctx.storage.sql.exec(
+				const cursor = this.sql.exec(
 					`INSERT OR IGNORE INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
 					...columns.map((key) => row[key] ?? null),
 				)
@@ -4233,15 +4368,16 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 		params.push(limit + 1)
-		const rows = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'listRuns',
-			`SELECT r.*
+		const rows = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE ${clauses.join(' AND ')}
 			ORDER BY r.started_at DESC, r.id DESC
 			LIMIT ?`,
-			...params,
-		).toArray()
+				...params,
+			)
+			.toArray()
 		const hasMore = rows.length > limit
 		const pageRows = hasMore ? rows.slice(0, limit) : rows
 		const runs = pageRows
@@ -4265,23 +4401,24 @@ class RunLogBase extends DurableObject<Env> {
 	async getRun(input: {
 		runId: string
 	}): Promise<{ run: RunRecord; logs: Array<RunRecordLog> } | null> {
-		const row = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'getRun',
-			`SELECT r.*
+		const row = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE r.id = ?
 			LIMIT 1`,
-			input.runId,
-		).toArray()[0]
+				input.runId,
+			)
+			.toArray()[0]
 		if (!row) return null
 		const run = this.healStaleRunningRecord(
 			mapRunRow(row, Number(row['log_count'] ?? 0) || 0),
 		)
-		const logs = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'getRun',
-			`SELECT * FROM run_logs WHERE run_id = ? ORDER BY sequence ASC`,
-			input.runId,
-		)
+		const logs = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT * FROM run_logs WHERE run_id = ? ORDER BY sequence ASC`,
+				input.runId,
+			)
 			.toArray()
 			.map(mapLogRow)
 		return {
@@ -4307,18 +4444,19 @@ class RunLogBase extends DurableObject<Env> {
 	}): Promise<Array<RunRecord>> {
 		const workflowId = input.workflowId.trim()
 		if (!workflowId) return []
-		const rows = this.execSqlTracked<{
-			id: string
-			started_at: string
-			idempotency_key: string | null
-		}>(
-			'healStaleRunning',
-			`SELECT id, started_at, idempotency_key FROM runs
+		const rows = this.sql
+			.exec<{
+				id: string
+				started_at: string
+				idempotency_key: string | null
+			}>(
+				`SELECT id, started_at, idempotency_key FROM runs
 			WHERE workflow_id = ? AND surface = 'workflow' AND status = 'running'
 			LIMIT ?`,
-			workflowId,
-			maxStaleRunningReconcilesPerPass,
-		).toArray()
+				workflowId,
+				maxStaleRunningReconcilesPerPass,
+			)
+			.toArray()
 		const finishedAt = new Date().toISOString()
 		const ids: Array<string> = []
 		for (const row of rows) {
@@ -4342,11 +4480,11 @@ class RunLogBase extends DurableObject<Env> {
 		if (ids.length === 0) return []
 		await this.ensureRetentionAlarm()
 		const placeholders = ids.map(() => '?').join(', ')
-		return this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'healStaleRunning',
-			`SELECT r.* FROM runs r WHERE r.id IN (${placeholders})`,
-			...ids,
-		)
+		return this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.* FROM runs r WHERE r.id IN (${placeholders})`,
+				...ids,
+			)
 			.toArray()
 			.map((row) => mapRunRow(row, Number(row['log_count'] ?? 0) || 0))
 	}
@@ -4362,15 +4500,15 @@ class RunLogBase extends DurableObject<Env> {
 		const countsSince = this.runDayCountsCoverageSince()
 		const lowerDay =
 			countsSince != null && countsSince > sinceDay ? countsSince : sinceDay
-		const buckets = this.execSqlTracked<WorkspaceRunBucket>(
-			'summarize',
-			`SELECT day, surface, status, count
+		const buckets = this.sql
+			.exec<WorkspaceRunBucket>(
+				`SELECT day, surface, status, count
 			FROM run_day_counts
 			WHERE day >= ? AND day <= ?
 			ORDER BY day, surface, status`,
-			lowerDay,
-			untilDay,
-		)
+				lowerDay,
+				untilDay,
+			)
 			.toArray()
 			.map((row) => ({
 				day: String(row.day),
@@ -4391,16 +4529,16 @@ class RunLogBase extends DurableObject<Env> {
 		if (this.summarizeMemo?.cacheKey === cacheKey) {
 			return { ...this.summarizeMemo.summary, since }
 		}
-		const bySurfaceRows = this.execSqlTracked<{
-			surface: string
-			total: number
-			errors: number
-			ignored: number
-			resolved: number
-			running: number
-		}>(
-			'summarize',
-			`SELECT
+		const bySurfaceRows = this.sql
+			.exec<{
+				surface: string
+				total: number
+				errors: number
+				ignored: number
+				resolved: number
+				running: number
+			}>(
+				`SELECT
 				surface,
 				COUNT(*) AS total,
 				SUM(CASE
@@ -4414,8 +4552,9 @@ class RunLogBase extends DurableObject<Env> {
 			WHERE started_at >= ?
 			GROUP BY surface
 			ORDER BY surface ASC`,
-			since,
-		).toArray()
+				since,
+			)
+			.toArray()
 		let total = 0
 		let errors = 0
 		let ignored = 0
@@ -4460,14 +4599,15 @@ class RunLogBase extends DurableObject<Env> {
 	async updateRunErrorTriage(
 		input: UpdateRunErrorTriageInput,
 	): Promise<UpdateRunErrorTriageResult> {
-		const existing = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'updateRunErrorTriage',
-			`SELECT r.*
+		const existing = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE r.id = ?
 			LIMIT 1`,
-			input.runId,
-		).toArray()[0]
+				input.runId,
+			)
+			.toArray()[0]
 		if (!existing) return { ok: false, reason: 'not_found' }
 
 		const current = mapRunRow(existing, Number(existing['log_count'] ?? 0) || 0)
@@ -4505,7 +4645,7 @@ class RunLogBase extends DurableObject<Env> {
 			triagedBy = input.triagedBy.trim() || null
 		}
 
-		this.ctx.storage.sql.exec(
+		this.sql.exec(
 			`UPDATE runs
 			SET error_triage = ?,
 				triage_note = ?,
@@ -4522,14 +4662,15 @@ class RunLogBase extends DurableObject<Env> {
 		)
 		this.invalidateReadMemos()
 
-		const updated = this.execSqlTracked<Record<string, SqlStorageValue>>(
-			'updateRunErrorTriage',
-			`SELECT r.*
+		const updated = this.sql
+			.exec<Record<string, SqlStorageValue>>(
+				`SELECT r.*
 			FROM runs r
 			WHERE r.id = ?
 			LIMIT 1`,
-			input.runId,
-		).toArray()[0]
+				input.runId,
+			)
+			.toArray()[0]
 		if (!updated) return { ok: false, reason: 'not_found' }
 		return {
 			ok: true,
@@ -4608,7 +4749,7 @@ class RunLogBase extends DurableObject<Env> {
 			}
 		}
 
-		const rows = this.ctx.storage.sql
+		const rows = this.sql
 			.exec<{ id: string }>(
 				`SELECT id FROM runs
 				WHERE ${clauses.join(' AND ')}
@@ -4631,7 +4772,7 @@ class RunLogBase extends DurableObject<Env> {
 					maxD1BoundParameters - 1,
 				)) {
 					const placeholders = runIdChunk.map(() => '?').join(', ')
-					this.ctx.storage.sql.exec(
+					this.sql.exec(
 						`UPDATE runs
 						SET error_triage = NULL,
 							triage_note = NULL,
@@ -4654,7 +4795,7 @@ class RunLogBase extends DurableObject<Env> {
 					maxD1BoundParameters - 6,
 				)) {
 					const placeholders = runIdChunk.map(() => '?').join(', ')
-					this.ctx.storage.sql.exec(
+					this.sql.exec(
 						`UPDATE runs
 						SET error_triage = ?,
 							triage_note = CASE WHEN ? = 1 THEN triage_note ELSE ? END,
@@ -4682,7 +4823,7 @@ class RunLogBase extends DurableObject<Env> {
 	}
 
 	async listStorageIds(): Promise<Array<string>> {
-		return this.ctx.storage.sql
+		return this.sql
 			.exec<{ storage_id: string }>(
 				`SELECT DISTINCT storage_id AS storage_id
 				FROM runs
@@ -4976,8 +5117,7 @@ class RunLogBase extends DurableObject<Env> {
 			case 'runs': {
 				const rows = (
 					input.startAfterId
-						? this.execSqlTracked<Record<string, SqlStorageValue>>(
-								'exportRuns',
+						? this.sql.exec<Record<string, SqlStorageValue>>(
 								`SELECT r.*
 								FROM runs r
 								WHERE r.id > ?
@@ -4986,8 +5126,7 @@ class RunLogBase extends DurableObject<Env> {
 								input.startAfterId,
 								limit + 1,
 							)
-						: this.execSqlTracked<Record<string, SqlStorageValue>>(
-								'exportRuns',
+						: this.sql.exec<Record<string, SqlStorageValue>>(
 								`SELECT r.*
 								FROM runs r
 								ORDER BY r.id ASC
@@ -5002,11 +5141,11 @@ class RunLogBase extends DurableObject<Env> {
 				)
 				const logs: Array<RunRecordLog> = []
 				for (const run of runs) {
-					const runLogs = this.execSqlTracked<Record<string, SqlStorageValue>>(
-						'exportRuns',
-						`SELECT * FROM run_logs WHERE run_id = ? ORDER BY sequence ASC`,
-						run.id,
-					)
+					const runLogs = this.sql
+						.exec<Record<string, SqlStorageValue>>(
+							`SELECT * FROM run_logs WHERE run_id = ? ORDER BY sequence ASC`,
+							run.id,
+						)
 						.toArray()
 						.map(mapLogRow)
 					logs.push(...runLogs)
@@ -5022,7 +5161,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'invocation-ledger': {
-				const rows = this.ctx.storage.sql
+				const rows = this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT * FROM package_invocation_ledger
 						WHERE id > ?
@@ -5044,7 +5183,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'workflow-projections': {
-				const rows = this.ctx.storage.sql
+				const rows = this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT * FROM workflow_projections
 						WHERE id > ?
@@ -5066,7 +5205,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'job-run-observability': {
-				const rows = this.ctx.storage.sql
+				const rows = this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT * FROM job_run_observability
 						WHERE job_id > ?
@@ -5088,7 +5227,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'package-run-successes': {
-				const rows = this.ctx.storage.sql
+				const rows = this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT * FROM package_run_successes
 						WHERE package_id > ?
@@ -5110,11 +5249,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'skill-reads': {
-				const page = exportSkillReads(
-					this.ctx.storage.sql,
-					input.startAfterId,
-					limit,
-				)
+				const page = exportSkillReads(this.sql, input.startAfterId, limit)
 				return {
 					...empty,
 					skillReads: page.events,
@@ -5124,7 +5259,7 @@ class RunLogBase extends DurableObject<Env> {
 				}
 			}
 			case 'activation-milestones': {
-				const rows = this.ctx.storage.sql
+				const rows = this.sql
 					.exec<Record<string, SqlStorageValue>>(
 						`SELECT * FROM activation_milestones
 						WHERE milestone > ?
@@ -5162,7 +5297,7 @@ class RunLogBase extends DurableObject<Env> {
 		this.runCountCache = null
 		this.finishesSinceRetentionCache = null
 		this.summarizeMemo = null
-		this.sqlBillingByOp.clear()
+		this.sqlStats.reset()
 		this.initializeSchema()
 		this.setMeta(metaRunCountKey, 0)
 		this.setMeta(metaFinishesSinceRetentionKey, 0)
@@ -5201,7 +5336,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	}) => Promise<SkillReadSummary>
 	recordPackageAppCpuSample: (sample: PackageAppCpuSample) => Promise<void>
 	packageAppCpuSummary: () => Promise<PackageAppCpuSummary>
-	startRun: (input: { run: RunLogRowInput }) => Promise<{ ok: true }>
+	startRun: (input: {
+		run: RunLogRowInput
+		staleAfter?: string | null
+	}) => Promise<{ ok: true }>
 	claimRun: (input: { run: RunLogRowInput }) => Promise<{
 		claimed: boolean
 		run: RunRecord
@@ -5236,6 +5374,17 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	deleteRunIfRunning: (input: {
 		runId: string
 	}) => Promise<{ deleted: boolean }>
+	startWebhookDeliveryAttempt: (input: {
+		run: RunLogRowInput
+		staleAfter: string
+		limit: number
+	}) => Promise<{ started: boolean; inFlight: number }>
+	claimPackageEventSlot: (input: {
+		id: string
+		limit: number
+		expiresAt: string
+	}) => Promise<{ claimed: boolean; inFlight: number }>
+	releasePackageEventSlot: (input: { id: string }) => Promise<void>
 	updateRunningMetadata: (input: {
 		runId: string
 		metadataJson: string

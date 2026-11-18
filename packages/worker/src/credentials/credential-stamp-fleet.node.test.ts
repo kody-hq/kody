@@ -28,6 +28,8 @@ import { readPublishedCredentialStamp } from '#worker/package-runtime/published-
 import {
 	isCredentialStampScanBudgetFailure,
 	runCredentialStampFleet,
+	runIsolatedCredentialStampFleetPackage,
+	type IsolatedCredentialStampFleetPackageRequest,
 } from './credential-stamp-fleet.ts'
 import {
 	resolvePublishedCredentialDepStamps,
@@ -42,6 +44,42 @@ const storeStamp = vi.mocked(storePublishedCredentialStamp)
 vi.mocked(resolvePublishedCredentialDepStamps)
 
 const ownerUserId = ownerIdFromStored('org-1')
+
+/**
+ * `REPO_SESSION` stand-in: every `get` is a separate isolate whose input and
+ * result cross a structured-clone boundary like Durable Object RPC. Pass
+ * `isolate` to stand in for the scan isolate, for example to make it reset.
+ */
+function envWithScanIsolates(
+	isolate?: (
+		input: IsolatedCredentialStampFleetPackageRequest,
+	) => Promise<unknown>,
+) {
+	const isolateNames: Array<string> = []
+	const env = {
+		REPO_SESSION: {
+			idFromName(name: string) {
+				isolateNames.push(name)
+				return name
+			},
+			get() {
+				return {
+					async scanIsolatedCredentialStampFleetPackage(
+						input: IsolatedCredentialStampFleetPackageRequest,
+					) {
+						const cloned = structuredClone(input)
+						return structuredClone(
+							isolate
+								? await isolate(cloned)
+								: await runIsolatedCredentialStampFleetPackage(env, cloned),
+						)
+					},
+				}
+			},
+		},
+	} as unknown as Env
+	return { env, isolateNames }
+}
 
 function savedPackage(id: string) {
 	return {
@@ -171,7 +209,7 @@ test('credential stamp fleet dry-run classifies stamped, needs_manifest, and unc
 	})
 
 	const result = await runCredentialStampFleet({
-		env: {} as Env,
+		env: envWithScanIsolates().env,
 		baseUrl: 'https://heykody.dev',
 		dryRun: true,
 		limit: 10,
@@ -191,15 +229,12 @@ test('credential stamp fleet dry-run classifies stamped, needs_manifest, and unc
 		'skipped_unpublished',
 	])
 	expect(result.unconvertibleFailureCodes).toContain('non_literal')
-	const unconvertible = result.outcomes.find(
-		(row) => row.outcome === 'unconvertible',
-	)
-	expect(unconvertible?.outcome).toBe('unconvertible')
-	if (unconvertible?.outcome === 'unconvertible') {
-		expect(unconvertible.blockingFailureCodes).toContain('non_literal')
-		expect(unconvertible.blockingFailures.length).toBeGreaterThan(0)
-		expect(unconvertible.blockingFailures[0]?.code).toBe('non_literal')
-	}
+	expect(result.outcomes.find((row) => row.packageId === 'bad')).toMatchObject({
+		packageName: '@acme/bad',
+		outcome: 'unconvertible',
+		blockingFailureCodes: expect.arrayContaining(['non_literal']),
+		blockingFailures: [expect.objectContaining({ code: 'non_literal' })],
+	})
 	expect(storeStamp).not.toHaveBeenCalled()
 })
 
@@ -247,7 +282,7 @@ test('credential stamp fleet scopes nested package files before seal planning', 
 	readStamp.mockResolvedValueOnce(null)
 
 	const result = await runCredentialStampFleet({
-		env: {} as Env,
+		env: envWithScanIsolates().env,
 		baseUrl: 'https://heykody.dev',
 		dryRun: true,
 		limit: 5,
@@ -298,7 +333,7 @@ test('credential stamp fleet restamps when existing stamp keys are stale', async
 	})
 
 	const result = await runCredentialStampFleet({
-		env: {} as Env,
+		env: envWithScanIsolates().env,
 		baseUrl: 'https://heykody.dev',
 		dryRun: true,
 		limit: 5,
@@ -335,7 +370,7 @@ test('credential stamp fleet apply restamps seal-ready packages missing a stamp'
 	})
 
 	const result = await runCredentialStampFleet({
-		env: {} as Env,
+		env: envWithScanIsolates().env,
 		baseUrl: 'https://heykody.dev',
 		dryRun: false,
 		limit: 5,
@@ -378,7 +413,7 @@ test('credential stamp fleet classifies DO CPU resets as deferred_scan_budget, n
 	)
 
 	const result = await runCredentialStampFleet({
-		env: {} as Env,
+		env: envWithScanIsolates().env,
 		baseUrl: 'https://heykody.dev',
 		dryRun: true,
 		limit: 5,
@@ -388,4 +423,106 @@ test('credential stamp fleet classifies DO CPU resets as deferred_scan_budget, n
 	expect(result.unconvertiblePackages).toBe(0)
 	expect(result.failedPackages).toBe(0)
 	expect(result.outcomes[0]?.outcome).toBe('deferred_scan_budget')
+})
+
+test('credential stamp fleet scans each published package in its own throwaway isolate, never the calling one', async () => {
+	listPage.mockResolvedValueOnce([
+		savedPackage('one'),
+		savedPackage('two'),
+		savedPackage('draft'),
+	] as never)
+	loadRow
+		.mockResolvedValueOnce(sourceRow('one', 'commit-one') as never)
+		.mockResolvedValueOnce(sourceRow('two', 'commit-two') as never)
+		.mockResolvedValueOnce(sourceRow('draft', null) as never)
+	loadSource.mockClear()
+	const scannedInIsolate: Array<string> = []
+	const { env, isolateNames } = envWithScanIsolates(async (request) => {
+		scannedInIsolate.push(request.packageId)
+		return {
+			outcome: {
+				packageId: request.packageId,
+				ownerUserId: request.ownerUserId,
+				packageName: request.packageName,
+				kodyId: request.kodyId,
+				sourceId: request.sourceId,
+				publishedCommit: request.publishedCommit,
+				stampKeyCount: 0,
+				outcome: 'stamped',
+			},
+			missingStamp: false,
+		}
+	})
+
+	const result = await runCredentialStampFleet({
+		env,
+		baseUrl: 'https://heykody.dev',
+		dryRun: true,
+		limit: 10,
+	})
+
+	// The calling isolate never loads a package source; only the isolates do.
+	expect(loadSource).not.toHaveBeenCalled()
+	expect(scannedInIsolate).toEqual(['one', 'two'])
+	expect(isolateNames).toHaveLength(2)
+	expect(new Set(isolateNames).size).toBe(2)
+	for (const name of isolateNames) {
+		expect(name).toMatch(/^isolated-credential-stamp-fleet-/)
+	}
+	expect(result.publishedPackages).toBe(2)
+	expect(result.stampedPackages).toBe(2)
+	expect(result.skippedUnpublished).toBe(1)
+})
+
+test('credential stamp fleet defers a package whose scan isolate exceeds its memory limit and keeps scanning', async () => {
+	listPage.mockResolvedValueOnce([
+		savedPackage('huge'),
+		savedPackage('small'),
+	] as never)
+	loadRow
+		.mockResolvedValueOnce(sourceRow('huge', 'commit-huge') as never)
+		.mockResolvedValueOnce(sourceRow('small', 'commit-small') as never)
+	loadSource.mockResolvedValueOnce(
+		loadedSource(
+			'small',
+			{
+				'package.json': JSON.stringify({
+					name: '@acme/small',
+					exports: { '.': './index.ts' },
+					kody: { id: 'small', description: 'Demo.' },
+				}),
+				'index.ts': 'export default async () => 1',
+			},
+			'commit-small',
+		) as never,
+	)
+	readStamp.mockResolvedValueOnce(null as never)
+	const { env } = envWithScanIsolates(async (request) => {
+		if (request.packageId === 'huge') {
+			throw new Error(
+				"Durable Object's isolate exceeded its memory limit and was reset.",
+			)
+		}
+		return await runIsolatedCredentialStampFleetPackage(env, request)
+	})
+
+	const result = await runCredentialStampFleet({
+		env,
+		baseUrl: 'https://heykody.dev',
+		dryRun: true,
+		limit: 10,
+	})
+
+	expect(result.outcomes.map((outcome) => outcome.outcome)).toEqual([
+		'deferred_scan_budget',
+		'would_restamp',
+	])
+	expect(result.outcomes[0]).toMatchObject({
+		packageId: 'huge',
+		publishedCommit: 'commit-huge',
+	})
+	expect(result.deferredScanBudgetPackages).toBe(1)
+	expect(result.failedPackages).toBe(0)
+	expect(result.publishedPackages).toBe(2)
+	expect(result.missingStampPackages).toBe(1)
 })

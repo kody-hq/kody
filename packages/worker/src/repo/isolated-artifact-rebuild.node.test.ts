@@ -1,5 +1,6 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
 import {
 	createIsolatedArtifactRebuildRunner,
 	isolatedArtifactRebuildStagingKeyBelongsToUser,
@@ -118,4 +119,172 @@ test('runner touches staging TTL, fans out one target chunk per throwaway DO, an
 
 	await runner.discard(stagingKey)
 	expect(del).toHaveBeenCalledWith(stagingKey)
+})
+
+test('targets that build the same bundle share one isolate chunk', async () => {
+	const { chunkArtifactTargetsPerIsolate, isolatedArtifactRebuildChunkSize } =
+		await import('./isolated-artifact-rebuild.ts')
+	// The reported shape: an export and five jobs on one entry file that
+	// statically imports a large kody:@ package.
+	const jobTargets = [
+		'daily-week-0635-0650',
+		'daily-week-0640-0655',
+		'daily-week-0645',
+		'daily-week-0700',
+		'daily-week-check',
+	].map((artifactName) => ({
+		kind: 'job' as const,
+		artifactName,
+		entryPoint: 'src/job.ts',
+		bundleKind: 'module' as const,
+	}))
+	const targets = [
+		{
+			kind: 'module' as const,
+			artifactName: '.',
+			entryPoint: 'src/job.ts',
+			bundleKind: 'module' as const,
+		},
+		{
+			kind: 'importable-module' as const,
+			artifactName: '.',
+			entryPoint: 'src/job.ts',
+			bundleKind: 'importable-module' as const,
+		},
+		...jobTargets,
+	]
+	const chunks = chunkArtifactTargetsPerIsolate(targets)
+	expect(chunks).toHaveLength(1)
+	expect(new Set(chunks[0])).toEqual(new Set(targets))
+	const distinctEntries = Array.from(
+		{ length: isolatedArtifactRebuildChunkSize + 1 },
+		(_, index) => ({
+			kind: 'job' as const,
+			artifactName: `job-${index}`,
+			entryPoint: `src/job-${index}.ts`,
+			bundleKind: 'module' as const,
+		}),
+	)
+	expect(
+		chunkArtifactTargetsPerIsolate([...distinctEntries, ...jobTargets]).map(
+			(chunk) => chunk.length,
+		),
+	).toEqual([isolatedArtifactRebuildChunkSize, 1 + jobTargets.length])
+})
+
+test('memoized builders build an export and the jobs on its entry once', async () => {
+	const {
+		buildPublishedPackageArtifactTargetBundle,
+		memoizePublishedPackageArtifactBuilders,
+	} =
+		await import('#worker/package-runtime/published-bundle-artifact-persist.ts')
+	const calls: Array<string> = []
+	const bundle = (label: string) => async (args: { entryPoint: string }) => {
+		calls.push(`${label}:${args.entryPoint}`)
+		return { mainModule: 'bundle.js', modules: {}, dependencies: [] }
+	}
+	const builders = memoizePublishedPackageArtifactBuilders({
+		buildAppBundle: bundle('app'),
+		buildAppClientBundle: bundle('app-client'),
+		buildModuleBundle: bundle('module'),
+		buildImportableModuleBundle: bundle('importable-module'),
+	})
+	const targets: Array<PublishedPackageArtifactBuildTarget> = [
+		{ kind: 'module', entryPoint: 'src/job.ts', bundleKind: 'module' },
+		{
+			kind: 'importable-module',
+			entryPoint: 'src/job.ts',
+			bundleKind: 'importable-module',
+		},
+		...['a', 'b', 'c', 'd', 'e'].map(
+			(artifactName): PublishedPackageArtifactBuildTarget => ({
+				kind: 'job',
+				artifactName,
+				entryPoint: 'src/job.ts',
+				bundleKind: 'module',
+			}),
+		),
+		{
+			kind: 'job',
+			artifactName: 'f',
+			entryPoint: 'src/other.ts',
+			bundleKind: 'module',
+		},
+	]
+	const built = await Promise.all(
+		targets.map((target) =>
+			buildPublishedPackageArtifactTargetBundle({ ...builders, target }),
+		),
+	)
+	expect(calls.sort()).toEqual([
+		'importable-module:src/job.ts',
+		'module:src/job.ts',
+		'module:src/other.ts',
+	])
+	expect(built[0]).toBe(built[2])
+})
+
+test('the reuse scan spreads a 65-artifact package over throwaway isolates and maps indexes back', async () => {
+	const { isolatedArtifactReuseScanChunkSize } =
+		await import('./isolated-artifact-rebuild.ts')
+	const targets = Array.from({ length: 65 }, (_, index) => ({
+		kind: 'module' as const,
+		artifactName: `./export-${index}`,
+		entryPoint: `src/export-${index}.ts`,
+		bundleKind: 'module' as const,
+	}))
+	// Every third target changed since the published commit.
+	const runIsolatedArtifactReuseScan = vi.fn(
+		async (request: {
+			targets: Array<{ entryPoint: string }>
+		}): Promise<{ ok: true; reusableIndexes: Array<number> }> => ({
+			ok: true,
+			reusableIndexes: request.targets.flatMap((target, index) =>
+				Number(target.entryPoint.match(/\d+/)![0]) % 3 === 0 ? [] : [index],
+			),
+		}),
+	)
+	const idFromName = vi.fn((name: string) => ({ name }))
+	const runner = createIsolatedArtifactRebuildRunner({
+		REPO_SESSION: {
+			idFromName,
+			get: vi.fn(() => ({ runIsolatedArtifactReuseScan })),
+		},
+		BUNDLE_ARTIFACTS_KV: { put: vi.fn(), get: vi.fn(), delete: vi.fn() },
+	} as unknown as Env)
+	if (!runner) throw new Error('expected runner')
+	const request = {
+		stagingKey: `${isolatedArtifactRebuildStagingKeyPrefix}user-1:stage-1`,
+		userId: ownerIdFromStored('user-1'),
+		source: { id: 'source-1', manifest_path: 'package.json', source_root: '/' },
+		targets,
+	}
+	const outcome = await runner.reuseScan(request)
+	expect(
+		runIsolatedArtifactReuseScan.mock.calls.map(
+			([chunk]) => chunk.targets.length,
+		),
+	).toEqual([
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		isolatedArtifactReuseScanChunkSize,
+		1,
+	])
+	expect(new Set(idFromName.mock.calls.map(([name]) => name)).size).toBe(5)
+	expect(outcome).toEqual({
+		ok: true,
+		reusableIndexes: targets.flatMap((_, index) =>
+			index % 3 === 0 ? [] : [index],
+		),
+	})
+
+	runIsolatedArtifactReuseScan.mockRejectedValueOnce(
+		new Error(
+			"Durable Object's isolate exceeded its memory limit and was reset.",
+		),
+	)
+	const reset = await runner.reuseScan(request)
+	expect(reset.ok).toBe(false)
+	expect(reset.ok ? '' : reset.message).toContain('memory or CPU limits')
 })

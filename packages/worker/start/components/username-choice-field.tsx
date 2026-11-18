@@ -9,7 +9,7 @@ import {
 import { useServerFn } from '@tanstack/react-start'
 import {
 	handleFormatHint,
-	getHandleFormatError,
+	getHandleFormatProblem,
 } from '@kody-internal/shared/handle-rules.ts'
 import {
 	handleEmailLocalPreview,
@@ -26,13 +26,18 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	authFieldCss,
-	authFieldLabelCss,
-	getAuthInputCss,
+	fieldCss,
+	fieldLabelCss,
 	hoverMq,
+	getSquircleCss,
 } from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
 import { renderIcon } from './icon.tsx'
+import { Input } from './input.tsx'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from './handle-suggestion.tsx'
 export type UsernameAvailabilityView = AvailabilityView
 
 export type UsernameChoiceSeeds = {
@@ -102,7 +107,7 @@ export function UsernameChoiceField(props: {
 			return
 		}
 
-		const formatError = getHandleFormatError(trimmed)
+		const formatError = getHandleFormatProblem(trimmed)?.message
 		if (formatError) {
 			setAvailability({
 				...({
@@ -239,6 +244,13 @@ export function UsernameChoiceField(props: {
 		setAvailability,
 	])
 
+	const inputRef = useRef<HTMLInputElement>(null)
+	const formatProblem = props.value.trim()
+		? getHandleFormatProblem(props.value.trim())
+		: null
+	const formatSuggestion = useVerifiedHandleSuggestion(
+		formatProblem?.suggestion ?? null,
+	)
 	const preview = props.value.trim().toLowerCase() || 'your-username'
 	const suggestions =
 		availability.status === 'taken' ||
@@ -255,13 +267,14 @@ export function UsernameChoiceField(props: {
 		.join(' ')
 
 	function applySuggestion(suggestion: string) {
+		inputRef.current?.focus()
 		props.onChange(suggestion)
 	}
 
 	return (
-		<div css={authFieldCss}>
+		<div css={fieldCss}>
 			<div css={labelRowCss}>
-				<label htmlFor={inputId} css={authFieldLabelCss}>
+				<label htmlFor={inputId} css={fieldLabelCss}>
 					Username
 				</label>
 				<button
@@ -290,24 +303,24 @@ export function UsernameChoiceField(props: {
 					</p>
 				</div>
 			</div>
-			<input
+			<Input
+				ref={inputRef}
 				id={inputId}
 				type="text"
 				name="username"
 				required
 				autoFocus={props.autoFocus}
 				autoComplete="username"
-				placeholder="kent"
+				placeholder="yourname"
 				disabled={props.disabled}
 				value={props.value}
-				data-field-ring
 				aria-invalid={props.invalid ? true : undefined}
 				aria-describedby={describedBy}
 				{...permanentHandleInputProps({ caseInsensitivePattern: true })}
 				onChange={(event: ChangeEvent<HTMLInputElement>) =>
 					props.onChange(event.currentTarget.value)
 				}
-				css={authInputCss}
+				background="canvas"
 			/>
 			<div css={statusRowCss}>
 				<p
@@ -318,6 +331,13 @@ export function UsernameChoiceField(props: {
 					data-status={availability.status}
 				>
 					{availabilityMessage(availability)}
+					{formatProblem && availability.status === 'invalid' ? (
+						<HandleSuggestion
+							suggestion={formatSuggestion}
+							onApply={applySuggestion}
+							disabled={props.disabled}
+						/>
+					) : null}
 				</p>
 				{suggestions.length > 0 ? (
 					<ul css={suggestionsCss} aria-label="Available username suggestions">
@@ -369,8 +389,6 @@ function availabilityMessage(view: UsernameAvailabilityView) {
 	}
 }
 
-const authInputCss = getAuthInputCss({ background: 'canvas' })
-
 const labelRowCss: CSSObject = {
 	display: 'flex',
 	alignItems: 'center',
@@ -389,7 +407,7 @@ const tipButtonCss: CSSObject = {
 	height: '1.55rem',
 	padding: 0,
 	border: 'none',
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	background: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',

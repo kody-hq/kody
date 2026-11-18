@@ -2,7 +2,7 @@ import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	hasArtifactsAccess,
 	type ArtifactBootstrapAccess,
-	isLoopbackArtifactsRemote,
+	isSnapshotOnlyArtifactsRemote,
 	resolveExistingArtifactSourceRepo,
 } from './artifacts.ts'
 import {
@@ -10,6 +10,7 @@ import {
 	writeArtifactSourceSnapshot,
 } from './artifact-source-snapshot.ts'
 import { createSnapshotFilesWorkspace, runRepoChecks } from './checks.ts'
+import { sourceSyncSessionIdPrefix } from './repo-session-due.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { getEntitySourceById, updateEntitySource } from './entity-sources.ts'
 import {
@@ -42,6 +43,14 @@ type SyncArtifactSourceInput = {
 	baseUrl: string
 	sourceId: string | null
 	files: Record<string, string>
+	/**
+	 * Publishing an existing source writes only these paths from `files`
+	 * instead of every file. `files` stays the full tree. Write edits encode
+	 * content as UTF-8, so callers holding a loaded snapshot (where binary
+	 * files are byte-for-byte strings) must not write files they did not
+	 * change.
+	 */
+	editPaths?: ReadonlyArray<string>
 	bootstrapAccess?: ArtifactBootstrapAccess | null
 	/**
 	 * First-publish a storage-layer fork from dest HEAD. Applies `files` on
@@ -149,7 +158,7 @@ function canSyncArtifactSource(env: Env) {
 }
 
 function buildSyncSessionId(sourceId: string) {
-	return `source-sync-${sourceId}-${crypto.randomUUID()}`
+	return `${sourceSyncSessionIdPrefix}${sourceId}-${crypto.randomUUID()}`
 }
 
 async function writePublishedSnapshotWithRevert(input: {
@@ -179,11 +188,13 @@ async function writePublishedSnapshotWithRevert(input: {
 	}
 }
 
-async function hasLoopbackSourceRemote(env: Env, repoId: string) {
+async function hasSnapshotOnlySourceRemote(env: Env, repoId: string) {
 	if (!hasArtifactSourceSnapshotApi(env)) return false
 	const repo = await resolveExistingArtifactSourceRepo(env, repoId)
 	const remote = (await repo?.info())?.remote
-	return typeof remote === 'string' && isLoopbackArtifactsRemote(remote)
+	return (
+		typeof remote === 'string' && isSnapshotOnlyArtifactsRemote(env, remote)
+	)
 }
 
 export async function syncArtifactSourceSnapshot(
@@ -209,12 +220,15 @@ export async function syncArtifactSourceSnapshot(
 	}
 	const sessionId = buildSyncSessionId(source.id)
 	const session = repoSessionRpc(input.env, sessionId)
-	const edits = Object.entries(input.files).map(([path, content]) => ({
-		kind: 'write' as const,
-		path,
-		content,
-	}))
-	// Local dev: a loopback Artifacts remote has no git history to open a
+	const editPaths = input.editPaths ? new Set(input.editPaths) : null
+	const edits = Object.entries(input.files)
+		.filter(([path]) => editPaths == null || editPaths.has(path))
+		.map(([path, content]) => ({
+			kind: 'write' as const,
+			path,
+			content,
+		}))
+	// Local dev without a git backend: a snapshot-only remote has no git to open a
 	// session on, so every publish (first or update) writes a mock snapshot.
 	const publishThroughLoopbackSnapshot = () =>
 		pushServerTiming(input.serverTiming, 'mock-artifact-snapshot', async () => {
@@ -337,7 +351,10 @@ export async function syncArtifactSourceSnapshot(
 			}
 			if (
 				input.bootstrapAccess?.remote &&
-				isLoopbackArtifactsRemote(input.bootstrapAccess.remote) &&
+				isSnapshotOnlyArtifactsRemote(
+					input.env,
+					input.bootstrapAccess.remote,
+				) &&
 				input.existingHeadCommit == null
 			) {
 				return await publishThroughLoopbackSnapshot()
@@ -408,7 +425,7 @@ export async function syncArtifactSourceSnapshot(
 		}
 		if (
 			input.existingHeadCommit == null &&
-			(await hasLoopbackSourceRemote(input.env, source.repo_id))
+			(await hasSnapshotOnlySourceRemote(input.env, source.repo_id))
 		) {
 			return await publishThroughLoopbackSnapshot()
 		}

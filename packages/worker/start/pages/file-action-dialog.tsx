@@ -1,16 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useState } from 'react'
 import type { FileMetadata } from '#universal/files.ts'
 import { colors } from '#universal/styles/tokens.ts'
-import { accountInputCss } from './account-management-components.tsx'
-import {
-	getGhostButtonCss,
-	getDangerPillCss,
-	getSelectCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { readFileMovePreview } from '#start/server/file-collaboration'
+import { Input, Select } from '../components/input.tsx'
 
 export function FileActionDialog({
 	item,
@@ -72,7 +67,12 @@ export function FileActionDialog({
 				? 'Move to'
 				: 'Move to trash'
 	return (
-		<ModalDialog label={`${title} ${item.name}`} onClose={onClose} width={420}>
+		<Dialog
+			open
+			aria-label={`${title} ${item.name}`}
+			onClose={onClose}
+			size="sm"
+		>
 			<form
 				onSubmit={async (event) => {
 					event.preventDefault()
@@ -116,20 +116,18 @@ export function FileActionDialog({
 					)}
 				</div>
 				{action === 'rename' ? (
-					<input
+					<Input
 						autoFocus
 						aria-label="New name"
-						css={accountInputCss}
 						value={name}
 						maxLength={200}
 						onChange={(event) => setName(event.target.value)}
 					/>
 				) : action === 'move' ? (
-					<select
+					<Select
 						autoFocus
 						aria-label="Destination"
-						data-field-ring
-						css={{ ...getSelectCss(), minWidth: 0, textOverflow: 'ellipsis' }}
+						css={{ minWidth: 0, textOverflow: 'ellipsis' }}
 						value={parent}
 						onChange={(event) => {
 							setMovePreview(null)
@@ -143,7 +141,7 @@ export function FileActionDialog({
 								{option.name}
 							</option>
 						))}
-					</select>
+					</Select>
 				) : (
 					<p css={{ margin: 0, overflowWrap: 'anywhere' }}>
 						Move “{item.name}” and its contents to trash? You can restore them
@@ -157,16 +155,17 @@ export function FileActionDialog({
 								<p role="status" css={{ margin: 0, color: colors.danger }}>
 									{previewError}
 								</p>
-								<button
+								<Button
 									type="button"
-									css={getGhostButtonCss()}
+									variant="secondary"
+									size="lg"
 									onClick={() => {
 										setPreviewError('')
 										setPreviewAttempt((attempt) => attempt + 1)
 									}}
 								>
 									Try again
-								</button>
+								</Button>
 							</>
 						) : !movePreview ? (
 							<p role="status" css={{ margin: 0 }}>
@@ -197,10 +196,10 @@ export function FileActionDialog({
 					</p>
 				)}
 				<div css={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-					<button type="button" css={getGhostButtonCss()} onClick={onClose}>
+					<Button type="button" variant="secondary" size="lg" onClick={onClose}>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						disabled={
 							busy ||
 							(action === 'move' &&
@@ -208,12 +207,13 @@ export function FileActionDialog({
 									(collaborationEnabled && !movePreview))) ||
 							(action === 'rename' && !name.trim())
 						}
-						css={action === 'trash' ? getDangerPillCss() : getPillButtonCss()}
+						variant={action === 'trash' ? 'danger' : 'primary'}
+						size="lg"
 					>
 						{action === 'move' ? 'Move' : title}
-					</button>
+					</Button>
 				</div>
 			</form>
-		</ModalDialog>
+		</Dialog>
 	)
 }

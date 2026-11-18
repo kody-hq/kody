@@ -5,6 +5,7 @@ import { fileStoreRpc } from '#worker/files/client.ts'
  * Account deletion and soft-delete purge both read and remove user-owned rows
  * including tombstones. Live product paths keep deleted_at filters elsewhere.
  */
+import { linkedArtifactSourceKvPrefix } from '#worker/package-runtime/linked-artifact-store.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -88,10 +89,11 @@ import {
 	type McpAgentSession,
 } from '#mcp/session-registry.ts'
 import {
-	AccountDeletionWritersActiveError,
 	abortAccountDeleting,
 	clearUserMeterDeletionTombstone,
 	markAccountDeleting,
+	accountDeletionWritersActive,
+	type BlockingAccountWriteLease,
 } from '#worker/account/deletion-state.ts'
 import {
 	buildPublishedSourceManifestSnapshotKvKey,
@@ -1573,6 +1575,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
 				...inventory.sourceSnapshots.flatMap((source) => [
 					`source-snapshot:v1:${source.sourceId}:`,
 					`source-manifest-snapshot:v1:${source.sourceId}:`,
+					linkedArtifactSourceKvPrefix(source.sourceId),
 					`credential-needs:v1:${source.sourceId}:`,
 					`credential-stamp:v1:${source.sourceId}:`,
 				]),
@@ -1709,6 +1712,7 @@ export async function deleteUserAccount(input: {
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
 	let marked: {
 		leaseCount: number
+		blockingLeases?: ReadonlyArray<BlockingAccountWriteLease>
 		created: boolean
 		deletingAt: string
 	}
@@ -1745,7 +1749,7 @@ export async function deleteUserAccount(input: {
 					expectedDeletingAt: marked.deletingAt,
 				})
 			}
-			throw new AccountDeletionWritersActiveError(marked.leaseCount)
+			throw accountDeletionWritersActive(marked)
 		}
 	}
 	const warnings: Array<string> = []
@@ -1917,6 +1921,7 @@ export async function deleteUserAccount(input: {
 				...inventory.sourceSnapshots.flatMap((source) => [
 					`source-snapshot:v1:${source.sourceId}:`,
 					`source-manifest-snapshot:v1:${source.sourceId}:`,
+					linkedArtifactSourceKvPrefix(source.sourceId),
 					`credential-needs:v1:${source.sourceId}:`,
 					`credential-stamp:v1:${source.sourceId}:`,
 				]),

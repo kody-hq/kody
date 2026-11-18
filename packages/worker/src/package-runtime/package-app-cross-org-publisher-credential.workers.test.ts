@@ -125,7 +125,6 @@ async function setup(input: {
 		db: env.APP_DB,
 		scope,
 		personId: personIdFromStored(t.ownerId),
-		publisherIsOwner: true,
 	})
 	forgetPackageAppRunsAs(scope)
 	if (input.approved !== false) {

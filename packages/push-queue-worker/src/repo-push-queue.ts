@@ -156,11 +156,13 @@ class BodyTimeoutError extends Error {}
  * landed. One push at a time is sent to Artifacts; Artifacts busy responses
  * (writers outside this queue) are retried with jittered backoff. Before each
  * send, command old-oids are checked against tips this queue last landed; when
- * every command is already known-stale the queue answers `ng <ref> fetch first`
- * without an Artifacts exchange. Every push has a 90s budget from arrival; the
- * deadline is checked before each send. An attempt already in flight is never
- * aborted by the budget: cutting a pack off mid-upload is worse than finishing
- * it.
+ * the client asked for report-status and every command is already known-stale
+ * the queue answers `ng <ref> fetch first` without an Artifacts exchange.
+ * Clients that did not request report-status still send. Every push has a 90s
+ * budget from arrival; the deadline is checked before each send. An attempt
+ * already in flight is not aborted at that 90s mark (cutting a pack off
+ * mid-upload is worse than finishing it), but a stalled exchange is aborted
+ * after {@link RepoPushQueueLimits.responseGraceMs}, including during upload.
  *
  * Shutdown: Cloudflare stops an outgoing instance's storage access when a
  * new version takes over, and lets requests that do not touch storage

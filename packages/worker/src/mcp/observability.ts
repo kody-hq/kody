@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
+import { isWalletGuardLimitError } from '#worker/wallet-guard/enforce.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import { getErrorCauseChain } from '@kody-internal/shared/error-message.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
@@ -128,6 +129,7 @@ function isCallerFailure(payload: McpObservabilityPayload, cause?: unknown) {
 	if (isUserCodeError(cause)) return true
 	if (getErrorCauseChain(cause).some(isEntitlementLimitError)) return true
 	if (getErrorCauseChain(cause).some(isSearchRateLimitError)) return true
+	if (getErrorCauseChain(cause).some(isWalletGuardLimitError)) return true
 	if (getErrorCauseChain(cause).some(isComputeOverageLimitError)) return true
 	if (getErrorCauseChain(cause).some(isJobIntervalFloorError)) return true
 	// Community preconditions (rate before fork, self-rate, banned, …) are

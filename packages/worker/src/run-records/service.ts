@@ -20,18 +20,17 @@ import type {
 	JobRunObservabilityRecord,
 	JobRunObservabilityUpsertInput,
 } from './job-run-observability.ts'
-import {
-	type BulkUpdateRunErrorTriageFilter,
-	type BulkUpdateRunErrorTriageResult,
-	type PackageInvocationClaimInput,
-	type PackageInvocationLedgerKey,
-	type PackageInvocationLedgerRecord,
-	type RunLogEntryInput,
-	type RunLogRowInput,
-	type RunLogRpc,
-	type RunLogSqlBillingInspection,
-	type RunLogSqlBillingStats,
-	runLogSqlBillingOps,
+import type {
+	BulkUpdateRunErrorTriageFilter,
+	BulkUpdateRunErrorTriageResult,
+	PackageInvocationClaimInput,
+	PackageInvocationLedgerKey,
+	PackageInvocationLedgerRecord,
+	RunLogEntryInput,
+	RunLogRowInput,
+	RunLogRpc,
+	RunLogSqlBillingInspection,
+	RunLogSqlBillingStats,
 } from './run-log-do.ts'
 import type {
 	WorkflowProjectionRecord,
@@ -66,7 +65,6 @@ import {
 	runStartedByFromRequest,
 } from './run-started-by.ts'
 
-export { runLogSqlBillingOps }
 export type { RunLogSqlBillingInspection, RunLogSqlBillingStats }
 
 const textEncoder = new TextEncoder()
@@ -387,6 +385,11 @@ export function beginRunRecord(input: {
 export async function ensureRunRecordStarted(input: {
 	env: Env
 	handle: RunRecordHandle | null
+	/**
+	 * Hold the running row until this ISO time instead of healing it at the
+	 * surface TTL. Set by an owner that ends the run itself by then.
+	 */
+	staleAfter?: string
 }): Promise<boolean> {
 	const handle = input.handle
 	if (!handle || handle.persistence !== 'eager') return false
@@ -403,11 +406,89 @@ export async function ensureRunRecordStarted(input: {
 		})
 		await runLogRpc({ env: input.env, userId: handle.userId }).startRun({
 			run,
+			...(input.staleAfter ? { staleAfter: input.staleAfter } : {}),
 		})
 		return true
 	} catch (error) {
 		console.warn('run-record-ensure-start-failed', error)
 		return false
+	}
+}
+
+/**
+ * Take one of the owner's package event delivery slots. Fails open
+ * (`claimed: true`) when the run log is unavailable, so a run-log outage
+ * never stalls events.
+ */
+export async function claimPackageEventSlot(input: {
+	env: Env
+	userId: OwnerId
+	id: string
+	limit: number
+	expiresAt: string
+}): Promise<{ claimed: boolean; inFlight: number | null }> {
+	if (!runLogBinding(input.env)) return { claimed: true, inFlight: null }
+	try {
+		return await runLogRpc(input).claimPackageEventSlot({
+			id: input.id,
+			limit: input.limit,
+			expiresAt: input.expiresAt,
+		})
+	} catch (error) {
+		console.warn('run-record-package-event-slot-claim-failed', error)
+		return { claimed: true, inFlight: null }
+	}
+}
+
+/** Never throws: an unreleased slot expires on its own. */
+export async function releasePackageEventSlot(input: {
+	env: Env
+	userId: OwnerId
+	id: string
+}) {
+	if (!runLogBinding(input.env)) return
+	try {
+		await runLogRpc(input).releasePackageEventSlot({ id: input.id })
+	} catch (error) {
+		console.warn('run-record-package-event-slot-release-failed', error)
+	}
+}
+
+/**
+ * Start a webhook delivery attempt unless `limit` of the owner's other
+ * deliveries are already started. Fails open (`started: true`) when the run
+ * log is unavailable, so a run-log outage never stalls deliveries.
+ */
+export async function startWebhookDeliveryAttemptRecord(input: {
+	env: Env
+	handle: RunRecordHandle | null
+	staleAfter: string
+	limit: number
+}): Promise<{ started: boolean; inFlight: number | null }> {
+	const handle = input.handle
+	if (!handle || handle.persistence !== 'eager' || !runLogBinding(input.env)) {
+		return { started: true, inFlight: null }
+	}
+	try {
+		return await runLogRpc({
+			env: input.env,
+			userId: handle.userId,
+		}).startWebhookDeliveryAttempt({
+			run: buildRunRow({
+				handle,
+				status: 'running',
+				finishedAt: null,
+				durationMs: null,
+				errorName: null,
+				errorMessage: null,
+				updatedAt: handle.startedAt,
+			}),
+			staleAfter: input.staleAfter,
+			limit: input.limit,
+		})
+	} catch (error) {
+		console.warn('run-record-webhook-attempt-start-failed', error)
+		return { started: true, inFlight: null }
 	}
 }
 
@@ -594,35 +675,28 @@ export async function finishRunRecord(input: {
 }
 
 /**
- * One-RPC terminal write for callers that have no work between begin and
- * finish. Equivalent to minting a handle and calling `finishRunRecord` without
- * `beginRunRecord` (finish already upserts a complete row). Prefer this over a
- * no-op begin when the surface is known to be terminal-only.
+ * Mint a run handle without writing it. `id` and `startedAt` let a caller that
+ * writes the same run from more than one isolate (webhook ack ingress and its
+ * queue consumer) address one row. Never throws.
  */
-export async function recordRunRecord(input: {
+export function createRunRecordHandle(input: {
 	env: Env
 	userId?: OwnerId | null
 	context?: RunRecordContext | null
 	request?: RequestContext | null
 	startedByLabel?: string | null
-	status: RunTerminalStatus
-	logs?: Array<RunRecordLogInput>
-	error?: unknown
-	result?: unknown
+	id?: string | null
 	startedAt?: string | null
-	waitUntil?: (promise: Promise<unknown>) => void
-}): Promise<RunRecordHandle | null> {
+}): RunRecordHandle | null {
 	const namespace = runLogBinding(input.env)
 	const userId = runLogOwnerId(input.userId)
 	const context = input.context
 		? withRunStartedBy(input.context, input.request, input.startedByLabel)
 		: null
 	if (!namespace || !userId || !context) return null
-
-	let handle: RunRecordHandle
 	try {
-		handle = {
-			id: crypto.randomUUID(),
+		return {
+			id: normalizeOptionalString(input.id) ?? crypto.randomUUID(),
 			userId,
 			startedAt:
 				normalizeOptionalString(input.startedAt) ?? new Date().toISOString(),
@@ -633,6 +707,31 @@ export async function recordRunRecord(input: {
 		console.warn('run-record-begin-failed', error)
 		return null
 	}
+}
+
+/**
+ * One-RPC terminal write for callers that have no work between begin and
+ * finish. Equivalent to minting a handle and calling `finishRunRecord` without
+ * `beginRunRecord` (finish already upserts a complete row). Prefer this over a
+ * no-op begin when the surface is known to be terminal-only. Pass `id` to
+ * finish a row an earlier writer already started.
+ */
+export async function recordRunRecord(input: {
+	env: Env
+	userId?: OwnerId | null
+	context?: RunRecordContext | null
+	request?: RequestContext | null
+	startedByLabel?: string | null
+	id?: string | null
+	status: RunTerminalStatus
+	logs?: Array<RunRecordLogInput>
+	error?: unknown
+	result?: unknown
+	startedAt?: string | null
+	waitUntil?: (promise: Promise<unknown>) => void
+}): Promise<RunRecordHandle | null> {
+	const handle = createRunRecordHandle(input)
+	if (!handle) return null
 	const persisted = await finishRunRecord({
 		env: input.env,
 		handle,
@@ -1587,8 +1686,11 @@ export async function summarizePackageFailures(input: {
 }
 
 /**
- * RunLog-only SQLite rowsRead/rowsWritten counters for cost diagnosis.
- * Propagates binding/RPC errors. Never returns user content.
+ * Per-statement RunLog SQLite rowsRead/rowsWritten since stats were
+ * initialized or last reset (including `clearAll()`), highest rows read first.
+ * In-isolate only; `run_log_sql_rows` is partial history (top ten statements
+ * per flushed window; the final window may remain unflushed). Propagates
+ * binding/RPC errors. Never returns user content.
  */
 export async function getSqlBillingStats(input: {
 	env: Env
@@ -1604,8 +1706,10 @@ export async function getSqlBillingStats(input: {
 }
 
 /**
- * Content-free RunLog schema + SQL-plan snapshot for cost diagnosis.
- * Propagates binding/RPC errors. Never returns user content.
+ * Content-free RunLog schema + SQL-plan snapshot for cost diagnosis
+ * (`inspectSqlBilling` on the DO). Schema and plan probes skip the wrapped
+ * statement counters. Propagates binding/RPC errors. Never returns user
+ * content.
  */
 export async function inspectRunLogSqlBilling(input: {
 	env: Env

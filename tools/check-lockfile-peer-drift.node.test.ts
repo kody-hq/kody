@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	checkLockfilePeerDrift,
 	findLockfilePeerDrift,
+	findWorkspaceDuplicates,
 } from './check-lockfile-peer-drift.ts'
 
 test('lockfile peer drift flags a direct dependency npm install would bump', async () => {
@@ -88,4 +89,38 @@ test('lockfile peer drift flags a direct dependency npm install would bump', asy
 	expect(findLockfilePeerDrift(blockedByExactPin)).toEqual([])
 
 	expect(await checkLockfilePeerDrift()).toEqual([])
+})
+
+test('lockfile check flags a package each workspace nests with no root copy', () => {
+	const duplicated = {
+		packages: {
+			'': {},
+			'packages/cli': { dependencies: { xstate: '6.0.0-beta.1' } },
+			'packages/worker': { dependencies: { xstate: '6.0.0-beta.1' } },
+			'packages/cli/node_modules/xstate': { version: '6.0.0-beta.1' },
+			'packages/worker/node_modules/xstate': { version: '6.0.0-beta.1' },
+			'packages/worker/node_modules/semver': { version: '7.0.0' },
+			'node_modules/some-tool/node_modules/semver': { version: '7.0.0' },
+		},
+	}
+	expect(findWorkspaceDuplicates(duplicated)).toEqual([
+		{
+			name: 'xstate',
+			version: '6.0.0-beta.1',
+			installPaths: [
+				'packages/cli/node_modules/xstate',
+				'packages/worker/node_modules/xstate',
+			],
+		},
+	])
+
+	const hoisted = {
+		packages: {
+			'': {},
+			'node_modules/xstate': { version: '6.0.0-beta.3' },
+			'packages/cli/node_modules/xstate': { version: '6.0.0-beta.1' },
+			'packages/worker/node_modules/xstate': { version: '6.0.0-beta.1' },
+		},
+	}
+	expect(findWorkspaceDuplicates(hoisted)).toEqual([])
 })

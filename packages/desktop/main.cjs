@@ -10,7 +10,7 @@ const {
 	net,
 } = require('electron')
 const { DesktopPresence } = require('./presence.cjs')
-const { startUpdates, finishQuit } = require('./updates.cjs')
+const { isDebInstall, startUpdates, finishQuit } = require('./updates.cjs')
 const { browserLogin } = require('./browser-login.cjs')
 const {
 	approvalNavigation,
@@ -420,7 +420,23 @@ function updateMenu() {
 							],
 						},
 					]
-				: []),
+				: app.isPackaged && isDebInstall()
+					? [
+							{
+								label: 'Updates',
+								submenu: [
+									{
+										label: 'Download the latest version…',
+										click: () =>
+											void openInBrowser(`${appOrigin}/download`, {
+												app,
+												shell,
+											}),
+									},
+								],
+							},
+						]
+					: []),
 			{ role: 'editMenu' },
 			{
 				label: 'Navigate',
@@ -589,7 +605,7 @@ async function createWindow(path = '/account') {
 		title: 'Kody',
 		icon: join(__dirname, 'assets/icon.png'),
 		...(integratedTitlebar
-			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 13 } }
+			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 9 } }
 			: {}),
 		backgroundColor: '#ffffff',
 		webPreferences: {

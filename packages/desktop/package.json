@@ -59,17 +59,39 @@
     },
     "win": {
       "target": [
-        "nsis"
-      ]
+        "appx"
+      ],
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
+    },
+    "appx": {
+      "identityName": "KodyCodes.Kody",
+      "applicationId": "Kody",
+      "displayName": "Kody",
+      "publisherDisplayName": "Kody",
+      "backgroundColor": "transparent",
+      "artifactName": "Kody-${version}-win-${arch}.msix"
     },
     "linux": {
       "target": [
-        "AppImage"
+        "AppImage",
+        "deb"
       ],
-      "executableName": "kody"
+      "executableName": "kody-desktop",
+      "category": "Development"
     },
     "icon": "assets/icon.png",
-    "artifactName": "Kody-${version}-${os}-${arch}.${ext}"
+    "artifactName": "Kody-${version}-${os}-${arch}.${ext}",
+    "toolsets": {
+      "winCodeSign": "1.1.0"
+    }
   },
-  "author": "Kody"
+  "author": {
+    "name": "Kody",
+    "email": "support@kody.codes"
+  },
+  "homepage": "https://kody.codes"
 }

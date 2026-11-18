@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import {
 	updateOrganizationProfile,
 	deleteOrganization,
@@ -6,7 +9,7 @@ import {
 	saveOrganizationAvatar,
 } from '#start/server/org-settings-mutations'
 import type { CSSObject } from '@emotion/react'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import {
 	hashKey,
 	useMutation,
@@ -22,20 +25,15 @@ import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
+	getButtonCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	shadows,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { AccountAvatarEditor } from './account-avatar-editor.tsx'
@@ -52,11 +50,8 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 type OrgSettingsProps = {
 	data: OrgSettingsLoaderData
@@ -82,7 +77,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 		text: string
 		tone: 'info' | 'error'
 	} | null>(null)
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [deleteOpen, setDeleteOpen] = useState(false)
 	const identity = orgIdentity(data.org, { displayName: '', avatarUrl: null })
 	const profile = useMutation(
 		orgSettingsMutationOptions(
@@ -151,7 +146,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 		)
 	}
 	const closeDialog = () => {
-		dialog.current?.close()
+		setDeleteOpen(false)
 		setConfirmation('')
 	}
 	return (
@@ -176,13 +171,13 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						<p css={mutedCopyCss}>
 							This is your personal organization. Your name, photo, and handle
 							come from your{' '}
-							<SiteLink href={routes.account.href()} css={inlineLinkCss}>
+							<TextLink tone="prose" href={routes.account.href()}>
 								account profile
-							</SiteLink>
+							</TextLink>
 							. To delete your account, use{' '}
-							<SiteLink href={routes.accountData.href()} css={inlineLinkCss}>
+							<TextLink tone="prose" href={routes.accountData.href()}>
 								Account → Data &amp; deletion
-							</SiteLink>
+							</TextLink>
 							.
 						</p>
 					</AccountManagementPanel>
@@ -214,7 +209,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 						</div>
 						{data.canManage ? (
 							<div css={avatarActionsCss}>
-								<label css={getGhostButtonCss({ size: 'sm' })}>
+								<label css={getButtonCss({ variant: 'secondary' })}>
 									{renderIcon('photo', { size: '1.05rem' })}
 									{identity.avatarUrl ? 'Change photo' : 'Add photo'}
 									<input
@@ -230,9 +225,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									/>
 								</label>
 								{identity.avatarUrl ? (
-									<button
+									<Button
 										type="button"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										disabled={isPending}
 										onClick={() =>
 											void submit(
@@ -243,7 +238,7 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 										}
 									>
 										Remove photo
-									</button>
+									</Button>
 								) : null}
 							</div>
 						) : null}
@@ -273,29 +268,26 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									)
 								}}
 							>
-								<label css={accountFieldCss}>
-									<span css={accountFieldLabelCss}>Name</span>
-									<input
+								<Field label="Name">
+									<Input
 										name="displayName"
 										required
 										maxLength={80}
 										value={draftName}
-										data-field-ring
-										css={accountInputCss}
 										onChange={(event) =>
 											setDraftName(event.currentTarget.value)
 										}
 									/>
-								</label>
-								<div css={accountFieldCss}>
-									<span css={accountFieldLabelCss}>Handle</span>
+								</Field>
+								<div css={fieldCss}>
+									<span css={fieldLabelCss}>Handle</span>
 									<p
 										aria-describedby="org-settings-handle-note"
 										css={handleValueCss}
 									>
 										{handleUrlPreview(data.org.slug)}
 									</p>
-									<p id="org-settings-handle-note" css={accountFieldNoteCss}>
+									<p id="org-settings-handle-note" css={fieldDescriptionCss}>
 										{handlePermanentNote} Change the name above to change how
 										the organization appears.
 									</p>
@@ -308,13 +300,9 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 									testId="org-settings-visibility"
 								/>
 								<div css={accountActionsCss}>
-									<button
-										type="submit"
-										disabled={isPending}
-										css={getPillButtonCss({ size: 'sm' })}
-									>
+									<Button type="submit" disabled={isPending} variant="primary">
 										{profile.isPending ? 'Saving…' : 'Save changes'}
-									</button>
+									</Button>
 								</div>
 							</form>
 						) : (
@@ -351,40 +339,39 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 					/>
 					{data.canDelete ? (
 						<AccountManagementPanel title="Delete organization">
-							<p css={accountFieldNoteCss}>
+							<p css={fieldDescriptionCss}>
 								This soft-deletes the organization. Members lose access
 								immediately. Owners can restore it for 30 days from Account →
 								Organizations.
 							</p>
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="button"
 									data-testid="delete-org"
-									css={getDangerPillCss({ size: 'sm' })}
+									variant="danger"
 									onClick={() => {
 										setConfirmation('')
-										dialog.current?.showModal()
+										setDeleteOpen(true)
 									}}
 								>
 									{renderIcon('warning-triangle', { size: '1.05rem' })}Delete
 									organization
-								</button>
+								</Button>
 							</div>
-							<dialog
-								ref={dialog}
-								aria-labelledby="delete-org-title"
+							<Dialog
+								open={deleteOpen}
+								onClose={closeDialog}
+								dismissOnOutsideClick
+								title={`Delete @${data.org.slug}?`}
+								description={
+									<>
+										Type <strong>{data.org.slug}</strong> or{' '}
+										<strong>DELETE</strong> to confirm.
+									</>
+								}
 								data-testid="delete-org-dialog"
-								css={deleteDialogCss}
-								onCancel={(event) => {
-									event.preventDefault()
-									closeDialog()
-								}}
-								onClick={(event) => {
-									if (event.target === event.currentTarget) closeDialog()
-								}}
 							>
 								<form
-									method="dialog"
 									css={deleteDialogFormCss}
 									onSubmit={(event) => {
 										event.preventDefault()
@@ -395,54 +382,44 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 													confirmation,
 												}),
 											async (result) => {
-												dialog.current?.close()
+												setDeleteOpen(false)
 												await router.navigate({ href: result.redirectTo })
 											},
 											data.canDelete,
 										)
 									}}
 								>
-									<h3 id="delete-org-title" css={deleteDialogTitleCss}>
-										Delete @{data.org.slug}?
-									</h3>
-									<p css={accountFieldNoteCss}>
-										Type <strong>{data.org.slug}</strong> or{' '}
-										<strong>DELETE</strong> to confirm.
-									</p>
-									<label css={accountFieldCss}>
-										<span css={accountFieldLabelCss}>Confirmation</span>
-										<input
+									<Field label="Confirmation">
+										<Input
 											value={confirmation}
-											data-field-ring
 											autoComplete="off"
-											css={accountInputCss}
 											onChange={(event) =>
 												setConfirmation(event.currentTarget.value)
 											}
 										/>
-									</label>
-									<div css={accountActionsCss}>
-										<button
+									</Field>
+									<DialogActions>
+										<Button
 											type="submit"
 											disabled={
 												(confirmation !== data.org.slug &&
 													confirmation !== 'DELETE') ||
 												isPending
 											}
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 										>
 											{isPending ? 'Deleting…' : 'Delete organization'}
-										</button>
-										<button
+										</Button>
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											onClick={closeDialog}
 										>
 											Cancel
-										</button>
-									</div>
+										</Button>
+									</DialogActions>
 								</form>
-							</dialog>
+							</Dialog>
 						</AccountManagementPanel>
 					) : null}
 				</>
@@ -454,10 +431,6 @@ function OrgSettingsEditor({ data, queryKey }: OrgSettingsProps) {
 const mutedCopyCss: CSSObject = {
 	margin: 0,
 	color: colors.textMuted,
-}
-
-const inlineLinkCss: CSSObject = {
-	color: colors.primaryText,
 }
 
 const formCss: CSSObject = {
@@ -500,27 +473,7 @@ const avatarActionsCss: CSSObject = {
 	marginTop: spacing.md,
 }
 
-const deleteDialogCss: CSSObject = {
-	border: `1.5px solid ${colors.border}`,
-	borderRadius: radius.card,
-	padding: spacing.lg,
-	maxWidth: '28rem',
-	width: 'calc(100% - 2rem)',
-	backgroundColor: colors.surface,
-	boxShadow: shadows.md,
-	color: colors.text,
-	'&::backdrop': {
-		backgroundColor: 'rgba(15, 18, 16, 0.45)',
-	},
-}
-
 const deleteDialogFormCss: CSSObject = {
 	display: 'grid',
 	gap: spacing.md,
-}
-
-const deleteDialogTitleCss: CSSObject = {
-	margin: 0,
-	fontSize: '1.2rem',
-	fontWeight: 700,
 }

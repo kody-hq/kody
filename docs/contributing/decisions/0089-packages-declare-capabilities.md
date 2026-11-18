@@ -59,8 +59,8 @@ discover them.
 - Authors of library packages declare what their code calls. Apps that import
   them stop guessing their dependencies' needs.
 - The closure walk at publish costs one saved-package read per imported package.
-  It reuses the 0018 closure scanner and 0017's call extraction, so there is one
-  scanner.
+  It reuses `scanPackageAppImportClosure` (the same walk 0018 uses) and 0017's
+  call extraction, so there is one scanner.
 - Dynamic call names need a declaration an author can see. The check never
   passes a name it can't prove.
 - Revisit if the warn-only findings show a large class of legitimate dynamic

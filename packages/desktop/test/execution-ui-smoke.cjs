@@ -15,7 +15,8 @@ async function smoke() {
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {DesktopExecutionProvider, DesktopMachinePanel} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopExecutionProvider} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopMachinePanel} from './packages/worker/start/components/desktop-machine-panel.tsx';
 const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
 window.refreshFixture = () => client.invalidateQueries();
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><DesktopExecutionProvider actorKey="jane" username="jane" orgSlug="jane" pathname="/@jane"><DesktopMachinePanel orgSlug={window.fixture.panelOrg ?? null}/></DesktopExecutionProvider></QueryClientProvider>);
@@ -57,7 +58,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							args.path === '@tanstack/react-start'
 								? 'export const useServerFn = fn => fn;'
 								: args.path === '@tanstack/react-router'
-									? 'export const useRouter = () => ({invalidate: async()=>{}});'
+									? 'export const useRouter = () => ({invalidate: async()=>{}}); export const createLink = (Component) => Component; export const useRouterState = ({ select }) => select({ location: { pathname: "/@jane", search: "", hash: "" } });'
 									: args.path === 'onboarding'
 										? 'export const onboardingQuery = () => ({queryKey:["onboarding"],queryFn:async()=>({payload:{needsOnboarding:window.fixture.needsOnboarding}})});'
 										: args.path.endsWith('experiment-opt-in')
@@ -359,16 +360,28 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await expect(
 			page.getByRole('button', { name: 'Resume execution', exact: true }),
 		).toBeVisible()
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
+		const machinePanel = page.getByRole('region', { name: 'This machine' })
+		const forgetSetup = machinePanel.getByRole('button', {
+			name: 'Forget desktop setup',
+			exact: true,
+		})
+		const forgetDialog = page.getByRole('dialog', {
+			name: 'Forget desktop setup?',
+			exact: true,
+		})
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
+			.getByRole('button', { name: 'Cancel', exact: true })
 			.click()
-		await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+		await expect(forgetDialog).toHaveCount(0)
+		await expect(
+			page.getByRole('button', { name: 'Forget desktop setup', exact: true }),
+		).toHaveCount(1)
 		assert.equal(await page.evaluate(() => window.fixture.state.hasSetup), true)
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
-			.click()
-		await page
-			.getByRole('dialog')
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
 			.getByRole('button', { name: 'Forget desktop setup', exact: true })
 			.click()
 		await expect(

@@ -229,8 +229,10 @@ async function loadSubscriptionsForSavedPackages(input: {
 
 /**
  * Fans an event out only to packages whose owners hold the admin role at
- * dispatch time. Failures warn and skip by default; opt-in retry flags reject
- * after all successfully discovered sibling attempts finish.
+ * dispatch time, plus packages owned by the `additionalOwnerIds` orgs the
+ * caller trusts with the payload. Failures warn and skip by default; opt-in
+ * retry flags reject after all successfully discovered sibling attempts
+ * finish.
  */
 export async function dispatchAdminPackageSubscriptionEvent(input: {
 	env: Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
@@ -240,12 +242,18 @@ export async function dispatchAdminPackageSubscriptionEvent(input: {
 	source: string
 	buildIdempotencyKey: (savedPackage: SavedPackageRecord) => string
 	actorTokenId?: string
+	additionalOwnerIds?: ReadonlyArray<string>
 	retryDiscoveryFailures?: boolean
 	retryInvocationInfrastructureFailures?: boolean
 	retryOnlyPreExecutionInfrastructureFailures?: boolean
 	waitUntil?: (promise: Promise<unknown>) => void
 }) {
-	const adminUserIds = await listAdminStableUserIds(input.env.APP_DB)
+	const adminUserIds = [
+		...new Set([
+			...(await listAdminStableUserIds(input.env.APP_DB)),
+			...(input.additionalOwnerIds ?? []),
+		]),
+	]
 	if (adminUserIds.length === 0) {
 		return []
 	}

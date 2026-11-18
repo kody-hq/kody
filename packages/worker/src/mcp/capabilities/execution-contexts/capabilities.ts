@@ -1,4 +1,21 @@
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import { z } from 'zod'
+import { ExecutionContextError } from '#worker/execution-contexts/errors.ts'
+import {
+	authorize,
+	AuthorizationError,
+} from '#worker/authorization/authorize.ts'
+import {
+	grantMachineAccess,
+	listMachineAccess,
+	type MachineAccessScope,
+	maxMachineAccessPackages,
+	packageLimitedMachineCapabilityKinds,
+	revokeMachineAccess,
+	setMachineAccessPackages,
+	suggestShellNarrowing,
+	shareableMachineCapabilityKinds,
+} from '#worker/execution-contexts/machine-access.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
@@ -46,6 +63,28 @@ const idSchema = z
 
 function caller(ctx: CapabilityContext) {
 	return requireExecutionContextsCaller(ctx)
+}
+
+// Someone a machine is only shared with still gives their own profiles what
+// they can use. Everything else on these tools needs manage_access.
+const machineAccessSurface = [
+	'execution_context:manage_access',
+	'execution_context:execute',
+] as const satisfies ReadonlyArray<OrgPermission>
+
+async function machineAccessScope(
+	ctx: CapabilityContext,
+): Promise<MachineAccessScope> {
+	try {
+		await authorize(
+			{ env: ctx.env, request: ctx.callerContext.request ?? null },
+			'execution_context:manage_access',
+		)
+		return {}
+	} catch (error) {
+		if (!(error instanceof AuthorizationError)) throw error
+		return { withoutManageAccess: true }
+	}
 }
 
 const chainEntrySchema = z.discriminatedUnion('kind', [
@@ -364,6 +403,165 @@ export const executionContextShareRemoveCapability = defineDomainCapability(
 	},
 )
 
+export const executionContextMachineAccessListCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextMachineAccessList',
+		contextRuns: 'deny',
+		orgPermission: machineAccessSurface,
+		description:
+			'List the machine access an execution context offers (named commands, local network destinations, host folders) and who each is shared with. The machine defines them; host folders are never shared. The operator, Manage holders and org owners see every grant; anyone else sees only the grants on their own profiles.',
+		keywords: ['execution context', 'machine access', 'named command', 'lan'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await listMachineAccess(
+				await caller(ctx),
+				args.id,
+				await machineAccessScope(ctx),
+			)
+		},
+	})
+
+export const executionContextMachineAccessGrantCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextMachineAccessGrant',
+		contextRuns: 'deny',
+		orgPermission: machineAccessSurface,
+		description:
+			'Share one named command or local network destination of your execution context with a person (username or user_id), a team, or everyone in the org (everyone: true). Their runs on the machine can then use it; they also need the context shared with them. Operator only. The unrestricted shell and host folders are never shared. A run acting as a profile also needs the profile granted: pass profile_id to give one of your own profiles a command or destination you can use yourself (every parent profile must hold it first).',
+		keywords: ['execution context', 'machine access', 'grant', 'share'],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			kind: z.enum(shareableMachineCapabilityKinds),
+			name: z.string().min(1).describe('The name the machine gave it.'),
+			username: z.string().min(1).optional(),
+			user_id: z.string().min(1).optional(),
+			team_slug: z.string().min(1).optional(),
+			team_id: z.string().min(1).optional(),
+			everyone: z.literal(true).optional(),
+			profile_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe('One of your own profiles (profileList).'),
+		}),
+		async handler(args, ctx) {
+			const resolved = await caller(ctx)
+			const chosen = [
+				args.everyone,
+				args.team_slug ?? args.team_id,
+				args.username ?? args.user_id,
+				args.profile_id,
+			].filter((value) => value !== undefined)
+			if (chosen.length !== 1) {
+				throw new ExecutionContextError({
+					status: 400,
+					code: 'invalid_request',
+					message:
+						'Name exactly one of a person (username or user_id), a team (team_slug or team_id), everyone: true, or one of your profiles (profile_id).',
+				})
+			}
+			const subject = args.profile_id
+				? ({ type: 'profile', id: args.profile_id } as const)
+				: args.everyone
+					? ({ type: 'org', id: resolved.orgId } as const)
+					: args.team_slug || args.team_id
+						? ({
+								type: 'team',
+								id: await resolveTeamId(ctx.env.APP_DB, resolved.orgId, {
+									teamId: args.team_id ?? null,
+									teamSlug: args.team_slug ?? null,
+								}),
+							} as const)
+						: ({
+								type: 'user',
+								id: await resolvePersonId(ctx.env.APP_DB, {
+									userId: args.user_id ?? null,
+									username: args.username ?? null,
+								}),
+							} as const)
+			return await grantMachineAccess(
+				resolved,
+				args.id,
+				{ kind: args.kind, name: args.name, subject },
+				await machineAccessScope(ctx),
+			)
+		},
+	})
+
+export const executionContextMachineAccessRevokeCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextMachineAccessRevoke',
+		contextRuns: 'deny',
+		orgPermission: machineAccessSurface,
+		description:
+			'Take back one machine access grant (grant_id from executionContextMachineAccessList). The next use is refused. Operator, Manage holders and org owners; anyone can take back a grant on their own profile.',
+		keywords: ['execution context', 'machine access', 'revoke'],
+		readOnly: false,
+		idempotent: true,
+		destructive: true,
+		inputSchema: z.object({ id: idSchema, grant_id: z.string().min(1) }),
+		async handler(args, ctx) {
+			return await revokeMachineAccess(
+				await caller(ctx),
+				args.id,
+				args.grant_id,
+				await machineAccessScope(ctx),
+			)
+		},
+	})
+
+export const executionContextMachineAccessPackagesSetCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextMachineAccessPackagesSet',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:manage_access',
+		description:
+			'Choose which saved packages may use one named command, local network destination or host folder of your execution context. The unrestricted shell is kind "shell", name "shell"; the whole local network is kind "lan", name "*", which takes a package list only when the machine runs Kody CLI 3.44.0 or newer. Pass the full list of package ids; it replaces the old one. With packages listed, only runs whose loaded packages are all on the list may use the entry, and code that is not a saved package may not. An empty list lifts the limit: your own code and packages your org wrote or adopted pass again. Operator only. This never shares the entry with anyone; it narrows which code uses it.',
+		keywords: ['execution context', 'machine access', 'packages', 'allow'],
+		readOnly: false,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({
+			id: idSchema,
+			kind: z.enum(packageLimitedMachineCapabilityKinds),
+			name: z.string().min(1).describe('The name the machine gave it.'),
+			package_ids: z
+				.array(z.string().min(1))
+				.max(maxMachineAccessPackages)
+				.describe('Saved package ids (packageGet package_id). [] lifts it.'),
+		}),
+		async handler(args, ctx) {
+			return await setMachineAccessPackages(await caller(ctx), args.id, {
+				kind: args.kind,
+				name: args.name,
+				packageIds: args.package_ids,
+			})
+		},
+	})
+
+export const executionContextShellSuggestionsCapability =
+	defineDomainCapability(domain, {
+		name: 'executionContextShellSuggestions',
+		contextRuns: 'deny',
+		orgPermission: 'execution_context:manage_access',
+		description:
+			'What the unrestricted shell of your execution context was used for, from its audit log (the newest 1000 shell commands of the last 30 days in this org), as a starting point for narrowing it. `packages` are the saved packages whose runs used the shell: pass their ids to executionContextMachineAccessPackagesSet (kind "shell", name "shell") to limit the shell to them. `adHocCommands` counts commands from code that is not a saved package, which a package list refuses. `programs` are the programs those commands started with, most used first, with examples: each is a candidate for a named command defined on the machine with `kody context capability add command`. `needShell` counts the commands that used pipes, chaining, redirects, substitution or globs, which a named command cannot run as written. Operator only. Read only: it changes nothing.',
+		keywords: ['execution context', 'shell', 'suggest', 'machine access'],
+		readOnly: true,
+		idempotent: true,
+		destructive: false,
+		inputSchema: z.object({ id: idSchema }),
+		async handler(args, ctx) {
+			return await suggestShellNarrowing(await caller(ctx), args.id)
+		},
+	})
+
 export const executionContextAttachCapability = defineDomainCapability(domain, {
 	name: 'executionContextAttach',
 	contextRuns: 'deny',
@@ -532,7 +730,7 @@ export const executionContextNoticeDismissCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'execution_context:execute',
 		description:
-			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
+			'Dismiss your own excess-access notice on an execution context (the machine can do more than you can personally). Pass the fingerprint you saw; it comes back when the machine gains access you lack or its login changes. As the operator, pass the fingerprint `open-shell` to keep the unrestricted shell of a machine as it is; that notice comes back if the shell is turned off and on again or a package list is set and lifted. Misconfiguration notices cannot be dismissed. Only the person the notice is about can dismiss it, signed in as themselves.',
 		keywords: ['execution context', 'notice', 'dismiss', 'warning'],
 		readOnly: false,
 		idempotent: true,

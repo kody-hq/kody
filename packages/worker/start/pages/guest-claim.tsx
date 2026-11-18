@@ -1,17 +1,15 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { AuthLayout } from '../components/auth-layout.tsx'
 import { renderIcon } from '../components/icon.tsx'
-import { SiteLink } from '../components/site-link.tsx'
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type {
 	GuestClaimPageData,
 	GuestClaimPageError,
 	GuestComesWithCounts,
 } from '#start/server/guest-claim'
-import {
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -19,6 +17,9 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import { formatGuestDate } from './guest-banner.tsx'
+import { Input } from '../components/input.tsx'
+import { UsernameChoiceField } from '../components/username-choice-field.tsx'
+import { useState } from 'react'
 
 const errorCopy: Record<GuestClaimPageError, string> = {
 	email_invalid: 'That does not look like an email address.',
@@ -82,9 +83,14 @@ export function GuestClaimRoute(props: { data: GuestClaimPageData }) {
 				title="This claim link is not active"
 				description="The guest account was already claimed or has been deleted."
 			>
-				<SiteLink href="/login" css={primaryLinkCss}>
+				<Button
+					href="/login"
+					variant="primary"
+					size="md"
+					css={primaryButtonCss}
+				>
 					Log in
-				</SiteLink>
+				</Button>
 			</AuthLayout>
 		)
 	}
@@ -127,9 +133,14 @@ function GuestClaimed(props: {
 						</li>
 					)}
 				</ul>
-				<SiteLink href="/account" css={primaryLinkCss}>
+				<Button
+					href="/account"
+					variant="primary"
+					size="md"
+					css={primaryButtonCss}
+				>
 					Go to your account
-				</SiteLink>
+				</Button>
 			</div>
 		</AuthLayout>
 	)
@@ -139,6 +150,7 @@ function GuestClaimForms(props: {
 	data: Extract<GuestClaimPageData, { kind: 'claim' }>
 }) {
 	const { data } = props
+	const [username, setUsername] = useState('')
 	const action = `/claim/${encodeURIComponent(data.code)}`
 	const status =
 		data.phase === 'active'
@@ -153,9 +165,9 @@ function GuestClaimForms(props: {
 					</p>
 				) : null}
 				{data.error ? (
-					<p role="alert" css={errorCss}>
+					<Alert tone="error" role="alert">
 						{errorCopy[data.error]}
-					</p>
+					</Alert>
 				) : null}
 				<ComesWithYou counts={data.comesWith} />
 				{data.step === 'code' ? (
@@ -166,23 +178,31 @@ function GuestClaimForms(props: {
 							<span>
 								Enter the code sent to {data.codeEmail || 'your email'}
 							</span>
-							<input
+							<Input
 								name="code"
 								inputMode="numeric"
 								autoComplete="one-time-code"
 								pattern="[0-9]*"
 								maxLength={6}
 								required
-								css={inputCss}
 								defaultValue={data.devCode ?? ''}
 							/>
 						</label>
-						<button type="submit" css={primaryButtonCss}>
+						<Button
+							type="submit"
+							variant="primary"
+							size="md"
+							css={primaryButtonCss}
+						>
 							Finish claiming
-						</button>
-						<SiteLink href={action} css={mutedLinkCss}>
+						</Button>
+						<TextLink
+							tone="muted"
+							href={action}
+							css={{ justifySelf: 'center', lineHeight: 1.5 }}
+						>
 							Use a different email
-						</SiteLink>
+						</TextLink>
 					</form>
 				) : (
 					<>
@@ -196,40 +216,41 @@ function GuestClaimForms(props: {
 									Packages, memories, jobs, and run history move into your
 									account. Name clashes get a new name.
 								</p>
-								<button type="submit" css={primaryButtonCss}>
+								<Button
+									type="submit"
+									variant="primary"
+									size="md"
+									css={primaryButtonCss}
+								>
 									Move everything into this account
-								</button>
+								</Button>
 							</form>
 						) : null}
 						<section css={cardCss} aria-labelledby="claim-new">
 							<h2 id="claim-new" css={sectionTitleCss}>
 								Make a new account
 							</h2>
-							<form method="post" action={action} css={formCss}>
+							<form method="post" action={action} css={formCss} noValidate>
 								<input type="hidden" name="action" value="email_start" />
 								<input type="hidden" name="mode" value="new" />
-								<label css={labelCss}>
-									<span>Username</span>
-									<input
-										name="username"
-										autoComplete="username"
-										required
-										css={inputCss}
-									/>
-								</label>
+								<UsernameChoiceField value={username} onChange={setUsername} />
 								<label css={labelCss}>
 									<span>Email</span>
-									<input
+									<Input
 										name="email"
 										type="email"
 										autoComplete="email"
 										required
-										css={inputCss}
 									/>
 								</label>
-								<button type="submit" css={primaryButtonCss}>
+								<Button
+									type="submit"
+									variant="primary"
+									size="md"
+									css={primaryButtonCss}
+								>
 									Email me a code
-								</button>
+								</Button>
 							</form>
 							<ProviderButtons action={action} providers={data.providers} />
 						</section>
@@ -242,17 +263,21 @@ function GuestClaimForms(props: {
 								<input type="hidden" name="mode" value="merge" />
 								<label css={labelCss}>
 									<span>Account email</span>
-									<input
+									<Input
 										name="email"
 										type="email"
 										autoComplete="email"
 										required
-										css={inputCss}
 									/>
 								</label>
-								<button type="submit" css={secondaryButtonCss}>
+								<Button
+									type="submit"
+									variant="secondary"
+									size="md"
+									css={secondaryButtonCss}
+								>
 									Email me a code
-								</button>
+								</Button>
 							</form>
 							<ProviderButtons action={action} providers={data.providers} />
 						</section>
@@ -282,9 +307,14 @@ function ProviderButtons(props: {
 				<form key={provider} method="post" action={props.action}>
 					<input type="hidden" name="action" value="provider" />
 					<input type="hidden" name="provider" value={provider} />
-					<button type="submit" css={providerButtonCss}>
+					<Button
+						type="submit"
+						variant="secondary"
+						size="md"
+						css={providerButtonCss}
+					>
 						Continue with {label}
-					</button>
+					</Button>
 				</form>
 			))}
 		</div>
@@ -292,20 +322,12 @@ function ProviderButtons(props: {
 }
 
 const primaryButtonCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	width: '100%',
 }
 const secondaryButtonCss = {
-	...getSecondaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	width: '100%',
 }
-const providerButtonCss = { ...getSecondaryButtonCss(), width: '100%' }
-const primaryLinkCss: CSSObject = {
-	...primaryButtonCss,
-	display: 'inline-flex',
-	justifyContent: 'center',
-	textDecoration: 'none',
-}
+const providerButtonCss = { width: '100%' }
 const stackCss: CSSObject = { display: 'grid', gap: spacing.lg }
 const formCss: CSSObject = { display: 'grid', gap: spacing.sm }
 const cardCss: CSSObject = {
@@ -333,33 +355,11 @@ const labelCss: CSSObject = {
 	fontSize: typography.fontSize.sm,
 	fontWeight: typography.fontWeight.medium,
 }
-const inputCss: CSSObject = {
-	font: 'inherit',
-	fontSize: typography.fontSize.base,
-	padding: '0.6rem 0.75rem',
-	border: `1px solid ${colors.fieldBorder}`,
-	borderRadius: radius.md,
-	background: colors.surface,
-	color: colors.text,
-	minHeight: '44px',
-}
 const mutedCss: CSSObject = {
 	margin: 0,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
 	lineHeight: 1.5,
-}
-const mutedLinkCss: CSSObject = {
-	...mutedCss,
-	justifySelf: 'center',
-}
-const errorCss: CSSObject = {
-	margin: 0,
-	padding: spacing.md,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.danger}`,
-	color: colors.danger,
-	fontSize: typography.fontSize.sm,
 }
 const holdNoticeCss: CSSObject = {
 	margin: 0,

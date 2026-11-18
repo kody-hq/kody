@@ -84,8 +84,11 @@ export function readQueryParams(
 	return params
 }
 
-export async function readJsonBody(request: Request) {
-	const read = await readRequestBodyUpTo(request, maxApiRequestBodyBytes)
+export async function readJsonBody(
+	request: Request,
+	maxBytes = maxApiRequestBodyBytes,
+) {
+	const read = await readRequestBodyUpTo(request, maxBytes)
 	if (!read.ok) {
 		return { kind: 'too_large' as const, byteLength: read.byteLength }
 	}

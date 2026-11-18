@@ -428,7 +428,6 @@ export const loadOrgApps = createServerFn({ method: 'GET' })
 					ownerUserId: input.binding.org.id,
 					hasPackage: true,
 					hasApp: true,
-					requestUrl: input.request.url,
 				})
 				return { ...pkg, appHref: links?.packageAppHref ?? null }
 			},

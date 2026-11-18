@@ -12,7 +12,7 @@ import {
 	type McpOAuthLiveServerIdentity,
 } from './oauth-attempt.ts'
 import { mcpOAuthAttemptIdentityInvalidMessage } from './oauth-identity.ts'
-import { assertEndpointsOnIssuerOrigin } from './oauth-issuer-endpoints.ts'
+import { assertTrustedMcpOAuthDiscovery } from './oauth-issuer-endpoints.ts'
 import {
 	releaseMcpOAuthRefreshCoalesce,
 	wrapFetchForMcpOAuthRefreshCoalesce,
@@ -202,10 +202,12 @@ export function createMcpClientOAuthProvider(
 }
 
 /**
- * Refuse AS metadata whose authorize/token endpoints leave the issuer origin
- * (#3284). Discovery save covers authorize start; discovery read re-asserts on
- * refresh against a cached (or pre-check) blob. Throws `McpOAuthFailedError`
- * (`mcp_oauth_failed`) so the existing OAuth failure path surfaces it.
+ * Refuse AS metadata whose issuer does not echo the discovered AS URL (RFC
+ * 8414 §3.3), or whose authorize/token endpoints leave the issuer's origin and
+ * registrable domain (#3284). Discovery save covers authorize start; discovery
+ * read re-asserts on refresh against a cached (or pre-check) blob. Throws
+ * `McpOAuthFailedError` (`mcp_oauth_failed`) so the existing OAuth failure
+ * path surfaces it.
  */
 function installMcpOAuthIssuerEndpointGuard(
 	provider: DurableObjectOAuthClientProvider,
@@ -219,12 +221,12 @@ function installMcpOAuthIssuerEndpointGuard(
 	const writeDiscovery = provider.saveDiscoveryState.bind(provider)
 	const readDiscovery = provider.discoveryState.bind(provider)
 	provider.saveDiscoveryState = async (state) => {
-		assertEndpointsOnIssuerOrigin(state)
+		assertTrustedMcpOAuthDiscovery(state)
 		await writeDiscovery(state)
 	}
 	provider.discoveryState = async () => {
 		const state = await readDiscovery()
-		if (state) assertEndpointsOnIssuerOrigin(state)
+		if (state) assertTrustedMcpOAuthDiscovery(state)
 		return state
 	}
 }

@@ -6,7 +6,12 @@ import {
 	requireMcpRequest,
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
-import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import { findPackageJobIntervalFloorViolation } from '#worker/jobs/package-job-interval-floor.ts'
+import { parseAuthoredPackageJson } from '#worker/package-registry/manifest.ts'
+import {
+	packageOwnerEntitlementEmail,
+	resolvePackageOwnerContext,
+} from '#worker/package-registry/package-owner.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import { runAuthoringPublishChecksOnFiles } from '#worker/repo/authoring-publish-checks.ts'
 import {
@@ -38,7 +43,6 @@ import {
 	kodyIgnoreFilePath,
 } from '#worker/repo/kodyignore.ts'
 import { runPackageCheckArtifactBuild } from '#worker/repo/package-check-artifact-build.ts'
-import { publishedPackageArtifactTargetsReusableForFiles } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createPublishWorkTree } from '#worker/repo/publish-work.ts'
 import { recordApiRequestProgress } from '#worker/open-api/request-progress.ts'
@@ -139,10 +143,39 @@ function normalizePackageCheckFiles<Value>(
 	return normalized
 }
 
+async function findManifestJobIntervalFloorViolation(input: {
+	env: Env
+	files: Record<string, string>
+	owner: Awaited<ReturnType<typeof resolvePackageOwnerContext>>
+	sourceId?: string
+}) {
+	const content = input.files['package.json']
+	if (typeof content !== 'string') return null
+	let jobs
+	try {
+		jobs = parseAuthoredPackageJson({
+			content,
+			expectedPackageScope: input.owner.ownerScope,
+		}).kody.jobs
+	} catch {
+		// The manifest check reports the parse error.
+		return null
+	}
+	if (!jobs) return null
+	return await findPackageJobIntervalFloorViolation({
+		env: input.env,
+		userId: input.owner.ownerUserId,
+		email: packageOwnerEntitlementEmail(input.owner),
+		...(input.sourceId ? { sourceId: input.sourceId } : {}),
+		jobs,
+	})
+}
+
 export const packageCheckCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageCheck',
+		walletGuard: 'check',
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
@@ -343,18 +376,8 @@ export const packageCheckCapability = defineDomainCapability(
 						...(existingPackage ? { rootPackageId: existingPackage.id } : {}),
 						...(existingSource
 							? {
-									listReusableTargets: async (targets) => {
-										const reusable =
-											await publishedPackageArtifactTargetsReusableForFiles({
-												env: ctx.env,
-												userId: owner.ownerUserId,
-												source: existingSource!,
-												targets,
-												files: snapshot.tree.files,
-											})
-										await recordStep('artifact_build')
-										return reusable
-									},
+									reuseSource: existingSource,
+									onReuseScanDone: () => recordStep('artifact_build'),
 								}
 							: {}),
 					})
@@ -370,6 +393,21 @@ export const packageCheckCapability = defineDomainCapability(
 				? null
 				: createRepoChecksError(checks.results)
 			if (checksError instanceof RepoChecksPlatformError) throw checksError
+			// Publish refuses these only after its checks, when it syncs jobs.
+			const jobFloorMessage = await findManifestJobIntervalFloorViolation({
+				env: ctx.env,
+				files: snapshot.tree.files,
+				owner,
+				...(sourceId ? { sourceId } : {}),
+			})
+			if (jobFloorMessage) {
+				checks.results.push({
+					kind: 'manifest',
+					ok: false,
+					message: jobFloorMessage,
+				})
+				Object.assign(checks, { ok: false })
+			}
 			const unmappable = existingPackage
 				? knownUnmappableCredentials(
 						await loadOnePackageUnmappableCredentials({

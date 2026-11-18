@@ -94,8 +94,8 @@ function seedEnv(input: {
 	}
 }
 
-test('collectLiteralUserSecretNames skips package/session scopes and integrations', () => {
-	const scan = scanPackageCredentials({
+test('collectLiteralUserSecretNames skips package/session scopes and integrations', async () => {
+	const scan = await scanPackageCredentials({
 		files: {
 			'index.ts': `
 				const a = '{{secret:USER_KEY}}'

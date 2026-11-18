@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -45,7 +45,6 @@ test.each([
 	'vite.config.ts',
 	'tsconfig-tools.json',
 	'tools/vitest-global-setup-node.ts',
-	'packages/worker/src/test-support/module-graph.ts',
 	'packages/worker/wrangler.test.jsonc',
 	'packages/worker/migrations/0001.sql',
 	'patches/example.patch',
@@ -1409,7 +1408,7 @@ test('pre-push names the global inputs that force the full test:push', async () 
 	const logs: Array<string> = []
 	const git: GitRunner = (args) => {
 		if (args[0] === 'diff')
-			return gitResult(0, 'packages/worker/src/test-support/a.ts\0src/b.ts\0')
+			return gitResult(0, 'packages/worker/migrations/0001_a.sql\0src/b.ts\0')
 		if (args[0] === 'status' || args[0] === 'stash') return gitResult(0)
 		if (args[0] === 'rev-parse') return gitResult(1)
 		return gitResult(1)
@@ -1434,7 +1433,7 @@ test('pre-push names the global inputs that force the full test:push', async () 
 			(line) =>
 				line.includes('full test:push') &&
 				line.includes('global test inputs changed') &&
-				line.includes('packages/worker/src/test-support/a.ts'),
+				line.includes('packages/worker/migrations/0001_a.sql'),
 		),
 	).toBe(true)
 })
@@ -1464,4 +1463,126 @@ test('pre-push names why an asset-only push falls back to the full test:push', a
 				line.includes('no pushed path is JS/TS source'),
 		),
 	).toBe(true)
+})
+
+test('a first push of a new branch diffs against origin/main without a merge-base (#4775)', () => {
+	const calls: Array<string> = []
+	const paths = listHookPaths({
+		hook: 'pre-push',
+		git: (args) => {
+			calls.push(args.join(' '))
+			if (
+				args.join(' ') === 'rev-parse --verify --quiet origin/main^{commit}'
+			) {
+				return gitResult(0, `${remoteSha}\n`)
+			}
+			if (args[0] === 'merge-base') return gitResult(1)
+			if (args[0] === 'diff' && args.at(-2) === 'origin/main') {
+				return gitResult(0, 'packages/worker/src/app.ts\0')
+			}
+			return gitResult(1)
+		},
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${zeroSha}\n`,
+	})
+	expect(paths).toEqual(['packages/worker/src/app.ts'])
+	expect(calls).toEqual([
+		'rev-parse --verify --quiet origin/HEAD^{commit}',
+		'rev-parse --verify --quiet origin/main^{commit}',
+		`merge-base origin/main ${localSha}`,
+		`diff --name-only --no-renames -z origin/main ${localSha}`,
+	])
+})
+
+test('a shallow clone first push lists only the branch change (#4775)', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'hook-shallow-'))
+	const run = (cwd: string, args: ReadonlyArray<string>) => {
+		const result = spawnSync('git', args, { cwd, encoding: 'utf8' })
+		if (result.status !== 0) throw new Error(result.stderr)
+		return result.stdout.trim()
+	}
+	const commit = (cwd: string, file: string) => {
+		writeFileSync(join(cwd, file), file)
+		run(cwd, ['add', file])
+		run(cwd, [
+			'-c',
+			'user.name=t',
+			'-c',
+			'user.email=t@t',
+			'commit',
+			'-qm',
+			file,
+		])
+	}
+	const source = join(root, 'source')
+	run(root, ['init', '-q', '-b', 'main', source])
+	commit(source, 'a.md')
+	commit(source, 'b.md')
+	const clone = join(root, 'clone')
+	run(root, [
+		'clone',
+		'-q',
+		'--depth',
+		'1',
+		'--no-local',
+		`file://${source}`,
+		clone,
+	])
+	commit(source, 'c.md')
+	run(clone, ['checkout', '-qb', 'topic'])
+	commit(clone, 'topic.ts')
+	run(clone, ['fetch', '-q', '--depth', '1', 'origin', 'main'])
+	const git: GitRunner = (args) => {
+		const result = spawnSync('git', args, { cwd: clone, encoding: 'utf8' })
+		return {
+			status: result.status ?? 1,
+			stdout: result.stdout ?? '',
+			stderr: result.stderr ?? '',
+		}
+	}
+	expect(git(['merge-base', 'origin/main', 'HEAD']).status).not.toBe(0)
+	const tip = run(clone, ['rev-parse', 'HEAD'])
+	const paths = listHookPaths({
+		hook: 'pre-push',
+		git,
+		stdin: `refs/heads/topic ${tip} refs/heads/topic ${zeroSha}\n`,
+	})
+	expect(paths).toContain('topic.ts')
+	expect(paths).not.toBeNull()
+})
+
+test('pre-push logs why pushed paths could not be listed', async () => {
+	const logs: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: 'not a pre-push line\n',
+		git: () => gitResult(1),
+		provenance: createFileProvenanceStore(
+			join(await mkdtemp(join(tmpdir(), 'unlisted-hook-')), 'p.json'),
+		),
+		runScript: () => 0,
+		log: (message) => logs.push(message),
+		progressIntervalMs: 60_000,
+	})
+	expect(logs).toContain(
+		'pre-push: could not list paths: pre-push stdin has a line that is not `<local ref> <sha> <remote ref> <sha>`',
+	)
+
+	const diffLogs: Array<string> = []
+	await runGitHookChecks({
+		hook: 'pre-push',
+		stdin: `refs/heads/topic ${localSha} refs/heads/topic ${remoteSha}\n`,
+		git: (args) =>
+			args[0] === 'diff'
+				? gitResult(128, '', 'fatal: bad object\n')
+				: gitResult(1),
+		provenance: createFileProvenanceStore(
+			join(await mkdtemp(join(tmpdir(), 'unlisted-hook-')), 'p.json'),
+		),
+		runScript: () => 0,
+		log: (message) => diffLogs.push(message),
+		progressIntervalMs: 60_000,
+	})
+	expect(diffLogs).toContain(
+		`pre-push: could not list paths: git diff --name-only --no-renames -z ${remoteSha} ${localSha} failed (fatal: bad object)`,
+	)
 })

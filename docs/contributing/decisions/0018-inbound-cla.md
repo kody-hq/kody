@@ -2,6 +2,10 @@
 
 - **Status:** accepted
 - **Date:** 2026-08-16
+- **Update (2026-11-14):** the repository moved from FSL-1.1-ALv2 to the
+  [Kody License](../../../LICENSE), a modified FSL-1.1-ALv2. The CLA's
+  relicensing grant covers signed contributions; the Context below describes the
+  license at the time of this decision.
 
 ## Context
 

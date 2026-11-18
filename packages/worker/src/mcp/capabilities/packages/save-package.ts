@@ -88,6 +88,10 @@ import {
 } from './shared.ts'
 import { credentialPatternNoticeForFiles } from '#worker/repo/credential-pattern-check.ts'
 import { buildCredentialAllowedPackagesPublishWarningNotice } from '#worker/credentials/credential-allowed-packages-publish-warning.ts'
+import {
+	buildHeldForApprovalPublishNotice,
+	heldForApprovalSchema,
+} from './held-for-approval-publish-notice.ts'
 
 function parseSavedPackageManifest(input: {
 	content: string
@@ -244,6 +248,7 @@ export const savePackageCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageSave',
+		walletGuard: 'repo_change',
 		contextRuns: 'allow',
 		orgPermission: ['package:write', 'package:create'],
 		description: `Create or replace a saved package by writing a complete UTF-8 text file set (no binary assets). Coding agents with local filesystem/git access should prefer packageGetGitRemote (pass create: true for new packages) to clone, edit, push, and publish with packagePublishExternalPush; tool-only agents use packageSave or repo sessions. The package repo is rooted at package.json and package.json#kody is the Kody-specific metadata block. Publish requires non-empty root README.md (human-focused: what it does, prerequisites, setup, done-when, plus a concise Intent section) and AGENTS.md (agent-focused: imports, smoke tests, edge cases). Ask the user if intent is unclear. ${defaultPackagePrivateGuidance} ${productionPackageSourceSafetyPolicy}`,
@@ -268,6 +273,7 @@ export const savePackageCapability = defineDomainCapability(
 					'Follow-up guidance for continuing package work, including the git clone-edit-push lane for coding agents and any pending package secret approvals.',
 				),
 			pending_secret_package_approvals: pendingPackageSecretApprovalsSchema,
+			held_for_approval: heldForApprovalSchema,
 		}),
 		async handler(args, ctx) {
 			const user = requireMcpUser(ctx.callerContext)
@@ -638,6 +644,14 @@ export const savePackageCapability = defineDomainCapability(
 				// Warning is best-effort: never fail save after persistence.
 				allowedPackagesPublishNotice = null
 			}
+			const heldForApproval = await buildHeldForApprovalPublishNotice({
+				env: ctx.env,
+				baseUrl: ctx.callerContext.baseUrl,
+				ownerUserId: owner.ownerUserId,
+				ownerScope: owner.ownerScope,
+				packageId: saved.id,
+				kodyId: saved.kodyId,
+			})
 			await reportCapabilityProgress(ctx.reportProgress, {
 				progress: 4,
 				total: 4,
@@ -661,6 +675,7 @@ export const savePackageCapability = defineDomainCapability(
 				created_at: saved.createdAt,
 				updated_at: saved.updatedAt,
 				pending_secret_package_approvals: pendingSecretApprovals,
+				...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
 				next_steps: buildPackageSaveNextSteps({
 					packageId: saved.id,
 					pendingSecretApprovalsGuidance: pendingSecretApprovals
@@ -669,7 +684,7 @@ export const savePackageCapability = defineDomainCapability(
 							)
 						: null,
 					credentialPatternsNotice:
-						credentialPatternNoticeForFiles(publishedFiles),
+						await credentialPatternNoticeForFiles(publishedFiles),
 					allowedPackagesPublishNotice,
 				}),
 			}

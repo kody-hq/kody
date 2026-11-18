@@ -25,7 +25,10 @@ import {
 	loadOrgProfileVisibility,
 	type OrgProfileVisibility,
 } from '#worker/orgs/org-public-profile.ts'
-import { softDeleteOrg } from '#worker/orgs/soft-delete.ts'
+import {
+	AccountDeletionWritersActiveError,
+	softDeleteOrg,
+} from '#worker/orgs/soft-delete.ts'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { packageAppCustomDomainsCnameTargetFromBaseUrl } from '#worker/package-app-custom-hostnames/cname-target.ts'
@@ -372,11 +375,18 @@ export async function deleteOrganization(
 			400,
 		)
 	}
-	await softDeleteOrg({
-		env,
-		orgId: access.org.id,
-		actorUserId: user.mcpUser.userId,
-	})
+	try {
+		await softDeleteOrg({
+			env,
+			orgId: access.org.id,
+			actorUserId: user.mcpUser.userId,
+		})
+	} catch (error) {
+		if (error instanceof AccountDeletionWritersActiveError) {
+			return operationResult({ ok: false, error: error.message }, 409)
+		}
+		throw error
+	}
 	return operationResult({
 		ok: true,
 		redirectTo: routes.accountOrganizations.href(),

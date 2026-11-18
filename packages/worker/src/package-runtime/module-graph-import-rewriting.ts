@@ -1,5 +1,8 @@
 import { publishedArtifactNeedsPackageBindingRebuild } from './pre-binding-artifact-repair.ts'
-import { collectTopLevelFetchCollisionNames } from './rewrite-local-execute-secret-fetch.ts'
+import {
+	collectTopLevelFetchCollisionNames,
+	rewriteGlobalObjectFetchReads,
+} from './rewrite-local-execute-secret-fetch.ts'
 import {
 	loadServingPackageSourceBySourceId,
 	type LoadedPackageSource,
@@ -69,7 +72,7 @@ import {
 	refreshKodyRuntimeModules,
 } from './runtime-source-modules.ts'
 import { collectModuleExportNames } from './module-export-names.ts'
-import { materializePublishedArtifactModules } from './module-graph-artifacts.ts'
+import { materializeDependencyArtifactModules } from './module-graph-artifacts.ts'
 import {
 	collectReachableSourceFilePaths,
 	isBundlerRootConfigPath,
@@ -98,11 +101,28 @@ export type LoadedKodyGraphPackage = LoadedPackageSource & {
 
 export type LoadedKodyGraphPackages = Map<string, LoadedKodyGraphPackage>
 
+/**
+ * Why a module is in a prepared graph, recorded where the module is added.
+ * Consumers pick modules by role instead of guessing from the path, so a
+ * layout change cannot silently drop modules from one of them.
+ */
+export type KodyGraphModuleRole =
+	| 'runtime'
+	| 'public-runtime'
+	| 'package-runtime'
+	| 'import-proxy'
+	| 'published-artifact'
+	| 'package-source'
+	| 'root-config'
+	| 'root-dependency'
+	| 'root-source'
+
 type RewriteState = {
 	env: Env
 	baseUrl: string
 	userId: string
 	files: Record<string, string>
+	moduleRoles: Map<string, KodyGraphModuleRole>
 	sourceFiles: Record<string, string>
 	rootPackage: {
 		manifest: AuthoredPackageJson
@@ -133,6 +153,10 @@ type RewriteState = {
 	 * rewrite pass.
 	 */
 	publishedArtifactDependencies: Array<BundleArtifactDependency>
+	/** Row id and build time of each composed published artifact. */
+	publishedArtifactVersions: Array<string>
+	/** A composed artifact has JSON, CommonJS, or text modules. */
+	hasTypedPublishedArtifactModules: boolean
 	/**
 	 * Shared with reachability so each source string is parsed once per
 	 * prepare.
@@ -188,7 +212,7 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 	// load sites do, and `publishedArtifactNeedsPackageBindingRebuild` logs
 	// `pre_binding_bundle_needs_republish` so the unbound bundle is visible.
 	if (
-		publishedArtifactNeedsPackageBindingRebuild({
+		await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: artifact.artifact,
 			sourceFiles: input.loaded.files,
 		})
@@ -201,15 +225,27 @@ async function maybeEnsurePublishedArtifactTarget(input: {
 		encodePathKeyAsPath(exportName),
 	)
 	for (const [modulePath, module] of Object.entries(
-		materializePublishedArtifactModules({
+		await materializeDependencyArtifactModules({
 			artifactPrefix,
 			modules: artifact.artifact.modules,
+			linkedRoot: artifactPrefix,
 		}),
 	)) {
 		input.state.files[modulePath] = module
+		input.state.moduleRoles.set(modulePath, 'published-artifact')
 	}
 	for (const dependency of artifact.artifact.dependencies) {
 		input.state.publishedArtifactDependencies.push(dependency)
+	}
+	input.state.publishedArtifactVersions.push(
+		`${artifact.row.id}@${artifact.artifact.createdAt}`,
+	)
+	if (
+		Object.values(artifact.artifact.modules).some(
+			(module) => typeof module !== 'string' && typeof module.js !== 'string',
+		)
+	) {
+		input.state.hasTypedPublishedArtifactModules = true
 	}
 	return joinPath(artifactPrefix, artifact.artifact.mainModule)
 }
@@ -350,8 +386,9 @@ async function materializePackageSourceIntoFiles(
 	if (loaded.sourceMaterialized === true) return
 	for (const [filePath, content] of Object.entries(loaded.files)) {
 		const normalizedPath = normalizePackageWorkspacePath(filePath)
-		assertNoKodyVirtualModuleReference(normalizedPath, content)
+		await assertNoKodyVirtualModuleReference(normalizedPath, content)
 		const targetPath = joinPath(loaded.prefix, normalizedPath)
+		state.moduleRoles.set(targetPath, 'package-source')
 		if (isTypeDeclarationFilePath(normalizedPath)) {
 			state.files[targetPath] = content
 			continue
@@ -387,6 +424,14 @@ async function ensurePackageProxy(
 	// stamped: the surrounding run already meters that package via
 	// `package_export`.
 	let calleePackageId: string | null = null
+	// For a published artifact target, read export names from the package's
+	// source entry: parsing a multi-megabyte artifact costs about 25 times
+	// its size in memory. Names the artifact lacks read as undefined, and
+	// names missed here still pass through the proxy's `export *`.
+	let exportNamesSource: {
+		files: Record<string, string>
+		modulePath: string
+	} | null = null
 	const absoluteExportPath =
 		parsed.packageName === state.rootPackage?.manifest.name
 			? joinPath(
@@ -409,7 +454,17 @@ async function ensurePackageProxy(
 						specifier,
 						loaded,
 					})
-					if (publishedTarget) return publishedTarget
+					if (publishedTarget) {
+						exportNamesSource = {
+							files: loaded.files,
+							modulePath: resolvePackageExportSourcePath({
+								files: loaded.files,
+								manifest: loaded.manifest,
+								exportName: parsed.exportName,
+							}),
+						}
+						return publishedTarget
+					}
 					await materializePackageSourceIntoFiles(state, loaded)
 					assertPublishedSourceCanRebuildWithoutInstallingDeps({
 						sourceFiles: loaded.files,
@@ -432,6 +487,7 @@ async function ensurePackageProxy(
 		proxyPath,
 		absoluteExportPath,
 	)
+	state.moduleRoles.set(proxyPath, 'import-proxy')
 	state.files[proxyPath] = calleePackageId
 		? createMeteredPackageImportProxySource({
 				targetPath: proxyTarget,
@@ -440,10 +496,12 @@ async function ensurePackageProxy(
 					runtimeModulePath,
 				),
 				packageId: calleePackageId,
-				exportNames: collectModuleExportNames({
-					files: state.files,
-					modulePath: absoluteExportPath,
-				}),
+				exportNames: await collectModuleExportNames(
+					exportNamesSource ?? {
+						files: state.files,
+						modulePath: absoluteExportPath,
+					},
+				),
 			})
 		: createPackageImportProxySource({
 				targetPath: proxyTarget,
@@ -513,11 +571,13 @@ function createUniqueHelperName(source: string, baseName: string) {
 function ensurePackageRuntimeModule(state: RewriteState, packageId: string) {
 	const modulePath = buildPackageRuntimeModulePath(packageId)
 	state.files[modulePath] ??= createPackageRuntimeModuleSource(packageId)
+	state.moduleRoles.set(modulePath, 'package-runtime')
 	return modulePath
 }
 
 function ensurePublicRuntimeModule(state: RewriteState) {
 	state.files[publicRuntimeModulePath] ??= createPublicRuntimeModuleSource()
+	state.moduleRoles.set(publicRuntimeModulePath, 'public-runtime')
 	return publicRuntimeModulePath
 }
 
@@ -548,10 +608,12 @@ function jsonValueTargetsKodyVirtualModule(value: unknown): boolean {
  * inspected precisely (unparseable scripts, JSONC with comments, TOML) fail
  * closed.
  */
-function fileReachesKodyVirtualModule(filePath: string, content: string) {
+async function fileReachesKodyVirtualModule(filePath: string, content: string) {
 	if (!textMentionsKodyVirtualModule(content)) return false
 	if (bundlerScriptSourcePathPattern.test(filePath)) {
-		const specifiers = collectBundlerResolvedSpecifiers(content, { filePath })
+		const specifiers = await collectBundlerResolvedSpecifiers(content, {
+			filePath,
+		})
 		return (
 			specifiers == null || specifiers.some(specifierTargetsKodyVirtualModule)
 		)
@@ -572,14 +634,19 @@ function fileReachesKodyVirtualModule(filePath: string, content: string) {
  * `exports` / `imports` / `main` and wrangler `main` / `alias` could
  * otherwise point there).
  */
-function assertNoKodyVirtualModuleReference(filePath: string, content: string) {
+export async function assertNoKodyVirtualModuleReference(
+	filePath: string,
+	content: string,
+) {
 	if (isTypeDeclarationFilePath(filePath)) return
-	if (!fileReachesKodyVirtualModule(filePath, content)) return
+	if (!(await fileReachesKodyVirtualModule(filePath, content))) return
 	const label = bundlerScriptSourcePathPattern.test(filePath)
 		? `Package source "${filePath}"`
 		: `Package config "${filePath}"`
 	throw new Error(buildInternalKodyVirtualImportMessage(label))
 }
+
+const packageOwnFetchName = '__kodyPackageOwnFetch'
 
 async function rewriteKodyImports(input: {
 	state: RewriteState
@@ -598,7 +665,7 @@ async function rewriteKodyImports(input: {
 	// modules keep their own binding.
 	let boundFetchPrefix = ''
 	if (input.sourcePackageId && /\bfetch\b/.test(input.source)) {
-		const collisions = collectTopLevelFetchCollisionNames(input.source)
+		const collisions = await collectTopLevelFetchCollisionNames(input.source)
 		if (collisions && !collisions.has('fetch')) {
 			const facadePath = ensurePackageRuntimeModule(
 				input.state,
@@ -609,10 +676,28 @@ async function rewriteKodyImports(input: {
 			)};\n`
 		}
 	}
+	// Reads of fetch through the global object get the same package-bound
+	// fetch, under a name that cannot clash with the module's own `fetch`.
+	if (input.sourcePackageId && !input.source.includes(packageOwnFetchName)) {
+		const rewritten = await rewriteGlobalObjectFetchReads(
+			input.source,
+			packageOwnFetchName,
+		)
+		if (rewritten !== input.source) {
+			const facadePath = ensurePackageRuntimeModule(
+				input.state,
+				input.sourcePackageId,
+			)
+			boundFetchPrefix += `import { __kodyBoundFetch as ${packageOwnFetchName} } from ${JSON.stringify(
+				createRelativeImportSpecifier(input.modulePath, facadePath),
+			)};\n`
+			input = { ...input, source: rewritten }
+		}
+	}
 	const {
 		literalImports: importNodes,
 		dynamicImportExpressions: dynamicImportNodes,
-	} = collectModuleImportNodesCached(
+	} = await collectModuleImportNodesCached(
 		input.state.importNodesCache,
 		input.source,
 		{
@@ -722,8 +807,23 @@ async function rewriteKodyImports(input: {
 
 export type PreparedKodyGraph = {
 	files: Record<string, string>
+	/**
+	 * Role of each module in `files`. A module the runtime refresh adds after
+	 * composition has none.
+	 */
+	moduleRoles: ReadonlyMap<string, KodyGraphModuleRole>
 	packages: LoadedKodyGraphPackages
 	publishedArtifactDependencies: Array<BundleArtifactDependency>
+	/**
+	 * Row id and build time of each composed published artifact, so a cache
+	 * key changes when an artifact is replaced at the same commit.
+	 */
+	publishedArtifactVersions: Array<string>
+	/**
+	 * A composed artifact has JSON, CommonJS, or text modules, whose type is
+	 * lost when the artifact is flattened into bundler input.
+	 */
+	hasTypedPublishedArtifactModules: boolean
 	entryPoint: string
 }
 
@@ -757,6 +857,9 @@ export async function prepareKodyGraphFiles(input: {
 	const files: Record<string, string> = {
 		[runtimeModulePath]: createRuntimeModuleSource(),
 	}
+	const moduleRoles = new Map<string, KodyGraphModuleRole>([
+		[runtimeModulePath, 'runtime'],
+	])
 	const rootPackage = readRootPackage(input.sourceFiles)
 	const entryPoint =
 		resolveWorkspaceSourceFilePath({
@@ -764,7 +867,7 @@ export async function prepareKodyGraphFiles(input: {
 			path: input.entryPoint,
 		}) ?? normalizePackageWorkspacePath(input.entryPoint)
 	const importNodesCache: ModuleImportNodesCache = new Map()
-	const reachableRootFiles = collectReachableSourceFilePaths({
+	const reachableRootFiles = await collectReachableSourceFilePaths({
 		files: input.sourceFiles,
 		entryPoint,
 		rootPackage,
@@ -775,6 +878,7 @@ export async function prepareKodyGraphFiles(input: {
 		baseUrl: input.baseUrl,
 		userId: input.userId,
 		files,
+		moduleRoles,
 		sourceFiles: input.sourceFiles,
 		rootPackage,
 		rootPackageId: input.rootPackageId?.trim() || null,
@@ -783,6 +887,8 @@ export async function prepareKodyGraphFiles(input: {
 		dynamicPackageImports: new Map(),
 		packages: new Map(),
 		publishedArtifactDependencies: [],
+		publishedArtifactVersions: [],
+		hasTypedPublishedArtifactModules: false,
 		importNodesCache,
 		prefetchedPublishedArtifacts: new Map(),
 	}
@@ -793,12 +899,14 @@ export async function prepareKodyGraphFiles(input: {
 			isBundlerRootDependencyPath(normalizedSourcePath) ||
 			reachableRootFiles.has(normalizedSourcePath)
 		) {
-			assertNoKodyVirtualModuleReference(normalizedSourcePath, content)
+			await assertNoKodyVirtualModuleReference(normalizedSourcePath, content)
 		}
 		if (isBundlerRootConfigPath(normalizedSourcePath)) {
 			files[normalizedSourcePath] = content
+			moduleRoles.set(normalizedSourcePath, 'root-config')
 		}
 		if (isBundlerRootDependencyPath(normalizedSourcePath)) {
+			moduleRoles.set(normalizedSourcePath, 'root-dependency')
 			// Same rewrite dependency packages get after an artifact miss in
 			// materializePackageSourceIntoFiles, so computed import() in
 			// installed dependency code hits the guard.
@@ -817,11 +925,13 @@ export async function prepareKodyGraphFiles(input: {
 		const normalizedPath = joinPath(rootSourcePrefix, normalizedSourcePath)
 		if (normalizedSourcePath === packageManifestPath) {
 			files[normalizedPath] = content
+			moduleRoles.set(normalizedPath, 'root-source')
 			continue
 		}
 		if (!reachableRootFiles.has(normalizedSourcePath)) {
 			continue
 		}
+		moduleRoles.set(normalizedPath, 'root-source')
 		if (isTypeDeclarationFilePath(normalizedSourcePath)) {
 			files[normalizedPath] = content
 			continue
@@ -834,9 +944,12 @@ export async function prepareKodyGraphFiles(input: {
 		})
 	}
 	return {
-		files: refreshKodyRuntimeModules(files) as Record<string, string>,
+		files: (await refreshKodyRuntimeModules(files)) as Record<string, string>,
+		moduleRoles,
 		packages: state.packages,
 		publishedArtifactDependencies: state.publishedArtifactDependencies,
+		publishedArtifactVersions: state.publishedArtifactVersions,
+		hasTypedPublishedArtifactModules: state.hasTypedPublishedArtifactModules,
 		entryPoint,
 	}
 }

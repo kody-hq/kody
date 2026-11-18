@@ -80,6 +80,17 @@ invocations write `package invocation started: …` in the claim RPC, before
 sandbox work, so an isolate killed before finish still leaves a diagnostic line
 when reconciliation later marks `platform_interrupted`.
 
+Package app `app_fetch` runs survive a caller disconnect. The runtime cancels an
+invocation when its caller goes away (mail proxies do this to open-tracking
+pixels on a cold isolate), and only `waitUntil` work keeps running, so the app
+entrypoint holds the handler in `waitUntil` and the run finishes with its real
+outcome. `request.signal` aborts on disconnect (`enable_request_signal` on the
+Dynamic Worker): the entrypoint logs `package-app-caller-disconnected`, and a
+handler still running 25 seconds later is finished as
+`errorName=client_disconnected` with
+`package-app-caller-disconnect-grace-expired` in Workers Logs instead of waiting
+for reconciliation.
+
 ## Begin / finish contract
 
 ```ts
@@ -232,7 +243,29 @@ oldest in-flight + surface stale TTL, or now when over-cap **and** a terminal
 row is evictable). Over-cap with only `running` rows is not treated as due now.
 An empty pass (deleted no run rows) that would otherwise wake immediately backs
 off from 15s, doubling to a 15-minute cap, instead of rescheduling every 1s. A
-later start or finish resets that backoff.
+later start or finish resets that backoff. Passes run at most every 15s
+(`runRecordRetentionMinPassIntervalMs`): a busy object at the run cap or with
+many short-lived runs would otherwise wake once per run. Stale heal and cap
+eviction can lag by up to that long.
+
+Every retention query must be an index seek bounded by `LIMIT`, never a scan of
+a table that grows with history. Ledger and terminal workflow-projection lookups
+run once per terminal status (`status = ?` on `(status, created_at)` and
+`(status, COALESCE(completed_at, updated_at))`); `status != ?` or
+`status IN (...)` with `ORDER BY` reads every row. Before this rule, each pass
+read about three times the ledger size. `retention-scan-bounds.workers.test.ts`
+seeds a busy object and fails if a pass, finish, or keyed invocation reads more
+than a fixed row budget.
+
+### SQL rows-read instrumentation
+
+Every RunLog statement runs through `RunLogSqlStats` (`run-log-sql-stats.ts`),
+which reads `SqlStorageCursor.rowsRead` / `rowsWritten` per statement (SQL text
+with `?` placeholders). Counters live in the isolate only, so instrumentation
+writes no rows. Each minute with traffic logs one `run_log_sql_rows` line
+(`objectId`, window totals, top 10 statements). A single statement that reads
+5,000 rows or more logs `run_log_sql_large_scan` once per window. Search Workers
+Logs for those events on script `kody-runtime` to find a regression.
 
 Stranded `running` rows (isolate reset, lost `waitUntil` finish, hung Worker
 Loader `evaluate`) are reconciled to `status=error` with the stable
@@ -524,13 +557,16 @@ come from indexed `users` stamp columns, not RunLog.
 ### Admin RunLog SQL billing inspection
 
 `adminRunLogSqlBilling` is a role-gated, content-free operator read of one
-user's RunLog SQLite. It returns `getSqlBillingStats` per-op counters,
+user's RunLog SQLite (`inspectRunLogSqlBilling` in the run-records service,
+`inspectSqlBilling` on the DO). It returns `getSqlBillingStats` per-statement
+counters since stats were initialized or last reset (including `clearAll()`),
 `PRAGMA index_list` / `table_info` for `run_logs`, `COUNT(*)` for `runs`,
 `run_logs`, `package_invocation_ledger`, and `workflow_projections`,
 `EXPLAIN QUERY PLAN` for `DELETE`/`SELECT` on `run_logs` by `run_id`, and
-`run_count` meta versus `COUNT(*) FROM runs`. It never returns run rows, log
-bodies, errors, or other user-authored content. Look up the target by
-`stableUserId`, email, or username.
+`run_count` meta versus `COUNT(*) FROM runs`. Schema and plan probes use raw
+`sql.exec` so they skip the wrapped statement counters and platform rows-read.
+It never returns run rows, log bodies, errors, or other user-authored content.
+Look up the target by `stableUserId`, email, or username.
 
 ### Admin package placement failures
 

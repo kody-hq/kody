@@ -27,6 +27,7 @@ import {
 	ecpLostAfterDeadlineMs,
 	ecpMaxConcurrentRunsCap,
 	ecpMaxRunLogLines,
+	ecpCancelReasons,
 	ecpPingFrame,
 	ecpPongFrame,
 	ecpProtocolVersion,
@@ -46,8 +47,15 @@ import {
 	type EcpRunRequestBody,
 	type Ed25519PublicJwk,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { finishRunRecord } from '#worker/run-records/service.ts'
+import {
+	ensureRunRecordStarted,
+	finishRunRecord,
+} from '#worker/run-records/service.ts'
 import type { CredentialCallMapJson } from '#worker/credentials/credential-call-map.ts'
+import {
+	mergeRunPackages,
+	type ExecutionContextRunPackages,
+} from './run-packages.ts'
 import {
 	type ExecuteRequirement,
 	grantRefusal,
@@ -65,7 +73,10 @@ import {
 import { isExecutionContextsEnabledFor } from './flag.ts'
 import { runTiming, type ExecutionContextRunTiming } from './run-timing.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
-import type { RunRecordHandle } from '#worker/run-records/types.ts'
+import {
+	type RunRecordHandle,
+	runRecordStaleRunningTtlMsShortLived,
+} from '#worker/run-records/types.ts'
 
 export const executionContextsUnavailableCode = 'execution_contexts_unavailable'
 
@@ -114,6 +125,12 @@ export type ExecutionContextLease = {
 	 * callbacks; the machine never supplies or changes it.
 	 */
 	credentials?: CredentialCallMapJson | null
+	/**
+	 * Saved packages Kody served to this run through the package graph, held
+	 * here because code on the machine cannot be trusted to say which package
+	 * it is. Absent means the run loaded none (ad hoc code).
+	 */
+	packages?: ExecutionContextRunPackages
 }
 
 export type DispatchOutcome =
@@ -187,6 +204,12 @@ type SocketAttachment = {
 	apiOrigin?: string
 	/** The daemon answers `control.request` (it advertised `daemon-control`). */
 	control?: boolean
+	/**
+	 * A run offer went unanswered at this time. The socket reads as offline
+	 * until a heartbeat newer than this, so a sleeping machine costs one
+	 * accept wait and later runs fall through to the next context at once.
+	 */
+	unansweredAt?: number
 }
 
 /** A server-side pause, as the daemon and status views see it. */
@@ -851,7 +874,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					Array.isArray(features) && features.includes(daemonControlFeature)
 				ws.serializeAttachment(attachment)
 				this.#updateStatus(ws, body.status)
-				await this.#reconcileHeldRuns(body)
+				await this.#reconcileHeldRuns(ws, body)
 				await this.#recordCapabilities(body)
 				this.ctx.waitUntil(this.#drainQueue())
 				return
@@ -975,7 +998,22 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		const lastProbe = this.ctx.getWebSocketAutoResponseTimestamp(ws)
 		const freshAt = lastProbe ? lastProbe.getTime() : attachment.connectedAt
 		if (Date.now() - freshAt > ecpLivenessFreshMs) return null
+		if (
+			attachment.unansweredAt !== undefined &&
+			freshAt <= attachment.unansweredAt
+		) {
+			return null
+		}
 		return { ws, attachment, heardAt: freshAt }
+	}
+
+	#markUnanswered(ws: WebSocket) {
+		try {
+			const attachment = ws.deserializeAttachment() as SocketAttachment
+			ws.serializeAttachment({ ...attachment, unansweredAt: Date.now() })
+		} catch {
+			// The socket closed meanwhile; it is offline either way.
+		}
 	}
 
 	/**
@@ -1165,6 +1203,7 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			this.#setRunState(lease.runId, timedOut ? 'aborted' : 'rejected')
 			record(timedOut ? 'timeout' : 'rejected')
 			if (timedOut) {
+				this.#markUnanswered(live.ws)
 				await this.#send(live.ws, 'run.abort', { runId: lease.runId })
 			}
 			return {
@@ -1197,6 +1236,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			attempt,
 		)
 		await this.#send(live.ws, 'run.commit', { runId: lease.runId })
+		// This context ends the run by its deadline (the alarm below), so its
+		// run record must not read as stranded at the surface's short TTL. It
+		// still heals one TTL later if that final write is lost.
+		await ensureRunRecordStarted({
+			env: this.env,
+			handle: input.runRecord,
+			staleAfter: new Date(
+				input.request.deadline +
+					ecpDeadlineCancelGraceMs +
+					runRecordStaleRunningTtlMsShortLived,
+			).toISOString(),
+		})
 		await this.#ensureAlarm(input.request.deadline + ecpDeadlineCancelGraceMs)
 		return { outcome: 'committed' }
 	}
@@ -1227,10 +1278,18 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			input.expiresAt,
 			Date.now(),
 		)
-		await this.#ensureAlarm(input.expiresAt)
+		await this.#ensureAlarm(this.#queueRecheckAt(Date.now(), input.expiresAt))
 		// It may have come back between the offline probe and now.
 		if (this.#liveSocket()) this.ctx.waitUntil(this.#drainQueue())
 		return { queued: true }
+	}
+
+	/**
+	 * A connected but silent daemon comes back through heartbeats, which the
+	 * runtime answers without waking this object, so queued runs recheck it.
+	 */
+	#queueRecheckAt(now: number, expiresAt: number) {
+		return this.#socket() ? Math.min(expiresAt, now + queuedRetryMs) : expiresAt
 	}
 
 	/** Queued runs waiting for this context, oldest first. */
@@ -1718,8 +1777,10 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 	 * A daemon that lists the committed runs it still holds in hello lets the
 	 * rest end now instead of at deadline + grace. Older daemons omit
 	 * `heldRuns`, so the alarm still decides for them. A run is never re-run.
+	 * A held run Kody already ended while the daemon was away (a cancel it
+	 * missed, or lost at its deadline) gets a `run.cancel` so it stops.
 	 */
-	async #reconcileHeldRuns(body: Record<string, unknown>) {
+	async #reconcileHeldRuns(ws: WebSocket, body: Record<string, unknown>) {
 		if (!Array.isArray(body.heldRuns)) return
 		const held = new Set(
 			body.heldRuns.filter((id): id is string => typeof id === 'string'),
@@ -1743,6 +1804,14 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 					receivedAt,
 				)
 			}
+		}
+		for (const runId of held) {
+			const run = this.#run(runId)
+			if (run?.state !== 'cancelled' && run?.state !== 'lost') continue
+			const reason =
+				ecpCancelReasons.find((known) => known === run.cancel_reason) ??
+				'deadline'
+			await this.#send(ws, 'run.cancel', { runId, reason })
 		}
 		for (const run of committed) {
 			if (held.has(run.run_id)) continue
@@ -2247,6 +2316,27 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * Add the packages a package graph served to a committed run's lease.
+	 * Later graphs for the same run only add.
+	 */
+	async recordRunPackages(input: {
+		runId: string
+		entryPackageIds: Array<string>
+		packageIds: Array<string>
+	}): Promise<{ ok: boolean }> {
+		const run = this.#run(input.runId)
+		if (!run || run.state !== 'committed') return { ok: false }
+		const lease = JSON.parse(run.lease_json) as ExecutionContextLease
+		const packages = mergeRunPackages(lease.packages, input)
+		this.ctx.storage.sql.exec(
+			`UPDATE runs SET lease_json = ? WHERE run_id = ? AND state = 'committed'`,
+			JSON.stringify({ ...lease, packages }),
+			input.runId,
+		)
+		return { ok: true }
+	}
+
 	// ---------- history ----------
 
 	/** Rows of this context. `viewerUserId` limits to that requester; `orgId` to runs bound to it. */
@@ -2410,6 +2500,33 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 		}
 	}
 
+	/**
+	 * The newest shell commands in the audit log, for suggesting what to
+	 * narrow an unrestricted shell to. Named commands are left out.
+	 */
+	async listShellCommands(input: { orgId: string; limit: number }) {
+		this.#pruneHistory(Date.now())
+		const limit = Math.min(2000, Math.max(1, input.limit))
+		const rows = this.ctx.storage.sql
+			.exec<{ at: number; detail_json: string }>(
+				`SELECT at, detail_json FROM audit
+				 WHERE event = 'command_started' AND org_id = ?1
+				   AND detail_json IS NOT NULL AND json_valid(detail_json)
+				   AND json_extract(detail_json, '$.capability') IS NULL
+				 ORDER BY id DESC LIMIT ?2`,
+				input.orgId,
+				limit + 1,
+			)
+			.toArray()
+		return {
+			rows: rows.slice(0, limit).map((row) => ({
+				at: new Date(row.at).toISOString(),
+				detailJson: row.detail_json,
+			})),
+			more: rows.length > limit,
+		}
+	}
+
 	async purgeRequester(input: { userId: string }) {
 		this.ctx.storage.sql.exec(
 			`DELETE FROM history WHERE requester_user_id = ?`,
@@ -2506,7 +2623,9 @@ export class ExecutionContextSessionV1Base extends DurableObject<Env> {
 			.exec<{ at: number | null }>(`SELECT MIN(expires_at) AS at FROM queued`)
 			.one().at
 		if (queuedNext !== null)
-			await this.#ensureAlarm(Math.max(now + 1000, queuedNext))
+			await this.#ensureAlarm(
+				Math.max(now + 1000, this.#queueRecheckAt(now, queuedNext)),
+			)
 		const next = this.ctx.storage.sql
 			.exec<{ deadline: number | null }>(
 				`SELECT MIN(deadline) AS deadline FROM runs WHERE state = 'committed'`,

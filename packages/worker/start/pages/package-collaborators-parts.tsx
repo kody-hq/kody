@@ -11,7 +11,6 @@ import {
 	packageCollaboratorPresetLabel,
 	packageCollaboratorPresets,
 } from '#universal/package-collaborators.ts'
-import { accountInputCss } from './account-management-components.tsx'
 import {
 	colors,
 	mq,
@@ -19,6 +18,7 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function collaboratorName(collaborator: PackageCollaboratorView) {
 	if (collaborator.subjectType !== 'user') return collaborator.label
@@ -85,8 +85,7 @@ export function AdvancedPermissionsField(props: {
 					const checked = props.value.includes(option.permission)
 					return (
 						<label key={option.permission} css={advancedOptionCss}>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={checked}
 								value={option.permission}
 								css={{ marginTop: '0.25rem', accentColor: colors.primary }}
@@ -218,7 +217,6 @@ export const rowActionsCss: CSSObject = {
 }
 
 export const selectCss: CSSObject = {
-	...accountInputCss,
 	width: 'auto',
 	minWidth: '8rem',
 	padding: '0.45rem 0.7rem',

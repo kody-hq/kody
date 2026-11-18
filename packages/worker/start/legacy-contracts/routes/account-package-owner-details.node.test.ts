@@ -443,6 +443,26 @@ test('owner settings split Visibility, Source sharing, and Public release into t
 	expect(html.match(/data-testid="package-publishing-panel"/g)).toHaveLength(1)
 })
 
+test('public release shows the commit everyone is on apart from a held commit', async () => {
+	const html = await renderOwner({
+		publishedCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+		pendingCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+		heldForApproval: {
+			servingCommit: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+			heldCommit: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+		},
+	})
+
+	const release = sectionHtml(html, 'package-publishing-panel')
+	expect(release).toContain('Live for everyone: commit')
+	expect(release).toMatch(/data-testid="package-serving-commit"[^>]*>aaaaaaa</)
+	expect(release).toMatch(/data-testid="package-held-commit"[^>]*>bbbbbbb</)
+	expect(release).toContain(
+		'is waiting for you to approve its new capabilities.',
+	)
+	expect(release).not.toContain('data-testid="package-published-commit"')
+})
+
 test('public release counts unpublished commits and links each into the approve flow', async () => {
 	const published = 'a'.repeat(40)
 	const commits = ['d'.repeat(40), 'c'.repeat(40), 'b'.repeat(40)]

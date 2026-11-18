@@ -24,7 +24,7 @@ export function authFormErrorMessage(
 			return 'That did not work. Check what you entered and try again.'
 		case 'human_check':
 			return options.deviceSignIn
-				? 'Complete the human check, then try again. If it does not appear in this browser, use Sign in on another device below.'
+				? 'Complete the human check, then try again. If it does not appear in this browser, use Sign in with another device below.'
 				: 'Complete the human check, then try again. If it does not appear in this browser, try a newer browser.'
 		case 'rate_limited':
 			return 'Too many attempts. Wait a few minutes, then try again.'

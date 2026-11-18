@@ -50,6 +50,13 @@ import {
 	encryptPrivateKey,
 	resolveWrappingKey,
 } from '../src/execution-context/keystore.js'
+import {
+	daemonInput,
+	ServerSocket,
+	serverFrames,
+	SilentSocket,
+	welcome,
+} from './execution-context-harness.js'
 
 test('context key round trips through passphrase and keyring wrapping', async () => {
 	const { privateKeyJwk } = await generateContextKey()
@@ -178,52 +185,6 @@ test('registering with a scoped credential keeps the server message', async () =
 		},
 	)
 })
-
-/** Opens, answers nothing: the production failure where welcome never came. */
-class SilentSocket extends EventTarget {
-	static instances: Array<SilentSocket> = []
-	readonly OPEN = 1
-	readyState = 1
-	closed: { code: number; reason: string } | null = null
-	constructor(readonly url: string) {
-		super()
-		SilentSocket.instances.push(this)
-	}
-	send(_data?: string) {}
-	close(code = 1000, reason = '') {
-		if (this.closed) return
-		this.closed = { code, reason }
-		this.readyState = 3
-		const event = Object.assign(new Event('close'), { code, reason })
-		queueMicrotask(() => this.dispatchEvent(event))
-	}
-}
-
-async function daemonInput(overrides: Record<string, unknown> = {}) {
-	const { privateKeyJwk } = await generateContextKey()
-	const lines: Array<string> = []
-	return {
-		lines,
-		input: {
-			apiUrl: 'https://api.kody.test',
-			ecid: 'ec_test',
-			privateKey: await importContextKey(privateKeyJwk),
-			serverKeys: [],
-			maxConcurrent: 1,
-			client: { name: 'kody-cli', version: '0.0.0' },
-			capabilities: {},
-			execute: async () => ({ isError: false }),
-			log: (line: string) => lines.push(line),
-			fetchFn: (async () =>
-				Response.json({
-					ticket: 'ticket_1',
-					expiresAt: '2099-01-01T00:00:00.000Z',
-				})) as typeof fetch,
-			WebSocketImpl: SilentSocket as unknown as typeof WebSocket,
-			...overrides,
-		},
-	}
-}
 
 test('a connection with no welcome frame times out with a clear error', async () => {
 	SilentSocket.instances = []
@@ -569,71 +530,6 @@ test('the daemon accepts runs naming its API origin and refuses any other origin
 	)
 })
 
-/**
- * A Kody-side socket that opens with a signed welcome. Like Node's
- * WebSocket, close() only accepts 1000 or 3000-4999.
- */
-class ServerSocket extends SilentSocket {
-	static frames: Array<string> = []
-	static answerPings = false
-	sent: Array<string> = []
-	constructor(url: string) {
-		super(url)
-		const frames = ServerSocket.frames
-		setTimeout(() => {
-			for (const data of frames) {
-				this.dispatchEvent(Object.assign(new Event('message'), { data }))
-			}
-		}, 0)
-	}
-	override send(data = '') {
-		this.sent.push(data)
-		if (data === ecpPingFrame && ServerSocket.answerPings) {
-			queueMicrotask(() =>
-				this.dispatchEvent(
-					Object.assign(new Event('message'), { data: ecpPongFrame }),
-				),
-			)
-		}
-	}
-	override close(code = 1000, reason = '') {
-		if (code !== 1000 && (code < 3000 || code > 4999)) {
-			throw new DOMException('invalid code', 'InvalidAccessError')
-		}
-		super.close(code, reason)
-	}
-}
-
-async function serverFrames(
-	frames: Array<Pick<EcpFramePayload, 't' | 'body'> & { kid?: string }>,
-) {
-	const { privateKeyJwk } = await generateContextKey()
-	const privateKey = await importContextKey(privateKeyJwk)
-	const signed = await Promise.all(
-		frames.map((frame, index) =>
-			signFrame({
-				privateKey,
-				kid: frame.kid ?? 'srv_test',
-				payload: {
-					v: 1,
-					t: frame.t,
-					ec: 'ec_test',
-					sid: 'sid_test',
-					seq: index + 1,
-					ts: Date.now(),
-					body: frame.body,
-				},
-			}),
-		),
-	)
-	return {
-		signed,
-		serverKeys: [{ kid: 'srv_test', x: privateKeyJwk.x, notAfter: 4e12 }],
-	}
-}
-
-const welcome = { t: 'welcome', body: { sid: 'sid_test', grantVersion: 1 } }
-
 test('a half-dead socket that stops answering pings is closed with a heartbeat code', async () => {
 	SilentSocket.instances = []
 	const { signed, serverKeys } = await serverFrames([welcome])
@@ -657,6 +553,53 @@ test('a half-dead socket that stops answering pings is closed with a heartbeat c
 			ecpPingFrame,
 		),
 	)
+})
+
+test('a machine that slept through a ping pings again instead of reconnecting', async () => {
+	SilentSocket.instances = []
+	const { signed, serverKeys } = await serverFrames([welcome])
+	ServerSocket.frames = signed
+	const realNow = Date.now
+	let sleptMs = 0
+	class SleepySocket extends ServerSocket {
+		pings = 0
+		override send(data = '') {
+			this.sent.push(data)
+			if (data !== ecpPingFrame) return
+			this.pings += 1
+			// The first ping goes out just before the machine sleeps: monotonic
+			// timers stop while the wall clock moves on, and no pong is read.
+			if (this.pings === 1) {
+				sleptMs = 10 * 60_000
+				return
+			}
+			queueMicrotask(() =>
+				this.dispatchEvent(
+					Object.assign(new Event('message'), { data: ecpPongFrame }),
+				),
+			)
+		}
+	}
+	Date.now = () => realNow() + sleptMs
+	try {
+		const abort = new AbortController()
+		setTimeout(() => abort.abort(), 300)
+		const { input, lines } = await daemonInput({
+			serverKeys,
+			pingMs: 40,
+			pongTimeoutMs: 20,
+			signal: abort.signal,
+			WebSocketImpl: SleepySocket as unknown as typeof WebSocket,
+		})
+		const closed = await runDaemonConnection(input)
+		assert.deepEqual(closed, { code: 1000, reason: 'shutdown' })
+		assert.match(lines.join('\n'), /asleep or stalled for about 600s/)
+		assert.ok(!lines.some((line) => /did not answer a ping/.test(line)))
+		const socket = SilentSocket.instances[0] as unknown as SleepySocket
+		assert.ok(socket.pings >= 2)
+	} finally {
+		Date.now = realNow
+	}
 })
 
 test('a socket that answers pings stays connected until shutdown', async () => {
@@ -995,12 +938,12 @@ export default async function main(p) {
 	const hello = frames.find((frame) => frame.t === 'hello')
 	assert.deepEqual(
 		(hello?.body.capabilities as { features?: unknown }).features,
-		['host-operator-only'],
+		['host-operator-only', 'typescript-source'],
 	)
 	const update = frames.find((frame) => frame.t === 'capabilities.update')
 	assert.deepEqual(
 		(update?.body.capabilities as { features?: unknown }).features,
-		['host-operator-only', 'fs'],
+		['host-operator-only', 'typescript-source', 'fs'],
 	)
 	const result = frames.find((frame) => frame.t === 'run.result')
 	assert.ok(result, 'the daemon never sent run.result')

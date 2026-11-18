@@ -206,7 +206,8 @@ export function buildStaleFetchFirstReportStatus(
 /**
  * Collect refs that report-status marked `ok` or `ng`. Understands plain and
  * sideband-wrapped (band 1) result bodies. Progress (band 2) is skipped;
- * fatals (band 3) end the scan.
+ * fatals (band 3) end the scan. Callers that only need `ok` use
+ * {@link collectReportStatusOkRefs}.
  */
 function collectReportStatusRefOutcomes(body: Uint8Array): {
 	ok: Set<string>
@@ -231,6 +232,7 @@ function collectReportStatusRefOutcomes(body: Uint8Array): {
 	return { ok, ng }
 }
 
+/** Refs that report-status marked `ok`. `ng` stays internal to landed-ref cache updates. */
 export function collectReportStatusOkRefs(body: Uint8Array): Set<string> {
 	return collectReportStatusRefOutcomes(body).ok
 }

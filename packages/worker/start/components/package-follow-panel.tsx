@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { LoadingIndicator } from './loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useContext, useEffect, useRef, useState, type ReactNode } from 'react'
@@ -39,17 +40,13 @@ import {
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { renderIcon } from './icon.tsx'
 import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
+import { Select } from './input.tsx'
+import { Checkbox } from './choice-controls.tsx'
 
 export function PackageFollowProvider(props: {
 	username: string
@@ -233,15 +230,15 @@ function FollowProvider({
 					<h2 id="package-follow-title" css={panelTitleCss}>
 						{state ? `Follow ${state.target.name}` : 'Follow'}
 					</h2>
-					<button
+					<Button
 						type="button"
 						aria-label="Close follow options"
 						data-testid="package-follow-close"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={() => setOpen(false)}
 					>
 						{renderIcon('close', { size: '1.05rem' })}
-					</button>
+					</Button>
 				</div>
 				{read.isPending && !state ? (
 					<LoadingIndicator label="Loading follow options…" />
@@ -295,10 +292,9 @@ function FollowProvider({
 				{current.workspaces.length > 1 ? (
 					<label css={fieldCss}>
 						<span css={labelCss}>Follow in</span>
-						<select
+						<Select
 							data-testid="package-follow-workspace"
 							disabled={submitting}
-							css={getSelectCss()}
 							value={workspace.slug}
 							onChange={(event) => {
 								selectWorkspace(event.currentTarget.value)
@@ -312,7 +308,7 @@ function FollowProvider({
 									{option.follow ? ' (following)' : ''}
 								</option>
 							))}
-						</select>
+						</Select>
 					</label>
 				) : (
 					<p css={mutedCss}>Events go to {workspaceLabel(workspace)}.</p>
@@ -354,8 +350,7 @@ function FollowProvider({
 								data-testid={`package-follow-event-${option.event}`}
 								css={optionCss}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									name="events"
 									value={option.event}
 									checked={checked}
@@ -393,24 +388,24 @@ function FollowProvider({
 					</p>
 				) : null}
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="button"
 						data-testid="package-follow-submit"
 						disabled={
 							submitting || blocked || nothingChosen || Boolean(unchanged)
 						}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={() => void submit('follow')}
 					>
 						{renderIcon(follow ? 'check' : 'eye', { size: '1.05rem' })}
 						{submitting ? 'Saving…' : primaryLabel}
-					</button>
+					</Button>
 					{follow ? (
-						<button
+						<Button
 							type="button"
 							data-testid="package-follow-unfollow"
 							disabled={submitting}
-							css={getDangerPillCss({ size: 'sm' })}
+							variant="danger"
 							onBlur={() => setConfirmed(false)}
 							onClick={() =>
 								confirmed ? void submit('unfollow') : setConfirmed(true)
@@ -418,7 +413,7 @@ function FollowProvider({
 						>
 							{renderIcon('close', { size: '1.05rem' })}
 							{confirmed ? 'Confirm unfollow' : 'Unfollow'}
-						</button>
+						</Button>
 					) : null}
 				</div>
 				{nothingChosen && !blocked ? (

@@ -9,7 +9,11 @@ import { renderStartPage } from '../test-support/render-start-page.ts'
 import { createElement } from 'react'
 import type { ExecutionContextsPageData } from '#universal/execution-contexts.ts'
 import { ExecutionContextsRoute } from './execution-contexts.tsx'
-import { RunCancelControl } from './execution-context-detail.tsx'
+import {
+	ContextOptInForm,
+	RunCancelControl,
+} from './execution-context-detail.tsx'
+import { optInCopy } from '#universal/execution-context-trust-copy.ts'
 
 function route(
 	payload: ExecutionContextsPageData,
@@ -120,7 +124,27 @@ test('strict chain with nothing usable warns that runs will fail', async () => {
 	expect(text(html)).toContain('Add Kody cloud back')
 })
 
-test('detail for a shared context shows opt-in trust copy and own-runs scope', async () => {
+function renderOptIn(chainFull: boolean) {
+	return renderStartPage(
+		createElement(ContextOptInForm, {
+			copy: optInCopy({
+				name: sharedBuildbox.name,
+				operator: sharedBuildbox.operator.handle,
+				grant: sharedBuildbox.grantSummary,
+			}),
+			chainFull,
+			addToChain: false,
+			onAddToChainChange: () => {},
+			busy: false,
+			error: null,
+			onCancel: () => {},
+			onConfirm: () => {},
+		}),
+		`${href}/ec_buildbox`,
+	)
+}
+
+test('detail for a shared context offers opt-in and shows own-runs scope', async () => {
 	const html = await renderStartPage(
 		route(
 			pageFixture({ selected: sharedBuildbox }),
@@ -131,30 +155,22 @@ test('detail for a shared context shows opt-in trust copy and own-runs scope', a
 	)
 	const body = text(html)
 	expect(html).toContain('data-testid="execution-context-detail"')
-	expect(body).toContain('Opt into buildbox?')
-	expect(body).toContain('@sam can see the code, inputs, logs and results')
-	expect(body).toContain('Local network access is on')
-	expect(body).toContain('Add it to the end of my fallback chain')
-	expect(html).toMatch(/type="checkbox"(?![^>]*checked)/)
+	expect(html).toContain('data-testid="context-opt-in"')
 	expect(body).toContain('Runs')
 	expect(body).toContain('Audit log')
 })
 
+test('the opt-in dialog shows trust copy and an unchecked chain checkbox', async () => {
+	const html = await renderOptIn(false)
+	const body = text(html)
+	expect(body).toContain('@sam can see the code, inputs, logs and results')
+	expect(body).toContain('Local network access is on')
+	expect(body).toContain('Add it to the end of my fallback chain')
+	expect(html).toMatch(/type="checkbox"(?![^>]*checked)/)
+})
+
 test('opt-in checkbox is disabled when the chain is full', async () => {
-	const full = chainFixture([
-		{ kind: 'context', id: 'ec_a', usable: true },
-		{ kind: 'context', id: 'ec_b', usable: false, unusableReason: 'revoked' },
-		{ kind: 'context', id: 'ec_c', usable: true },
-		{ kind: 'cloud' },
-	])
-	const html = await renderStartPage(
-		route(
-			pageFixture({ chain: full, selected: sharedBuildbox }),
-			'ec_buildbox',
-			`${href}/ec_buildbox`,
-		),
-		`${href}/ec_buildbox`,
-	)
+	const html = await renderOptIn(true)
 	expect(html).toMatch(/type="checkbox"[^>]*disabled/)
 	expect(text(html)).toContain(
 		'Your chain is full, so this context will not be added to it.',
@@ -532,4 +548,140 @@ test('an in-progress run offers Cancel, then asks before it stops the run', asyn
 			),
 		),
 	).toContain('Cancelling…')
+})
+
+const machineAccessFixture = {
+	canGrant: true,
+	profiles: [{ id: 'prof_ci', name: 'ci-bot' }],
+	capabilities: [
+		{
+			id: 'mc_kdocker',
+			kind: 'command' as const,
+			name: 'kdocker',
+			description: 'Restart a container',
+			shareable: true,
+			allowedPackages: [{ id: 'pkg_1', name: '@jane/nas-ops' }],
+			grants: [
+				{ grantId: 'g_sam', subject: { kind: 'user' as const, handle: 'sam' } },
+				{ grantId: 'g_all', subject: { kind: 'everyone' as const } },
+			],
+		},
+		{
+			id: 'mc_nas',
+			kind: 'lan' as const,
+			name: 'nas-api',
+			description: null,
+			shareable: true,
+			grants: [],
+		},
+		{
+			id: 'mc_shell',
+			kind: 'shell' as const,
+			name: 'shell',
+			description: null,
+			shareable: false,
+			grants: [],
+		},
+		{
+			id: 'mc_folder',
+			kind: 'fs' as const,
+			name: 'kody-runner',
+			description: null,
+			shareable: false,
+			grants: [],
+		},
+	],
+}
+
+test('operator detail lists machine access with who holds each entry', async () => {
+	const mine = contextFixture({ machineAccess: machineAccessFixture })
+	const html = await renderStartPage(
+		route(pageFixture({ selected: mine }), mine.id, `${href}/${mine.id}`),
+		`${href}/${mine.id}`,
+	)
+	const body = text(html)
+	expect(html).toContain('data-testid="context-machine-access"')
+	expect(body).toContain('Named commands')
+	expect(body).toContain('kdocker')
+	expect(body).toContain('Restart a container')
+	expect(body).toContain('Only these packages may use it: @jane/nas-ops')
+	expect(body).toContain('@sam')
+	expect(body).toContain('Everyone in @jane')
+	expect(body).toContain('Local network destinations')
+	expect(body).toContain('Only the operator')
+	expect(body).toContain('Host folders')
+	expect(body).toContain('never shared')
+	expect(body).toContain('One of my profiles')
+	expect(body).toContain('Unrestricted shell')
+	expect(body).toContain('Any command, as the machine')
+	// Two shareable entries get a form; the shell and the host folder do not.
+	expect(body.match(/Give access/g)).toHaveLength(2)
+})
+
+test('operator detail says how to define machine access when there is none', async () => {
+	const mine = contextFixture({
+		machineAccess: { canGrant: true, profiles: [], capabilities: [] },
+	})
+	const html = await renderStartPage(
+		route(pageFixture({ selected: mine }), mine.id, `${href}/${mine.id}`),
+		`${href}/${mine.id}`,
+	)
+	expect(html).toContain('data-testid="context-machine-access-empty"')
+	expect(text(html)).toContain('kody context capability add')
+})
+
+test('someone the machine is shared with sees only what their profiles hold', async () => {
+	const withGrant = {
+		...sharedBuildbox,
+		machineAccess: {
+			canGrant: false,
+			profiles: [{ id: 'prof_ci', name: 'ci-bot' }],
+			capabilities: [
+				{
+					id: 'mc_kdocker',
+					kind: 'command' as const,
+					name: 'kdocker',
+					description: null,
+					shareable: true,
+					grants: [
+						{
+							grantId: 'g_prof',
+							subject: {
+								kind: 'profile' as const,
+								id: 'prof_ci',
+								name: 'ci-bot',
+							},
+						},
+					],
+				},
+			],
+		},
+	}
+	const html = await renderStartPage(
+		route(
+			pageFixture({ selected: withGrant }),
+			withGrant.id,
+			`${href}/${withGrant.id}`,
+		),
+		`${href}/${withGrant.id}`,
+	)
+	const body = text(html)
+	expect(body).toContain('What your profiles can use on buildbox')
+	expect(body).toContain('Profile ci-bot')
+	expect(body).toContain('One of my profiles')
+	expect(body).not.toContain('A person')
+
+	const without = {
+		...sharedBuildbox,
+		machineAccess: { canGrant: false, profiles: [], capabilities: [] },
+	}
+	const none = await renderStartPage(
+		route(
+			pageFixture({ selected: without }),
+			without.id,
+			`${href}/${without.id}`,
+		),
+		`${href}/${without.id}`,
+	)
+	expect(none).not.toContain('data-testid="context-machine-access"')
 })

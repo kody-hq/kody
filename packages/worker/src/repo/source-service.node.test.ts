@@ -43,6 +43,7 @@ function createEntitySourceRow() {
 		repo_id: 'package-package-1',
 		published_commit: 'abc123',
 		serving_commit: null,
+		held_commit: null,
 		indexed_commit: null,
 		manifest_path: 'package.json',
 		source_root: '/',

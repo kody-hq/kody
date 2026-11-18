@@ -277,7 +277,9 @@ if they have none.
 ## After something useful exists
 
 The last onboarding beat is portability. Send them to `/onboarding/step-3` to
-connect a second agent from a different ecosystem. Connecting that second agent
-gives Pro free for 2 weeks (once per account). That new agent looks up
+connect a second agent from a different ecosystem (Claude Code and Claude
+Desktop count as one). Connecting that second agent gives Pro free for 2 weeks,
+once per account. Accounts already paying for Pro get 2 weeks of their plan off
+the next invoice instead. That new agent looks up
 `search({ entity: "guide:portability" })` and reuses the memory, package, or ask
 you just made — one short proof. Do not restart setup.

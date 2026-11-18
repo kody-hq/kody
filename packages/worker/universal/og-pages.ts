@@ -132,6 +132,51 @@ export const publicOgPages = {
 			'Build browser interfaces backed by saved packages and durable package storage.',
 		path: '/features/apps',
 	},
+	'feature-skills': {
+		imageTitle: 'Teach every agent the same playbook.',
+		imageSubtitle:
+			'Ship Agent Skills inside a Kody package, validate them at publish, and browse versions and read metrics in your workspace.',
+		ogTitle: 'Agent Skills for your AI agents | Kody',
+		ogDescription:
+			'Ship Agent Skills inside a Kody package, validate them at publish, and browse versions and read metrics in your workspace.',
+		path: '/features/skills',
+	},
+	'feature-agent-profiles': {
+		imageTitle: 'Give each agent its own identity.',
+		imageSubtitle:
+			'Give an agent or bot a scoped identity with its own grants, an expiry that only shortens, and sub-profiles for the agents it starts.',
+		ogTitle: 'Agent profiles: scoped identities for AI agents | Kody',
+		ogDescription:
+			'Give an agent or bot a scoped identity with its own grants, an expiry that only shortens, and sub-profiles for the agents it starts.',
+		path: '/features/agent-profiles',
+	},
+	'feature-context': {
+		imageTitle: 'Run it on your own machine.',
+		imageSubtitle:
+			'Run execute and automations on your laptop or build server, with Kody cloud as the fallback. Credentials stay in Kody cloud.',
+		ogTitle: 'Execution contexts: run agent work on your machine | Kody',
+		ogDescription:
+			'Run execute and automations on your laptop or build server, with Kody cloud as the fallback. Credentials stay in Kody cloud.',
+		path: '/features/context',
+	},
+	'feature-email': {
+		imageTitle: 'An inbox your agents can work from.',
+		imageSubtitle:
+			'Every Kody account has an inbox address. Stored mail can start a package, and agents send and reply within clear limits.',
+		ogTitle: 'Email for your AI agents | Kody',
+		ogDescription:
+			'Every Kody account has an inbox address. Stored mail can start a package, and agents send and reply within clear limits.',
+		path: '/features/email',
+	},
+	'feature-files': {
+		imageTitle: 'Files you and your agents edit together.',
+		imageSubtitle:
+			'A workspace for pages, folders, and uploads with revision history, comments, and sharing. Early access.',
+		ogTitle: 'Workspace files for you and your AI agents | Kody',
+		ogDescription:
+			'A workspace for pages, folders, and uploads with revision history, comments, and sharing. Early access.',
+		path: '/features/files',
+	},
 	business: {
 		imageTitle: 'The agent cloud\nfor your business',
 		imageSubtitle:
@@ -191,6 +236,15 @@ export const publicOgPages = {
 		ogDescription:
 			"Kody is Your agents' cloud for individuals and teams. Built by Kent C. Dodds at kody.codes.",
 		path: '/about',
+	},
+	newsletter: {
+		imageTitle: "What's New in Kody",
+		imageSubtitle:
+			'One short email every other week about what shipped in Kody.',
+		ogTitle: "What's New in Kody newsletter",
+		ogDescription:
+			"Get What's New in Kody: one short email every other week about new capabilities, packages, and what is coming next.",
+		path: '/newsletter',
 	},
 	'brand-guide': {
 		imageTitle: 'Brand guide',

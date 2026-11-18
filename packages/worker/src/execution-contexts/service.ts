@@ -3,7 +3,11 @@ import {
 	type ElevationDetail,
 	type MisconfigDetail,
 } from './notices.ts'
-import { refreshContextNotices } from './box-notices.ts'
+import { refreshContextNotices, refreshOpenShellNotice } from './box-notices.ts'
+import {
+	ensureNetworkCapability,
+	listMachineCapabilityGrantOrgIds,
+} from './machine-capabilities.ts'
 import { experimentOffMessage } from '#universal/feature-flags/experiments.ts'
 import { bumpAccessEpochStatement } from '#worker/authorization/access-compile.ts'
 import {
@@ -766,6 +770,8 @@ export async function updateContext(
 		})
 	}
 	if (input.grant) {
+		if (grant.egress.mode === 'public-and-lan')
+			await ensureNetworkCapability(db, row)
 		await sessionStub(caller.env, row.id).updateGrant({
 			snapshot: {
 				ecid: row.id,
@@ -777,6 +783,12 @@ export async function updateContext(
 				grantVersion,
 			},
 		})
+		if (input.grant.commands) {
+			await refreshOpenShellNotice(db, {
+				...row,
+				grant_json: JSON.stringify(grant),
+			})
+		}
 	}
 	await recordContextAudit(
 		caller,
@@ -950,9 +962,11 @@ export async function deleteContext(
 		)
 		.bind(row.id)
 		.all<{ org_id: string }>()
+	const capabilityGrantOrgs = await listMachineCapabilityGrantOrgIds(db, row.id)
 	await removeFromChains(caller, row.id)
 	const now = new Date().toISOString()
 	const epochOrgs = new Set([
+		...capabilityGrantOrgs,
 		...(row.all_members === 1 ? [row.org_id] : []),
 		...attachedOrgs.results.map((entry) => entry.org_id),
 		...grantOrgs.results.map((entry) => entry.org_id),
@@ -963,7 +977,20 @@ export async function deleteContext(
 				`UPDATE grants SET deleted_at = ?, updated_at = ? WHERE resource_type = 'execution_context' AND resource_id = ? AND deleted_at IS NULL`,
 			)
 			.bind(now, now, row.id),
+		db
+			.prepare(
+				`UPDATE grants SET deleted_at = ?, updated_at = ?
+				 WHERE resource_type = 'machine_capability'
+				   AND deleted_at IS NULL
+				   AND resource_id IN (
+					SELECT id FROM machine_capabilities WHERE context_id = ?
+				   )`,
+			)
+			.bind(now, now, row.id),
 		...[...epochOrgs].map((orgId) => bumpAccessEpochStatement(db, orgId)),
+		db
+			.prepare(`DELETE FROM machine_capabilities WHERE context_id = ?`)
+			.bind(row.id),
 		db
 			.prepare(`DELETE FROM execution_context_opt_ins WHERE context_id = ?`)
 			.bind(row.id),
@@ -1690,6 +1717,12 @@ async function noticesView(
 	const misconfigured = notices.find(
 		(notice) => notice.kind === 'misconfigured',
 	)
+	const openShell = notices.find(
+		(notice) =>
+			notice.kind === 'open_shell' &&
+			notice.subjectUserId === caller.userId &&
+			!notice.dismissed,
+	)
 	const reviewIds = notices
 		.filter((notice) => notice.kind === 'elevation' && notice.subjectUserId)
 		.map((notice) => notice.subjectUserId!)
@@ -1704,6 +1737,7 @@ async function noticesView(
 					},
 				}
 			: {}),
+		...(openShell ? { openShell: { fingerprint: openShell.fingerprint } } : {}),
 		...(canAct && misconfigured
 			? {
 					misconfigurations: (misconfigured.detail as MisconfigDetail).codes,

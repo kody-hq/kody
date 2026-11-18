@@ -37,7 +37,8 @@ token, not host MCP OAuth). `kody whoami` reports the same pick.
 
 **Agents already on MCP (do this yourself; never ask a human for a token):**
 call `cliCredentialBootstrap` with no params (single-task agents may pass
-`lifetime: "short"`). Prefer MCP `api` with
+`lifetime: "short"`, which has no refresh: anything that waits, like a ship-pr
+loop on CI, needs the default). Prefer MCP `api` with
 `operationId: "cliCredentialBootstrap"` (or the capability via search when you
 need the schema). It returns a one-shot `kody_bc_…` code and a `cli_command`
 that includes lifetime flags for older CLIs (**not** a `kody_at_…`). Bootstrap
@@ -133,6 +134,9 @@ export KODY_API_TOKEN='kody_at_…'
 npx @kodycodes/cli execute --local --code 'import { kody } from "kody:runtime"; export default async function main() { return await kody.metaGetCurrentUser({}) }'
 ```
 
+`--code` accepts TypeScript, like `execute` on Kody cloud; so do runs routed to
+an execution context.
+
 Use `--file path.ts` the same way when the module lives on disk. Keep `--local`;
 static `kody:@owner/name` imports still run locally (package-graph download +
 CapabilityProxy hops). The CLI posts the `kody:@` imports that still need
@@ -226,6 +230,10 @@ still auth or permission — use the Failure section below. Two workarounds for
   run). Use hosted package execute, or set the secret from the account UI
   (`/connect/secret-set`) or Open API `secretSet` with a user scope / outside
   local execute. See [Secrets](./secrets.md#scopes).
+- Package-graph prep that exceeds the throwaway isolate's memory or CPU returns
+  `400 package_graph_resource_limit` (the error names the packages). A served
+  graph missing a reachable static relative import is `500 internal_error`. See
+  [Open API architecture](../contributing/architecture/open-api.md).
 - The module imports `kody:@…`. Keep `--local`.
 - Auth priority for `--local` (and every other command): `--token` /
   `KODY_API_TOKEN`, then the one saved CLI credential from `kody login` or

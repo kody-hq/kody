@@ -12,6 +12,7 @@ import {
 	type TriggerExampleId,
 } from './triggers-scenes.tsx'
 import { triggerExamples, signals } from './triggers-data.ts'
+import { Checkbox } from '../../components/choice-controls.tsx'
 export function TriggersFeature() {
 	const [selected, setSelected] = useState<TriggerExampleId>('purchase')
 	const [signal, setSignal] = useState<SignalId>('webhook')
@@ -105,8 +106,7 @@ export function TriggersFeature() {
 					<div className="controls trg-run">
 						{selected === 'email' && (
 							<label>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={otherAddress}
 									onChange={(event) => {
 										setOtherAddress(event.currentTarget.checked)
@@ -119,8 +119,7 @@ export function TriggersFeature() {
 						)}
 						{selected === 'schedule' && (
 							<label>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={showFlake}
 									onChange={(event) => {
 										setShowFlake(event.currentTarget.checked)
@@ -243,8 +242,7 @@ export function TriggersFeature() {
 					</p>
 					<div className="pt-options">
 						<label>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={scanFlake}
 								onChange={(event) => {
 									setScanFlake(event.currentTarget.checked)

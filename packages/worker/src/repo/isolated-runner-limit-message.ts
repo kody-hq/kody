@@ -1,5 +1,8 @@
 import {
+	formatBytes,
+	formatHintList,
 	formatPublishSizeHints,
+	type LargePathHint,
 	type PublishSizeHints,
 } from './publish-size-hints.ts'
 
@@ -16,7 +19,7 @@ export const publishLargePackagesDocsUrl =
 export const executionContextPublishDocsUrl =
 	'https://kody.codes/docs/execution-contexts#try-publishing-from-a-context'
 
-/** `--build local` and `--context` publishes need this experiment on. */
+/** `--build local` and `--context` publishes need this experiment on; `dev check --build local` does not. */
 export const executionContextsExperimentUrl =
 	'https://kody.codes/account/experiments'
 
@@ -25,15 +28,48 @@ export const executionContextsExperimentUrl =
  * build on this machine or on an execution context the publisher operates.
  * Every compute-limit failure in dev check and publish ends with this.
  */
+/** What an agent runs to build and publish a package on its own machine. */
+export const publishLocalBuildCommand =
+	'npx -y @kodycodes/cli@latest package publish <package> --build local'
+
+const publishOutsideCloudAdviceLead =
+	"This package is near Kody cloud's build CPU or memory limit."
+
+/** True for any failure that ends with `publishOutsideCloudAdvice()`. */
+export function hasPublishOutsideCloudAdvice(message: string) {
+	return message.includes(publishOutsideCloudAdviceLead)
+}
+
 export function publishOutsideCloudAdvice() {
 	return (
-		"This package is near Kody cloud's build CPU or memory limit. Build it " +
-		'on your machine with `kody package publish --build local`, or on an ' +
-		'execution context with `--context <name>`. Both need the Execution ' +
-		`contexts experiment: turn it on at ${executionContextsExperimentUrl} ` +
+		`${publishOutsideCloudAdviceLead} Build it on your machine with ` +
+		`\`${publishLocalBuildCommand}\`, or on an execution context with ` +
+		'`--context <name>`. Kody serves that build as is and ' +
+		'does not build it again, so these limits do not apply to it. Both of ' +
+		'those publish commands need the Execution contexts experiment: turn it ' +
+		`on at ${executionContextsExperimentUrl} ` +
 		`(docs: ${executionContextPublishDocsUrl}). ` +
-		'`kody dev check --build local` checks the same local build before you ' +
-		`publish. More: ${publishLargePackagesDocsUrl}`
+		'`kody dev check --build local` runs the same build on your machine ' +
+		'before you publish, and works without the experiment. ' +
+		`More: ${publishLargePackagesDocsUrl}`
+	)
+}
+
+/**
+ * Publish refuses a Kody cloud build before it starts when the package's own
+ * runtime source is over the cloud build size limit.
+ */
+export function cloudBuildRuntimeSourceTooLargeMessage(input: {
+	runtime: PublishSizeHints['runtime']
+	maxBytes: number
+}) {
+	return (
+		`Repo checks stopped before the build: the runtime code reachable from ` +
+		`the entry points is ${formatBytes(input.runtime.bytes)} in ` +
+		`${input.runtime.fileCount} file(s), over the ` +
+		`${formatBytes(input.maxBytes)} limit for a build in Kody cloud. The ` +
+		`largest are ${formatHintList(input.runtime.largest)}. Shrink it, or ` +
+		`build outside Kody cloud. ${publishOutsideCloudAdvice()}`
 	)
 }
 
@@ -50,11 +86,67 @@ export function authoringCheckRunnerLimitLead(where: string) {
 	return `The publish checks ${authoringCheckRunnerLimitPhrase}${where} before they finished.`
 }
 
-/** True for a check result that only says the check runner hit its limits. */
+const inIsolateMemoryLimitPattern = /exceeded (?:its )?memory limits?\b/i
+
+/**
+ * A target build that trips workerd's in-isolate memory guard throws a bare
+ * platform string (for example "Dynamic import exceeded memory limits").
+ * Name what the build holds and how to shrink it or build elsewhere.
+ */
+export function artifactBuildFailureMessage(
+	message: string,
+	runner: 'check' | 'rebuild',
+) {
+	if (!inIsolateMemoryLimitPattern.test(message)) return message
+	return (
+		`${message}: this build exceeded the isolated ${runner} runner's ` +
+		'memory or CPU limits. One entry point build holds its own modules, ' +
+		'the npm packages they import, and a copy of the published artifact ' +
+		'of every kody:@ package the entry imports (including the kody:@ ' +
+		'packages that one imports), so a large Kody dependency counts against ' +
+		'every entry that imports it. Import it from fewer entry points, or ' +
+		`import a smaller export of it. ${publishOutsideCloudAdvice()}`
+	)
+}
+
+const credentialScanSizeLimitPhrase =
+	'more source than the credential stamp scan reads in one publish'
+
+/**
+ * The credential stamp scan refused a tree before walking it. Its CPU time
+ * grows with the syntax nodes it walks, so past the limit the runner would
+ * be reset part way through, with nothing to say what it was reading.
+ */
+export function credentialScanSizeLimitMessage(input: {
+	moduleCount: number
+	maxAstNodes: number
+	/** The heaviest modules read before the scan stopped. */
+	largest: Array<LargePathHint>
+}) {
+	return (
+		`The credential stamp scan stopped early: this package has ` +
+		`${credentialScanSizeLimitPhrase}. It parses every JavaScript and ` +
+		`TypeScript module the package's runtime can import ` +
+		`(${input.moduleCount} here, committed build output included), and its ` +
+		`cost grows with the amount of code in them. ` +
+		`The limit is ${input.maxAstNodes.toLocaleString('en-US')} syntax ` +
+		`nodes across those modules. The heaviest it read before stopping are ` +
+		`${formatHintList(input.largest)}. Import less from the server entry ` +
+		'points, drop bundled dependencies the runtime does not need, or list ' +
+		'code the runtime never imports in a `.kodyignore` file next to ' +
+		'package.json, then run `kody dev check` again.'
+	)
+}
+
+/**
+ * True for a check result that only says the check could not run within
+ * the check runner's limits, so it found nothing either way.
+ */
 export function isRepoCheckResourceLimitMessage(message: string) {
 	return (
 		message.includes(isolatedCheckRunnerLimitPhrase) ||
-		message.includes(authoringCheckRunnerLimitPhrase)
+		message.includes(authoringCheckRunnerLimitPhrase) ||
+		message.includes(credentialScanSizeLimitPhrase)
 	)
 }
 
@@ -187,6 +279,26 @@ export function externalPublishResourceLimitMessage(
 	)
 }
 
+/**
+ * Caller-facing copy when writing an uploaded local or context build hits
+ * the Durable Object limit. Nothing is built in that step, so building
+ * outside Kody cloud is not the way out.
+ */
+const uploadedBuildPersistLimitPhrase =
+	'Kody ran out of CPU time or memory while storing this uploaded build'
+
+export function uploadedBuildPersistLimitMessage() {
+	return (
+		`${uploadedBuildPersistLimitPhrase}, ` +
+		'so the publish stopped. Your build was not rebuilt, and building it ' +
+		'again locally or on an execution context will not change this. The ' +
+		'step verifies the upload and links the `kody:@` packages it imports, ' +
+		'so importing fewer `kody:@` exports from one entry point may get it ' +
+		'through. This is a Kody limit, not a problem with your package: ' +
+		'report it with `feedbackSubmit` and include this message.'
+	)
+}
+
 const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
 
 /**
@@ -217,6 +329,7 @@ export function publishComputeLimitMessage(
 export function isPublishComputeLimitMessage(message: string) {
 	return (
 		message.includes(publishComputeLimitPhrase) ||
+		message.includes(uploadedBuildPersistLimitPhrase) ||
 		message.includes(
 			'packagePublishExternalPush hit the Durable Object isolate memory or CPU limit',
 		)

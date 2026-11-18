@@ -1,20 +1,42 @@
 import { expect, test } from 'vitest'
 import { DatabaseSync } from 'node:sqlite'
+import { readFileSync } from 'node:fs'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import {
+	d1ImportMaxStatementBytes,
+	utf8ByteLength,
+} from '@kody-internal/shared/backup-restore-safety.ts'
 import { publishBuildRetentionMs } from './policy.ts'
 import {
 	publishBuildBlobKey,
+	publishBuildDocumentKey,
 	purgeExpiredPublishBuilds,
+	readPublishBuildDocument,
 	sealPublishBuild,
 	finishPublishBuild,
 } from './store.ts'
 
+function memoryBucket() {
+	const objects = new Map<string, string>()
+	return {
+		objects,
+		put: async (key: string, body: string) => {
+			objects.set(key, body)
+		},
+		get: async (key: string) => {
+			const body = objects.get(key)
+			return body === undefined ? null : { text: async () => body }
+		},
+	}
+}
+
 test('seal and finish preserve their source restrictions including committed rewrites', async () => {
 	using sqlite = new DatabaseSync(':memory:')
 	sqlite.exec(
-		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_json TEXT, updated_at TEXT, message TEXT, committed_at TEXT)`,
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_sha256 TEXT, updated_at TEXT, message TEXT, committed_at TEXT)`,
 	)
 	const db = createD1FromSqlite(sqlite)
+	const bucket = memoryBucket() as unknown as R2Bucket
 	const statuses = ['uploading', 'sealed', 'committed', 'rejected'] as const
 	const document = {
 		builderVersion: 2,
@@ -26,9 +48,9 @@ test('seal and finish preserve their source restrictions including committed rew
 		sqlite
 			.prepare(`INSERT INTO publish_builds (id, status) VALUES (?, ?)`)
 			.run(status, status)
-		expect(await sealPublishBuild({ db, buildId: status, document })).toBe(
-			status === 'uploading',
-		)
+		expect(
+			await sealPublishBuild({ db, bucket, buildId: status, document }),
+		).toBe(status === 'uploading')
 	}
 	for (const target of ['committed', 'rejected'] as const) {
 		for (const source of statuses) {
@@ -45,9 +67,9 @@ test('seal and finish preserve their source restrictions including committed rew
 			})
 		}
 	}
-	expect(await sealPublishBuild({ db, buildId: 'missing', document })).toBe(
-		false,
-	)
+	expect(
+		await sealPublishBuild({ db, bucket, buildId: 'missing', document }),
+	).toBe(false)
 	await finishPublishBuild({ db, buildId: 'missing', status: 'rejected' })
 })
 
@@ -93,6 +115,7 @@ test('expired builds lose their chunks; committed rows stay for build origin', a
 	const bucket = fakeBucket([
 		publishBuildBlobKey('pb_abandoned', 'a'.repeat(64)),
 		publishBuildBlobKey('pb_done', 'b'.repeat(64)),
+		publishBuildDocumentKey('pb_done', 'd'.repeat(64)),
 		publishBuildBlobKey('pb_live', 'c'.repeat(64)),
 	])
 	const now = Date.parse('2026-11-03T12:00:00Z')
@@ -113,5 +136,87 @@ test('expired builds lose their chunks; committed rows stay for build origin', a
 		'DELETE',
 		'UPDATE',
 	])
-	expect(writes[1]!.sql).toContain('document_json = NULL')
+	expect(writes[1]!.sql).toContain('document_sha256 = NULL')
+})
+
+test('a sealed document too large for a D1 import statement stays in R2', async () => {
+	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_sha256 TEXT, updated_at TEXT)`,
+	)
+	sqlite
+		.prepare(
+			`INSERT INTO publish_builds (id, status) VALUES ('pb_big', 'uploading')`,
+		)
+		.run()
+	const db = createD1FromSqlite(sqlite)
+	const bucket = memoryBucket()
+	const files = Array.from({ length: 2_000 }, (_, index) => ({
+		path: `src/generated/file-${String(index).padStart(5, '0')}.ts`,
+		size: index,
+		sha256: 'e'.repeat(64),
+	}))
+	const document = { builderVersion: 2, commit: 'commit', files, targets: [] }
+	expect(utf8ByteLength(JSON.stringify(document))).toBeGreaterThan(
+		d1ImportMaxStatementBytes,
+	)
+
+	expect(
+		await sealPublishBuild({
+			db,
+			bucket: bucket as unknown as R2Bucket,
+			buildId: 'pb_big',
+			document,
+		}),
+	).toBe(true)
+
+	const row = sqlite
+		.prepare(`SELECT * FROM publish_builds WHERE id = 'pb_big'`)
+		.get() as { id: string; status: string; document_sha256: string }
+	expect(row.status).toBe('sealed')
+	expect(row.document_sha256).toMatch(/^[0-9a-f]{64}$/)
+	expect(utf8ByteLength(JSON.stringify(row))).toBeLessThan(1_000)
+	expect([...bucket.objects.keys()]).toEqual([
+		publishBuildDocumentKey('pb_big', row.document_sha256),
+	])
+	expect(
+		await readPublishBuildDocument({
+			bucket: bucket as unknown as R2Bucket,
+			row,
+		}),
+	).toEqual(document)
+})
+
+test('a committed build that still had a document before 0289 is purged after it', async () => {
+	using sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE publish_builds (id TEXT PRIMARY KEY, status TEXT, document_json TEXT, updated_at TEXT, expires_at TEXT)`,
+	)
+	sqlite
+		.prepare(
+			`INSERT INTO publish_builds (id, status, document_json, expires_at) VALUES ('pb_old', 'committed', '{}', '2026-11-01T00:00:00Z')`,
+		)
+		.run()
+	sqlite.exec(
+		readFileSync(
+			new URL(
+				'../../migrations/0289-publish-build-documents-in-r2.sql',
+				import.meta.url,
+			),
+			'utf8',
+		),
+	)
+	const bucket = fakeBucket([publishBuildBlobKey('pb_old', 'a'.repeat(64))])
+
+	const purged = await purgeExpiredPublishBuilds({
+		db: createD1FromSqlite(sqlite),
+		bucket: bucket as unknown as R2Bucket,
+		now: Date.parse('2026-11-03T12:00:00Z'),
+	})
+
+	expect(purged).toBe(1)
+	expect([...bucket.objects]).toEqual([])
+	expect(
+		sqlite.prepare(`SELECT document_sha256 FROM publish_builds`).get(),
+	).toEqual({ document_sha256: null })
 })

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { z } from 'zod'
 import type { fileStorageStatusSchema } from '#universal/file-storage.ts'
@@ -10,7 +10,6 @@ import {
 	readFileStorageCredentials,
 	setFileStorage,
 } from '#start/server/file-storage'
-import { accountInputCss } from './account-management-components.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 const bucketSetupPrompts = {
@@ -20,6 +19,8 @@ const bucketSetupPrompts = {
 		'Help me create a private Amazon S3 bucket for Kody Files. Show me how to create a dedicated access key with permission to read, write, and delete objects in that bucket and find its regional HTTPS S3 endpoint and region.',
 } as const
 
+import { Input, Select } from '../components/input.tsx'
+import { Button } from '../components/button.tsx'
 export default function FileStorageSettings({
 	orgSlug,
 	onClose,
@@ -80,18 +81,9 @@ export default function FileStorageSettings({
 		})
 		await router.invalidate()
 	}
-	const button = {
-		border: 0,
-		borderRadius: 5,
-		padding: '7px 10px',
-		font: 'inherit',
-		background: colors.borderSubtle,
-		color: colors.text,
-		cursor: 'pointer',
-		'&:disabled': { opacity: 0.5 },
-	}
+
 	return (
-		<ModalDialog label="File storage" onClose={onClose} width={480}>
+		<Dialog open aria-label="File storage" onClose={onClose} size="md">
 			<form
 				onSubmit={async (event) => {
 					event.preventDefault()
@@ -132,14 +124,15 @@ export default function FileStorageSettings({
 					}}
 				>
 					<h2 css={{ margin: '0 0 16px' }}>File storage</h2>
-					<button
+					<Button
+						variant="secondary"
+						size="sm"
 						type="button"
 						aria-label="Close storage settings"
-						css={button}
 						onClick={onClose}
 					>
 						×
-					</button>
+					</Button>
 				</div>
 				{!status && !error ? (
 					<LoadingIndicator label="Opening storage settings" />
@@ -159,9 +152,10 @@ export default function FileStorageSettings({
 							</p>
 						)}
 						{status.active && (
-							<button
+							<Button
+								variant="secondary"
+								size="sm"
 								type="button"
-								css={button}
 								disabled={busy}
 								onClick={async () => {
 									setBusy(true)
@@ -185,7 +179,7 @@ export default function FileStorageSettings({
 								}}
 							>
 								Use included storage
-							</button>
+							</Button>
 						)}
 						{status.providers.length > 0 && (
 							<div
@@ -197,9 +191,11 @@ export default function FileStorageSettings({
 								}}
 							>
 								{status.providers.map((provider) => (
-									<button
+									<Button
+										variant="secondary"
+										size="sm"
 										type="button"
-										css={button}
+
 										key={provider.id}
 										onClick={() => {
 											operation.current = provider.id
@@ -211,12 +207,14 @@ export default function FileStorageSettings({
 										}}
 									>
 										Reconnect {provider.bucket}
-									</button>
+									</Button>
 								))}
 								{reconnecting && (
-									<button
+									<Button
+										variant="secondary"
+										size="sm"
 										type="button"
-										css={button}
+
 										onClick={() => {
 											operation.current = crypto.randomUUID()
 											setReconnecting(false)
@@ -226,7 +224,7 @@ export default function FileStorageSettings({
 										}}
 									>
 										New connection
-									</button>
+									</Button>
 								)}
 							</div>
 						)}
@@ -238,24 +236,25 @@ export default function FileStorageSettings({
 									keyof typeof bucketSetupPrompts
 								>
 							).map((provider) => (
-								<button
+								<Button
+									variant="secondary"
+									size="sm"
 									key={provider}
 									type="button"
-									css={button}
+
 									onClick={() => void copySetup(provider)}
 								>
 									Copy {provider === 'Cloudflare R2' ? 'R2' : 'S3'} setup prompt
-								</button>
+								</Button>
 							))}
 						</div>
 						{copyStatus && <p role="status">{copyStatus}</p>}
 						<div css={{ display: 'grid', gap: 12, marginTop: 18 }}>
 							<label>
 								R2 or S3 endpoint
-								<input
+								<Input
 									required
 									type="url"
-									css={accountInputCss}
 									placeholder="https://account-id.r2.cloudflarestorage.com"
 									value={endpoint}
 									onChange={(e) => setEndpoint(e.target.value)}
@@ -263,27 +262,24 @@ export default function FileStorageSettings({
 							</label>
 							<label>
 								Bucket
-								<input
+								<Input
 									required
-									css={accountInputCss}
 									value={bucket}
 									onChange={(e) => setBucket(e.target.value)}
 								/>
 							</label>
 							<label>
 								Region
-								<input
+								<Input
 									required
-									css={accountInputCss}
 									value={region}
 									onChange={(e) => setRegion(e.target.value)}
 								/>
 							</label>
 							<label>
 								Workspace credential
-								<select
+								<Select
 									required
-									css={accountInputCss}
 									value={credentialName}
 									onChange={(e) => setCredentialName(e.target.value)}
 								>
@@ -297,7 +293,7 @@ export default function FileStorageSettings({
 											{name}
 										</option>
 									))}
-								</select>
+								</Select>
 							</label>
 						</div>
 						<p css={{ fontSize: 12, color: colors.textMuted }}>
@@ -312,18 +308,20 @@ export default function FileStorageSettings({
 							</a>
 						</p>
 						{credentials.isError && (
-							<button
+							<Button
+								variant="secondary"
+								size="sm"
 								type="button"
-								css={button}
 								onClick={() => void credentials.refetch()}
 							>
 								Retry loading credentials
-							</button>
+							</Button>
 						)}
 						<div css={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-							<button
+							<Button
+								variant="secondary"
+								size="sm"
 								type="submit"
-								css={button}
 								disabled={busy || !credentials.data?.includes(credentialName)}
 							>
 								{busy
@@ -331,7 +329,7 @@ export default function FileStorageSettings({
 									: reconnecting
 										? 'Reconnect storage'
 										: 'Connect storage'}
-							</button>
+							</Button>
 						</div>
 					</>
 				)}
@@ -341,6 +339,6 @@ export default function FileStorageSettings({
 					</p>
 				)}
 			</form>
-		</ModalDialog>
+		</Dialog>
 	)
 }

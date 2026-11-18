@@ -10,9 +10,9 @@ import type { FileMetadata } from '#universal/files.ts'
 import type { PageBlock } from '#universal/workspace-page.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 
-type TextKind = Exclude<PageBlock['kind'], 'file'>
+type BlockKind = Exclude<PageBlock['kind'], 'file'>
 const blockTypes: Array<{
-	kind: TextKind
+	kind: BlockKind
 	label: string
 	icon: string
 	description: string
@@ -30,12 +30,24 @@ const blockTypes: Array<{
 		icon: '≡',
 		description: 'An unordered list',
 	},
+	{ kind: 'numbered', label: 'Numbered list', icon: '1.', description: '' },
+	{ kind: 'contents', label: 'Table of contents', icon: '☰', description: '' },
+	{ kind: 'link', label: 'Link preview', icon: '↗', description: '' },
+	{ kind: 'mermaid', label: 'Mermaid diagram', icon: '◇', description: '' },
 	{ kind: 'task', label: 'Checklist', icon: '☑', description: 'Track a task' },
 	{
 		kind: 'quote',
 		label: 'Quote',
 		icon: '❞',
-		description: 'A quotation or callout',
+		description: 'A quotation',
+	},
+	{ kind: 'table', label: 'Table', icon: '▦', description: '' },
+	{ kind: 'callout', label: 'Callout', icon: '!', description: '' },
+	{
+		kind: 'collapse',
+		label: 'Collapsible section',
+		icon: '▸',
+		description: '',
 	},
 	{
 		kind: 'code',
@@ -44,13 +56,14 @@ const blockTypes: Array<{
 		description: 'Preserve code formatting',
 	},
 ]
-export type BlockChoice = { kind: TextKind } | { kind: 'file'; fileId: string }
+export type BlockChoice = { kind: BlockKind } | { kind: 'file'; fileId: string }
 
 export function BlockPicker({
 	anchor,
 	initialQuery = '',
 	files,
 	includeFiles,
+	includeContents,
 	onSelect,
 	onClose,
 }: {
@@ -58,18 +71,21 @@ export function BlockPicker({
 	initialQuery?: string
 	files: FileMetadata[]
 	includeFiles: boolean
+	includeContents: boolean
 	onSelect: (choice: BlockChoice) => void
 	onClose: (restoreFocus?: boolean) => void
 }) {
 	const input = useRef<HTMLInputElement>(null)
 	const choices = [
-		...blockTypes.map((type) => ({
-			id: type.kind,
-			label: type.label,
-			icon: type.icon,
-			description: type.description,
-			choice: { kind: type.kind } as BlockChoice,
-		})),
+		...blockTypes
+			.filter(({ kind }) => includeContents || kind !== 'contents')
+			.map((type) => ({
+				id: type.kind,
+				label: type.label,
+				icon: type.icon,
+				description: type.description,
+				choice: { kind: type.kind } as BlockChoice,
+			})),
 		...(includeFiles
 			? files.map((file) => ({
 					id: file.id,

@@ -10,7 +10,7 @@ import {
 	createTemporaryModuleGraph,
 } from '#worker/test-support/module-graph.ts'
 import { verifyLocalExecutePackageBinding } from './local-execute-package-binding.ts'
-import { buildLocalExecutePackageGraph } from './local-execute-package-graph.ts'
+import { buildLocalExecutePackageGraph } from '#worker/test-support/local-execute-package-graph.ts'
 import { buildKodyImportableModuleBundle } from './module-graph-bundle-builders.ts'
 import { prepareKodyGraphFiles } from './module-graph-import-rewriting.ts'
 import {
@@ -232,12 +232,12 @@ async function buildLegacyInlinedRuntimeArtifact(pkg: FixturePackage) {
 		rootPackageId: pkg.id,
 	})
 	const entryPath = joinPath(rootSourcePrefix, '.__kody_import_entry__.js')
-	const files = refreshKodyRuntimeModules({
+	const files = (await refreshKodyRuntimeModules({
 		...prepared.files,
 		[entryPath]: createImportableEntrypointSource({
 			modulePath: `./${prepared.entryPoint}`,
 		}),
-	}) as Record<string, string>
+	})) as Record<string, string>
 	return await bundleVirtualFiles({ files, entryPoint: entryPath })
 }
 

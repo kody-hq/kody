@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startTwoFactorSetup,
@@ -12,12 +15,10 @@ import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { toDataURL } from 'qrcode'
 import { useState, type FormEvent } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountInputCss,
 } from './account-management-components.tsx'
 import {
 	colors,
@@ -29,14 +30,9 @@ import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 export type AccountTwoFactorPayload = {
 	ok: true
@@ -290,10 +286,8 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleDisable}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+						<Field label="Verification code">
+							<Input
 								type="text"
 								name="code"
 								required
@@ -302,14 +296,13 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={disableCode}
-								css={accountInputCss}
 								onInput={updateDisableCode}
 							/>
-						</label>
+						</Field>
 						<div>
-							<button type="submit" disabled={isBusy} css={dangerButtonCss}>
+							<Button type="submit" disabled={isBusy} variant="danger">
 								{isBusy ? 'Working...' : 'Disable 2FA'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</section>
@@ -324,14 +317,14 @@ export function AccountTwoFactorPage({
 						like 1Password or Google Authenticator each time you sign in.
 					</p>
 					<div>
-						<button
+						<Button
 							type="button"
 							disabled={isBusy}
-							css={primaryButtonCss}
+							variant="primary"
 							onClick={handleStartSetup}
 						>
 							{isBusy ? 'Working...' : 'Enable 2FA'}
-						</button>
+						</Button>
 					</div>
 				</section>
 			) : null}
@@ -374,10 +367,8 @@ export function AccountTwoFactorPage({
 						css={{ display: 'grid', gap: spacing.md }}
 						onSubmit={handleConfirmSetup}
 					>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Verification code</span>
-							<input
-								data-field-ring
+						<Field label="Verification code">
+							<Input
 								type="text"
 								name="code"
 								required
@@ -386,39 +377,32 @@ export function AccountTwoFactorPage({
 								pattern="[0-9]{6}"
 								placeholder="123456"
 								value={confirmCode}
-								css={accountInputCss}
 								onInput={updateConfirmCode}
 							/>
-						</label>
+						</Field>
 						<div css={{ display: 'flex', gap: spacing.sm }}>
-							<button type="submit" disabled={isBusy} css={primaryButtonCss}>
+							<Button type="submit" disabled={isBusy} variant="primary">
 								{isBusy ? 'Working...' : 'Confirm'}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
 								disabled={isBusy}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onClick={handleCancelSetup}
 							>
 								Cancel
-							</button>
+							</Button>
 						</div>
 					</form>
 				</section>
 			) : null}
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/account" css={primaryLinkCss}>
-					Back to account
-				</SiteLink>
+				<TextLink href="/account">Back to account</TextLink>
 			</p>
 		</AccountManagementShell>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 const mutationResources = ['loadAccountSecurity', 'loadAccountPage'] as const
 

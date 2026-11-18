@@ -18,12 +18,18 @@ import { credentialClientRuntimeSource } from './credential-client-runtime-sourc
 import {
 	egressBlockedHeader,
 	egressGateModuleName,
+	lanNetworkServiceName,
 	type LocalEgressPolicy,
 } from './local-egress.js'
 import { extraTrustedCertificates } from './tls-errors.js'
 
 const localExecuteCompatibilityDate = '2026-04-16'
-const localExecuteCompatibilityFlags = ['nodejs_compat'] as const
+// `disallow_importable_env`: run code must not read the run secret or the
+// bridge binding through `import { env } from 'cloudflare:workers'`.
+const localExecuteCompatibilityFlags = [
+	'nodejs_compat',
+	'disallow_importable_env',
+] as const
 
 export const localWorkerModuleNames = {
 	entry: '__kody_local_entry.js',
@@ -67,6 +73,11 @@ export function localGatewayFetchStreamRuntimeSource(options: {
 let __kodyBridge = null;
 
 export function __kodyInstallLocalBridge(bridge) {
+	// The entry installs the bridge before it imports run code; a later call
+	// (run code trying to swap the bridge) is refused.
+	if (__kodyBridge !== null) {
+		throw new Error('The local runtime bridge is already installed.');
+	}
 	// Object form: { call, gatewayFetch }. Legacy function form still works for /call.
 	__kodyBridge =
 		typeof bridge === 'function' ? { call: bridge, gatewayFetch: null } : bridge;
@@ -506,8 +517,16 @@ export function __kodyRunInLocalRuntime(callback) {
 export function createLocalEntrySource(
 	input: {
 		sideEffectModules?: ReadonlyArray<string>
+		/** Module name of the host folder shim, when the run has host folders. */
+		hostFsModule?: string
 	} = {},
 ): string {
+	const hostFsImport = input.hostFsModule
+		? `import { __kodyInstallHostFsBridge } from ${JSON.stringify(input.hostFsModule)};`
+		: ''
+	const hostFsInstall = input.hostFsModule
+		? '__kodyInstallHostFsBridge({ fetcher: env.KODY_BRIDGE, secret });'
+		: ''
 	const sideEffectImports = [...new Set(input.sideEffectModules ?? [])]
 		.filter((name) => typeof name === 'string' && name.trim().length > 0)
 		.map((name) => `import ${JSON.stringify(name)};`)
@@ -519,6 +538,7 @@ ${sideEffectBlock}import {
 	__kodyRunInLocalRuntime,
 } from ${JSON.stringify(localWorkerModuleNames.runtime)};
 
+${hostFsImport}
 const __kodyRunSecretHeader = ${JSON.stringify(runSecretHeader)};
 let __kodyClaimed = false;
 
@@ -542,6 +562,7 @@ export default {
 			return new Response('Forbidden: missing run secret, or this one-shot run was already claimed. Only the kody process that started this workerd may call it.', { status: 403 });
 		}
 		__kodyClaimed = true;
+		${hostFsInstall}
 		const { params } = await request.json();
 		__kodyInstallLocalBridge({
 			call: async (path, args) => {
@@ -641,8 +662,12 @@ export function createWorkerdConfig(input: {
 	const trustedCertificates = certificates.length
 		? `, trustedCertificates = [${certificates.map((pem) => JSON.stringify(pem)).join(', ')}]`
 		: ''
+	const tlsOptions = `tlsOptions = (trustBrowserCas = true${trustedCertificates})`
+	const lanService = input.egress?.policy.lan?.length
+		? `\n    (name = ${JSON.stringify(lanNetworkServiceName)}, network = (allow = ["public", "private", "local"], ${tlsOptions})),`
+		: ''
 	const egressService = input.egress
-		? `\n    (name = "egress-gate", worker = (modules = [(name = ${JSON.stringify(egressGateModuleName)}, esModule = embed ${JSON.stringify(input.egress.gateFile)})], compatibilityDate = ${JSON.stringify(localExecuteCompatibilityDate)}, globalOutbound = "internet", bindings = [(name = "KODY_EGRESS_POLICY", json = ${JSON.stringify(JSON.stringify(input.egress.policy))}), (name = "KODY_BRIDGE", service = "kody-bridge"), (name = "KODY_RUN_SECRET", fromEnvironment = ${JSON.stringify(runSecretEnvVar)}), (name = "KODY_BRIDGE_SECRET_HEADER", text = ${JSON.stringify(runSecretHeader)})])),`
+		? `\n    (name = "egress-gate", worker = (modules = [(name = ${JSON.stringify(egressGateModuleName)}, esModule = embed ${JSON.stringify(input.egress.gateFile)})], compatibilityDate = ${JSON.stringify(localExecuteCompatibilityDate)}, globalOutbound = "internet", bindings = [(name = "KODY_EGRESS_POLICY", json = ${JSON.stringify(JSON.stringify(input.egress.policy))}), (name = "KODY_BRIDGE", service = "kody-bridge"),${input.egress.policy.lan?.length ? ` (name = "KODY_LAN", service = ${JSON.stringify(lanNetworkServiceName)}),` : ''} (name = "KODY_RUN_SECRET", fromEnvironment = ${JSON.stringify(runSecretEnvVar)}), (name = "KODY_BRIDGE_SECRET_HEADER", text = ${JSON.stringify(runSecretHeader)})])),`
 		: ''
 	// Flat re-export of kody:runtime (same module instance). Callers must write
 	// createRuntimeFlatAliasSource() to this filename before serving.
@@ -654,7 +679,7 @@ const config :Workerd.Config = (
   services = [
     (name = "main", worker = .kodyWorker),
     (name = "kody-bridge", external = (address = "127.0.0.1:${input.bridgePort}", http = ())),
-    (name = "internet", network = (allow = ${networkAllow}, tlsOptions = (trustBrowserCas = true${trustedCertificates}))),${egressService}
+    (name = "internet", network = (allow = ${networkAllow}, ${tlsOptions})),${lanService}${egressService}
   ],
   sockets = [ (name = "http", address = "127.0.0.1:0", http = (), service = "main") ],
 );

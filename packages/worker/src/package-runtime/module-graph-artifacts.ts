@@ -23,6 +23,7 @@ import {
 	collectLiteralImportSpecifiers,
 	getBarePackageNameFromSpecifier,
 	isBarePackageImportSpecifier,
+	isKodyVirtualImportSpecifier,
 } from './import-specifiers.ts'
 import {
 	createPackageSpecifierFromProxyPath,
@@ -33,6 +34,7 @@ import {
 	dynamicPackageImportSpecifierExportName,
 	encodePathKeyAsPath,
 	joinPath,
+	linkedPackageImportPrefix,
 } from './module-graph-paths.ts'
 import {
 	createDynamicPackageImportProxySource,
@@ -47,10 +49,15 @@ export function includeDynamicDependenciesWhenPresent(
 	return dynamicDependencies.length > 0 ? { dynamicDependencies } : {}
 }
 
-function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
+async function collectUnresolvedImports(modules: WorkerLoaderModules) {
 	const unresolved = new Map<string, Set<string>>()
+	const kodyVirtual = new Set<string>()
 	for (const [modulePath, source] of iterateModuleSourceTexts(modules)) {
-		for (const specifier of collectLiteralImportSpecifiers(source)) {
+		for (const specifier of await collectLiteralImportSpecifiers(source)) {
+			if (isKodyVirtualImportSpecifier(specifier)) {
+				kodyVirtual.add(`${modulePath}: "${specifier}"`)
+				continue
+			}
 			if (!isBarePackageImportSpecifier(specifier)) continue
 			// Match the pre-bundle check: unprefixed Node builtins stay external
 			// under nodejs_compat (e.g. fflate's `import … from "module"`). Prefixed
@@ -65,15 +72,18 @@ function collectUnresolvedBareImports(modules: WorkerLoaderModules) {
 			existing.add(specifier)
 		}
 	}
-	return [...unresolved.entries()].map(([modulePath, specifiers]) => ({
-		modulePath,
-		specifiers: [...specifiers].sort((left, right) =>
-			left.localeCompare(right),
-		),
-	}))
+	return {
+		kodyVirtual: [...kodyVirtual].sort(),
+		bare: [...unresolved.entries()].map(([modulePath, specifiers]) => ({
+			modulePath,
+			specifiers: [...specifiers].sort((left, right) =>
+				left.localeCompare(right),
+			),
+		})),
+	}
 }
 
-export function assertBundleHasNoUnresolvedBareImports(input: {
+export async function assertBundleHasNoUnresolvedBareImports(input: {
 	modules: WorkerLoaderModules
 	bundleLabel: string
 	resolutionHint?: string
@@ -85,7 +95,15 @@ export function assertBundleHasNoUnresolvedBareImports(input: {
 	 */
 	sourceFiles?: Record<string, string>
 }) {
-	const unresolved = collectUnresolvedBareImports(input.modules)
+	const { kodyVirtual, bare: unresolved } = await collectUnresolvedImports(
+		input.modules,
+	)
+	if (kodyVirtual.length > 0) {
+		// Not caller-fixable: the build should have rewritten these.
+		throw new Error(
+			`${input.bundleLabel} still imports Kody virtual modules after bundling (${kodyVirtual.join('; ')}). The build did not rewrite them to modules Kody supplies at load time, so the bundle would fail to load.`,
+		)
+	}
 	if (unresolved.length === 0) return
 	const details = unresolved
 		.map(
@@ -131,9 +149,15 @@ function materializeArtifactModuleSource(input: {
 	)
 }
 
-export function materializePublishedArtifactModules(input: {
+export async function materializePublishedArtifactModules(input: {
 	artifactPrefix: string
 	modules: WorkerLoaderModules
+	/**
+	 * Skip writing the Kody runtime modules the artifact imports. Finding them
+	 * parses every module, which is wasted when the caller strips runtime
+	 * modules again before storing the result.
+	 */
+	omitRuntimeModules?: boolean
 }) {
 	const materializedModules: Record<string, string> = {}
 	for (const [modulePath, module] of Object.entries(input.modules)) {
@@ -143,9 +167,80 @@ export function materializePublishedArtifactModules(input: {
 				module,
 			})
 	}
-	return refreshKodyRuntimeModules(materializedModules, {
+	if (input.omitRuntimeModules) return materializedModules
+	return (await refreshKodyRuntimeModules(materializedModules, {
 		includeDefaultRuntimePath: false,
-	}) as Record<string, string>
+	})) as Record<string, string>
+}
+
+const linkedArtifactsRoot = joinPath(linkedPackageImportPrefix, 'artifacts')
+
+/**
+ * Linked artifact path for one dependency export at one commit. Linking
+ * writes every artifact here at the bundle root, so a package several
+ * dependencies import is stored once.
+ */
+export function linkedArtifactPrefix(input: {
+	specifier: string
+	sourceId: string
+	publishedCommit: string
+}) {
+	return joinPath(
+		linkedArtifactsRoot,
+		encodePathKeyAsPath(
+			`${input.specifier}#${input.sourceId}#${input.publishedCommit}`,
+		),
+	)
+}
+
+/**
+ * {@link materializePublishedArtifactModules} for a dependency artifact
+ * composed into another bundle: the linked artifacts it carries move up to
+ * `linkedRoot`'s `.__kody_linked__/artifacts/` instead of nesting (a hub
+ * artifact otherwise holds one copy of a shared package per dependency that
+ * imports it), and the placeholder proxies that import `./artifacts/…` point
+ * at the hoisted copies. `linkedRoot` must contain `artifactPrefix`: the root
+ * of the artifact being written when linking (`''`), or the composed
+ * artifact's own prefix when composing a load graph, so every module stays
+ * under its package's prefix.
+ */
+export async function materializeDependencyArtifactModules(input: {
+	artifactPrefix: string
+	modules: WorkerLoaderModules
+	linkedRoot: string
+	omitRuntimeModules?: boolean
+}) {
+	const rootPrefix = input.linkedRoot === '' ? '' : `${input.linkedRoot}/`
+	if (!`${input.artifactPrefix}/`.startsWith(rootPrefix)) {
+		throw new Error(
+			`Linked artifact root "${input.linkedRoot}" does not contain "${input.artifactPrefix}".`,
+		)
+	}
+	const marker = `/${linkedArtifactsRoot}/`
+	const materialized: Record<string, string> = {}
+	for (const [modulePath, source] of Object.entries(
+		await materializePublishedArtifactModules(input),
+	)) {
+		const relative = modulePath.slice(rootPrefix.length)
+		const nested = `/${relative}`.lastIndexOf(marker)
+		materialized[
+			nested === -1 ? modulePath : `${rootPrefix}${relative.slice(nested)}`
+		] = source
+	}
+	for (const [modulePath, source] of Object.entries(materialized)) {
+		if (!dirname(modulePath).endsWith(`/${linkedPackageImportPrefix}`)) {
+			continue
+		}
+		materialized[modulePath] = source.replace(
+			/(["'])\.\/artifacts\/([^"']+)\1/g,
+			(_match, quote: string, artifactPath: string) =>
+				`${quote}${createRelativeImportSpecifier(
+					modulePath,
+					`${rootPrefix}${joinPath(linkedArtifactsRoot, artifactPath)}`,
+				)}${quote}`,
+		)
+	}
+	return materialized
 }
 
 function isStandaloneDynamicPackageImportPlaceholder(source: string) {
@@ -235,7 +330,7 @@ export function collectDynamicKodyDependenciesFromModules(
 	)
 }
 
-export function installDynamicPackageArtifactModules(input: {
+export async function installDynamicPackageArtifactModules(input: {
 	modules: WorkerLoaderModules
 	modulePath: string
 	specifier: string
@@ -249,7 +344,7 @@ export function installDynamicPackageArtifactModules(input: {
 		),
 	)
 	for (const [artifactModulePath, module] of Object.entries(
-		materializePublishedArtifactModules({
+		await materializePublishedArtifactModules({
 			artifactPrefix,
 			modules: input.artifact.modules,
 		}),

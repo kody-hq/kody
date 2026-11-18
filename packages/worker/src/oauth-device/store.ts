@@ -273,6 +273,23 @@ export async function decideAccountDeviceAuthorization(
 	return (result.meta.changes ?? 0) > 0
 }
 
+/** Rewrites an unfinished account row's `request_json` (its remember-me). */
+export async function updateAccountDeviceRequestJson(
+	db: D1Database,
+	input: { id: string; requestJson: string },
+	now = nowSeconds(),
+) {
+	const result = await db
+		.prepare(
+			`UPDATE ${table} SET request_json = ?
+			WHERE id = ? AND kind = 'account' AND status IN ('pending', 'approved')
+				AND expires_at > ?`,
+		)
+		.bind(input.requestJson, input.id, now)
+		.run()
+	return (result.meta.changes ?? 0) > 0
+}
+
 /** Moves an approved row to consumed. Only one caller can win. */
 export async function consumeApprovedDeviceAuthorization(
 	db: D1Database,

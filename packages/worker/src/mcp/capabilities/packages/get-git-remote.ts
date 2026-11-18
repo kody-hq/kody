@@ -101,6 +101,7 @@ export const getGitRemoteCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageGetGitRemote',
+		walletGuard: 'git',
 		contextRuns: 'deny',
 		orgPermission: ['package:read', 'package:create'],
 		description:

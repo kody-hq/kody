@@ -167,10 +167,12 @@ preparation, the public `/@owner/kody-id/tree/:ref` explorer, README assets, and
 the listing version read it when the published-commit snapshot and Artifacts
 miss. Community icons read Artifacts at the icon commit.
 
-Older listings may still have a legacy `community-snapshot:v1:{listingId}` key.
-Nothing writes or reads it anymore; unpublish, hard delete, account export, and
-account deletion still address it (`packages/worker/src/community/snapshot.ts`).
-Leftover `/files` URLs 301 to `/tree/{defaultBranch}`.
+`community-snapshot:v1:{listingId}` is retained only for unpublish, hard delete,
+account export, and account deletion. Unpublish and hard delete remove it before
+the listing row, because the row is the only handle a retry or export has on the
+key. Live listing trees use the SHA-keyed source snapshot
+(`packages/worker/src/community/snapshot.ts`). Leftover `/files` URLs 301 to
+`/tree/{defaultBranch}`.
 
 ### Community icon cache
 

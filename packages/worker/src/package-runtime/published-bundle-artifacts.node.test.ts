@@ -9,6 +9,21 @@ import {
 	reusePublishedPackageArtifactIfUnchanged,
 } from './published-bundle-artifacts.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 const mockModule = vi.hoisted(() => ({
 	getEntitySourceById: vi.fn(),
 	getEntitySourceByIdForUser: vi.fn(),
@@ -474,16 +489,16 @@ test('rebuildPublishedPackageArtifacts bundles declared subscription handlers', 
 	expect(buildImportableModuleBundle).toHaveBeenCalledWith({
 		entryPoint: 'src/index.ts',
 	})
+	// Targets build two at a time, so the order rows land in is not fixed.
 	expect(
-		mockModule.insertPublishedBundleArtifactRow.mock.calls.map((call) => [
-			call[1].artifactKind,
-			call[1].artifactName,
-		]),
+		mockModule.insertPublishedBundleArtifactRow.mock.calls
+			.map((call) => `${call[1].artifactKind} ${call[1].artifactName}`)
+			.sort(),
 	).toEqual([
-		['module', '.'],
-		['importable-module', '.'],
-		['module', 'subscription:email.message.quarantined'],
-		['module', 'subscription:email.message.received'],
+		'importable-module .',
+		'module .',
+		'module subscription:email.message.quarantined',
+		'module subscription:email.message.received',
 	])
 })
 
@@ -1321,7 +1336,7 @@ test('rebuildPublishedPackageArtifacts rebuilds a refused pre-binding importable
 				kind: 'importable-module',
 				artifactName: './a',
 				publishedCommit: 'commit-1',
-				packageBindingRewrite: 1,
+				packageBindingRewrite: 2,
 			}),
 		}),
 	)

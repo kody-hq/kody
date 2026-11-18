@@ -25,7 +25,8 @@ Surfaces:
   `id` (for example `guide:package_authoring`). Oversized docs return a table of
   contents; open a heading with `guide:{id}#{slug}`, or lines with
   `guide:{id}#L165` / `guide:{id}#L165-L180`.
-- **Legacy `/guides*`** — every old URL 308s to its `/docs*` twin
+- **`/guides*` redirects** — GET/HEAD on `/guides` and `/guides/*` permanently
+  redirect to the matching `/docs` path
   (`packages/worker/src/app/handlers/legacy-guides-redirect.ts`).
 
 ## Information architecture

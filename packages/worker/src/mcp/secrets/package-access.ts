@@ -11,11 +11,16 @@ import {
 import {
 	createPackageSecretAccessDeniedBatchMessage,
 	createPackageSecretAccessDeniedMessage,
+	createUnboundLockedSecretUseMessage,
 } from './errors.ts'
 import { findSecret, type FoundSecret } from './service.ts'
 import type { SecretScope } from './types.ts'
 import type { StorageContext } from '#mcp/storage.ts'
-import { resolveCallerSecretAuthority } from './secret-authority.ts'
+import {
+	getBoundSandboxCallIntrinsics,
+	getUnboundSandboxCall,
+	resolveCallerSecretAuthority,
+} from './secret-authority.ts'
 import { getCommunityForkByForkedPackageId } from '#worker/community/repo.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import {
@@ -31,6 +36,10 @@ import {
 	scheduleAllowedPackagesWouldBlock,
 	type AllowedPackagesWouldBlockAccessKind,
 } from '#worker/credentials/allowed-packages-would-block.ts'
+import {
+	scheduleChangedIntrinsicsUse,
+	scheduleUnboundUseRefusal,
+} from '#worker/credentials/attribution-log.ts'
 
 type SecretMountDefinition = {
 	name: string
@@ -180,6 +189,46 @@ export async function resolveSecretPageOrgSlug(input: {
 	return input.caller?.user?.username?.trim() || null
 }
 
+const maxLockedPackageNamesInError = 10
+
+/** Names of the packages a credential is locked to, keyed by package id. */
+async function lockedPackageNames(input: {
+	db: D1Database
+	userId: OwnerId
+	packageIds: ReadonlyArray<string>
+}) {
+	const names = new Map<string, string>()
+	for (const packageId of input.packageIds.slice(
+		0,
+		maxLockedPackageNamesInError,
+	)) {
+		try {
+			const saved = await getSavedPackageById(input.db, {
+				userId: input.userId,
+				packageId,
+			})
+			if (saved?.kodyId) names.set(packageId, saved.kodyId)
+		} catch {
+			// The refusal stands without the name.
+		}
+	}
+	return names
+}
+
+/**
+ * The run's own package for the attribution log. The storage context is
+ * stamped with the bound package on bound calls, so prefer the run context.
+ */
+function runPackageIdForLog(input: {
+	runContextPackageId?: string | null
+	storageContext?: { packageId?: string | null } | null
+}) {
+	if (input.runContextPackageId !== undefined) {
+		return input.runContextPackageId?.trim() || null
+	}
+	return input.storageContext?.packageId?.trim() || null
+}
+
 /**
  * Nested personal-secret rule (GHSA-5fv3): when the call-site authority is not
  * the run's own package, allow a user-scoped secret only if (1) allowed_packages
@@ -221,8 +270,72 @@ export async function assertPackageCanAccessResolvedSecret(input: {
 		storageContext: input.storageContext,
 		authorityPackageId: input.authorityPackageId,
 	})
+	// A locked credential is only usable by the code of a package on its list.
+	// A call over a channel shared by every module in the run cannot be
+	// attributed to one package's code, so it is refused whatever the run
+	// package is.
+	const unboundCall = getUnboundSandboxCall()
+	if (
+		unboundCall &&
+		input.resolved.scope === 'user' &&
+		input.resolved.allowedPackages.length > 0
+	) {
+		const runPackageId = runPackageIdForLog(input)
+		const allowed = input.resolved.allowedPackages
+		const inRun = new Set(
+			[runPackageId, ...(unboundCall.loadedPackageIds ?? [])].filter(Boolean),
+		)
+		const listedPackageIdInRun = allowed.find((id) => inRun.has(id)) ?? null
+		const credentialId = input.resolved.credentialId?.trim()
+		if (credentialId) {
+			scheduleUnboundUseRefusal({
+				env: input.env,
+				refusal: {
+					ownerId: String(input.userId),
+					credentialId,
+					credentialName: input.secretName,
+					surface: unboundCall.surface,
+					pattern: unboundCall.pattern,
+					runPackageId,
+					listedPackageIdInRun,
+				},
+			})
+		}
+		const names = await lockedPackageNames({
+			db: input.env.APP_DB,
+			userId: input.userId,
+			packageIds: allowed,
+		})
+		throw new PackageSecretAccessDeniedError(
+			createUnboundLockedSecretUseMessage({
+				secretName: input.secretName,
+				lockedPackageNames: [...names.values()],
+				listedPackageNameInRun: listedPackageIdInRun
+					? (names.get(listedPackageIdInRun) ?? null)
+					: null,
+			}),
+		)
+	}
 	if (!packageId || input.resolved.scope !== 'user') return
-	if (input.resolved.allowedPackages.includes(packageId)) return
+	if (input.resolved.allowedPackages.includes(packageId)) {
+		const boundIntrinsics = getBoundSandboxCallIntrinsics()
+		const credentialId = input.resolved.credentialId?.trim()
+		if (boundIntrinsics && credentialId) {
+			scheduleChangedIntrinsicsUse({
+				env: input.env,
+				use: {
+					ownerId: String(input.userId),
+					credentialId,
+					credentialName: input.secretName,
+					surface: boundIntrinsics.surface,
+					runPackageId: runPackageIdForLog(input),
+					boundPackageId: boundIntrinsics.packageId,
+					changedIntrinsics: boundIntrinsics.changedIntrinsics,
+				},
+			})
+		}
+		return
+	}
 
 	const intent = input.intent ?? 'use'
 	const runContext =

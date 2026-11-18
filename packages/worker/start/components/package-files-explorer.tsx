@@ -1,10 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { Menu } from '@base-ui/react/menu'
-import {
-	overlayItemCss,
-	overlayPopupCss,
-	overlayPositionerCss,
-} from './overlay-styles.ts'
+import { Button } from './button.tsx'
+import { Menu, MenuCheckboxItem, MenuContent, MenuTrigger } from './menu.tsx'
 import { useHotkeys } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { WorkspaceBreadcrumbs } from '../pages/workspace-breadcrumbs.tsx'
@@ -27,7 +23,7 @@ import { LoadingIndicator } from './loading-indicator.tsx'
 import { SiteLink } from './site-link.tsx'
 import { withInstallOrg } from '#universal/community-search.ts'
 
-import { ControlTooltip } from './control-tooltip.tsx'
+import { Tooltip } from './tooltip.tsx'
 import { Combobox } from './combobox.tsx'
 import { CopyTextButton } from './copy-text-button.tsx'
 
@@ -65,10 +61,11 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	getGhostButtonCss,
+	getSquircleCss,
 	packageDetailPageCss,
 	proseCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from './input.tsx'
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`
@@ -287,14 +284,15 @@ function PackageFilesExplorerContent({
 				}
 				viewAction={
 					canOpen && !fullView ? (
-						<button
+						<Button
 							ref={viewToggle}
 							type="button"
-							css={openButtonCss}
+							variant="secondary"
+							css={[rawLinkCss, openButtonCss]}
 							onClick={() => setFullPath(data.selectedPath)}
 						>
 							Open
-						</button>
+						</Button>
 					) : undefined
 				}
 			/>
@@ -381,7 +379,7 @@ function PackageFilesExplorerContent({
 								<h2 css={treeHeadingCss}>Files</h2>
 								<div css={filterFieldCss}>
 									<span css={filterIconCss}>{searchIcon()}</span>
-									<input
+									<Input
 										type="text"
 										role="searchbox"
 										inputMode="search"
@@ -671,25 +669,29 @@ function FileContent({
 							aria-label="File actions"
 						>
 							{data.rawHref ? (
-								<ControlTooltip
-									trigger={
-										<a
-											href={data.rawHref}
-											download={
-												data.rawHref.startsWith('data:')
-													? packageFileBaseName(heading)
-													: undefined
-											}
-											data-testid="package-files-raw-link"
-											aria-label={`View raw ${heading}`}
-											css={rawLinkCss}
-										>
-											{renderIcon('arrow-up-right', { size: '14' })}
-										</a>
+								<Button
+									href={data.rawHref}
+									download={
+										data.rawHref.startsWith('data:')
+											? packageFileBaseName(heading)
+											: undefined
 									}
+									data-testid="package-files-raw-link"
+									aria-label={`View raw ${heading}`}
+									aria-describedby="package-files-raw-tooltip"
+									variant="secondary"
+									reloadDocument
+									css={rawLinkCss}
 								>
-									Open raw file
-								</ControlTooltip>
+									{renderIcon('arrow-up-right', { size: '14' })}
+									<Tooltip
+										id="package-files-raw-tooltip"
+										side="bottom"
+										align="end"
+									>
+										Open raw file
+									</Tooltip>
+								</Button>
 							) : null}
 							{canCopy ? (
 								<CopyTextButton
@@ -700,18 +702,18 @@ function FileContent({
 									variant="ghost"
 									size="sm"
 									ariaLabel={`Copy ${heading}`}
-									wrapButton={(button) => (
-										<ControlTooltip trigger={button}>
-											Copy source
-										</ControlTooltip>
-									)}
+									tooltip={{
+										id: 'package-files-copy-tooltip',
+										align: 'end',
+										text: 'Copy source',
+									}}
 								/>
 							) : null}
 						</div>
 					)}
 					{canWrap && (
-						<Menu.Root modal={false}>
-							<Menu.Trigger
+						<Menu>
+							<MenuTrigger
 								type="button"
 								aria-label="Preview options"
 								title="Preview options"
@@ -735,33 +737,16 @@ function FileContent({
 									<circle cx="8" cy="8" r="1.2" />
 									<circle cx="13" cy="8" r="1.2" />
 								</svg>
-							</Menu.Trigger>
-							<Menu.Portal>
-								<Menu.Positioner
-									align="end"
-									sideOffset={4}
-									css={overlayPositionerCss}
+							</MenuTrigger>
+							<MenuContent align="end" aria-label="Preview options">
+								<MenuCheckboxItem
+									checked={wrapLines}
+									onCheckedChange={onWrapLinesChange}
 								>
-									<Menu.Popup
-										aria-label="Preview options"
-										css={{ ...overlayPopupCss, minWidth: 170 }}
-									>
-										<Menu.CheckboxItem
-											checked={wrapLines}
-											onCheckedChange={onWrapLinesChange}
-											css={overlayItemCss}
-										>
-											<span css={{ width: '1rem' }}>
-												<Menu.CheckboxItemIndicator>
-													✓
-												</Menu.CheckboxItemIndicator>
-											</span>
-											Wrap lines
-										</Menu.CheckboxItem>
-									</Menu.Popup>
-								</Menu.Positioner>
-							</Menu.Portal>
-						</Menu.Root>
+									Wrap lines
+								</MenuCheckboxItem>
+							</MenuContent>
+						</Menu>
 					)}
 				</div>
 			</div>
@@ -974,18 +959,6 @@ const filterInputCss = {
 	minWidth: 0,
 	height: '2.25rem',
 	padding: `0 ${spacing.sm} 0 1.875rem`,
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.sm,
-	backgroundColor: colors.background,
-	color: colors.text,
-	fontFamily: typography.fontFamily,
-	fontSize: typography.fontSize.sm,
-	boxSizing: 'border-box' as const,
-	'&:focus-visible': {
-		outline: `2px solid ${colors.primary}`,
-		outlineOffset: '-1px',
-		borderColor: 'transparent',
-	},
 } satisfies CSSObject
 
 const treeScrollCss = {
@@ -1108,17 +1081,15 @@ const contentActionsCss = {
 } satisfies CSSObject
 
 const rawLinkCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	textDecoration: 'none',
 }
 
 const openButtonCss = {
-	...rawLinkCss,
 	height: '2rem',
 	minHeight: 0,
 	boxSizing: 'border-box',
 	padding: `0 ${spacing.sm}`,
-	borderRadius: radius.sm,
+	...getSquircleCss('xs'),
 	border: 0,
 	boxShadow: 'none',
 	'&:not(:disabled):hover, &:not(:disabled):active': {

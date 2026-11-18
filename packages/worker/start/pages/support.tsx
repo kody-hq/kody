@@ -1,8 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -16,9 +15,9 @@ export function SupportRoute() {
 				<h1 css={pageTitleCss}>Support</h1>
 				<p css={pageDescriptionCss}>
 					For help with the hosted Kody service at kody.codes, email{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					.
 				</p>
 				<p css={pageDescriptionCss}>
@@ -31,27 +30,27 @@ export function SupportRoute() {
 
 			<p css={pageDescriptionCss}>
 				Site blocked by a DNS filter, or signup mail never arrives? See{' '}
-				<SiteLink href="/docs/cant-open-or-get-mail" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/docs/cant-open-or-get-mail">
 					If you can't open kody.codes or get mail from us
-				</SiteLink>
+				</TextLink>
 				.
 			</p>
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/faq" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/faq">
 					FAQ
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/docs/cant-open-or-get-mail" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/docs/cant-open-or-get-mail">
 					Can't open or get mail
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/discord" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/discord">
 					Discord
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/privacy" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/privacy">
 					Privacy
-				</SiteLink>
+				</TextLink>
 			</p>
 		</section>
 	)

@@ -26,6 +26,7 @@ const { generateContextKey, importContextKey } =
 const { runDaemon } = await import('../src/execution-context/daemon.js')
 const keystore = await import('../src/execution-context/keystore.js')
 const service = await import('../src/execution-context/service.js')
+const runnerLock = await import('../src/execution-context/runner-lock.js')
 const serviceCommands =
 	await import('../src/execution-context/service-commands.js')
 
@@ -753,4 +754,94 @@ test('a passphrase context refuses --key-storage keyring for a service', async (
 		),
 		/passphrase-protected context[\s\S]*--key-storage file/,
 	)
+})
+
+test('daemon health exits 0 only while the running daemon is connected and heard Kody lately', async () => {
+	const ecid = 'ec_health'
+	await storeContext(
+		ecid,
+		keystore.fileWrappingKey({ apiUrl, ecid, create: true }),
+	)
+	const out: Array<string> = []
+	const env = {
+		apiUrl,
+		clientVersion: '1.2.3',
+		write: (text: string) => out.push(text),
+		platform: 'linux' as const,
+		isRoot: false,
+		tmpDir: null,
+		json: true,
+	}
+	const health = async (maxAge?: string) => {
+		out.length = 0
+		const code = await serviceCommands.runDaemonServiceCommand(env, {
+			sub: 'health',
+			context: ecid,
+			...(maxAge ? { maxAge } : {}),
+			revoke: async () => {},
+		})
+		return { code, body: JSON.parse(out.join('')) }
+	}
+	assert.deepEqual(
+		await health().then(({ code, body }) => [code, body.reason]),
+		[1, 'not-running'],
+	)
+
+	const { statePath } = service.servicePaths({
+		apiUrl,
+		ecid,
+		manager: service.serviceManagerFor() ?? 'systemd',
+	})
+	const startedAt = new Date(Date.now() - 3_600_000).toISOString()
+	const held = runnerLock.acquireRunnerLock(runnerLock.lockPathFor(statePath), {
+		version: '1.2.3',
+		launcher: 'terminal',
+		startedAt,
+	})
+	assert.ok(held.ok)
+	const write = (connected: boolean, heardMsAgo: number) =>
+		service.writeJson(statePath, {
+			pid: process.pid,
+			version: '1.2.3',
+			service: null,
+			startedAt,
+			connection: {
+				connected,
+				since: startedAt,
+				lastHeardAt: new Date(Date.now() - heardMsAgo).toISOString(),
+				updatedAt: new Date().toISOString(),
+			},
+		})
+	try {
+		write(true, 10_000)
+		const ok = await health()
+		assert.equal(ok.code, 0)
+		assert.equal(ok.body.healthy, true)
+		assert.equal(ok.body.connected, true)
+		assert.equal(ok.body.ecid, ecid)
+		assert.ok(ok.body.lastHeartbeatAgeSeconds >= 10)
+		assert.ok('lastError' in ok.body.autoUpdate)
+		assert.deepEqual(
+			await health('5').then(({ code, body }) => [code, body.reason]),
+			[1, 'heartbeat-stale'],
+		)
+
+		write(false, 600_000)
+		assert.deepEqual(
+			await health().then(({ code, body }) => [code, body.reason]),
+			[1, 'disconnected'],
+		)
+		out.length = 0
+		const statusCode = await serviceCommands.runDaemonServiceCommand(env, {
+			sub: 'status',
+			context: ecid,
+			revoke: async () => {},
+		})
+		const status = JSON.parse(out.join(''))
+		assert.equal(status.health.reason, 'disconnected')
+		assert.equal(statusCode, 1)
+		await assert.rejects(health('soon'), /--max-age needs a number/)
+	} finally {
+		if (held.ok) held.release()
+	}
 })

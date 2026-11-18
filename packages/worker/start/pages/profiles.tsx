@@ -1,4 +1,9 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	type FormEvent,
@@ -41,11 +46,9 @@ import {
 import { orgResourcePath } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-	primaryLinkCss,
+	getSquircleCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -66,11 +69,9 @@ import {
 	MetadataGrid,
 	TimestampValue,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type EnabledData = Extract<ProfilesPageData, { enabled: true }>
 
@@ -106,19 +107,13 @@ export function ProfilesRoute(props: {
 						</p>
 						<p css={{ margin: '0.5rem 0 0', color: colors.textMuted }}>
 							Read the{' '}
-							<SiteLink
-								href={routes.docDetail.href({ slug: 'profiles' })}
-								css={primaryLinkCss}
-							>
+							<TextLink href={routes.docDetail.href({ slug: 'profiles' })}>
 								profiles guide
-							</SiteLink>
+							</TextLink>
 							, or manage every experiment on{' '}
-							<SiteLink
-								href={routes.accountExperiments.href()}
-								css={primaryLinkCss}
-							>
+							<TextLink href={routes.accountExperiments.href()}>
 								Experiments
-							</SiteLink>
+							</TextLink>
 							.
 						</p>
 						<ExperimentOptIn experiment="profiles">
@@ -162,13 +157,13 @@ function EnabledPage(props: { payload: EnabledData; currentHref: string }) {
 				currentHref={currentHref}
 				actions={
 					payload.listError ? null : (
-						<button
+						<Button
 							type="button"
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 							onClick={() => setComposer({ parentId: null })}
 						>
 							New profile
-						</button>
+						</Button>
 					)
 				}
 			/>
@@ -292,19 +287,12 @@ function EmptyState(props: { allMembers: boolean; onCreate: () => void }) {
 					<li>Revoke it, and every sub-profile below stops working too.</li>
 				</ul>
 				<div css={accountActionsCss}>
-					<button
-						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
-						onClick={props.onCreate}
-					>
+					<Button type="button" variant="primary" onClick={props.onCreate}>
 						Create your first profile
-					</button>
-					<SiteLink
-						href={routes.docDetail.href({ slug: 'profiles' })}
-						css={primaryLinkCss}
-					>
+					</Button>
+					<TextLink href={routes.docDetail.href({ slug: 'profiles' })}>
 						How profiles work
-					</SiteLink>
+					</TextLink>
 				</div>
 			</div>
 		</AccountManagementPanel>
@@ -688,13 +676,13 @@ function ProfileDetail(props: {
 				<GrantsList grants={profile.grants} />
 				<div css={accountActionsCss}>
 					{block === null ? (
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={props.onAddSubProfile}
 						>
 							Add sub-profile
-						</button>
+						</Button>
 					) : null}
 					{canRevokeProfile(profile, viewer) ? (
 						<RevokeProfileButton
@@ -706,7 +694,7 @@ function ProfileDetail(props: {
 					) : null}
 				</div>
 				{block && block !== 'inactive' && profile.status === 'active' ? (
-					<p css={accountFieldNoteCss}>{subProfileBlockMessage(block)}</p>
+					<p css={fieldDescriptionCss}>{subProfileBlockMessage(block)}</p>
 				) : null}
 				{editable ? (
 					<ShortenExpiryForm
@@ -716,7 +704,7 @@ function ProfileDetail(props: {
 						onDone={refresh}
 					/>
 				) : profile.actingUserId !== viewer.userId ? (
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						Owners can revoke this profile but not edit it.
 					</p>
 				) : null}
@@ -750,7 +738,7 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 					Collaborators tab.
 				</p>
 			) : (
-				<table css={tableCss}>
+				<Table>
 					<thead>
 						<tr>
 							<th scope="col">Resource</th>
@@ -763,9 +751,9 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 							<tr key={`${grant.resourceType}:${grant.resourceId}`}>
 								<td>
 									{grant.href ? (
-										<SiteLink href={grant.href} css={primaryLinkCss}>
+										<TextLink href={grant.href}>
 											{grant.label ?? grant.resourceId}
-										</SiteLink>
+										</TextLink>
 									) : (
 										(grant.label ?? <code>{grant.resourceId}</code>)
 									)}
@@ -785,7 +773,7 @@ function GrantsList(props: { grants: ProfileItem['grants'] }) {
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			)}
 		</section>
 	)
@@ -833,29 +821,27 @@ function ShortenExpiryForm(props: {
 	return (
 		<form onSubmit={submit} noValidate css={{ display: 'grid', gap: '0.5rem' }}>
 			<h3 css={subheadCss}>Expiry</h3>
-			<label css={accountFieldCss}>
-				<span css={accountFieldLabelCss}>Stops working at</span>
-				<input
+			<Field
+				label="Stops working at"
+				description={
+					<>
+						Expiry only moves earlier. A later time, or clearing it, is refused
+						with <code>profile_expiry_extension</code>; create a new profile for
+						more time.
+					</>
+				}
+			>
+				<Input
 					type="datetime-local"
 					value={value}
 					max={toLocalInput(max) || undefined}
 					onChange={(event) => setValue(event.target.value)}
-					css={accountInputCss}
 				/>
-				<span css={accountFieldNoteCss}>
-					Expiry only moves earlier. A later time, or clearing it, is refused
-					with <code>profile_expiry_extension</code>; create a new profile for
-					more time.
-				</span>
-			</label>
+			</Field>
 			<div css={accountActionsCss}>
-				<button
-					type="submit"
-					disabled={pending}
-					css={getGhostButtonCss({ size: 'sm' })}
-				>
+				<Button type="submit" disabled={pending} variant="secondary">
 					{pending ? 'Saving…' : 'Shorten expiry'}
-				</button>
+				</Button>
 			</div>
 			{message ? (
 				<AccountManagementMessage tone="error">
@@ -872,7 +858,7 @@ function RevokeProfileButton(props: {
 	descendants: number
 	onDone: () => Promise<unknown>
 }) {
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [open, setOpen] = useState(false)
 	const [message, setMessage] = useState<string | null>(null)
 	const [pending, setPending] = useState(false)
 
@@ -884,7 +870,7 @@ function RevokeProfileButton(props: {
 			})) as MutationResult
 			setMessage(failureText(result))
 			if (result.ok) {
-				dialog.current?.close()
+				setOpen(false)
 				await props.onDone()
 			}
 		} catch (error) {
@@ -896,24 +882,15 @@ function RevokeProfileButton(props: {
 
 	return (
 		<>
-			<button
-				type="button"
-				css={getDangerPillCss({ size: 'sm' })}
-				onClick={() => dialog.current?.showModal()}
-			>
+			<Button type="button" variant="danger" onClick={() => setOpen(true)}>
 				Revoke
-			</button>
-			<dialog
-				ref={dialog}
-				aria-labelledby={`revoke-${props.profile.id}`}
-				css={dialogCss}
+			</Button>
+			<Dialog
+				open={open}
+				onClose={() => setOpen(false)}
+				role="alertdialog"
+				title={`Revoke ${props.profile.name}?`}
 			>
-				<h2
-					id={`revoke-${props.profile.id}`}
-					css={{ margin: 0, fontSize: typography.fontSize.lg }}
-				>
-					Revoke {props.profile.name}?
-				</h2>
 				<p css={{ margin: 0 }}>
 					Revoking is final and cannot be undone. Requests and tokens acting as
 					this profile stop working right away
@@ -927,24 +904,24 @@ function RevokeProfileButton(props: {
 						{message}
 					</AccountManagementMessage>
 				) : null}
-				<div css={accountActionsCss}>
-					<button
+				<DialogActions>
+					<Button
 						type="button"
 						disabled={pending}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onClick={() => void confirm()}
 					>
 						{pending ? 'Revoking…' : 'Revoke for good'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
-						onClick={() => dialog.current?.close()}
+						variant="secondary"
+						onClick={() => setOpen(false)}
 					>
 						Cancel
-					</button>
-				</div>
-			</dialog>
+					</Button>
+				</DialogActions>
+			</Dialog>
 		</>
 	)
 }
@@ -1025,7 +1002,7 @@ function ProfileTokens(props: {
 					No tokens act as this profile yet.
 				</p>
 			) : (
-				<table css={tableCss} data-testid="profile-tokens">
+				<Table data-testid="profile-tokens">
 					<thead>
 						<tr>
 							<th scope="col">Name</th>
@@ -1058,20 +1035,20 @@ function ProfileTokens(props: {
 								</td>
 								<td>
 									{token.status === 'active' ? (
-										<button
+										<Button
 											type="button"
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 											onClick={() => void revoke(token.id)}
 											aria-label={`Revoke token ${token.name}`}
 										>
 											Revoke
-										</button>
+										</Button>
 									) : null}
 								</td>
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			)}
 			{secret ? (
 				<div role="status" css={secretCss} data-testid="profile-token-secret">
@@ -1083,13 +1060,13 @@ function ProfileTokens(props: {
 							variant="secondary"
 							idleLabel="Copy token"
 						/>
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={() => setSecret(null)}
 						>
 							Done
-						</button>
+						</Button>
 					</div>
 				</div>
 			) : profile.status === 'active' ? (
@@ -1098,37 +1075,32 @@ function ProfileTokens(props: {
 					noValidate
 					css={{ display: 'grid', gap: '0.5rem' }}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Token name</span>
-						<input
+					<Field label="Token name">
+						<Input
 							value={name}
 							maxLength={100}
 							onChange={(event) => setName(event.target.value)}
-							css={accountInputCss}
 						/>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Lifetime</span>
-						<select
+					</Field>
+					<Field
+						label="Lifetime"
+						description="Never outlives the profile chain’s expiry."
+					>
+						<Select
 							value={lifetime}
 							onChange={(event) =>
 								setLifetime(event.target.value === 'long' ? 'long' : 'short')
 							}
-							css={getSelectCss()}
 						>
 							<option value="short">Short: 1 hour idle, 24 hours max</option>
 							<option value="long">Long: 14 days idle, 3 months max</option>
-						</select>
-						<span css={accountFieldNoteCss}>
-							Never outlives the profile chain’s expiry.
-						</span>
-					</label>
+						</Select>
+					</Field>
 					<fieldset css={fieldsetCss}>
-						<legend css={accountFieldLabelCss}>Scopes</legend>
+						<legend css={fieldLabelCss}>Scopes</legend>
 						{scopeChoices.map((scope) => (
 							<label key={scope} css={checkLabelCss}>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={scopes.has(scope)}
 									onChange={(event) =>
 										setScopes((current) => {
@@ -1144,13 +1116,9 @@ function ProfileTokens(props: {
 						))}
 					</fieldset>
 					<div css={accountActionsCss}>
-						<button
-							type="submit"
-							disabled={pending}
-							css={getGhostButtonCss({ size: 'sm' })}
-						>
+						<Button type="submit" disabled={pending} variant="secondary">
 							{pending ? 'Creating…' : 'Create profile token'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : null}
@@ -1276,9 +1244,11 @@ function CreateProfilePanel(props: {
 				data-testid="profile-create"
 				css={{ display: 'grid', gap: spacing.md }}
 			>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Name</span>
-					<input
+				<Field
+					label="Name"
+					description="Lowercase letters, digits, and dashes. Unique among your profiles under the same parent."
+				>
+					<Input
 						name="name"
 						required
 						autoFocus
@@ -1286,30 +1256,27 @@ function CreateProfilePanel(props: {
 						maxLength={63}
 						placeholder="release-bot"
 						onChange={(event) => setName(event.target.value.toLowerCase())}
-						css={accountInputCss}
 					/>
-					<span css={accountFieldNoteCss}>
-						Lowercase letters, digits, and dashes. Unique among your profiles
-						under the same parent.
-					</span>
-				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Expires (optional)</span>
-					<input
+				</Field>
+				<Field
+					label="Expires (optional)"
+					description={
+						<>
+							{limit
+								? 'Leave empty to inherit the parent chain’s expiry. It can never be later than that.'
+								: 'Leave empty for no expiry. You can shorten it later, never extend it.'}
+						</>
+					}
+				>
+					<Input
 						type="datetime-local"
 						value={expiry}
 						max={toLocalInput(limit) || undefined}
 						onChange={(event) => setExpiry(event.target.value)}
-						css={accountInputCss}
 					/>
-					<span css={accountFieldNoteCss}>
-						{limit
-							? 'Leave empty to inherit the parent chain’s expiry. It can never be later than that.'
-							: 'Leave empty for no expiry. You can shorten it later, never extend it.'}
-					</span>
-				</label>
+				</Field>
 				<fieldset css={fieldsetCss}>
-					<legend css={accountFieldLabelCss}>Grants</legend>
+					<legend css={fieldLabelCss}>Grants</legend>
 					{props.grantOptions.length === 0 ? (
 						<p css={{ margin: 0, color: colors.textMuted }}>
 							{parent
@@ -1334,8 +1301,7 @@ function CreateProfilePanel(props: {
 								>
 									{option.permissions.map((permission) => (
 										<label key={permission} css={checkLabelCss}>
-											<input
-												type="checkbox"
+											<Checkbox
 												checked={
 													picked.get(keyOf(option))?.has(permission) ?? false
 												}
@@ -1358,7 +1324,7 @@ function CreateProfilePanel(props: {
 							</div>
 						))
 					)}
-					<span css={accountFieldNoteCss}>
+					<span css={fieldDescriptionCss}>
 						{parent
 							? 'Only grants every parent still holds are offered. Kody checks again when you save.'
 							: 'Kody refuses any permission you do not hold on that resource.'}
@@ -1370,24 +1336,16 @@ function CreateProfilePanel(props: {
 					</AccountManagementMessage>
 				) : null}
 				<div css={accountActionsCss}>
-					<button
-						type="submit"
-						disabled={pending}
-						css={getPillButtonCss({ size: 'sm' })}
-					>
+					<Button type="submit" disabled={pending} variant="primary">
 						{pending
 							? 'Creating…'
 							: parent
 								? 'Create sub-profile'
 								: 'Create profile'}
-					</button>
-					<button
-						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
-						onClick={props.onCancel}
-					>
+					</Button>
+					<Button type="button" variant="secondary" onClick={props.onCancel}>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			</div>
 		</AccountManagementPanel>
@@ -1432,14 +1390,14 @@ const segmentedCss: CSSObject = {
 	gap: '0.25rem',
 	padding: '0.2rem',
 	border: `1px solid ${colors.border}`,
-	borderRadius: radius.full,
+	...getSquircleCss('sm'),
 	width: 'fit-content',
 }
 
 function segmentCss(active: boolean): CSSObject {
 	return {
 		padding: '0.3rem 0.85rem',
-		borderRadius: radius.full,
+		...getSquircleCss('xs'),
 		textDecoration: 'none',
 		fontSize: typography.fontSize.sm,
 		color: active ? colors.onPrimary : colors.text,
@@ -1525,19 +1483,6 @@ const subheadCss: CSSObject = {
 	fontSize: typography.fontSize.base,
 }
 
-const tableCss: CSSObject = {
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: typography.fontSize.sm,
-	'th, td': {
-		textAlign: 'start',
-		padding: '0.4rem 0.5rem',
-		borderBottom: `1px solid ${colors.borderSubtle}`,
-		verticalAlign: 'top',
-	},
-	th: { color: colors.textMuted, fontWeight: typography.fontWeight.medium },
-}
-
 const chipCss: CSSObject = {
 	fontSize: typography.fontSize.xs,
 	padding: '0.05rem 0.35rem',
@@ -1576,17 +1521,6 @@ const secretCss: CSSObject = {
 	borderRadius: radius.md,
 	border: `1px solid ${colors.warning}`,
 	backgroundColor: `color-mix(in srgb, ${colors.warning} 10%, transparent)`,
-}
-
-const dialogCss: CSSObject = {
-	maxWidth: '28rem',
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	padding: spacing.lg,
-	backgroundColor: colors.surface,
-	color: colors.text,
-	'&[open]': { display: 'grid', gap: spacing.md },
-	'&::backdrop': { backgroundColor: 'rgba(0, 0, 0, 0.45)' },
 }
 
 const hintsCss: CSSObject = {

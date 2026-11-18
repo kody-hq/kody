@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { useState, type FormEvent } from 'react'
 import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
@@ -9,10 +11,6 @@ import {
 	AccountManagementPanel,
 	accountActionsCss,
 	accountDisclosureCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
@@ -29,11 +27,6 @@ import {
 	packageCollaboratorPresets,
 } from '#universal/package-collaborators.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -54,6 +47,8 @@ import {
 	rowTextCss,
 	presetOrPermissions,
 } from './package-collaborators-parts.tsx'
+import { Input } from '../components/input.tsx'
+import { Radio } from '../components/choice-controls.tsx'
 
 type PostChange = (
 	key: string,
@@ -134,21 +129,18 @@ export function PackageCollaboratorInvites({
 					css={formCss}
 					onSubmit={(event) => void submit(event)}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Email or username</span>
-						<input
+					<Field
+						label="Email or username"
+						description="They need a Kody account with this email or username to accept."
+					>
+						<Input
 							value={invitee}
 							required
-							data-field-ring
 							autoComplete="off"
 							placeholder="jesse@example.com or @jesse"
-							css={accountInputCss}
 							onChange={(event) => setInvitee(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
-							They need a Kody account with this email or username to accept.
-						</p>
-					</label>
+					</Field>
 					<fieldset css={fieldsetCss}>
 						<legend css={legendCss}>What they can do</legend>
 						{packageCollaboratorPresets.map((option) => (
@@ -156,8 +148,7 @@ export function PackageCollaboratorInvites({
 								key={option}
 								css={option === preset ? presetCardCheckedCss : presetCardCss}
 							>
-								<input
-									type="radio"
+								<Radio
 									name="package-invite-preset"
 									value={option}
 									checked={option === preset}
@@ -182,14 +173,14 @@ export function PackageCollaboratorInvites({
 						testId="package-collaborators-advanced-invite"
 					/>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={busy || !invitee.trim()}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('mail', { size: '1.05rem' })}
 							{busyKey === 'invite' ? 'Creating…' : 'Create invite'}
-						</button>
+						</Button>
 					</div>
 				</form>
 				{created ? (
@@ -241,13 +232,14 @@ export function PackageCollaboratorInvites({
 							time.
 						</p>
 						<div css={calloutActionsCss}>
-							<SiteLink
+							<Button
 								href={routes.accountOrganizationsNew.href()}
+								variant="secondary"
 								css={calloutButtonCss}
 							>
 								{renderIcon('plus', { size: '1.05rem' })}Create a team
 								organization
-							</SiteLink>
+							</Button>
 							<SiteLink href={routes.docDetail.href({ slug: 'organizations' })}>
 								Learn more
 							</SiteLink>
@@ -286,15 +278,15 @@ export function PackageCollaboratorInvites({
 									</span>
 								</span>
 								<span css={rowActionsCss}>
-									<button
+									<Button
 										type="button"
 										disabled={busy}
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										onClick={() => void revoke(invite)}
 									>
 										{renderIcon('close', { size: '1.05rem' })}
 										{confirmed === invite.id ? 'Confirm revoke' : 'Revoke'}
-									</button>
+									</Button>
 								</span>
 							</li>
 						))}
@@ -403,7 +395,6 @@ const calloutActionsCss = {
 }
 
 const calloutButtonCss = {
-	...getGhostButtonCss({ size: 'sm' }),
 	maxWidth: '100%',
 	boxSizing: 'border-box' as const,
 	whiteSpace: 'normal' as const,

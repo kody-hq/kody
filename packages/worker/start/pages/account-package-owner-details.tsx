@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
+import { Button } from '../components/button.tsx'
 import { PackageCustomDomainsSection } from '../components/custom-domain-status.tsx'
 import {
 	setPackageVisibility,
@@ -24,8 +26,7 @@ import {
 } from '../components/fork-outdated-copy-button.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
+	getSquircleCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import {
@@ -43,11 +44,14 @@ import {
 import { AccountPackageForkAdoption } from './account-package-fork-adoption.tsx'
 import { PackageCapabilityAllowanceCallout } from './package-capability-allowance-callout.tsx'
 import { PackageCookieWarningsCallout } from './package-cookie-warnings-callout.tsx'
+import { PackageHeldForApprovalCallout } from './package-held-for-approval-callout.tsx'
 import { PackageUnmappableCredentialsCallout } from './package-unmappable-credentials-callout.tsx'
 import type {
 	AccountPackageAnonymousVisitorExposure,
 	AccountPackageDetail,
 } from '#universal/loader-data.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 function PackageAppLinks(props: { openHref: string | null }) {
 	if (!props.openHref) return 'No app'
@@ -285,20 +289,20 @@ export function AccountPackageOwnerDetails(props: {
 				)}
 			</div>
 			<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.xs }}>
-				{packageDetail.hidden ? <span css={statusBadgeCss}>Hidden</span> : null}
+				{packageDetail.hidden ? <Badge>Hidden</Badge> : null}
 				{!packageDetail.isPrivate ? (
-					<span css={communityBadgeCss}>Forkable</span>
+					<Badge tone="accent">Forkable</Badge>
 				) : (
-					<span css={statusBadgeCss}>Not forkable</span>
+					<Badge>Not forkable</Badge>
 				)}
 				{packageDetail.isInternetVisible ? (
-					<span css={communityBadgeCss}>Internet-visible</span>
+					<Badge tone="accent">Internet-visible</Badge>
 				) : (
-					<span css={statusBadgeCss}>Private app</span>
+					<Badge>Private app</Badge>
 				)}
-				<span css={statusBadgeCss}>
+				<Badge>
 					{packageDetail.hasCommunityListing ? 'Listed' : 'Not listed'}
-				</span>
+				</Badge>
 			</div>
 			{packageDetail.customDomains?.length ? (
 				<PackageCustomDomainsSection
@@ -314,6 +318,15 @@ export function AccountPackageOwnerDetails(props: {
 				notice={packageDetail.unmappableCredentialsNotice}
 				collaboratorsHref={collaboratorsHref}
 			/>
+			{props.viewerCanPublish ? (
+				<PackageHeldForApprovalCallout
+					held={packageDetail.heldForApproval}
+					approvalHref={routes.communityPackageApproveCapabilities.href({
+						username: props.ownerUsername,
+						kodyId: packageDetail.kodyId,
+					})}
+				/>
+			) : null}
 			{props.viewerCanPublish ? (
 				<PackageCapabilityAllowanceCallout
 					capabilities={packageDetail.capabilityAllowance ?? []}
@@ -374,7 +387,7 @@ export function AccountPackageOwnerDetails(props: {
 										<span css={visuallyHiddenCss}>
 											Type {packageDetail.kodyId} to change internet-visible
 										</span>
-										<input
+										<Input
 											value={internetVisibleConfirmName}
 											placeholder={packageDetail.kodyId}
 											data-testid={
@@ -382,13 +395,6 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-internet-visible-off-confirm'
 													: 'package-internet-visible-on-confirm'
 											}
-											css={{
-												padding: spacing.sm,
-												borderRadius: radius.md,
-												border: `1px solid ${colors.border}`,
-												backgroundColor: colors.surface,
-												color: colors.text,
-											}}
 											onChange={(event) => {
 												if (
 													!(event.currentTarget instanceof HTMLInputElement)
@@ -413,7 +419,7 @@ export function AccountPackageOwnerDetails(props: {
 											gap: spacing.xs,
 										}}
 									>
-										<button
+										<Button
 											type="button"
 											disabled={
 												internetVisibleState === 'submitting' ||
@@ -424,7 +430,7 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-internet-visible-off'
 													: 'package-internet-visible-on'
 											}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											onClick={() =>
 												void submitInternetVisible(
 													packageDetail,
@@ -437,21 +443,18 @@ export function AccountPackageOwnerDetails(props: {
 												: packageDetail.isInternetVisible
 													? 'Turn off internet-visible'
 													: 'Make internet-visible'}
-										</button>
-										<SiteLink
+										</Button>
+										<Button
 											href={routes.communityPackageApproveCapabilities.href({
 												username: props.ownerUsername,
 												kodyId: packageDetail.kodyId,
 											})}
 											data-testid="package-approve-capabilities-link"
-											css={{
-												...getPillButtonCss({ size: 'sm' }),
-												display: 'inline-flex',
-												textDecoration: 'none',
-											}}
+											variant="primary"
+											css={{ display: 'inline-flex', textDecoration: 'none' }}
 										>
 											Review credentials
-										</SiteLink>
+										</Button>
 									</div>
 									{internetVisibleMessage ? (
 										<p css={{ margin: 0, color: colors.danger }} role="alert">
@@ -506,7 +509,7 @@ export function AccountPackageOwnerDetails(props: {
 											Type {packageDetail.kodyId} to change who can see the
 											source
 										</span>
-										<input
+										<Input
 											value={confirmName}
 											placeholder={packageDetail.kodyId}
 											data-testid={
@@ -514,14 +517,7 @@ export function AccountPackageOwnerDetails(props: {
 													? 'package-make-public-confirm'
 													: 'package-make-private-confirm'
 											}
-											css={{
-												padding: spacing.sm,
-												borderRadius: radius.md,
-												border: `1px solid ${colors.border}`,
-												backgroundColor: colors.surface,
-												color: colors.text,
-												minWidth: 0,
-											}}
+											css={{ minWidth: 0 }}
 											onChange={(event) => {
 												if (
 													!(event.currentTarget instanceof HTMLInputElement)
@@ -532,7 +528,7 @@ export function AccountPackageOwnerDetails(props: {
 											}}
 										/>
 									</label>
-									<button
+									<Button
 										type="button"
 										disabled={visibilityPending}
 										data-testid={
@@ -540,7 +536,7 @@ export function AccountPackageOwnerDetails(props: {
 												? 'package-make-public'
 												: 'package-make-private'
 										}
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={() =>
 											void submitVisibility(
 												packageDetail,
@@ -553,7 +549,7 @@ export function AccountPackageOwnerDetails(props: {
 											: packageDetail.isPrivate
 												? 'Make public on the community'
 												: 'Make private'}
-									</button>
+									</Button>
 									{visibilityMessage ? (
 										<p css={{ margin: 0, color: colors.danger }} role="alert">
 											{visibilityMessage}
@@ -740,8 +736,7 @@ function PackageOwnerDataWarning(props: {
 				</p>
 			)}
 			<label css={{ display: 'flex', gap: spacing.xs, alignItems: 'start' }}>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={props.confirmed}
 					data-testid="package-internet-visible-owner-data-confirm"
 					onChange={(event) => {
@@ -770,7 +765,7 @@ const packageLockToggleCss = {
 	height: '1.85rem',
 	padding: 0,
 	border: `1px solid ${colors.border}`,
-	borderRadius: '999px',
+	...getSquircleCss('xs'),
 	backgroundColor: 'transparent',
 	color: colors.textMuted,
 	cursor: 'pointer',
@@ -793,24 +788,6 @@ const packageLockToggleCss = {
 			backgroundColor: `oklch(from ${colors.primary} l c h / 0.2)`,
 		},
 	},
-} satisfies CSSObject
-
-const statusBadgeCss = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
-	fontSize: typography.fontSize.xs,
-	fontWeight: typography.fontWeight.medium,
-} satisfies CSSObject
-
-const communityBadgeCss = {
-	...statusBadgeCss,
-	backgroundColor: colors.primarySoft,
-	border: 'none',
-	color: colors.primaryText,
-	fontWeight: typography.fontWeight.semibold,
 } satisfies CSSObject
 
 const settingsStackCss = {

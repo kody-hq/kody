@@ -24,6 +24,7 @@ import {
 	fieldLabelCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
+import { Radio } from '../components/choice-controls.tsx'
 const kindGridCss = {
 	display: 'grid',
 	gap: spacing.sm,
@@ -174,8 +175,7 @@ export function PackageAccessField(input: {
 		>
 			<legend css={fieldLabelCss}>Which packages can read it</legend>
 			<label css={choiceRowCss}>
-				<input
-					type="radio"
+				<Radio
 					name="connect-credential-package-access"
 					checked={!restricted}
 					onChange={() => {
@@ -186,8 +186,7 @@ export function PackageAccessField(input: {
 				<span>Any package in this org</span>
 			</label>
 			<label css={choiceRowCss}>
-				<input
-					type="radio"
+				<Radio
 					name="connect-credential-package-access"
 					checked={restricted}
 					onChange={() => setOnlyChosen(true)}

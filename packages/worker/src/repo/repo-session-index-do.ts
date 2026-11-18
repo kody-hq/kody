@@ -9,6 +9,7 @@ import {
 	editedActiveDueBefore,
 	nextOwnerDueAt,
 	repoSessionCleanupReason,
+	sourceSyncSessionIdPrefix,
 	unusedActiveDueBefore,
 } from './repo-session-due.ts'
 import { repoSessionRpc } from './repo-session-rpc.ts'
@@ -286,10 +287,13 @@ class RepoSessionIndexBase extends DurableObject<Env> {
 				`SELECT * FROM repo_sessions
 				WHERE (status IN ('published', 'discarded') AND expires_at IS NOT NULL AND expires_at <= ?)
 					OR (status = 'active' AND last_checkpoint_at IS NULL AND updated_at <= ?)
+					OR (status = 'active' AND id LIKE ? AND last_checkpoint_commit = base_commit AND updated_at <= ?)
 					OR (status = 'active' AND last_checkpoint_at IS NOT NULL AND updated_at <= ?)
 				ORDER BY updated_at ASC, id ASC
 				LIMIT ?`,
 				now.toISOString(),
+				unusedActiveDueBefore(now),
+				`${sourceSyncSessionIdPrefix}%`,
 				unusedActiveDueBefore(now),
 				editedActiveDueBefore(now),
 				limit,

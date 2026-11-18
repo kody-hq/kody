@@ -25,16 +25,17 @@ export type PackageEventsDispatchQueueMessage = {
 	mcp?: true
 	/** ISO time `events.dispatch` accepted the event (MCP occurrence timestamp). */
 	emittedAt?: string
-	/**
-	 * The run that emitted the event; subscriber handlers inherit it. Absent
-	 * on messages enqueued before the field existed.
-	 */
-	lineage?: RequestLineage
+	/** The run that emitted the event; subscriber handlers inherit it. */
+	lineage: RequestLineage
 	/**
 	 * Resource change event chain depth of the emitting run, so a chain that
 	 * passes through a package event keeps counting toward its limit.
 	 */
 	resourceEventDepth?: number
+	/** Times the consumer put this event back because its owner was at the cap. */
+	deferrals?: number
+	/** Failed deliveries before the consumer last put this event back. */
+	priorAttempts?: number
 }
 
 export function parsePackageEventsDispatchQueueMessage(
@@ -80,7 +81,10 @@ export function parsePackageEventsDispatchQueueMessage(
 	}
 	const emittedAt = record['emittedAt']
 	const lineage = parseRequestLineage(record['lineage'])
+	if (!lineage) return null
 	const resourceEventDepth = record['resourceEventDepth']
+	const deferrals = record['deferrals']
+	const priorAttempts = record['priorAttempts']
 	return {
 		userId: userId.trim() as OwnerId,
 		topic: topic.trim(),
@@ -92,11 +96,21 @@ export function parsePackageEventsDispatchQueueMessage(
 		...(typeof emittedAt === 'string' && !Number.isNaN(Date.parse(emittedAt))
 			? { emittedAt }
 			: {}),
-		...(lineage ? { lineage } : {}),
+		lineage,
 		...(typeof resourceEventDepth === 'number' &&
 		Number.isInteger(resourceEventDepth) &&
 		resourceEventDepth > 0
 			? { resourceEventDepth }
+			: {}),
+		...(typeof deferrals === 'number' &&
+		Number.isInteger(deferrals) &&
+		deferrals > 0
+			? { deferrals }
+			: {}),
+		...(typeof priorAttempts === 'number' &&
+		Number.isInteger(priorAttempts) &&
+		priorAttempts > 0
+			? { priorAttempts }
 			: {}),
 	}
 }

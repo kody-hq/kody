@@ -378,10 +378,14 @@ secret before the user one, and no static scan can see that, so `|scope=`
 findings undercount package-scoped buckets. Count those with the read-only
 `adminPackageScopedSecretReport` (live package-scope secrets by org and package)
 next to the 0010 fleet report. Publish seals literal credential uses into a
-credential stamp (issue #3836 phase 1) and **fails the build** on non-literal or
+credential stamp (issue #3836) and **fails the build** on non-literal or
 unstampable patterns. This module yields a publish gate failure for `index.ts`
-(computed integration/secret names and `|scope=`; `kody.mcp` is reported by this
-codemod but does not fail publish in phase 1):
+(computed integration/secret names and `|scope=`). Literal `kody.mcp.linear` is
+reported by this codemod as `kody.mcp` and is stampable once a `kind: "mcp"`
+slot is declared; dynamic `kody.mcp[variable]` in a scanned module fails the
+stamp gate. Modules over 256 KiB are omitted from those AST walks
+(`omitOversizedCredentialStampModules`) so prebuilt client bundles do not blow
+the Durable Object CPU budget:
 
 ```ts
 import { createAuthenticatedFetch, kody } from 'kody:runtime'
@@ -411,10 +415,11 @@ dependents; publish warnings name them. Callers pick which saved credential
 fills each slot with the execute `credentials` call map
 (`{ "SLOT": "credential-name" }` or CLI `--credential SLOT=name`) or a
 stored/trigger mapping — never choose the credential name at runtime inside
-package code. Literal `kody.mcp.SERVER` names are stamped as `kind: "mcp"` slots
-(phase 2); dynamic `kody.mcp[variable]` fails the stamp gate. The `kody.mcp`
-0010 label remains for migration tracking. `credential.named()` stays limited to
-ad hoc runs and unshared personal-org packages (not stamped).
+package code. Literal `kody.mcp.SERVER` names are stamped as `kind: "mcp"`
+slots; dynamic `kody.mcp[variable]` fails the stamp gate. The `kody.mcp` 0010
+label lists every `kody.mcp` access, including literals the stamp gate accepts.
+`credential.named()` stays limited to ad hoc runs and unshared personal-org
+packages (not stamped).
 
 Save each scan step result as its own JSON file, then print the report over all
 of them:
@@ -521,9 +526,9 @@ same filter must come back clean before the enforcement flag is turned on.
 
 ### `0014-seal-credential-stamps`
 
-Fleet seal for [issue #3836](https://github.com/kody-hq/kody/issues/3836)
-phase 2. Declares missing `kody.credentials` slots for every stampable literal
-use (`credential("KEY")`, placeholders, `createAuthenticatedFetch`, JWT signing
+Fleet seal for [issue #3836](https://github.com/kody-hq/kody/issues/3836).
+Declares missing `kody.credentials` slots for every stampable literal use
+(`credential("KEY")`, placeholders, `createAuthenticatedFetch`, JWT signing
 names, and literal `kody.mcp.SERVER` names) and fills an inferred description
 when the slot has none. Existing descriptions are never overwritten. Literal MCP
 servers get `kind: "mcp"`; OAuth / integration names get `kind: "oauth"`;
@@ -638,6 +643,61 @@ in step results). Read a run with `adminPackageAppCapabilityMigrationReport`
 capability), and unresolved apps by package id with counts. Pass `packageId` to
 read one app's private list for its owner.
 
+### `0019-detect-package-app-host-migration`
+
+Scan-only inventory for the move of package apps from
+`https://{user}.kody.run/{leaf}` to `https://{leaf}--{user}.kody.run` (one host
+per app, mounted at `/`). Only looks at packages with `kody.app`; `transform`
+never changes a file. `applyMode: 'published-only'`, so an app whose default
+branch has moved past its published commit is scanned on its published tree
+instead of being `skipped_drift`. Test files, `node_modules`, and lockfiles are
+skipped. Each finding is a file path plus one fixed message naming the pattern:
+
+- `old app url`: an absolute `{user}.kody.run/{leaf}` or `/packages/{leaf}` URL
+  for this app (also reported in docs and READMEs).
+- `hardcoded mount path`: a string literal that starts with `/{leaf}`.
+- `build-time base`: a build config, `base`, or router basename set to
+  `/{leaf}`.
+- `list-unsubscribe`, `oauth form_post`, `oauth redirect uri`,
+  `webhook receiver`: addresses that outside services may hold.
+- `localStorage`, `sessionStorage`, `indexedDB`, `cache storage`,
+  `service worker`: browser data scoped to the old origin.
+- `cookie path`, `cookie domain`: cookie scope tied to the mount path or host.
+- `origin check`: an origin or hostname comparison in a file that names a
+  `kody.run` host.
+- `web app manifest`: a `start_url` or `scope`, or a service worker registered
+  with a scope.
+
+The matchers are text patterns and deliberately broad: a finding means "review
+this file", not "this is broken". Count apps per pattern with
+`adminPackageCodemodScan` (`codemodId`
+`0019-detect-package-app-host-migration`).
+
+### `0020-package-app-host-urls`
+
+Apply step of the same move. It rewrites full `https://{user}.kody.run/{leaf}`
+URLs (and the older `/packages/{leaf}` form) of the package's **own** app to
+`https://{leaf}--{user}.kody.run`, keeping the rest of the path, query, and
+hash. An absolute URL on the new host is right wherever the page that carries it
+was loaded from, so this is the one rewrite that is correct on both addresses
+while both still serve.
+
+- Only the package's own owner and leaf match. URLs of sibling apps, other
+  owners, longer leaves (`/notes-archive`), and template fallbacks
+  (`https://{user}.kody.run${appBasePath}`) are left alone.
+- A file that mentions origins or hostnames at all is not rewritten; it is
+  reported as `needsManual`, because the rewrite could break a check on the old
+  address. The guard is per file: a URL constant compared in a different file is
+  still rewritten, so read the dry-run diff before applying.
+- Mentions in any other form (no `https://`, `http://`, a path in another letter
+  case) are reported as `needsManual` and left as written.
+- Packages with no app, profile packages (`@{slug}/{slug}`, which keep the
+  owner's bare host), and names with no valid `{leaf}--{handle}` label are
+  unchanged.
+- Everything else `0019` reports (mount paths, build-time bases, browser
+  storage, cookie scope, origin checks, PWA scope) stays with the owner.
+- Uses `applyMode: 'published-only'`.
+
 ## Engine
 
 The engine entry point is `runPackageCodemodStep` in
@@ -652,7 +712,10 @@ enough that a second page in the same sandbox typically exceeds the workflow
 observer (5-minute sandbox budget, under the Cloudflare Workflow step timeout).
 Those modes take one page per execute or workflow sandbox. When `nextCursor` is
 set, start a new `execute` or `workflows.create` with that `runId` and cursor.
-Omitted filters inherit from the stored run. Capability results include a
+Omitted filters inherit from the stored run. A continuation that sends different
+filters (including a different top-level `packageIds`) is rejected as a caller
+error; only added `excludePackageIds` are accepted. To target other packages,
+omit `runId` and `cursor` to start a new run. Capability results include a
 `nextStep` string that restates this. Scan pages are cheaper and can often
 continue in the same sandbox.
 
@@ -825,6 +888,8 @@ Admin-gated operator fleet runs:
 - `adminPackageCodemodApply`
 - `adminPackageCodemodRevert`
 - `adminPackageCodemodOwnerNotice` (see [Owner notice](#owner-notice))
+- `adminPackageAppHostMigrationOwnerNotice` (see
+  [Package app host migration notice](#package-app-host-migration-notice))
 - `adminPackageAppCapabilityMigrationReport` (counts for a
   [`0018-declare-package-app-capabilities`](#0018-declare-package-app-capabilities)
   run)
@@ -899,6 +964,44 @@ the run).
 - **Paging.** Owners are processed in id order, `limit` (default 20, max 50) per
   call. Pass `nextCursor` back until it is `null`. A scan with more than 10,000
   items is refused; filter the scan first.
+
+### Package app host migration notice
+
+`adminPackageAppHostMigrationOwnerNotice` is the owner email for the move from
+`{user}.kody.run/{app}` to `{app}--{user}.kody.run`. It reads a scan run of
+`0019-detect-package-app-host-migration` and uses the same recipients, claims,
+and paging as the owner notice above. The wording is approved text that lives in
+`host-migration-owner-notice.ts` and `host-migration-agent-prompt.ts`; the
+caller passes only `noticeId`, `kind` (`announce` or `reminder`, each with its
+own `noticeId`), `cutoverDate`, and `reminderDate`.
+
+- **Who is emailed.** Owners with at least one app that stores data in the
+  browser (localStorage, IndexedDB, Cache Storage, a service worker) or has code
+  tied to the old address (hardcoded mount path, build-time base, cookie Path or
+  Domain, origin check, web app manifest). The email lists those apps with old
+  and new address.
+- **Outside requests.** A recipient's apps with a List-Unsubscribe header, an
+  OAuth callback, or a webhook receiver are named in an extra paragraph. A
+  webhook receiver is not counted when the package declares `kody.webhooks`.
+  Owners whose apps only have outside-request findings are not emailed; the dry
+  run reports them as `totals.outsideOnly`.
+- **Dry run.** `dryRun` defaults to `true` and returns `totals` (owners and apps
+  per category, over the whole run), the owners on this page, and a preview of
+  the first email. `totals.recipients.apps` counts every app the emails name,
+  including an emailed owner's apps that only have outside-request findings, so
+  it equals the sum of the owners' `apps` arrays over the whole run.
+- **Reminder.** The `package_app_host_migration_reminder` scheduled lane sends
+  the one reminder by itself. From 2026-12-03 00:00 UTC it runs a fresh fleet
+  scan, and from 15:00 UTC that day, once the scan is complete, it sends kind
+  `reminder` with notice id `host-migration-reminder`. Owners the fresh scan
+  finds clean get nothing. Progress lives in KV under
+  `package-app-host-migration-reminder:v1` (`scanRunId`, `done`, `sent`). A
+  failed send is retried on later ticks until the lane stops; writing
+  `done: true` there before December 3 cancels it. The lane stops on 2026-12-10
+  and only runs where `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED` is `true`
+  (production).
+- **Prompt.** One copy per email. With one listed app `{app}` is filled in; with
+  several the owner replaces `{app}` per app.
 
 ## Revert
 

@@ -13,6 +13,7 @@ import {
 	mcpOAuthTokenRecoveryStorageKey,
 } from './oauth-token-recovery.ts'
 import { mcpPreRegisteredOAuthClientStorageKey } from './preregistered-oauth-client.ts'
+import { mcpStaticTransportHeadersStorageKey } from './sealed-oauth-storage.ts'
 import type { McpHubConnectResult } from './types.ts'
 
 /**
@@ -104,5 +105,6 @@ export function mcpServerSidecarStorageKeys(serverId: string) {
 		mcpPreRegisteredOAuthClientStorageKey(serverId),
 		mcpOAuthAttemptStorageKey(serverId),
 		mcpOAuthAttemptVerifiedStorageKey(serverId),
+		mcpStaticTransportHeadersStorageKey(serverId),
 	]
 }

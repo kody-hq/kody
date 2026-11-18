@@ -288,6 +288,7 @@ export const executeCapability = defineDomainCapability(
 					error: getErrorMessage(cause),
 					errorDetails: getExecutionErrorDetails(cause, {
 						orgSlug: callerContext.request?.org.slug,
+						adHocExecute: true,
 					}),
 					...entitlementStructuredContent(cause),
 					logs: [],
@@ -311,6 +312,7 @@ export const executeCapability = defineDomainCapability(
 					error: getErrorMessage(result.error),
 					errorDetails: getExecutionErrorDetails(result.error, {
 						orgSlug: callerContext.request?.org.slug,
+						adHocExecute: true,
 					}),
 					...entitlementStructuredContent(result.error),
 					logs,

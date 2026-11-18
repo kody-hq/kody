@@ -61,10 +61,10 @@ export async function searchMessages() { return typeof createAuthenticatedFetch 
 	).toBe(false)
 })
 
-test('rewriteInlinedLocalExecuteBundleSource replaces inlined ALS runtime with shim factories', () => {
+test('rewriteInlinedLocalExecuteBundleSource replaces inlined ALS runtime with shim factories', async () => {
 	const modulePath =
 		'.__kody_packages__/@kentcdodds/dropbox/.__published_bundle__/2e2f736d6f6b652d74657374/bundle.js'
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath,
 		source: inlinedDropboxStyleBundle(),
 		primaryRuntimePath: runtimeModulePath,
@@ -110,7 +110,7 @@ test('rewriteInlinedLocalExecuteBundleSource replaces inlined ALS runtime with s
 	expect(result.source).toContain('var DROPBOX_INTEGRATION = "dropbox"')
 })
 
-test('rewrite keeps author modules that appear before the inlined runtime', () => {
+test('rewrite keeps author modules that appear before the inlined runtime', async () => {
 	const source = `// virtual:.__kody_root__/src/helper.ts
 function parse(value) { return String(value); }
 
@@ -126,7 +126,7 @@ export async function main() {
   return parse(typeof fetchFn);
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath: 'bundle.js',
 		source,
 		primaryRuntimePath: runtimeModulePath,
@@ -143,7 +143,7 @@ export async function main() {
 	)
 })
 
-test('rewrite skips canonical aliases that collide with author bindings', () => {
+test('rewrite skips canonical aliases that collide with author bindings', async () => {
 	const collisions = [
 		{
 			author: 'const { packageStorage } = { packageStorage: () => "author" };',
@@ -164,7 +164,7 @@ test('rewrite skips canonical aliases that collide with author bindings', () => 
 		},
 	]
 	for (const { author, kept } of collisions) {
-		const result = rewriteInlinedLocalExecuteBundleSource({
+		const result = await rewriteInlinedLocalExecuteBundleSource({
 			modulePath: 'bundle.js',
 			source: `// virtual:.__kody_virtual__/runtime.js
 var createAuthenticatedFetch = __kodyOptionalRuntimeFunctionExport("createAuthenticatedFetch");
@@ -188,7 +188,7 @@ export async function main() {
 	}
 })
 
-test('rewrite remaps each multi-facade package binding to its own package id', () => {
+test('rewrite remaps each multi-facade package binding to its own package id', async () => {
 	// Tip 52b782167 / pre-fix main paired first binding names with the last
 	// package id, so dependency packageStorage2 was rebound to the root id.
 	const source = `// virtual:.__kody_virtual__/runtime.js
@@ -207,7 +207,7 @@ export async function main() {
   return [typeof packageStorage2, typeof packageStorage3, typeof packageSecrets2, typeof packageSecrets3];
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath: 'bundle.js',
 		source,
 		primaryRuntimePath: runtimeModulePath,
@@ -241,7 +241,7 @@ export async function main() {
 	)
 })
 
-test('rewrite strips duplicate runtime banners without discarding author code', () => {
+test('rewrite strips duplicate runtime banners without discarding author code', async () => {
 	const source = `// virtual:.__kody_virtual__/runtime.js
 var createAuthenticatedFetch = __kodyOptionalRuntimeFunctionExport("createAuthenticatedFetch");
 // virtual:.__kody_virtual__/package-runtime/abc.js
@@ -251,7 +251,7 @@ var createAuthenticatedFetch2 = __kodyOptionalRuntimeFunctionExport("createAuthe
 // virtual:.__kody_root__/src/entry.ts
 export default async function main() { return 1 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath: 'bundle.js',
 		source,
 		primaryRuntimePath: runtimeModulePath,
@@ -266,10 +266,10 @@ export default async function main() { return 1 }
 	).toHaveLength(1)
 })
 
-test('rewriteInlinedLocalExecuteBundleSource leaves external-import bundles alone', () => {
+test('rewriteInlinedLocalExecuteBundleSource leaves external-import bundles alone', async () => {
 	const source = `import { createAuthenticatedFetch } from "./.__kody_virtual__/runtime.js"
 export async function searchMessages() { return typeof createAuthenticatedFetch }`
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath:
 			'.__kody_packages__/@kentcdodds/google/.__published_bundle__/2e2f63616c656e646172/bundle.js',
 		source,
@@ -278,7 +278,7 @@ export async function searchMessages() { return typeof createAuthenticatedFetch 
 	expect(result).toEqual({ source, rewritten: false, packageId: null })
 })
 
-test('rewrite skips shim locals that retained nested package runtime imports already bind', () => {
+test('rewrite skips shim locals that retained nested package runtime imports already bind', async () => {
 	// npm-backed published bundles (e.g. kodykoala-activity reconcile) inline
 	// dependency graphs that keep `import { kody, … }` from nested package
 	// runtimes, then also contain an inlined optional-CAF runtime section.
@@ -301,7 +301,7 @@ export async function main() {
   return [typeof kody, typeof createAuthenticatedFetch, typeof email];
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath:
 			'.__kody_packages__/@kentcdodds/kodykoala-activity/.__published_bundle__/2e2f7265636f6e63696c652d61637469766974792d6d6973736573/bundle.js',
 		source,
@@ -342,7 +342,7 @@ export async function main() {
 	expect(result.source).not.toContain('__kodyOptionalRuntimeFunctionExport')
 })
 
-test('rewrite stamped shim skips kody when author already imported it', () => {
+test('rewrite stamped shim skips kody when author already imported it', async () => {
 	const source = `import { kody, email } from "./dep-runtime.js";
 
 // virtual:.__kody_virtual__/runtime.js
@@ -357,7 +357,7 @@ export async function main() {
   return typeof kody.metaGetCurrentUser;
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath: 'bundle.js',
 		source,
 		primaryRuntimePath: runtimeModulePath,
@@ -375,7 +375,7 @@ export async function main() {
 	)
 })
 
-test('rewrite rebinds esbuild __esm package-runtime inits and storage names', () => {
+test('rewrite rebinds esbuild __esm package-runtime inits and storage names', async () => {
 	// npm-backed published bundles wrap package-runtime facades in __esm:
 	// `var packageStorage5;` + assignment inside init_<hex>(). Stripping that
 	// section without re-emitting the init and renamed storage binding leaves
@@ -427,7 +427,7 @@ export async function main() {
   return [typeof kody, typeof packageStorage5, await readPaused(), readHostedUrl()];
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath:
 			'.__kody_packages__/@kentcdodds/kodykoala-activity/.__published_bundle__/2e2f7265636f6e63696c652d61637469766974792d6d6973736573/bundle.js',
 		source,
@@ -470,7 +470,7 @@ export async function main() {
 	).toBe(true)
 })
 
-test('rewrite aliases packageContextN to shim even when author binds packageContext', () => {
+test('rewrite aliases packageContextN to shim even when author binds packageContext', async () => {
 	// Nested retained modules may declare a local `packageContext` that is not
 	// the shared ALS export. Renamed inlined copies must still bind to the
 	// CapabilityProxy shim, not that author local.
@@ -493,7 +493,7 @@ export function main() {
   return typeof packageContext6?.hostedUrl === "string" ? packageContext6.hostedUrl : null;
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath:
 			'.__kody_packages__/@kentcdodds/demo/.__published_bundle__/2e2f737461747573/bundle.js',
 		source,
@@ -512,7 +512,7 @@ export function main() {
 	expect(result.source).not.toContain('var packageContext6 = packageContext;')
 })
 
-test('rewrite aliases packageContextN referenced only in retained author modules', () => {
+test('rewrite aliases packageContextN referenced only in retained author modules', async () => {
 	// Real npm-backed bundles can leave `packageContext6` referenced from
 	// retained author code while the removable preamble only still shows the
 	// package-bound storage factories (the shared-export declaration shape is
@@ -536,7 +536,7 @@ export function main() {
   return typeof packageContext6?.hostedUrl === "string" ? packageContext6.hostedUrl : null;
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath:
 			'.__kody_packages__/@kentcdodds/kodykoala-activity/.__published_bundle__/2e2f61637469766974792d736d6f6b652d74657374/bundle.js',
 		source,
@@ -551,7 +551,7 @@ export function main() {
 	)
 })
 
-test('rewrite does not bind bare typeof probes for shared export names', () => {
+test('rewrite does not bind bare typeof probes for shared export names', async () => {
 	// `typeof email2 === "undefined"` must stay true under --local when the
 	// removable sections never declared email2. Binding it to the shim would
 	// flip intentional unbound feature probes (including multiline `typeof`).
@@ -595,7 +595,7 @@ ${inlinedPreamble}
 // virtual:.__kody_root__/src/probe.ts
 ${author}
 `
-		const result = rewriteInlinedLocalExecuteBundleSource({
+		const result = await rewriteInlinedLocalExecuteBundleSource({
 			modulePath:
 				'.__kody_packages__/@kentcdodds/demo/.__published_bundle__/2e2f70726f6265/bundle.js',
 			source,
@@ -612,7 +612,7 @@ ${author}
 	}
 })
 
-test('rewriteInlinedLocalExecuteBundleSource aliases shim factories shadowed by a composed legacy runtime copy', () => {
+test('rewriteInlinedLocalExecuteBundleSource aliases shim factories shadowed by a composed legacy runtime copy', async () => {
 	const modulePath =
 		'.__kody_packages__/@acme/shades/.__published_bundle__/2e2f706c616e2d646179/bundle.js'
 	const source = `// virtual:.__kody_packages__/@acme/forecast/.__published_bundle__/2e2f686973746f7279/bundle.js
@@ -631,7 +631,7 @@ export default async function planDay() {
   await packageStorage3().set("config", await getForecast());
 }
 `
-	const result = rewriteInlinedLocalExecuteBundleSource({
+	const result = await rewriteInlinedLocalExecuteBundleSource({
 		modulePath,
 		source,
 		primaryRuntimePath: runtimeModulePath,

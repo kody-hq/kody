@@ -18,6 +18,19 @@ export const packageAppRuntimeRunIdHeader = 'x-kody-runtime-run-id'
  */
 export const packageAppRuntimeErrorHeader = 'x-kody-runtime-error'
 
+/**
+ * How long a package app fetch handler may keep running after its caller
+ * disconnects. The runtime stops disconnected invocations about 30 seconds
+ * later, so the run is finished as `client_disconnected` before that.
+ */
+export const packageAppCallerDisconnectGraceMs = 25_000
+
+export const packageAppCallerDisconnectGraceExpiredLog =
+	'package-app-caller-disconnect-grace-expired'
+
+export const packageAppCallerDisconnectGraceExpiredMessage =
+	'The caller disconnected before the app responded, and the request handler was still running 25 seconds later. Kody stopped waiting and the platform ends the handler shortly after, so its remaining work may not have completed. This is usually a slow handler, not a Kody platform failure.'
+
 const requestIdPattern =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 

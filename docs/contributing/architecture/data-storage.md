@@ -34,15 +34,16 @@ the project must follow the same convention; user-scoped tests should exercise
 both the "happy" path and a cross-user denial path.
 
 The deliberate storage exception is **operator-owned system email** for reserved
-platform local parts (`kody`, `support`, `abuse`, `postmaster`, `security`,
-`admin`, and `psl`). The permanent D1 tables are `system_email_threads`,
-`system_email_messages`, `system_email_attachments`, and
-`system_email_delivery_events`. They omit `user_id` because the operator owner
-is implicit. They are the sole live `system:email` graph authority. The reserved
-id is not a login account and must not be conflated with the `kody@example.com`
-fixture or Kent's personal account. Account deletion and export treat these
-tables as platform/operator content in `accountOperatorOwnedD1Surfaces`, with
-guardrail tests.
+platform local parts (`systemEmailLocals` in
+`packages/worker/src/email/system-email.ts`: `kody`, `support`, `abuse`, `dmca`,
+`postmaster`, `security`, `admin`, `psl`, `kent`, and `news`). The permanent D1
+tables are `system_email_threads`, `system_email_messages`,
+`system_email_attachments`, and `system_email_delivery_events`. They omit
+`user_id` because the operator owner is implicit. They are the sole live
+`system:email` graph authority. The reserved id is not a login account and must
+not be conflated with the `kody@example.com` fixture or Kent's personal account.
+Account deletion and export treat these tables as platform/operator content in
+`accountOperatorOwnedD1Surfaces`, with guardrail tests.
 
 Platform feedback remains user-owned and user-scoped in storage, but has a
 narrow cross-user read and triage path. Only feedback the submitting user
@@ -261,8 +262,11 @@ name, description, bucket, allowed hosts, allowed kody, allowed packages, and
 timestamps. The encrypted payload (`encrypted_value`) and lookup hash
 (`lookup_hash`) are omitted. The same redaction rule is applied to other
 credential-equivalent fields such as password hashes and password/email reset
-token hashes. The manifest states these redactions explicitly so a partial or
-intentionally redacted export is not mistaken for a complete secret backup.
+token hashes. Guest claim lookup hashes and sealed claim codes are covered by
+that rule, but `guest_accounts` is not an export target, so the manifest does
+not list them. The manifest lists redacted columns only for exported tables so a
+partial or intentionally redacted export is not mistaken for a complete secret
+backup.
 
 The browser route `GET /account/export.json` downloads a bounded metadata
 manifest for the signed-in user and identifies the MCP capabilities required for
@@ -271,7 +275,14 @@ state, or R2 bytes. The MCP capability domain `account` provides the complete,
 migration-safe chunked interface:
 
 - `accountExportManifest` returns the manifest, counts, warnings, and chunking
-  instructions.
+  instructions. Every manifest section carries a `discovery` object with the
+  exact `accountExportSection` arguments that read it: `d1.<table>` keys map to
+  `section: "d1_table"` plus `table`, `storage_runners` maps to
+  `durable_object_summaries` with `kind: "storage_runner"`, and every other key
+  (for example `artifact_repos`, `kv_keys`, `oauth_grants`) is its own section.
+  Wrong arguments (a section name passed as a D1 table, a missing `table`,
+  `storage_id`, or `kind`, an unknown storage id, a malformed cursor) are caller
+  errors whose message names the call to make instead.
 - `accountExportSection` pages through one section at a time. D1 rows are read
   with `section: "d1_table"` and a table name. Durable storage buckets are read
   with `section: "storage_runner"` and a `storage_id`, using the same
@@ -410,11 +421,13 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   is the durable Kody tips opt-out (usage-state campaign mail only). Billing,
   Stripe, gift, and referral-overlay columns live on the person's personal
   `orgs` row (see `orgs` below and [Entitlements](./entitlements.md)).
-  Pre-signup attribution lives in the last-wins one-week `kody_ref` cookie.
-  `referrals` stores the signup-time row (`referrer_stable_user_id`,
-  `referee_stable_user_id`) and the invoice-gated reward ledger (`status`,
-  `reward_invoice_id`, held invoice fields while email is unverified). See
-  [Entitlements](./entitlements.md#referral-pro-credit). The
+  Pre-signup attribution lives in two one-week first-party cookies: the
+  first-touch-wins `kody_first_touch` (UTMs, landing path, referrer; the browser
+  writes it, signup reads it server-side and clears it) and the last-wins
+  `kody_ref` referral cookie. `referrals` stores the signup-time row
+  (`referrer_stable_user_id`, `referee_stable_user_id`) and the invoice-gated
+  reward ledger (`status`, `reward_invoice_id`, held invoice fields while email
+  is unverified). See [Entitlements](./entitlements.md#referral-pro-credit). The
   `d1_storage_reconciliation` lane sweeps live owners (personal orgs by
   `users.stable_user_id` and team orgs by `orgs.id`) in one keyset from the
   platform-owned `d1_storage_reconcile_cursor` singleton. UserMeter
@@ -465,6 +478,10 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   `package_scope_grants`, `package_share_grants`, or `username_redirects` table.
   Reserved old handles live in `handles`.
 - `password_resets`: hashed reset tokens with expiry and foreign key to users
+- `guest_accounts`: Try it out person plus personal org. `claim_code` is a
+  SHA-256 lookup hash; `claim_code_encrypted` is the sealed plaintext (purpose
+  `guest-claim-code`). Lookup hashes the presented code; display opens the seal.
+  A successful claim clears the ciphertext.
 - Workflow, activation, and package-success state lives in dedicated RunLog
   tables; D1 has no corresponding projection tables (see
   [Run records](./run-records.md)).
@@ -1736,9 +1753,16 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
 - `bundle-artifact:v1:{sourceId}:{commit}:{kind}:{artifactName|_}:{entryPoint}`.
   Publish rebuild copies unchanged targets from the previous commit onto this
   new key (D1 identity row retargets) so a partial export bump does not leave
-  the new `published_commit` missing artifacts.
-- `community-snapshot:v1:{listingId}` (legacy listing-id file tree; no longer
-  written or read, still deleted and exported).
+  the new `published_commit` missing artifacts. Stored JSON includes `modules`
+  and optional `linkedArtifacts` prefixes whose module groups live under
+  `linked-artifact:v1:…` instead of being inlined.
+- `linked-artifact:v1:{sourceId}:{commit}:{sha256}`. The `kody:@` dependency
+  modules an uploaded build links (`.__kody_linked__/artifacts/…`), stored once
+  per commit and content hash. The commit's bundle artifacts list them under
+  `linkedArtifacts` and get the modules back when they are read. Deleted with
+  the commit's artifacts, the source, or the account.
+- `community-snapshot:v1:{listingId}` — retained only for deletion, export, and
+  account teardown; live listing trees use the SHA-keyed source snapshot.
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
   publish; served by Skills-over-MCP when `mcp-skills-extension` is on.
@@ -1972,9 +1996,10 @@ Current retention policies:
   `community_listings` row pins that commit (`pinned_commit`), and there is no
   active repo session for the source. When a row is pruned, the matching
   `source-snapshot:v1:{sourceId}:{commit}` and
-  `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys are deleted under
-  the same safety conditions, so per-commit snapshots do not accumulate
-  indefinitely. Ambiguous publish/edit cases are intentionally kept.
+  `source-manifest-snapshot:v1:{sourceId}:{commit}` KV keys, and every
+  `linked-artifact:v1:{sourceId}:{commit}:` key, are deleted under the same
+  safety conditions, so per-commit snapshots do not accumulate indefinitely.
+  Ambiguous publish/edit cases are intentionally kept.
 - Mailbox `email_delivery_events`: USER events keep 90 days under the per-owner
   DO alarm/admin RPC. System email is governed by the dedicated system-email
   retention job, which prunes messages, external attachment objects, raw-MIME

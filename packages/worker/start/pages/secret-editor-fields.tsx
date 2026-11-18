@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	fromDatetimeLocalValue,
 	toDatetimeLocalValue,
@@ -8,15 +10,10 @@ import { useEffect, useRef, useId } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getGhostButtonCss,
-	inputCss,
-	textareaCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import type { FillPlacementDraft } from '#universal/credential-fill-placement.ts'
 import { CredentialFillPlacementFields } from './credential-fill-placement-fields.tsx'
+import { Input, Textarea } from '../components/input.tsx'
 
 type SecretEditorFieldsProps = {
 	autoFocusKey?: string
@@ -57,18 +54,16 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 
 	return (
 		<>
-			<label css={fieldCss}>
-				<span css={fieldLabelCss}>Description</span>
-				<textarea
+			<Field label="Description">
+				<Textarea
 					value={props.description}
 					rows={3}
 					placeholder="What this secret is used for"
 					onInput={(event) => {
 						props.onDescriptionChange(event.currentTarget.value)
 					}}
-					css={textareaCss}
 				/>
-			</label>
+			</Field>
 
 			<CredentialFillPlacementFields
 				draft={props.fillPlacement}
@@ -77,7 +72,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Expires</span>
-				<input
+				<Input
 					type="datetime-local"
 					value={toDatetimeLocalValue(props.expiresAt || null)}
 					onInput={(event) => {
@@ -89,7 +84,6 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 							props.onExpiresAtChange('')
 						}
 					}}
-					css={inputCss}
 				/>
 				<p css={{ margin: 0, color: colors.textMuted }}>
 					Optional. Leave this empty and Kody keeps the secret until you delete
@@ -111,7 +105,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 					}}
 				>
 					{props.showSecretValue ? (
-						<input
+						<Input
 							type="text"
 							required
 							autoFocus={Boolean(autoFocusKey)}
@@ -124,12 +118,11 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 								props.onValueChange(event.currentTarget.value)
 							}}
 							css={{
-								...inputCss,
 								paddingRight: '4.5rem',
 							}}
 						/>
 					) : (
-						<input
+						<Input
 							type="password"
 							required
 							autoFocus={Boolean(autoFocusKey)}
@@ -142,12 +135,13 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 								props.onValueChange(event.currentTarget.value)
 							}}
 							css={{
-								...inputCss,
 								paddingRight: '4.5rem',
 							}}
 						/>
 					)}
-					<button
+					<Button
+						variant="ghost"
+						size="xs"
 						type="button"
 						aria-label={
 							props.showSecretValue ? 'Hide secret value' : 'Show secret value'
@@ -159,7 +153,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 						css={iconButtonCss}
 					>
 						{props.showSecretValue ? 'Hide' : 'Show'}
-					</button>
+					</Button>
 				</div>
 			</div>
 
@@ -180,7 +174,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 						>
 							{props.allowedHosts.map((host, index) => (
 								<div key={index} css={repeatedRowCss}>
-									<input
+									<Input
 										type="text"
 										value={typeof host === 'string' ? host : ''}
 										placeholder="api.example.com"
@@ -190,27 +184,26 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 												event.currentTarget.value,
 											)
 										}}
-										css={inputCss}
 									/>
 
-									<button
+									<Button
 										type="button"
 										onClick={() => props.onRemoveAllowedHost(index)}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Remove
-									</button>
+									</Button>
 								</div>
 							))}
 						</div>
 						<div>
-							<button
+							<Button
 								type="button"
 								onClick={() => props.onAddAllowedHost()}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								Add host
-							</button>
+							</Button>
 						</div>
 					</div>
 				</div>
@@ -218,8 +211,6 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 		</>
 	)
 }
-
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const advancedDetailsCss: CSSObject = {
 	...accountDisclosureCss,
@@ -230,24 +221,10 @@ const advancedDetailsCss: CSSObject = {
 const iconButtonCss: CSSObject = {
 	position: 'absolute' as const,
 	right: spacing.sm,
-	top: '50%',
-	transform: 'translateY(-50%)',
-	background: 'none',
-	border: 'none',
-	borderRadius: '999px',
-	padding: spacing.xs,
+	insetBlock: 0,
+	marginBlock: 'auto',
+	height: 'fit-content',
 	width: '3.5rem',
-	height: '2rem',
-	color: colors.text,
-	cursor: 'pointer',
-	display: 'flex',
-	alignItems: 'center',
-	justifyContent: 'center',
-	fontSize: '0.75rem',
-	fontWeight: 600,
-	'&:hover': {
-		background: colors.primarySoft,
-	},
 }
 
 const repeatedRowCss: CSSObject = {

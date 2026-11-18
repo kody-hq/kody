@@ -13,6 +13,9 @@ import {
 import { colors } from '#universal/styles/tokens.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { SkillReadAcknowledgement } from '../components/skill-read-acknowledgement.tsx'
+import { Select } from '../components/input.tsx'
+import { Button } from '../components/button.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type History = Awaited<ReturnType<typeof loadSkillHistory>>
 
@@ -82,14 +85,6 @@ function SkillHistoryView({
 	}
 	const versionLabel = (version: History['versions'][number]) =>
 		`${version.commit.slice(0, 8)}${version.commit === result?.currentCommit ? ' (current)' : ''}${version.createdAt ? ` · ${new Date(version.createdAt).toLocaleString()}` : ''}${version.publishedBy ? ` · @${version.publishedBy}` : ''}`
-	const controlStyle = {
-		padding: '0.4rem 0.55rem',
-		border: `1px solid ${colors.border}`,
-		borderRadius: '0.35rem',
-		color: colors.text,
-		background: colors.surface,
-		maxWidth: '100%' as const,
-	}
 	async function restore() {
 		if (!result || loading) return
 		const isCurrent = capture()
@@ -180,23 +175,22 @@ function SkillHistoryView({
 					>
 						<label>
 							Version{' '}
-							<select
+							<Select
+								size="sm"
 								aria-label="Skill version"
 								disabled={loading || restoring}
 								value={result.commit}
 								onChange={(event) => select({ commit: event.target.value })}
-								css={controlStyle}
 							>
 								{result.versions.map((version) => (
 									<option key={version.commit} value={version.commit}>
 										{versionLabel(version)}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
 						<label>
-							<input
-								type="checkbox"
+							<Checkbox
 								checked={showChanges}
 								onChange={(event) => setShowChanges(event.target.checked)}
 							/>{' '}
@@ -205,7 +199,8 @@ function SkillHistoryView({
 						{showChanges ? (
 							<label>
 								Compare with{' '}
-								<select
+								<Select
+									size="sm"
 									aria-label="Compare skill version"
 									disabled={loading || restoring}
 									value={result.compare ?? ''}
@@ -217,7 +212,6 @@ function SkillHistoryView({
 											path: undefined,
 										})
 									}
-									css={controlStyle}
 								>
 									<option value="" disabled>
 										No earlier version
@@ -229,18 +223,19 @@ function SkillHistoryView({
 												{versionLabel(version)}
 											</option>
 										))}
-								</select>
+								</Select>
 							</label>
 						) : null}
 						{result.canRestore && result.commit !== result.currentCommit ? (
-							<button
+							<Button
+								variant="secondary"
+								size="xs"
 								type="button"
 								disabled={loading || restoring}
-								css={controlStyle}
 								onClick={() => setConfirm(true)}
 							>
 								Restore this version
-							</button>
+							</Button>
 						) : null}
 					</div>
 					{confirm ? (
@@ -250,27 +245,30 @@ function SkillHistoryView({
 								{result.commit.slice(0, 8)}? This publishes a new revision and
 								leaves other skills unchanged.
 							</p>
-							<button
+							<Button
+								variant="secondary"
+								size="xs"
 								type="button"
 								disabled={loading || restoring}
 								onClick={() => void restore()}
-								css={controlStyle}
 							>
 								{restoring ? 'Restoring…' : 'Restore and publish'}
-							</button>{' '}
-							<button
+							</Button>{' '}
+							<Button
+								variant="secondary"
+								size="xs"
 								type="button"
 								disabled={restoring}
 								onClick={() => setConfirm(false)}
-								css={controlStyle}
 							>
 								Cancel
-							</button>
+							</Button>
 						</div>
 					) : null}
 					<label>
 						File{' '}
-						<select
+						<Select
+							size="sm"
 							aria-label="Skill history file"
 							disabled={loading || restoring}
 							value={result.path}
@@ -281,7 +279,6 @@ function SkillHistoryView({
 									path: event.target.value,
 								})
 							}
-							css={controlStyle}
 						>
 							{result.files.map((file) => (
 								<option key={file.path} value={file.path}>
@@ -291,7 +288,7 @@ function SkillHistoryView({
 										: ''}
 								</option>
 							))}
-						</select>
+						</Select>
 					</label>
 					{!error ? (
 						<div

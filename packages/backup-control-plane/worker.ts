@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import { checkFreshness } from './freshness-check.ts'
 import { runFreshnessAndRetry } from './freshness-retry.ts'
 import {
@@ -12,6 +13,7 @@ import {
 import type { BackupEnvironment } from './backup-types.ts'
 import { handleControlPlaneFetch } from './control-plane-fetch.ts'
 import { sealRecentCompleteDays } from './seal-full-backup.ts'
+import { buildControlPlaneSentryOptions } from './sentry.ts'
 import {
 	enqueueBackup,
 	enqueueBackupRetry,
@@ -180,7 +182,7 @@ async function scheduled(
 	}
 }
 
-export default {
+const handler = {
 	async fetch(request: Request, env: BackupEnvironment): Promise<Response> {
 		return handleControlPlaneFetch(request, env)
 	},
@@ -199,4 +201,9 @@ export default {
 			throw error
 		}
 	},
-}
+} satisfies ExportedHandler<BackupEnvironment>
+
+export default Sentry.withSentry(
+	(env: BackupEnvironment) => buildControlPlaneSentryOptions(env),
+	handler,
+)

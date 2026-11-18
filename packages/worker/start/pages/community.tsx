@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { parseCommunityListingCategory } from '#universal/community-categories.ts'
 import type { CSSObject } from '@emotion/react'
@@ -13,14 +14,9 @@ import {
 	transitions,
 	typography,
 } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	visuallyHiddenCss,
-} from '#universal/styles/style-primitives.ts'
+import { visuallyHiddenCss } from '#universal/styles/style-primitives.ts'
 import { EntityExplainer, resolveEntityExplainer } from './entity-explainer.tsx'
 import { CommunityListingsContent } from '../components/community-listings-content.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { CommunityInstallOrgSelect } from '../components/community-install-org-select.tsx'
 import { useCommunityInstallOrg } from '../use-community-install-org.ts'
 export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
@@ -85,6 +81,7 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						<label htmlFor="pkg-q" css={visuallyHiddenCss}>
 							Search public packages
 						</label>
+						{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless input inside the search pill */}
 						<input
 							id="pkg-q"
 							type="search"
@@ -103,9 +100,9 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 						{installOrg ? (
 							<input type="hidden" name="org" value={installOrg} />
 						) : null}
-						<button type="submit" css={getPillButtonCss({ size: 'sm' })}>
+						<Button type="submit" variant="primary">
 							Search
-						</button>
+						</Button>
 					</form>
 					{installOrgPicker ? (
 						<div
@@ -136,9 +133,9 @@ export function CommunityRoute({ data }: { data: CommunityIndexLoaderData }) {
 					keeps its own history, and ratings come only from people who actually
 					ran it.
 				</p>
-				<SiteLink href={routes.onboarding.href()} css={closeButtonCss}>
+				<Button href={routes.onboarding.href()} variant="secondary">
 					Connect your agent
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)
@@ -285,5 +282,3 @@ const communityCloseCss = {
 		fontSize: '0.98rem',
 	},
 } satisfies CSSObject
-
-const closeButtonCss = getGhostButtonCss({ size: 'sm' })

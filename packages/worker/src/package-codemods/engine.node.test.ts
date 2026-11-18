@@ -1,7 +1,10 @@
+import { readFileSync } from 'node:fs'
+import { bytesToSnapshotString } from '#universal/package-file-media.ts'
 import { isolatedCheckRunnerLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import type * as RepoChecks from '#worker/repo/checks.ts'
@@ -99,12 +102,8 @@ vi.mock('./subscription-events.ts', () => ({
 		mocks.dispatchPackageCodemodSubscriptionEvent,
 }))
 
-const {
-	buildPackageCodemodRevertSnapshotKvKey,
-	operatorExcludedFinding,
-	runPackageCodemodStep,
-	unfinishedAttemptsError,
-} = await import('./engine.ts')
+const { buildPackageCodemodRevertSnapshotKvKey, runPackageCodemodStep } =
+	await import('./engine.ts')
 
 const codemodId = '0001-ambient-storage-to-package-storage'
 const userScope = {
@@ -507,7 +506,14 @@ test('package codemod engine covers lifecycle, drift, isolation, snapshot keys, 
 	})
 	expect(excluded.items[0]).toMatchObject({
 		status: 'needs_manual',
-		findings: [operatorExcludedFinding],
+		findings: [
+			{
+				path: null,
+				message: expect.stringContaining(
+					'Excluded from this run by the operator',
+				),
+			},
+		],
 	})
 	expect(mocks.runRepoChecks).not.toHaveBeenCalled()
 	expect(mocks.syncArtifactSourceSnapshot).not.toHaveBeenCalled()
@@ -741,6 +747,54 @@ test('fleet apply on a locked package commits HEAD without promoting published_c
 	)
 })
 
+test('apply writes only changed files on top of the current commit, never the whole tree', async () => {
+	setupMocks()
+	const { env } = createEnv()
+	const pkg = savedPackage('pkg-binary')
+	const png = bytesToSnapshotString(
+		new Uint8Array(
+			readFileSync(new URL('./fixtures/icon.png', import.meta.url)),
+		),
+		'public/icon.png',
+	)
+	const woff2 = bytesToSnapshotString(
+		new Uint8Array(
+			readFileSync(new URL('./fixtures/font.woff2', import.meta.url)),
+		),
+		'public/font.woff2',
+	)
+	mocks.listSavedPackagesByUserId.mockResolvedValue([pkg])
+	mocks.loadPackageSourceBySourceId.mockResolvedValue(
+		loadedSource({
+			files: {
+				...ambientFiles(),
+				'public/icon.png': png,
+				'public/font.woff2': woff2,
+			},
+			publishedCommit: `commit-repo-${pkg.kodyId}`,
+			repoId: `repo-${pkg.kodyId}`,
+			sourceId: pkg.sourceId,
+			userId: pkg.userId,
+		}),
+	)
+
+	const apply = await step(env, { mode: 'apply' })
+	expect(apply.items[0]).toMatchObject({ status: 'applied' })
+	const call = mocks.syncArtifactSourceSnapshot.mock.calls.at(-1)![0] as {
+		files: Record<string, string>
+		editPaths: Array<string>
+		destructiveOverwriteConfirmed?: boolean
+	}
+	expect(call.editPaths).toEqual(['index.ts'])
+	expect(apply.items[0]!.changedPaths).toEqual(['index.ts'])
+	expect(call.editPaths).not.toContain('public/icon.png')
+	expect(call.editPaths).not.toContain('public/font.woff2')
+	expect(call.files['public/icon.png']).toBe(png)
+	expect(call.files['public/font.woff2']).toBe(woff2)
+	// A destructive overwrite replaces history with a parentless commit.
+	expect(call.destructiveOverwriteConfirmed).toBeUndefined()
+})
+
 test('package codemod engine rejects resume steps with mismatched filters or a cursor without a runId', async () => {
 	setupMocks()
 	const { env } = createEnv()
@@ -758,9 +812,14 @@ test('package codemod engine rejects resume steps with mismatched filters or a c
 	expect(first.runId).toBeTruthy()
 	const resume = { initiatedByUserId: 'admin-2', runId: first.runId }
 
-	await expect(
-		step(env, { ...resume, filters: { packageIds: ['pkg-other'] } }),
-	).rejects.toThrow(/filters do not match/i)
+	const mismatch = step(env, {
+		...resume,
+		filters: { packageIds: ['pkg-other'] },
+	})
+	await expect(mismatch).rejects.toBeInstanceOf(McpCallerError)
+	await expect(mismatch).rejects.toThrow(
+		'the run stored {"packageIds":["pkg-a","pkg-b"]}, this step sent {"packageIds":["pkg-other"]}',
+	)
 	expect(
 		(
 			await step(env, {
@@ -822,12 +881,22 @@ test('a continuation step may widen excludePackageIds to step past a package', a
 		expect.objectContaining({
 			packageId: 'pkg-b',
 			status: 'needs_manual',
-			findings: [operatorExcludedFinding],
+			findings: [
+				{
+					path: null,
+					message: expect.stringContaining('handle this package manually'),
+				},
+			],
 		}),
 		expect.objectContaining({
 			packageId: 'pkg-c',
 			status: 'needs_manual',
-			findings: [operatorExcludedFinding],
+			findings: [
+				{
+					path: null,
+					message: expect.stringContaining('handle this package manually'),
+				},
+			],
 		}),
 	])
 	const run = await getPackageCodemodRunById(env.APP_DB, first.runId)
@@ -1633,7 +1702,9 @@ test('a package whose earlier attempts never finished is recorded as failed and 
 	expect(result.items[0]).toMatchObject({
 		status: 'failed',
 		packageId: pkg.id,
-		error: unfinishedAttemptsError,
+		error: expect.stringContaining(
+			'earlier attempts on this package did not finish',
+		),
 	})
 	expect(mocks.loadPackageSourceBySourceId).not.toHaveBeenCalled()
 	const attemptKey = `package-codemod-attempt:${result.runId}:${pkg.id}`

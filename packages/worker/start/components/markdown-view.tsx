@@ -79,6 +79,7 @@ import {
 	nativeDisclosureCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors } from '#universal/styles/tokens.ts'
+import { Checkbox } from './choice-controls.tsx'
 
 const allowedLinkProtocols = new Set(['http:', 'https:', 'mailto:'])
 
@@ -401,6 +402,7 @@ function renderToken(
 							videoId={watch.videoId}
 							title={watch.title}
 							label={watch.label}
+							vertical={watch.vertical}
 						/>
 					)
 				}
@@ -468,7 +470,7 @@ function renderToken(
 			const items = listToken.items.map((item, index) => (
 				<li key={index}>
 					{item.checked !== undefined ? (
-						<input type="checkbox" disabled checked={item.checked} />
+						<Checkbox disabled checked={item.checked} />
 					) : null}
 					{item.children.map((child, childIndex) =>
 						child.type === 'paragraph' && !listToken.loose ? (
@@ -501,6 +503,7 @@ function renderToken(
 					data-markdown-table=""
 					data-markdown-table-compact-last={compactLast ? '' : undefined}
 				>
+					{/* oxlint-disable-next-line kody-custom/no-raw-table -- authored markdown tables use the prose stylesheet. */}
 					<table>
 						<thead>
 							<tr>

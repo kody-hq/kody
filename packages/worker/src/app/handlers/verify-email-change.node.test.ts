@@ -18,6 +18,9 @@ const mockSendCloudflareEmail = vi.fn(
 )
 
 const deferredWork = vi.hoisted(() => new Array<Promise<unknown>>())
+const mockRecordWhatsNewVerifiedAccount = vi.hoisted(() =>
+	vi.fn(async () => {}),
+)
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<Record<string, unknown>>()
@@ -32,6 +35,10 @@ vi.mock('cloudflare:workers', async (importOriginal) => {
 async function flushDeferredWork() {
 	await Promise.all(deferredWork.splice(0))
 }
+
+vi.mock('#worker/newsletter/consent-outbox.ts', () => ({
+	recordWhatsNewVerifiedAccount: mockRecordWhatsNewVerifiedAccount,
+}))
 
 vi.mock('#app/email/cloudflare-email.ts', () => ({
 	sendCloudflareEmail: (
@@ -102,6 +109,7 @@ beforeAll(() => {
 
 test('successful email change notifies the previous address with masked new email', async () => {
 	mockSendCloudflareEmail.mockClear()
+	mockRecordWhatsNewVerifiedAccount.mockClear()
 	const { sqlite, db } = createMigratedDb()
 	const oldEmail = 'old@example.com'
 	const newEmail = 'new-login@example.com'
@@ -168,10 +176,15 @@ test('successful email change notifies the previous address with masked new emai
 	expect(text).toContain('support@kody.codes')
 	expect(text).toContain('https://kody.codes/reset-password')
 	expect(text).toContain('https://kody.codes/account')
+	expect(mockRecordWhatsNewVerifiedAccount).toHaveBeenCalledWith({
+		env: expect.anything(),
+		stableUserId,
+	})
 })
 
 test('failed email change does not notify the previous address', async () => {
 	mockSendCloudflareEmail.mockClear()
+	mockRecordWhatsNewVerifiedAccount.mockClear()
 	const { sqlite, db } = createMigratedDb()
 	await seedVerifiedUser(sqlite, {
 		id: 1,
@@ -191,10 +204,12 @@ test('failed email change does not notify the previous address', async () => {
 		email: 'still-old@example.com',
 	})
 	expect(mockSendCloudflareEmail).not.toHaveBeenCalled()
+	expect(mockRecordWhatsNewVerifiedAccount).not.toHaveBeenCalled()
 })
 
 test('security notice send failure does not undo a committed email change', async () => {
 	mockSendCloudflareEmail.mockClear()
+	mockRecordWhatsNewVerifiedAccount.mockClear()
 	mockSendCloudflareEmail.mockRejectedValueOnce(new Error('smtp down'))
 	consoleWarn.mockImplementation(() => {})
 	const { sqlite, db } = createMigratedDb()
@@ -229,10 +244,12 @@ test('security notice send failure does not undo a committed email change', asyn
 		'email-changed-security-notice-error',
 		expect.any(Error),
 	)
+	expect(mockRecordWhatsNewVerifiedAccount).toHaveBeenCalledOnce()
 })
 
 test('a stalled security notice send does not hold up the success response', async () => {
 	mockSendCloudflareEmail.mockClear()
+	mockRecordWhatsNewVerifiedAccount.mockClear()
 	mockSendCloudflareEmail.mockImplementationOnce(() => new Promise(() => {}))
 	const { sqlite, db } = createMigratedDb()
 	const newEmail = 'stalled-notice@example.com'
@@ -260,7 +277,11 @@ test('a stalled security notice send does not hold up the success response', asy
 	expect(sqlite.prepare(`SELECT email FROM users WHERE id = 1`).get()).toEqual({
 		email: newEmail,
 	})
-	expect(deferredWork).toHaveLength(1)
+	expect(mockRecordWhatsNewVerifiedAccount).toHaveBeenCalledOnce()
+	// The notice send is inside the second waitUntil; it must not run before
+	// the response, so the mock is still unused when we return.
+	expect(mockSendCloudflareEmail).not.toHaveBeenCalled()
+	expect(deferredWork).toHaveLength(2)
 	deferredWork.splice(0)
 })
 

@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Tooltip } from './tooltip.tsx'
+import { Button } from './button.tsx'
 /** @jsxRuntime automatic */
 import {
 	type ReactNode,
@@ -8,22 +10,17 @@ import {
 	useRef,
 	useEffect,
 } from 'react'
-import { SiteLink } from './site-link.tsx'
 import { writeClipboardText } from '#client/clipboard.ts'
 import type { ViewerListingInstall } from '#universal/community-public-types.ts'
 import { getCommunityPackageHrefFromName } from '#universal/community-links.ts'
 import {
 	FORK_AHEAD_TOOLTIP,
 	FORK_OUTDATED_COPY_TOOLTIP,
-	copyPromptTooltipCss,
 } from './fork-outdated-copy-button.tsx'
 import { renderIcon, type IconName } from './icon.tsx'
 import { ForkTargetDialog } from './fork-target-dialog.tsx'
 import type { ForkTargetChoice } from '../fork-target.ts'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	hoverMq,
 	inlineSpinnerCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
@@ -81,58 +78,50 @@ export function renderPackageRepoActions(
 	return (
 		<>
 			{actions.publishHref ? (
-				<SiteLink
+				<Button
 					href={actions.publishHref}
 					data-testid="community-detail-source-ahead-badge"
 					aria-describedby="package-repo-publish-tooltip"
-					css={
-						publishIsPrimary
-							? packageActionPrimaryCss
-							: packageActionSecondaryCss
-					}
+					variant={publishIsPrimary ? 'primary' : 'secondary'}
+					css={packageActionCss}
 				>
 					{renderIcon('arrow-up-right', { size: actionIconSize })}
 					<span>Publish changes</span>
-					<span
-						id="package-repo-publish-tooltip"
-						role="tooltip"
-						aria-hidden="true"
-					>
+					<Tooltip id="package-repo-publish-tooltip" {...edgeTooltipProps}>
 						Default-branch HEAD is newer than the live version. Review the
 						changes, then publish them.
-					</span>
-				</SiteLink>
+					</Tooltip>
+				</Button>
 			) : null}
 			{actions.follow ? renderFollowControl(actions.follow) : null}
 			{actions.fork ? renderSetupPromptControl(install) : null}
 			{install?.forkAhead && install.listingDiffHref ? (
-				<SiteLink
+				<Button
 					href={install.listingDiffHref}
 					data-testid="community-detail-listing-fork-ahead-badge"
 					aria-describedby="package-repo-fork-ahead-tooltip"
-					css={packageActionSecondaryCss}
+					variant="secondary"
+					css={packageActionCss}
 				>
 					{renderIcon('git-fork', { size: actionIconSize })}
 					<span>Fork ahead</span>
-					<span
-						id="package-repo-fork-ahead-tooltip"
-						role="tooltip"
-						aria-hidden="true"
-					>
+					<Tooltip id="package-repo-fork-ahead-tooltip" {...edgeTooltipProps}>
 						{FORK_AHEAD_TOOLTIP}
-					</span>
-				</SiteLink>
+					</Tooltip>
+				</Button>
 			) : null}
 			{actions.fork ? renderStatusControl(actions.fork) : null}
 			{actions.packageAppHref ? (
-				<a
+				<Button
 					href={actions.packageAppHref}
 					data-testid="open-package-app"
-					css={packageActionPrimaryCss}
+					reloadDocument
+					variant="primary"
+					css={packageActionCss}
 				>
 					{renderIcon('share', { size: actionIconSize })}
 					<span>Open app</span>
-				</a>
+				</Button>
 			) : null}
 		</>
 	)
@@ -155,7 +144,7 @@ function FollowControl({ follow }: { follow: PackageRepoFollowAction }) {
 			? 'Get pushes from this repository in your workspace.'
 			: 'Get new versions and pushes from this in your workspace.'
 	return (
-		<SiteLink
+		<Button
 			href={
 				follow.loggedIn
 					? `${follow.repoHref}${PACKAGE_FOLLOW_HASH}`
@@ -183,16 +172,17 @@ function FollowControl({ follow }: { follow: PackageRepoFollowAction }) {
 					: undefined
 			}
 			aria-describedby="package-follow-tooltip"
-			css={packageActionSecondaryCss}
+			variant="secondary"
+			css={packageActionCss}
 		>
 			{renderIcon(following ? 'check' : 'eye', {
 				size: actionIconSize,
 			})}
 			<span>{label}</span>
-			<span id="package-follow-tooltip" role="tooltip" aria-hidden="true">
+			<Tooltip id="package-follow-tooltip" {...edgeTooltipProps}>
 				{tooltip}
-			</span>
-		</SiteLink>
+			</Tooltip>
+		</Button>
 	)
 }
 
@@ -339,14 +329,9 @@ function InstallControl({
 			</span>
 			<span data-title-status-spinner hidden={!spinning} css={spinnerCss} />
 			<span data-title-status-label>{label}</span>
-			<span
-				id={statusTooltipId}
-				role="tooltip"
-				data-title-status-tooltip
-				aria-hidden="true"
-			>
+			<Tooltip id={statusTooltipId} {...edgeTooltipProps}>
 				{tooltip}
-			</span>
+			</Tooltip>
 			<span data-title-status-live aria-live="polite" css={visuallyHiddenCss}>
 				{inProgress ? FORK_IN_PROGRESS_TOOLTIP : ''}
 			</span>
@@ -354,27 +339,29 @@ function InstallControl({
 	)
 	if (!input.loggedIn) {
 		return (
-			<SiteLink
+			<Button
 				href={input.loginHref}
 				{...shared}
-				css={packageActionPrimaryCss}
+				variant="primary"
+				css={packageActionCss}
 			>
 				{children}
-			</SiteLink>
+			</Button>
 		)
 	}
 	return (
 		<>
-			<button
+			<Button
 				type="button"
 				{...shared}
 				aria-haspopup={install.choosesForkTarget ? 'dialog' : undefined}
-				css={packageActionPrimaryCss}
+				variant="primary"
+				css={packageActionCss}
 				disabled={spinning}
 				onClick={install.onInstall}
 			>
 				{children}
-			</button>
+			</Button>
 			{install.forkTarget ? (
 				<ForkTargetDialog
 					choice={install.forkTarget}
@@ -462,28 +449,38 @@ function IconControl({
 		<>
 			{renderIcon(input.icon, { size: actionIconSize })}
 			<span>{input.label}</span>
-			<span id={tooltipId} role="tooltip" aria-hidden="true">
+			<Tooltip id={tooltipId} {...edgeTooltipProps}>
 				{feedback ?? input.tooltip}
-			</span>
+			</Tooltip>
 			<span role="status" css={visuallyHiddenCss}>
 				{feedback ?? ''}
 			</span>
 		</>
 	)
-	const styles = input.primary
-		? packageActionPrimaryCss
-		: packageActionSecondaryCss
+	const variant = input.primary ? 'primary' : 'secondary'
 	if (input.href) {
 		return (
-			<SiteLink href={input.href} {...shared} css={styles} onClick={copy}>
+			<Button
+				href={input.href}
+				{...shared}
+				variant={variant}
+				css={packageActionCss}
+				onClick={copy}
+			>
 				{children}
-			</SiteLink>
+			</Button>
 		)
 	}
 	return (
-		<button type="button" {...shared} css={styles} onClick={copy}>
+		<Button
+			type="button"
+			{...shared}
+			variant={variant}
+			css={packageActionCss}
+			onClick={copy}
+		>
 			{children}
-		</button>
+		</Button>
 	)
 }
 
@@ -493,79 +490,38 @@ function IconControl({
  * the left gutter, so they open rightward instead. Centered tooltips ran off
  * the viewport in both places.
  */
-const edgeAnchoredTooltipCss = {
-	'& [role="tooltip"]': {
-		...copyPromptTooltipCss['& [role="tooltip"]'],
-		left: 'auto',
-		right: 0,
-		transform: 'none',
+const edgeTooltipProps = {
+	align: 'end',
+	css: {
 		[mq.mobile]: {
 			left: 0,
 			right: 'auto',
+			'&::after': { left: '1rem', right: 'auto' },
 		},
 	},
-	'& [role="tooltip"]::after': {
-		...copyPromptTooltipCss['& [role="tooltip"]::after'],
-		left: 'auto',
-		right: '1rem',
-		transform: 'none',
-		[mq.mobile]: {
-			left: '1rem',
-			right: 'auto',
-		},
-	},
-}
+} as const
 
 /**
- * Repo actions reuse the account-area pill vocabulary at tab-row height: one
- * filled pill for the action the page exists for, ghost pills for everything
- * else. Topic tags and status badges never use these.
+ * Repo actions use the shared Button at tab-row height: one primary for the
+ * action the page exists for, secondary for everything else. Topic tags and
+ * status badges never use these.
  */
-function compactActionCss<
-	T extends ReturnType<typeof getPillButtonCss | typeof getGhostButtonCss>,
->(
-	base: T,
-	ink: {
-		backgroundColor: string
-		color: string
+const packageActionCss = {
+	position: 'relative' as const,
+	minHeight: '1.875rem',
+	padding: '0.5rem 0.95rem',
+	font: `650 0.875rem/1 ${typography.fontFamilyDisplay}`,
+	'& > span:not([role="tooltip"])': {
+		color: 'inherit',
 	},
-) {
-	return {
-		...base,
-		...copyPromptTooltipCss,
-		...edgeAnchoredTooltipCss,
-		position: 'relative' as const,
-		minHeight: '1.875rem',
-		padding: '0.5rem 0.95rem',
-		font: `650 0.875rem/1 ${typography.fontFamilyDisplay}`,
-		// Preserve action contrast after applying shared tooltip styles.
-		backgroundColor: ink.backgroundColor,
-		color: ink.color,
-		'& > span:not([role="tooltip"])': {
-			color: 'inherit',
-		},
-		'& > svg': {
-			color: 'inherit',
-		},
-		'&:focus-visible': {
-			outline: `2px solid ${colors.primary}`,
-			outlineOffset: '2px',
-		},
-		[hoverMq]: {
-			...base[hoverMq],
-			...copyPromptTooltipCss[hoverMq],
-		},
-	}
+	'& > svg': {
+		color: 'inherit',
+	},
+	'&:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: '2px',
+	},
 }
-
-const packageActionPrimaryCss = compactActionCss(
-	getPillButtonCss({ size: 'sm' }),
-	{ backgroundColor: colors.primary, color: colors.onPrimary },
-)
-const packageActionSecondaryCss = compactActionCss(
-	getGhostButtonCss({ size: 'sm' }),
-	{ backgroundColor: 'transparent', color: colors.text },
-)
 
 const spinnerCss = {
 	...inlineSpinnerCss,

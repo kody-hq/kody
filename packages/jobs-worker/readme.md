@@ -7,9 +7,13 @@ and the `kody-scheduled-dispatch` queue.
 
 The Worker entry module is
 [`packages/jobs-worker/src/index.ts`](./src/index.ts). Cron and queue dispatch
-call back into origin `JobsHost` over the `HOST` service binding. There is no
-public hostname; health is `GET /health` on the workers.dev URL the deploy
-workflow records.
+call back into origin `JobsHost` over the `HOST` service binding, except
+`job_schedule_watchdog`: that lane runs locally every 15 minutes
+(`runJobScheduleWatchdogTick`), scans silently overdue and stuck-skipped jobs on
+`JOBS_DB`, repairs stuck occurrence fences, and best-effort re-arms each
+affected user's `JobManager` alarm (at most 50 users per tick; individual syncs
+may fail; scans may be truncated). There is no public hostname; health is
+`GET /health` on the workers.dev URL the deploy workflow records.
 
 - `wrangler.jsonc` — the committed base config (script name `kody-jobs`).
   Deployable configs are written by

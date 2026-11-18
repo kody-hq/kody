@@ -1,4 +1,5 @@
 import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import { resolveModuleBindings } from './module-scope-bindings.ts'
 import {
 	createRelativeImportSpecifier,
 	normalizeWorkspaceModulePath,
@@ -27,9 +28,9 @@ const meterStaticPackageExportName = '__kodyMeterStaticPackageExport'
 const meterStaticPackageExportCallPattern =
 	/\b__kodyMeterStaticPackageExport\s*\(/
 
-export function moduleSourceHasSecretPlaceholderLiterals(source: string) {
+export async function moduleSourceHasSecretPlaceholderLiterals(source: string) {
 	try {
-		const literals = collectExactSecretPlaceholderStringLiterals(source)
+		const literals = await collectExactSecretPlaceholderStringLiterals(source)
 		return literals.length > 0
 	} catch {
 		return secretPlaceholderExactPattern.test(source)
@@ -41,10 +42,12 @@ export function moduleSourceHasSecretPlaceholderLiterals(source: string) {
  * `{{secret:name}}` / `{{secret:name|scope=…}}` with `__kodySecretRef(...)`.
  * Template literal text, comments, and regexes are left alone.
  */
-export function rewriteLocalExecuteSecretPlaceholderLiterals(source: string) {
+export async function rewriteLocalExecuteSecretPlaceholderLiterals(
+	source: string,
+) {
 	let literals: Array<SecretPlaceholderLiteral>
 	try {
-		literals = collectExactSecretPlaceholderStringLiterals(source)
+		literals = await collectExactSecretPlaceholderStringLiterals(source)
 	} catch {
 		return { source, rewritten: false }
 	}
@@ -74,12 +77,12 @@ export function moduleSourceHasLocalExecuteGatewayFetchBinding(source: string) {
  * Top-level bindings that would collide with an injected `fetch` name.
  * Returns null when the source cannot be parsed (caller skips injection).
  */
-export function collectTopLevelFetchCollisionNames(
+export async function collectTopLevelFetchCollisionNames(
 	source: string,
-): Set<string> | null {
+): Promise<Set<string> | null> {
 	if (!source.trim()) return new Set()
 	try {
-		const parsed = parseModuleSource(source) as unknown as ModuleAstNode
+		const parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
 		const program = parsed.program as
 			| { body?: Array<ModuleAstNode> }
 			| undefined
@@ -145,19 +148,139 @@ export function collectTopLevelFetchCollisionNames(
 	}
 }
 
+const globalObjectNames = new Set(['globalThis', 'self'])
+
+/** Cheap text check that runs before parsing. */
+export function sourceMayReadFetchThroughGlobalObject(source: string) {
+	return /\b(?:globalThis|self)\b/.test(source) && source.includes('fetch')
+}
+
+/**
+ * Replace reads of `globalThis.fetch` / `self.fetch` with `replacement`, so
+ * a package module that reaches fetch through the global object still uses
+ * its own package-bound fetch. Writes (`globalThis.fetch = ...`) are left
+ * alone. A name is only rewritten where it refers to the global object: a
+ * local variable or parameter of the same name is left alone, and so is a
+ * read through another name for the global object. Returns the source
+ * unchanged when it does not parse.
+ */
+export async function rewriteGlobalObjectFetchReads(
+	source: string,
+	replacement: string,
+): Promise<string> {
+	const found = await collectGlobalObjectFetchReads(source)
+	if (!found) return source
+	let next = source
+	for (const read of found.reads.sort((a, b) => b.start - a.start)) {
+		next = `${next.slice(0, read.start)}${replacement}${next.slice(read.end)}`
+	}
+	return next
+}
+
+/**
+ * True when the source has a read of `fetch` off the global object that
+ * {@link rewriteGlobalObjectFetchReads} would replace.
+ */
+export async function sourceReadsFetchThroughGlobalObject(source: string) {
+	return ((await collectGlobalObjectFetchReads(source))?.reads.length ?? 0) > 0
+}
+
+async function collectGlobalObjectFetchReads(source: string) {
+	if (!sourceMayReadFetchThroughGlobalObject(source)) return null
+	let parsed: ModuleAstNode
+	try {
+		parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
+	} catch {
+		return null
+	}
+	const bindings = resolveModuleBindings(parsed)
+	const reads: Array<{ start: number; end: number }> = []
+	walkAst(parsed, (node, parent) => {
+		if (node.type !== 'Identifier') return
+		const name = (node as { name?: unknown }).name
+		if (typeof name !== 'string' || !globalObjectNames.has(name)) return
+		// A local of the same name is not the global object.
+		if (bindings.has(node)) return
+		const member = parent as
+			| (ModuleAstNode & {
+					object?: unknown
+					property?: unknown
+					computed?: boolean
+			  })
+			| undefined
+		const isMember =
+			member?.type === 'MemberExpression' ||
+			member?.type === 'OptionalMemberExpression' ||
+			member?.type === 'StaticMemberExpression' ||
+			member?.type === 'ComputedMemberExpression'
+		if (!isMember || member.object !== node) return
+		const property = member.property as
+			| { type?: string; name?: unknown; value?: unknown }
+			| undefined
+		const propertyName =
+			member.computed === true
+				? typeof property?.value === 'string'
+					? property.value
+					: null
+				: typeof property?.name === 'string'
+					? property.name
+					: null
+		if (propertyName !== 'fetch') return
+		if (typeof member.start !== 'number' || typeof member.end !== 'number') {
+			return
+		}
+		reads.push({ start: member.start, end: member.end })
+	})
+	const writes = collectMemberWriteStarts(parsed)
+	return { reads: reads.filter((read) => !writes.has(read.start)) }
+}
+
+/**
+ * Starts of every node inside an assignment target: the left side of an
+ * assignment (destructuring patterns included), the operand of `++`, `--`
+ * and `delete`, and the target of a `for (x in/of ...)` loop. Covering the
+ * whole target subtree also covers computed keys and defaults inside a
+ * pattern; leaving those unrewritten is the safe direction.
+ */
+export function collectMemberWriteStarts(parsed: ModuleAstNode) {
+	const starts = new Set<number>()
+	const addTarget = (target: unknown) => {
+		walkAst(target, (inner) => {
+			if (typeof inner.start === 'number') starts.add(inner.start)
+		})
+	}
+	walkAst(parsed, (node) => {
+		if (node.type === 'AssignmentExpression') {
+			addTarget((node as { left?: unknown }).left)
+		} else if (
+			node.type === 'UpdateExpression' ||
+			(node.type === 'UnaryExpression' &&
+				(node as { operator?: unknown }).operator === 'delete')
+		) {
+			addTarget((node as { argument?: unknown }).argument)
+		} else if (
+			node.type === 'ForInStatement' ||
+			node.type === 'ForOfStatement'
+		) {
+			addTarget((node as { left?: unknown }).left)
+		}
+	})
+	return starts
+}
+
 /**
  * Shadow module-local `fetch` with a CapabilityProxy gateway hop when the
  * name is free. No-op when the hop is already present or `fetch` is already
  * bound (avoids duplicate-declaration SyntaxError under --local).
  */
-export function injectLocalExecuteGatewayFetchBinding(input: {
+export async function injectLocalExecuteGatewayFetchBinding(input: {
 	modulePath: string
 	source: string
 	primaryRuntimePath: string
 	packageId: string | null
 	/** Optional precomputed author bindings (inlined rewrite already has them). */
 	authorBindings?: ReadonlySet<string> | null
-}): { source: string; rewritten: boolean } {
+}): Promise<{ source: string; rewritten: boolean }> {
 	const needsSecretRef = input.source.includes(secretRefMarker)
 	const hasFetchBinding = moduleSourceHasLocalExecuteGatewayFetchBinding(
 		input.source,
@@ -183,7 +306,7 @@ ${input.source}`,
 
 	const authorBindings =
 		input.authorBindings === undefined
-			? collectTopLevelFetchCollisionNames(input.source)
+			? await collectTopLevelFetchCollisionNames(input.source)
 			: input.authorBindings
 	if (authorBindings == null) {
 		// Unparseable module — refuse to inject a colliding binding.
@@ -249,17 +372,17 @@ const fetch = __kodyCreatePackageBoundGatewayFetch(${JSON.stringify(input.packag
  * Prefer merging into an existing named import from the primary runtime shim
  * (secret-aware fetch / inlined-runtime rewrites often already added one).
  */
-export function ensureLocalExecuteMeterStaticPackageExportImport(input: {
+export async function ensureLocalExecuteMeterStaticPackageExportImport(input: {
 	modulePath: string
 	source: string
 	primaryRuntimePath: string
-}): { source: string; rewritten: boolean } {
+}): Promise<{ source: string; rewritten: boolean }> {
 	if (!meterStaticPackageExportCallPattern.test(input.source)) {
 		return { source: input.source, rewritten: false }
 	}
 	// Require a local binding named exactly `__kodyMeterStaticPackageExport`.
 	// An aliased import (`… as meter`) does not bind the free call site.
-	const localBindings = collectTopLevelFetchCollisionNames(input.source)
+	const localBindings = await collectTopLevelFetchCollisionNames(input.source)
 	if (localBindings?.has(meterStaticPackageExportName)) {
 		return { source: input.source, rewritten: false }
 	}
@@ -298,22 +421,22 @@ ${input.source}`,
  * Apply placeholder literal rewrite + gateway fetch binding for one
  * published package module returned by package-graph.
  */
-export function rewriteLocalExecuteModuleForSecretAwareFetch(input: {
+export async function rewriteLocalExecuteModuleForSecretAwareFetch(input: {
 	modulePath: string
 	source: string
 	primaryRuntimePath: string
 	packageId: string | null
-}): { source: string; rewritten: boolean } {
-	const placeholders = rewriteLocalExecuteSecretPlaceholderLiterals(
+}): Promise<{ source: string; rewritten: boolean }> {
+	const placeholders = await rewriteLocalExecuteSecretPlaceholderLiterals(
 		input.source,
 	)
-	const withFetch = injectLocalExecuteGatewayFetchBinding({
+	const withFetch = await injectLocalExecuteGatewayFetchBinding({
 		modulePath: input.modulePath,
 		source: placeholders.source,
 		primaryRuntimePath: input.primaryRuntimePath,
 		packageId: input.packageId,
 	})
-	const withMeter = ensureLocalExecuteMeterStaticPackageExportImport({
+	const withMeter = await ensureLocalExecuteMeterStaticPackageExportImport({
 		modulePath: input.modulePath,
 		source: withFetch.source,
 		primaryRuntimePath: input.primaryRuntimePath,
@@ -336,8 +459,8 @@ type SecretPlaceholderLiteral = {
 	scope: 'session' | 'package' | 'user' | null
 }
 
-function collectExactSecretPlaceholderStringLiterals(source: string) {
-	const parsed = parseModuleSource(source) as unknown as ModuleAstNode
+async function collectExactSecretPlaceholderStringLiterals(source: string) {
+	const parsed = (await parseModuleSource(source)) as unknown as ModuleAstNode
 	const literals: Array<SecretPlaceholderLiteral> = []
 	walkAst(parsed, (node, parent) => {
 		if (

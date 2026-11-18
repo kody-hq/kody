@@ -16,6 +16,8 @@ import {
 	type OrgBinding,
 } from '#worker/orgs/repo.ts'
 import { listTeams } from '#worker/orgs/org-teams-list.ts'
+import { isProfilesEnabledFor } from '#worker/profiles/flag.ts'
+import { listGrantableProfiles } from '#worker/profiles/package-grants.ts'
 import type { AutomationExecutionSettingView } from '#universal/automation-execution.ts'
 import { executionContextsFlagKey } from '#universal/feature-flags/registry.ts'
 import {
@@ -24,6 +26,9 @@ import {
 	type ExecutionChainEntryInput,
 	type ExecutionContextAuditPage,
 	type ExecutionContextListItem,
+	type ExecutionContextMachineAccess,
+	type ExecutionContextMachineAccessEntry,
+	type ExecutionContextShellUse,
 	type ExecutionContextRun,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
@@ -39,8 +44,8 @@ import {
 type AppUser = NonNullable<Awaited<ReturnType<typeof readAuthenticatedAppUser>>>
 
 /**
- * The capabilities the website calls. They ship in the execution contexts API
- * PR; until a deployment carries them, the page renders its feature-off view.
+ * The capabilities the website calls. If any name is missing from the
+ * registry, the page renders its feature-off view.
  */
 export const executionContextCapabilityNames = {
 	list: 'executionContextList',
@@ -57,6 +62,10 @@ export const executionContextCapabilityNames = {
 	shareList: 'executionContextShareList',
 	shareSet: 'executionContextShareSet',
 	shareRemove: 'executionContextShareRemove',
+	machineAccessList: 'executionContextMachineAccessList',
+	shellSuggestions: 'executionContextShellSuggestions',
+	machineAccessGrant: 'executionContextMachineAccessGrant',
+	machineAccessRevoke: 'executionContextMachineAccessRevoke',
 	attach: 'executionContextAttach',
 	sharePreview: 'executionContextSharePreview',
 	noticeDismiss: 'executionContextNoticeDismiss',
@@ -269,7 +278,7 @@ function cursorText(value: unknown) {
 	return typeof value === 'string' && value.length > 0 ? value : null
 }
 
-/** PR 2 returns `null` for deleted handles and org slugs; the page needs text. */
+/** Deleted handles and org slugs arrive as `null`; the page needs text. */
 export function normalizeContext(
 	value: unknown,
 ): ExecutionContextListItem | null {
@@ -358,7 +367,7 @@ export function normalizeRun(value: unknown): ExecutionContextRun | null {
 	}
 }
 
-/** PR 2 audit rows: `{ id, at, event, actor: { userId, handle } | null, detail }`. */
+/** Audit rows: `{ id, at, event, actor: { userId, handle } | null, detail }`. */
 export function normalizeAuditEvent(
 	value: unknown,
 ): ExecutionContextAuditPage['events'][number] | null {
@@ -404,29 +413,43 @@ export async function loadExecutionContextsPageData(input: {
 	const scope = await loadExecutionContextsScope(input)
 	if (!scope) return { notFound: true }
 	try {
-		const [listResult, chainResult, selectedResult, teams, orgs] =
-			await Promise.all([
-				callCapability(scope, executionContextCapabilityNames.list, {}),
-				callCapability(scope, executionContextCapabilityNames.chainGet, {}),
-				input.contextId
-					? callCapability(scope, executionContextCapabilityNames.get, {
-							id: input.contextId,
-						}).catch((error: unknown) => {
-							const failure = readExecutionContextFailure(error)
-							if (failure?.error === 'not_found' || failure?.status === 404)
-								return null
-							throw error
-						})
-					: Promise.resolve(null),
-				// Grant-only collaborators share a context, not the org's team roster.
-				scope.personal || scope.binding.role == null
-					? Promise.resolve([])
-					: listTeams(env.APP_DB, scope.org.id),
-				listOrgsForPerson(env.APP_DB, user.mcpUser.userId),
-			])
+		const [
+			listResult,
+			chainResult,
+			selectedResult,
+			teams,
+			orgs,
+			machineAccess,
+		] = await Promise.all([
+			callCapability(scope, executionContextCapabilityNames.list, {}),
+			callCapability(scope, executionContextCapabilityNames.chainGet, {}),
+			input.contextId
+				? callCapability(scope, executionContextCapabilityNames.get, {
+						id: input.contextId,
+					}).catch((error: unknown) => {
+						const failure = readExecutionContextFailure(error)
+						if (failure?.error === 'not_found' || failure?.status === 404)
+							return null
+						throw error
+					})
+				: Promise.resolve(null),
+			// Grant-only collaborators share a context, not the org's team roster.
+			scope.personal || scope.binding.role == null
+				? Promise.resolve([])
+				: listTeams(env.APP_DB, scope.org.id),
+			listOrgsForPerson(env.APP_DB, user.mcpUser.userId),
+			input.contextId
+				? loadMachineAccess(scope, input.contextId)
+				: Promise.resolve(null),
+		])
 		const orgSlug = scope.org.slug ?? input.orgSlug
 		const contexts = visibleContexts(readContexts(listResult), Date.now())
 		const selected = selectedResult ? readContext(selectedResult) : null
+		if (selected && machineAccess) selected.machineAccess = machineAccess
+		if (selected?.openShell) {
+			const use = await loadShellUse(scope, selected.id)
+			if (use) selected.openShell.use = use
+		}
 		return {
 			enabled: true,
 			orgSlug,
@@ -479,7 +502,11 @@ async function runScoped<T>(
 ): Promise<T | ExecutionContextFailure> {
 	const scope = await loadExecutionContextsScope(input)
 	if (!scope)
-		return { ok: false, error: 'not_found', message: 'Organization not found.' }
+		return {
+			ok: false,
+			error: 'not_found',
+			message: 'Organization not found.',
+		}
 	try {
 		return await run(scope)
 	} catch (error) {
@@ -867,6 +894,198 @@ export async function removeExecutionContextShareForUser(
 			{ id: input.contextId, grant_id: input.grantId },
 		)
 		return { ok: true as const, sharing: readSharing(result) }
+	})
+}
+
+function normalizeMachineAccessEntry(
+	value: unknown,
+): ExecutionContextMachineAccessEntry | null {
+	const entry = record(value)
+	if (!entry || typeof entry.id !== 'string' || typeof entry.name !== 'string')
+		return null
+	if (
+		entry.kind !== 'shell' &&
+		entry.kind !== 'command' &&
+		entry.kind !== 'lan' &&
+		entry.kind !== 'fs'
+	)
+		return null
+	return {
+		id: entry.id,
+		kind: entry.kind,
+		name: entry.name,
+		description:
+			typeof entry.description === 'string' && entry.description
+				? entry.description
+				: null,
+		shareable: entry.shareable === true,
+		...(Array.isArray(entry.allowedPackages)
+			? {
+					allowedPackages: (
+						entry.allowedPackages as Array<{ id: string; name: string }>
+					).filter(
+						(item) =>
+							typeof item?.id === 'string' && typeof item.name === 'string',
+					),
+				}
+			: {}),
+		grants: Array.isArray(entry.grants)
+			? (entry.grants as ExecutionContextMachineAccessEntry['grants']).filter(
+					(grant) =>
+						typeof grant?.grantId === 'string' && record(grant.subject),
+				)
+			: [],
+	}
+}
+
+async function readMachineAccess(
+	scope: ExecutionContextsScope,
+	result: Record<string, unknown>,
+): Promise<ExecutionContextMachineAccess> {
+	const db = scope.ctx.env.APP_DB
+	const viewerId = scope.ctx.callerContext.request?.actor?.userId ?? null
+	const profiles =
+		viewerId && (await isProfilesEnabledFor(db, viewerId, scope.org.id))
+			? await listGrantableProfiles({
+					db,
+					orgId: scope.org.id,
+					actingUserId: viewerId,
+				})
+			: []
+	return {
+		canGrant: result.canGrant === true,
+		capabilities: Array.isArray(result.capabilities)
+			? result.capabilities.flatMap(
+					(entry) => normalizeMachineAccessEntry(entry) ?? [],
+				)
+			: [],
+		profiles: profiles.map((profile) => ({
+			id: profile.id,
+			name: profile.name,
+		})),
+	}
+}
+
+/** Null when the machine is not shared with the viewer, or is gone. */
+async function loadMachineAccess(
+	scope: ExecutionContextsScope,
+	contextId: string,
+): Promise<ExecutionContextMachineAccess | null> {
+	try {
+		return await readMachineAccess(
+			scope,
+			await callCapability(
+				scope,
+				executionContextCapabilityNames.machineAccessList,
+				{ id: contextId },
+			),
+		)
+	} catch (error) {
+		const failure = readExecutionContextFailure(error)
+		if (failure?.status === 403 || failure?.status === 404) return null
+		throw error
+	}
+}
+
+/** Null when it cannot be read; the notice still shows without it. */
+async function loadShellUse(
+	scope: ExecutionContextsScope,
+	contextId: string,
+): Promise<ExecutionContextShellUse | null> {
+	try {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.shellSuggestions,
+			{ id: contextId },
+		)
+		const count = (value: unknown) => (typeof value === 'number' ? value : 0)
+		const rows = (value: unknown): Array<Record<string, unknown>> =>
+			Array.isArray(value)
+				? value.flatMap((entry) => {
+						const row = record(entry)
+						return row ? [row] : []
+					})
+				: []
+		return {
+			commands: count(result.commands),
+			more: result.more === true,
+			adHocCommands: count(result.adHocCommands),
+			packages: rows(result.packages).flatMap((entry) =>
+				typeof entry.id === 'string'
+					? {
+							id: entry.id,
+							name: typeof entry.name === 'string' ? entry.name : entry.id,
+							commands: count(entry.commands),
+						}
+					: [],
+			),
+			programs: rows(result.programs).flatMap((entry) =>
+				typeof entry.program === 'string'
+					? {
+							program: entry.program,
+							commands: count(entry.commands),
+							needShell: count(entry.needShell),
+						}
+					: [],
+			),
+			morePrograms: count(result.morePrograms),
+		}
+	} catch {
+		return null
+	}
+}
+
+export type MachineAccessGrantSubject =
+	| { kind: 'user'; username: string }
+	| { kind: 'team'; slug: string }
+	| { kind: 'org' }
+	| { kind: 'profile'; profileId: string }
+
+export async function grantExecutionContextMachineAccessForUser(
+	input: ScopedInput & {
+		contextId: string
+		capability: { kind: 'command' | 'lan'; name: string }
+		subject: MachineAccessGrantSubject
+	},
+) {
+	return runScoped(input, async (scope) => {
+		const { subject } = input
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.machineAccessGrant,
+			{
+				id: input.contextId,
+				kind: input.capability.kind,
+				name: input.capability.name,
+				...(subject.kind === 'user'
+					? { username: subject.username.replace(/^@/, '') }
+					: subject.kind === 'team'
+						? { team_slug: subject.slug }
+						: subject.kind === 'profile'
+							? { profile_id: subject.profileId }
+							: { everyone: true }),
+			},
+		)
+		return {
+			ok: true as const,
+			machineAccess: await readMachineAccess(scope, result),
+		}
+	})
+}
+
+export async function revokeExecutionContextMachineAccessForUser(
+	input: ScopedInput & { contextId: string; grantId: string },
+) {
+	return runScoped(input, async (scope) => {
+		const result = await callCapability(
+			scope,
+			executionContextCapabilityNames.machineAccessRevoke,
+			{ id: input.contextId, grant_id: input.grantId },
+		)
+		return {
+			ok: true as const,
+			machineAccess: await readMachineAccess(scope, result),
+		}
 	})
 }
 

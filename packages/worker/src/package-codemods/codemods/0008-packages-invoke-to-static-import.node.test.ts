@@ -28,7 +28,7 @@ function kodyDependencies(files: Record<string, string>) {
 	return JSON.parse(files['package.json']!).kody.dependencies
 }
 
-test('0008 rewrites literal invoke to a static import and records kody.dependencies', () => {
+test('0008 rewrites literal invoke to a static import and records kody.dependencies', async () => {
 	const files = {
 		'package.json': manifest('@kentcdodds/demo'),
 		'index.ts': [
@@ -43,11 +43,11 @@ test('0008 rewrites literal invoke to a static import and records kody.dependenc
 		].join('\n'),
 	}
 
-	expect(codemod.detect(files)).toEqual([
+	expect(await codemod.detect(files)).toEqual([
 		{ path: 'index.ts', message: expect.stringContaining('static') },
 	])
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result).toMatchObject({
 		changed: true,
 		changedPaths: ['index.ts', 'package.json'],
@@ -68,14 +68,14 @@ test('0008 rewrites literal invoke to a static import and records kody.dependenc
 		'@kentcdodds/inbox': '*',
 	})
 
-	expect(codemod.transform(result.files)).toMatchObject({
+	expect(await codemod.transform(result.files)).toMatchObject({
 		changed: false,
 		changedPaths: [],
 		needsManual: [],
 	})
 })
 
-test('0008 rewrites computed specifiers to import(specifier) and leaves keyed invokes manual', () => {
+test('0008 rewrites computed specifiers to import(specifier) and leaves keyed invokes manual', async () => {
 	const files = {
 		'package.json': manifest(),
 		'dynamic.ts': [
@@ -99,7 +99,7 @@ test('0008 rewrites computed specifiers to import(specifier) and leaves keyed in
 		].join('\n'),
 	}
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['dynamic.ts'])
 	expect(result.files['dynamic.ts']).toContain(
@@ -112,7 +112,7 @@ test('0008 rewrites computed specifiers to import(specifier) and leaves keyed in
 	])
 })
 
-test('0008 rewrites Markdown fences without recording kody.dependencies from docs', () => {
+test('0008 rewrites Markdown fences without recording kody.dependencies from docs', async () => {
 	const docsOnly = {
 		'package.json': manifest('@docs-owner/demo'),
 		'README.md': [
@@ -129,7 +129,7 @@ test('0008 rewrites Markdown fences without recording kody.dependencies from doc
 		].join('\n'),
 	}
 
-	const docsResult = codemod.transform(docsOnly)
+	const docsResult = await codemod.transform(docsOnly)
 	expect(docsResult).toMatchObject({
 		changed: true,
 		changedPaths: ['README.md'],
@@ -166,7 +166,7 @@ test('0008 rewrites Markdown fences without recording kody.dependencies from doc
 		].join('\n'),
 	}
 
-	const mixedResult = codemod.transform(mixed)
+	const mixedResult = await codemod.transform(mixed)
 	expect(mixedResult.changed).toBe(true)
 	expect(mixedResult.changedPaths).toEqual([
 		'index.ts',
@@ -181,7 +181,7 @@ test('0008 rewrites Markdown fences without recording kody.dependencies from doc
 	expect(mixedResult.files['index.ts']).not.toContain('packages.invoke')
 })
 
-test('0008 reuses an existing static import', () => {
+test('0008 reuses an existing static import', async () => {
 	const files = {
 		'package.json': manifest('@user/demo', { '@user/helper': '*' }),
 		'index.ts': [
@@ -193,7 +193,7 @@ test('0008 reuses an existing static import', () => {
 		].join('\n'),
 	}
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['index.ts'])
 	expect(result.files['index.ts']).toContain('await helper({ ok: true })')
@@ -201,7 +201,7 @@ test('0008 reuses an existing static import', () => {
 	expect(kodyDependencies(result.files)).toEqual({ '@user/helper': '*' })
 })
 
-test('0008 rewrites static template specifiers and keeps other packages uses', () => {
+test('0008 rewrites static template specifiers and keeps other packages uses', async () => {
 	const files = {
 		'package.json': manifest('@user/demo'),
 		'index.ts': [
@@ -216,7 +216,7 @@ test('0008 rewrites static template specifiers and keeps other packages uses', (
 		].join('\n'),
 	}
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(
 		missingSnippets(result.files['index.ts'], [
@@ -229,7 +229,7 @@ test('0008 rewrites static template specifiers and keeps other packages uses', (
 	expect(result.files['index.ts']).not.toContain('packages.invoke')
 })
 
-test('0008 leaves topic invokes manual and removes only unused packages specifiers', () => {
+test('0008 leaves topic invokes manual and removes only unused packages specifiers', async () => {
 	const files = {
 		'package.json': manifest('@user/demo'),
 		'topic.ts': [
@@ -250,7 +250,7 @@ test('0008 leaves topic invokes manual and removes only unused packages specifie
 		].join('\n'),
 	}
 
-	const result = codemod.transform(files)
+	const result = await codemod.transform(files)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual(['multi.ts', 'package.json'])
 	expect(result.files['topic.ts']).toBe(files['topic.ts'])

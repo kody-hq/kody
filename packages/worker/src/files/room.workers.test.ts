@@ -766,3 +766,97 @@ test('agent presence appears in the live room and clears on request', async () =
 	await f.room.setAgentPresence(agent, f.fileId, null)
 	expect((await f.room.snapshot(f.request, f.fileId)).presence).toEqual([])
 })
+
+type RoomInternals = {
+	resolveAccess: (...args: unknown[]) => Promise<unknown>
+	broadcastPresence: () => Promise<void>
+}
+async function openSockets(
+	f: Awaited<ReturnType<typeof fixture>>,
+	count: number,
+	session = { issuedAt: Date.now(), expiresAt: Date.now() + 10 * 60_000 },
+) {
+	return Promise.all(
+		Array.from({ length: count }, async () => {
+			const sessionId = crypto.randomUUID()
+			const socket = (
+				await f.room.openSession(f.request, f.fileId, sessionId, session)
+			).webSocket!
+			socket.accept()
+			const closed = new Promise<number>((resolve) =>
+				socket.addEventListener('close', (event) => resolve(event.code), {
+					once: true,
+				}),
+			)
+			return { sessionId, socket, closed }
+		}),
+	)
+}
+
+test('a broadcast resolves access once per session and still closes revoked sockets', async () => {
+	const f = await fixture()
+	const sockets = await openSockets(f, 3)
+	try {
+		await runInDurableObject(f.stub, async (instance: FileRoom) => {
+			const room = instance as unknown as RoomInternals
+			const resolveAccess = vi.spyOn(room, 'resolveAccess')
+			try {
+				await room.broadcastPresence()
+				expect(resolveAccess).toHaveBeenCalledTimes(1)
+				await room.broadcastPresence()
+				expect(resolveAccess).toHaveBeenCalledTimes(2)
+			} finally {
+				resolveAccess.mockRestore()
+			}
+		})
+		await env.APP_DB.prepare(
+			'UPDATE users SET suspended_at = CURRENT_TIMESTAMP WHERE stable_user_id = ?',
+		)
+			.bind(f.personId)
+			.run()
+		await runInDurableObject(f.stub, async (instance: FileRoom) => {
+			await (instance as unknown as RoomInternals).broadcastPresence()
+		})
+		expect(await Promise.all(sockets.map((s) => s.closed))).toEqual([
+			4003, 4003, 4003,
+		])
+	} finally {
+		for (const { socket } of sockets) socket.close()
+	}
+})
+
+test('a shared session lookup still closes an expired socket with 4000', async () => {
+	const f = await fixture()
+	const [expired, live] = await openSockets(f, 2)
+	let liveClosed: number | null = null
+	void live!.closed.then((code) => (liveClosed = code))
+	const presence = new Promise<void>((resolve) =>
+		live!.socket.addEventListener('message', (event) => {
+			if (
+				(JSON.parse(String(event.data)) as { type: string }).type === 'presence'
+			)
+				resolve()
+		}),
+	)
+	try {
+		await runInDurableObject(f.stub, async (instance: FileRoom, ctx) => {
+			const target = ctx
+				.getWebSockets()
+				.find(
+					(ws) =>
+						ws.deserializeAttachment().presence.sessionId ===
+						expired!.sessionId,
+				)!
+			const attachment = target.deserializeAttachment()
+			attachment.session.expiresAt = Date.now() - 1
+			target.serializeAttachment(attachment)
+			await (instance as unknown as RoomInternals).broadcastPresence()
+		})
+		expect(await expired!.closed).toBe(4000)
+		await presence
+		expect(liveClosed).toBeNull()
+	} finally {
+		expired!.socket.close()
+		live!.socket.close()
+	}
+})

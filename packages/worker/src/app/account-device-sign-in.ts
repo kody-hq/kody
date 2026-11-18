@@ -29,6 +29,7 @@ import {
 	insertDeviceAuthorization,
 	nowSeconds,
 	purgeExpiredDeviceAuthorizations,
+	updateAccountDeviceRequestJson,
 	type DeviceAuthorizationRow,
 } from '#worker/oauth-device/store.ts'
 import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
@@ -262,7 +263,11 @@ function devicePagePath(error?: AccountDeviceSignInError) {
 		: accountDeviceSignInPath
 }
 
-/** `POST /login/device` from `/login`: ask for a full-account sign-in code. */
+/**
+ * `POST /login/device`. From `/login` it asks for a full-account sign-in
+ * code; from the code screen (`intent=remember`) it saves "Keep this browser
+ * signed in" on the request in progress.
+ */
 export async function startAccountDeviceSignIn(input: {
 	request: Request
 	env: Env
@@ -279,6 +284,14 @@ export async function startAccountDeviceSignIn(input: {
 		? await request.formData().catch(() => null)
 		: null
 	if (!form) return seeOther(devicePagePath('invalid_request'))
+	if (form.get('intent') === 'remember') {
+		await saveAccountDeviceRememberMe({
+			request,
+			env,
+			rememberMe: form.get('rememberMe') === 'on',
+		})
+		return seeOther(devicePagePath())
+	}
 	const redirectToValue = form.get('redirectTo')
 	const redirectTo = normalizeRedirectTo(
 		typeof redirectToValue === 'string' ? redirectToValue : null,
@@ -342,6 +355,20 @@ export async function startAccountDeviceSignIn(input: {
 	])
 }
 
+async function saveAccountDeviceRememberMe(input: {
+	request: Request
+	env: Env
+	rememberMe: boolean
+}) {
+	const row = await readDeviceRow(input.request, input.env)
+	const details = row ? parseAccountDeviceRequest(row) : null
+	if (!row || !details) return false
+	return updateAccountDeviceRequestJson(input.env.APP_DB, {
+		id: row.id,
+		requestJson: JSON.stringify({ ...details, rememberMe: input.rememberMe }),
+	})
+}
+
 function startAgainUrl(details: AccountDeviceRequest | null) {
 	const redirectTo = details?.redirectTo
 	return redirectTo
@@ -360,6 +387,8 @@ export type AccountDeviceSignInView =
 			/** Whole minutes left, rounded up, computed on the server. */
 			minutesLeft: number
 			refreshSeconds: number
+			/** "Keep this browser signed in", saved on the request. */
+			rememberMe: boolean
 	  }
 	| { kind: 'denied' | 'expired'; startAgainUrl: string }
 
@@ -398,6 +427,7 @@ export async function loadAccountDeviceSignInView(input: {
 		qr: buildQrCodePath(verificationUriComplete.href),
 		minutesLeft: Math.max(1, Math.ceil((row.expires_at - now) / 60)),
 		refreshSeconds: accountDeviceRefreshSeconds,
+		rememberMe: parseAccountDeviceRequest(row)?.rememberMe ?? false,
 	}
 }
 

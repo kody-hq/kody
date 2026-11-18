@@ -1,0 +1,41 @@
+name: Desktop binaries runner watch
+
+# A Desktop binaries build leg that never gets a hosted runner (usually macOS
+# arm64 capacity) is cancelled with no steps and leaves the check red on a
+# green change. This re-runs the failed jobs of that run while the only
+# failures are legs no runner picked up, and steps aside for real failures or
+# a newer run on the same branch
+# (packages/desktop/scripts/release-runner-watch.cjs, WATCH_KIND=binaries).
+on:
+  workflow_run:
+    workflows: [Desktop binaries]
+    types: [completed]
+
+permissions:
+  actions: write
+  checks: read
+  contents: read
+
+concurrency:
+  group: desktop-binaries-watch-${{ github.event.workflow_run.id }}
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    # Attempts this job starts itself are watched by the same job.
+    if:
+      (github.event.workflow_run.conclusion == 'failure' ||
+      github.event.workflow_run.conclusion == 'cancelled') &&
+      github.event.workflow_run.triggering_actor.login != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+      - name: Re-run build legs no runner picked up
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WATCH_KIND: binaries
+          WATCHED_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: node packages/desktop/scripts/release-runner-watch.cjs

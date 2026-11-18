@@ -1,8 +1,10 @@
 /** @jsxImportSource @emotion/react */
-import { useState, type ComponentProps } from 'react'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import { Button } from './button.tsx'
+import { useState } from 'react'
+import { spacing } from '#universal/styles/tokens.ts'
+import { Input, type InputProps } from './input.tsx'
 
-type PasswordRevealInputProps = Omit<ComponentProps<'input'>, 'type'> & {
+type PasswordRevealInputProps = Omit<InputProps, 'type'> & {
 	revealNoun?: string
 	revealed?: boolean
 	onRevealedChange?: (revealed: boolean) => void
@@ -27,7 +29,7 @@ export function PasswordRevealInput({
 				minWidth: 0,
 			}}
 		>
-			<input
+			<Input
 				{...props}
 				type={revealed ? 'text' : 'password'}
 				autoCorrect="off"
@@ -35,7 +37,9 @@ export function PasswordRevealInput({
 				autoCapitalize="off"
 				css={{ paddingRight: '4.5rem' }}
 			/>
-			<button
+			<Button
+				variant="ghost"
+				size="xs"
 				type="button"
 				aria-label={label}
 				aria-pressed={revealed}
@@ -43,22 +47,10 @@ export function PasswordRevealInput({
 				css={{
 					position: 'absolute',
 					right: spacing.sm,
-					top: '50%',
-					transform: 'translateY(-50%)',
-					background: 'none',
-					border: 'none',
-					borderRadius: '999px',
-					padding: spacing.xs,
+					insetBlock: 0,
+					marginBlock: 'auto',
+					height: 'fit-content',
 					width: '3.5rem',
-					height: '2rem',
-					color: colors.text,
-					cursor: 'pointer',
-					display: 'flex',
-					alignItems: 'center',
-					justifyContent: 'center',
-					fontSize: '0.75rem',
-					fontWeight: 600,
-					'&:hover': { background: colors.primarySoft },
 				}}
 				onClick={() => {
 					onRevealedChange?.(!revealed)
@@ -66,7 +58,7 @@ export function PasswordRevealInput({
 				}}
 			>
 				{revealed ? 'Hide' : 'Show'}
-			</button>
+			</Button>
 		</div>
 	)
 }

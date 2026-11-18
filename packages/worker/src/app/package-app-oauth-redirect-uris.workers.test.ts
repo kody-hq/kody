@@ -56,3 +56,34 @@ test('when PACKAGE_APP_BASE_URL is unset, app-origin callback is allowlisted', a
 		mutableEnv.APP_BASE_URL = previousApp
 	}
 })
+
+test("the app's own {leaf}--{handle} host callback is allowlisted next to the owner subdomain", async () => {
+	const mutableEnv = env as unknown as Record<string, string | undefined>
+	const previous = mutableEnv.PACKAGE_APP_BASE_URL
+	mutableEnv.PACKAGE_APP_BASE_URL = 'https://packages.isolated.test'
+	try {
+		const client = parsePackageAppOauthClientId('user-me/consent-demo')
+		expect(client).not.toBeNull()
+		if (!client) return
+		const allowed = await listAllowedPackageAppOauthRedirectUris({
+			env,
+			client,
+		})
+		expect(allowed).toContain(
+			`https://consent-demo--user-me.packages.isolated.test${packageAppOauthPaths.callback}`,
+		)
+		expect(allowed).toContain(
+			`https://user-me.packages.isolated.test${packageAppOauthPaths.callback}`,
+		)
+		// Another app's host is a different origin and never allowlisted.
+		expect(
+			await isAllowedPackageAppOauthRedirectUri({
+				env,
+				client,
+				redirectUri: `https://other--user-me.packages.isolated.test${packageAppOauthPaths.callback}`,
+			}),
+		).toBe(false)
+	} finally {
+		mutableEnv.PACKAGE_APP_BASE_URL = previous
+	}
+})

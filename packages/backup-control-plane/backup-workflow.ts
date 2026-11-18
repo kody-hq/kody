@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import {
 	WorkflowEntrypoint,
 	type WorkflowEvent,
@@ -10,10 +11,11 @@ import type {
 	BackupEnvironment,
 	ScheduledBackupWorkflowPayload,
 } from './backup-types.ts'
+import { buildControlPlaneSentryOptions } from './sentry.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
 
-export class ProductionD1BackupWorkflow extends WorkflowEntrypoint<
+class ProductionD1BackupWorkflowBase extends WorkflowEntrypoint<
 	BackupEnvironment,
 	ScheduledBackupWorkflowPayload
 > {
@@ -34,3 +36,8 @@ export class ProductionD1BackupWorkflow extends WorkflowEntrypoint<
 		}
 	}
 }
+
+export const ProductionD1BackupWorkflow = Sentry.instrumentWorkflowWithSentry(
+	(env: BackupEnvironment) => buildControlPlaneSentryOptions(env),
+	ProductionD1BackupWorkflowBase,
+)

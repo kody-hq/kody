@@ -7,10 +7,12 @@ import {
 	buildMuseSettingsJson,
 	buildOpenClawMcpAddCommand,
 	buildOpenCodeMcpAddCommand,
-	chatGptPluginsUrl,
-	chatGptSideloadAvailabilityNote,
-	chatGptSideloadSteps,
-	codexMcpLoginCommand,
+	chatGptCustomMcpGuideUrl,
+	chatGptDesktopMcpSteps,
+	chatGptDirectoryListingNote,
+	chatGptWebMcpSummary,
+	codexMcpLoginHint,
+	codexSharedConfigNote,
 	defaultKodyMcpUrl,
 	grokBotInstallUrl,
 	grokConnectorsUrl,
@@ -96,15 +98,10 @@ function genericAgent<const Slug extends string>(
 	} satisfies WithAgent
 }
 
-/** Sideloaded Kody plugin: ChatGPT and Codex share it, so both pages use it. */
-const chatGptSideloadWithSteps = [
-	{
-		text: chatGptSideloadSteps.open,
-		link: { label: 'Open ChatGPT Plugins', href: chatGptPluginsUrl },
-	},
-	{ text: chatGptSideloadSteps.connect, code: mcpUrl },
-	{ text: chatGptSideloadSteps.create },
-] as const satisfies ReadonlyArray<WithAgentStep>
+/** ChatGPT desktop app: Settings, MCP servers, Add server. */
+const chatGptDesktopWithSteps = chatGptDesktopMcpSteps.map((text, index) =>
+	index === 1 ? { text, code: mcpUrl } : { text },
+) satisfies ReadonlyArray<WithAgentStep>
 
 export const withAgents = [
 	{
@@ -151,14 +148,15 @@ export const withAgents = [
 			'Let Codex build tools your whole team can run, with credentials it uses but never sees.',
 		youtubeVideoId: 'fuDXGko25u4',
 		steps: [
-			...chatGptSideloadWithSteps,
 			{
-				text: `${chatGptSideloadSteps.install} Kody then works in Codex in the ChatGPT desktop app.`,
-			},
-			{
-				text: `Using the Codex CLI instead? Run this, then ${codexMcpLoginCommand} if sign-in does not start:`,
+				text: 'Add Kody from your terminal:',
 				code: buildCodexMcpAddCommand(mcpUrl),
 			},
+			{ text: codexMcpLoginHint },
+			{
+				text: `Using the ChatGPT desktop app or the Codex IDE extension? Open Settings (the gear menu in the IDE), select MCP servers, then Add server. Name it Kody, choose Streamable HTTP, paste ${mcpUrl}, save, restart, and select Authenticate. ${codexSharedConfigNote}`,
+			},
+			{ text: chatGptDirectoryListingNote },
 		],
 	},
 	{
@@ -170,10 +168,15 @@ export const withAgents = [
 			'Use your team\u2019s packages and connected accounts from a ChatGPT conversation, on the web or on your phone.',
 		youtubeVideoId: 'XhEOHp-xAvI',
 		steps: [
-			...chatGptSideloadWithSteps,
+			...chatGptDesktopWithSteps,
 			{
-				text: `${chatGptSideloadSteps.install} ${chatGptSideloadAvailabilityNote}`,
+				text: chatGptWebMcpSummary,
+				link: {
+					label: 'OpenAI custom MCP help',
+					href: chatGptCustomMcpGuideUrl,
+				},
 			},
+			{ text: chatGptDirectoryListingNote },
 		],
 	},
 	{

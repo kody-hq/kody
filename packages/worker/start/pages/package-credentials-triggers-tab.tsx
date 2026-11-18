@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { Switch } from '../components/choice-controls.tsx'
+import { Button } from '../components/button.tsx'
 import { AutomationExecutionSettings } from '../components/automation-execution-settings.tsx'
 import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -20,17 +23,8 @@ import {
 	triggerStateLabel,
 	withheldTriggerMappingsNote,
 } from '#universal/package-credentials-page.ts'
-import {
-	cardCss,
-	cardTitleCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { cardCss, cardTitleCss } from '#universal/styles/style-primitives.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	type PackageTabContext,
 	mutedCss,
@@ -39,51 +33,7 @@ import {
 	renderMappingCell,
 	renderStatus,
 	rowCss,
-	tableCss,
 } from './package-credentials-tabs.tsx'
-
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-
-const switchTrackCss = {
-	appearance: 'none' as const,
-	width: '2.75rem',
-	height: '1.55rem',
-	minWidth: '2.75rem',
-	borderRadius: radius.full,
-	border: `1px solid ${colors.border}`,
-	background: colors.surface,
-	position: 'relative' as const,
-	cursor: 'pointer',
-	flexShrink: 0,
-	transition: 'background-color 120ms ease, border-color 120ms ease',
-	'&::after': {
-		content: '""',
-		position: 'absolute' as const,
-		top: '0.15rem',
-		left: '0.15rem',
-		width: '1.15rem',
-		height: '1.15rem',
-		borderRadius: radius.full,
-		background: colors.textMuted,
-		transition: 'transform 120ms ease, background-color 120ms ease',
-	},
-	'&[aria-checked="true"]': {
-		background: colors.primarySoft,
-		borderColor: colors.primary,
-	},
-	'&[aria-checked="true"]::after': {
-		transform: 'translateX(1.15rem)',
-		background: colors.primary,
-	},
-	'&:disabled': {
-		opacity: 0.55,
-		cursor: 'not-allowed',
-	},
-	'@media (prefers-reduced-motion: reduce)': {
-		transition: 'none',
-		'&::after': { transition: 'none' },
-	},
-}
 
 function renderTriggerMappings(
 	context: PackageTabContext,
@@ -153,7 +103,7 @@ function renderTriggerMappings(
 				</p>
 			) : null}
 			<div css={{ overflowX: 'auto' }}>
-				<table css={tableCss}>
+				<Table>
 					<thead>
 						<tr>
 							<th scope="col">Need</th>
@@ -189,7 +139,7 @@ function renderTriggerMappings(
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			</div>
 		</div>
 	)
@@ -212,18 +162,15 @@ function renderEnablementSwitch(input: {
 		`${input.trigger.trigger.kind}:${input.trigger.trigger.name}`
 	const busy = input.context.enablementBusyKey === busyKey
 	return (
-		<button
-			type="button"
-			role="switch"
-			aria-checked={input.checked ? 'true' : 'false'}
+		<Switch
+			checked={input.checked}
 			aria-label={`${input.label}: ${describeTrigger(input.trigger.trigger)}`}
 			data-testid={`package-trigger-switch-${input.trigger.trigger.kind}-${input.trigger.trigger.name}${input.enablementId ? `-${input.enablementId}` : ''}`}
 			disabled={busy || Boolean(input.context.enablementBusyKey)}
-			css={switchTrackCss}
-			onClick={() => {
+			onCheckedChange={(checked) => {
 				setEnablement({
 					trigger: input.trigger.trigger,
-					state: input.checked ? 'off' : 'on',
+					state: checked ? 'on' : 'off',
 					...(input.enablementId ? { enablementId: input.enablementId } : {}),
 				})
 			}}
@@ -439,10 +386,10 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 												mapping on its card (saving one need at a time never
 												mints a second copy).
 											</p>
-											<button
+											<Button
 												type="button"
 												disabled={Boolean(context.enablementBusyKey)}
-												css={secondaryButtonCss}
+												variant="secondary"
 												onClick={() => {
 													context.setTriggerEnablement?.({
 														trigger: trigger.trigger,
@@ -452,7 +399,7 @@ export function renderTriggersTab(context: PackageTabContext): ReactNode {
 												}}
 											>
 												Add another instance
-											</button>
+											</Button>
 										</>
 									)}
 								</div>

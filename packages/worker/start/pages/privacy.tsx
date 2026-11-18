@@ -1,12 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	cardTitleCss,
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -35,9 +34,9 @@ export function PrivacyRoute() {
 				<p css={descriptionCss}>
 					Kent C. Dodds, operator of Kody at kody.codes, is the data controller
 					for the hosted service. You can reach the operator at{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					. A separately operated Kody deployment has its own operator and data
 					controller.
 				</p>
@@ -379,14 +378,17 @@ export function PrivacyRoute() {
 					The only cookies are the session cookie (<code>kody_session</code>),
 					the one-week last-wins referral cookie (<code>kody_ref</code>) set by
 					share links that add <code>?ref=</code> to any page (for example{' '}
-					<code>/?ref=&lt;username&gt;</code>), and the package-app session
-					cookie on <code>kody.run</code> (
+					<code>/?ref=&lt;username&gt;</code>), the one-week first-party
+					first-touch cookie (<code>kody_first_touch</code>) that keeps the
+					UTMs, landing path, and referrer of your first visit until signup
+					reads and clears it, and the package-app session cookie on{' '}
+					<code>kody.run</code> (
 					<code>__Host-kody_pkg_session_&lt;hash&gt;</code> on HTTPS,{' '}
 					<code>kody_pkg_session_&lt;hash&gt;</code> on HTTP; one cookie per
 					package app on shared hosts). Short-lived cookies support two-factor
 					verification, passkey challenges, and OAuth login. Analytics (Fathom)
-					is cookieless. The browser uses sessionStorage for first-touch signup
-					attribution and scroll restoration, not tracking cookies.
+					is cookieless. The browser uses sessionStorage for scroll restoration,
+					not tracking cookies.
 				</p>
 			</section>
 
@@ -398,9 +400,9 @@ export function PrivacyRoute() {
 					modal, and to re-enter your password when the account has one. You can
 					also ask to access, correct, delete, restrict, or receive your
 					personal data, or object to its processing, by emailing{' '}
-					<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+					<TextLink tone="muted" href="mailto:support@kody.codes">
 						support@kody.codes
-					</SiteLink>
+					</TextLink>
 					. Which rights apply depends on where you live. We may need to verify
 					your identity before acting on a request.
 				</p>
@@ -426,17 +428,17 @@ export function PrivacyRoute() {
 			</section>
 
 			<p css={{ margin: 0 }}>
-				<SiteLink href="/pricing" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/pricing">
 					Pricing
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/terms" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/terms">
 					Terms
-				</SiteLink>
+				</TextLink>
 				{' · '}
-				<SiteLink href="/" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/">
 					Back home
-				</SiteLink>
+				</TextLink>
 			</p>
 		</section>
 	)

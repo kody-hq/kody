@@ -17,6 +17,7 @@ export const repoRunChecksCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoRunChecks',
+		walletGuard: 'check',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:

@@ -127,7 +127,7 @@ function mintedUrl(overrides: Record<string, unknown> = {}) {
 function makeWebhookRun(input: {
 	id: string
 	name?: string
-	status?: 'success' | 'error'
+	status?: 'running' | 'success' | 'error'
 	startedAt: string
 	metadata: Record<string, unknown>
 	errorMessage?: string | null
@@ -431,6 +431,60 @@ test('webhookDeliveryList pushes the name filter, round-trips outcomes, and trea
 		['delivered-1', 'delivered'],
 		['rejected-1', 'rejected'],
 		['failed-1', 'failed'],
+	])
+
+	mockModule.listRunRecords.mockResolvedValue({
+		runs: [
+			['accepted-1', 'running', { state: 'accepted' }, null],
+			[
+				'queued-1',
+				'running',
+				{
+					state: 'queued',
+					attempts: 2,
+					lastError: 'artifact_preparation_failed',
+				},
+				null,
+			],
+			['started-1', 'running', { state: 'started', attempts: 1 }, null],
+			[
+				'killed-1',
+				'error',
+				{ state: 'started', attempts: 1 },
+				'Run interrupted before it finished.',
+			],
+			[
+				'succeeded-1',
+				'success',
+				{ state: 'succeeded', outcome: 'delivered' },
+				null,
+			],
+		].map(([id, status, metadata, errorMessage]) =>
+			makeWebhookRun({
+				id: String(id),
+				status: status as 'running' | 'success' | 'error',
+				startedAt: '2026-07-24T04:00:00.000Z',
+				metadata: { httpStatus: 202, payloadBytes: 1, ...(metadata as object) },
+				errorMessage: errorMessage as string | null,
+			}),
+		),
+		nextCursor: null,
+	})
+	const lifecycle = await webhookDeliveryListCapability.handler(sentry, ctx)
+	expect(
+		lifecycle.deliveries.map((row) => [
+			row.id,
+			row.state,
+			row.outcome,
+			row.attempts,
+			row.error,
+		]),
+	).toEqual([
+		['accepted-1', 'accepted', 'pending', null, null],
+		['queued-1', 'queued', 'pending', 2, 'artifact_preparation_failed'],
+		['started-1', 'started', 'pending', 1, null],
+		['killed-1', 'failed', 'failed', 1, 'Run interrupted before it finished.'],
+		['succeeded-1', 'succeeded', 'delivered', null, null],
 	])
 
 	mockModule.listRunRecords.mockClear()

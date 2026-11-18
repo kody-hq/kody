@@ -130,8 +130,10 @@ on its own or with `--build context`; it cannot be combined with
 [publish-large-packages](https://kody.codes/docs/publish-large-packages).
 
 `--json` prints structured MCP results. On command failures it also prints a
-JSON error object on stdout (`error`, `message`, and when a network hop failed
-before an HTTP response, additive `sent: false | "unknown"`).
+JSON error object on stdout (`error`, `message`; additive
+`sent: false | "unknown"` when a network hop failed before an HTTP response;
+additive `runId` and `idempotencyKey` only when the API error body includes them
+— not on transport failures, even after a run may have started).
 
 ## Token-authenticated execute (no `kody login`)
 
@@ -189,7 +191,10 @@ One resolver picks the credential for every command, and `kody whoami` reports
 the same pick:
 
 Every command uses the same order: `--token`, `KODY_API_TOKEN`, then the one
-saved CLI credential.
+saved CLI credential. `kody status` names that pick and marks the saved
+credential when it has expired. When the saved credential expired and cannot be
+refreshed, commands fail with an error that names it; run `kody login` or
+`kody auth bootstrap` again.
 
 Desktop integrations can set `KODY_CREDENTIAL_SOURCE=login` to select only the
 saved credential. Unset it for normal CLI precedence.
@@ -273,6 +278,11 @@ publish. Bundling reuses the same esbuild path as `execute --file` / publish
 | -------------------- | -------------------------------------------- | ------------------------------------------------- |
 | `kody dev`           | Local app against real Kody                  | Local app against the CLI mock                    |
 | `execute` / `search` | Real capabilities, storage, secrets          | Mock catalog / scratch storage / fake credentials |
+
+On `--target prod` the working-tree package itself gets no hosted
+`packageStorage`, `packageSecrets`, `email`, `events`, or `packages` (published
+deps keep theirs). That is intentionally unsupported; see
+[Won't do](https://kody.codes/docs/package-apps#won-t-do-storage-secrets-email-events-and-packages-on-target-prod).
 
 The mock is built into the CLI (no kody-celld). It refuses unimplemented routes
 with `not_implemented_in_mock` rather than faking success. `--reset-storage`

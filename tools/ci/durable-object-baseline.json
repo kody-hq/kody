@@ -558,6 +558,11 @@
 							"name": "FILE_STORE",
 							"class_name": "FileStore",
 							"script_name": "kody-platform"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1",
+							"script_name": "kody-platform"
 						}
 					]
 				},
@@ -609,6 +614,11 @@
 						{
 							"name": "FILE_STORE",
 							"class_name": "FileStore",
+							"script_name": "kody-platform"
+						},
+						{
+							"name": "EXECUTION_CONTEXT_SESSION",
+							"class_name": "ExecutionContextSessionV1",
 							"script_name": "kody-platform"
 						}
 					]

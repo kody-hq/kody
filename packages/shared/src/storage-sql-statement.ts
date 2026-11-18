@@ -6,9 +6,15 @@
 /** Response row cap for `storage.sql` / `packageStorage().sql`. */
 export const maxStorageSqlQueryRows = 1_000
 
-/** Coerce caller bindings to the values `ctx.storage.sql.exec` accepts. */
-export function normalizeSqlParams(params: Array<unknown> | undefined) {
-	return (params ?? []).map((value) => {
+/**
+ * Coerce caller bindings to the values `ctx.storage.sql.exec` accepts.
+ * Bindings are one array: `sql(query, [a, b])` binds `a` and `b`, so an array
+ * or object element throws instead of binding as JSON text. A missing or
+ * non-array `params` binds nothing.
+ */
+export function normalizeSqlParams(params: unknown) {
+	if (!Array.isArray(params)) return []
+	return params.map((value: unknown) => {
 		if (
 			value === null ||
 			typeof value === 'string' ||
@@ -39,8 +45,10 @@ const storageSqlWriteVerbs = [
 	'alter',
 ] as const
 
+// `replace` is a statement only as `REPLACE INTO`; `replace(...)` is the
+// scalar function, which a pure read may call.
 const storageSqlReturningMutationVerbInWithPattern =
-	/(?:^|[^a-z0-9_])(?:insert|update|delete|replace)(?:[^a-z0-9_]|$)/
+	/(?:^|[^a-z0-9_])(?:insert|update|delete|replace\s+into)(?:[^a-z0-9_]|$)/
 
 /**
  * Replace comments and quoted literals with spaces so verb checks cannot see

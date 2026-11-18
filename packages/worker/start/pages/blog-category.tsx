@@ -7,6 +7,7 @@ import type {
 } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	BlogCategoryNav,
 	BlogPostList,
@@ -30,13 +31,14 @@ export function BlogCategoryRoute({ data }: { data: BlogCategoryLoaderData }) {
 				<p data-rise style={{ '--rise': '1' } as CSSProperties}>
 					{data.description}
 				</p>
-				<SiteLink
+				<TextLink
+					tone="prose"
 					href={routes.blogCategoryRss.href({ category: data.slug })}
 					reloadDocument
 					css={blogInlineLinkCss}
 				>
 					Subscribe to {data.label.toLowerCase()} via RSS
-				</SiteLink>
+				</TextLink>
 			</header>
 
 			<BlogCategoryNav categories={data.categories} active={data.slug} />

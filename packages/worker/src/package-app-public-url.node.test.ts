@@ -2,9 +2,14 @@ import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+
+// These fixtures have no owner or package rows, so no profile package exists.
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
+}))
 
 const migrationSql = readFileSync(
 	join(

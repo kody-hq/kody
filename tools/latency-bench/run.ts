@@ -31,6 +31,8 @@ export type LatencyBenchOptions = {
 	password: string
 	token?: string
 	n: number
+	/** Warm samples run in batches of this many concurrent calls. */
+	concurrency: number
 	paths: Set<string> | null
 	mcpServer?: string
 	mcpTool: string
@@ -65,6 +67,7 @@ export function parseArgs(argv: Array<string>): LatencyBenchOptions {
 		email: 'kody@example.com',
 		password: 'ilikecode',
 		n: 30,
+		concurrency: 1,
 		paths: null,
 		mcpTool: 'ping',
 		mcpArgs: {},
@@ -100,6 +103,12 @@ export function parseArgs(argv: Array<string>): LatencyBenchOptions {
 				options.n = Number(takeValue(arg, ++index))
 				if (!Number.isInteger(options.n) || options.n < 1) {
 					throw new Error('--n must be a positive integer')
+				}
+				break
+			case '--concurrency':
+				options.concurrency = Number(takeValue(arg, ++index))
+				if (!Number.isInteger(options.concurrency) || options.concurrency < 1) {
+					throw new Error('--concurrency must be a positive integer')
 				}
 				break
 			case '--paths':
@@ -193,22 +202,31 @@ export async function runLatencyBench(
 		if (options.paths && !options.paths.has(name)) return
 		let cold: PhaseSample | null = null
 		const warm: Array<PhaseSample> = []
+		const failures: Record<string, number> = {}
 		let errors = 0
-		for (let index = 0; index <= options.n; index++) {
-			try {
-				const result = await sample()
-				if (index === 0) cold = result
-				else warm.push(result)
-			} catch (error) {
-				errors++
-				if (errors <= 2) {
-					console.error(
-						`${name}: ${error instanceof Error ? error.message.slice(0, 400) : String(error)}`,
-					)
-				}
+		const recordError = (error: unknown) => {
+			errors++
+			const message = error instanceof Error ? error.message : String(error)
+			const key = message.slice(0, 160)
+			failures[key] = (failures[key] ?? 0) + 1
+			if (errors <= 2) console.error(`${name}: ${message.slice(0, 400)}`)
+		}
+		try {
+			cold = await sample()
+		} catch (error) {
+			recordError(error)
+		}
+		for (let done = 0; done < options.n; done += options.concurrency) {
+			const batch = Math.min(options.concurrency, options.n - done)
+			const results = await Promise.allSettled(
+				Array.from({ length: batch }, () => sample()),
+			)
+			for (const result of results) {
+				if (result.status === 'fulfilled') warm.push(result.value)
+				else recordError(result.reason)
 			}
 		}
-		paths[name] = summarizePath({ cold, warm, errors })
+		paths[name] = summarizePath({ cold, warm, errors, failures })
 		if (!options.json)
 			console.error(`${name}: ${JSON.stringify(paths[name].warm)}`)
 	}

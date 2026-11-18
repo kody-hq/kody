@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import {
 	startCreditTopUp,
@@ -12,14 +14,9 @@ import {
 import { creditSettingsMutationOptions } from '../credit-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { useState, type FormEvent } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 } from './account-management-components.tsx'
@@ -52,10 +49,12 @@ import { orgCreditsPath } from '#universal/org-pages.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 /** Anchor for `/account/usage#credits` (`accountCreditsPath`). */
 const creditsSectionId = 'credits'
@@ -263,14 +262,14 @@ export function AccountUsageCreditsSection(
 
 	function renderSwitchToProButton(label: string) {
 		return (
-			<button
+			<Button
 				type="button"
 				disabled={switchPending}
 				onClick={() => void switchToPro()}
-				css={primaryButtonCss}
+				variant="primary"
 			>
 				{switchPending ? 'Opening Stripe…' : label}
-			</button>
+			</Button>
 		)
 	}
 
@@ -281,22 +280,21 @@ export function AccountUsageCreditsSection(
 		onInput: (value: string) => void
 	}) {
 		return (
-			<div css={accountFieldCss}>
-				<label htmlFor={input.id} css={accountFieldLabelCss}>
+			<div css={fieldCss}>
+				<label htmlFor={input.id} css={fieldLabelCss}>
 					{input.label}
 				</label>
-				<input
+				<Input
 					id={input.id}
 					type="text"
 					inputMode="decimal"
 					autoComplete="off"
 					value={input.value}
 					disabled={saving}
-					data-field-ring
 					onInput={(event) => {
 						input.onInput((event.currentTarget as HTMLInputElement).value)
 					}}
-					css={{ ...accountInputCss, maxWidth: '10rem' }}
+					css={{ maxWidth: '10rem' }}
 				/>
 			</div>
 		)
@@ -316,8 +314,7 @@ export function AccountUsageCreditsSection(
 					color: colors.text,
 				}}
 			>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={input.checked}
 					disabled={saving}
 					onChange={(event) => {
@@ -337,13 +334,9 @@ export function AccountUsageCreditsSection(
 	function renderLedgerLink(label: string) {
 		return props.orgSlug ? (
 			<p css={descriptionCss}>
-				<SiteLink
-					href={orgCreditsPath(props.orgSlug)}
-					data-credits-ledger-link
-					css={primaryLinkCss}
-				>
+				<TextLink href={orgCreditsPath(props.orgSlug)} data-credits-ledger-link>
 					{label}
-				</SiteLink>
+				</TextLink>
 			</p>
 		) : null
 	}
@@ -362,9 +355,7 @@ export function AccountUsageCreditsSection(
 					{credits.canSwitchToPro ? (
 						renderSwitchToProButton('Switch to Pro')
 					) : (
-						<SiteLink href={credits.billingHref} css={primaryLinkCss}>
-							Go to billing
-						</SiteLink>
+						<TextLink href={credits.billingHref}>Go to billing</TextLink>
 					)}
 				</div>
 				{renderLedgerLink('See your balance and credit history')}
@@ -388,17 +379,17 @@ export function AccountUsageCreditsSection(
 					) : null}
 					<div css={accountActionsCss}>
 						{credits.packsCents.map((cents) => (
-							<button
+							<Button
 								key={cents}
 								type="button"
 								disabled={topUpDisabled}
 								onClick={() => void startTopUp(cents)}
-								css={secondaryButtonCss}
+								variant="secondary"
 							>
 								{topUpPendingCents === cents
 									? 'Opening Stripe…'
 									: formatWholeDollars(cents)}
-							</button>
+							</Button>
 						))}
 					</div>
 					<form
@@ -415,11 +406,11 @@ export function AccountUsageCreditsSection(
 							alignItems: 'end',
 						}}
 					>
-						<div css={accountFieldCss}>
-							<label htmlFor="credits-custom-amount" css={accountFieldLabelCss}>
+						<div css={fieldCss}>
+							<label htmlFor="credits-custom-amount" css={fieldLabelCss}>
 								Custom amount ($)
 							</label>
-							<input
+							<Input
 								id="credits-custom-amount"
 								type="text"
 								inputMode="decimal"
@@ -427,25 +418,24 @@ export function AccountUsageCreditsSection(
 								placeholder={`${formatWholeDollars(credits.customMinCents)}–${formatWholeDollars(credits.customMaxCents)}`}
 								value={customAmountText}
 								disabled={topUpDisabled}
-								data-field-ring
 								onInput={(event) => {
 									setCustomAmountText(
 										(event.currentTarget as HTMLInputElement).value,
 									)
 								}}
-								css={{ ...accountInputCss, maxWidth: '10rem' }}
+								css={{ maxWidth: '10rem' }}
 							/>
 						</div>
-						<button
+						<Button
 							type="submit"
 							disabled={topUpDisabled || customCents === null}
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{topUpPendingCents !== null &&
 							!credits.packsCents.includes(topUpPendingCents)
 								? 'Opening Stripe…'
 								: 'Add'}
-						</button>
+						</Button>
 					</form>
 				</AccountManagementPanel>
 
@@ -491,14 +481,14 @@ export function AccountUsageCreditsSection(
 									onInput: (value) => updateDraft({ monthlyCapText: value }),
 								})}
 							</div>
-							<p css={accountFieldNoteCss}>
+							<p css={fieldDescriptionCss}>
 								Threshold at least{' '}
 								{formatWholeDollars(credits.autoRefill.minThresholdCents)}.
 								Refilled this month:{' '}
 								{formatCents(credits.autoRefill.refilledThisMonthCents)}.
 							</p>
 							{!credits.autoRefill.hasPaymentMethod ? (
-								<p css={accountFieldNoteCss}>
+								<p css={fieldDescriptionCss}>
 									Auto-refill starts after your first top-up saves a card.
 								</p>
 							) : null}
@@ -513,7 +503,7 @@ export function AccountUsageCreditsSection(
 							gap: spacing.xs,
 						}}
 					>
-						<legend css={{ ...accountFieldLabelCss, marginBottom: spacing.xs }}>
+						<legend css={{ ...fieldLabelCss, marginBottom: spacing.xs }}>
 							Email me when
 						</legend>
 						{settings.autoRefillEnabled ? (
@@ -538,9 +528,9 @@ export function AccountUsageCreditsSection(
 						)}
 					</fieldset>
 					<div>
-						<button type="submit" disabled={saving} css={primaryButtonCss}>
+						<Button type="submit" disabled={saving} variant="primary">
 							{saving ? 'Saving…' : 'Save'}
-						</button>
+						</Button>
 					</div>
 				</AccountManagementPanel>
 			</>
@@ -731,6 +721,3 @@ export function AccountUsageCreditsSection(
 	if (!credits.eligible) return renderIneligible(credits)
 	return draft ? renderWallet(credits, draft) : null
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })

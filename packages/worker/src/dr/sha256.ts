@@ -15,3 +15,17 @@ export async function sha256Hex(
 	const digest = await crypto.subtle.digest('SHA-256', copy)
 	return toHex(new Uint8Array(digest))
 }
+
+/**
+ * Hash a stream without buffering it. DigestStream is a Workers runtime
+ * extension exposed on `crypto`, not a bare global.
+ */
+export async function sha256HexOfStream(
+	stream: ReadableStream<Uint8Array>,
+): Promise<string> {
+	const digest = new (
+		crypto as unknown as { DigestStream: typeof DigestStream }
+	).DigestStream('SHA-256')
+	await stream.pipeTo(digest)
+	return toHex(new Uint8Array(await digest.digest))
+}

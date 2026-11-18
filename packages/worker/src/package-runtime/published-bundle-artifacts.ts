@@ -1,4 +1,8 @@
 import {
+	deleteLinkedArtifactGroups,
+	linkedArtifactSourceKvPrefix,
+} from './linked-artifact-store.ts'
+import {
 	isPublishedArtifactRefusedByLoadSites,
 	isUnrepairablePreBindingArtifact,
 } from './pre-binding-artifact-repair.ts'
@@ -29,10 +33,11 @@ import {
 	type PublishedBundleArtifactRecord,
 	updatePublishedBundleArtifactRow,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
+import { listEntitySourcesByIds } from '#worker/repo/entity-sources.ts'
 import {
-	advanceEntitySourceServingCommit,
-	listEntitySourcesByIds,
-} from '#worker/repo/entity-sources.ts'
+	advanceServingCommit,
+	type ServingAdvanceActor,
+} from '#worker/package-capabilities/serving-commit-advance.ts'
 import { normalizeRepoWorkspacePath } from '#worker/repo/manifest.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import {
@@ -49,6 +54,7 @@ import {
 	type PreparedPublishedBundleArtifactPersist,
 	type PublishedPackageArtifactBuilders,
 	buildPublishedPackageArtifactTargetBundle,
+	bundleArtifactSha256,
 	toDbRowInput,
 	toPersistPublishedPackageArtifactInput,
 	upsertPreparedPublishedBundleArtifactRows,
@@ -415,7 +421,7 @@ export async function isPublishedPackageArtifactBuiltForCommit(input: {
 	// packages) is a gap. Local execute has no source fallback and reports it
 	// as a missing importable artifact, so publish repair must rebuild it.
 	if (
-		isPublishedArtifactRefusedByLoadSites({
+		await isPublishedArtifactRefusedByLoadSites({
 			artifact: loaded.artifact,
 			sourceFiles: snapshot?.files ?? null,
 		})
@@ -551,7 +557,7 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	// commit. A pre-binding bundle that inlines other packages cannot be bound
 	// in place, so copying it forward would keep the gap at every later
 	// commit. Rebuild it from source instead.
-	if (isUnrepairablePreBindingArtifact(loaded.artifact)) {
+	if (await isUnrepairablePreBindingArtifact(loaded.artifact)) {
 		return false
 	}
 	const [previousSnapshot, nextSnapshot] = await Promise.all([
@@ -565,7 +571,7 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 	])
 	if (!previousSnapshot?.files || !nextSnapshot?.files) return false
 	if (
-		publishedPackageArtifactTargetInputsChanged({
+		await publishedPackageArtifactTargetInputsChanged({
 			entryPoint: input.target.entryPoint,
 			previousFiles: previousSnapshot.files,
 			nextFiles: nextSnapshot.files,
@@ -609,6 +615,14 @@ export async function reusePublishedPackageArtifactIfUnchanged(input: {
 		entryPoint,
 		kvKey,
 		dependencies: loaded.artifact.dependencies,
+		// Same modules as the earlier commit's artifact, so same build origin.
+		builtIn: loaded.row.builtIn
+			? {
+					origin: loaded.row.builtIn,
+					contextName: loaded.row.builtContextName,
+				}
+			: null,
+		bundleSha256: await bundleArtifactSha256(artifact),
 	})
 	try {
 		await writePublishedBundleArtifact({
@@ -675,7 +689,7 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 		if (!loaded?.artifact) continue
 		const priorCommit = loaded.artifact.publishedCommit
 		if (loaded.row.publishedCommit !== priorCommit) continue
-		if (isUnrepairablePreBindingArtifact(loaded.artifact)) continue
+		if (await isUnrepairablePreBindingArtifact(loaded.artifact)) continue
 		const previousSnapshot = await readPublishedSourceSnapshotCached({
 			env: input.env,
 			sourceId: input.source.id,
@@ -685,7 +699,7 @@ export async function publishedPackageArtifactTargetsReusableForFiles(input: {
 		if (!previousSnapshot?.files) continue
 		const previousFiles = packageRootFiles(input.source, previousSnapshot.files)
 		if (
-			publishedPackageArtifactTargetInputsChanged({
+			await publishedPackageArtifactTargetInputsChanged({
 				entryPoint: target.entryPoint,
 				previousFiles,
 				nextFiles: input.files,
@@ -811,6 +825,8 @@ export async function rebuildPublishedPackageArtifacts(
 		source: EntitySourceRow
 		savedPackage: SavedPackageRecord
 		manifest: AuthoredPackageJson
+		/** Who published; the jobs this commit adds are enabled as them. */
+		actor?: ServingAdvanceActor
 	} & PublishedPackageArtifactBuilders,
 ) {
 	const publishedCommit = input.source.published_commit
@@ -887,7 +903,7 @@ export async function rebuildPublishedPackageArtifacts(
 					buildModuleBundle: input.buildModuleBundle,
 					buildImportableModuleBundle: input.buildImportableModuleBundle,
 				})
-				const prepared = preparePublishedBundleArtifactPersist(
+				const prepared = await preparePublishedBundleArtifactPersist(
 					toPersistPublishedPackageArtifactInput({
 						env: input.env,
 						userId: input.userId,
@@ -929,13 +945,16 @@ async function advanceServingCommitAfterCompleteRebuild(input: {
 	env: Env
 	userId: string
 	source: EntitySourceRow
+	actor?: ServingAdvanceActor
 }) {
 	const publishedCommit = input.source.published_commit
 	if (!publishedCommit) return
-	await advanceEntitySourceServingCommit(input.env.APP_DB, {
-		id: input.source.id,
+	await advanceServingCommit({
+		env: input.env,
+		sourceId: input.source.id,
 		userId: input.source.user_id,
 		commit: publishedCommit,
+		actor: input.actor,
 	})
 }
 
@@ -958,6 +977,10 @@ export async function deletePublishedArtifactsForSource(input: {
 				})
 			}),
 		)
+		await deleteLinkedArtifactGroups({
+			kv: input.env.BUNDLE_ARTIFACTS_KV,
+			prefix: linkedArtifactSourceKvPrefix(input.sourceId),
+		})
 	}
 	await deletePublishedBundleArtifactRowsBySourceId(
 		input.env.APP_DB,

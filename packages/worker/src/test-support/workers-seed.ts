@@ -104,6 +104,9 @@ export async function ensurePackageSubscriptionTestSchema(db: D1Database) {
 			entry_point TEXT NOT NULL,
 			kv_key TEXT NOT NULL,
 			dependencies_json TEXT NOT NULL DEFAULT '[]',
+			built_in TEXT,
+			built_context_name TEXT,
+			bundle_sha256 TEXT,
 			created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 		)`,

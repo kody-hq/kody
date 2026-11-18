@@ -114,6 +114,16 @@ they stayed signed out of the app.
      decision queries filter by kind, so no flow can redeem another's code.
      Migration 0244 widens the `kind` check to allow `account`.
 
+8. **Quieter entry point (amended 2026-11-17).** Both device options on `/login`
+   (and the package-app one on `/verify`) are now one small text link, "Using an
+   e-reader or older browser? Sign in with another device.", below every other
+   sign-in option. It is still a plain form post (a submit button styled as a
+   link), so it works with JavaScript off. "Keep this browser signed in" moved
+   to the account code screen: it posts `intent=remember` to `/login/device`,
+   which rewrites the unfinished row's `request_json` remember-me.
+   `page-init.js` saves it on change in the background; without JavaScript a
+   Save button posts it.
+
 ## Consequences
 
 - Package-app visitor sign-in and full Kody account sign-in both get the

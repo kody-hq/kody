@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
@@ -13,17 +20,12 @@ import {
 	type RepositoryOwnerOption,
 } from '#universal/repository-create.ts'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	colors,
 	radius,
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	AccountManagementMessage,
@@ -31,11 +33,8 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 type Props = {
 	payload: RepositoryCreateOptions
@@ -170,12 +169,9 @@ function RepositoryCreateForm(props: {
 						{formError}
 					</AccountManagementMessage>
 				) : null}
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Owner</span>
-					<select
+				<Field label="Owner">
+					<Select
 						name="owner"
-						data-field-ring
-						css={accountInputCss}
 						value={owner}
 						disabled={mutation.isPending}
 						aria-invalid={serverError?.field === 'owner' || undefined}
@@ -189,17 +185,16 @@ function RepositoryCreateForm(props: {
 								{ownerLabel(option)}
 							</option>
 						))}
-					</select>
-				</label>
-				<label css={accountFieldCss}>
-					<span css={accountFieldLabelCss}>Repository name</span>
+					</Select>
+				</Field>
+				<label css={fieldCss}>
+					<span css={fieldLabelCss}>Repository name</span>
 					<span css={nameFieldCss}>
 						<span css={namePrefixCss} aria-hidden="true">
 							@{owner}/
 						</span>
-						<input
+						<Input
 							name="name"
-							data-field-ring
 							css={nameInputCss}
 							value={name}
 							required
@@ -231,24 +226,17 @@ function RepositoryCreateForm(props: {
 							{nameError}
 						</span>
 					) : null}
-					<span id={nameNoteId} css={accountFieldNoteCss}>
+					<span id={nameNoteId} css={fieldDescriptionCss}>
 						{repositoryNameHint} New repositories are private.
 					</span>
 				</label>
 				<div css={accountActionsCss}>
-					<button
-						type="submit"
-						disabled={mutation.isPending}
-						css={getPillButtonCss({ size: 'sm' })}
-					>
+					<Button type="submit" disabled={mutation.isPending} variant="primary">
 						{mutation.isPending ? 'Creating…' : 'Create repository'}
-					</button>
-					<SiteLink
-						href={props.repositoriesHref}
-						css={getGhostButtonCss({ size: 'sm' })}
-					>
+					</Button>
+					<Button href={props.repositoriesHref} variant="secondary">
 						Cancel
-					</SiteLink>
+					</Button>
 				</div>
 			</form>
 		</AccountManagementPanel>
@@ -282,19 +270,16 @@ function RepositoryCreatedView(props: {
 						copiedLabel="Copied"
 						ariaLabel="Copy prompt"
 					/>
-					<SiteLink
-						href={created.repositoryHref}
-						css={getGhostButtonCss({ size: 'sm' })}
-					>
+					<Button href={created.repositoryHref} variant="secondary">
 						Open repository
-					</SiteLink>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={props.onCreateAnother}
 					>
 						Create another
-					</button>
+					</Button>
 				</div>
 			</AccountManagementPanel>
 		</>
@@ -329,7 +314,6 @@ const namePrefixCss: CSSObject = {
 }
 
 const nameInputCss: CSSObject = {
-	...accountInputCss,
 	flex: '1 1 auto',
 	minWidth: 0,
 	borderTopLeftRadius: 0,

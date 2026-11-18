@@ -337,6 +337,7 @@ function CommentComposer({
 		>
 			<div css={{ display: 'flex', gap: 9, alignItems: 'start' }}>
 				<Avatar actor={actor} />
+				{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless composer inside its own frame */}
 				<textarea
 					ref={input}
 					role="combobox"

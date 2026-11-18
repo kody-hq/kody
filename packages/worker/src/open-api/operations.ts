@@ -619,6 +619,31 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 			'executionContextShareRemove',
 		],
 		[
+			'GET',
+			'/v1/execution-contexts/{id}/machine-access',
+			'executionContextMachineAccessList',
+		],
+		[
+			'PUT',
+			'/v1/execution-contexts/{id}/machine-access',
+			'executionContextMachineAccessGrant',
+		],
+		[
+			'DELETE',
+			'/v1/execution-contexts/{id}/machine-access/{grant_id}',
+			'executionContextMachineAccessRevoke',
+		],
+		[
+			'PUT',
+			'/v1/execution-contexts/{id}/machine-access/packages',
+			'executionContextMachineAccessPackagesSet',
+		],
+		[
+			'GET',
+			'/v1/execution-contexts/{id}/shell-suggestions',
+			'executionContextShellSuggestions',
+		],
+		[
 			'POST',
 			'/v1/execution-contexts/{id}/attachments',
 			'executionContextAttach',

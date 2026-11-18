@@ -75,8 +75,12 @@ async function completePendingFromCallback(
 	env: Env,
 	callbackResponse: Response,
 	username: string,
+	browserCookie?: string,
 ) {
 	const pendingCookie = pendingCookieFrom(callbackResponse)
+	const completionCookie = browserCookie
+		? `${pendingCookie}; ${browserCookie}`
+		: pendingCookie
 	// CSRF is inside the signed cookie; complete with a mismatch first to prove
 	// rejection, then read via completing with the real token from a second
 	// park is awkward in unit tests — extract csrf by completing with the
@@ -96,7 +100,7 @@ async function completePendingFromCallback(
 		env,
 		request: new Request('http://example.com/signup/choose-username', {
 			method: 'POST',
-			headers: { Cookie: pendingCookie },
+			headers: { Cookie: completionCookie },
 		}),
 		body: { username, csrf: loaded.csrf },
 	})
@@ -1162,17 +1166,18 @@ test('MOCK_ client ids run the whole flow in-worker and refuse disconnecting the
 	expect(countRows(sqlite, 'oauth_connections')).toBe(1)
 })
 
-test('OAuth signup persists first-touch UTMs from the start URL through login state', async () => {
+test('OAuth signup reads first-touch UTMs from the kody_first_touch cookie at account creation', async () => {
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db)
 	mockGithubProfileExchange('utm-oauth@example.com')
 
+	// Start URL query attribution is ignored; the cookie is the only path.
 	const { response: callbackResponse } = await completeProviderFlow(
 		env,
 		'github',
 		{
 			startUrl:
-				'http://example.com/auth/github?utm_source=youtube&utm_medium=video&utm_campaign=bwk-2026-08-27&landing_path=%2Fsignup',
+				'http://example.com/auth/github?utm_source=query-relay&landing_path=%2Fquery-relay',
 		},
 	)
 	expect(callbackResponse.status).toBe(302)
@@ -1183,8 +1188,17 @@ test('OAuth signup persists first-touch UTMs from the start URL through login st
 		env,
 		callbackResponse,
 		'utm-oauth',
+		`kody_first_touch=${new URLSearchParams({
+			utm_source: 'youtube',
+			utm_medium: 'video',
+			utm_campaign: 'bwk-2026-08-27',
+			landing_path: '/signup',
+		})}`,
 	)
 	expect(completed.status).toBe(200)
+	expect(completed.headers.getSetCookie()).toContain(
+		'kody_first_touch=; Path=/; Max-Age=0; SameSite=Lax',
+	)
 	expect(completed.data).toMatchObject({
 		ok: true,
 		redirectTo: '/onboarding?accountCreated=1',
@@ -1306,7 +1320,7 @@ test('claiming a guest with GitHub emits one user.guest_claimed and no user.crea
 	const { sqlite, db } = createMigratedDb()
 	const env = createAppEnv(db)
 	const created = await createGuestAccount({
-		db,
+		env,
 		requestIp: '203.0.113.9',
 		clientName: 'Claim Agent',
 	})

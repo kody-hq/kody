@@ -12,12 +12,16 @@ const mockModule = vi.hoisted(() => ({
 	sqlQuery: vi.fn(),
 	getSavedPackageById: vi.fn(),
 	authorizePackageWrite: vi.fn(),
-	assertStorageRunnerWriteWithinEntitlement: vi.fn(),
+	writeStorageWithinEntitlement: vi.fn(),
 }))
 
 vi.mock('#worker/storage-runner.ts', () => ({
-	assertStorageRunnerWriteWithinEntitlement: (...args: Array<unknown>) =>
-		mockModule.assertStorageRunnerWriteWithinEntitlement(...args),
+	writeStorageWithinEntitlement: (input: {
+		legacyWrite: () => Promise<unknown>
+	}) => {
+		mockModule.writeStorageWithinEntitlement(input)
+		return input.legacyWrite()
+	},
 	isReadOnlyStorageSqlQuery: (query: string) =>
 		query.trim().toLowerCase().startsWith('select'),
 	storageRunnerRpc: () => ({
@@ -223,9 +227,6 @@ test('writable storageQuery entitlements use the bound org, not the personal pla
 		kodyId: 'pkg',
 	})
 	mockModule.authorizePackageWrite.mockResolvedValue(undefined)
-	mockModule.assertStorageRunnerWriteWithinEntitlement.mockResolvedValue(
-		undefined,
-	)
 	mockModule.sqlQuery.mockResolvedValue({
 		columns: [],
 		rows: [],
@@ -269,9 +270,7 @@ test('writable storageQuery entitlements use the bound org, not the personal pla
 		} as never,
 	)
 
-	expect(
-		mockModule.assertStorageRunnerWriteWithinEntitlement,
-	).toHaveBeenCalledWith(
+	expect(mockModule.writeStorageWithinEntitlement).toHaveBeenCalledWith(
 		expect.objectContaining({
 			userId: teamOrgId,
 			email: null,

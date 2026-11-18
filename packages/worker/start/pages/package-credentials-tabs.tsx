@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 
 import type { ReactNode } from 'react'
@@ -83,23 +84,6 @@ export const rowCss = {
 	flexWrap: 'wrap' as const,
 	alignItems: 'baseline',
 	gap: spacing.sm,
-}
-export const tableCss = {
-	width: '100%',
-	borderCollapse: 'collapse' as const,
-	fontSize: typography.fontSize.sm,
-	'& th': {
-		textAlign: 'left' as const,
-		fontWeight: typography.fontWeight.semibold,
-		color: colors.textMuted,
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-	},
-	'& td': {
-		padding: spacing.sm,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top' as const,
-	},
 }
 function toneColor(tone: MappingStatusTone) {
 	switch (tone) {
@@ -346,6 +330,7 @@ export function renderIncomplete(
 		</section>
 	)
 }
+/** Needs table (shared `Table`), incomplete mappings, and locked keys. */
 export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 	const { view, orgSlug } = context
 	const needs = sortNeedsByAttention(view.needs)
@@ -367,7 +352,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 					</p>
 				) : (
 					<div css={{ overflowX: 'auto' }}>
-						<table css={tableCss}>
+						<Table>
 							<thead>
 								<tr>
 									<th scope="col">Need</th>
@@ -420,7 +405,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					</div>
 				)}
 				{view.triggers.length > 0 ? (

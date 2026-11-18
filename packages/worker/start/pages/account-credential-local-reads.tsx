@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -6,30 +8,18 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialLocalReads } from '#start/server/credential-local-reads'
 import type { CredentialLocalReadsView } from '#universal/credentials-list.ts'
+import type { LocalReadsIneligibility } from '#universal/credential-local-reads-eligibility.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 
 const localReadsAnchor = 'local-reads'
 
 const mutedCss = css({ margin: 0, color: colors.textMuted })
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	fontSize: '0.875rem',
-	'th, td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.border}`,
-		verticalAlign: 'top',
-	},
-})
 
 function localReadsExplanation(vault: boolean) {
 	return vault
@@ -80,6 +70,57 @@ function useLocalReadsSwitch(input: {
 	return { enabled, change, error, pending: mutation.isPending }
 }
 
+/** The credential page's link to its Local reads field, showing the state. */
+export function LocalReadsStateLink(props: { state: string }) {
+	return (
+		<SiteLink href={`#${localReadsAnchor}`} data-testid="local-reads-entry">
+			{props.state}
+		</SiteLink>
+	)
+}
+
+/** Why this credential cannot be read locally, and the step that fixes it. */
+export function CredentialLocalReadsIneligible(props: {
+	ineligibility: LocalReadsIneligibility
+}) {
+	const { fix, reason } = props.ineligibility
+	return (
+		<div css={fieldCss} id={localReadsAnchor}>
+			<span css={fieldLabelCss}>Local reads</span>
+			<div css={{ display: 'grid', gap: spacing.sm }}>
+				<p
+					css={{ margin: 0, color: colors.text }}
+					data-testid="local-reads-state"
+				>
+					Not available.
+				</p>
+				<p css={mutedCss} data-testid="local-reads-ineligible-reason">
+					{reason}
+				</p>
+				{fix ? (
+					<div>
+						<Button href={fix.href} variant="secondary">
+							{fix.label}
+						</Button>
+					</div>
+				) : null}
+			</div>
+		</div>
+	)
+}
+
+/** Local reads failed to load, which is not the same as "not supported". */
+export function CredentialLocalReadsUnavailable() {
+	return (
+		<div css={fieldCss} id={localReadsAnchor}>
+			<span css={fieldLabelCss}>Local reads</span>
+			<p css={mutedCss} data-testid="local-reads-unavailable">
+				Kody could not load local reads right now. Reload to try again.
+			</p>
+		</div>
+	)
+}
+
 export function CredentialLocalReadsSection(props: {
 	view: CredentialLocalReadsView
 	orgSlug: string
@@ -111,19 +152,15 @@ export function CredentialLocalReadsSection(props: {
 				<p css={mutedCss}>{localReadsExplanation(props.vault)}</p>
 				{view.canChange ? (
 					<div>
-						<button
+						<Button
 							type="button"
-							css={
-								toggle.enabled
-									? getGhostButtonCss({ size: 'sm' })
-									: getPillButtonCss({ size: 'sm' })
-							}
+							variant={toggle.enabled ? 'secondary' : 'primary'}
 							disabled={toggle.pending}
 							onClick={() => void toggle.change(!toggle.enabled)}
 							data-testid="local-reads-toggle"
 						>
 							{toggle.enabled ? 'Turn off local reads' : 'Turn on local reads'}
-						</button>
+						</Button>
 					</div>
 				) : view.manageHref ? (
 					<p css={mutedCss}>
@@ -162,7 +199,7 @@ function LocalReadsList(props: {
 	}
 	return (
 		<div css={{ overflowX: 'auto' }}>
-			<table css={tableCss} aria-label="Local reads">
+			<Table aria-label="Local reads">
 				<thead>
 					<tr>
 						<th>When</th>
@@ -194,7 +231,7 @@ function LocalReadsList(props: {
 						</tr>
 					))}
 				</tbody>
-			</table>
+			</Table>
 			<p css={mutedCss}>
 				Kody keeps local reads for 90 days. Values are never recorded.
 			</p>
@@ -214,7 +251,13 @@ export type LocalReadsApprovalProps = {
 				canChange: boolean
 				detailHref: string
 		  }
-		| { ok: false; message: string }
+		| {
+				ok: false
+				message: string
+				name: string | null
+				fix: LocalReadsIneligibility['fix']
+				detailHref: string | null
+		  }
 }
 
 /** The page a refused CLI read links to: one button turns local reads on. */
@@ -222,9 +265,36 @@ export function LocalReadsApprovalPage(props: LocalReadsApprovalProps) {
 	const { approval } = props
 	if (!approval.ok) {
 		return (
-			<section css={{ display: 'grid', gap: spacing.sm, maxWidth: '40rem' }}>
-				<h1 css={cardTitleCss}>Turn on local reads</h1>
-				<p css={descriptionCss}>{approval.message}</p>
+			<section
+				css={{ display: 'grid', gap: spacing.md, maxWidth: '40rem' }}
+				data-testid="local-reads-ineligible"
+			>
+				<h1 css={cardTitleCss}>
+					{approval.name ? (
+						<>
+							Local reads are not available for <code>{approval.name}</code>
+						</>
+					) : (
+						'Secret not found'
+					)}
+				</h1>
+				<p css={descriptionCss} data-testid="local-reads-ineligible-reason">
+					{approval.message}
+				</p>
+				{approval.fix || approval.detailHref ? (
+					<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm }}>
+						{approval.fix ? (
+							<Button href={approval.fix.href} variant="primary">
+								{approval.fix.label}
+							</Button>
+						) : null}
+						{approval.detailHref ? (
+							<Button href={approval.detailHref} variant="secondary">
+								Open the secret&apos;s page
+							</Button>
+						) : null}
+					</div>
+				) : null}
 			</section>
 		)
 	}
@@ -263,15 +333,16 @@ function LocalReadsApprovalForm(props: {
 				</p>
 			) : approval.canChange ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss()}
+						variant="primary"
+						size="lg"
 						disabled={toggle.pending}
 						onClick={() => void toggle.change(true)}
 						data-testid="local-reads-approve"
 					>
 						Turn on local reads
-					</button>
+					</Button>
 				</div>
 			) : (
 				<p css={mutedCss}>
@@ -285,12 +356,9 @@ function LocalReadsApprovalForm(props: {
 				</p>
 			) : null}
 			<div>
-				<SiteLink
-					href={approval.detailHref}
-					css={getGhostButtonCss({ size: 'sm' })}
-				>
+				<Button href={approval.detailHref} variant="secondary">
 					Open the secret&apos;s page
-				</SiteLink>
+				</Button>
 			</div>
 		</section>
 	)

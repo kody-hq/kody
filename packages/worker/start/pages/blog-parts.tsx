@@ -138,12 +138,6 @@ export const blogInlineLinkCss = {
 	marginTop: '1.1rem',
 	fontSize: '0.95rem',
 	fontWeight: 550,
-	color: colors.primaryText,
-	textDecorationThickness: '1.5px',
-	textUnderlineOffset: '3px',
-	'&:hover': {
-		color: colors.text,
-	},
 } satisfies CSSObject
 
 /* One row that scrolls sideways on narrow screens instead of wrapping. */

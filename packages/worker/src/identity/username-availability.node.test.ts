@@ -70,3 +70,23 @@ test('checkUsernameAvailability reports available, taken, reserved, and invalid'
 	})
 	expect(invalid.status).toBe('invalid')
 })
+
+test('a taken format suggestion falls back to its first free suffix variant', async () => {
+	const { sqlite, db } = createMigratedDb()
+	for (const [username, stable] of [
+		['jsdk-j', 'stable-1'],
+		['jsdk-j-2', 'stable-2'],
+	] as const) {
+		sqlite
+			.prepare(
+				`INSERT INTO users (username, email, password_hash, stable_user_id)
+				 VALUES (?, ?, 'x', ?)`,
+			)
+			.run(username, `${stable}@example.com`, stable)
+	}
+
+	const result = await checkUsernameAvailability({ db, username: 'jsdk-j' })
+	expect(result.status).toBe('taken')
+	expect(result.suggestions[0]).toBe('jsdk-j-3')
+	expect(result.suggestions).not.toContain('jsdk-j-2')
+})

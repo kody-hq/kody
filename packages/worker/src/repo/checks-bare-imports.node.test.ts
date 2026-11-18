@@ -200,7 +200,7 @@ test('vendored node_modules packages count as resolvable without a package.json 
 	).toBe(true)
 })
 
-test('validateBarePackageImportDeclarations skips client externals for client entries only', () => {
+test('validateBarePackageImportDeclarations skips client externals for client entries only', async () => {
 	const manifestJson = {
 		name: '@kody/client-externals',
 		exports: { '.': './src/index.ts' },
@@ -221,14 +221,14 @@ test('validateBarePackageImportDeclarations skips client externals for client en
 		'src/client.ts':
 			'import { LitElement } from "lit"\nexport { LitElement }\n',
 	}
-	const clientOnly = validateBarePackageImportDeclarations({
+	const clientOnly = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles,
 		entryPoints: [{ path: 'src/client.ts', bundleKind: 'client' }],
 	})
 	expect(clientOnly.ok).toBe(true)
 
-	const serverEntry = validateBarePackageImportDeclarations({
+	const serverEntry = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles,
 		entryPoints: [{ path: 'src/client.ts', bundleKind: 'callable' }],
@@ -237,13 +237,13 @@ test('validateBarePackageImportDeclarations skips client externals for client en
 	expect(serverEntry.message).toMatch(/undeclared bare package\(s\): "lit"/)
 })
 
-test('validateBarePackageImportDeclarations allows unprefixed Node builtins without a declaration', () => {
+test('validateBarePackageImportDeclarations allows unprefixed Node builtins without a declaration', async () => {
 	const manifestJson = {
 		name: '@kody/node-builtins',
 		exports: { '.': './src/index.ts' },
 		kody: { id: 'node-builtins', description: 'Node builtins package' },
 	} as AuthoredPackageJson
-	const result = validateBarePackageImportDeclarations({
+	const result = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -255,13 +255,13 @@ test('validateBarePackageImportDeclarations allows unprefixed Node builtins with
 	expect(result.ok).toBe(true)
 })
 
-test('validateBarePackageImportDeclarations allows reachable JSON leaves without parsing them as modules', () => {
+test('validateBarePackageImportDeclarations allows reachable JSON leaves without parsing them as modules', async () => {
 	const manifestJson = {
 		name: '@kody/json-leaf',
 		exports: { '.': './src/index.ts' },
 		kody: { id: 'json-leaf', description: 'JSON leaf package' },
 	} as AuthoredPackageJson
-	const result = validateBarePackageImportDeclarations({
+	const result = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -274,13 +274,13 @@ test('validateBarePackageImportDeclarations allows reachable JSON leaves without
 	expect(result.ok).toBe(true)
 })
 
-test('validateBarePackageImportDeclarations fails closed when reachable source does not parse', () => {
+test('validateBarePackageImportDeclarations fails closed when reachable source does not parse', async () => {
 	const manifestJson = {
 		name: '@kody/unparseable',
 		exports: { '.': './src/index.ts' },
 		kody: { id: 'unparseable', description: 'Unparseable package' },
 	} as AuthoredPackageJson
-	const result = validateBarePackageImportDeclarations({
+	const result = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -294,7 +294,7 @@ test('validateBarePackageImportDeclarations fails closed when reachable source d
 	)
 })
 
-function validateSingleEntrySource(entryPath: string, source: string) {
+async function validateSingleEntrySource(entryPath: string, source: string) {
 	const manifestJson = {
 		name: '@kody/parser-by-extension',
 		exports: { '.': `./${entryPath}` },
@@ -304,7 +304,7 @@ function validateSingleEntrySource(entryPath: string, source: string) {
 			app: { entry: `./${entryPath}` },
 		},
 	} as AuthoredPackageJson
-	return validateBarePackageImportDeclarations({
+	return await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -328,25 +328,32 @@ test.each([
 		'function first<T>(xs: T[]): T | undefined { return xs[0] }\n',
 	],
 	['type assertion', 'const first = (xs: unknown) => (<Array<number>>xs)[0]\n'],
-])('.ts app entry with a %s parses as TypeScript without JSX', (_, code) => {
-	for (const extension of ['ts', 'mts', 'cts']) {
-		const result = validateSingleEntrySource(
-			`src/app.${extension}`,
-			code + appFetchExport,
-		)
-		expect(result).toEqual({ ok: true, message: expect.any(String) })
-	}
-})
+])(
+	'.ts app entry with a %s parses as TypeScript without JSX',
+	async (_, code) => {
+		for (const extension of ['ts', 'mts', 'cts']) {
+			const result = await validateSingleEntrySource(
+				`src/app.${extension}`,
+				code + appFetchExport,
+			)
+			expect(result).toEqual({
+				ok: true,
+				message:
+					'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
+			})
+		}
+	},
+)
 
-test('.tsx app entry still parses as TSX', () => {
-	const tsx = validateSingleEntrySource(
+test('.tsx app entry still parses as TSX', async () => {
+	const tsx = await validateSingleEntrySource(
 		'src/app.tsx',
 		'const first = <T,>(xs: T[]): T | undefined => xs[0]\nconst view = <main>{String(first([1]))}</main>\n' +
 			appFetchExport,
 	)
 	expect(tsx.ok).toBe(true)
 
-	const ambiguousGeneric = validateSingleEntrySource(
+	const ambiguousGeneric = await validateSingleEntrySource(
 		'src/app.tsx',
 		'const first = <T>(xs: T[]): T | undefined => xs[0]\n' + appFetchExport,
 	)
@@ -356,8 +363,8 @@ test('.tsx app entry still parses as TSX', () => {
 	)
 })
 
-test('.ts app entry does not accept JSX, matching the bundler loader', () => {
-	const result = validateSingleEntrySource(
+test('.ts app entry does not accept JSX, matching the bundler loader', async () => {
+	const result = await validateSingleEntrySource(
 		'src/app.ts',
 		'const first = (xs: number[]) => xs[0]\nconst view = <main>hi</main>\n' +
 			appFetchExport,
@@ -366,19 +373,19 @@ test('.ts app entry does not accept JSX, matching the bundler loader', () => {
 	expect(result.message).toMatch(/\("src\/app\.ts:2:\d+": /)
 })
 
-test('.jsx parses JSX and .js parses plain JavaScript', () => {
-	const jsx = validateSingleEntrySource(
+test('.jsx parses JSX and .js parses plain JavaScript', async () => {
+	const jsx = await validateSingleEntrySource(
 		'src/app.jsx',
 		'const first = (xs) => xs[0]\nconst view = <main>{first([1])}</main>\n' +
 			appFetchExport,
 	)
 	expect(jsx.ok).toBe(true)
-	const js = validateSingleEntrySource(
+	const js = await validateSingleEntrySource(
 		'src/app.js',
 		'const first = (xs) => xs[0]\n' + appFetchExport,
 	)
 	expect(js.ok).toBe(true)
-	const jsWithTypes = validateSingleEntrySource(
+	const jsWithTypes = await validateSingleEntrySource(
 		'src/app.js',
 		'const first = (xs: number[]) => xs[0]\n' + appFetchExport,
 	)
@@ -386,8 +393,8 @@ test('.jsx parses JSX and .js parses plain JavaScript', () => {
 	expect(jsWithTypes.message).toMatch(/\("src\/app\.js:1:\d+": /)
 })
 
-test('bare imports in a .ts module with a generic arrow are still checked', () => {
-	const result = validateSingleEntrySource(
+test('bare imports in a .ts module with a generic arrow are still checked', async () => {
+	const result = await validateSingleEntrySource(
 		'src/app.ts',
 		'import { z } from "zod"\nconst first = <T>(xs: T[]): T | undefined => xs[0]\nvoid z\n' +
 			appFetchExport,
@@ -396,24 +403,27 @@ test('bare imports in a .ts module with a generic arrow are still checked', () =
 	expect(result.message).toContain('undeclared bare package(s): "zod"')
 })
 
-test('validateBarePackageImportDeclarations does not throw on malformed dynamic kody imports', () => {
+test('validateBarePackageImportDeclarations does not throw on malformed dynamic kody imports', async () => {
 	const manifestJson = {
 		name: '@kody/dynamic-kody',
 		exports: { '.': './src/index.ts' },
 		kody: { id: 'dynamic-kody', description: 'Dynamic kody import package' },
 	} as AuthoredPackageJson
-	expect(() =>
-		validateBarePackageImportDeclarations({
-			manifest: manifestJson,
-			sourceFiles: {
-				'package.json': JSON.stringify(manifestJson),
-				'src/index.ts':
-					'export default async () => await import("kody:@not-a-valid")\n',
-			},
-			entryPoints: [{ path: 'src/index.ts', bundleKind: 'callable' }],
-		}),
-	).not.toThrow()
-	const missingExport = validateBarePackageImportDeclarations({
+	const malformed = await validateBarePackageImportDeclarations({
+		manifest: manifestJson,
+		sourceFiles: {
+			'package.json': JSON.stringify(manifestJson),
+			'src/index.ts':
+				'export default async () => await import("kody:@not-a-valid")\n',
+		},
+		entryPoints: [{ path: 'src/index.ts', bundleKind: 'callable' }],
+	})
+	expect(malformed).toEqual({
+		ok: true,
+		message:
+			'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
+	})
+	const missingExport = await validateBarePackageImportDeclarations({
 		manifest: manifestJson,
 		sourceFiles: {
 			'package.json': JSON.stringify(manifestJson),
@@ -422,15 +432,19 @@ test('validateBarePackageImportDeclarations does not throw on malformed dynamic 
 		},
 		entryPoints: [{ path: 'src/index.ts', bundleKind: 'callable' }],
 	})
-	expect(missingExport.ok).toBe(true)
+	expect(missingExport).toEqual({
+		ok: true,
+		message:
+			'Package entry imports resolve from package.json#dependencies or vendored node_modules.',
+	})
 })
 
-test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undeclared packages', () => {
+test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undeclared packages', async () => {
 	const modules = {
 		'bundle.js':
 			'import { Schema } from "remix/data-schema"\nexport { Schema }\n',
 	}
-	expect(() =>
+	await expect(
 		assertBundleHasNoUnresolvedBareImports({
 			modules,
 			bundleLabel: 'Saved package module "src/index.ts" bundle',
@@ -442,10 +456,10 @@ test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undec
 				'src/index.ts': 'export const ready = true\n',
 			},
 		}),
-	).toThrow(UserCodeError)
+	).rejects.toThrow(UserCodeError)
 
 	try {
-		assertBundleHasNoUnresolvedBareImports({
+		await assertBundleHasNoUnresolvedBareImports({
 			modules,
 			bundleLabel: 'Saved package module "src/index.ts" bundle',
 			sourceFiles: {
@@ -466,28 +480,26 @@ test('assertBundleHasNoUnresolvedBareImports throws UserCodeError only for undec
 	}
 })
 
-test('assertBundleHasNoUnresolvedBareImports allows bare Node builtins left external after bundling', () => {
+test('assertBundleHasNoUnresolvedBareImports allows bare Node builtins left external after bundling', async () => {
 	// fflate's Node build does `import { createRequire } from "module"`; that
 	// stays external under nodejs_compat and must not fail the post-bundle check
 	// (#4074). Prefixed node: imports are already excluded by the bare-import
 	// predicate; this covers the unprefixed form the pre-bundle check skips.
-	expect(() =>
-		assertBundleHasNoUnresolvedBareImports({
-			modules: {
-				'bundle.js':
-					'import { createRequire } from "module"\nconst require = createRequire("/")\nexport { require }\n',
-			},
-			bundleLabel: 'Saved package module "src/index.ts" bundle',
-			sourceFiles: {
-				'package.json': JSON.stringify({
-					name: '@kody/x',
-					dependencies: { fflate: '0.8.2' },
-					exports: { '.': './src/index.ts' },
-				}),
-				'src/index.ts': `import { gzipSync } from 'fflate'\nexport default () => gzipSync(new Uint8Array([1]))\n`,
-			},
-		}),
-	).not.toThrow()
+	await assertBundleHasNoUnresolvedBareImports({
+		modules: {
+			'bundle.js':
+				'import { createRequire } from "module"\nconst require = createRequire("/")\nexport { require }\n',
+		},
+		bundleLabel: 'Saved package module "src/index.ts" bundle',
+		sourceFiles: {
+			'package.json': JSON.stringify({
+				name: '@kody/x',
+				dependencies: { fflate: '0.8.2' },
+				exports: { '.': './src/index.ts' },
+			}),
+			'src/index.ts': `import { gzipSync } from 'fflate'\nexport default () => gzipSync(new Uint8Array([1]))\n`,
+		},
+	})
 })
 
 test('isUndeclaredBarePackageImportFailure distinguishes declared install failures', () => {

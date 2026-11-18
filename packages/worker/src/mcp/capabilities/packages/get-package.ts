@@ -17,11 +17,14 @@ import {
 } from '#worker/community/pending-fork-lookup.ts'
 import { describePackageCredentialNeeds } from '#worker/credentials/package-credential-needs.ts'
 import { isPackageCredentialSuppliersEnabled } from '#worker/credentials/credential-suppliers-flag.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
+import { packageMachineNeedsFor } from '#worker/package-registry/types.ts'
 import { buildPackageImportSpecifier } from '#worker/package-registry/package-import-specifier.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
 import { getSavedPackageWithCommunityProvenanceById } from '#worker/package-registry/repo.ts'
 import { loadPackageSourceBySourceId } from '#worker/package-registry/source.ts'
+import { listPublishedBundleArtifactProvenance } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
@@ -36,7 +39,7 @@ export const getPackageCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), and its credential needs with how each resolves for you (`credentials.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
+			'Load one saved package metadata record for the signed-in user, including community-fork source listing provenance, the full export array, callable export contracts, and FYI metadata for associated package-scoped secrets (names and package_id, never values), its credential needs with how each resolves for you (`credentials.needs`), and the machine access it declares (`machine.needs`). For a single export contract, prefer search({ entity: "package:{kodyId}#{subpath}" }). Does not return README, AGENTS.md, or source files; use repoOpenSession + repoReadFile (or packageGetGitRemote) for those.',
 		keywords: ['package', 'get', 'read', 'metadata', 'exports', 'imports'],
 		readOnly: true,
 		idempotent: true,
@@ -103,10 +106,10 @@ export const getPackageCapability = defineDomainCapability(
 				userId: owner.ownerUserId,
 				sourceId: saved.sourceId,
 			})
-			const projection = buildPackageSearchProjection(
-				loaded.manifest,
-				loaded.files,
-			)
+			const projection = buildPackageSearchProjection(loaded.manifest, {
+				files: loaded.files,
+				parser: await loadModuleSourceParser(),
+			})
 			const packageSecretsById = await listPackageSecretsByPackageIds({
 				env: ctx.env,
 				userId: owner.ownerUserId,
@@ -136,7 +139,30 @@ export const getPackageCapability = defineDomainCapability(
 						commit: publishedCommit,
 					})
 				: null
+			// Informational only: a failed read must not fail packageGet.
+			const provenanceArtifacts = publishedCommit
+				? await listPublishedBundleArtifactProvenance(ctx.env.APP_DB, {
+						userId: owner.ownerUserId,
+						sourceId: saved.sourceId,
+						publishedCommit,
+					}).catch(() => [])
+				: []
 			return {
+				...(publishedCommit && provenanceArtifacts.length > 0
+					? {
+							provenance: {
+								commit: publishedCommit,
+								artifacts: provenanceArtifacts.map((artifact) => ({
+									kind: artifact.artifactKind,
+									name: artifact.artifactName,
+									entry_point: artifact.entryPoint,
+									built_in: artifact.builtIn,
+									context_name: artifact.builtContextName,
+									bundle_sha256: artifact.bundleSha256,
+								})),
+							},
+						}
+					: {}),
 				...(outsideBuild
 					? {
 							build_origin: {
@@ -177,6 +203,14 @@ export const getPackageCapability = defineDomainCapability(
 						loaded.manifest.kody.invalidCredentialSlots ?? {},
 					).map(([key, message]) => ({ key, message })),
 					suppliersEnabled,
+				},
+				machine: {
+					needs: Object.keys(loaded.manifest.kody.machine ?? {}).flatMap(
+						(name) =>
+							packageMachineNeedsFor(loaded.manifest.kody.machine, name).map(
+								(need) => ({ name, ...need }),
+							),
+					),
 				},
 				exports: (projection.exports ?? []).map((exportDetail) => ({
 					subpath: exportDetail.subpath,

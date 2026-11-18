@@ -117,11 +117,18 @@ function createAuthTestContext(
 			: {}),
 	} as unknown as Parameters<typeof createAuthHandler>[0])
 
-	function request(body: unknown, url = 'http://example.com/auth') {
+	function request(
+		body: unknown,
+		url = 'http://example.com/auth',
+		cookie?: string,
+	) {
 		return handler({
 			request: new Request(url, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(cookie ? { Cookie: cookie } : {}),
+				},
 				body: typeof body === 'string' ? body : JSON.stringify(body),
 			}),
 		})
@@ -134,14 +141,19 @@ function createAuthTestContext(
 			email: string,
 			username: string | undefined,
 			extra: Record<string, unknown> = {},
+			cookie?: string,
 		) {
-			return request({
-				email,
-				username,
-				password: 'password123',
-				mode: 'signup',
-				...extra,
-			})
+			return request(
+				{
+					email,
+					username,
+					password: 'password123',
+					mode: 'signup',
+					...extra,
+				},
+				'http://example.com/auth',
+				cookie,
+			)
 		},
 	}
 }
@@ -165,6 +177,9 @@ type TestUser = {
 	plan: string | null
 	stable_user_id: string
 	personal_org_id: string
+	whats_new_email_opt_in: number
+	whats_new_email_opt_in_updated_at: string | null
+	whats_new_email_opt_in_source: string | null
 } & Record<(typeof utmColumns)[number], string | null>
 
 function createTestDb(
@@ -230,6 +245,15 @@ function createTestDb(
 							plan: nullable(values.plan),
 							stable_user_id: String(values.stable_user_id ?? ''),
 							personal_org_id: String(values.personal_org_id ?? ''),
+							whats_new_email_opt_in: Number(
+								values.whats_new_email_opt_in ?? 0,
+							),
+							whats_new_email_opt_in_updated_at: nullable(
+								values.whats_new_email_opt_in_updated_at,
+							),
+							whats_new_email_opt_in_source: nullable(
+								values.whats_new_email_opt_in_source,
+							),
 							...Object.fromEntries(
 								utmColumns.map((column) => [column, nullable(values[column])]),
 							),
@@ -360,6 +384,9 @@ function createTestDb(
 			plan: 'free',
 			stable_user_id: testStableUserIdFromEmail(email),
 			personal_org_id: testStableUserIdFromEmail(email),
+			whats_new_email_opt_in: 0,
+			whats_new_email_opt_in_updated_at: null,
+			whats_new_email_opt_in_source: null,
 			...Object.fromEntries(utmColumns.map((column) => [column, null])),
 		} as TestUser
 		nextId += 1
@@ -494,7 +521,7 @@ test('auth handler login and signup workflow', async () => {
 		[
 			'no spaces',
 			400,
-			'Username must be 3 to 32 characters, use only letters, numbers, and hyphens, and start and end with a letter or number.',
+			'Username must be 3 to 32 characters, use only letters, numbers, and single hyphens (no two in a row), and start and end with a letter or number.',
 		],
 		['kody', 400, 'This username is reserved.'],
 		['postmaster', 400, 'This username is reserved.'],
@@ -580,11 +607,44 @@ test('auth handler login and signup workflow', async () => {
 	])
 })
 
-test('password signup schedules user.created with first-touch attribution and persists UTMs once', async () => {
+test.each([true, false, undefined, 'true'])(
+	'password signup records only explicit newsletter consent: %s',
+	async (choice) => {
+		const context = createAuthTestContext()
+		const response = await context.signup(
+			'reader@example.com',
+			'reader-choice',
+			{ whatsNewEmailOptIn: choice },
+		)
+		expect(response.status).toBe(200)
+		const user = context.testDb.users.get('reader@example.com')
+		expect(user?.whats_new_email_opt_in).toBe(choice === true ? 1 : 0)
+		expect(user?.whats_new_email_opt_in_source).toBe(
+			choice === true ? 'signup' : null,
+		)
+		if (choice === true) {
+			expect(user?.whats_new_email_opt_in_updated_at).toEqual(
+				expect.any(String),
+			)
+		} else {
+			expect(user?.whats_new_email_opt_in_updated_at).toBeNull()
+		}
+	},
+)
+
+test('password signup reads first-touch attribution from the kody_first_touch cookie and persists UTMs once', async () => {
 	const context = createAuthTestContext()
 
+	// Attribution relayed in the body is ignored; the cookie is the only path.
 	const plainEmail = 'newbie@example.com'
-	expect((await context.signup(plainEmail, 'newbie')).status).toBe(200)
+	expect(
+		(
+			await context.signup(plainEmail, 'newbie', {
+				utmSource: 'body-relay',
+				landingPath: '/body-relay',
+			})
+		).status,
+	).toBe(200)
 	const plainStableUserId = context.testDb.users.get(plainEmail)?.stable_user_id
 	expect(plainStableUserId).toMatch(/^[a-f0-9]{64}$/)
 	expect(plainStableUserId).not.toBe(testStableUserIdFromEmail(plainEmail))
@@ -596,15 +656,7 @@ test('password signup schedules user.created with first-touch attribution and pe
 			username: 'newbie',
 			email: plainEmail,
 		},
-		attribution: {
-			utmSource: null,
-			utmMedium: null,
-			utmCampaign: null,
-			utmContent: null,
-			utmTerm: null,
-			landingPath: null,
-			referrer: null,
-		},
+		attribution: null,
 	})
 	expect(
 		welcomeCreditMocks.maybeGrantSignupWelcomeCredits,
@@ -618,14 +670,22 @@ test('password signup schedules user.created with first-touch attribution and pe
 	).not.toBe(plainStableUserId)
 
 	const email = 'attributed@example.com'
-	const response = await context.signup(email, 'attributed', {
-		utmSource: 'youtube',
-		utmMedium: 'video',
-		utmCampaign: 'bwk-2026-08-27',
-		landingPath: '/signup',
-		referrer: 'https://youtube.com/watch?v=abc',
-	})
+	const response = await context.signup(
+		email,
+		'attributed',
+		{},
+		`kody_ref=; kody_first_touch=${new URLSearchParams({
+			utm_source: 'youtube',
+			utm_medium: 'video',
+			utm_campaign: 'bwk-2026-08-27',
+			landing_path: '/signup',
+			referrer: 'https://youtube.com/watch?v=abc',
+		})}`,
+	)
 	expect(response.status).toBe(200)
+	expect(response.headers.getSetCookie()).toContain(
+		'kody_first_touch=; Path=/; Max-Age=0; SameSite=Lax',
+	)
 	const user = context.testDb.users.get(email)
 	expect(user).toMatchObject({
 		utm_source: 'youtube',

@@ -12,6 +12,7 @@ import {
 import {
 	freeOrgCapDowngradeGuardSql,
 	grantAdminCreditsToOrg,
+	setAdminOrgCompedSeats,
 	setAdminOrgCreditEligibility,
 	setAdminOrgPlan,
 	writeOrgManualPlan,
@@ -599,4 +600,124 @@ test('org credit eligibility changes update the org and write both audits', asyn
 			)
 			.get(),
 	).toMatchObject({ count: 2 })
+})
+
+test('comped seat changes write only the cap, are idempotent, and audit once', async () => {
+	const { sqlite, auditSqlite, env, audit } = createDb()
+	const ownerId = insertUser(sqlite, { email: 'comp-owner@example.com' })
+	const orgId = testStableUserIdFromEmail('comp-team@example.com')
+	insertOrg(sqlite, { id: orgId, slug: 'comp-team', plan: 'pro' })
+	sqlite
+		.prepare(
+			`UPDATE orgs SET admin_credits_eligible = 1, stripe_plan = NULL
+			 WHERE id = ?`,
+		)
+		.run(orgId)
+	addOwner(sqlite, orgId, ownerId)
+	const billingColumns = `SELECT plan, stripe_plan, stripe_customer_id,
+		admin_credits_eligible, entitlement_ladder FROM orgs WHERE id = ?`
+	const before = sqlite.prepare(billingColumns).get(orgId)
+
+	await expect(
+		setAdminOrgCompedSeats({
+			...auditInput(env, audit),
+			target: { org: '@comp-team' },
+			compedSeats: 50,
+			reason: 'Comp 50 seats.',
+		}),
+	).resolves.toEqual({
+		orgId,
+		previous: null,
+		next: 50,
+		changed: true,
+		liveSeats: 1,
+	})
+	await expect(
+		setAdminOrgCompedSeats({
+			...auditInput(env, audit),
+			target: { orgId },
+			compedSeats: 50,
+			reason: 'Repeat.',
+		}),
+	).resolves.toMatchObject({ previous: 50, next: 50, changed: false })
+
+	expect(
+		sqlite.prepare(`SELECT comped_seats FROM orgs WHERE id = ?`).get(orgId),
+	).toEqual({ comped_seats: 50 })
+	expect(sqlite.prepare(billingColumns).get(orgId)).toEqual(before)
+	const orgEvents = auditSqlite
+		.prepare(
+			`SELECT details_json FROM org_audit_events
+			 WHERE org_id = ? AND action = 'admin_comped_seats_set'`,
+		)
+		.all(orgId) as Array<{ details_json: string }>
+	expect(orgEvents).toHaveLength(1)
+	expect(JSON.parse(orgEvents[0]!.details_json)).toMatchObject({
+		previous: null,
+		next: 50,
+		liveSeats: 1,
+		reason: 'Comp 50 seats.',
+	})
+	expect(
+		auditSqlite
+			.prepare(
+				`SELECT reason FROM audit_events WHERE action = 'adminOrgCompedSeatsSet'`,
+			)
+			.all(),
+	).toEqual([
+		{
+			reason: `org_id=${orgId};comped_seats=50;previous=none;live_seats=1;reason=Comp 50 seats.`,
+		},
+	])
+
+	await expect(
+		setAdminOrgCompedSeats({
+			...auditInput(env, audit),
+			target: { orgId },
+			compedSeats: null,
+			reason: 'Remove the cap.',
+		}),
+	).resolves.toMatchObject({ previous: 50, next: null, changed: true })
+})
+
+test('comped seat changes reject invalid counts, a missing reason, and deleted orgs', async () => {
+	const { sqlite, env, audit } = createDb()
+	const orgId = testStableUserIdFromEmail('comp-invalid@example.com')
+	insertOrg(sqlite, { id: orgId, slug: 'comp-invalid', plan: 'pro' })
+	for (const compedSeats of [0, -1, 1.5, 100_001]) {
+		await expect(
+			setAdminOrgCompedSeats({
+				...auditInput(env, audit),
+				target: { orgId },
+				compedSeats,
+				reason: 'Bad count.',
+			}),
+		).rejects.toThrow('Comped seats must be a whole number')
+	}
+	await expect(
+		setAdminOrgCompedSeats({
+			...auditInput(env, audit),
+			target: { orgId },
+			compedSeats: 5,
+			reason: '  ',
+		}),
+	).rejects.toThrow('reason')
+	const deletedId = testStableUserIdFromEmail('comp-deleted@example.com')
+	insertOrg(sqlite, {
+		id: deletedId,
+		slug: 'comp-deleted',
+		plan: 'pro',
+		deletedAt: '2026-02-01',
+	})
+	await expect(
+		setAdminOrgCompedSeats({
+			...auditInput(env, audit),
+			target: { orgId: deletedId },
+			compedSeats: 5,
+			reason: 'Deleted org.',
+		}),
+	).rejects.toThrow('not found')
+	expect(
+		sqlite.prepare(`SELECT comped_seats FROM orgs WHERE id = ?`).get(orgId),
+	).toEqual({ comped_seats: null })
 })

@@ -1,21 +1,26 @@
 /** @jsxImportSource @emotion/react */
+import { Table } from '../components/table.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog, DialogActions } from '../components/dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { css } from '@emotion/react'
 import { useQuery } from '@tanstack/react-query'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
-import { useRef, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { orgResourcePath } from '#universal/org-pages.ts'
 import {
 	cancelExecutionContextRun,
 	deleteExecutionContext,
 	dismissExecutionContextNotice,
+	grantExecutionContextMachineAccess,
 	loadExecutionContextAudit,
 	previewExecutionContextShare,
 	loadExecutionContextRuns,
 	optIntoExecutionContext,
 	optOutOfExecutionContext,
 	removeExecutionContextShare,
+	revokeExecutionContextMachineAccess,
 	runExecutionContextDaemonAction,
 	setExecutionChain,
 	shareExecutionContext,
@@ -31,9 +36,11 @@ import {
 	type ExecutionChain,
 	type ExecutionContextAuditPage,
 	type ExecutionContextListItem,
+	type ExecutionContextMachineAccessEntry,
 	type ExecutionContextPreset,
 	type ExecutionContextRunPage,
 	type ExecutionContextShareGrant,
+	type ExecutionContextShellUse,
 	auditEventLabel,
 	canOptIntoContext,
 	chainEntryInputs,
@@ -48,6 +55,8 @@ import {
 	grantSummaryDetail,
 	insertBeforeCloud,
 	loginPredatesPermissionsMessage,
+	machineAccessKindLabels,
+	machineAccessSubjectLabel,
 	accessBitsLabel,
 	ordinal,
 	runFallbackLabel,
@@ -55,24 +64,18 @@ import {
 	sharingSummary,
 	unusableReasonCopy,
 } from '#universal/execution-contexts.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { UndoToast } from '../components/undo-toast.tsx'
 import { useUndoableAction } from '../components/use-undoable-action.ts'
-import {
-	AccountManagementMessage,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementMessage } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import {
 	formatTimestamp,
 	formatTimestampDate,
 } from '../components/local-timestamp.tsx'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const sectionCss = css({ display: 'grid', gap: spacing.sm })
 const mutedCss = css({ color: colors.textMuted, margin: 0 })
@@ -83,24 +86,6 @@ const dlCss = css({
 	margin: 0,
 	'& dd': { margin: 0, overflowWrap: 'anywhere' },
 	'@container (max-width: 480px)': { gridTemplateColumns: 'minmax(0, 1fr)' },
-})
-const dialogCss = css({
-	maxWidth: 'min(36rem, calc(100vw - 2rem))',
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.lg,
-	background: colors.surface,
-	color: colors.text,
-	padding: spacing.lg,
-	'&::backdrop': { background: 'rgba(0, 0, 0, 0.45)' },
-})
-const tableCss = css({
-	width: '100%',
-	borderCollapse: 'collapse',
-	'& th, & td': {
-		textAlign: 'left',
-		padding: `${spacing.xs} ${spacing.sm}`,
-		borderBottom: `1px solid ${colors.borderSubtle}`,
-	},
 })
 const target = css({ minHeight: 44 })
 
@@ -262,6 +247,11 @@ export function ExecutionContextDetail(props: {
 			<CommandsPanel orgSlug={orgSlug} context={context} onChanged={refresh} />
 			<OptInControls {...props} onChanged={refresh} />
 			{context.sharing ? <SharingPanel {...props} onChanged={refresh} /> : null}
+			<MachineAccessPanel
+				orgSlug={orgSlug}
+				context={context}
+				onChanged={refresh}
+			/>
 			<RunHistory orgSlug={orgSlug} context={context} nameForId={nameForId} />
 			<AuditLog orgSlug={orgSlug} context={context} />
 			<DeleteControls orgSlug={orgSlug} context={context} onDeleted={refresh} />
@@ -276,7 +266,7 @@ function DeleteControls(props: {
 }) {
 	const { context } = props
 	const router = useRouter()
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [dialogOpen, setDialogOpen] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
 	const ownedHere = context.ownerOrg.slug === props.orgSlug
@@ -292,7 +282,7 @@ function DeleteControls(props: {
 		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
 		setBusy(false)
 		if (!result.ok) return setError(failureText(result))
-		dialog.current?.close()
+		setDialogOpen(false)
 		await router.navigate({
 			to: orgResourcePath(props.orgSlug, 'execution-contexts'),
 			resetScroll: false,
@@ -314,27 +304,27 @@ function DeleteControls(props: {
 				Past runs keep its name in their history.
 			</p>
 			<div>
-				<button
+				<Button
 					type="button"
 					data-testid="context-delete-open"
-					css={[getDangerPillCss({ size: 'sm' }), target]}
+					variant="danger"
+					css={target}
 					onClick={() => {
 						setError(null)
-						dialog.current?.showModal()
+						setDialogOpen(true)
 					}}
 				>
 					Delete context
-				</button>
+				</Button>
 			</div>
-			<dialog
-				ref={dialog}
-				css={dialogCss}
-				aria-labelledby="context-delete-dialog-title"
+			<Dialog
+				open={dialogOpen}
+				onClose={() => setDialogOpen(false)}
+				role="alertdialog"
+				size="lg"
+				title={`Delete ${context.name}?`}
 				data-testid="context-delete-dialog"
 			>
-				<h2 id="context-delete-dialog-title" css={{ marginTop: 0 }}>
-					Delete {context.name}?
-				</h2>
 				<p>
 					This permanently deletes {context.name} and removes it from every
 					chain, share and org it was in. You cannot undo this. Past runs still
@@ -345,25 +335,27 @@ function DeleteControls(props: {
 						{error}
 					</AccountManagementMessage>
 				) : null}
-				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
-					<button
+				<DialogActions>
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
-						onClick={() => dialog.current?.close()}
+						variant="secondary"
+						css={target}
+						onClick={() => setDialogOpen(false)}
 					>
 						Cancel
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						data-testid="context-delete-confirm"
-						css={[getDangerPillCss({ size: 'sm' }), target]}
+						variant="danger"
+						css={target}
 						disabled={busy}
 						onClick={() => void remove()}
 					>
 						{busy ? 'Deleting…' : 'Delete permanently'}
-					</button>
-				</div>
-			</dialog>
+					</Button>
+				</DialogActions>
+			</Dialog>
 		</section>
 	)
 }
@@ -390,6 +382,59 @@ function entryText(entry: { permission: string; resource: string | null }) {
 		: entry.permission
 }
 
+function ShellUse(props: { use: ExecutionContextShellUse }) {
+	const { use } = props
+	const times = (count: number) => `${count} command${count === 1 ? '' : 's'}`
+	if (use.commands === 0) {
+		return (
+			<p css={{ margin: 0 }} data-testid="context-shell-use">
+				No run used the shell in the last 30 days.
+			</p>
+		)
+	}
+	return (
+		<div data-testid="context-shell-use">
+			<p css={{ margin: 0 }}>
+				{use.more
+					? `The newest ${times(use.commands)} the shell ran in the last 30 days are counted here; older ones are not. Of these`
+					: `In the last 30 days the shell ran ${times(use.commands)}`}
+				{use.adHocCommands > 0
+					? `, ${use.adHocCommands} of them from code that is not a saved package. A package list refuses that code.`
+					: ', all from saved packages.'}
+			</p>
+			{use.packages.length > 0 ? (
+				<>
+					<p css={{ margin: 0 }}>Packages to list for the shell:</p>
+					<ul css={{ margin: 0 }}>
+						{use.packages.map((entry) => (
+							<li key={entry.id}>
+								{entry.name} (<code>{entry.id}</code>), {times(entry.commands)}
+							</li>
+						))}
+					</ul>
+				</>
+			) : null}
+			<p css={{ margin: 0 }}>Programs to define as named commands:</p>
+			<ul css={{ margin: 0 }}>
+				{use.programs.map((entry) => (
+					<li key={entry.program}>
+						<code>{entry.program}</code>, {times(entry.commands)}
+						{entry.needShell > 0
+							? ` (${entry.needShell} used pipes or other shell syntax)`
+							: ''}
+					</li>
+				))}
+			</ul>
+			{use.morePrograms > 0 ? (
+				<p css={{ margin: 0 }}>
+					And {use.morePrograms} more.{' '}
+					<code>executionContextShellSuggestions</code> has examples of each.
+				</p>
+			) : null}
+		</div>
+	)
+}
+
 function NoticesPanel(props: {
 	orgSlug: string
 	context: ExecutionContextListItem
@@ -402,7 +447,13 @@ function NoticesPanel(props: {
 		context.elevation && !context.elevation.dismissed ? context.elevation : null
 	const misconfigurations = context.misconfigurations ?? []
 	const review = context.accessReview ?? []
-	if (!elevation && misconfigurations.length === 0 && review.length === 0) {
+	const openShell = context.openShell ?? null
+	if (
+		!elevation &&
+		!openShell &&
+		misconfigurations.length === 0 &&
+		review.length === 0
+	) {
 		return null
 	}
 
@@ -433,6 +484,28 @@ function NoticesPanel(props: {
 					</ul>
 				</div>
 			) : null}
+			{openShell ? (
+				<div role="status" data-testid="context-open-shell">
+					<p css={{ margin: 0 }}>
+						<strong>{context.name} has an unrestricted shell.</strong> Every run
+						of yours here can run any command, including every package you wrote
+						or adopted. Limit the shell to listed packages with{' '}
+						<code>executionContextMachineAccessPackagesSet</code>, or define
+						named commands on the machine and turn the shell off there with{' '}
+						<code>kody context commands off</code>.
+					</p>
+					{openShell.use ? <ShellUse use={openShell.use} /> : null}
+					<Button
+						type="button"
+						variant="primary"
+						css={target}
+						disabled={busy}
+						onClick={() => void dismiss(openShell.fingerprint)}
+					>
+						Keep the shell as it is
+					</Button>
+				</div>
+			) : null}
 			{elevation ? (
 				<div role="status" data-testid="context-elevation">
 					<p css={{ margin: 0 }}>
@@ -448,14 +521,15 @@ function NoticesPanel(props: {
 							<li key={entryText(entry)}>{entryText(entry)}</li>
 						))}
 					</ul>
-					<button
+					<Button
 						type="button"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
+						variant="primary"
+						css={target}
 						disabled={busy}
 						onClick={() => void dismiss(elevation.fingerprint)}
 					>
 						Dismiss
-					</button>
+					</Button>
 				</div>
 			) : null}
 			{review.length > 0 ? (
@@ -635,61 +709,66 @@ function DaemonPanel(props: {
 				<div css={rowCss}>
 					<label css={{ display: 'grid', gap: spacing.xs, flex: '1 1 16rem' }}>
 						<span>Reason (optional, shown on the context)</span>
-						<input
-							css={[accountInputCss, target]}
+						<Input
+							css={target}
 							value={reason}
 							maxLength={200}
 							onChange={(event) => setReason(event.target.value)}
 							data-testid="context-daemon-pause-reason"
 						/>
 					</label>
-					<button
+					<Button
 						type="button"
-						css={[getDangerPillCss({ size: 'sm' }), target]}
+						variant="danger"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => void run('pause')}
 						data-testid="context-daemon-pause-confirm"
 					>
 						{busy === 'pause' ? daemonActionBusyLabel.pause : 'Pause'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						disabled={busy !== null}
 						onClick={() => setConfirmingPause(false)}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			) : (
 				<div css={rowCss}>
 					{paused && canResume ? (
-						<button
+						<Button
 							type="button"
-							css={[getPillButtonCss({ size: 'sm' }), target]}
+							variant="primary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => void run('resume')}
 							data-testid="context-daemon-resume"
 						>
 							{busy === 'resume' ? daemonActionBusyLabel.resume : 'Resume'}
-						</button>
+						</Button>
 					) : null}
 					{!paused && canPause ? (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null}
 							onClick={() => setConfirmingPause(true)}
 							data-testid="context-daemon-pause"
 						>
 							Pause
-						</button>
+						</Button>
 					) : null}
 					{canControl ? (
 						<>
-							<button
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online || !serviceManaged}
 								title={
 									!online
@@ -702,10 +781,11 @@ function DaemonPanel(props: {
 								data-testid="context-daemon-restart"
 							>
 								{busy === 'restart' ? daemonActionBusyLabel.restart : 'Restart'}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								disabled={busy !== null || !online}
 								title={!online ? 'The daemon is offline' : undefined}
 								onClick={() => void run('update')}
@@ -714,7 +794,7 @@ function DaemonPanel(props: {
 								{busy === 'update'
 									? daemonActionBusyLabel.update
 									: 'Update now'}
-							</button>
+							</Button>
 						</>
 					) : null}
 				</div>
@@ -722,9 +802,10 @@ function DaemonPanel(props: {
 			{context.canReadDaemonLogs ? (
 				<div css={{ display: 'grid', gap: spacing.sm }}>
 					<div css={rowCss}>
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy !== null || !online}
 							title={!online ? 'The daemon is offline' : undefined}
 							onClick={() => void run('logs')}
@@ -735,7 +816,7 @@ function DaemonPanel(props: {
 								: logLines
 									? 'Refresh log'
 									: 'View recent log'}
-						</button>
+						</Button>
 						<span css={mutedCss}>
 							Only you see this. Or run{' '}
 							<code>kody daemon logs --context {context.name}</code>
@@ -827,10 +908,6 @@ function CommandsPanel(props: {
 					Host commands
 				</h2>
 				<span
-					role="switch"
-					aria-checked={on}
-					aria-readonly
-					aria-labelledby="context-commands-title"
 					data-testid="context-commands-state"
 					css={{
 						display: 'inline-flex',
@@ -909,34 +986,37 @@ function CommandsPanel(props: {
 							Turn off commands? Background commands stop right away. Turning
 							them back on needs the machine.
 						</span>
-						<button
+						<Button
 							type="button"
-							css={[getDangerPillCss({ size: 'sm' }), target]}
+							variant="danger"
+							css={target}
 							disabled={busy}
 							onClick={() => void turnOff()}
 							data-testid="context-commands-off-confirm"
 						>
 							{busy ? 'Turning off…' : 'Turn off'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							disabled={busy}
 							onClick={() => setConfirming(false)}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				) : (
 					<div>
-						<button
+						<Button
 							type="button"
-							css={[getDangerPillCss({ size: 'sm' }), target]}
+							variant="danger"
+							css={target}
 							onClick={() => setConfirming(true)}
 							data-testid="context-commands-off"
 						>
 							Turn off commands
-						</button>
+						</Button>
 					</div>
 				)
 			) : null}
@@ -951,7 +1031,7 @@ function OptInControls(props: {
 	onChanged: () => void
 }) {
 	const { context } = props
-	const dialog = useRef<HTMLDialogElement>(null)
+	const [dialogOpen, setDialogOpen] = useState(false)
 	const [addToChain, setAddToChain] = useState(false)
 	const [busy, setBusy] = useState(false)
 	const [error, setError] = useState<string | null>(null)
@@ -1010,7 +1090,7 @@ function OptInControls(props: {
 				return
 			}
 		}
-		dialog.current?.close()
+		setDialogOpen(false)
 		props.onChanged()
 	}
 
@@ -1059,29 +1139,32 @@ function OptInControls(props: {
 									? 'This also removes it from your chain.'
 									: 'Your runs stop using it.'}
 							</span>
-							<button
+							<Button
 								type="button"
-								css={[getDangerPillCss({ size: 'sm' }), target]}
+								variant="danger"
+								css={target}
 								onClick={optOut}
 							>
 								Confirm leave
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmLeave(false)}
 							>
 								Cancel
-							</button>
+							</Button>
 						</>
 					) : (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							onClick={() => (inChain ? setConfirmLeave(true) : optOut())}
 						>
 							Leave
-						</button>
+						</Button>
 					)}
 				</div>
 			) : leftLocally && context.optedIn && !undoable.pending ? (
@@ -1090,74 +1173,39 @@ function OptInControls(props: {
 				</p>
 			) : canOptIntoContext({ ...context, optedIn }) ? (
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="context-opt-in"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
+						variant="primary"
+						css={target}
 						onClick={() => {
 							setAddToChain(false)
 							setError(null)
-							dialog.current?.showModal()
+							setDialogOpen(true)
 						}}
 					>
 						Opt in
-					</button>
+					</Button>
 				</div>
 			) : null}
-			<dialog
-				ref={dialog}
-				css={dialogCss}
-				aria-labelledby="opt-in-title"
+			<Dialog
+				open={dialogOpen}
+				onClose={() => setDialogOpen(false)}
+				size="lg"
+				title={copy.title}
 				data-testid="opt-in-dialog"
 			>
-				<h2 id="opt-in-title" css={{ marginTop: 0 }}>
-					{copy.title}
-				</h2>
-				{copy.paragraphs.map((paragraph) => (
-					<p key={paragraph}>{paragraph}</p>
-				))}
-				{copy.lan ? <p data-testid="opt-in-lan">{copy.lan}</p> : null}
-				<p css={mutedCss}>{copy.managersNote}</p>
-				<label
-					css={{
-						display: 'flex',
-						gap: spacing.sm,
-						alignItems: 'center',
-						minHeight: 44,
-					}}
-				>
-					<input
-						type="checkbox"
-						checked={addToChain && !full}
-						disabled={full}
-						onChange={(event) => setAddToChain(event.target.checked)}
-					/>
-					{copy.checkboxLabel}
-				</label>
-				{full ? <p css={mutedCss}>{copy.chainFullNote}</p> : null}
-				{error ? (
-					<AccountManagementMessage tone="error">
-						{error}
-					</AccountManagementMessage>
-				) : null}
-				<div css={{ display: 'flex', gap: spacing.sm, justifyContent: 'end' }}>
-					<button
-						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
-						onClick={() => dialog.current?.close()}
-					>
-						Cancel
-					</button>
-					<button
-						type="button"
-						css={[getPillButtonCss({ size: 'sm' }), target]}
-						disabled={busy}
-						onClick={() => void optIn()}
-					>
-						{busy ? 'Opting in…' : 'Opt in'}
-					</button>
-				</div>
-			</dialog>
+				<ContextOptInForm
+					copy={copy}
+					chainFull={full}
+					addToChain={addToChain}
+					onAddToChainChange={setAddToChain}
+					busy={busy}
+					error={error}
+					onCancel={() => setDialogOpen(false)}
+					onConfirm={() => void optIn()}
+				/>
+			</Dialog>
 			{undoable.pending ? (
 				<UndoToast
 					message={undoable.pending.message}
@@ -1359,29 +1407,32 @@ function SharingPanel(props: {
 							<span css={mutedCss}>
 								{stopSharingConfirm(`everyone in @${props.orgSlug}`)}
 							</span>{' '}
-							<button
+							<Button
 								type="button"
-								css={[getDangerPillCss({ size: 'sm' }), target]}
+								variant="danger"
+								css={target}
 								onClick={() => void stopSharingWithEveryone()}
 							>
 								Stop sharing
-							</button>{' '}
-							<button
+							</Button>{' '}
+							<Button
 								type="button"
-								css={[getGhostButtonCss({ size: 'sm' }), target]}
+								variant="secondary"
+								css={target}
 								onClick={() => setConfirmRemove(null)}
 							>
 								Cancel
-							</button>
+							</Button>
 						</>
 					) : (
-						<button
+						<Button
 							type="button"
-							css={[getGhostButtonCss({ size: 'sm' }), target]}
+							variant="secondary"
+							css={target}
 							onClick={() => setConfirmRemove(allMembersKey)}
 						>
 							Remove
-						</button>
+						</Button>
 					)}
 				</p>
 			) : null}
@@ -1403,29 +1454,32 @@ function SharingPanel(props: {
 									<span css={mutedCss}>
 										{stopSharingConfirm(subjectLabel(grant))}
 									</span>{' '}
-									<button
+									<Button
 										type="button"
-										css={[getDangerPillCss({ size: 'sm' }), target]}
+										variant="danger"
+										css={target}
 										onClick={() => void remove(grant.grantId)}
 									>
 										Stop sharing
-									</button>{' '}
-									<button
+									</Button>{' '}
+									<Button
 										type="button"
-										css={[getGhostButtonCss({ size: 'sm' }), target]}
+										variant="secondary"
+										css={target}
 										onClick={() => setConfirmRemove(null)}
 									>
 										Cancel
-									</button>
+									</Button>
 								</>
 							) : (
-								<button
+								<Button
 									type="button"
-									css={[getGhostButtonCss({ size: 'sm' }), target]}
+									variant="secondary"
+									css={target}
 									onClick={() => setConfirmRemove(grant.grantId)}
 								>
 									Remove
-								</button>
+								</Button>
 							)}
 						</li>
 					))}
@@ -1459,7 +1513,7 @@ function SharingPanel(props: {
 					>
 						<label css={{ display: 'grid', gap: 2 }}>
 							Share with
-							<select
+							<Select
 								value={kind}
 								css={[target, selectCss]}
 								onChange={(event) => setKind(event.target.value as typeof kind)}
@@ -1467,22 +1521,22 @@ function SharingPanel(props: {
 								<option value="user">A person</option>
 								<option value="team">A team</option>
 								<option value="org">Everyone in @{props.orgSlug}</option>
-							</select>
+							</Select>
 						</label>
 						{kind === 'org' ? null : (
 							<label css={{ display: 'grid', gap: 2 }}>
 								{kind === 'user' ? 'Username' : 'Team slug'}
-								<input
+								<Input
 									value={value}
 									required
-									css={[target, accountInputCss]}
+									css={target}
 									onChange={(event) => setValue(event.target.value)}
 								/>
 							</label>
 						)}
 						<label css={{ display: 'grid', gap: 2 }}>
 							Access
-							<select
+							<Select
 								value={preset}
 								css={[target, selectCss]}
 								onChange={(event) =>
@@ -1494,15 +1548,16 @@ function SharingPanel(props: {
 										{presetLabels[item]}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
-						<button
+						<Button
 							type="submit"
-							css={[getPillButtonCss({ size: 'sm' }), target]}
+							variant="primary"
+							css={target}
 							disabled={busy}
 						>
 							{excessWarning === `${kind}:${value}` ? 'Share anyway' : 'Share'}
-						</button>
+						</Button>
 					</div>
 					{excessWarning === `${kind}:${value}` ? (
 						<p
@@ -1526,6 +1581,326 @@ function SharingPanel(props: {
 				<p css={mutedCss}>{copy.ownerWithoutManageNote}</p>
 			)}
 		</section>
+	)
+}
+
+type MachineAccessSubjectKind = 'user' | 'team' | 'org' | 'profile'
+
+const machineAccessKinds = ['shell', 'command', 'lan', 'fs'] as const
+
+function MachineAccessPanel(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	onChanged: () => void
+}) {
+	const { context } = props
+	const access = context.machineAccess
+	const [confirmRemove, setConfirmRemove] = useState<string | null>(null)
+	const [error, setError] = useState<string | null>(null)
+	if (!access || context.status === 'revoked') return null
+	// Someone the machine is only shared with sees what their profiles hold.
+	if (!access.canGrant && access.capabilities.length === 0) return null
+
+	async function remove(grantId: string) {
+		setConfirmRemove(null)
+		setError(null)
+		const result = (await revokeExecutionContextMachineAccess({
+			data: { orgSlug: props.orgSlug, contextId: context.id, grantId },
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		if (!result.ok) return setError(failureText(result))
+		props.onChanged()
+	}
+
+	return (
+		<section
+			css={sectionCss}
+			aria-labelledby="context-machine-access-title"
+			data-testid="context-machine-access"
+		>
+			<h3 id="context-machine-access-title" css={{ margin: 0 }}>
+				Machine access
+			</h3>
+			<p css={mutedCss}>
+				{access.canGrant
+					? `What ${context.name} lets a run do on the machine itself. The machine defines each entry; you choose who else can use it. Your own runs can use all of them.`
+					: `What your profiles can use on ${context.name}.`}
+			</p>
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+			{access.capabilities.length === 0 ? (
+				<p css={mutedCss} data-testid="context-machine-access-empty">
+					This machine defines no named commands or local network destinations
+					yet. Add one on the machine with{' '}
+					<code>kody context capability add</code>.
+				</p>
+			) : null}
+			{machineAccessKinds.map((kind) => {
+				const entries = access.capabilities.filter(
+					(entry) => entry.kind === kind,
+				)
+				if (entries.length === 0) return null
+				return (
+					<div key={kind} css={{ display: 'grid', gap: spacing.sm }}>
+						<h4 css={{ margin: 0 }}>{machineAccessKindLabels[kind]}</h4>
+						{kind === 'shell' ? (
+							<p css={mutedCss}>
+								Any command, as the machine's user. It is for the operator's
+								runs only and is never shared.
+							</p>
+						) : null}
+						{kind === 'fs' ? (
+							<p css={mutedCss}>
+								Host folders are for the operator's runs only and are never
+								shared.
+							</p>
+						) : null}
+						<ul
+							css={{
+								margin: 0,
+								padding: 0,
+								listStyle: 'none',
+								display: 'grid',
+								gap: spacing.sm,
+							}}
+						>
+							{entries.map((entry) => (
+								<li
+									key={entry.id}
+									data-testid="context-machine-access-entry"
+									css={{
+										border: `1px solid ${colors.border}`,
+										borderRadius: radius.lg,
+										padding: spacing.md,
+										display: 'grid',
+										gap: spacing.xs,
+									}}
+								>
+									<strong>
+										{entry.kind === 'lan' && entry.name === '*'
+											? 'The whole local network'
+											: entry.name}
+									</strong>
+									{entry.description ? (
+										<span css={mutedCss}>{entry.description}</span>
+									) : null}
+									{entry.allowedPackages?.length ? (
+										<span css={mutedCss}>
+											Only these packages may use it:{' '}
+											{entry.allowedPackages
+												.map((item) => item.name)
+												.join(', ')}
+										</span>
+									) : null}
+									{!entry.shareable ? null : entry.grants.length === 0 ? (
+										<span css={mutedCss}>Only the operator</span>
+									) : (
+										<ul
+											css={{
+												margin: 0,
+												paddingLeft: '1.2rem',
+												display: 'grid',
+												gap: spacing.xs,
+											}}
+										>
+											{entry.grants.map((grant) => {
+												const label = machineAccessSubjectLabel(
+													grant.subject,
+													props.orgSlug,
+												)
+												return (
+													<li key={grant.grantId}>
+														{label}{' '}
+														{confirmRemove === grant.grantId ? (
+															<>
+																<span css={mutedCss}>
+																	{label} stops being able to use {entry.name}{' '}
+																	on the next call.
+																</span>{' '}
+																<Button
+																	type="button"
+																	variant="danger"
+																	css={target}
+																	onClick={() => void remove(grant.grantId)}
+																>
+																	Take back
+																</Button>{' '}
+																<Button
+																	type="button"
+																	variant="secondary"
+																	css={target}
+																	onClick={() => setConfirmRemove(null)}
+																>
+																	Cancel
+																</Button>
+															</>
+														) : (
+															<Button
+																type="button"
+																variant="secondary"
+																css={target}
+																aria-label={`Remove ${label} from ${entry.name}`}
+																onClick={() => setConfirmRemove(grant.grantId)}
+															>
+																Remove
+															</Button>
+														)}
+													</li>
+												)
+											})}
+										</ul>
+									)}
+									{entry.shareable ? (
+										<MachineAccessGrantForm
+											orgSlug={props.orgSlug}
+											context={context}
+											entry={entry}
+											onChanged={props.onChanged}
+										/>
+									) : null}
+								</li>
+							))}
+						</ul>
+					</div>
+				)
+			})}
+		</section>
+	)
+}
+
+function MachineAccessGrantForm(props: {
+	orgSlug: string
+	context: ExecutionContextListItem
+	entry: ExecutionContextMachineAccessEntry
+	onChanged: () => void
+}) {
+	const { context, entry } = props
+	const access = context.machineAccess!
+	const kinds: Array<MachineAccessSubjectKind> = [
+		...(access.canGrant ? (['user', 'team', 'org'] as const) : []),
+		...(access.profiles.length > 0 ? (['profile'] as const) : []),
+	]
+	const [kind, setKind] = useState<MachineAccessSubjectKind>(
+		kinds[0] ?? 'profile',
+	)
+	const [value, setValue] = useState('')
+	const [profileId, setProfileId] = useState(access.profiles[0]?.id ?? '')
+	const [busy, setBusy] = useState(false)
+	const [error, setError] = useState<string | null>(null)
+	if (kinds.length === 0 || (entry.kind !== 'command' && entry.kind !== 'lan'))
+		return null
+	const capability = { kind: entry.kind, name: entry.name }
+
+	async function grant() {
+		setBusy(true)
+		setError(null)
+		const result = (await grantExecutionContextMachineAccess({
+			data: {
+				orgSlug: props.orgSlug,
+				contextId: context.id,
+				capability,
+				subject:
+					kind === 'user'
+						? { kind, username: value }
+						: kind === 'team'
+							? { kind, slug: value }
+							: kind === 'profile'
+								? { kind, profileId }
+								: { kind },
+			},
+		}).catch(() => unexpectedFailure)) as { ok: true } | Failure
+		setBusy(false)
+		if (!result.ok) return setError(failureText(result))
+		setValue('')
+		props.onChanged()
+	}
+
+	return (
+		<form
+			css={{ display: 'grid', gap: spacing.xs }}
+			onSubmit={(event) => {
+				event.preventDefault()
+				void grant()
+			}}
+		>
+			<div
+				css={{
+					display: 'flex',
+					flexWrap: 'wrap',
+					gap: spacing.sm,
+					alignItems: 'end',
+				}}
+			>
+				<label css={{ display: 'grid', gap: 2 }}>
+					Let {entry.name} be used by
+					<Select
+						value={kind}
+						css={[target, selectCss]}
+						onChange={(event) =>
+							setKind(event.target.value as MachineAccessSubjectKind)
+						}
+					>
+						{kinds.map((item) => (
+							<option key={item} value={item}>
+								{item === 'user'
+									? 'A person'
+									: item === 'team'
+										? 'A team'
+										: item === 'org'
+											? `Everyone in @${props.orgSlug}`
+											: 'One of my profiles'}
+							</option>
+						))}
+					</Select>
+				</label>
+				{kind === 'org' ? null : kind === 'profile' ? (
+					<label css={{ display: 'grid', gap: 2 }}>
+						Profile
+						<Select
+							value={profileId}
+							css={[target, selectCss]}
+							onChange={(event) => setProfileId(event.target.value)}
+						>
+							{access.profiles.map((profile) => (
+								<option key={profile.id} value={profile.id}>
+									{profile.name}
+								</option>
+							))}
+						</Select>
+					</label>
+				) : (
+					<label css={{ display: 'grid', gap: 2 }}>
+						{kind === 'user' ? 'Username' : 'Team slug'}
+						<Input
+							value={value}
+							required
+							css={target}
+							onChange={(event) => setValue(event.target.value)}
+						/>
+					</label>
+				)}
+				<Button type="submit" variant="secondary" css={target} disabled={busy}>
+					Give access
+				</Button>
+			</div>
+			{kind === 'profile' ? (
+				<p css={mutedCss}>
+					A profile can use it only when you can, and its parent profiles need
+					it first.
+				</p>
+			) : kind === 'org' ? null : (
+				<p css={mutedCss}>
+					They also need {context.name} itself shared with them under Sharing.
+				</p>
+			)}
+			{error ? (
+				<AccountManagementMessage tone="error">
+					{error}
+				</AccountManagementMessage>
+			) : null}
+		</form>
 	)
 }
 
@@ -1608,10 +1983,10 @@ function RunHistory(props: {
 				<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm }}>
 					<label css={{ display: 'grid', gap: 2 }}>
 						Requester
-						<input
+						<Input
 							value={requesterDraft}
 							placeholder="username"
-							css={[target, accountInputCss]}
+							css={target}
 							onChange={(event) => setRequesterDraft(event.target.value)}
 							onBlur={applyRequester}
 							onKeyDown={(event) => {
@@ -1621,7 +1996,7 @@ function RunHistory(props: {
 					</label>
 					<label css={{ display: 'grid', gap: 2 }}>
 						Outcome
-						<select
+						<Select
 							value={outcome}
 							css={[target, selectCss]}
 							onChange={(event) => {
@@ -1635,7 +2010,7 @@ function RunHistory(props: {
 									{label}
 								</option>
 							))}
-						</select>
+						</Select>
 					</label>
 				</div>
 			) : ok.length > 0 ? (
@@ -1659,7 +2034,7 @@ function RunHistory(props: {
 				<p css={mutedCss}>No runs yet.</p>
 			) : runs.length > 0 ? (
 				<div css={{ overflowX: 'auto' }}>
-					<table css={tableCss}>
+					<Table>
 						<thead>
 							<tr>
 								<th scope="col">When</th>
@@ -1709,20 +2084,21 @@ function RunHistory(props: {
 								</tr>
 							))}
 						</tbody>
-					</table>
+					</Table>
 				</div>
 			) : null}
 			{last?.nextCursor ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}
 					>
 						Load more
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</section>
@@ -1742,32 +2118,35 @@ export function RunCancelControl(props: {
 	if (props.confirming) {
 		return (
 			<>
-				<button
+				<Button
 					type="button"
-					css={[getGhostButtonCss({ size: 'sm' }), target]}
+					variant="secondary"
+					css={target}
 					onClick={props.onConfirm}
 				>
 					Stop run
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
-					css={[getGhostButtonCss({ size: 'sm' }), target]}
+					variant="secondary"
+					css={target}
 					onClick={props.onKeep}
 				>
 					Keep running
-				</button>
+				</Button>
 			</>
 		)
 	}
 	return (
-		<button
+		<Button
 			type="button"
-			css={[getGhostButtonCss({ size: 'sm' }), target]}
+			variant="secondary"
+			css={target}
 			aria-label={`Cancel run ${props.runId}`}
 			onClick={props.onAsk}
 		>
 			Cancel
-		</button>
+		</Button>
 	)
 }
 
@@ -1852,15 +2231,16 @@ function AuditLog(props: {
 			)}
 			{last?.nextCursor ? (
 				<div>
-					<button
+					<Button
 						type="button"
-						css={[getGhostButtonCss({ size: 'sm' }), target]}
+						variant="secondary"
+						css={target}
 						onClick={() =>
 							setCursors([...cursors, last.nextCursor ?? undefined])
 						}
 					>
 						Load more
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</section>
@@ -1879,3 +2259,66 @@ const hintCss = css({
 	marginTop: spacing.xs,
 	color: colors.textMuted,
 })
+
+export function ContextOptInForm(props: {
+	copy: ReturnType<typeof optInCopy>
+	chainFull: boolean
+	addToChain: boolean
+	onAddToChainChange: (next: boolean) => void
+	busy: boolean
+	error: string | null
+	onCancel: () => void
+	onConfirm: () => void
+}) {
+	return (
+		<>
+			{props.copy.paragraphs.map((paragraph) => (
+				<p key={paragraph}>{paragraph}</p>
+			))}
+			{props.copy.lan ? <p data-testid="opt-in-lan">{props.copy.lan}</p> : null}
+			<p css={mutedCss}>{props.copy.managersNote}</p>
+			<label
+				css={{
+					display: 'flex',
+					gap: spacing.sm,
+					alignItems: 'center',
+					minHeight: 44,
+				}}
+			>
+				<Checkbox
+					checked={props.addToChain && !props.chainFull}
+					disabled={props.chainFull}
+					onChange={(event) => props.onAddToChainChange(event.target.checked)}
+				/>
+				{props.copy.checkboxLabel}
+			</label>
+			{props.chainFull ? (
+				<p css={mutedCss}>{props.copy.chainFullNote}</p>
+			) : null}
+			{props.error ? (
+				<AccountManagementMessage tone="error">
+					{props.error}
+				</AccountManagementMessage>
+			) : null}
+			<DialogActions>
+				<Button
+					type="button"
+					variant="secondary"
+					css={target}
+					onClick={props.onCancel}
+				>
+					Cancel
+				</Button>
+				<Button
+					type="button"
+					variant="primary"
+					css={target}
+					disabled={props.busy}
+					onClick={props.onConfirm}
+				>
+					{props.busy ? 'Opting in…' : 'Opt in'}
+				</Button>
+			</DialogActions>
+		</>
+	)
+}

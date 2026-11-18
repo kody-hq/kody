@@ -1,6 +1,7 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
@@ -97,4 +98,35 @@ test('renameSecret refuses a destination that already exists with exact casing',
 			audit: null,
 		}),
 	).rejects.toThrow(/already exists/)
+})
+
+test('renameSecret on a missing secret is a caller error naming the secret and scope', async () => {
+	const { env } = await createSecretEnv()
+	for (const seeded of [false, true]) {
+		if (seeded) {
+			await saveSecret({
+				env,
+				userId,
+				scope: 'user',
+				name: 'other',
+				value: 'v',
+				audit: null,
+			})
+		}
+		await expect(
+			renameSecret({
+				env,
+				userId,
+				scope: 'user',
+				fromName: 'missing',
+				toName: 'renamed',
+				audit: null,
+			}),
+		).rejects.toSatisfy(
+			(error: unknown) =>
+				error instanceof McpCallerError &&
+				error.message ===
+					'Secret "missing" not found in user scope. Check the secret name and scope.',
+		)
+	}
 })

@@ -49,6 +49,38 @@ export function findOriginViteDeferredAssets(
 	}
 }
 
+/**
+ * Browser assets imported with `?url` or `new URL(..., import.meta.url)`.
+ * Vite copies them into `dist/server/assets` verbatim, so the SSR codegen
+ * options never see them.
+ */
+const originViteVerbatimBrowserAssetPatterns = [
+	/^pele\.global-[^/]+\.js$/,
+	/^json-preview\.worker-[^/]+\.js$/,
+] as const
+
+/**
+ * workerd keeps the source text of every uploaded module on the isolate
+ * heap, including dynamic chunks that are never imported. V8 stores a source
+ * with any character above U+00FF as two bytes per character, so a single
+ * such character doubles that chunk's share of the 128 MB isolate limit.
+ * Returns the server modules that would be stored that way.
+ */
+export function findTwoByteOriginServerModules(
+	modules: ReadonlyArray<{ name: string; source: string }>,
+): Array<string> {
+	return modules
+		.filter(
+			({ name, source }) =>
+				/[^\u0000-\u00ff]/.test(source) &&
+				!originViteVerbatimBrowserAssetPatterns.some((pattern) =>
+					pattern.test(name),
+				),
+		)
+		.map(({ name }) => name)
+		.sort()
+}
+
 export type OriginViteStartupBuild = {
 	outDir: string
 	entryPath: string

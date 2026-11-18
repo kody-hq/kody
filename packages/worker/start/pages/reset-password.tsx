@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -18,23 +21,17 @@ import {
 } from '#start/server/auth-mutations'
 import {
 	cardCss,
-	fieldCss,
-	fieldLabelCss,
-	getPrimaryButtonCss,
-	inputCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
-	primaryLinkCss,
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { Input } from '../components/input.tsx'
 export function ResetPasswordRoute() {
 	const hydrated = useHydrated()
 	const [flowSnapshot, , flowActor] = useActor(passwordResetState)
@@ -188,46 +185,43 @@ export function ResetPasswordRoute() {
 			>
 				<Honeypot />
 				{mode === 'confirm' ? (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>New password</span>
-						<input
+					<Field label="New password">
+						<Input
 							type="password"
 							name="password"
 							required
 							{...passwordManagerIgnoreProps}
 							placeholder="At least 8 characters"
 							disabled={!hydrated || isSubmitting}
-							css={inputCss}
 						/>
-					</label>
+					</Field>
 				) : (
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>Email</span>
-						<input
+					<Field label="Email">
+						<Input
 							type="email"
 							name="email"
 							required
 							autoComplete="email"
 							placeholder="you@example.com"
 							disabled={!hydrated || isSubmitting}
-							css={inputCss}
 						/>
-					</label>
+					</Field>
 				)}
 				{turnstileSiteKey ? (
 					<div className={turnstileWidgetClassName}></div>
 				) : null}
-				<button
+				<Button
 					type="submit"
 					disabled={!hydrated || isSubmitting}
-					css={primaryButtonCss}
+					variant="primary"
+					size="md"
 				>
 					{isSubmitting
 						? 'Submitting...'
 						: mode === 'confirm'
 							? 'Update password'
 							: 'Send reset link'}
-				</button>
+				</Button>
 				{message ? (
 					<p
 						aria-live="polite"
@@ -241,12 +235,10 @@ export function ResetPasswordRoute() {
 				) : null}
 			</form>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
-				<SiteLink href="/login" css={primaryLinkCss}>
-					Back to sign in
-				</SiteLink>
-				<SiteLink href="/" css={mutedLinkCss}>
+				<TextLink href="/login">Back to sign in</TextLink>
+				<TextLink tone="muted" href="/">
 					Back home
-				</SiteLink>
+				</TextLink>
 			</div>
 		</section>
 	)
@@ -257,8 +249,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

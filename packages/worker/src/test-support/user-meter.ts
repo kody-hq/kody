@@ -1,4 +1,10 @@
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
+import { writeLeaseTtlMs } from '#worker/account/write-lease-timing.ts'
+import {
+	admitWalletGuardInWindows,
+	type WalletGuardCheck,
+	type WalletGuardMode,
+} from '#worker/entitlements/wallet-guard-windows.ts'
 import {
 	admitExecuteCallInWindows,
 	ExecuteRepeatWindow,
@@ -25,6 +31,7 @@ type WriteLeaseRow = {
 	holder: string
 	acquiredAt: string
 	pendingRepairId: string | null
+	expiresAtMs: number
 }
 type DeletionState = {
 	deletingAt: string | null
@@ -47,6 +54,10 @@ export function createInMemoryUserMeterEnv() {
 		{ minuteWindow: ExecuteCallMinuteWindow; repeatWindow: ExecuteRepeatWindow }
 	>()
 	const executeCallDaysByUser = new Map<string, Map<string, number>>()
+	const walletGuardWindows = new Map<
+		string,
+		{ windowStart: number; count: number }
+	>()
 	function counterKey(resource: string, day: string) {
 		return `${resource}\0${day}`
 	}
@@ -68,11 +79,36 @@ export function createInMemoryUserMeterEnv() {
 		if (!existingRows) metersByUser.set(userId, rows)
 
 		const deletion = deletionStateFor(userId)
+		// Mirrors UserMeter: once a deletion is fencing, a lapsed lease is gone.
+		const dropLapsedLeasesWhileDeleting = () => {
+			if (deletion.deletingAt == null) return
+			for (const [token, lease] of deletion.leases) {
+				if (lease.expiresAtMs <= Date.now()) deletion.leases.delete(token)
+			}
+		}
 		const existingDynamicWorkerDays = dynamicWorkerDaysByUser.get(userId)
 		const dynamicWorkerDays = existingDynamicWorkerDays ?? new Set<string>()
 		if (!existingDynamicWorkerDays) {
 			dynamicWorkerDaysByUser.set(userId, dynamicWorkerDays)
 		}
+		const admitWalletGuard = (input: {
+			nowMs: number
+			checks: Array<WalletGuardCheck>
+			mode?: WalletGuardMode
+		}) =>
+			admitWalletGuardInWindows({
+				...input,
+				store: {
+					read: (bucket) =>
+						walletGuardWindows.get(`${userId}\n${bucket}`) ?? null,
+					write: (bucket, windowStart, count) => {
+						walletGuardWindows.set(`${userId}\n${bucket}`, {
+							windowStart,
+							count,
+						})
+					},
+				},
+			})
 		const existingLastUsed = lastUsedByUser.get(userId)
 		const lastUsed = existingLastUsed ?? new Map<string, string>()
 		if (!existingLastUsed) lastUsedByUser.set(userId, lastUsed)
@@ -431,18 +467,49 @@ export function createInMemoryUserMeterEnv() {
 				nowMs: number
 				limitPerMinute: number
 				repeat?: ExecuteRepeatInput
+				walletGuard?: { checks: Array<WalletGuardCheck> }
 			}) {
+				if (input.walletGuard) {
+					const guard = admitWalletGuard({
+						nowMs: input.nowMs,
+						checks: input.walletGuard.checks,
+						mode: 'check',
+					})
+					if (!guard.admitted) {
+						const { admitted, ...refusal } = guard
+						return { admitted, reason: 'wallet_guard' as const, ...refusal }
+					}
+				}
 				const windows = executeAdmissionByUser.get(userId) ?? {
 					minuteWindow: { minute: 0, count: 0 },
 					repeatWindow: new ExecuteRepeatWindow(),
 				}
 				executeAdmissionByUser.set(userId, windows)
-				const result = admitExecuteCallInWindows({ ...input, ...windows })
+				const result = admitExecuteCallInWindows({
+					nowMs: input.nowMs,
+					limitPerMinute: input.limitPerMinute,
+					repeat: input.repeat,
+					...windows,
+				})
 				if (result.admitted) {
+					if (input.walletGuard) {
+						admitWalletGuard({
+							nowMs: input.nowMs,
+							checks: input.walletGuard.checks,
+							mode: 'record',
+						})
+					}
 					const day = utcDayKey(new Date(input.nowMs))
 					executeCallDays.set(day, (executeCallDays.get(day) ?? 0) + 1)
 				}
 				return result
+			},
+			async admitWalletGuard(input: {
+				nowMs: number
+				checks: Array<WalletGuardCheck>
+				mode?: WalletGuardMode
+			}) {
+				return admitWalletGuard(input)
 			},
 			async refund(input: {
 				resource: string
@@ -549,11 +616,16 @@ export function createInMemoryUserMeterEnv() {
 			async markDeleting(input: { deletingAt: string }) {
 				const created = deletion.deletingAt == null
 				if (created) deletion.deletingAt = input.deletingAt
+				dropLapsedLeasesWhileDeleting()
 				const leaseCount = deletion.leases.size
 				return {
 					deletingAt: deletion.deletingAt ?? input.deletingAt,
 					created,
 					leaseCount,
+					blockingLeases: [...deletion.leases.values()].map((lease) => ({
+						holder: lease.holder,
+						acquiredAt: lease.acquiredAt,
+					})),
 				}
 			},
 			async clearDeleting(input?: { expectedDeletingAt?: string }) {
@@ -579,13 +651,23 @@ export function createInMemoryUserMeterEnv() {
 					holder: input.holder,
 					acquiredAt: input.acquiredAt,
 					pendingRepairId: null,
+					expiresAtMs: Date.now() + writeLeaseTtlMs,
 				})
 				return { acquired: true }
 			},
+			async renewWriteLease(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
+				const existing = deletion.leases.get(input.token)
+				if (!existing) return { renewed: false }
+				existing.expiresAtMs = Date.now() + writeLeaseTtlMs
+				return { renewed: true }
+			},
 			async releaseWriteLease(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
 				return { released: deletion.leases.delete(input.token) }
 			},
 			async assertWriteLeaseHeld(input: { token: string }) {
+				dropLapsedLeasesWhileDeleting()
 				return { held: deletion.leases.has(input.token) }
 			},
 			async prepareWriteLeaseRepair(input: {
@@ -642,7 +724,13 @@ export function createInMemoryUserMeterEnv() {
 				return pageWriteLeases(input)
 			},
 			async countActiveWriteLeases() {
-				return { count: deletion.leases.size }
+				dropLapsedLeasesWhileDeleting()
+				const nowMs = Date.now()
+				return {
+					count: [...deletion.leases.values()].filter(
+						(lease) => lease.expiresAtMs > nowMs,
+					).length,
+				}
 			},
 			async touchInboundConnectionLastUsed(input: {
 				clientId: string

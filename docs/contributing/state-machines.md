@@ -125,6 +125,34 @@ stateDiagram-v2
 | REVOKE | pending | revoked  | —     |
 | EXPIRE | pending | expired  | —     |
 
+## newsletter_signups.status
+
+A public newsletter sign-up joins the list only after its emailed link is
+confirmed, and can leave and rejoin afterwards.
+
+Source:
+[`packages/worker/src/newsletter/signup-state.ts`](../../packages/worker/src/newsletter/signup-state.ts)
+
+States: pending, confirmed, unsubscribed
+
+Final states: None
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending
+    pending --> confirmed: CONFIRM
+    confirmed --> unsubscribed: UNSUBSCRIBE
+    unsubscribed --> confirmed: CONFIRM
+    unsubscribed --> confirmed: RESUBSCRIBE
+```
+
+| Event       | From         | To           | Guard |
+| ----------- | ------------ | ------------ | ----- |
+| CONFIRM     | pending      | confirmed    | —     |
+| UNSUBSCRIBE | confirmed    | unsubscribed | —     |
+| CONFIRM     | unsubscribed | confirmed    | —     |
+| RESUBSCRIBE | unsubscribed | confirmed    | —     |
+
 ## publish_builds.status
 
 Builds upload, seal and commit or reject; a committed build may be finalized
