@@ -1560,7 +1560,10 @@ export async function runBundledModuleWithRegistry(
 			gatewayProps: {
 				baseUrl: callerContext.baseUrl,
 				userId: ownerIdFromCaller(callerContext) || null,
-				email: callerContext.user?.email ?? null,
+				email: entitlementEmailForOwner(
+					callerContext,
+					ownerIdFromCaller(callerContext),
+				),
 				request: callerContext.request,
 				storageContext: {
 					sessionId: normalizedStorageContext?.sessionId ?? null,
