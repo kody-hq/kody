@@ -10,7 +10,7 @@ import type { BackupEnvironment } from './backup-types.ts'
  */
 const retryableR2PlatformErrorPattern = /\((?:10001|10043|10054|10058)\)$/u
 
-export function isRetryableR2PlatformError(error: unknown): boolean {
+function isRetryableR2PlatformError(error: unknown): boolean {
 	return (
 		error instanceof Error &&
 		retryableR2PlatformErrorPattern.test(error.message.trim())
