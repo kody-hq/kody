@@ -179,7 +179,7 @@ export function onboardingSecondAgentConnectedStatusLabel(
 		return `${onboardingSecondAgentConnectedLabel} Pro is free for 2 weeks.`
 	}
 	if (gift?.status === 'invoice_credit') {
-		return `${onboardingSecondAgentConnectedLabel} 2 weeks of your plan come off your next invoice.`
+		return `${onboardingSecondAgentConnectedLabel} You get 2 weeks of your plan as an invoice credit.`
 	}
 	return onboardingSecondAgentConnectedLabel
 }

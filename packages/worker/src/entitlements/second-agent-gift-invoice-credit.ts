@@ -77,12 +77,34 @@ async function existingGiftCreditId(
 	)
 }
 
+async function recordCreditId(
+	env: InvoiceCreditEnv,
+	orgId: string,
+	creditId: string,
+	now: Date,
+) {
+	await updateOrgBillingColumns({
+		db: env.APP_DB,
+		orgId,
+		setClause: `second_agent_gift_invoice_credit_id = ?, updated_at = ?`,
+		values: [creditId, utcSqliteTimestamp(now)],
+		orgWhereSuffix: ` AND second_agent_gift_invoice_credit_id IS NULL`,
+	})
+}
+
 async function applyOne(
 	env: InvoiceCreditEnv,
 	row: PendingCreditRow,
 	now: Date,
 ): Promise<'credited' | 'fallback'> {
 	const customerId = row.stripe_customer_id?.trim() ?? ''
+	const existingCreditId = customerId
+		? await existingGiftCreditId(env, customerId, row.id)
+		: null
+	if (existingCreditId) {
+		await recordCreditId(env, row.id, existingCreditId, now)
+		return 'credited'
+	}
 	const subscription = customerId
 		? selectKodyPlanRetainingSubscriptions(
 				env,
@@ -93,28 +115,18 @@ async function applyOne(
 		? secondAgentGiftInvoiceCreditFor(subscription)
 		: null
 	if (customerId && credit && credit.amountMinor > 0) {
-		const creditId =
-			(await existingGiftCreditId(env, customerId, row.id)) ??
-			(
-				await createCustomerBalanceCredit(env, {
-					customerId,
-					amountMinor: credit.amountMinor,
-					currency: credit.currency,
-					description: 'Kody second-agent bonus: 2 weeks of your plan',
-					metadata: {
-						[secondAgentGiftMetadataKey]: row.id,
-						...buildOrgBillingMetadata(row.id),
-					},
-					idempotencyKey: `kody-second-agent-gift-${row.id}`,
-				})
-			).id
-		await updateOrgBillingColumns({
-			db: env.APP_DB,
-			orgId: row.id,
-			setClause: `second_agent_gift_invoice_credit_id = ?, updated_at = ?`,
-			values: [creditId, utcSqliteTimestamp(now)],
-			orgWhereSuffix: ` AND second_agent_gift_invoice_credit_id IS NULL`,
+		const created = await createCustomerBalanceCredit(env, {
+			customerId,
+			amountMinor: credit.amountMinor,
+			currency: credit.currency,
+			description: 'Kody second-agent bonus: 2 weeks of your plan',
+			metadata: {
+				[secondAgentGiftMetadataKey]: row.id,
+				...buildOrgBillingMetadata(row.id),
+			},
+			idempotencyKey: `kody-second-agent-gift-${row.id}`,
 		})
+		await recordCreditId(env, row.id, created.id, now)
 		return 'credited'
 	}
 	const write = resolveSecondAgentStandardGiftWrite({
@@ -137,8 +149,8 @@ async function applyOne(
 }
 
 /**
- * Applies up to eight queued credits. Each failure leaves the row queued for
- * the next tick.
+ * Applies up to eight queued credits. A failure moves the row to the back of
+ * the queue so one stuck account cannot hold up the rest.
  */
 export async function applySecondAgentGiftInvoiceCredits(input: {
 	env: InvoiceCreditEnv
@@ -161,6 +173,14 @@ export async function applySecondAgentGiftInvoiceCredits(input: {
 		} catch (error) {
 			result.failed += 1
 			console.warn('second-agent-gift-invoice-credit-failed', row.id, error)
+			await updateOrgBillingColumns({
+				db: input.env.APP_DB,
+				orgId: row.id,
+				setClause: `second_agent_gift_invoice_credit_requested_at = ?`,
+				values: [input.now.toISOString()],
+				orgWhereSuffix: ` AND second_agent_gift_invoice_credit_id IS NULL
+					AND second_agent_gift_invoice_credit_requested_at IS NOT NULL`,
+			}).catch(() => {})
 		}
 	}
 	return result

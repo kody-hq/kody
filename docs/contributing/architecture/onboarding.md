@@ -55,9 +55,9 @@ The Step 3 lede says two Claude apps count as one, and a selected host that
 shares an ecosystem with a connected one shows a note that it will not count.
 The connected label stays "You've connected a second agent." When the
 second-agent Pro gift is active, that status adds "Pro is free for 2 weeks."
-When it was delivered as a paid-plan invoice credit, it adds "2 weeks of your
-plan come off your next invoice." Step 3 copy advertises the Free overlay and
-the paid invoice credit. `/onboarding` resumes at that step instead of always
+When it was delivered as a paid-plan invoice credit, it adds "You get 2 weeks of
+your plan as an invoice credit." Step 3 copy advertises the Free overlay and the
+paid invoice credit. `/onboarding` resumes at that step instead of always
 opening the Step 1 picker. The Step 1 and Step 3 pickers, and Step 2, list
 already-connected hosts so a return visit cannot hide Cursor or Claude Desktop.
 A selected-agent card names only that host: another client's connection does not

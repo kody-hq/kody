@@ -77,7 +77,7 @@ test('Step 3 explains that a second Claude app does not count as a second ecosys
 		),
 	).toEqual([
 		"You've connected a second agent. Pro is free for 2 weeks.",
-		"You've connected a second agent. 2 weeks of your plan come off your next invoice.",
+		"You've connected a second agent. You get 2 weeks of your plan as an invoice credit.",
 		"You've connected a second agent.",
 	])
 })

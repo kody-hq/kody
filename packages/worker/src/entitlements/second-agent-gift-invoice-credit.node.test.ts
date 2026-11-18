@@ -1,5 +1,9 @@
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, expect, test, vi } from 'vitest'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import {
 	applySecondAgentGiftInvoiceCredits,
@@ -37,6 +41,9 @@ function fixture() {
 		vi.fn(async (url: string, init: RequestInit) => {
 			const parsed = new URL(url)
 			const headers = init.headers as Record<string, string>
+			if (url.includes('cus_broken')) {
+				return Response.json({ error: { message: 'boom' } }, { status: 500 })
+			}
 			if (parsed.pathname === '/v1/subscriptions') {
 				const customer = parsed.searchParams.get('customer')
 				return Response.json({
@@ -227,6 +234,67 @@ test('a subscription that ended before the credit applied falls back to the Free
 			creditId: null,
 		})
 		expect(f.posts).toEqual([])
+	} finally {
+		f.sqlite.close()
+	}
+})
+
+test('a Stripe credit that exists is recorded even after the subscription ended, with no second gift', async () => {
+	const f = fixture()
+	try {
+		f.subscriptions.push({
+			customer: 'cus_ended',
+			status: 'canceled',
+			interval: 'month',
+			unitAmount: 1200,
+		})
+		f.balance.push({
+			id: 'cbtxn_earlier',
+			customer: 'cus_ended',
+			amount: -560,
+			currency: 'usd',
+			metadata: { [secondAgentGiftMetadataKey]: 'org-cus_ended' },
+		})
+		f.queue('cus_ended')
+		expect(
+			await applySecondAgentGiftInvoiceCredits({ env: f.env, now }),
+		).toEqual({ credited: 1, fallback: 0, failed: 0 })
+		expect(f.org('cus_ended')).toEqual({
+			expires: null,
+			requested: now.toISOString(),
+			creditId: 'cbtxn_earlier',
+		})
+		expect(f.posts).toEqual([])
+	} finally {
+		f.sqlite.close()
+	}
+})
+
+test('a failing credit moves to the back of the queue', async () => {
+	const f = fixture()
+	try {
+		f.sqlite
+			.prepare(
+				`INSERT INTO orgs (id, stripe_customer_id, second_agent_gift_invoice_credit_requested_at)
+				 VALUES ('org-broken', 'cus_broken', '2026-01-01T00:00:00.000Z')`,
+			)
+			.run()
+		const later = new Date('2026-11-17T13:00:00Z')
+		consoleError.mockImplementation(() => {})
+		consoleWarn.mockImplementation(() => {})
+		expect(
+			await applySecondAgentGiftInvoiceCredits({ env: f.env, now: later }),
+		).toEqual({ credited: 0, fallback: 0, failed: 1 })
+		expect(
+			f.sqlite
+				.prepare(
+					`SELECT second_agent_gift_invoice_credit_requested_at AS requested FROM orgs WHERE id = 'org-broken'`,
+				)
+				.get(),
+		).toEqual({ requested: later.toISOString() })
+		expect(consoleWarn.mock.calls.map((call) => call.slice(0, 2))).toEqual([
+			['second-agent-gift-invoice-credit-failed', 'org-broken'],
+		])
 	} finally {
 		f.sqlite.close()
 	}
