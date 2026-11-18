@@ -15,7 +15,7 @@ import {
 	resolveSecret,
 } from '#mcp/secrets/service.ts'
 import type { SecretScope } from '#mcp/secrets/types.ts'
-import type { RejectedApprovalHost } from '#mcp/secrets/approval-host-shape.ts'
+import type { RejectedApprovalHost } from '#universal/approval-host-shape.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import { normalizeBulkPackageSecretApprovalNames } from '#mcp/secrets/package-approval-url.ts'
 import { listSavedPackagesByUserId } from '#worker/package-registry/repo.ts'

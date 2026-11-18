@@ -1,3 +1,4 @@
+import { buildCredentialCreateHref } from '../packages/worker/universal/credential-contracts.ts'
 import {
 	expect,
 	waitForClientHydration,
@@ -13,19 +14,17 @@ export async function saveKeyThroughUi(
 		allowedHosts?: string[]
 	},
 ) {
-	const search = new URLSearchParams({
-		kind: 'key',
-		kindMode: 'required',
-		name: input.name,
-	})
-	if (input.description) search.set('description', input.description)
-	if (input.allowedHosts?.length)
-		search.set('allowedHosts', input.allowedHosts.join(','))
-	await page.goto(`/connect/credential?${search}`)
+	await page.goto(
+		buildCredentialCreateHref({
+			kind: 'secret',
+			kindMode: 'required',
+			name: input.name,
+			description: input.description,
+			allowedHosts: input.allowedHosts,
+		}),
+	)
 	await waitForClientHydration(page)
-	await page
-		.getByRole('textbox', { name: 'Value', exact: true })
-		.fill(input.value)
+	await page.getByLabel('Value', { exact: true }).fill(input.value)
 	await page.getByTestId('connect-credential-save').click()
 	await expect(page.getByTestId('connect-credential-saved')).toContainText(
 		`${input.name} is saved`,

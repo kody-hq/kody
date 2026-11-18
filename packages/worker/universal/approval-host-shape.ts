@@ -1,7 +1,7 @@
 import { parse } from 'tldts'
 import { normalizeAllowedHosts } from './allowed-hosts.ts'
 
-export type RejectedApprovalHostReason = 'malformed' | 'unknown_suffix'
+type RejectedApprovalHostReason = 'malformed' | 'unknown_suffix'
 
 export type RejectedApprovalHost = {
 	host: string

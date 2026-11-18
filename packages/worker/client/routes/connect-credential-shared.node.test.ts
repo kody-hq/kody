@@ -152,7 +152,7 @@ test('the Key form starts from the link and saves an org Key', () => {
 	})
 })
 
-test('replacing an existing Key keeps its hosts; package locks follow the form', () => {
+test('replacing a Key uses the edited hosts and package locks', () => {
 	const existing = credential({
 		id: 'k1',
 		name: 'OPENAI_API_KEY',
@@ -177,10 +177,17 @@ test('replacing an existing Key keeps its hosts; package locks follow the form',
 	expect(buildKeySaveBody({ kind: 'secret', form, existing })).toMatchObject({
 		body: {
 			currentId: 'user::::OPENAI_API_KEY',
-			allowedHosts: ['api.openai.com', 'x.dev'],
+			allowedHosts: ['x.dev'],
 			allowedPackages: ['pkg-1'],
 		},
 	})
+	expect(
+		buildKeySaveBody({
+			kind: 'secret',
+			form: { ...form, hosts: '' },
+			existing,
+		}),
+	).toMatchObject({ ok: true, body: { allowedHosts: ['api.openai.com'] } })
 	// Case-only rename keeps currentId on the stored casing so the server can
 	// update the row in place instead of treating it as a create.
 	expect(
@@ -222,6 +229,33 @@ test('replacing an existing Key keeps its hosts; package locks follow the form',
 			existing: null,
 		}),
 	).toMatchObject({ ok: true, body: { provider: null } })
+})
+
+test('Key setup rejects invalid hosts and leaves a new blank allowlist empty', () => {
+	const form = createKeyFormState(
+		query('name=sentryApiToken&allowedHosts=sentry.io,https%3A%2F%2F'),
+	)
+	expect(buildKeySaveBody({ kind: 'secret', form, existing: null })).toEqual({
+		ok: false,
+		error: '"https://" is not a valid host name.',
+	})
+	expect(
+		buildKeySaveBody({
+			kind: 'secret',
+			form: { ...form, hosts: 'sentry.io, https://example.com/api' },
+			existing: null,
+		}),
+	).toMatchObject({
+		ok: false,
+		error: expect.stringContaining('https://example.com/api'),
+	})
+	expect(
+		buildKeySaveBody({
+			kind: 'secret',
+			form: { ...form, hosts: '' },
+			existing: null,
+		}),
+	).toMatchObject({ ok: true, body: { allowedHosts: [] } })
 })
 
 test('a name another kind holds is not offered for replacement', () => {

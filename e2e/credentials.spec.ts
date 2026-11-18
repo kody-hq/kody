@@ -2,6 +2,60 @@ import { saveKeyThroughUi } from './account-fixtures.ts'
 import { createPreviewPackage } from '../tools/control-kody/package-create.ts'
 import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 
+test('both credential setup links let you review and edit a Key allowlist', async ({
+	page,
+	seedE2eUser,
+	login,
+}) => {
+	test.setTimeout(process.env.CI ? 90_000 : 60_000)
+	const runId = Date.now()
+	const user = await seedE2eUser({
+		email: `credential-hosts-${runId}@example.com`,
+		username: `credential-hosts-${runId}`,
+		password: 'credential-hosts-password',
+	})
+	await login({ email: user.email, password: user.password, mode: 'login' })
+	await page.setViewportSize({ width: 1280, height: 800 })
+	await page.goto(
+		`/connect/credential?kind=secret&kindMode=required&name=sentryApiToken&provider=sentry&org=${user.username}&allowedHosts=SENTRY.io,kent-c-dodds-tech-llc.sentry.io`,
+	)
+	await waitForClientHydration(page)
+	const hosts = page.getByRole('textbox', { name: 'Allowed hosts' })
+	const value = page.getByLabel('Value', { exact: true })
+	const save = page.getByTestId('connect-credential-save')
+	await expect(hosts).toBeInViewport()
+	await expect(hosts).toHaveValue('SENTRY.io\nkent-c-dodds-tech-llc.sentry.io')
+	await value.fill('first-test-key')
+	await save.click()
+	await page.getByRole('link', { name: 'View credential' }).click()
+	const pane = page.getByRole('region', { name: 'sentryApiToken details' })
+	await expect(pane.getByText('sentry.io', { exact: true })).toBeVisible()
+	await expect(
+		pane.getByText('kent-c-dodds-tech-llc.sentry.io', { exact: true }),
+	).toBeVisible()
+
+	await page.goto(
+		`/connect/secret-set?kindMode=required&org=${user.username}&name=sentryApiToken&allowedHosts=api.example.com&allowed-host=broken.example.com%2Fpath`,
+	)
+	await waitForClientHydration(page)
+	await expect(hosts).toHaveValue('api.example.com\nbroken.example.com/path')
+	await expect(hosts).toHaveAttribute('aria-invalid', 'true')
+	await expect(page.getByText(/"broken\.example\.com\/path"/)).toBeVisible()
+	await expect(save).toBeDisabled()
+	await page.getByTestId('connect-credential-replace').check()
+	await expect(hosts).toHaveValue(/kent-c-dodds-tech-llc\.sentry\.io/)
+	await hosts.fill('HTTPS://API.Example.com/, api.example.com')
+	await expect(hosts).not.toHaveAttribute('aria-invalid', 'true')
+	await value.fill('rotated-test-key')
+	await save.click()
+	await page.getByRole('link', { name: 'View credential' }).click()
+	await expect(pane.getByText('api.example.com', { exact: true })).toBeVisible()
+	await expect(pane.getByText('sentry.io', { exact: true })).toHaveCount(0)
+	await expect(
+		pane.getByText('kent-c-dodds-tech-llc.sentry.io', { exact: true }),
+	).toHaveCount(0)
+})
+
 test('Credentials lists a key, filters by kind, and opens its detail pane without the value', async ({
 	page,
 	seedE2eUser,

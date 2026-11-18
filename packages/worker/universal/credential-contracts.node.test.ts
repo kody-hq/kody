@@ -56,6 +56,28 @@ test('creation links lock the kind only when required and round-trip prefill', (
 	).toBe('https://kody.codes/connect/credential?name=x')
 })
 
+test('a generated Key setup link carries both Sentry hosts into the form', () => {
+	const url = new URL(
+		buildCredentialCreateUrl('https://kody.codes/mcp', {
+			orgSlug: 'kody',
+			kind: 'secret',
+			kindMode: 'required',
+			name: 'sentryApiToken',
+			provider: 'sentry',
+			allowedHosts: ['sentry.io', 'kent-c-dodds-tech-llc.sentry.io'],
+		}),
+	)
+	expect(url.pathname).toBe('/@kody/-/credentials/new')
+	expect(url.searchParams.get('allowedHosts')).toBe(
+		'sentry.io,kent-c-dodds-tech-llc.sentry.io',
+	)
+	expect(parseCredentialCreateQuery(url.searchParams)).toMatchObject({
+		kind: 'secret',
+		kindLocked: true,
+		allowedHosts: ['sentry.io', 'kent-c-dodds-tech-llc.sentry.io'],
+	})
+})
+
 test('links that know their org open that org, and carry package scope, expiry, and locks', () => {
 	expect(orgCredentialCreatePath('acme clients')).toBe(
 		'/@acme%20clients/-/credentials/new',
