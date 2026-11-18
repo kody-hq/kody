@@ -21,6 +21,11 @@ import {
 	type RunLogIndex,
 	type StorageIndex,
 } from '@kody-internal/shared/backup-staging.ts'
+import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+	parsePacedD1NightManifest,
+} from '@kody-internal/shared/backup-d1-paced.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
 
 import {
@@ -28,10 +33,12 @@ import {
 	backupPayload,
 	bindSourceDatabase,
 	errorCode,
+	pacedSourceDatabases,
 	primarySourceDatabase,
 	restExportSourceDatabases,
 	safeLog,
 	utcDay,
+	type SourceDatabase,
 } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import {
@@ -495,7 +502,7 @@ async function loadVerifiedStagingSummary(
 
 export type SealDayResult =
 	| { kind: 'sealed'; day: string; manifestKey: string; alreadySealed: boolean }
-	| { kind: 'incomplete'; day: string; reason: string }
+	| { kind: 'incomplete'; day: string; reason: string; source?: string }
 
 async function assertSourceDayRestorable(
 	env: BackupEnvironment,
@@ -510,10 +517,7 @@ async function assertSourceDayRestorable(
 		return { kind: 'incomplete', reason: 'd1-manifest-missing' }
 	}
 	if (!(await verifyBackupManifestSignature(env, d1Manifest))) {
-		throw new BackupError(
-			'd1-manifest-signature-invalid',
-			`D1 manifest signature invalid for ${day}`,
-		)
+		return { kind: 'incomplete', reason: 'd1-manifest-signature-invalid' }
 	}
 	const restorability = await readSqlRestorability(
 		env.BACKUP_BUCKET,
@@ -546,14 +550,145 @@ async function assertSourceDayRestorable(
 	}
 }
 
-function incompleteForSqlStats(day: string, reason: string): SealDayResult {
-	safeLog({
-		event: 'full-backup-seal-skipped',
-		status: 'failure',
+type RestD1Fields = {
+	d1ManifestKey: string
+	d1ManifestSha256: string
+	d1Sources: Array<BackupFullD1Source>
+}
+
+/**
+ * The paced lane's sealed night for one source and day, or why it cannot be
+ * referenced. A missing or corrupt paced seal blocks the full seal.
+ */
+async function readSealedPacedNight(
+	bucket: R2Bucket,
+	source: SourceDatabase,
+	day: string,
+): Promise<
+	| { kind: 'ok'; ref: BackupFullD1Source }
+	| { kind: 'incomplete'; reason: string }
+> {
+	const manifestKey = pacedD1SealedManifestKey(
+		pacedD1RetentionTierForDay(day),
+		source.id,
 		day,
-		errorCode: reason,
-	})
-	return { kind: 'incomplete', day, reason }
+	)
+	const object = await bucket.get(manifestKey)
+	if (object === null) {
+		return { kind: 'incomplete', reason: 'paced-d1-seal-missing' }
+	}
+	const bytes = new Uint8Array(await object.arrayBuffer())
+	try {
+		const night = parsePacedD1NightManifest(
+			JSON.parse(new TextDecoder().decode(bytes)),
+		)
+		if (
+			night.day !== day ||
+			night.databaseId.toLowerCase() !== source.id.toLowerCase()
+		) {
+			return { kind: 'incomplete', reason: 'paced-d1-seal-corrupt' }
+		}
+	} catch {
+		return { kind: 'incomplete', reason: 'paced-d1-seal-corrupt' }
+	}
+	return {
+		kind: 'ok',
+		ref: {
+			databaseId: source.id,
+			databaseName: source.name,
+			manifestKey,
+			manifestSha256: await sha256Bytes(bytes),
+		},
+	}
+}
+
+/**
+ * A REST export still in flight (02:15 UTC cron plus retries) holds the seal
+ * until this hour so an early paced-only seal does not drop same-day REST SQL.
+ */
+const restD1WaitUntilUtcHour = 12
+
+/**
+ * REST D1 evidence for the day, recorded in the full manifest only when every
+ * REST source (including the primary) has a signed, restorable manifest.
+ * Informational while both lanes exist: after the wait deadline its absence
+ * never blocks the seal.
+ */
+async function readRestD1Fields(
+	env: BackupEnvironment,
+	day: string,
+	now: Date,
+): Promise<RestD1Fields | null | 'pending'> {
+	const skip = (reason: string) => {
+		safeLog({
+			event: 'full-backup-rest-d1-omitted',
+			status: 'success',
+			day,
+			errorCode: reason,
+		})
+		return null
+	}
+	const restSources = restExportSourceDatabases(env)
+	const primary = primarySourceDatabase(env)
+	if (
+		!restSources.some(
+			(source) => source.id.toLowerCase() === primary.id.toLowerCase(),
+		)
+	) {
+		return skip('primary-rest-export-disabled')
+	}
+	const d1Sources: Array<BackupFullD1Source> = []
+	for (const source of restSources) {
+		const sourceEnv = bindSourceDatabase(env, source)
+		let sourceResult: Awaited<ReturnType<typeof assertSourceDayRestorable>>
+		try {
+			sourceResult = await assertSourceDayRestorable(sourceEnv, day)
+		} catch (error) {
+			if (errorCode(error) === 'manifest-corrupt') {
+				return skip('manifest-corrupt')
+			}
+			throw error
+		}
+		if (sourceResult.kind === 'incomplete') {
+			const waitDeadline = Date.parse(
+				`${day}T${String(restD1WaitUntilUtcHour).padStart(2, '0')}:00:00.000Z`,
+			)
+			if (
+				sourceResult.reason === 'd1-manifest-missing' &&
+				now.getTime() < waitDeadline
+			) {
+				return 'pending'
+			}
+			return skip(sourceResult.reason)
+		}
+		const manifestKey = backupPayload(
+			sourceEnv,
+			new Date(`${day}T12:00:00.000Z`),
+		).manifestKey
+		const manifestObject = await env.BACKUP_BUCKET.get(manifestKey)
+		if (manifestObject === null) return skip('d1-manifest-missing')
+		d1Sources.push({
+			databaseId: source.id,
+			databaseName: source.name,
+			manifestKey,
+			manifestSha256: await sha256Bytes(
+				new Uint8Array(await manifestObject.arrayBuffer()),
+			),
+		})
+	}
+	const primaryKey = backupPayload(
+		env,
+		new Date(`${day}T12:00:00.000Z`),
+	).manifestKey
+	const primarySource = d1Sources.find(
+		(source) => source.manifestKey === primaryKey,
+	)
+	if (primarySource === undefined) return skip('d1-manifest-missing')
+	return {
+		d1ManifestKey: primaryKey,
+		d1ManifestSha256: primarySource.manifestSha256,
+		d1Sources,
+	}
 }
 
 export async function sealFullBackupDay(
@@ -586,59 +721,30 @@ export async function sealFullBackupDay(
 		return { kind: 'sealed', day, manifestKey, alreadySealed: true }
 	}
 
-	const d1Sources: Array<BackupFullD1Source> = []
-	const restSources = restExportSourceDatabases(env)
-	const primary = primarySourceDatabase(env)
-	// Full manifests still require the primary REST D1 identity fields. Turning
-	// restExport off on the primary is supported for REST cron/freshness, but
-	// full-day seal waits until a paced-backed full-seal path lands (#4306).
-	if (
-		!restSources.some(
-			(source) => source.id.toLowerCase() === primary.id.toLowerCase(),
-		)
-	) {
-		return {
-			kind: 'incomplete',
-			day,
-			reason: 'primary-rest-export-disabled',
+	const d1Paced: Array<BackupFullD1Source> = []
+	for (const source of pacedSourceDatabases(env)) {
+		const night = await readSealedPacedNight(env.BACKUP_BUCKET, source, day)
+		if (night.kind === 'incomplete') {
+			safeLog({
+				event: 'full-backup-seal-skipped',
+				status: 'failure',
+				day,
+				databaseName: source.name,
+				errorCode: night.reason,
+			})
+			return {
+				kind: 'incomplete',
+				day,
+				reason: night.reason,
+				source: source.name,
+			}
 		}
+		d1Paced.push(night.ref)
 	}
-	for (const source of restSources) {
-		const sourceEnv = bindSourceDatabase(env, source)
-		const sourceResult = await assertSourceDayRestorable(sourceEnv, day)
-		if (sourceResult.kind === 'incomplete') {
-			return incompleteForSqlStats(day, sourceResult.reason)
-		}
-		const sourcePayload = backupPayload(
-			sourceEnv,
-			new Date(`${day}T12:00:00.000Z`),
-		)
-		const sourceManifestObject = await env.BACKUP_BUCKET.get(
-			sourcePayload.manifestKey,
-		)
-		if (sourceManifestObject === null) {
-			return { kind: 'incomplete', day, reason: 'd1-manifest-missing' }
-		}
-		const sourceManifestBytes = new Uint8Array(
-			await sourceManifestObject.arrayBuffer(),
-		)
-		d1Sources.push({
-			databaseId: source.id,
-			databaseName: source.name,
-			manifestKey: sourcePayload.manifestKey,
-			manifestSha256: await sha256Bytes(sourceManifestBytes),
-		})
+	const restD1 = await readRestD1Fields(env, day, now)
+	if (restD1 === 'pending') {
+		return { kind: 'incomplete', day, reason: 'rest-d1-pending' }
 	}
-
-	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
-	const primarySource = d1Sources.find(
-		(source) => source.manifestKey === d1Payload.manifestKey,
-	)
-	if (primarySource === undefined) {
-		return { kind: 'incomplete', day, reason: 'd1-manifest-missing' }
-	}
-	const d1ManifestSha256 = primarySource.manifestSha256
-	const d1ManifestKey = d1Payload.manifestKey
 
 	let summary: StagingSummary
 	try {
@@ -760,9 +866,8 @@ export async function sealFullBackupDay(
 
 	const fullManifest = await signBackupFullManifest(env, {
 		day,
-		d1ManifestKey,
-		d1ManifestSha256,
-		d1Sources,
+		d1Paced,
+		...restD1,
 		mailboxIndex: sealedMailboxIndex,
 		runLogIndex: sealedRunLogIndex,
 		storageIndex: toSealedRef(day, summary.storageIndex),
@@ -839,11 +944,15 @@ export async function sealRecentCompleteDays(
 						day,
 						errorCode: result.reason,
 					})
-					// Yesterday's REST exports and staging are done, so an unsealed
+					// Yesterday's paced seals and staging are done, so an unsealed
 					// day is blocked, not pending. A missing staging summary already
 					// pages from the worker's staging watchdog.
 					if (offset === 1 && result.reason !== 'staging-summary-missing') {
-						captureFullSealBlocked({ day, reason: result.reason })
+						captureFullSealBlocked({
+							day,
+							reason: result.reason,
+							...(result.source ? { source: result.source } : {}),
+						})
 					}
 					break
 				default: {

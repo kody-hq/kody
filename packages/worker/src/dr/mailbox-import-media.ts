@@ -1,5 +1,5 @@
 import {
-	backupFullManifestSchemaVersion,
+	backupFullManifestLegacySchemaVersion,
 	backupFullManifestSignatureAlgorithm,
 	canonicalBackupFullManifestPayload,
 	parseBackupFullManifest,
@@ -61,8 +61,8 @@ async function verifyFullManifestSignature(
 	configuration: ReturnType<typeof readSignatureConfiguration>,
 ): Promise<boolean> {
 	if (
-		manifest.schemaVersion !== backupFullManifestSchemaVersion ||
-		manifest.payload.schemaVersion !== backupFullManifestSchemaVersion ||
+		manifest.schemaVersion === backupFullManifestLegacySchemaVersion ||
+		manifest.payload.schemaVersion !== manifest.schemaVersion ||
 		manifest.payload.signing.keyId !== configuration.keyId ||
 		manifest.signature.keyId !== configuration.keyId ||
 		manifest.payload.signing.algorithm !==
@@ -188,7 +188,7 @@ export async function loadVerifiedMailboxIndex(input: {
 		throw failure(`sealed full manifest is invalid: ${getErrorMessage(error)}`)
 	}
 	if (
-		manifest.schemaVersion !== backupFullManifestSchemaVersion ||
+		manifest.schemaVersion === backupFullManifestLegacySchemaVersion ||
 		manifest.payload.day !== input.day
 	) {
 		throw failure('sealed full manifest does not cover the requested day')

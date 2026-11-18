@@ -62,7 +62,7 @@ recent evidence.
 | Date (UTC) | Lane proven                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 2026-11-15 | The weekly paced restore drill for 2026-11-14 failed on APP_DB: `package_codemod_run_items` restored 55,179 of 55,579 rows (`restore-checksum-mismatch`); every other table and both other sources passed. The table had no writes from 2026-11-03 to 2026-11-16, and the drill was not interrupted, so the sealed chain itself (2026-11-08 full base plus six deltas) was 400 rows short. The paced backup lane had no overlap guard, and two nightly ticks ran concurrently on 2026-11-14 (03:07:09 and 03:07:10). Reproduced with the real tick, seal, and drill code: two ticks that load the same progress on a full-base night interleave part writes and repeat rowids in that night's index, and the next delta night's merge-join emits delete lines for those live rows. That this is what happened on 2026-11-08/09 is inferred from the repro and the 2026-11-14 overlap; the logs for those nights had aged out and the bucket was not read. Fixes: single-flight lease on the lane checked before every write, seal rejects an index that is not strictly increasing, and the drill counts a rowid a full base carries twice once, as a restore would. |
-| 2026-11-18 | The REST `kody` D1 export workflow errored on 2026-11-17 and 2026-11-18 (`backup-unrestorable-statements`: 3 and 1 statements over the 100 KB import limit) and wrote no `daily/d1` manifest, so `daily/full` did not seal for either day even though both staging summaries were written. The paced lane sealed APP_DB, AUDIT_DB, and JOBS_DB both nights. The oversized rows were `publish_builds.document_json` (largest 104,515 bytes): publish offload stored each sealed build document in D1 with no size bound. Fix: the sealed document lives in R2 (`REPO_SESSION_BLOBS`, `publish-build-documents/{buildId}/{sha256}.json`) and the row keeps only `document_sha256`. Full seal still requires the REST primary manifest, so turning `restExport` off before a paced-backed full seal lands stops `daily/full` sealing (`primary-rest-export-disabled`).                                                                                                                                                                                                                                                                                                  |
+| 2026-11-18 | The REST `kody` D1 export workflow errored on 2026-11-17 and 2026-11-18 (`backup-unrestorable-statements`: 3 and 1 statements over the 100 KB import limit) and wrote no `daily/d1` manifest, so `daily/full` did not seal for either day even though both staging summaries were written. The paced lane sealed APP_DB, AUDIT_DB, and JOBS_DB both nights. The oversized rows were `publish_builds.document_json` (largest 104,515 bytes): publish offload stored each sealed build document in D1 with no size bound. Fix: the sealed document lives in R2 (`REPO_SESSION_BLOBS`, `publish-build-documents/{buildId}/{sha256}.json`) and the row keeps only `document_sha256`. The full seal reads the sealed paced nights as its D1 source of truth, and REST evidence is optional.                                                                                                                                                                                                                                                                                                                                                                               |
 | 2026-11-16 | The 06:15 staging watchdog paged every night from 2026-11-10 through 2026-11-16 (KODY-3V, `phase=artifacts`). Nothing failed and nothing was misread: every tick was healthy, but the night needed about 76 ticks and the 00:30-06:10 window holds 69, so daytime catch-up wrote `exporter/summary.json` between 06:21 and 07:51 UTC. The artifacts phase (about 1,600 snapshots, one KV read, one blob HEAD and one progress PUT each, in series) took about 21 ticks and the R2 phase (about 4,200 objects, nearly all unchanged, one blob HEAD each, in series) about 10, while only about 100 blobs a night were new. Fix: artifact snapshots and unchanged R2 objects settle in waves of 8, a stored snapshot is hashed as a stream instead of buffered, and progress persists once per wave.                                                                                                                                                                                                                                                                                                                                                                   |
 | 2026-10-29 | 2026-10-25 sat in the storage phase for four days (`storageIndex` ~724, revision ~2880) and no full backup sealed after 2026-10-24. One bucket's next 250-entry StorageRunner page was too large to return: ticks failed or ran out of memory (KODY-AQ) on the same page, but the lease-acquire persist still bumped `advancedAt`, so the day looked like it was moving. The 06:15 watchdog threw the 2+ day lag error on 2026-10-27/28/29, but `JobsHost` RPC methods had no Sentry client, so no issue opened. Fixes: byte-bounded storage pages (`maxBytes`), lease-only persists no longer move `advancedAt`, a storage identity whose last 3 serial attempts all aborted is skipped with a `storage dump failed:` warning, storage first pages are fetched 4 at a time, and `JobsHost` is wrapped with `Sentry.withSentry`.                                                                                                                                                                                                                                                                                                                                     |
 | 2026-10-18 | Staging fell behind one UTC day per day. Consecutive `exporter/summary.json` completions were ~27–28h apart (2026-10-08 through 2026-10-15), and 2026-10-16 was still in the mailbox phase on 2026-10-18T03:05Z (`ownerIndex` 736, revision 2645, `advancedAt` moving). The 06:15 watchdog stayed silent because that cursor was inside the 2h "still draining" window. D1 exports and hourly seals of finished days were fine.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
@@ -186,13 +186,13 @@ Contract: `packages/shared/src/backup-staging.ts`.
    `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
    `SOURCE_DATABASES` entries accept optional `restExport` (default `true`).
    `restExport: false` skips that database on REST cron, hourly freshness, and
-   seal-full REST prerequisites; the paced walk is independent. **D1 paced walk
-   (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is `"true"` and the
-   same DR S3 credentials are set, the production worker walks APP_DB, AUDIT_DB,
-   and JOBS_DB page-by-page (`packages/worker/src/dr/d1-paced-backup.ts`) in the
-   same nightly window as non-D1 staging. Staging lives under
-   `staging/{day}/d1-paced/{databaseName}/`. Completed nights seal to
-   `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
+   the optional REST evidence in the full seal; the paced walk is independent.
+   **D1 paced walk (production worker)** — When `DR_D1_PACED_BACKUP_ENABLED` is
+   `"true"` and the same DR S3 credentials are set, the production worker walks
+   APP_DB, AUDIT_DB, and JOBS_DB page-by-page
+   (`packages/worker/src/dr/d1-paced-backup.ts`) in the same nightly window as
+   non-D1 staging. Staging lives under `staging/{day}/d1-paced/{databaseName}/`.
+   Completed nights seal to `daily/d1-paced/{databaseId}/{day}/` (weekdays) or
    `weekly/d1-paced/{databaseId}/{day}/` (Sunday UTC full bases). Tick writers
    flush TSV parts at 4 MiB on page boundaries. Each table walk stops after 32
    MiB emitted so the next tick can resume; see
@@ -296,21 +296,29 @@ Contract: `packages/shared/src/backup-staging.ts`.
      Canonical per-day dumps, indexes, and the completion summary are
      create-only; a resumed writer adopts an already completed object instead of
      replacing it. Per-owner Mailbox and RunLog dumps still use a 16 MiB
-     admission ceiling with a summary warning.
+     admission ceiling with a summary warning (part splitting is tracked
+     separately).
 3. **Seal** — Control plane verifies staged checksums against
-   `staging/{day}/exporter/summary.json`, requires a verified same-day D1
-   manifest for every configured source (APP_DB and JOBS_DB) when sealing a new
+   `staging/{day}/exporter/summary.json`, requires the sealed paced D1 night for
+   every `D1_PACED_SOURCES` entry (APP_DB, AUDIT_DB, JOBS_DB) when sealing a new
    day, copies staged files under `daily/full/{day}/...`, and signs a
-   full-backup manifest (`packages/shared/src/backup-full-manifest.ts`). New
-   seals record every configured D1 under optional payload `d1Sources`.
-   Historical days without `d1Sources` (schema-v1 and earlier schema-v2 mailbox
-   seals) stay restorable as APP_DB-only. Already-sealed days short-circuit
-   before source checks, so hourly seal does not treat them as incomplete when a
-   later-configured database is absent. The sealed full-manifest `d1ManifestKey`
-   still points at the primary APP_DB export. Hourly freshness also attempts to
-   seal the last sixteen complete days synchronously. The UI seal action
-   enqueues workflow `kody-production-seal-day` for that day and returns
-   immediately.
+   full-backup manifest (`packages/shared/src/backup-full-manifest.ts`).
+   Schema-v3 seals list each paced night (key and SHA-256) under `d1Paced`, the
+   D1 source of truth. A missing or unparseable paced night returns
+   `paced-d1-seal-missing` or `paced-d1-seal-corrupt` with the source name. REST
+   D1 evidence (`d1ManifestKey`, `d1ManifestSha256`, `d1Sources`) is
+   informational: it is recorded only when every REST-enabled source has a
+   signed, restorable same-day manifest. A REST manifest that is still missing
+   holds the seal (`rest-d1-pending`) until 12:00 UTC on that day so an early
+   seal does not drop same-day REST SQL. After that, or for a failed, corrupt,
+   or disabled REST export, its absence never blocks the seal (log
+   `full-backup-rest-d1-omitted`). Graduated production restore still imports
+   REST SQL, so it refuses a day sealed without REST evidence
+   (`restore-rest-d1-absent`). Historical schema-v1 and schema-v2 days keep
+   their required REST fields. Already-sealed days short-circuit before source
+   checks. Hourly freshness also attempts to seal the last sixteen complete days
+   synchronously. The UI seal action enqueues workflow
+   `kody-production-seal-day` for that day and returns immediately.
 
 ### Restore-safe row sizes
 
@@ -770,7 +778,7 @@ the correctness spec and incident-only fallback:
 | 02:45–05:45 hourly              | Control plane     | Catch-up create/restart of same-day D1 Workflows                                                                                                                                                                                                                               |
 | Hourly `:45`                    | Control plane     | D1 freshness for every REST-enabled source (identity, size ceiling, manifest age ≤26h, R2 size/ETag) + seal recent complete days                                                                                                                                               |
 | On failure                      | Control plane     | REST D1 export Workflow failure → Sentry, fingerprint `dr / rest-d1-export-failed / <database>:<code>`                                                                                                                                                                         |
-| Hourly `:45`                    | Control plane     | Yesterday's full seal still blocked (any reason except a missing staging summary) → Sentry, fingerprint `dr / full-seal-blocked / <reason>`                                                                                                                                    |
+| Hourly `:45`                    | Control plane     | Yesterday's full seal still blocked (any reason except a missing staging summary) → Sentry, fingerprint `dr / full-seal-blocked / <reason>` or `<reason>:<source>`                                                                                                             |
 | On skip                         | Production worker | A storage identity left out after 3 aborted attempts → Sentry, fingerprint `dr / export-storage-identity-skipped`                                                                                                                                                              |
 | `*/5` during 00:30–06:10        | Production worker | Paced D1 walk (`dr_d1_paced_backup`): APP_DB, AUDIT_DB, and JOBS_DB when `DR_D1_PACED_BACKUP_ENABLED=true`                                                                                                                                                                     |
 | Every 5 min outside 00:30–06:10 | Production worker | Paced D1 catch-up: resume the oldest incomplete paced night (today − ≤14 days)                                                                                                                                                                                                 |

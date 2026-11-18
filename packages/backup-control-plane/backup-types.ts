@@ -14,6 +14,8 @@ export interface BackupEnvironment {
 	SOURCE_DATABASE_ID: string
 	SOURCE_DATABASE_NAME: string
 	SOURCE_DATABASES?: string
+	/** JSON `[{ id, name }]` of paced D1 sources (full seal D1 source of truth). */
+	D1_PACED_SOURCES?: string
 	ALLOWED_SOURCE_ACCOUNT_IDS: string
 	ALLOWED_SOURCE_DATABASE_IDS: string
 	ENABLE_PRODUCTION_D1_BACKUPS: string
@@ -120,6 +122,7 @@ export interface LogRecord {
 		| 'full-backup-sealed'
 		| 'full-backup-already-sealed'
 		| 'full-backup-seal-skipped'
+		| 'full-backup-rest-d1-omitted'
 		| 'full-backup-seal-failure'
 		| 'restore-drill-started'
 		| 'restore-drill-success'

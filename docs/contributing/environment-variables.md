@@ -613,6 +613,10 @@ Non-secret vars:
   `ALLOWED_SOURCE_DATABASE_IDS`. Production `kody-jobs` UUID is the live D1
   named `kody-jobs`; deploy resolves it by name in
   `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
+- `D1_PACED_SOURCES`: JSON array of `{ id, name }` for the paced D1 sources
+  (same ids as the worker's `DR_D1_PACED_SOURCES`; must include
+  `SOURCE_DATABASE_ID`). The full seal requires each source's sealed paced night
+  and records it under `d1Paced`.
 - `BACKUP_MANIFEST_SIGNING_KEY_ID`,
   `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`,
   `TRUSTED_RESTORE_BASELINE_ID`, `TRUSTED_RESTORE_BASELINE_SHA256`.

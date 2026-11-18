@@ -3,6 +3,11 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 
 import {
+	pacedD1BackupSchemaVersion,
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
+import {
 	backupBlobKey,
 	backupStagingSchemaVersion,
 	sealedFullManifestKey,
@@ -63,6 +68,56 @@ const jobsSource = {
 	name: 'kody-jobs',
 }
 
+const auditSource = {
+	id: '55555555-5555-4555-8555-555555555555',
+	name: 'kody-audit',
+}
+
+async function putPacedSeal(
+	bucket: MemoryBucket,
+	source: { id: string; name: string },
+	day: string,
+) {
+	const manifestKey = pacedD1SealedManifestKey(
+		pacedD1RetentionTierForDay(day),
+		source.id,
+		day,
+	)
+	const body = JSON.stringify({
+		schemaVersion: pacedD1BackupSchemaVersion,
+		databaseName: source.name,
+		databaseId: source.id,
+		day,
+		retentionTier: pacedD1RetentionTierForDay(day),
+		startedAt: `${day}T00:30:00.000Z`,
+		finishedAt: `${day}T01:30:00.000Z`,
+		prevDay: null,
+		prevManifestSha256: null,
+		schemaHash: 'a'.repeat(64),
+		schemaStableDuringWalk: true,
+		timeTravelBookmark: null,
+		extras: [],
+		sqliteSequence: [],
+		tables: {},
+		stats: {},
+		shadow: true,
+	})
+	await bucket.put(manifestKey, body)
+	return { manifestKey, manifestSha256: sha256Text(body) }
+}
+
+/** Production shape: APP + AUDIT + JOBS paced, REST export off for all. */
+function usePacedOnlySources(env: BackupEnvironment) {
+	const app = { id: env.SOURCE_DATABASE_ID, name: env.SOURCE_DATABASE_NAME }
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ ...app, restExport: false },
+		{ ...jobsSource, restExport: false },
+	])
+	env.D1_PACED_SOURCES = JSON.stringify([app, auditSource, jobsSource])
+	env.ALLOWED_SOURCE_DATABASE_IDS = `${app.id},${jobsSource.id}`
+	return [app, auditSource, jobsSource]
+}
+
 async function putBody(bucket: MemoryBucket, objectKey: string, body: string) {
 	await bucket.put(objectKey, body)
 	return { objectKey, bytes: body.length, sha256: sha256Text(body) }
@@ -110,6 +165,11 @@ async function seedCompleteDay(
 	options: { duplicateIndexEntry?: boolean } = {},
 ) {
 	const env = environment(bucket)
+	await putPacedSeal(
+		bucket,
+		{ id: env.SOURCE_DATABASE_ID, name: env.SOURCE_DATABASE_NAME },
+		day,
+	)
 	const { sqlKey } = await putD1DayManifest(
 		bucket,
 		env,
@@ -231,7 +291,7 @@ test('sealFullBackupDay seals a complete day, is idempotent, short-circuits seal
 	assert.ok(sealed)
 	assert.equal(sealed?.payload.day, day)
 	assert.equal(
-		sealed?.payload.schemaVersion === 2
+		sealed?.payload.schemaVersion === 3
 			? sealed.payload.mailboxIndex.objectKey
 			: null,
 		`daily/full/${day}/mailbox-index.json`,
@@ -359,9 +419,10 @@ test('sealFullBackupDay fails closed on staging storage or mailbox sha mismatche
 	}
 })
 
-test('sealFullBackupDay refuses missing or unrestorable SQL stats before sealing', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
+test('missing or unrestorable REST SQL stats omit REST D1 evidence without blocking the seal', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	const putBadStats = (bucket: MemoryBucket, day: string, sqlKey: string) =>
 		bucket.put(
 			`${sqlKey}.stats.json`,
@@ -375,26 +436,16 @@ test('sealFullBackupDay refuses missing or unrestorable SQL stats before sealing
 		const bucket = new MemoryBucket()
 		const seeded = await seedCompleteDay(bucket, '2026-07-31')
 		await prepare(bucket, seeded.day, seeded.sqlKey)
-		assert.deepEqual(await seeded.seal(), {
-			kind: 'incomplete',
-			day: seeded.day,
-			reason,
-		})
-		assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
-		const record = JSON.parse(
-			String(consoleError.mock.calls.at(-1)?.[0]),
-		) as Record<string, unknown>
-		assert.equal(record.event, 'full-backup-seal-skipped')
-		assert.equal(record.errorCode, reason)
+		assert.equal((await seeded.seal()).kind, 'sealed')
+		const payload = (await seeded.sealedManifest())?.payload
+		assert.equal(payload?.d1ManifestKey, undefined)
+		assert.equal(payload?.schemaVersion === 3 ? payload.d1Paced.length : 0, 1)
+		const omitted = consoleLog.mock.calls
+			.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+			.filter((record) => record.event === 'full-backup-rest-d1-omitted')
+			.at(-1)
+		assert.equal(omitted?.errorCode, reason)
 	}
-
-	// Stats that turn bad after sealing do not unseal the day.
-	const sealedBucket = new MemoryBucket()
-	const sealedDay = await seedCompleteDay(sealedBucket, '2026-07-31')
-	await putSqlStatsFixture(sealedBucket, sealedDay.day, sealedDay.sqlKey)
-	assert.equal((await sealedDay.seal()).kind, 'sealed')
-	await putBadStats(sealedBucket, sealedDay.day, sealedDay.sqlKey)
-	assert.deepEqual(await sealedDay.seal('04:01'), alreadySealed(sealedDay.day))
 })
 
 test('sealFullBackupDay is incomplete when the 501st referenced blob is missing', async () => {
@@ -429,54 +480,44 @@ test('sealFullBackupDay is incomplete when the 501st referenced blob is missing'
 	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
 })
 
-test('a day blocked on a missing D1 manifest opens a Sentry issue with that reason the next day', async () => {
-	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+test('REST D1 evidence is recorded only when every REST source has a restorable manifest', async () => {
 	vi.spyOn(console, 'log').mockImplementation(() => undefined)
-	const bucket = new MemoryBucket()
-	const seeded = await seedCompleteDay(bucket)
-	addJobsSource(seeded.env)
-
-	await sealRecentCompleteDays(
-		seeded.env,
-		new Date(`${seeded.day}T20:45:00.000Z`),
-		1,
-	)
-	assert.equal(vi.mocked(captureFullSealBlocked).mock.calls.length, 0)
-
-	await sealRecentCompleteDays(
-		seeded.env,
-		new Date('2026-07-23T04:45:00.000Z'),
-		2,
-	)
-	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
-		[{ day: seeded.day, reason: 'd1-manifest-missing' }],
-	])
-})
-
-test('sealFullBackupDay requires a restorable manifest for every SOURCE_DATABASES entry and records each one', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
-	const bucket = new MemoryBucket()
-	const seeded = await seedCompleteDay(bucket)
-	addJobsSource(seeded.env)
-	assert.deepEqual(await seeded.seal(), {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const partial = await seedCompleteDay(new MemoryBucket())
+	addJobsSource(partial.env)
+	// A REST export still in flight holds the seal until 12:00 UTC.
+	assert.deepEqual(await partial.seal('04:00'), {
 		kind: 'incomplete',
-		day: seeded.day,
-		reason: 'd1-manifest-missing',
+		day: partial.day,
+		reason: 'rest-d1-pending',
 	})
-	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
-	assert.equal(consoleError.mock.calls.length, 1)
+	assert.equal((await partial.seal('12:00')).kind, 'sealed')
+	assert.equal((await partial.sealedManifest())?.payload.d1Sources, undefined)
 
+	const corrupt = new MemoryBucket()
+	const corruptDay = await seedCompleteDay(corrupt)
+	await corrupt.put(
+		backupPayload(corruptDay.env, new Date(`${corruptDay.day}T12:00:00.000Z`))
+			.manifestKey,
+		'not json',
+	)
+	assert.equal((await corruptDay.seal()).kind, 'sealed')
+	assert.equal(
+		(await corruptDay.sealedManifest())?.payload.d1ManifestKey,
+		undefined,
+	)
+
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket)
+	addJobsSource(seeded.env)
 	const jobs = await putD1DayManifest(
 		bucket,
 		bindSourceDatabase(seeded.env, jobsSource),
 		seeded.day,
 		'CREATE TABLE jobs(id INTEGER);\n',
 	)
-	const result = await seeded.seal('04:01')
+	const result = await seeded.seal()
 	assert.equal(result.kind, 'sealed')
-	if (result.kind !== 'sealed') return
-	assert.equal(result.alreadySealed, false)
 	assert.deepEqual(
 		(await seeded.sealedManifest())?.payload.d1Sources?.map((source) => ({
 			databaseId: source.databaseId,
@@ -499,4 +540,62 @@ test('sealFullBackupDay requires a restorable manifest for every SOURCE_DATABASE
 			},
 		],
 	)
+})
+
+test('with restExport:false on every source, the full seal seals from the paced lane alone', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket, '2026-11-17')
+	const sources = usePacedOnlySources(seeded.env)
+	const seals: Array<{ manifestKey: string; manifestSha256: string }> = []
+	for (const source of sources) {
+		seals.push(await putPacedSeal(bucket, source, seeded.day))
+	}
+
+	const result = await seeded.seal()
+	assert.equal(result.kind, 'sealed')
+	const payload = (await seeded.sealedManifest())?.payload
+	assert.equal(payload?.schemaVersion, 3)
+	assert.deepEqual(
+		payload?.schemaVersion === 3 ? payload.d1Paced : null,
+		sources.map((source, index) => ({
+			databaseId: source.id,
+			databaseName: source.name,
+			...seals[index],
+		})),
+	)
+	assert.equal(payload?.d1ManifestKey, undefined)
+	assert.equal(payload?.d1Sources, undefined)
+})
+
+test('a missing paced seal blocks the full seal and opens one Sentry issue per source', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket, '2026-11-17')
+	usePacedOnlySources(seeded.env)
+	await putPacedSeal(bucket, jobsSource, seeded.day)
+
+	assert.deepEqual(await seeded.seal(), {
+		kind: 'incomplete',
+		day: seeded.day,
+		reason: 'paced-d1-seal-missing',
+		source: 'kody-audit',
+	})
+	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
+
+	await sealRecentCompleteDays(
+		seeded.env,
+		new Date('2026-11-18T11:45:00.000Z'),
+		2,
+	)
+	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
+		[
+			{
+				day: seeded.day,
+				reason: 'paced-d1-seal-missing',
+				source: 'kody-audit',
+			},
+		],
+	])
 })
