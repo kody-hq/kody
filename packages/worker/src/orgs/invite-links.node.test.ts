@@ -299,7 +299,10 @@ test('a full comped seat cap blocks the join, keeps the use, and refuses new sea
 			.bind(orgId, joiner.personId)
 			.first(),
 	).toBeNull()
-	expect((await getInviteLinkByTokenHash(db, tokenHash))?.useCount).toBe(0)
+	expect(await getInviteLinkByTokenHash(db, tokenHash)).toMatchObject({
+		useCount: 0,
+		lastUsedAt: null,
+	})
 	await expect(createLink()).rejects.toThrow('complimentary seat')
 	await expect(createLink({ role: 'billing' })).resolves.toMatchObject({
 		token: expect.any(String),
