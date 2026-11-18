@@ -642,7 +642,9 @@ async function redeemTeamLink(
 	if (role && (await isLiveTeamMember(db, target.teamId, user.userId))) {
 		return success(true)
 	}
-	if (!role) await assertCompedSeatAvailable(db, link.orgId, user.userId)
+	if (!role && !(await hasRedeemedInviteLink(db, link.id, user.userId))) {
+		await assertCompedSeatAvailable(db, link.orgId, user.userId)
+	}
 	const claimBlock = await claimSingleUse(input)
 	if (claimBlock) return claimBlock
 	await withClaimReleasedOnFailure(input, async () => {
