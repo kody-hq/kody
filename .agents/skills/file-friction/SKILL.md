@@ -1,9 +1,9 @@
 ---
 name: file-friction
 description: >
-  File durable repo or package papercuts into the Kody factory. Use
-  when a session hits leftover friction outside the ship-pr leftover pass.
-  Ship-pr already files leftovers before Discord.
+  File durable repo or package papercuts into the Kody factory. Use when a
+  session hits leftover friction outside the ship-pr leftover pass. Ship-pr
+  already files leftovers before Discord.
 ---
 
 # File friction
@@ -31,12 +31,12 @@ not help the next agent.
 Prefer `kody:@kody/kody-factory/friction/file` (run with `--org kody`) for one
 or many leftovers via prefer-local CLI execute
 ([prefer-local-cli-execute](../prefer-local-cli-execute/SKILL.md)). Pass
-`target` + `items` (a one-element `items` array is fine). Use the old
-package's `./create` only when you intentionally want its top-level
-single-issue fields: do not pass `items` to `create`. If `--local` cannot
-run, fix the environment so local works. Open API / MCP `api` cannot invoke
-this package export, and hosted MCP `execute` is banned. Do not invent
-issues via `gh`. If nothing meets the bar, skip the call.
+`target` + `items` (a one-element `items` array is fine). Use the old package's
+`./create` only when you intentionally want its top-level single-issue fields:
+do not pass `items` to `create`. If `--local` cannot run, fix the environment so
+local works. Open API / MCP `api` cannot invoke this package export, and hosted
+MCP `execute` is banned. Do not invent issues via `gh`. If nothing meets the
+bar, skip the call.
 
 The old `kody:@kentcdodds/friction-log/file` (run without `--org kody`) still
 works with the same params. Use it if the factory export errors.
