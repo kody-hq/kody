@@ -13,9 +13,17 @@ import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import {
+	CredentialLocalReadsIneligible,
 	CredentialLocalReadsSection,
 	CredentialLocalReadsUnavailable,
+	LocalReadsStateLink,
 } from './account-credential-local-reads.tsx'
+import {
+	connectionLocalReads,
+	credentialKindLocalReads,
+	packageSecretLocalReads,
+	type LocalReadsIneligibility,
+} from '#universal/credential-local-reads-eligibility.ts'
 import {
 	CredentialRawSigningSection,
 	CredentialRawSigningUnavailable,
@@ -260,6 +268,36 @@ function packageName(
 ) {
 	return packagesById.get(id)?.kodyId ?? id
 }
+/** Same answer the local-reads page and the CLI give, from list facts. */
+function localReadsIneligibility(
+	credential: CredentialListItem,
+	orgSlug: string,
+	packagesById: ReadonlyMap<string, { kodyId: string }>,
+): LocalReadsIneligibility | null {
+	switch (credential.kind) {
+		case 'oauth':
+		case 'mcp':
+			return connectionLocalReads(credential.name)
+		case 'url':
+		case 'login':
+		case 'signing':
+			return credentialKindLocalReads(credential.name, credential.kind)
+		case 'secret':
+			return credential.packageId
+				? packageSecretLocalReads({
+						orgSlug,
+						name: credential.name,
+						packageId: credential.packageId,
+						packageLabel: packageName(credential.packageId, packagesById),
+					})
+				: null
+		default: {
+			const exhaustive: never = credential.kind
+			return exhaustive
+		}
+	}
+}
+
 function renderField(label: string, body: ReactNode, id?: string) {
 	return (
 		<div css={fieldCss} id={id}>
@@ -289,6 +327,24 @@ export function renderCredentialDetail(input: {
 	)
 	const hint = hostsHint(credential)
 	const hasExpiry = credential.kind !== 'oauth' && credential.kind !== 'mcp'
+	const localReads =
+		input.localReads && input.localReads.credentialId === credential.id
+			? input.localReads
+			: null
+	const localReadsUnavailable = input.localReadsUnavailableFor === credential.id
+	const localReadsIneligible =
+		localReads || localReadsUnavailable
+			? null
+			: localReadsIneligibility(credential, input.orgSlug, packagesById)
+	const localReadsState = localReads
+		? localReads.enabled
+			? 'On'
+			: 'Off'
+		: localReadsUnavailable
+			? 'Could not load'
+			: localReadsIneligible
+				? 'Not available'
+				: null
 	return (
 		<section aria-label={`${credential.name} details`} css={recordBodyCss}>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
@@ -329,6 +385,14 @@ export function renderCredentialDetail(input: {
 									) : (
 										'Never'
 									),
+								},
+							]
+						: []),
+					...(localReadsState
+						? [
+								{
+									label: 'Local reads',
+									value: <LocalReadsStateLink state={localReadsState} />,
 								},
 							]
 						: []),
@@ -539,15 +603,17 @@ export function renderCredentialDetail(input: {
 				),
 			)}
 
-			{input.localReads && input.localReads.credentialId === credential.id ? (
+			{localReads ? (
 				<CredentialLocalReadsSection
 					key={`${credential.id}:local-reads`}
-					view={input.localReads}
+					view={localReads}
 					orgSlug={input.orgSlug}
 					vault={false}
 				/>
-			) : input.localReadsUnavailableFor === credential.id ? (
+			) : localReadsUnavailable ? (
 				<CredentialLocalReadsUnavailable />
+			) : localReadsIneligible ? (
+				<CredentialLocalReadsIneligible ineligibility={localReadsIneligible} />
 			) : null}
 
 			{input.rawSigning && input.rawSigning.credentialId === credential.id ? (

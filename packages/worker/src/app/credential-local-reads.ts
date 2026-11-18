@@ -33,6 +33,14 @@ import type {
 	CredentialLocalReadsView,
 } from '#universal/credentials-list.ts'
 import { orgResourcePath } from '#universal/org-pages.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
+import {
+	connectionLocalReads,
+	credentialKindLocalReads,
+	packageSecretLocalReads,
+	sessionSecretLocalReads,
+	type LocalReadsIneligibility,
+} from '#universal/credential-local-reads-eligibility.ts'
 
 const refusalLabels: Record<LocalReadRefusalReason, string> = {
 	not_found: 'Secret not found',
@@ -40,7 +48,7 @@ const refusalLabels: Record<LocalReadRefusalReason, string> = {
 	local_reads_off: 'Local reads were off',
 	token_scope: 'The CLI token could not read secrets locally',
 	profile_grant: 'The profile was not allowed to read it locally',
-	unsupported_secret: 'This kind of secret cannot be read locally',
+	unsupported_secret: 'Package secrets cannot be read locally',
 	rate_limited: 'Too many reads in a minute',
 	provider_failed: 'The secret provider could not be reached',
 	other_secret_refused: 'Another secret in the same command was refused',
@@ -63,13 +71,60 @@ function toReadView(event: LocalReadEvent): CredentialLocalReadView {
 	}
 }
 
-/** Account and org Keys and vaults; never a package's own Key. */
-export function credentialSupportsLocalReads(input: {
-	kind: OrgCredential['kind']
-	packageOwned: boolean
-}) {
-	if (input.packageOwned) return false
-	return input.kind === 'secret' || input.kind === 'vault'
+/**
+ * Null when an account or org Key, or a vault, can be read locally. A
+ * package's own Key, a session Key, and a connection cannot, and say why.
+ */
+async function localReadsIneligibility(input: {
+	db: D1Database
+	orgId: string
+	orgSlug: string | null
+	credential: OrgCredential
+}): Promise<LocalReadsIneligibility | null> {
+	const { credential } = input
+	switch (credential.kind) {
+		case 'vault':
+			return null
+		case 'integration':
+		case 'mcp-server':
+			return connectionLocalReads(credential.name)
+		case 'secret':
+			break
+		default: {
+			const exhaustive: never = credential.kind
+			return exhaustive
+		}
+	}
+	const bucket = await input.db
+		.prepare(
+			`SELECT e.kind AS kind, b.scope AS scope, b.binding_key AS binding_key
+			 FROM secret_entries e
+			 JOIN secret_buckets b ON b.id = e.bucket_id
+			 WHERE e.id = ? AND e.deleted_at IS NULL AND b.deleted_at IS NULL`,
+		)
+		.bind(credential.id)
+		.first<{ kind: string; scope: string; binding_key: string }>()
+	if (!bucket) return null
+	if (
+		bucket.kind === 'url' ||
+		bucket.kind === 'login' ||
+		bucket.kind === 'signing'
+	) {
+		return credentialKindLocalReads(credential.name, bucket.kind)
+	}
+	if (bucket.scope === 'user') return null
+	if (bucket.scope !== 'package')
+		return sessionSecretLocalReads(credential.name)
+	const owner = await getSavedPackageById(input.db, {
+		userId: input.orgId,
+		packageId: bucket.binding_key,
+	})
+	return packageSecretLocalReads({
+		orgSlug: input.orgSlug,
+		name: credential.name,
+		packageId: bucket.binding_key,
+		packageLabel: owner?.kodyId ?? bucket.binding_key,
+	})
 }
 
 async function canWrite(
@@ -89,18 +144,6 @@ async function canWrite(
 		if (error instanceof AuthorizationError) return false
 		throw error
 	}
-}
-
-async function isPackageOwnedKey(db: D1Database, credentialId: string) {
-	const row = await db
-		.prepare(
-			`SELECT b.scope AS bucket_scope FROM secret_entries e
-			 JOIN secret_buckets b ON b.id = e.bucket_id
-			 WHERE e.id = ? AND e.deleted_at IS NULL AND b.deleted_at IS NULL`,
-		)
-		.bind(credentialId)
-		.first<{ bucket_scope: string }>()
-	return row ? row.bucket_scope !== 'user' : false
 }
 
 /**
@@ -145,11 +188,11 @@ export async function loadCredentialLocalReadsView(input: {
 	)
 	if (!credential?.live) return null
 	if (
-		!credentialSupportsLocalReads({
-			kind: credential.kind,
-			packageOwned:
-				credential.kind === 'secret' &&
-				(await isPackageOwnedKey(env.APP_DB, credential.id)),
+		await localReadsIneligibility({
+			db: env.APP_DB,
+			orgId: request.org.id,
+			orgSlug: request.org.slug,
+			credential,
 		})
 	) {
 		return null
@@ -182,7 +225,14 @@ export type LocalReadsApproval =
 			canChange: boolean
 			detailHref: string
 	  }
-	| { ok: false; message: string }
+	| {
+			ok: false
+			message: string
+			/** Set when the secret exists but cannot be read locally. */
+			name: string | null
+			fix: LocalReadsIneligibility['fix']
+			detailHref: string | null
+	  }
 
 /** The one-step page: what it would turn on. Loading it never changes anything. */
 export async function loadLocalReadsApproval(input: {
@@ -202,21 +252,11 @@ export async function loadLocalReadsApproval(input: {
 		ok: false as const,
 		message:
 			'Kody could not find that secret here. It may have been deleted, or it belongs to a different account or org.',
+		name: null,
+		fix: null,
+		detailHref: null,
 	}
 	if (!credential?.live) return missing
-	if (
-		!credentialSupportsLocalReads({
-			kind: credential.kind,
-			packageOwned:
-				credential.kind === 'secret' &&
-				(await isPackageOwnedKey(input.env.APP_DB, credential.id)),
-		})
-	) {
-		return {
-			ok: false,
-			message: 'Only account and org secrets can be read locally.',
-		}
-	}
 	try {
 		await authorize(
 			{ env: input.env, request },
@@ -227,6 +267,26 @@ export async function loadLocalReadsApproval(input: {
 		if (error instanceof AuthorizationError) return missing
 		throw error
 	}
+	const detailHref = orgResourcePath(
+		input.orgSlug,
+		'credentials',
+		encodeURIComponent(credential.id),
+	)
+	const ineligible = await localReadsIneligibility({
+		db: input.env.APP_DB,
+		orgId,
+		orgSlug: input.orgSlug,
+		credential,
+	})
+	if (ineligible) {
+		return {
+			ok: false,
+			message: ineligible.reason,
+			name: credential.name,
+			fix: ineligible.fix,
+			detailHref,
+		}
+	}
 	const setting = await readLocalReadSetting(input.env.APP_DB, credential.id)
 	return {
 		ok: true,
@@ -235,11 +295,7 @@ export async function loadLocalReadsApproval(input: {
 		vault: credential.kind === 'vault',
 		enabled: setting?.enabled ?? false,
 		canChange: await canWrite(input.env, request, credential),
-		detailHref: orgResourcePath(
-			input.orgSlug,
-			'credentials',
-			encodeURIComponent(credential.id),
-		),
+		detailHref,
 	}
 }
 
@@ -281,21 +337,14 @@ export async function setCredentialLocalReads(input: {
 				404,
 			)
 		}
-		if (
-			!credentialSupportsLocalReads({
-				kind: credential.kind,
-				packageOwned:
-					credential.kind === 'secret' &&
-					(await isPackageOwnedKey(input.env.APP_DB, credential.id)),
-			})
-		) {
-			return operationResult(
-				{
-					ok: false,
-					error: 'Only account and org secrets can be read locally.',
-				},
-				400,
-			)
+		const ineligible = await localReadsIneligibility({
+			db: input.env.APP_DB,
+			orgId,
+			orgSlug: request.org.slug,
+			credential,
+		})
+		if (ineligible) {
+			return operationResult({ ok: false, error: ineligible.reason }, 400)
 		}
 		await authorize(
 			{ env: input.env, request },

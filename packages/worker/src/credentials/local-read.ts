@@ -105,7 +105,7 @@ const refusalMessages: Record<
 	profile_grant: (name) =>
 		`The profile this CLI acts as is not allowed to read "${name}" locally. Its owner can check "read locally" for that secret on the profile.`,
 	unsupported_secret: (name) =>
-		`Only account and org secrets can be read locally, so "${name}" was not read.`,
+		`"${name}" is a package secret. Only its package's runs can use it, so it cannot be read locally and was not read. Use it from that package's code or an execute with {{secret:${name}}}, or save the value as an account secret on the Kody website and turn on local reads for that secret.`,
 	rate_limited: (name) =>
 		`Too many local reads in the last minute, so "${name}" was not read. Wait a minute and try again.`,
 	provider_failed: (name) =>
@@ -254,7 +254,44 @@ async function findCandidate(input: {
 			}
 		}
 	}
+	const packageSecretId = await findPackageSecretId(
+		env.APP_DB,
+		orgId,
+		parsed.name,
+	)
+	if (packageSecretId) {
+		try {
+			await authorize(
+				{ env, request },
+				'secret:use',
+				credentialResource(orgId, { id: packageSecretId, name: parsed.name }),
+			)
+		} catch (error) {
+			if (!(error instanceof AuthorizationError)) throw error
+			return refusedCandidate(parsed, 'not_found')
+		}
+		return refusedCandidate(parsed, 'unsupported_secret', packageSecretId)
+	}
 	return refusedCandidate(parsed, 'not_found')
+}
+
+/** A package's own Key with this name, which a local read names but cannot read. */
+async function findPackageSecretId(
+	db: D1Database,
+	orgId: string,
+	name: string,
+) {
+	const row = await db
+		.prepare(
+			`SELECT e.id AS id FROM secret_entries e
+			 JOIN secret_buckets b ON b.id = e.bucket_id
+			 WHERE b.user_id = ? AND b.scope = 'package' AND e.name = ?
+			   AND e.deleted_at IS NULL AND b.deleted_at IS NULL
+			 LIMIT 1`,
+		)
+		.bind(orgId, name)
+		.first<{ id: string }>()
+	return row?.id ?? null
 }
 
 function refusedCandidate(
