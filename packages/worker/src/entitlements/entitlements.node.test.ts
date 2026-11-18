@@ -28,7 +28,6 @@ import {
 	consumeDailyEntitlement,
 	consumeExecuteUniqueWorkerDay,
 	estimateEntitlementStorageEntryByteDelta,
-	findCachedUserAccountByStableUserId,
 	getCachedUserEntitlement,
 	getCachedUserPlan,
 	getUserEntitlement,
@@ -626,19 +625,6 @@ test('getCachedUserPlan caches per db binding and never caches failures', async 
 	} as unknown as D1Database
 	await expect(getCachedUserPlan(flaky, context)).rejects.toThrow('D1 blip')
 	expect(await getCachedUserPlan(flaky, context)).toBe('pro')
-})
-
-test('findCachedUserAccountByStableUserId caches the account reverse-resolution per db', async () => {
-	const { userId, db, queries } = await createPlannedUserDb('pro')
-	const account = { email: plannedEmail, plan: 'pro', emailVerified: false }
-	expect(await findCachedUserAccountByStableUserId(db, userId)).toEqual(account)
-	expect(await findCachedUserAccountByStableUserId(db, userId)).toEqual(account)
-	expect(
-		queries.filter((query) =>
-			query.sql.includes('u.email, o.plan, u.email_verified_at'),
-		),
-	).toHaveLength(1)
-	expect(await findCachedUserAccountByStableUserId(db, '  ')).toBeNull()
 })
 
 test('assertWithinEntitlement passes under the limit, throws at it, and enforces finite max ordinary limits', async () => {

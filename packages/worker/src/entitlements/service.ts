@@ -540,8 +540,6 @@ function createEntitlementLookupCache<T>() {
 }
 
 const cachedUserEntitlements = createEntitlementLookupCache<UserEntitlement>()
-const cachedStableUserAccounts =
-	createEntitlementLookupCache<StableUserAccount | null>()
 
 /**
  * {@link getUserEntitlement} behind the short-TTL hot-path cache. Use only
@@ -614,23 +612,6 @@ export async function getCachedUserPlan(
 	input: { userId: string; email: string | null | undefined },
 ): Promise<PlanName> {
 	return (await getCachedUserEntitlement(db, input)).plan
-}
-
-/**
- * {@link findUserAccountByStableUserId} behind the short-TTL hot-path cache,
- * for per-fetch account reverse-resolution in the fetch gateway.
- */
-export async function findCachedUserAccountByStableUserId(
-	db: D1Database,
-	stableUserId: string,
-): Promise<StableUserAccount | null> {
-	const trimmed = stableUserId.trim()
-	if (!trimmed) return null
-	return await cachedStableUserAccounts.getOrCreate(
-		db,
-		trimmed,
-		async () => await findUserAccountByStableUserId(db, trimmed),
-	)
 }
 
 /**
