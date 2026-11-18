@@ -2,6 +2,22 @@ import * as Sentry from '@sentry/cloudflare'
 import type { CloudflareOptions } from '@sentry/cloudflare'
 import type { BackupEnvironment } from './backup-types.ts'
 
+const workflowStepMechanism = 'auto.faas.cloudflare.workflow'
+
+/**
+ * The backup Workflow reports its own failure once, with a DR fingerprint
+ * (captureRestExportFailure). Drop the SDK's automatic capture of the same
+ * failed step so one failure is one issue.
+ */
+export const dropWorkflowStepException: NonNullable<
+	CloudflareOptions['beforeSend']
+> = (event) =>
+	event.exception?.values?.some(
+		(value) => value.mechanism?.type === workflowStepMechanism,
+	)
+		? null
+		: event
+
 export function buildControlPlaneSentryOptions(
 	env: BackupEnvironment,
 ): CloudflareOptions {
@@ -13,6 +29,7 @@ export function buildControlPlaneSentryOptions(
 		...(release ? { release } : {}),
 		tracesSampleRate: 0,
 		sendDefaultPii: false,
+		beforeSend: dropWorkflowStepException,
 	}
 }
 

@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict'
+import type { CloudflareOptions } from '@sentry/cloudflare'
 import { test, vi } from 'vitest'
+import type { BackupEnvironment } from './backup-types.ts'
+
+type ErrorEvent = Parameters<NonNullable<CloudflareOptions['beforeSend']>>[0]
 
 const sentryMocks = vi.hoisted(() => {
 	const scope = { setFingerprint: vi.fn(), setTag: vi.fn() }
@@ -17,8 +21,11 @@ vi.mock('@sentry/cloudflare', () => ({
 	captureMessage: sentryMocks.captureMessage,
 }))
 
-const { captureFullSealBlocked, captureRestExportFailure } =
-	await import('./sentry.ts')
+const {
+	buildControlPlaneSentryOptions,
+	captureFullSealBlocked,
+	captureRestExportFailure,
+} = await import('./sentry.ts')
 
 test('a REST export failure groups by source and error code, not by day', () => {
 	captureRestExportFailure({
@@ -60,4 +67,19 @@ test('a blocked full seal is one issue per reason', () => {
 		'Full DR seal is blocked: d1-manifest-missing',
 		'error',
 	])
+})
+
+test('the SDK capture of a failed workflow step is dropped; other events pass', () => {
+	const beforeSend = buildControlPlaneSentryOptions({
+		BUILD_COMMIT: 'abc',
+	} as BackupEnvironment).beforeSend!
+	const stepFailure = {
+		type: undefined,
+		exception: {
+			values: [{ mechanism: { type: 'auto.faas.cloudflare.workflow' } }],
+		},
+	}
+	const other = { type: undefined, message: 'Full DR seal is blocked' }
+	assert.equal(beforeSend(stepFailure as ErrorEvent, {}), null)
+	assert.equal(beforeSend(other as ErrorEvent, {}), other)
 })
