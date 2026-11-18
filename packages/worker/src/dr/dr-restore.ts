@@ -6,7 +6,6 @@ import {
 	stagingArtifactsIndexKey,
 	stagingPrefix,
 	stagingR2IndexKey,
-	stagingStorageDumpKey,
 	stagingStorageIndexKey,
 	type ArtifactsIndex,
 	type BackupR2BucketLabel,
@@ -269,10 +268,7 @@ async function restoreStoragePhase(input: {
 				},
 			)
 		}
-		const dumpKey = sealedObjectKey(
-			input.day,
-			stagingStorageDumpKey(input.day, entry.storageId, part),
-		)
+		const dumpKey = sealedObjectKey(input.day, entry.objectKey)
 		const loaded = await input.s3.getText(dumpKey)
 		if (!loaded) {
 			throw new MaintenanceFailureError(

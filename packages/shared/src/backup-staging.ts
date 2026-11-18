@@ -60,13 +60,20 @@ export function stagingSummaryKey(day: string): string {
 	return `${stagingPrefix(day)}exporter/summary.json`
 }
 
-export function stagingStorageDumpKey(
+export function stagingStorageDumpKey(day: string, storageId: string): string {
+	return `${stagingPrefix(day)}storage/${encodeURIComponent(storageId)}.ndjson`
+}
+
+/**
+ * One part of a storage dump split into parts. Keyed by content so a retried
+ * part with a moved boundary never adopts bytes it did not write.
+ */
+export function stagingStorageDumpPartKey(
 	day: string,
 	storageId: string,
-	part = 0,
+	sha256: string,
 ): string {
-	const suffix = part === 0 ? '' : `.part-${String(part)}`
-	return `${stagingPrefix(day)}storage/${encodeURIComponent(storageId)}${suffix}.ndjson`
+	return `${stagingPrefix(day)}storage-parts/${encodeURIComponent(storageId)}/${sha256}.ndjson`
 }
 
 export function stagingStorageIndexKey(day: string): string {

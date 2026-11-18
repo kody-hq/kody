@@ -246,16 +246,16 @@ Contract: `packages/shared/src/backup-staging.ts`.
    - **R2** — `EMAIL_BLOBS` and `COMMUNITY_ASSETS` listed and copied into
      `blobs/sha256/{hash}` with per-bucket NDJSON indexes (objects above 25 MiB
      are skipped with a warning in the staging summary). A `StorageRunner` dump
-     larger than the 16 MiB buffer is written as consecutive parts
-     (`storage/{id}.ndjson`, then `storage/{id}.part-1.ndjson`, ...), each a
-     `storage-index.json` entry with its `part`, and restore imports them in
-     order into one replace. Until 2026-11-18 such a dump was skipped with a
-     `storage dump too large` warning and was not backed up. An object whose
-     key, size, ETag, and uploaded timestamp match the latest retained
-     sealed-day index reuses that index entry and content-addressed blob without
-     downloading or hashing the source object. Missing, malformed, or
-     checksum-mismatched sealed indexes fall back to the full download and hash
-     path.
+     larger than the 16 MiB buffer is written as consecutive parts under
+     `storage-parts/{id}/{sha256}.ndjson` (content-addressed, so a retried part
+     never adopts different bytes), each a `storage-index.json` entry with its
+     `part`, and restore imports them in order into one replace. Until
+     2026-11-18 such a dump was skipped with a `storage dump too large` warning
+     and was not backed up. An object whose key, size, ETag, and uploaded
+     timestamp match the latest retained sealed-day index reuses that index
+     entry and content-addressed blob without downloading or hashing the source
+     object. Missing, malformed, or checksum-mismatched sealed indexes fall back
+     to the full download and hash path.
    - **Published artifacts** — `BUNDLE_ARTIFACTS_KV` published source snapshots
      for rows in `entity_sources` with a `published_commit`. Snapshots are
      settled 8 at a time: each is hashed as a stream and its

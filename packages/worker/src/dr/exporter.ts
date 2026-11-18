@@ -14,6 +14,7 @@ import {
 	stagingRunLogDumpKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
+	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
 	type ArtifactsIndex,
@@ -1095,10 +1096,17 @@ async function exportStoragePhase(input: {
 	async function closeStorageDumpPart(
 		item: StorageInventoryEntry,
 		body: string,
+		options: { split: boolean },
 	) {
 		const parts = progress.storageDumpParts ?? []
 		const part = parts.length
-		const objectKey = stagingStorageDumpKey(progress.day, item.identity, part)
+		const objectKey = options.split
+			? stagingStorageDumpPartKey(
+					progress.day,
+					item.identity,
+					await sha256Hex(body),
+				)
+			: stagingStorageDumpKey(progress.day, item.identity)
 		const storedBody = await putImmutableOutput({
 			s3,
 			key: objectKey,
@@ -1154,6 +1162,7 @@ async function exportStoragePhase(input: {
 					headKey: progress.storageDumpChunkHead,
 					chunkCount: progress.storageDumpChunkCount,
 				}),
+				{ split: true },
 			)
 		}
 		const finalPage = !(page.truncated && page.nextStartAfter)
@@ -1183,8 +1192,9 @@ async function exportStoragePhase(input: {
 				chunkCount: progress.storageDumpChunkCount,
 			})
 		}
-		if (body.length > 0 || !progress.storageDumpParts?.length) {
-			await closeStorageDumpPart(item, body)
+		const split = (progress.storageDumpParts?.length ?? 0) > 0
+		if (body.length > 0 || !split) {
+			await closeStorageDumpPart(item, body, { split })
 		}
 		progress.storagePendingEntries.push(...(progress.storageDumpParts ?? []))
 		if (progress.storagePendingEntries.length >= indexChunkEntryLimit) {

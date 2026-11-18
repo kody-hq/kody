@@ -6,6 +6,7 @@ import {
 	stagingArtifactsIndexKey,
 	stagingR2IndexKey,
 	stagingStorageDumpKey,
+	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	type ArtifactsIndex,
 	type StorageIndex,
@@ -220,7 +221,7 @@ test('dr-restore fails closed on a storage dump part without its predecessor', a
 					sha256: await sha256Hex(dumpBody),
 				}),
 				part: 1,
-				objectKey: stagingStorageDumpKey(day, identity, 1),
+				objectKey: stagingStorageDumpPartKey(day, identity, 'a'.repeat(64)),
 			},
 		],
 	})

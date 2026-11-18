@@ -16,6 +16,7 @@ import {
 	stagingRunLogDumpKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
+	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
 	type StorageIndex,
@@ -1246,6 +1247,11 @@ test('a storage dump over the buffer is exported in parts and restores whole', a
 		[0, 2],
 		[1, 1],
 	])
+	for (const entry of index.entries) {
+		expect(entry.objectKey).toBe(
+			stagingStorageDumpPartKey(day, entry.storageId, entry.sha256),
+		)
+	}
 	const dumpBytes = index.entries.map((entry) => entry.bytes)
 	expect(dumpBytes.reduce((sum, bytes) => sum + bytes, 0)).toBeGreaterThan(
 		drExportMaxStorageDumpBufferBytes,
@@ -1254,7 +1260,7 @@ test('a storage dump over the buffer is exported in parts and restores whole', a
 		expect(bytes).toBeLessThanOrEqual(drExportMaxStorageDumpBufferBytes)
 	}
 
-	for (const [key, entry] of [...objects]) {
+	for (const [key, entry] of Array.from(objects)) {
 		if (key.startsWith(`staging/${day}/`) && !key.includes('/exporter/')) {
 			objects.set(__testOnlySealedObjectKey(day, key), entry)
 		}
