@@ -20,6 +20,7 @@ import {
 	primaryBackupTimeForDay,
 	type EnqueueResult,
 } from './workflow-trigger.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 export { ProductionD1BackupWorkflow } from './backup-workflow.ts'
 export { ProductionDrRestoreWorkflow } from './restore-workflow.ts'
@@ -185,14 +186,14 @@ async function scheduled(
 
 const handler = {
 	async fetch(request: Request, env: BackupEnvironment): Promise<Response> {
-		return handleControlPlaneFetch(request, env)
+		return handleControlPlaneFetch(request, withRetryingBackupBucket(env))
 	},
 	async scheduled(
 		controller: ScheduledController,
 		env: BackupEnvironment,
 	): Promise<void> {
 		try {
-			await scheduled(controller, env)
+			await scheduled(controller, withRetryingBackupBucket(env))
 		} catch (error) {
 			safeLog({
 				event: 'backup-failure',

@@ -11,6 +11,7 @@ import {
 	type PacedDrillProgress,
 	type PacedDrillStep,
 } from './paced-restore-drill.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 export class PacedRestoreDrillWorkflow extends WorkflowEntrypoint<
 	BackupEnvironment,
@@ -21,7 +22,7 @@ export class PacedRestoreDrillWorkflow extends WorkflowEntrypoint<
 		step: WorkflowStep,
 	): Promise<PacedDrillProgress> {
 		return runPacedRestoreDrill({
-			env: this.env,
+			env: withRetryingBackupBucket(this.env),
 			payload: event.payload,
 			step: step as unknown as PacedDrillStep,
 		})
