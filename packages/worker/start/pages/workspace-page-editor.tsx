@@ -122,6 +122,9 @@ const control = {
 		background: `color-mix(in srgb, ${colors.text} 7%, transparent)`,
 	},
 }
+function isolateEditorControl(event: { stopPropagation(): void }) {
+	event.stopPropagation()
+}
 function PlusIcon() {
 	return (
 		<svg
@@ -878,6 +881,8 @@ function WorkspaceLinkBlock({
 						aria-label="Link title"
 						placeholder="Link title"
 						value={title}
+						onPointerDown={isolateEditorControl}
+						onMouseDown={isolateEditorControl}
 						onChange={(event) =>
 							updateAttributes({ title: event.target.value })
 						}
@@ -1048,7 +1053,9 @@ function WorkspaceBlockView({
 								aria-label="Section title"
 								placeholder="Section title"
 								value={node.attrs.title ?? ''}
-								onClick={(event) => event.stopPropagation()}
+								onPointerDown={isolateEditorControl}
+								onMouseDown={isolateEditorControl}
+								onClick={isolateEditorControl}
 								onChange={(event) =>
 									updateAttributes({ title: event.target.value })
 								}

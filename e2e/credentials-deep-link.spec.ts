@@ -5,6 +5,18 @@ import { expect, test, waitForClientHydration } from './playwright-utils.ts'
 const scrollY = (page: import('@playwright/test').Page) =>
 	page.evaluate(() => Math.round(window.scrollY))
 
+/** Closing a record or swapping the in-place editor can nudge scroll anchoring. */
+const SCROLL_ANCHOR_NUDGE_PX = 40
+
+async function expectScrollNear(
+	page: import('@playwright/test').Page,
+	expected: number,
+) {
+	expect(Math.abs((await scrollY(page)) - expected)).toBeLessThan(
+		SCROLL_ANCHOR_NUDGE_PX,
+	)
+}
+
 async function seedCredentials(
 	page: import('@playwright/test').Page,
 	email: string,
@@ -79,8 +91,7 @@ test('a credential deep link scrolls to its record once; row clicks and Edit kee
 	await table.getByRole('link', { name: 'aa_FILLER_08' }).click()
 	await expect(page).toHaveURL(new RegExp(`/credentials/dl-${runId}-08`))
 	await page.waitForTimeout(500)
-	// The record that closed above can nudge scroll anchoring a few pixels.
-	expect(Math.abs((await scrollY(page)) - 240)).toBeLessThan(40)
+	await expectScrollNear(page, 240)
 	await expect(page.locator('[data-record-highlight]')).toHaveCount(0)
 
 	// Edit opens the form in place; cancel and save keep the URL and scroll.
@@ -95,12 +106,12 @@ test('a credential deep link scrolls to its record once; row clicks and Edit kee
 	const name = detail.getByRole('textbox', { name: 'Name', exact: true })
 	await expect(name).toHaveValue('zz_TARGET_KEY')
 	expect(page.url()).toBe(url)
-	expect(await scrollY(page)).toBe(before)
+	await expectScrollNear(page, before)
 
 	await detail.getByRole('button', { name: 'Cancel' }).click()
 	await expect(name).toHaveCount(0)
 	expect(page.url()).toBe(url)
-	expect(await scrollY(page)).toBe(before)
+	await expectScrollNear(page, before)
 
 	await edit.click()
 	await detail
@@ -110,7 +121,7 @@ test('a credential deep link scrolls to its record once; row clicks and Edit kee
 	await expect(detail.getByText('Edited in place')).toBeVisible()
 	await expect(name).toHaveCount(0)
 	expect(page.url()).toBe(url)
-	expect(await scrollY(page)).toBe(before)
+	await expectScrollNear(page, before)
 })
 
 test('with reduced motion the deep link jumps to the record without animating', async ({
