@@ -21,6 +21,7 @@ import {
 } from './repo-shared.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
+import { assertPackagePublishCurrent } from './assert-package-publish-current.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
 import { buildHeldForApprovalPublishNotice } from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import {
@@ -161,7 +162,13 @@ export const repoPublishSessionCapability = defineDomainCapability(
 					await reportCapabilityProgress(ctx.reportProgress, {
 						progress: 3,
 						total: progressTotal,
-						message: 'Repo session published. Ship it.',
+						message: 'Confirming the published commit.',
+					})
+					await assertPackagePublishCurrent({
+						env: ctx.env,
+						sourceId: sessionInfo.source_id,
+						userId: owner.ownerUserId,
+						commit: result.publishedCommit,
 					})
 					return {
 						status: 'ok' as const,

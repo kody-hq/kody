@@ -112,6 +112,8 @@ function resetMocks() {
 		user_id: ownerIdFromStored('user-1'),
 		entity_kind: 'package',
 		entity_id: 'package-1',
+		published_commit: 'commit-1',
+		serving_commit: 'commit-1',
 	})
 	mockModule.absorbCommunityForkUpstream.mockResolvedValue(undefined)
 	mockModule.getSavedPackageById.mockResolvedValue({
@@ -186,6 +188,15 @@ test('repoPublishSession tells the agent when everyone stays on the previous app
 			'Everyone is still on the previous version (approved) until you approve the new capabilities that commit-1 asks for.',
 	}
 	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(held)
+	mockModule.getEntitySourceByIdForUser.mockResolvedValue({
+		id: 'source-1',
+		user_id: ownerIdFromStored('user-1'),
+		entity_kind: 'package',
+		entity_id: 'package-1',
+		published_commit: 'commit-1',
+		serving_commit: 'approved-commit',
+		held_commit: 'commit-1',
+	})
 
 	const result = await repoPublishSessionCapability.handler(
 		{ session_id: 'session-1' },

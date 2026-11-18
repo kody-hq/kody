@@ -76,6 +76,8 @@ import {
 } from '#worker/package-registry/package-test-hints.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { resolveArtifactSourceHead } from '#worker/repo/artifacts.ts'
+import { buildArtifactsHeadChangedBeforePublishMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
+import { assertPackagePublishCurrent } from '#mcp/capabilities/repo/assert-package-publish-current.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from '#mcp/capabilities/repo/package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from '#mcp/capabilities/repo/settle-failed-publish-rebuild.ts'
 import {
@@ -145,6 +147,8 @@ const inputSchema = z.object({
 	 * capability stamps this into durableParams; agents must not set it.
 	 */
 	baseline_published_commit: z.string().nullable().optional(),
+	/** The Artifacts HEAD this durable run was enqueued for. */
+	expected_head: z.string().min(1).optional(),
 	publish_build_id: z
 		.string()
 		.min(1)
@@ -1015,12 +1019,11 @@ export function buildExternalPublishIdempotencyParts(
 	// runs still dedupe on this key; a terminal failure (including a durable
 	// run whose publish did not publish) releases it so the same commit can
 	// publish again.
-	// `v2`: runs from before non-published outcomes failed the workflow were
-	// recorded complete even when checks failed, so they must not keep
-	// deduping a retry of the same commit.
+	// Older workflow runs could publish a different HEAD from the one they
+	// were enqueued for. Only dedupe against runs with the commit check.
 	return [
 		'packagePublishExternalPush',
-		'v2',
+		'v3',
 		canonicalJsonStringify(input),
 	] as const
 }
@@ -1068,6 +1071,13 @@ async function runExternalPublishAttempt(input: {
 	/** Publish offload: persist this verified upload instead of rebuilding. */
 	uploadedBuild?: UploadedPublishBuildRef | null
 }): Promise<Exclude<PublishExternalPushResult, { status: 'dispatched' }>> {
+	const assertCurrent = (commit: string) =>
+		assertPackagePublishCurrent({
+			env: input.env,
+			sourceId: input.source.id,
+			userId: input.ownerUserId,
+			commit,
+		})
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
 	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
@@ -1174,7 +1184,8 @@ async function runExternalPublishAttempt(input: {
 										sourceId: input.source.id,
 										failedCommit: publishedCommit,
 										restoreCommit: tipMoved
-											? input.baselinePublishedCommit
+											? (input.source.serving_commit ??
+												input.baselinePublishedCommit)
 											: null,
 										sentryScope: externalPushRestoreSentryScope,
 									})
@@ -1203,7 +1214,9 @@ async function runExternalPublishAttempt(input: {
 						sourceId: input.source.id,
 						failedCommit: publishedCommit,
 						// Only a tip this request advanced is rolled back.
-						restoreCommit: tipMoved ? input.baselinePublishedCommit : null,
+						restoreCommit: tipMoved
+							? (input.source.serving_commit ?? input.baselinePublishedCommit)
+							: null,
 						sentryScope: externalPushRestoreSentryScope,
 					})
 					return {
@@ -1305,12 +1318,13 @@ async function runExternalPublishAttempt(input: {
 						uploadedBuild: input.uploadedBuild,
 					}),
 				}
+				await reportCapabilityProgress(input.reportProgress, {
+					progress: maxAttempts + 1,
+					total: maxAttempts + 1,
+					message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
+				})
+				await assertCurrent(publishedCommit)
 				if (tipMoved) {
-					await reportCapabilityProgress(input.reportProgress, {
-						progress: maxAttempts + 1,
-						total: maxAttempts + 1,
-						message: `Published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
-					})
 					return {
 						status: 'published' as const,
 						previous_commit: input.baselinePublishedCommit,
@@ -1320,13 +1334,6 @@ async function runExternalPublishAttempt(input: {
 					}
 				}
 				const checksRerun = result.checks_rerun === true
-				await reportCapabilityProgress(input.reportProgress, {
-					progress: maxAttempts + 1,
-					total: maxAttempts + 1,
-					message: checksRerun
-						? `Already published (checks re-run for current checker) — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`
-						: `Already published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
-				})
 				return {
 					status: 'already_published' as const,
 					artifacts_rebuilt: artifactsRebuilt,
@@ -1443,7 +1450,7 @@ async function runExternalPublishAttempt(input: {
 									packageId: input.packageId,
 									sourceId: input.source.id,
 									failedCommit: result.published_commit,
-									restoreCommit: input.baselinePublishedCommit,
+									restoreCommit: result.previous_commit,
 									sentryScope: externalPushRestoreSentryScope,
 								})
 							}
@@ -1470,7 +1477,7 @@ async function runExternalPublishAttempt(input: {
 					packageId: input.packageId,
 					sourceId: input.source.id,
 					failedCommit: result.published_commit,
-					restoreCommit: input.baselinePublishedCommit,
+					restoreCommit: result.previous_commit,
 					sentryScope: externalPushRestoreSentryScope,
 				})
 				return {
@@ -1564,8 +1571,9 @@ async function runExternalPublishAttempt(input: {
 			await reportCapabilityProgress(input.reportProgress, {
 				progress: maxAttempts + 1,
 				total: maxAttempts + 1,
-				message: `Published wrap-up — rebuild ${rebuildMs}ms, dependents ${dependentsMs}ms.`,
+				message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
 			})
+			await assertCurrent(result.published_commit)
 			return {
 				...result,
 				...publishSuccessFields({
@@ -1713,6 +1721,18 @@ export const publishExternalPushCapability = defineDomainCapability(
 			const durableReentry =
 				ctx.callerContext.executionOrigin === 'background' &&
 				args.baseline_published_commit !== undefined
+			if (
+				durableReentry &&
+				args.expected_head &&
+				args.expected_head !== newCommit
+			) {
+				throw new McpCallerError(
+					buildArtifactsHeadChangedBeforePublishMessage(
+						args.expected_head,
+						newCommit,
+					),
+				)
+			}
 			const route =
 				args.publish_build_id || durableReentry
 					? null

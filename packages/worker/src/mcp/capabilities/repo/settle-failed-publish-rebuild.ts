@@ -43,19 +43,24 @@ export async function settleFailedPublishRebuild(input: {
 	if (restoreCommit == null || restoreCommit === input.failedCommit) {
 		return 'unchanged'
 	}
+	const sourceKey = { id: input.sourceId, userId: input.ownerUserId }
 	const reverted = await revertEntitySourcePublishedCommit(input.env.APP_DB, {
-		id: input.sourceId,
-		userId: input.ownerUserId,
+		...sourceKey,
 		failedCommit: input.failedCommit,
 		restoreCommit,
 	})
 	if (!reverted) {
-		const current = await getEntitySourceByIdForUser(input.env.APP_DB, {
-			id: input.sourceId,
-			userId: input.ownerUserId,
-		})
-		// A newer publish already moved the pointer; its own finalize owns the
-		// projection now.
+		const current = await getEntitySourceByIdForUser(
+			input.env.APP_DB,
+			sourceKey,
+		)
+		if (
+			current?.published_commit === input.failedCommit &&
+			(current.serving_commit === input.failedCommit ||
+				current.held_commit === input.failedCommit)
+		) {
+			return 'unchanged'
+		}
 		if (current?.published_commit !== restoreCommit) return 'superseded'
 	}
 	try {

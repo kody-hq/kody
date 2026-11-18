@@ -1096,3 +1096,28 @@ test('failed-publish settlement never touches a pointer a newer publish owns', a
 	expect(t.jobRow('job-reconcile').published_commit).toBe(newerCommit)
 	expect(t.jobRow('job-periodic').enabled).toBe(0)
 })
+
+test('failed-publish settlement keeps a commit already served by an overlapping attempt', async () => {
+	const t = createTest()
+	await simulateFailedPublish(t)
+	t.setSource(failedCommit, failedCommit)
+
+	await expect(
+		settleFailedPublishRebuild({
+			env: t.env,
+			baseUrl: 'https://example.com',
+			ownerUserId: ownerIdFromStored(ownerId),
+			packageId,
+			sourceId,
+			failedCommit,
+			restoreCommit: oldCommit,
+			sentryScope: 'test',
+		}),
+	).resolves.toBe('unchanged')
+	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
+	expect(
+		t.sqlite
+			.prepare(`SELECT published_commit FROM entity_sources WHERE id = ?`)
+			.get(sourceId),
+	).toEqual({ published_commit: failedCommit })
+})

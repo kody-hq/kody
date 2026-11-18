@@ -622,7 +622,9 @@ export async function syncPublishedPackageJobs(input: {
 		actorUserId: input.actorUserId,
 		actorCredential: input.actorCredential ?? null,
 	})
-	if (changed) {
+	// A prior attempt can write the rows and fail before syncing the alarm.
+	// Confirm the alarm even when those rows already match on retry.
+	if (changed || Object.keys(loaded.manifest.kody.jobs ?? {}).length > 0) {
 		await syncJobManagerAlarm({ env: input.env, userId: input.userId })
 	}
 	return changed
@@ -846,16 +848,15 @@ export async function syncPackageJobsForPackage(input: {
 						schedule,
 						timezone,
 					})
+					const jobId = buildPackageJobId(input.packageId, jobName)
 					const created: JobRecord = {
 						version: 1,
-						id: buildPackageJobId(input.packageId, jobName),
+						id: jobId,
 						userId: input.userId,
 						name: jobName,
 						sourceId: input.sourceId,
 						publishedCommit,
-						storageId: createJobStorageId(
-							buildPackageJobId(input.packageId, jobName),
-						),
+						storageId: createJobStorageId(jobId),
 						schedule,
 						timezone,
 						enabled,
@@ -871,6 +872,15 @@ export async function syncPackageJobsForPackage(input: {
 						successCount: 0,
 						errorCount: 0,
 					}
+					// Provision the enablement first. If the insert fails, retry
+					// reuses it. Once a disabled job row exists, republishing
+					// deliberately leaves its enablements alone.
+					await ensureOwnerEnablement({
+						id: created.id,
+						name: jobName,
+						enabled,
+						isCreate: true,
+					})
 					await jobsData(input.env).insertJob({
 						userId: input.userId,
 						job: created,
@@ -882,15 +892,6 @@ export async function syncPackageJobsForPackage(input: {
 						name: jobName,
 						action: jobAuditActions.created,
 						enabled,
-					})
-					// New jobs auto-enable for the creator/owner so the schedule runs
-					// without a separate ask-the-user enablementEnable step. Other
-					// package triggers still never auto-enable on publish.
-					await ensureOwnerEnablement({
-						id: created.id,
-						name: jobName,
-						enabled,
-						isCreate: true,
 					})
 					await stampFirstJob(
 						input.env.APP_DB,

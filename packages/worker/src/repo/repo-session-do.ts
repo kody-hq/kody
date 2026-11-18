@@ -92,6 +92,10 @@ import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.t
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
 import {
+	type PackageServingUpdate,
+	type PackageServingUpdateQueue,
+} from './package-serving-update.ts'
+import {
 	resolveRepoWorkspacePath,
 	toExternalRepoPath,
 	toRepoSessionInfoResult,
@@ -417,6 +421,15 @@ function buildGitCloneAuth(input: { remote: string; token: string }) {
 }
 
 class RepoSessionBase extends DurableObject<Env> {
+	private packageServingUpdateQueue?: PackageServingUpdateQueue
+
+	async updatePackageServing(update: PackageServingUpdate) {
+		const { PackageServingUpdateQueue } =
+			await import('./package-serving-update.ts')
+		this.packageServingUpdateQueue ??= new PackageServingUpdateQueue()
+		return await this.packageServingUpdateQueue.run(this.env, update)
+	}
+
 	readonly workspace = new Workspace({
 		sql: this.ctx.storage.sql,
 		name: () => buildRepoSessionWorkspaceName(this.ctx.id.toString()),
