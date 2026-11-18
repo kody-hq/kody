@@ -5,10 +5,6 @@ import {
 	startWebsiteOAuth,
 } from '#start/server/auth-mutations'
 import {
-	appendAttributionQueryParams,
-	type FirstTouchAttribution,
-} from '#universal/first-touch-attribution.ts'
-import {
 	emptyPublicFormProtection,
 	type PublicFormProtectionFields,
 } from '#universal/public-form-protection.ts'
@@ -19,14 +15,9 @@ export type PublicAuthConfig = {
 	turnstileSiteKey: string | null
 }
 
-function buildProviderStartPath(
-	providerId: string,
-	redirectTo: string | null,
-	attribution: FirstTouchAttribution | null = null,
-) {
+function buildProviderStartPath(providerId: string, redirectTo: string | null) {
 	const params = new URLSearchParams()
 	if (redirectTo) params.set('redirectTo', redirectTo)
-	appendAttributionQueryParams(params, attribution)
 	const query = params.toString()
 	return query ? `/auth/${providerId}?${query}` : `/auth/${providerId}`
 }
@@ -68,9 +59,6 @@ export function usePublicAuthConfig() {
  * `form-action` and `connect-src` to 'self', so neither a form-POST redirect
  * nor a fetch-followed redirect may leave the origin — a top-level JS
  * navigation may. Returns an error message, or null when navigation started.
- *
- * Pass `attribution` so first-touch UTMs survive the OAuth round-trip in
- * the signed login-state cookie.
  */
 export function useSocialSignIn() {
 	const send = useServerFn(startWebsiteOAuth)
@@ -79,14 +67,13 @@ export function useSocialSignIn() {
 			providerId: string,
 			redirectTo: string | null,
 			protection: PublicFormProtectionFields = emptyPublicFormProtection(),
-			attribution: FirstTouchAttribution | null = null,
 			signal?: AbortSignal,
 		): Promise<string | null> {
 			const payload = await send({
 				data: {
 					provider: providerId,
 					search: new URL(
-						buildProviderStartPath(providerId, redirectTo, attribution),
+						buildProviderStartPath(providerId, redirectTo),
 						'http://localhost',
 					).search,
 					body: { ...protection },

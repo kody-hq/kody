@@ -41,6 +41,14 @@ Referral share links set a separate last-wins `kody_ref` cookie (one week, not
 overwrites the previous referrer. Signup persists a `referrals` row from that
 cookie. See [Referral Pro credit](./entitlements.md#referral-pro-credit).
 
+First-touch marketing attribution uses a separate first-touch-wins
+`kody_first_touch` cookie with the same conventions (one week, `Path=/`,
+`SameSite=Lax`, `Secure` on HTTPS, not `httpOnly`). The browser writes it on the
+first page view and never overwrites it, so it survives new tabs. Password and
+OAuth signup read it from the request `Cookie` header when the account is
+created, re-apply the parse caps, persist the `utm_*` and `first_touch_*`
+columns, and clear it.
+
 The cookie payload stores:
 
 - `v: 2`

@@ -1,10 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useRouter, useRouterState } from '@tanstack/react-router'
-import {
-	captureFirstTouchAttributionFromLocation,
-	clearStoredFirstTouchAttribution,
-} from '#client/first-touch-attribution.ts'
+import { captureFirstTouchAttributionFromLocation } from '#client/first-touch-attribution.ts'
 import { persistReferralCookieFromLocation } from '#client/referral-cookie.ts'
 import { scheduleConsumeAccountCreatedFathomSignal } from '#client/fathom-events.ts'
 import { locationWithoutHomeOgParam } from '#universal/home-og-variants.ts'
@@ -15,10 +12,6 @@ export function AppBrowserEffects() {
 	const href = useLocation({ select: (location) => location.href })
 	useEffect(() => {
 		captureFirstTouchAttributionFromLocation()
-		if (
-			new URL(window.location.href).searchParams.get('accountCreated') === '1'
-		)
-			clearStoredFirstTouchAttribution()
 		return scheduleConsumeAccountCreatedFathomSignal({
 			replaceHref: (next) =>
 				router.history.replace(next, router.history.location.state),
