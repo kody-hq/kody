@@ -1,7 +1,5 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { useActorRef } from '@xstate/react'
-import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { connectSecretsInput } from '../connect-input.ts'
 import type { ListDetailSelection } from '#client/list-detail-route.ts'
 import {
@@ -9,26 +7,19 @@ import {
 	getScopeLabel,
 } from '#client/routes/account-approval-shared.ts'
 import { getNewSecretValueAutofocusKey } from '#client/routes/new-secret-query.ts'
-import { normalizeAllowedHosts } from '#client/routes/secret-normalization.ts'
-import { toast } from '#client/toast.ts'
 import {
-	saveSecret,
-	deleteSecret,
-	disconnectSecret,
 	approveSecretAccess,
 	rejectSecretAccess,
 } from '#start/server/account-mutations'
 import type { AccountSecretsLoaderData } from '#universal/loader-data.ts'
-import { fillPlacementViewFromDraft } from '#universal/credential-fill-placement.ts'
 import { relocateAccountHref } from '#universal/org-pages.ts'
 import type { CSSObject } from '@emotion/react'
 import { buildAccountSecretPath } from '@kody-internal/shared/account-secret-route.ts'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
-import { type FormEvent, useState } from 'react'
+import { useState } from 'react'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { secretMutationOptions } from '../secret-mutation.ts'
-import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { secretsSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import {
@@ -44,12 +35,14 @@ import {
 } from './account-secrets-approval.tsx'
 import { SecretEditor } from './account-secrets-editor.tsx'
 import {
+	secretMutationResources,
+	useSecretEditor,
+} from './use-secret-editor.ts'
+import {
 	type SecretFilterScope,
-	applyStuckRenameRecovery,
 	buildBaseSecretsHref,
 	buildNewSecretHref,
 	buildSecretHref,
-	collectRepeatedTextRows,
 	createEditorStateFromNewSecretQuery,
 	createEditorStateFromSecret,
 	createEmptyEditorState,
@@ -109,60 +102,59 @@ export function AccountSecretsPage({
 					: [payload.approval.name],
 			}
 		: null
-	const [editorState, setEditorState] = useState(
-		selection.isCreating
-			? createEditorStateFromNewSecretQuery(payload.packageOptions, currentHref)
-			: payload.selectedSecret
-				? createEditorStateFromSecret(payload.selectedSecret)
-				: createEmptyEditorState(payload.packageOptions),
-	)
-	const [savedEditorState, setSavedEditorState] = useState(editorState)
-	const [message, setMessage] = useState<string | null>(
-		readAccountSecretsSaveWarning(payload) ?? payload.approvalError ?? null,
-	)
 	const [completedPackageApproval, setCompletedPackageApproval] =
 		useState<ApprovalAction | null>(null)
 	const [packageApprovalHref, setPackageApprovalHref] = useState<string | null>(
 		currentHref,
 	)
-	const runExclusiveActor = useActorRef(submissionGateState)
-	const [showSecretValue, setShowSecretValue] = useState(false)
 	const queryClient = useQueryClient()
 	const { actorKey, orgSlug, pageLocation } = useMatchedPageScope()
-	const capture = useSubmitterScope()
-	const save = useMutation(
-		secretMutationOptions(
-			queryClient,
-			actorKey,
-			orgSlug,
-			mutationResources,
-			saveSecret,
-		),
-	)
-	const remove = useMutation(
-		secretMutationOptions(
-			queryClient,
-			actorKey,
-			orgSlug,
-			mutationResources,
-			deleteSecret,
-		),
-	)
-	const disconnect = useMutation(
-		secretMutationOptions(
-			queryClient,
-			actorKey,
-			orgSlug,
-			mutationResources,
-			disconnectSecret,
-		),
-	)
+	const router = useRouter()
+	const navigate = (href: string) =>
+		void router.navigate({
+			to: relocateAccountHref(href, currentHref),
+			resetScroll: false,
+		})
+	const editor = useSecretEditor({
+		actorKey,
+		orgSlug,
+		resources: secretMutationResources,
+		initialEditorState: selection.isCreating
+			? createEditorStateFromNewSecretQuery(payload.packageOptions, currentHref)
+			: payload.selectedSecret
+				? createEditorStateFromSecret(payload.selectedSecret)
+				: createEmptyEditorState(payload.packageOptions),
+		initialMessage:
+			readAccountSecretsSaveWarning(payload) ?? payload.approvalError ?? null,
+		getSearch: getCurrentSearch,
+		onSaved: (secret, wasCreating) => {
+			if (secret)
+				navigate(buildSecretHref(secret, wasCreating ? '' : getCurrentSearch()))
+		},
+		onSaveRefused: navigate,
+		onDeleted: () => navigate(buildBaseSecretsHref(getCurrentSearch())),
+	})
+	const {
+		editorState,
+		setEditorState,
+		savedEditorState,
+		setSavedEditorState,
+		message,
+		setMessage,
+		setShowSecretValue,
+		setDeleteArmed,
+		setDisconnectArmed,
+		saveState,
+		runExclusiveActor,
+		capture,
+		resetMutations,
+	} = editor
 	const approve = useMutation(
 		secretMutationOptions(
 			queryClient,
 			actorKey,
 			orgSlug,
-			mutationResources,
+			secretMutationResources,
 			approveSecretAccess,
 		),
 	)
@@ -171,31 +163,15 @@ export function AccountSecretsPage({
 			queryClient,
 			actorKey,
 			orgSlug,
-			mutationResources,
+			secretMutationResources,
 			rejectSecretAccess,
 		),
 	)
-	const saveState = save.isPending
-		? 'saving'
-		: remove.isPending
-			? 'deleting'
-			: disconnect.isPending
-				? 'disconnecting'
-				: 'idle'
 	const submittingApprovalAction = approve.isPending
 		? 'approve'
 		: reject.isPending
 			? 'reject'
 			: null
-	const router = useRouter()
-	const [deleteArmed, setDeleteArmed] = useState(false)
-	const [disconnectArmed, setDisconnectArmed] = useState(false)
-	const navigate = (href: string) =>
-		void router.navigate({
-			to: relocateAccountHref(href, currentHref),
-			resetScroll: false,
-		})
-
 	function getCurrentHref() {
 		return currentHref
 	}
@@ -320,9 +296,7 @@ export function AccountSecretsPage({
 							? await approve.mutateAsync(input)
 							: await reject.mutateAsync(input)
 					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
+					resetMutations()
 					approve.reset()
 					reject.reset()
 					const isPackageApproval = Boolean(approval.requestedPackageId)
@@ -365,9 +339,7 @@ export function AccountSecretsPage({
 					}
 				} catch (error) {
 					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
+					resetMutations()
 					approve.reset()
 					reject.reset()
 
@@ -378,9 +350,7 @@ export function AccountSecretsPage({
 					)
 				} finally {
 					if (isCurrent()) {
-						save.reset()
-						remove.reset()
-						disconnect.reset()
+						resetMutations()
 						approve.reset()
 						reject.reset()
 					}
@@ -389,285 +359,6 @@ export function AccountSecretsPage({
 		} finally {
 			runExclusiveActor.send({ type: 'SETTLED' })
 		}
-	}
-
-	async function saveSecretChanges(event: FormEvent<HTMLFormElement>) {
-		event.preventDefault()
-		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
-		runExclusiveActor.send({ type: 'SUBMIT' })
-		try {
-			return await (async () => {
-				if (saveState !== 'idle') return
-
-				const form = event.currentTarget as HTMLFormElement
-				const submittedEditorState = editorState
-
-				setMessage(null)
-
-				const isCurrent = capture()
-				try {
-					const allowedHosts = normalizeAllowedHosts(
-						collectRepeatedTextRows(form, 'allowed-hosts'),
-					)
-					const allowedPackages =
-						submittedEditorState.scope === 'user'
-							? [...submittedEditorState.allowedPackages].sort((left, right) =>
-									left.localeCompare(right),
-								)
-							: []
-					const placement = fillPlacementViewFromDraft(
-						submittedEditorState.fillPlacement,
-					)
-					if (
-						placement === null &&
-						!(
-							submittedEditorState.fillPlacement.headers &&
-							submittedEditorState.fillPlacement.query &&
-							submittedEditorState.fillPlacement.path &&
-							submittedEditorState.fillPlacement.body
-						)
-					) {
-						throw new Error('Choose at least one fill-placement part.')
-					}
-					const payload = await save.mutateAsync({
-						orgSlug: orgSlug ?? undefined,
-						fields: {
-							currentId: submittedEditorState.currentId,
-							name: submittedEditorState.name,
-							scope: submittedEditorState.scope,
-							packageId:
-								submittedEditorState.scope === 'package'
-									? submittedEditorState.packageId
-									: null,
-							description: submittedEditorState.description,
-							expiresAt: submittedEditorState.expiresAt || null,
-							value: submittedEditorState.value,
-							allowedHosts,
-							allowedPackages,
-							placement,
-						},
-					})
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-					if (!payload.ok) {
-						const recovered = applyStuckRenameRecovery({
-							editor: submittedEditorState,
-							stuck: payload.selectedSecret,
-							search: getCurrentSearch(),
-						})
-						setEditorState(recovered.editor)
-
-						setDisconnectArmed(false)
-						toast.error(payload.error)
-						navigate(recovered.href)
-						return
-					}
-
-					const warning = readAccountSecretsSaveWarning(payload)
-					if (warning) toast.error(warning)
-					const wasCreating = !submittedEditorState.currentId
-					const savedEditor = createEditorStateFromSecret(
-						payload.selectedSecret,
-					)
-					setEditorState(savedEditor)
-					setSavedEditorState(savedEditor)
-					setShowSecretValue(false)
-					setDeleteArmed(false)
-					setDisconnectArmed(false)
-
-					setMessage(warning)
-					if (!warning)
-						toast.success(wasCreating ? 'Created secret.' : 'Saved secret.')
-
-					if (payload.selectedSecret) {
-						navigate(
-							buildSecretHref(
-								payload.selectedSecret,
-								wasCreating ? '' : getCurrentSearch(),
-							),
-						)
-					}
-				} catch (error) {
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-
-					setMessage(
-						error instanceof Error ? error.message : 'Unable to save secret.',
-					)
-				} finally {
-					if (isCurrent()) {
-						save.reset()
-						remove.reset()
-						disconnect.reset()
-						approve.reset()
-						reject.reset()
-					}
-				}
-			})()
-		} finally {
-			runExclusiveActor.send({ type: 'SETTLED' })
-		}
-	}
-
-	async function deleteSelectedSecret() {
-		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
-		runExclusiveActor.send({ type: 'SUBMIT' })
-		try {
-			return await (async () => {
-				if (!editorState.currentId || saveState !== 'idle') return
-
-				setMessage(null)
-
-				const isCurrent = capture()
-				try {
-					await remove.mutateAsync({
-						orgSlug: orgSlug ?? undefined,
-						fields: {
-							currentId: editorState.currentId,
-						},
-					})
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-
-					navigate(buildBaseSecretsHref(getCurrentSearch()))
-				} catch (error) {
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-
-					setMessage(
-						error instanceof Error ? error.message : 'Unable to delete secret.',
-					)
-				} finally {
-					if (isCurrent()) {
-						save.reset()
-						remove.reset()
-						disconnect.reset()
-						approve.reset()
-						reject.reset()
-					}
-				}
-			})()
-		} finally {
-			runExclusiveActor.send({ type: 'SETTLED' })
-		}
-	}
-
-	async function disconnectSelectedSecret() {
-		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
-		runExclusiveActor.send({ type: 'SUBMIT' })
-		try {
-			return await (async () => {
-				if (!editorState.currentId || saveState !== 'idle') return
-
-				setMessage(null)
-
-				const isCurrent = capture()
-				try {
-					await disconnect.mutateAsync({
-						orgSlug: orgSlug ?? undefined,
-						fields: {
-							currentId: editorState.currentId,
-						},
-					})
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-					setDisconnectArmed(false)
-					setDeleteArmed(false)
-
-					setMessage(
-						'Disconnected. The credential record and placement remain. Save a value to reconnect.',
-					)
-					setEditorState({ ...editorState, value: '' })
-					setShowSecretValue(false)
-				} catch (error) {
-					if (!isCurrent()) return
-					save.reset()
-					remove.reset()
-					disconnect.reset()
-					approve.reset()
-					reject.reset()
-
-					setMessage(
-						error instanceof Error
-							? error.message
-							: 'Unable to disconnect secret.',
-					)
-				} finally {
-					if (isCurrent()) {
-						save.reset()
-						remove.reset()
-						disconnect.reset()
-						approve.reset()
-						reject.reset()
-					}
-				}
-			})()
-		} finally {
-			runExclusiveActor.send({ type: 'SETTLED' })
-		}
-	}
-
-	function updateAllowedHost(index: number, value: string) {
-		setEditorState({
-			...editorState,
-			allowedHosts: editorState.allowedHosts.map((host, hostIndex) =>
-				hostIndex === index ? value : host,
-			),
-		})
-	}
-
-	function addAllowedHost() {
-		setEditorState({
-			...editorState,
-			allowedHosts: [...editorState.allowedHosts, ''],
-		})
-	}
-
-	function removeAllowedHost(index: number) {
-		const nextHosts = editorState.allowedHosts.filter(
-			(_host, hostIndex) => hostIndex !== index,
-		)
-		setEditorState({
-			...editorState,
-			allowedHosts: nextHosts.length > 0 ? nextHosts : [''],
-		})
-	}
-
-	function addAllowedPackage(packageId: string) {
-		if (editorState.allowedPackages.includes(packageId)) return
-		setEditorState({
-			...editorState,
-			allowedPackages: [...editorState.allowedPackages, packageId],
-		})
-	}
-
-	function removeAllowedPackage(packageId: string) {
-		setEditorState({
-			...editorState,
-			allowedPackages: editorState.allowedPackages.filter(
-				(candidate) => candidate !== packageId,
-			),
-		})
 	}
 
 	const isRefreshingForLocationChange = false
@@ -909,45 +600,15 @@ export function AccountSecretsPage({
 				record={
 					showEditor ? (
 						<SecretEditor
-							{...{
-								isCreating: selection.isCreating,
-								selectedSecret,
-								editorState,
-								setEditorState: (next) => {
-									setEditorState(next)
-								},
-								packageOptions,
-								packageSelectOptions,
-								canCreatePackageSecrets,
-								isMutating,
-								saveState,
-								showSecretValue,
-								onToggleShowSecretValue: () => {
-									setShowSecretValue(!showSecretValue)
-								},
-								secretValueAutofocusKey,
-								deleteArmed,
-								onDeleteArm: () => {
-									setDisconnectArmed(false)
-									setDeleteArmed(true)
-								},
-								onDeleteReset: () => setDeleteArmed(false),
-								disconnectArmed,
-								onDisconnectArm: () => {
-									setDeleteArmed(false)
-									setDisconnectArmed(true)
-								},
-								onDisconnectReset: () => setDisconnectArmed(false),
-								disconnected: selectedSecret?.disconnected === true,
-								onSave: saveSecretChanges,
-								onDelete: () => void deleteSelectedSecret(),
-								onDisconnect: () => void disconnectSelectedSecret(),
-								updateAllowedHost,
-								addAllowedHost,
-								removeAllowedHost,
-								addAllowedPackage,
-								removeAllowedPackage,
-							}}
+							{...editor.editorProps}
+							isCreating={selection.isCreating}
+							selectedSecret={selectedSecret}
+							packageOptions={packageOptions}
+							packageSelectOptions={packageSelectOptions}
+							canCreatePackageSecrets={canCreatePackageSecrets}
+							isMutating={isMutating}
+							secretValueAutofocusKey={secretValueAutofocusKey}
+							disconnected={selectedSecret?.disconnected === true}
 						/>
 					) : null
 				}
@@ -955,10 +616,3 @@ export function AccountSecretsPage({
 		</AccountManagementShell>
 	)
 }
-
-const mutationResources = [
-	'loadSecretsPage',
-	'loadOnboarding',
-	'loadAccountPage',
-	'loadUsagePage',
-] as const

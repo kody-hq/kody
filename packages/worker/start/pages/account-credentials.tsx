@@ -374,6 +374,11 @@ export function AccountCredentialsRoute({
 									orgSlug,
 									personalOrgSlug,
 								}),
+								editOrgSlug:
+									selectedItem.scope === 'personal' && personalOrgSlug
+										? personalOrgSlug
+										: orgSlug,
+								listHref: credentialsRoute.buildListHref(search, currentHref),
 								teamOrg,
 								packagesById,
 								orgSlug,

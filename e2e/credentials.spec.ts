@@ -166,10 +166,9 @@ test('Credentials lists a key, filters by kind, and opens its detail pane withou
 	await expect(pane.getByText('{{secret:DEMO_API_KEY}}')).toBeVisible()
 	await expect(pane.getByText('api.example.com')).toBeVisible()
 	await expect(pane.getByText('Authorization: Bearer {value}')).toBeVisible()
-	await expect(pane.getByRole('link', { name: 'Edit' })).toHaveAttribute(
-		'href',
-		`/@${user.username}/-/secrets/user/DEMO_API_KEY`,
-	)
+	await expect(
+		pane.getByRole('button', { name: 'Edit', exact: true }),
+	).toBeVisible()
 	await expect(page.getByText(value)).toHaveCount(0)
 
 	// The open row collapses back to the list, keeping the filter.
@@ -220,10 +219,8 @@ test('the legacy secret editor confirms creations and metadata saves', async ({
 		name: 'EXISTING_KEY',
 		value: `existing-${runId}`,
 	})
-	await page.goto(`/@${user.username}/-/credentials`)
+	await page.goto(`/@${user.username}/-/secrets/user/EXISTING_KEY`)
 	await waitForClientHydration(page)
-	await page.getByRole('link', { name: /EXISTING_KEY/ }).click()
-	await page.getByRole('link', { name: 'Edit', exact: true }).click()
 	await page.getByRole('button', { name: 'New secret', exact: true }).click()
 	await expect(page).toHaveURL(new RegExp(`/@${user.username}/-/secrets/new$`))
 	await expect(
