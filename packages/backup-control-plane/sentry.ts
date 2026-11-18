@@ -9,7 +9,7 @@ const workflowStepMechanism = 'auto.faas.cloudflare.workflow'
  * (captureRestExportFailure). Drop the SDK's automatic capture of the same
  * failed step so one failure is one issue.
  */
-export const dropWorkflowStepException: NonNullable<
+const dropWorkflowStepException: NonNullable<
 	CloudflareOptions['beforeSend']
 > = (event) =>
 	event.exception?.values?.some(
