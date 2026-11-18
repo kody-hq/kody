@@ -136,6 +136,8 @@ test('the credential page shows the local reads state and links to it', async ()
 			manageHref: '/@ann/-/secrets',
 			teamOrg: false,
 			packagesById: new Map(),
+			editOrgSlug: 'ann',
+			listHref: '/@ann/-/credentials',
 			orgSlug: 'ann',
 			localReads: {
 				credentialId: credential.id,
