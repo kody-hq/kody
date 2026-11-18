@@ -234,13 +234,14 @@ When a normal filesystem and git client are available:
 4. Commit and push the package repository.
 5. Publish the pushed head with `packagePublishExternalPush`. That call runs the
    server-side publish checks (manifest, docs, bundle, typecheck, lint,
-   credentials). When the publish exceeds the inline budget it returns
-   `dispatched` with a `workflow_id`; poll `workflowRunList` until the run is
-   terminal. A durable run that does not publish ends `errored` and frees a
-   retry for the same commit. See [Packages](../use/packages.md) for the
-   statuses. When bundling exceeds the worker isolate, build on this machine or
-   a context you operate and have Kody verify the upload:
-   `kody package publish <package> --build local` or `--build context`. See
+   credentials). The call always returns `dispatched` with a `workflow_id`; poll
+   `workflowRunList` until the run is terminal, then read the full result with
+   `packageRunResult` (`kody package publish` does both). A durable run that
+   does not publish ends `errored` and frees a retry for the same commit. See
+   [Packages](../use/packages.md) for the statuses. When bundling exceeds the
+   worker isolate, build on this machine or a context you operate and have Kody
+   verify the upload: `kody package publish <package> --build local` or
+   `--build context`. See
    [Publish packages too big for Kody cloud](./publish-large-packages.md)
    (`guide:publish_large_packages`). Do **not** open a repo session to run
    `repoRunChecks` on the pushed tree — `repoOpenSession` refuses unpublished
