@@ -8,6 +8,7 @@ import { TimestampValue } from './account-management-components.tsx'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import { saveCredentialLocalReads } from '#start/server/credential-local-reads'
 import type { CredentialLocalReadsView } from '#universal/credentials-list.ts'
+import type { LocalReadsIneligibility } from '#universal/credential-local-reads-eligibility.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
@@ -67,6 +68,45 @@ function useLocalReadsSwitch(input: {
 		}
 	}
 	return { enabled, change, error, pending: mutation.isPending }
+}
+
+/** The credential page's link to its Local reads field, showing the state. */
+export function LocalReadsStateLink(props: { state: string }) {
+	return (
+		<SiteLink href={`#${localReadsAnchor}`} data-testid="local-reads-entry">
+			{props.state}
+		</SiteLink>
+	)
+}
+
+/** Why this credential cannot be read locally, and the step that fixes it. */
+export function CredentialLocalReadsIneligible(props: {
+	ineligibility: LocalReadsIneligibility
+}) {
+	const { fix, reason } = props.ineligibility
+	return (
+		<div css={fieldCss} id={localReadsAnchor}>
+			<span css={fieldLabelCss}>Local reads</span>
+			<div css={{ display: 'grid', gap: spacing.sm }}>
+				<p
+					css={{ margin: 0, color: colors.text }}
+					data-testid="local-reads-state"
+				>
+					Not available.
+				</p>
+				<p css={mutedCss} data-testid="local-reads-ineligible-reason">
+					{reason}
+				</p>
+				{fix ? (
+					<div>
+						<Button href={fix.href} variant="secondary">
+							{fix.label}
+						</Button>
+					</div>
+				) : null}
+			</div>
+		</div>
+	)
 }
 
 /** Local reads failed to load, which is not the same as "not supported". */
@@ -211,7 +251,13 @@ export type LocalReadsApprovalProps = {
 				canChange: boolean
 				detailHref: string
 		  }
-		| { ok: false; message: string }
+		| {
+				ok: false
+				message: string
+				name: string | null
+				fix: LocalReadsIneligibility['fix']
+				detailHref: string | null
+		  }
 }
 
 /** The page a refused CLI read links to: one button turns local reads on. */
@@ -219,9 +265,36 @@ export function LocalReadsApprovalPage(props: LocalReadsApprovalProps) {
 	const { approval } = props
 	if (!approval.ok) {
 		return (
-			<section css={{ display: 'grid', gap: spacing.sm, maxWidth: '40rem' }}>
-				<h1 css={cardTitleCss}>Turn on local reads</h1>
-				<p css={descriptionCss}>{approval.message}</p>
+			<section
+				css={{ display: 'grid', gap: spacing.md, maxWidth: '40rem' }}
+				data-testid="local-reads-ineligible"
+			>
+				<h1 css={cardTitleCss}>
+					{approval.name ? (
+						<>
+							Local reads are not available for <code>{approval.name}</code>
+						</>
+					) : (
+						'Secret not found'
+					)}
+				</h1>
+				<p css={descriptionCss} data-testid="local-reads-ineligible-reason">
+					{approval.message}
+				</p>
+				{approval.fix || approval.detailHref ? (
+					<div css={{ display: 'flex', flexWrap: 'wrap', gap: spacing.sm }}>
+						{approval.fix ? (
+							<Button href={approval.fix.href} variant="primary">
+								{approval.fix.label}
+							</Button>
+						) : null}
+						{approval.detailHref ? (
+							<Button href={approval.detailHref} variant="secondary">
+								Open the secret&apos;s page
+							</Button>
+						) : null}
+					</div>
+				) : null}
 			</section>
 		)
 	}
