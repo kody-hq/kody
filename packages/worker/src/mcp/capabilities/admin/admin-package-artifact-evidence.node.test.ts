@@ -1019,7 +1019,6 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 			packageId,
 			sourceId,
 			failedCommit,
-			restoreCommit: oldCommit,
 			sentryScope: 'test',
 		})
 	mocks.refreshSavedPackageProjection
@@ -1038,7 +1037,7 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 	expect(t.jobRow('job-reconcile').published_commit).toBe(failedCommit)
 
 	// Retry finishes the repair instead of reporting `superseded`.
-	expect(await settle()).toBe('restored')
+	expect(await settle()).toEqual({ status: 'restored', commit: oldCommit })
 	expect(mocks.refreshSavedPackageProjection).toHaveBeenCalledTimes(2)
 	expect(mocks.refreshSavedPackageProjection).toHaveBeenLastCalledWith(
 		expect.objectContaining({ sourceId, rebuildArtifacts: false }),
@@ -1052,7 +1051,7 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 		enabled: 0,
 	})
 	// A further retry stays a safe repeat.
-	expect(await settle()).toBe('restored')
+	expect(await settle()).toEqual({ status: 'restored', commit: oldCommit })
 
 	const { targets } = await evidence(t)
 	expect(selectedHashes(targets)).toEqual(selectedHashes(before.targets))
@@ -1083,10 +1082,9 @@ test('failed-publish settlement never touches a pointer a newer publish owns', a
 			packageId,
 			sourceId,
 			failedCommit,
-			restoreCommit: oldCommit,
 			sentryScope: 'test',
 		}),
-	).toBe('superseded')
+	).toEqual({ status: 'superseded' })
 	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
 	expect(
 		t.sqlite
@@ -1110,10 +1108,9 @@ test('failed-publish settlement keeps a commit already served by an overlapping 
 			packageId,
 			sourceId,
 			failedCommit,
-			restoreCommit: oldCommit,
 			sentryScope: 'test',
 		}),
-	).resolves.toBe('unchanged')
+	).resolves.toEqual({ status: 'unchanged' })
 	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
 	expect(
 		t.sqlite

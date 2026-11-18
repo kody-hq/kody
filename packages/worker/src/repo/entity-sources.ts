@@ -265,9 +265,9 @@ export async function updateEntitySource(
 }
 
 /**
- * Move `published_commit` back from a publish that did not succeed. Guarded by
- * compare-and-set so a different commit or a successful build of the same
- * commit keeps its pointer.
+ * Roll back a failed publish to the most recent built commit. An earlier
+ * publish may have moved the published pointer without finishing its build.
+ * Choose the rollback target from the built pointers in the same write.
  */
 export async function revertEntitySourcePublishedCommit(
 	db: D1Database,
@@ -275,28 +275,28 @@ export async function revertEntitySourcePublishedCommit(
 		id: string
 		userId: OwnerId
 		failedCommit: string
-		restoreCommit: string
 	},
-): Promise<boolean> {
-	const result = await runD1WithRetry(() =>
+): Promise<string | null> {
+	const row = await runD1WithRetry(() =>
 		db
 			.prepare(
 				`UPDATE entity_sources
-			SET published_commit = ?, updated_at = ?
+			SET published_commit = COALESCE(held_commit, serving_commit), updated_at = ?
 			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}
+				AND COALESCE(held_commit, serving_commit) IS NOT NULL
 				AND serving_commit IS NOT published_commit
-				AND held_commit IS NOT published_commit`,
+				AND held_commit IS NOT published_commit
+			RETURNING published_commit`,
 			)
 			.bind(
-				input.restoreCommit,
 				new Date().toISOString(),
 				input.id,
 				input.userId,
 				input.failedCommit,
 			)
-			.run(),
+			.first<{ published_commit: string }>(),
 	)
-	return (result.meta.changes ?? 0) > 0
+	return row?.published_commit ?? null
 }
 
 /**

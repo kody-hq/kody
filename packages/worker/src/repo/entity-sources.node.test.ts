@@ -332,9 +332,8 @@ test('reverting a failed publish only moves the pointer while the failed commit 
 			id: 'source-1',
 			userId,
 			failedCommit: 'commit-other',
-			restoreCommit: 'commit-good',
 		}),
-	).toBe(false)
+	).toBeNull()
 	expect(readPointer()).toBe('commit-failed')
 
 	// An overlapping attempt served or held the commit before rollback.
@@ -345,20 +344,39 @@ test('reverting a failed publish only moves the pointer while the failed commit 
 				id: 'source-1',
 				userId,
 				failedCommit: 'commit-failed',
-				restoreCommit: 'commit-good',
 			}),
-		).toBe(false)
+		).toBeNull()
 		expect(readPointer()).toBe('commit-failed')
 		sqlite.exec(`UPDATE entity_sources SET ${pointer} = NULL`)
 	}
 
+	// Until the first build succeeds there is no built commit to restore.
+	const revertFailed = () =>
+		revertEntitySourcePublishedCommit(db, {
+			id: 'source-1',
+			userId,
+			failedCommit: 'commit-failed',
+		})
+	expect(await revertFailed()).toBeNull()
+	expect(readPointer()).toBe('commit-failed')
+
+	// A second publish overtakes the first while it is still building.
+	sqlite.exec(`UPDATE entity_sources
+		SET serving_commit = 'commit-good', published_commit = 'commit-newer'`)
+	expect(await revertFailed()).toBeNull()
+	expect(readPointer()).toBe('commit-newer')
 	expect(
 		await revertEntitySourcePublishedCommit(db, {
 			id: 'source-1',
 			userId,
-			failedCommit: 'commit-failed',
-			restoreCommit: 'commit-good',
+			failedCommit: 'commit-newer',
 		}),
-	).toBe(true)
+	).toBe('commit-good')
 	expect(readPointer()).toBe('commit-good')
+
+	// A built candidate awaiting approval stays available for approval.
+	sqlite.exec(`UPDATE entity_sources
+		SET held_commit = 'commit-held', published_commit = 'commit-failed'`)
+	expect(await revertFailed()).toBe('commit-held')
+	expect(readPointer()).toBe('commit-held')
 })

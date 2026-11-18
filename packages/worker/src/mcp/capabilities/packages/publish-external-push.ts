@@ -1053,7 +1053,6 @@ async function runExternalPublishAttempt(input: {
 	source: {
 		id: string
 		repo_id: string
-		serving_commit: string | null
 	}
 	/**
 	 * Tip before this publish request (and before any overlapping inline
@@ -1184,10 +1183,6 @@ async function runExternalPublishAttempt(input: {
 										packageId: input.packageId,
 										sourceId: input.source.id,
 										failedCommit: publishedCommit,
-										restoreCommit: tipMoved
-											? (input.source.serving_commit ??
-												input.baselinePublishedCommit)
-											: null,
 										sentryScope: externalPushRestoreSentryScope,
 									})
 								}
@@ -1214,10 +1209,6 @@ async function runExternalPublishAttempt(input: {
 						packageId: input.packageId,
 						sourceId: input.source.id,
 						failedCommit: publishedCommit,
-						// Only a tip this request advanced is rolled back.
-						restoreCommit: tipMoved
-							? (input.source.serving_commit ?? input.baselinePublishedCommit)
-							: null,
 						sentryScope: externalPushRestoreSentryScope,
 					})
 					return {
@@ -1451,7 +1442,6 @@ async function runExternalPublishAttempt(input: {
 									packageId: input.packageId,
 									sourceId: input.source.id,
 									failedCommit: result.published_commit,
-									restoreCommit: result.previous_commit,
 									sentryScope: externalPushRestoreSentryScope,
 								})
 							}
@@ -1478,7 +1468,6 @@ async function runExternalPublishAttempt(input: {
 					packageId: input.packageId,
 					sourceId: input.source.id,
 					failedCommit: result.published_commit,
-					restoreCommit: result.previous_commit,
 					sentryScope: externalPushRestoreSentryScope,
 				})
 				return {
@@ -1769,11 +1758,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				kodyId,
 				name,
 				hasApp,
-				source: {
-					id: source.id,
-					repo_id: source.repo_id,
-					serving_commit: source.serving_commit ?? null,
-				},
+				source: { id: source.id, repo_id: source.repo_id },
 				baselinePublishedCommit,
 				newCommit,
 				allowForce: args.allow_force,

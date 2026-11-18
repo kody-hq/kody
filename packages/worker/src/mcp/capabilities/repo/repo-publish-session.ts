@@ -139,7 +139,6 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								ownerUserId: owner.ownerUserId,
 								sourceId: sessionInfo.source_id,
 								failedCommit: result.publishedCommit,
-								sessionBaseCommit: sessionInfo.base_commit,
 								error,
 							}),
 						)
@@ -312,18 +311,13 @@ export const repoPublishSessionCapability = defineDomainCapability(
 	},
 )
 
-/**
- * The session base is the commit that served before this publish (also when
- * resuming one an interrupted attempt already promoted), so a failed rebuild
- * restores it. Returns the error to throw, naming where the pointer landed.
- */
+/** Returns the rebuild error with the current rollback outcome. */
 async function settleFailedSessionRebuild(input: {
 	env: Env
 	baseUrl: string
 	ownerUserId: OwnerId
 	sourceId: string
 	failedCommit: string
-	sessionBaseCommit: string
 	error: unknown
 }) {
 	const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
@@ -340,7 +334,6 @@ async function settleFailedSessionRebuild(input: {
 			packageId: source.entity_id,
 			sourceId: input.sourceId,
 			failedCommit: input.failedCommit,
-			restoreCommit: input.sessionBaseCommit || null,
 			sentryScope: 'repoPublishSession.restore-after-rebuild-failure',
 		})
 	} catch {
@@ -348,9 +341,9 @@ async function settleFailedSessionRebuild(input: {
 		return input.error
 	}
 	const notice =
-		settled === 'restored'
-			? `This publish did not land: published_commit was rolled back to "${input.sessionBaseCommit}", which keeps serving. Commit "${input.failedCommit}" stays on the source branch; publish it again with packagePublishExternalPush.`
-			: settled === 'superseded'
+		settled.status === 'restored'
+			? `This publish did not land. published_commit points to the built commit "${settled.commit}". Commit "${input.failedCommit}" stays on the source branch. Publish it again with packagePublishExternalPush.`
+			: settled.status === 'superseded'
 				? 'This publish did not land; a newer publish already owns published_commit.'
 				: null
 	if (!notice) return input.error

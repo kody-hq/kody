@@ -49,7 +49,7 @@ const mockModule = vi.hoisted(() => ({
 		async (..._args: Array<unknown>) => {},
 	),
 	revertEntitySourcePublishedCommit: vi.fn(
-		async (..._args: Array<unknown>) => true,
+		async (..._args: Array<unknown>): Promise<string | null> => 'commit-old',
 	),
 	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
 }))
@@ -603,7 +603,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -627,7 +626,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -639,6 +637,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		publish: alreadyPublishedOld,
 		targets: [moduleTarget],
 	})
+	mockModule.revertEntitySourcePublishedCommit.mockResolvedValueOnce(null)
 	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
 		new Error('No matching default export for import "default"'),
 	)
@@ -656,8 +655,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'commit-old' }),
 	)
-	// A true no-op retry did not move the tip, so there is nothing to restore.
-	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
+	// The already serving commit stayed in place.
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 

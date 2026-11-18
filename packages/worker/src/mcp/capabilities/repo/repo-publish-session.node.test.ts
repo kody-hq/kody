@@ -317,10 +317,10 @@ test('repoPublishSession reports a compute-limit reset as a caller error naming 
  * RepoSession finalize moves published_commit, re-projects job pins, and
  * seals the tip before repoPublishSession rebuilds artifacts in a second
  * step. A failed rebuild must settle like packagePublishExternalPush does:
- * drop the seal and compare-and-set the pointer back to the session base,
+ * drop the seal and compare-and-set the pointer back to the last built commit,
  * never over a newer publish, while serving_commit stays on the last build.
  */
-test('repoPublishSession rolls a failed artifact rebuild back to the session base', async () => {
+test('repoPublishSession rolls a failed artifact rebuild back to the last built commit', async () => {
 	const ownerId = ownerIdFromStored('user-1')
 	const runPublish = async (input: {
 		sessionInfo: { base_commit: string; published_commit: string }
@@ -329,6 +329,12 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 		resetMocks()
 		const sqlite = new DatabaseSync(':memory:')
 		sqlite.exec(entitySourcesTableSql)
+		const { getEntitySourceByIdForUser } = await vi.importActual<
+			typeof EntitySourcesModule
+		>('#worker/repo/entity-sources.ts')
+		mockModule.getEntitySourceByIdForUser.mockImplementation(
+			getEntitySourceByIdForUser,
+		)
 		sqlite
 			.prepare(
 				`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, published_commit, serving_commit, created_at, updated_at)
@@ -404,7 +410,7 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 	expect((failed.error as Error).message).toMatch(
 		/bundle artifact rebuild failed/,
 	)
-	expect((failed.error as Error).message).toMatch(/rolled back to "commit-old"/)
+	expect((failed.error as Error).message).toMatch(/built commit "commit-old"/)
 	expect(failed.row).toEqual({
 		published_commit: 'commit-old',
 		serving_commit: 'commit-old',
@@ -437,7 +443,7 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 
 	// A resumed publish (an interrupted attempt already moved the pointer to
-	// the session HEAD) still restores the session base, the last good commit.
+	// the session HEAD) still restores the last built commit.
 	const resumed = await runPublish({
 		sessionInfo: { base_commit: 'commit-old', published_commit: 'commit-new' },
 	})
