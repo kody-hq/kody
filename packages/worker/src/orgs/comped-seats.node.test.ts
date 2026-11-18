@@ -146,6 +146,14 @@ test('members already past a newly applied cap keep their seats; freeing seats r
 		db,
 		orgId,
 		userId: existing,
+		role: 'admin',
+		audit: createTestOrgAuditWriter(),
+	})
+	expect(liveRole(sqlite, existing)).toBe('admin')
+	await updateOrgMemberRole({
+		db,
+		orgId,
+		userId: existing,
 		role: 'billing',
 		audit: createTestOrgAuditWriter(),
 	})

@@ -663,8 +663,7 @@ export async function updateOrgMemberRole(input: {
 		)
 		.bind(input.orgId, input.userId)
 		.first<{ role: OrgRole }>()
-	const addsSeat =
-		before != null && !isSeatRole(before.role) && isSeatRole(input.role)
+	const guardSeat = isSeatRole(input.role)
 	const statement = input.protectLastOwner
 		? input.db
 				.prepare(
@@ -682,20 +681,31 @@ export async function updateOrgMemberRole(input: {
 				.prepare(
 					`UPDATE org_memberships
 					 SET role = ?
-					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL${addsSeat ? compedSeatAvailableSql : ''}`,
+					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL${guardSeat ? seatRoleOrCompedSeatAvailableSql : ''}`,
 				)
 				.bind(
 					input.role,
 					input.orgId,
 					input.userId,
-					...(addsSeat ? [input.orgId] : []),
+					...(guardSeat ? [input.orgId] : []),
 				)
 	const results = await runBatch(input.db, [
 		statement,
 		bumpAccessEpochStatement(input.db, input.orgId),
 	])
 	if (!changesOf(results[0])) {
-		if (addsSeat) await throwIfCompedSeatCapFull(input.db, input.orgId)
+		if (guardSeat && !input.protectLastOwner) {
+			const current = await input.db
+				.prepare(
+					`SELECT role FROM org_memberships
+					 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+				)
+				.bind(input.orgId, input.userId)
+				.first<{ role: OrgRole }>()
+			if (current && !isSeatRole(current.role)) {
+				await throwIfCompedSeatCapFull(input.db, input.orgId)
+			}
+		}
 		throw new Error(
 			input.protectLastOwner
 				? 'The last Owner cannot be demoted.'
@@ -1074,11 +1084,17 @@ export async function addOrgMember(input: {
 }
 
 /** `AND NOT` the comped seat cap is full; binds the org id once. */
-const compedSeatAvailableSql = `
-	AND NOT EXISTS (
+const compedSeatCapNotFullSql = `NOT EXISTS (
 		SELECT 1 FROM orgs seat_o
 		WHERE seat_o.id = ? AND ${compedSeatCapFullSql('seat_o')}
 	)`
+
+const compedSeatAvailableSql = `
+	AND ${compedSeatCapNotFullSql}`
+
+/** Role changes into a seat pass when the row already holds a seat. */
+const seatRoleOrCompedSeatAvailableSql = `
+	AND (role IN ('owner', 'admin', 'member') OR ${compedSeatCapNotFullSql})`
 
 async function throwIfCompedSeatCapFull(db: D1Database, orgId: string) {
 	const cap = await readFullCompedSeatCap(db, orgId)
