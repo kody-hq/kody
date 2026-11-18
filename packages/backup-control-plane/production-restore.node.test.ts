@@ -1,9 +1,21 @@
 import assert from 'node:assert/strict'
-import { createHash } from 'node:crypto'
+import { createHash, createPrivateKey, sign } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 
-import { serializeBackupFullManifest } from '@kody-internal/shared/backup-full-manifest.ts'
+import {
+	backupFullManifestRestD1SchemaVersion,
+	canonicalBackupFullManifestPayload,
+	serializeBackupFullManifest,
+	type BackupFullManifest,
+} from '@kody-internal/shared/backup-full-manifest.ts'
+import {
+	buildSealedPacedChain,
+	pacedTestSource,
+	pacedTestTable,
+	pacedTestTipDay,
+} from '@kody-internal/shared/backup-d1-paced-test-support.ts'
 import { sealedFullManifestKey } from '@kody-internal/shared/backup-staging.ts'
-import { test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 
 import {
 	ACCOUNT_ID,
@@ -75,8 +87,46 @@ async function putSealedFullManifest(
 	})
 	await bucket.put(
 		sealedFullManifestKey(day),
-		serializeBackupFullManifest(full),
+		serializeBackupFullManifest(
+			d1.d1ManifestKey === undefined ? full : signRestD1Manifest(env, full),
+		),
 	)
+}
+
+/** Days sealed before the paced lane carry REST D1 only (schema v2). */
+function signRestD1Manifest(
+	env: BackupEnvironment,
+	full: BackupFullManifest,
+): BackupFullManifest {
+	const { d1Paced: _paced, ...rest } =
+		full.payload as BackupFullManifest['payload'] & {
+			d1Paced?: unknown
+		}
+	const payload = {
+		...rest,
+		schemaVersion: backupFullManifestRestD1SchemaVersion,
+	} as BackupFullManifest['payload']
+	const key = createPrivateKey({
+		key: Buffer.from(
+			env.BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64,
+			'base64',
+		),
+		format: 'der',
+		type: 'pkcs8',
+	})
+	return {
+		...full,
+		schemaVersion: backupFullManifestRestD1SchemaVersion,
+		payload,
+		signature: {
+			...full.signature,
+			value: sign(
+				null,
+				Buffer.from(canonicalBackupFullManifestPayload(payload)),
+				key,
+			).toString('base64'),
+		},
+	} as BackupFullManifest
 }
 
 async function seedSealedRestoreDay(bucket: MemoryBucket, day = '2026-07-22') {
@@ -308,7 +358,7 @@ test('production restore refuses SQL with oversized statement stats', async () =
 	assert.equal(fetchCalls, 0)
 })
 
-test('production restore refuses a day sealed without a REST D1 export', async () => {
+test('production restore of a paced-only day reads the sealed paced chain, not REST', async () => {
 	vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	const bucket = new MemoryBucket()
 	const env = environment(bucket)
@@ -324,7 +374,7 @@ test('production restore refuses a day sealed without a REST D1 export', async (
 				},
 			},
 		),
-		backupError('restore-rest-d1-absent'),
+		backupError('restore-paced-seal-missing'),
 	)
 })
 
@@ -411,4 +461,110 @@ test('production restore verifies every required SQL object before importing APP
 	assert.equal(importedAppDb, false)
 	assert.deepEqual(sqlAccess.heads, [sqlObjectKey, jobs.sqlObjectKey])
 	assert.deepEqual(sqlAccess.gets, [])
+})
+
+/** Production D1 API fake: REST safety export plus a SQLite-backed import target. */
+function pacedProductionFetcher(input: { dropRowAfterImport?: boolean } = {}) {
+	const db = new DatabaseSync(':memory:')
+	const state = { exportCalls: 0, imports: 0, restoreCalls: 0 }
+	let upload = ''
+	let dropped = false
+	const ok = (result: unknown) => Response.json({ success: true, result })
+	const fetcher = async (request: RequestInfo | URL, init?: RequestInit) => {
+		const url = String(request)
+		if (url.includes('api.cloudflare.com') && url.includes('/export')) {
+			state.exportCalls += 1
+			return exportEnvelope(state.exportCalls === 1 ? 'active' : 'complete')
+		}
+		if (url.includes('download.example')) {
+			return new Response(safetySql, {
+				headers: { 'content-length': String(safetySql.length) },
+			})
+		}
+		if (url.includes('upload.example')) {
+			upload = await new Response(init?.body).text()
+			const md5 = createHash('md5').update(upload).digest('hex')
+			return new Response(null, { headers: { etag: `"${md5}"` } })
+		}
+		if (url.includes('/__maintenance/dr-restore')) {
+			state.restoreCalls += 1
+			return Response.json({
+				done: true,
+				progress: { step: 'done' },
+				warnings: [],
+			})
+		}
+		const body = JSON.parse(String(init?.body ?? '{}')) as {
+			sql?: string
+			action?: string
+		}
+		if (url.endsWith('/query')) {
+			if (input.dropRowAfterImport && !dropped) {
+				dropped = true
+				db.exec(
+					`DELETE FROM "${pacedTestTable}" WHERE rowid = (SELECT max(rowid) FROM "${pacedTestTable}")`,
+				)
+			}
+			return ok([{ results: db.prepare(body.sql ?? '').all() }])
+		}
+		switch (body.action) {
+			case 'init':
+				return ok({
+					upload_url: 'https://upload.example/sql',
+					filename: 'import.sql',
+				})
+			case 'ingest':
+				state.imports += 1
+				db.exec(upload)
+				return ok({ at_bookmark: 'bookmark', type: 'import' })
+			case 'poll':
+				return ok({ status: 'complete', success: true, type: 'import' })
+			default:
+				throw new Error(`unexpected fetch ${url}`)
+		}
+	}
+	return { db, state, fetcher }
+}
+
+async function seedPacedOnlyDay() {
+	const { objects } = await buildSealedPacedChain()
+	const bucket = new MemoryBucket()
+	for (const [key, text] of objects) await bucket.put(key, text)
+	const env = environment(bucket)
+	env.D1_PACED_SOURCES = JSON.stringify([pacedTestSource])
+	env.SOURCE_DATABASE_ID = pacedTestSource.id
+	env.SOURCE_DATABASE_NAME = pacedTestSource.name
+	env.ALLOWED_SOURCE_DATABASE_IDS = pacedTestSource.id
+	await putSealedFullManifest(bucket, env, pacedTestTipDay, {})
+	return env
+}
+
+test('production restore replays a paced-only day into the source database and verifies it', async () => {
+	const env = await seedPacedOnlyDay()
+	const d1 = pacedProductionFetcher()
+	const progress = await runProductionRestore(
+		env,
+		{ day: pacedTestTipDay, requestedAt: `${pacedTestTipDay}T12:00:00.000Z` },
+		restoreOptions(pacedTestTipDay, d1.fetcher as typeof fetch),
+	)
+	expect(progress.phase).toBe('complete')
+	expect(d1.state.imports).toBeGreaterThan(0)
+	expect(d1.state.restoreCalls).toBeGreaterThan(0)
+	expect(
+		d1.db.prepare(`SELECT count(*) AS n FROM "${pacedTestTable}"`).get(),
+	).toEqual({ n: expect.any(Number) })
+})
+
+test('production restore fails a paced-only day when the restored rows do not match the sealed manifest', async () => {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const env = await seedPacedOnlyDay()
+	const d1 = pacedProductionFetcher({ dropRowAfterImport: true })
+	await expect(
+		runProductionRestore(
+			env,
+			{ day: pacedTestTipDay, requestedAt: `${pacedTestTipDay}T12:00:00.000Z` },
+			restoreOptions(pacedTestTipDay, d1.fetcher as typeof fetch),
+		),
+	).rejects.toMatchObject({ code: 'restore-paced-verify-mismatch' })
+	expect(d1.state.restoreCalls).toBe(0)
 })

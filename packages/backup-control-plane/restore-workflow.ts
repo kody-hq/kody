@@ -28,10 +28,11 @@ export class ProductionDrRestoreWorkflow extends WorkflowEntrypoint<
 			const runtimeStep = withNonRetryableBackupErrors(
 				step as unknown as BackupRuntimeStep,
 			)
-			const progress = await runtimeStep.do(
-				'run-production-restore',
-				async () => runProductionRestore(this.env, event.payload),
-			)
+			// Each phase, paced restore unit, and store chunk is its own durable
+			// step, so a replay resumes where it stopped instead of re-importing.
+			const progress = await runProductionRestore(this.env, event.payload, {
+				step: runtimeStep,
+			})
 			// Persist progress (including warnings) as step output, then fail the
 			// workflow instance when restore finished with any dr-restore warnings.
 			// Informational notes (undeclared historical databases) are not failures.

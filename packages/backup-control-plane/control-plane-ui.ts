@@ -793,11 +793,30 @@ ${sources}`
 export function renderRestorePreparePage(input: {
 	day: string
 	sourceDatabaseName: string
-	sqlObjectKey: string
-	sqlBytes: number
-	sqlSha256: string
+	d1:
+		| {
+				kind: 'rest'
+				sqlObjectKey: string
+				sqlBytes: number
+				sqlSha256: string
+		  }
+		| { kind: 'paced'; sourceNames: Array<string> }
 	token: RestoreConfirmToken
 }): string {
+	const d1Evidence =
+		input.d1.kind === 'paced'
+			? `<div class="kv"><span>D1 source</span><strong>Sealed paced chains: ${escapeHtml(input.d1.sourceNames.join(', '))}</strong></div>`
+			: `<div class="kv"><span>SQL bytes</span><strong>${escapeHtml(String(input.d1.sqlBytes))}</strong></div>`
+	const d1Details =
+		input.d1.kind === 'paced'
+			? ''
+			: disclosure(
+					'SQL object',
+					`<div class="grid">
+			<div class="kv"><span>Object key</span><strong>${escapeHtml(input.d1.sqlObjectKey)}</strong></div>
+			<div class="kv"><span>SHA-256</span><strong>${escapeHtml(input.d1.sqlSha256)}</strong></div>
+		</div>`,
+				)
 	const body = `
 <header>
 	<h1>Confirm PRODUCTION restore</h1>
@@ -808,16 +827,10 @@ export function renderRestorePreparePage(input: {
 	<div class="grid">
 		<div class="kv"><span>Day</span><strong>${escapeHtml(input.day)}</strong></div>
 		<div class="kv"><span>Database name</span><strong>${escapeHtml(input.sourceDatabaseName)}</strong></div>
-		<div class="kv"><span>SQL bytes</span><strong>${escapeHtml(String(input.sqlBytes))}</strong></div>
+		${d1Evidence}
 		<div class="kv"><span>Token expires</span><strong>${escapeHtml(input.token.expiresAt)}</strong></div>
 	</div>
-	${disclosure(
-		'SQL object',
-		`<div class="grid">
-			<div class="kv"><span>Object key</span><strong>${escapeHtml(input.sqlObjectKey)}</strong></div>
-			<div class="kv"><span>SHA-256</span><strong>${escapeHtml(input.sqlSha256)}</strong></div>
-		</div>`,
-	)}
+	${d1Details}
 	<form method="post" action="/actions/restore/execute" class="actions" style="margin-top:1rem" onsubmit="return confirm('Type-confirm and EXECUTE production restore now?');">
 		<input type="hidden" name="day" value="${escapeHtml(input.day)}"/>
 		<input type="hidden" name="expiresAt" value="${escapeHtml(input.token.expiresAt)}"/>
