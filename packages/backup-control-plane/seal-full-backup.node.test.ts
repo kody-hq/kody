@@ -39,6 +39,7 @@ import {
 } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
+import { retryingR2Bucket } from './r2-retry.ts'
 import {
 	readFullManifest,
 	sealFullBackupDay,
@@ -598,4 +599,46 @@ test('a missing paced seal blocks the full seal and opens one Sentry issue per s
 			},
 		],
 	])
+})
+
+test('a persistent R2 put failure on one day stays isolated and is logged with its cause', async () => {
+	const consoleError = vi.spyOn(console, 'error')
+	consoleError.mockImplementation(() => undefined)
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const failing = await seedCompleteDay(bucket, '2026-07-22')
+	const healthy = await seedCompleteDay(bucket, '2026-07-21')
+	const put = bucket.put.bind(bucket)
+	bucket.put = async (key, value, options) => {
+		if (key.startsWith('daily/full/2026-07-22/')) {
+			throw new Error(
+				'put: We encountered an internal error. Please try again. (10001)',
+			)
+		}
+		return put(key, value, options)
+	}
+	const env = {
+		...failing.env,
+		BACKUP_BUCKET: retryingR2Bucket(bucket as unknown as R2Bucket, {
+			baseDelayMs: 0,
+		}),
+	}
+	await assert.rejects(
+		sealRecentCompleteDays(env, new Date('2026-07-22T13:00:00.000Z'), 2),
+		(error: unknown) =>
+			error instanceof BackupError && error.code === 'r2-platform-error',
+	)
+	const failures = consoleError.mock.calls
+		.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+		.filter((record) => record.event === 'full-backup-seal-failure')
+	assert.deepEqual(failures, [
+		{
+			event: 'full-backup-seal-failure',
+			status: 'failure',
+			day: failing.day,
+			errorCode: 'r2-platform-error',
+		},
+	])
+	assert.equal((await healthy.sealedManifest())?.payload.day, healthy.day)
+	vi.restoreAllMocks()
 })

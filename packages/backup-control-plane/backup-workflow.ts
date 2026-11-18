@@ -14,6 +14,7 @@ import type {
 import { buildControlPlaneSentryOptions } from './sentry.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 class ProductionD1BackupWorkflowBase extends WorkflowEntrypoint<
 	BackupEnvironment,
@@ -27,7 +28,11 @@ class ProductionD1BackupWorkflowBase extends WorkflowEntrypoint<
 			const runtimeStep = withNonRetryableBackupErrors(
 				step as unknown as BackupRuntimeStep,
 			)
-			return await runBackupRuntime(this.env, event, runtimeStep)
+			return await runBackupRuntime(
+				withRetryingBackupBucket(this.env),
+				event,
+				runtimeStep,
+			)
 		} catch (error) {
 			if (error instanceof BackupError && !error.retryable) {
 				throw nonRetryableBackupError(error)
