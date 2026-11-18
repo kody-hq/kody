@@ -34,7 +34,10 @@ function Page() {
 	const { actorKey, pageQueryInput, pageLocation } = Route.useRouteContext()
 	const { payload } = usePageQuery(pageQuery(actorKey, pageQueryInput)).data
 	const search = new URLSearchParams(pageLocation.searchStr)
-	const allowedHosts: unknown = pageLocation.search.allowedHosts
+	const allowedHosts =
+		'allowedHosts' in pageLocation.search
+			? pageLocation.search.allowedHosts
+			: undefined
 	// Start serializes repeated query parameters as a JSON array in the URL.
 	// Restore the repeated values before passing them to the setup form.
 	if (
