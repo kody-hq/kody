@@ -337,6 +337,11 @@ export async function setCredentialLocalReads(input: {
 				404,
 			)
 		}
+		await authorize(
+			{ env: input.env, request },
+			'secret:write',
+			credentialResource(request.org.id, credential),
+		)
 		const ineligible = await localReadsIneligibility({
 			db: input.env.APP_DB,
 			orgId,
@@ -346,11 +351,6 @@ export async function setCredentialLocalReads(input: {
 		if (ineligible) {
 			return operationResult({ ok: false, error: ineligible.reason }, 400)
 		}
-		await authorize(
-			{ env: input.env, request },
-			'secret:write',
-			credentialResource(request.org.id, credential),
-		)
 		await setLocalReadEnabled({
 			db: input.env.APP_DB,
 			credentialId: credential.id,
