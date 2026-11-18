@@ -19,6 +19,7 @@ export async function ensureOrgsTestSchema(db: D1Database) {
 				stripe_plan_refreshed_at TEXT,
 				stripe_credits_eligible INTEGER NOT NULL DEFAULT 0,
 				admin_credits_eligible INTEGER NOT NULL DEFAULT 0,
+				comped_seats INTEGER,
 				second_agent_standard_gift_granted_at TEXT,
 				second_agent_standard_gift_expires_at TEXT,
 				second_agent_gift_invoice_credit_requested_at TEXT,

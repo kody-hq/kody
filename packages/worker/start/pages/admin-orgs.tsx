@@ -7,6 +7,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import {
 	grantAdminCreditsToOrg,
+	setAdminOrgCompedSeats,
 	setAdminOrgCreditEligibility,
 	setAdminOrgPlan,
 } from '#start/server/admin-controls'
@@ -227,6 +228,87 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 						</option>
 					))}
 				</Select>
+			</Field>
+			<Field label="Reason">
+				<Input
+					required
+					value={reason}
+					onChange={(event) => setReason(event.currentTarget.value)}
+					disabled={mutation.isPending}
+				/>
+			</Field>
+			<Button type="submit" variant="primary" disabled={mutation.isPending}>
+				{mutation.isPending ? 'Saving…' : 'Save'}
+			</Button>
+			{message ? (
+				<div css={{ gridColumn: '1 / -1' }}>
+					<AccountManagementMessage tone={mutation.isError ? 'error' : 'info'}>
+						{message}
+					</AccountManagementMessage>
+				</div>
+			) : null}
+		</form>
+	)
+}
+
+function AdminOrgCompedSeatsForm(props: {
+	orgId: string
+	compedSeats: number | null
+}) {
+	const router = useRouter()
+	const [seats, setSeats] = useState(
+		props.compedSeats === null ? '' : String(props.compedSeats),
+	)
+	const [reason, setReason] = useState('')
+	const [message, setMessage] = useState<string | null>(null)
+	const mutation = useMutation({
+		mutationFn: () => {
+			const trimmed = seats.trim()
+			return setAdminOrgCompedSeats({
+				data: {
+					orgId: props.orgId,
+					compedSeats: trimmed === '' ? null : Number(trimmed),
+					reason,
+				},
+			})
+		},
+		onSuccess: async (result) => {
+			setMessage(
+				result.changed
+					? 'Comped seats updated.'
+					: 'Organization already has that seat comp.',
+			)
+			setReason('')
+			await router.invalidate()
+		},
+		onError: (error) => setMessage(error.message),
+	})
+	return (
+		<form
+			aria-label="Set organization comped seats"
+			onSubmit={(event) => {
+				event.preventDefault()
+				setMessage(null)
+				mutation.mutate()
+			}}
+			css={{
+				display: 'grid',
+				gap: spacing.md,
+				gridTemplateColumns: 'minmax(0, 12rem) minmax(0, 1fr) auto',
+				alignItems: 'end',
+				[mq.mobile]: { gridTemplateColumns: '1fr' },
+			}}
+		>
+			<Field label="Comped seats" description="Leave empty for no cap.">
+				<Input
+					type="number"
+					inputMode="numeric"
+					min={1}
+					step={1}
+					value={seats}
+					onChange={(event) => setSeats(event.currentTarget.value)}
+					disabled={mutation.isPending}
+				/>
 			</Field>
 			<Field label="Reason">
 				<Input
@@ -682,16 +764,30 @@ export function AdminOrgDetailPage(props: {
 							label: 'Credits eligible',
 							value: data.plan.creditsEligible ? 'Yes' : 'No',
 						},
+						{
+							label: 'Comped seats',
+							value:
+								data.seats.comped === null
+									? 'No cap'
+									: `${data.seats.live} of ${data.seats.comped} used`,
+						},
 					]}
 				/>
 				{isDeleted ? (
 					<p>Billing changes are unavailable for a deleted organization.</p>
 				) : (
-					<AdminOrgPlanForm
-						key={org.id}
-						orgId={org.id}
-						manualPlan={data.plan.manualPlan}
-					/>
+					<>
+						<AdminOrgPlanForm
+							key={org.id}
+							orgId={org.id}
+							manualPlan={data.plan.manualPlan}
+						/>
+						<AdminOrgCompedSeatsForm
+							key={`${org.id}-seats`}
+							orgId={org.id}
+							compedSeats={data.seats.comped}
+						/>
+					</>
 				)}
 			</AccountManagementPanel>
 			<AccountManagementPanel title="Seats & members">

@@ -18,6 +18,7 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { isOrgActive } from '#worker/orgs/repo.ts'
 import { addOrgMember, addTeamMember, upsertGrant } from './access-writes.ts'
+import { CompedSeatLimitError } from './billing.ts'
 import {
 	emailMatchesInviteLinkDomains,
 	getInviteLinkByTokenHash,
@@ -376,15 +377,32 @@ export async function redeemOrgInviteLink(input: {
 	const target = link.target
 	switch (target.kind) {
 		case 'membership':
-			return await redeemMembershipLink({ ...input, target, nowIso })
+			return await seatLimitBlocked(() =>
+				redeemMembershipLink({ ...input, target, nowIso }),
+			)
 		case 'team':
-			return await redeemTeamLink({ ...input, target, nowIso })
+			return await seatLimitBlocked(() =>
+				redeemTeamLink({ ...input, target, nowIso }),
+			)
 		case 'resource':
 			return await redeemResourceLink({ ...input, target, nowIso })
 		default: {
 			const exhaustive: never = target
 			throw new Error(`Unknown invite link target: ${String(exhaustive)}`)
 		}
+	}
+}
+
+async function seatLimitBlocked(
+	redeem: () => Promise<RedeemInviteLinkResult>,
+): Promise<RedeemInviteLinkResult> {
+	try {
+		return await redeem()
+	} catch (error) {
+		if (error instanceof CompedSeatLimitError) {
+			return { ok: false, reason: 'seat_limit', error: error.message }
+		}
+		throw error
 	}
 }
 
