@@ -7,9 +7,11 @@
 import { createHash } from 'node:crypto'
 
 import {
-	addPacedD1Checksums,
 	planPacedD1Restore,
+	pacedD1TargetPageSql,
 	runPacedD1RestoreUnit,
+	scanPacedD1TargetPage,
+	type PacedD1TargetScan,
 	type PacedD1RestoreUnit,
 	type PacedD1RestoreUnitResult,
 } from '@kody-internal/shared/backup-d1-paced-materialize.ts'
@@ -45,8 +47,8 @@ type PacedDrillTableProgress = {
 	table: string
 	manifestCount: number
 	manifestChecksum: string
-	restoredRows: number
-	restoredChecksum: string
+	importedRows: number
+	targetChecksum: string | null
 	targetCount: number | null
 	ok: boolean | null
 }
@@ -78,6 +80,8 @@ export type PacedDrillStep = {
 }
 
 const partsPerUnit = 4
+const verifyPageRows = 500
+const verifyPagesPerStep = 40
 const maxChunkBytes = 16 * 1024 * 1024
 const runIdPattern = /^paced-drill-(\d{4}-\d{2}-\d{2})-\d+$/
 
@@ -85,7 +89,7 @@ export function pacedDrillRunId(day: string, now: Date): string {
 	return `paced-drill-${day}-${now.getTime()}`
 }
 
-function dayFromPacedDrillRunId(runId: string): string | null {
+export function dayFromPacedDrillRunId(runId: string): string | null {
 	return runIdPattern.exec(runId)?.[1] ?? null
 }
 
@@ -217,6 +221,7 @@ export async function runPacedRestoreDrill(input: {
 						table,
 						manifestCount: manifest.count,
 						manifestChecksum: manifest.checksum,
+						cols: manifest.cols,
 					})),
 				}
 			})
@@ -224,8 +229,8 @@ export async function runPacedRestoreDrill(input: {
 			entry.unitsTotal = plan.units.length
 			entry.tables = plan.tables.map((table) => ({
 				...table,
-				restoredRows: 0,
-				restoredChecksum: '0'.padStart(16, '0'),
+				importedRows: 0,
+				targetChecksum: null,
 				targetCount: null,
 				ok: null,
 			}))
@@ -269,48 +274,70 @@ export async function runPacedRestoreDrill(input: {
 						}),
 				)
 				const table = entry.tables.find((row) => row.table === result.table)
-				if (table) {
-					table.restoredRows += result.rows
-					table.restoredChecksum = addPacedD1Checksums(
-						table.restoredChecksum,
-						result.checksumSum,
-					)
-				}
+				if (table) table.importedRows += result.rows
 				entry.unitsDone = unitIndex + 1
 				await save()
 			}
 
 			entry.phase = 'verifying'
 			await save()
-			const verified = await step.do(`verify:${source.id}`, async () => {
-				const quickCheckRows = await queryD1Database({
+			entry.quickCheck = await step.do(`quick-check:${source.id}`, async () => {
+				const rows = await queryD1Database({
 					accountId,
 					databaseId: target,
 					token,
 					sql: 'PRAGMA quick_check',
 					options: input.options,
 				})
-				const counts: Record<string, number | null> = {}
-				for (const table of plan.tables) {
-					const rows = await queryD1Database({
-						accountId,
-						databaseId: target,
-						token,
-						sql: `SELECT COUNT(*) AS n FROM ${quoteSqlIdentifier(table.table)}`,
-						options: input.options,
-					})
-					const value = rows[0]?.n
-					counts[table.table] = typeof value === 'number' ? value : null
-				}
-				return { quickCheck: String(quickCheckRows[0]?.quick_check), counts }
+				return String(rows[0]?.quick_check)
 			})
-			entry.quickCheck = verified.quickCheck
-			for (const table of entry.tables) {
-				table.targetCount = verified.counts[table.table] ?? null
-				table.ok =
-					table.restoredRows === table.manifestCount &&
-					table.restoredChecksum === table.manifestChecksum &&
-					table.targetCount === table.manifestCount
+			for (const [tableIndex, table] of plan.tables.entries()) {
+				let scan: PacedD1TargetScan = {
+					count: 0,
+					checksum: '0'.padStart(16, '0'),
+					lastRowid: null,
+					done: false,
+				}
+				for (let batch = 0; !scan.done; batch += 1) {
+					const from = scan
+					scan = await step.do(
+						`verify:${source.id}:${tableIndex}:${batch}`,
+						async () => {
+							let next = from
+							for (
+								let page = 0;
+								page < verifyPagesPerStep && !next.done;
+								page += 1
+							) {
+								next = await scanPacedD1TargetPage({
+									cols: table.cols,
+									rows: await queryD1Database({
+										accountId,
+										databaseId: target,
+										token,
+										sql: pacedD1TargetPageSql({
+											table: table.table,
+											cols: table.cols,
+											afterRowid: next.lastRowid,
+											limit: verifyPageRows,
+										}),
+										options: input.options,
+									}),
+									limit: verifyPageRows,
+									scan: next,
+								})
+							}
+							return next
+						},
+					)
+				}
+				const row = entry.tables[tableIndex]!
+				row.targetCount = scan.count
+				row.targetChecksum = scan.checksum
+				row.ok =
+					row.targetCount === row.manifestCount &&
+					row.targetChecksum === row.manifestChecksum
+				await save()
 			}
 			const passed =
 				entry.quickCheck === 'ok' && entry.tables.every((table) => table.ok)

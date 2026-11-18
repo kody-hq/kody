@@ -1,9 +1,9 @@
 /** Test fixture: a sealed paced chain (2-part full base plus one delta). */
 import {
+	addPacedD1Checksum,
 	hashPacedD1RowLine,
 	sha256HexOfText,
 } from './backup-d1-paced-encode.ts'
-import { addPacedD1Checksums } from './backup-d1-paced-materialize.ts'
 import type { PacedD1ObjectReader } from './backup-d1-paced-read.ts'
 import {
 	pacedD1BackupSchemaVersion,
@@ -97,7 +97,7 @@ function tableManifest(
 
 function sumOf(hashes: Array<string>) {
 	return hashes.reduce(
-		(sum, hash) => addPacedD1Checksums(sum, hash.slice(0, 16)),
+		(sum, hash) => addPacedD1Checksum(sum, hash),
 		'0'.repeat(16),
 	)
 }

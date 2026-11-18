@@ -3,7 +3,13 @@
  * empty target database, one bounded unit at a time. Memory per unit is one
  * base part plus the rows the deltas touched since that base.
  */
-import { parsePacedD1DataLine } from './backup-d1-paced-encode.ts'
+import {
+	addPacedD1Checksum,
+	encodePacedD1Cell,
+	hashPacedD1RowLine,
+	pacedD1RowLine,
+	parsePacedD1DataLine,
+} from './backup-d1-paced-encode.ts'
 import {
 	readPacedD1TablePartCount,
 	streamSealedPacedD1TableLines,
@@ -13,6 +19,7 @@ import {
 } from './backup-d1-paced-read.ts'
 import {
 	emitUpsertStatements,
+	pacedD1RestoreScratchTable,
 	type PacedD1RestoreSqlStats,
 } from './backup-d1-paced-restore.ts'
 import { quoteSqlIdentifier, quoteSqlString } from './sql-literals.ts'
@@ -26,17 +33,54 @@ export type PacedD1RestoreUnit =
 export type PacedD1RestoreUnitResult = {
 	table: string | null
 	rows: number
-	/** Sum of row hash prefixes mod 2^64, hex; summed across a table's units. */
-	checksumSum: string
 	statements: number
 }
 
-const checksumMask = 0xffffffffffffffffn
+export type PacedD1TargetScan = {
+	count: number
+	checksum: string
+	lastRowid: number | null
+	done: boolean
+}
 
-export function addPacedD1Checksums(left: string, right: string): string {
-	return ((BigInt(`0x${left}`) + BigInt(`0x${right}`)) & checksumMask)
-		.toString(16)
-		.padStart(16, '0')
+/** Next page of a restored table, selected the way the paced walker reads. */
+export function pacedD1TargetPageSql(input: {
+	table: string
+	cols: Array<string>
+	afterRowid: number | null
+	limit: number
+}): string {
+	const colList = input.cols
+		.map((col) =>
+			col === '__rowid' ? 'rowid AS __rowid' : quoteSqlIdentifier(col),
+		)
+		.join(', ')
+	const where =
+		input.afterRowid === null ? '' : ` WHERE rowid > ${input.afterRowid}`
+	return `SELECT ${colList} FROM ${quoteSqlIdentifier(input.table)}${where} ORDER BY rowid LIMIT ${input.limit}`
+}
+
+/**
+ * Fold one page of target rows into a scan, hashing each row with the backup
+ * encoding so the result compares directly with the sealed manifest.
+ */
+export async function scanPacedD1TargetPage(input: {
+	cols: Array<string>
+	rows: Array<Record<string, unknown>>
+	limit: number
+	scan: PacedD1TargetScan
+}): Promise<PacedD1TargetScan> {
+	let { count, checksum, lastRowid } = input.scan
+	for (const row of input.rows) {
+		const vals = input.cols.map((col) => encodePacedD1Cell(row[col]))
+		checksum = addPacedD1Checksum(
+			checksum,
+			await hashPacedD1RowLine(pacedD1RowLine(vals)),
+		)
+		count += 1
+		lastRowid = Number(vals[0])
+	}
+	return { count, checksum, lastRowid, done: input.rows.length < input.limit }
 }
 
 function tipOf(chain: Array<SealedPacedD1Night>) {
@@ -97,7 +141,7 @@ export async function planPacedD1Restore(input: {
 	return units
 }
 
-type TouchedRow = { h: string; row: string } | null
+type TouchedRow = { row: string } | null
 
 /** rowid -> latest delta row (null when a later delta deleted it). */
 async function readTouchedRows(input: {
@@ -119,10 +163,7 @@ async function readTouchedRows(input: {
 			onLine: (line) => {
 				const parsed = parsePacedD1DataLine(line)
 				const rowid = Number(parsed.k[0])
-				touched.set(
-					rowid,
-					parsed.kind === 'D' ? null : { h: parsed.h, row: parsed.row },
-				)
+				touched.set(rowid, parsed.kind === 'D' ? null : { row: parsed.row })
 			},
 		})
 	}
@@ -179,14 +220,12 @@ export async function runPacedD1RestoreUnit(input: {
 			push(`${manifest.sql};`)
 		}
 		await flush()
-		return {
-			table: null,
-			rows: 0,
-			checksumSum: '0'.padStart(16, '0'),
-			statements: stats.statements,
-		}
+		return { table: null, rows: 0, statements: stats.statements }
 	}
 	if (unit.kind === 'finish') {
+		push(
+			`DROP TABLE IF EXISTS ${quoteSqlIdentifier(pacedD1RestoreScratchTable)};`,
+		)
 		if (tip.sqliteSequence.length > 0) {
 			push('DELETE FROM sqlite_sequence;')
 			for (const row of tip.sqliteSequence) {
@@ -200,15 +239,13 @@ export async function runPacedD1RestoreUnit(input: {
 			if (a.type !== 'index' && b.type === 'index') return 1
 			return a.name.localeCompare(b.name)
 		})) {
+			push(
+				`DROP ${extra.type.toUpperCase()} IF EXISTS ${quoteSqlIdentifier(extra.name)};`,
+			)
 			push(`${extra.sql};`)
 		}
 		await flush()
-		return {
-			table: null,
-			rows: 0,
-			checksumSum: '0'.padStart(16, '0'),
-			statements: stats.statements,
-		}
+		return { table: null, rows: 0, statements: stats.statements }
 	}
 
 	const tableManifest = tip.tables[unit.table]
@@ -222,8 +259,7 @@ export async function runPacedD1RestoreUnit(input: {
 		table: unit.table,
 	})
 	let rows = 0
-	let sum = 0n
-	const emit = (h: string, row: string) => {
+	const emit = (row: string) => {
 		emitUpsertStatements({
 			table: unit.table,
 			cols: tableManifest.cols,
@@ -233,7 +269,6 @@ export async function runPacedD1RestoreUnit(input: {
 			push,
 			stats,
 		})
-		sum = (sum + BigInt(`0x${h.slice(0, 16)}`)) & checksumMask
 		rows += 1
 	}
 
@@ -251,20 +286,19 @@ export async function runPacedD1RestoreUnit(input: {
 				const parsed = parsePacedD1DataLine(line)
 				if (parsed.kind === 'D') return
 				if (touched.has(Number(parsed.k[0]))) return
-				emit(parsed.h, parsed.row)
+				emit(parsed.row)
 			},
 			onPart: drain,
 		})
 	} else {
 		for (const entry of touched.values()) {
-			if (entry !== null) emit(entry.h, entry.row)
+			if (entry !== null) emit(entry.row)
 		}
 	}
 	await flush()
 	return {
 		table: unit.table,
 		rows,
-		checksumSum: sum.toString(16).padStart(16, '0'),
 		statements: stats.statements,
 	}
 }

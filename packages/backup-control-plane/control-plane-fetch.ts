@@ -36,6 +36,7 @@ import {
 	verifyRestoreConfirmToken,
 } from './restore-confirm-token.ts'
 import {
+	dayFromPacedDrillRunId,
 	latestPacedSealedDay,
 	pacedDrillRunId,
 	readPacedDrillProgress,
@@ -139,17 +140,17 @@ async function handleAuthenticated(
 	}
 
 	if (request.method === 'GET' && path === '/paced-drill-status') {
-		const progress = await readPacedDrillProgress(
-			env,
-			url.searchParams.get('id') ?? '',
-		)
+		const runId = url.searchParams.get('id') ?? ''
+		const progress = await readPacedDrillProgress(env, runId)
 		if (progress === null) {
 			return htmlResponse(
-				renderMessagePage(
-					'Paced restore drill',
-					'No progress yet for this drill run. Reload in a few seconds.',
-				),
-				404,
+				renderPacedDrillStatusPage({
+					runId,
+					day: dayFromPacedDrillRunId(runId) ?? '',
+					status: 'running',
+					updatedAt: 'not yet, the run is queued',
+					sources: [],
+				}),
 			)
 		}
 		return htmlResponse(renderPacedDrillStatusPage(progress))

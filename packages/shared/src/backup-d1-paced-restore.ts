@@ -234,17 +234,31 @@ export async function applyPacedD1NightToState(input: {
 	state.lastManifest = night.manifest
 }
 
+function insertSqlFromLiterals(
+	table: string,
+	cols: Array<string>,
+	lits: Array<string>,
+): string {
+	const names = cols.map((col, index) =>
+		index === 0 && col === '__rowid' ? 'rowid' : quoteSqlIdentifier(col),
+	)
+	return `INSERT OR REPLACE INTO ${quoteSqlIdentifier(table)} (${names.join(', ')}) VALUES (${lits.join(', ')});`
+}
+
 function buildInsertSql(
 	table: string,
 	cols: Array<string>,
 	vals: Array<PacedD1EncodedCell>,
 ): string {
-	const names = cols.map((col, index) =>
-		index === 0 && col === '__rowid' ? 'rowid' : quoteSqlIdentifier(col),
+	return insertSqlFromLiterals(
+		table,
+		cols,
+		vals.map((value) => sqlLiteral(value)),
 	)
-	const lits = vals.map((value) => sqlLiteral(value))
-	return `INSERT OR REPLACE INTO ${quoteSqlIdentifier(table)} (${names.join(', ')}) VALUES (${lits.join(', ')});`
 }
+
+/** Unconstrained table where oversized values are assembled before insert. */
+export const pacedD1RestoreScratchTable = '_kody_restore_scratch'
 
 export function emitUpsertStatements(input: {
 	table: string
@@ -288,14 +302,20 @@ export function emitUpsertStatements(input: {
 			reduced[index] = { $b: '' }
 		}
 	}
-	input.push(buildInsertSql(input.table, input.cols, reduced))
-	const rowid = Number(input.vals[0])
+	// Oversized values are assembled in a scratch row first, so the real
+	// row is inserted once with its complete values: CHECK constraints never
+	// see a partial value, and BLOB cells keep BLOB storage class.
+	const scratch = quoteSqlIdentifier(pacedD1RestoreScratchTable)
+	input.push(
+		`CREATE TABLE IF NOT EXISTS ${scratch} (slot INTEGER PRIMARY KEY, v);`,
+	)
+	const lits = input.vals.map((value) => sqlLiteral(value))
 	for (const index of pending) {
 		const value = input.vals[index]!
-		const col =
-			input.cols[index] === '__rowid'
-				? 'rowid'
-				: quoteSqlIdentifier(input.cols[index]!)
+		input.push(
+			`INSERT OR REPLACE INTO ${scratch} (slot, v) VALUES (${index}, '');`,
+		)
+		const slot = `(SELECT v FROM ${scratch} WHERE slot = ${index})`
 		if (typeof value === 'string') {
 			let pos = 0
 			while (pos < value.length) {
@@ -307,9 +327,10 @@ export function emitUpsertStatements(input: {
 				if (chunk.length === 0) break
 				pos = next
 				input.push(
-					`UPDATE ${quoteSqlIdentifier(input.table)} SET ${col} = ${col} || ${quoteSqlString(chunk)} WHERE rowid = ${rowid};`,
+					`UPDATE ${scratch} SET v = v || ${quoteSqlString(chunk)} WHERE slot = ${index};`,
 				)
 			}
+			lits[index] = slot
 			continue
 		}
 		if (isBlobCell(value)) {
@@ -327,11 +348,14 @@ export function emitUpsertStatements(input: {
 				)
 				offset += slice.byteLength
 				input.push(
-					`UPDATE ${quoteSqlIdentifier(input.table)} SET ${col} = ${col} || X'${hexFromBytes(slice)}' WHERE rowid = ${rowid};`,
+					`UPDATE ${scratch} SET v = v || X'${hexFromBytes(slice)}' WHERE slot = ${index};`,
 				)
 			}
+			lits[index] = `CAST(${slot} AS BLOB)`
 		}
 	}
+	input.push(insertSqlFromLiterals(input.table, input.cols, lits))
+	input.push(`DELETE FROM ${scratch};`)
 }
 
 /**

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 
 import { expect, test, vi } from 'vitest'
 
@@ -23,9 +24,9 @@ import {
 	runPacedRestoreDrill,
 } from './paced-restore-drill.ts'
 
-/** Fake drill-account D1 API that tracks restored rowids per table. */
+/** Fake drill-account D1 API backed by a real SQLite database. */
 function fakeDrillD1() {
-	const tables = new Map<string, Set<string>>()
+	const db = new DatabaseSync(':memory:')
 	const deleted: Array<string> = []
 	let upload = ''
 	const ok = (result: unknown) => Response.json({ success: true, result })
@@ -52,11 +53,7 @@ function fakeDrillD1() {
 			action?: string
 		}
 		if (url.endsWith('/query')) {
-			if (body.sql === 'PRAGMA quick_check') {
-				return ok([{ results: [{ quick_check: 'ok' }] }])
-			}
-			const table = /FROM "([^"]+)"/.exec(body.sql ?? '')?.[1] ?? ''
-			return ok([{ results: [{ n: tables.get(table)?.size ?? 0 }] }])
+			return ok([{ results: db.prepare(body.sql ?? '').all() }])
 		}
 		switch (body.action) {
 			case 'init':
@@ -65,16 +62,7 @@ function fakeDrillD1() {
 					filename: 'import.sql',
 				})
 			case 'ingest':
-				for (const match of upload.matchAll(
-					/DROP TABLE IF EXISTS "([^"]+)"/g,
-				)) {
-					tables.set(match[1]!, new Set())
-				}
-				for (const match of upload.matchAll(
-					/INSERT OR REPLACE INTO "([^"]+)" \([^)]*\) VALUES \((\d+),/g,
-				)) {
-					tables.get(match[1]!)?.add(match[2]!)
-				}
+				db.exec(upload)
 				return ok({ at_bookmark: 'bookmark', type: 'import' })
 			case 'poll':
 				return ok({ status: 'complete' })
@@ -82,7 +70,7 @@ function fakeDrillD1() {
 				throw new Error(`unexpected D1 API call ${url}`)
 		}
 	}
-	return { fetcher, tables, deleted }
+	return { fetcher, db, deleted }
 }
 
 async function drillEnv(tamper?: (objects: Map<string, string>) => void) {
@@ -128,15 +116,20 @@ test('the paced drill restores the sealed chain into an isolated database and pa
 		expect.objectContaining({
 			table: pacedTestTable,
 			manifestCount: 4,
-			restoredRows: 4,
+			importedRows: 4,
 			targetCount: 4,
 			ok: true,
 		}),
 	])
-	expect(source?.tables[0]?.restoredChecksum).toBe(
+	expect(source?.tables[0]?.targetChecksum).toBe(
 		source?.tables[0]?.manifestChecksum,
 	)
-	expect(d1.tables.get(pacedTestTable)).toEqual(new Set(['1', '2', '4', '5']))
+	expect(d1.db.prepare('SELECT id FROM items ORDER BY id').all()).toEqual([
+		{ id: 1 },
+		{ id: 2 },
+		{ id: 4 },
+		{ id: 5 },
+	])
 	expect(d1.deleted).toHaveLength(1)
 	expect((await readPacedDrillProgress(env, runId))?.status).toBe('passed')
 })

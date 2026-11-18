@@ -759,10 +759,10 @@ export function renderPacedDrillStatusPage(
 					(table) => `<tr>
 	<td>${escapeHtml(table.table)}</td>
 	<td>${table.manifestCount}</td>
-	<td>${table.restoredRows}</td>
+	<td>${table.importedRows}</td>
 	<td>${table.targetCount === null ? '?' : table.targetCount}</td>
 	<td><code>${escapeHtml(table.manifestChecksum)}</code></td>
-	<td><code>${escapeHtml(table.restoredChecksum)}</code></td>
+	<td><code>${escapeHtml(table.targetChecksum ?? '?')}</code></td>
 	${drillCell(table.ok)}
 </tr>`,
 				)
@@ -772,7 +772,7 @@ export function renderPacedDrillStatusPage(
 	<p>Units ${source.unitsDone} of ${source.unitsTotal}. Chain ${escapeHtml(source.chainDays.join(', ') || 'n/a')}. quick_check ${escapeHtml(source.quickCheck ?? 'n/a')}.${source.keptForInspection ? ` Target ${escapeHtml(source.targetDatabaseId ?? '')} kept for inspection.` : ''}</p>
 	${source.error ? `<p><strong>${escapeHtml(source.error)}</strong></p>` : ''}
 	<table>
-		<thead><tr><th>Table</th><th>Manifest rows</th><th>Restored rows</th><th>Target rows</th><th>Manifest checksum</th><th>Restored checksum</th><th>Result</th></tr></thead>
+		<thead><tr><th>Table</th><th>Manifest rows</th><th>Imported rows</th><th>Target rows</th><th>Manifest checksum</th><th>Target checksum</th><th>Result</th></tr></thead>
 		<tbody>${rows}</tbody>
 	</table>
 </section>`
