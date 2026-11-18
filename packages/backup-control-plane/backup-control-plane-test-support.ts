@@ -201,7 +201,11 @@ export class MemoryBucket {
 			...metadata,
 			body: new Response(bytes as unknown as BodyInit).body!,
 			bodyUsed: false,
-			arrayBuffer: async () => bytes.buffer.slice(0),
+			arrayBuffer: async () =>
+				bytes.buffer.slice(
+					bytes.byteOffset,
+					bytes.byteOffset + bytes.byteLength,
+				),
 			bytes: async () => bytes.slice(),
 			text: async () => new TextDecoder().decode(bytes),
 			json: async <T>() => JSON.parse(new TextDecoder().decode(bytes)) as T,

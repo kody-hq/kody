@@ -14,6 +14,10 @@ import {
 	pacedTestTable,
 	pacedTestTipDay,
 } from '@kody-internal/shared/backup-d1-paced-test-support.ts'
+import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
 import { sealedFullManifestKey } from '@kody-internal/shared/backup-staging.ts'
 import { expect, test, vi } from 'vitest'
 
@@ -60,6 +64,7 @@ async function putSealedFullManifest(
 			'd1ManifestKey' | 'd1ManifestSha256' | 'd1Sources'
 		>
 	>,
+	d1Paced?: Parameters<typeof signBackupFullManifest>[1]['d1Paced'],
 ) {
 	const index = (name: string, char: string) => ({
 		objectKey: `daily/full/${day}/${name}.json`,
@@ -69,7 +74,7 @@ async function putSealedFullManifest(
 	const full = await signBackupFullManifest(env, {
 		day,
 		...d1,
-		d1Paced: [
+		d1Paced: d1Paced ?? [
 			{
 				databaseId: env.SOURCE_DATABASE_ID,
 				databaseName: env.SOURCE_DATABASE_NAME,
@@ -526,8 +531,29 @@ function pacedProductionFetcher(input: { dropRowAfterImport?: boolean } = {}) {
 	return { db, state, fetcher }
 }
 
-async function seedPacedOnlyDay() {
+type PacedRef = NonNullable<Parameters<typeof putSealedFullManifest>[4]>[number]
+
+async function seedPacedOnlyDay(
+	input: {
+		tamper?: (objects: Map<string, string>) => void
+		refs?: (ref: PacedRef) => Array<PacedRef>
+	} = {},
+) {
 	const { objects } = await buildSealedPacedChain()
+	const manifestKey = pacedD1SealedManifestKey(
+		pacedD1RetentionTierForDay(pacedTestTipDay),
+		pacedTestSource.id,
+		pacedTestTipDay,
+	)
+	const ref: PacedRef = {
+		databaseId: pacedTestSource.id,
+		databaseName: pacedTestSource.name,
+		manifestKey,
+		manifestSha256: createHash('sha256')
+			.update(objects.get(manifestKey)!)
+			.digest('hex'),
+	}
+	input.tamper?.(objects)
 	const bucket = new MemoryBucket()
 	for (const [key, text] of objects) await bucket.put(key, text)
 	const env = environment(bucket)
@@ -535,7 +561,13 @@ async function seedPacedOnlyDay() {
 	env.SOURCE_DATABASE_ID = pacedTestSource.id
 	env.SOURCE_DATABASE_NAME = pacedTestSource.name
 	env.ALLOWED_SOURCE_DATABASE_IDS = pacedTestSource.id
-	await putSealedFullManifest(bucket, env, pacedTestTipDay, {})
+	await putSealedFullManifest(
+		bucket,
+		env,
+		pacedTestTipDay,
+		{},
+		input.refs?.(ref) ?? [ref],
+	)
 	return env
 }
 
@@ -567,4 +599,64 @@ test('production restore fails a paced-only day when the restored rows do not ma
 		),
 	).rejects.toMatchObject({ code: 'restore-paced-verify-mismatch' })
 	expect(d1.state.restoreCalls).toBe(0)
+})
+
+async function expectPacedRestoreRefusedUntouched(
+	env: BackupEnvironment,
+	code?: string,
+) {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const d1 = pacedProductionFetcher()
+	const restore = runProductionRestore(
+		env,
+		{ day: pacedTestTipDay, requestedAt: `${pacedTestTipDay}T12:00:00.000Z` },
+		restoreOptions(pacedTestTipDay, d1.fetcher as typeof fetch),
+	)
+	await (code === undefined
+		? expect(restore).rejects.toThrow()
+		: expect(restore).rejects.toMatchObject({ code }))
+	expect(d1.state).toEqual({ exportCalls: 0, imports: 0, restoreCalls: 0 })
+}
+
+test('a missing paced base part refuses the restore before production is touched', async () => {
+	await expectPacedRestoreRefusedUntouched(
+		await seedPacedOnlyDay({
+			tamper: (objects) => {
+				const part = [...objects.keys()].find((key) =>
+					key.includes(`/data/${pacedTestTable}.parts/0000.tsv`),
+				)
+				objects.delete(part!)
+			},
+		}),
+	)
+})
+
+test('a sealed paced source missing from configuration refuses the restore', async () => {
+	await expectPacedRestoreRefusedUntouched(
+		await seedPacedOnlyDay({
+			refs: (ref) => [
+				ref,
+				{
+					...ref,
+					databaseId: '44444444-4444-4444-8444-444444444444',
+					databaseName: 'kody-audit',
+					manifestKey: pacedD1SealedManifestKey(
+						pacedD1RetentionTierForDay(pacedTestTipDay),
+						'44444444-4444-4444-8444-444444444444',
+						pacedTestTipDay,
+					),
+				},
+			],
+		}),
+		'restore-d1-source-not-configured',
+	)
+})
+
+test('a paced manifest that differs from the signed digest refuses the restore', async () => {
+	await expectPacedRestoreRefusedUntouched(
+		await seedPacedOnlyDay({
+			refs: (ref) => [{ ...ref, manifestSha256: 'a'.repeat(64) }],
+		}),
+		'restore-paced-manifest-digest-mismatch',
+	)
 })

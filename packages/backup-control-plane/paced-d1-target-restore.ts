@@ -137,6 +137,32 @@ export async function importPacedTargetUnits(input: {
 	}
 }
 
+/**
+ * Read and verify every part the plan will replay, without importing, so a
+ * missing or corrupt backup object fails before the target is touched.
+ */
+export async function preflightPacedTargetUnits(input: {
+	reader: PacedD1ObjectReader
+	source: PacedD1SourceRef
+	day: string
+	step: PacedTargetStep
+	plan: PacedTargetPlan
+}): Promise<void> {
+	const { reader, source, day } = input
+	for (const [unitIndex, unit] of input.plan.units.entries()) {
+		await input.step.do(`preflight:${source.id}:${unitIndex}`, async () => {
+			await runPacedD1RestoreUnit({
+				reader,
+				source,
+				chain: await loadVerifiedPacedD1NightChain({ reader, source, day }),
+				unit,
+				maxChunkBytes,
+				importChunk: async () => undefined,
+			})
+		})
+	}
+}
+
 export async function quickCheckPacedTarget(input: {
 	source: PacedD1SourceRef
 	step: PacedTargetStep

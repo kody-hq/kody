@@ -1,4 +1,7 @@
-import { loadSealedPacedD1Manifest } from '@kody-internal/shared/backup-d1-paced-read.ts'
+import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
 import { sealedFullManifestKey } from '@kody-internal/shared/backup-staging.ts'
 
 import {
@@ -28,9 +31,11 @@ import {
 	bucketReader,
 	importPacedTargetUnits,
 	planPacedTargetRestore,
+	preflightPacedTargetUnits,
 	quickCheckPacedTarget,
 	scanPacedTargetTable,
 	type PacedTargetD1,
+	type PacedTargetPlan,
 	type PacedTargetStep,
 } from './paced-d1-target-restore.ts'
 import { readFullManifest } from './seal-full-backup.ts'
@@ -305,14 +310,47 @@ export async function validateSealedDayForRestore(
 	// Schema v3 days restore D1 from the sealed paced chain; REST evidence,
 	// when present, is not imported.
 	if ('d1Paced' in fullManifest.payload) {
-		const sealedIds = new Set(
-			fullManifest.payload.d1Paced.map((entry) =>
-				entry.databaseId.toLowerCase(),
-			),
-		)
-		const pacedSources = pacedSourceDatabases(env).filter((source) =>
-			sealedIds.has(source.id.toLowerCase()),
-		)
+		const configured = pacedSourceDatabases(env)
+		const tier = pacedD1RetentionTierForDay(day)
+		const pacedSources: Array<SourceDatabase> = []
+		for (const entry of fullManifest.payload.d1Paced) {
+			const source = configured.find(
+				(candidate) =>
+					candidate.id.toLowerCase() === entry.databaseId.toLowerCase(),
+			)
+			if (source === undefined) {
+				throw new BackupError(
+					'restore-d1-source-not-configured',
+					`sealed paced source ${entry.databaseName} (${entry.databaseId}) is not a configured paced source`,
+				)
+			}
+			if (
+				entry.manifestKey !== pacedD1SealedManifestKey(tier, source.id, day)
+			) {
+				throw new BackupError(
+					'restore-paced-manifest-key-mismatch',
+					`sealed full manifest points ${source.name} at an unexpected paced manifest key`,
+				)
+			}
+			const object = await env.BACKUP_BUCKET.get(entry.manifestKey)
+			if (object === null) {
+				throw new BackupError(
+					'restore-paced-seal-missing',
+					`no sealed paced manifest for ${source.name} on ${day}`,
+				)
+			}
+			if (
+				sha256HexFromBuffer(
+					await crypto.subtle.digest('SHA-256', await object.arrayBuffer()),
+				) !== entry.manifestSha256.toLowerCase()
+			) {
+				throw new BackupError(
+					'restore-paced-manifest-digest-mismatch',
+					`sealed paced manifest for ${source.name} on ${day} does not match the signed full manifest`,
+				)
+			}
+			pacedSources.push(source)
+		}
 		if (
 			!pacedSources.some(
 				(source) =>
@@ -323,15 +361,6 @@ export async function validateSealedDayForRestore(
 				'restore-d1-source-not-configured',
 				'sealed paced D1 sources do not include the primary database',
 			)
-		}
-		const reader = bucketReader(env.BACKUP_BUCKET)
-		for (const source of pacedSources) {
-			if ((await loadSealedPacedD1Manifest({ reader, source, day })) === null) {
-				throw new BackupError(
-					'restore-paced-seal-missing',
-					`no sealed paced manifest for ${source.name} on ${day}`,
-				)
-			}
 		}
 		return { kind: 'paced', fullManifestKey, pacedSources }
 	}
@@ -620,7 +649,7 @@ async function restorePacedSourceIntoProduction(
 	env: BackupEnvironment,
 	day: string,
 	source: SourceDatabase,
-	input: { step: PacedTargetStep; api: ApiOptions },
+	input: { step: PacedTargetStep; api: ApiOptions; plan: PacedTargetPlan },
 ): Promise<void> {
 	const reader = bucketReader(env.BACKUP_BUCKET)
 	const target: PacedTargetD1 = {
@@ -629,13 +658,7 @@ async function restorePacedSourceIntoProduction(
 		token: env.CLOUDFLARE_API_TOKEN,
 		options: input.api,
 	}
-	const plan = await planPacedTargetRestore({
-		reader,
-		source,
-		day,
-		step: input.step,
-		missingCode: 'restore-paced-seal-missing',
-	})
+	const { plan } = input
 	await importPacedTargetUnits({
 		reader,
 		source,
@@ -719,6 +742,28 @@ export async function runProductionRestore(
 			)
 		}
 
+		const pacedPlans = new Map<string, PacedTargetPlan>()
+		if (validated.kind === 'paced') {
+			const reader = bucketReader(env.BACKUP_BUCKET)
+			for (const source of validated.pacedSources) {
+				const plan = await planPacedTargetRestore({
+					reader,
+					source,
+					day: payload.day,
+					step,
+					missingCode: 'restore-paced-seal-missing',
+				})
+				await preflightPacedTargetUnits({
+					reader,
+					source,
+					day: payload.day,
+					step,
+					plan,
+				})
+				pacedPlans.set(source.id, plan)
+			}
+		}
+
 		progress.phase = 'capturing-safety-export'
 		await publish()
 		safeLog({
@@ -762,6 +807,7 @@ export async function runProductionRestore(
 				await restorePacedSourceIntoProduction(env, payload.day, source, {
 					step,
 					api: options,
+					plan: pacedPlans.get(source.id)!,
 				})
 				continue
 			}
