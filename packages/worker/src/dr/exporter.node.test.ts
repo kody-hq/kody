@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import { createHash } from 'node:crypto'
@@ -1162,6 +1163,7 @@ test('storage pages are byte-bounded and a single-page dump skips the chunk roun
 test('a storage identity whose serial attempts keep aborting is skipped', async () => {
 	const bad = encodeStorageIdentity('user-a', 'job:1')
 	consoleError.mockImplementation(() => {})
+	const captureMessage = vi.spyOn(Sentry, 'captureMessage')
 	storageMocks.exportStorage.mockReset()
 	storageMocks.exportStorage.mockImplementation(async () => {
 		throw new Error('page too large')
@@ -1206,6 +1208,11 @@ test('a storage identity whose serial attempts keep aborting is skipped', async 
 		'dr_export_storage_identity_skipped',
 		expect.stringContaining(bad),
 	)
+	expect(captureMessage).toHaveBeenCalledWith(
+		'DR export left out a storage identity whose dump kept aborting the exporter',
+		'error',
+	)
+	captureMessage.mockRestore()
 })
 
 test('a storage dump over the buffer is exported in parts and restores whole', async () => {

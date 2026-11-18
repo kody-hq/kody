@@ -2081,6 +2081,23 @@ jobs:
             [{"uuid":"8c1014d1-6b41-4695-a0a2-159071f0f919","name":"kody"}]
         run: node tools/ci/backup-resources-reconcile-cli.ts
 
+      - name: 🔐 Sync DR control plane secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.DR_DEPLOY_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.DR_BACKUP_ACCOUNT_ID }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          set -euo pipefail
+          # SENTRY_DSN is the control plane's only optional secret;
+          # sync-worker-secrets fails on an empty set, so skip without it.
+          if [ -z "${SENTRY_DSN:-}" ]; then
+            echo "SENTRY_DSN is not configured; skipping DR control plane secret sync."
+            exit 0
+          fi
+          node tools/ci/sync-worker-secrets.ts --env "" --config \
+            packages/backup-control-plane/wrangler.jsonc \
+            --name kody-production-d1-backups --set-from-env-optional SENTRY_DSN
+
       - name: ☁️ Deploy backup control plane to DR account
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.DR_DEPLOY_TOKEN }}
