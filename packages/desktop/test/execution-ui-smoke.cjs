@@ -601,6 +601,16 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		await expect(
 			servicePanel.getByRole('button', { name: 'Pause', exact: true }),
 		).toBeVisible()
+		// A failed npm lookup leaves latestVersion null: never claim up to date.
+		await page.evaluate(async () => {
+			const [context] = window.fixture.setup.contexts
+			window.fixture.setup.contexts = [
+				{ ...context, client: { ...context.client, latestVersion: null } },
+			]
+			await window.refreshFixture()
+		})
+		await expect(servicePanel).toContainText("Couldn't check for updates.")
+		await expect(servicePanel).not.toContainText('Runner is up to date.')
 		await page.evaluate(async () => {
 			window.fixture.setup.contexts = []
 			await window.refreshFixture()

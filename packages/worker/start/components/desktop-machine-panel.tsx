@@ -476,7 +476,10 @@ function autoUpdateCopy(
 	const client = context?.client
 	if (client?.outdated && client.latestVersion)
 		return `Outdated: ${client.latestVersion} is out.`
-	if (client?.version) return 'Runner is up to date.'
+	if (client?.version)
+		return client.latestVersion
+			? 'Runner is up to date.'
+			: "Couldn't check for updates."
 	return `Automatic runner updates are ${enabled ? 'on' : 'off'}.`
 }
 
