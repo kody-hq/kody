@@ -8,7 +8,10 @@ import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { createHostIntegrationAuthority } from '#mcp/capabilities/integrations/host-integration-authority.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { claimedPackageStamp } from '#worker/credentials/package-stamp.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import { authorizeLocalExecutePackageBinding } from './capability-proxy-package-grants.ts'
 import type { ApiInvocationContext } from './context.ts'
 import { invalidRequest } from './errors.ts'
@@ -205,7 +208,7 @@ export async function runCapabilityProxyAuthenticatedFetch(input: {
 			props: {
 				baseUrl: input.ctx.callerContext.baseUrl,
 				userId: orgUserId,
-				email: input.ctx.callerContext.user.email,
+				email: entitlementEmailForOwner(input.ctx.callerContext, orgUserId),
 				request: input.ctx.callerContext.request,
 				storageContext,
 				claimedPackageId: stampedPackageId,

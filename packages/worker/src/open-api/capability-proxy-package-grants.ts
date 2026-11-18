@@ -6,7 +6,10 @@ import type {
 } from '#mcp/runtime-helper-manifest.ts'
 import { authorize, packageResource } from '#worker/authorization/authorize.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageKodyTools,
@@ -191,7 +194,10 @@ export async function createCapabilityProxyPackageHostTools(input: {
 				tools: createPackageStorageKodyTools({
 					env: input.env,
 					userId: authorized.userId,
-					email: input.callerContext.user?.email ?? null,
+					email: entitlementEmailForOwner(
+						input.callerContext,
+						authorized.userId,
+					),
 					grantedPackageIds: authorized.grantedPackageIds,
 					// The verified binding is the calling package, so its bucket
 					// passes the owner-only check (same as a hosted bound call).
