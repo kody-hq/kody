@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	assertBackupDay,
@@ -1075,6 +1076,16 @@ async function exportStoragePhase(input: {
 					abortedAttempts: stall.attempts,
 				}),
 			)
+			Sentry.withScope((scope) => {
+				scope.setFingerprint(['dr', 'export-storage-identity-skipped'])
+				scope.setTag('dr.cause', 'export-storage-identity-skipped')
+				scope.setTag('dr.day', progress.day)
+				scope.setContext('dr_export', { identity: suspect.identity })
+				Sentry.captureMessage(
+					'DR export left out a storage identity whose dump kept aborting the exporter',
+					'error',
+				)
+			})
 			progress.warnings.push(
 				`${failedStorageDumpWarningPrefix}${suspect.identity}`,
 			)

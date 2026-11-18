@@ -34,7 +34,14 @@ import {
 } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
-import { readFullManifest, sealFullBackupDay } from './seal-full-backup.ts'
+import {
+	readFullManifest,
+	sealFullBackupDay,
+	sealRecentCompleteDays,
+} from './seal-full-backup.ts'
+import { captureFullSealBlocked } from './sentry.ts'
+
+vi.mock('./sentry.ts', () => ({ captureFullSealBlocked: vi.fn() }))
 
 function sha256Text(value: string): string {
 	return createHash('sha256').update(value).digest('hex')
@@ -420,6 +427,30 @@ test('sealFullBackupDay is incomplete when the 501st referenced blob is missing'
 		reason: 'blob-missing',
 	})
 	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
+})
+
+test('a day blocked on a missing D1 manifest opens a Sentry issue with that reason the next day', async () => {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket)
+	addJobsSource(seeded.env)
+
+	await sealRecentCompleteDays(
+		seeded.env,
+		new Date(`${seeded.day}T20:45:00.000Z`),
+		1,
+	)
+	assert.equal(vi.mocked(captureFullSealBlocked).mock.calls.length, 0)
+
+	await sealRecentCompleteDays(
+		seeded.env,
+		new Date('2026-07-23T04:45:00.000Z'),
+		2,
+	)
+	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
+		[{ day: seeded.day, reason: 'd1-manifest-missing' }],
+	])
 })
 
 test('sealFullBackupDay requires a restorable manifest for every SOURCE_DATABASES entry and records each one', async () => {
