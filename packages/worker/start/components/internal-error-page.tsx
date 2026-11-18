@@ -2,13 +2,13 @@
 import { publicAsset } from '../public-assets.ts'
 import { ErrorAgentPromptButton } from './error-agent-prompt-button.tsx'
 import { buildInternalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
-import { SiteLink } from './site-link.tsx'
 import { routes } from '#universal/routes.ts'
 import {
 	internalErrorPageCopy,
 	internalErrorPageHeading,
 	internalErrorPageImageAlt,
 	internalErrorPageImageSrc,
+	internalErrorSupportHref,
 } from '#universal/internal-error-page.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
@@ -25,9 +25,8 @@ import {
 import { useLocation } from '@tanstack/react-router'
 
 /**
- * Shared HTML 500. Uncaught handler failures try to render this inside the
- * app shell (same treatment as the illustrated 404). A static document with
- * the same copy and art is the fallback when even the shell cannot render.
+ * Route errors can render inside the app shell. The HTTP boundary has a
+ * static version for failures that happen outside the route boundary.
  */
 export function InternalErrorPage() {
 	const retryHref =
@@ -49,12 +48,15 @@ export function InternalErrorPage() {
 				<a href={retryHref} css={getPillButtonCss()}>
 					Try again
 				</a>
-				<SiteLink
-					href={routes.home.href()}
+				<a href={routes.home.href()} css={getGhostButtonCss({ size: 'sm' })}>
+					Go home
+				</a>
+				<a
+					href={internalErrorSupportHref}
 					css={getGhostButtonCss({ size: 'sm' })}
 				>
-					Go home
-				</SiteLink>
+					Contact support
+				</a>
 			</nav>
 			<ErrorAgentPromptButton
 				prompt={buildInternalErrorAgentPrompt({ path: retryHref })}

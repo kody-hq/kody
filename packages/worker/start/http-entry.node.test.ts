@@ -115,7 +115,7 @@ test('invalid bindings return the static illustrated 500 with document title, la
 		'Native app request failed:',
 		'Native error document failed:',
 	])
-	captureException.mockClear()
+	captureException.mockClear().mockReturnValueOnce('test-event-id')
 	const response = await handleRequest(
 		new Request('https://example.com/health'),
 		createEnv({ SENTRY_ENVIRONMENT: 'production' }),
@@ -125,6 +125,10 @@ test('invalid bindings return the static illustrated 500 with document title, la
 	expect(response.status).toBe(500)
 	expect(response.headers.get('content-type')).toMatch(/text\/html/)
 	expect(body).toContain('data-testid="internal-error-page"')
+	expect(body).toContain('<code>test-event-id</code>')
+	expect(body).toContain(
+		'mailto:support@kody.codes?subject=Kody%20error%20test-event-id',
+	)
 	expect(response.headers.get('Content-Security-Policy')).toBe(
 		firstPartySecurityHeaders['Content-Security-Policy'],
 	)
@@ -157,6 +161,58 @@ test('handleRequest skips Sentry when SSR already reported the failure', async (
 	expect(captureException).not.toHaveBeenCalled()
 })
 
+test('bare Start document failures get recovery links without losing cookies', async () => {
+	const handle = createHttpRequestHandler(
+		async () =>
+			new Response('Internal Server Error', {
+				status: 500,
+				headers: { 'Set-Cookie': 'session=refreshed; HttpOnly' },
+			}),
+	)
+	const request = new Request('https://example.com/account?view=jobs', {
+		headers: { Accept: 'text/html,application/xhtml+xml,*/*' },
+	})
+	const response = await handle(request, createEnv())
+	expect(response.status).toBe(500)
+	expect(response.headers.get('Cache-Control')).toBe('no-store')
+	expect(response.headers.getSetCookie()).toEqual([
+		'session=refreshed; HttpOnly',
+	])
+	const body = await response.text()
+	expect(body).toMatch(/href="\/account\?view=jobs"\s*>Try again/)
+	expect(body).toContain('href="/">Go home')
+	expect(body).toContain('mailto:support@kody.codes')
+	const head = await handle(
+		new Request(request, { method: 'HEAD' }),
+		createEnv(),
+	)
+	expect(head.status).toBe(500)
+	expect(head.headers.get('Content-Type')).toMatch(/text\/html/)
+	expect(head.body).toBeNull()
+})
+
+test.each([
+	['text/html', 'text/html', '<main>Rendered app shell</main>'],
+	['text/html', 'application/json', '{"error":"server_error"}'],
+	['application/json', 'text/plain', 'Internal Server Error'],
+])(
+	'keeps the %s request and %s error response intact',
+	async (accept, type, body) => {
+		const original = new Response(body, {
+			status: 500,
+			headers: { 'Content-Type': type },
+		})
+		const handle = createHttpRequestHandler(async () => original)
+		const response = await handle(
+			new Request('https://example.com/account', {
+				headers: { Accept: accept },
+			}),
+			createEnv(),
+		)
+		expect(response).toBe(original)
+	},
+)
+
 test('unmapped document requests go to the native renderer with the original URL', async () => {
 	const render = vi.fn(async () => new Response('document'))
 	const handle = createHttpRequestHandler(render)
@@ -183,7 +239,9 @@ test('a failed native mutation is never dispatched again to render an error', as
 			createEnv(),
 		)
 		expect(response.status).toBe(500)
-		expect(await response.text()).toContain('/images/kody-500-zapped.png')
+		const body = await response.text()
+		expect(body).toContain('/images/kody-500-zapped.png')
+		expect(body).not.toContain('Try again')
 		expect(committedWrites).toBe(1)
 		expect(render).toHaveBeenCalledTimes(1)
 	} finally {

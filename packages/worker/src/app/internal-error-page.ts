@@ -12,6 +12,7 @@ import {
 	internalErrorPageHeading,
 	internalErrorPageImageAlt,
 	internalErrorPageImageSrc,
+	internalErrorSupportHref,
 } from '#universal/internal-error-page.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import {
@@ -25,7 +26,13 @@ import {
  * is static: no client entry, no inline scripts. Its one classic script only
  * wires the agent prompt's Copy button.
  */
-export function renderInternalServerErrorPage(retryHref = '/') {
+export function renderInternalServerErrorPage(
+	retryHref: string | null = '/',
+	eventId?: string,
+) {
+	const supportHref = eventId
+		? `${internalErrorSupportHref}?subject=${encodeURIComponent(`Kody error ${eventId}`)}`
+		: internalErrorSupportHref
 	return render(
 		html`<!doctype html>
 			<html lang="en">
@@ -34,7 +41,7 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 					<meta name="viewport" content="width=device-width, initial-scale=1" />
 					<link rel="icon" href="/favicon.ico" sizes="32x32" />
 					<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-					<title>Something went wrong — ${DEFAULT_DOCUMENT_TITLE}</title>
+					<title>Something went wrong | ${DEFAULT_DOCUMENT_TITLE}</title>
 					<link rel="stylesheet" href="/styles.css" />
 					<script src="${ERROR_AGENT_PROMPT_COPY_SCRIPT_SRC}" defer></script>
 					<style>
@@ -71,6 +78,7 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 							font-size: 1.02rem;
 							line-height: 1.5;
 							text-wrap: pretty;
+							overflow-wrap: anywhere;
 						}
 						.illustrated-error-page nav {
 							display: flex;
@@ -115,9 +123,19 @@ export function renderInternalServerErrorPage(retryHref = '/') {
 							<h1>${internalErrorPageHeading}</h1>
 							<p>${internalErrorPageCopy}</p>
 							<nav aria-label="What to try next">
-								<a data-variant="pill" href="${retryHref}">Try again</a>
+								${
+									retryHref
+										? html`<a data-variant="pill" href="${retryHref}"
+												>Try again</a
+											>`
+										: null
+								}
 								<a data-variant="ghost" href="${routes.home.href()}">Go home</a>
+								<a data-variant="ghost" href="${supportHref}"
+									>Contact support</a
+								>
 							</nav>
+							${eventId ? html`<p>Error reference: <code>${eventId}</code></p>` : null}
 							${html.raw`${renderErrorAgentPromptStaticHtml(buildInternalErrorAgentPrompt({ path: retryHref }))}`}
 						</section>
 					</main>

@@ -53,7 +53,32 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 						headers,
 					})
 				}
-				return renderDocument(request, bindings)
+				const response = await renderDocument(request, bindings)
+				const contentType = response.headers
+					.get('Content-Type')
+					?.split(';')[0]
+					?.trim()
+					.toLowerCase()
+				// Start can return a bare 500 instead of throwing. Keep rendered
+				// route errors (and their shell) and other response formats intact.
+				if (
+					response.status === 500 &&
+					(!contentType || contentType === 'text/plain') &&
+					request.headers
+						.get('Accept')
+						?.split(',')
+						.some((entry) => entry.trim().split(';')[0] === 'text/html') &&
+					(request.method === 'GET' || request.method === 'HEAD') &&
+					!response.headers.has('Content-Disposition')
+				) {
+					void response.body?.cancel().catch(() => {})
+					const page = renderRequestFailure(request)
+					for (const cookie of response.headers.getSetCookie()) {
+						page.headers.append('Set-Cookie', cookie)
+					}
+					return page
+				}
+				return response
 			})
 			// Start initializes shared route modules on the first request. Keep that
 			// work alive if a health probe disconnects during cold initialization,
@@ -67,9 +92,10 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			return await response
 		} catch (error) {
 			console.error('Native app request failed:', error)
+			let eventId: string | undefined
 			if (!wasSentryReported(error)) {
 				try {
-					Sentry.captureException(error, {
+					eventId = Sentry.captureException(error, {
 						tags: {
 							surface: 'app-router',
 							pathname: new URL(request.url).pathname,
@@ -81,17 +107,21 @@ export function createHttpRequestHandler(renderDocument: RenderDocument) {
 			}
 			// Never redispatch a failed request. It may already have committed a write,
 			// and Start also owns webhook, callback, and server-function dispatch.
-			const response = renderInternalServerErrorPage(
-				retryHrefFromRequest(request),
-			)
-			return request.method === 'HEAD'
-				? new Response(null, {
-						status: response.status,
-						headers: response.headers,
-					})
-				: response
+			return renderRequestFailure(request, eventId)
 		}
 	}
+}
+
+function renderRequestFailure(request: Request, eventId?: string) {
+	const retryHref =
+		(request.method === 'GET' || request.method === 'HEAD') &&
+		!isServerFunctionRequest(request)
+			? retryHrefFromRequest(request)
+			: null
+	const response = renderInternalServerErrorPage(retryHref, eventId)
+	return request.method === 'HEAD'
+		? new Response(null, { status: response.status, headers: response.headers })
+		: response
 }
 
 export const handleRequest = createHttpRequestHandler(async (...args) => {
