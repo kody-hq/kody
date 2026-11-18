@@ -326,6 +326,24 @@
 			"ai": {
 				"binding": "AI",
 			},
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "production",
+				},
+			],
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "preview",
+				},
+			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "production",
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
