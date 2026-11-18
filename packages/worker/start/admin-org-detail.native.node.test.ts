@@ -41,7 +41,7 @@ test('organization detail SSR uses admin labels and hides raw ids', async () => 
 					stripeCreditsEligible: true,
 					creditsEligible: true,
 				},
-				seats: { live: 2, billingOnly: 1, comped: null },
+				seats: { live: 2, billingOnly: 1, comped: 5 },
 				members: [
 					{
 						stableUserId: memberId,
@@ -107,7 +107,7 @@ test('organization detail SSR uses admin labels and hides raw ids', async () => 
 	expect(html).not.toContain('aria-label="Set organization manual plan"')
 	expect(html).not.toContain('aria-label="Grant organization credits"')
 	expect(html).not.toContain('aria-label="Set organization comped seats"')
-	expect(visibleText).toContain('No cap')
+	expect(visibleText).toContain('2 of 5 used (not binding: paid Stripe plan)')
 	expect(visibleText).not.toContain(orgId)
 	expect(visibleText).not.toContain(memberId)
 	expect(visibleText).not.toContain(billingMemberId)

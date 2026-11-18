@@ -251,6 +251,14 @@ function AdminOrgPlanForm(props: { orgId: string; manualPlan: PlanName }) {
 	)
 }
 
+function compedSeatsDormantNote(plan: AdminOrgDetail['plan']): string {
+	if (plan.manualPlan === 'free') return ' (not binding: free manual plan)'
+	if (plan.stripePlan != null && plan.stripePlan !== 'free') {
+		return ' (not binding: paid Stripe plan)'
+	}
+	return ''
+}
+
 function AdminOrgCompedSeatsForm(props: {
 	orgId: string
 	compedSeats: number | null
@@ -769,7 +777,7 @@ export function AdminOrgDetailPage(props: {
 							value:
 								data.seats.comped === null
 									? 'No cap'
-									: `${data.seats.live} of ${data.seats.comped} used`,
+									: `${data.seats.live} of ${data.seats.comped} used${compedSeatsDormantNote(data.plan)}`,
 						},
 					]}
 				/>

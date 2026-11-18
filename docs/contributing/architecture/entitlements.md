@@ -978,8 +978,10 @@ A manual plan grant covers every live seat unless an admin sets
 `orgs.comped_seats` with `adminOrgCompedSeatsSet` or the comped seats field in
 the Plan panel (`setAdminOrgCompedSeats`). `adminOrgGet` reports it as
 `seats.comped`. The cap binds only while the manual grant is paid and the org
-has no paid Stripe plan: a paid subscription already bills every live seat
-through seat sync, so there is no second billing path for overage seats.
+has no paid Stripe plan: a paid Stripe plan is the org's own billing (seat sync
+bills every live seat on purchasable plans, and retired plans keep their
+grandfathered terms), so there is no second billing path for overage seats. The
+Plan panel marks a cap that is not binding.
 
 While the cap binds and live seats (Owners, Admins, and Members, the same
 `countLiveSeats` count seat sync bills) have reached it, `addOrgMember` and a
