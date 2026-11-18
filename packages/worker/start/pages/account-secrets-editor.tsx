@@ -49,6 +49,8 @@ export type SecretEditorProps = {
 	removeAllowedHost: (index: number) => void
 	addAllowedPackage: (packageId: string) => void
 	removeAllowedPackage: (packageId: string) => void
+	/** Inline editors close without saving. */
+	onCancel?: () => void
 }
 
 export function SecretEditor(props: SecretEditorProps) {
@@ -80,6 +82,7 @@ export function SecretEditor(props: SecretEditorProps) {
 		removeAllowedHost,
 		addAllowedPackage,
 		removeAllowedPackage,
+		onCancel,
 	} = props
 	return (
 		<form
@@ -275,6 +278,16 @@ export function SecretEditor(props: SecretEditorProps) {
 				>
 					{saveState === 'saving' ? 'Saving...' : 'Save'}
 				</Button>
+				{onCancel ? (
+					<Button
+						type="button"
+						disabled={isMutating}
+						variant="secondary"
+						onClick={onCancel}
+					>
+						Cancel
+					</Button>
+				) : null}
 				{editorState.currentId ? (
 					<>
 						{disconnected ? null : (

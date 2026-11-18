@@ -54,6 +54,8 @@ function render(input: {
 			credential: input.credential ?? credential,
 			detail: input.detail,
 			manageHref: '/@ann/-/secrets',
+			editOrgSlug: 'ann',
+			listHref: '/@ann/-/credentials',
 			teamOrg: false,
 			packagesById: new Map(),
 			orgSlug: 'ann',
