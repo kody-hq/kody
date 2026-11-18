@@ -4,6 +4,7 @@
 	"main": "./worker.ts",
 	"compatibility_date": "2026-07-22",
 	"compatibility_flags": ["nodejs_compat"],
+	"limits": { "cpu_ms": 300000 },
 	"observability": {
 		"enabled": true,
 		"logs": {
@@ -30,6 +31,11 @@
 			"binding": "SEAL_WORKFLOW",
 			"name": "kody-production-seal-day",
 			"class_name": "ProductionSealDayWorkflow",
+		},
+		{
+			"binding": "PACED_DRILL_WORKFLOW",
+			"name": "kody-production-paced-restore-drill",
+			"class_name": "PacedRestoreDrillWorkflow",
 		},
 	],
 	"r2_buckets": [

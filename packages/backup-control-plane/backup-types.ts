@@ -9,6 +9,7 @@ export interface BackupEnvironment {
 	BACKUP_WORKFLOW: Workflow
 	RESTORE_WORKFLOW: Workflow
 	SEAL_WORKFLOW: Workflow
+	PACED_DRILL_WORKFLOW: Workflow
 	CLOUDFLARE_API_TOKEN: string
 	SOURCE_ACCOUNT_ID: string
 	SOURCE_DATABASE_ID: string
@@ -125,6 +126,9 @@ export interface LogRecord {
 		| 'full-backup-rest-d1-omitted'
 		| 'full-backup-seal-failure'
 		| 'restore-drill-started'
+		| 'paced-restore-drill-source-passed'
+		| 'paced-restore-drill-source-failed'
+		| 'ui-run-paced-drill'
 		| 'restore-drill-success'
 		| 'restore-drill-failure'
 		| 'production-restore-safety-export-started'

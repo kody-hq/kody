@@ -246,7 +246,7 @@ function buildInsertSql(
 	return `INSERT OR REPLACE INTO ${quoteSqlIdentifier(table)} (${names.join(', ')}) VALUES (${lits.join(', ')});`
 }
 
-function emitUpsertStatements(input: {
+export function emitUpsertStatements(input: {
 	table: string
 	cols: Array<string>
 	vals: Array<PacedD1EncodedCell>

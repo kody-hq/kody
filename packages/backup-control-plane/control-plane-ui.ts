@@ -30,7 +30,7 @@ import { getD1Database } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
 import { readManifest } from './immutable-storage.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
-import type { DrillReport } from './restore-drill.ts'
+import type { PacedDrillProgress } from './paced-restore-drill.ts'
 import type { ProductionRestoreProgress } from './production-restore.ts'
 import type { RestoreConfirmToken } from './restore-confirm-token.ts'
 import { readFullManifest } from './seal-full-backup.ts'
@@ -640,21 +640,8 @@ ${options.flashHtml ?? ''}
 			</label>
 			<button type="submit">Seal day</button>
 		</form>
-		<form method="post" action="/actions/run-drill" class="actions">
-			<label>Day
-				<input type="text" name="day" placeholder="YYYY-MM-DD" required pattern="\\d{4}-\\d{2}-\\d{2}"/>
-			</label>
-			<label>Database
-				<select name="database">
-					${sources
-						.map(
-							(source) =>
-								`<option value="${escapeHtml(source.name)}">${escapeHtml(source.name)}</option>`,
-						)
-						.join('')}
-				</select>
-			</label>
-			<button type="submit">Run isolated restore drill</button>
+		<form method="post" action="/actions/run-paced-drill" class="actions" onsubmit="return confirm('Start an isolated paced restore drill for APP, AUDIT and JOBS?');">
+			<button type="submit">Run isolated paced restore drill</button>
 		</form>
 	</div>
 	<p>Seal day queues the work and returns immediately. The status page shows progress, success, or why the day is not ready.</p>
@@ -749,35 +736,58 @@ export function renderSealStatusPage(input: {
 	return layout(title, body, { danger })
 }
 
-export function renderDrillReport(report: DrillReport): string {
-	const failed = report.errorCode !== null
-	const counts = report.tableCounts
-		.map(
-			(entry) =>
-				`${entry.table}=${entry.count === null ? '?' : String(entry.count)}`,
-		)
-		.join(', ')
-	const details = [
-		`day=${report.day}`,
-		`sourceDatabaseName=${report.sourceDatabaseName}`,
-		`sourceDatabaseId=${report.sourceDatabaseId}`,
-		`databaseName=${report.databaseName}`,
-		`databaseId=${report.databaseId ?? 'n/a'}`,
-		`quickCheck=${report.quickCheck ?? 'n/a'}`,
-		`tableCounts=${counts || 'n/a'}`,
-		`keptForInspection=${String(report.keptForInspection)}`,
-		report.errorCode ? `errorCode=${report.errorCode}` : null,
-		report.errorMessage ? `errorMessage=${report.errorMessage}` : null,
-	]
-		.filter(Boolean)
-		.join('\n')
-	return renderMessagePage(
-		failed ? 'Restore drill failed' : 'Restore drill complete',
-		failed
-			? 'The isolated drill did not complete cleanly. The drill database was kept for inspection when creation succeeded.'
-			: 'Isolated restore drill completed and the temporary database was deleted.',
-		{ danger: failed, details },
-	)
+function drillCell(value: boolean | null): string {
+	if (value === null) return '<td>pending</td>'
+	return value
+		? '<td style="color: var(--color-primary-text)">PASS</td>'
+		: '<td style="color: var(--color-danger)"><strong>FAIL</strong></td>'
+}
+
+export function renderPacedDrillStatusPage(
+	progress: PacedDrillProgress,
+): string {
+	const running = progress.status === 'running'
+	const verdict = running
+		? 'RUNNING'
+		: progress.status === 'passed'
+			? 'PASS'
+			: 'FAIL'
+	const sources = progress.sources
+		.map((source) => {
+			const rows = source.tables
+				.map(
+					(table) => `<tr>
+	<td>${escapeHtml(table.table)}</td>
+	<td>${table.manifestCount}</td>
+	<td>${table.restoredRows}</td>
+	<td>${table.targetCount === null ? '?' : table.targetCount}</td>
+	<td><code>${escapeHtml(table.manifestChecksum)}</code></td>
+	<td><code>${escapeHtml(table.restoredChecksum)}</code></td>
+	${drillCell(table.ok)}
+</tr>`,
+				)
+				.join('')
+			return `<section class="panel${source.phase === 'failed' ? ' danger' : ''}">
+	<h2>${escapeHtml(source.databaseName)}: ${escapeHtml(source.phase)}</h2>
+	<p>Units ${source.unitsDone} of ${source.unitsTotal}. Chain ${escapeHtml(source.chainDays.join(', ') || 'n/a')}. quick_check ${escapeHtml(source.quickCheck ?? 'n/a')}.${source.keptForInspection ? ` Target ${escapeHtml(source.targetDatabaseId ?? '')} kept for inspection.` : ''}</p>
+	${source.error ? `<p><strong>${escapeHtml(source.error)}</strong></p>` : ''}
+	<table>
+		<thead><tr><th>Table</th><th>Manifest rows</th><th>Restored rows</th><th>Target rows</th><th>Manifest checksum</th><th>Restored checksum</th><th>Result</th></tr></thead>
+		<tbody>${rows}</tbody>
+	</table>
+</section>`
+		})
+		.join('')
+	const body = `<section class="panel${progress.status === 'failed' ? ' danger' : ''}">
+	<h1>Paced restore drill: ${verdict}</h1>
+	<p>Run ${escapeHtml(progress.runId)} restores the sealed paced chain ending ${escapeHtml(progress.day)} into isolated drill databases. Updated ${escapeHtml(progress.updatedAt)}.</p>
+	<p><a class="button" href="/">Dashboard</a></p>
+	${running ? `<meta http-equiv="refresh" content="5"/>` : ''}
+</section>
+${sources}`
+	return layout('Paced restore drill', body, {
+		danger: progress.status === 'failed',
+	})
 }
 
 export function renderRestorePreparePage(input: {

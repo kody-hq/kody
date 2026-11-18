@@ -1,3 +1,4 @@
+import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	pacedD1BackupSchemaVersion,
 	pacedD1RetentionTierForDay,
@@ -56,10 +57,7 @@ import {
 	resolvePacedD1Binding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
-import {
-	parsePacedD1PartsPointer,
-	sealPacedD1SourceNight,
-} from '#worker/dr/d1-paced-backup-seal.ts'
+import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
 
 export {
 	d1PacedBackupCatchUpLookbackDays,

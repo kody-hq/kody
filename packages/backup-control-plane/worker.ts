@@ -24,6 +24,7 @@ import {
 export { ProductionD1BackupWorkflow } from './backup-workflow.ts'
 export { ProductionDrRestoreWorkflow } from './restore-workflow.ts'
 export { ProductionSealDayWorkflow } from './seal-day-workflow.ts'
+export { PacedRestoreDrillWorkflow } from './paced-restore-drill-workflow.ts'
 
 export const BACKUP_CRON = '15 2 * * *'
 export const FRESHNESS_CRON = '45 * * * *'
