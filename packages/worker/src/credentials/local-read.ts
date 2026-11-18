@@ -96,7 +96,7 @@ const refusalMessages: Record<
 	(name: string) => string
 > = {
 	not_found: (name) =>
-		`Kody could not find a secret named "${name}" that you can use here.`,
+		`Kody could not find an account or org Key named "${name}" that you can use here. Only those can be read locally: package secrets, secret URLs, logins, signing keys, and connections cannot. Use one of those from a package or an execute with {{secret:${name}}} or credential('${name}') instead.`,
 	no_access: (name) => `You do not have access to use the secret "${name}".`,
 	local_reads_off: (name) =>
 		`Local reads are off for the secret "${name}". A person with write access to it can turn them on from the link below.`,
@@ -254,44 +254,7 @@ async function findCandidate(input: {
 			}
 		}
 	}
-	const packageSecretId = await findPackageSecretId(
-		env.APP_DB,
-		orgId,
-		parsed.name,
-	)
-	if (packageSecretId) {
-		try {
-			await authorize(
-				{ env, request },
-				'secret:use',
-				credentialResource(orgId, { id: packageSecretId, name: parsed.name }),
-			)
-		} catch (error) {
-			if (!(error instanceof AuthorizationError)) throw error
-			return refusedCandidate(parsed, 'not_found')
-		}
-		return refusedCandidate(parsed, 'unsupported_secret', packageSecretId)
-	}
 	return refusedCandidate(parsed, 'not_found')
-}
-
-/** A package's own Key with this name, which a local read names but cannot read. */
-async function findPackageSecretId(
-	db: D1Database,
-	orgId: string,
-	name: string,
-) {
-	const row = await db
-		.prepare(
-			`SELECT e.id AS id FROM secret_entries e
-			 JOIN secret_buckets b ON b.id = e.bucket_id
-			 WHERE b.user_id = ? AND b.scope = 'package' AND e.name = ?
-			   AND e.deleted_at IS NULL AND b.deleted_at IS NULL
-			 LIMIT 1`,
-		)
-		.bind(orgId, name)
-		.first<{ id: string }>()
-	return row?.id ?? null
 }
 
 function refusedCandidate(

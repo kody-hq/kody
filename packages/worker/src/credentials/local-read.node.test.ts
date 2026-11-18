@@ -441,7 +441,7 @@ test('an account secret locked to packages can be read locally', async () => {
 	expect(approval).toMatchObject({ ok: true, canChange: true, enabled: false })
 })
 
-test('a package secret is refused with its reason and no link, and its page offers the fix', async () => {
+test('a package secret is refused with the reason and no link, and its page offers the fix', async () => {
 	const t = await setup()
 	await insertSecret(t, {
 		id: 'pkg-secret',
@@ -456,12 +456,10 @@ test('a package secret is refused with its reason and no link, and its page offe
 	})
 	expect(result).toMatchObject({
 		ok: false,
-		refusals: [{ reason: 'unsupported_secret', approveUrl: null }],
+		refusals: [{ reason: 'not_found', approveUrl: null }],
 	})
 	if (result.ok) return
-	expect(result.refusals[0]?.message).toContain(
-		'"wakeToken" is a package secret',
-	)
+	expect(result.refusals[0]?.message).toContain('package secrets cannot')
 	expect(result.refusals[0]?.message).toContain('{{secret:wakeToken}}')
 
 	const user = sessionUser(
