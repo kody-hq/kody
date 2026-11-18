@@ -193,6 +193,34 @@ export function hasSecondConnectedMcpClient(
 	return countConnectedAgentEcosystems(connectedAgents) >= 2
 }
 
+/**
+ * Step 3 note when the selected host shares an ecosystem with a connected
+ * one, so it will not count as the second agent (for example Claude Desktop
+ * after Claude Code).
+ */
+export function onboardingSameEcosystemNote(
+	selectedAgent: McpClientKind | null,
+	connectedAgents: ReadonlyArray<
+		OnboardingConnectedAgentKind & { label?: string }
+	>,
+): string | null {
+	if (!selectedAgent || selectedAgent === 'other') return null
+	const ecosystem = onboardingAgentEcosystem(selectedAgent)
+	const sibling = connectedAgents.find(
+		(agent) =>
+			agent.kind &&
+			agent.kind !== 'other' &&
+			agent.kind !== selectedAgent &&
+			onboardingAgentEcosystem(agent.kind) === ecosystem,
+	)
+	if (!sibling) return null
+	const group =
+		onboardingStep3EcosystemGroups.find((entry) => entry.id === ecosystem)
+			?.label ?? 'this'
+	const connected = sibling.label?.trim() || `A ${group} app`
+	return `${connected} is already connected, and it is in the same ${group} ecosystem, so this one will not count as your second agent. Pick an agent from another ecosystem to finish Step 3.`
+}
+
 export function hasSecondAgentEcosystem(ecosystemCount: number) {
 	return ecosystemCount >= 2
 }

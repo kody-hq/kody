@@ -9,6 +9,7 @@ import {
 	isMcpClientKind,
 } from '#universal/onboarding-mcp-clients.ts'
 import { routes } from '#universal/routes.ts'
+import type { SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
 
 const onboardingStepPaths = {
 	step1: '/onboarding/step-1',
@@ -123,9 +124,9 @@ export const onboardingSearchStartedLabel =
 	"You've started making something useful"
 
 const onboardingSecondAgentGiftAdvertise =
-	'Connect a second agent and get Pro free for 2 weeks.'
+	'Connect a second agent and get Pro free for 2 weeks. Already paying for Pro? We take 2 weeks of your plan off your next invoice instead. Once per account.'
 
-export const onboardingSecondAgentLede = `Connect an agent from a different ecosystem. Reuse what you made in Step 2 so you can see it travel. ${onboardingSecondAgentGiftAdvertise}`
+export const onboardingSecondAgentLede = `Connect an agent from a different ecosystem. Two Claude apps, like Claude Code and Claude Desktop, count as one. Reuse what you made in Step 2 so you can see it travel. ${onboardingSecondAgentGiftAdvertise}`
 
 export const onboardingPortabilityProofPrompt = [
 	'I just connected you as a second agent.',
@@ -167,13 +168,20 @@ export const onboardingCopyPortabilityProofLabel = 'Copy portability proof'
 
 const onboardingSecondAgentConnectedLabel = "You've connected a second agent."
 
-const onboardingSecondAgentConnectedGiftLabel =
-	"You've connected a second agent. Pro is free for 2 weeks."
-
-export function onboardingSecondAgentConnectedStatusLabel(giftActive: boolean) {
-	return giftActive
-		? onboardingSecondAgentConnectedGiftLabel
-		: onboardingSecondAgentConnectedLabel
+/** Step 3 connected status, plus how the second-agent gift was delivered. */
+export function onboardingSecondAgentConnectedStatusLabel(
+	gift:
+		| Pick<SecondAgentStandardGiftState, 'active' | 'status'>
+		| null
+		| undefined,
+) {
+	if (gift?.active) {
+		return `${onboardingSecondAgentConnectedLabel} Pro is free for 2 weeks.`
+	}
+	if (gift?.status === 'invoice_credit') {
+		return `${onboardingSecondAgentConnectedLabel} You get 2 weeks of your plan as an invoice credit.`
+	}
+	return onboardingSecondAgentConnectedLabel
 }
 
 export type OnboardingConnectedAgentListItem = {

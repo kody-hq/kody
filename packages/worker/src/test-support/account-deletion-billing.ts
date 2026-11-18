@@ -20,7 +20,11 @@ export function stripeSubscription(
 				{
 					id: undefined,
 					quantity: undefined,
-					price: { id: 'price_pro' },
+					price: {
+						id: 'price_pro',
+						unit_amount: undefined,
+						recurring: undefined,
+					},
 					current_period_end: undefined,
 				},
 			],

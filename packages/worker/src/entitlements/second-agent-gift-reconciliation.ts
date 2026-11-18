@@ -5,6 +5,7 @@ import type { OAuthGrantListHelpers } from '#worker/oauth-grants.ts'
 import { resolveOAuthHelpers } from '#worker/oauth-helpers.ts'
 import { joinOrgsOnPersonalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import { applySecondAgentGiftInvoiceCredits } from './second-agent-gift-invoice-credit.ts'
 import { evaluateSecondAgentStandardGift } from './second-agent-standard-gift.ts'
 
 export const secondAgentGiftCursorKey =
@@ -19,6 +20,8 @@ const batchSize = 8
  * replaying the same batch every tick.
  * KV is only a scan hint: stale/concurrent cursors can repeat work, while the D1
  * conditional gift write is authoritative and never extends an existing gift.
+ * Each tick then applies queued paid-plan invoice credits when Stripe is
+ * configured.
  */
 export async function reconcileSecondAgentStandardGifts(input: {
 	env: Env
@@ -71,5 +74,11 @@ export async function reconcileSecondAgentStandardGifts(input: {
 	if (page.results.length < batchSize) {
 		await input.env.OAUTH_KV.put(secondAgentGiftCursorKey, '')
 	}
-	return { scanned: page.results.length, granted, failed }
+	const invoiceCredits = input.env.STRIPE_SECRET_KEY?.trim()
+		? await applySecondAgentGiftInvoiceCredits({
+				env: input.env,
+				now: input.now,
+			})
+		: null
+	return { scanned: page.results.length, granted, failed, invoiceCredits }
 }

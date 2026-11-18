@@ -60,11 +60,12 @@ at `packages/worker/universal/plans.ts`.
   `readCurrentEntitlementResourceUsage` (UserMeter-authoritative for
   `storage_bytes` and daily resources).
 - `second-agent-standard-gift.ts` (universal + worker) — one 14-day overlay of
-  Pro on Free when known connected agent ecosystems first reach 2. File, column,
-  and helper names say Standard; the overlay uses the retired Pro table without
-  a credit wallet. `describeSecondAgentStandardGift` is the flag for lifecycle
-  email / PackagedSingleClient. Enforcement goes through `getUserEntitlement`;
-  Stripe is not mutated.
+  Pro on Free when known connected agent ecosystems first reach 2, or a Stripe
+  invoice credit worth 14 days of the plan for a paid Kody subscription
+  (`second-agent-gift-invoice-credit.ts`). File, column, and helper names say
+  Standard; the overlay uses the retired Pro table without a credit wallet.
+  `describeSecondAgentStandardGift` is the flag for lifecycle email /
+  PackagedSingleClient. Enforcement goes through `getUserEntitlement`.
 - `referral-program.ts` (universal + worker) — uncapped referral Pro credit.
   Share links write a last-wins one-week `kody_ref` cookie; signup persists a
   pending `referrals` row from that cookie. `invoice.paid` grants both parties
@@ -147,11 +148,25 @@ When a user first reaches two known connected agent ecosystems, Kody records one
 signup and not a second OAuth `clientId` for the same ecosystem. Two Cursor auth
 contexts are one ecosystem. An unlabeled client does not add an ecosystem.
 `orgs.second_agent_standard_gift_granted_at` is the write-once ledger (one gift
-per user). `orgs.second_agent_standard_gift_expires_at` is set only when the
-base effective plan is still `free`; NULL means the account was already
-Standard/Pro/max and Stripe was not touched. There is no existing helper that
-extends a remaining Stripe period, and mutating `trial_end` / period end is
-payment-adjacent.
+per account). `orgs.second_agent_standard_gift_expires_at` is set only when the
+base effective plan is still `free`.
+
+An account with a paid Kody Stripe subscription (Pro or retired Standard) gets
+the same 2 weeks as money: `orgs.second_agent_gift_invoice_credit_requested_at`
+queues it, and the `second_agent_gift_reconciliation` lane creates one Stripe
+customer balance credit worth 14 days of the subscription price (unit amount
+times quantity, times 14 over the interval's 30 or 365 days). Stripe applies a
+negative balance to the next invoices, so renewal is lower by 2 weeks of the
+plan. The credit carries `kody_second_agent_gift_org_id` metadata and the
+idempotency key `kody-second-agent-gift-<orgId>`; the lane reuses an existing
+transaction before creating one, then records it in
+`orgs.second_agent_gift_invoice_credit_id`. A balance credit was chosen over
+moving `trial_end` or the billing anchor because it does not change the
+subscription, proration, or period dates, and it is idempotent per org. If the
+subscription ended before the credit applied, the gift falls back to the Free
+overlay. Manual standard/pro/max grants without Stripe have nothing to extend
+and keep `expires_at` NULL. Migration 0287 queued the credit once for paid
+accounts that had earned the gift before this existed.
 
 `getUserEntitlement` overlays Pro through `resolvePlanOverlay` while
 `expires_at` is in the future and the base plan is still `free`. An overlaid
@@ -166,8 +181,8 @@ gift. Missing `APP_DB.prepare` skips both write and read.
 
 `describeSecondAgentStandardGift` / `SecondAgentStandardGiftState` is the flag
 lifecycle email or PackagedSingleClient should read: `received`, `active`, and
-`status` (`none` | `active` | `expired` | `already_paid`). The onboarding loader
-exposes that object as `secondAgentStandardGift`.
+`status` (`none` | `active` | `expired` | `invoice_credit` | `already_paid`).
+The onboarding loader exposes that object as `secondAgentStandardGift`.
 
 ### Referral Pro credit
 
