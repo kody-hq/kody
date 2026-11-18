@@ -460,7 +460,6 @@ export function OAuthAuthorizeRoute({
 					provider,
 					redirectTo,
 					protection(),
-					null,
 					controller.signal,
 				)
 				if (error) signInError(controller, error)

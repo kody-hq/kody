@@ -22,10 +22,6 @@ import { validateAuthFormFields } from '#client/auth-form-validation.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { fathomEventNames, trackFathomEvent } from '#client/fathom-events.ts'
 import {
-	clearStoredFirstTouchAttribution,
-	readSignupFirstTouchAttribution,
-} from '#client/first-touch-attribution.ts'
-import {
 	emptyPublicFormProtection,
 	readPublicFormProtection,
 	renderTurnstileWidgets,
@@ -39,7 +35,6 @@ import {
 } from '#start/server/auth-mutations'
 import { buildOauthLoginErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
-import { serializeFirstTouchAttributionForTransport } from '#universal/first-touch-attribution.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
 import { authFormErrorMessage } from '#universal/auth-form-errors.ts'
 import { packageAppDeviceSignInTarget } from '#universal/package-app-oauth-paths.ts'
@@ -130,7 +125,6 @@ export function LoginPage({
 		lifecycle.current = controller
 		if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
 		if (mode === 'signup' && !signupStartedTracked.current) {
-			readSignupFirstTouchAttribution()
 			signupStartedTracked.current = trackFathomEvent(
 				fathomEventNames.signupStarted,
 			)
@@ -232,8 +226,6 @@ export function LoginPage({
 		if (!sendFormEvent({ type: 'SUBMIT', data: {} })) return
 
 		try {
-			const attribution =
-				mode === 'signup' ? readSignupFirstTouchAttribution() : null
 			const payload = await authenticateWebsite({
 				signal: lifecycle.current?.signal,
 				data: {
@@ -247,7 +239,6 @@ export function LoginPage({
 								username,
 								whatsNewEmailOptIn,
 								redirectTo: redirectTo,
-								...serializeFirstTouchAttributionForTransport(attribution),
 							}
 						: {}),
 				},
@@ -266,7 +257,6 @@ export function LoginPage({
 
 			if (mode === 'signup') {
 				const tracked = trackFathomEvent(fathomEventNames.accountCreated)
-				clearStoredFirstTouchAttribution()
 				if (typeof window !== 'undefined') {
 					const destination = resolvePasswordAuthRedirect({
 						mode,
@@ -311,7 +301,6 @@ export function LoginPage({
 				providerId,
 				redirectTo,
 				protection,
-				mode === 'signup' ? readSignupFirstTouchAttribution() : null,
 				lifecycle.current?.signal,
 			)
 			if (errorMessage) {

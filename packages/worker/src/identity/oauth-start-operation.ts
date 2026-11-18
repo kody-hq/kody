@@ -3,10 +3,6 @@ import { getCallbackRedirectUri } from './oauth-provider-redirect.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { isSecureRequest } from '#app/auth-session.ts'
 import { readLiveAuthSession } from '#app/request-auth-cache.ts'
-import {
-	parseFirstTouchAttribution,
-	hasFirstTouchAttribution,
-} from '#universal/first-touch-attribution.ts'
 import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import {
 	oauthLoginErrorMessages,
@@ -42,10 +38,6 @@ export async function startWebsiteOAuth({
 	const redirectTo = guestClaim
 		? `/claim/${encodeURIComponent(guestClaim.code)}`
 		: normalizeRedirectTo(url.searchParams.get('redirectTo'))
-	const attribution = parseFirstTouchAttribution({
-		searchParams: url.searchParams,
-		body: null,
-	})
 	const session = (await readLiveAuthSession(request, env)).parsed?.session
 
 	if (!session && !guestClaim) {
@@ -89,7 +81,6 @@ export async function startWebsiteOAuth({
 			state,
 			codeVerifier,
 			redirectTo,
-			attribution: hasFirstTouchAttribution(attribution) ? attribution : null,
 			guestClaim,
 		},
 		isSecureRequest(request),

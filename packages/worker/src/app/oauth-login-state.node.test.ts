@@ -7,62 +7,16 @@ import {
 
 setOauthLoginStateSecret('test-cookie-secret-for-oauth-login-state')
 
-test('oauth login state cookie preserves first-touch UTMs through round-trip', async () => {
-	const attribution = {
-		utmSource: 'youtube',
-		utmMedium: 'video',
-		utmCampaign: 'bwk-2026-08-27',
-		utmContent: null,
-		utmTerm: null,
-		landingPath: '/signup',
-		referrer: 'https://youtube.com/',
-	}
-	const cookie = await createOauthLoginStateCookie(
-		{
-			provider: 'github',
-			state: 'csrf-state',
-			codeVerifier: 'pkce-verifier',
-			redirectTo: '/onboarding',
-			attribution,
-		},
-		false,
-	)
-	const request = new Request('https://example.com/auth/github/callback', {
-		headers: { Cookie: cookie.split(';')[0]! },
-	})
-	const restored = await readOauthLoginState(request)
-	expect(restored).toEqual({
-		provider: 'github',
+test('oauth login state cookie round-trips provider, PKCE, and redirect', async () => {
+	const state = {
+		provider: 'github' as const,
 		state: 'csrf-state',
 		codeVerifier: 'pkce-verifier',
 		redirectTo: '/onboarding',
-		attribution: {
-			utmSource: 'youtube',
-			utmMedium: 'video',
-			utmCampaign: 'bwk-2026-08-27',
-			utmContent: null,
-			utmTerm: null,
-			landingPath: '/signup',
-			referrer: 'https://youtube.com/',
-		},
-	})
-})
-
-test('oauth login state without attribution still reads (backwards compatible)', async () => {
-	const cookie = await createOauthLoginStateCookie(
-		{
-			provider: 'google',
-			state: 'state-2',
-			codeVerifier: 'verifier-2',
-			redirectTo: null,
-			attribution: null,
-		},
-		false,
-	)
-	const request = new Request('https://example.com/callback', {
+	}
+	const cookie = await createOauthLoginStateCookie(state, false)
+	const request = new Request('https://example.com/auth/github/callback', {
 		headers: { Cookie: cookie.split(';')[0]! },
 	})
-	const restored = await readOauthLoginState(request)
-	expect(restored?.attribution).toBeNull()
-	expect(restored?.provider).toBe('google')
+	expect(await readOauthLoginState(request)).toEqual(state)
 })

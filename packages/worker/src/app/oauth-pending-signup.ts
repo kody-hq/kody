@@ -7,11 +7,6 @@ import {
 	isOauthProviderId,
 	type OauthProviderId,
 } from '#app/oauth-providers.ts'
-import {
-	hasFirstTouchAttribution,
-	parseFirstTouchAttribution,
-	type FirstTouchAttribution,
-} from '#universal/first-touch-attribution.ts'
 
 /**
  * Short-lived signed cookie that parks a verified social identity while the
@@ -39,7 +34,6 @@ export type OauthPendingSignup = {
 	displayName: string | null
 	suggestedUsername: string
 	redirectTo: string | null
-	attribution: FirstTouchAttribution | null
 	csrf: string
 	/** Ephemeral Discord guild.join token; discarded after signup. */
 	accessToken: string | null
@@ -55,7 +49,6 @@ type StoredOauthPendingSignup = {
 	displayName: string | null
 	suggestedUsername: string
 	redirectTo: string | null
-	attribution: FirstTouchAttribution | null
 	csrf: string
 	/** AES-GCM ciphertext (`v1.<iv>.<ct>`) or null when no token was parked. */
 	accessTokenEnc: string | null
@@ -178,22 +171,11 @@ async function decryptAccessToken(payload: string, context: string) {
 	return textDecoder.decode(plaintext)
 }
 
-function parseAttributionField(value: unknown): FirstTouchAttribution | null {
-	if (value == null) return null
-	if (typeof value !== 'object') return null
-	const attribution = parseFirstTouchAttribution({ body: value })
-	return hasFirstTouchAttribution(attribution) ? attribution : null
-}
-
 function isStoredOauthPendingSignup(
 	value: unknown,
 ): value is StoredOauthPendingSignup {
 	if (!value || typeof value !== 'object') return false
 	const record = value as Record<string, unknown>
-	const attributionOk =
-		record.attribution === undefined ||
-		record.attribution === null ||
-		typeof record.attribution === 'object'
 	return (
 		record.v === 1 &&
 		typeof record.provider === 'string' &&
@@ -208,7 +190,6 @@ function isStoredOauthPendingSignup(
 		typeof record.suggestedUsername === 'string' &&
 		record.suggestedUsername.length > 0 &&
 		(record.redirectTo === null || typeof record.redirectTo === 'string') &&
-		attributionOk &&
 		typeof record.csrf === 'string' &&
 		record.csrf.length > 0 &&
 		(record.accessTokenEnc === null ||
@@ -240,7 +221,6 @@ async function normalizePending(
 		displayName: value.displayName,
 		suggestedUsername: value.suggestedUsername,
 		redirectTo: value.redirectTo,
-		attribution: parseAttributionField(value.attribution),
 		csrf: value.csrf,
 		accessToken,
 		issuedAt: value.issuedAt,
@@ -266,7 +246,6 @@ export async function createOauthPendingSignupCookie(
 		displayName: state.displayName,
 		suggestedUsername: state.suggestedUsername,
 		redirectTo: state.redirectTo,
-		attribution: parseAttributionField(state.attribution),
 		csrf: state.csrf,
 		accessTokenEnc,
 		issuedAt: state.issuedAt,

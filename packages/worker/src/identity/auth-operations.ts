@@ -60,7 +60,8 @@ import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import {
 	firstTouchAttributionCreateFields,
-	parseFirstTouchAttribution,
+	readFirstTouchAttributionFromCookie,
+	serializeFirstTouchAttributionCookie,
 } from '#universal/first-touch-attribution.ts'
 import {
 	resolveReferralCodeForSignup,
@@ -170,9 +171,7 @@ export async function authenticateWebsite({
 	)
 	const signupAttribution =
 		normalizedMode === 'signup'
-			? parseFirstTouchAttribution({
-					body: typeof body === 'object' && body !== null ? body : undefined,
-				})
+			? readFirstTouchAttributionFromCookie(request.headers.get('Cookie'))
 			: null
 	const rememberMeValue =
 		typeof body === 'object' && body !== null
@@ -791,6 +790,10 @@ export async function authenticateWebsite({
 		headers.append(
 			'Set-Cookie',
 			serializeReferralCookie({ code: null, secure }),
+		)
+		headers.append(
+			'Set-Cookie',
+			serializeFirstTouchAttributionCookie({ attribution: null, secure }),
 		)
 		return authOperationResult(signupAcceptedBody(normalizedMode), { headers })
 	}

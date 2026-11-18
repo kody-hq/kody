@@ -378,14 +378,17 @@ export function PrivacyRoute() {
 					The only cookies are the session cookie (<code>kody_session</code>),
 					the one-week last-wins referral cookie (<code>kody_ref</code>) set by
 					share links that add <code>?ref=</code> to any page (for example{' '}
-					<code>/?ref=&lt;username&gt;</code>), and the package-app session
-					cookie on <code>kody.run</code> (
+					<code>/?ref=&lt;username&gt;</code>), the one-week first-party
+					first-touch cookie (<code>kody_first_touch</code>) that keeps the
+					UTMs, landing path, and referrer of your first visit until signup
+					reads and clears it, and the package-app session cookie on{' '}
+					<code>kody.run</code> (
 					<code>__Host-kody_pkg_session_&lt;hash&gt;</code> on HTTPS,{' '}
 					<code>kody_pkg_session_&lt;hash&gt;</code> on HTTP; one cookie per
 					package app on shared hosts). Short-lived cookies support two-factor
 					verification, passkey challenges, and OAuth login. Analytics (Fathom)
-					is cookieless. The browser uses sessionStorage for first-touch signup
-					attribution and scroll restoration, not tracking cookies.
+					is cookieless. The browser uses sessionStorage for scroll restoration,
+					not tracking cookies.
 				</p>
 			</section>
 

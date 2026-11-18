@@ -117,11 +117,18 @@ function createAuthTestContext(
 			: {}),
 	} as unknown as Parameters<typeof createAuthHandler>[0])
 
-	function request(body: unknown, url = 'http://example.com/auth') {
+	function request(
+		body: unknown,
+		url = 'http://example.com/auth',
+		cookie?: string,
+	) {
 		return handler({
 			request: new Request(url, {
 				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+				headers: {
+					'Content-Type': 'application/json',
+					...(cookie ? { Cookie: cookie } : {}),
+				},
 				body: typeof body === 'string' ? body : JSON.stringify(body),
 			}),
 		})
@@ -134,14 +141,19 @@ function createAuthTestContext(
 			email: string,
 			username: string | undefined,
 			extra: Record<string, unknown> = {},
+			cookie?: string,
 		) {
-			return request({
-				email,
-				username,
-				password: 'password123',
-				mode: 'signup',
-				...extra,
-			})
+			return request(
+				{
+					email,
+					username,
+					password: 'password123',
+					mode: 'signup',
+					...extra,
+				},
+				'http://example.com/auth',
+				cookie,
+			)
 		},
 	}
 }
@@ -620,11 +632,19 @@ test.each([true, false, undefined, 'true'])(
 	},
 )
 
-test('password signup schedules user.created with first-touch attribution and persists UTMs once', async () => {
+test('password signup reads first-touch attribution from the kody_first_touch cookie and persists UTMs once', async () => {
 	const context = createAuthTestContext()
 
+	// Attribution relayed in the body is ignored; the cookie is the only path.
 	const plainEmail = 'newbie@example.com'
-	expect((await context.signup(plainEmail, 'newbie')).status).toBe(200)
+	expect(
+		(
+			await context.signup(plainEmail, 'newbie', {
+				utmSource: 'body-relay',
+				landingPath: '/body-relay',
+			})
+		).status,
+	).toBe(200)
 	const plainStableUserId = context.testDb.users.get(plainEmail)?.stable_user_id
 	expect(plainStableUserId).toMatch(/^[a-f0-9]{64}$/)
 	expect(plainStableUserId).not.toBe(testStableUserIdFromEmail(plainEmail))
@@ -636,15 +656,7 @@ test('password signup schedules user.created with first-touch attribution and pe
 			username: 'newbie',
 			email: plainEmail,
 		},
-		attribution: {
-			utmSource: null,
-			utmMedium: null,
-			utmCampaign: null,
-			utmContent: null,
-			utmTerm: null,
-			landingPath: null,
-			referrer: null,
-		},
+		attribution: null,
 	})
 	expect(
 		welcomeCreditMocks.maybeGrantSignupWelcomeCredits,
@@ -658,14 +670,22 @@ test('password signup schedules user.created with first-touch attribution and pe
 	).not.toBe(plainStableUserId)
 
 	const email = 'attributed@example.com'
-	const response = await context.signup(email, 'attributed', {
-		utmSource: 'youtube',
-		utmMedium: 'video',
-		utmCampaign: 'bwk-2026-08-27',
-		landingPath: '/signup',
-		referrer: 'https://youtube.com/watch?v=abc',
-	})
+	const response = await context.signup(
+		email,
+		'attributed',
+		{},
+		`kody_ref=; kody_first_touch=${new URLSearchParams({
+			utm_source: 'youtube',
+			utm_medium: 'video',
+			utm_campaign: 'bwk-2026-08-27',
+			landing_path: '/signup',
+			referrer: 'https://youtube.com/watch?v=abc',
+		})}`,
+	)
 	expect(response.status).toBe(200)
+	expect(response.headers.getSetCookie()).toContain(
+		'kody_first_touch=; Path=/; Max-Age=0; SameSite=Lax',
+	)
 	const user = context.testDb.users.get(email)
 	expect(user).toMatchObject({
 		utm_source: 'youtube',
