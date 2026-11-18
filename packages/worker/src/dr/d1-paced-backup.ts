@@ -1,9 +1,11 @@
 import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	pacedD1BackupSchemaVersion,
+	pacedD1ForceFullBaseRequestKey,
+	type PacedD1NightManifest,
+	type PacedD1ProgressCursor,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedIndexKey,
-	pacedD1ForceFullBaseRequestKey,
 	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
@@ -11,13 +13,12 @@ import {
 	pacedD1StagingIndexKey,
 	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
+	pacedD1StagingNightMetaKey,
 	pacedD1StagingPrefix,
 	pacedD1StagingProgressKey,
+	type PacedD1TableManifest,
 	parsePacedD1NightManifest,
 	parsePacedD1ProgressCursor,
-	type PacedD1NightManifest,
-	type PacedD1ProgressCursor,
-	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
 	parsePacedD1IndexLine,
@@ -171,10 +172,6 @@ function utcDayMinus(day: string, daysBack: number) {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	date.setUTCDate(date.getUTCDate() - daysBack)
 	return date.toISOString().slice(0, 10)
-}
-
-function pacedD1StagingNightMetaKey(day: string, databaseName: string) {
-	return `${pacedD1StagingPrefix(day, databaseName)}night-meta.json`
 }
 
 function pacedD1StagingTableManifestKey(

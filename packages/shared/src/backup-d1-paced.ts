@@ -170,6 +170,13 @@ export function pacedD1StagingManifestKey(
 	return `${pacedD1StagingPrefix(day, databaseName)}manifest.json`
 }
 
+export function pacedD1StagingNightMetaKey(
+	day: string,
+	databaseName: string,
+): string {
+	return `${pacedD1StagingPrefix(day, databaseName)}night-meta.json`
+}
+
 export function pacedD1StagingDataKey(
 	day: string,
 	databaseName: string,
