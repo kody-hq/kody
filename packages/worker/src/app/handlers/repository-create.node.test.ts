@@ -2,6 +2,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { AuthorizationError } from '#worker/authorization/authorize.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import type * as AccessCompileModule from '#worker/authorization/access-compile.ts'
 import type * as AuthorizeModule from '#worker/authorization/authorize.ts'
 import { EntitlementLimitError } from '#worker/entitlements/errors.ts'
 
@@ -18,23 +19,41 @@ const state = vi.hoisted(() => ({
 	repoCreate: vi.fn(),
 }))
 
+function bindingFor(slug: string) {
+	const organization = state.organizations.find((row) => row.slug === slug)
+	if (!organization) return null
+	return {
+		org: {
+			id: organization.personal ? 'person-1' : `org-${organization.slug}`,
+			slug: organization.slug,
+		},
+		role: organization.role,
+	}
+}
+
 vi.mock('#worker/orgs/repo.ts', () => ({
 	listOrganizationsForPerson: async () => state.organizations,
 	loadOrgBindingForSlug: async (
 		_db: unknown,
 		_personId: string,
 		slug: string,
-	) => {
-		const organization = state.organizations.find((row) => row.slug === slug)
-		if (!organization) return null
-		return {
-			org: {
-				id: organization.personal ? 'person-1' : `org-${organization.slug}`,
-				slug: organization.slug,
-			},
-			role: organization.role,
-		}
-	},
+	) => bindingFor(slug),
+	loadOrgBindingsForSlugs: async (
+		_db: unknown,
+		_personId: string,
+		slugs: Array<string>,
+	) =>
+		new Map(
+			slugs.flatMap((slug) => {
+				const binding = bindingFor(slug)
+				return binding ? [[slug, binding] as const] : []
+			}),
+		),
+}))
+
+vi.mock('#worker/authorization/access-compile.ts', async (importOriginal) => ({
+	...(await importOriginal<typeof AccessCompileModule>()),
+	compileAccessForRequests: async () => [],
 }))
 
 vi.mock('#worker/orgs/is-personal-org.ts', () => ({
