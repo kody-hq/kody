@@ -31,7 +31,7 @@ export type PublishBuildRow = {
 	context_name: string | null
 	ticket_sha256: string
 	status: PublishBuildStatus
-	document_json: string | null
+	document_sha256: string | null
 	message: string | null
 	created_at: string
 	updated_at: string
@@ -52,6 +52,19 @@ export function publishBuildBlobKey(buildId: string, sha256: string) {
 
 export function publishBuildBlobPrefix(buildId: string) {
 	return `publish-builds/${buildId}/`
+}
+
+/**
+ * The sealed build document lives in R2, not D1: a large package's file and
+ * module manifest outgrows the D1 import statement limit (see
+ * backup-restore-safety.ts) and would make the APP_DB backup unrestorable.
+ */
+export function publishBuildDocumentKey(buildId: string, sha256: string) {
+	return `${publishBuildDocumentPrefix(buildId)}${sha256}.json`
+}
+
+function publishBuildDocumentPrefix(buildId: string) {
+	return `publish-build-documents/${buildId}/`
 }
 
 function randomToken(bytes = 32) {
@@ -158,20 +171,22 @@ export async function authenticatePublishBuildTicket(input: {
 
 export async function sealPublishBuild(input: {
 	db: D1Database
+	bucket: R2Bucket
 	buildId: string
 	document: PublishBuildDocument
 }) {
+	const body = JSON.stringify(input.document)
+	const sha256 = await sha256Hex(body)
+	await input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
+		httpMetadata: { contentType: 'application/json' },
+	})
 	const result = await input.db
 		.prepare(
 			`UPDATE publish_builds
-			SET status = 'sealed', document_json = ?, updated_at = ?
+			SET status = 'sealed', document_sha256 = ?, updated_at = ?
 			WHERE id = ? AND status IN ${sealGuard}`,
 		)
-		.bind(
-			JSON.stringify(input.document),
-			new Date().toISOString(),
-			input.buildId,
-		)
+		.bind(sha256, new Date().toISOString(), input.buildId)
 		.run()
 	return (result.meta.changes ?? 0) > 0
 }
@@ -201,17 +216,22 @@ export async function finishPublishBuild(input: {
 		.run()
 }
 
-async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
+async function deletePrefix(bucket: R2Bucket, prefix: string) {
 	let cursor: string | undefined
 	do {
 		const page = await bucket.list({
-			prefix: publishBuildBlobPrefix(buildId),
+			prefix,
 			...(cursor ? { cursor } : {}),
 		})
 		const keys = page.objects.map((object) => object.key)
 		if (keys.length > 0) await bucket.delete(keys)
 		cursor = page.truncated ? page.cursor : undefined
 	} while (cursor)
+}
+
+async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
+	await deletePrefix(bucket, publishBuildBlobPrefix(buildId))
+	await deletePrefix(bucket, publishBuildDocumentPrefix(buildId))
 }
 
 /**
@@ -234,7 +254,7 @@ export async function purgeExpiredPublishBuilds(input: {
 		.prepare(
 			`SELECT id, status FROM publish_builds
 			WHERE expires_at < ?
-				AND (status != 'committed' OR document_json IS NOT NULL)
+				AND (status != 'committed' OR document_sha256 IS NOT NULL)
 			ORDER BY expires_at LIMIT ?`,
 		)
 		.bind(cutoff, input.limit ?? 10)
@@ -244,7 +264,7 @@ export async function purgeExpiredPublishBuilds(input: {
 		if (row.status === 'committed') {
 			await input.db
 				.prepare(
-					`UPDATE publish_builds SET document_json = NULL, updated_at = ?
+					`UPDATE publish_builds SET document_sha256 = NULL, updated_at = ?
 					WHERE id = ?`,
 				)
 				.bind(new Date().toISOString(), row.id)
@@ -261,9 +281,16 @@ export async function purgeExpiredPublishBuilds(input: {
 	return results.length
 }
 
-export function parsePublishBuildDocument(row: PublishBuildRow) {
-	if (!row.document_json) return null
-	return JSON.parse(row.document_json) as PublishBuildDocument
+export async function readPublishBuildDocument(input: {
+	bucket: R2Bucket
+	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
+}) {
+	if (!input.row.document_sha256) return null
+	const object = await input.bucket.get(
+		publishBuildDocumentKey(input.row.id, input.row.document_sha256),
+	)
+	if (!object) return null
+	return JSON.parse(await object.text()) as PublishBuildDocument
 }
 
 /** 11B: where the serving build of a commit was made, for package info. */
@@ -340,7 +367,10 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	if (row.status === 'rejected') {
 		throw rejected(row.message ?? 'this build already failed verification.')
 	}
-	const document = parsePublishBuildDocument(row)
+	const document = await readPublishBuildDocument({
+		bucket: input.env.REPO_SESSION_BLOBS,
+		row,
+	})
 	if (!document) throw rejected('the build has no sealed manifest.')
 	return {
 		buildId: row.id,
