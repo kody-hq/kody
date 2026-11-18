@@ -282,6 +282,14 @@ export async function validateSealedDayForRestore(
 			`sealed full manifest signature invalid for ${day}`,
 		)
 	}
+	// Production restore imports REST D1 SQL. A day sealed from the paced lane
+	// alone has none until a paced restore path lands.
+	if (fullManifest.payload.d1ManifestKey === undefined) {
+		throw new BackupError(
+			'restore-rest-d1-absent',
+			`sealed full manifest for ${day} has no REST D1 export to restore`,
+		)
+	}
 	const d1Payload = backupPayload(env, new Date(`${day}T12:00:00.000Z`))
 	if (fullManifest.payload.d1ManifestKey !== d1Payload.manifestKey) {
 		throw new BackupError(

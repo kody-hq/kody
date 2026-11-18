@@ -292,6 +292,9 @@ export function environment(bucket = new MemoryBucket()): BackupEnvironment {
 		SOURCE_DATABASE_NAME: 'production-db',
 		ALLOWED_SOURCE_ACCOUNT_IDS: ACCOUNT_ID,
 		ALLOWED_SOURCE_DATABASE_IDS: DATABASE_ID,
+		D1_PACED_SOURCES: JSON.stringify([
+			{ id: DATABASE_ID, name: 'production-db' },
+		]),
 		ENABLE_PRODUCTION_D1_BACKUPS: 'true',
 		BACKUP_BENCHMARK_APPROVED: 'true',
 		BUILD_COMMIT: 'abc123',

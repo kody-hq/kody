@@ -233,6 +233,14 @@ async function createBackup(
 		day,
 		d1ManifestKey: `daily/d1/${day}/manifest.json`,
 		d1ManifestSha256: 'a'.repeat(64),
+		d1Paced: [
+			{
+				databaseId: '22222222-2222-4222-8222-222222222222',
+				databaseName: 'kody',
+				manifestKey: `daily/d1-paced/22222222-2222-4222-8222-222222222222/${day}/manifest.json`,
+				manifestSha256: 'c'.repeat(64),
+			},
+		],
 		mailboxIndex,
 		runLogIndex: {
 			objectKey: `${sealedFullPrefix(day)}run-log-index.json`,

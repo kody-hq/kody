@@ -42,9 +42,11 @@ async function putSealedFullManifest(
 	bucket: MemoryBucket,
 	env: BackupEnvironment,
 	day: string,
-	d1: Pick<
-		Parameters<typeof signBackupFullManifest>[1],
-		'd1ManifestKey' | 'd1ManifestSha256' | 'd1Sources'
+	d1: Partial<
+		Pick<
+			Parameters<typeof signBackupFullManifest>[1],
+			'd1ManifestKey' | 'd1ManifestSha256' | 'd1Sources'
+		>
 	>,
 ) {
 	const index = (name: string, char: string) => ({
@@ -55,6 +57,14 @@ async function putSealedFullManifest(
 	const full = await signBackupFullManifest(env, {
 		day,
 		...d1,
+		d1Paced: [
+			{
+				databaseId: env.SOURCE_DATABASE_ID,
+				databaseName: env.SOURCE_DATABASE_NAME,
+				manifestKey: `daily/d1-paced/${env.SOURCE_DATABASE_ID}/${day}/manifest.json`,
+				manifestSha256: 'f'.repeat(64),
+			},
+		],
 		mailboxIndex: index('mailbox-index', 'd'),
 		runLogIndex: index('run-log-index', 'e'),
 		storageIndex: index('storage-index', 'b'),
@@ -296,6 +306,26 @@ test('production restore refuses SQL with oversized statement stats', async () =
 		backupError('backup-unrestorable-statements'),
 	)
 	assert.equal(fetchCalls, 0)
+})
+
+test('production restore refuses a day sealed without a REST D1 export', async () => {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	const day = '2026-11-17'
+	await putSealedFullManifest(bucket, env, day, {})
+	await assert.rejects(
+		runProductionRestore(
+			env,
+			{ day, requestedAt: `${day}T12:00:00.000Z` },
+			{
+				fetcher: async () => {
+					throw new Error('restore should not start')
+				},
+			},
+		),
+		backupError('restore-rest-d1-absent'),
+	)
 })
 
 test('production restore of a historical single-database day completes the workflow without failure', async () => {

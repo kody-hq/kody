@@ -52,6 +52,9 @@
 		// `kody-jobs` (JOBS_DB); deploy resolves it by name in
 		// tools/ci/jobs-worker-resources.ts (`jobs_d1_database_id`).
 		"SOURCE_DATABASES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
+		// Paced D1 sources (same ids as the worker's DR_D1_PACED_SOURCES). Their
+		// sealed paced nights are the full seal's D1 source of truth.
+		"D1_PACED_SOURCES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\",\"name\":\"kody-audit\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
 		"ALLOWED_SOURCE_ACCOUNT_IDS": "a99ee2e72728dd52902ef288b7b1447d",
 		"ALLOWED_SOURCE_DATABASE_IDS": "8c1014d1-6b41-4695-a0a2-159071f0f919,5410331e-4d25-47e4-a1e5-a248f7cc764c",
 		"BUILD_COMMIT": "REPLACE_AT_DEPLOY_TIME",

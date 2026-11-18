@@ -71,11 +71,21 @@ export function captureRestExportFailure(input: {
 	})
 }
 
-export function captureFullSealBlocked(input: { day: string; reason: string }) {
+export function captureFullSealBlocked(input: {
+	day: string
+	reason: string
+	source?: string
+}) {
 	captureDrIssue({
 		cause: 'full-seal-blocked',
-		detail: input.reason,
-		message: `Full DR seal is blocked: ${input.reason}`,
-		tags: { 'dr.day': input.day, 'dr.seal_reason': input.reason },
+		detail: input.source ? `${input.reason}:${input.source}` : input.reason,
+		message: input.source
+			? `Full DR seal is blocked: ${input.reason} (${input.source})`
+			: `Full DR seal is blocked: ${input.reason}`,
+		tags: {
+			'dr.day': input.day,
+			'dr.seal_reason': input.reason,
+			...(input.source ? { 'dr.database': input.source } : {}),
+		},
 	})
 }
