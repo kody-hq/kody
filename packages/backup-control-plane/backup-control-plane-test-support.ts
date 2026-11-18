@@ -286,6 +286,7 @@ export function environment(bucket = new MemoryBucket()): BackupEnvironment {
 		BACKUP_WORKFLOW: {} as Workflow,
 		RESTORE_WORKFLOW: {} as Workflow,
 		SEAL_WORKFLOW: {} as Workflow,
+		PACED_DRILL_WORKFLOW: {} as Workflow,
 		CLOUDFLARE_API_TOKEN: 'not-logged-secret',
 		SOURCE_ACCOUNT_ID: ACCOUNT_ID,
 		SOURCE_DATABASE_ID: DATABASE_ID,

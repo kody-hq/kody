@@ -484,7 +484,10 @@ test('oversized blob rows split into chunked restore SQL', async () => {
 	state.schema.set('blobs', state.lastManifest.tables.blobs!)
 	const { sql, stats } = buildPacedD1RestoreSql(state)
 	expect(stats.splitRows).toBe(1)
-	expect(sql).toContain(`SET "payload" = "payload" || X'`)
+	expect(sql).toContain(`SET v = v || X'`)
+	expect(sql).toContain(
+		'CAST((SELECT v FROM "_kody_restore_scratch" WHERE slot = 1) AS BLOB)',
+	)
 	expect(
 		sql.split('\n').every((statement) => statement.length <= 100_000),
 	).toBe(true)
@@ -541,7 +544,10 @@ test('oversized text rows split into chunked restore SQL', async () => {
 	state.schema.set('messages', state.lastManifest.tables.messages!)
 	const { sql, stats } = buildPacedD1RestoreSql(state)
 	expect(stats.splitRows).toBe(1)
-	expect(sql).toContain('SET "body" = "body" ||')
+	expect(sql).toContain('SET v = v ||')
+	expect(sql).toContain(
+		'(SELECT v FROM "_kody_restore_scratch" WHERE slot = 1)',
+	)
 	expect(
 		sql
 			.split('\n')
