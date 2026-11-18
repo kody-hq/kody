@@ -18,6 +18,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 		const bridge = window.kodyDesktop
 		if (bridge?.version !== 1) return
 		setShell(bridge)
+		setState(bridge.navigation.initialState ?? null)
 		let active = true
 		let receivedUpdate = false
 		const unsubscribe = bridge.navigation.onChange((next) => {
@@ -36,9 +37,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 		}
 	}, [])
 	if (!shell) return null
-	const integratedTitlebar =
-		(shell.integratedTitlebar ?? state?.integratedTitlebar) &&
-		!state?.fullscreen
+	const integratedTitlebar = state?.integratedTitlebar && !state.fullscreen
 	async function navigate(
 		action: 'back' | 'forward' | 'home' | 'copyAddress' | 'openInBrowser',
 	) {

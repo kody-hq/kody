@@ -55,13 +55,13 @@ export type DesktopNavigationState = {
 }
 export type DesktopShell = {
 	version: 1
-	integratedTitlebar?: boolean
 	execution?: DesktopExecutionBridge
 	authentication?: {
 		signIn: (mode: 'login' | 'signup') => Promise<void>
 		cancel: () => Promise<void>
 	}
 	navigation: {
+		initialState?: DesktopNavigationState | null
 		getState: () => Promise<DesktopNavigationState>
 		back: () => Promise<DesktopNavigationState>
 		forward: () => Promise<DesktopNavigationState>

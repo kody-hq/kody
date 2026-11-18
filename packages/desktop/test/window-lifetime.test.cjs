@@ -133,6 +133,9 @@ function fixture(platform = 'darwin', background = false) {
 			shell: { openExternal: async () => {} },
 			dialog: { showErrorBox: (...args) => errors.push(args) },
 			ipcMain: {
+				on(name, handler) {
+					ipc.set(name, handler)
+				},
 				handle(name, handler) {
 					ipc.set(name, handler)
 				},

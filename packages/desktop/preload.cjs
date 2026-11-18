@@ -9,7 +9,6 @@ const origin = process.argv
 if (process.isMainFrame && location.origin === origin) {
 	contextBridge.exposeInMainWorld('kodyDesktop', {
 		version: 1,
-		integratedTitlebar: process.argv.includes('--kody-integrated-titlebar'),
 		...(process.argv.includes('--kody-browser-login')
 			? {
 					authentication: {
@@ -56,6 +55,7 @@ if (process.isMainFrame && location.origin === origin) {
 			},
 		},
 		navigation: {
+			initialState: ipcRenderer.sendSync('kody:navigation-initial-state'),
 			getState: () => ipcRenderer.invoke('kody:navigation', 'state'),
 			back: () => ipcRenderer.invoke('kody:navigation', 'back'),
 			forward: () => ipcRenderer.invoke('kody:navigation', 'forward'),
