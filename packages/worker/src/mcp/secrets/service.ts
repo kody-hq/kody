@@ -59,7 +59,6 @@ import {
 	upsertSecretEntry,
 	upsertSecretEntriesAtomically,
 } from './repo.ts'
-import { assertPlaceholderSecretName } from './secret-name-references.ts'
 import {
 	assertWithinEntitlement,
 	assertWithinStorageBytesEntitlement,
@@ -1804,7 +1803,6 @@ export async function renameSecret(input: {
 	}
 	assertSecretNameAllowed(fromName)
 	assertSecretNameAllowed(toName)
-	if (fromName !== toName) assertPlaceholderSecretName(toName)
 	const bucket = await getExistingBucketForScope({
 		db: input.env.APP_DB,
 		userId: input.userId,
