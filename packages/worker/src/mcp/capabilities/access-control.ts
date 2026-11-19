@@ -32,6 +32,14 @@ import {
 } from './triggered-site-access.ts'
 import type { Capability, CapabilitySpec } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
+import {
+	classifyRetryableD1Error,
+	isRetryableD1StorageUnavailabilityError,
+	readD1RetryAttempts,
+	runD1WithRetry,
+	transientDatabaseUnavailableMessage,
+} from '#worker/d1-retry.ts'
+import { reportInfraHiccup } from '#worker/infra-hiccup-sentry.ts'
 
 type CapabilityAccessRequirement = Pick<
 	Capability | CapabilitySpec,
@@ -140,18 +148,35 @@ class UnresolvedFeatureFlagUser extends Error {
 	}
 }
 
+/**
+ * A couple of jittered attempts for the caller flag reads. One overloaded D1
+ * read would otherwise refuse the whole execute call (KODY-FV, KODY-FW).
+ */
+const callerFeatureFlagReadRetry = {
+	maxAttempts: 3,
+	baseDelayMs: 100,
+	jitter: true,
+} as const
+
 async function loadFreshCallerFeatureFlagResolution(
 	env: Env,
 	stableUserId: string,
 	orgId: string | null,
 ): Promise<CallerFeatureFlagResolution> {
-	const userId = await resolveFeatureFlagUserId(env.APP_DB, stableUserId)
+	const userId = await runD1WithRetry(
+		() => resolveFeatureFlagUserId(env.APP_DB, stableUserId),
+		callerFeatureFlagReadRetry,
+	)
 	// Do not cache this. A users row can appear in the same TTL window.
 	if (userId === null) throw new UnresolvedFeatureFlagUser()
-	const evaluations = await getFeatureFlagEvaluationsForUser(
-		env.APP_DB,
-		userId,
-		orgId ? { orgId } : null,
+	const evaluations = await runD1WithRetry(
+		() =>
+			getFeatureFlagEvaluationsForUser(
+				env.APP_DB,
+				userId,
+				orgId ? { orgId } : null,
+			),
+		callerFeatureFlagReadRetry,
 	)
 	await recordFeatureFlagExposures(env, {
 		stableUserId,
@@ -225,6 +250,26 @@ export async function callerFeatureFlagEvaluationFailure(
 ): Promise<{ cause: unknown } | null> {
 	const resolution = await loadCallerFeatureFlagResolution(env, callerContext)
 	return resolution.status === 'failed' ? { cause: resolution.cause } : null
+}
+
+/**
+ * The error execute refuses with when the flag read failed. A D1 storage
+ * unavailability cause (lock, export, network, overload, internal) reports
+ * as a `d1_transient` infra hiccup and uses the shared "briefly unavailable"
+ * message, which Sentry drops as a retryable D1 remap. Anything else,
+ * including Durable Object resets, stays a generic, Sentry-visible failure.
+ */
+export function callerFeatureFlagEvaluationError(cause: unknown): Error {
+	if (!isRetryableD1StorageUnavailabilityError(cause)) {
+		return new Error('Feature flag evaluation failed', { cause })
+	}
+	void reportInfraHiccup({
+		kind: 'd1_transient',
+		operation: 'mcp_execute_feature_flags',
+		attempts: readD1RetryAttempts(cause),
+		errorClass: classifyRetryableD1Error(cause) ?? 'unknown',
+	})
+	return new Error(transientDatabaseUnavailableMessage, { cause })
 }
 
 /**

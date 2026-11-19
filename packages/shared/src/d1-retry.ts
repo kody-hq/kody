@@ -370,7 +370,8 @@ function withAttemptTimeout<T>(
  * drop, a D1 capacity spike, or a D1 backend blip.
  *
  * When `attemptTimeoutMs` is set, a hung attempt is also retried so a single
- * idle-database stall cannot consume an outer deadline.
+ * idle-database stall cannot consume an outer deadline. `jitter` spreads each
+ * backoff over its upper half so a burst of callers does not retry in step.
  */
 export async function runD1WithRetry<T>(
 	operation: () => Promise<T>,
@@ -378,6 +379,7 @@ export async function runD1WithRetry<T>(
 		maxAttempts?: number
 		baseDelayMs?: number
 		attemptTimeoutMs?: number
+		jitter?: boolean
 	},
 ): Promise<T> {
 	const maxAttempts = options?.maxAttempts ?? d1LockRetryMaxAttempts
@@ -401,7 +403,12 @@ export async function runD1WithRetry<T>(
 				}
 				throw error
 			}
-			await sleep(baseDelayMs * 2 ** (attempt - 1))
+			const backoffMs = baseDelayMs * 2 ** (attempt - 1)
+			await sleep(
+				options?.jitter
+					? backoffMs / 2 + Math.random() * (backoffMs / 2)
+					: backoffMs,
+			)
 		}
 	}
 	throw lastError
