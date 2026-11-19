@@ -524,32 +524,66 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 		const applyOnce = async (): Promise<ResolvedLoginSession> => {
 			// `authorize` returned, so the lookup, exchange, and inject are set.
 			const { found, readValue } = lookup!
+			const env = call.input.env
+			const before = found.revisionFields
+			const sessionOptions = {
+				env,
+				ownerId: found.ownerId,
+				credentialId: found.credentialId,
+				revision: found.revision,
+				isCurrent: async () =>
+					(await env.APP_DB.prepare(
+						`SELECT 1 FROM secret_entries
+						WHERE id = ? AND encrypted_value = ? AND config_json IS ?
+							AND allowed_hosts = ? AND inject_json = ?
+							AND deleted_at IS NULL`,
+					)
+						.bind(
+							found.credentialId,
+							before.encryptedValue,
+							before.configJson,
+							before.allowedHostsJson,
+							before.injectJson,
+						)
+						.first()) !== null,
+			}
 			const profile = exchange!.singleRequest
 			if (profile) {
-				const { fields } = readLoginFields(await readValue())
-				const headers = new Headers()
-				for (const { name, field } of profile.headers) {
-					headers.set(name, credentialHeaderValue(fields.get(field) ?? ''))
-				}
-				const { token } = await runExchange(exchange!, fields)
-				const placed = placeSession(inject!, token, null)
-				if (placed.placement.kind !== 'header') misconfigured()
-				const { name, value } = placed.placement
-				headers.set(name, credentialHeaderValue(value))
-				credential.registerLogout!(() => logoutOnce(profile.logoutUrl, headers))
+				let applied: ResolvedLoginSession | undefined
+				await obtainLoginSession({
+					...sessionOptions,
+					cacheSession: false,
+					exchange: async () => {
+						const { fields } = readLoginFields(await readValue())
+						const headers = new Headers()
+						for (const { name, field } of profile.headers) {
+							headers.set(name, credentialHeaderValue(fields.get(field) ?? ''))
+						}
+						const { token } = await runExchange(exchange!, fields)
+						const placed = placeSession(inject!, token, null)
+						if (placed.placement.kind !== 'header') misconfigured()
+						const { name, value } = placed.placement
+						headers.set(name, credentialHeaderValue(value))
+						credential.registerLogout!(() =>
+							logoutOnce(profile.logoutUrl, headers),
+						)
+						applied = {
+							...placed,
+							singleRequestHeaders: headers,
+							substitutedValues: [
+								...new Set([...placed.substitutedValues, ...headers.values()]),
+							],
+						}
+						return { token, expiresAt: null }
+					},
+				})
+				if (!applied) misconfigured()
 				call.subject.details = {
 					...call.subject.details,
 					session: 'single-request',
 				}
-				return {
-					...placed,
-					singleRequestHeaders: headers,
-					substitutedValues: [
-						...new Set([...placed.substitutedValues, ...headers.values()]),
-					],
-				}
+				return applied
 			}
-			const env = call.input.env
 			const key = `${found.credentialId}|${found.revision}`
 			const rejected = credential.rejectedSessionId ?? null
 			const cached = sessions.get(key)
@@ -559,29 +593,10 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 				call.subject.details = { ...call.subject.details, session: 'cached' }
 				return placeSession(inject!, cached.token, cached.sessionId)
 			}
-			const before = found.revisionFields
 			const obtain = async () => {
 				const obtained = await obtainLoginSession({
-					env,
-					ownerId: found.ownerId,
-					credentialId: found.credentialId,
-					revision: found.revision,
+					...sessionOptions,
 					rejectedSessionId: rejected,
-					isCurrent: async () =>
-						(await env.APP_DB.prepare(
-							`SELECT 1 FROM secret_entries
-							WHERE id = ? AND encrypted_value = ? AND config_json IS ?
-								AND allowed_hosts = ? AND inject_json = ?
-								AND deleted_at IS NULL`,
-						)
-							.bind(
-								found.credentialId,
-								before.encryptedValue,
-								before.configJson,
-								before.allowedHostsJson,
-								before.injectJson,
-							)
-							.first()) !== null,
 					exchange: async (): Promise<LoginSession> => {
 						const { fields, object } = readLoginFields(await readValue())
 						const result = await runExchange(exchange!, fields)

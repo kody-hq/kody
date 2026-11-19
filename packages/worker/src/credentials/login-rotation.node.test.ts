@@ -265,6 +265,7 @@ test.each([
 	'logout error',
 	'redirect',
 	'failed login',
+	'rate-limited login',
 ] as const)(
 	'single-request Login runs one protected request and cleans up: %s',
 	async (outcome) => {
@@ -304,6 +305,12 @@ test.each([
 					expect(init.body).toEqual(expect.stringContaining(clientKey))
 					if (outcome === 'failed login')
 						return new Response(null, { status: 403 })
+					if (outcome === 'rate-limited login') {
+						return new Response(null, {
+							status: 429,
+							headers: { 'retry-after': '120' },
+						})
+					}
 					return Response.json({
 						data: { token: `dummy-session-${++signedIn}` },
 					})
@@ -373,6 +380,14 @@ test.each([
 				body: { code: 'login_failed' },
 			})
 			expect(calls).toEqual(['login'])
+		} else if (outcome === 'rate-limited login') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_failed', retryAfterSeconds: 120 },
+			})
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_retry_later' },
+			})
+			expect(calls).toEqual(['login'])
 		} else if (outcome === 'network error') {
 			await expect(run()).rejects.toThrow('Network error')
 			expect(calls).toEqual(['login', 'request', 'logout'])
@@ -416,7 +431,9 @@ test.each([
 		}
 		expect(
 			await t.db
-				.prepare('SELECT credential_id FROM login_credential_sessions')
+				.prepare(
+					'SELECT credential_id FROM login_credential_sessions WHERE session_id IS NOT NULL OR session_encrypted IS NOT NULL',
+				)
 				.first(),
 		).toBeNull()
 		for (const [index, { url, init }] of logouts.entries()) {
