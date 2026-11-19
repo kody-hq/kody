@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('#worker/email/owner-email-reader.ts', () => ({
 	listOwnerEmailDeliveryEvents: mocks.listOwnerEmailDeliveryEvents,
+	getOwnerEmailMessageById: async () => ({ id: 'message-1', inboxId: null }),
 }))
 
 const { emailDeliveryEventListCapability } =
