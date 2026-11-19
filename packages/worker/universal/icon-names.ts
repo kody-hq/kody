@@ -1,4 +1,4 @@
-export const iconNames = [
+const iconNames = [
 	'home',
 	'clock',
 	'link',

@@ -74,10 +74,12 @@ recent evidence.
 | 2026-07-28 | First completed staging run (`staging/2026-07-28/exporter/summary.json`; 186 storage dumps, R2 indexes, artifacts index).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | 2026-07-26 | First verified nightly D1 export (signed manifest, stored-object digest verified; ~118 MB).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-Still unproven live: graduated production restore into the production database
-(drill-level evidence only; it shares the `FixedLengthStream` upload path),
-automated Mailbox re-import against a sealed day, and `weekly/` retention aging
-through its lifecycle.
+Graduated production restore is proven by the isolated paced restore drill, not
+by a live run: both replay sealed paced chains through the same
+`paced-d1-target-restore.ts` steps (first manual pass: 2026-11-19, all tables on
+APP_DB, AUDIT_DB and JOBS_DB, about 27 minutes). Still unproven live: automated
+Mailbox re-import against a sealed day, and `weekly/` retention aging through
+its lifecycle.
 
 ## Objectives
 
@@ -170,8 +172,13 @@ Contract: `packages/shared/src/backup-staging.ts`.
 1. **D1 (control plane)** — Dedicated Worker/Workflow in
    `packages/backup-control-plane/` calls the production-account D1 export API
    with `CLOUDFLARE_API_TOKEN` (Account D1 Edit) for every `SOURCE_DATABASES`
-   entry whose `restExport` is omitted or `true`: APP_DB (`kody`,
-   `SOURCE_DATABASE_ID`) and JOBS_DB (`kody-jobs`). Each database gets its own
+   entry whose `restExport` is omitted or `true`. Production lists APP_DB
+   (`kody`, `SOURCE_DATABASE_ID`) and JOBS_DB (`kody-jobs`) with
+   `restExport: false` since #4306, so no REST export runs; the paced walk below
+   is the D1 backup. Rollback: remove `restExport: false` from those
+   `SOURCE_DATABASES` entries in `packages/backup-control-plane/wrangler.jsonc`
+   and ship through the Deploy workflow; the next `BACKUP_CRON` run exports
+   again and the full seal records the REST evidence. Each database gets its own
    Workflow instance (`d1-backup-<databaseId>-<day>`) and objects under
    `<tier>/d1/<database-uuid>/<day>/`. The signed schema-v2 manifest records
    that database's id, name, SQL byte count, and sha256. Restore drills sample
@@ -589,6 +596,12 @@ import init/ingest etag. Without that prelude, drills fail with errors like
 3. **Mailbox re-import** — with ingress still disabled, run the automated
    Mailbox importer below for the intended owners. Do not re-enable ingress
    unless its final response has both `"done": true` and `"verified": true`.
+
+Graduated production restore is the disaster path only. Never run it against the
+live databases as a validation or on a schedule: the isolated paced restore
+drill exercises the same plan, preflight, import, and verify steps
+(`packages/backup-control-plane/paced-d1-target-restore.ts`) against fresh
+databases in `DRILL_ACCOUNT_ID`, and is the proof that it works.
 
 Put the app in [maintenance mode (edge)](#maintenance-mode-edge) before execute.
 After restore: reindex Vectorize (`POST /__maintenance/reindex-capabilities`
@@ -1045,9 +1058,9 @@ Work top-to-bottom. Leave gates false until the matching gate item is done.
   self-retention), invocation idempotency ledger, and workflow projections;
   never-pruned job observability and activation state are backed up
 - Backup of UserMeter (reconciliation/restart is the accepted recovery path)
-- Graduated production restore / admin UI drill of `AUDIT_DB` (paced walk seals
-  APP_DB + AUDIT_DB + JOBS_DB; REST SQL restore still covers APP_DB and JOBS_DB
-  only)
+- REST SQL restore of `AUDIT_DB` for schema v1/v2 days (those days restore
+  APP_DB and JOBS_DB from REST SQL only; schema-v3 days restore all three paced
+  sources)
 - Plaintext `SECRET_STORE_KEY` or other credentials inside backup media
 
 ## Provider references

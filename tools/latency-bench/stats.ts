@@ -34,7 +34,7 @@ export type OverheadSummary = {
 }
 
 /** Nearest-rank percentile; `p` in [0, 100]. */
-export function percentile(values: Array<number>, p: number) {
+function percentile(values: Array<number>, p: number) {
 	if (values.length === 0) return Number.NaN
 	const sorted = [...values].sort((a, b) => a - b)
 	const rank = Math.ceil((p / 100) * sorted.length)

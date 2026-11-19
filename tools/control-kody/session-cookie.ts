@@ -182,15 +182,7 @@ export function mcpAuthForOrg(
 	}
 }
 
-export function cookieHeaderForOrigin(
-	fileText: string,
-	origin: string,
-	email?: string | null,
-) {
-	return sessionForOrigin(fileText, origin, email)?.cookieHeader ?? null
-}
-
-export function looksLikeLoginHtml(rawBody: string) {
+function looksLikeLoginHtml(rawBody: string) {
 	for (const match of rawBody.matchAll(/<link\b[^>]*>/gi)) {
 		const tag = match[0]
 		if (!/\brel="canonical"/i.test(tag)) continue

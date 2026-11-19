@@ -4,7 +4,7 @@
  * other client navigation never scroll: the first committed client
  * navigation marks the document with `data-spa-nav` and ends the chance.
  */
-export function createDeepLinkFocus() {
+function createDeepLinkFocus() {
 	let pending = true
 	return function claim(input: { spaNavigated: boolean; hasTarget: boolean }) {
 		if (!pending) return false

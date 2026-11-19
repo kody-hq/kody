@@ -18,7 +18,7 @@ const hbJsGuards: Array<[string, string]> = [
 	],
 ]
 
-export function guardHarfbuzzEnvironmentProbe(source: string): string {
+function guardHarfbuzzEnvironmentProbe(source: string): string {
 	let guarded = source
 	for (const [from, to] of hbJsGuards) {
 		if (guarded.split(from).length !== 2) {
