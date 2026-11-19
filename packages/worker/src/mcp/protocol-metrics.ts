@@ -58,7 +58,7 @@
  * blob9 records `declared` when the request's client capabilities name MCP
  * Events (top-level `events`, `experimental.events`, or
  * `extensions["io.modelcontextprotocol/events"]`), else empty. The MCP Events
- * client-support readout (`mcp/events/events-client-support-readout.ts`)
+ * client-support readout (`feature-flags/mcp-events-client-support-readout.ts`)
  * uses it to split "client does not advertise events" from "advertises but
  * does not subscribe".
  */

@@ -40,7 +40,7 @@ import {
 import {
 	loadMcpEventsClientSupportReadout,
 	type McpEventsClientSupportReadoutEnv,
-} from '#mcp/events/events-client-support-readout.ts'
+} from './mcp-events-client-support-readout.ts'
 import type {
 	AdminFeatureFlag,
 	AdminFeatureFlagMetricReadout,

@@ -4,7 +4,7 @@ import {
 	buildMcpEventsClientSupportReadout,
 	loadMcpEventsClientSupportReadout,
 	type McpEventsClientSupportRow,
-} from './events-client-support-readout.ts'
+} from './mcp-events-client-support-readout.ts'
 
 const row = (
 	user_id: string,
