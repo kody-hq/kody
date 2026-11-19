@@ -39,6 +39,7 @@ const mockModule = vi.hoisted(() => ({
 	publishFromExternalRef: vi.fn(),
 	takeLastCheckStep: vi.fn(async (): Promise<unknown> => null),
 	listPublishedPackageArtifactTargets: vi.fn(),
+	persistUploadedPublishBuild: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
 	getStaticPackageDependentsSummary: vi.fn(),
@@ -111,6 +112,8 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 		},
 		listPublishedPackageArtifactTargets: (...args: Array<unknown>) =>
 			mockModule.listPublishedPackageArtifactTargets(...args),
+		persistUploadedPublishBuild: (...args: Array<unknown>) =>
+			mockModule.persistUploadedPublishBuild(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
 		takeLastCheckStep: () => mockModule.takeLastCheckStep(),
@@ -861,6 +864,71 @@ test('durable re-entry remaps RepoSession already_published to published when ti
 			artifacts_rebuilt: false,
 		}),
 	)
+})
+
+test('durable re-entry finalizes an uploaded build without the upload bucket binding', async () => {
+	setupDefaultMocks({
+		publish: { status: 'already_published', published_commit: 'commit-new' },
+	})
+	mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+		sourceRow('commit-new'),
+	)
+	mockModule.persistUploadedPublishBuild.mockResolvedValue({
+		ok: true,
+		targetCount: 2,
+	})
+
+	const ctx = createContext('background')
+	const prepare = ctx.env.APP_DB.prepare
+	vi.spyOn(ctx.env.APP_DB, 'prepare').mockImplementation((sql) => {
+		let row: unknown
+		if (sql.includes('FROM publish_builds')) {
+			row = {
+				id: 'pb_demo',
+				package_id: 'package-1',
+				source_id: 'source-1',
+				requester_user_id: 'user-1',
+				commit_sha: 'commit-new',
+				status: 'sealed',
+				document_sha256: 'a'.repeat(64),
+				origin: 'cli',
+				context_name: null,
+			}
+		} else if (sql.includes('SELECT id FROM users')) {
+			row = { id: 1 }
+		} else if (sql.includes('FROM feature_flag_user_overrides')) {
+			row = { enabled: 1 }
+		} else {
+			return prepare(sql)
+		}
+		return {
+			bind: () => ({ first: async () => row }),
+		} as D1PreparedStatement
+	})
+
+	const result = await publishExternalPushCapability.handler(
+		{
+			package_id: 'package-1',
+			baseline_published_commit: 'commit-old',
+			publish_build_id: 'pb_demo',
+		},
+		ctx,
+	)
+
+	expect(result).toMatchObject({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+		build_origin: { origin: 'cli' },
+	})
+	expect(mockModule.persistUploadedPublishBuild).toHaveBeenCalledWith({
+		sourceId: 'source-1',
+		userId: 'user-1',
+		publishedCommit: 'commit-new',
+		buildId: 'pb_demo',
+		baseUrl: 'https://kody.test',
+	})
+	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
 })
 
 test('durable escalation keys team-org publishes to the owning org, not the actor personal org', async () => {

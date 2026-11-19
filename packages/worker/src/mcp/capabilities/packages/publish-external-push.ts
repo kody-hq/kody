@@ -1769,8 +1769,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				reportProgress: ctx.reportProgress,
 				uploadedBuild: publishBuildId
 					? await resolveUploadedPublishBuildForPublish({
-							env: ctx.env,
-							request: ctx.callerContext.request,
+							db: ctx.env.APP_DB,
 							buildId: publishBuildId,
 							packageId,
 							sourceId: source.id,
