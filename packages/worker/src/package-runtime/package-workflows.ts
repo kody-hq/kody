@@ -96,6 +96,7 @@ import {
 import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
 import {
 	compactDurablePublishResult,
+	describeDurablePublishState,
 	isDurablePublishWorkflowCode,
 } from './durable-publish-result.ts'
 
@@ -2362,11 +2363,11 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			)
 			logs = result.logs
 			if (result.error) {
-				if (isTransientDurableObjectResetError(result.error)) {
-					throw new Error(getErrorMessage(result.error))
-				}
 				const message = getErrorMessage(result.error)
 				const terminalIndex = message.indexOf(terminalInlineWorkflowErrorPrefix)
+				if (isTransientDurableObjectResetError(result.error)) {
+					throw new Error(message)
+				}
 				if (terminalIndex !== -1) {
 					throw terminalWorkflowStepError(
 						message.slice(
@@ -2374,6 +2375,8 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						),
 					)
 				}
+				// This is Kody's own publish wrapper, not user-authored code.
+				if (durablePublish) throw new Error(message)
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
@@ -2399,6 +2402,18 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return value
 		} catch (error) {
+			if (durablePublish && !isAccountSuspendedError(error)) {
+				const state = await describeDurablePublishState({
+					env: this.env,
+					userId: payload.userId,
+					sourceId: payload.packageContext?.sourceId,
+					commit: payload.enqueuedCommit,
+				})
+				const message = `Publish workflow: ${state} ${getErrorMessage(error)}`
+				error = isNonRetryableError(error)
+					? terminalWorkflowStepError(message)
+					: new Error(message, { cause: error })
+			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
 				env: this.env,

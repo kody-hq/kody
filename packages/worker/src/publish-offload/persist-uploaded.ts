@@ -313,12 +313,10 @@ export async function persistUploadedPublishBuild(input: {
 		if (failed.length > 0) {
 			// Not a verification verdict: storage failed. Leave the build sealed
 			// so the same upload can be committed again.
-			return {
-				ok: false,
-				message: failed
-					.map((result) => (result.ok ? '' : getErrorMessage(result.error)))
-					.join('; '),
-			}
+			throw new Error(
+				`Writing uploaded artifacts failed: ${failed.map((result) => getErrorMessage(result.error)).join('; ')}`,
+				{ cause: failed[0]?.error },
+			)
 		}
 		await finishPublishBuild({
 			db,

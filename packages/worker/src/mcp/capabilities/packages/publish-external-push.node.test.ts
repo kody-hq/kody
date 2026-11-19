@@ -929,6 +929,22 @@ test('durable re-entry finalizes an uploaded build without the upload bucket bin
 		baseUrl: 'https://kody.test',
 	})
 	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
+
+	mockModule.persistUploadedPublishBuild.mockRejectedValueOnce(
+		new TypeError("Cannot read properties of undefined (reading 'get')"),
+	)
+	await expect(
+		publishExternalPushCapability.handler(
+			{
+				package_id: 'package-1',
+				baseline_published_commit: 'commit-old',
+				publish_build_id: 'pb_demo',
+			},
+			ctx,
+		),
+	).rejects.toThrow(
+		"Failed while finalizing the uploaded build: Cannot read properties of undefined (reading 'get')",
+	)
 })
 
 test('durable escalation keys team-org publishes to the owning org, not the actor personal org', async () => {

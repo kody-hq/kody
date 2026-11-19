@@ -3684,7 +3684,7 @@ class RepoSessionBase extends DurableObject<Env> {
 	}): Promise<PersistUploadedPublishBuildResult> {
 		const source = await this.resolvePublishSource(input)
 		if (source.entity_kind !== 'package') {
-			return { ok: false, message: 'Only packages can publish a build.' }
+			throw new Error('Only packages can publish a build.')
 		}
 		this.assertPublishedCommitUnchanged({
 			source,
