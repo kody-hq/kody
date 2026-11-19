@@ -22,6 +22,7 @@ import {
 	writeDevRegistration,
 } from '../src/dev/dev-registry.js'
 import { ensureMockTarget } from '../src/mock/mock-server.js'
+import { localKodyStateDir } from '../src/dev/local-kody.js'
 
 test('Windows registration credentials stay within the user cache without getuid', async () => {
 	const cache = await mkdtemp(join(tmpdir(), 'kody-win-registration-'))
@@ -154,6 +155,37 @@ test('declared exports execute through a private attached local Kody session', a
 		}
 		const executes = calls.filter((call) => call.path === '/v1/execute')
 		assert.equal(executes.length, 2)
+		const beforeReset = calls.length
+		let resetOutput = ''
+		assert.equal(
+			await runCli(
+				[
+					'execute',
+					'--local',
+					'--target',
+					'mock',
+					'--invoke',
+					'./seed',
+					'--reset-storage',
+				],
+				{
+					stdout: (text) => {
+						resetOutput += text
+					},
+					stderr: (text) => {
+						resetOutput += text
+					},
+				},
+			),
+			1,
+		)
+		assert.match(
+			resetOutput,
+			/--reset-storage cannot reset the shared local package store/,
+		)
+		assert.match(resetOutput, /Stop kody dev, then delete that directory/)
+		assert.ok(resetOutput.includes(localKodyStateDir(root)))
+		assert.equal(calls.length, beforeReset)
 		for (const call of executes) {
 			assert.match(call.body.code, /import action from "kody:@seed\/app\/seed"/)
 			assert.equal(call.authorization, 'Bearer private-local-token')

@@ -5,6 +5,8 @@ import { resolveExecuteInvokeCode } from '../invoke-passthrough.js'
 import { runRemoteExecuteWithToken } from '../remote-execute.js'
 import type { CredentialCallMapInput } from '../credential-call-map.js'
 import { resolveLocalKodySession } from './local-kody-session.js'
+import { localKodyStateDir } from './local-kody.js'
+import { StructuredCliError } from '../structured-error.js'
 
 export async function findLocalPackageExport(input: {
 	cwd?: string
@@ -50,7 +52,17 @@ export async function executeLocalPackageExport(input: {
 	onStatus?: (message: string) => void
 	passthroughHosts?: ReadonlyArray<string>
 	allowPrivateNetwork?: boolean
+	resetStorage?: boolean
 }) {
+	if (input.resetStorage) {
+		const stateDir = localKodyStateDir(input.export.manifest.root)
+		throw new StructuredCliError({
+			code: 'local_package_storage_reset_requires_stop',
+			message: `--reset-storage cannot reset the shared local package store. It lives in the package dev-state directory: ${stateDir}`,
+			fix: `Stop kody dev, then delete that directory: ${stateDir}`,
+			target: 'mock',
+		})
+	}
 	const session = await resolveLocalKodySession({
 		manifest: input.export.manifest,
 		onStatus: input.onStatus,

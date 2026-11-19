@@ -1352,6 +1352,7 @@ async function dispatch(
 					if (localExport) {
 						const result = await executeLocalPackageExport({
 							export: localExport,
+							resetStorage: parsed.values['reset-storage'] === true,
 							params: args.params,
 							conversationId: args.conversationId as string | undefined,
 							credentials,

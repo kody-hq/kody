@@ -38,6 +38,17 @@ import { localUsernameFor } from './dev-app-origin.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
 
+export function localKodyStateDir(
+	root: string,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	return join(
+		userCacheDir(env),
+		'dev-state',
+		createHash('sha256').update(root).digest('hex').slice(0, 16),
+	)
+}
+
 /** Structural type of `@kodycodes/dev-runtime` so the CLI never imports it statically. */
 export type DevRuntimeModule = {
 	startDevRuntime: (input: {
@@ -217,11 +228,7 @@ export async function startLocalKody(input: {
 	})
 	const runtime = (await import(pathToFileURL(entry).href)) as DevRuntimeModule
 	// Outside the package root so local state never lands in the saved tree.
-	const stateDir = join(
-		userCacheDir(input.env ?? process.env),
-		'dev-state',
-		createHash('sha256').update(input.manifest.root).digest('hex').slice(0, 16),
-	)
+	const stateDir = localKodyStateDir(input.manifest.root, input.env)
 	await mkdir(stateDir, { recursive: true })
 	const log = createWriteStream(join(stateDir, 'runtime.log'), { flags: 'a' })
 	input.onStatus?.(
