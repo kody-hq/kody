@@ -2,7 +2,6 @@ import {
 	executionContextsFlagKey,
 	featureFlagDefinitions,
 	mcpEventsExtensionFlagKey,
-	mcpSkillsExtensionFlagKey,
 	profilesFlagKey,
 	publishOffloadFlagKey,
 	type FeatureFlagKey,
@@ -64,15 +63,6 @@ export const selfServeExperiments = [
 			'Early access: mint a token for a profile (tokenCreate profile_id) or hand a sub-agent its own sub-profile (profileHandoff).',
 	},
 	{
-		id: 'package-skills',
-		flagKey: mcpSkillsExtensionFlagKey,
-		title: 'Package skills over MCP',
-		summary:
-			'Serve the Agent Skills your packages ship (skills/<name>/SKILL.md) to MCP hosts that support Skills over MCP. Publishing skills works without this.',
-		docsSlug: 'package-skills',
-		stage: 'Draft MCP extension: host support is partial.',
-	},
-	{
 		id: 'mcp-events',
 		flagKey: mcpEventsExtensionFlagKey,
 		title: 'MCP Events',
@@ -121,8 +111,6 @@ export const notSelfServeExperimentFlags: Partial<
 > = {
 	'files-workspace':
 		'Architecture review and controlled experimenter rollout are required before self-serve access.',
-	'repo-push-queue':
-		'Infrastructure kill switch evaluated per repo, not a user-facing feature.',
 	'publish-offload':
 		'Turned on and off with the execution-contexts experiment (its linkedFlagKeys), so publishing from a context needs no second opt-in.',
 }

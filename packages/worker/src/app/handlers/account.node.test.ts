@@ -272,7 +272,6 @@ test('native account and session reads batch user/role and flag reads into two r
 		'files-workspace': false,
 		'demo-indicator': true,
 		profiles: true,
-		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,

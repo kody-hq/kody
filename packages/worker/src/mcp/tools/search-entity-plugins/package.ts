@@ -789,7 +789,7 @@ export const packageSearchEntityPlugin = {
 				'',
 				'## Skills',
 				'',
-				'Agent Skills shipped in this package (`skills/<name>/SKILL.md`). Open a skill file with search entity detail, or use Skills-over-MCP when the client and `mcp-skills-extension` flag support it.',
+				'Agent Skills shipped in this package (`skills/<name>/SKILL.md`). Open a skill file with search entity detail, or use Skills-over-MCP when the client supports it.',
 				'',
 				...skillManifestPaths.map((path) => {
 					const skillName = path.slice('skills/'.length, -'/SKILL.md'.length)

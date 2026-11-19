@@ -278,13 +278,7 @@ test('saved-packages and non-preview enable-flag are rejected for remote seed', 
 	)
 
 	expect(() =>
-		parseArgs([
-			'--remote',
-			'--env',
-			'preview',
-			'--enable-flag',
-			'mcp-skills-extension',
-		]),
+		parseArgs(['--remote', '--env', 'preview', '--enable-flag', 'profiles']),
 	).toThrow('process.exit called')
 	expect(consoleError).toHaveBeenCalledWith(
 		expect.stringContaining('not on the preview seed allowlist'),

@@ -58,3 +58,9 @@ unchanged.
 **Revisit-if:** Artifacts offers a native per-repo push queue or a lock-wait
 option, or pushes need to resume across a queue instance reset (which would need
 stored credentials).
+
+## Update (2026-11-19)
+
+On for everyone: the registry default is on with no audience gate. The direct
+wait-and-retry path stays only as a two-week kill switch; after two clean weeks
+it is removed together with the `repo-push-queue` flag, leaving one push path.
