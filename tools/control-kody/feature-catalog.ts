@@ -367,6 +367,10 @@ const exemptRoutePrefixes: ReadonlyArray<{
 	{ prefix: '/profiles/', reason: 'avatar / OG asset' },
 	{ prefix: '/404', reason: 'error page' },
 	{ prefix: '/500', reason: 'error page' },
+	{
+		prefix: '/@{$orgSlug}/-/dev-mockups',
+		reason: 'dev-only mockup renderer; 404 in production',
+	},
 ]
 
 // Read the generated native route inventory without importing UI or server modules.

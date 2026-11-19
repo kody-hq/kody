@@ -1496,6 +1496,24 @@ export const revokeConnectedApp = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const removeConnectedAppRunApproval = createServerFn({ method: 'POST' })
+	.validator(z.object({ packageId: z.string().trim().min(1).max(300) }))
+	.handler(async ({ data }) => {
+		const [{ withWebsiteMutation }, { removePackageAppRunApproval }] =
+			await Promise.all([
+				import('./mutation-context.ts'),
+				import('../../src/app/package-app-run-consent.ts'),
+			])
+		return withWebsiteMutation({}, async ({ env, user }) => {
+			await removePackageAppRunApproval(
+				env.APP_DB,
+				user.mcpUser.userId,
+				data.packageId,
+			)
+			return { ok: true as const }
+		})
+	})
+
 export const revokeConnectedAppScope = createServerFn({ method: 'POST' })
 	.validator(
 		z.object({

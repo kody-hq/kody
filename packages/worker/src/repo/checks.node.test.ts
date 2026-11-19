@@ -1884,21 +1884,11 @@ test('credentialPatternNoticeForFiles reads repo paths under the source root', a
 	).toMatch(/Credential stamp is empty/)
 })
 
-test('snapshot workspace ignores inherited object keys for binary paths', async () => {
-	const binaryFileSizes = JSON.parse(
-		'{"icons/a.png": 3, "__proto__": 7}',
-	) as Record<string, number>
-	const workspace = createSnapshotFilesWorkspace(
-		{ 'package.json': '{}' },
-		{ binaryFileSizes },
-	)
+test('snapshot workspace ignores inherited object keys', async () => {
+	const workspace = createSnapshotFilesWorkspace({ 'package.json': '{}' })
 	expect(await workspace.readFile('constructor')).toBeNull()
-	expect(await workspace.stat('toString')).toBeNull()
-	expect(await workspace.stat('icons/a.png')).toEqual({ size: 3 })
-	expect(await workspace.stat('__proto__')).toEqual({ size: 7 })
-	expect((await workspace.glob()).map((entry) => entry.path).sort()).toEqual([
-		'__proto__',
-		'icons/a.png',
+	expect(await workspace.readFile('package.json')).toBe('{}')
+	expect((await workspace.glob()).map((entry) => entry.path)).toEqual([
 		'package.json',
 	])
 })

@@ -190,8 +190,23 @@ export function normalizeSearchText(text: string): string {
 		.toLowerCase()
 }
 
+/** Fold trivial plurals so "jobs" matches `job` and vice versa. */
+export function singularizeSearchToken(token: string): string {
+	if (token.endsWith('s') && token.length > 3 && !token.endsWith('ss')) {
+		return token.slice(0, -1)
+	}
+	return token
+}
+
 export function extractSearchTokens(text: string): Array<string> {
 	return normalizeSearchText(text).match(searchTokenPattern) ?? []
+}
+
+/** Normalized text with stopwords dropped, keeping order and repeats. */
+export function dropSearchStopwords(text: string): string {
+	return extractSearchTokens(text)
+		.filter((token) => !trivialSearchStopwords.has(token))
+		.join(' ')
 }
 
 export function extractMeaningfulSearchTokens(text: string): Array<string> {

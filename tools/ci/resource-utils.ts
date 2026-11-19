@@ -1001,6 +1001,28 @@ export type R2LifecyclePolicyDocument = {
 	rules: Array<Record<string, unknown>>
 }
 
+/**
+ * Repo session blobs bucket: `package-runs/` holds package check uploads and
+ * stored check and publish run results. A run deletes its upload when it
+ * finishes; this rule removes abandoned uploads and old results after a day.
+ * Matches `packageRunStagingPrefix` in the worker's package-check-upload.ts.
+ */
+export const packageRunStagingLifecyclePolicy: R2LifecyclePolicyDocument = {
+	rules: [
+		{
+			id: 'expire-package-run-staging',
+			enabled: true,
+			conditions: { prefix: 'package-runs/' },
+			deleteObjectsTransition: {
+				condition: { type: 'Age', maxAge: 86_400 },
+			},
+			abortMultipartUploadsTransition: {
+				condition: { type: 'Age', maxAge: 86_400 },
+			},
+		},
+	],
+}
+
 export function ensureR2BucketLifecycle({
 	name,
 	policy,

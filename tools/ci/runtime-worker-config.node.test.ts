@@ -375,3 +375,27 @@ test('generate preserves a different-zone */* from the runtime base config', asy
 		...packageAppRoutes,
 	])
 })
+
+test('the runtime Worker binds Artifacts and package run staging in every env', async () => {
+	// Package checks and publishes run as durable workflows in this Worker:
+	// they read the pushed commit from Artifacts and store results in R2.
+	const config = parseJsonc<{
+		env?: Record<
+			string,
+			{
+				artifacts?: Array<{ binding?: string; namespace?: string }>
+				r2_buckets?: Array<{ binding?: string }>
+			}
+		>
+	}>(await readFile(runtimeBaseConfigPath, 'utf8'))
+	for (const envName of ['production', 'preview']) {
+		const env = config.env?.[envName]
+		expect(env?.artifacts, envName).toEqual([
+			{ binding: 'ARTIFACTS', namespace: envName },
+		])
+		expect(
+			env?.r2_buckets?.map((bucket) => bucket.binding),
+			envName,
+		).toContain('REPO_SESSION_BLOBS')
+	}
+})

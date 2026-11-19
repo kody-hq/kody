@@ -75,7 +75,28 @@ test('publishRefusalMessage prefers API message and summarizes checks_failed', (
 	)
 })
 
-async function runPublishWithBody(body: unknown): Promise<{
+const progressLines =
+	'kody package publish: running as workflow wf-1.\n' +
+	'kody package publish: Running publish checks.\n'
+
+/** `kody package publish` against a run that ends with `body` as its result. */
+async function runPublishWithBody(body: unknown) {
+	const status =
+		body &&
+		typeof body === 'object' &&
+		['published', 'already_published'].includes(
+			(body as { status?: string }).status ?? '',
+		)
+			? 'complete'
+			: 'errored'
+	return await runPublishWithRun({ status, result: body })
+}
+
+async function runPublishWithRun(run: {
+	status: string
+	result: unknown
+	lastError?: string
+}): Promise<{
 	code: number
 	stdout: string
 	stderr: string
@@ -98,12 +119,30 @@ async function runPublishWithBody(body: unknown): Promise<{
 					'/v1/packages/{package_id}/external-push': {
 						post: { operationId: 'packagePublishExternalPush' },
 					},
+					'/v1/packages/runs/{workflow_id}': {
+						get: { operationId: 'packageRunResult' },
+					},
 				},
 			})
 		}
-		assert.equal(url.pathname, '/v1/packages/pkg-1/external-push')
-		assert.equal((init?.method ?? 'GET').toUpperCase(), 'POST')
-		return json(body)
+		// Publish always dispatches a durable run; the CLI follows it.
+		if (url.pathname === '/v1/packages/pkg-1/external-push') {
+			assert.equal((init?.method ?? 'GET').toUpperCase(), 'POST')
+			return json({ status: 'dispatched', workflow_id: 'wf-1' })
+		}
+		assert.equal(url.pathname, '/v1/packages/runs/wf-1')
+		return json({
+			...(run.result === null
+				? { available: false, kind: null, result: null }
+				: {
+						available: true,
+						kind: 'packagePublishExternalPush',
+						result: run.result,
+					}),
+			status: run.status,
+			last_error: run.lastError ?? null,
+			progress: { phase: 'checks', message: 'Running publish checks.' },
+		})
 	}) as typeof fetch
 
 	let stdout = ''
@@ -136,7 +175,7 @@ async function runPublishWithBody(body: unknown): Promise<{
 	}
 }
 
-test('kody package publish exits 0 for published and already_published', async () => {
+test('kody package publish follows its run: exits 0 for published and already_published, 1 for a failed run', async () => {
 	const published = await runPublishWithBody({
 		status: 'published',
 		published_commit: 'abc',
@@ -144,7 +183,7 @@ test('kody package publish exits 0 for published and already_published', async (
 	})
 	assert.equal(published.code, 0)
 	assert.match(published.stdout, /"status": "published"/)
-	assert.equal(published.stderr, '')
+	assert.equal(published.stderr, progressLines)
 
 	const noop = await runPublishWithBody({
 		status: 'already_published',
@@ -154,15 +193,18 @@ test('kody package publish exits 0 for published and already_published', async (
 	assert.equal(noop.code, 0)
 	assert.match(noop.stdout, /"already_published"/)
 	assert.match(noop.stdout, /"artifacts_rebuilt": true/)
-	assert.equal(noop.stderr, '')
+	assert.equal(noop.stderr, progressLines)
 
-	const dispatched = await runPublishWithBody({
-		status: 'dispatched',
-		workflow_id: 'wf-1',
-		message: 'Publish continues in the background.',
+	// A run Kody itself failed stores no result: the reason is its last error.
+	const failed = await runPublishWithRun({
+		status: 'errored',
+		result: null,
+		lastError: 'Durable Object reset.',
 	})
-	assert.equal(dispatched.code, 0)
-	assert.equal(dispatched.stderr, '')
+	assert.equal(failed.code, 1)
+	assert.match(failed.stdout, /"status": "failed"/)
+	assert.match(failed.stdout, /"workflow_id": "wf-1"/)
+	assert.equal(failed.stderr, `${progressLines}Durable Object reset.\n`)
 })
 
 test('kody package publish exits 1 and writes the refusal message to stderr', async () => {
@@ -174,7 +216,10 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 	})
 	assert.equal(locked.code, 1)
 	assert.match(locked.stdout, /"status": "locked"/)
-	assert.equal(locked.stderr, 'Approve the pending commit on the website.\n')
+	assert.equal(
+		locked.stderr,
+		`${progressLines}Approve the pending commit on the website.\n`,
+	)
 
 	const checks = await runPublishWithBody({
 		status: 'checks_failed',
@@ -186,7 +231,7 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 	assert.match(checks.stdout, /"checks_failed"/)
 	assert.equal(
 		checks.stderr,
-		'Publish checks failed.\n- docs: README missing\n',
+		`${progressLines}Publish checks failed.\n- docs: README missing\n`,
 	)
 
 	const nff = await runPublishWithBody({
@@ -198,7 +243,7 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 	assert.equal(nff.code, 1)
 	assert.equal(
 		nff.stderr,
-		'HEAD is not a descendant of the published commit.\n',
+		`${progressLines}HEAD is not a descendant of the published commit.\n`,
 	)
 
 	const approval = await runPublishWithBody({
@@ -208,5 +253,8 @@ test('kody package publish exits 1 and writes the refusal message to stderr', as
 		approval_url: 'https://kody.codes/approve-creds',
 	})
 	assert.equal(approval.code, 1)
-	assert.equal(approval.stderr, 'Owner must approve credential need changes.\n')
+	assert.equal(
+		approval.stderr,
+		`${progressLines}Owner must approve credential need changes.\n`,
+	)
 })

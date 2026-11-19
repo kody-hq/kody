@@ -59,6 +59,7 @@ export const packageWorkflowsRunRecordMocks = (() => {
 		const now = new Date().toISOString()
 		return {
 			id: input.id,
+			progress: existing?.progress ?? null,
 			bindingName: input.bindingName,
 			sourceType: input.sourceType,
 			packageId: input.packageId ?? null,

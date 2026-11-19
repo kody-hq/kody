@@ -99,3 +99,46 @@ test('caps the listed sites', async () => {
 	})
 	expect(notice).toContain('- and 2 more')
 })
+
+test('a password in a sign-in body still blocks publish and names a login credential', async () => {
+	const bluesky = [
+		'export async function signIn() {',
+		"  await fetch('https://bsky.social/xrpc/com.atproto.server.createSession', {",
+		"    method: 'POST',",
+		"    headers: { 'content-type': 'application/json' },",
+		"    body: JSON.stringify({ identifier: 'me.example.com', password: '{{secret:blueskyAppPassword}}' }),",
+		'  })',
+		'}',
+	].join('\n')
+	const hits = await findSecretPlaceholderRequestPlacements({
+		'src/signals/social/core.ts': bluesky,
+	})
+	expect(hits).toEqual([
+		{
+			path: 'src/signals/social/core.ts',
+			line: 5,
+			nameKind: 'secret',
+			name: 'blueskyAppPassword',
+			part: 'body',
+			loginExchange: true,
+		},
+	])
+	const failure = formatSecretPlaceholderRequestPlacementNotice({
+		hits,
+		mode: 'fail',
+	})
+	expect(failure).toContain('Publish failed:')
+	expect(failure).toContain('This blocks publish.')
+	expect(failure).toContain(
+		'- src/signals/social/core.ts:5: secret "blueskyAppPassword" in the request body',
+	)
+	expect(failure).toContain('declare a login credential')
+
+	const other = formatSecretPlaceholderRequestPlacementNotice({
+		hits: await findSecretPlaceholderRequestPlacements({
+			'src/index.ts': source,
+		}),
+		mode: 'fail',
+	})
+	expect(other).not.toContain('login credential')
+})

@@ -230,9 +230,32 @@ const headerNamePattern = /^[A-Za-z0-9-]{1,64}$/
 const headerFormatPattern = /^(?:[A-Za-z][A-Za-z0-9._-]{0,31} )?\{value\}$/
 const queryParamBeforePattern = /[?&]([A-Za-z0-9._-]{1,64})=$/
 const identifierPattern = /^[A-Za-z_$][A-Za-z0-9_$-]{0,63}$/
-/** Path words of a login, session, or token exchange endpoint. */
+/**
+ * Path words of a login, session, or token exchange endpoint, including
+ * method names such as Bluesky's `com.atproto.server.createSession`.
+ */
 const loginPathPattern =
-	/(?:^|[/_.-])(?:login|log-in|signin|sign-in|sign_in|session|sessions|auth|authenticate|authorize|token|tokens|oauth2?)(?:$|[/_.?-])/i
+	/(?:^|[/_.-])(?:login|log-in|signin|sign-in|sign_in|session|sessions|createSession|refreshSession|auth|authenticate|authorize|token|tokens|oauth2?)(?:$|[/_.?-])/i
+
+/**
+ * Body fields a login credential's exchange sends. Whole field names only: an
+ * unanchored `pass` also matches `compass`. `refresh_token` / `client_secret`
+ * stay the same names, including camelCase.
+ */
+export const loginBodyFieldPattern =
+	/^(?:pass(?:word|wd)?|refresh_?token|client_?secret)$/i
+
+/** A body placeholder a login credential's exchange can send instead. */
+export function isLoginExchangeBodyPlacement(
+	placement: CredentialPlacement,
+	name: string,
+) {
+	return (
+		placement.type === 'body' &&
+		placement.endpoint === 'login' &&
+		loginBodyFieldPattern.test(placement.field ?? name)
+	)
+}
 
 const signingOutputEncodings = new Set([
 	'hex',

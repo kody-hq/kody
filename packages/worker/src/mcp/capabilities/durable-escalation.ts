@@ -16,13 +16,6 @@ import {
 } from '#worker/run-records/service.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 
-/**
- * Soft budget under Cursor/client ~60s tools/call and MCP execute's ~90s
- * sandbox, leaving room to return a dispatched handle before the client gives
- * up. Progress notifications do not reset the client timeout.
- */
-export const defaultDurableEscalationBudgetMs = 35_000
-
 export type DurableEscalationHandle = {
 	status: 'dispatched'
 	workflow_id: string
@@ -32,8 +25,7 @@ export type DurableEscalationHandle = {
 	message: string
 }
 
-export type DurableEscalationOutcome<T> =
-	| { kind: 'completed'; value: T }
+export type DurableDispatchOutcome =
 	| { kind: 'dispatched'; handle: DurableEscalationHandle }
 	/**
 	 * Preserve the original thrown value (including EntitlementLimitError) so
@@ -49,7 +41,7 @@ export type DurableEscalationOutcome<T> =
  * transitional RunLog projection status written before the instance is queued
  * (today that transitional value is `creating`). New pre-active statuses are
  * covered automatically; only terminal runs (complete/errored/terminated/
- * cancelled) allow another inline attempt.
+ * cancelled) allow another dispatch.
  */
 export const alreadyDispatchedWorkflowStatusExclusion =
 	terminalWorkflowStatusValues
@@ -92,11 +84,11 @@ function createDispatchedHandle(input: {
 		idempotency_key: input.idempotencyKey,
 		run_status: input.workflow.status ?? null,
 		message:
-			'Work exceeded the inline budget and was dispatched to a durable workflow. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not retry the same operation while the run is active.',
+			'Work was dispatched to a durable workflow. Poll with packageRunResult({ workflow_id }) until the run is terminal; do not retry the same operation while the run is active.',
 	}
 }
 
-async function findAlreadyDispatchedWorkflowRunByIdempotencyKey(input: {
+export async function findAlreadyDispatchedWorkflowRunByIdempotencyKey(input: {
 	env: Pick<Env, 'RUN_LOG'>
 	userId: OwnerId
 	idempotencyKey: string
@@ -155,36 +147,25 @@ async function findAlreadyDispatchedWorkflowRunByIdempotencyKey(input: {
 	}
 }
 
-function waitForAbort(signal: AbortSignal) {
-	return new Promise<void>((resolve) => {
-		if (signal.aborted) {
-			resolve()
-			return
-		}
-		signal.addEventListener('abort', () => resolve(), { once: true })
-	})
-}
-
-type SettledInlineRun<T> =
-	| { kind: 'completed'; value: T }
-	| { kind: 'rejected'; error: unknown }
-
 /**
- * Attempt `run` within a wall-clock budget. On budget exhaustion, create a
- * durable Cloudflare Workflow for the same work and return a handle instead of
- * hanging past MCP execute's timeout. Never throws.
+ * Create the durable Cloudflare Workflow for one operation and return its
+ * handle. This is the only way the operation runs: there is no inline attempt
+ * in the calling request. Never throws.
  *
  * Idempotency is always caller-scoped: `idempotencyParts` are joined with the
  * same `userId` used for RunLog projection lookup/create, so keys cannot
- * silently disagree with projection ownership.
+ * silently disagree with projection ownership. An active run for the key is
+ * returned instead of a second one. A dead terminal run (errored, terminated,
+ * cancelled) releases the key so the same operation can run again; set
+ * `rerunComplete` when a complete run must not be replayed either (its result
+ * depends on server state that may have changed since).
  */
-export async function runWithDurableEscalation<T>(input: {
+export async function dispatchDurableRun(input: {
 	env: Pick<Env, 'APP_DB' | 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
 	userId: OwnerId
 	userEmail?: string | null
-	/** The run that escalates; the durable workflow inherits it. */
+	/** The run that dispatches; the durable workflow inherits it. */
 	lineage: RequestLineage
-	budgetMs?: number
 	/**
 	 * Operation-specific key segments (not including userId). The helper
 	 * prefixes `userId` so RunLog projection dedupe stays aligned with scope.
@@ -200,8 +181,8 @@ export async function runWithDurableEscalation<T>(input: {
 	enqueuedCommit?: string | null
 	durableCode: string
 	durableParams?: Record<string, unknown>
-	run: (signal: AbortSignal) => Promise<T>
-}): Promise<DurableEscalationOutcome<T>> {
+	rerunComplete?: boolean
+}): Promise<DurableDispatchOutcome> {
 	let idempotencyKey: string
 	try {
 		idempotencyKey = buildCallerScopedIdempotencyKey({
@@ -231,87 +212,9 @@ export async function runWithDurableEscalation<T>(input: {
 					idempotency_key: existing.idempotencyKey,
 					run_status: existing.status,
 					message:
-						'An active durable run already exists for this idempotency key. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not create another run.',
+						'An active durable run already exists for this idempotency key. Poll with packageRunResult({ workflow_id }) until the run is terminal; do not create another run.',
 				},
 			}
-		}
-
-		const budgetMs = Math.max(
-			1,
-			input.budgetMs ?? defaultDurableEscalationBudgetMs,
-		)
-		const controller = new AbortController()
-		const timer = setTimeout(() => {
-			controller.abort()
-		}, budgetMs)
-
-		const settledRef: { current: SettledInlineRun<T> | null } = {
-			current: null,
-		}
-		const runPromise = input.run(controller.signal).then(
-			(value) => {
-				settledRef.current = { kind: 'completed', value }
-				return value
-			},
-			(error: unknown) => {
-				settledRef.current = { kind: 'rejected', error }
-				throw error
-			},
-		)
-		// The inline attempt is not cancelled on budget expiry (and must not be:
-		// aborting mid-publish could leave partial state). Keep the rejection
-		// handled so an abandoned-in-flight attempt cannot surface unhandled.
-		void runPromise.catch(() => {})
-
-		try {
-			const raced = await Promise.race([
-				runPromise.then(
-					(value) => ({ kind: 'completed' as const, value }),
-					(error: unknown) => ({ kind: 'rejected' as const, error }),
-				),
-				waitForAbort(controller.signal).then(() => ({
-					kind: 'aborted' as const,
-				})),
-			])
-
-			if (raced.kind === 'completed') {
-				return { kind: 'completed', value: raced.value }
-			}
-			if (raced.kind === 'rejected') {
-				if (controller.signal.aborted) {
-					// Fall through: prefer any same-tick settlement below, else dispatch.
-				} else {
-					return {
-						kind: 'failed',
-						error: raced.error,
-					}
-				}
-			}
-
-			// Drain microtasks so a run that finished in the same turn as the
-			// abort is observed before we create a redundant workflow.
-			await Promise.resolve()
-			const settled = settledRef.current
-			if (settled?.kind === 'completed') {
-				return { kind: 'completed', value: settled.value }
-			}
-			if (settled?.kind === 'rejected' && !controller.signal.aborted) {
-				return {
-					kind: 'failed',
-					error: settled.error,
-				}
-			}
-			// Inline work may still be running. We dispatch anyway rather than
-			// awaiting it (awaiting would reintroduce the opaque MCP timeout).
-			// Overlap is intentional and safe for publish: we do not cancel the
-			// in-flight attempt (partial apply is worse than duplication), the
-			// durable re-entry is idempotent on matching published_commit at the
-			// RepoSession layer, callers pass a pre-request tip baseline so a
-			// tip advance still reports published (not already_published), and
-			// RepoSession DO RPCs serialize per session id so the common
-			// first-attempt session cannot interleave mutations.
-		} finally {
-			clearTimeout(timer)
 		}
 
 		const createBody = {
@@ -320,6 +223,9 @@ export async function runWithDurableEscalation<T>(input: {
 			code: input.durableCode,
 			params: input.durableParams,
 		}
+		const mustRerun = (status: string | null | undefined) =>
+			isDeadTerminalWorkflowStatus(status) ||
+			(input.rerunComplete === true && status === 'complete')
 		let workflow = await createDynamicCallableWorkflow({
 			env: input.env,
 			userId: input.userId,
@@ -329,7 +235,7 @@ export async function runWithDurableEscalation<T>(input: {
 			body: createBody,
 			lineage: input.lineage,
 		})
-		if (isDeadTerminalWorkflowStatus(workflow.status)) {
+		if (mustRerun(workflow.status)) {
 			// Terminal failure (for example Durable Object reset mid-run) must
 			// not keep the semantic key. Release it and create once more so the
 			// same operation can re-dispatch; running and complete still dedupe.
@@ -347,7 +253,7 @@ export async function runWithDurableEscalation<T>(input: {
 				body: createBody,
 				lineage: input.lineage,
 			})
-			if (isDeadTerminalWorkflowStatus(workflow.status)) {
+			if (mustRerun(workflow.status)) {
 				return {
 					kind: 'failed',
 					error: new Error(

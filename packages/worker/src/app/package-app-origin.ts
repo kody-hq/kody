@@ -69,6 +69,11 @@ import {
 } from '#app/package-app-handoff.ts'
 import { createHealthHandler } from '#app/handlers/health.ts'
 import {
+	needsPackageAppRunConsentForPerson,
+	packageAppRunConsentRequiredHeader,
+	packageAppRunConsentResponse,
+} from '#app/package-app-run-consent.ts'
+import {
 	findLivePackageAppOauthGrant,
 	notePackageAppOauthGrantUse,
 } from '#app/package-app-oauth-grants.ts'
@@ -877,6 +882,22 @@ async function handleAppOriginPackageAppPath(input: {
 		})
 	}
 
+	if (
+		slugLookup?.savedPackage.hasApp &&
+		(await needsPackageAppRunConsentForPerson({
+			db: env.APP_DB,
+			packageId: slugLookup.savedPackage.id,
+			ownerId: org.userId,
+			personId: user.mcpUser.userId,
+		}))
+	) {
+		return packageAppRunConsentResponse({
+			request,
+			baseUrl: url.origin,
+			packagePath,
+		})
+	}
+
 	// A visitor who started on the app's own host returns there, even when the
 	// app also has a custom hostname: each host holds its own session.
 	const fromAppHost = url.searchParams.has(packageAppHostEntryQueryParam)
@@ -1280,6 +1301,39 @@ async function servePackageAppForSession(input: {
 			}),
 		)
 		if (claims) {
+			const org = await resolvePackageAppOrgOwnerByHandle({ env, handle })
+			const app =
+				org &&
+				(await resolveSavedPackageForPackageAppSlug({
+					db: env.APP_DB,
+					userId: org.userId,
+					slug: packagePath.kodyId,
+				}))
+			if (!org) {
+				return createUnmatchedPackageAppPathResponse()
+			}
+			const packageId =
+				app?.savedPackage.hasApp && !app.retired ? app.savedPackage.id : null
+			if (
+				await needsPackageAppRunConsentForPerson({
+					db: env.APP_DB,
+					packageId,
+					ownerId: org.userId,
+					personId: personIdFromStored(claims.stableUserId),
+				})
+			) {
+				if (!packageId) return createUnmatchedPackageAppPathResponse()
+				const host = parsePackageAppRequestHost({ env, url })
+				return packageAppRunConsentResponse({
+					request,
+					baseUrl: appBaseUrl,
+					packagePath,
+					fromAppHost:
+						host?.kind === 'app-subdomain' ||
+						(host?.kind === 'user-subdomain' &&
+							packagePath.mount === 'custom-hostname'),
+				})
+			}
 			return redirectResponse({
 				location: withoutHandoffToken(url).toString(),
 				status: 302,
@@ -1367,6 +1421,8 @@ async function servePackageAppForSession(input: {
 			packagePath,
 			serverTiming,
 		})
+		if (response.headers.has(packageAppRunConsentRequiredHeader))
+			return response
 		const ticketCookie = await mintPackageAppTicketCookie({
 			env,
 			host: url.host,

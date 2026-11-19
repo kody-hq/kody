@@ -1051,6 +1051,12 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'packageCheckUploadCreate',
+		method: 'POST',
+		pathTemplate: '/v1/packages/check-uploads',
+		pathParamNames: [],
+	},
+	{
 		operationId: 'packageCollaboratorList',
 		method: 'GET',
 		pathTemplate: '/v1/packages/{package_id}/collaborators',
@@ -1127,6 +1133,12 @@ export const bakedOpenApiRoutes = [
 		method: 'POST',
 		pathTemplate: '/v1/packages/{package_id}/external-push',
 		pathParamNames: ['package_id'],
+	},
+	{
+		operationId: 'packageRunResult',
+		method: 'GET',
+		pathTemplate: '/v1/packages/runs/{workflow_id}',
+		pathParamNames: ['workflow_id'],
 	},
 	{
 		operationId: 'packageSave',

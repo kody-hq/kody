@@ -3823,6 +3823,12 @@ export type AccountConnectedAppView = {
 export type AccountConnectedAppsLoaderData = {
 	ok: true
 	apps: Array<AccountConnectedAppView>
+	runApprovals: Array<{
+		packageId: string
+		appName: string
+		publisher: string
+		publisherName: string
+	}>
 	agents: Array<ConnectedMcpAgent>
 	/** True when the agent list could not load; apps still show. */
 	agentsUnavailable: boolean

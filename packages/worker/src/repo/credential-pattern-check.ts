@@ -30,6 +30,7 @@ import {
 	sealCredentialStamp,
 } from '#worker/credentials/credential-stamp.ts'
 import {
+	isLoginExchangeBodyPlacement,
 	mergePackageCredentialScans,
 	scanPackageCredentials,
 	type CredentialReference,
@@ -85,13 +86,6 @@ const credentialTypeHints: Record<CredentialTypeHint, string> = {
 
 const credentialTypeHintsHeading = 'Credential migration options (ADR 0068):'
 
-/**
- * Whole field names only. An unanchored `pass` also matches `compass`.
- * `refresh_token` / `client_secret` stay the same names, including camelCase.
- */
-const loginBodyFieldPattern =
-	/^(?:pass(?:word|wd)?|refresh_?token|client_?secret)$/i
-
 /** Codemod 0010 lists a secret name unless this slot kind is declared for it. */
 const declaredSlotKindByNameKind = {
 	secret: 'secret',
@@ -122,11 +116,10 @@ function credentialTypeHintFor(
 		case 'path':
 		case 'url':
 			return 'url'
-		case 'body': {
-			if (placement.endpoint !== 'login') return null
-			const field = placement.field ?? reference.name
-			return loginBodyFieldPattern.test(field) ? 'login' : null
-		}
+		case 'body':
+			return isLoginExchangeBodyPlacement(placement, reference.name)
+				? 'login'
+				: null
 		case 'signing':
 			return 'signing'
 		case 'header-custom':

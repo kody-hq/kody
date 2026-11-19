@@ -14,7 +14,7 @@ export async function waitForNpmPackage(
 	const fetchFn = options.fetch ?? fetch
 	const sleep = options.sleep ?? setTimeout
 	const now = options.now ?? Date.now
-	const deadline = now() + (options.timeoutMs ?? 20 * 60_000)
+	const deadline = now() + (options.timeoutMs ?? 35 * 60_000)
 	const headers = { 'cache-control': 'no-cache, no-store', pragma: 'no-cache' }
 	while (now() < deadline) {
 		const signal = AbortSignal.timeout(

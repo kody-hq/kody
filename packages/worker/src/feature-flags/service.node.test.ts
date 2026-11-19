@@ -733,16 +733,26 @@ test('deleteStaleFeatureFlag refuses registry keys and removes stale rows', asyn
 	)
 	expect(db.globals.has('demo-indicator')).toBe(true)
 
-	await expect(deleteStaleFeatureFlag(db, 'retired-flag')).resolves.toBe(true)
+	await expect(deleteStaleFeatureFlag(db, 'retired-flag')).resolves.toEqual({
+		global: 1,
+		userOverrides: 1,
+		orgOverrides: 0,
+		repoOverrides: 1,
+	})
 	expect(db.globals.has('retired-flag')).toBe(false)
 	expect(db.overrides.size).toBe(0)
 	expect(db.repoOverrides).toEqual([
 		{ flag_key: 'retired-repo-only', source_id: 'repo-b' },
 	])
-	await expect(deleteStaleFeatureFlag(db, 'retired-flag')).resolves.toBe(false)
-	await expect(deleteStaleFeatureFlag(db, 'retired-repo-only')).resolves.toBe(
-		true,
-	)
+	await expect(deleteStaleFeatureFlag(db, 'retired-flag')).resolves.toEqual({
+		global: 0,
+		userOverrides: 0,
+		orgOverrides: 0,
+		repoOverrides: 0,
+	})
+	await expect(
+		deleteStaleFeatureFlag(db, 'retired-repo-only'),
+	).resolves.toMatchObject({ repoOverrides: 1 })
 	expect(db.repoOverrides).toEqual([])
 })
 

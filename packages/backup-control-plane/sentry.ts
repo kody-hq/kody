@@ -89,3 +89,20 @@ export function captureFullSealBlocked(input: {
 		},
 	})
 }
+
+/**
+ * The hourly seal scan hit the Workers per-invocation subrequest limit even
+ * though its own R2 call budget had room: the budget no longer fits under
+ * `limits.subrequests` next to the rest of the invocation.
+ */
+export function captureSealScanSubrequestLimit(input: {
+	day: string
+	r2Calls: number
+}) {
+	captureDrIssue({
+		cause: 'seal-scan-subrequest-limit',
+		detail: 'worker-subrequest-limit',
+		message: `Full DR seal scan hit the Workers subrequest limit after ${input.r2Calls} R2 calls`,
+		tags: { 'dr.day': input.day },
+	})
+}

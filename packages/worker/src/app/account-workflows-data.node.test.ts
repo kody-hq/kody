@@ -50,6 +50,7 @@ function makeWorkflow(
 ): WorkflowRunInspection {
 	return {
 		id: 'dynwf-1',
+		progress: null,
 		userId: ownerIdFromStored('stable-user-1'),
 		bindingName: 'DYNAMIC_CALLABLE_WORKFLOWS',
 		sourceType: 'inline',

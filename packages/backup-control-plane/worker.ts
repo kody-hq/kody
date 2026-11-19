@@ -152,16 +152,18 @@ async function scheduled(
 		return
 	}
 	const scheduledAt = new Date(controller.scheduledTime)
+	const retryingEnv = withRetryingBackupBucket(env)
 	switch (controller.cron) {
 		case BACKUP_CRON:
-			await triggerBackup(env, scheduledAt)
+			await triggerBackup(retryingEnv, scheduledAt)
 			return
 		case FRESHNESS_CRON: {
 			const results = await Promise.allSettled([
 				runFreshnessAndRetry({
-					checkFreshness: () => checkFreshness(env, scheduledAt),
-					retryBackup: () => retryBackup(env, scheduledAt),
+					checkFreshness: () => checkFreshness(retryingEnv, scheduledAt),
+					retryBackup: () => retryBackup(retryingEnv, scheduledAt),
 				}),
+				// Raw bucket: the seal scan budgets its own calls and retries.
 				sealRecentCompleteDays(env, scheduledAt),
 			])
 			const errors = results.flatMap((result) =>
@@ -193,7 +195,7 @@ const handler = {
 		env: BackupEnvironment,
 	): Promise<void> {
 		try {
-			await scheduled(controller, withRetryingBackupBucket(env))
+			await scheduled(controller, env)
 		} catch (error) {
 			safeLog({
 				event: 'backup-failure',

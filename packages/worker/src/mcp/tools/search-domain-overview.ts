@@ -8,6 +8,7 @@ import { buildDomainIndexMatches } from './search-domain-index.ts'
 import {
 	type SearchIntent,
 	extractSearchTokens,
+	singularizeSearchToken,
 	understandSearchQuery,
 } from './understand-search-query.ts'
 
@@ -77,14 +78,6 @@ const explorationQueryTokens = new Set([
 	'your',
 ])
 
-/** Fold trivial plurals so "jobs" matches the `jobs` domain and vice versa. */
-function singularizeToken(token: string): string {
-	if (token.endsWith('s') && token.length > 3 && !token.endsWith('ss')) {
-		return token.slice(0, -1)
-	}
-	return token
-}
-
 export function searchQueryUsesRankingEmbedding(input: {
 	query: string
 	domain?: string
@@ -130,7 +123,9 @@ export function buildDomainOverviewMatches(input: {
 	if (visibleDomains.length === 0) return null
 
 	const queryConceptsByToken = new Map(
-		meaningfulTokens.map((token) => [token, singularizeToken(token)] as const),
+		meaningfulTokens.map(
+			(token) => [token, singularizeSearchToken(token)] as const,
+		),
 	)
 	const matchedDomains: Array<CapabilityDomainMetadata> = []
 	const domainMatchedTokens = new Set<string>()
@@ -144,7 +139,7 @@ export function buildDomainOverviewMatches(input: {
 			continue
 		}
 		const nameConcepts = new Set(
-			extractSearchTokens(domain.name).map(singularizeToken),
+			extractSearchTokens(domain.name).map(singularizeSearchToken),
 		)
 		let matched = false
 		for (const [token, concept] of queryConceptsByToken) {

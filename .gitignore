@@ -35,6 +35,7 @@ blob-report
 test-results
 packages/worker/wrangler-*.generated.json
 packages/worker/start/routeTree.gen.check.ts
+packages/worker/start/mockups/local/
 packages/worker/.generated/
 packages/worker/src/generated/
 packages/runtime-worker/wrangler-*.generated.json

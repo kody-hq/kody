@@ -43,6 +43,9 @@ export const orgTransferTables: Record<string, OrgTransferTableDisposition> = {
 	package_app_rate_limits: keep(
 		'Rate-limit buckets bind to package ids, which do not change on org transfer.',
 	),
+	package_app_run_consents: keep(
+		'Approval belongs to the consenting person and the stable package id.',
+	),
 	package_app_grant_credential_mappings: keep(
 		'Visitor credential mappings follow the person and their app grant, not the package owner.',
 	),

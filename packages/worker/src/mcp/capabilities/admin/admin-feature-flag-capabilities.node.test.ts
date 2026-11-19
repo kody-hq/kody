@@ -5,6 +5,8 @@ import { expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 
 vi.unmock('#worker/audit-log.ts')
+import { callerCanAccessCapability } from '#mcp/capabilities/access-control.ts'
+import { adminFeatureFlagDeleteStaleCapability } from './admin-feature-flag-delete-stale.ts'
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
 import { adminFeatureFlagOrgOverrideCapability } from './admin-feature-flag-org-override.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
@@ -233,4 +235,129 @@ test('adminFeatureFlagOrgOverride sets and clears org rows by id or slug', async
 			.all()
 			.map((event) => event.result),
 	).toEqual(['success', 'success', 'failure', 'success', 'failure'])
+})
+
+test('adminFeatureFlagDeleteStale previews, deletes, and audits a stale flag', async () => {
+	const { sqlite, ctx } = createFeatureFlagCapabilityTest()
+	sqlite.exec(
+		`INSERT INTO orgs (id, slug, display_name, plan, created_at, updated_at)
+		 VALUES ('org-team', 'team', 'Team', 'free', '2026-10-20', '2026-10-20');
+		 INSERT INTO feature_flags (key, enabled, updated_by) VALUES ('retired-flag', 1, 1);
+		 INSERT INTO feature_flag_user_overrides (flag_key, user_id, enabled) VALUES
+			('retired-flag', 1, 1), ('retired-flag', 2, 0);
+		 INSERT INTO feature_flag_org_overrides (flag_key, org_id, enabled, note, updated_by, updated_at)
+		 VALUES ('retired-flag', 'org-team', 1, '', NULL, '2026-10-20');
+		 INSERT INTO feature_flags (key, enabled) VALUES ('other-retired-flag', 1);`,
+	)
+	const rowCount = (key: string) =>
+		sqlite
+			.prepare(
+				`SELECT
+					(SELECT COUNT(*) FROM feature_flags WHERE key = ?1) +
+					(SELECT COUNT(*) FROM feature_flag_user_overrides WHERE flag_key = ?1) +
+					(SELECT COUNT(*) FROM feature_flag_org_overrides WHERE flag_key = ?1) AS n`,
+			)
+			.get(key)?.n
+	const expectedRows = {
+		global: 1,
+		userOverrides: 2,
+		orgOverrides: 1,
+		repoOverrides: 0,
+	}
+
+	const preview = await adminFeatureFlagDeleteStaleCapability.handler(
+		{ key: 'retired-flag', dryRun: true },
+		ctx,
+	)
+	expect(preview).toMatchObject({
+		key: 'retired-flag',
+		dryRun: true,
+		deleted: expectedRows,
+		flag: {
+			stale: true,
+			global: expect.objectContaining({ enabled: true }),
+			overrides: [
+				expect.objectContaining({ username: 'admin' }),
+				expect.objectContaining({ username: 'jane' }),
+			],
+			orgOverrides: [expect.objectContaining({ slug: 'team' })],
+		},
+	})
+	expect(rowCount('retired-flag')).toBe(4)
+
+	const deleted = await adminFeatureFlagDeleteStaleCapability.handler(
+		{ key: 'retired-flag' },
+		ctx,
+	)
+	expect(deleted).toMatchObject({ dryRun: false, deleted: expectedRows })
+	expect(rowCount('retired-flag')).toBe(0)
+	expect(rowCount('other-retired-flag')).toBe(1)
+
+	await expect(
+		adminFeatureFlagDeleteStaleCapability.handler({ key: 'retired-flag' }, ctx),
+	).rejects.toThrow(/not found/)
+	await expect(
+		adminFeatureFlagDeleteStaleCapability.handler(
+			{ key: 'demo-indicator', dryRun: true },
+			ctx,
+		),
+	).rejects.toThrow(/Cannot delete registry feature flag/)
+
+	expect(
+		sqlite
+			.prepare(
+				'SELECT action, result, path, reason FROM audit_events ORDER BY id',
+			)
+			.all(),
+	).toEqual([
+		expect.objectContaining({
+			action: 'adminFeatureFlagDeleteStale',
+			result: 'success',
+			path: '/mcp',
+			reason: 'dry_run;key=retired-flag',
+		}),
+		expect.objectContaining({
+			action: 'feature_flag_delete_stale',
+			result: 'success',
+			path: '/mcp',
+			reason:
+				'key=retired-flag;global=1;user_overrides=2;org_overrides=1;repo_overrides=0',
+		}),
+		expect.objectContaining({
+			action: 'adminFeatureFlagDeleteStale',
+			result: 'failure',
+		}),
+		expect.objectContaining({
+			action: 'adminFeatureFlagDeleteStale',
+			result: 'failure',
+		}),
+	])
+})
+
+test('adminFeatureFlagDeleteStale requires the site admin role', () => {
+	const caller = (roles: Array<'admin'>) =>
+		createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			baseUrl: 'https://example.com',
+			user: {
+				userId: personIdFromStored(
+					testStableUserIdFromEmail('jane@example.com'),
+				),
+				email: 'jane@example.com',
+				displayName: 'jane',
+				roles,
+			},
+		})
+	expect(
+		callerCanAccessCapability(
+			caller([]),
+			adminFeatureFlagDeleteStaleCapability,
+		),
+	).toBe(false)
+	expect(
+		callerCanAccessCapability(
+			caller(['admin']),
+			adminFeatureFlagDeleteStaleCapability,
+		),
+	).toBe(true)
 })
