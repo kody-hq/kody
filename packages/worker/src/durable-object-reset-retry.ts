@@ -1,5 +1,6 @@
 import {
 	errorCauseChainIncludes,
+	getErrorCauseChain,
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import {
@@ -18,14 +19,16 @@ export const durableObjectResetRetryDelaysMs = [100, 500, 1_500] as const
  * same work on a fresh isolate — callers should fail closed with an
  * actionable message instead of burning the transient-reset retry budget.
  */
+export function getDurableObjectIsolateResourceLimitResetMessage(
+	error: unknown,
+) {
+	return getErrorCauseChain(error)
+		.map(getErrorMessage)
+		.find(isDurableObjectIsolateResourceLimitResetMessage)
+}
+
 export function isDurableObjectIsolateResourceLimitResetError(error: unknown) {
-	if (typeof error === 'string') {
-		return isDurableObjectIsolateResourceLimitResetMessage(error)
-	}
-	return errorCauseChainIncludes(
-		error,
-		isDurableObjectIsolateResourceLimitResetMessage,
-	)
+	return getDurableObjectIsolateResourceLimitResetMessage(error) !== undefined
 }
 
 /**

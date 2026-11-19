@@ -3,10 +3,12 @@ import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 /**
  * Published bundles inline each package's `kody:runtime` facade (only the
  * shared runtime module stays external). Facades built before
- * `createAuthenticatedFetch` and `oauthClientCredentials` joined
- * `packageBoundRuntimeExports` take those two straight from the shared
+ * `createAuthenticatedFetch`, `oauthClientCredentials`, and `packageContext`
+ * joined `packageBoundRuntimeExports` take them straight from the shared
  * runtime, so package code calls the run's own helper and acts as the caller
- * (an integration locked to the package refuses it as "execute").
+ * (an integration locked to the package refuses it as "execute"), and reads
+ * the run's package context, which has no package id when the export runs
+ * from ad hoc execute.
  *
  * This read-time repair binds them the way the current builder does: inside
  * each inlined facade section it adds
@@ -88,6 +90,7 @@ const boundCreatorNamePattern = /^__kodyCreatePackageBound[A-Za-z]+$/
 const facadeRepairCreators: Record<string, string> = {
 	createAuthenticatedFetch: '__kodyCreatePackageBoundAuthenticatedFetch',
 	oauthClientCredentials: '__kodyCreatePackageBoundOauthClientCredentials',
+	packageContext: '__kodyCreatePackageBoundPackageContext',
 }
 
 function moduleSource(module: WorkerLoaderModules[string]) {
@@ -359,7 +362,8 @@ export function repairInlinedFacadeBindings(input: {
 }
 
 /**
- * Bind `createAuthenticatedFetch` / `oauthClientCredentials` in every inlined
+ * Bind `createAuthenticatedFetch`, `oauthClientCredentials`, and
+ * `packageContext` in every inlined
  * package facade of a stored bundle (see file comment). Returns the artifact
  * unchanged when no module needs it.
  */

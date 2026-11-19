@@ -1,4 +1,4 @@
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import {
 	classifyRetryableD1Error,
 	isBareRetryableD1LockSentryEvent,
@@ -122,4 +122,30 @@ test('readD1RetryAttempts reports how many tries runD1WithRetry made', async () 
 		throw badSql
 	}).catch(() => undefined)
 	expect(readD1RetryAttempts(badSql)).toBeNull()
+})
+
+test('runD1WithRetry jitter keeps each backoff within its upper half', async () => {
+	vi.useFakeTimers()
+	const random = vi.spyOn(Math, 'random').mockReturnValue(0)
+	try {
+		let attempts = 0
+		const result = runD1WithRetry(
+			async () => {
+				attempts += 1
+				if (attempts < 3) throw new Error('D1_ERROR: SQLITE_BUSY')
+				return 'ok'
+			},
+			{ maxAttempts: 3, baseDelayMs: 100, jitter: true },
+		)
+		await vi.advanceTimersByTimeAsync(49)
+		expect(attempts).toBe(1)
+		await vi.advanceTimersByTimeAsync(1)
+		expect(attempts).toBe(2)
+		await vi.advanceTimersByTimeAsync(100)
+		await expect(result).resolves.toBe('ok')
+		expect(attempts).toBe(3)
+	} finally {
+		random.mockRestore()
+		vi.useRealTimers()
+	}
 })

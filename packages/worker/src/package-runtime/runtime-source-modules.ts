@@ -579,32 +579,28 @@ function __kodyOptionalRuntimeFunctionExport(exportName) {
 	return __kodyCreateRuntimeFunctionExport(exportName);
 }
 
-function __kodyCreateRuntimeRecordExport(exportName) {
+function __kodyCreateRecordProxy(exportName, read) {
 	return new Proxy({}, {
 		get(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) {
 				return __kodyRuntimeProxyInspectionValue(exportName, property);
 			}
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			if (value == null) return undefined;
 			return value[property];
 		},
 		has(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) return false;
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			return value != null && property in value;
 		},
 		ownKeys() {
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			return value == null ? [] : Reflect.ownKeys(value);
 		},
 		getOwnPropertyDescriptor(_target, property) {
 			if (__kodyIsRuntimeProxyInspectionProperty(property)) return undefined;
-			const currentRuntime = __kodyRuntimeStorage.getStore();
-			const value = currentRuntime?.[exportName] ?? null;
+			const value = read();
 			if (value == null) return undefined;
 			const descriptor = Reflect.getOwnPropertyDescriptor(value, property);
 			if (descriptor !== undefined) {
@@ -627,6 +623,24 @@ function __kodyCreateRuntimeRecordExport(exportName) {
 		deleteProperty() {
 			return false;
 		},
+	});
+}
+
+function __kodyCreateRuntimeRecordExport(exportName) {
+	return __kodyCreateRecordProxy(
+		exportName,
+		() => __kodyRuntimeStorage.getStore()?.[exportName] ?? null,
+	);
+}
+
+// A package's own modules read its own id even when an export runs inside
+// another run (ad hoc execute, another package): the run's context when the
+// run belongs to this package, else just \`{ packageId }\`.
+export function __kodyCreatePackageBoundPackageContext(packageId) {
+	const own = Object.freeze({ packageId });
+	return __kodyCreateRecordProxy('packageContext', () => {
+		const run = __kodyGetRuntimeStore()?.packageContext ?? null;
+		return run != null && run.packageId === packageId ? run : own;
 	});
 }
 

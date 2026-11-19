@@ -18,6 +18,12 @@ import type { PackageInvocationStoredResponse } from '#worker/package-invocation
 import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import { UserCodeError, isUserCodeError } from '#worker/user-code-error.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	durableObjectIsolateCpuResetMessage,
+	durableObjectIsolateMemoryResetMessage,
+} from '#worker/sentry-options.ts'
+import { durablePublishWorkflowCode } from './durable-publish-result.ts'
 import {
 	DynamicCallableWorkflowBase,
 	createDynamicCallableWorkflow,
@@ -147,7 +153,8 @@ function createWorkflowEnv(
 		DYNAMIC_CALLABLE_WORKFLOWS: binding.workflow,
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
-	} as Env
+		REPO_SESSION_BLOBS: { put: vi.fn() },
+	} as unknown as Env
 }
 
 function createInlineStep(attempt = 1) {
@@ -646,6 +653,84 @@ test('inline code that throws a kody-terminal error fails its step once with tha
 	]
 	expect(finish).toMatchObject({ status: 'error' })
 	invocationMocks.runModuleWithRegistry.mockReset()
+})
+
+test.each([
+	['a returned memory reset', durableObjectIsolateMemoryResetMessage, false],
+	['a thrown CPU reset', durableObjectIsolateCpuResetMessage, true],
+	[
+		'a mapped publish limit',
+		'This publish exceeded a Kody compute limit (Durable Object CPU time or memory)',
+		false,
+	],
+] as const)('a durable publish stops after %s', async (_, message, thrown) => {
+	runRecordMocks.resetProjections()
+	const { step, attempts } = createRetryingStep()
+	const { created, run } = await queueWorkflow(
+		{
+			code: durablePublishWorkflowCode,
+			workflowName: 'packagePublishExternalPush',
+			runAt,
+			idempotencyKey: 'publish-compute-limit',
+		},
+		null,
+		{ step },
+	)
+	const invoke = invocationMocks.runModuleWithRegistry
+	invoke.mockReset()
+	if (thrown) {
+		invoke.mockRejectedValue(
+			new Error('Publish invocation failed', { cause: new Error(message) }),
+		)
+	} else {
+		invoke.mockResolvedValue({ result: undefined, error: message, logs: [] })
+	}
+	try {
+		await expect(run()).rejects.toBeInstanceOf(NonRetryableError)
+		expect(attempts.get('execute inline workflow code')).toBe(1)
+		expect(findRun(created.id)).toMatchObject({
+			status: 'errored',
+			lastError: expect.stringContaining('Publish applied:'),
+		})
+		expect(findRun(created.id)?.lastError).toContain(message)
+		expect(lastFinish()).toMatchObject({
+			status: 'error',
+			skipErrorSubscriptions: false,
+			error: { message: expect.stringContaining(publishOutsideCloudAdvice()) },
+		})
+	} finally {
+		invoke.mockReset()
+	}
+})
+
+test('a durable publish can still retry a deploy reset', async () => {
+	runRecordMocks.resetProjections()
+	const { step, attempts } = createRetryingStep()
+	const { run } = await queueWorkflow(
+		{
+			code: durablePublishWorkflowCode,
+			workflowName: 'packagePublishExternalPush',
+			runAt,
+			idempotencyKey: 'publish-deploy-reset',
+		},
+		null,
+		{ step },
+	)
+	const invoke = invocationMocks.runModuleWithRegistry
+	invoke.mockReset()
+	invoke
+		.mockResolvedValueOnce({
+			result: undefined,
+			error: 'Durable Object reset because its code was updated.',
+			logs: [],
+		})
+		.mockResolvedValueOnce({ result: { status: 'published' }, logs: [] })
+	try {
+		await expect(run()).resolves.toMatchObject({ status: 'published' })
+		expect(attempts.get('execute inline workflow code')).toBe(2)
+	} finally {
+		invoke.mockReset()
+	}
 })
 
 test('a failed inline workflow run names the package and commit it ran for', async () => {

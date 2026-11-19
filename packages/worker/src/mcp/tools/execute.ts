@@ -31,6 +31,7 @@ import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
+	callerFeatureFlagEvaluationError,
 	callerFeatureFlagEvaluationFailure,
 	resolveCallerFeatureFlags,
 } from '#mcp/capabilities/access-control.ts'
@@ -678,9 +679,7 @@ export async function runExecuteToolCall(input: {
 			callerContext,
 		)
 		if (flagFailure) {
-			throw new Error('Feature flag evaluation failed', {
-				cause: flagFailure.cause,
-			})
+			throw callerFeatureFlagEvaluationError(flagFailure.cause)
 		}
 		void entitlementPrefetch
 		// Registry assembly starts before quota to overlap the quota check.

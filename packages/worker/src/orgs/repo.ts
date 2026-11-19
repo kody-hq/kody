@@ -374,7 +374,13 @@ export type PendingInviteSummary = {
 
 export async function listPendingInvitesForPerson(
 	db: D1Database,
-	input: { email: string; username: string; now: string },
+	input: {
+		email: string
+		/** False keeps email-addressed invites out until the address is verified. */
+		emailVerified?: boolean
+		username: string
+		now: string
+	},
 ): Promise<Array<PendingInviteSummary>> {
 	const rows = await db
 		.prepare(
@@ -396,12 +402,17 @@ export async function listPendingInvitesForPerson(
 			 WHERE i.status = 'pending'
 			   AND i.expires_at > ?${andActiveOrgSql('o')}
 			   AND (
-			     lower(COALESCE(i.invitee_email, '')) = lower(?)
+			     (? = 1 AND lower(COALESCE(i.invitee_email, '')) = lower(?))
 			     OR lower(COALESCE(i.invitee_username, '')) = lower(?)
 			   )${andLiveDeletedAtSql('o')}
 			 ORDER BY i.created_at DESC`,
 		)
-		.bind(input.now, input.email, input.username)
+		.bind(
+			input.now,
+			input.emailVerified === false ? 0 : 1,
+			input.email,
+			input.username,
+		)
 		.all<{
 			id: string
 			org_slug: string

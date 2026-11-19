@@ -11,6 +11,7 @@
 - [Execute interpretable share (`q`)](#execute-interpretable-share-q)
 - [MCP search duration](#mcp-search-duration)
 - [Onboarding funnel](#onboarding-funnel)
+- [Legacy package-app mount](#legacy-package-app-mount)
 - [Reading the data](#reading-the-data)
 - [Usage campaign](#usage-campaign)
 
@@ -871,6 +872,41 @@ SELECT
 FROM kody_onboarding_funnel_events
 WHERE timestamp > NOW() - INTERVAL '7' DAY
 GROUP BY stage
+```
+
+## Legacy package-app mount
+
+Best-effort Analytics Engine points for requests to the legacy
+`{username}.kody.run/packages/{name}` mount, so its removal (#4119) can be
+judged on real traffic. Recording never throws and is a no-op without the
+binding or in local dev.
+
+Production dataset `kody_package_app_legacy_events` (preview:
+`kody_package_app_legacy_events_preview`). Binding `PACKAGE_APP_LEGACY_EVENTS`
+on runtime only, because `kody-runtime` is the Worker that serves package-app
+hosts. Analytics Engine creates the dataset on its first write, so it is missing
+from `SHOW TABLES` until a real legacy hit lands, and the removal window starts
+from that first recorded hit, not from a deploy. Schema:
+
+| Field     | Value                                       |
+| --------- | ------------------------------------------- |
+| `index1`  | owner username                              |
+| `blob1`   | `legacy_package_mount`                      |
+| `blob2`   | owner username                              |
+| `blob3`   | package leaf (`kodyId`)                     |
+| `blob4`   | request method                              |
+| `blob5`   | `redirect` (HTML 308) or `rewrite` (served) |
+| `double1` | `1`                                         |
+
+```sql
+SELECT
+  blob2 AS username,
+  blob3 AS package,
+  blob5 AS disposition,
+  sum(_sample_interval) AS hits
+FROM kody_package_app_legacy_events
+WHERE timestamp > NOW() - INTERVAL '30' DAY
+GROUP BY username, package, disposition
 ```
 
 ## Reading the data

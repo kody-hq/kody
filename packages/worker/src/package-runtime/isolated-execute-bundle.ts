@@ -18,6 +18,7 @@ import {
 } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
+import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { runWithRequestPermissions } from '#worker/authorization/authorize.ts'
 import { isMcpCallerError, McpCallerError } from '#mcp/caller-error.ts'
 import { executeBundleResourceLimitMessage } from '#mcp/execute-bundle-limit-messages.ts'
@@ -83,11 +84,13 @@ export async function buildExecuteModuleBundle(input: {
 	if (!(await importsPackages(input.code))) {
 		return await buildAdHocExecuteBundle(input.env, input)
 	}
-	// A fresh, org-namespaced id per build puts it in its own isolate, never
-	// the calling isolate. The instance never touches its storage.
+	// One org-namespaced instance per source keeps the build out of the
+	// calling isolate, and a repeat of the same module reaches the instance
+	// whose isolate already holds its bundle cache (a fresh id per build put
+	// every call in a cold isolate). The instance never touches its storage.
 	const stub = input.env.REPO_SESSION.get(
 		input.env.REPO_SESSION.idFromName(
-			`isolated-execute-bundle-${input.userId}-${crypto.randomUUID()}`,
+			await isolatedExecuteBundleInstanceName(input.userId, input.sourceFiles),
 		),
 	) as unknown as IsolatedExecuteBundleStub
 	let outcome: IsolatedExecuteBundleOutcome
@@ -115,6 +118,17 @@ export async function buildExecuteModuleBundle(input: {
 		: new Error(outcome.message)
 	error.name = outcome.name
 	throw error
+}
+
+/** `RepoSession` name for one org's build of one set of source files. */
+export async function isolatedExecuteBundleInstanceName(
+	userId: OwnerId,
+	sourceFiles: Record<string, string>,
+) {
+	const files = Object.keys(sourceFiles)
+		.sort()
+		.map((path) => [path, sourceFiles[path]])
+	return `isolated-execute-bundle-${userId}-${await sha256Hex(JSON.stringify(files))}`
 }
 
 /** The isolate side of {@link buildExecuteModuleBundle}. Runs in `RepoSession`. */

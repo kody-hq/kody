@@ -326,6 +326,35 @@ function assertExactModuleSet(
 	)
 }
 
+/**
+ * Wrangler keeps an externalized `import()` specifier as written, so it must
+ * resolve from the entry to a module the dry-run actually uploaded.
+ */
+async function assertRelativeDynamicImportsResolve(
+	entryPath: string,
+	name: string,
+) {
+	const source = await readFile(entryPath, 'utf8')
+	const specifiers = new Set(
+		Array.from(
+			source.matchAll(/\bimport\(\s*["'](\.\.?\/[^"']+)["']\s*\)/g),
+			(match) => match[1]!,
+		),
+	)
+	const missing: Array<string> = []
+	for (const specifier of specifiers) {
+		try {
+			await stat(path.resolve(path.dirname(entryPath), specifier))
+		} catch {
+			missing.push(specifier)
+		}
+	}
+	if (missing.length === 0) return
+	throw new Error(
+		`${name} startup bundle imports ${missing.join(', ')}, which the dry-run did not upload at that path (find_additional_modules path mismatch?).`,
+	)
+}
+
 async function assertWranglerAdditionalModules(
 	outputDir: string,
 	name: string,
@@ -469,6 +498,7 @@ async function inspectWranglerStartupBundle(
 	const sources = readSourceMapSources(sourceMapText, definition.name)
 	assertDeferredSourcesStayOutOfMain(definition, sources)
 	await assertWranglerAdditionalModules(outputDir, definition.name)
+	await assertRelativeDynamicImportsResolve(entryPath, definition.name)
 
 	return {
 		name: definition.name,

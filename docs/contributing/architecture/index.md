@@ -186,7 +186,9 @@ metadata. See [OAuth integrations](./integrations.md).
 - MCP auth checks: `packages/worker/src/mcp-auth.ts`
 - MCP capability catalog: domain modules under
   `packages/worker/src/mcp/capabilities/*/domain.ts`, merged list in
-  `packages/worker/src/mcp/capabilities/builtin-domains.ts`, built by
+  `packages/worker/src/mcp/capabilities/builtin-domains.ts` (registry data from
+  the committed `capability-manifest.generated.mjs`, handlers loaded per domain
+  on first call), built by
   `packages/worker/src/mcp/capabilities/build-capability-registry.ts`, memoized
   for builtins via `getStaticRegistry()` and resolved per request via
   `getCapabilityRegistryForContext()` in

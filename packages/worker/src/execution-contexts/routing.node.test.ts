@@ -11,6 +11,7 @@ import {
 	markQueuedAttemptExpired,
 	markQueuedAttemptRan,
 	planTargets,
+	publishBuildSupported,
 	withRunTiming,
 	sharedRunHostRefusal,
 	typeScriptSourceRefusal,
@@ -536,4 +537,21 @@ test('TypeScript skips a daemon too old to run it, with a please update reason',
 	])
 	expect(text).toContain('old-box')
 	expect(text).toContain('kody daemon update')
+})
+
+test('publish builds skip a context whose daemon did not report git, and say how to fix it', () => {
+	expect(publishBuildSupported({})).toBe(false)
+	expect(publishBuildSupported({ features: ['typescript-source'] })).toBe(false)
+	expect(publishBuildSupported({ features: ['publish-build'] })).toBe(true)
+	const text = describeAttempts([
+		{
+			target: 'ec_nas',
+			name: 'family-vault',
+			outcome: 'skipped',
+			reason: 'publish_build_unsupported',
+		},
+	])
+	expect(text).toContain('family-vault')
+	expect(text).toContain('git')
+	expect(text).toContain('--context cloud')
 })

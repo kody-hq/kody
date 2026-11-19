@@ -14,7 +14,9 @@ import {
 import {
 	buildWorkingTreeLocally,
 	contextCloneGitEnv,
+	gitMissingMessage,
 	publishBuildUploadUrl,
+	runContextPublishBuild,
 	runLocalPublishBuild,
 } from '../src/local-publish-build.js'
 import { OpenApiError } from '../src/open-api-client.js'
@@ -496,4 +498,27 @@ test('--context asks Kody to build on that context and is refused with --build l
 		/cannot be combined with --build local/,
 	)
 	assert.equal(calls.length, 1)
+})
+
+test('a context publish build on a machine without git says so', async () => {
+	const path = process.env.PATH
+	process.env.PATH = mkdtempSync(join(tmpdir(), 'kody-no-git-'))
+	try {
+		await assert.rejects(
+			runContextPublishBuild({
+				source: {
+					buildId: 'pb_1',
+					packageId: 'pkg-1',
+					commit: 'a'.repeat(40),
+					clone: { remote: 'https://example.com/repo.git', token: 'token' },
+					upload: { path: '/v1/publish-builds/pb_1', ticket: 'ticket' },
+				},
+				userId: 'user-1',
+				apiUrl: 'https://kody.example',
+			}),
+			{ message: gitMissingMessage },
+		)
+	} finally {
+		process.env.PATH = path
+	}
 })

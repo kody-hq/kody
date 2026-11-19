@@ -141,13 +141,22 @@ function createEnv(
 						const cloned = structuredClone(input)
 						return isolate
 							? await isolate(cloned)
-							: await runIsolatedLocalExecutePackageGraphBuild(env, cloned)
+							: await runIsolatedLocalExecutePackageGraphBuild(
+									isolateEnv,
+									cloned,
+								)
 					},
 				}
 			},
 		},
 	} as unknown as Env
-	return { env, store, isolateNames }
+	// The builder runs elsewhere, with its own view of KV.
+	const isolateKv = createMemoryKvNamespace()
+	const isolateEnv = {
+		...env,
+		BUNDLE_ARTIFACTS_KV: isolateKv.kv,
+	} as unknown as Env
+	return { env, store, isolateStore: isolateKv.store, isolateNames }
 }
 
 function serve(env: Env, code: string, actorUserId: string | null = 'actor-1') {
@@ -210,14 +219,16 @@ export default async () => hub()`
 
 test('a cache hit serves the stored graph without rebuilding it', async () => {
 	addPackage('@acme/hub')
-	const { env, store, isolateNames } = createEnv()
+	const { env, store, isolateStore, isolateNames } = createEnv()
 
 	const first = await serve(env, hubCode, 'actor-1')
 	const second = await serve(env, hubCode, 'actor-2')
 
 	expect(mocks.buildUnsigned).toHaveBeenCalledTimes(1)
 	expect(isolateNames).toHaveLength(1)
+	// Stored where the next request reads it, not from the builder.
 	expect(store.size).toBe(1)
+	expect(isolateStore.size).toBe(0)
 	expect(second.modules).toEqual(
 		first.modules.map((module) =>
 			module.name === runtimeModulePath

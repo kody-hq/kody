@@ -44,9 +44,6 @@ packages/jobs-worker/wrangler-*.generated.json
 packages/highlight-worker/wrangler-*.generated.json
 packages/api-worker/wrangler-*.generated.json
 
-packages/start-routing-worker/wrangler-*.generated.json
-packages/start-routing-worker/start-entry.generated.ts
-
 artifacts/
 
 # Local files spike provider credentials

@@ -72,7 +72,9 @@ With the experiment on, Kody picks where each publish builds, in this order:
 
 3. **Your execution context chain,** the same as `execute`: the contexts you
    operate, in order, then Kody cloud, unless your chain is strict. Contexts
-   that are offline, busy, or that someone else operates are skipped.
+   that are offline, busy, or that someone else operates are skipped, and so are
+   contexts whose daemon did not report `git` (the builder clones with it;
+   daemons before this check never report it, so run `kody daemon update`).
 
 Auto-publish on push works the same way. A package that subscribes to the repo
 pushed event and calls publish from its handler gets these same rules.
