@@ -57,7 +57,10 @@ import {
 	runStartedByClientFromCredentialKind,
 	normalizeRunStartedBy,
 } from '#worker/run-records/run-started-by.ts'
-import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	isPublishComputeLimitMessage,
+	publishOutsideCloudAdvice,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	beginRunRecord,
 	closeStoppedWorkflowAttemptRuns,
@@ -319,11 +322,17 @@ function isPublishWorkflow(payload: DynamicCallableWorkflowPayload) {
 	return payload.workflowName === 'packagePublishExternalPush'
 }
 
+function shouldSuggestOffloadingPublish(
+	payload: DynamicCallableWorkflowPayload,
+) {
+	return isPublishWorkflow(payload) && !payload.params?.['publish_build_id']
+}
+
 function isPublishComputeFailure(
 	payload: DynamicCallableWorkflowPayload,
 	error: unknown,
 ) {
-	if (!isPublishWorkflow(payload)) return false
+	if (!shouldSuggestOffloadingPublish(payload)) return false
 	const message = getErrorMessage(error)
 	if (message.includes(publishOutsideCloudAdvice())) return false
 	return /timed out|CPU time|memory limit|compute limit/i.test(message)
@@ -2040,7 +2049,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				userId: payload.userId,
 				workflowId: event.instanceId,
 				outcome: 'failed',
-				...(isPublishWorkflow(payload)
+				...(shouldSuggestOffloadingPublish(payload)
 					? { failureHint: publishOutsideCloudAdvice() }
 					: {}),
 				waitUntil: (promise) => this.ctx.waitUntil(promise),
@@ -2410,9 +2419,10 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					commit: payload.enqueuedCommit,
 				})
 				const message = `Publish workflow: ${state} ${getErrorMessage(error)}`
-				error = isNonRetryableError(error)
-					? terminalWorkflowStepError(message)
-					: new Error(message, { cause: error })
+				error =
+					isNonRetryableError(error) || isPublishComputeLimitMessage(message)
+						? terminalWorkflowStepError(message)
+						: new Error(message, { cause: error })
 			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({

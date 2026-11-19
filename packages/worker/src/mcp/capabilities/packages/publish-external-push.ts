@@ -33,7 +33,6 @@ import { notePackageAppPublishRequester } from '#worker/package-runtime/package-
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
-	uploadedBuildPersistLimitMessage,
 	isPublishComputeLimitMessage,
 	type RepoCheckStep,
 } from '#worker/repo/isolated-runner-limit-message.ts'
@@ -205,14 +204,14 @@ function isExternalPublishResourceLimitError(error: unknown) {
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
 	step: RepoCheckStep | null = null,
-	uploadedBuild = false,
+	offloadedBuild = false,
 ): never | void {
 	if (error instanceof McpCallerError) throw error
 	if (isDurableObjectIsolateResourceLimitResetError(error)) {
 		throw new McpCallerError(
-			uploadedBuild
-				? uploadedBuildPersistLimitMessage()
-				: externalPublishResourceLimitMessage(step),
+			isPublishComputeLimitMessage(getErrorMessage(error))
+				? getErrorMessage(error)
+				: externalPublishResourceLimitMessage(step, offloadedBuild),
 			{ cause: error },
 		)
 	}
@@ -1616,7 +1615,11 @@ async function runExternalPublishAttempt(input: {
 					const step = await readLastCheckStep(
 						repoSessionRpc(input.env, sessionId),
 					)
-					throwIfExternalPublishResourceLimit(error, step)
+					throwIfExternalPublishResourceLimit(
+						error,
+						step,
+						input.uploadedBuild != null,
+					)
 				}
 				throwIfExternalPublishResourceLimit(error)
 			} catch (limitOrCallerError) {

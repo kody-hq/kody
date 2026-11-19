@@ -38,6 +38,7 @@ const mockModule = vi.hoisted(() => ({
 	resolveArtifactSourceHead: vi.fn(),
 	publishFromExternalRef: vi.fn(),
 	takeLastCheckStep: vi.fn(async (): Promise<unknown> => null),
+	getLinkedPublishArtifactSizes: vi.fn(),
 	listPublishedPackageArtifactTargets: vi.fn(),
 	persistUploadedPublishBuild: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
@@ -117,6 +118,8 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
 		takeLastCheckStep: () => mockModule.takeLastCheckStep(),
+		getLinkedPublishArtifactSizes: (...args: Array<unknown>) =>
+			mockModule.getLinkedPublishArtifactSizes(...args),
 	}),
 }))
 
@@ -926,6 +929,7 @@ test('durable re-entry finalizes an uploaded build without the upload bucket bin
 		userId: 'user-1',
 		publishedCommit: 'commit-new',
 		buildId: 'pb_demo',
+		diagnosticsId: expect.any(String),
 		baseUrl: 'https://kody.test',
 	})
 	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
@@ -944,6 +948,36 @@ test('durable re-entry finalizes an uploaded build without the upload bucket bin
 		),
 	).rejects.toThrow(
 		"Failed while finalizing the uploaded build: Cannot read properties of undefined (reading 'get')",
+	)
+
+	mockModule.persistUploadedPublishBuild.mockRejectedValueOnce(
+		new Error('Durable Object exceeded its CPU time limit and was reset'),
+	)
+	mockModule.getLinkedPublishArtifactSizes.mockResolvedValueOnce({
+		count: 2,
+		largest: [
+			{ path: 'kody:@example/books/list', bytes: 400_000 },
+			{ path: 'kody:@example/books/position', bytes: 350_000 },
+		],
+	})
+	await expect(
+		publishExternalPushCapability.handler(
+			{
+				package_id: 'package-1',
+				baseline_published_commit: 'commit-old',
+				publish_build_id: 'pb_demo',
+			},
+			ctx,
+		),
+	).rejects.toSatisfy((error: Error) => {
+		expect(error.message).toContain('Finalization still runs on Kody')
+		expect(error.message).toContain('`kody:@example/books/list` (391 KiB)')
+		expect(error.message).toContain('`kody:@example/books/position` (342 KiB)')
+		expect(error.message).not.toContain('--build local')
+		return true
+	})
+	expect(mockModule.getLinkedPublishArtifactSizes).toHaveBeenCalledWith(
+		mockModule.persistUploadedPublishBuild.mock.lastCall?.[0].diagnosticsId,
 	)
 })
 

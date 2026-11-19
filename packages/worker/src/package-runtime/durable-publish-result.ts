@@ -104,8 +104,10 @@ export async function describeDurablePublishState(input: {
 	let jobPins = 'unknown'
 	if (sourceId && commit) {
 		const [source, jobs] = await Promise.allSettled([
-			getEntitySourceByIdForUser(env.APP_DB, { id: sourceId, userId }),
-			jobsData(env).listJobsForUser({ userId }),
+			Promise.resolve().then(() =>
+				getEntitySourceByIdForUser(env.APP_DB, { id: sourceId, userId }),
+			),
+			Promise.resolve().then(() => jobsData(env).listJobsForUser({ userId })),
 		])
 		if (source.status === 'fulfilled' && source.value) {
 			const row = source.value
@@ -116,7 +118,7 @@ export async function describeDurablePublishState(input: {
 						? row.held_commit === commit
 							? 'recorded, held for approval'
 							: 'recorded, not serving'
-						: 'no, commit is not current'
+						: 'commit is not current'
 		}
 		if (jobs.status === 'fulfilled') {
 			const pins = jobs.value.filter((job) => job.source_id === sourceId)

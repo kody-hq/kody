@@ -151,8 +151,8 @@ export function createUploadedTargetBuilders(
  * verify the sealed upload against the pushed commit, link the Kody
  * packages it imports (6C), then write every target the same way a rebuild
  * does (one KV value per target, then the batched D1 rows). Nothing is built
- * here: the upload is the artifact, so no cloud build limit applies to it. The caller advances
- * `serving_commit` only after this returns ok.
+ * here, but verification, linking and writes still use Kody compute. The caller
+ * advances `serving_commit` only after this returns ok.
  */
 export async function persistUploadedPublishBuild(input: {
 	env: Env
@@ -164,6 +164,10 @@ export async function persistUploadedPublishBuild(input: {
 	publishedCommit: string
 	sourceFiles: Record<string, string>
 	targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+	onLinkedArtifact?: (artifact: {
+		path: string
+		bytes: number
+	}) => Promise<void>
 }): Promise<PersistUploadedPublishBuildResult> {
 	const db = input.env.APP_DB
 	const reject = async (message: string) => {
@@ -288,6 +292,7 @@ export async function persistUploadedPublishBuild(input: {
 				linkedImports,
 				referenced: referencedLinkedImports,
 				artifactCache,
+				onArtifact: input.onLinkedArtifact,
 			})
 			endStep('link-imports')
 			prepared.set(target, {

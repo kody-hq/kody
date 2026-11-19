@@ -1231,6 +1231,7 @@ test('durable publish failures keep platform attribution and report current publ
 	const detail =
 		"Failed while finalizing the uploaded build: Cannot read properties of undefined (reading 'get')"
 	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: null,
 		error: detail,
 		logs: [],
 	})
