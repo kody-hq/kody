@@ -1893,6 +1893,7 @@ type PackageWebhookVerification =
 			encoding: 'hex' | 'base64'
 			prefix?: string
 			signedPayload?: 'body' | 'timestamp.body'
+			profile?: 'standard-webhooks'
 	  }
 	| { type: 'url-secret' }
 	| null

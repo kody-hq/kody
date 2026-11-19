@@ -43,6 +43,7 @@ import {
 	matchWebhookIngressUrlSecret,
 	providedWebhookHmacValues,
 	verifyWebhookHmacSignature,
+	verifyStandardWebhookSignature,
 } from './crypto.ts'
 import {
 	type AckWebhookDelivery,
@@ -743,13 +744,11 @@ export async function handleWebhookIngressRequest(
 		replayTimestampToken = parsedTimestamp.timestampToken
 	}
 
-	if (declared.replay?.deliveryIdHeader) {
-		const deliveryIdValue = request.headers
-			.get(declared.replay.deliveryIdHeader)
-			?.trim()
-		if (!deliveryIdValue) {
-			return rejectUnauthorized('missing_delivery_id')
-		}
+	const replayDeliveryId = declared.replay?.deliveryIdHeader
+		? request.headers.get(declared.replay.deliveryIdHeader)?.trim()
+		: undefined
+	if (declared.replay?.deliveryIdHeader && !replayDeliveryId) {
+		return rejectUnauthorized('missing_delivery_id')
 	}
 
 	// A declared HMAC scheme never falls back to URL-secret-only auth.
@@ -812,6 +811,23 @@ export async function handleWebhookIngressRequest(
 		})
 		let matched: WebhookHmacVerificationSecret | null = null
 		for (const secret of hmacSecrets) {
+			if (verification.profile === 'standard-webhooks') {
+				if (
+					replayDeliveryId &&
+					replayTimestampToken &&
+					(await verifyStandardWebhookSignature({
+						secret: secret.value,
+						deliveryId: replayDeliveryId,
+						timestampToken: replayTimestampToken,
+						body: bodyBuffer,
+						provided,
+					}))
+				) {
+					matched = secret
+					break
+				}
+				continue
+			}
 			for (const candidate of providedValues) {
 				if (
 					await verifyWebhookHmacSignature({
@@ -883,15 +899,15 @@ export async function handleWebhookIngressRequest(
 		? stripUntrustedWebhookSyntheticFields(paramsMode.params)
 		: requestParams
 	const deliveryId = crypto.randomUUID()
-	const callerIdempotencyKey = readWebhookCallerIdempotencyKey({
-		request,
-		json: requestParams.request.json,
-		allowBodyKey: declared.inputMode === 'params',
-	})
-	const providerDeliveryId =
-		!callerIdempotencyKey && declared.replay?.deliveryIdHeader
-			? request.headers.get(declared.replay.deliveryIdHeader)?.trim()
-			: undefined
+	const callerIdempotencyKey =
+		verification?.profile === 'standard-webhooks'
+			? undefined
+			: readWebhookCallerIdempotencyKey({
+					request,
+					json: requestParams.request.json,
+					allowBodyKey: declared.inputMode === 'params',
+				})
+	const providerDeliveryId = callerIdempotencyKey ? undefined : replayDeliveryId
 	const idempotencyKey = callerIdempotencyKey
 		? callerIdempotencyKey
 		: providerDeliveryId

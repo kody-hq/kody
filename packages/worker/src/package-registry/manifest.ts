@@ -524,6 +524,7 @@ export type PackageWebhookHmacVerificationEntry = {
 	encoding: 'hex' | 'base64'
 	prefix?: string
 	signedPayload?: 'body' | 'timestamp.body'
+	profile?: 'standard-webhooks'
 }
 
 export type PackageWebhookUrlSecretVerificationEntry = { type: 'url-secret' }
@@ -588,6 +589,9 @@ export function listPackageWebhooks(
 								: {}),
 							...(webhook.verification.signedPayload !== undefined
 								? { signedPayload: webhook.verification.signedPayload }
+								: {}),
+							...(webhook.verification.profile
+								? { profile: webhook.verification.profile }
 								: {}),
 						},
 			replay: webhook.replay

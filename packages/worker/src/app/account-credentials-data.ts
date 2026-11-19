@@ -57,27 +57,36 @@ export async function loadAccountCredentialsData(input: {
 				ownedByViewer: !teamOrg || selectedItem.scope === 'personal',
 				credential: selectedItem,
 				packages,
-			}).catch((error: unknown) => {
-				// A null selected with a listed row looks like "Loading…" forever
-				// in the expand pane. Degrade to unavailable detail sections instead.
-				Sentry.captureException(error, {
-					tags: { scope: 'credentials.detail' },
-					extra: { credentialId: selectedItem.id, orgId, teamOrg },
-				})
-				return {
-					id: selectedItem.id,
-					placeholder: credentialPlaceholder(selectedItem),
-					grants: [],
-					grantsUnavailable: true,
-					usage: [],
-					usageTruncated: false,
-					// Match listUsage soft-fail: show Used by gap copy instead of
-					// claiming a finished scan found no packages.
-					usageUnreadable: packages.length,
-					hostSettings: null,
-					fillPlacementObservation: null,
-				}
 			})
+				.then((detail) =>
+					detail &&
+					selectedItem.kind === 'secret' &&
+					selectedItem.scope === 'org' &&
+					input.user.request.membership?.role === 'owner'
+						? { ...detail, canApproveRequestProfile: true }
+						: detail,
+				)
+				.catch((error: unknown) => {
+					// A null selected with a listed row looks like "Loading…" forever
+					// in the expand pane. Degrade to unavailable detail sections instead.
+					Sentry.captureException(error, {
+						tags: { scope: 'credentials.detail' },
+						extra: { credentialId: selectedItem.id, orgId, teamOrg },
+					})
+					return {
+						id: selectedItem.id,
+						placeholder: credentialPlaceholder(selectedItem),
+						grants: [],
+						grantsUnavailable: true,
+						usage: [],
+						usageTruncated: false,
+						// Match listUsage soft-fail: show Used by gap copy instead of
+						// claiming a finished scan found no packages.
+						usageUnreadable: packages.length,
+						hostSettings: null,
+						fillPlacementObservation: null,
+					}
+				})
 		: null
 	const selectedProvider = selectedItem
 		? undefined
@@ -152,12 +161,7 @@ export async function loadAccountCredentialsData(input: {
 	}
 	return {
 		ok: true,
-		selected:
-			selected &&
-			selectedItem?.scope === 'org' &&
-			input.user.request.membership?.role === 'owner'
-				? { ...selected, canApproveRequestProfile: true }
-				: selected,
+		selected,
 		selectedLocalReads,
 		selectedLocalReadsUnavailableFor,
 		selectedRawSigning,

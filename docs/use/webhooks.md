@@ -675,6 +675,33 @@ window:
 is missing, unparseable, or older than `toleranceSeconds` (default 300) are
 rejected with the same generic 401 as a bad HMAC.
 
+### Standard Webhooks
+
+For a symmetric [Standard Webhooks](https://www.standardwebhooks.com/) sender,
+save its issued signing key as a Key and select the `standard-webhooks` profile:
+
+```json
+{
+	"verification": {
+		"type": "hmac-sha256",
+		"profile": "standard-webhooks",
+		"header": "webhook-signature",
+		"encoding": "base64",
+		"secretName": "incomingWebhookKey"
+	},
+	"replay": {
+		"deliveryIdHeader": "webhook-id",
+		"timestampHeader": "webhook-timestamp",
+		"timestampFormat": "unix-seconds"
+	}
+}
+```
+
+Use the sender's header names if they differ. Kody verifies a version 1
+signature against the original body bytes, the delivery ID, and the timestamp.
+The profile decodes the issued `whsec_` key and deduplicates retries by the
+signed delivery ID. Set a replay tolerance of up to 300 seconds.
+
 ### Bitbucket Cloud
 
 Omit `secretName` so `webhookUrlMint` stores package-owned HMAC on the URL

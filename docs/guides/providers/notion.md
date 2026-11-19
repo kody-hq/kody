@@ -90,13 +90,18 @@ also how you change which pages are shared.
 
 ## Verify
 
-Lane A (saved secret) — run in `execute` after the host is approved:
+Lane A (saved Key): set the Key's provider to `notion`, then run in `execute`
+after the host is approved. If you can Use multiple Notion credentials, pick the
+Key by ID in the
+[execute credential map](../credentials.md#picking-a-credential).
 
 ```ts
+import { credential } from 'kody:runtime'
+
 export default async function main() {
-	const response = await fetch('https://api.notion.com/v1/users/me', {
+	const notion = await credential('notion')
+	const response = await notion.fetch('https://api.notion.com/v1/users/me', {
 		headers: {
-			Authorization: 'Bearer {{secret:notionToken}}',
 			'Notion-Version': '2026-03-11',
 		},
 	})
