@@ -93,12 +93,12 @@ export async function fileCollaborationAccess(
 		},
 		actor: {
 			id: agent
-				? `${request.actor.userId}:agent:${profileId ?? request.credential.kind}`
-				: request.actor.userId,
-			personId: request.actor.userId,
+				? `${actor.userId}:agent:${profileId ?? request.credential.kind}`
+				: actor.userId,
+			personId: actor.userId,
 			name: agent
-				? `${request.actor.username ?? 'Member'}’s agent`
-				: (request.actor.username ?? 'Member'),
+				? `${actor.username ?? 'Member'}’s agent`
+				: (actor.username ?? 'Member'),
 			kind: agent ? 'agent' : 'person',
 			profileId,
 			runId:
