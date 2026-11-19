@@ -31,8 +31,6 @@ export default defineConfig({
 				'src/bin.ts',
 				'src/cli.ts',
 				'src/skill-refresh.ts',
-				'scripts/build.mjs',
-				'scripts/bench.mjs',
 				'test/**/*.ts',
 			],
 			project: ['src/**/*.ts', 'scripts/**/*.mjs', 'test/**/*.ts'],
