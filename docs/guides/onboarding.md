@@ -41,9 +41,9 @@ Agent notes — for AI agents driving first-run from a copied onboarding prompt:
   packages that run in Kody's cloud and are callable from any MCP host.
 - Prefer webhook and event framing for apps, workflows, and jobs. A schedule
   is optional, not the hero.
-- Credentials are usable by packages. Credentials stay on the setup page; send
-  the URL and wait until they confirm save. Use the credential name
-  (`{{secret:name}}`).
+- Credentials stay on the setup page. Send the URL and wait until the user
+  confirms the save. Map a package need to the credential ID and use
+  `credential(key)` in code.
 - Integration difficulty: MCP is the easy path, a PAT/API key is harder and
   more powerful, OAuth is hardest and most powerful. Say that out loud before
   you start a setup.

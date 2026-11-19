@@ -326,12 +326,15 @@ only publish bundling is too big, `guide:publish_large_packages`.
 
 ## Secret-using packages
 
-Password-manager items use [custom secret providers](./secret-providers.md)
-(`{{secret/<provider>:<ref>}}` and `kody.secretProvider`); that path is separate
-from user-secret grants.
+Declare each credential need in the package manifest. The owner picks the
+credential by ID and approves its hosts and placement. Use
+`(await credential('service')).fetch(url, init)` for outbound requests.
+Password-manager items can be mapped the same way through
+[vault-backed Keys](./credentials.md). Smoke-test with an authenticated
+read-only export before treating the package as ready.
 
-When a package will use user-scoped secrets (`{{secret:name}}` placeholders or
-`kody.secretMounts`):
+The steps below apply to existing packages that still use legacy placeholders or
+`kody.secretMounts`:
 
 1. Ensure each secret exists (open `search({ entity: "guide:connect_secret" })`
    / `search({ entity: "guide:secret_backed_integration" })`). New secrets

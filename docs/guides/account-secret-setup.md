@@ -98,5 +98,6 @@ secret and lets the user approve them in one click.
    downstream package.
 5. For common non-OAuth integrations, continue with
    `guide: "secret_backed_integration"` after the secret exists.
-6. Proceed using `{{secret:name}}` fetch placeholders or a named secret lookup
-   such as `secretJwtSign`.
+6. Map the declared need to the saved credential's ID. Use the
+   [scoped credential client](./credentials.md#scoped-clients-credentialkey) for
+   authenticated requests or signing.

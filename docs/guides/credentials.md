@@ -107,18 +107,6 @@ sent. If that name is not saved, the fetch fails with
 `Secret "name" was not found`. When the body forwards someone else's text, set
 `x-kody-secret-resolution: headers-only` so only headers are filled:
 
-```ts
-await fetch('https://api.github.com/repos/acme/widgets/issues', {
-	method: 'POST',
-	headers: {
-		Authorization: 'Bearer {{secret:github}}',
-		'content-type': 'application/json',
-		'x-kody-secret-resolution': 'headers-only',
-	},
-	body: JSON.stringify({ title: 'Widget broke', body: userReport }),
-})
-```
-
 `off` sends every placeholder as written, including headers. Kody strips the
 header before the request leaves. `kody dev check` and a successful publish
 print a warning for a clear case: a fetch (or `new Request`) whose init object
