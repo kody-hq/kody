@@ -356,6 +356,8 @@ async function fetchThroughGateway(
 	const startedAtMs = Date.now()
 	let response: Response | undefined
 	let deadline: OutboundFetchDeadline | undefined
+	let logout: (() => Promise<void>) | undefined
+	let streamingResponse = false
 	let meteredEntityId = readMeteredRequestHostname(resolved.request.url, null)
 	input = resolved
 
@@ -395,6 +397,9 @@ async function fetchThroughGateway(
 						props: input.props,
 						token: credentialClientToken,
 						request: input.request,
+						registerLogout: (cleanup) => {
+							logout = cleanup
+						},
 						...(packageStamp?.kind === 'attested' && input.props.boundPackageId
 							? { attestedPackageId: packageStamp.packageId }
 							: {}),
@@ -405,7 +410,8 @@ async function fetchThroughGateway(
 		const isApprovedRequestPlacement =
 			credentialClient?.placement.kind === 'body' ||
 			credentialClient?.placement.kind === 'path' ||
-			credentialClient?.placement.kind === 'composition'
+			credentialClient?.placement.kind === 'composition' ||
+			credentialClient?.placement.kind === 'single-request-login'
 		const expanded = isApprovedRequestPlacement
 			? {
 					request: codeRequest,
@@ -462,11 +468,7 @@ async function fetchThroughGateway(
 					...credentialClient.substitutedValues,
 				]
 			}
-			if (
-				credentialClient?.placement.kind === 'body' ||
-				credentialClient?.placement.kind === 'path' ||
-				credentialClient?.placement.kind === 'composition'
-			) {
+			if (isApprovedRequestPlacement && credentialClient) {
 				if (isRedirectStatus(upstream.status)) {
 					void upstream.body?.cancel().catch(() => {})
 					throw new CredentialClientError({
@@ -589,15 +591,25 @@ async function fetchThroughGateway(
 			}
 			redacted = withResponseHeaders(redacted, headers)
 		}
-		return credentialClient
+		const result = credentialClient
 			? withCredentialClientHint(redacted, credentialClient.shape, {
 					providerLabel: credentialClient.providerLabel,
 				})
 			: redacted
+		streamingResponse = result.body !== null
+		return result
 	} catch (error) {
 		deadline?.fail()
 		throw asCallerFacingBodyFillError(error)
 	} finally {
+		if (logout) {
+			if (streamingResponse && deadline) {
+				const cleanup = deadline.done.then(logout)
+				input.waitUntil?.(cleanup)
+			} else {
+				await logout()
+			}
+		}
 		const userId = billedOrgIdOf(input.props.request, input.props.userId)
 		if (userId) {
 			const meteredResponse = response

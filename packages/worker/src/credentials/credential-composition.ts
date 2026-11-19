@@ -6,7 +6,10 @@ import {
 	prepareBodyPlacements,
 	readJsonPlacementBody,
 } from './body-placement.ts'
-import { CredentialRequestRefusedError } from './credential-request.ts'
+import {
+	CredentialRequestRefusedError,
+	isCredentialPlacementHeader,
+} from './credential-request.ts'
 import type { CredentialFillSite } from './fill-placement.ts'
 import type { ResolvedClientPlacement } from './credential-resolver.ts'
 
@@ -171,23 +174,6 @@ function refuse(message: string): never {
 	throw new CredentialRequestRefusedError('invalid_request', message)
 }
 
-const reservedHeaders = new Set([
-	'connection',
-	'content-encoding',
-	'content-length',
-	'content-type',
-	'host',
-	'keep-alive',
-	'proxy-authorization',
-	'te',
-	'trailer',
-	'transfer-encoding',
-	'upgrade',
-	'user-agent',
-	'x-http-method-override',
-	'x-method-override',
-])
-
 export async function prepareCredentialComposition(
 	profile: CredentialComposition,
 	request: Request,
@@ -216,9 +202,7 @@ export async function prepareCredentialComposition(
 		if (
 			fieldNames.has(name) ||
 			(header !== null &&
-				(reservedHeaders.has(header) ||
-					header.startsWith('x-kody-') ||
-					request.headers.has(header)))
+				(!isCredentialPlacementHeader(header) || request.headers.has(header)))
 		) {
 			refuse(
 				'Approved credential locations must be distinct and absent from the request.',
