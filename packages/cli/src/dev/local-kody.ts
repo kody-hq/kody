@@ -237,12 +237,16 @@ export async function startLocalKody(input: {
 		passthroughHosts: input.passthroughHosts,
 		allowPrivateNetwork: input.allowPrivateNetwork,
 	})
-	const outbound = gateway ? await startOutboundGateway(gateway) : null
 	// Kills the wrangler groups if this process dies before close() runs.
-	const reaper = await startProcessReaper({
-		workDir: await mkdtemp(join(tmpdir(), devWorkDirPrefix)),
-	})
+	const reaper =
+		process.platform === 'win32'
+			? null
+			: await startProcessReaper({
+					workDir: await mkdtemp(join(tmpdir(), devWorkDirPrefix)),
+				})
+	let outbound: Awaited<ReturnType<typeof startOutboundGateway>> | null = null
 	try {
+		outbound = gateway ? await startOutboundGateway(gateway) : null
 		const kody = await runtime.startDevRuntime({
 			stateDir,
 			username: localUsernameFor(input.manifest),
@@ -250,19 +254,19 @@ export async function startLocalKody(input: {
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
 			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
-			onSpawn: (pid) => reaper.trackGroup(pid),
-			onExit: (pid) => reaper.untrackGroup(pid),
+			onSpawn: (pid) => reaper?.trackGroup(pid),
+			onExit: (pid) => reaper?.untrackGroup(pid),
 		})
 		return {
 			...kody,
 			close: async () => {
 				await kody.close()
-				reaper.close()
+				reaper?.close()
 				await outbound?.close()
 			},
 		}
 	} catch (error) {
-		reaper.close()
+		reaper?.close()
 		await outbound?.close()
 		throw error
 	}
