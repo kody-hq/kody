@@ -9,6 +9,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { ExecuteRateLimitedError } from '#mcp/execute-admission.ts'
 import { findWalletGuardLimitError } from '#worker/wallet-guard/enforce.ts'
 import {
 	executionContextErrorCodes,
@@ -326,6 +327,24 @@ export function toApiError(
 			code: 'account_deleting',
 			message:
 				'Account deletion is in progress; retry after the current write finishes.',
+			cause: error,
+		})
+	}
+	const executeBrake = getErrorCauseChain(error).find(
+		(entry): entry is ExecuteRateLimitedError =>
+			entry instanceof ExecuteRateLimitedError,
+	)
+	if (executeBrake) {
+		const retryAfterSeconds = Math.max(
+			1,
+			Math.ceil(executeBrake.retryAfterMs / 1000),
+		)
+		return new ApiError({
+			status: 429,
+			code: 'rate_limited',
+			message: executeBrake.message,
+			details: { code: executeBrake.code, retryAfterSeconds },
+			headers: { 'Retry-After': String(retryAfterSeconds) },
 			cause: error,
 		})
 	}
