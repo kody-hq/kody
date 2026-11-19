@@ -59,27 +59,21 @@ type SessionAccess = Awaited<ReturnType<typeof fileCollaborationAccess>>
  * same session share one lookup; the next handler run resolves again, so a
  * revoked grant still closes its sockets on the next broadcast.
  */
-type AccessPass = Map<string, Promise<SessionAccess>>
+type AccessPass = ReturnType<typeof createAccessPass>
 type LiveUserRow = {
 	stable_user_id: string
 	password_changed_at: string | null
 	suspended_at: string | null
 	deleting_at: string | null
 }
-/**
- * Person/org lookups (liveness, org binding, collaboration flag) shared by every
- * session checked in one handler run. Scoped to the pass so it never outlives it.
- */
-const passLookups = new WeakMap<AccessPass, FileAccessLookups>()
-function lookupsFor(pass: AccessPass) {
-	let lookups = passLookups.get(pass)
-	if (!lookups) {
-		lookups = new Map()
-		passLookups.set(pass, lookups)
+function createAccessPass() {
+	const lookups: FileAccessLookups = { bindings: new Map(), enabled: new Map() }
+	return {
+		sessions: new Map<string, Promise<SessionAccess>>(),
+		liveUsers: new Map<string, Promise<LiveUserRow | null>>(),
+		lookups,
 	}
-	return lookups
 }
-const liveKey = (userId: string) => `live:${userId}`
 const sessionKey = (attachment: Attachment) =>
 	JSON.stringify([attachment.request, attachment.session.issuedAt])
 function assertUnexpired(session: FileSessionProof | undefined) {
@@ -216,7 +210,7 @@ export class FileRoom extends DurableObject<Env> {
 			if (action === 'edited' && !access.write)
 				throw new Error('Write access is required.')
 			await this.touch(actor, action)
-			const pass: AccessPass = new Map()
+			const pass = createAccessPass()
 			if (action === 'edited')
 				await this.broadcast(
 					{
@@ -454,45 +448,38 @@ export class FileRoom extends DurableObject<Env> {
 			.first<LiveUserRow>()
 	}
 	/** Loads liveness rows for every not-yet-cached person in one query. */
-	private prefetchLiveUsers(
-		userIds: Array<string>,
-		lookups: FileAccessLookups,
-	) {
+	private prefetchLiveUsers(userIds: Array<string>, pass: AccessPass) {
 		const missing = [...new Set(userIds)].filter(
-			(id) => !lookups.has(liveKey(id)),
+			(id) => !pass.liveUsers.has(id),
 		)
 		if (!missing.length) return
-		const rows = this.env.APP_DB.prepare(
-			`SELECT stable_user_id, password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id IN (${missing.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
-		)
-			.bind(...missing)
-			.all<LiveUserRow>()
-			.then(
-				(result) =>
-					new Map(
-						(result.results ?? []).map((row) => [row.stable_user_id, row]),
-					),
-			)
+		// openSession serializes admission and caps the room at 64 sockets.
+		const rows = this.loadLiveUsers(missing)
 		for (const id of missing) {
 			const row = rows.then((byId) => byId.get(id) ?? null)
-			// Sockets that fail fast (e.g. expired) never await their row; a failed
-			// batch still rejects for every socket that does, closing it as before.
+			// A session can expire before it awaits the lookup.
 			row.catch(() => {})
-			lookups.set(liveKey(id), row)
+			pass.liveUsers.set(id, row)
 		}
+	}
+	private async loadLiveUsers(userIds: Array<string>) {
+		const { results } = await this.env.APP_DB.prepare(
+			`SELECT stable_user_id, password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id IN (${userIds.map(() => '?').join(', ')}) AND deleted_at IS NULL`,
+		)
+			.bind(...userIds)
+			.all<LiveUserRow>()
+		return new Map(results.map((row) => [row.stable_user_id, row]))
 	}
 	private async assertSessionLive(
 		request: RequestContext,
 		issuedAt: number,
-		lookups?: FileAccessLookups,
+		pass?: AccessPass,
 	) {
 		const userId = request.actor!.userId
-		let lookup = lookups?.get(liveKey(userId)) as
-			| Promise<LiveUserRow | null>
-			| undefined
+		let lookup = pass?.liveUsers.get(userId)
 		if (!lookup) {
 			lookup = this.loadLiveUser(userId)
-			lookups?.set(liveKey(userId), lookup)
+			pass?.liveUsers.set(userId, lookup)
 		}
 		const person = await lookup
 		if (
@@ -509,50 +496,60 @@ export class FileRoom extends DurableObject<Env> {
 	private async sessionAccess(
 		attachment: Attachment,
 		fileId: string,
-		pass: AccessPass = new Map(),
+		pass = createAccessPass(),
 	) {
 		assertUnexpired(attachment.session)
 		const key = sessionKey(attachment)
-		let access = pass.get(key)
+		let access = pass.sessions.get(key)
 		if (!access) {
-			access = this.resolveAccess(attachment, fileId, lookupsFor(pass))
-			pass.set(key, access)
+			access = this.resolveAccess(attachment, fileId, pass)
+			pass.sessions.set(key, access)
 		}
 		return access
 	}
 	private async resolveAccess(
 		attachment: Attachment,
 		fileId: string,
-		lookups?: FileAccessLookups,
+		pass: AccessPass,
 	) {
 		await this.assertSessionLive(
 			attachment.request,
 			attachment.session.issuedAt,
-			lookups,
+			pass,
 		)
 		return fileCollaborationAccess(
 			this.env,
 			attachment.request,
 			fileId,
-			lookups,
+			pass.lookups,
 		)
 	}
 	/** Closes sockets that lost access and returns the rest with their actors. */
 	private async readableSockets(fileId: string, pass: AccessPass) {
 		const sockets = this.ctx.getWebSockets()
-		const attachments = sockets.map(
-			(ws) => ws.deserializeAttachment() as Attachment,
+		const attachments = await Promise.allSettled(
+			sockets.map(async (ws) => {
+				const attachment = ws.deserializeAttachment() as Attachment | null
+				if (!attachment) throw new Error('Missing file session.')
+				assertUnexpired(attachment.session)
+				return attachment
+			}),
 		)
 		this.prefetchLiveUsers(
-			attachments.flatMap((a) =>
-				a?.request?.actor?.userId ? [a.request.actor.userId] : [],
-			),
-			lookupsFor(pass),
+			attachments.flatMap((result) => {
+				const userId =
+					result.status === 'fulfilled'
+						? result.value.request?.actor?.userId
+						: undefined
+				return userId ? [userId] : []
+			}),
+			pass,
 		)
 		const outcomes = await Promise.allSettled(
-			attachments.map(async (attachment) =>
-				this.sessionAccess(attachment, fileId, pass),
-			),
+			attachments.map(async (result) => {
+				if (result.status === 'rejected') throw result.reason
+				return this.sessionAccess(result.value, fileId, pass)
+			}),
 		)
 		const readable: Array<{ ws: WebSocket; actor: CollaborationActor }> = []
 		sockets.forEach((ws, index) => {
@@ -574,7 +571,7 @@ export class FileRoom extends DurableObject<Env> {
 
 	private async broadcast(
 		message: RoomServerMessage,
-		pass: AccessPass = new Map(),
+		pass = createAccessPass(),
 	) {
 		const state = await this.ctx.storage.get<RoomState>('room')
 		if (!state) return
@@ -582,7 +579,7 @@ export class FileRoom extends DurableObject<Env> {
 		for (const { ws } of await this.readableSockets(state.fileId, pass))
 			this.send(ws, payload)
 	}
-	private async broadcastNotifications(pass: AccessPass = new Map()) {
+	private async broadcastNotifications(pass = createAccessPass()) {
 		const state = await this.ctx.storage.get<RoomState>('room')
 		if (!state) return
 		await Promise.all(
@@ -604,7 +601,7 @@ export class FileRoom extends DurableObject<Env> {
 		)
 	}
 
-	private async broadcastPresence(pass: AccessPass = new Map()) {
+	private async broadcastPresence(pass = createAccessPass()) {
 		await this.broadcast(
 			{
 				type: 'presence',
@@ -988,7 +985,7 @@ export class FileRoom extends DurableObject<Env> {
 						? message.command.operationId
 						: undefined
 			if (!state) throw new Error('File not found.')
-			const pass: AccessPass = new Map()
+			const pass = createAccessPass()
 			const { access } = await this.sessionAccess(
 				attachment,
 				state.fileId,
@@ -1118,7 +1115,7 @@ export class FileRoom extends DurableObject<Env> {
 					.first<{ stable_user_id: string }>()
 				return user?.stable_user_id ?? null
 			})
-			const pass: AccessPass = new Map()
+			const pass = createAccessPass()
 			await this.broadcastNotifications(pass)
 			const tickets = await this.ctx.storage.list<{ expiresAt: number }>({
 				prefix: 'ticket:',

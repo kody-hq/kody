@@ -16,15 +16,18 @@ import type {
  * sockets that belong to the same person in the same org reuse one D1 lookup.
  * Callers must start a fresh cache per run so revocations are still observed.
  */
-export type FileAccessLookups = Map<string, Promise<unknown>>
+export type FileAccessLookups = {
+	bindings: Map<string, ReturnType<typeof loadLiveOrgBindingForOrg>>
+	enabled: Map<string, Promise<boolean>>
+}
 
 function memo<T>(
-	lookups: FileAccessLookups | undefined,
+	lookups: Map<string, Promise<T>> | undefined,
 	key: string,
 	load: () => Promise<T>,
 ): Promise<T> {
 	if (!lookups) return load()
-	let value = lookups.get(key) as Promise<T> | undefined
+	let value = lookups.get(key)
 	if (!value) {
 		value = load()
 		lookups.set(key, value)
@@ -43,10 +46,11 @@ export async function fileCollaborationAccess(
 	access: CollaborationAccess
 	actor: CollaborationActor
 }> {
-	if (!request.actor) throw new Error('Sign in to open this file.')
-	const personOrg = JSON.stringify([request.actor.userId, request.org.id])
-	const binding = await memo(lookups, `binding:${personOrg}`, () =>
-		loadLiveOrgBindingForOrg(env.APP_DB, request.actor!.userId, request.org.id),
+	const { actor } = request
+	if (!actor) throw new Error('Sign in to open this file.')
+	const personOrg = JSON.stringify([actor.userId, request.org.id])
+	const binding = await memo(lookups?.bindings, personOrg, () =>
+		loadLiveOrgBindingForOrg(env.APP_DB, actor.userId, request.org.id),
 	)
 	if (!binding) throw new Error('File access was revoked.')
 	const fresh = {
@@ -57,7 +61,7 @@ export async function fileCollaborationAccess(
 	// and the collaboration gates below.
 	let enabledOnce: Promise<boolean> | undefined
 	const enabledLookup = () =>
-		(enabledOnce ??= memo(lookups, `enabled:${personOrg}`, () =>
+		(enabledOnce ??= memo(lookups?.enabled, personOrg, () =>
 			fileCollaborationEnabled(env, fresh),
 		))
 	const effective = await fileEffectivePermissions(env, fresh, enabledLookup)

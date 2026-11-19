@@ -843,21 +843,66 @@ test('a broadcast looks up each person once instead of once per session', async 
 		await runInDurableObject(f.stub, async (instance: FileRoom) => {
 			const room = instance as unknown as RoomInternals & { env: Env }
 			const prepare = vi.spyOn(room.env.APP_DB, 'prepare')
+			const bindings = room.env as AppEnv
+			const localDev = bindings.WRANGLER_IS_LOCAL_DEV
 			try {
+				// Exercise the D1-backed flag lookup rather than the local override.
+				bindings.WRANGLER_IS_LOCAL_DEV = 'false'
 				await room.broadcastPresence()
 				const sql = prepare.mock.calls.map(([query]) => String(query))
-				const userLookups = sql.filter((query) =>
-					/FROM users WHERE stable_user_id (=|IN)/.test(query),
-				)
-				// One batched liveness query plus at most one collaboration-flag
-				// user lookup, regardless of how many sessions are connected.
-				expect(userLookups.length).toBeLessThanOrEqual(2)
+				expect(
+					sql.filter((query) =>
+						query.includes('FROM users WHERE stable_user_id IN'),
+					),
+				).toHaveLength(1)
+				expect(
+					sql.filter((query) =>
+						query.includes('SELECT id FROM users WHERE stable_user_id ='),
+					),
+				).toHaveLength(1)
+				expect(
+					sql.filter((query) =>
+						query.includes(
+							'SELECT o.id AS org_id, o.slug AS org_slug, m.role AS role',
+						),
+					),
+				).toHaveLength(1)
 			} finally {
+				bindings.WRANGLER_IS_LOCAL_DEV = localDev
 				prepare.mockRestore()
 			}
 		})
 	} finally {
 		for (const { socket } of sockets) socket.close()
+	}
+})
+
+test('a password change invalidates only room sessions issued before it', async () => {
+	const f = await fixture()
+	const now = Date.now()
+	const expiresAt = now + 10 * 60_000
+	const [old] = await openSockets(f, 1, { issuedAt: now - 2000, expiresAt })
+	const [fresh] = await openSockets(f, 1, { issuedAt: now, expiresAt })
+	try {
+		await env.APP_DB.prepare(
+			'UPDATE users SET password_changed_at = ? WHERE stable_user_id = ?',
+		)
+			.bind(new Date(now - 1000).toISOString(), f.personId)
+			.run()
+		await runInDurableObject(f.stub, async (instance: FileRoom, ctx) => {
+			const target = ctx
+				.getWebSockets()
+				.find(
+					(ws) =>
+						ws.deserializeAttachment().presence.sessionId === fresh!.sessionId,
+				)!
+			await (instance as unknown as RoomInternals).broadcastPresence()
+			expect(target.readyState).toBe(WebSocket.OPEN)
+		})
+		expect(await old!.closed).toBe(4003)
+	} finally {
+		old!.socket.close()
+		fresh!.socket.close()
 	}
 })
 
