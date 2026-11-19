@@ -1,4 +1,3 @@
-import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
@@ -737,15 +736,6 @@ test('shared app confirmation gates handoff and blocks a previously established 
 		runtime: 'production',
 	})
 	await seedPackageAppAccessFixture()
-	const { TEST_MIGRATIONS } = env as Env & {
-		TEST_MIGRATIONS: Array<D1Migration>
-	}
-	await applyD1Migrations(
-		env.APP_DB,
-		TEST_MIGRATIONS.filter(({ name }) =>
-			name.endsWith('-package-app-run-consents.sql'),
-		),
-	)
 	const { privateApp, orgSlug, people } = accessFixture
 	const personId = personIdFromStored(
 		testStableUserIdFromEmail(people.collaborator.email),
