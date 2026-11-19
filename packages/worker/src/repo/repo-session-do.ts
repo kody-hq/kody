@@ -139,6 +139,7 @@ import {
 import {
 	artifactBuildFailureMessage,
 	isRepoCheckStep,
+	type LinkedPublishArtifactSizes,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
 import type {
@@ -258,6 +259,7 @@ import {
 const repoSessionWorkspacePrefix = '/session'
 const lastCheckStatusStorageKey = 'repo-session:last-check-status'
 const lastCheckStepStorageKey = 'repo-session:last-check-step'
+const linkedPublishSizesStorageKey = 'repo-session:linked-publish-sizes'
 const lastPublishStorageKey = 'repo-session:last-publish'
 
 type RepoSessionPublishInput = {
@@ -3290,9 +3292,9 @@ class RepoSessionBase extends DurableObject<Env> {
 	 * throwaway isolate (see `publish-work.ts`), or inline when the env lacks
 	 * the isolate bindings.
 	 */
-	private publishWorkRunner(): PublishWorkRunner {
+	private publishWorkRunner(offloadedBuild = false): PublishWorkRunner {
 		return (
-			createIsolatedPublishWorkRunner(this.env) ??
+			createIsolatedPublishWorkRunner(this.env, offloadedBuild) ??
 			createInlinePublishWorkRunner({
 				env: this.env,
 				cloneExternalRefFiles: (request) => this.cloneExternalRefFiles(request),
@@ -3680,11 +3682,12 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 		publishedCommit: string
 		buildId: string
+		diagnosticsId?: string
 		baseUrl?: string
 	}): Promise<PersistUploadedPublishBuildResult> {
 		const source = await this.resolvePublishSource(input)
 		if (source.entity_kind !== 'package') {
-			return { ok: false, message: 'Only packages can publish a build.' }
+			throw new Error('Only packages can publish a build.')
 		}
 		this.assertPublishedCommitUnchanged({
 			source,
@@ -3715,6 +3718,9 @@ class RepoSessionBase extends DurableObject<Env> {
 		const baseUrl = input.baseUrl ?? source.source_root
 		const { persistUploadedPublishBuild } =
 			await import('#worker/publish-offload/persist-uploaded.ts')
+		const { diagnosticsId } = input
+		const largest: LinkedPublishArtifactSizes['largest'] = []
+		let count = 0
 		return await persistUploadedPublishBuild({
 			env: this.env,
 			buildId: input.buildId,
@@ -3725,7 +3731,33 @@ class RepoSessionBase extends DurableObject<Env> {
 			publishedCommit: input.publishedCommit,
 			sourceFiles,
 			targets,
+			onLinkedArtifact: diagnosticsId
+				? async (artifact) => {
+						count++
+						largest.push(artifact)
+						largest.sort((a, b) => b.bytes - a.bytes)
+						largest.splice(6)
+						// Keep one bounded checkpoint. The caller reads it after an
+						// isolate reset, and only for its own attempt.
+						await this.ctx.storage
+							.put(linkedPublishSizesStorageKey, {
+								diagnosticsId,
+								sizes: { count, largest },
+							})
+							.catch(() => {})
+					}
+				: undefined,
 		})
+	}
+
+	async getLinkedPublishArtifactSizes(
+		diagnosticsId: string,
+	): Promise<LinkedPublishArtifactSizes | null> {
+		const checkpoint = await this.ctx.storage.get<{
+			diagnosticsId: string
+			sizes: LinkedPublishArtifactSizes
+		}>(linkedPublishSizesStorageKey)
+		return checkpoint?.diagnosticsId === diagnosticsId ? checkpoint.sizes : null
 	}
 
 	async rebuildPublishedPackageArtifact(input: {
@@ -4974,7 +5006,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		requestedByUserId?: string | null
 		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
-		typecheckRanOffWorker?: boolean
+		uploadedBuildId?: string
 		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
@@ -4985,7 +5017,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		// Clone, checks, credential scans, and finalize each run on a fresh
 		// throwaway isolate over one staged tree; this Durable Object only
 		// coordinates (kody-hq/kody#4078).
-		const runner = this.publishWorkRunner()
+		const runner = this.publishWorkRunner(Boolean(input.uploadedBuildId))
 		const recordCheckStep = runner.isolated ? null : this.checkStepRecorder()
 		const cloned = await runner.cloneExternalRef({
 			userId: input.userId,
@@ -5035,8 +5067,8 @@ class RepoSessionBase extends DurableObject<Env> {
 				...(input.deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
 					: {}),
-				...(input.typecheckRanOffWorker === true
-					? { typecheckRanOffWorker: true }
+				...(input.uploadedBuildId
+					? { uploadedBuildId: input.uploadedBuildId }
 					: {}),
 				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
 			}).finally(() => this.clearCheckStep())

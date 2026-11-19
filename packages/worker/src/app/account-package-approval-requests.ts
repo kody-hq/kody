@@ -32,6 +32,7 @@ import {
 } from '#worker/package-registry/repo.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { isPublishComputeLimitMessage } from '#worker/repo/isolated-runner-limit-message.ts'
 import { isArtifactsHeadChangedBeforePublishMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { getRepoSessionById } from '#worker/repo/repo-sessions.ts'
@@ -40,6 +41,7 @@ import type {
 	RepoSessionPublishResult,
 } from '#worker/repo/types.ts'
 import type { AccountPackagePendingApproval } from '#universal/loader-data.ts'
+import { isUserCodeError } from '#worker/user-code-error.ts'
 
 function reasonLabel(reason: PackageApprovalReason) {
 	switch (reason) {
@@ -233,15 +235,23 @@ export async function approveCredentialNeedsRequest(input: {
 		})
 		return { ok: true as const }
 	}
-	// Publish already landed (pin failed on the previous click). Resume with
-	// only the capability pin so Approve is not superseded off the old base.
-	if (source.published_commit === approval.pendingCommit) {
+	const { uploadedBuildId, ...overwriteOptions } = readPausedExternalPublish(
+		approval.details,
+	)
+	const commitRecorded = source.published_commit === approval.pendingCommit
+	const artifactsReady =
+		source.serving_commit === approval.pendingCommit ||
+		source.held_commit === approval.pendingCommit
+	// The source pointer can move before an uploaded build is finalized.
+	if (commitRecorded && (!uploadedBuildId || artifactsReady)) {
 		const pinFailed =
 			await pinInternetVisibleCapabilitiesAfterNeedsPublish(input)
 		if (pinFailed) return pinFailed
 		return await approved()
 	}
-	if (source.published_commit !== approval.baseCommit) return await supersede()
+	if (!commitRecorded && source.published_commit !== approval.baseCommit) {
+		return await supersede()
+	}
 	const sessionGone = async () => {
 		await resolvePackageApprovalRequest(input.env.APP_DB, {
 			id: approval.id,
@@ -310,6 +320,10 @@ export async function approveCredentialNeedsRequest(input: {
 		}
 	}
 	const sessionId = `approve-credential-needs-${input.savedPackage.id}`
+	const baseUrl = getAppBaseUrl({
+		env: input.env,
+		requestUrl: input.request.url,
+	})
 	let result: RepoExternalPublishResult
 	try {
 		result = await repoSessionRpc(input.env, sessionId).publishFromExternalRef({
@@ -320,29 +334,64 @@ export async function approveCredentialNeedsRequest(input: {
 			// A newer push replaces this request; never publish an older commit
 			// over it.
 			expectedHead: approval.pendingCommit,
-			...readPausedExternalPublish(approval.details),
+			...overwriteOptions,
 			allowLockedPublish: true,
 			credentialNeedsApproved: true,
 			// The app runs as whoever pushed, not as the approver.
 			requestedByUserId: approval.requestedByUserId,
-			baseUrl: getAppBaseUrl({
-				env: input.env,
-				requestUrl: input.request.url,
-			}),
-			rebuildPackageArtifacts: true,
-			// The rebuild below bundles every target; validating them first too
-			// doubled the approval time past the page's request timeout.
+			baseUrl,
+			rebuildPackageArtifacts: !uploadedBuildId,
+			...(uploadedBuildId ? { uploadedBuildId } : {}),
 			deferBundleCheckToRebuild: true,
 		})
 	} catch (error) {
 		if (isArtifactsHeadChangedBeforePublishMessage(getErrorMessage(error))) {
 			return await supersede()
 		}
+		if (
+			uploadedBuildId &&
+			isPublishComputeLimitMessage(getErrorMessage(error))
+		) {
+			return { ok: false, status: 400, error: getErrorMessage(error) }
+		}
 		throw error
 	}
 	switch (result.status) {
 		case 'published':
 		case 'already_published': {
+			if (uploadedBuildId) {
+				const { rebuildPublishedPackageArtifactsViaRepoSession } =
+					await import('#mcp/capabilities/repo/package-artifact-rebuild.ts')
+				const userId = ownerIdFromStored(input.ownerUserId)
+				try {
+					await rebuildPublishedPackageArtifactsViaRepoSession({
+						env: input.env,
+						rpcSessionId: sessionId,
+						sourceId: source.id,
+						userId,
+						publishedCommit: approval.pendingCommit,
+						baseUrl,
+						uploadedBuild: { buildId: uploadedBuildId },
+					})
+				} catch (error) {
+					const message = getErrorMessage(error)
+					if (!isPublishComputeLimitMessage(message) && !isUserCodeError(error))
+						throw error
+					const { settleFailedPublishRebuild } =
+						await import('#mcp/capabilities/repo/settle-failed-publish-rebuild.ts')
+					await settleFailedPublishRebuild({
+						env: input.env,
+						baseUrl,
+						ownerUserId: userId,
+						packageId: input.savedPackage.id,
+						sourceId: source.id,
+						failedCommit: approval.pendingCommit,
+						sentryScope:
+							'package-approval.restore-after-upload-finalize-failure',
+					})
+					return { ok: false, status: 400, error: message }
+				}
+			}
 			const pinFailed =
 				await pinInternetVisibleCapabilitiesAfterNeedsPublish(input)
 			if (pinFailed) return pinFailed
