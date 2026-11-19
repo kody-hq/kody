@@ -16201,6 +16201,150 @@ export const capabilityManifest = {
 					"outputTypeDefinition": "type AdminCredentialInventoryScanOutput = {\n\trunId: string\n\tcomplete: boolean\n\tpage: {\n\tscanned: number\n\tunpublished: number\n\tfailed: number\n}\n\t/** Aggregate counts for the whole run, once it is complete. */\n\treport: {\n\tpackages: {\n\tscanned: number\n\tunpublished: number\n\tfailed: number\n\twithPlaceholders: number\n\twithSlots: number\n\t/** Scanned packages with a secret or integration placeholder a fetch sends in the request body, URL query, URL path, or whole URL; `any` counts each package once. Recomputed from stored items, so re-reading an older complete run fills it. */\n\twithRequestPlacement: {\n\tbody: number\n\tquery: number\n\tpath: number\n\turl: number\n\tany: number\n}\n}\n\t/** Every placeholder occurrence by kind, including ones that match a declared slot. */\n\tplaceholders: {\n\tsecret: number\n\t\"secret-basic\": number\n\t\"integration-token\": number\n\tvault: number\n\tcomputed: number\n}\n\tunparsedModules: number\n\treferences: {\n\ttotal: number\n\tattributed: number\n\tunattributed: number\n\t/** `binding` is a placeholder bound to a variable; each read of the variable is counted as its own reference. */\n\tbyPlacement: {\n\theader: number\n\tquery: number\n\t\"header-custom\": number\n\tbasic: number\n\tpath: number\n\turl: number\n\tbody: number\n\tsigning: number\n\tbinding: number\n\tother: number\n}\n\tunattributedByPlacement: {\n\theader: number\n\tquery: number\n\t\"header-custom\": number\n\tbasic: number\n\tpath: number\n\turl: number\n\tbody: number\n\tsigning: number\n\tbinding: number\n\tother: number\n}\n\t/** Why each `other` placement is not on a request shape. */\n\totherByContext: {\n\t\"sdk-option\": number\n\tobject: number\n\targument: number\n\treturn: number\n\tassignment: number\n\tarray: number\n\t\"default-param\": number\n\tcomparison: number\n\t\"unused-binding\": number\n\t\"reassigned-binding\": number\n\t\"template-computed\": number\n\t\"url-host\": number\n\tunparsed: number\n\tdisplay: number\n\tother: number\n}\n\t/** Body placements by the literal fetch URL path: a login or token exchange, any other path, or not known statically. */\n\tbodyByEndpoint: {\n\tlogin: number\n\tother: number\n\tunknown: number\n}\n\t/** Body fields placeholders fill. */\n\tbodyFields: Array<{\n\tname: string\n\tcount: number\n}>\n\t/** `callee.key` object options passed to a call or constructor. */\n\tsdkOptions: Array<{\n\tname: string\n\tcount: number\n}>\n\t/** Functions a placeholder is passed to directly. */\n\targumentCallees: Array<{\n\tname: string\n\tcount: number\n}>\n}\n\tvault: {\n\tbyPlacement: {\n\theader: number\n\tquery: number\n\t\"header-custom\": number\n\tbasic: number\n\tpath: number\n\turl: number\n\tbody: number\n\tsigning: number\n\tbinding: number\n\tother: number\n}\n}\n\tsigning: {\n\t/** Placeholders used as signing key material (HMAC, JWT, crypto.subtle). */\n\tplaceholderKeys: number\n\t/** `secretJwtSign` calls in package source. */\n\tjwtSignCalls: number\n\tpackagesWithSigning: number\n}\n\tslots: {\n\ttotal: number\n\tattributed: number\n\tbyKind: {\n\tsecret: number\n\toauth: number\n\tmcp: number\n}\n}\n\tcredentialsReferenced: number\n\t/** Packages the run could not scan, with the load error (first 50 by package id). A backfill apply refuses while any remain unless it lists every failed package in acknowledgedFailedPackageIds. */\n\tfailures: Array<{\n\tpackageId: string\n\terror: string\n}>\n} | null\n}"
 				},
 				{
+					"name": "adminLegacyCredentialUsage",
+					"domain": "admin",
+					"description": "Count legacy credential fill attempts by placement, surface, resolution mode and outcome. Optional owner and package filters. Includes current name-stored settings counts. Returns aggregate counts only.",
+					"keywords": [
+						"admin",
+						"credentials",
+						"legacy",
+						"usage",
+						"deprecation"
+					],
+					"readOnly": true,
+					"idempotent": true,
+					"destructive": false,
+					"orgPermission": "none",
+					"contextRuns": "deny",
+					"requiresLivePerson": "never",
+					"requiredRole": "admin",
+					"source": "builtin",
+					"inputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"from": {
+								"type": "string",
+								"format": "date-time",
+								"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+							},
+							"to": {
+								"type": "string",
+								"format": "date-time",
+								"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+							},
+							"orgId": {
+								"type": "string",
+								"minLength": 1
+							},
+							"packageId": {
+								"type": "string",
+								"minLength": 1
+							}
+						},
+						"required": [
+							"from",
+							"to"
+						],
+						"additionalProperties": false
+					},
+					"outputSchema": {
+						"$schema": "https://json-schema.org/draft/2020-12/schema",
+						"type": "object",
+						"properties": {
+							"fills": {
+								"type": "array",
+								"items": {
+									"type": "object",
+									"properties": {
+										"placement": {
+											"type": "string",
+											"enum": [
+												"header",
+												"query",
+												"path",
+												"body",
+												"url-authority"
+											]
+										},
+										"surface": {
+											"type": "string",
+											"enum": [
+												"execute",
+												"package",
+												"package-app",
+												"local",
+												"email",
+												"webhook",
+												"schedule",
+												"event"
+											]
+										},
+										"mode": {
+											"type": "string",
+											"enum": [
+												"need",
+												"name",
+												"provider",
+												"integration",
+												"unknown"
+											]
+										},
+										"result": {
+											"type": "string",
+											"enum": [
+												"success",
+												"failure",
+												"denied"
+											]
+										},
+										"count": {
+											"type": "integer",
+											"minimum": 0,
+											"maximum": 9007199254740991
+										}
+									},
+									"required": [
+										"placement",
+										"surface",
+										"mode",
+										"result",
+										"count"
+									],
+									"additionalProperties": false
+								}
+							},
+							"nameStoredSettings": {
+								"type": "object",
+								"properties": {
+									"webhookEndpoints": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"providerBindings": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": [
+									"webhookEndpoints",
+									"providerBindings"
+								],
+								"additionalProperties": false
+							}
+						},
+						"required": [
+							"fills",
+							"nameStoredSettings"
+						],
+						"additionalProperties": false
+					},
+					"inputTypeDefinition": "type AdminLegacyCredentialUsageInput = {\n\tfrom: string\n\tto: string\n\torgId?: string\n\tpackageId?: string\n}",
+					"outputTypeDefinition": "type AdminLegacyCredentialUsageOutput = {\n\tfills: Array<{\n\tplacement: \"header\" | \"query\" | \"path\" | \"body\" | \"url-authority\"\n\tsurface: \"execute\" | \"package\" | \"package-app\" | \"local\" | \"email\" | \"webhook\" | \"schedule\" | \"event\"\n\tmode: \"need\" | \"name\" | \"provider\" | \"integration\" | \"unknown\"\n\tresult: \"success\" | \"failure\" | \"denied\"\n\tcount: number\n}>\n\tnameStoredSettings: {\n\twebhookEndpoints: number\n\tproviderBindings: number\n}\n}"
+				},
+				{
 					"name": "adminCredentialPathSegmentImpact",
 					"domain": "admin",
 					"description": "Read-only impact of path-segment credential encoding: from a complete adminCredentialInventoryScan run, count packages that fill a Key into a URL path where the stored value contains /, ?, or #. Decrypts only to test those characters; never returns values. Never emails or notifies owners. Admin-only; use counts in public text.",
@@ -33931,7 +34075,7 @@ export const capabilityManifest = {
 							"guide": {
 								"type": "string",
 								"minLength": 1,
-								"description": "Which guide to load (id or page slug, same as `guide:{id}` on search). `what_is_kody`: Start here. Kody is Your agents' cloud for individuals and teams. Connect the AI agent you already use over MCP and it gains durable memory, credentials it never reads, saved packages, and jobs that keep running while you are offline. Covers what Kody is, how it pairs with the agents you already use, what you cannot get elsewhere, the building blocks, real uses, and notes for an agent running a discovery interview. Nothing here requires an account. `search_and_execute`: Search finds capabilities, guides, packages, integrations, and secrets. execute runs an ephemeral module that calls what you found. Covers how they work together and the inputs an agent actually passes. The MCP api tool is documented separately. `how_kody_works`: The factory loop as a conversation: ask what your favorite bot shipped, save the answer as an export you can invoke from any agent, then a daily email that stays quiet until something actually ships. `kody_factory`: Map Kody's discovery, credentials, integrations, packages, storage, schedules, hosted surfaces, and memories—and know where the boundary is. `connect_your_agent`: The three-step Get started flow for people: connect the agent you already use over MCP, paste one prompt so that agent makes something useful in your account, then connect a second agent from another ecosystem and watch it reuse the same memory and package. Includes what approving access means, verified-email requirements, and which agents suit building versus using. `muse_chat`: Connect Meta Muse chat to Kody over MCP with a custom connector and a pre-registered OAuth client. Covers the exact redirect URIs, the search-only proof step, and the failures to check before diagnosing scope or grants. `onboarding`: First-run guide for a connected agent. Teach lightly what Kody is and is not, look at what is already in this agent (connections, skills, memories, instructions, repeating processes), propose a few to move into Kody, and help move one. If there is little to move, offer six first-win ideas instead. Set up integrations with clear difficulty. Then Step 3. `quick_example`: Agent playbook after Make something useful (`/onboarding/step-2`) or Connect your agent (`/onboarding/step-1`): run one useful ad hoc execute, show the result, persist that working code as a package they own, and offer optional triggers without recommending one. `portability`: Second-agent proof after a first win. Find what the account already has, reuse it once, and stop. Retrieved as guide:portability from Step 3. `first_win`: Optional agent playbook: send a welcome email, point the person at their own inbox to reply, look the reply up when they say it is sent, save what matters as memories, then offer a next step. After Connect your agent (`/onboarding/step-1`), Step 2 is Make something useful (`/onboarding/step-2`) and Step 3 is Connect a second agent (`/onboarding/step-3`); the optional climax guide is quick-example. Load this when someone wants the email loop. Includes the no-polling rule and troubleshooting for missing mail and unbound tools. `memory`: What a Kody memory is (personal-only), why it follows the person instead of one host's chat or a team org, how memories surface automatically on search and execute, the verify-first rule for writes, and what does not belong in memory (package state, config, credentials, shared org knowledge). Load this when someone asks what their agents remember about them or how memory travels between agents. `agent_guidance`: Progressive disclosure for agent guidance across MCP server instructions, package docs (README.md and AGENTS.md), export JSDoc, and memories. Load this when deciding where a fact or instruction should live, or before calling metaMemoryUpsert or metaSetMcpServerInstructions. Search phrases such as \"where should this guidance live\" should find this page. `credentials`: What a Kody credential is and every kind it comes in (Key, OAuth, MCP server, URL, login, signing), how `{{secret:name}}` placeholders and scoped `credential(key)` clients place a value at the network boundary, how packages declare needs in `kody.credentials` (including publisher and executor credential needs that app visitors fill with `credential.visitor(key)`), how callers pick between credentials with names and call maps, the `credential_ambiguous` / `credential_unbound` errors, and webhook verification. Load this when someone asks how credentials work, which kind to use, or why a credential did not resolve. `secrets`: How Kody lets your agent use your API keys, tokens, and private keys without ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders resolved at the network boundary, host approval, package approval (website Allow links via `resourceLock`), and expiry. Keys are one credential kind; the Credentials guide covers every kind. Load this when someone asks whether the agent can see a key. `secret_providers`: Use credentials from an external vault in secret-aware fetch without the agent ever reading them. `packages_integrations_mcp`: Packages are saved behavior. Integrations are account-owned logins. MCP servers are how agents connect. Use this when those three look interchangeable. `organizations`: Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who automation runs as, the org-wide execute pool, connecting one client to several orgs, free-org limits, and paid seats. `text_your_agent`: How to let a spouse or friend talk to *your agent* over a familiar chat surface (iMessage worked example). Surface vs brain vs home: the agent holds the conversation; Kody is the home it reaches into for memory, secrets, packages, and jobs. Covers OpenClaw/Bezalel/Grok Bot patterns and a simpler SMS path with Twilio. `openmuse`: How and why to use OpenMuse, CopilotKit's open-source, self-hostable personal agent, alongside Kody. OpenMuse is the personal-agent app (phone and web chat, an agent computer, goals, reviewed actions); Kody is the home that agent shares with your other agents (memory, credentials it never reads, packages, jobs, webhooks, inbox). Covers what each is good at, what to put where, and how to connect OpenMuse's agent harness to Kody over MCP. `triggers`: How work runs when nobody is in the chat. Package-owned jobs for recurring schedules, workflows for deferred or long one-shot runs, inbound webhooks for provider events, subscriptions for events inside Kody, and the inbox — which to pick, how each is declared, and how to test one safely before enabling it. Load this when someone asks how to run something later, on a schedule, or when a provider knocks. `platform_efficiency`: How unique Dynamic Worker days work across execute, jobs, package exports, and other surfaces, and how the acting user plus a stable module graph reuse one isolate per UTC day. `local_execute`: Prefer @kodycodes/cli execute --local when Node ≥22 and the CLI are available. Orthogonal to Open API: use this guide for CLI setup and --local usage; see guide:open_api for HTTPS / MCP api fallback. `execution_contexts`: Run execute and automations on your own laptop or build server instead of Kody cloud. Credentials stay in Kody cloud; the machine adds host folders, LAN, and (after a local opt-in) shell commands via kody.command.run / kody.command.start, from execute or saved packages, with the execution_context:command grant. An experiment you turn on at /account/experiments. `profiles`: Give an agent or bot its own scoped identity in an org, with a snapshot of your access, an expiry that only shortens, and sub-profiles for the agents it starts. An experiment you turn on at /account/experiments. `auth_setup_git`: Server contract for `kody auth setup-git`: user-owned CLI tokens, `?org=`, and persistent HTTPS git auth with a long-lived `kody_at_…` on `https://kody.codes/@owner/name.git` (clone, fetch, and push). `open_api`: Call Kody over HTTPS at api.kody.codes. MCP api runs one operation (operationId + params), including tokenCreate / tokenList / tokenRevoke. Available to every signed-in account. `api_tokens`: List, inspect, rotate, and revoke your Kody API tokens (kody_at_ API keys) with tokenList / tokenGet / tokenRotate / tokenRevoke. These are Open API operations, reachable from the MCP api tool, HTTPS, or `kody api`, not from execute. `api_versioning`: How Kody versions the HTTP Open API under /v1, signals deprecations, and migrates without breaking people and their packages. `flake_hunter`: Homepage cron example: a package-owned daily job that scans CI for flaky end-to-end runs, stays quiet on a clean day, and only acts when a flake signal is present. Load this when someone asks how Flake Hunter works or how to hang a schedule on a package they own. `sentry_issues`: Homepage webhook example: a package-owned inbound URL that accepts a Sentry issue POST, verifies HMAC on the platform, and starts triage without a model in the request path. Load this when someone asks how Sentry Issues works or how to hang a vendor webhook on a package they own. `agent_inbox`: Homepage email example: every account has a platform inbox, inbound mail emits email.message.received, and a package can wake work from a plus-tag without a model reading the mailbox. Load this when someone asks how Agent inbox works or how to treat email as a trigger. `purchase_thanks`: Homepage event example: a verified purchase becomes a fact your factory already knows, and a package drafts a thank-you without anyone typing. Load this when someone asks how Purchase thanks works or how to react to an event Kody (or a package you own) already emitted. `package_lifecycle`: Choose between invoking existing behavior, temporary execute exploration, forking a close public package, deferred workflows, and creating a durable repo-backed package; session/tool-only lane validates with `repoRunChecks`, git lane with local checks plus `packagePublishExternalPush`; when the host can run the CLI use `kody dev` / mocks / `--local` before publish. `package_authoring`: START HERE when creating or materially changing a Kody package: shape, required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime input checking, public-visibility hygiene, and secret-using approvals. `package_export_jsdoc`: Per-export JSDoc rules for Kody packages: what search's Exports Purpose column reads, the required what/when line, @param, @returns, and an importing @example, and where JSDoc must sit for types files and re-exports. `package_sharing`: Give a person or team Read, Use, Contribute, or Manage on one package with a grant, invite someone who is not in your organization yet, share private source with one person (Read, then they fork it), and know what each side can run, read, and pay for. Also covers unmappable credentials: share-time warnings, the owner-only change lock, and the per-grant \"allow changes despite unmappable credentials\" option. `shared_packages`: Build one package that many callers import, each with its own account of the same provider. Declare the need once, let each caller map it on its own package, pick per run, open several accounts with multiple, or pass a client in. `package_skills`: Put skills/<name>/SKILL.md in a package, publish, and expose them over MCP to hosts that support Skills-over-MCP. `package_apps`: Give a package a hosted Worker app on `*.kody.run`. Covers the fetch-handler contract, mount-stripped URLs, `packageContext` / `kody:runtime`, the platform-built browser client (`kody.app.client`) and static assets directory (`kody.app.assets`), session handoff, optional CLI local testing with `kody dev` when available, MCP-only validate via `repoRunChecks`, smoke tests with packageAppFetch, a Remix recipe (Example A), the same-origin proxy, lean forks, compiled clients, and listing verification. `package_app_custom_domains`: Serve an app on a domain you own. Covers which hostnames are allowed, the exact DNS records (DNS only, proxy off), how Kody checks status and emails you, and what pending, active, and needs attention mean. `package_subscriptions`: Use package.json#kody.subscriptions for package-owned event handlers; discover subscribers with packageSubscriptionsList; smoke-test one handler from interactive MCP with packageSubscriptionDispatch; follow metadata-first email, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, follow.published / follow.pushed follow notifiers, community.fork.upstream_updated fork notifiers, resource change events (credentials, packages, jobs, triggers, membership, memories), and repo / package lifecycle topics. `mcp_events`: Opt a package topic into MCP Events so ChatGPT (and other webhook-capable MCP clients) can subscribe. Delivery reuses the same package event bus as kody.subscriptions. Behind the mcp-events-extension flag. `wake_your_agent`: Recipe for waking a connected agent when something happens in Kody (a failed run, a package event, inbound mail). Lead with MCP Events when the MCP client supports the events extension (behind the mcp-events-extension flag; ChatGPT today). Otherwise use a package subscription or job that POSTs to the agent's webhook URL, or the email-wake pattern. Pick by what the client supports. `heavy_work_offload`: When package checks or publish rebuilds exceed isolate memory or CPU — usually a large npm graph such as PDF.js — keep the Kody package as a thin orchestrator and run the heavy work in a process the owner operates (Cloudflare Container, Fly machine, or similar). Do not provision paid infra without asking. `publish_large_packages`: When a cloud build hits the worker's memory, CPU, or payload limits, build the package on your own machine (`kody package publish --build local`) or on an execution context you operate (`--build context`). The CLI pushes HEAD first; Kody checks the upload against that commit, links any `kody:@` packages it imports, and writes the registry itself. `integration_bootstrap`: START HERE when a third-party integration must work before saving a dependent package or package app: inspect integration/secret state, stop for setup, run an authenticated smoke test, then communitySearch before building from scratch. `oauth`: START HERE for third-party OAuth: hosted /connect/oauth, the exact redirect URI (https://kody.codes/connect/oauth), required query params, PKCE vs confidential, the post-connect copyable agent prompt, and how it differs from MCP OAuth. `google_oauth`: Interactive transcript of a coding agent walking a naive user through Google OAuth for Gmail inbox reading: official guides first, one console step at a time, prefilled /connect/oauth, refuse secrets in chat, then a Gmail profile smoke test. `secret_backed_integration`: Default non-OAuth recipe for secret-backed integrations: research auth, collect secrets through /connect/secret-set, run a smoke test, build the downstream package, then surface package secret approval links (prefer bulk) before calling the work complete. `connect_secret`: Send the user a prefilled /connect/secret-set link when they must type a secret value such as an API key, PAT, or token into Kody themselves. Covers the URL shape, query params, approval policy, and post-hoc package approval URLs including bulk approve. `openapi_integrations`: Prefer a close community helpers package, then fork `@kody/openapi` to bind and call selected operations. `local_mcp_tunnels`: Run an MCP server beside a vault, CLI, or home device, publish it with Cloudflare Tunnel and Access, and connect its HTTPS URL to Kody. `locked_mcp_server`: Connected MCP servers expose every discovered tool to execute and every package. Lock the server to a thin package so only that published surface can call it. `locked_gmail_drafts`: Google has gmail.send but no drafts-only scope. gmail.compose can manage drafts and send. Publish a drafts-only package, lock it, then resourceLock the connection so execute cannot use the token. `provider_discord`: Verified walkthrough for connecting Discord to Kody: the OAuth user-token lane for identity and server membership, the bot-token lane required for reading or posting in servers, 7-day rotating tokens, prefilled connect links, and users/@me smoke tests for both lanes. `provider_dropbox`: Walkthrough for connecting Dropbox to Kody with your own Dropbox app: app console setup, the PKCE connect link with offline refresh tokens, the three Dropbox API hosts (api, content, notify), and a smoke test through @kentcdodds/dropbox. `provider_figma`: Verified walkthrough for connecting Figma to Kody (BYO OAuth or personal/plan access token), then using @kody/figma over Figma REST, not Figma's remote MCP. `provider_github`: Verified walkthrough for connecting GitHub to Kody: fine-grained personal access tokens, bring-your-own OAuth Apps, scope choices, prefilled connect links, and copy-paste smoke tests. `provider_google`: Verified walkthrough for connecting Google to Kody: bring-your-own OAuth client, Google Auth Platform console steps, the Testing-status 7-day refresh-token trap, and a Calendar or Gmail smoke test. `provider_notion`: Verified walkthrough for connecting Notion to Kody: the personal internal connection token lane (fastest), the public connection OAuth lane, the page-picker access model (Notion has no OAuth scopes), prefilled connect links, and a users/me smoke test for both lanes. `provider_origin`: Verified walkthrough for connecting Cursor Origin to Kody: Origin Apps with Ed25519 signing keys, installation access tokens, the community helpers package, and a rate-limit smoke test. Cloud Agents API keys are not Origin credentials. `provider_salesforce`: Verified connect walkthrough for Salesforce: bring-your-own Connected App or External Client App, the exact /connect/oauth callback, production vs sandbox login hosts, scopes, prefilled connect links, and a smoke test. `provider_slack`: Verified walkthrough for connecting Slack to Kody with a user-token Slack app, then calling it from `@kody/slack`. `provider_spotify`: Verified walkthrough for connecting Spotify to Kody: dashboard app creation, the Development Mode Premium requirement and endpoint limits in force since February 2026, the PKCE public-client connect link, listening and playback scopes, and a profile smoke test. `limited_browser_sign_in`: Sign in to a Kody package app from a browser that cannot run Kody's page JavaScript (e-readers, older Chromium, JavaScript off) with your email and password, or with Sign in with another device (short code plus QR code). `cant_open_or_get_mail`: Unblock NextDNS and similar DNS filters for kody.codes, and recover missing signup or verification mail when a provider is blocking our domain. `platform_friction`: Use for meaningful Kody friction, bugs, poor experiences, or suggestions: show the exact proposal and account-identity notification disclosure before asking for explicit approval, and write one actionable issue per submission (repro steps, expected vs actual, impact)."
+								"description": "Which guide to load (id or page slug, same as `guide:{id}` on search). `what_is_kody`: Start here. Kody is Your agents' cloud for individuals and teams. Connect the AI agent you already use over MCP and it gains durable memory, credentials it never reads, saved packages, and jobs that keep running while you are offline. Covers what Kody is, how it pairs with the agents you already use, what you cannot get elsewhere, the building blocks, real uses, and notes for an agent running a discovery interview. Nothing here requires an account. `search_and_execute`: Search finds capabilities, guides, packages, integrations, and secrets. execute runs an ephemeral module that calls what you found. Covers how they work together and the inputs an agent actually passes. The MCP api tool is documented separately. `how_kody_works`: The factory loop as a conversation: ask what your favorite bot shipped, save the answer as an export you can invoke from any agent, then a daily email that stays quiet until something actually ships. `kody_factory`: Map Kody's discovery, credentials, integrations, packages, storage, schedules, hosted surfaces, and memories—and know where the boundary is. `connect_your_agent`: The three-step Get started flow for people: connect the agent you already use over MCP, paste one prompt so that agent makes something useful in your account, then connect a second agent from another ecosystem and watch it reuse the same memory and package. Includes what approving access means, verified-email requirements, and which agents suit building versus using. `muse_chat`: Connect Meta Muse chat to Kody over MCP with a custom connector and a pre-registered OAuth client. Covers the exact redirect URIs, the search-only proof step, and the failures to check before diagnosing scope or grants. `onboarding`: First-run guide for a connected agent. Teach lightly what Kody is and is not, look at what is already in this agent (connections, skills, memories, instructions, repeating processes), propose a few to move into Kody, and help move one. If there is little to move, offer six first-win ideas instead. Set up integrations with clear difficulty. Then Step 3. `quick_example`: Agent playbook after Make something useful (`/onboarding/step-2`) or Connect your agent (`/onboarding/step-1`): run one useful ad hoc execute, show the result, persist that working code as a package they own, and offer optional triggers without recommending one. `portability`: Second-agent proof after a first win. Find what the account already has, reuse it once, and stop. Retrieved as guide:portability from Step 3. `first_win`: Optional agent playbook: send a welcome email, point the person at their own inbox to reply, look the reply up when they say it is sent, save what matters as memories, then offer a next step. After Connect your agent (`/onboarding/step-1`), Step 2 is Make something useful (`/onboarding/step-2`) and Step 3 is Connect a second agent (`/onboarding/step-3`); the optional climax guide is quick-example. Load this when someone wants the email loop. Includes the no-polling rule and troubleshooting for missing mail and unbound tools. `memory`: What a Kody memory is (personal-only), why it follows the person instead of one host's chat or a team org, how memories surface automatically on search and execute, the verify-first rule for writes, and what does not belong in memory (package state, config, credentials, shared org knowledge). Load this when someone asks what their agents remember about them or how memory travels between agents. `agent_guidance`: Progressive disclosure for agent guidance across MCP server instructions, package docs (README.md and AGENTS.md), export JSDoc, and memories. Load this when deciding where a fact or instruction should live, or before calling metaMemoryUpsert or metaSetMcpServerInstructions. Search phrases such as \"where should this guidance live\" should find this page. `credentials`: What a Kody credential is and every kind it comes in (Key, OAuth, MCP server, URL, login, signing), how scoped `credential(key)` clients place a value at the network boundary, how packages declare needs in `kody.credentials` (including publisher and executor credential needs that app visitors fill with `credential.visitor(key)`), how callers pick between credential IDs with call maps, the `credential_ambiguous` / `credential_unbound` errors, and webhook verification. Load this when someone asks how credentials work, which kind to use, or why a credential did not resolve. `secrets`: How Kody lets your agent use your API keys, tokens, and private keys without ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders resolved at the network boundary, host approval, package approval (website Allow links via `resourceLock`), and expiry. Keys are one credential kind; the Credentials guide covers every kind. Load this when someone asks whether the agent can see a key. `secret_providers`: Use credentials from an external vault in secret-aware fetch without the agent ever reading them. `packages_integrations_mcp`: Packages are saved behavior. Integrations are account-owned logins. MCP servers are how agents connect. Use this when those three look interchangeable. `organizations`: Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who automation runs as, the org-wide execute pool, connecting one client to several orgs, free-org limits, and paid seats. `text_your_agent`: How to let a spouse or friend talk to *your agent* over a familiar chat surface (iMessage worked example). Surface vs brain vs home: the agent holds the conversation; Kody is the home it reaches into for memory, secrets, packages, and jobs. Covers OpenClaw/Bezalel/Grok Bot patterns and a simpler SMS path with Twilio. `openmuse`: How and why to use OpenMuse, CopilotKit's open-source, self-hostable personal agent, alongside Kody. OpenMuse is the personal-agent app (phone and web chat, an agent computer, goals, reviewed actions); Kody is the home that agent shares with your other agents (memory, credentials it never reads, packages, jobs, webhooks, inbox). Covers what each is good at, what to put where, and how to connect OpenMuse's agent harness to Kody over MCP. `triggers`: How work runs when nobody is in the chat. Package-owned jobs for recurring schedules, workflows for deferred or long one-shot runs, inbound webhooks for provider events, subscriptions for events inside Kody, and the inbox — which to pick, how each is declared, and how to test one safely before enabling it. Load this when someone asks how to run something later, on a schedule, or when a provider knocks. `platform_efficiency`: How unique Dynamic Worker days work across execute, jobs, package exports, and other surfaces, and how the acting user plus a stable module graph reuse one isolate per UTC day. `local_execute`: Prefer @kodycodes/cli execute --local when Node ≥22 and the CLI are available. Orthogonal to Open API: use this guide for CLI setup and --local usage; see guide:open_api for HTTPS / MCP api fallback. `execution_contexts`: Run execute and automations on your own laptop or build server instead of Kody cloud. Credentials stay in Kody cloud; the machine adds host folders, LAN, and (after a local opt-in) shell commands via kody.command.run / kody.command.start, from execute or saved packages, with the execution_context:command grant. An experiment you turn on at /account/experiments. `profiles`: Give an agent or bot its own scoped identity in an org, with a snapshot of your access, an expiry that only shortens, and sub-profiles for the agents it starts. An experiment you turn on at /account/experiments. `auth_setup_git`: Server contract for `kody auth setup-git`: user-owned CLI tokens, `?org=`, and persistent HTTPS git auth with a long-lived `kody_at_…` on `https://kody.codes/@owner/name.git` (clone, fetch, and push). `open_api`: Call Kody over HTTPS at api.kody.codes. MCP api runs one operation (operationId + params), including tokenCreate / tokenList / tokenRevoke. Available to every signed-in account. `api_tokens`: List, inspect, rotate, and revoke your Kody API tokens (kody_at_ API keys) with tokenList / tokenGet / tokenRotate / tokenRevoke. These are Open API operations, reachable from the MCP api tool, HTTPS, or `kody api`, not from execute. `api_versioning`: How Kody versions the HTTP Open API under /v1, signals deprecations, and migrates without breaking people and their packages. `flake_hunter`: Homepage cron example: a package-owned daily job that scans CI for flaky end-to-end runs, stays quiet on a clean day, and only acts when a flake signal is present. Load this when someone asks how Flake Hunter works or how to hang a schedule on a package they own. `sentry_issues`: Homepage webhook example: a package-owned inbound URL that accepts a Sentry issue POST, verifies HMAC on the platform, and starts triage without a model in the request path. Load this when someone asks how Sentry Issues works or how to hang a vendor webhook on a package they own. `agent_inbox`: Homepage email example: every account has a platform inbox, inbound mail emits email.message.received, and a package can wake work from a plus-tag without a model reading the mailbox. Load this when someone asks how Agent inbox works or how to treat email as a trigger. `purchase_thanks`: Homepage event example: a verified purchase becomes a fact your factory already knows, and a package drafts a thank-you without anyone typing. Load this when someone asks how Purchase thanks works or how to react to an event Kody (or a package you own) already emitted. `package_lifecycle`: Choose between invoking existing behavior, temporary execute exploration, forking a close public package, deferred workflows, and creating a durable repo-backed package; session/tool-only lane validates with `repoRunChecks`, git lane with local checks plus `packagePublishExternalPush`; when the host can run the CLI use `kody dev` / mocks / `--local` before publish. `package_authoring`: START HERE when creating or materially changing a Kody package: shape, required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime input checking, public-visibility hygiene, and secret-using approvals. `package_export_jsdoc`: Per-export JSDoc rules for Kody packages: what search's Exports Purpose column reads, the required what/when line, @param, @returns, and an importing @example, and where JSDoc must sit for types files and re-exports. `package_sharing`: Give a person or team Read, Use, Contribute, or Manage on one package with a grant, invite someone who is not in your organization yet, share private source with one person (Read, then they fork it), and know what each side can run, read, and pay for. Also covers unmappable credentials: share-time warnings, the owner-only change lock, and the per-grant \"allow changes despite unmappable credentials\" option. `shared_packages`: Build one package that many callers import, each with its own account of the same provider. Declare the need once, let each caller map it on its own package, pick per run, open several accounts with multiple, or pass a client in. `package_skills`: Put skills/<name>/SKILL.md in a package, publish, and expose them over MCP to hosts that support Skills-over-MCP. `package_apps`: Give a package a hosted Worker app on `*.kody.run`. Covers the fetch-handler contract, mount-stripped URLs, `packageContext` / `kody:runtime`, the platform-built browser client (`kody.app.client`) and static assets directory (`kody.app.assets`), session handoff, optional CLI local testing with `kody dev` when available, MCP-only validate via `repoRunChecks`, smoke tests with packageAppFetch, a Remix recipe (Example A), the same-origin proxy, lean forks, compiled clients, and listing verification. `package_app_custom_domains`: Serve an app on a domain you own. Covers which hostnames are allowed, the exact DNS records (DNS only, proxy off), how Kody checks status and emails you, and what pending, active, and needs attention mean. `package_subscriptions`: Use package.json#kody.subscriptions for package-owned event handlers; discover subscribers with packageSubscriptionsList; smoke-test one handler from interactive MCP with packageSubscriptionDispatch; follow metadata-first email, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, follow.published / follow.pushed follow notifiers, community.fork.upstream_updated fork notifiers, resource change events (credentials, packages, jobs, triggers, membership, memories), and repo / package lifecycle topics. `mcp_events`: Opt a package topic into MCP Events so ChatGPT (and other webhook-capable MCP clients) can subscribe. Delivery reuses the same package event bus as kody.subscriptions. Behind the mcp-events-extension flag. `wake_your_agent`: Recipe for waking a connected agent when something happens in Kody (a failed run, a package event, inbound mail). Lead with MCP Events when the MCP client supports the events extension (behind the mcp-events-extension flag; ChatGPT today). Otherwise use a package subscription or job that POSTs to the agent's webhook URL, or the email-wake pattern. Pick by what the client supports. `heavy_work_offload`: When package checks or publish rebuilds exceed isolate memory or CPU — usually a large npm graph such as PDF.js — keep the Kody package as a thin orchestrator and run the heavy work in a process the owner operates (Cloudflare Container, Fly machine, or similar). Do not provision paid infra without asking. `publish_large_packages`: When a cloud build hits the worker's memory, CPU, or payload limits, build the package on your own machine (`kody package publish --build local`) or on an execution context you operate (`--build context`). The CLI pushes HEAD first; Kody checks the upload against that commit, links any `kody:@` packages it imports, and writes the registry itself. `integration_bootstrap`: START HERE when a third-party integration must work before saving a dependent package or package app: inspect integration/secret state, stop for setup, run an authenticated smoke test, then communitySearch before building from scratch. `oauth`: START HERE for third-party OAuth: hosted /connect/oauth, the exact redirect URI (https://kody.codes/connect/oauth), required query params, PKCE vs confidential, the post-connect copyable agent prompt, and how it differs from MCP OAuth. `google_oauth`: Interactive transcript of a coding agent walking a naive user through Google OAuth for Gmail inbox reading: official guides first, one console step at a time, prefilled /connect/oauth, refuse secrets in chat, then a Gmail profile smoke test. `secret_backed_integration`: Default non-OAuth recipe for secret-backed integrations: research auth, collect secrets through /connect/secret-set, run a smoke test, build the downstream package, then surface package secret approval links (prefer bulk) before calling the work complete. `connect_secret`: Send the user a prefilled /connect/secret-set link when they must type a secret value such as an API key, PAT, or token into Kody themselves. Covers the URL shape, query params, approval policy, and post-hoc package approval URLs including bulk approve. `openapi_integrations`: Prefer a close community helpers package, then fork `@kody/openapi` to bind and call selected operations. `local_mcp_tunnels`: Run an MCP server beside a vault, CLI, or home device, publish it with Cloudflare Tunnel and Access, and connect its HTTPS URL to Kody. `locked_mcp_server`: Connected MCP servers expose every discovered tool to execute and every package. Lock the server to a thin package so only that published surface can call it. `locked_gmail_drafts`: Google has gmail.send but no drafts-only scope. gmail.compose can manage drafts and send. Publish a drafts-only package, lock it, then resourceLock the connection so execute cannot use the token. `provider_discord`: Verified walkthrough for connecting Discord to Kody: the OAuth user-token lane for identity and server membership, the bot-token lane required for reading or posting in servers, 7-day rotating tokens, prefilled connect links, and users/@me smoke tests for both lanes. `provider_dropbox`: Walkthrough for connecting Dropbox to Kody with your own Dropbox app: app console setup, the PKCE connect link with offline refresh tokens, the three Dropbox API hosts (api, content, notify), and a smoke test through @kentcdodds/dropbox. `provider_figma`: Verified walkthrough for connecting Figma to Kody (BYO OAuth or personal/plan access token), then using @kody/figma over Figma REST, not Figma's remote MCP. `provider_github`: Verified walkthrough for connecting GitHub to Kody: fine-grained personal access tokens, bring-your-own OAuth Apps, scope choices, prefilled connect links, and copy-paste smoke tests. `provider_google`: Verified walkthrough for connecting Google to Kody: bring-your-own OAuth client, Google Auth Platform console steps, the Testing-status 7-day refresh-token trap, and a Calendar or Gmail smoke test. `provider_notion`: Verified walkthrough for connecting Notion to Kody: the personal internal connection token lane (fastest), the public connection OAuth lane, the page-picker access model (Notion has no OAuth scopes), prefilled connect links, and a users/me smoke test for both lanes. `provider_origin`: Verified walkthrough for connecting Cursor Origin to Kody: Origin Apps with Ed25519 signing keys, installation access tokens, the community helpers package, and a rate-limit smoke test. Cloud Agents API keys are not Origin credentials. `provider_salesforce`: Verified connect walkthrough for Salesforce: bring-your-own Connected App or External Client App, the exact /connect/oauth callback, production vs sandbox login hosts, scopes, prefilled connect links, and a smoke test. `provider_slack`: Verified walkthrough for connecting Slack to Kody with a user-token Slack app, then calling it from `@kody/slack`. `provider_spotify`: Verified walkthrough for connecting Spotify to Kody: dashboard app creation, the Development Mode Premium requirement and endpoint limits in force since February 2026, the PKCE public-client connect link, listening and playback scopes, and a profile smoke test. `limited_browser_sign_in`: Sign in to a Kody package app from a browser that cannot run Kody's page JavaScript (e-readers, older Chromium, JavaScript off) with your email and password, or with Sign in with another device (short code plus QR code). `cant_open_or_get_mail`: Unblock NextDNS and similar DNS filters for kody.codes, and recover missing signup or verification mail when a provider is blocking our domain. `platform_friction`: Use for meaningful Kody friction, bugs, poor experiences, or suggestions: show the exact proposal and account-identity notification disclosure before asking for explicit approval, and write one actionable issue per submission (repro steps, expected vs actual, impact)."
 							},
 							"section": {
 								"description": "Optional heading title or slug, or a line anchor (`L165`, `L165-L180`). Oversized guides return a table of contents until a heading is requested. A missing heading or line fails instead of returning the whole guide.",
@@ -34073,7 +34217,7 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type CodingGuideGetInput = {\n\t/** Which guide to load (id or page slug, same as `guide:{id}` on search). `what_is_kody`: Start here. Kody is Your agents' cloud for individuals and teams. Connect the AI agent you already use over MCP and it gains durable memory, credentials it never reads, saved packages, and jobs that keep running while you are offline. Covers what Kody is, how it pairs with the agents you already use, what you cannot get elsewhere, the building blocks, real uses, and notes for an agent running a discovery interview. Nothing here requires an account. `search_and_execute`: Search finds capabilities, guides, packages, integrations, and secrets. execute runs an ephemeral module that calls what you found. Covers how they work together and the inputs an agent actually passes. The MCP api tool is documented separately. `how_kody_works`: The factory loop as a conversation: ask what your favorite bot shipped, save the answer as an export you can invoke from any agent, then a daily email that stays quiet until something actually ships. `kody_factory`: Map Kody's discovery, credentials, integrations, packages, storage, schedules, hosted surfaces, and memories—and know where the boundary is. `connect_your_agent`: The three-step Get started flow for people: connect the agent you already use over MCP, paste one prompt so that agent makes something useful in your account, then connect a second agent from another ecosystem and watch it reuse the same memory and package. Includes what approving access means, verified-email requirements, and which agents suit building versus using. `muse_chat`: Connect Meta Muse chat to Kody over MCP with a custom connector and a pre-registered OAuth client. Covers the exact redirect URIs, the search-only proof step, and the failures to check before diagnosing scope or grants. `onboarding`: First-run guide for a connected agent. Teach lightly what Kody is and is not, look at what is already in this agent (connections, skills, memories, instructions, repeating processes), propose a few to move into Kody, and help move one. If there is little to move, offer six first-win ideas instead. Set up integrations with clear difficulty. Then Step 3. `quick_example`: Agent playbook after Make something useful (`/onboarding/step-2`) or Connect your agent (`/onboarding/step-1`): run one useful ad hoc execute, show the result, persist that working code as a package they own, and offer optional triggers without recommending one. `portability`: Second-agent proof after a first win. Find what the account already has, reuse it once, and stop. Retrieved as guide:portability from Step 3. `first_win`: Optional agent playbook: send a welcome email, point the person at their own inbox to reply, look the reply up when they say it is sent, save what matters as memories, then offer a next step. After Connect your agent (`/onboarding/step-1`), Step 2 is Make something useful (`/onboarding/step-2`) and Step 3 is Connect a second agent (`/onboarding/step-3`); the optional climax guide is quick-example. Load this when someone wants the email loop. Includes the no-polling rule and troubleshooting for missing mail and unbound tools. `memory`: What a Kody memory is (personal-only), why it follows the person instead of one host's chat or a team org, how memories surface automatically on search and execute, the verify-first rule for writes, and what does not belong in memory (package state, config, credentials, shared org knowledge). Load this when someone asks what their agents remember about them or how memory travels between agents. `agent_guidance`: Progressive disclosure for agent guidance across MCP server instructions, package docs (README.md and AGENTS.md), export JSDoc, and memories. Load this when deciding where a fact or instruction should live, or before calling metaMemoryUpsert or metaSetMcpServerInstructions. Search phrases such as \"where should this guidance live\" should find this page. `credentials`: What a Kody credential is and every kind it comes in (Key, OAuth, MCP server, URL, login, signing), how `{{secret:name}}` placeholders and scoped `credential(key)` clients place a value at the network boundary, how packages declare needs in `kody.credentials` (including publisher and executor credential needs that app visitors fill with `credential.visitor(key)`), how callers pick between credentials with names and call maps, the `credential_ambiguous` / `credential_unbound` errors, and webhook verification. Load this when someone asks how credentials work, which kind to use, or why a credential did not resolve. `secrets`: How Kody lets your agent use your API keys, tokens, and private keys without ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders resolved at the network boundary, host approval, package approval (website Allow links via `resourceLock`), and expiry. Keys are one credential kind; the Credentials guide covers every kind. Load this when someone asks whether the agent can see a key. `secret_providers`: Use credentials from an external vault in secret-aware fetch without the agent ever reading them. `packages_integrations_mcp`: Packages are saved behavior. Integrations are account-owned logins. MCP servers are how agents connect. Use this when those three look interchangeable. `organizations`: Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who automation runs as, the org-wide execute pool, connecting one client to several orgs, free-org limits, and paid seats. `text_your_agent`: How to let a spouse or friend talk to *your agent* over a familiar chat surface (iMessage worked example). Surface vs brain vs home: the agent holds the conversation; Kody is the home it reaches into for memory, secrets, packages, and jobs. Covers OpenClaw/Bezalel/Grok Bot patterns and a simpler SMS path with Twilio. `openmuse`: How and why to use OpenMuse, CopilotKit's open-source, self-hostable personal agent, alongside Kody. OpenMuse is the personal-agent app (phone and web chat, an agent computer, goals, reviewed actions); Kody is the home that agent shares with your other agents (memory, credentials it never reads, packages, jobs, webhooks, inbox). Covers what each is good at, what to put where, and how to connect OpenMuse's agent harness to Kody over MCP. `triggers`: How work runs when nobody is in the chat. Package-owned jobs for recurring schedules, workflows for deferred or long one-shot runs, inbound webhooks for provider events, subscriptions for events inside Kody, and the inbox — which to pick, how each is declared, and how to test one safely before enabling it. Load this when someone asks how to run something later, on a schedule, or when a provider knocks. `platform_efficiency`: How unique Dynamic Worker days work across execute, jobs, package exports, and other surfaces, and how the acting user plus a stable module graph reuse one isolate per UTC day. `local_execute`: Prefer @kodycodes/cli execute --local when Node ≥22 and the CLI are available. Orthogonal to Open API: use this guide for CLI setup and --local usage; see guide:open_api for HTTPS / MCP api fallback. `execution_contexts`: Run execute and automations on your own laptop or build server instead of Kody cloud. Credentials stay in Kody cloud; the machine adds host folders, LAN, and (after a local opt-in) shell commands via kody.command.run / kody.command.start, from execute or saved packages, with the execution_context:command grant. An experiment you turn on at /account/experiments. `profiles`: Give an agent or bot its own scoped identity in an org, with a snapshot of your access, an expiry that only shortens, and sub-profiles for the agents it starts. An experiment you turn on at /account/experiments. `auth_setup_git`: Server contract for `kody auth setup-git`: user-owned CLI tokens, `?org=`, and persistent HTTPS git auth with a long-lived `kody_at_…` on `https://kody.codes/@owner/name.git` (clone, fetch, and push). `open_api`: Call Kody over HTTPS at api.kody.codes. MCP api runs one operation (operationId + params), including tokenCreate / tokenList / tokenRevoke. Available to every signed-in account. `api_tokens`: List, inspect, rotate, and revoke your Kody API tokens (kody_at_ API keys) with tokenList / tokenGet / tokenRotate / tokenRevoke. These are Open API operations, reachable from the MCP api tool, HTTPS, or `kody api`, not from execute. `api_versioning`: How Kody versions the HTTP Open API under /v1, signals deprecations, and migrates without breaking people and their packages. `flake_hunter`: Homepage cron example: a package-owned daily job that scans CI for flaky end-to-end runs, stays quiet on a clean day, and only acts when a flake signal is present. Load this when someone asks how Flake Hunter works or how to hang a schedule on a package they own. `sentry_issues`: Homepage webhook example: a package-owned inbound URL that accepts a Sentry issue POST, verifies HMAC on the platform, and starts triage without a model in the request path. Load this when someone asks how Sentry Issues works or how to hang a vendor webhook on a package they own. `agent_inbox`: Homepage email example: every account has a platform inbox, inbound mail emits email.message.received, and a package can wake work from a plus-tag without a model reading the mailbox. Load this when someone asks how Agent inbox works or how to treat email as a trigger. `purchase_thanks`: Homepage event example: a verified purchase becomes a fact your factory already knows, and a package drafts a thank-you without anyone typing. Load this when someone asks how Purchase thanks works or how to react to an event Kody (or a package you own) already emitted. `package_lifecycle`: Choose between invoking existing behavior, temporary execute exploration, forking a close public package, deferred workflows, and creating a durable repo-backed package; session/tool-only lane validates with `repoRunChecks`, git lane with local checks plus `packagePublishExternalPush`; when the host can run the CLI use `kody dev` / mocks / `--local` before publish. `package_authoring`: START HERE when creating or materially changing a Kody package: shape, required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime input checking, public-visibility hygiene, and secret-using approvals. `package_export_jsdoc`: Per-export JSDoc rules for Kody packages: what search's Exports Purpose column reads, the required what/when line, @param, @returns, and an importing @example, and where JSDoc must sit for types files and re-exports. `package_sharing`: Give a person or team Read, Use, Contribute, or Manage on one package with a grant, invite someone who is not in your organization yet, share private source with one person (Read, then they fork it), and know what each side can run, read, and pay for. Also covers unmappable credentials: share-time warnings, the owner-only change lock, and the per-grant \"allow changes despite unmappable credentials\" option. `shared_packages`: Build one package that many callers import, each with its own account of the same provider. Declare the need once, let each caller map it on its own package, pick per run, open several accounts with multiple, or pass a client in. `package_skills`: Put skills/<name>/SKILL.md in a package, publish, and expose them over MCP to hosts that support Skills-over-MCP. `package_apps`: Give a package a hosted Worker app on `*.kody.run`. Covers the fetch-handler contract, mount-stripped URLs, `packageContext` / `kody:runtime`, the platform-built browser client (`kody.app.client`) and static assets directory (`kody.app.assets`), session handoff, optional CLI local testing with `kody dev` when available, MCP-only validate via `repoRunChecks`, smoke tests with packageAppFetch, a Remix recipe (Example A), the same-origin proxy, lean forks, compiled clients, and listing verification. `package_app_custom_domains`: Serve an app on a domain you own. Covers which hostnames are allowed, the exact DNS records (DNS only, proxy off), how Kody checks status and emails you, and what pending, active, and needs attention mean. `package_subscriptions`: Use package.json#kody.subscriptions for package-owned event handlers; discover subscribers with packageSubscriptionsList; smoke-test one handler from interactive MCP with packageSubscriptionDispatch; follow metadata-first email, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, follow.published / follow.pushed follow notifiers, community.fork.upstream_updated fork notifiers, resource change events (credentials, packages, jobs, triggers, membership, memories), and repo / package lifecycle topics. `mcp_events`: Opt a package topic into MCP Events so ChatGPT (and other webhook-capable MCP clients) can subscribe. Delivery reuses the same package event bus as kody.subscriptions. Behind the mcp-events-extension flag. `wake_your_agent`: Recipe for waking a connected agent when something happens in Kody (a failed run, a package event, inbound mail). Lead with MCP Events when the MCP client supports the events extension (behind the mcp-events-extension flag; ChatGPT today). Otherwise use a package subscription or job that POSTs to the agent's webhook URL, or the email-wake pattern. Pick by what the client supports. `heavy_work_offload`: When package checks or publish rebuilds exceed isolate memory or CPU — usually a large npm graph such as PDF.js — keep the Kody package as a thin orchestrator and run the heavy work in a process the owner operates (Cloudflare Container, Fly machine, or similar). Do not provision paid infra without asking. `publish_large_packages`: When a cloud build hits the worker's memory, CPU, or payload limits, build the package on your own machine (`kody package publish --build local`) or on an execution context you operate (`--build context`). The CLI pushes HEAD first; Kody checks the upload against that commit, links any `kody:@` packages it imports, and writes the registry itself. `integration_bootstrap`: START HERE when a third-party integration must work before saving a dependent package or package app: inspect integration/secret state, stop for setup, run an authenticated smoke test, then communitySearch before building from scratch. `oauth`: START HERE for third-party OAuth: hosted /connect/oauth, the exact redirect URI (https://kody.codes/connect/oauth), required query params, PKCE vs confidential, the post-connect copyable agent prompt, and how it differs from MCP OAuth. `google_oauth`: Interactive transcript of a coding agent walking a naive user through Google OAuth for Gmail inbox reading: official guides first, one console step at a time, prefilled /connect/oauth, refuse secrets in chat, then a Gmail profile smoke test. `secret_backed_integration`: Default non-OAuth recipe for secret-backed integrations: research auth, collect secrets through /connect/secret-set, run a smoke test, build the downstream package, then surface package secret approval links (prefer bulk) before calling the work complete. `connect_secret`: Send the user a prefilled /connect/secret-set link when they must type a secret value such as an API key, PAT, or token into Kody themselves. Covers the URL shape, query params, approval policy, and post-hoc package approval URLs including bulk approve. `openapi_integrations`: Prefer a close community helpers package, then fork `@kody/openapi` to bind and call selected operations. `local_mcp_tunnels`: Run an MCP server beside a vault, CLI, or home device, publish it with Cloudflare Tunnel and Access, and connect its HTTPS URL to Kody. `locked_mcp_server`: Connected MCP servers expose every discovered tool to execute and every package. Lock the server to a thin package so only that published surface can call it. `locked_gmail_drafts`: Google has gmail.send but no drafts-only scope. gmail.compose can manage drafts and send. Publish a drafts-only package, lock it, then resourceLock the connection so execute cannot use the token. `provider_discord`: Verified walkthrough for connecting Discord to Kody: the OAuth user-token lane for identity and server membership, the bot-token lane required for reading or posting in servers, 7-day rotating tokens, prefilled connect links, and users/@me smoke tests for both lanes. `provider_dropbox`: Walkthrough for connecting Dropbox to Kody with your own Dropbox app: app console setup, the PKCE connect link with offline refresh tokens, the three Dropbox API hosts (api, content, notify), and a smoke test through @kentcdodds/dropbox. `provider_figma`: Verified walkthrough for connecting Figma to Kody (BYO OAuth or personal/plan access token), then using @kody/figma over Figma REST, not Figma's remote MCP. `provider_github`: Verified walkthrough for connecting GitHub to Kody: fine-grained personal access tokens, bring-your-own OAuth Apps, scope choices, prefilled connect links, and copy-paste smoke tests. `provider_google`: Verified walkthrough for connecting Google to Kody: bring-your-own OAuth client, Google Auth Platform console steps, the Testing-status 7-day refresh-token trap, and a Calendar or Gmail smoke test. `provider_notion`: Verified walkthrough for connecting Notion to Kody: the personal internal connection token lane (fastest), the public connection OAuth lane, the page-picker access model (Notion has no OAuth scopes), prefilled connect links, and a users/me smoke test for both lanes. `provider_origin`: Verified walkthrough for connecting Cursor Origin to Kody: Origin Apps with Ed25519 signing keys, installation access tokens, the community helpers package, and a rate-limit smoke test. Cloud Agents API keys are not Origin credentials. `provider_salesforce`: Verified connect walkthrough for Salesforce: bring-your-own Connected App or External Client App, the exact /connect/oauth callback, production vs sandbox login hosts, scopes, prefilled connect links, and a smoke test. `provider_slack`: Verified walkthrough for connecting Slack to Kody with a user-token Slack app, then calling it from `@kody/slack`. `provider_spotify`: Verified walkthrough for connecting Spotify to Kody: dashboard app creation, the Development Mode Premium requirement and endpoint limits in force since February 2026, the PKCE public-client connect link, listening and playback scopes, and a profile smoke test. `limited_browser_sign_in`: Sign in to a Kody package app from a browser that cannot run Kody's page JavaScript (e-readers, older Chromium, JavaScript off) with your email and password, or with Sign in with another device (short code plus QR code). `cant_open_or_get_mail`: Unblock NextDNS and similar DNS filters for kody.codes, and recover missing signup or verification mail when a provider is blocking our domain. `platform_friction`: Use for meaningful Kody friction, bugs, poor experiences, or suggestions: show the exact proposal and account-identity notification disclosure before asking for explicit approval, and write one actionable issue per submission (repro steps, expected vs actual, impact). */\n\tguide: string\n\t/** Optional heading title or slug, or a line anchor (`L165`, `L165-L180`). Oversized guides return a table of contents until a heading is requested. A missing heading or line fails instead of returning the whole guide. */\n\tsection?: string\n}",
+					"inputTypeDefinition": "type CodingGuideGetInput = {\n\t/** Which guide to load (id or page slug, same as `guide:{id}` on search). `what_is_kody`: Start here. Kody is Your agents' cloud for individuals and teams. Connect the AI agent you already use over MCP and it gains durable memory, credentials it never reads, saved packages, and jobs that keep running while you are offline. Covers what Kody is, how it pairs with the agents you already use, what you cannot get elsewhere, the building blocks, real uses, and notes for an agent running a discovery interview. Nothing here requires an account. `search_and_execute`: Search finds capabilities, guides, packages, integrations, and secrets. execute runs an ephemeral module that calls what you found. Covers how they work together and the inputs an agent actually passes. The MCP api tool is documented separately. `how_kody_works`: The factory loop as a conversation: ask what your favorite bot shipped, save the answer as an export you can invoke from any agent, then a daily email that stays quiet until something actually ships. `kody_factory`: Map Kody's discovery, credentials, integrations, packages, storage, schedules, hosted surfaces, and memories—and know where the boundary is. `connect_your_agent`: The three-step Get started flow for people: connect the agent you already use over MCP, paste one prompt so that agent makes something useful in your account, then connect a second agent from another ecosystem and watch it reuse the same memory and package. Includes what approving access means, verified-email requirements, and which agents suit building versus using. `muse_chat`: Connect Meta Muse chat to Kody over MCP with a custom connector and a pre-registered OAuth client. Covers the exact redirect URIs, the search-only proof step, and the failures to check before diagnosing scope or grants. `onboarding`: First-run guide for a connected agent. Teach lightly what Kody is and is not, look at what is already in this agent (connections, skills, memories, instructions, repeating processes), propose a few to move into Kody, and help move one. If there is little to move, offer six first-win ideas instead. Set up integrations with clear difficulty. Then Step 3. `quick_example`: Agent playbook after Make something useful (`/onboarding/step-2`) or Connect your agent (`/onboarding/step-1`): run one useful ad hoc execute, show the result, persist that working code as a package they own, and offer optional triggers without recommending one. `portability`: Second-agent proof after a first win. Find what the account already has, reuse it once, and stop. Retrieved as guide:portability from Step 3. `first_win`: Optional agent playbook: send a welcome email, point the person at their own inbox to reply, look the reply up when they say it is sent, save what matters as memories, then offer a next step. After Connect your agent (`/onboarding/step-1`), Step 2 is Make something useful (`/onboarding/step-2`) and Step 3 is Connect a second agent (`/onboarding/step-3`); the optional climax guide is quick-example. Load this when someone wants the email loop. Includes the no-polling rule and troubleshooting for missing mail and unbound tools. `memory`: What a Kody memory is (personal-only), why it follows the person instead of one host's chat or a team org, how memories surface automatically on search and execute, the verify-first rule for writes, and what does not belong in memory (package state, config, credentials, shared org knowledge). Load this when someone asks what their agents remember about them or how memory travels between agents. `agent_guidance`: Progressive disclosure for agent guidance across MCP server instructions, package docs (README.md and AGENTS.md), export JSDoc, and memories. Load this when deciding where a fact or instruction should live, or before calling metaMemoryUpsert or metaSetMcpServerInstructions. Search phrases such as \"where should this guidance live\" should find this page. `credentials`: What a Kody credential is and every kind it comes in (Key, OAuth, MCP server, URL, login, signing), how scoped `credential(key)` clients place a value at the network boundary, how packages declare needs in `kody.credentials` (including publisher and executor credential needs that app visitors fill with `credential.visitor(key)`), how callers pick between credential IDs with call maps, the `credential_ambiguous` / `credential_unbound` errors, and webhook verification. Load this when someone asks how credentials work, which kind to use, or why a credential did not resolve. `secrets`: How Kody lets your agent use your API keys, tokens, and private keys without ever reading them: the no-secret_get rule, `{{secret:name}}` placeholders resolved at the network boundary, host approval, package approval (website Allow links via `resourceLock`), and expiry. Keys are one credential kind; the Credentials guide covers every kind. Load this when someone asks whether the agent can see a key. `secret_providers`: Use credentials from an external vault in secret-aware fetch without the agent ever reading them. `packages_integrations_mcp`: Packages are saved behavior. Integrations are account-owned logins. MCP servers are how agents connect. Use this when those three look interchangeable. `organizations`: Personal vs team orgs, Owner/Admin/Member/Billing roles, invite links, who automation runs as, the org-wide execute pool, connecting one client to several orgs, free-org limits, and paid seats. `text_your_agent`: How to let a spouse or friend talk to *your agent* over a familiar chat surface (iMessage worked example). Surface vs brain vs home: the agent holds the conversation; Kody is the home it reaches into for memory, secrets, packages, and jobs. Covers OpenClaw/Bezalel/Grok Bot patterns and a simpler SMS path with Twilio. `openmuse`: How and why to use OpenMuse, CopilotKit's open-source, self-hostable personal agent, alongside Kody. OpenMuse is the personal-agent app (phone and web chat, an agent computer, goals, reviewed actions); Kody is the home that agent shares with your other agents (memory, credentials it never reads, packages, jobs, webhooks, inbox). Covers what each is good at, what to put where, and how to connect OpenMuse's agent harness to Kody over MCP. `triggers`: How work runs when nobody is in the chat. Package-owned jobs for recurring schedules, workflows for deferred or long one-shot runs, inbound webhooks for provider events, subscriptions for events inside Kody, and the inbox — which to pick, how each is declared, and how to test one safely before enabling it. Load this when someone asks how to run something later, on a schedule, or when a provider knocks. `platform_efficiency`: How unique Dynamic Worker days work across execute, jobs, package exports, and other surfaces, and how the acting user plus a stable module graph reuse one isolate per UTC day. `local_execute`: Prefer @kodycodes/cli execute --local when Node ≥22 and the CLI are available. Orthogonal to Open API: use this guide for CLI setup and --local usage; see guide:open_api for HTTPS / MCP api fallback. `execution_contexts`: Run execute and automations on your own laptop or build server instead of Kody cloud. Credentials stay in Kody cloud; the machine adds host folders, LAN, and (after a local opt-in) shell commands via kody.command.run / kody.command.start, from execute or saved packages, with the execution_context:command grant. An experiment you turn on at /account/experiments. `profiles`: Give an agent or bot its own scoped identity in an org, with a snapshot of your access, an expiry that only shortens, and sub-profiles for the agents it starts. An experiment you turn on at /account/experiments. `auth_setup_git`: Server contract for `kody auth setup-git`: user-owned CLI tokens, `?org=`, and persistent HTTPS git auth with a long-lived `kody_at_…` on `https://kody.codes/@owner/name.git` (clone, fetch, and push). `open_api`: Call Kody over HTTPS at api.kody.codes. MCP api runs one operation (operationId + params), including tokenCreate / tokenList / tokenRevoke. Available to every signed-in account. `api_tokens`: List, inspect, rotate, and revoke your Kody API tokens (kody_at_ API keys) with tokenList / tokenGet / tokenRotate / tokenRevoke. These are Open API operations, reachable from the MCP api tool, HTTPS, or `kody api`, not from execute. `api_versioning`: How Kody versions the HTTP Open API under /v1, signals deprecations, and migrates without breaking people and their packages. `flake_hunter`: Homepage cron example: a package-owned daily job that scans CI for flaky end-to-end runs, stays quiet on a clean day, and only acts when a flake signal is present. Load this when someone asks how Flake Hunter works or how to hang a schedule on a package they own. `sentry_issues`: Homepage webhook example: a package-owned inbound URL that accepts a Sentry issue POST, verifies HMAC on the platform, and starts triage without a model in the request path. Load this when someone asks how Sentry Issues works or how to hang a vendor webhook on a package they own. `agent_inbox`: Homepage email example: every account has a platform inbox, inbound mail emits email.message.received, and a package can wake work from a plus-tag without a model reading the mailbox. Load this when someone asks how Agent inbox works or how to treat email as a trigger. `purchase_thanks`: Homepage event example: a verified purchase becomes a fact your factory already knows, and a package drafts a thank-you without anyone typing. Load this when someone asks how Purchase thanks works or how to react to an event Kody (or a package you own) already emitted. `package_lifecycle`: Choose between invoking existing behavior, temporary execute exploration, forking a close public package, deferred workflows, and creating a durable repo-backed package; session/tool-only lane validates with `repoRunChecks`, git lane with local checks plus `packagePublishExternalPush`; when the host can run the CLI use `kody dev` / mocks / `--local` before publish. `package_authoring`: START HERE when creating or materially changing a Kody package: shape, required README.md and AGENTS.md, README Intent, per-export JSDoc, runtime input checking, public-visibility hygiene, and secret-using approvals. `package_export_jsdoc`: Per-export JSDoc rules for Kody packages: what search's Exports Purpose column reads, the required what/when line, @param, @returns, and an importing @example, and where JSDoc must sit for types files and re-exports. `package_sharing`: Give a person or team Read, Use, Contribute, or Manage on one package with a grant, invite someone who is not in your organization yet, share private source with one person (Read, then they fork it), and know what each side can run, read, and pay for. Also covers unmappable credentials: share-time warnings, the owner-only change lock, and the per-grant \"allow changes despite unmappable credentials\" option. `shared_packages`: Build one package that many callers import, each with its own account of the same provider. Declare the need once, let each caller map it on its own package, pick per run, open several accounts with multiple, or pass a client in. `package_skills`: Put skills/<name>/SKILL.md in a package, publish, and expose them over MCP to hosts that support Skills-over-MCP. `package_apps`: Give a package a hosted Worker app on `*.kody.run`. Covers the fetch-handler contract, mount-stripped URLs, `packageContext` / `kody:runtime`, the platform-built browser client (`kody.app.client`) and static assets directory (`kody.app.assets`), session handoff, optional CLI local testing with `kody dev` when available, MCP-only validate via `repoRunChecks`, smoke tests with packageAppFetch, a Remix recipe (Example A), the same-origin proxy, lean forks, compiled clients, and listing verification. `package_app_custom_domains`: Serve an app on a domain you own. Covers which hostnames are allowed, the exact DNS records (DNS only, proxy off), how Kody checks status and emails you, and what pending, active, and needs attention mean. `package_subscriptions`: Use package.json#kody.subscriptions for package-owned event handlers; discover subscribers with packageSubscriptionsList; smoke-test one handler from interactive MCP with packageSubscriptionDispatch; follow metadata-first email, run.error.recorded activity notifiers, integration.auth.failed / integration.auth.succeeded reconnect notifiers, mcp.server.disconnected / mcp.server.reconnected connection episodes, follow.published / follow.pushed follow notifiers, community.fork.upstream_updated fork notifiers, resource change events (credentials, packages, jobs, triggers, membership, memories), and repo / package lifecycle topics. `mcp_events`: Opt a package topic into MCP Events so ChatGPT (and other webhook-capable MCP clients) can subscribe. Delivery reuses the same package event bus as kody.subscriptions. Behind the mcp-events-extension flag. `wake_your_agent`: Recipe for waking a connected agent when something happens in Kody (a failed run, a package event, inbound mail). Lead with MCP Events when the MCP client supports the events extension (behind the mcp-events-extension flag; ChatGPT today). Otherwise use a package subscription or job that POSTs to the agent's webhook URL, or the email-wake pattern. Pick by what the client supports. `heavy_work_offload`: When package checks or publish rebuilds exceed isolate memory or CPU — usually a large npm graph such as PDF.js — keep the Kody package as a thin orchestrator and run the heavy work in a process the owner operates (Cloudflare Container, Fly machine, or similar). Do not provision paid infra without asking. `publish_large_packages`: When a cloud build hits the worker's memory, CPU, or payload limits, build the package on your own machine (`kody package publish --build local`) or on an execution context you operate (`--build context`). The CLI pushes HEAD first; Kody checks the upload against that commit, links any `kody:@` packages it imports, and writes the registry itself. `integration_bootstrap`: START HERE when a third-party integration must work before saving a dependent package or package app: inspect integration/secret state, stop for setup, run an authenticated smoke test, then communitySearch before building from scratch. `oauth`: START HERE for third-party OAuth: hosted /connect/oauth, the exact redirect URI (https://kody.codes/connect/oauth), required query params, PKCE vs confidential, the post-connect copyable agent prompt, and how it differs from MCP OAuth. `google_oauth`: Interactive transcript of a coding agent walking a naive user through Google OAuth for Gmail inbox reading: official guides first, one console step at a time, prefilled /connect/oauth, refuse secrets in chat, then a Gmail profile smoke test. `secret_backed_integration`: Default non-OAuth recipe for secret-backed integrations: research auth, collect secrets through /connect/secret-set, run a smoke test, build the downstream package, then surface package secret approval links (prefer bulk) before calling the work complete. `connect_secret`: Send the user a prefilled /connect/secret-set link when they must type a secret value such as an API key, PAT, or token into Kody themselves. Covers the URL shape, query params, approval policy, and post-hoc package approval URLs including bulk approve. `openapi_integrations`: Prefer a close community helpers package, then fork `@kody/openapi` to bind and call selected operations. `local_mcp_tunnels`: Run an MCP server beside a vault, CLI, or home device, publish it with Cloudflare Tunnel and Access, and connect its HTTPS URL to Kody. `locked_mcp_server`: Connected MCP servers expose every discovered tool to execute and every package. Lock the server to a thin package so only that published surface can call it. `locked_gmail_drafts`: Google has gmail.send but no drafts-only scope. gmail.compose can manage drafts and send. Publish a drafts-only package, lock it, then resourceLock the connection so execute cannot use the token. `provider_discord`: Verified walkthrough for connecting Discord to Kody: the OAuth user-token lane for identity and server membership, the bot-token lane required for reading or posting in servers, 7-day rotating tokens, prefilled connect links, and users/@me smoke tests for both lanes. `provider_dropbox`: Walkthrough for connecting Dropbox to Kody with your own Dropbox app: app console setup, the PKCE connect link with offline refresh tokens, the three Dropbox API hosts (api, content, notify), and a smoke test through @kentcdodds/dropbox. `provider_figma`: Verified walkthrough for connecting Figma to Kody (BYO OAuth or personal/plan access token), then using @kody/figma over Figma REST, not Figma's remote MCP. `provider_github`: Verified walkthrough for connecting GitHub to Kody: fine-grained personal access tokens, bring-your-own OAuth Apps, scope choices, prefilled connect links, and copy-paste smoke tests. `provider_google`: Verified walkthrough for connecting Google to Kody: bring-your-own OAuth client, Google Auth Platform console steps, the Testing-status 7-day refresh-token trap, and a Calendar or Gmail smoke test. `provider_notion`: Verified walkthrough for connecting Notion to Kody: the personal internal connection token lane (fastest), the public connection OAuth lane, the page-picker access model (Notion has no OAuth scopes), prefilled connect links, and a users/me smoke test for both lanes. `provider_origin`: Verified walkthrough for connecting Cursor Origin to Kody: Origin Apps with Ed25519 signing keys, installation access tokens, the community helpers package, and a rate-limit smoke test. Cloud Agents API keys are not Origin credentials. `provider_salesforce`: Verified connect walkthrough for Salesforce: bring-your-own Connected App or External Client App, the exact /connect/oauth callback, production vs sandbox login hosts, scopes, prefilled connect links, and a smoke test. `provider_slack`: Verified walkthrough for connecting Slack to Kody with a user-token Slack app, then calling it from `@kody/slack`. `provider_spotify`: Verified walkthrough for connecting Spotify to Kody: dashboard app creation, the Development Mode Premium requirement and endpoint limits in force since February 2026, the PKCE public-client connect link, listening and playback scopes, and a profile smoke test. `limited_browser_sign_in`: Sign in to a Kody package app from a browser that cannot run Kody's page JavaScript (e-readers, older Chromium, JavaScript off) with your email and password, or with Sign in with another device (short code plus QR code). `cant_open_or_get_mail`: Unblock NextDNS and similar DNS filters for kody.codes, and recover missing signup or verification mail when a provider is blocking our domain. `platform_friction`: Use for meaningful Kody friction, bugs, poor experiences, or suggestions: show the exact proposal and account-identity notification disclosure before asking for explicit approval, and write one actionable issue per submission (repro steps, expected vs actual, impact). */\n\tguide: string\n\t/** Optional heading title or slug, or a line anchor (`L165`, `L165-L180`). Oversized guides return a table of contents until a heading is requested. A missing heading or line fails instead of returning the whole guide. */\n\tsection?: string\n}",
 					"outputTypeDefinition": "type CodingGuideGetOutput = {\n\t/** Guide title. */\n\ttitle: string\n\t/** Markdown body, a heading section, or a table of contents when the bundled guide exceeds the search response budget. */\n\tbody: string\n\t/** Whether body is the full guide, a contents index, one requested heading, or a line anchor. */\n\tbodyMode: \"full\" | \"toc\" | \"section\" | \"lines\"\n\t/** The resolved heading when bodyMode is section. */\n\tsection: {\n\ttitle: string\n\tslug: string\n} | null\n\t/** The resolved line window when bodyMode is lines. startLine/endLine include context around a single requested line. */\n\tlines: {\n\tstartLine: number\n\tendLine: number\n\trequestedStartLine: number\n\trequestedEndLine: number\n\ttotalLines: number\n} | null\n\t/** Headings that can be requested with section or guide:{id}#{slug}. Line anchors use L165 or L165-L180. */\n\tsections: Array<{\n\ttitle: string\n\tslug: string\n\tlevel: number\n}>\n}"
 				}
 			]
@@ -54619,6 +54763,730 @@ export const capabilityManifest = {
 														"param"
 													],
 													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "body"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"mediaType": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"fields": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"selectors": {
+															"default": [],
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"type": "object",
+																"properties": {
+																	"path": {
+																		"minItems": 1,
+																		"maxItems": 12,
+																		"type": "array",
+																		"items": {
+																			"anyOf": [
+																				{
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				},
+																				{
+																					"type": "integer",
+																					"minimum": 0,
+																					"maximum": 999
+																				}
+																			]
+																		}
+																	},
+																	"value": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 1000
+																			},
+																			{
+																				"type": "boolean"
+																			},
+																			{
+																				"type": "integer",
+																				"minimum": -9007199254740991,
+																				"maximum": 9007199254740991
+																			}
+																		]
+																	}
+																},
+																"required": [
+																	"path",
+																	"value"
+																],
+																"additionalProperties": false
+															}
+														},
+														"graphql": {
+															"type": "object",
+															"properties": {
+																"document": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 20000
+																},
+																"operationName": {
+																	"type": "string",
+																	"maxLength": 100,
+																	"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																}
+															},
+															"required": [
+																"document",
+																"operationName"
+															],
+															"additionalProperties": false
+														},
+														"output": {
+															"default": {
+																"format": "plaintext"
+															},
+															"oneOf": [
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "plaintext"
+																		}
+																	},
+																	"required": [
+																		"format"
+																	],
+																	"additionalProperties": false
+																},
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "sealed-box-base64"
+																		},
+																		"recipientPublicKey": {
+																			"type": "string",
+																			"pattern": "^[A-Za-z0-9+/]{43}=$"
+																		},
+																		"recipientKeyId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 256
+																		},
+																		"keyIdField": {
+																			"minItems": 1,
+																			"maxItems": 12,
+																			"type": "array",
+																			"items": {
+																				"anyOf": [
+																					{
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					{
+																						"type": "integer",
+																						"minimum": 0,
+																						"maximum": 999
+																					}
+																				]
+																			}
+																		}
+																	},
+																	"required": [
+																		"format",
+																		"recipientPublicKey",
+																		"recipientKeyId",
+																		"keyIdField"
+																	],
+																	"additionalProperties": false
+																}
+															]
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"mediaType",
+														"fields"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "path"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"origin": {
+															"type": "string",
+															"maxLength": 500
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"segments": {
+															"minItems": 2,
+															"maxItems": 24,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"parameter": {
+																				"type": "string",
+																				"enum": [
+																					"slug",
+																					"integer",
+																					"uuid"
+																				]
+																			}
+																		},
+																		"required": [
+																			"parameter"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"credential": {
+																				"type": "boolean",
+																				"const": true
+																			}
+																		},
+																		"required": [
+																			"credential"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"origin",
+														"method",
+														"segments"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "composition"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"entryCredentialId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"publicBody": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"sites": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "header"
+																			},
+																			"name": {
+																				"type": "string",
+																				"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																			},
+																			"parts": {
+																				"minItems": 1,
+																				"maxItems": 24,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"maxLength": 200,
+																							"pattern": "^[\\x20-\\x7e]*$"
+																						},
+																						{
+																							"type": "object",
+																							"properties": {
+																								"credentialId": {
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								}
+																							},
+																							"required": [
+																								"credentialId"
+																							],
+																							"additionalProperties": false
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"name",
+																			"parts"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "basic"
+																			},
+																			"usernameId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"passwordId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"usernameId",
+																			"passwordId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "query"
+																			},
+																			"param": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"param",
+																			"credentialId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "body"
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"placement": {
+																				"type": "object",
+																				"properties": {
+																					"kind": {
+																						"type": "string",
+																						"const": "body"
+																					},
+																					"packageId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					"endpoint": {
+																						"type": "string",
+																						"maxLength": 2000
+																					},
+																					"method": {
+																						"type": "string",
+																						"enum": [
+																							"POST",
+																							"PUT",
+																							"PATCH",
+																							"DELETE"
+																						]
+																					},
+																					"mediaType": {
+																						"type": "string",
+																						"const": "application/json"
+																					},
+																					"fields": {
+																						"minItems": 1,
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"selectors": {
+																						"default": [],
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"type": "object",
+																							"properties": {
+																								"path": {
+																									"minItems": 1,
+																									"maxItems": 12,
+																									"type": "array",
+																									"items": {
+																										"anyOf": [
+																											{
+																												"type": "string",
+																												"minLength": 1,
+																												"maxLength": 100
+																											},
+																											{
+																												"type": "integer",
+																												"minimum": 0,
+																												"maximum": 999
+																											}
+																										]
+																									}
+																								},
+																								"value": {
+																									"anyOf": [
+																										{
+																											"type": "string",
+																											"maxLength": 1000
+																										},
+																										{
+																											"type": "boolean"
+																										},
+																										{
+																											"type": "integer",
+																											"minimum": -9007199254740991,
+																											"maximum": 9007199254740991
+																										}
+																									]
+																								}
+																							},
+																							"required": [
+																								"path",
+																								"value"
+																							],
+																							"additionalProperties": false
+																						}
+																					},
+																					"graphql": {
+																						"type": "object",
+																						"properties": {
+																							"document": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 20000
+																							},
+																							"operationName": {
+																								"type": "string",
+																								"maxLength": 100,
+																								"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																							}
+																						},
+																						"required": [
+																							"document",
+																							"operationName"
+																						],
+																						"additionalProperties": false
+																					},
+																					"output": {
+																						"default": {
+																							"format": "plaintext"
+																						},
+																						"oneOf": [
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "plaintext"
+																									}
+																								},
+																								"required": [
+																									"format"
+																								],
+																								"additionalProperties": false
+																							},
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "sealed-box-base64"
+																									},
+																									"recipientPublicKey": {
+																										"type": "string",
+																										"pattern": "^[A-Za-z0-9+/]{43}=$"
+																									},
+																									"recipientKeyId": {
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 256
+																									},
+																									"keyIdField": {
+																										"minItems": 1,
+																										"maxItems": 12,
+																										"type": "array",
+																										"items": {
+																											"anyOf": [
+																												{
+																													"type": "string",
+																													"minLength": 1,
+																													"maxLength": 100
+																												},
+																												{
+																													"type": "integer",
+																													"minimum": 0,
+																													"maximum": 999
+																												}
+																											]
+																										}
+																									}
+																								},
+																								"required": [
+																									"format",
+																									"recipientPublicKey",
+																									"recipientKeyId",
+																									"keyIdField"
+																								],
+																								"additionalProperties": false
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"kind",
+																					"packageId",
+																					"endpoint",
+																					"method",
+																					"mediaType",
+																					"fields"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"credentialId",
+																			"placement"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "connection"
+																			},
+																			"connection": {
+																				"type": "string",
+																				"enum": [
+																					"login",
+																					"oauth"
+																				]
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"inject": {
+																				"anyOf": [
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "header"
+																							},
+																							"name": {
+																								"type": "string",
+																								"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																							},
+																							"format": {
+																								"type": "string",
+																								"maxLength": 200,
+																								"pattern": "^[\\x20-\\x7e]*$"
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"name",
+																							"format"
+																						],
+																						"additionalProperties": false
+																					},
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "query"
+																							},
+																							"param": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 100
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"param"
+																						],
+																						"additionalProperties": false
+																					}
+																				]
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"connection",
+																			"credentialId",
+																			"inject"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"entryCredentialId",
+														"sites"
+													],
+													"additionalProperties": false
 												}
 											]
 										},
@@ -54969,7 +55837,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type PackageGetInput = {\n\tpackage_id: string\n}",
-					"outputTypeDefinition": "type PackageGetOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Catalog entry id this package was forked from, or null for a self-authored package. */\n\tsource_listing_id: string | null\n\t/** Whether the source catalog entry currently resolves to an active public package, or null for a self-authored package. */\n\tlisting_current: boolean | null\n\t/** Original public package name leaf recorded when this package was forked, or null for a self-authored package. */\n\tlisting_kody_id: string | null\n\t/** Current source listing package name when the listing is active, or null when this package is self-authored or the listing is gone. */\n\tlisting_name: string | null\n\t/** Listing pinned commit this fork last absorbed. Starts as the fork-time snapshot and moves when a later publish passes absorbed_upstream_commit. */\n\torigin_commit: string | null\n\t/** Current pinned commit of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_pinned_commit: string | null\n\t/** Last community publish time of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_published_at: string | null\n\t/** True only when this community fork is outdated: the listing pin is not an ancestor of the fork tip. Null for a self-authored package. Otherwise false. */\n\tlisting_ahead: boolean | null\n\t/** Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n\t/** Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing. */\n\tprovenance?: {\n\tcommit: string\n\tartifacts: Array<{\n\tkind: string\n\tname: string | null\n\tentry_point: string\n\tbuilt_in: \"cloud\" | \"cli\" | \"context\" | null\n\tcontext_name: string | null\n\tbundle_sha256: string | null\n}>\n}\n\t/** Current published Artifacts commit for this package source (same field as `repoShowPublishNote` defaults to). Null when nothing has been published yet. */\n\tpublished_commit: string | null\n\texports: Array<{\n\t/** Package export subpath from package.json exports. */\n\tsubpath: string\n\t/** Ready-to-use kody: import specifier for this export. */\n\timport_specifier: string\n\t/** Package-relative runtime source path for this export. */\n\truntime_target: string | null\n\t/** Package-relative types source path for this export, when declared. */\n\ttypes_path: string | null\n\t/** Export description parsed from JSDoc when available. */\n\tdescription: string | null\n\t/** Primary export type signature parsed from source when available. Null when the export has more than one callable function; use `functions` in that case. */\n\ttype_definition: string | null\n\t/** Callable functions extracted from this export. Namespace modules that export several helpers list each one here. */\n\tfunctions: Array<{\n\t/** Exported function name. Default exports use the name \"default\". */\n\tname: string\n\t/** Function JSDoc description when available. */\n\tdescription: string | null\n\t/** Function type signature parsed from source when available. */\n\ttype_definition: string | null\n}>\n\t/** Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions. */\n\treferenced_types: Array<{\n\tname: string\n\tkind: \"type\" | \"interface\" | \"enum\" | \"const\"\n\t/** Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration. */\n\tdefinition: string\n}>\n}>\n\t/** FYI metadata for package-scoped secrets owned by this package, including package_id. Never plaintext values. These are not execute-usable via search; using them still requires package context. */\n\tpackage_secrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n\t/** Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values. */\n\tcredentials: {\n\tneeds: Array<{\n\tkey: string\n\t/** When set, only credentials of this kind match. When omitted, any fetch-capable credential (secret, oauth, login) for the provider matches. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tprovider: string\n\tdescription: string\n\tmultiple: boolean\n\t/** Who supplies the credential when the package-credential-suppliers flag is on: publisher (the org mapping, usable by app visitors through the app) or executor (each person who uses the package picks their own). Omitted for needs with no supplier, which keep the default package behavior. */\n\tsupplier?: \"publisher\" | \"executor\"\n\t/** Executor needs only: true when a visitor must connect a credential before the app serves (the default); false for an optional need. */\n\trequired?: boolean\n\t/** Older alias for supplier: \"publisher\". Still accepted in manifests. */\n\townerCredentialForVisitors?: true\n\t/** The imported package that declares this need, when inherited. */\n\tfrom?: string\n\t/** executor_supplied: a `supplier: \"executor\"` need; each app visitor or runner picks their own credential (on Sign in with Kody consent for apps), so your credentials and default mappings never fill it. ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it). */\n\tstatus: \"ready\" | \"ambiguous\" | \"unbound\" | \"expired\" | \"executor_supplied\"\n\t/** The credential name used when no call map entry is given. For a mapping of several credentials, the first one. */\n\tautoPick: string | null\n\t/** Where status and autoPick come from: visitor (an executor need; each visitor picks), mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead. */\n\tsource: \"mine\" | \"org\" | \"auto\" | \"visitor\"\n\t/** Credentials you can Use whose kind and provider match the need. For an executor need these are the credentials you would pick when you use the package yourself. */\n\tyourOptions: Array<{\n\tname: string\n\tscope: \"org\" | \"personal\"\n\torg?: string\n\thosts: Array<string>\n}>\n\t/** Matching-kind credentials you can Use that have no provider set. A call map may still pick one by name; set its provider to list and auto-resolve it. */\n\tpossibleMatchCount: number\n}>\n\t/** Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish. */\n\tinvalidSlots: Array<{\n\tkey: string\n\tmessage: string\n}>\n\t/** Whether the package-credential-suppliers early-access flag is on for the org that owns this package. When false, `supplier` and `required` in its manifest are ignored and executor needs behave like ordinary needs. */\n\tsuppliersEnabled: boolean\n}\n\t/** Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package. */\n\tmachine: {\n\tneeds: Array<{\n\t/** The name the machine gives the entry. */\n\tname: string\n\tkind: \"command\" | \"lan\" | \"fs\"\n\tdescription: string\n\thosts?: Array<string>\n\tports?: Array<number>\n\tmode?: \"ro\" | \"rw\"\n}>\n}\n}"
+					"outputTypeDefinition": "type PackageGetOutput = {\n\tpackage_id: string\n\t/** Package name leaf (same value as `slug`). Kept as a compatibility alias; prefer `slug` or `name`. */\n\tkody_id: string\n\t/** Package name leaf (the path segment after the scope). Same value as `kody_id`. */\n\tslug: string\n\tname: string\n\tdescription: string\n\ttags: Array<string>\n\thas_app: boolean\n\thidden: boolean\n\t/** Repo visibility / forkable. Public means default-branch HEAD is world-readable and forkable and the package appears on /community. Private is owner-only. Independent of internet_visible. */\n\tvisibility: \"public\" | \"private\"\n\t/** When true, the hosted package app may be served on the public internet after capability approval. Independent of visibility/forkable. Defaults false. */\n\tinternet_visible: boolean\n\t/** When set, publishes require a website click at /@{username}/{kodyId}/approve-publish?commit=<full 40-character SHA>. Agents may lock via packageUpdate (`changes.locked: true`). Unlocking is website-only at /@{username}/{kodyId}/settings. Do not abbreviate the commit. */\n\tlocked_at: string | null\n\tsource_id: string\n\tcreated_at: string\n\tupdated_at: string\n\t/** Catalog entry id this package was forked from, or null for a self-authored package. */\n\tsource_listing_id: string | null\n\t/** Whether the source catalog entry currently resolves to an active public package, or null for a self-authored package. */\n\tlisting_current: boolean | null\n\t/** Original public package name leaf recorded when this package was forked, or null for a self-authored package. */\n\tlisting_kody_id: string | null\n\t/** Current source listing package name when the listing is active, or null when this package is self-authored or the listing is gone. */\n\tlisting_name: string | null\n\t/** Listing pinned commit this fork last absorbed. Starts as the fork-time snapshot and moves when a later publish passes absorbed_upstream_commit. */\n\torigin_commit: string | null\n\t/** Current pinned commit of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_pinned_commit: string | null\n\t/** Last community publish time of the source listing, or null when this package is self-authored or the listing is gone. */\n\tlisting_published_at: string | null\n\t/** True only when this community fork is outdated: the listing pin is not an ancestor of the fork tip. Null for a self-authored package. Otherwise false. */\n\tlisting_ahead: boolean | null\n\t/** Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context). */\n\tbuild_origin?: {\n\torigin: \"cloud\" | \"cli\" | \"context\"\n\tcontext_name: string | null\n}\n\t/** Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing. */\n\tprovenance?: {\n\tcommit: string\n\tartifacts: Array<{\n\tkind: string\n\tname: string | null\n\tentry_point: string\n\tbuilt_in: \"cloud\" | \"cli\" | \"context\" | null\n\tcontext_name: string | null\n\tbundle_sha256: string | null\n}>\n}\n\t/** Current published Artifacts commit for this package source (same field as `repoShowPublishNote` defaults to). Null when nothing has been published yet. */\n\tpublished_commit: string | null\n\texports: Array<{\n\t/** Package export subpath from package.json exports. */\n\tsubpath: string\n\t/** Ready-to-use kody: import specifier for this export. */\n\timport_specifier: string\n\t/** Package-relative runtime source path for this export. */\n\truntime_target: string | null\n\t/** Package-relative types source path for this export, when declared. */\n\ttypes_path: string | null\n\t/** Export description parsed from JSDoc when available. */\n\tdescription: string | null\n\t/** Primary export type signature parsed from source when available. Null when the export has more than one callable function; use `functions` in that case. */\n\ttype_definition: string | null\n\t/** Callable functions extracted from this export. Namespace modules that export several helpers list each one here. */\n\tfunctions: Array<{\n\t/** Exported function name. Default exports use the name \"default\". */\n\tname: string\n\t/** Function JSDoc description when available. */\n\tdescription: string | null\n\t/** Function type signature parsed from source when available. */\n\ttype_definition: string | null\n}>\n\t/** Type, interface, enum, and `typeof` const definitions referenced by this export's callable functions. */\n\treferenced_types: Array<{\n\tname: string\n\tkind: \"type\" | \"interface\" | \"enum\" | \"const\"\n\t/** Source text of the referenced type, interface, or enum. For a `const` reached through `typeof`, the resolved schema input fields when the initializer is a schema builder, otherwise its declaration. */\n\tdefinition: string\n}>\n}>\n\t/** FYI metadata for package-scoped secrets owned by this package, including package_id. Never plaintext values. These are not execute-usable via search; using them still requires package context. */\n\tpackage_secrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n\t/** Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values. */\n\tcredentials: {\n\tneeds: Array<{\n\tkey: string\n\t/** When set, only credentials of this kind match. When omitted, any fetch-capable credential (secret, oauth, login) for the provider matches. */\n\tkind?: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tprovider: string\n\tdescription: string\n\tmultiple: boolean\n\t/** Who supplies the credential when the package-credential-suppliers flag is on: publisher (the org mapping, usable by app visitors through the app) or executor (each person who uses the package picks their own). Omitted for needs with no supplier, which keep the default package behavior. */\n\tsupplier?: \"publisher\" | \"executor\"\n\t/** Executor needs only: true when a visitor must connect a credential before the app serves (the default); false for an optional need. */\n\trequired?: boolean\n\t/** Older alias for supplier: \"publisher\". Still accepted in manifests. */\n\townerCredentialForVisitors?: true\n\t/** The imported package that declares this need, when inherited. */\n\tfrom?: string\n\t/** executor_supplied: a `supplier: \"executor\"` need; each app visitor or runner picks their own credential (on Sign in with Kody consent for apps), so your credentials and default mappings never fill it. ready: a stored default mapping (yours, then the org default) names a credential you can Use, or auto-resolve finds one (exactly one of your credentials matches the need kind filter and provider, or one Key bound to this package is named exactly like the need key); it resolves with no call map entry. ambiguous: several match, no default mapping applies, and no package-bound Key matches the need key by name; pick one with a call map or propose a default with credentialMappingPropose. unbound: none match, or a default maps the need to no credential on purpose. expired: the resolved Key is bound but past expires_at (not missing; refresh or wait for the package to rewrite it). */\n\tstatus: \"ready\" | \"ambiguous\" | \"unbound\" | \"expired\" | \"executor_supplied\"\n\t/** The credential name used when no call map entry is given. For a mapping of several credentials, the first one. */\n\tautoPick: string | null\n\t/** Where status and autoPick come from: visitor (an executor need; each visitor picks), mine (your own default mapping), org (the org default mapping), or auto (matched by kind and provider). A trigger run may use its own trigger mapping instead. */\n\tsource: \"mine\" | \"org\" | \"auto\" | \"visitor\"\n\t/** Credentials you can Use whose kind and provider match the need. For an executor need these are the credentials you would pick when you use the package yourself. */\n\tyourOptions: Array<{\n\tname: string\n\tscope: \"org\" | \"personal\"\n\torg?: string\n\thosts: Array<string>\n}>\n\t/** Matching-kind credentials you can Use that have no provider set. A call map may still pick one by name; set its provider to list and auto-resolve it. */\n\tpossibleMatchCount: number\n}>\n\t/** Published `kody.credentials` slots that fail the current slot schema, with the validation message. They are left out of `needs`, so nothing fills them. Fix each slot in package.json and republish. */\n\tinvalidSlots: Array<{\n\tkey: string\n\tmessage: string\n}>\n\t/** Whether the package-credential-suppliers early-access flag is on for the org that owns this package. When false, `supplier` and `required` in its manifest are ignored and executor needs behave like ordinary needs. */\n\tsuppliersEnabled: boolean\n}\n\t/** Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package. */\n\tmachine: {\n\tneeds: Array<{\n\t/** The name the machine gives the entry. */\n\tname: string\n\tkind: \"command\" | \"lan\" | \"fs\"\n\tdescription: string\n\thosts?: Array<string>\n\tports?: Array<number>\n\tmode?: \"ro\" | \"rw\"\n}>\n}\n}"
 				},
 				{
 					"name": "packageGetGitRemote",
@@ -65138,6 +66006,730 @@ export const capabilityManifest = {
 														"param"
 													],
 													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "body"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"mediaType": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"fields": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"selectors": {
+															"default": [],
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"type": "object",
+																"properties": {
+																	"path": {
+																		"minItems": 1,
+																		"maxItems": 12,
+																		"type": "array",
+																		"items": {
+																			"anyOf": [
+																				{
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				},
+																				{
+																					"type": "integer",
+																					"minimum": 0,
+																					"maximum": 999
+																				}
+																			]
+																		}
+																	},
+																	"value": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 1000
+																			},
+																			{
+																				"type": "boolean"
+																			},
+																			{
+																				"type": "integer",
+																				"minimum": -9007199254740991,
+																				"maximum": 9007199254740991
+																			}
+																		]
+																	}
+																},
+																"required": [
+																	"path",
+																	"value"
+																],
+																"additionalProperties": false
+															}
+														},
+														"graphql": {
+															"type": "object",
+															"properties": {
+																"document": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 20000
+																},
+																"operationName": {
+																	"type": "string",
+																	"maxLength": 100,
+																	"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																}
+															},
+															"required": [
+																"document",
+																"operationName"
+															],
+															"additionalProperties": false
+														},
+														"output": {
+															"default": {
+																"format": "plaintext"
+															},
+															"oneOf": [
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "plaintext"
+																		}
+																	},
+																	"required": [
+																		"format"
+																	],
+																	"additionalProperties": false
+																},
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "sealed-box-base64"
+																		},
+																		"recipientPublicKey": {
+																			"type": "string",
+																			"pattern": "^[A-Za-z0-9+/]{43}=$"
+																		},
+																		"recipientKeyId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 256
+																		},
+																		"keyIdField": {
+																			"minItems": 1,
+																			"maxItems": 12,
+																			"type": "array",
+																			"items": {
+																				"anyOf": [
+																					{
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					{
+																						"type": "integer",
+																						"minimum": 0,
+																						"maximum": 999
+																					}
+																				]
+																			}
+																		}
+																	},
+																	"required": [
+																		"format",
+																		"recipientPublicKey",
+																		"recipientKeyId",
+																		"keyIdField"
+																	],
+																	"additionalProperties": false
+																}
+															]
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"mediaType",
+														"fields"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "path"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"origin": {
+															"type": "string",
+															"maxLength": 500
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"segments": {
+															"minItems": 2,
+															"maxItems": 24,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"parameter": {
+																				"type": "string",
+																				"enum": [
+																					"slug",
+																					"integer",
+																					"uuid"
+																				]
+																			}
+																		},
+																		"required": [
+																			"parameter"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"credential": {
+																				"type": "boolean",
+																				"const": true
+																			}
+																		},
+																		"required": [
+																			"credential"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"origin",
+														"method",
+														"segments"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "composition"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"entryCredentialId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"publicBody": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"sites": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "header"
+																			},
+																			"name": {
+																				"type": "string",
+																				"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																			},
+																			"parts": {
+																				"minItems": 1,
+																				"maxItems": 24,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"maxLength": 200,
+																							"pattern": "^[\\x20-\\x7e]*$"
+																						},
+																						{
+																							"type": "object",
+																							"properties": {
+																								"credentialId": {
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								}
+																							},
+																							"required": [
+																								"credentialId"
+																							],
+																							"additionalProperties": false
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"name",
+																			"parts"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "basic"
+																			},
+																			"usernameId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"passwordId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"usernameId",
+																			"passwordId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "query"
+																			},
+																			"param": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"param",
+																			"credentialId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "body"
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"placement": {
+																				"type": "object",
+																				"properties": {
+																					"kind": {
+																						"type": "string",
+																						"const": "body"
+																					},
+																					"packageId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					"endpoint": {
+																						"type": "string",
+																						"maxLength": 2000
+																					},
+																					"method": {
+																						"type": "string",
+																						"enum": [
+																							"POST",
+																							"PUT",
+																							"PATCH",
+																							"DELETE"
+																						]
+																					},
+																					"mediaType": {
+																						"type": "string",
+																						"const": "application/json"
+																					},
+																					"fields": {
+																						"minItems": 1,
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"selectors": {
+																						"default": [],
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"type": "object",
+																							"properties": {
+																								"path": {
+																									"minItems": 1,
+																									"maxItems": 12,
+																									"type": "array",
+																									"items": {
+																										"anyOf": [
+																											{
+																												"type": "string",
+																												"minLength": 1,
+																												"maxLength": 100
+																											},
+																											{
+																												"type": "integer",
+																												"minimum": 0,
+																												"maximum": 999
+																											}
+																										]
+																									}
+																								},
+																								"value": {
+																									"anyOf": [
+																										{
+																											"type": "string",
+																											"maxLength": 1000
+																										},
+																										{
+																											"type": "boolean"
+																										},
+																										{
+																											"type": "integer",
+																											"minimum": -9007199254740991,
+																											"maximum": 9007199254740991
+																										}
+																									]
+																								}
+																							},
+																							"required": [
+																								"path",
+																								"value"
+																							],
+																							"additionalProperties": false
+																						}
+																					},
+																					"graphql": {
+																						"type": "object",
+																						"properties": {
+																							"document": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 20000
+																							},
+																							"operationName": {
+																								"type": "string",
+																								"maxLength": 100,
+																								"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																							}
+																						},
+																						"required": [
+																							"document",
+																							"operationName"
+																						],
+																						"additionalProperties": false
+																					},
+																					"output": {
+																						"default": {
+																							"format": "plaintext"
+																						},
+																						"oneOf": [
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "plaintext"
+																									}
+																								},
+																								"required": [
+																									"format"
+																								],
+																								"additionalProperties": false
+																							},
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "sealed-box-base64"
+																									},
+																									"recipientPublicKey": {
+																										"type": "string",
+																										"pattern": "^[A-Za-z0-9+/]{43}=$"
+																									},
+																									"recipientKeyId": {
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 256
+																									},
+																									"keyIdField": {
+																										"minItems": 1,
+																										"maxItems": 12,
+																										"type": "array",
+																										"items": {
+																											"anyOf": [
+																												{
+																													"type": "string",
+																													"minLength": 1,
+																													"maxLength": 100
+																												},
+																												{
+																													"type": "integer",
+																													"minimum": 0,
+																													"maximum": 999
+																												}
+																											]
+																										}
+																									}
+																								},
+																								"required": [
+																									"format",
+																									"recipientPublicKey",
+																									"recipientKeyId",
+																									"keyIdField"
+																								],
+																								"additionalProperties": false
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"kind",
+																					"packageId",
+																					"endpoint",
+																					"method",
+																					"mediaType",
+																					"fields"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"credentialId",
+																			"placement"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "connection"
+																			},
+																			"connection": {
+																				"type": "string",
+																				"enum": [
+																					"login",
+																					"oauth"
+																				]
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"inject": {
+																				"anyOf": [
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "header"
+																							},
+																							"name": {
+																								"type": "string",
+																								"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																							},
+																							"format": {
+																								"type": "string",
+																								"maxLength": 200,
+																								"pattern": "^[\\x20-\\x7e]*$"
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"name",
+																							"format"
+																						],
+																						"additionalProperties": false
+																					},
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "query"
+																							},
+																							"param": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 100
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"param"
+																						],
+																						"additionalProperties": false
+																					}
+																				]
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"connection",
+																			"credentialId",
+																			"inject"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"entryCredentialId",
+														"sites"
+													],
+													"additionalProperties": false
 												}
 											]
 										},
@@ -65239,7 +66831,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type SecretListInput = {\n\t/** Optional scope filter. When omitted, list all accessible scopes. Package-scoped metadata is included for caller-owned secrets (with package_id) even without a package runtime; session secrets stay session-bound. Using a package secret still requires package context. */\n\tscope?: \"session\" | \"package\" | \"user\"\n}",
-					"outputTypeDefinition": "type SecretListOutput = {\n\tsecrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n\t/** Stable credential id. accessGrant uses it as resource_id. */\n\tcredential_id: string\n}>\n}"
+					"outputTypeDefinition": "type SecretListOutput = {\n\tsecrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n\t/** Stable credential id. accessGrant uses it as resource_id. */\n\tcredential_id: string\n}>\n}"
 				},
 				{
 					"name": "secretSet",
@@ -65483,6 +67075,730 @@ export const capabilityManifest = {
 											"param"
 										],
 										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "body"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"mediaType": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"fields": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"minItems": 1,
+													"maxItems": 12,
+													"type": "array",
+													"items": {
+														"anyOf": [
+															{
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 100
+															},
+															{
+																"type": "integer",
+																"minimum": 0,
+																"maximum": 999
+															}
+														]
+													}
+												}
+											},
+											"selectors": {
+												"default": [],
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"path": {
+															"minItems": 1,
+															"maxItems": 12,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"minLength": 1,
+																		"maxLength": 100
+																	},
+																	{
+																		"type": "integer",
+																		"minimum": 0,
+																		"maximum": 999
+																	}
+																]
+															}
+														},
+														"value": {
+															"anyOf": [
+																{
+																	"type": "string",
+																	"maxLength": 1000
+																},
+																{
+																	"type": "boolean"
+																},
+																{
+																	"type": "integer",
+																	"minimum": -9007199254740991,
+																	"maximum": 9007199254740991
+																}
+															]
+														}
+													},
+													"required": [
+														"path",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"graphql": {
+												"type": "object",
+												"properties": {
+													"document": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 20000
+													},
+													"operationName": {
+														"type": "string",
+														"maxLength": 100,
+														"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+													}
+												},
+												"required": [
+													"document",
+													"operationName"
+												],
+												"additionalProperties": false
+											},
+											"output": {
+												"default": {
+													"format": "plaintext"
+												},
+												"oneOf": [
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "plaintext"
+															}
+														},
+														"required": [
+															"format"
+														],
+														"additionalProperties": false
+													},
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "sealed-box-base64"
+															},
+															"recipientPublicKey": {
+																"type": "string",
+																"pattern": "^[A-Za-z0-9+/]{43}=$"
+															},
+															"recipientKeyId": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 256
+															},
+															"keyIdField": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"required": [
+															"format",
+															"recipientPublicKey",
+															"recipientKeyId",
+															"keyIdField"
+														],
+														"additionalProperties": false
+													}
+												]
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"mediaType",
+											"fields"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "path"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"origin": {
+												"type": "string",
+												"maxLength": 500
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"segments": {
+												"minItems": 2,
+												"maxItems": 24,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "string",
+															"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"parameter": {
+																	"type": "string",
+																	"enum": [
+																		"slug",
+																		"integer",
+																		"uuid"
+																	]
+																}
+															},
+															"required": [
+																"parameter"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"credential": {
+																	"type": "boolean",
+																	"const": true
+																}
+															},
+															"required": [
+																"credential"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"origin",
+											"method",
+											"segments"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "composition"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"entryCredentialId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"publicBody": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"sites": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "header"
+																},
+																"name": {
+																	"type": "string",
+																	"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																},
+																"parts": {
+																	"minItems": 1,
+																	"maxItems": 24,
+																	"type": "array",
+																	"items": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 200,
+																				"pattern": "^[\\x20-\\x7e]*$"
+																			},
+																			{
+																				"type": "object",
+																				"properties": {
+																					"credentialId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					}
+																				},
+																				"required": [
+																					"credentialId"
+																				],
+																				"additionalProperties": false
+																			}
+																		]
+																	}
+																}
+															},
+															"required": [
+																"kind",
+																"name",
+																"parts"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "basic"
+																},
+																"usernameId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"passwordId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"usernameId",
+																"passwordId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "query"
+																},
+																"param": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"param",
+																"credentialId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "body"
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"placement": {
+																	"type": "object",
+																	"properties": {
+																		"kind": {
+																			"type": "string",
+																			"const": "body"
+																		},
+																		"packageId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		"endpoint": {
+																			"type": "string",
+																			"maxLength": 2000
+																		},
+																		"method": {
+																			"type": "string",
+																			"enum": [
+																				"POST",
+																				"PUT",
+																				"PATCH",
+																				"DELETE"
+																			]
+																		},
+																		"mediaType": {
+																			"type": "string",
+																			"const": "application/json"
+																		},
+																		"fields": {
+																			"minItems": 1,
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"minItems": 1,
+																				"maxItems": 12,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 100
+																						},
+																						{
+																							"type": "integer",
+																							"minimum": 0,
+																							"maximum": 999
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"selectors": {
+																			"default": [],
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"type": "object",
+																				"properties": {
+																					"path": {
+																						"minItems": 1,
+																						"maxItems": 12,
+																						"type": "array",
+																						"items": {
+																							"anyOf": [
+																								{
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								},
+																								{
+																									"type": "integer",
+																									"minimum": 0,
+																									"maximum": 999
+																								}
+																							]
+																						}
+																					},
+																					"value": {
+																						"anyOf": [
+																							{
+																								"type": "string",
+																								"maxLength": 1000
+																							},
+																							{
+																								"type": "boolean"
+																							},
+																							{
+																								"type": "integer",
+																								"minimum": -9007199254740991,
+																								"maximum": 9007199254740991
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"path",
+																					"value"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"graphql": {
+																			"type": "object",
+																			"properties": {
+																				"document": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 20000
+																				},
+																				"operationName": {
+																					"type": "string",
+																					"maxLength": 100,
+																					"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																				}
+																			},
+																			"required": [
+																				"document",
+																				"operationName"
+																			],
+																			"additionalProperties": false
+																		},
+																		"output": {
+																			"default": {
+																				"format": "plaintext"
+																			},
+																			"oneOf": [
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "plaintext"
+																						}
+																					},
+																					"required": [
+																						"format"
+																					],
+																					"additionalProperties": false
+																				},
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "sealed-box-base64"
+																						},
+																						"recipientPublicKey": {
+																							"type": "string",
+																							"pattern": "^[A-Za-z0-9+/]{43}=$"
+																						},
+																						"recipientKeyId": {
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 256
+																						},
+																						"keyIdField": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"required": [
+																						"format",
+																						"recipientPublicKey",
+																						"recipientKeyId",
+																						"keyIdField"
+																					],
+																					"additionalProperties": false
+																				}
+																			]
+																		}
+																	},
+																	"required": [
+																		"kind",
+																		"packageId",
+																		"endpoint",
+																		"method",
+																		"mediaType",
+																		"fields"
+																	],
+																	"additionalProperties": false
+																}
+															},
+															"required": [
+																"kind",
+																"credentialId",
+																"placement"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "connection"
+																},
+																"connection": {
+																	"type": "string",
+																	"enum": [
+																		"login",
+																		"oauth"
+																	]
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"inject": {
+																	"anyOf": [
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "header"
+																				},
+																				"name": {
+																					"type": "string",
+																					"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																				},
+																				"format": {
+																					"type": "string",
+																					"maxLength": 200,
+																					"pattern": "^[\\x20-\\x7e]*$"
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"name",
+																				"format"
+																			],
+																			"additionalProperties": false
+																		},
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "query"
+																				},
+																				"param": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"param"
+																			],
+																			"additionalProperties": false
+																		}
+																	]
+																}
+															},
+															"required": [
+																"kind",
+																"connection",
+																"credentialId",
+																"inject"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"entryCredentialId",
+											"sites"
+										],
+										"additionalProperties": false
 									}
 								]
 							},
@@ -65683,6 +67999,730 @@ export const capabilityManifest = {
 											"param"
 										],
 										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "body"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"mediaType": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"fields": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"minItems": 1,
+													"maxItems": 12,
+													"type": "array",
+													"items": {
+														"anyOf": [
+															{
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 100
+															},
+															{
+																"type": "integer",
+																"minimum": 0,
+																"maximum": 999
+															}
+														]
+													}
+												}
+											},
+											"selectors": {
+												"default": [],
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"path": {
+															"minItems": 1,
+															"maxItems": 12,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"minLength": 1,
+																		"maxLength": 100
+																	},
+																	{
+																		"type": "integer",
+																		"minimum": 0,
+																		"maximum": 999
+																	}
+																]
+															}
+														},
+														"value": {
+															"anyOf": [
+																{
+																	"type": "string",
+																	"maxLength": 1000
+																},
+																{
+																	"type": "boolean"
+																},
+																{
+																	"type": "integer",
+																	"minimum": -9007199254740991,
+																	"maximum": 9007199254740991
+																}
+															]
+														}
+													},
+													"required": [
+														"path",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"graphql": {
+												"type": "object",
+												"properties": {
+													"document": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 20000
+													},
+													"operationName": {
+														"type": "string",
+														"maxLength": 100,
+														"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+													}
+												},
+												"required": [
+													"document",
+													"operationName"
+												],
+												"additionalProperties": false
+											},
+											"output": {
+												"default": {
+													"format": "plaintext"
+												},
+												"oneOf": [
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "plaintext"
+															}
+														},
+														"required": [
+															"format"
+														],
+														"additionalProperties": false
+													},
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "sealed-box-base64"
+															},
+															"recipientPublicKey": {
+																"type": "string",
+																"pattern": "^[A-Za-z0-9+/]{43}=$"
+															},
+															"recipientKeyId": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 256
+															},
+															"keyIdField": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"required": [
+															"format",
+															"recipientPublicKey",
+															"recipientKeyId",
+															"keyIdField"
+														],
+														"additionalProperties": false
+													}
+												]
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"mediaType",
+											"fields"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "path"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"origin": {
+												"type": "string",
+												"maxLength": 500
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"segments": {
+												"minItems": 2,
+												"maxItems": 24,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "string",
+															"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"parameter": {
+																	"type": "string",
+																	"enum": [
+																		"slug",
+																		"integer",
+																		"uuid"
+																	]
+																}
+															},
+															"required": [
+																"parameter"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"credential": {
+																	"type": "boolean",
+																	"const": true
+																}
+															},
+															"required": [
+																"credential"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"origin",
+											"method",
+											"segments"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "composition"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"entryCredentialId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"publicBody": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"sites": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "header"
+																},
+																"name": {
+																	"type": "string",
+																	"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																},
+																"parts": {
+																	"minItems": 1,
+																	"maxItems": 24,
+																	"type": "array",
+																	"items": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 200,
+																				"pattern": "^[\\x20-\\x7e]*$"
+																			},
+																			{
+																				"type": "object",
+																				"properties": {
+																					"credentialId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					}
+																				},
+																				"required": [
+																					"credentialId"
+																				],
+																				"additionalProperties": false
+																			}
+																		]
+																	}
+																}
+															},
+															"required": [
+																"kind",
+																"name",
+																"parts"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "basic"
+																},
+																"usernameId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"passwordId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"usernameId",
+																"passwordId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "query"
+																},
+																"param": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"param",
+																"credentialId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "body"
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"placement": {
+																	"type": "object",
+																	"properties": {
+																		"kind": {
+																			"type": "string",
+																			"const": "body"
+																		},
+																		"packageId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		"endpoint": {
+																			"type": "string",
+																			"maxLength": 2000
+																		},
+																		"method": {
+																			"type": "string",
+																			"enum": [
+																				"POST",
+																				"PUT",
+																				"PATCH",
+																				"DELETE"
+																			]
+																		},
+																		"mediaType": {
+																			"type": "string",
+																			"const": "application/json"
+																		},
+																		"fields": {
+																			"minItems": 1,
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"minItems": 1,
+																				"maxItems": 12,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 100
+																						},
+																						{
+																							"type": "integer",
+																							"minimum": 0,
+																							"maximum": 999
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"selectors": {
+																			"default": [],
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"type": "object",
+																				"properties": {
+																					"path": {
+																						"minItems": 1,
+																						"maxItems": 12,
+																						"type": "array",
+																						"items": {
+																							"anyOf": [
+																								{
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								},
+																								{
+																									"type": "integer",
+																									"minimum": 0,
+																									"maximum": 999
+																								}
+																							]
+																						}
+																					},
+																					"value": {
+																						"anyOf": [
+																							{
+																								"type": "string",
+																								"maxLength": 1000
+																							},
+																							{
+																								"type": "boolean"
+																							},
+																							{
+																								"type": "integer",
+																								"minimum": -9007199254740991,
+																								"maximum": 9007199254740991
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"path",
+																					"value"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"graphql": {
+																			"type": "object",
+																			"properties": {
+																				"document": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 20000
+																				},
+																				"operationName": {
+																					"type": "string",
+																					"maxLength": 100,
+																					"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																				}
+																			},
+																			"required": [
+																				"document",
+																				"operationName"
+																			],
+																			"additionalProperties": false
+																		},
+																		"output": {
+																			"default": {
+																				"format": "plaintext"
+																			},
+																			"oneOf": [
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "plaintext"
+																						}
+																					},
+																					"required": [
+																						"format"
+																					],
+																					"additionalProperties": false
+																				},
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "sealed-box-base64"
+																						},
+																						"recipientPublicKey": {
+																							"type": "string",
+																							"pattern": "^[A-Za-z0-9+/]{43}=$"
+																						},
+																						"recipientKeyId": {
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 256
+																						},
+																						"keyIdField": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"required": [
+																						"format",
+																						"recipientPublicKey",
+																						"recipientKeyId",
+																						"keyIdField"
+																					],
+																					"additionalProperties": false
+																				}
+																			]
+																		}
+																	},
+																	"required": [
+																		"kind",
+																		"packageId",
+																		"endpoint",
+																		"method",
+																		"mediaType",
+																		"fields"
+																	],
+																	"additionalProperties": false
+																}
+															},
+															"required": [
+																"kind",
+																"credentialId",
+																"placement"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "connection"
+																},
+																"connection": {
+																	"type": "string",
+																	"enum": [
+																		"login",
+																		"oauth"
+																	]
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"inject": {
+																	"anyOf": [
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "header"
+																				},
+																				"name": {
+																					"type": "string",
+																					"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																				},
+																				"format": {
+																					"type": "string",
+																					"maxLength": 200,
+																					"pattern": "^[\\x20-\\x7e]*$"
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"name",
+																				"format"
+																			],
+																			"additionalProperties": false
+																		},
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "query"
+																				},
+																				"param": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"param"
+																			],
+																			"additionalProperties": false
+																		}
+																	]
+																}
+															},
+															"required": [
+																"kind",
+																"connection",
+																"credentialId",
+																"inject"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"entryCredentialId",
+											"sites"
+										],
+										"additionalProperties": false
 									}
 								]
 							},
@@ -65771,8 +68811,8 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type SecretSetInput = {\n\t/** Secret name to create or update. */\n\tname: string\n\t/** Secret value to persist. Required when creating a secret. Optional on updates that only change description or expires_at. Write-only and must never be returned to the caller. A sealed token (kody-sealed.…) is refused here; pass it as sealed_token. */\n\tvalue?: string\n\t/** A sealed token this run received, e.g. the {{integration-token:kody-sealed.…}} access_token a token exchange returned. Kody opens it and saves the real token as this user-scope Key, which code never sees. The Key goes only to the hosts the token was minted for (the token endpoint host plus the filling credentials' exact approved hosts), in a header or the body. Use instead of value; scope must be \"user\". With login_exchange, a sealed refresh_token is saved as a login credential instead, refreshed by Kody across runs. Not available to package code. Refuses a token from another run, an expired one, and a signed JWT. */\n\tsealed_token?: string\n\t/** Optional human-readable description of the secret. */\n\tdescription?: string\n\t/** Optional UTC ISO expiry (or YYYY-MM-DD). Null or empty clears expiry. Omit on update to leave the existing expiry unchanged. */\n\texpires_at?: string | null\n\t/** Storage scope that owns the secret: 'user' (owner-level Key of this org), 'package' (bound to one package), or 'session'. A 'user' or 'package' Key reads scope 'org' in credentialList and credential(key).scope; 'personal' there means a personal credential granted to the org. */\n\tscope: \"session\" | \"package\" | \"user\"\n\t/** Optional credential kind (ADR 0068), set together with a value. \"secret\" (default) is a Key used by `{{secret:name}}` placeholders. \"url\", \"login\", and \"signing\" are opt-in kinds a package reads through a scoped credential client, never as raw text; they need `hosts`. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\t/** Hosts an opt-in kind may be sent to: exact hosts or one wildcard level such as *.example.com. Set together with a value. Keys keep using host approvals instead. */\n\thosts?: Array<string>\n\t/** For kind \"login\": how the login fields are exchanged for a session token. Its url must be on one of `hosts`. */\n\tlogin_exchange?: {\n\turl: string\n\tmethod?: \"POST\" | \"PUT\"\n\tbodyFormat: \"json\" | \"form\"\n\tbody: Record<string, string>\n\ttokenPath: string\n\texpiresInPath?: string\n\tttlSeconds?: number\n\trefreshToken?: {\n\tpath: string\n\tfield: string\n}\n}\n\t/** Optional provider slug (for example \"github\") a scoped credential client matches package needs against. Null clears it. Keys used by placeholders ignore it. */\n\tprovider?: string | null\n\t/** Optional inject for a scoped credential client: a header with a \"{value}\" format, basic auth, or a query parameter. Defaults to `Authorization: Bearer {value}`. Placeholders ignore it. */\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential: headers (optionally named), query, path, and/or body. Null (legacy) means headers plus parts the owner opted into. New credentials default to headers-only when omitted. Distinct from inject, which only steers the scoped credential() client. The gateway enforces it; query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement?: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n}",
-					"outputTypeDefinition": "type SecretSetOutput = {\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}"
+					"inputTypeDefinition": "type SecretSetInput = {\n\t/** Secret name to create or update. */\n\tname: string\n\t/** Secret value to persist. Required when creating a secret. Optional on updates that only change description or expires_at. Write-only and must never be returned to the caller. A sealed token (kody-sealed.…) is refused here; pass it as sealed_token. */\n\tvalue?: string\n\t/** A sealed token this run received, e.g. the {{integration-token:kody-sealed.…}} access_token a token exchange returned. Kody opens it and saves the real token as this user-scope Key, which code never sees. The Key goes only to the hosts the token was minted for (the token endpoint host plus the filling credentials' exact approved hosts), in a header or the body. Use instead of value; scope must be \"user\". With login_exchange, a sealed refresh_token is saved as a login credential instead, refreshed by Kody across runs. Not available to package code. Refuses a token from another run, an expired one, and a signed JWT. */\n\tsealed_token?: string\n\t/** Optional human-readable description of the secret. */\n\tdescription?: string\n\t/** Optional UTC ISO expiry (or YYYY-MM-DD). Null or empty clears expiry. Omit on update to leave the existing expiry unchanged. */\n\texpires_at?: string | null\n\t/** Storage scope that owns the secret: 'user' (owner-level Key of this org), 'package' (bound to one package), or 'session'. A 'user' or 'package' Key reads scope 'org' in credentialList and credential(key).scope; 'personal' there means a personal credential granted to the org. */\n\tscope: \"session\" | \"package\" | \"user\"\n\t/** Optional credential kind (ADR 0068), set together with a value. \"secret\" (default) is a Key used by `{{secret:name}}` placeholders. \"url\", \"login\", and \"signing\" are opt-in kinds a package reads through a scoped credential client, never as raw text; they need `hosts`. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\t/** Hosts an opt-in kind may be sent to: exact hosts or one wildcard level such as *.example.com. Set together with a value. Keys keep using host approvals instead. */\n\thosts?: Array<string>\n\t/** For kind \"login\": how the login fields are exchanged for a session token. Its url must be on one of `hosts`. */\n\tlogin_exchange?: {\n\turl: string\n\tmethod?: \"POST\" | \"PUT\"\n\tbodyFormat: \"json\" | \"form\"\n\tbody: Record<string, string>\n\ttokenPath: string\n\texpiresInPath?: string\n\tttlSeconds?: number\n\trefreshToken?: {\n\tpath: string\n\tfield: string\n}\n}\n\t/** Optional provider slug (for example \"github\") a scoped credential client matches package needs against. Null clears it. Keys used by placeholders ignore it. */\n\tprovider?: string | null\n\t/** Optional inject for a scoped credential client: a header with a \"{value}\" format, basic auth, or a query parameter. Defaults to `Authorization: Bearer {value}`. Placeholders ignore it. */\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Optional fill placement for placeholders (secret, secret-basic, and related forms): which request parts may receive the credential: headers (optionally named), query, path, and/or body. Null (legacy) means headers plus parts the owner opted into. New credentials default to headers-only when omitted. Distinct from inject, which only steers the scoped credential() client. The gateway enforces it; query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement?: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n}",
+					"outputTypeDefinition": "type SecretSetOutput = {\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}"
 				},
 				{
 					"name": "secretSetMany",
@@ -66014,6 +69054,730 @@ export const capabilityManifest = {
 														"param"
 													],
 													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "body"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"mediaType": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"fields": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"selectors": {
+															"default": [],
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"type": "object",
+																"properties": {
+																	"path": {
+																		"minItems": 1,
+																		"maxItems": 12,
+																		"type": "array",
+																		"items": {
+																			"anyOf": [
+																				{
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				},
+																				{
+																					"type": "integer",
+																					"minimum": 0,
+																					"maximum": 999
+																				}
+																			]
+																		}
+																	},
+																	"value": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 1000
+																			},
+																			{
+																				"type": "boolean"
+																			},
+																			{
+																				"type": "integer",
+																				"minimum": -9007199254740991,
+																				"maximum": 9007199254740991
+																			}
+																		]
+																	}
+																},
+																"required": [
+																	"path",
+																	"value"
+																],
+																"additionalProperties": false
+															}
+														},
+														"graphql": {
+															"type": "object",
+															"properties": {
+																"document": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 20000
+																},
+																"operationName": {
+																	"type": "string",
+																	"maxLength": 100,
+																	"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																}
+															},
+															"required": [
+																"document",
+																"operationName"
+															],
+															"additionalProperties": false
+														},
+														"output": {
+															"default": {
+																"format": "plaintext"
+															},
+															"oneOf": [
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "plaintext"
+																		}
+																	},
+																	"required": [
+																		"format"
+																	],
+																	"additionalProperties": false
+																},
+																{
+																	"type": "object",
+																	"properties": {
+																		"format": {
+																			"type": "string",
+																			"const": "sealed-box-base64"
+																		},
+																		"recipientPublicKey": {
+																			"type": "string",
+																			"pattern": "^[A-Za-z0-9+/]{43}=$"
+																		},
+																		"recipientKeyId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 256
+																		},
+																		"keyIdField": {
+																			"minItems": 1,
+																			"maxItems": 12,
+																			"type": "array",
+																			"items": {
+																				"anyOf": [
+																					{
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					{
+																						"type": "integer",
+																						"minimum": 0,
+																						"maximum": 999
+																					}
+																				]
+																			}
+																		}
+																	},
+																	"required": [
+																		"format",
+																		"recipientPublicKey",
+																		"recipientKeyId",
+																		"keyIdField"
+																	],
+																	"additionalProperties": false
+																}
+															]
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"mediaType",
+														"fields"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "path"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"origin": {
+															"type": "string",
+															"maxLength": 500
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"segments": {
+															"minItems": 2,
+															"maxItems": 24,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"parameter": {
+																				"type": "string",
+																				"enum": [
+																					"slug",
+																					"integer",
+																					"uuid"
+																				]
+																			}
+																		},
+																		"required": [
+																			"parameter"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"credential": {
+																				"type": "boolean",
+																				"const": true
+																			}
+																		},
+																		"required": [
+																			"credential"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"origin",
+														"method",
+														"segments"
+													],
+													"additionalProperties": false
+												},
+												{
+													"type": "object",
+													"properties": {
+														"kind": {
+															"type": "string",
+															"const": "composition"
+														},
+														"packageId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"endpoint": {
+															"type": "string",
+															"maxLength": 2000
+														},
+														"method": {
+															"type": "string",
+															"enum": [
+																"GET",
+																"HEAD",
+																"POST",
+																"PUT",
+																"PATCH",
+																"DELETE"
+															]
+														},
+														"entryCredentialId": {
+															"type": "string",
+															"minLength": 1,
+															"maxLength": 100
+														},
+														"publicBody": {
+															"type": "string",
+															"const": "application/json"
+														},
+														"sites": {
+															"minItems": 1,
+															"maxItems": 16,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "header"
+																			},
+																			"name": {
+																				"type": "string",
+																				"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																			},
+																			"parts": {
+																				"minItems": 1,
+																				"maxItems": 24,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"maxLength": 200,
+																							"pattern": "^[\\x20-\\x7e]*$"
+																						},
+																						{
+																							"type": "object",
+																							"properties": {
+																								"credentialId": {
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								}
+																							},
+																							"required": [
+																								"credentialId"
+																							],
+																							"additionalProperties": false
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"name",
+																			"parts"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "basic"
+																			},
+																			"usernameId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"passwordId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"usernameId",
+																			"passwordId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "query"
+																			},
+																			"param": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"param",
+																			"credentialId"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "body"
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"placement": {
+																				"type": "object",
+																				"properties": {
+																					"kind": {
+																						"type": "string",
+																						"const": "body"
+																					},
+																					"packageId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					},
+																					"endpoint": {
+																						"type": "string",
+																						"maxLength": 2000
+																					},
+																					"method": {
+																						"type": "string",
+																						"enum": [
+																							"POST",
+																							"PUT",
+																							"PATCH",
+																							"DELETE"
+																						]
+																					},
+																					"mediaType": {
+																						"type": "string",
+																						"const": "application/json"
+																					},
+																					"fields": {
+																						"minItems": 1,
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"selectors": {
+																						"default": [],
+																						"maxItems": 16,
+																						"type": "array",
+																						"items": {
+																							"type": "object",
+																							"properties": {
+																								"path": {
+																									"minItems": 1,
+																									"maxItems": 12,
+																									"type": "array",
+																									"items": {
+																										"anyOf": [
+																											{
+																												"type": "string",
+																												"minLength": 1,
+																												"maxLength": 100
+																											},
+																											{
+																												"type": "integer",
+																												"minimum": 0,
+																												"maximum": 999
+																											}
+																										]
+																									}
+																								},
+																								"value": {
+																									"anyOf": [
+																										{
+																											"type": "string",
+																											"maxLength": 1000
+																										},
+																										{
+																											"type": "boolean"
+																										},
+																										{
+																											"type": "integer",
+																											"minimum": -9007199254740991,
+																											"maximum": 9007199254740991
+																										}
+																									]
+																								}
+																							},
+																							"required": [
+																								"path",
+																								"value"
+																							],
+																							"additionalProperties": false
+																						}
+																					},
+																					"graphql": {
+																						"type": "object",
+																						"properties": {
+																							"document": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 20000
+																							},
+																							"operationName": {
+																								"type": "string",
+																								"maxLength": 100,
+																								"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																							}
+																						},
+																						"required": [
+																							"document",
+																							"operationName"
+																						],
+																						"additionalProperties": false
+																					},
+																					"output": {
+																						"default": {
+																							"format": "plaintext"
+																						},
+																						"oneOf": [
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "plaintext"
+																									}
+																								},
+																								"required": [
+																									"format"
+																								],
+																								"additionalProperties": false
+																							},
+																							{
+																								"type": "object",
+																								"properties": {
+																									"format": {
+																										"type": "string",
+																										"const": "sealed-box-base64"
+																									},
+																									"recipientPublicKey": {
+																										"type": "string",
+																										"pattern": "^[A-Za-z0-9+/]{43}=$"
+																									},
+																									"recipientKeyId": {
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 256
+																									},
+																									"keyIdField": {
+																										"minItems": 1,
+																										"maxItems": 12,
+																										"type": "array",
+																										"items": {
+																											"anyOf": [
+																												{
+																													"type": "string",
+																													"minLength": 1,
+																													"maxLength": 100
+																												},
+																												{
+																													"type": "integer",
+																													"minimum": 0,
+																													"maximum": 999
+																												}
+																											]
+																										}
+																									}
+																								},
+																								"required": [
+																									"format",
+																									"recipientPublicKey",
+																									"recipientKeyId",
+																									"keyIdField"
+																								],
+																								"additionalProperties": false
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"kind",
+																					"packageId",
+																					"endpoint",
+																					"method",
+																					"mediaType",
+																					"fields"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"credentialId",
+																			"placement"
+																		],
+																		"additionalProperties": false
+																	},
+																	{
+																		"type": "object",
+																		"properties": {
+																			"kind": {
+																				"type": "string",
+																				"const": "connection"
+																			},
+																			"connection": {
+																				"type": "string",
+																				"enum": [
+																					"login",
+																					"oauth"
+																				]
+																			},
+																			"credentialId": {
+																				"type": "string",
+																				"minLength": 1,
+																				"maxLength": 100
+																			},
+																			"inject": {
+																				"anyOf": [
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "header"
+																							},
+																							"name": {
+																								"type": "string",
+																								"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																							},
+																							"format": {
+																								"type": "string",
+																								"maxLength": 200,
+																								"pattern": "^[\\x20-\\x7e]*$"
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"name",
+																							"format"
+																						],
+																						"additionalProperties": false
+																					},
+																					{
+																						"type": "object",
+																						"properties": {
+																							"kind": {
+																								"type": "string",
+																								"const": "query"
+																							},
+																							"param": {
+																								"type": "string",
+																								"minLength": 1,
+																								"maxLength": 100
+																							}
+																						},
+																						"required": [
+																							"kind",
+																							"param"
+																						],
+																						"additionalProperties": false
+																					}
+																				]
+																			}
+																		},
+																		"required": [
+																			"kind",
+																			"connection",
+																			"credentialId",
+																			"inject"
+																		],
+																		"additionalProperties": false
+																	}
+																]
+															}
+														}
+													},
+													"required": [
+														"kind",
+														"packageId",
+														"endpoint",
+														"method",
+														"entryCredentialId",
+														"sites"
+													],
+													"additionalProperties": false
 												}
 											]
 										},
@@ -66112,7 +69876,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type SecretSetManyInput = {\n\t/** Secrets to assert and optionally persist. Order is preserved. Do not include OAuth access or refresh tokens — those persist on the connection. */\n\tsecrets: Array<{\n\t/** Secret name to create or update. */\n\tname: string\n\t/** Secret value to persist. Required unless assertOnly is true. Write-only and must never be returned to the caller. */\n\tvalue?: string\n\t/** Optional human-readable description of the secret. */\n\tdescription?: string\n\t/** Optional UTC ISO expiry (or YYYY-MM-DD). Null or empty clears expiry. Omit on update to leave the existing expiry unchanged. */\n\texpires_at?: string | null\n\t/** Storage scope that owns the secret. */\n\tscope: \"session\" | \"package\" | \"user\"\n}>\n\t/** When true, only authorize the writes (no values required) and do not persist. Use before a multi-write that must not partially succeed. */\n\tassertOnly?: boolean\n}",
-					"outputTypeDefinition": "type SecretSetManyOutput = {\n\tok: true\n\tassertOnly: boolean\n\tsecrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n}"
+					"outputTypeDefinition": "type SecretSetManyOutput = {\n\tok: true\n\tassertOnly: boolean\n\tsecrets: Array<{\n\tname: string\n\tscope: \"session\" | \"package\" | \"user\"\n\tdescription: string\n\tpackage_id: string | null\n\tallowed_hosts: Array<string>\n\tallowed_packages: Array<string>\n\tcreated_at: string\n\tupdated_at: string\n\texpires_at: string | null\n\tttl_ms: number | null\n\t/** Credential kind, returned when this call set opt-in fields. */\n\tkind?: \"secret\" | \"url\" | \"login\" | \"signing\"\n\tprovider?: string | null\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders may be filled: headers (optionally named), query, path, and/or body. Null means not set (legacy): the gateway fills headers plus the parts it was seen used in before enforcement. New credentials default to headers-only. Distinct from inject. The gateway enforces it: query, path, and body also need an owner opt-in on the credential page, because the host may store the value. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** How fill placement was chosen: manifest (package declaration), default_unread (manifest could not be read), default_undeclared (package has no placement on this need), owner (credential page editor), explicit (secretSet / credentialUpdate placement input). Null on legacy rows. Query, path, and body take effect only after the owner opts in on the credential page. */\n\tplacement_origin: \"manifest\" | \"default_unread\" | \"default_undeclared\" | \"owner\" | \"explicit\" | null\n\t/** True when Disconnect cleared the value but kept the credential row (placement, hosts, grants). Reconnect with secretSet to restore the value. Distinct from Delete, which removes the row. */\n\tdisconnected: boolean\n}>\n}"
 				},
 				{
 					"name": "resourceLock",
@@ -66582,10 +70346,15 @@ export const capabilityManifest = {
 								"minLength": 1,
 								"description": "Saved package id that declares kody.secretProvider.id for this provider."
 							},
-							"door_secret_name": {
+							"door_credential_id": {
+								"description": "Stable ID of the workspace Key holding the provider door key.",
 								"type": "string",
-								"minLength": 1,
-								"description": "User-scoped Kody secret that holds the provider door key (service account token)."
+								"minLength": 1
+							},
+							"door_secret_name": {
+								"description": "Legacy name input. Use door_credential_id instead.",
+								"type": "string",
+								"minLength": 1
 							},
 							"config": {
 								"description": "Optional non-secret provider config such as a Connect base URL.",
@@ -66600,8 +70369,7 @@ export const capabilityManifest = {
 						},
 						"required": [
 							"provider",
-							"package_id",
-							"door_secret_name"
+							"package_id"
 						],
 						"additionalProperties": false
 					},
@@ -66621,6 +70389,9 @@ export const capabilityManifest = {
 							"door_secret_name": {
 								"type": "string"
 							},
+							"door_credential_id": {
+								"type": "string"
+							},
 							"config": {
 								"type": "object",
 								"propertyNames": {
@@ -66636,12 +70407,13 @@ export const capabilityManifest = {
 							"package_id",
 							"kody_id",
 							"door_secret_name",
+							"door_credential_id",
 							"config"
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type SecretProviderBindInput = {\n\t/** Provider id to bind, for example 1password. */\n\tprovider: string\n\t/** Saved package id that declares kody.secretProvider.id for this provider. */\n\tpackage_id: string\n\t/** User-scoped Kody secret that holds the provider door key (service account token). */\n\tdoor_secret_name: string\n\t/** Optional non-secret provider config such as a Connect base URL. */\n\tconfig?: Record<string, string>\n}",
-					"outputTypeDefinition": "type SecretProviderBindOutput = {\n\tprovider: string\n\tpackage_id: string\n\tkody_id: string\n\tdoor_secret_name: string\n\tconfig: Record<string, string>\n}"
+					"inputTypeDefinition": "type SecretProviderBindInput = {\n\t/** Provider id to bind, for example 1password. */\n\tprovider: string\n\t/** Saved package id that declares kody.secretProvider.id for this provider. */\n\tpackage_id: string\n\t/** Stable ID of the workspace Key holding the provider door key. */\n\tdoor_credential_id?: string\n\t/** Legacy name input. Use door_credential_id instead. */\n\tdoor_secret_name?: string\n\t/** Optional non-secret provider config such as a Connect base URL. */\n\tconfig?: Record<string, string>\n}",
+					"outputTypeDefinition": "type SecretProviderBindOutput = {\n\tprovider: string\n\tpackage_id: string\n\tkody_id: string\n\tdoor_secret_name: string\n\tdoor_credential_id: string\n\tconfig: Record<string, string>\n}"
 				},
 				{
 					"name": "secretProviderUnbind",
@@ -67001,6 +70773,45 @@ export const capabilityManifest = {
 																"param"
 															],
 															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "body"
+																}
+															},
+															"required": [
+																"kind"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "path"
+																}
+															},
+															"required": [
+																"kind"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "composition"
+																}
+															},
+															"required": [
+																"kind"
+															],
+															"additionalProperties": false
 														}
 													]
 												},
@@ -67144,7 +70955,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type CredentialListInput = {\n\t/** Substring of name, provider, description, or host. */\n\tq?: string\n\tkinds?: Array<\"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\">\n\tscope?: \"org\" | \"personal\"\n\t/** true: only package-scoped Keys; false: exclude them. */\n\tpackageScoped?: boolean\n\t/** true: locked to any package; a package id: locked to it. */\n\tlocked?: true | string\n}",
-					"outputTypeDefinition": "type CredentialListOutput = {\n\tcredentials: Array<{\n\t/** Credential id (accessGrant, credentialUpdate). */\n\tid: string\n\tkind: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tname: string\n\t/** org: stored in this org (secretSet scope 'user' or 'package', OAuth, MCP). personal: your own credential granted to this org. Same value as credential(key).scope. */\n\tscope: \"org\" | \"personal\"\n\tprovider: string | null\n\tdescription: string\n\thosts: Array<string>\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | null\n\t/** Where placeholders may be filled (headers, query, path, body). Null means anywhere. Distinct from inject. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** Set for a package-scoped Key: the package it belongs to. */\n\tpackageId: string | null\n\t/** Non-empty when only these packages may use it. */\n\tlockedToPackageIds: Array<string>\n\texpiresAt: string | null\n\tcreatedAt: string\n\tupdatedAt: string\n\tstatus: \"ok\" | \"expired\" | \"needs_attention\" | \"disabled\" | \"disconnected\"\n\tstatusMessage: string | null\n\tmcp: {\n\turl: string\n\tenabled: boolean\n} | null\n}>\n}"
+					"outputTypeDefinition": "type CredentialListOutput = {\n\tcredentials: Array<{\n\t/** Credential id (accessGrant, credentialUpdate). */\n\tid: string\n\tkind: \"secret\" | \"oauth\" | \"mcp\" | \"url\" | \"login\" | \"signing\"\n\tname: string\n\t/** org: stored in this org (secretSet scope 'user' or 'package', OAuth, MCP). personal: your own credential granted to this org. Same value as credential(key).scope. */\n\tscope: \"org\" | \"personal\"\n\tprovider: string | null\n\tdescription: string\n\thosts: Array<string>\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n} | {\n\tkind: \"path\"\n} | {\n\tkind: \"composition\"\n} | null\n\t/** Where placeholders may be filled (headers, query, path, body). Null means anywhere. Distinct from inject. */\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** Set for a package-scoped Key: the package it belongs to. */\n\tpackageId: string | null\n\t/** Non-empty when only these packages may use it. */\n\tlockedToPackageIds: Array<string>\n\texpiresAt: string | null\n\tcreatedAt: string\n\tupdatedAt: string\n\tstatus: \"ok\" | \"expired\" | \"needs_attention\" | \"disabled\" | \"disconnected\"\n\tstatusMessage: string | null\n\tmcp: {\n\turl: string\n\tenabled: boolean\n} | null\n}>\n}"
 				},
 				{
 					"name": "credentialUpdate",
@@ -67260,6 +71071,730 @@ export const capabilityManifest = {
 										"required": [
 											"kind",
 											"param"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "body"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"mediaType": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"fields": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"minItems": 1,
+													"maxItems": 12,
+													"type": "array",
+													"items": {
+														"anyOf": [
+															{
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 100
+															},
+															{
+																"type": "integer",
+																"minimum": 0,
+																"maximum": 999
+															}
+														]
+													}
+												}
+											},
+											"selectors": {
+												"default": [],
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"path": {
+															"minItems": 1,
+															"maxItems": 12,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"minLength": 1,
+																		"maxLength": 100
+																	},
+																	{
+																		"type": "integer",
+																		"minimum": 0,
+																		"maximum": 999
+																	}
+																]
+															}
+														},
+														"value": {
+															"anyOf": [
+																{
+																	"type": "string",
+																	"maxLength": 1000
+																},
+																{
+																	"type": "boolean"
+																},
+																{
+																	"type": "integer",
+																	"minimum": -9007199254740991,
+																	"maximum": 9007199254740991
+																}
+															]
+														}
+													},
+													"required": [
+														"path",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"graphql": {
+												"type": "object",
+												"properties": {
+													"document": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 20000
+													},
+													"operationName": {
+														"type": "string",
+														"maxLength": 100,
+														"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+													}
+												},
+												"required": [
+													"document",
+													"operationName"
+												],
+												"additionalProperties": false
+											},
+											"output": {
+												"default": {
+													"format": "plaintext"
+												},
+												"oneOf": [
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "plaintext"
+															}
+														},
+														"required": [
+															"format"
+														],
+														"additionalProperties": false
+													},
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "sealed-box-base64"
+															},
+															"recipientPublicKey": {
+																"type": "string",
+																"pattern": "^[A-Za-z0-9+/]{43}=$"
+															},
+															"recipientKeyId": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 256
+															},
+															"keyIdField": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"required": [
+															"format",
+															"recipientPublicKey",
+															"recipientKeyId",
+															"keyIdField"
+														],
+														"additionalProperties": false
+													}
+												]
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"mediaType",
+											"fields"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "path"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"origin": {
+												"type": "string",
+												"maxLength": 500
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"segments": {
+												"minItems": 2,
+												"maxItems": 24,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "string",
+															"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"parameter": {
+																	"type": "string",
+																	"enum": [
+																		"slug",
+																		"integer",
+																		"uuid"
+																	]
+																}
+															},
+															"required": [
+																"parameter"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"credential": {
+																	"type": "boolean",
+																	"const": true
+																}
+															},
+															"required": [
+																"credential"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"origin",
+											"method",
+											"segments"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "composition"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"entryCredentialId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"publicBody": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"sites": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "header"
+																},
+																"name": {
+																	"type": "string",
+																	"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																},
+																"parts": {
+																	"minItems": 1,
+																	"maxItems": 24,
+																	"type": "array",
+																	"items": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 200,
+																				"pattern": "^[\\x20-\\x7e]*$"
+																			},
+																			{
+																				"type": "object",
+																				"properties": {
+																					"credentialId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					}
+																				},
+																				"required": [
+																					"credentialId"
+																				],
+																				"additionalProperties": false
+																			}
+																		]
+																	}
+																}
+															},
+															"required": [
+																"kind",
+																"name",
+																"parts"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "basic"
+																},
+																"usernameId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"passwordId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"usernameId",
+																"passwordId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "query"
+																},
+																"param": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"param",
+																"credentialId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "body"
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"placement": {
+																	"type": "object",
+																	"properties": {
+																		"kind": {
+																			"type": "string",
+																			"const": "body"
+																		},
+																		"packageId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		"endpoint": {
+																			"type": "string",
+																			"maxLength": 2000
+																		},
+																		"method": {
+																			"type": "string",
+																			"enum": [
+																				"POST",
+																				"PUT",
+																				"PATCH",
+																				"DELETE"
+																			]
+																		},
+																		"mediaType": {
+																			"type": "string",
+																			"const": "application/json"
+																		},
+																		"fields": {
+																			"minItems": 1,
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"minItems": 1,
+																				"maxItems": 12,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 100
+																						},
+																						{
+																							"type": "integer",
+																							"minimum": 0,
+																							"maximum": 999
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"selectors": {
+																			"default": [],
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"type": "object",
+																				"properties": {
+																					"path": {
+																						"minItems": 1,
+																						"maxItems": 12,
+																						"type": "array",
+																						"items": {
+																							"anyOf": [
+																								{
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								},
+																								{
+																									"type": "integer",
+																									"minimum": 0,
+																									"maximum": 999
+																								}
+																							]
+																						}
+																					},
+																					"value": {
+																						"anyOf": [
+																							{
+																								"type": "string",
+																								"maxLength": 1000
+																							},
+																							{
+																								"type": "boolean"
+																							},
+																							{
+																								"type": "integer",
+																								"minimum": -9007199254740991,
+																								"maximum": 9007199254740991
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"path",
+																					"value"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"graphql": {
+																			"type": "object",
+																			"properties": {
+																				"document": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 20000
+																				},
+																				"operationName": {
+																					"type": "string",
+																					"maxLength": 100,
+																					"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																				}
+																			},
+																			"required": [
+																				"document",
+																				"operationName"
+																			],
+																			"additionalProperties": false
+																		},
+																		"output": {
+																			"default": {
+																				"format": "plaintext"
+																			},
+																			"oneOf": [
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "plaintext"
+																						}
+																					},
+																					"required": [
+																						"format"
+																					],
+																					"additionalProperties": false
+																				},
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "sealed-box-base64"
+																						},
+																						"recipientPublicKey": {
+																							"type": "string",
+																							"pattern": "^[A-Za-z0-9+/]{43}=$"
+																						},
+																						"recipientKeyId": {
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 256
+																						},
+																						"keyIdField": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"required": [
+																						"format",
+																						"recipientPublicKey",
+																						"recipientKeyId",
+																						"keyIdField"
+																					],
+																					"additionalProperties": false
+																				}
+																			]
+																		}
+																	},
+																	"required": [
+																		"kind",
+																		"packageId",
+																		"endpoint",
+																		"method",
+																		"mediaType",
+																		"fields"
+																	],
+																	"additionalProperties": false
+																}
+															},
+															"required": [
+																"kind",
+																"credentialId",
+																"placement"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "connection"
+																},
+																"connection": {
+																	"type": "string",
+																	"enum": [
+																		"login",
+																		"oauth"
+																	]
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"inject": {
+																	"anyOf": [
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "header"
+																				},
+																				"name": {
+																					"type": "string",
+																					"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																				},
+																				"format": {
+																					"type": "string",
+																					"maxLength": 200,
+																					"pattern": "^[\\x20-\\x7e]*$"
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"name",
+																				"format"
+																			],
+																			"additionalProperties": false
+																		},
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "query"
+																				},
+																				"param": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"param"
+																			],
+																			"additionalProperties": false
+																		}
+																	]
+																}
+															},
+															"required": [
+																"kind",
+																"connection",
+																"credentialId",
+																"inject"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"entryCredentialId",
+											"sites"
 										],
 										"additionalProperties": false
 									}
@@ -67410,6 +71945,730 @@ export const capabilityManifest = {
 											"param"
 										],
 										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "body"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"mediaType": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"fields": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"minItems": 1,
+													"maxItems": 12,
+													"type": "array",
+													"items": {
+														"anyOf": [
+															{
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 100
+															},
+															{
+																"type": "integer",
+																"minimum": 0,
+																"maximum": 999
+															}
+														]
+													}
+												}
+											},
+											"selectors": {
+												"default": [],
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"type": "object",
+													"properties": {
+														"path": {
+															"minItems": 1,
+															"maxItems": 12,
+															"type": "array",
+															"items": {
+																"anyOf": [
+																	{
+																		"type": "string",
+																		"minLength": 1,
+																		"maxLength": 100
+																	},
+																	{
+																		"type": "integer",
+																		"minimum": 0,
+																		"maximum": 999
+																	}
+																]
+															}
+														},
+														"value": {
+															"anyOf": [
+																{
+																	"type": "string",
+																	"maxLength": 1000
+																},
+																{
+																	"type": "boolean"
+																},
+																{
+																	"type": "integer",
+																	"minimum": -9007199254740991,
+																	"maximum": 9007199254740991
+																}
+															]
+														}
+													},
+													"required": [
+														"path",
+														"value"
+													],
+													"additionalProperties": false
+												}
+											},
+											"graphql": {
+												"type": "object",
+												"properties": {
+													"document": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 20000
+													},
+													"operationName": {
+														"type": "string",
+														"maxLength": 100,
+														"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+													}
+												},
+												"required": [
+													"document",
+													"operationName"
+												],
+												"additionalProperties": false
+											},
+											"output": {
+												"default": {
+													"format": "plaintext"
+												},
+												"oneOf": [
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "plaintext"
+															}
+														},
+														"required": [
+															"format"
+														],
+														"additionalProperties": false
+													},
+													{
+														"type": "object",
+														"properties": {
+															"format": {
+																"type": "string",
+																"const": "sealed-box-base64"
+															},
+															"recipientPublicKey": {
+																"type": "string",
+																"pattern": "^[A-Za-z0-9+/]{43}=$"
+															},
+															"recipientKeyId": {
+																"type": "string",
+																"minLength": 1,
+																"maxLength": 256
+															},
+															"keyIdField": {
+																"minItems": 1,
+																"maxItems": 12,
+																"type": "array",
+																"items": {
+																	"anyOf": [
+																		{
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		{
+																			"type": "integer",
+																			"minimum": 0,
+																			"maximum": 999
+																		}
+																	]
+																}
+															}
+														},
+														"required": [
+															"format",
+															"recipientPublicKey",
+															"recipientKeyId",
+															"keyIdField"
+														],
+														"additionalProperties": false
+													}
+												]
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"mediaType",
+											"fields"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "path"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"origin": {
+												"type": "string",
+												"maxLength": 500
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"segments": {
+												"minItems": 2,
+												"maxItems": 24,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "string",
+															"pattern": "^[a-zA-Z0-9_~-][a-zA-Z0-9._~-]{0,127}$"
+														},
+														{
+															"type": "object",
+															"properties": {
+																"parameter": {
+																	"type": "string",
+																	"enum": [
+																		"slug",
+																		"integer",
+																		"uuid"
+																	]
+																}
+															},
+															"required": [
+																"parameter"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"credential": {
+																	"type": "boolean",
+																	"const": true
+																}
+															},
+															"required": [
+																"credential"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"origin",
+											"method",
+											"segments"
+										],
+										"additionalProperties": false
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": {
+												"type": "string",
+												"const": "composition"
+											},
+											"packageId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"endpoint": {
+												"type": "string",
+												"maxLength": 2000
+											},
+											"method": {
+												"type": "string",
+												"enum": [
+													"GET",
+													"HEAD",
+													"POST",
+													"PUT",
+													"PATCH",
+													"DELETE"
+												]
+											},
+											"entryCredentialId": {
+												"type": "string",
+												"minLength": 1,
+												"maxLength": 100
+											},
+											"publicBody": {
+												"type": "string",
+												"const": "application/json"
+											},
+											"sites": {
+												"minItems": 1,
+												"maxItems": 16,
+												"type": "array",
+												"items": {
+													"anyOf": [
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "header"
+																},
+																"name": {
+																	"type": "string",
+																	"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																},
+																"parts": {
+																	"minItems": 1,
+																	"maxItems": 24,
+																	"type": "array",
+																	"items": {
+																		"anyOf": [
+																			{
+																				"type": "string",
+																				"maxLength": 200,
+																				"pattern": "^[\\x20-\\x7e]*$"
+																			},
+																			{
+																				"type": "object",
+																				"properties": {
+																					"credentialId": {
+																						"type": "string",
+																						"minLength": 1,
+																						"maxLength": 100
+																					}
+																				},
+																				"required": [
+																					"credentialId"
+																				],
+																				"additionalProperties": false
+																			}
+																		]
+																	}
+																}
+															},
+															"required": [
+																"kind",
+																"name",
+																"parts"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "basic"
+																},
+																"usernameId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"passwordId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"usernameId",
+																"passwordId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "query"
+																},
+																"param": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																}
+															},
+															"required": [
+																"kind",
+																"param",
+																"credentialId"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "body"
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"placement": {
+																	"type": "object",
+																	"properties": {
+																		"kind": {
+																			"type": "string",
+																			"const": "body"
+																		},
+																		"packageId": {
+																			"type": "string",
+																			"minLength": 1,
+																			"maxLength": 100
+																		},
+																		"endpoint": {
+																			"type": "string",
+																			"maxLength": 2000
+																		},
+																		"method": {
+																			"type": "string",
+																			"enum": [
+																				"POST",
+																				"PUT",
+																				"PATCH",
+																				"DELETE"
+																			]
+																		},
+																		"mediaType": {
+																			"type": "string",
+																			"const": "application/json"
+																		},
+																		"fields": {
+																			"minItems": 1,
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"minItems": 1,
+																				"maxItems": 12,
+																				"type": "array",
+																				"items": {
+																					"anyOf": [
+																						{
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 100
+																						},
+																						{
+																							"type": "integer",
+																							"minimum": 0,
+																							"maximum": 999
+																						}
+																					]
+																				}
+																			}
+																		},
+																		"selectors": {
+																			"default": [],
+																			"maxItems": 16,
+																			"type": "array",
+																			"items": {
+																				"type": "object",
+																				"properties": {
+																					"path": {
+																						"minItems": 1,
+																						"maxItems": 12,
+																						"type": "array",
+																						"items": {
+																							"anyOf": [
+																								{
+																									"type": "string",
+																									"minLength": 1,
+																									"maxLength": 100
+																								},
+																								{
+																									"type": "integer",
+																									"minimum": 0,
+																									"maximum": 999
+																								}
+																							]
+																						}
+																					},
+																					"value": {
+																						"anyOf": [
+																							{
+																								"type": "string",
+																								"maxLength": 1000
+																							},
+																							{
+																								"type": "boolean"
+																							},
+																							{
+																								"type": "integer",
+																								"minimum": -9007199254740991,
+																								"maximum": 9007199254740991
+																							}
+																						]
+																					}
+																				},
+																				"required": [
+																					"path",
+																					"value"
+																				],
+																				"additionalProperties": false
+																			}
+																		},
+																		"graphql": {
+																			"type": "object",
+																			"properties": {
+																				"document": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 20000
+																				},
+																				"operationName": {
+																					"type": "string",
+																					"maxLength": 100,
+																					"pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+																				}
+																			},
+																			"required": [
+																				"document",
+																				"operationName"
+																			],
+																			"additionalProperties": false
+																		},
+																		"output": {
+																			"default": {
+																				"format": "plaintext"
+																			},
+																			"oneOf": [
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "plaintext"
+																						}
+																					},
+																					"required": [
+																						"format"
+																					],
+																					"additionalProperties": false
+																				},
+																				{
+																					"type": "object",
+																					"properties": {
+																						"format": {
+																							"type": "string",
+																							"const": "sealed-box-base64"
+																						},
+																						"recipientPublicKey": {
+																							"type": "string",
+																							"pattern": "^[A-Za-z0-9+/]{43}=$"
+																						},
+																						"recipientKeyId": {
+																							"type": "string",
+																							"minLength": 1,
+																							"maxLength": 256
+																						},
+																						"keyIdField": {
+																							"minItems": 1,
+																							"maxItems": 12,
+																							"type": "array",
+																							"items": {
+																								"anyOf": [
+																									{
+																										"type": "string",
+																										"minLength": 1,
+																										"maxLength": 100
+																									},
+																									{
+																										"type": "integer",
+																										"minimum": 0,
+																										"maximum": 999
+																									}
+																								]
+																							}
+																						}
+																					},
+																					"required": [
+																						"format",
+																						"recipientPublicKey",
+																						"recipientKeyId",
+																						"keyIdField"
+																					],
+																					"additionalProperties": false
+																				}
+																			]
+																		}
+																	},
+																	"required": [
+																		"kind",
+																		"packageId",
+																		"endpoint",
+																		"method",
+																		"mediaType",
+																		"fields"
+																	],
+																	"additionalProperties": false
+																}
+															},
+															"required": [
+																"kind",
+																"credentialId",
+																"placement"
+															],
+															"additionalProperties": false
+														},
+														{
+															"type": "object",
+															"properties": {
+																"kind": {
+																	"type": "string",
+																	"const": "connection"
+																},
+																"connection": {
+																	"type": "string",
+																	"enum": [
+																		"login",
+																		"oauth"
+																	]
+																},
+																"credentialId": {
+																	"type": "string",
+																	"minLength": 1,
+																	"maxLength": 100
+																},
+																"inject": {
+																	"anyOf": [
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "header"
+																				},
+																				"name": {
+																					"type": "string",
+																					"pattern": "^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$"
+																				},
+																				"format": {
+																					"type": "string",
+																					"maxLength": 200,
+																					"pattern": "^[\\x20-\\x7e]*$"
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"name",
+																				"format"
+																			],
+																			"additionalProperties": false
+																		},
+																		{
+																			"type": "object",
+																			"properties": {
+																				"kind": {
+																					"type": "string",
+																					"const": "query"
+																				},
+																				"param": {
+																					"type": "string",
+																					"minLength": 1,
+																					"maxLength": 100
+																				}
+																			},
+																			"required": [
+																				"kind",
+																				"param"
+																			],
+																			"additionalProperties": false
+																		}
+																	]
+																}
+															},
+															"required": [
+																"kind",
+																"connection",
+																"credentialId",
+																"inject"
+															],
+															"additionalProperties": false
+														}
+													]
+												}
+											}
+										},
+										"required": [
+											"kind",
+											"packageId",
+											"endpoint",
+											"method",
+											"entryCredentialId",
+											"sites"
+										],
+										"additionalProperties": false
 									}
 								]
 							},
@@ -67517,8 +72776,8 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type CredentialUpdateInput = {\n\t/** Credential id from secretList, the integrations list, or packageGet credential options. */\n\tcredential_id: string\n\t/** New name for a user-scope secret (letters, numbers, dots, underscores, hyphens; unique in the account). Renames in place: the credential id, value, grants, package credential mappings, and history stay attached. {{secret:<old name>}} placeholders and code that names the secret do not follow; the response lists the known ones. Send it on its own, not with provider, inject, or placement. */\n\tname?: string\n\t/** Provider slug (for example \"github\") package credential needs match against. Null clears it. */\n\tprovider?: string | null\n\t/** How a scoped credential client places a secret's value: a header with a \"{value}\" format, basic auth, or a query parameter. OAuth connections and MCP servers always use Authorization: Bearer. Changing it is website-only from execute, package, and app code. */\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\t/** Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. From execute, package, and app code only narrowing works; widening is website-only. */\n\tplacement?: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n}",
-					"outputTypeDefinition": "type CredentialUpdateOutput = {\n\tcredential_id: string\n\tcredential_kind: \"secret\" | \"integration\" | \"mcp-server\" | \"vault\"\n\tname: string\n\tprovider: string | null\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** Present when the call renamed a secret: stored settings that still use the previous name, and what else to update. */\n\trename?: {\n\tprevious_name: string\n\tknown_references: Array<{\n\tkind: \"webhook-verification\" | \"secret-provider-door\"\n\tid: string\n\tpackage_id: string\n\tlabel: string\n}>\n\tnote: string\n}\n}"
+					"inputTypeDefinition": "type CredentialUpdateInput = {\n\t/** Credential id from secretList, the integrations list, or packageGet credential options. */\n\tcredential_id: string\n\t/** New name for a user-scope secret (letters, numbers, dots, underscores, hyphens; unique in the account). Renames in place: the credential id, value, grants, package credential mappings, and history stay attached. {{secret:<old name>}} placeholders and code that names the secret do not follow; the response lists the known ones. Send it on its own, not with provider, inject, or placement. */\n\tname?: string\n\t/** Provider slug (for example \"github\") package credential needs match against. Null clears it. */\n\tprovider?: string | null\n\t/** How a scoped credential client places a secret's value: a header with a \"{value}\" format, basic auth, or a query parameter. OAuth connections and MCP servers always use Authorization: Bearer. Changing it is website-only from execute, package, and app code. */\n\tinject?: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\t/** Where placeholders for this credential may be filled: headers (optionally named), query, path, and/or body. Null means anywhere. New credentials default to headers-only. Distinct from inject. Applies to secrets, OAuth integration tokens, and vault bindings. From execute, package, and app code only narrowing works; widening is website-only. */\n\tplacement?: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n}",
+					"outputTypeDefinition": "type CredentialUpdateOutput = {\n\tcredential_id: string\n\tcredential_kind: \"secret\" | \"integration\" | \"mcp-server\" | \"vault\"\n\tname: string\n\tprovider: string | null\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"basic\"\n\tvalueAs: \"username\" | \"password\"\n\tother?: string\n} | {\n\tkind: \"query\"\n\tparam: string\n} | {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n} | {\n\tkind: \"path\"\n\tpackageId: string\n\torigin: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tsegments: Array<string | {\n\tparameter: \"slug\" | \"integer\" | \"uuid\"\n} | {\n\tcredential: true\n}>\n} | {\n\tkind: \"composition\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"GET\" | \"HEAD\" | \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tentryCredentialId: string\n\tpublicBody?: \"application/json\"\n\tsites: Array<{\n\tkind: \"header\"\n\tname: string\n\tparts: Array<string | {\n\tcredentialId: string\n}>\n} | {\n\tkind: \"basic\"\n\tusernameId: string\n\tpasswordId: string\n} | {\n\tkind: \"query\"\n\tparam: string\n\tcredentialId: string\n} | {\n\tkind: \"body\"\n\tcredentialId: string\n\tplacement: {\n\tkind: \"body\"\n\tpackageId: string\n\tendpoint: string\n\tmethod: \"POST\" | \"PUT\" | \"PATCH\" | \"DELETE\"\n\tmediaType: \"application/json\"\n\tfields: Array<Array<string | number>>\n\tselectors?: Array<{\n\tpath: Array<string | number>\n\tvalue: string | boolean | number\n}>\n\tgraphql?: {\n\tdocument: string\n\toperationName: string\n}\n\toutput?: {\n\tformat: \"plaintext\"\n} | {\n\tformat: \"sealed-box-base64\"\n\trecipientPublicKey: string\n\trecipientKeyId: string\n\tkeyIdField: Array<string | number>\n}\n}\n} | {\n\tkind: \"connection\"\n\tconnection: \"login\" | \"oauth\"\n\tcredentialId: string\n\tinject: {\n\tkind: \"header\"\n\tname: string\n\tformat: string\n} | {\n\tkind: \"query\"\n\tparam: string\n}\n}>\n}\n\tplacement: {\n\theaders?: true | Array<string>\n\tquery?: true\n\tpath?: true\n\tbody?: true\n} | null\n\t/** Present when the call renamed a secret: stored settings that still use the previous name, and what else to update. */\n\trename?: {\n\tprevious_name: string\n\tknown_references: Array<{\n\tkind: \"webhook-verification\" | \"secret-provider-door\"\n\tid: string\n\tpackage_id: string\n\tlabel: string\n}>\n\tnote: string\n}\n}"
 				},
 				{
 					"name": "credentialPlacementApprovalLink",
@@ -69555,6 +74814,10 @@ export const capabilityManifest = {
 																		"body",
 																		"timestamp.body"
 																	]
+																},
+																"profile": {
+																	"type": "string",
+																	"const": "standard-webhooks"
 																}
 															},
 															"required": [
@@ -70002,7 +75265,7 @@ export const capabilityManifest = {
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type WebhookListInput = {\n\t/** Saved-package UUID. Use when the scoped name is not known, or for a stable ref. */\n\tpackageId?: string\n\t/** Deprecated leftover alias for the package name (`@owner/leaf` or the name leaf). Prefer `name` or `package_id`. */\n\tkodyId?: string\n}",
-					"outputTypeDefinition": "type WebhookListOutput = {\n\twebhooks: Array<{\n\tpackage_id: string\n\tpackage_kody_id: string\n\tpackage_name: string\n\tname: string\n\texport_name: string\n\tdescription: string | null\n\tresponse_mode: \"ack\" | \"sync\"\n\tinput_mode: \"request\" | \"params\"\n\trate_limit_per_minute: number\n\tverification: {\n\ttype: \"hmac-sha256\" | \"hmac-sha1\"\n\theader: string\n\tsecretName?: string\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n\tsignedPayload?: \"body\" | \"timestamp.body\"\n} | {\n\ttype: \"url-secret\"\n} | null\n\treplay: {\n\ttimestampHeader?: string\n\ttimestampFormat?: \"unix-seconds\" | \"unix-millis\" | \"iso-8601\" | \"stripe-signature\"\n\ttoleranceSeconds?: number\n\tdeliveryIdHeader?: string\n} | null\n\t/** Platform-answered subscription challenge from package.json#kody.webhooks[].challenge (secretName is a secret-store name, never a value). Null when not declared. */\n\tchallenge: {\n\ttype: \"subscription-challenge\"\n\tmethod: \"GET\" | \"POST\"\n\tchallenge: {\n\tin: \"query\" | \"json\"\n\tkey: string\n}\n\twhen?: {\n\tquery?: Record<string, string | Array<string>>\n\tjson?: Record<string, string>\n}\n\tprove?: {\n\tkind: \"none\"\n} | {\n\tkind: \"verify-token\"\n\tin: \"query\"\n\tkey: string\n\tsecretName: string\n\trequired?: boolean\n} | {\n\tkind: \"hmac\"\n\tsecretName: string\n\talgorithm: \"hmac-sha256\"\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n} | {\n\tkind: \"request-hmac\"\n\tsecretName: string\n\talgorithm: \"hmac-sha256\"\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n\ttimestampHeader: string\n\tsignatureHeader: string\n\tsignedPayload: \"v0.timestamp.body\"\n}\n\trespond: {\n\tas: \"text\"\n} | {\n\tas: \"json\"\n\tkey: string\n} | {\n\tas: \"json-hmac\"\n\tkey: string\n}\n} | null\n\t/** True when a URL secret has been minted for this webhook. */\n\tminted: boolean\n\t/** True when this webhook has a live enablement. */\n\tapproved: boolean\n\t/** Open this and click Approve to turn the webhook on. Null when approved or not minted. */\n\tapproval_url: string | null\n\t/** Webhook endpoint id when minted. Pass to rotate when several URLs share the name. Turn it off with enablementDisable. Null when not minted. */\n\tendpoint_id: string | null\n\t/** Short label when several URLs share the declared webhook name. Null when unlabeled or not minted. */\n\tinstance_label: string | null\n\t/** Opaque handle for webhookUrlApply. Null when not minted. Never a credential. */\n\thandle: string | null\n\t/** Public hostname of the ingress origin. Null when not minted. */\n\turl_host: string | null\n\tcreated_at: string | null\n\trotated_at: string | null\n\t/** ISO timestamp while the previous URL still accepts deliveries after rotate. Null when there is no live overlap. */\n\tprevious_url_active_until: string | null\n}>\n}"
+					"outputTypeDefinition": "type WebhookListOutput = {\n\twebhooks: Array<{\n\tpackage_id: string\n\tpackage_kody_id: string\n\tpackage_name: string\n\tname: string\n\texport_name: string\n\tdescription: string | null\n\tresponse_mode: \"ack\" | \"sync\"\n\tinput_mode: \"request\" | \"params\"\n\trate_limit_per_minute: number\n\tverification: {\n\ttype: \"hmac-sha256\" | \"hmac-sha1\"\n\theader: string\n\tsecretName?: string\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n\tsignedPayload?: \"body\" | \"timestamp.body\"\n\tprofile?: \"standard-webhooks\"\n} | {\n\ttype: \"url-secret\"\n} | null\n\treplay: {\n\ttimestampHeader?: string\n\ttimestampFormat?: \"unix-seconds\" | \"unix-millis\" | \"iso-8601\" | \"stripe-signature\"\n\ttoleranceSeconds?: number\n\tdeliveryIdHeader?: string\n} | null\n\t/** Platform-answered subscription challenge from package.json#kody.webhooks[].challenge (secretName is a secret-store name, never a value). Null when not declared. */\n\tchallenge: {\n\ttype: \"subscription-challenge\"\n\tmethod: \"GET\" | \"POST\"\n\tchallenge: {\n\tin: \"query\" | \"json\"\n\tkey: string\n}\n\twhen?: {\n\tquery?: Record<string, string | Array<string>>\n\tjson?: Record<string, string>\n}\n\tprove?: {\n\tkind: \"none\"\n} | {\n\tkind: \"verify-token\"\n\tin: \"query\"\n\tkey: string\n\tsecretName: string\n\trequired?: boolean\n} | {\n\tkind: \"hmac\"\n\tsecretName: string\n\talgorithm: \"hmac-sha256\"\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n} | {\n\tkind: \"request-hmac\"\n\tsecretName: string\n\talgorithm: \"hmac-sha256\"\n\tencoding: \"hex\" | \"base64\"\n\tprefix?: string\n\ttimestampHeader: string\n\tsignatureHeader: string\n\tsignedPayload: \"v0.timestamp.body\"\n}\n\trespond: {\n\tas: \"text\"\n} | {\n\tas: \"json\"\n\tkey: string\n} | {\n\tas: \"json-hmac\"\n\tkey: string\n}\n} | null\n\t/** True when a URL secret has been minted for this webhook. */\n\tminted: boolean\n\t/** True when this webhook has a live enablement. */\n\tapproved: boolean\n\t/** Open this and click Approve to turn the webhook on. Null when approved or not minted. */\n\tapproval_url: string | null\n\t/** Webhook endpoint id when minted. Pass to rotate when several URLs share the name. Turn it off with enablementDisable. Null when not minted. */\n\tendpoint_id: string | null\n\t/** Short label when several URLs share the declared webhook name. Null when unlabeled or not minted. */\n\tinstance_label: string | null\n\t/** Opaque handle for webhookUrlApply. Null when not minted. Never a credential. */\n\thandle: string | null\n\t/** Public hostname of the ingress origin. Null when not minted. */\n\turl_host: string | null\n\tcreated_at: string | null\n\trotated_at: string | null\n\t/** ISO timestamp while the previous URL still accepts deliveries after rotate. Null when there is no live overlap. */\n\tprevious_url_active_until: string | null\n}>\n}"
 				},
 				{
 					"name": "webhookUrlMint",
