@@ -19,6 +19,13 @@ permissions:
   contents: write
   id-token: write
 
+# Two merges in a row used to plan the same version and race to npm (409).
+# Queue instead; a newer pending run supersedes an older one since it checks
+# out a later main that already contains the older changes.
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
+
 jobs:
   publish:
     # npm --provenance rejects self-hosted runners ("Unsupported GitHub
