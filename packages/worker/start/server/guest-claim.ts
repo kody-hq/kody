@@ -34,6 +34,7 @@ const pageErrors = new Set<GuestClaimPageError>([
 	'code_expired',
 	'too_many_attempts',
 	'send_failed',
+	'rate_limited',
 	'already_claimed',
 	'deleted',
 	'username_invalid',

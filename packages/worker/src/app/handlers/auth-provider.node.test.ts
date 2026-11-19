@@ -1315,6 +1315,66 @@ async function runConnectionsOperation(
 	return operation.execute({ request })
 }
 
+test('OAuth claim with an existing account waits for confirmation', async () => {
+	const { sqlite, db } = createMigratedDb()
+	const env = createAppEnv(db)
+	await seedUser(sqlite, {
+		id: 7,
+		email: 'existing@example.com',
+		username: 'existing-user',
+		emailVerified: true,
+	})
+	const created = await createGuestAccount({
+		env,
+		requestIp: '203.0.113.9',
+		clientName: 'Claim Agent',
+	})
+	if (!created.ok) throw new Error('guest was not created')
+	mockGithubProfileExchange('existing@example.com', 99077)
+	lifecycleMocks.scheduleGuestClaimedEvent.mockClear()
+	const startUrl = 'http://example.com/auth/github'
+	const started = await startWebsiteOAuth({
+		env,
+		provider: 'github',
+		url: new URL(startUrl),
+		request: new Request(startUrl),
+		body: {},
+		guestClaim: { code: created.claimCode, username: null },
+	})
+	if (!('authorizeUrl' in started.data) || !started.data.authorizeUrl)
+		throw new Error('Expected OAuth authorization URL')
+	const state = new URL(started.data.authorizeUrl).searchParams.get('state')
+	const response = await runHandler(
+		createAuthProviderCallbackHandler(env),
+		new Request(
+			`http://example.com/auth/github/callback?code=github-auth-code&state=${state}`,
+			{
+				headers: {
+					Cookie: getCookiePair(started.headers.get('Set-Cookie') ?? ''),
+				},
+			},
+		),
+		{ provider: 'github' },
+	)
+	expect(response.headers.get('Location')).toBe(`/claim/${created.claimCode}`)
+	expect(
+		response.headers
+			.getSetCookie()
+			.some((cookie) => cookie.startsWith('kody_session=')),
+	).toBe(true)
+	expect(
+		sqlite
+			.prepare('SELECT claimed_at FROM guest_accounts WHERE person_id = ?')
+			.get(created.personId),
+	).toEqual({ claimed_at: null })
+	expect(
+		sqlite
+			.prepare('SELECT id FROM users WHERE stable_user_id = ?')
+			.get(created.personId),
+	).toBeTruthy()
+	expect(lifecycleMocks.scheduleGuestClaimedEvent).not.toHaveBeenCalled()
+})
+
 test('claiming a guest with GitHub emits one user.guest_claimed and no user.created', async () => {
 	lifecycleMocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, db } = createMigratedDb()
