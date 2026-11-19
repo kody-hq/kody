@@ -152,6 +152,7 @@ function createWorkflowEnv(
 		DYNAMIC_CALLABLE_WORKFLOWS: binding.workflow,
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
+		REPO_SESSION_BLOBS: { put: vi.fn() },
 	} as Env
 }
 
