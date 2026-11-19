@@ -90,13 +90,11 @@ function badRequest(message: string, status = 400) {
 function normalizeReturnTo(raw: string | null, origin: string): string {
 	if (!raw) return '/'
 	try {
-		if (raw.startsWith('/')) {
-			if (raw.startsWith('//') || raw.includes('\\')) return '/'
-			return raw
-		}
-		const url = new URL(raw)
-		if (url.origin !== origin) return '/'
-		return `${url.pathname}${url.search}`
+		if (raw.includes('\\')) return '/'
+		// Resolve the way a browser would, then keep only a same-origin path.
+		const url = new URL(raw, origin)
+		if (url.origin !== origin || url.pathname.startsWith('//')) return '/'
+		return `${url.pathname}${url.search}${url.hash}`
 	} catch {
 		return '/'
 	}
