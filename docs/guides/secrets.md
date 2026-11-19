@@ -204,14 +204,14 @@ on connected tool servers.
 
 ## Renaming a secret
 
-Rename a user-scope secret on its page on the website (edit **Name** and save)
-or with `credentialUpdate` and a new `name`. The secret keeps its credential id
-and value, so grants, package credential mappings, read history, and audit
-history stay attached, and the token does not need rotating. The rename needs
-Write on the secret, is recorded as `credential.renamed` in the audit log, and
-is refused when the name is taken in the same scope or uses characters a
-placeholder cannot reference (allowed: letters, numbers, dots, underscores,
-hyphens).
+Rename a secret on its page on the website (edit **Name** and save), or rename a
+user-scope secret with `credentialUpdate` and a new `name`. The secret keeps its
+credential id and value, so grants, package credential mappings, read history,
+and audit history stay attached, and the token does not need rotating. The
+rename needs Write on the secret, is recorded as `credential.renamed` in the
+audit log, and is refused when the name is taken in the same scope or uses
+characters a placeholder cannot reference (allowed: letters, numbers, dots,
+underscores, hyphens).
 
 ```json
 {

@@ -22,10 +22,11 @@ import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
 import {
+	assertPlaceholderSecretName,
 	listKnownSecretNameReferences,
 	secretRenameNameReferencesNote,
 } from '#mcp/secrets/secret-name-references.ts'
-import { renameSecret } from '#mcp/secrets/service.ts'
+import { findSecret, renameSecret } from '#mcp/secrets/service.ts'
 import { assertCredentialSecurityEditAllowed } from './credential-security-edit.ts'
 
 const inputSchema = z
@@ -168,6 +169,19 @@ export const credentialUpdateCapability = defineDomainCapability(
 					)
 				}
 				const previousName = credential.name
+				const accountSecret = await findSecret({
+					env: ctx.env,
+					userId: orgId,
+					name: previousName,
+					scope: 'user',
+					includeExpired: true,
+				})
+				if (accountSecret.credentialId !== credential.id) {
+					throw new McpCallerError(
+						'Only account secrets can be renamed with credentialUpdate. Rename a package secret from its page on the website.',
+					)
+				}
+				assertPlaceholderSecretName(parsed.name)
 				const renamed = await renameSecret({
 					env: ctx.env,
 					userId: orgId,

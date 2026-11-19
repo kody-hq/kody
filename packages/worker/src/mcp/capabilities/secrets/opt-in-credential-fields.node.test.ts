@@ -770,6 +770,26 @@ test('credentialUpdate rename refuses a taken or malformed name and leaves the s
 	)
 })
 
+test('credentialUpdate rename only renames the account secret it was given, not a same-named one in another scope', async () => {
+	const { sqlite, ownerId, owner, entry, set } = await setup()
+	await set({ name: 'shared', value: 'account' })
+	const account = await entry('shared')
+	sqlite.exec(
+		`INSERT INTO secret_buckets (id, user_id, scope, binding_key)
+		 VALUES ('pkg-bucket', '${ownerId}', 'package', 'pkg-1');
+		 INSERT INTO secret_entries (id, bucket_id, name, encrypted_value, allowed_hosts, kind)
+		 VALUES ('pkg-shared', 'pkg-bucket', 'shared', 'ct', '[]', 'secret');`,
+	)
+	await expect(
+		credentialUpdateCapability.handler(
+			{ credential_id: 'pkg-shared', name: 'renamed' },
+			owner,
+		),
+	).rejects.toThrow(/Only account secrets can be renamed/)
+	expect((await entry('shared'))?.id).toBe(account!.id)
+	expect(await entry('renamed')).toBeNull()
+})
+
 test('credentialUpdate rename needs Write: read-only tokens and members are refused', async () => {
 	const { owner, member, ownerReadOnlyToken, entry, set } = await setup()
 	await set({ name: 'alpha', value: 'one' })
