@@ -124,7 +124,7 @@ async function finishUncachedEmailReads(
 }
 
 /** Apply the accepted entity change without replacing unrelated cached rows. */
-export async function publishEmailResponse(
+async function publishEmailResponse(
 	client: QueryClient,
 	actorKey: string | null,
 	accepted: EmailMutationOutcome,

@@ -15,7 +15,7 @@ import { youtubeThumbPath } from '#universal/youtube-watch.ts'
  * walked in either direction from wherever the visitor is. Both axes are
  * accepted so up/down feel natural on a touch-scrolled strip too.
  */
-export function nextChooserIndex(
+function nextChooserIndex(
 	current: number,
 	key: string,
 	count: number,

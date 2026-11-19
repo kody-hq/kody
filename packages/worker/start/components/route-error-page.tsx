@@ -37,7 +37,7 @@ export function RouteErrorPage({ error }: { error: unknown }) {
 	)
 }
 
-export function PermissionDeniedPage({
+function PermissionDeniedPage({
 	message,
 	permission,
 	orgSlug,

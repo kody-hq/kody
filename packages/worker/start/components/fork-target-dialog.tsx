@@ -33,7 +33,7 @@ export function ForkTargetDialog(props: {
 	)
 }
 
-export function ForkTargetForm(props: {
+function ForkTargetForm(props: {
 	choice: ForkTargetChoice
 	onConfirm: (slug: string) => void
 	onDismiss: () => void

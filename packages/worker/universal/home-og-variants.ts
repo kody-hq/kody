@@ -13,7 +13,7 @@ import type { PublicOgPage } from '#universal/og-pages.ts'
 
 const homeOgQueryParam = 'og'
 
-export const homeOgVariantIds = [
+const homeOgVariantIds = [
 	'switch',
 	'cursor-claude',
 	'skills',
