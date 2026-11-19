@@ -5,8 +5,11 @@ memories, connectors, email, and durable storage for individuals and teams.
 
 Reuse existing UI components; extend shared controls. Never add unstyled native
 selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
-`npm run validate` is the local gate. Verify UI/API with
-[control-kody](./docs/contributing/control-kody.md) first.
+`npm run validate` is the local gate. Before adding a test, read
+[before you write a test](./docs/contributing/testing-principles.md#before-you-write-a-test):
+extend the existing workflow test, never pin copy or mock first-party modules,
+and justify each new long-lived test in the PR template's **New tests** section.
+Verify UI/API with [control-kody](./docs/contributing/control-kody.md) first.
 
 Open the page that owns the task:
 

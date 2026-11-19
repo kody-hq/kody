@@ -4,6 +4,45 @@ Durable rules: [Test the workflow](../principles/test-the-workflow.md) and
 [No invasive test-only code](../principles/no-invasive-test-only-code.md). This
 page is how to choose a flavor and run suites in this repo.
 
+## Before you write a test
+
+Every test costs CI time and maintenance on every later refactor. Write one only
+when it earns that.
+
+1. **Name the bug.** State the regression this test would catch that no existing
+   test catches. If you cannot, do not write it.
+2. **Extend before you add.** Search for the existing workflow test of the
+   capability (handler, MCP tool, route, or service name) and add a case there.
+   A second file for the same capability from another layer is duplication.
+3. **Use the highest offline layer.** Prefer one workflow test through the real
+   handler, real authorization, and the D1 facade or real Workers bindings over
+   several unit tests joined by mocks.
+4. **Match the stakes.** Auth, permissions, billing and credits, secrets and
+   credentials, data integrity (soft delete, restore, migrations), DR and
+   backups, the publish pipeline, and sandbox or egress security need a denial
+   or invariant test for each new path. UI layout, copy, CLI help text, and repo
+   scripts that CI already runs usually need none.
+5. **Bug fixes get one regression test** that fails when the fix is reverted.
+
+Do not write:
+
+- Assertions on user-facing copy or error prose. Assert the status, error code,
+  or state instead.
+- Pins of exported constants, config values, or copies of the production helper.
+- Tests that read source, docs, `AGENTS.md`, or skill files and assert on their
+  text.
+- `toHaveBeenCalledWith` on mocks of first-party modules. Mock only at the
+  network or platform boundary and assert the outcome. Three or more `vi.mock`
+  calls of first-party modules in one file means the test is at the wrong layer.
+- Tests added only to cover your own diff when an existing workflow test already
+  runs that path.
+- Near-duplicate cases. One case per input that behaves differently.
+
+Agents (Devin, factory, Cursor) follow the same rules. Fill in the PR template's
+**New tests** section: for each new long-lived test, the behavior or intent it
+protects and why an existing higher-level test does not already cover it, or "no
+new tests".
+
 ## Test flavor decision matrix
 
 Choose the lightest flavor that can falsify the behavior. Filename suffixes pick
