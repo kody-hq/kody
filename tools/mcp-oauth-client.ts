@@ -40,7 +40,7 @@ const authRateLimitFallbackMs = 60_000
 const sleep = (ms: number) =>
 	new Promise<void>((resolve) => setTimeout(resolve, ms))
 
-export class AuthRateLimitedError extends Error {
+class AuthRateLimitedError extends Error {
 	readonly status = 429
 	constructor(message: string) {
 		super(message)
@@ -52,7 +52,7 @@ export class AuthRateLimitedError extends Error {
  * Honor `Retry-After` seconds. Missing or unparsable headers wait the
  * limiter window; the cap keeps a bad header from parking a job.
  */
-export function authRetryAfterDelayMs(
+function authRetryAfterDelayMs(
 	response: Response,
 	fallbackMs = authRateLimitFallbackMs,
 	maxMs = authRateLimitFallbackMs,
@@ -81,7 +81,7 @@ export function usernameFromEmail(email: string) {
 	return local && local.length > 0 ? local : 'preview-user'
 }
 
-export function mcpAccountRejectedMessage(detail: string) {
+function mcpAccountRejectedMessage(detail: string) {
 	return [
 		'MCP rejected this account.',
 		'The preview seed (me@kentcdodds.com) is already email-verified; this CLI does not mark email verified via D1.',
@@ -487,7 +487,7 @@ async function authenticateAppUser(
 	)
 }
 
-export function readCookieHeader(response: Response) {
+function readCookieHeader(response: Response) {
 	const cookie = response.headers.get('Set-Cookie')
 	if (!cookie) {
 		throw new Error('Authentication response did not include a session cookie.')
@@ -511,7 +511,7 @@ async function fetchJson<T = Record<string, unknown>>(
 	return JSON.parse(rawBody) as T
 }
 
-export function readStringField(record: Record<string, unknown>, key: string) {
+function readStringField(record: Record<string, unknown>, key: string) {
 	const value = record[key]
 	if (typeof value !== 'string' || value.length === 0) {
 		throw new Error(`Expected "${key}" to be a non-empty string.`)

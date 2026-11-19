@@ -22,13 +22,13 @@ export type ValidateLeg = {
  * An 8-core 31GB VM still starved the e2e webServer with two suite legs at
  * once (#4987).
  */
-export const saturatedSuiteParallelism = 8
+const saturatedSuiteParallelism = 8
 
 /**
  * RAM below this cannot hold several suite legs plus worker dry-runs.
  * Cloud Agent VMs with 16GB (#3147) and 31GB (#4987) both failed.
  */
-export const saturatedSuiteMemoryBytes = 48 * 1024 * 1024 * 1024
+const saturatedSuiteMemoryBytes = 48 * 1024 * 1024 * 1024
 
 export const serialValidateCommand = 'npm run worker-startup-time:check'
 
