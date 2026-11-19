@@ -11,6 +11,7 @@ const mockModule = vi.hoisted(() => ({
 vi.mock('#worker/email/owner-email-reader.ts', () => ({
 	getOwnerEmailAttachmentById: (...args: Array<unknown>) =>
 		mockModule.getOwnerEmailAttachmentById(...args),
+	getOwnerEmailMessageById: async () => ({ id: 'message-1', inboxId: null }),
 }))
 
 const { emailAttachmentGetCapability } =

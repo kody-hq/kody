@@ -20,12 +20,16 @@ const mocks = vi.hoisted(() => ({
 	messages: new Map<string, { id: string; inboxId: string | null }>(),
 	deleteEmailMessage: vi.fn(async () => true),
 	setEmailMessageClassification: vi.fn(async () => ({ id: 'updated' })),
+	listOwnerEmailMessages: vi.fn(async (_input: unknown) => []),
+	searchOwnerEmailMessages: vi.fn(async (_input: unknown) => []),
 }))
 
 vi.mock('./owner-email-reader.ts', () => ({
 	getOwnerEmailMessageById: async (input: { messageId: string }) =>
 		(mocks.messages.get(input.messageId) as EmailMessageRecord | undefined) ??
 		null,
+	listOwnerEmailMessages: mocks.listOwnerEmailMessages,
+	searchOwnerEmailMessages: mocks.searchOwnerEmailMessages,
 }))
 
 vi.mock('./repo.ts', () => ({
@@ -49,6 +53,12 @@ const { emailMessageDeleteCapability } =
 	await import('#mcp/capabilities/email/email-message-delete.ts')
 const { emailMessageClassifyCapability } =
 	await import('#mcp/capabilities/email/email-message-classify.ts')
+const { emailMessageGetCapability } =
+	await import('#mcp/capabilities/email/email-message-get.ts')
+const { emailMessageListCapability } =
+	await import('#mcp/capabilities/email/email-message-list.ts')
+const { emailMessageSearchCapability } =
+	await import('#mcp/capabilities/email/email-message-search.ts')
 const { deleteAccountEmailMessage, classifyAccountEmailMessage } =
 	await import('#app/handlers/account-email.ts')
 
@@ -117,6 +127,8 @@ async function setup() {
 	mocks.messages.set('msg-no-inbox', { id: 'msg-no-inbox', inboxId: null })
 	mocks.deleteEmailMessage.mockClear()
 	mocks.setEmailMessageClassification.mockClear()
+	mocks.listOwnerEmailMessages.mockClear()
+	mocks.searchOwnerEmailMessages.mockClear()
 	return {
 		owner: contextFor(ownerId, 'owner'),
 		member: contextFor(memberId, 'member'),
@@ -218,4 +230,51 @@ test('website Delete and Classify/Archive need the grant on the message inbox', 
 		messageId: 'msg-gone',
 	})
 	expect(missing.status).toBe(404)
+})
+
+test('emailMessageGet, emailMessageList and emailMessageSearch read only the inboxes a grant covers', async () => {
+	const { member, owner } = await setup()
+
+	await expect(
+		emailMessageGetCapability.handler({ message_id: 'msg-billing' }, member),
+	).rejects.toThrow('Missing email:read on email inbox "billing".')
+	await expect(
+		emailMessageGetCapability.handler({ message_id: 'msg-no-inbox' }, member),
+	).rejects.toBeInstanceOf(AuthorizationError)
+
+	await emailMessageListCapability.handler({ limit: 10 }, member)
+	expect(mocks.listOwnerEmailMessages).toHaveBeenLastCalledWith(
+		expect.objectContaining({ inboxId: null, inboxIds: [supportInbox] }),
+	)
+	await emailMessageListCapability.handler(
+		{ inbox_id: supportInbox, limit: 10 },
+		member,
+	)
+	expect(mocks.listOwnerEmailMessages).toHaveBeenLastCalledWith(
+		expect.objectContaining({ inboxId: supportInbox, inboxIds: null }),
+	)
+	await expect(
+		emailMessageListCapability.handler(
+			{ inbox_id: billingInbox, limit: 10 },
+			member,
+		),
+	).rejects.toThrow('Missing email:read on email inbox "billing".')
+	await expect(
+		emailMessageSearchCapability.handler(
+			{ query: 'invoice', inbox_id: billingInbox, limit: 10 },
+			member,
+		),
+	).rejects.toThrow('Missing email:read on email inbox "billing".')
+	await emailMessageSearchCapability.handler(
+		{ query: 'invoice', limit: 10 },
+		member,
+	)
+	expect(mocks.searchOwnerEmailMessages).toHaveBeenLastCalledWith(
+		expect.objectContaining({ inboxId: null, inboxIds: [supportInbox] }),
+	)
+
+	await emailMessageListCapability.handler({ limit: 10 }, owner)
+	expect(mocks.listOwnerEmailMessages).toHaveBeenLastCalledWith(
+		expect.objectContaining({ inboxId: null, inboxIds: null }),
+	)
 })

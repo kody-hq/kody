@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
+import { authorizeEmailMessageChange } from '#worker/email/authorize-email-message.ts'
 import { getOwnerEmailAttachmentById } from '#worker/email/owner-email-reader.ts'
 import {
 	emailOwnerOrgId,
@@ -45,6 +46,13 @@ export const emailAttachmentGetCapability = defineDomainCapability(
 			if (!attachment) {
 				throw new Error(`Email attachment not found: ${args.attachment_id}`)
 			}
+			await authorizeEmailMessageChange({
+				env: ctx.env,
+				request: ctx.callerContext.request,
+				ownerId: emailOwnerOrgId(ctx, user),
+				messageId: attachment.messageId,
+				permission: 'email:read',
+			})
 			if (attachment.contentBase64 == null) {
 				throw new Error(
 					`Email attachment "${args.attachment_id}" is unavailable because the stored message has no raw MIME payload.`,
