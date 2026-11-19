@@ -339,16 +339,18 @@ module-oriented runtime model:
   Expired jobs are rejected.
 
 Static saved-package imports from ad hoc **execute** run under the ad hoc
-execute runtime. That means imported package modules can share exported helpers,
-but `packageContext` remains **`null`** because the imported module has not been
-entered as its own package runtime. Imported modules keep stamped
-`packageStorage()` and stamp-aligned secret authority: A's export may use
-secrets locked to A (or A's `kody.secretMounts`) without granting those secrets
-to the execute entry. The execute entry cannot select A's id on
-`kody.packageSecretGet` / `Has`; only A's stamped `packageSecrets` binding
-carries that authority. Unstamped execute entry code can still use **your** user
-secrets through `{{secret:...}}` placeholders; it cannot use A's mounts.
-`packageContext` stays `null` on ad hoc execute.
+execute runtime. That means imported package modules can share exported helpers.
+The imported package's own modules read `packageContext` as `{ packageId }`
+(their package's id only) because the module has not been entered as its own
+package runtime, so app fields such as `appBasePath` and `hostedUrl` are absent.
+Imported modules keep stamped `packageStorage()` and stamp-aligned secret
+authority: A's export may use secrets locked to A (or A's `kody.secretMounts`)
+without granting those secrets to the execute entry. The execute entry cannot
+select A's id on `kody.packageSecretGet` / `Has`; only A's stamped
+`packageSecrets` binding carries that authority. Unstamped execute entry code
+can still use **your** user secrets through `{{secret:...}}` placeholders; it
+cannot use A's mounts. In the execute entry itself, `packageContext` stays
+`null`.
 
 When you need to edit saved source, prefer the repo-backed workflow in
 [Repo-backed editing sessions](./repo-sessions.md). Open by package identity

@@ -1023,7 +1023,11 @@ than the last publish, owners see **Publish changes** on the Repo tab and a
 full 40-character SHA-1 of the resolved default-branch HEAD, to publish with
 **Publish HEAD**. Visitors may still see a non-interactive status when HEAD is
 ahead. The five-minute reconcile job still auto-publishes unlocked packages;
-this page is the explicit website path.
+this page is the explicit website path. Reconcile gives each package 45 seconds
+per tick. A publish that takes longer (large packages whose checks and rebuild
+run for minutes) does not land from reconcile, and that HEAD is skipped for six
+hours, so publish those with `kody package publish` or
+`packagePublishExternalPush`.
 
 Once a package is listed, publishing or promoting advances the public community
 listing with the runtime — see

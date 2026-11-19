@@ -56,9 +56,12 @@ dependency id is one the org owns. A package from another org (for example
 UUID. Static imports receive `packageStorage()` grants and stamp-aligned secret
 authority.
 
-`packageContext` on a static import from execute stays `null`. Code that needs
-the ambient run (hosted URL, app paths) must run as that package: inbound
-webhooks for external clients, or a job / subscription / app surface.
+`packageContext` in a statically imported module from execute is bound to the
+declaring package like `packageStorage()`: it is `{ packageId }` with that
+package's id, and the run's full context only when the run _is_ that package.
+Code that needs the ambient run (hosted URL, app paths) must run as that
+package: inbound webhooks for external clients, or a job / subscription / app
+surface.
 
 Issue `#1691` is user-scope `{{secret}}` placeholders resolved at the fetch
 gateway for the calling user. The gateway authorizes those placeholders as the
@@ -73,7 +76,7 @@ facts, one rule each:
 | Thing              | Identity                         | Rule                                                                                                     |
 | ------------------ | -------------------------------- | -------------------------------------------------------------------------------------------------------- |
 | `packageStorage()` | declaring module (bundler stamp) | A's code hits `(callerUserId, package:{A.id})` when granted                                              |
-| `packageContext`   | the run                          | one ambient; A only when the run _is_ A                                                                  |
+| `packageContext`   | declaring module (bundler stamp) | A's code reads `{ packageId: A }`; the full run context only when the run _is_ A                         |
 | Secrets            | declaring module (bundler stamp) | user-secret `allowed_packages` and `packageSecrets` mounts check the stamp when the call site is stamped |
 
 The grant set says which buckets a run may reach; the calling package says whose
@@ -176,8 +179,8 @@ imports, `import(specifier)`, or workflows; `packages` stays `null`
 
 If the specifier is a **caller-owned** package and `import()` means “library
 load in this isolate,” storage, context, and secrets match static import: A's
-bucket, this run's `packageContext`, A's stamp for secret authority when the
-loaded module is stamped. That is not enter-as-package.
+bucket, A's `{ packageId }` as `packageContext`, A's stamp for secret authority
+when the loaded module is stamped. That is not enter-as-package.
 
 ```mermaid
 sequenceDiagram
@@ -194,7 +197,7 @@ sequenceDiagram
 	Execute->>Amod: call export
 	Note over Amod: same as static import
 	Note over Amod: packageStorage A if granted
-	Note over Amod: packageContext is B or null
+	Note over Amod: packageContext is packageId A only
 	Note over Amod: secrets authorized as A's stamp
 ```
 
