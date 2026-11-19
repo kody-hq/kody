@@ -32,14 +32,22 @@ import {
 	queryAnalyticsEngineSql,
 	resolveUsageEventsDataset,
 } from '#worker/usage/aggregate-rollups.ts'
-import type { FeatureFlagSuccessMetric } from '#universal/feature-flags/registry.ts'
+import {
+	getFeatureFlagExposureRecording,
+	isFeatureFlagKey,
+	type FeatureFlagSuccessMetric,
+} from '#universal/feature-flags/registry.ts'
+import {
+	loadMcpEventsClientSupportReadout,
+	type McpEventsClientSupportReadoutEnv,
+} from '#mcp/events/events-client-support-readout.ts'
 import type {
 	AdminFeatureFlag,
 	AdminFeatureFlagMetricReadout,
 	FeatureFlagMetricCohort,
 } from '#universal/feature-flags/types.ts'
 
-export type FeatureFlagReadoutEnv = {
+export type FeatureFlagReadoutEnv = McpEventsClientSupportReadoutEnv & {
 	APP_DB: D1Database
 	FLAG_EXPOSURES?: AnalyticsEngineDataset
 	USAGE_EVENTS?: AnalyticsEngineDataset
@@ -472,11 +480,21 @@ export async function attachFeatureFlagMetricReadouts(
 	await Promise.all(
 		flags.map(async (flag) => {
 			if (flag.stale || !flag.successMetric) return
-			flag.metricReadout = await loadFeatureFlagSuccessMetricReadout(
-				env,
-				{ flagKey: flag.key, successMetric: flag.successMetric },
-				now,
-			)
+			const [metricReadout, clientSupportReadout] = await Promise.all([
+				loadFeatureFlagSuccessMetricReadout(
+					env,
+					{ flagKey: flag.key, successMetric: flag.successMetric },
+					now,
+				),
+				isFeatureFlagKey(flag.key) &&
+				getFeatureFlagExposureRecording(flag.key) === 'mcp-events-clients'
+					? loadMcpEventsClientSupportReadout(env, now)
+					: undefined,
+			])
+			flag.metricReadout = metricReadout
+			if (clientSupportReadout) {
+				flag.clientSupportReadout = clientSupportReadout
+			}
 		}),
 	)
 	return flags

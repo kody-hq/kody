@@ -54,6 +54,13 @@
  * GROUP BY week_start
  * ORDER BY week_start DESC
  * ```
+ *
+ * blob9 records `declared` when the request's client capabilities name MCP
+ * Events (top-level `events`, `experimental.events`, or
+ * `extensions["io.modelcontextprotocol/events"]`), else empty. The MCP Events
+ * client-support readout (`mcp/events/events-client-support-readout.ts`)
+ * uses it to split "client does not advertise events" from "advertises but
+ * does not subscribe".
  */
 
 import type * as McpServerModule from '@modelcontextprotocol/server'
@@ -74,6 +81,11 @@ export type McpPackageIdentityParam =
 	| 'both'
 	| 'none'
 
+/** AE blob9: whether the request's client capabilities declare MCP Events. */
+export type McpEventsClientSupport = '' | 'declared'
+
+export const mcpEventsExtensionId = 'io.modelcontextprotocol/events'
+
 export type McpProtocolEventEnv = {
 	MCP_PROTOCOL_EVENTS?: AnalyticsEngineDataset
 }
@@ -91,6 +103,8 @@ export type McpProtocolClassification = {
 	 * See {@link McpPackageIdentityParam}.
 	 */
 	packageIdentityParam: McpPackageIdentityParam
+	/** See {@link McpEventsClientSupport}. */
+	eventsSupport: McpEventsClientSupport
 	/**
 	 * Parsed JSON body for POST requests, when parseable. Callers forward it
 	 * to the stateless handler so the body is parsed at most once per request.
@@ -158,6 +172,23 @@ export function classifyMcpPackageIdentityParam(
 	return 'none'
 }
 
+/**
+ * Whether client capabilities (modern `_meta` client capabilities or the
+ * legacy `initialize` capabilities) declare MCP Events support.
+ */
+export function classifyMcpEventsClientSupport(
+	capabilities: unknown,
+): McpEventsClientSupport {
+	if (!isRecord(capabilities)) return ''
+	const experimental = capabilities['experimental']
+	const extensions = capabilities['extensions']
+	const declared =
+		isRecord(capabilities['events']) ||
+		(isRecord(experimental) && isRecord(experimental['events'])) ||
+		(isRecord(extensions) && isRecord(extensions[mcpEventsExtensionId]))
+	return declared ? 'declared' : ''
+}
+
 /** First JSON-RPC message of a body (batch arrays classify by their first entry). */
 function firstJsonRpcMessage(body: unknown): Record<string, unknown> | null {
 	if (Array.isArray(body)) {
@@ -196,8 +227,12 @@ export function loadMcpServerModule(): Promise<typeof McpServerModule> {
 export async function classifyMcpProtocolRequest(
 	request: Request,
 ): Promise<McpProtocolClassification> {
-	const { CLIENT_INFO_META_KEY, PROTOCOL_VERSION_META_KEY, isLegacyRequest } =
-		await loadMcpServerModule()
+	const {
+		CLIENT_CAPABILITIES_META_KEY,
+		CLIENT_INFO_META_KEY,
+		PROTOCOL_VERSION_META_KEY,
+		isLegacyRequest,
+	} = await loadMcpServerModule()
 	let parsedBody: unknown
 	let hasParsedBody = false
 	if (request.method === 'POST') {
@@ -222,6 +257,7 @@ export async function classifyMcpProtocolRequest(
 			clientName: '',
 			clientVersion: '',
 			packageIdentityParam: '',
+			eventsSupport: '',
 		}
 	}
 
@@ -246,6 +282,14 @@ export async function classifyMcpProtocolRequest(
 			? params?.['clientInfo']
 			: undefined
 
+	const eventsSupport = classifyMcpEventsClientSupport(
+		isRecord(meta)
+			? meta[CLIENT_CAPABILITIES_META_KEY]
+			: method === 'initialize'
+				? params?.['capabilities']
+				: undefined,
+	)
+
 	const toolName =
 		method === 'tools/call' && isRecord(params)
 			? readString(params['name'])
@@ -268,6 +312,7 @@ export async function classifyMcpProtocolRequest(
 			? readString(clientInfo['version'])
 			: '',
 		packageIdentityParam,
+		eventsSupport,
 		...(hasParsedBody ? { parsedBody } : {}),
 	}
 }
@@ -301,6 +346,7 @@ export function recordMcpProtocolEvent(
 				// blob8: package identity param on tools/call (kody_id vs
 				// package_id vs scoped name) for the public MCP param gate.
 				input.packageIdentityParam,
+				input.eventsSupport,
 			],
 			doubles: [1],
 		})

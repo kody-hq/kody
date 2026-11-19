@@ -325,6 +325,7 @@ test('recordMcpProtocolEvent writes a data point, no-ops without binding, and sw
 		clientName: 'claude-ai',
 		clientVersion: '0.1.0',
 		packageIdentityParam: 'kody_id',
+		eventsSupport: 'declared',
 		userId: ownerIdFromStored('user-1'),
 		requestHost: 'kody.codes',
 	})
@@ -339,6 +340,7 @@ test('recordMcpProtocolEvent writes a data point, no-ops without binding, and sw
 			'user-1',
 			'kody.codes',
 			'kody_id',
+			'declared',
 		],
 		doubles: [1],
 	})
@@ -362,4 +364,51 @@ test('recordMcpProtocolEvent writes a data point, no-ops without binding, and sw
 		'mcp-protocol-event-failed',
 		expect.any(Error),
 	)
+})
+
+test('classifyMcpProtocolRequest records whether the client declares MCP Events', async () => {
+	const modernWith = (capabilities: unknown) =>
+		classifyMcpProtocolRequest(
+			jsonRequest(
+				{
+					jsonrpc: '2.0',
+					id: 9,
+					method: 'server/discover',
+					params: {
+						_meta: {
+							'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+							'io.modelcontextprotocol/clientCapabilities': capabilities,
+						},
+					},
+				},
+				{
+					'MCP-Protocol-Version': '2026-07-28',
+					'Mcp-Method': 'server/discover',
+				},
+			),
+		)
+	await expect(modernWith({})).resolves.toMatchObject({ eventsSupport: '' })
+	await expect(modernWith({ events: {} })).resolves.toMatchObject({
+		eventsSupport: 'declared',
+	})
+	await expect(
+		modernWith({ experimental: { events: {} } }),
+	).resolves.toMatchObject({ eventsSupport: 'declared' })
+	await expect(
+		modernWith({ extensions: { 'io.modelcontextprotocol/events': {} } }),
+	).resolves.toMatchObject({ eventsSupport: 'declared' })
+	await expect(
+		classifyMcpProtocolRequest(
+			jsonRequest({
+				jsonrpc: '2.0',
+				id: 10,
+				method: 'initialize',
+				params: {
+					protocolVersion: '2025-06-18',
+					capabilities: { experimental: { events: {} } },
+					clientInfo: { name: 'legacy-host', version: '1.0.0' },
+				},
+			}),
+		),
+	).resolves.toMatchObject({ lane: 'legacy', eventsSupport: 'declared' })
 })
