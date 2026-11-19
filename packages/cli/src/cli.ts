@@ -1606,11 +1606,17 @@ async function dispatch(
 						: {
 								runPublishChecks: async (tree) => {
 									const [
-										{ callOpenApiOperation, formatOpenApiHttpDebugLine },
+										{ formatOpenApiHttpDebugLine },
 										{ parsePackageCheckResult, PublishChecksAuthError },
+										{
+											abortOnInterrupt,
+											formatPackageRunProgress,
+											runDurablePackageCheck,
+										},
 									] = await Promise.all([
 										import('./open-api-client.js'),
 										import('./dev-command.js'),
+										import('./package-run.js'),
 									])
 									let token: string
 									try {
@@ -1626,31 +1632,33 @@ async function dispatch(
 											{ cause: error },
 										)
 									}
-									return parsePackageCheckResult(
-										await callOpenApiOperation({
-											operationId: 'packageCheck',
-											params: {
-												files: tree.files,
-												...(Object.keys(tree.binaryFiles).length > 0
+									// Ctrl-C cancels the durable run instead of leaving it going.
+									const interrupt = abortOnInterrupt()
+									try {
+										return parsePackageCheckResult(
+											await runDurablePackageCheck({
+												tree,
+												token,
+												apiUrl: prodApiUrl,
+												...(org ? { org } : {}),
+												signal: interrupt.signal,
+												onProgress: (progress) =>
+													writeErr(
+														`kody dev check: ${formatPackageRunProgress(progress)}\n`,
+													),
+												...(debug
 													? {
-															binary_files: tree.binaryFiles,
-															binary_contents: tree.binaryContents,
+															onHttpDebug: (event) =>
+																writeErr(
+																	`${formatOpenApiHttpDebugLine(event)}\n`,
+																),
 														}
 													: {}),
-											},
-											token,
-											apiUrl: prodApiUrl,
-											...(org ? { org } : {}),
-											...(debug
-												? {
-														onHttpDebug: (event) =>
-															writeErr(
-																`${formatOpenApiHttpDebugLine(event)}\n`,
-															),
-													}
-												: {}),
-										}),
-									)
+											}),
+										)
+									} finally {
+										interrupt.dispose()
+									}
 								},
 							}),
 				})
@@ -2115,14 +2123,63 @@ async function dispatch(
 				typeof parsed.values.build === 'string' ? parsed.values.build : null
 			const publishTarget = await resolvePackagePublishTarget(params, call)
 			const { runPublishWithBuild } = await import('./publish-offload.js')
-			const result = await runPublishWithBuild({
+			const {
+				abortOnInterrupt,
+				followPackageRun,
+				formatPackageRunProgress,
+				PackageRunFailedError,
+				readDispatchedWorkflowId,
+			} = await import('./package-run.js')
+			// Publish always runs as a durable workflow: a publish call is
+			// followed to the run's end, so its answer is the final result
+			// (the build-here offer after a compute limit reads it too).
+			// Ctrl-C cancels the run instead of leaving it going.
+			const callAndFollowPublish: typeof call = async (
+				operationId,
+				operationParams,
+			) => {
+				const dispatched = await call(operationId, operationParams)
+				if (operationId !== 'packagePublishExternalPush') return dispatched
+				const publishWorkflowId = readDispatchedWorkflowId(dispatched)
+				if (!publishWorkflowId) return dispatched
+				writeErr(
+					`kody package publish: running as workflow ${publishWorkflowId}.\n`,
+				)
+				const interrupt = abortOnInterrupt()
+				try {
+					return await followPackageRun({
+						workflowId: publishWorkflowId,
+						token: publishToken,
+						apiUrl,
+						...(org ? { org } : {}),
+						signal: interrupt.signal,
+						onProgress: (progress) =>
+							writeErr(
+								`kody package publish: ${formatPackageRunProgress(progress)}\n`,
+							),
+					})
+				} catch (error) {
+					if (!(error instanceof PackageRunFailedError)) throw error
+					// A run Kody itself failed stores no result: report its
+					// last error.
+					return {
+						status: 'failed',
+						workflow_id: error.workflowId,
+						run_status: error.runStatus,
+						message: error.message,
+					}
+				} finally {
+					interrupt.dispose()
+				}
+			}
+			const result: unknown = await runPublishWithBuild({
 				build: buildMode,
 				context:
 					typeof parsed.values.context === 'string'
 						? parsed.values.context
 						: null,
 				target: publishTarget,
-				call,
+				call: callAndFollowPublish,
 				apiUrl,
 				cwd: process.cwd(),
 				interactive: Boolean(process.stdin.isTTY && process.stdout.isTTY),

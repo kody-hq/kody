@@ -67,6 +67,17 @@ const workflowRunSchema = z.object({
 		.describe(
 			'Package workflows: latest runs the published revision at each attempt start; pinned refuses to run if the package moved since enqueue. Null for inline workflows and package workflows queued before this was recorded.',
 		),
+	progress: z
+		.object({
+			phase: z.string(),
+			message: z.string(),
+			done: z.number().optional(),
+			total: z.number().optional(),
+		})
+		.nullable()
+		.describe(
+			'Where a running packageCheck run is: its current phase, a one-line message, and done/total when the phase is chunked (artifact builds). Null for runs that report no progress.',
+		),
 })
 
 const workflowRunListInputKeys = [
@@ -227,6 +238,7 @@ export const workflowListCapability = defineDomainCapability(
 					last_error: workflow.lastError,
 					enqueued_commit: workflow.enqueuedCommit,
 					source_revision: workflow.sourceRevision,
+					progress: workflow.progress ?? null,
 				})),
 			}
 		},

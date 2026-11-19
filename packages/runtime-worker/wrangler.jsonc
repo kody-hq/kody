@@ -270,6 +270,12 @@
 					"binding": "EMAIL_BLOBS",
 					"bucket_name": "kody-email-blobs",
 				},
+				// Durable package check and publish runs store their full result
+				// (and read the staged check upload) under package-runs/.
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-repo-session-blobs",
+				},
 			],
 			"queues": {
 				"producers": [
@@ -322,6 +328,15 @@
 			"ai": {
 				"binding": "AI",
 			},
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "production",
+				},
+			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "production",
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
@@ -482,6 +497,12 @@
 					"binding": "EMAIL_BLOBS",
 					"bucket_name": "kody-preview-email-blobs",
 				},
+				// Durable package check and publish runs store their full result
+				// (and read the staged check upload) under package-runs/.
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-preview-repo-session-blobs",
+				},
 			],
 			// Kept in lockstep with origin env.preview producers.
 			// See tools/ci/preview-queue-plan.ts.
@@ -532,6 +553,15 @@
 			"ai": {
 				"binding": "AI",
 			},
+			// Every package publish runs as a durable workflow in this Worker and
+			// reads the pushed commit from Artifacts. Without the binding, REST is
+			// used, which a preview points at its mock Cloudflare API.
+			"artifacts": [
+				{
+					"binding": "ARTIFACTS",
+					"namespace": "preview",
+				},
+			],
 			"vars": {
 				"SENTRY_ENVIRONMENT": "preview",
 				"ARTIFACTS_NAMESPACE": "preview",

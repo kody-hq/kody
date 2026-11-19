@@ -71,3 +71,15 @@ codemod.
 
 **Introduced as leftover by:** the change that removed the visitor-authority
 path and retired the opt-in.
+
+## `packageCheck` synchronous request shape
+
+`packageCheck` takes `{ upload_id }` and answers with a dispatched durable run.
+The old shape (the package tree in `files` / `binary_contents`, answered in the
+request) no longer runs. What is left is the refusal: the API edge answers
+`426 upgrade_required` to an oversized `POST /v1/packages/check` body, and the
+capability rejects `files` with the same error, both naming the minimum
+`@kodycodes/cli` version (3.46.0). There was no compatibility window. Removal of
+the two refusals is ready when no `upgrade_required` responses appear in API
+logs for 4 consecutive weeks; after that an old client gets the ordinary
+validation error.

@@ -62,7 +62,7 @@ import {
 	matchApiRoute,
 	type ApiOperation,
 } from './operations.ts'
-import { maxRequestBodyBytesForOperation } from './api-body-limits.ts'
+import { maxApiRequestBodyBytes } from './api-body-limits.ts'
 import {
 	mergeApiParams,
 	readJsonBody,
@@ -173,9 +173,7 @@ async function readOperationParams(input: {
 			readQueryParams(input.url.searchParams, input.inputSchema),
 		)
 	}
-	const maxBytes = maxRequestBodyBytesForOperation(
-		input.match.operation.operationId,
-	)
+	const maxBytes = maxApiRequestBodyBytes
 	const body = await readJsonBody(input.request, maxBytes)
 	switch (body.kind) {
 		case 'too_large':

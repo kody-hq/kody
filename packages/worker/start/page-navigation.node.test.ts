@@ -19,12 +19,13 @@ const router = createRouter({
 	history: createMemoryHistory(),
 	context: { queryClient: new QueryClient(), getCommittedPage: () => null },
 })
-function resolve(path: string) {
+function resolve(path: string, search?: Record<string, unknown>) {
 	const [routes, params] = router.getMatchedRoutes(path)
 	return pageNavigationForMatches(
 		routes.map((route) => ({
 			staticData: route.options.staticData ?? {},
 			params,
+			search,
 		})),
 	)
 }
@@ -62,6 +63,18 @@ test.each([
 		expect(resolve(path)).toMatchObject({ rail, item, orgSlug })
 	},
 )
+test('workspace mockups highlight the rail item named by ?rail=', () => {
+	expect(resolve('/@acme/-/dev-mockups/x', { rail: 'settings' })).toMatchObject(
+		{ rail: 'workspace', item: 'settings', orgSlug: 'acme' },
+	)
+	expect(resolve('/@acme/-/dev-mockups/x')).toMatchObject({ item: 'overview' })
+	expect(resolve('/@acme/-/dev-mockups/x', { rail: 'nope' })).toMatchObject({
+		item: 'overview',
+	})
+	expect(resolve('/@acme/-/settings', { rail: 'files' })).toMatchObject({
+		item: 'settings',
+	})
+})
 test('retained page reads its own route context while destination loader is pending', async () => {
 	let release: () => void = () => {}
 	let started: () => void = () => {}

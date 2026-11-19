@@ -40,15 +40,21 @@ import {
 } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
-import { retryingR2Bucket } from './r2-retry.ts'
+import { createR2CallBudget } from './r2-call-budget.ts'
 import {
 	readFullManifest,
 	sealFullBackupDay,
 	sealRecentCompleteDays,
 } from './seal-full-backup.ts'
-import { captureFullSealBlocked } from './sentry.ts'
+import {
+	captureFullSealBlocked,
+	captureSealScanSubrequestLimit,
+} from './sentry.ts'
 
-vi.mock('./sentry.ts', () => ({ captureFullSealBlocked: vi.fn() }))
+vi.mock('./sentry.ts', () => ({
+	captureFullSealBlocked: vi.fn(),
+	captureSealScanSubrequestLimit: vi.fn(),
+}))
 
 function sha256Text(value: string): string {
 	return createHash('sha256').update(value).digest('hex')
@@ -131,7 +137,7 @@ async function putD1DayManifest(
 async function seedCompleteDay(
 	bucket: MemoryBucket,
 	day = '2026-07-22',
-	options: { duplicateIndexEntry?: boolean } = {},
+	options: { duplicateIndexEntry?: boolean; blobCount?: number } = {},
 ) {
 	const env = environment(bucket)
 	await putPacedSeal(
@@ -175,8 +181,12 @@ async function seedCompleteDay(
 			dumpBodies.runLog,
 		)),
 	}
-	const blobHash = 'e'.repeat(64)
-	await bucket.put(backupBlobKey(blobHash), 'x')
+	const blobHashes = Array.from({ length: options.blobCount ?? 1 }, (_, i) =>
+		i.toString(16).padStart(64, 'e'),
+	)
+	for (const blobHash of blobHashes) {
+		await bucket.put(backupBlobKey(blobHash), 'x')
+	}
 	const summary = {
 		schemaVersion: backupStagingSchemaVersion,
 		day,
@@ -206,7 +216,12 @@ async function seedCompleteDay(
 			'email-blobs': await putBody(
 				bucket,
 				stagingR2IndexKey(day, 'email-blobs'),
-				`{"key":"blob","size":1,"sha256":"${blobHash}"}\n`,
+				blobHashes
+					.map(
+						(blobHash, i) =>
+							`{"key":"blob-${i}","size":1,"sha256":"${blobHash}"}\n`,
+					)
+					.join(''),
 			),
 		},
 		artifactsIndex: await putBody(
@@ -214,7 +229,7 @@ async function seedCompleteDay(
 			stagingArtifactsIndexKey(day),
 			index([]),
 		),
-		blobsWritten: 1,
+		blobsWritten: blobHashes.length,
 		blobsReused: 0,
 		warnings: [],
 	}
@@ -585,14 +600,12 @@ test('a persistent R2 put failure on one day stays isolated and is logged with i
 		}
 		return put(key, value, options)
 	}
-	const env = {
-		...failing.env,
-		BACKUP_BUCKET: retryingR2Bucket(bucket as unknown as R2Bucket, {
-			baseDelayMs: 0,
-		}),
-	}
 	await assert.rejects(
-		sealRecentCompleteDays(env, new Date('2026-07-22T13:00:00.000Z'), 2),
+		sealRecentCompleteDays(
+			failing.env,
+			new Date('2026-07-22T13:00:00.000Z'),
+			2,
+		),
 		(error: unknown) =>
 			error instanceof BackupError && error.code === 'r2-platform-error',
 	)
@@ -608,5 +621,120 @@ test('a persistent R2 put failure on one day stays isolated and is logged with i
 		},
 	])
 	assert.equal((await healthy.sealedManifest())?.payload.day, healthy.day)
+	vi.restoreAllMocks()
+})
+
+function scanLogs(spy: { mock: { calls: Array<Array<unknown>> } }) {
+	return spy.mock.calls
+		.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+		.filter((record) => record.event === 'full-backup-seal-scan-stopped')
+}
+
+test('a scan with more work than its R2 call budget stops cleanly and the next run finishes', async () => {
+	const consoleLog = vi
+		.spyOn(console, 'log')
+		.mockImplementation(() => undefined)
+	const consoleError = vi
+		.spyOn(console, 'error')
+		.mockImplementation(() => undefined)
+	const measure = new MemoryBucket()
+	const measured = await seedCompleteDay(measure, '2026-07-22')
+	const counter = createR2CallBudget(
+		measure as unknown as R2Bucket,
+		Number.MAX_SAFE_INTEGER,
+	)
+	await sealFullBackupDay(
+		{ ...measured.env, BACKUP_BUCKET: counter.bucket },
+		measured.day,
+		new Date('2026-07-22T13:00:00.000Z'),
+	)
+	const oneDayCalls = counter.used()
+
+	const bucket = new MemoryBucket()
+	const today = await seedCompleteDay(bucket, '2026-07-22')
+	const yesterday = await seedCompleteDay(bucket, '2026-07-21')
+	const scheduledAt = new Date('2026-07-22T13:00:00.000Z')
+	const budget = oneDayCalls + 3
+
+	await sealRecentCompleteDays(today.env, scheduledAt, 2, budget)
+	assert.equal((await today.sealedManifest())?.payload.day, today.day)
+	assert.equal(await yesterday.sealedManifest(), null)
+	assert.deepEqual(scanLogs(consoleLog), [
+		{
+			event: 'full-backup-seal-scan-stopped',
+			status: 'success',
+			day: yesterday.day,
+			errorCode: 'r2-call-budget-exhausted',
+			r2Calls: budget,
+		},
+	])
+	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
+		[{ day: yesterday.day, reason: 'r2-call-budget-exhausted' }],
+	])
+	assert.equal(consoleError.mock.calls.length, 0)
+
+	await sealRecentCompleteDays(today.env, scheduledAt, 2, budget)
+	assert.equal((await yesterday.sealedManifest())?.payload.day, yesterday.day)
+	assert.equal(scanLogs(consoleLog).length, 1)
+	vi.restoreAllMocks()
+	vi.mocked(captureFullSealBlocked).mockClear()
+})
+
+test('the Workers subrequest limit stops the scan without retrying or dispatching more calls', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const consoleError = vi
+		.spyOn(console, 'error')
+		.mockImplementation(() => undefined)
+	const memory = new MemoryBucket()
+	const today = await seedCompleteDay(memory, '2026-07-22', { blobCount: 200 })
+	await seedCompleteDay(memory, '2026-07-21')
+	await seedCompleteDay(memory, '2026-07-20')
+	const blobPrefix = backupBlobKey('e'.repeat(64)).slice(0, -64)
+	let limitReached = false
+	let callsAfterLimit = 0
+	const limited = new Proxy(memory, {
+		get(target, property, receiver) {
+			const value = Reflect.get(target, property, receiver) as unknown
+			if (
+				typeof value !== 'function' ||
+				!['head', 'get', 'put', 'list', 'delete'].includes(String(property))
+			) {
+				return value
+			}
+			return async (...args: Array<unknown>) => {
+				if (property === 'head' && String(args[0]).startsWith(blobPrefix)) {
+					limitReached = true
+				}
+				if (limitReached) {
+					callsAfterLimit += 1
+					throw new Error(
+						'Too many API requests by single Worker invocation. To configure this limit, refer to https://developers.cloudflare.com/workers/wrangler/configuration/#limits',
+					)
+				}
+				return (value as (...input: Array<unknown>) => unknown).apply(
+					target,
+					args,
+				)
+			}
+		},
+	})
+
+	await sealRecentCompleteDays(
+		{ ...today.env, BACKUP_BUCKET: limited as unknown as R2Bucket },
+		new Date('2026-07-22T13:00:00.000Z'),
+		3,
+	)
+
+	// Only the blob HEADs already in flight (pool of 32) fail; none of the
+	// other 168 blobs, no retries, and no later days.
+	assert.ok(callsAfterLimit <= 32, `${callsAfterLimit} calls after the limit`)
+	const stopped = scanLogs(consoleError)
+	assert.equal(stopped.length, 1)
+	assert.equal(stopped[0]?.day, today.day)
+	assert.equal(stopped[0]?.errorCode, 'worker-subrequest-limit')
+	assert.deepEqual(vi.mocked(captureSealScanSubrequestLimit).mock.calls, [
+		[{ day: today.day, r2Calls: stopped[0]?.r2Calls }],
+	])
+	assert.equal(await today.sealedManifest(), null)
 	vi.restoreAllMocks()
 })

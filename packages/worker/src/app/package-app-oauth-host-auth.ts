@@ -28,7 +28,6 @@ import {
 } from '#app/package-app-oauth-scopes.ts'
 import {
 	createPackageAppSessionCookie,
-	destroyLegacyPackageAppSessionCookies,
 	destroyPackageAppSessionCookie,
 	readPackageAppSession,
 } from '#app/package-app-session.ts'
@@ -175,8 +174,8 @@ function readAppSlugFromSameOriginReferer(
  * `?app=` / `return_to` are attacker-chosen on a top-level GET. Verified
  * single-app custom hostnames trust the hostname mapping. Shared-host logout
  * never waits on `APP_DB` (custom-domain lookup) so a D1 outage cannot block
- * cookie clearing. When nothing trusted resolves, callers clear only the
- * legacy host-wide cookie.
+ * cookie clearing. When nothing trusted resolves, callers skip session
+ * cookie clearing: per-app names cannot be guessed.
  */
 async function resolveLogoutAppSlug(input: {
 	request: Request
@@ -481,11 +480,11 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 		input.url.origin,
 	)
 	// Shared hosts clear only the requesting leaf. Prefer same-origin Referer
-	// `/packages/{leaf}` over `?app=` so a sibling package cannot navigate the
-	// browser into clearing another app. Verified app custom domains resolve
-	// from the hostname mapping. When no leaf is known (older kit clients with
-	// `return_to=/` and no Referer), clear only the legacy host-wide cookie so
-	// pre-per-app sessions still end.
+	// `/{leaf}` (or legacy `/packages/{leaf}`) over `?app=` so a sibling
+	// package cannot navigate the browser into clearing another app. Verified
+	// app custom domains resolve from the hostname mapping. When no leaf is
+	// known (older kit clients with `return_to=/` and no Referer), skip
+	// session cookies: per-app names cannot be guessed.
 	const kodyId = await resolveLogoutAppSlug({ ...input, returnTo })
 	const cookies = [
 		...(kodyId
@@ -494,10 +493,7 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 					slug: kodyId,
 					secure,
 				})
-			: await destroyLegacyPackageAppSessionCookies({
-					env: input.env,
-					secure,
-				})),
+			: []),
 		await destroyPackageAppOauthPkceCookie({ env: input.env, secure }),
 	]
 	if (kodyId) {

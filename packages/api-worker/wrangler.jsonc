@@ -41,6 +41,14 @@
 					"entrypoint": "KodyApi",
 				},
 			],
+			// Package check uploads stream here (`package-runs/` prefix) so
+			// origin never receives the tree. Same bucket as origin's binding.
+			"r2_buckets": [
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-repo-session-blobs",
+				},
+			],
 			"ratelimits": [
 				{
 					"name": "API_IP_RATE_LIMITER",
@@ -82,6 +90,13 @@
 					"binding": "KODY_API",
 					"service": "kody",
 					"entrypoint": "KodyApi",
+				},
+			],
+			// Rewritten with the service to the per-preview bucket.
+			"r2_buckets": [
+				{
+					"binding": "REPO_SESSION_BLOBS",
+					"bucket_name": "kody-preview-repo-session-blobs",
 				},
 			],
 			"ratelimits": [

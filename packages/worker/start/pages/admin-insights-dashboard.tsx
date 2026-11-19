@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 
 import { AreaChart } from '../charts/area-chart.tsx'
-import { ChartLegend } from '../charts/chart-legend.tsx'
+import { ChartLegend } from '../components/chart-legend.tsx'
 import { DonutChart } from '../charts/donut-chart.tsx'
 import { HeatmapChart } from '../charts/heatmap-chart.tsx'
 import { StackedBarChart } from '../charts/stacked-bar-chart.tsx'

@@ -1,3 +1,4 @@
+import { UpgradeRequiredError } from '#mcp/upgrade-required-error.ts'
 import { GuestRestrictionError } from '#worker/guest/guest-errors.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -9,6 +10,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { ExecuteRateLimitedError } from '#mcp/execute-admission.ts'
 import { findWalletGuardLimitError } from '#worker/wallet-guard/enforce.ts'
 import {
 	executionContextErrorCodes,
@@ -127,6 +129,7 @@ const platformApiErrorCodes = [
 	'unsupported_dynamic_package_import',
 	'package_graph_resource_limit',
 	'publish_not_applied',
+	'upgrade_required',
 	'internal_error',
 ] as const
 
@@ -329,6 +332,24 @@ export function toApiError(
 			cause: error,
 		})
 	}
+	const executeBrake = getErrorCauseChain(error).find(
+		(entry): entry is ExecuteRateLimitedError =>
+			entry instanceof ExecuteRateLimitedError,
+	)
+	if (executeBrake) {
+		const retryAfterSeconds = Math.max(
+			1,
+			Math.ceil(executeBrake.retryAfterMs / 1000),
+		)
+		return new ApiError({
+			status: 429,
+			code: 'rate_limited',
+			message: executeBrake.message,
+			details: { code: executeBrake.code, retryAfterSeconds },
+			headers: { 'Retry-After': String(retryAfterSeconds) },
+			cause: error,
+		})
+	}
 	const walletGuardError = findWalletGuardLimitError(error)
 	if (walletGuardError) {
 		return new ApiError({
@@ -338,6 +359,20 @@ export function toApiError(
 			details: walletGuardError.details,
 			headers: {
 				'Retry-After': String(walletGuardError.details.retryAfterSeconds),
+			},
+			cause: error,
+		})
+	}
+	const upgradeRequired = getErrorCauseChain(error).find(
+		(entry) => entry instanceof UpgradeRequiredError,
+	)
+	if (upgradeRequired) {
+		return new ApiError({
+			status: 426,
+			code: 'upgrade_required',
+			message: upgradeRequired.message,
+			details: {
+				minimum_cli_version: upgradeRequired.minimumCliVersion,
 			},
 			cause: error,
 		})

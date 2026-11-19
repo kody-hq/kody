@@ -4,9 +4,7 @@ import {
 } from '@kody-internal/shared/api-token-format.ts'
 import {
 	apiRequestIdHeader,
-	describeApiRequestProgress,
 	describeStartedExecuteRun,
-	executeRunProgressStep,
 	parseApiRequestProgress,
 	type ApiRequestProgress,
 } from '@kody-internal/shared/api-request-progress.ts'
@@ -18,7 +16,8 @@ import {
 /**
  * Edge half of `api.kody.codes`. Everything here runs before the request
  * reaches origin: CORS, rate limits, header stripping, the 5 MiB JSON body
- * cap, gateway-fetch streaming (Cloudflare ~100 MiB upload limit), and the
+ * cap, gateway-fetch streaming (Cloudflare ~100 MiB upload limit), package
+ * check uploads (streamed to R2 staging, never sent to origin), and the
  * execution-context WebSocket connect hop. Authentication and the operation
  * itself run in origin's `KodyApi` entrypoint
  * (`packages/worker/src/open-api/`), next to D1.
@@ -29,6 +28,8 @@ export type ApiWorkerEnv = {
 	KODY_API: Fetcher & {
 		readRequestProgress?: (requestId: string) => Promise<unknown>
 	}
+	/** Staging for package check uploads (`package-runs/` prefix). */
+	REPO_SESSION_BLOBS?: R2Bucket
 	API_IP_RATE_LIMITER?: RateLimit
 	API_TOKEN_RATE_LIMITER?: RateLimit
 	APP_COMMIT_SHA?: string
@@ -37,15 +38,19 @@ export type ApiWorkerEnv = {
 /** Matches `maxApiRequestBodyBytes` in origin's open-api request parsing. */
 export const maxApiRequestBodyBytes = 5 * 1024 * 1024
 
-/** Matches `maxPackageCheckRequestBodyBytes` in origin's api-body-limits. */
-export const maxPackageCheckRequestBodyBytes = 24 * 1024 * 1024
+/** Matches `maxPackageCheckUploadBytes` in origin's api-body-limits. */
+export const maxPackageCheckUploadBytes = 24 * 1024 * 1024
 const packageCheckPath = '/v1/packages/check'
+const packageCheckUploadPath = '/v1/packages/check-uploads'
 
-function maxBodyBytesFor(method: string, pathname: string) {
-	return method === 'POST' && pathname === packageCheckPath
-		? maxPackageCheckRequestBodyBytes
-		: maxApiRequestBodyBytes
-}
+/** Matches `minimumPackageCheckCliVersion` in origin's package-check. */
+export const minimumPackageCheckCliVersion = '3.46.0'
+
+/**
+ * `packageCheck` takes `{ upload_id }`. A body past this is an older CLI
+ * sending the whole tree, refused here so origin never reads it.
+ */
+const maxPackageCheckRequestBodyBytes = 64 * 1024
 
 /**
  * Cloudflare Worker request upload limit on Free/Pro. Matches origin's
@@ -244,6 +249,106 @@ function readRequestId(request: Request) {
 	return request.headers.get('CF-Ray')?.trim() || crypto.randomUUID()
 }
 
+function declaredContentLength(headers: Headers) {
+	const declared = Number(headers.get('Content-Length') ?? '0')
+	return Number.isFinite(declared) ? declared : 0
+}
+
+function packageCheckUpgradeRequiredResponse() {
+	return withEdgeHeaders(
+		Response.json(
+			{
+				error: {
+					code: 'upgrade_required',
+					message: `packageCheck no longer takes the package tree in the request and no longer answers synchronously. Upgrade @kodycodes/cli to ${minimumPackageCheckCliVersion} or newer (\`npm install -g @kodycodes/cli@latest\`), or upload the tree with POST ${packageCheckUploadPath} and call packageCheck({ upload_id }).`,
+					details: { minimum_cli_version: minimumPackageCheckCliVersion },
+				},
+			},
+			{ status: 426, headers: { 'Cache-Control': 'no-store' } },
+		),
+	)
+}
+
+/**
+ * `POST /v1/packages/check-uploads`: origin authenticates the caller and
+ * reserves a staging key (it gets no body), then the request body streams
+ * from the client into R2. Nothing here or in origin parses or buffers it.
+ */
+async function stagePackageCheckUpload(input: {
+	request: Request
+	env: ApiWorkerEnv
+	url: URL
+	requestId: string
+}) {
+	const { request, env, url, requestId } = input
+	const bucket = env.REPO_SESSION_BLOBS
+	if (!bucket) {
+		return errorResponse(
+			503,
+			'internal_error',
+			'Package check uploads are not configured on this deployment.',
+		)
+	}
+	const lengthHeader = request.headers.get('Content-Length')
+	const length = lengthHeader === null ? Number.NaN : Number(lengthHeader)
+	if (!request.body || !Number.isInteger(length) || length <= 0) {
+		return errorResponse(
+			411,
+			'invalid_request',
+			'Send the package tree as the request body with a Content-Length header.',
+		)
+	}
+	if (length > maxPackageCheckUploadBytes) {
+		return errorResponse(
+			413,
+			'payload_too_large',
+			`Package check upload exceeds ${maxPackageCheckUploadBytes} bytes.`,
+		)
+	}
+	const headers = buildForwardHeaders(request.headers)
+	headers.set('Content-Type', 'application/json')
+	const reserved = await fetchOrigin(
+		env,
+		new Request(url.toString(), { method: 'POST', headers, body: '{}' }),
+		requestId,
+	)
+	if (!reserved.ok) return reserved
+	const reservation = (await reserved.json()) as {
+		upload_id?: unknown
+		object_key?: unknown
+	}
+	if (
+		typeof reservation.upload_id !== 'string' ||
+		typeof reservation.object_key !== 'string'
+	) {
+		return errorResponse(
+			502,
+			'internal_error',
+			'The Kody API did not reserve a package check upload.',
+		)
+	}
+	// The incoming body has a declared length, which is what R2 needs to
+	// accept a stream. It goes from the client to the bucket as it arrives.
+	try {
+		await bucket.put(reservation.object_key, request.body, {
+			httpMetadata: { contentType: 'application/json' },
+		})
+	} catch (error) {
+		console.error('api-worker-check-upload-failed', error, { requestId })
+		return errorResponse(
+			400,
+			'invalid_request',
+			'The package check upload did not arrive in full. Send it again.',
+		)
+	}
+	return withEdgeHeaders(
+		Response.json(
+			{ upload_id: reservation.upload_id },
+			{ status: 201, headers: { 'Cache-Control': 'no-store' } },
+		),
+	)
+}
+
 /**
  * Public `fetch` for this worker: health, CORS, rate limits, body caps, then
  * origin. JSON routes buffer at {@link maxApiRequestBodyBytes}; gateway-fetch
@@ -337,11 +442,28 @@ async function routeApiEdgeRequest(
 		return fetchOrigin(env, new Request(url.toString(), requestInit), requestId)
 	}
 
+	if (request.method === 'POST' && url.pathname === packageCheckUploadPath) {
+		return stagePackageCheckUpload({ request, env, url, requestId })
+	}
+	if (
+		request.method === 'POST' &&
+		url.pathname === packageCheckPath &&
+		declaredContentLength(request.headers) > maxPackageCheckRequestBodyBytes
+	) {
+		return packageCheckUpgradeRequiredResponse()
+	}
+
 	let body: Uint8Array<ArrayBuffer> | undefined
 	if (bodyMethods.has(request.method)) {
-		const maxBytes = maxBodyBytesFor(request.method, url.pathname)
+		const maxBytes =
+			request.method === 'POST' && url.pathname === packageCheckPath
+				? maxPackageCheckRequestBodyBytes
+				: maxApiRequestBodyBytes
 		const capped = await readCappedBody(request, maxBytes)
 		if (!capped) {
+			if (maxBytes === maxPackageCheckRequestBodyBytes) {
+				return packageCheckUpgradeRequiredResponse()
+			}
 			return errorResponse(
 				413,
 				'payload_too_large',
@@ -373,17 +495,12 @@ function describeOriginForwardFailure(
 	progress: ApiRequestProgress | null = null,
 ) {
 	const detail = error instanceof Error ? error.message : String(error)
-	const startedRun = progress?.step === executeRunProgressStep ? progress : null
+	const startedRun = progress
 	if (originResourceLimitPattern.test(detail)) {
-		const described =
-			progress && progress.step !== executeRunProgressStep
-				? describeApiRequestProgress(progress)
-				: null
 		return {
 			reason: 'origin_resource_limit' as const,
 			message: [
-				`The Kody API ran out of server memory or CPU time${described?.where ?? ''} before it answered this request (request id ${requestId}).`,
-				described?.size,
+				`The Kody API ran out of server memory or CPU time before it answered this request (request id ${requestId}).`,
 				startedRun
 					? `${describeStartedExecuteRun(startedRun)} Quote the request id when you report it.`
 					: 'This is a server limit, not a login or network problem. CPU and ' +
@@ -404,19 +521,12 @@ function describeOriginForwardFailure(
 }
 
 function progressDetails(progress: ApiRequestProgress) {
-	if (progress.step === executeRunProgressStep) {
-		return {
-			step: progress.step,
-			run_id: progress.runId,
-			...(progress.idempotencyKey
-				? { idempotency_key: progress.idempotencyKey }
-				: {}),
-		}
-	}
 	return {
 		step: progress.step,
-		package_bytes: progress.totalBytes,
-		package_files: progress.fileCount,
+		run_id: progress.runId,
+		...(progress.idempotencyKey
+			? { idempotency_key: progress.idempotencyKey }
+			: {}),
 	}
 }
 
@@ -552,8 +662,7 @@ async function fetchOrigin(
 					// automatic retry; callers that know the operation decide.
 					headers: {
 						'Cache-Control': 'no-store',
-						...(failure.reason === 'origin_unreachable' &&
-						progress?.step !== executeRunProgressStep
+						...(failure.reason === 'origin_unreachable' && !progress
 							? { 'Retry-After': '5' }
 							: {}),
 					},
