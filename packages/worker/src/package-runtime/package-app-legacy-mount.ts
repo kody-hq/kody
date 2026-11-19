@@ -55,6 +55,11 @@ export function buildLegacyPackageAppSubdomainMountLocation(input: {
  * Record one Analytics Engine point for a legacy `/packages/{leaf}` hit on a
  * user subdomain. Never throws. Skipped in local wrangler and when the binding
  * is absent.
+ *
+ * The `kody_package_app_legacy_events` dataset is bound on `kody-runtime`, the
+ * Worker that serves package-app hosts. The removal window in #4119 counts
+ * from the first recorded hit, not from a deploy: the dataset only exists once
+ * a point is written.
  */
 export function recordPackageAppLegacyMountHit(input: {
 	env: PackageAppLegacyMountEnv

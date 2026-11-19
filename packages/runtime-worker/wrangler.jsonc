@@ -322,6 +322,12 @@
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events",
 				},
+				// Legacy `{username}.kody.run/packages/{name}` hits (#4119). Only
+				// this Worker serves package-app hosts, so the binding lives here.
+				{
+					"binding": "PACKAGE_APP_LEGACY_EVENTS",
+					"dataset": "kody_package_app_legacy_events",
+				},
 			],
 			"ai": {
 				"binding": "AI",
@@ -546,6 +552,12 @@
 				{
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events_preview",
+				},
+				// Legacy `{username}.kody.run/packages/{name}` hits (#4119). Only
+				// this Worker serves package-app hosts, so the binding lives here.
+				{
+					"binding": "PACKAGE_APP_LEGACY_EVENTS",
+					"dataset": "kody_package_app_legacy_events_preview",
 				},
 			],
 			"ai": {
