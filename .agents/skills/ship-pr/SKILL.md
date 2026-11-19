@@ -24,6 +24,8 @@ The old `kody:@kentcdodds/ship-pr/tick` (run without `--org kody`) still works
 and takes the same params. Use it if the factory tick errors, and file friction
 on `@kody/kody-factory`.
 
+- **New tests:** fill in the PR body's **New tests** section
+  ([writing tests](../../../docs/contributing/writing-tests.md)).
 - **Risk:** pick `low`, `medium`, or `high` yourself. High means auth, secrets,
   billing, data migrations, destructive changes, or anything hard to undo.
 - **Merge:** auto-merge low and medium once CI is green and valid reviewer
