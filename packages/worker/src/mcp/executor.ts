@@ -1247,6 +1247,8 @@ function createPackageBindingSandboxSource() {
 		// packageStorage() for this package only: the host bound dispatcher
 		// stamps this package, so the bucket cannot be chosen by the caller.
 		'      packageStorageCall: async (toolName, args) => await kodyCall(toolName, args),',
+		// events.dispatch as this package only: the bound dispatcher stamps it.
+		'      packageEventDispatch: async (input) => await kodyCall("packageEventDispatch", input ?? {}),',
 		// credential() for this package only: needs, mappings, and bound Keys
 		// resolve as the stamped package, never a sandbox-named id.
 		'      credentialCall: async (toolName, args) => await kodyCall(toolName, args),',

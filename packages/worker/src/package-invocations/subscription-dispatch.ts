@@ -17,12 +17,14 @@ import { fanOutPackageEventToMcpSubscriptions } from '#mcp/events/fan-out.ts'
 import type {
 	PackageEventDispatchInput,
 	PackageEventTools,
+	RunPackageEventTools,
 } from '#mcp/run-kody-registry.ts'
 import type { RunRecordContext } from '#worker/run-records/types.ts'
 import type { EffectivePermissions } from '#worker/authorization/authorize.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { isInboundEmailApprovalTopic } from '#universal/credential-contracts.ts'
 import { loadServingPackageManifestBySourceId } from '#worker/package-registry/source.ts'
+import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { listPackageEmittedEvents } from '#worker/package-registry/manifest.ts'
 import type { PackageEventsDispatchQueueMessage } from '#worker/package-events/dispatch-queue-producer.ts'
 import {
@@ -44,7 +46,6 @@ import {
 	type LoadedPackageEventSubscription,
 	type PackageInvocationResponse,
 	type PackageRuntimeContext,
-	type PackageRuntimeToolFactories,
 } from './common.ts'
 import { invokeSavedPackageModule } from './idempotent-module-invocation.ts'
 import { buildJsonErrorResponse } from './responses.ts'
@@ -194,11 +195,10 @@ export type PackageEventDeliveryResult = {
  * handler failures are terminal and reported in the returned summary (the
  * idempotency ledger would replay a stored failure on retry anyway).
  */
-export async function deliverPackageEventWithToolFactories(input: {
+export async function deliverPackageEvent(input: {
 	env: Env
 	baseUrl: string
 	message: PackageEventsDispatchQueueMessage
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 }): Promise<PackageEventDeliveryResult> {
 	const message = input.message
@@ -251,7 +251,7 @@ export async function deliverPackageEventWithToolFactories(input: {
 	const retryableInfrastructureErrors: Array<Error> = []
 	await runQueueableDynamicWorkerWork(async () => {
 		for (const { savedPackage, subscription } of subscriptions) {
-			const response = await invokePackageSubscriptionWithToolFactories({
+			const response = await invokePackageSubscription({
 				env: input.env,
 				baseUrl: input.baseUrl,
 				savedPackage,
@@ -268,7 +268,6 @@ export async function deliverPackageEventWithToolFactories(input: {
 				request: packageEventRequestSource(message),
 				runtimeInvokeDepth: message.invokeDepth,
 				resourceEventDepth: message.resourceEventDepth,
-				toolFactories: input.toolFactories,
 				waitUntil: input.waitUntil,
 			})
 			const retryableCode =
@@ -332,14 +331,89 @@ function packageEventRequestSource(
 	return { kind: 'inherited', lineage: message.lineage }
 }
 
-export function createPackageEventToolsWithToolFactories(input: {
+export const nonPackageEventEmitMessage =
+	'events.dispatch requires package code: this code is not part of a saved package, so it has no package identity to emit as. Emit from a saved package that declares the topic in package.json#kody.emits (its jobs, exports, subscription handlers, or app), or call one of its exports that emits.'
+
+/**
+ * Package events for one run. Every surface that runs package code (jobs,
+ * exports, subscription handlers, webhooks, apps, and execute calls that load
+ * package code) emits through this, so identity, `kody.emits` checks, limits,
+ * and delivery are the same everywhere. The emitting package comes from the
+ * host: the run's own package, or a package whose code the run loaded
+ * (`loadedPackageIds`, from bundler provenance) when its bound runtime calls.
+ */
+export function createRunPackageEventTools(input: {
+	env: Env
+	baseUrl: string
+	callerContext: ReturnType<typeof createMcpCallerContext>
+	runPackageContext: PackageRuntimeContext | null
+	/** Packages whose code this run loaded, from host-side provenance. */
+	loadedPackageIds: ReadonlySet<string>
+	/** Loaded packages whose identity the host already knows. */
+	knownPackages?: ReadonlyArray<PackageRuntimeContext>
+	parentRunRecord?: RunRecordContext | null
+	packageInvokeDepth?: number
+	waitUntil?: (promise: Promise<unknown>) => void
+}): RunPackageEventTools {
+	const resolvePackageContext = async (
+		packageId: string,
+	): Promise<PackageRuntimeContext> => {
+		if (packageId === input.runPackageContext?.packageId) {
+			return input.runPackageContext
+		}
+		if (!input.loadedPackageIds.has(packageId)) {
+			throw new Error(
+				`events.dispatch cannot emit as package "${packageId}": that package's code is not loaded in this run.`,
+			)
+		}
+		const known = input.knownPackages?.find(
+			(entry) => entry.packageId === packageId && entry.sourceId,
+		)
+		if (known) return known
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: ownerIdFromCaller(input.callerContext),
+			packageId,
+		})
+		if (!savedPackage) {
+			throw new Error(
+				`events.dispatch cannot emit as package "${packageId}": the package was not found.`,
+			)
+		}
+		return {
+			packageId: savedPackage.id,
+			kodyId: savedPackage.kodyId,
+			sourceId: savedPackage.sourceId,
+		}
+	}
+	return {
+		dispatch: async (rawInput, emittingPackageId) => {
+			const packageId =
+				emittingPackageId?.trim() ||
+				input.runPackageContext?.packageId?.trim() ||
+				null
+			if (!packageId) {
+				throw new Error(nonPackageEventEmitMessage)
+			}
+			return await createPackageEventTools({
+				env: input.env,
+				baseUrl: input.baseUrl,
+				callerContext: input.callerContext,
+				packageContext: await resolvePackageContext(packageId),
+				parentRunRecord: input.parentRunRecord ?? null,
+				packageInvokeDepth: input.packageInvokeDepth ?? 0,
+				waitUntil: input.waitUntil,
+			}).dispatch(rawInput)
+		},
+	}
+}
+
+export function createPackageEventTools(input: {
 	env: Env
 	baseUrl: string
 	callerContext: ReturnType<typeof createMcpCallerContext>
 	packageContext: PackageRuntimeContext | null
 	parentRunRecord?: RunRecordContext | null
 	packageInvokeDepth?: number
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 }): PackageEventTools {
 	return {
@@ -434,11 +508,10 @@ export function createPackageEventToolsWithToolFactories(input: {
 				// deliver inline with the same consumer code path so events
 				// still reach subscribers. Delivery failures are logged, never
 				// surfaced to the emitter — matching queued semantics.
-				const inlineDelivery = deliverPackageEventWithToolFactories({
+				const inlineDelivery = deliverPackageEvent({
 					env: input.env,
 					baseUrl: input.baseUrl,
 					message,
-					toolFactories: input.toolFactories,
 					waitUntil: input.waitUntil,
 				}).catch((error) => {
 					console.error('package-events-inline-delivery-failed', {
@@ -497,7 +570,6 @@ export type SubscriptionInvocationInput = {
 	paramsForRun?: (run: {
 		access: EffectivePermissions | null
 	}) => Record<string, unknown>
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 }
 
@@ -574,7 +646,7 @@ function isSuccessfulInvocation(response: PackageInvocationResponse) {
  * 409 telling the caller to turn the subscription on for themselves).
  * Returns the first failed run's response, else the last run's.
  */
-export async function invokePackageSubscriptionWithToolFactories(
+export async function invokePackageSubscription(
 	input: SubscriptionInvocationInput,
 ): Promise<PackageInvocationResponse> {
 	const topic = normalizePackageSubscriptionTopic(input.topic)
@@ -696,7 +768,6 @@ async function invokeSubscriptionOnce(
 		notFoundCode: 'subscription_not_found',
 		executionTarget: { kind: 'subscription', name: topic },
 		runtimeInvokeDepth: input.runtimeInvokeDepth ?? 0,
-		toolFactories: input.toolFactories,
 		waitUntil: input.waitUntil,
 	})
 }

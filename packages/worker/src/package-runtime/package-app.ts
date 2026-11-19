@@ -577,6 +577,15 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 					args: args ?? {},
 					visitTicket: __kodyCurrentVisitTicket(),
 				}),
+			// events.dispatch as this package only.
+			packageEventDispatch: async (input) =>
+				await bridge.packageBoundCall({
+					token,
+					packageId,
+					op: 'packageEvent',
+					args: input ?? {},
+					visitTicket: __kodyCurrentVisitTicket(),
+				}),
 			packageSecretGet: async (alias) => {
 				const result = await bridge.packageBoundCall({
 					token,
@@ -2201,6 +2210,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			| 'packageSecretGet'
 			| 'packageSecretHas'
 			| 'packageStorage'
+			| 'packageEvent'
 			| 'credentialClient'
 		name?: string
 		args?: unknown
@@ -2238,6 +2248,12 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				return await this.packageStorageCallAs(
 					packageId,
 					String(input.name ?? ''),
+					input.args,
+					visitTicket,
+				)
+			case 'packageEvent':
+				return await this.packageEventDispatchAs(
+					packageId,
 					input.args,
 					visitTicket,
 				)
@@ -3231,35 +3247,21 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		})
 	}
 
-	async createPackageEventTools(visitTicket?: string | null) {
-		return await this.packageEventToolsFor(
-			await this.createCallerContext(this.ctx.props.packageId, visitTicket),
-		)
-	}
-
-	/** Never public: a sandbox-supplied caller context would pick authority. */
-	private async packageEventToolsFor(callerContext: McpCallerContext) {
-		// Avoid a top-level package-app -> package-invocations cycle during worker
-		// startup; apps only need this helper when package code calls it.
-		// Do not cache: a warm isolate would reuse the first visitor's caller.
-		const { createPackageEventTools } =
-			await import('#worker/package-invocations/service.ts')
-		return createPackageEventTools({
-			env: this.env,
-			baseUrl: this.ctx.props.baseUrl,
-			callerContext,
-			packageContext: {
-				packageId: this.ctx.props.packageId,
-				kodyId: this.ctx.props.kodyId,
-				sourceId: this.ctx.props.sourceId,
-			},
-			parentRunRecord: null,
-			packageInvokeDepth: 0,
-		})
-	}
-
 	async packageEventDispatch(
 		input: Record<string, unknown>,
+		visitTicket?: string | null,
+	) {
+		return await this.packageEventDispatchAs(null, input, visitTicket)
+	}
+
+	/**
+	 * events.dispatch from app code: as the bound package when a stamped
+	 * module calls through its binding (GHSA-5fv3), else as the app package.
+	 * Same dispatch path as every other surface (`createRunPackageEventTools`).
+	 */
+	private async packageEventDispatchAs(
+		boundPackageId: string | null,
+		input: unknown,
 		visitTicket?: string | null,
 	) {
 		return await this.runWithAuthority({
@@ -3267,8 +3269,24 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 			storageId: this.ctx.props.packageId,
 			visitTicket,
 			run: async (callerContext) => {
-				const tools = await this.packageEventToolsFor(callerContext)
-				return await tools.dispatch(input)
+				// Avoid a top-level package-app -> package-invocations cycle during
+				// worker startup. Do not cache: a warm isolate would reuse the
+				// first visitor's caller.
+				const { createRunPackageEventTools } =
+					await import('#worker/package-invocations/service.ts')
+				return await createRunPackageEventTools({
+					env: this.env,
+					baseUrl: this.ctx.props.baseUrl,
+					callerContext,
+					runPackageContext: {
+						packageId: this.ctx.props.packageId,
+						kodyId: this.ctx.props.kodyId,
+						sourceId: this.ctx.props.sourceId,
+					},
+					loadedPackageIds: new Set(this.ctx.props.packageStorageGrantIds),
+					parentRunRecord: null,
+					packageInvokeDepth: 0,
+				}).dispatch((input ?? {}) as Record<string, unknown>, boundPackageId)
 			},
 		})
 	}

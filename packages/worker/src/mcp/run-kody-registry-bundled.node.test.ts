@@ -216,18 +216,15 @@ test('runBundledModuleWithRegistry passes params and injects runtime helpers', a
 		)({ workflowName: 'custom' }),
 	).resolves.toEqual({ ok: true, input: { workflowName: 'custom' } })
 
-	const packageEventResult = await runOk({
-		skipCapabilityRegistry: false,
-		packageEventTools: { dispatch: async (input) => ({ ok: true, input }) },
-	})
-	expect(packageEventResult.result).toBe('ok')
-	// Main provider + computed-import bridge + package-events bridge +
-	// static-call meter bridge (bound whenever the run has a user).
-	const packageEventProviders = executor.calls.at(-1)!.providers
-	expect(packageEventProviders).toHaveLength(4)
+	// events.dispatch reaches the host as a kody tool. Ad hoc code (no run
+	// package, no package-bound dispatcher) is refused with the reason.
+	await runOk({ skipCapabilityRegistry: false })
+	// Main provider + computed-import bridge + static-call meter bridge
+	// (bound whenever the run has a user).
+	expect(executor.calls.at(-1)!.providers).toHaveLength(3)
 	await expect(
-		requireFn(packageEventProviders[2]!.fns, 'dispatch')({ topic: 'x' }),
-	).resolves.toEqual({ ok: true, input: { topic: 'x' } })
+		requireFn(executor.fns(), 'packageEventDispatch')({ topic: 'x' }),
+	).rejects.toThrow('events.dispatch requires package code')
 
 	const { workflowEnv, created } = createWorkflowEnv()
 	await runBundledModuleWithRegistry(

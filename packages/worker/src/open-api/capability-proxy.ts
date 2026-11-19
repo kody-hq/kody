@@ -285,7 +285,9 @@ async function callKodyPath(input: {
 	}
 	const needsPackageHostTools =
 		typeof name === 'string' &&
-		(name.startsWith('packageStorage') || name.startsWith('packageSecret'))
+		(name.startsWith('packageStorage') ||
+			name.startsWith('packageSecret') ||
+			name === 'packageEventDispatch')
 	const packageHostTools = needsPackageHostTools
 		? await createCapabilityProxyPackageHostTools({
 				env: ctx.env,

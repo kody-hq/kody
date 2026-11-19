@@ -183,9 +183,9 @@ use one of these supported patterns:
   caller does not get the return value in the same call; read it from
   `metadata.result` (capped at 4 KiB) with `kody.runList({ workflow_id })`. See
   [Workflows](../use/workflows.md).
-- **Push an event instead of reading.** A job, subscription handler, or package
-  app in one package calls `events.dispatch` on a topic it declares in
-  `kody.emits`, and the other package subscribes. The emitter never sees the
+- **Push an event instead of reading.** Code in one package (a job, export,
+  subscription handler, or app) calls `events.dispatch` on a topic it declares
+  in `kody.emits`, and the other package subscribes. The emitter never sees the
   handler's result. See
   [Package subscriptions](./package-subscriptions.md#emitting).
 

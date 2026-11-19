@@ -447,8 +447,6 @@ async function executePublishedJobArtifact(input: {
 	}
 	// Avoid a top-level jobs -> package-invocations cycle during capability
 	// registry initialization.
-	const { createPackageEventTools } =
-		await import('#worker/package-invocations/service.ts')
 	const { resolvePackageAutomationRouting } =
 		await import('#worker/package-invocations/automation-routing.ts')
 	const resolveExecutionRouting = packageContext
@@ -461,19 +459,6 @@ async function executePublishedJobArtifact(input: {
 					target: { kind: 'job', name: input.job.name, jobId: input.job.id },
 				})
 		: null
-	const packageRuntimeTools = packageContext
-		? {
-				packageEventTools: createPackageEventTools({
-					env: input.env,
-					baseUrl: input.callerContext.baseUrl,
-					callerContext,
-					parentRunRecord: runRecord,
-					packageInvokeDepth: 0,
-					waitUntil: input.waitUntil,
-					packageContext,
-				}),
-			}
-		: {}
 	return await runBundledModuleWithRegistry(
 		input.env,
 		callerContext,
@@ -494,7 +479,6 @@ async function executePublishedJobArtifact(input: {
 			runRecord,
 			runRecordHandle: input.runRecordHandle,
 			...(resolveExecutionRouting ? { resolveExecutionRouting } : {}),
-			...packageRuntimeTools,
 			// Keep waitUntil even when the caller pre-claimed the run record
 			// (scheduled jobs). Terminal run-record writes stay awaited inside
 			// finishRunRecord; waitUntil only owns deferred work such as

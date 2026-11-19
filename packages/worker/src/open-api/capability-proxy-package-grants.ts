@@ -308,6 +308,25 @@ export async function createCapabilityProxyPackageHostTools(input: {
 			storageCall('packageStorageDelete', args),
 		packageStorageClear: async (args: unknown) =>
 			storageCall('packageStorageClear', args),
+		packageEventDispatch: async (args: unknown) => {
+			const { binding, rest } = readPackageBindingFromArgs(args)
+			// Avoid a startup import of package-invocations from the proxy.
+			const { createRunPackageEventTools, nonPackageEventEmitMessage } =
+				await import('#worker/package-invocations/service.ts')
+			if (!binding) throw new Error(nonPackageEventEmitMessage)
+			const authorized = await authorizeLocalExecutePackageId({
+				env: input.env,
+				callerContext: input.callerContext,
+				packageBinding: binding,
+			})
+			return await createRunPackageEventTools({
+				env: input.env,
+				baseUrl: input.callerContext.baseUrl,
+				callerContext: input.callerContext,
+				runPackageContext: null,
+				loadedPackageIds: authorized.grantedPackageIds,
+			}).dispatch(rest, authorized.packageId)
+		},
 		packageSecretGet: async (args: unknown) => {
 			const { alias, binding } = readPackageSecretCall(args)
 			return {

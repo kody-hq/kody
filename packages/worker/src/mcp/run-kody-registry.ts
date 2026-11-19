@@ -69,11 +69,12 @@ import {
 	type AdditionalKodyTools,
 	type CredentialClientToolOptions,
 	type EmailToolOptions,
-	type PackageEventTools,
 	type PackageSecretToolOptions,
+	type RunPackageEventTools,
 	type PackageStorageToolOptions,
 	type PackageWorkflowTools,
 } from '#mcp/runtime-helper-manifest.ts'
+import type { createRunPackageEventTools as createRunPackageEventToolsType } from '#worker/package-invocations/subscription-dispatch.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { resolveCallerCredentialPackageId } from '#mcp/credential-client-tools.ts'
 import {
@@ -259,6 +260,7 @@ async function scheduleAgentPackageConversationUses(
 export type {
 	PackageEventDispatchInput,
 	PackageEventTools,
+	RunPackageEventTools,
 	PackageInvokeCheckResult,
 	PackageInvokeContract,
 	PackageInvokeInput,
@@ -448,6 +450,7 @@ export async function buildKodyToolContext(
 		credentialClientTools?: CredentialClientToolOptions
 		emailTools?: EmailToolOptions
 		workflowTools?: PackageWorkflowTools
+		packageEventTools?: RunPackageEventTools
 		skipCapabilityRegistry?: boolean
 		capabilityRegistry?: BuiltCapabilityRegistry
 		reportProgress?: McpReportProgress
@@ -545,6 +548,7 @@ export async function buildKodyToolContext(
 		credentialClientTools: options?.credentialClientTools,
 		emailTools: options?.emailTools,
 		workflowTools: options?.workflowTools,
+		packageEventTools: options?.packageEventTools,
 	})
 	for (const { tools } of runtimeHelperKodyToolSets) {
 		assertNoCapabilityCollisions(capabilityMap, tools)
@@ -665,6 +669,7 @@ export async function buildKodyProvider(
 		credentialClientTools?: CredentialClientToolOptions
 		emailTools?: EmailToolOptions
 		workflowTools?: PackageWorkflowTools
+		packageEventTools?: RunPackageEventTools
 		skipCapabilityRegistry?: boolean
 		capabilityRegistry?: BuiltCapabilityRegistry
 		reportProgress?: McpReportProgress
@@ -706,7 +711,8 @@ export async function runModuleWithRegistry(
 		workflowTools?: PackageWorkflowTools
 		executorTimeoutMs?: number | null
 		signal?: AbortSignal
-		packageEventTools?: PackageEventTools
+		/** Nested package invocation depth of this run (event chains). */
+		packageInvokeDepth?: number
 		capabilityRegistry?: BuiltCapabilityRegistry
 		rawFetchHostSink?: RawFetchHostSink
 		/** Capped unique-worker-day claim for the top-level hosted execute worker. */
@@ -837,7 +843,6 @@ export async function runModuleWithRegistry(
 						callerContext,
 						packageContext: options?.packageContext ?? null,
 					}),
-				packageEventTools: options?.packageEventTools,
 				conversationId: options?.conversationId ?? null,
 				reportProgress,
 				waitUntil: options?.waitUntil,
@@ -889,6 +894,26 @@ export async function runModuleWithRegistry(
  * Sandbox-supplied strings never extend it, which is what keeps a malicious
  * module from claiming another installed package's bucket or secret grants.
  */
+/**
+ * Package events for a run: one dispatch path for every surface that runs
+ * package code (`createRunPackageEventTools`). Loaded on first emit to keep
+ * the registry -> package-invocations import out of startup.
+ */
+function createLazyRunPackageEventTools(
+	input: Parameters<typeof createRunPackageEventToolsType>[0],
+): RunPackageEventTools {
+	return {
+		dispatch: async (rawInput, emittingPackageId) => {
+			const { createRunPackageEventTools } =
+				await import('#worker/package-invocations/service.ts')
+			return await createRunPackageEventTools(input).dispatch(
+				rawInput,
+				emittingPackageId,
+			)
+		},
+	}
+}
+
 export function collectPackageStorageGrantIds(input: {
 	packageContext: PackageContextOptions
 	dependencies: Array<BundleArtifactDependency>
@@ -996,7 +1021,7 @@ export function createComputedPackageImportTools(input: {
 	baseUrl: string
 	callerContext: McpCallerContext
 	packageContext: PackageContextOptions
-	packageEventTools?: PackageEventTools
+	packageInvokeDepth?: number
 	emailTools?: EmailToolOptions
 	workflowTools?: PackageWorkflowTools
 	additionalTools?: AdditionalKodyTools
@@ -1081,7 +1106,7 @@ export function createComputedPackageImportTools(input: {
 				rawInput.params,
 				{
 					packageContext: input.packageContext,
-					packageEventTools: input.packageEventTools,
+					packageInvokeDepth: input.packageInvokeDepth,
 					emailTools: input.emailTools,
 					workflowTools: input.workflowTools,
 					additionalTools: input.additionalTools,
@@ -1141,7 +1166,11 @@ export async function runBundledModuleWithRegistry(
 		packageContext?: PackageContextOptions
 		emailTools?: EmailToolOptions
 		workflowTools?: PackageWorkflowTools
-		packageEventTools?: PackageEventTools
+		/**
+		 * Nested package invocation depth of this run. Package events emitted
+		 * here carry it so event chains stay bounded.
+		 */
+		packageInvokeDepth?: number
 		/**
 		 * Host bridge for computed `import(specifier)` of caller-owned
 		 * `kody:@` names. When omitted on an authenticated run, a default
@@ -1523,6 +1552,30 @@ export async function runBundledModuleWithRegistry(
 					.filter((packageId): packageId is string => Boolean(packageId)),
 			),
 		})
+		const packageEventTools = callerContext.user?.userId
+			? createLazyRunPackageEventTools({
+					env,
+					baseUrl: callerContext.baseUrl,
+					callerContext,
+					runPackageContext: options?.packageContext ?? null,
+					loadedPackageIds: grantedPackageStorageIds,
+					knownPackages: (bundle.dependencies ?? []).flatMap((dependency) =>
+						dependency.packageId
+							? [
+									{
+										packageId: dependency.packageId,
+										kodyId: dependency.kodyId,
+										sourceId: dependency.sourceId,
+									},
+								]
+							: [],
+					),
+					parentRunRecord:
+						options?.runRecord ?? runRecordHandle?.context ?? null,
+					packageInvokeDepth: options?.packageInvokeDepth ?? 0,
+					waitUntil: options?.waitUntil,
+				})
+			: undefined
 		const callMap = options?.credentialCallMap ?? null
 		let pinnedCallMap = callMap?.map ?? null
 		const credentialEntryPackageIds = credentialNeedsEntryPackageIds({
@@ -1635,7 +1688,7 @@ export async function runBundledModuleWithRegistry(
 						baseUrl: callerContext.baseUrl,
 						callerContext,
 						packageContext: options?.packageContext ?? null,
-						packageEventTools: options?.packageEventTools,
+						packageInvokeDepth: options?.packageInvokeDepth,
 						emailTools: options?.emailTools,
 						workflowTools,
 						additionalTools: options?.additionalTools,
@@ -1678,6 +1731,7 @@ export async function runBundledModuleWithRegistry(
 			credentialClientTools,
 			emailTools: options?.emailTools,
 			workflowTools,
+			packageEventTools,
 			skipCapabilityRegistry: options?.skipCapabilityRegistry,
 			capabilityRegistry: options?.capabilityRegistry,
 			reportProgress,
@@ -1698,7 +1752,7 @@ export async function runBundledModuleWithRegistry(
 			credentialClientTools,
 			emailTools: options?.emailTools,
 			workflowTools,
-			packageEventTools: options?.packageEventTools,
+			packageEventTools,
 			computedPackageImportTools,
 			staticCallMeterTools,
 		}

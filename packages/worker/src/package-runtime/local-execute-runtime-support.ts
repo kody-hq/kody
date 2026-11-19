@@ -1220,6 +1220,18 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 	};
 }
 
+// events.dispatch as this package: origin maps the binding back to the
+// package and emits through the same dispatch path as hosted runs.
+export function __kodyCreatePackageBoundEvents(packageId) {
+	const binding = __kodyPackageBinding(packageId) ?? "";
+	return {
+		dispatch: async (input) => {
+			const args = input && typeof input === "object" ? input : {};
+			return await kody.packageEventDispatch({ ...args, packageId: binding });
+		},
+	};
+}
+
 // Same exports as the hosted per-package facade, so artifacts bundled against
 // it run locally. Package-scoped calls carry this package's binding (any
 // packageId the caller passes is replaced); every other call goes to the
@@ -1233,6 +1245,7 @@ const __kodyBindingScopedKodyCalls = new Set([
 	"packageStorageClear",
 	"packageSecretGet",
 	"packageSecretHas",
+	"packageEventDispatch",
 ]);
 
 export function __kodyCreatePackageBoundFetch(packageId) {

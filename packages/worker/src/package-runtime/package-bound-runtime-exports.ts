@@ -25,6 +25,7 @@ export const packageBoundRuntimeExports = [
 	{ name: 'credential', creator: '__kodyCreatePackageBoundCredentialRuntime' },
 	{ name: 'credentials', creator: '__kodyCreatePackageBoundCredentialRuntime' },
 	{ name: 'packageContext', creator: '__kodyCreatePackageBoundPackageContext' },
+	{ name: 'events', creator: '__kodyCreatePackageBoundEvents' },
 ] as const
 
 export type PackageBoundRuntimeExportName =
@@ -40,7 +41,6 @@ export const sharedRuntimeExportReasons = {
 	email: 'Reads and replies to the run trigger email.',
 	workflows: 'Starts workflows for the run.',
 	packages: 'Run-level package helpers.',
-	events: 'Dispatches events for the run.',
 	hasScope: 'Reads platform-set visitor consent metadata from a request.',
 	hasVisitorCredential:
 		'Reads platform-set visitor consent metadata from a request.',
