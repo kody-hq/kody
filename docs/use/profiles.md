@@ -13,7 +13,8 @@ Profiles are an experiment. Turn them on at
 Manage them in the browser at
 [`/account/profiles`](https://kody.codes/account/profiles) (your personal
 workspace) or `/@{org}/-/profiles` for a team org: a tree of your profiles and
-their sub-profiles, with status, expiry, grants, and profile tokens. Owners add
+their sub-profiles, with status, expiry, grants, and profile tokens. Open a
+profile to add a grant (**Give access**) or remove one. Owners add
 `?members=all` to see and revoke every member's profiles.
 
 ## Fields
@@ -48,7 +49,8 @@ their sub-profiles, with status, expiry, grants, and profile tokens. Owners add
 - At most 100 live profiles per person per org (`profile_limit_reached`) and 50
   grants per profile.
 - Grants are a snapshot: a profile never gains access later when you or a parent
-  do.
+  do. Add a grant to it instead (see
+  [Grant to an existing profile](#grant-to-an-existing-profile)).
 - Revoked and expired profiles are deleted 30 days later.
 - When you leave an org, your profiles in it are revoked.
 
@@ -58,6 +60,32 @@ their sub-profiles, with status, expiry, grants, and profile tokens. Owners add
 - A profile can manage only the sub-profiles below it, never itself, its
   parents, or its siblings.
 - An org Owner can list and revoke any profile in the org but cannot change one.
+
+## Grant to an existing profile
+
+Give a profile you control more access without recreating it, from the profile
+page (**Give access**) or with `accessGrant`:
+
+```js
+accessGrant({
+	resource_type: 'credential',
+	resource_id: credentialId,
+	subject_type: 'profile',
+	subject_id: 'prf_...',
+	preset: 'use',
+})
+```
+
+- The checks are the ones `profileCreate` runs on `grants[]`: you hold each
+  permission now, every parent profile holds it too, and the resource type and
+  permissions are ones a profile can hold. No manage access on the resource is
+  needed.
+- The profile must be active and act for you. A caller signed in as a profile
+  can grant only to its own sub-profiles.
+- A new grant replaces the profile's live grant on that resource. Profile grants
+  take no `expires_at`; shorten the profile expiry instead.
+- `accessList({ subject_type: 'profile' })` lists the grants on your profiles
+  (add `subject_id` for one). `accessRevoke({ grant_id })` removes one.
 
 ## Package grants
 

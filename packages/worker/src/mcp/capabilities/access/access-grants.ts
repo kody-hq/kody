@@ -14,7 +14,6 @@ import {
 import { findCredentialIdsByLegacyName } from '#worker/credentials/credential-ids.ts'
 import {
 	getGrantById,
-	grantSubjectTypes,
 	isGrantResourceType,
 	listGrants,
 	softDeleteGrant,
@@ -26,11 +25,24 @@ import {
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import { orgAuditWriterFromRequest } from '#worker/orgs/org-audit.ts'
 import {
+	type ProfileView,
+	grantToProfile,
+	listProfiles,
+	requireProfilesCaller,
+	revokeProfileGrant,
+} from '#worker/profiles/service.ts'
+import { findLiveProfileGrant } from '#worker/profiles/store.ts'
+import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
+import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
+import type { CapabilityContext } from '#mcp/capabilities/types.ts'
+import {
 	accessGrantSchema,
+	accessSubjectTypes,
 	authorizeGrantRevoke,
 	authorizeGrantTarget,
 	grantChangesMemberOrBilling,
 	grantPresetSchema,
+	grantTargetFamily,
 	grantTargetTypeSchema,
 	readPermissionList,
 	requireOrgPermission,
@@ -101,6 +113,65 @@ async function resolveGrantSubject(
 	}
 }
 
+function profileGrantPayload(
+	profileId: string,
+	grant: ProfileView['grants'][number],
+) {
+	if (!isGrantResourceType(grant.resourceType)) return null
+	return {
+		id: grant.grantId,
+		resource_type: grant.resourceType,
+		resource_id: grant.resourceId,
+		subject_type: 'profile' as const,
+		subject_id: profileId,
+		preset: null,
+		permissions: grant.permissions,
+		expires_at: null,
+		allow_changes_despite_unmappable_credentials: false,
+	}
+}
+
+/**
+ * A grant to an existing profile takes the checks `profileCreate` runs on
+ * its grants instead of manage access on the resource (ADR 0092).
+ */
+async function grantResourceToExistingProfile(
+	ctx: CapabilityContext,
+	input: {
+		profileId: string
+		resourceType: GrantResourceType
+		resourceId: string
+		preset: GrantPreset | null
+		permissions: Array<OrgPermission> | null
+	},
+) {
+	const family = await grantTargetFamily(
+		ctx,
+		input.resourceType,
+		input.resourceId,
+	)
+	const permissions = await resolveAuthorizedGrantPermissions(ctx, {
+		family,
+		preset: input.preset,
+		permissions: input.permissions,
+	})
+	const caller = await requireProfilesCaller(ctx)
+	const { grantId, profile } = await grantToProfile(caller, {
+		profileId: input.profileId,
+		grant: {
+			resourceType: input.resourceType,
+			resourceId: input.resourceId,
+			permissions,
+		},
+		preset: input.preset,
+		label: `${input.resourceType} ${input.resourceId}`,
+	})
+	const saved = profile.grants.find((grant) => grant.grantId === grantId)
+	const payload = saved ? profileGrantPayload(profile.id, saved) : null
+	if (!payload) throw new Error('Grant was not saved.')
+	return payload
+}
+
 function readGrantExpiry(value: string | null | undefined) {
 	if (value == null) return value
 	const expiresAt = new Date(value)
@@ -119,7 +190,8 @@ export const accessGrantCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		requiresLivePerson: async (args, ctx) => {
-			if (args.resource_type !== 'org') return false
+			if (args.resource_type !== 'org' || args.subject_type === 'profile')
+				return false
 			if (
 				grantChangesMemberOrBilling({
 					resourceType: args.resource_type,
@@ -166,16 +238,16 @@ export const accessGrantCapability = defineDomainCapability(
 			),
 			resource_id: z.string().min(1),
 			subject_type: z
-				.enum(grantSubjectTypes)
+				.enum(accessSubjectTypes)
 				.describe(
-					'user, team, or org. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org.',
+					'user, team, org, or profile. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org. profile is one of your agent profiles (subject_id from profileList): you must hold each permission, every parent profile must hold it too, and no manage access on the resource is needed.',
 				),
 			subject_id: z
 				.string()
 				.min(1)
 				.optional()
 				.describe(
-					'Person id or team id. Omit when passing username or team_slug, and for an org subject.',
+					'Person id, team id, or profile id (prf_...). Omit when passing username or team_slug, and for an org subject.',
 				),
 			username: z.string().min(1).optional(),
 			team_slug: z.string().min(1).optional(),
@@ -217,6 +289,40 @@ export const accessGrantCapability = defineDomainCapability(
 					type: args.resource_type,
 					id: args.resource_id,
 				})
+				if (args.subject_type === 'profile') {
+					if (!args.subject_id || args.username || args.team_slug) {
+						throw new McpCallerError(
+							'A profile subject takes subject_id, the profile id (prf_...) from profileList; omit username and team_slug.',
+						)
+					}
+					if (expiresAt) {
+						throw new McpCallerError(
+							'A profile grant has no expiry of its own. Shorten the profile expiry with profileUpdate, or revoke the grant with accessRevoke.',
+						)
+					}
+					if (args.allow_changes_despite_unmappable_credentials) {
+						throw new McpCallerError(
+							'allow_changes_despite_unmappable_credentials is not available for a profile subject.',
+						)
+					}
+					const grant = await grantResourceToExistingProfile(ctx, {
+						profileId: args.subject_id,
+						resourceType: target.resourceType,
+						resourceId: target.resourceId,
+						preset: args.preset ?? null,
+						permissions,
+					})
+					const warnings = await unmappableCredentialGrantWarnings({
+						env: ctx.env,
+						orgId: requireMcpRequest(ctx.callerContext).org.id,
+						resourceType: grant.resource_type,
+						resourceId: grant.resource_id,
+						permissions: grant.permissions,
+						changesAllowed: false,
+						request: requireMcpRequest(ctx.callerContext),
+					})
+					return { grant, warnings }
+				}
 				const scoped = await authorizeGrantTarget(
 					ctx,
 					target.resourceType,
@@ -304,7 +410,7 @@ export const accessRevokeCapability = defineDomainCapability(
 			return true
 		},
 		description:
-			'Revoke one live grant in the organization this request is bound to. You need manage access on that grant resource (or member:write for an organization grant).',
+			'Revoke one live grant in the organization this request is bound to. You need manage access on that grant resource (or member:write for an organization grant). A profile grant (subject_type profile) is revoked by the person the profile acts for, or a profile above it.',
 		keywords: ['grant', 'revoke', 'access', 'remove'],
 		readOnly: false,
 		idempotent: false,
@@ -326,6 +432,19 @@ export const accessRevokeCapability = defineDomainCapability(
 					orgId: request.org.id,
 					grantId: args.grant_id,
 				})
+				const profileGrant = grant
+					? null
+					: await findLiveProfileGrant(db, {
+							orgId: request.org.id,
+							grantId: args.grant_id,
+						})
+				if (profileGrant) {
+					await revokeProfileGrant(
+						await requireProfilesCaller(ctx),
+						profileGrant,
+					)
+					return { grant_id: profileGrant.grantId, revoked: true as const }
+				}
 				if (!grant || !isGrantResourceType(grant.resourceType)) {
 					throw new McpCallerError('Grant was not found in this organization.')
 				}
@@ -351,7 +470,7 @@ export const accessListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'member:read',
 		description:
-			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.',
+			'List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. Pass subject_type profile to list the grants on your agent profiles. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.',
 		keywords: ['grant', 'list', 'access', 'who has access'],
 		readOnly: true,
 		idempotent: true,
@@ -363,7 +482,12 @@ export const accessListCapability = defineDomainCapability(
 					'secret or integration with a resource_id filter by that credential name.',
 				),
 			resource_id: z.string().min(1).optional(),
-			subject_type: z.enum(grantSubjectTypes).optional(),
+			subject_type: z
+				.enum(accessSubjectTypes)
+				.optional()
+				.describe(
+					'profile lists the grants on your own agent profiles (needs profile:manage). Without it, profile grants are not listed.',
+				),
 			subject_id: z.string().min(1).optional(),
 		}),
 		outputSchema: z.object({
@@ -382,6 +506,47 @@ export const accessListCapability = defineDomainCapability(
 					resourceType = 'credential'
 				} else {
 					resourceType = args.resource_type
+				}
+				if (args.subject_type === 'profile') {
+					const resourceIds = args.resource_id
+						? new Set(
+								legacyFamily
+									? await findCredentialIdsByLegacyName(db, request.org.id, {
+											type: legacyFamily,
+											name: args.resource_id,
+										})
+									: [args.resource_id],
+							)
+						: null
+					const profiles = await listProfiles(
+						await requireProfilesCaller(ctx),
+						{
+							allMembers: false,
+						},
+					)
+					return {
+						grants: profiles
+							.filter(
+								(profile) => !args.subject_id || profile.id === args.subject_id,
+							)
+							.flatMap((profile) =>
+								profile.grants.flatMap((grant) => {
+									if (resourceType && grant.resourceType !== resourceType)
+										return []
+									if (resourceIds && !resourceIds.has(grant.resourceId))
+										return []
+									if (
+										legacyFamily &&
+										!grant.permissions.some((permission) =>
+											permission.startsWith(`${legacyFamily}:`),
+										)
+									)
+										return []
+									const payload = profileGrantPayload(profile.id, grant)
+									return payload ? [payload] : []
+								}),
+							),
+					}
 				}
 				const filter = {
 					db,

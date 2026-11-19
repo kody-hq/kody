@@ -20,9 +20,10 @@ Kent decided on 2026-10-29 (Bot identities plan, decisions 1 to 23):
    and a terminal `revoked_at`. Org-owned bot profiles are deferred.
 2. **Snapshot grants.** A profile's access is `grants` rows with
    `subject_type = 'profile'`. At creation every grant must be a subset of what
-   the creator holds and, for a sub-profile, of its parent's grants. Expiry only
-   shortens. At most 50 grants per profile and 100 active profiles per person
-   per org.
+   the creator holds and, for a sub-profile, of its parent's grants. A grant
+   added later (`accessGrant` with `subject_type: "profile"`, or the profile
+   page) passes the same checks. Expiry only shortens. At most 50 grants per
+   profile and 100 active profiles per person per org.
 3. **Live mirror at run time.** A profile-bound request intersects the acting
    person's live access, every profile layer from the tip to the root, and the
    credential's scopes. Owner status never bypasses a profile layer. A revoked

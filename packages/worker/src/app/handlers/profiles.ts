@@ -79,7 +79,13 @@ async function loadScope(input: ScopedInput): Promise<ProfilesScope | null> {
 
 async function callProfileCapability(
 	scope: ProfilesScope,
-	name: 'profileList' | 'profileCreate' | 'profileUpdate' | 'profileRevoke',
+	name:
+		| 'profileList'
+		| 'profileCreate'
+		| 'profileUpdate'
+		| 'profileRevoke'
+		| 'accessGrant'
+		| 'accessRevoke',
 	args: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
 	const registry = await getStaticRegistry()
@@ -249,6 +255,7 @@ async function toProfileItems(
 				resourceType === 'package' ? packages.get(resourceId) : undefined
 			return [
 				{
+					grantId: text(grant.grantId),
 					resourceType,
 					resourceId,
 					permissions,
@@ -350,7 +357,10 @@ async function loadGrantOptions(
 	]
 }
 
-/** Org secrets and vaults the person can use, with "read locally" (ADR 0097). */
+/**
+ * Org secrets and vaults the person can use, with "read locally" (ADR 0097),
+ * and org integrations and MCP servers they can use.
+ */
 async function loadSecretGrantOptions(
 	env: Env,
 	request: RequestContext | null | undefined,
@@ -364,18 +374,13 @@ async function loadSecretGrantOptions(
 	const permissions = ['secret:use', 'secret:read_local']
 	return [
 		...credentials
-			.filter(
-				(item) =>
-					item.kind === 'secret' &&
-					item.scope === 'org' &&
-					item.packageId === null,
-			)
+			.filter((item) => item.scope === 'org' && item.packageId === null)
 			.slice(0, maxSecretGrantOptions)
 			.map((item) => ({
 				resourceType: 'credential',
 				resourceId: item.id,
 				label: item.name,
-				permissions,
+				permissions: item.kind === 'secret' ? permissions : ['integration:use'],
 			})),
 		...providers.map((binding) => ({
 			resourceType: 'credential',
@@ -504,6 +509,32 @@ export async function revokeProfileForUser(
 	return runScoped(input, async (scope) => {
 		await callProfileCapability(scope, 'profileRevoke', {
 			profile_id: input.profileId,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function grantProfileAccessForUser(
+	input: ScopedInput & { profileId: string; grant: ProfileGrantInput },
+) {
+	return runScoped(input, async (scope) => {
+		await callProfileCapability(scope, 'accessGrant', {
+			resource_type: input.grant.resourceType,
+			resource_id: input.grant.resourceId,
+			subject_type: 'profile',
+			subject_id: input.profileId,
+			permissions: input.grant.permissions,
+		})
+		return { ok: true as const }
+	})
+}
+
+export async function revokeProfileGrantForUser(
+	input: ScopedInput & { grantId: string },
+) {
+	return runScoped(input, async (scope) => {
+		await callProfileCapability(scope, 'accessRevoke', {
+			grant_id: input.grantId,
 		})
 		return { ok: true as const }
 	})

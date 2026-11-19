@@ -696,7 +696,7 @@ async function assertCommandAccess(
 			throw new ExecutionContextError({
 				status: 403,
 				code: 'execution_context_command_not_granted',
-				message: `The profile this run acts as, or a parent profile, was not granted ${executionContextCommandPermission} on ${row.name}. The person it acts for can grant it (accessGrant with subject_type "profile").`,
+				message: `The profile this run acts as, or a parent profile, was not granted ${executionContextCommandPermission} on ${row.name}. The person it acts for can grant it under Agent profiles (/account/profiles) or with accessGrant (resource_type "execution_context", subject_type "profile", subject_id the profile id).`,
 			})
 		}
 	}
