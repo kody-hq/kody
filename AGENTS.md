@@ -5,8 +5,7 @@ memories, connectors, email, and durable storage for individuals and teams.
 
 Reuse existing UI components; extend shared controls. Never add unstyled native
 selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
-`npm run validate` is the local gate. Before adding tests, read
-[writing tests](./docs/contributing/writing-tests.md). Verify UI/API with
+`npm run validate` is the local gate. Verify UI/API with
 [control-kody](./docs/contributing/control-kody.md) first.
 
 Open the page that owns the task:
