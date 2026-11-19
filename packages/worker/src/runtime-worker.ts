@@ -31,6 +31,7 @@ import {
 	refuseNonCanonicalProductionHost,
 } from '#app/canonical-host.ts'
 import { runWithDynamicWorkerEvaluationBudget } from '#worker/dynamic-worker-evaluation-budget.ts'
+import { respondToRuntimeStorageUnavailable } from '#worker/runtime-worker-storage-unavailable.ts'
 
 /**
  * Package runtime Worker entrypoint (script `kody-runtime`, deployed from
@@ -72,14 +73,16 @@ class RuntimeWorkerServiceEntrypoint
 {
 	async fetch(request: Request): Promise<Response> {
 		const receivedAt = Date.now()
-		return runWithDynamicWorkerEvaluationBudget(
-			async () =>
-				await fetchRuntimeWorkerRequest(
-					request,
-					this.env,
-					this.ctx,
-					receivedAt,
-				),
+		return respondToRuntimeStorageUnavailable(() =>
+			runWithDynamicWorkerEvaluationBudget(
+				async () =>
+					await fetchRuntimeWorkerRequest(
+						request,
+						this.env,
+						this.ctx,
+						receivedAt,
+					),
+			),
 		)
 	}
 
@@ -110,9 +113,11 @@ export type RuntimeWorkerService = RuntimeWorkerServiceEntrypoint
 const runtimeWorkerHandler = {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext) {
 		const receivedAt = Date.now()
-		return runWithDynamicWorkerEvaluationBudget(
-			async () =>
-				await fetchRuntimeWorkerRequest(request, env, ctx, receivedAt),
+		return respondToRuntimeStorageUnavailable(() =>
+			runWithDynamicWorkerEvaluationBudget(
+				async () =>
+					await fetchRuntimeWorkerRequest(request, env, ctx, receivedAt),
+			),
 		)
 	},
 } satisfies ExportedHandler<Env>
