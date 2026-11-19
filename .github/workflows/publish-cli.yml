@@ -12,6 +12,7 @@ on:
       - 'tools/generate-cli-openapi-client.ts'
       - 'tools/cli-release-plan.ts'
       - 'tools/publish-cli.ts'
+      - 'tools/npm-release-readiness.ts'
       - '.github/workflows/publish-cli.yml'
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
     # Actions runner environment: self-hosted"). Keep this job on
     # GitHub-hosted ubuntu-latest even if vars.CI_RUNNER points elsewhere.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: 📦 Checkout
         uses: actions/checkout@v6.0.2

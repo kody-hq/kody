@@ -129,12 +129,33 @@ async function ensureDevRuntime(
 		await rename(staging, root)
 	} catch (error) {
 		await rm(staging, { recursive: true, force: true }).catch(() => {})
+		const npmOutput = String((error as { npmOutput?: unknown }).npmOutput ?? '')
+		const [scope, name] = devRuntimePackageName.slice(1).split('/')
+		const runtimeNotFound = new RegExp(
+			`(No matching version found for|404 Not Found - GET \\S*|404\\s+'?)\\s*@${scope}(/|%2f)${name}\\b`,
+			'i',
+		)
+		const registry = runtimeNotFound.test(npmOutput)
+			? 'missing'
+			: /\b(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(
+						npmOutput,
+				  )
+				? 'unreachable'
+				: 'error'
 		throw new StructuredCliError({
 			code: 'bundle_failed',
-			message: `Could not install ${spec} for kody dev (${error instanceof Error ? error.message : String(error)}).`,
+			message:
+				registry === 'missing'
+					? `${spec} is not on npm yet (release still propagating).`
+					: `Could not install ${spec} for kody dev (${error instanceof Error ? error.message : String(error)}).`,
 			target: 'mock',
 			where: root,
-			fix: `Connect to the network and retry so the CLI can install ${spec} into the Kody cache (${dirname(root)}).`,
+			fix:
+				registry === 'missing'
+					? 'Retry in a few minutes or pin the previous CLI version.'
+					: registry === 'unreachable'
+						? `Connect to the network and retry so the CLI can install ${spec} into the Kody cache (${dirname(root)}).`
+						: `Check the npm install error above and retry installing ${spec} into the Kody cache (${dirname(root)}).`,
 			details: { package: spec, cacheDir: root },
 		})
 	}
@@ -190,7 +211,10 @@ async function npmInstall(
 			if (code === 0) done()
 			else
 				fail(
-					new Error(stderr.trim().split('\n').at(-1) ?? `npm exited ${code}`),
+					Object.assign(
+						new Error(stderr.trim().split('\n').at(-1) ?? `npm exited ${code}`),
+						{ npmOutput: stderr },
+					),
 				)
 		})
 	})
