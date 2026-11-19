@@ -942,6 +942,17 @@ export async function exchangeAccountOAuthToken(input: {
 		tokenExchangeStyle: input.fields.tokenExchangeStyle?.trim() ?? null,
 	})
 
+	if (
+		flow === 'confidential' &&
+		!input.fields.clientSecret?.trim() &&
+		new URLSearchParams(paramsRaw).get('grant_type') !== 'authorization_code'
+	) {
+		// A saved client secret only ever backs the browser code exchange.
+		return operationResult(
+			{ ok: false, error: 'Only the authorization_code grant is allowed.' },
+			400,
+		)
+	}
 	if (flow === 'confidential') {
 		clientSecret = await resolveTokenEndpointClientSecret({
 			env: input.env,
