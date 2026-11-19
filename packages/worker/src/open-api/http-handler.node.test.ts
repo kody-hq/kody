@@ -959,3 +959,20 @@ test('MCP OAuth Bearer is rejected unless it is a valid CLI token on a local-exe
 		).status,
 	).toBe(401)
 })
+
+test('search tool route always returns the documented isError flag', async () => {
+	const api = await createApi()
+	const token = await api.mint(['search:read'])
+	for (const body of [
+		{ query: 'secrets' },
+		{ entity: 'capability:secretList' },
+	]) {
+		const response = await api.call('POST', '/v1/search/tool', { token, body })
+		expect(response.status).toBe(200)
+		expect(response.body).toMatchObject({
+			content: expect.any(Array),
+			structuredContent: expect.any(Object),
+			isError: false,
+		})
+	}
+})
