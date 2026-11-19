@@ -50,12 +50,6 @@ export interface ScheduledBackupPayload {
 	retentionTier: RetentionTier
 }
 
-export type LegacyScheduledBackupPayload = Omit<ScheduledBackupPayload, 'kind'>
-
-export type ScheduledBackupWorkflowPayload =
-	| ScheduledBackupPayload
-	| LegacyScheduledBackupPayload
-
 export type BackupPayload = ScheduledBackupPayload
 
 export interface ExportReady {
@@ -102,26 +96,14 @@ export interface StoredBackup {
 export interface LogRecord {
 	event:
 		| 'backup-disabled'
-		| 'backup-catch-up-enqueued'
-		| 'backup-enqueued'
-		| 'backup-overlap'
-		| 'backup-restarted'
-		| 'backup-export-result-expired-recover'
-		| 'backup-export-signed-url-fallback'
-		| 'backup-success'
 		| 'backup-failure'
-		| 'backup-sql-stats'
 		| 'backup-unrestorable-statements'
 		| 'backup-stats-legacy-missing'
-		| 'freshness-success'
-		| 'freshness-stale'
-		| 'freshness-unrestorable'
 		| 'source-size-success'
 		| 'source-size-failure'
 		| 'full-backup-sealed'
 		| 'full-backup-already-sealed'
 		| 'full-backup-seal-skipped'
-		| 'full-backup-rest-d1-omitted'
 		| 'full-backup-seal-failure'
 		| 'restore-drill-started'
 		| 'paced-restore-drill-source-passed'
@@ -135,7 +117,6 @@ export interface LogRecord {
 		| 'production-restore-d1-import-complete'
 		| 'production-restore-complete'
 		| 'production-restore-failure'
-		| 'ui-run-backup'
 		| 'ui-seal-day'
 		| 'ui-run-drill'
 		| 'ui-restore-prepare'

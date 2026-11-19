@@ -376,7 +376,7 @@ export function utcDay(date: Date): string {
 	return date.toISOString().slice(0, 10)
 }
 
-export function retentionTier(day: string): RetentionTier {
+function retentionTier(day: string): RetentionTier {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	if (Number.isNaN(date.valueOf())) {
 		throw new BackupError('invalid-day', 'scheduled day is invalid')
@@ -428,22 +428,6 @@ export function objectKeyForBookmark(
 		.map((byte) => byte.toString(16).padStart(2, '0'))
 		.join('')
 	return `${objectPrefix}/backup-${encoded}.sql`
-}
-
-export function objectKeyForPayload(
-	payload: BackupPayload,
-	bookmark: string,
-): string {
-	return objectKeyForBookmark(payload.objectPrefix, bookmark)
-}
-
-export function isBookmarkObjectKey(
-	objectPrefix: string,
-	objectKey: string,
-): boolean {
-	if (!objectKey.startsWith(`${objectPrefix}/`)) return false
-	const filename = objectKey.slice(objectPrefix.length + 1)
-	return /^backup-(?:[0-9a-f]{2}){1,256}\.sql$/.test(filename)
 }
 
 export function workflowInstanceId(databaseId: string, day: string): string {

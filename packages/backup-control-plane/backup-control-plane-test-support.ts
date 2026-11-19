@@ -414,13 +414,6 @@ export function identityEnvelope(
 	})
 }
 
-export function identityApi(fileSize = 1_000) {
-	return {
-		fetcher: async () => identityEnvelope(fileSize),
-		sleep: async () => undefined,
-	}
-}
-
 export function manifest(stored: {
 	bytes: number
 	sha256: string

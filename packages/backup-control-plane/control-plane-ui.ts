@@ -608,13 +608,6 @@ export function renderMessagePage(
 	return layout(title, body, { danger: options?.danger })
 }
 
-export function renderEnqueueResult(day: string, result: string): string {
-	return renderMessagePage(
-		'D1 backup enqueue',
-		`Backup workflow for ${day}: ${result}.`,
-	)
-}
-
 export function renderSealStatusPage(input: {
 	day: string
 	instanceId: string
