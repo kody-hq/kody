@@ -25,6 +25,7 @@ import {
 } from './oauth-token-exchange.ts'
 import { isAccountEmailLabel } from './account-identity.ts'
 import { getPlatformOauthAppClientSecret } from './platform-apps.ts'
+import { isPublicCredentialEndpoint } from './secure-credential-url.ts'
 import { getJoinedIntegration } from './service.ts'
 import type { JoinedIntegration } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -486,6 +487,12 @@ async function refreshIntegrationTokensOrThrow(input: {
 		throw fail(
 			`Integration "${connection.name}" is not approved for host "${tokenHost}".`,
 			{ reason: 'host_not_approved' },
+		)
+	}
+	if (!isPublicCredentialEndpoint(app.tokenUrl)) {
+		throw fail(
+			`Integration "${connection.name}" token URL must use https and a public host. Reconnect at ${reconnectPath}.`,
+			{ reason: 'invalid_config' },
 		)
 	}
 

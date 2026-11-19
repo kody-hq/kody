@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	assertSecureCredentialUrl,
 	isLoopbackHostname,
+	isPublicCredentialEndpoint,
 	isSecureCredentialUrl,
 } from './secure-credential-url.ts'
 import {
@@ -56,4 +57,31 @@ test('isLoopbackHostname covers localhost variants', () => {
 	expect(isLoopbackHostname('[::1]')).toBe(true)
 	expect(isLoopbackHostname('mock.localhost')).toBe(true)
 	expect(isLoopbackHostname('oauth.example.com')).toBe(false)
+})
+
+test('isPublicCredentialEndpoint refuses private, link-local, and reserved token hosts', () => {
+	for (const value of [
+		'https://169.254.169.254/token',
+		'https://10.0.0.5/token',
+		'https://192.168.1.10/token',
+		'https://167772161/token',
+		'https://[fd00::1]/token',
+		'https://[::ffff:10.0.0.1]/token',
+		'http://auth.example.com/token',
+	]) {
+		expect(isPublicCredentialEndpoint(value)).toBe(false)
+	}
+	for (const value of [
+		'https://auth.example.com/token',
+		'https://localhost:8787/token',
+		'https://localhost./token',
+		'http://127.0.0.1:8787/token',
+	]) {
+		expect(isPublicCredentialEndpoint(value)).toBe(true)
+	}
+	// Stored rows still parse; only save and fetch apply the host check.
+	expect(isSecureCredentialUrl('https://169.254.169.254/token')).toBe(true)
+	expect(assertSafeTokenUrl('https://169.254.169.254/token')).toBe(
+		'Token URL must not target a private, link-local, or reserved address.',
+	)
 })

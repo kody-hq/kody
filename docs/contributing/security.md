@@ -832,9 +832,16 @@ change to these decisions here so future agents do not relitigate them.
   differs from the request URL's hostname (logged as
   `turnstile-hostname-mismatch`), so a token minted on a preview deployment or a
   third-party page embedding the same sitekey is not accepted on production.
-- **Sandbox `fetch` has no general SSRF denylist.** Secret-bearing requests are
-  constrained by per-secret host allowlists; non-secret requests rely on the
-  Cloudflare Workers platform egress model.
+- **Sandbox `fetch` refuses non-public hosts by literal, not by DNS.** Every
+  gateway hop (first request, login retry, followed redirect) refuses loopback
+  names and private, link-local, and reserved IP literals
+  (`isPublicFetchHostname` in `mcp/events/ssrf.ts`). Token endpoints get the
+  same check on save and before each request (`isPublicCredentialEndpoint`),
+  except loopback hosts, which stay allowed for local mocks. A public name that
+  resolves to a private address, and a redirect the Workers runtime follows
+  itself (`redirect: 'follow'` without a deferred body), rely on the platform
+  egress model (`global_fetch_strictly_public`). Secret-bearing requests are
+  also constrained by per-secret host allowlists.
 - **PBKDF2-SHA256 (100k iterations)** is used for password hashing rather than a
   memory-hard KDF. Workers' WebCrypto has no argon2/scrypt, and Cloudflare's
   production runtime rejects PBKDF2 above 100,000 iterations (deriveBits throws
