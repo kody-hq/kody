@@ -274,7 +274,7 @@ test('native account and session reads batch user/role and flag reads into two r
 		profiles: true,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,
-		'repo-push-queue': false,
+		'repo-push-queue': true,
 		'execution-contexts': false,
 		'publish-offload': false,
 		'credential-need-enforcement': false,
