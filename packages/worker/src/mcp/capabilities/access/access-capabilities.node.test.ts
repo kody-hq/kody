@@ -1043,3 +1043,54 @@ test('teamDelete soft-deletes, keeps grants inert, and frees the slug', async ()
 	const reborn = await compileAccessForRequest({ db, request: seatRequest })
 	expect(reborn.resourcePermissions.has(`package:${packageId}`)).toBe(false)
 })
+
+test('inviteAccept refuses a member invite once its inviter can no longer invite', async () => {
+	const db = await createDb()
+	const ownerId = testStableUserIdFromEmail('owner9@example.com')
+	const guestId = testStableUserIdFromEmail('guest9@example.com')
+	await provisionPersonalOrg(db, {
+		stableUserId: ownerId,
+		username: 'owneracct9',
+	})
+	await provisionPersonalOrg(db, {
+		stableUserId: guestId,
+		username: 'guestacct9',
+	})
+	const created = await orgCreateCapability.handler(
+		{ slug: 'demoted-co' },
+		capabilityContext({
+			db,
+			userId: ownerId,
+			email: 'owner9@example.com',
+			username: 'owneracct9',
+		}),
+	)
+	const invited = await inviteCreateCapability.handler(
+		{ kind: 'membership', email: 'guest9@example.com', role: 'member' },
+		capabilityContext({
+			db,
+			userId: ownerId,
+			email: 'owner9@example.com',
+			username: 'owneracct9',
+			org: { id: created.org.id, slug: created.org.slug, role: 'owner' },
+		}),
+	)
+	await db
+		.prepare(
+			`UPDATE org_memberships SET role = 'billing' WHERE org_id = ? AND user_id = ?`,
+		)
+		.bind(created.org.id, ownerId)
+		.run()
+
+	await expect(
+		inviteAcceptCapability.handler(
+			{ token: invited.token },
+			capabilityContext({
+				db,
+				userId: guestId,
+				email: 'guest9@example.com',
+				username: 'guestacct9',
+			}),
+		),
+	).rejects.toThrow('the inviter can no longer grant this access')
+})

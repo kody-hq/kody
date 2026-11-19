@@ -223,7 +223,9 @@ export async function requireOrgPermission(
 	return { user, request, db: ctx.env.APP_DB }
 }
 
-function manageAccessPermission(resourceType: OrgResourceType): OrgPermission {
+export function manageAccessPermission(
+	resourceType: OrgResourceType,
+): OrgPermission {
 	switch (resourceType) {
 		case 'file':
 			return 'file:manage_access'
