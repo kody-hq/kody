@@ -34,3 +34,41 @@ test('blog RSS link leaves the app for the feed document', async ({ page }) => {
 	await waitForClientHydration(page)
 	await clickExpectingDocumentLoad(page, '/blog/rss.xml')
 })
+
+test('a slow route load keeps the current page visible until the next page is ready', async ({
+	page,
+}) => {
+	await page.goto('/blog')
+	await waitForClientHydration(page)
+	const currentHeading = page.getByRole('heading', {
+		level: 1,
+		name: 'Notes from the eucalyptus',
+	})
+	await expect(currentHeading).toBeVisible()
+	let release!: () => void
+	const pending = new Promise<void>((resolve) => {
+		release = resolve
+	})
+	await page.route('**/_serverFn/**', async (route) => {
+		await pending
+		await route.continue()
+	})
+
+	try {
+		const request = page.waitForRequest('**/_serverFn/**')
+		await page
+			.getByRole('navigation', { name: 'Main' })
+			.getByRole('link', { name: 'Docs', exact: true })
+			.click()
+		await request
+		// Hold the request beyond the router's one-second pending delay.
+		await new Promise((resolve) => setTimeout(resolve, 1500))
+		await expect(currentHeading).toBeVisible({ timeout: 1000 })
+	} finally {
+		release()
+	}
+
+	await expect(
+		page.getByRole('heading', { level: 1, name: 'What is Kody?' }),
+	).toBeVisible()
+})

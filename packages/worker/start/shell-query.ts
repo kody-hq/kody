@@ -13,8 +13,8 @@ export function shellSearch(search: string) {
 }
 
 /**
- * `orgSlug` is the matched route's org scope. Session feature flags apply
- * that org's flag rows, so each org gets its own shell entry.
+ * `orgSlug` identifies the workspace in the shell. Session feature flags
+ * apply that org's flag rows, so each org gets its own shell entry.
  */
 export function shellQuery(
 	actorKey: string | null,

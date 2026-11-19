@@ -2,7 +2,10 @@ import { createMemoryHistory, createRouter } from '@tanstack/react-router'
 import { QueryClient } from '@tanstack/react-query'
 import { expect, test } from 'vitest'
 import { routeTree } from './routeTree.gen.ts'
-import { workspaceLayoutNavigation } from './workspace-layout-policy.ts'
+import {
+	workspaceLayoutNavigation,
+	workspaceShellOrgSlug,
+} from './workspace-layout-policy.ts'
 
 const router = createRouter({
 	routeTree,
@@ -68,6 +71,16 @@ test.each([
 	expect(workspaceLayoutNavigation(matches(path), session)).toBeNull()
 })
 
+test.each([
+	['/@acme', 'acme'],
+	['/@acme/example', 'acme'],
+	['/@acme/example/tree/main/README.md', 'acme'],
+	['/account', null],
+	['/community', null],
+])('shell flag context for %s is %s', (path, orgSlug) => {
+	expect(workspaceShellOrgSlug(matches(path))).toBe(orgSlug)
+})
+
 test('a renamed person keeps the rail on their own profile', () => {
 	const renamed = { ...session, username: 'jane-new' }
 	expect(workspaceLayoutNavigation(matches('/@jane-new'), renamed)).toEqual({
@@ -76,6 +89,9 @@ test('a renamed person keeps the rail on their own profile', () => {
 		orgSlug: null,
 		profileSlug: 'jane-new',
 	})
+	expect(
+		workspaceLayoutNavigation(matches('/@jane-new/example'), renamed),
+	).toMatchObject({ rail: 'workspace', item: 'repositories', orgSlug: null })
 	expect(workspaceLayoutNavigation(matches('/@someone'), renamed)).toBeNull()
 })
 

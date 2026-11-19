@@ -2,7 +2,10 @@
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import { isPlainDocumentSearch } from '#universal/limited-browser.ts'
 import { homeSoftwareApplicationJsonLdScriptText } from '#universal/home-json-ld.ts'
-import { workspaceLayoutNavigation } from '../workspace-layout-policy.ts'
+import {
+	workspaceLayoutNavigation,
+	workspaceShellOrgSlug,
+} from '../workspace-layout-policy.ts'
 import { publicAsset } from '../public-assets.ts'
 import { pageNavigationForMatches } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
@@ -106,6 +109,7 @@ export const Route = createRootRouteWithContext<{
 	}) => {
 		const pageNavigation = pageNavigationForMatches(matches)
 		const orgScope = orgNavigationScope(matches)
+		const shellOrgSlug = orgScope?.orgSlug ?? workspaceShellOrgSlug(matches)
 		const appShell = appShellForMatches(matches)
 		if (typeof document === 'undefined') {
 			const identity = await verifySession({
@@ -124,6 +128,7 @@ export const Route = createRootRouteWithContext<{
 			return {
 				...identity,
 				orgScope,
+				shellOrgSlug,
 				pageNavigation,
 				pageLocation: location,
 				appShell,
@@ -141,6 +146,7 @@ export const Route = createRootRouteWithContext<{
 		return {
 			actorKey,
 			orgScope,
+			shellOrgSlug,
 			pageNavigation,
 			pageLocation: location,
 			appShell,
@@ -160,7 +166,7 @@ export const Route = createRootRouteWithContext<{
 					context.queryClient,
 					context.actorKey,
 					location.searchStr,
-					context.orgScope?.orgSlug ?? null,
+					context.shellOrgSlug,
 					!context.inPlaceNavigation,
 				),
 				context.verifyAccess
@@ -233,10 +239,10 @@ export const Route = createRootRouteWithContext<{
 })
 
 export function useShellData() {
-	const { actorKey, orgScope } = useRouteContext({ from: '__root__' })
+	const { actorKey, shellOrgSlug } = useRouteContext({ from: '__root__' })
 	const { shellLocation } = useLoaderData({ from: '__root__' })
 	return useSuspenseQuery(
-		shellQuery(actorKey, shellLocation.searchStr, orgScope?.orgSlug ?? null),
+		shellQuery(actorKey, shellLocation.searchStr, shellOrgSlug),
 	).data
 }
 

@@ -1,5 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { LoadingIndicator } from './components/loading-indicator.tsx'
 import type {} from './request-context.ts'
 import type { CommittedPage } from './presentation-navigation.ts'
 import { readRouterNonce } from '#start/server/router-nonce'
@@ -30,6 +29,8 @@ export function getRouter() {
 		},
 	})
 	if (typeof document !== 'undefined') readDocumentActor()
+	// Keep the current page visible while the next route loads. Routes can
+	// opt into a fallback with their own pendingComponent.
 	const router = createRouter({
 		ssr: { nonce },
 		routeTree,
@@ -45,7 +46,6 @@ export function getRouter() {
 		},
 		caseSensitive: true,
 		defaultErrorComponent: RouteErrorPage,
-		defaultPendingComponent: LoadingIndicator,
 		defaultOnCatch: captureClientException,
 		defaultViewTransition: false,
 		scrollRestoration: true,
