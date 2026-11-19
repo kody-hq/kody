@@ -1,3 +1,5 @@
+import { isPublicFetchHostname } from '#mcp/events/ssrf.ts'
+
 /**
  * Credential-bearing OAuth endpoints (device authorization + token exchange)
  * must use HTTPS in production. Plain HTTP is only allowed for loopback hosts
@@ -25,6 +27,18 @@ export function isSecureCredentialUrl(raw: string): boolean {
 	}
 }
 
+/**
+ * True when a credential endpoint may be fetched: {@link isSecureCredentialUrl}
+ * and a loopback or public host, never a private, link-local, or reserved IP
+ * literal. Checked on save and before each token request, not when reading
+ * stored rows, so a legacy row still lists.
+ */
+export function isPublicCredentialEndpoint(raw: string): boolean {
+	if (!isSecureCredentialUrl(raw)) return false
+	const hostname = new URL(raw).hostname.replace(/\.$/, '')
+	return isLoopbackHostname(hostname) || isPublicFetchHostname(hostname)
+}
+
 export function assertSecureCredentialUrl(
 	raw: string,
 	label: string,
@@ -35,6 +49,9 @@ export function assertSecureCredentialUrl(
 	}
 	if (!isSecureCredentialUrl(trimmed)) {
 		return `${label} must use https (http is only allowed for localhost).`
+	}
+	if (!isPublicCredentialEndpoint(trimmed)) {
+		return `${label} must not target a private, link-local, or reserved address.`
 	}
 	return null
 }

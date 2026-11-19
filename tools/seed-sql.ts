@@ -29,7 +29,7 @@ function storedStableUserIdSql(email: string) {
  * Deterministic TEXT ids for local metadata-only seed packages (and their
  * unique `source_id` values) so re-seeding upserts the same rows.
  */
-export function seedSavedPackageIds(input: { email: string; index: number }): {
+function seedSavedPackageIds(input: { email: string; index: number }): {
 	packageId: string
 	sourceId: string
 } {
@@ -310,7 +310,7 @@ ${roleSql}`.trim()
 }
 
 /** Deterministic fixture ids for a seeded team org and its one team. */
-export function seedTeamOrgIds(slug: string) {
+function seedTeamOrgIds(slug: string) {
 	const normalized = slug.trim().toLowerCase()
 	const hash = (kind: string) =>
 		createHash('sha256').update(`${kind}:${normalized}`).digest('hex')

@@ -189,6 +189,7 @@ export async function startIntegrationDeviceConnect(
 			clientId,
 			tokenUrl,
 			clientSecret: input.clientSecret,
+			deviceAuthorizationUrl,
 		})
 	}
 

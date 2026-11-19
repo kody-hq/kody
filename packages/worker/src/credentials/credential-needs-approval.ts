@@ -65,6 +65,7 @@ export type PausedSessionPublish = {
 export type PausedExternalPublish = {
 	allowForce: boolean
 	destructiveOverwriteConfirmed: boolean
+	uploadedBuildId?: string
 }
 
 export type CredentialNeedsApprovalRequired = {
@@ -295,6 +296,8 @@ export async function requireCredentialNeedsApproval(input: {
 				: {}),
 		},
 		requestedByUserId: input.requestedByUserId ?? null,
+		replaceSameCommitDetails:
+			input.pausedExternalPublish?.uploadedBuildId != null,
 	})
 	return {
 		requestId: request.id,
@@ -371,5 +374,8 @@ export function readPausedExternalPublish(
 		allowForce: options['allowForce'] === true,
 		destructiveOverwriteConfirmed:
 			options['destructiveOverwriteConfirmed'] === true,
+		...(typeof options['uploadedBuildId'] === 'string'
+			? { uploadedBuildId: options['uploadedBuildId'] }
+			: {}),
 	}
 }

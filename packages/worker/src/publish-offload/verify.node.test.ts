@@ -261,6 +261,82 @@ for (const [label, source] of [
 		'a re-export of the runtime',
 		'export * from "./.__kody_virtual__/runtime.js";',
 	],
+	[
+		'a namespace import with a comment between tokens',
+		'import * as/**/rt from "./.__kody_virtual__/runtime.js";\nrt["__kodyCreate" + "PackageBoundSecrets"]("pkg-other");',
+	],
+	[
+		'a namespace import with an escaped specifier',
+		'import * as rt from "./.__kody\\u005fvirtual__/runtime.js";\nrt["__kodyCreate" + "PackageBoundSecrets"]("pkg-other");',
+	],
+	[
+		'an escaped specifier on a named import',
+		'import { __kodyCreatePackageBoundSecrets } from "./.\\x5f_kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets("pkg-1");',
+	],
+	[
+		'a string import name',
+		'import { "__kodyCreatePackageBoundSecrets" as f } from "./.__kody_virtual__/runtime.js";\nf("pkg-other");',
+	],
+	[
+		'a string import name kept as a creator name',
+		'import { "__kodyCreatePackageBoundSecrets" as __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets("pkg-1");',
+	],
+	[
+		'a namespace re-export with a comment between tokens',
+		'export * as/**/rt from "./.__kody_virtual__/runtime.js";',
+	],
+	[
+		'a named re-export of the runtime',
+		'export { __kodyCreatePackageBoundSecrets as s } from "./.__kody_virtual__/runtime.js";',
+	],
+	[
+		'a literal dynamic import of the runtime',
+		'const rt = await import("./.__kody_virtual__/runtime.js");',
+	],
+	[
+		'a template dynamic import of the runtime',
+		'const rt = await import(`./.__kody_virtual__/runtime.js`);',
+	],
+	[
+		'a computed require',
+		'const p = "./.__kody_" + "virtual__/runtime.js";\nrequire(p);',
+	],
+	[
+		'an absolute path to the runtime',
+		'import { __kodyCreatePackageBoundSecrets } from "/.__kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets("pkg-1");',
+	],
+	[
+		'a percent-encoded path to the runtime',
+		'import * as rt from "./.%5F%5Fkody_virtual__/runtime.js";',
+	],
+	[
+		'a creator call with a computed id',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\nconst id = "pkg-" + "other";\n__kodyCreatePackageBoundSecrets(id);',
+	],
+	[
+		'a creator call with an extra argument',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets("pkg-1", "pkg-other");',
+	],
+	[
+		'a creator re-exported by name',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\nexport { __kodyCreatePackageBoundSecrets };',
+	],
+	[
+		'a creator passed as a value',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\nexport const all = { __kodyCreatePackageBoundSecrets };',
+	],
+	[
+		'a creator called through a comma expression',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\n(0, __kodyCreatePackageBoundSecrets)("pkg-other");',
+	],
+	[
+		'a creator called as a tagged template',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets`pkg-other`;',
+	],
+	[
+		'a creator called with an escaped id',
+		'import { __kodyCreatePackageBoundSecrets } from "./.__kody_virtual__/runtime.js";\n__kodyCreatePackageBoundSecrets("pkg\\u002dother");',
+	],
 ] as const) {
 	test(`binding checks refuse ${label}`, async () => {
 		const uploaded = await uploadedTarget({ 'index.js': source })
@@ -274,6 +350,42 @@ for (const [label, source] of [
 		).rejects.toBeInstanceOf(PublishBuildVerificationError)
 	})
 }
+
+test('a module re-exporting the runtime namespace is refused even when another module reads it', async () => {
+	const modules = {
+		'index.js':
+			'import { rt } from "./a.js";\nexport default rt["__kodyCreate" + "PackageBoundSecrets"]("pkg-other");',
+		'a.js': 'export * as/**/rt from "./.__kody_virtual__/runtime.js";',
+	}
+	const uploaded = await uploadedTarget(modules)
+	await expect(
+		verifyUploadedTargetModules({
+			uploaded,
+			modules,
+			ownPackageId: 'pkg-1',
+			linkedImports: new Map(),
+		}),
+	).rejects.toThrow(/re-exports a Kody platform module/)
+})
+
+test('CommonJS uploads are refused', async () => {
+	const module = { cjs: 'module.exports = 1' }
+	const bytes = workerLoaderModuleBytes(module)
+	const uploaded = await uploadedTarget({})
+	uploaded.modules['index.js'] = {
+		sha256: await sha256Hex(bytes),
+		size: bytes.byteLength,
+		chunks: [],
+	}
+	await expect(
+		verifyUploadedTargetModules({
+			uploaded,
+			modules: { 'index.js': module },
+			ownPackageId: 'pkg-1',
+			linkedImports: new Map(),
+		}),
+	).rejects.toThrow(/CommonJS/)
+})
 
 test('binding checks accept the bundler output for the package itself', async () => {
 	const source = [
@@ -305,6 +417,23 @@ test('an upload may import the linked placeholders the source imports', async ()
 	const source = [
 		'import list from "./.__kody_linked__/@them__notes/list.js";',
 		'export default async () => await list();',
+	].join('\n')
+	const uploaded = await uploadedTarget({ 'index.js': source })
+	const result = await verifyUploadedTargetModules({
+		uploaded,
+		modules: { 'index.js': source },
+		ownPackageId: 'pkg-1',
+		linkedImports,
+	})
+	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
+})
+
+test('an upload may use linked placeholders as namespaces, re-exports and dynamic imports', async () => {
+	const source = [
+		'import * as notes from "./.__kody_linked__/@them__notes/list.js";',
+		'export * from "./.__kody_linked__/@them__notes/list.js";',
+		'export const keys = () => Object.keys(notes);',
+		'export const load = () => import("./.__kody_linked__/@them__notes/list.js");',
 	].join('\n')
 	const uploaded = await uploadedTarget({ 'index.js': source })
 	const result = await verifyUploadedTargetModules({

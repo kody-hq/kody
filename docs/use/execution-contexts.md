@@ -112,8 +112,8 @@ newer and a latest version that is skipped because it failed to start here.
 - `kody daemon auto-update off` / `on`: the machine-wide switch, stored as
   `autoUpdate` in `execution-context-policy.json`. Running daemons pick it up at
   their next check. `KODY_DAEMON_AUTO_UPDATE=0` turns it off for one daemon.
-- The desktop app: **This machine** (in the web account menu) > Turn off / Turn
-  on automatic updates.
+- The desktop app: **This machine** (in the web account menu) > the **Automatic
+  updates** toggle.
 - The context page shows the daemon's CLI version and whether auto-update is on.
 
 Existing installs need nothing: a daemon started from a CLI that has auto-update
@@ -193,8 +193,8 @@ the sideloading certificate once, then open the App Installer link
 The desktop app and the CLI share this machine's registration and its runner:
 
 - When `kody daemon install` set up a service, or a daemon already runs, the app
-  adopts it. **This machine** shows that runner and its version, and Pause,
-  Resume, and Restart control the service
+  adopts it. **This machine** shows that runner (hover the status line for its
+  version), and Pause, Resume, and Restart control the service
   (`kody daemon start | stop | restart`).
 - Setup offers **Use this machine's existing registration** when the CLI already
   registered this machine, instead of creating a second context. It checks first

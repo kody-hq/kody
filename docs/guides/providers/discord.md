@@ -126,15 +126,17 @@ export default async function main() {
 }
 ```
 
-Lane B (bot token) — note the `Bot` prefix:
+Lane B (bot token): set the Key's provider to `discord` and its header placement
+to `Authorization` with the format `Bot {value}`. If you can Use both the OAuth
+connection and the bot Key, pick the bot Key by ID in the
+[execute credential map](../credentials.md#picking-a-credential).
 
 ```ts
+import { credential } from 'kody:runtime'
+
 export default async function main() {
-	const response = await fetch('https://discord.com/api/v10/users/@me', {
-		headers: {
-			Authorization: 'Bot {{secret:discordBotToken}}',
-		},
-	})
+	const discord = await credential('discord')
+	const response = await discord.fetch('https://discord.com/api/v10/users/@me')
 	if (!response.ok) {
 		throw new Error(
 			`Discord bot smoke test failed: ${response.status} ${await response.text()}`,

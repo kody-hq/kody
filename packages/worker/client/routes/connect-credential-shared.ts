@@ -505,6 +505,13 @@ export function buildKeySaveBody(input: {
 				},
 			}
 		case 'login': {
+			if ('singleRequest' in form.loginExchange.rest) {
+				return {
+					ok: false,
+					error:
+						'Set up a single-request Login with secretSet as the credential owner.',
+				}
+			}
 			const body = parseExchangeBody(form.loginExchange.body)
 			if (!body) {
 				return {

@@ -2,7 +2,7 @@
 id: publish_large_packages
 title: Publish packages too big for Kody cloud
 summary:
-  When a publish hits the worker's memory, CPU, or payload limits, build the
+  When a cloud build hits the worker's memory, CPU, or payload limits, build the
   package on your own machine (`kody package publish --build local`) or on an
   execution context you operate (`--build context`). The CLI pushes HEAD first;
   Kody checks the upload against that commit, links any `kody:@` packages it
@@ -72,7 +72,9 @@ With the experiment on, Kody picks where each publish builds, in this order:
 
 3. **Your execution context chain,** the same as `execute`: the contexts you
    operate, in order, then Kody cloud, unless your chain is strict. Contexts
-   that are offline, busy, or that someone else operates are skipped.
+   that are offline, busy, or that someone else operates are skipped, and so are
+   contexts whose daemon did not report `git` (the builder clones with it;
+   daemons before this check never report it, so run `kody daemon update`).
 
 Auto-publish on push works the same way. A package that subscribes to the repo
 pushed event and calls publish from its handler gets these same rules.
@@ -86,7 +88,7 @@ included, and naming a context other than `cloud` is refused.
 | ------------------------------------------------------------------ | ----------------------------------------------- |
 | Typecheck, and bundling every export, job, handler, and app target | Your machine or context (same code as Kody)     |
 | File manifest check, cheap publish checks, credential stamp        | Kody                                            |
-| Hash, size, and package-identity checks for each target            | Kody                                            |
+| Verify the upload and link the published exports it imports        | Kody                                            |
 | Writing the registry and switching the serving version             | Kody, only after every check and write succeeds |
 
 Kody never publishes a commit it cannot see. `--build local` refuses uncommitted
@@ -102,24 +104,26 @@ What Kody checks before it serves an uploaded build:
   exactly.
 - Every target must be one the commit's `package.json` declares, with the right
   hashes and sizes and no platform-reserved module names.
-- Kody does not build your package again. The build you upload is the published
-  artifact, so Kody cloud's build memory and CPU limits never apply to a
-  `--build local` or `--build context` publish. Kody checks that the build
-  describes the pushed commit and declares the right targets; it does not prove
-  the uploaded bundles were compiled from that source. Package info and the
-  publish result show where each version was built.
+- Kody does not build your package again. Building elsewhere avoids Kody's
+  bundling limits, but finalization still runs on Kody under its own CPU and
+  memory limits. Kody checks that the build describes the pushed commit and
+  declares the right targets; it does not prove the uploaded bundles were
+  compiled from that source. Package info and the publish result show where each
+  version was built.
 - A build never contains another Kody package. Each `kody:@` import stays a
   linked placeholder, and Kody fills it in when it commits the upload: the
   dependency's own published artifact, resolved for you the same way a cloud
   build resolves it, behind the same metered proxy. The dependency's package id,
   storage, secrets, and capabilities come from Kody, so you can import packages
   you can use but not write.
-- Filling a placeholder stores that dependency's modules as linked artifacts on
-  your package, so a large dependency still adds its size (and the size of the
-  `kody:@` packages it imports) to your publish. Kody loads each dependency once
-  per publish. Several targets that import the same dependency share one linked
-  blob when the content hash matches. Kody also builds an export and the jobs
-  that share its entry file once.
+- Kody loads and links each distinct imported export once per publish. Targets
+  that import the same export reuse that work and share identical stored module
+  groups. Different exports from the same package are separate artifacts. If
+  each bundles the same library, Kody still processes each copy; it does not
+  extract shared code from finished bundles. Artifact size includes the
+  transitive modules it carries. If finalization hits a limit, the error lists
+  the largest linked artifacts Kody measured before it stopped. Importing fewer
+  or smaller exports can reduce that work; moving the build again cannot.
 - Uploaded modules may bind only your own package. A build that inlines another
   package's code, binds another package's id, or ships its own module at a
   linked placeholder path is refused.
@@ -148,9 +152,9 @@ Uploads resume: rerunning the same command skips chunks Kody already has.
 
 ## Limits
 
-Building off the worker lifts Kody's compute limits but not its storage limits:
-source stays capped at 32 MiB and each built target at about 20 MiB. Local and
-context build time is free; only Kody's verification is metered.
+Building off the worker avoids Kody's bundling limits, not the finalization or
+storage limits: source stays capped at 32 MiB and each built target at about 20
+MiB. Local and context build time is not metered by Kody.
 
 ## Execution contexts
 

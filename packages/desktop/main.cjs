@@ -75,6 +75,11 @@ function navigationFor(event) {
 	const navigation = windows.get(window)?.navigation
 	return navigation?.accepts(event) ? navigation : undefined
 }
+ipcMain.on('kody:navigation-initial-state', (event) => {
+	const window = BrowserWindow.fromWebContents(event.sender)
+	const navigation = windows.get(window)?.navigation
+	event.returnValue = navigation?.accepts(event) ? navigation.snapshot() : null
+})
 ipcMain.handle('kody:navigation', (event, command) => {
 	const navigation = navigationFor(event)
 	if (!navigation)
@@ -605,7 +610,7 @@ async function createWindow(path = '/account') {
 		title: 'Kody',
 		icon: join(__dirname, 'assets/icon.png'),
 		...(integratedTitlebar
-			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 9 } }
+			? { titleBarStyle: 'hidden', trafficLightPosition: { x: 16, y: 8 } }
 			: {}),
 		backgroundColor: '#ffffff',
 		webPreferences: {

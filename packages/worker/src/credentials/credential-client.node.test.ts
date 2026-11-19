@@ -192,7 +192,7 @@ test('open reports unbound and ambiguous picks with ready-to-retry options, list
 	})
 
 	const firstId = await t.storeKey({ name: 'resend-a' })
-	await t.storeKey({ name: 'resend-b' })
+	const secondId = await t.storeKey({ name: 'resend-b' })
 	const ambiguous = await rejection(
 		openCredentialClient(bea, { key: 'resend' }),
 	)
@@ -200,11 +200,11 @@ test('open reports unbound and ambiguous picks with ready-to-retry options, list
 		code: 'credential_ambiguous',
 		retryWith: [
 			{
-				credentials: { resend: { name: 'resend-a', scope: 'org' } },
+				credentials: { resend: { id: firstId } },
 				named: { name: 'resend-a', scope: 'org' },
 			},
 			{
-				credentials: { resend: { name: 'resend-b', scope: 'org' } },
+				credentials: { resend: { id: secondId } },
 				named: { name: 'resend-b', scope: 'org' },
 			},
 		],
@@ -235,7 +235,7 @@ test('a declared need picks by its kind and provider, and offers same-kind crede
 		name: '@acme/mailer',
 	})
 	mockNeeds([{ key: 'MAIL', provider: 'resend' }])
-	await t.storeKey({ name: 'loose-key', provider: null })
+	const looseId = await t.storeKey({ name: 'loose-key', provider: null })
 	const ctx = t.contextFor({
 		request: t.requestAs('bea', 'owner'),
 		packageId,
@@ -245,7 +245,7 @@ test('a declared need picks by its kind and provider, and offers same-kind crede
 		code: 'credential_unbound',
 		retryWith: [
 			{
-				credentials: { MAIL: { name: 'loose-key', scope: 'org' } },
+				credentials: { MAIL: { id: looseId } },
 				named: { name: 'loose-key', scope: 'org' },
 			},
 		],
@@ -524,6 +524,140 @@ test('the gateway strips the handle, places the key, holds redirects, redacts ec
 		}),
 	).rejects.toMatchObject({ body: { code: 'invalid_request' } })
 	expect(seen).toHaveLength(0)
+})
+
+test('the gateway sends only the exact composition every credential approved by ID', async () => {
+	const t = await setup()
+	const entryId = await t.storeKey({ name: 'entry' })
+	const companionId = await t.storeKey({
+		name: 'companion',
+		value: 'companion-value',
+		provider: 'external',
+		placement: { body: true },
+	})
+	const endpoint = 'https://api.resend.com/settings'
+	const packageId = 'approved-package'
+	const profile = {
+		kind: 'composition',
+		packageId,
+		endpoint,
+		method: 'POST',
+		entryCredentialId: entryId,
+		sites: [
+			{
+				kind: 'header',
+				name: 'Authorization',
+				parts: ['Bearer ', { credentialId: entryId }],
+			},
+			{
+				kind: 'body',
+				credentialId: companionId,
+				placement: {
+					kind: 'body',
+					packageId,
+					endpoint,
+					method: 'POST',
+					mediaType: 'application/json',
+					fields: [['value']],
+					selectors: [{ path: ['resource'], value: 'approved' }],
+				},
+			},
+		],
+	}
+	const setProfile = (id: string, next: unknown) =>
+		t.db
+			.prepare('UPDATE secret_entries SET inject_json = ? WHERE id = ?')
+			.bind(JSON.stringify(next), id)
+			.run()
+	await setProfile(entryId, profile)
+	const request = t.requestAs('bea', 'owner')
+	const opened = await openCredentialClient(t.contextFor({ request }), {
+		key: 'resend',
+	})
+	const forward = vi.fn(async (wire: Request) => {
+		expect(wire.headers.get('authorization')).toBe(`Bearer ${resendKey}`)
+		expect(wire.headers.has(credentialClientHeaderName)).toBe(false)
+		expect(wire.headers.has('x-http-method-override')).toBe(false)
+		expect(wire.redirect).toBe('manual')
+		expect(await wire.json()).toEqual({
+			resource: 'approved',
+			value: 'companion-value',
+		})
+		return new Response('companion-value')
+	})
+	const send = (input?: {
+		body?: object
+		boundId?: string
+		headers?: HeadersInit
+		redirect?: boolean
+	}) =>
+		executeGatewayFetch({
+			env: t.env,
+			props: {
+				baseUrl: 'https://example.com',
+				userId: t.acmeId,
+				email: null,
+				request,
+				storageContext: {
+					packageId,
+					storageId: packageId,
+					appId: packageId,
+					sessionId: null,
+				},
+				boundPackageId: input?.boundId ?? packageId,
+				grantedSecretAuthorityPackageIds: [packageId, 'other-package'],
+				credentialClientBinding: 'run:test',
+			},
+			request: new Request(endpoint, {
+				method: 'POST',
+				headers: {
+					[credentialClientHeaderName]: opened.handle,
+					'Content-Type': 'application/json',
+					'X-HTTP-Method-Override': 'DELETE',
+					...input?.headers,
+				},
+				body: JSON.stringify(input?.body ?? { resource: 'approved' }),
+			}),
+			globalFetch: (input?.redirect
+				? async () => Response.redirect('https://other.example/')
+				: forward) as unknown as typeof fetch,
+		})
+	const refusal = { body: { code: 'invalid_request' } }
+	await expect(send()).rejects.toMatchObject(refusal)
+	await setProfile(companionId, profile)
+	await expect(send({ boundId: 'other-package' })).rejects.toMatchObject(
+		refusal,
+	)
+	await expect(send({ boundId: '' })).rejects.toMatchObject(refusal)
+	await expect(
+		send({ headers: { Authorization: 'caller auth' } }),
+	).rejects.toMatchObject(refusal)
+	await expect(send({ body: { resource: 'other' } })).rejects.toMatchObject(
+		refusal,
+	)
+	await expect(
+		send({ body: { resource: 'approved', value: 'override' } }),
+	).rejects.toMatchObject(refusal)
+	expect(forward).not.toHaveBeenCalled()
+	const result = await send()
+	expect(await result.text()).not.toContain('companion-value')
+	expect(forward).toHaveBeenCalledTimes(1)
+	await expect(send({ redirect: true })).rejects.toMatchObject(refusal)
+
+	const otherBucket = 'other-package-bucket'
+	await t.db
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key, created_at, updated_at)
+			VALUES (?, ?, 'package', 'other-package', ?, ?)`,
+		)
+		.bind(otherBucket, t.acmeId, now, now)
+		.run()
+	await t.db
+		.prepare('UPDATE secret_entries SET bucket_id = ? WHERE id = ?')
+		.bind(otherBucket, companionId)
+		.run()
+	await expect(send()).rejects.toMatchObject(refusal)
+	expect(forward).toHaveBeenCalledTimes(1)
 })
 
 test('the placed header drops the code value before placeholders expand, so a placeholder there never resolves', async () => {
@@ -884,10 +1018,10 @@ test('a call map picks by name among several matches, and credentials() opens ev
 				'The credentials map picks 2 credentials for "resend": "resend-a" (org), "resend-b" (org). Pick one of them for credential("resend"), or call credentials("resend") to get all of them.',
 			retryWith: [
 				expect.objectContaining({
-					credentials: { resend: { name: 'resend-a', scope: 'org' } },
+					credentials: { resend: { id: expect.any(String) } },
 				}),
 				expect.objectContaining({
-					credentials: { resend: { name: 'resend-b', scope: 'org' } },
+					credentials: { resend: { id: expect.any(String) } },
 				}),
 			],
 			options: [
@@ -946,7 +1080,7 @@ test('a call map pick must match the need kind and provider, and a pick with no 
 
 test('a call map is validated before code runs: unknown keys fail an invoke and warn ad hoc code', async () => {
 	const t = await setup()
-	await t.storeKey({ name: 'resend-prod' })
+	const id = await t.storeKey({ name: 'resend-prod' })
 	const request = t.requestAs('bea', 'owner')
 	const packageId = await t.savePackage({ ownerId: t.acmeId, name: '@acme/m' })
 	mockNeeds([{ key: 'MAIL', provider: 'resend' }])
@@ -965,6 +1099,11 @@ test('a call map is validated before code runs: unknown keys fail an invoke and 
 		})
 	await expect(validate({ MAIL: 'resend-prod' }, true)).resolves.toEqual({
 		warnings: [],
+		map: new Map([['MAIL', [{ id }]]]),
+	})
+	await expect(validate({ MAIL: { id } }, true)).resolves.toEqual({
+		warnings: [],
+		map: new Map([['MAIL', [{ id }]]]),
 	})
 	await expect(
 		rejection(validate({ MAIL: 'resend-prod', OTHER: 'resend-prod' }, true)),
@@ -1038,7 +1177,7 @@ test('call map validation keeps the entry package pinned needs over a dependency
 			strict: true,
 			baseUrl: 'https://example.com',
 		}),
-	).resolves.toEqual({ warnings: [] })
+	).resolves.toMatchObject({ warnings: [] })
 })
 
 test('a dependency opens against the entry package pinned need its picks passed, not its later publish', async () => {

@@ -57,6 +57,7 @@ export type WebhookEndpointRecord = {
 	 * uses package-owned HMAC (no secretName) or has never reconciled.
 	 */
 	hmacSecretName: string | null
+	hmacCredentialId?: string | null
 	/**
 	 * Last-seen declared signing value (platform ciphertext). Used to detect
 	 * value rotation and to populate previous_* — not for apply injection.
@@ -66,6 +67,7 @@ export type WebhookEndpointRecord = {
 	previousUrlSecretExpiresAt: string | null
 	/** Previous `verification.secretName` during the signing-secret grace. */
 	previousHmacSecretName: string | null
+	previousHmacCredentialId?: string | null
 	/** Previous signing value ciphertext during the signing-secret grace. */
 	previousHmacSecretEncrypted: string | null
 	previousHmacSecretExpiresAt: string | null

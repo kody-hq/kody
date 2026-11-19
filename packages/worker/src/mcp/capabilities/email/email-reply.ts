@@ -5,6 +5,7 @@ import {
 	emailOwnerOrgId,
 	requireVerifiedEmailAccountUser,
 } from './require-verified-user.ts'
+import { authorizeEmailMessageInbox } from '#worker/email/authorize-email-message.ts'
 import { sendOutboundEmail } from '#worker/email/outbound.ts'
 import { mailboxRpc } from '#worker/email/mailbox-client.ts'
 import { mailboxMessageToEmailMessageRecord } from '#worker/email/mailbox-record-mappers.ts'
@@ -113,6 +114,15 @@ export const emailReplyCapability = defineDomainCapability(
 				: null
 			if (!original)
 				throw new Error(`Email message not found: ${args.message_id}`)
+			for (const permission of ['email:read', 'email:send'] as const) {
+				await authorizeEmailMessageInbox({
+					env: ctx.env,
+					request: ctx.callerContext.request,
+					ownerId: emailOwnerOrgId(ctx, user),
+					message: original,
+					permission,
+				})
+			}
 			// The recipient is derived from the stored message inside
 			// sendOutboundEmail; this capability never chooses it.
 			const result = await sendOutboundEmail({

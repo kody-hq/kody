@@ -38,10 +38,13 @@ test('binds the integration helpers of an inlined facade to its package', () => 
 		allowedPackageIds: new Set(['pkg-outer']),
 	})!
 	expect(repaired).toContain(
-		'import { secretHeaders, packageContext } from "./.__kody_virtual__/runtime.js";',
+		'import { secretHeaders } from "./.__kody_virtual__/runtime.js";',
 	)
 	expect(repaired).toContain(
-		'import { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials } from "./.__kody_virtual__/runtime.js";',
+		'import { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials, __kodyCreatePackageBoundPackageContext } from "./.__kody_virtual__/runtime.js";',
+	)
+	expect(repaired).toContain(
+		'var packageContext = __kodyCreatePackageBoundPackageContext("pkg-outer");',
 	)
 	expect(repaired).toContain(
 		'var createAuthenticatedFetch = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");',
@@ -50,7 +53,7 @@ test('binds the integration helpers of an inlined facade to its package', () => 
 		'var oauthClientCredentials = __kodyCreatePackageBoundOauthClientCredentials("pkg-outer");',
 	)
 	expect(repaired).toContain(
-		'Object.entries({ credential: credential, createAuthenticatedFetch: createAuthenticatedFetch, oauthClientCredentials: oauthClientCredentials })',
+		'Object.entries({ credential: credential, createAuthenticatedFetch: createAuthenticatedFetch, oauthClientCredentials: oauthClientCredentials, packageContext: packageContext })',
 	)
 	// The package code is untouched.
 	expect(repaired).toContain(outerCode)
@@ -86,7 +89,7 @@ test("binds each inlined package's renamed helper to that package", () => {
 		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
 	)
 	expect(repaired).toContain(
-		'import { __kodyCreatePackageBoundAuthenticatedFetch as __kodyCreatePackageBoundAuthenticatedFetch1, __kodyCreatePackageBoundOauthClientCredentials as __kodyCreatePackageBoundOauthClientCredentials1 } from "./.__kody_packages__/@a/inner/.__published_bundle__/00/.__kody_virtual__/runtime.js";',
+		'import { __kodyCreatePackageBoundAuthenticatedFetch as __kodyCreatePackageBoundAuthenticatedFetch1, __kodyCreatePackageBoundOauthClientCredentials as __kodyCreatePackageBoundOauthClientCredentials1, __kodyCreatePackageBoundPackageContext as __kodyCreatePackageBoundPackageContext1 } from "./.__kody_packages__/@a/inner/.__published_bundle__/00/.__kody_virtual__/runtime.js";',
 	)
 })
 
@@ -162,7 +165,7 @@ test('a facade without its end marker does not swallow the next facade', () => {
 		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
 	)
 	expect(repaired).toContain(
-		'Object.entries({ credential: credential2, createAuthenticatedFetch: createAuthenticatedFetch2, oauthClientCredentials: oauthClientCredentials2 })',
+		'Object.entries({ credential: credential2, createAuthenticatedFetch: createAuthenticatedFetch2, oauthClientCredentials: oauthClientCredentials2, packageContext: packageContext2 })',
 	)
 	expect(repaired).toContain(innerCode)
 	expect(repaired).toContain(outerCode)
@@ -205,7 +208,7 @@ test('binds a pre-fix facade that has no lexical fetch or kody', () => {
 		allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
 	})!
 	expect(repaired).toContain(
-		'import { kody, secretHeaders, packageContext } from "./.__kody_virtual__/runtime.js";\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials } from "./.__kody_virtual__/runtime.js";',
+		'import { kody, secretHeaders } from "./.__kody_virtual__/runtime.js";\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials, __kodyCreatePackageBoundPackageContext } from "./.__kody_virtual__/runtime.js";',
 	)
 	expect(repaired).toContain(
 		'var packageStorage = __kodyCreatePackageBoundStorage("pkg-outer");\nvar createAuthenticatedFetch = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");\nvar oauthClientCredentials = __kodyCreatePackageBoundOauthClientCredentials("pkg-outer");',
@@ -214,7 +217,7 @@ test('binds a pre-fix facade that has no lexical fetch or kody', () => {
 		'var createAuthenticatedFetch2 = __kodyCreatePackageBoundAuthenticatedFetch1("pkg-inner");',
 	)
 	expect(repaired).toContain(
-		'Object.entries({ packageStorage, credential, createAuthenticatedFetch: createAuthenticatedFetch, oauthClientCredentials: oauthClientCredentials })',
+		'Object.entries({ packageStorage, credential, createAuthenticatedFetch: createAuthenticatedFetch, oauthClientCredentials: oauthClientCredentials, packageContext: packageContext })',
 	)
 	expect(repaired).toContain(innerCode)
 	expect(repaired).toContain(outerCode)
@@ -287,10 +290,10 @@ test('binds an `export *` era facade on its namespace and default export', () =>
 		allowedPackageIds: new Set(['pkg-outer', 'pkg-inner']),
 	})!
 	expect(repaired).toContain(
-		'  packageStorage: () => packageStorage,\n  createAuthenticatedFetch: () => createAuthenticatedFetch1,\n  oauthClientCredentials: () => oauthClientCredentials\n});\n__reExport(f_exports, runtime_star);',
+		'  packageStorage: () => packageStorage,\n  createAuthenticatedFetch: () => createAuthenticatedFetch1,\n  oauthClientCredentials: () => oauthClientCredentials,\n  packageContext: () => packageContext\n});\n__reExport(f_exports, runtime_star);',
 	)
 	expect(repaired).toContain(
-		'var packageStorage = __kodyCreatePackageBoundStorage("pkg-outer");\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials } from "./.__kody_virtual__/runtime.js";\nvar createAuthenticatedFetch1 = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");',
+		'var packageStorage = __kodyCreatePackageBoundStorage("pkg-outer");\nimport { __kodyCreatePackageBoundAuthenticatedFetch, __kodyCreatePackageBoundOauthClientCredentials, __kodyCreatePackageBoundPackageContext } from "./.__kody_virtual__/runtime.js";\nvar createAuthenticatedFetch1 = __kodyCreatePackageBoundAuthenticatedFetch("pkg-outer");',
 	)
 	expect(repaired).toContain(
 		'  get(target, property, receiver) {\n    if (property === "createAuthenticatedFetch" && createAuthenticatedFetch1 !== void 0) return createAuthenticatedFetch1;\n',

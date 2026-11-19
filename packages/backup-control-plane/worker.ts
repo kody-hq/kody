@@ -20,10 +20,12 @@ import {
 	primaryBackupTimeForDay,
 	type EnqueueResult,
 } from './workflow-trigger.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 export { ProductionD1BackupWorkflow } from './backup-workflow.ts'
 export { ProductionDrRestoreWorkflow } from './restore-workflow.ts'
 export { ProductionSealDayWorkflow } from './seal-day-workflow.ts'
+export { PacedRestoreDrillWorkflow } from './paced-restore-drill-workflow.ts'
 
 export const BACKUP_CRON = '15 2 * * *'
 export const FRESHNESS_CRON = '45 * * * *'
@@ -150,16 +152,18 @@ async function scheduled(
 		return
 	}
 	const scheduledAt = new Date(controller.scheduledTime)
+	const retryingEnv = withRetryingBackupBucket(env)
 	switch (controller.cron) {
 		case BACKUP_CRON:
-			await triggerBackup(env, scheduledAt)
+			await triggerBackup(retryingEnv, scheduledAt)
 			return
 		case FRESHNESS_CRON: {
 			const results = await Promise.allSettled([
 				runFreshnessAndRetry({
-					checkFreshness: () => checkFreshness(env, scheduledAt),
-					retryBackup: () => retryBackup(env, scheduledAt),
+					checkFreshness: () => checkFreshness(retryingEnv, scheduledAt),
+					retryBackup: () => retryBackup(retryingEnv, scheduledAt),
 				}),
+				// Raw bucket: the seal scan budgets its own calls and retries.
 				sealRecentCompleteDays(env, scheduledAt),
 			])
 			const errors = results.flatMap((result) =>
@@ -184,7 +188,7 @@ async function scheduled(
 
 const handler = {
 	async fetch(request: Request, env: BackupEnvironment): Promise<Response> {
-		return handleControlPlaneFetch(request, env)
+		return handleControlPlaneFetch(request, withRetryingBackupBucket(env))
 	},
 	async scheduled(
 		controller: ScheduledController,

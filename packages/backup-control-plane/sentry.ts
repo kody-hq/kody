@@ -71,11 +71,38 @@ export function captureRestExportFailure(input: {
 	})
 }
 
-export function captureFullSealBlocked(input: { day: string; reason: string }) {
+export function captureFullSealBlocked(input: {
+	day: string
+	reason: string
+	source?: string
+}) {
 	captureDrIssue({
 		cause: 'full-seal-blocked',
-		detail: input.reason,
-		message: `Full DR seal is blocked: ${input.reason}`,
-		tags: { 'dr.day': input.day, 'dr.seal_reason': input.reason },
+		detail: input.source ? `${input.reason}:${input.source}` : input.reason,
+		message: input.source
+			? `Full DR seal is blocked: ${input.reason} (${input.source})`
+			: `Full DR seal is blocked: ${input.reason}`,
+		tags: {
+			'dr.day': input.day,
+			'dr.seal_reason': input.reason,
+			...(input.source ? { 'dr.database': input.source } : {}),
+		},
+	})
+}
+
+/**
+ * The hourly seal scan hit the Workers per-invocation subrequest limit even
+ * though its own R2 call budget had room: the budget no longer fits under
+ * `limits.subrequests` next to the rest of the invocation.
+ */
+export function captureSealScanSubrequestLimit(input: {
+	day: string
+	r2Calls: number
+}) {
+	captureDrIssue({
+		cause: 'seal-scan-subrequest-limit',
+		detail: 'worker-subrequest-limit',
+		message: `Full DR seal scan hit the Workers subrequest limit after ${input.r2Calls} R2 calls`,
+		tags: { 'dr.day': input.day },
 	})
 }

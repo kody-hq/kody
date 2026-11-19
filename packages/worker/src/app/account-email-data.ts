@@ -1,5 +1,6 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
+import { loadReadableEmailInboxIds } from '#worker/email/authorize-email-message.ts'
 import { isPersonalOrg } from '#worker/orgs/is-personal-org.ts'
 import {
 	entitlementEmailForOwner,
@@ -436,6 +437,8 @@ async function loadSelectedMessage(input: {
 	stableUserId: OwnerId
 	orgSlug: string | null
 	messageId: string
+	/** Inboxes the viewer can read; null when they can read the whole mailbox. */
+	readableInboxIds: ReadonlyArray<string> | null
 }): Promise<AccountEmailMessageDetail | null> {
 	const message = await getOwnerEmailMessageById({
 		env: input.env,
@@ -443,6 +446,12 @@ async function loadSelectedMessage(input: {
 		messageId: input.messageId,
 	})
 	if (!message) return null
+	if (
+		input.readableInboxIds &&
+		(!message.inboxId || !input.readableInboxIds.includes(message.inboxId))
+	) {
+		return null
+	}
 	const [attachments, deliveryEvents] = await Promise.all([
 		listOwnerEmailAttachmentsForMessage({
 			env: input.env,
@@ -599,6 +608,10 @@ export async function loadAccountEmailDetail(input: {
 		stableUserId: ownerId,
 		orgSlug: orgSlugFor(input.user),
 		messageId: input.messageId,
+		readableInboxIds: await loadReadableEmailInboxIds({
+			env: input.env,
+			request: input.user.request,
+		}),
 	})
 }
 
@@ -678,6 +691,10 @@ export async function readAccountEmailData(input: {
 
 	const selectedMessageId = input.selectedMessageId?.trim() || null
 	const orgSlug = orgSlugFor(input.user)
+	const readableInboxIds = await loadReadableEmailInboxIds({
+		env: input.env,
+		request: input.user.request,
+	})
 	const [listResult, inboxes, usage, selectedMessage, deliveryPause] =
 		await Promise.all([
 			listOwnerEmailMessagesPage({
@@ -685,10 +702,15 @@ export async function readAccountEmailData(input: {
 				ownerId: userId,
 				query,
 				view,
+				inboxIds: readableInboxIds,
 				pageSize,
 				offset,
 			}),
-			loadInboxes({ db: input.env.APP_DB, userId }),
+			loadInboxes({ db: input.env.APP_DB, userId }).then((all) =>
+				readableInboxIds
+					? all.filter((inbox) => readableInboxIds.includes(inbox.id))
+					: all,
+			),
 			loadUsage({
 				db: input.env.APP_DB,
 				env: input.env,
@@ -701,6 +723,7 @@ export async function readAccountEmailData(input: {
 						stableUserId: userId,
 						orgSlug,
 						messageId: selectedMessageId,
+						readableInboxIds,
 					})
 				: Promise.resolve(null),
 			loadOutboundDeliveryPause({

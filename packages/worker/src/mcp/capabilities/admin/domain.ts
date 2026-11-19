@@ -24,6 +24,7 @@ import { adminOrgRestoreCapability } from './admin-org-restore.ts'
 import { adminPackageAppCustomHostnameRemoveCapability } from './admin-package-app-custom-hostname-remove.ts'
 import { adminCommunityOrphanForksCleanupCapability } from './admin-community-orphan-forks-cleanup.ts'
 import { adminOrphanPackageStorageCleanupCapability } from './admin-orphan-package-storage-cleanup.ts'
+import { adminFeatureFlagDeleteStaleCapability } from './admin-feature-flag-delete-stale.ts'
 import { adminFeatureFlagListCapability } from './admin-feature-flag-list.ts'
 import { adminFeatureFlagOrgOverrideCapability } from './admin-feature-flag-org-override.ts'
 import { adminFeatureFlagOverrideCapability } from './admin-feature-flag-override.ts'
@@ -102,6 +103,7 @@ import { adminPublishedSourceSnapshotBackfillCapability } from './admin-publishe
 import { adminPublishedCommitRefRepairCapability } from './admin-published-commit-ref-repair.ts'
 import { adminPublishFinalizeResumeCapability } from './admin-publish-finalize-resume.ts'
 import { adminCredentialInventoryScanCapability } from './admin-credential-inventory-scan.ts'
+import { adminLegacyCredentialUsageCapability } from './admin-legacy-credential-usage.ts'
 import { adminCredentialPathSegmentImpactCapability } from './admin-credential-path-segment-impact.ts'
 import { adminCredentialAllowedPackagesWouldBlockReportCapability } from './admin-credential-allowed-packages-would-block-report.ts'
 import { adminCredentialAllowedPackagesGrandfatherCapability } from './admin-credential-allowed-packages-grandfather.ts'
@@ -241,6 +243,7 @@ export const adminDomain = defineDomain({
 		adminPublishedSourceSnapshotBackfillCapability,
 		adminPublishedCommitRefRepairCapability,
 		adminCredentialInventoryScanCapability,
+		adminLegacyCredentialUsageCapability,
 		adminCredentialPathSegmentImpactCapability,
 		adminCredentialAllowedPackagesWouldBlockReportCapability,
 		adminCredentialAllowedPackagesGrandfatherCapability,
@@ -278,6 +281,7 @@ export const adminDomain = defineDomain({
 		adminFeatureFlagOrgOverrideCapability,
 		adminFeatureFlagRepoOverrideCapability,
 		adminFeatureFlagRepoCheckCapability,
+		adminFeatureFlagDeleteStaleCapability,
 		adminRepoPushQueueCostCapability,
 		adminReservedUsernameListCapability,
 		adminReservedUsernameAddCapability,

@@ -4,11 +4,17 @@ import { createHash } from 'node:crypto'
 import { test, vi } from 'vitest'
 
 import {
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
+
+import {
 	MemoryBucket,
 	badSqlStatsFixture,
 	environment,
 	identityEnvelope,
 	manifest,
+	putPacedSealsForDay,
 	putSqlStatsFixture,
 	signedManifest,
 } from './backup-control-plane-test-support.ts'
@@ -85,6 +91,7 @@ test('dashboard renders oversized D1 SQL as not restorable with a warning', asyn
 	const bucket = new MemoryBucket()
 	const env = environment(bucket)
 	const { sqlObjectKey } = await putD1Day(bucket, env, undefined, 'bad')
+	await putPacedSealsForDay(bucket, env, day)
 
 	const [status] = await collectDayStatuses(env, now)
 	assert.equal(status?.d1Restorable, false)
@@ -274,4 +281,39 @@ test('restore status lists undeclared databases as notes, not warnings', () => {
 	assert.match(html, /Not in this backup day/)
 	assert.match(html, /JOBS_DB: not present in this backup day/)
 	assert.doesNotMatch(html, /<span>Warnings<\/span>/)
+})
+
+test('dashboard reads paced seals for D1 when REST export is off', async () => {
+	const bucket = new MemoryBucket()
+	const env = environment(bucket)
+	env.SOURCE_DATABASES = JSON.stringify([
+		{
+			id: env.SOURCE_DATABASE_ID,
+			name: env.SOURCE_DATABASE_NAME,
+			restExport: false,
+		},
+	])
+	await putPacedSealsForDay(bucket, env, day)
+
+	const [sealed] = await collectDayStatuses(env, now)
+	assert.equal(sealed?.d1Present, true)
+	assert.deepEqual(
+		sealed?.warnings.filter((warning) => warning.includes('D1')),
+		[],
+	)
+
+	await bucket.delete(
+		pacedD1SealedManifestKey(
+			pacedD1RetentionTierForDay(day),
+			env.SOURCE_DATABASE_ID,
+			day,
+		),
+	)
+	const [missing] = await collectDayStatuses(env, now)
+	assert.equal(missing?.d1Present, false)
+	assert.ok(
+		missing?.warnings.includes(
+			`${env.SOURCE_DATABASE_NAME}: paced-d1-seal-missing`,
+		),
+	)
 })

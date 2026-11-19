@@ -86,6 +86,7 @@ export function createFakeRunLogNamespace() {
 				if (!prior) {
 					projections.set(input.id, {
 						id: input.id,
+						progress: null,
 						bindingName: input.bindingName,
 						sourceType: input.sourceType,
 						packageId: input.packageId ?? null,
@@ -207,6 +208,7 @@ export function createFakeRunLogNamespace() {
 				const updatedAt = input.updatedAt ?? now
 				projections.set(input.id, {
 					id: input.id,
+					progress: existing?.progress ?? null,
 					bindingName: input.bindingName,
 					sourceType: input.sourceType,
 					packageId: input.packageId ?? null,

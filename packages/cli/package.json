@@ -24,6 +24,7 @@
     "bench": "node scripts/bench.mjs",
     "typecheck": "tsc --noEmit",
     "test": "KODY_CLI_CREDENTIAL_STORE=file KODY_DEV_STUB_RUNTIME=1 KODY_SKIP_SKILL_REFRESH=1 KODY_SKIP_GIT_HELPER_REFRESH=1 tsx --test --test-timeout=300000 --test-force-exit test/*.test.ts",
+    "test:windows": "KODY_CLI_CREDENTIAL_STORE=file KODY_DEV_STUB_RUNTIME=1 KODY_SKIP_SKILL_REFRESH=1 KODY_SKIP_GIT_HELPER_REFRESH=1 tsx --test --test-timeout=300000 --test-force-exit test/windows-paths.test.ts test/windows-command.test.ts test/credential-dir.test.ts test/keyring-entry.test.ts test/store.test.ts test/cli-credential.test.ts test/host-commands.test.ts test/host-access.test.ts test/fs-access.test.ts test/daemon-service.test.ts test/daemon-service-env.test.ts test/workerd-binary.test.ts test/install.test.ts",
     "validate": "npm run typecheck && npm run test && npm run build"
   },
   "engines": {

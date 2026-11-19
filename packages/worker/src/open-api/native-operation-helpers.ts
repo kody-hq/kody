@@ -1,6 +1,26 @@
 import type { z } from 'zod'
+import {
+	normalizeCredentialCallMap,
+	type CredentialCallMap,
+	type CredentialCallMapInput,
+} from '#worker/credentials/credential-call-map.ts'
 import type { ApiInvocationContext, ApiPrincipal } from './context.ts'
 import { ApiError, invalidRequest } from './errors.ts'
+
+export function capabilityProxyCallMap(
+	ctx: Pick<ApiInvocationContext, 'principal'>,
+	credentials: CredentialCallMapInput | null | undefined,
+): CredentialCallMap | null {
+	if (ctx.principal.kind !== 'execution-context-run') {
+		return normalizeCredentialCallMap(credentials)
+	}
+	if (credentials !== undefined && credentials !== null) {
+		throw invalidRequest(
+			'Execution context runs cannot send `credentials`: Kody applies the credential picks the run was started with.',
+		)
+	}
+	return ctx.principal.callMap ?? null
+}
 
 export type NativeApiOperationDefinition = {
 	summary: string

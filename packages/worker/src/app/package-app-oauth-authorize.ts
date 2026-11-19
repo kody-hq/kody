@@ -1,5 +1,8 @@
 import { escapeHtml } from '@kody-internal/shared/escape-html.ts'
-import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
+import {
+	buildPackageAppOpenPath,
+	resolveHostedPackageAppUrl,
+} from '@kody-internal/shared/public-urls.ts'
 import { destroyAuthCookie, isSecureRequest } from '#app/auth-session.ts'
 import { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -27,6 +30,10 @@ import {
 	type PackageAppOauthScope,
 } from '#app/package-app-oauth-scopes.ts'
 import { resolvePackageAppOrgOwnerByHandle } from '#app/package-app-owner.ts'
+import {
+	buildPackageAppRunConsentUrl,
+	needsPackageAppRunConsentForPerson,
+} from '#app/package-app-run-consent.ts'
 import { viewerCanExecutePackageApp } from '#app/package-viewer-access.ts'
 import {
 	redirectToLogin,
@@ -882,13 +889,59 @@ export async function handlePackageAppOauthAuthorizeRequest(
 		})
 	}
 
+	if (request.method === 'POST' && !isSameOriginAuthorizePost(request, env)) {
+		return new Response('Cross-origin consent posts are not allowed.', {
+			status: 403,
+			headers: { 'Cache-Control': 'no-store' },
+		})
+	}
+	if (
+		(request.method === 'GET' ||
+			request.method === 'HEAD' ||
+			query.decision === 'approve') &&
+		(await needsPackageAppRunConsentForPerson({
+			db: env.APP_DB,
+			packageId: validated.savedPackage.id,
+			ownerId: validated.org.userId,
+			personId: user.mcpUser.userId,
+		})) &&
+		(await viewerCanExecutePackageApp({
+			env,
+			viewer: user.mcpUser,
+			ownerId: validated.org.userId,
+			appId: validated.savedPackage.id,
+		}))
+	) {
+		// Outside visitors with app execution access need confirmation before
+		// OAuth (including device sign-in) can issue an app session. A visitor
+		// using OAuth solely for identity or optional scopes consents there.
+		const baseUrl = getAppBaseUrl({ env, requestUrl: request.url })
+		const entry = new URL(buildPackageAppOpenPath(validated.client), baseUrl)
+		const location = buildPackageAppRunConsentUrl(baseUrl, entry)
+		const resume = new URL(packageAppOauthPaths.authorize, baseUrl)
+		resume.search = new URLSearchParams(
+			deviceRow
+				? { device_user_code: formatUserCode(deviceRow.user_code) }
+				: {
+						client_id: validated.client.clientId,
+						redirect_uri: validated.redirectUri,
+						response_type: 'code',
+						code_challenge: validated.codeChallenge,
+						code_challenge_method: 'S256',
+						scope: validated.scopes.join(' '),
+						...(validated.state ? { state: validated.state } : {}),
+						// An already rendered scope form needs another explicit submit.
+						...(request.method === 'POST' ||
+						url.searchParams.get('prompt') === 'consent'
+							? { prompt: 'consent' }
+							: {}),
+					},
+		).toString()
+		location.searchParams.set('resume', `${resume.pathname}${resume.search}`)
+		return seeOther(`${location.pathname}${location.search}`)
+	}
+
 	if (request.method === 'POST') {
-		if (!isSameOriginAuthorizePost(request, env)) {
-			return new Response('Cross-origin consent posts are not allowed.', {
-				status: 403,
-				headers: { 'Cache-Control': 'no-store' },
-			})
-		}
 		const chosen = parsePackageAppOauthScopes(query.selectedScopesRaw)
 		if (
 			chosen.error ||

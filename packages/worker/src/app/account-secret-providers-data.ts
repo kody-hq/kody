@@ -48,6 +48,7 @@ export async function loadAccountSecretProvidersData(input: {
 		ok: true,
 		email: input.email,
 		bindings: bindings.map((binding) => ({
+			id: binding.credentialId,
 			provider: binding.providerId,
 			packageId: binding.packageId,
 			kodyId: packagesById.get(binding.packageId)?.kodyId ?? binding.packageId,
@@ -67,7 +68,10 @@ export async function loadAccountSecretProvidersData(input: {
 			kodyId: row.kodyId,
 			name: row.name,
 		})),
-		doorSecrets: secrets.map((secret) => secret.name),
+		doorSecrets: secrets.map((secret) => ({
+			id: secret.credentialId,
+			name: secret.name,
+		})),
 		approval,
 	}
 }

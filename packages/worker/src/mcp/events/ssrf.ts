@@ -123,6 +123,19 @@ export async function fetchMcpEventCallback(
 	})
 }
 
+/**
+ * False for loopback names and IP-literal hosts outside globally routable
+ * unicast space. Takes `URL.hostname`, which already normalizes decimal,
+ * octal, and hex IPv4 forms. Shared by every outbound fetch guard.
+ */
+export function isPublicFetchHostname(hostname: string): boolean {
+	const host = hostname.toLowerCase().replace(/\.$/, '')
+	if (host.startsWith('[')) return isPublicIpv6(host.slice(1, -1))
+	const ipv4 = parseIpv4(host)
+	if (ipv4) return isPublicIpv4(ipv4)
+	return !blockedHostnames.has(host) && !host.endsWith('.localhost')
+}
+
 function parseIpv4(hostname: string): [number, number, number, number] | null {
 	// WHATWG URL already normalizes decimal/octal/hex IPv4 forms to dotted quad.
 	const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(hostname)

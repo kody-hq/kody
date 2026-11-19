@@ -15,6 +15,7 @@ import {
 } from './production-restore.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
 import { nonRetryableBackupError } from './workflow-terminal-error.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 export class ProductionDrRestoreWorkflow extends WorkflowEntrypoint<
 	BackupEnvironment,
@@ -28,9 +29,14 @@ export class ProductionDrRestoreWorkflow extends WorkflowEntrypoint<
 			const runtimeStep = withNonRetryableBackupErrors(
 				step as unknown as BackupRuntimeStep,
 			)
-			const progress = await runtimeStep.do(
-				'run-production-restore',
-				async () => runProductionRestore(this.env, event.payload),
+			// Each phase, paced restore unit, and store chunk is its own durable
+			// step, so a replay resumes where it stopped instead of re-importing.
+			const progress = await runProductionRestore(
+				withRetryingBackupBucket(this.env),
+				event.payload,
+				{
+					step: runtimeStep,
+				},
 			)
 			// Persist progress (including warnings) as step output, then fail the
 			// workflow instance when restore finished with any dr-restore warnings.

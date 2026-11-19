@@ -22,7 +22,9 @@ export async function listCredentialProviderBindings(
 ): Promise<Array<CredentialProviderBindingItem>> {
 	const result = await db
 		.prepare(
-			`SELECT id, provider_id, provider, package_id, door_secret_name,
+			`SELECT id, provider_id, provider, package_id,
+				coalesce((SELECT name FROM secret_entries WHERE id = door_credential_id AND deleted_at IS NULL),
+					door_secret_name) AS door_secret_name,
 				placement_json, updated_at
 			FROM secret_provider_bindings
 			WHERE user_id = ? AND id IS NOT NULL AND deleted_at IS NULL`,

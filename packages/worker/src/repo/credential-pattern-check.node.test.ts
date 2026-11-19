@@ -1,8 +1,7 @@
 import { expect, test } from 'vitest'
 import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
 
-const hintsHeading =
-	'Optional, if you want a scoped credential type for these (ADR 0068):'
+const hintsHeading = 'Credential migration options (ADR 0068):'
 const injectHint =
 	"- Header, query, or basic auth placeholders: a Key with an inject (credentialUpdate) can be opened with credential(key), and its client places the value and sends it only to the Key's hosts."
 const oauthHint =
@@ -38,7 +37,7 @@ test('buildCredentialPatternCheck hard-fails non-literal createAuthenticatedFetc
 	expect(result.ok).toBe(false)
 	expect(result.message).toMatch(/Credential stamp publish gate/)
 	expect(result.message).toMatch(/Publish failed/)
-	expect(result.message).toMatch(/conversion-ready/)
+	expect(result.message).toMatch(/Declare each need in kody.credentials/)
 	expect(result.message).toMatch(/credentials call map/)
 })
 
@@ -69,6 +68,7 @@ test('buildCredentialPatternCheck passes when literal uses have descriptions', a
 	expect(result.ok).toBe(true)
 	expect(result.stampKeys).toEqual(['TOKEN'])
 	expect(result.message).toMatch(/Credential stamp keys \(sorted\): TOKEN/)
+	expect(result.message).toMatch(/deprecated/i)
 })
 
 test('oauth hints are only Authorization Bearer integration headers', async () => {
@@ -101,6 +101,29 @@ test('login hints require an exchange endpoint and an exact credential field', a
 	)
 	expect(exchange.ok).toBe(false)
 	expect(hintLines(exchange.message)).toEqual([hintsHeading, loginHint])
+
+	const createSession = await check(
+		"export const login = () => fetch('https://bsky.social/xrpc/com.atproto.server.createSession', { method: 'POST', body: JSON.stringify({ identifier: 'me.example.com', password: '{{secret:blueskyAppPassword}}' }) })",
+		{
+			credentials: {
+				blueskyAppPassword: {
+					kind: 'secret',
+					description: 'Bluesky app password.',
+				},
+			},
+		},
+	)
+	expect(hintLines(createSession.message)).toEqual([])
+	const undeclared = await check(
+		"export const login = () => fetch('https://bsky.social/xrpc/com.atproto.server.createSession', { method: 'POST', body: JSON.stringify({ identifier: 'me.example.com', password: '{{secret:blueskyAppPassword}}' }) })",
+	)
+	expect(undeclared.ok).toBe(false)
+	expect(hintLines(undeclared.message)).toEqual([hintsHeading, loginHint])
+
+	const notASession = await check(
+		"export const send = () => fetch('https://bsky.social/xrpc/app.bsky.feed.createSessionLog', { method: 'POST', body: JSON.stringify({ password: '{{secret:PASSWORD}}' }) })",
+	)
+	expect(hintLines(notASession.message)).toEqual([])
 })
 
 test('hints skip placeholders a declared slot of the same kind already covers', async () => {

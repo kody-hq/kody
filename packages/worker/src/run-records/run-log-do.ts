@@ -66,11 +66,13 @@ import type {
 	JobRunObservabilityUpsertInput,
 } from './job-run-observability.ts'
 import {
+	type WorkflowProjectionProgress,
 	type WorkflowProjectionRecord,
 	type WorkflowProjectionReserveResult,
 	type WorkflowProjectionSourceType,
 	type WorkflowProjectionUpsertInput,
 	creatingWorkflowProjectionStatus,
+	parseWorkflowProjectionProgress,
 	parseWorkflowProjectionSourceRevision,
 	publishProvenanceFromIdempotencyKey,
 	workflowProjectionActiveStatuses,
@@ -135,7 +137,7 @@ const metaSchemaVersionKey = 'schema_version'
 /** YYYYMMDD coverage floor for warm v12→v13 (no backfill). Fresh DOs omit this. */
 const metaRunDayCountsSinceKey = 'run_day_counts_since'
 /** Bump when initializeSchema's DDL set changes; warm objects skip DDL. */
-export const runLogSchemaVersion = 23
+export const runLogSchemaVersion = 24
 
 function utcDayToMetaInt(day: string): number {
 	return Number(day.replaceAll('-', ''))
@@ -720,6 +722,7 @@ function mapWorkflowProjectionRow(
 		sourceRevision: parseWorkflowProjectionSourceRevision(
 			row['source_revision'],
 		),
+		progress: parseWorkflowProjectionProgress(row['progress_json']),
 	}
 }
 
@@ -1036,7 +1039,8 @@ class RunLogBase extends DurableObject<Env> {
 				completed_at TEXT,
 				last_error TEXT,
 				enqueued_commit TEXT,
-				source_revision TEXT
+				source_revision TEXT,
+				progress_json TEXT
 			)
 		`)
 		if (installedVersion != null && installedVersion < 14) {
@@ -1044,6 +1048,9 @@ class RunLogBase extends DurableObject<Env> {
 		}
 		if (installedVersion != null && installedVersion < 19) {
 			this.backfillPublishWorkflowProvenanceForV19()
+		}
+		if (installedVersion != null && installedVersion < 24) {
+			this.migrateWorkflowProjectionProgressForV24()
 		}
 		this.sql.exec(
 			`CREATE INDEX IF NOT EXISTS idx_workflow_projections_created
@@ -1290,6 +1297,16 @@ class RunLogBase extends DurableObject<Env> {
 	 * the workflow was queued and the revision policy it was created with.
 	 * Rows queued before this column stay NULL (they were never pinned).
 	 */
+	private migrateWorkflowProjectionProgressForV24() {
+		try {
+			this.sql.exec(
+				`ALTER TABLE workflow_projections ADD COLUMN progress_json TEXT`,
+			)
+		} catch {
+			// Column already present on a partially migrated object.
+		}
+	}
+
 	private migrateWorkflowProjectionSourceRevisionForV14() {
 		for (const column of ['enqueued_commit', 'source_revision']) {
 			try {
@@ -3687,6 +3704,22 @@ class RunLogBase extends DurableObject<Env> {
 		return { released: true, previousKey }
 	}
 
+	/**
+	 * Live progress of a running workflow (phase and chunk counts). Not a
+	 * status write: `updated_at` and terminal stickiness are untouched.
+	 */
+	async setWorkflowProjectionProgress(input: {
+		id: string
+		progress: WorkflowProjectionProgress
+	}): Promise<{ ok: true }> {
+		this.sql.exec(
+			`UPDATE workflow_projections SET progress_json = ? WHERE id = ?`,
+			JSON.stringify(input.progress),
+			input.id,
+		)
+		return { ok: true }
+	}
+
 	async getWorkflowProjection(input: {
 		id: string
 	}): Promise<WorkflowProjectionRecord | null> {
@@ -5446,6 +5479,10 @@ export type RunLogRpc = DurableObjectPitrRpc & {
 	releaseWorkflowProjectionIdempotencyKey: (input: {
 		id: string
 	}) => Promise<{ released: boolean; previousKey: string | null }>
+	setWorkflowProjectionProgress: (input: {
+		id: string
+		progress: WorkflowProjectionProgress
+	}) => Promise<{ ok: true }>
 	getWorkflowProjection: (input: {
 		id: string
 	}) => Promise<WorkflowProjectionRecord | null>

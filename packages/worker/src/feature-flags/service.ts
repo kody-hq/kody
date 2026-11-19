@@ -945,17 +945,65 @@ export async function listFeatureFlagsForAdmin(
 	return flags
 }
 
-export async function deleteStaleFeatureFlag(
-	db: D1Database,
-	key: string,
-): Promise<boolean> {
+export type StaleFeatureFlagRowCounts = {
+	global: number
+	userOverrides: number
+	orgOverrides: number
+	repoOverrides: number
+}
+
+function assertStaleFeatureFlagKey(key: string) {
 	if (isFeatureFlagKey(key)) {
 		throw new Error(
 			`Cannot delete registry feature flag "${key}". Remove it from the code registry first.`,
 		)
 	}
+}
 
-	const results = await db.batch([
+export function totalStaleFeatureFlagRows(counts: StaleFeatureFlagRowCounts) {
+	return (
+		counts.global +
+		counts.userOverrides +
+		counts.orgOverrides +
+		counts.repoOverrides
+	)
+}
+
+export async function countStaleFeatureFlagRows(
+	db: D1Database,
+	key: string,
+): Promise<StaleFeatureFlagRowCounts> {
+	assertStaleFeatureFlagKey(key)
+	const row = await db
+		.prepare(
+			`SELECT
+				(SELECT COUNT(*) FROM feature_flags WHERE key = ?1) AS global,
+				(SELECT COUNT(*) FROM feature_flag_user_overrides WHERE flag_key = ?1) AS user_overrides,
+				(SELECT COUNT(*) FROM feature_flag_org_overrides WHERE flag_key = ?1) AS org_overrides,
+				(SELECT COUNT(*) FROM feature_flag_repo_overrides WHERE flag_key = ?1) AS repo_overrides`,
+		)
+		.bind(key)
+		.first<{
+			global: number
+			user_overrides: number
+			org_overrides: number
+			repo_overrides: number
+		}>()
+	return {
+		global: row?.global ?? 0,
+		userOverrides: row?.user_overrides ?? 0,
+		orgOverrides: row?.org_overrides ?? 0,
+		repoOverrides: row?.repo_overrides ?? 0,
+	}
+}
+
+export async function deleteStaleFeatureFlag(
+	db: D1Database,
+	key: string,
+): Promise<StaleFeatureFlagRowCounts> {
+	assertStaleFeatureFlagKey(key)
+
+	const [userOverrides, repoOverrides, orgOverrides, global] = await db.batch([
 		db
 			.prepare(`DELETE FROM feature_flag_user_overrides WHERE flag_key = ?`)
 			.bind(key),
@@ -967,8 +1015,13 @@ export async function deleteStaleFeatureFlag(
 			.bind(key),
 		db.prepare(`DELETE FROM feature_flags WHERE key = ?`).bind(key),
 	])
-
-	return results.some((result) => (result?.meta.changes ?? 0) > 0)
+	const changes = (result: D1Result | undefined) => result?.meta.changes ?? 0
+	return {
+		global: changes(global),
+		userOverrides: changes(userOverrides),
+		orgOverrides: changes(orgOverrides),
+		repoOverrides: changes(repoOverrides),
+	}
 }
 
 export function isMissingFeatureFlagsTable(error: unknown) {

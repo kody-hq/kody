@@ -148,9 +148,10 @@ Open these before proposing a new primitive, surface, or storage home.
   — do not vendor, mount, inject, sniff, or rewrite package bundles for Remix,
   TanStack, Preact, or any other framework; packages bring frameworks themselves
 - [0058 — Skills over MCP ship as a flagged progressive enhancement](./0058-skills-over-mcp-progressive-enhancement.md)
-  — `mcp-skills-extension` (default off, `experiments_opt_in`), modern lane
-  only; packages stay the source of truth at `skills/<name>/SKILL.md`; no
-  `kody.skills` manifest key; tools stay search/execute/api; supersedes 0015
+  — flag removed after promotion; activates only when the client declares the
+  extension; modern lane only; packages stay the source of truth at
+  `skills/<name>/SKILL.md`; no `kody.skills` manifest key; tools stay
+  search/execute/api; supersedes 0015
 - [0059 — MCP Events extension (webhook profile) behind a flag](./0059-mcp-events-extension-behind-flag.md)
   — `kody.emits` topics with `mcp: true` reach ChatGPT-style webhook subscribers
   through the existing package events consumer; flag plus client capability

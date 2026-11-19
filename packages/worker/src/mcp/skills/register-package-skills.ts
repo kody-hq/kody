@@ -5,8 +5,6 @@ import {
 import type { McpServer } from '@modelcontextprotocol/server'
 import { z } from 'zod'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
-import { mcpSkillsExtensionFlagKey } from '#universal/feature-flags/registry.ts'
-import { resolveCallerFeatureFlags } from '#mcp/capabilities/access-control.ts'
 import {
 	listCatalogSkillResources,
 	buildSkillResourcesListResult,
@@ -84,19 +82,15 @@ export function registerPackageSkillsExtension(input: {
 
 /**
  * Progressive enhancement: registers the skills extension only when the
- * `mcp-skills-extension` flag is on for the caller and the client declared the
- * extension in its per-request capabilities. Anonymous callers fail closed
- * because flags are evaluated per user.
+ * client declared the extension in its per-request capabilities.
  */
-export async function registerPackageSkillsExtensionWhenEnabled(input: {
+export function registerPackageSkillsExtensionWhenEnabled(input: {
 	server: McpServer
 	env: Env
 	callerContext: McpCallerContext
 	parsedBody: unknown
 }) {
 	if (!clientAdvertisesSkillsExtension(input.parsedBody)) return false
-	const flags = await resolveCallerFeatureFlags(input.env, input.callerContext)
-	if (!flags[mcpSkillsExtensionFlagKey]) return false
 	registerPackageSkillsExtension(input)
 	return true
 }

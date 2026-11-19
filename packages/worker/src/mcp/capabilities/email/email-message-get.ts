@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
+import { authorizeEmailMessageInbox } from '#worker/email/authorize-email-message.ts'
 import {
 	getOwnerEmailMessageById,
 	listOwnerEmailAttachmentsForMessage,
@@ -38,6 +39,13 @@ export const emailMessageGetCapability = defineDomainCapability(
 			if (!message) {
 				throw new McpCallerError(`Email message not found: ${args.message_id}`)
 			}
+			await authorizeEmailMessageInbox({
+				env: ctx.env,
+				request: ctx.callerContext.request,
+				ownerId: emailOwnerOrgId(ctx, user),
+				message,
+				permission: 'email:read',
+			})
 			const attachments = await listOwnerEmailAttachmentsForMessage({
 				env: ctx.env,
 				ownerId: emailOwnerOrgId(ctx, user),

@@ -63,6 +63,13 @@ closing keyword.
      PR as the code they test; push back when an assertion was rewritten to
      match a behavior change without justification. -->
 
+### New tests
+
+No new tests needed.
+
+<!-- Or, for each new long-lived test: the behavior it protects and why existing
+     tests do not cover it. See docs/contributing/writing-tests.md. -->
+
 ## System changes
 
 <!-- Optional for non-trivial work: primitives touched and risk. See visual-recap skill. -->

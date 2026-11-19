@@ -46,6 +46,29 @@ export type AdminFeatureFlagMetricReadout =
 			mixedUsers: number
 	  }
 
+export type McpEventsClientSupportCounts = {
+	users: number
+	doesNotAdvertise: number
+	advertisesNotSubscribed: number
+	subscribed: number
+}
+
+/**
+ * MCP Events client support over the current UTC month to date, from MCP
+ * protocol events rather than flag exposures: every MCP user split into
+ * clients that do not advertise events, advertise but do not subscribe, and
+ * subscribe. Only attached to flags with `exposureRecording:
+ * 'mcp-events-clients'`.
+ */
+export type McpEventsClientSupportReadout =
+	| { status: 'unavailable'; reason: string }
+	| ({
+			status: 'ok'
+			windowStart: string
+			windowEnd: string
+			clients: Array<McpEventsClientSupportCounts & { clientName: string }>
+	  } & McpEventsClientSupportCounts)
+
 export type AdminFeatureFlag = {
 	key: string
 	description: string | null
@@ -54,6 +77,7 @@ export type AdminFeatureFlag = {
 	stale: boolean
 	successMetric: FeatureFlagSuccessMetric | null
 	metricReadout?: AdminFeatureFlagMetricReadout
+	clientSupportReadout?: McpEventsClientSupportReadout
 	global: {
 		enabled: boolean
 		rolloutPercent: number | null

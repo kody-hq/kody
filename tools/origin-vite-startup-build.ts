@@ -95,7 +95,7 @@ export type OriginViteStartupBuild = {
  * The generated `server/wrangler.json` points `assets.directory` at `../client`,
  * so the client tree must sit next to the SSR snapshot.
  */
-export async function copyOriginViteBuildSnapshot({
+async function copyOriginViteBuildSnapshot({
 	sourceRoot,
 	outputRoot,
 }: {

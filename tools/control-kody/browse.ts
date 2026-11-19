@@ -6,7 +6,7 @@ import { normalizeCookieOrigin } from './session-cookie.ts'
 export const defaultBrowsePath = '/account'
 export const defaultBrowseVideoDir = path.join('.tmp', 'control-kody-browse')
 
-export type BrowsePlaywrightCookie = {
+type BrowsePlaywrightCookie = {
 	name: string
 	value: string
 	domain: string
@@ -16,7 +16,7 @@ export type BrowsePlaywrightCookie = {
 	sameSite: 'Strict' | 'Lax' | 'None'
 }
 
-export type BrowseChromium = {
+type BrowseChromium = {
 	launch: (options: { headless: boolean }) => Promise<Browser>
 }
 
@@ -147,7 +147,7 @@ export function normalizeScreenshotPath(
 const browseScreenshotLoadTimeoutMs = 30_000
 
 /** Reject login / cross-origin landings before claiming signed-in evidence. */
-export function assertBrowseLandedOnTarget(input: {
+function assertBrowseLandedOnTarget(input: {
 	requestedUrl: string
 	finalUrl: string
 }) {
@@ -166,7 +166,7 @@ export function assertBrowseLandedOnTarget(input: {
 	}
 }
 
-export function browseTargetUrl(origin: string, browsePath: string) {
+function browseTargetUrl(origin: string, browsePath: string) {
 	const base = normalizeCookieOrigin(origin)
 	const normalizedPath = normalizeBrowsePath(browsePath)
 	const target = new URL(normalizedPath, `${base}/`)

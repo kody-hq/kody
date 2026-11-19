@@ -11,7 +11,12 @@ import type * as FeatureFlagService from '#worker/feature-flags/service.ts'
 import type { FeatureFlagEvaluation } from '#worker/feature-flags/service.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import {
+	isRetryableD1LockRemapError,
+	transientDatabaseUnavailableMessage,
+} from '#worker/d1-retry.ts'
+import {
 	assertCallerCanAccessCapability,
+	callerFeatureFlagEvaluationError,
 	callerCanAccessCapability,
 	filterCapabilityRegistryForCaller,
 	filterCapabilityRegistryMcpServersForCaller,
@@ -29,6 +34,11 @@ const flagMocks = vi.hoisted(() => ({
 	recordFeatureFlagExposures: vi.fn<
 		typeof FeatureFlagExposure.recordFeatureFlagExposures
 	>(async () => undefined),
+	reportInfraHiccup: vi.fn(async (_report: unknown) => undefined),
+}))
+
+vi.mock('#worker/infra-hiccup-sentry.ts', () => ({
+	reportInfraHiccup: flagMocks.reportInfraHiccup,
 }))
 
 vi.mock('#worker/feature-flags/service.ts', async (importOriginal) => {
@@ -56,7 +66,6 @@ function createFlagMap(enabled: boolean): CallerFeatureFlags {
 		'files-workspace': false,
 		'demo-indicator': enabled,
 		profiles: false,
-		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,
@@ -508,6 +517,122 @@ test('flag evaluation failure fails closed, skips exposures, and is not cached',
 	const secondContext = caller()
 	await resolveCallerFeatureFlags(env, secondContext)
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(2)
+})
+
+function d1OverloadedError() {
+	return new Error(
+		'D1_ERROR: D1 DB is overloaded. Too many resources consumed within a 10 second window.',
+	)
+}
+
+function flagCaller(email: string) {
+	return createMcpCallerContext({
+		source: { kind: 'mcp-oauth' },
+		baseUrl: 'https://example.com',
+		user: {
+			userId: personIdFromStored(testStableUserIdFromEmail(email)),
+			email,
+			displayName: 'flags',
+			roles: ['user'],
+		},
+	})
+}
+
+test('an overloaded D1 flag read is retried and the call proceeds', async () => {
+	const env = createFlagResolveEnv(8)
+	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
+	flagMocks.getFeatureFlagEvaluationsForUser
+		.mockRejectedValueOnce(d1OverloadedError())
+		.mockResolvedValueOnce(createEvaluations({ profiles: true }))
+
+	const context = flagCaller('flag-overload-once@example.com')
+	const flags = await resolveCallerFeatureFlags(env, context)
+
+	expect(flags.profiles).toBe(true)
+	expect(await callerFeatureFlagEvaluationFailure(env, context)).toBeNull()
+	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(2)
+})
+
+test('persistent D1 overload refuses as a transient d1 hiccup, not a generic failure', async () => {
+	const env = createFlagResolveEnv(9)
+	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
+	flagMocks.reportInfraHiccup.mockClear()
+	const overloaded = d1OverloadedError()
+	flagMocks.getFeatureFlagEvaluationsForUser.mockRejectedValue(overloaded)
+
+	const context = flagCaller('flag-overload-persistent@example.com')
+	const failure = await callerFeatureFlagEvaluationFailure(env, context)
+
+	expect(failure).toEqual({ cause: overloaded })
+	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(3)
+	const error = callerFeatureFlagEvaluationError(failure?.cause)
+	expect(error.message).toBe(transientDatabaseUnavailableMessage)
+	expect(error.cause).toBe(overloaded)
+	expect(isRetryableD1LockRemapError(error)).toBe(true)
+	expect(flagMocks.reportInfraHiccup).toHaveBeenCalledExactlyOnceWith({
+		kind: 'd1_transient',
+		operation: 'mcp_execute_feature_flags',
+		attempts: 3,
+		errorClass: 'overloaded',
+	})
+})
+
+test('an overloaded flag user lookup is retried too', async () => {
+	let lookups = 0
+	const env = {
+		APP_DB: {
+			prepare: () => ({
+				bind: () => ({
+					async first() {
+						lookups += 1
+						if (lookups === 1) throw d1OverloadedError()
+						return { id: 10 }
+					},
+				}),
+			}),
+		},
+	} as unknown as Env
+	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
+	flagMocks.getFeatureFlagEvaluationsForUser.mockResolvedValue(
+		createEvaluations({ profiles: true }),
+	)
+
+	const context = flagCaller('flag-user-overload@example.com')
+	expect((await resolveCallerFeatureFlags(env, context)).profiles).toBe(true)
+	expect(lookups).toBe(2)
+})
+
+test('non-transient flag failures are not retried and stay a generic error', async () => {
+	const env = createFlagResolveEnv(11)
+	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
+	flagMocks.reportInfraHiccup.mockClear()
+	const badSql = new Error(
+		'D1_ERROR: no such table: feature_flags: SQLITE_ERROR',
+	)
+	flagMocks.getFeatureFlagEvaluationsForUser.mockRejectedValue(badSql)
+
+	const context = flagCaller('flag-bad-sql@example.com')
+	const failure = await callerFeatureFlagEvaluationFailure(env, context)
+
+	expect(failure).toEqual({ cause: badSql })
+	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(1)
+	const error = callerFeatureFlagEvaluationError(failure?.cause)
+	expect(error.message).toBe('Feature flag evaluation failed')
+	expect(isRetryableD1LockRemapError(error)).toBe(false)
+	expect(flagMocks.reportInfraHiccup).not.toHaveBeenCalled()
+})
+
+test('an exhausted Durable Object reset stays a generic, Sentry-visible error', () => {
+	flagMocks.reportInfraHiccup.mockClear()
+	const reset = new Error(
+		'D1_ERROR: Durable Object reset because its code was updated.',
+	)
+
+	const error = callerFeatureFlagEvaluationError(reset)
+
+	expect(error.message).toBe('Feature flag evaluation failed')
+	expect(error.cause).toBe(reset)
+	expect(flagMocks.reportInfraHiccup).not.toHaveBeenCalled()
 })
 
 test('an unresolved flag user is not cached across requests', async () => {

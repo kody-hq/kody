@@ -39,6 +39,7 @@ async function openTarget(
 	theme: Theme,
 	viewport: ViewportName,
 ) {
+	await target.prepare?.()
 	await page.setViewportSize(viewports[viewport])
 	await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
 	await page.goto(target.path)

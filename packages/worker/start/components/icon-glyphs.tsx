@@ -425,6 +425,24 @@ export const iconGlyphs = {
 			/>
 		</>
 	),
+	monitor: () => (
+		<>
+			<path
+				stroke="currentColor"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.5"
+				d="M4.75 6.75C4.75 5.64543 5.64543 4.75 6.75 4.75H17.25C18.3546 4.75 19.25 5.64543 19.25 6.75V13.25C19.25 14.3546 18.3546 15.25 17.25 15.25H6.75C5.64543 15.25 4.75 14.3546 4.75 13.25V6.75Z"
+			/>
+			<path
+				stroke="currentColor"
+				strokeLinecap="round"
+				strokeLinejoin="round"
+				strokeWidth="1.5"
+				d="M8.75 19.25H15.25M12 15.5V19"
+			/>
+		</>
+	),
 	server: () => (
 		<>
 			<path

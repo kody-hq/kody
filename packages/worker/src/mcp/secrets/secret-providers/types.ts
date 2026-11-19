@@ -7,6 +7,7 @@ export type SecretProviderBindingRecord = {
 	providerId: string
 	packageId: string
 	doorSecretName: string
+	doorCredentialId: string | null
 	config: Record<string, string>
 	/** Null means anywhere. Distinct from inject. */
 	placement: CredentialFillPlacement | null

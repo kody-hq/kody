@@ -7,6 +7,7 @@ import {
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
 import { consumePackageAppOauthCode } from '#app/package-app-oauth-codes.ts'
+import { needsPackageAppRunConsentForPerson } from '#app/package-app-run-consent.ts'
 import { formatPackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 import { resolvePackageAppOauthClient } from '#app/package-app-oauth-client-resolve.ts'
 import {
@@ -27,7 +28,6 @@ import {
 } from '#app/package-app-oauth-scopes.ts'
 import {
 	createPackageAppSessionCookie,
-	destroyLegacyPackageAppSessionCookies,
 	destroyPackageAppSessionCookie,
 	readPackageAppSession,
 } from '#app/package-app-session.ts'
@@ -90,13 +90,11 @@ function badRequest(message: string, status = 400) {
 function normalizeReturnTo(raw: string | null, origin: string): string {
 	if (!raw) return '/'
 	try {
-		if (raw.startsWith('/')) {
-			if (raw.startsWith('//') || raw.includes('\\')) return '/'
-			return raw
-		}
-		const url = new URL(raw)
-		if (url.origin !== origin) return '/'
-		return `${url.pathname}${url.search}`
+		if (raw.includes('\\')) return '/'
+		// Resolve the way a browser would, then keep only a same-origin path.
+		const url = new URL(raw, origin)
+		if (url.origin !== origin || url.pathname.startsWith('//')) return '/'
+		return `${url.pathname}${url.search}${url.hash}`
 	} catch {
 		return '/'
 	}
@@ -174,8 +172,8 @@ function readAppSlugFromSameOriginReferer(
  * `?app=` / `return_to` are attacker-chosen on a top-level GET. Verified
  * single-app custom hostnames trust the hostname mapping. Shared-host logout
  * never waits on `APP_DB` (custom-domain lookup) so a D1 outage cannot block
- * cookie clearing. When nothing trusted resolves, callers clear only the
- * legacy host-wide cookie.
+ * cookie clearing. When nothing trusted resolves, callers skip session
+ * cookie clearing: per-app names cannot be guessed.
  */
 async function resolveLogoutAppSlug(input: {
 	request: Request
@@ -427,6 +425,36 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 		return badRequest('Authorization code was issued for a different app.', 403)
 	}
 
+	const app = await resolvePackageAppOauthClient({
+		env: input.env,
+		username: record.orgUsername,
+		kodyId: record.kodyId,
+	})
+	if (!app) return badRequest('This app is no longer available.', 403)
+	const personId = personIdFromStored(record.personId)
+	if (
+		(await needsPackageAppRunConsentForPerson({
+			db: input.env.APP_DB,
+			ownerId: app.org.userId,
+			packageId: app.savedPackage.id,
+			personId,
+		})) &&
+		(await viewerCanExecutePackageApp({
+			env: input.env,
+			viewer: { userId: personId, username: record.username },
+			ownerId: app.org.userId,
+			appId: app.savedPackage.id,
+		}))
+	) {
+		// Approval can be removed between code issuance and exchange. Start a
+		// fresh authorization for the same app without creating a session.
+		const login = new URL(packageAppOauthPaths.login, input.url)
+		login.searchParams.set('app', pkce.kodyId)
+		login.searchParams.set('return_to', pkce.returnTo)
+		login.searchParams.set('scope', pkce.scopes.join(' '))
+		return redirectResponse(login.toString(), [clearPkce])
+	}
+
 	const sessionCookies = await createPackageAppSessionCookie({
 		env: input.env,
 		session: {
@@ -450,11 +478,11 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 		input.url.origin,
 	)
 	// Shared hosts clear only the requesting leaf. Prefer same-origin Referer
-	// `/packages/{leaf}` over `?app=` so a sibling package cannot navigate the
-	// browser into clearing another app. Verified app custom domains resolve
-	// from the hostname mapping. When no leaf is known (older kit clients with
-	// `return_to=/` and no Referer), clear only the legacy host-wide cookie so
-	// pre-per-app sessions still end.
+	// `/{leaf}` (or legacy `/packages/{leaf}`) over `?app=` so a sibling
+	// package cannot navigate the browser into clearing another app. Verified
+	// app custom domains resolve from the hostname mapping. When no leaf is
+	// known (older kit clients with `return_to=/` and no Referer), skip
+	// session cookies: per-app names cannot be guessed.
 	const kodyId = await resolveLogoutAppSlug({ ...input, returnTo })
 	const cookies = [
 		...(kodyId
@@ -463,10 +491,7 @@ async function handleLogout(input: { request: Request; env: Env; url: URL }) {
 					slug: kodyId,
 					secure,
 				})
-			: await destroyLegacyPackageAppSessionCookies({
-					env: input.env,
-					secure,
-				})),
+			: []),
 		await destroyPackageAppOauthPkceCookie({ env: input.env, secure }),
 	]
 	if (kodyId) {

@@ -3,6 +3,10 @@ import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { secretAuthorityHeaderName } from '#mcp/secrets/secret-authority.ts'
 import { capabilityProxyCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import {
+	credentialCallMapToJson,
+	type CredentialCallMap,
+} from '#worker/credentials/credential-call-map.ts'
+import {
 	entitlementEmailForOwner,
 	ownerIdFromCaller,
 } from '#worker/request-context/owner-id.ts'
@@ -142,6 +146,7 @@ export function parseCapabilityProxyGatewayFetchArgs(
 export async function runCapabilityProxyGatewayFetch(input: {
 	ctx: ApiInvocationContext
 	args: ReadonlyArray<unknown>
+	callMap?: CredentialCallMap | null
 }): Promise<CapabilityProxyAuthenticatedFetchResult> {
 	const call = parseCapabilityProxyGatewayFetchArgs(input.args)
 	const orgUserId = ownerIdFromCaller(input.ctx.callerContext)
@@ -176,6 +181,7 @@ export async function runCapabilityProxyGatewayFetch(input: {
 			request: input.ctx.callerContext.request,
 			storageContext,
 			claimedPackageId: stampedPackageId,
+			legacyCredentialPicks: credentialCallMapToJson(input.callMap ?? null),
 			credentialClientBinding: input.ctx.callerContext.request
 				? capabilityProxyCredentialClientBinding(
 						input.ctx.callerContext.request,

@@ -4,6 +4,7 @@ import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { z } from 'zod'
 import { expect, onTestFinished, test, vi } from 'vitest'
 import { planLimits } from '#universal/plans.ts'
+import { transientDatabaseUnavailableMessage } from '#worker/d1-retry.ts'
 import {
 	BudgetLimitError,
 	ComputeOverageLimitError,
@@ -124,7 +125,6 @@ const mockModule = vi.hoisted(() => ({
 		async (
 			..._args: Parameters<typeof AccessControlModule.resolveCallerFeatureFlags>
 		) => ({
-			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
 		}),
 	),
@@ -356,7 +356,6 @@ async function getExecuteRegistration(
 ) {
 	vi.clearAllMocks()
 	mockModule.resolveCallerFeatureFlags.mockResolvedValue({
-		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 	})
 	mockModule.callerFeatureFlagEvaluationFailure.mockResolvedValue(null)
@@ -1601,10 +1600,12 @@ test('execute does not run or reach the registry when flag evaluation fails clos
 	})
 
 	expect(denied.isError).toBe(true)
-	expect(denied.structuredContent.error).toBe('Feature flag evaluation failed')
+	expect(denied.structuredContent.error).toBe(
+		transientDatabaseUnavailableMessage,
+	)
 	expect(observabilityMock.logMcpEvent).toHaveBeenCalledWith(
 		expect.objectContaining({
-			errorMessage: 'Feature flag evaluation failed',
+			errorMessage: transientDatabaseUnavailableMessage,
 			cause: expect.objectContaining({ cause }),
 		}),
 	)

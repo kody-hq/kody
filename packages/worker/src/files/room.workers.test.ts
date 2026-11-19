@@ -825,6 +825,87 @@ test('a broadcast resolves access once per session and still closes revoked sock
 	}
 })
 
+test('a broadcast looks up each person once instead of once per session', async () => {
+	const f = await fixture()
+	// Distinct issuedAt values give each socket its own session key, so the
+	// per-session cache alone cannot dedupe them.
+	const sockets = (
+		await Promise.all(
+			[0, 1, 2].map((offset) =>
+				openSockets(f, 1, {
+					issuedAt: Date.now() - offset * 1000,
+					expiresAt: Date.now() + 10 * 60_000,
+				}),
+			),
+		)
+	).flat()
+	try {
+		await runInDurableObject(f.stub, async (instance: FileRoom) => {
+			const room = instance as unknown as RoomInternals & { env: Env }
+			const prepare = vi.spyOn(room.env.APP_DB, 'prepare')
+			const bindings = room.env as AppEnv
+			const localDev = bindings.WRANGLER_IS_LOCAL_DEV
+			try {
+				// Exercise the D1-backed flag lookup rather than the local override.
+				bindings.WRANGLER_IS_LOCAL_DEV = 'false'
+				await room.broadcastPresence()
+				const sql = prepare.mock.calls.map(([query]) => String(query))
+				expect(
+					sql.filter((query) =>
+						query.includes('FROM users WHERE stable_user_id IN'),
+					),
+				).toHaveLength(1)
+				expect(
+					sql.filter((query) =>
+						query.includes('SELECT id FROM users WHERE stable_user_id ='),
+					),
+				).toHaveLength(1)
+				expect(
+					sql.filter((query) =>
+						query.includes(
+							'SELECT o.id AS org_id, o.slug AS org_slug, m.role AS role',
+						),
+					),
+				).toHaveLength(1)
+			} finally {
+				bindings.WRANGLER_IS_LOCAL_DEV = localDev
+				prepare.mockRestore()
+			}
+		})
+	} finally {
+		for (const { socket } of sockets) socket.close()
+	}
+})
+
+test('a password change invalidates only room sessions issued before it', async () => {
+	const f = await fixture()
+	const now = Date.now()
+	const expiresAt = now + 10 * 60_000
+	const [old] = await openSockets(f, 1, { issuedAt: now - 2000, expiresAt })
+	const [fresh] = await openSockets(f, 1, { issuedAt: now, expiresAt })
+	try {
+		await env.APP_DB.prepare(
+			'UPDATE users SET password_changed_at = ? WHERE stable_user_id = ?',
+		)
+			.bind(new Date(now - 1000).toISOString(), f.personId)
+			.run()
+		await runInDurableObject(f.stub, async (instance: FileRoom, ctx) => {
+			const target = ctx
+				.getWebSockets()
+				.find(
+					(ws) =>
+						ws.deserializeAttachment().presence.sessionId === fresh!.sessionId,
+				)!
+			await (instance as unknown as RoomInternals).broadcastPresence()
+			expect(target.readyState).toBe(WebSocket.OPEN)
+		})
+		expect(await old!.closed).toBe(4003)
+	} finally {
+		old!.socket.close()
+		fresh!.socket.close()
+	}
+})
+
 test('a shared session lookup still closes an expired socket with 4000', async () => {
 	const f = await fixture()
 	const [expired, live] = await openSockets(f, 2)

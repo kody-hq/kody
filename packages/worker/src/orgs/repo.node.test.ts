@@ -424,6 +424,9 @@ test('pending invites exclude deleted and suspended orgs', async () => {
 	expect(
 		(await listPendingInvitesForPerson(db, query)).map((i) => i.orgSlug),
 	).toEqual(['live'])
+	expect(
+		await listPendingInvitesForPerson(db, { ...query, emailVerified: false }),
+	).toEqual([])
 })
 
 test('loadOrgBindingForOrg and listOrgsForPerson skip deleted and suspended orgs', async () => {

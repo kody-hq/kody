@@ -1,6 +1,6 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
-import { findSecret, resolveSecret } from '#mcp/secrets/service.ts'
+import { findSecretForUse, resolveSecret } from '#mcp/secrets/service.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import type { StorageContext } from '#mcp/storage.ts'
@@ -155,14 +155,16 @@ export async function bindSecretProvider(input: {
 	userId: OwnerId
 	providerId: string
 	packageId: string
-	doorSecretName: string
+	doorSecretName?: string
+	doorCredentialId?: string
 	config?: Record<string, unknown> | null
 	audit: OrgAuditWriter | null
 }) {
 	const providerId = normalizeProviderId(input.providerId)
-	const doorSecretName = input.doorSecretName.trim()
-	if (!doorSecretName) {
-		throw new SecretProviderError('A door-key secret name is required.')
+	const selectedId = input.doorCredentialId?.trim()
+	const selectedName = input.doorSecretName?.trim()
+	if (Boolean(selectedId) === Boolean(selectedName)) {
+		throw new SecretProviderError('Select one door-key credential.')
 	}
 	const savedPackage = await requireOwnedPackage({
 		db: input.env.APP_DB,
@@ -183,21 +185,24 @@ export async function bindSecretProvider(input: {
 			}),
 		)
 	}
-	const doorSecret = await findSecret({
+	const doorLookup = await findSecretForUse({
 		env: input.env,
 		userId: input.userId,
-		name: doorSecretName,
+		name: selectedName ?? '',
+		credentialId: selectedId,
 		scope: 'user',
 		storageContext: null,
 	})
-	if (!doorSecret.found) {
+	const doorSecret = doorLookup.found
+	if (!doorSecret.found || !doorSecret.credentialId || !doorLookup.storedName) {
 		throw new SecretProviderError(
 			createMissingProviderDoorSecretMessage({
 				providerId,
-				doorSecretName,
+				doorSecretName: selectedName ?? 'Selected credential',
 			}),
 		)
 	}
+	const doorSecretName = doorLookup.storedName
 	const config = normalizeSecretProviderConfig(input.config)
 	const before = input.audit
 		? await getSecretProviderBinding(input.env.APP_DB, {
@@ -210,6 +215,7 @@ export async function bindSecretProvider(input: {
 		providerId,
 		packageId: savedPackage.id,
 		doorSecretName,
+		doorCredentialId: doorSecret.credentialId,
 		configJson: JSON.stringify(config),
 	})
 	clearProviderSecretCacheForBinding({
@@ -228,6 +234,7 @@ export async function bindSecretProvider(input: {
 		packageId: savedPackage.id,
 		kodyId: savedPackage.kodyId,
 		doorSecretName,
+		doorCredentialId: doorSecret.credentialId,
 		config,
 	}
 }
@@ -262,7 +269,7 @@ async function auditVaultBind(input: {
 	const fields: Array<CredentialDetailField> = []
 	if (
 		input.before.packageId !== after.packageId ||
-		input.before.doorSecretName !== after.doorSecretName ||
+		input.before.doorCredentialId !== after.doorCredentialId ||
 		JSON.stringify(input.before.config) !== JSON.stringify(after.config)
 	) {
 		fields.push('config')
@@ -588,6 +595,7 @@ export async function resolveProviderSecret(input: {
 		env: input.env,
 		userId: ownerUserId,
 		name: binding.doorSecretName,
+		credentialId: binding.doorCredentialId ?? undefined,
 		scope: 'user',
 		storageContext: null,
 	})
@@ -659,6 +667,7 @@ async function resolveCanonicalProviderRef(input: {
 		env: input.env,
 		userId: input.ownerUserId,
 		name: input.binding.doorSecretName,
+		credentialId: input.binding.doorCredentialId ?? undefined,
 		scope: 'user',
 		storageContext: null,
 	})

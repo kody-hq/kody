@@ -4,6 +4,10 @@
 	"main": "./worker.ts",
 	"compatibility_date": "2026-07-22",
 	"compatibility_flags": ["nodejs_compat"],
+	// The hourly seal scan budgets 20,000 R2 calls (seal-full-backup.ts);
+	// the 10,000 default leaves it no headroom.
+	// https://developers.cloudflare.com/workers/platform/limits/#subrequests
+	"limits": { "cpu_ms": 300000, "subrequests": 100000 },
 	"observability": {
 		"enabled": true,
 		"logs": {
@@ -31,6 +35,11 @@
 			"name": "kody-production-seal-day",
 			"class_name": "ProductionSealDayWorkflow",
 		},
+		{
+			"binding": "PACED_DRILL_WORKFLOW",
+			"name": "kody-production-paced-restore-drill",
+			"class_name": "PacedRestoreDrillWorkflow",
+		},
 	],
 	"r2_buckets": [
 		{
@@ -48,10 +57,15 @@
 		"SOURCE_ACCOUNT_ID": "a99ee2e72728dd52902ef288b7b1447d",
 		"SOURCE_DATABASE_ID": "8c1014d1-6b41-4695-a0a2-159071f0f919",
 		"SOURCE_DATABASE_NAME": "kody",
-		// Nightly export list. `kody-jobs` UUID is the production D1 named
+		// REST D1 source list. `kody-jobs` UUID is the production D1 named
 		// `kody-jobs` (JOBS_DB); deploy resolves it by name in
 		// tools/ci/jobs-worker-resources.ts (`jobs_d1_database_id`).
-		"SOURCE_DATABASES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
+		// restExport:false retires the locking REST export (#4306); the paced
+		// lane is the D1 backup. Rollback: drop restExport and redeploy.
+		"SOURCE_DATABASES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\",\"restExport\":false},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\",\"restExport\":false}]",
+		// Paced D1 sources (same ids as the worker's DR_D1_PACED_SOURCES). Their
+		// sealed paced nights are the full seal's D1 source of truth.
+		"D1_PACED_SOURCES": "[{\"id\":\"8c1014d1-6b41-4695-a0a2-159071f0f919\",\"name\":\"kody\"},{\"id\":\"c48f9d10-e4fc-4749-9188-82d68025284e\",\"name\":\"kody-audit\"},{\"id\":\"5410331e-4d25-47e4-a1e5-a248f7cc764c\",\"name\":\"kody-jobs\"}]",
 		"ALLOWED_SOURCE_ACCOUNT_IDS": "a99ee2e72728dd52902ef288b7b1447d",
 		"ALLOWED_SOURCE_DATABASE_IDS": "8c1014d1-6b41-4695-a0a2-159071f0f919,5410331e-4d25-47e4-a1e5-a248f7cc764c",
 		"BUILD_COMMIT": "REPLACE_AT_DEPLOY_TIME",

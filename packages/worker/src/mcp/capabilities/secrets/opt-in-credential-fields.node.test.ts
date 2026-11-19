@@ -17,6 +17,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
+import { resolveSecret } from '#mcp/secrets/service.ts'
 import { credentialUpdateCapability } from './credential-update.ts'
 import { secretListCapability } from './secret-list.ts'
 import { secretSetManyCapability } from './secret-set-many.ts'
@@ -136,7 +137,17 @@ async function setup() {
 	}
 	const set = (input: Record<string, unknown>, as = owner) =>
 		secretSetCapability.handler({ scope: 'user', ...input } as never, as)
-	return { sqlite, owner, member, ownerReadOnlyToken, entry, audits, set }
+	return {
+		sqlite,
+		env,
+		ownerId,
+		owner,
+		member,
+		ownerReadOnlyToken,
+		entry,
+		audits,
+		set,
+	}
 }
 
 test('secretSet stores a url credential with its hosts, and audits the kind', async () => {
@@ -572,6 +583,40 @@ test('new Keys default to headers-only; placement updates audit and can clear to
 	expect((await t.entry('apiKey'))?.placement_json).toBeNull()
 })
 
+test('typed request profiles can only be set or replaced from the credential page', async () => {
+	const t = await setup()
+	await t.set({ name: 'apiKey', value: 'sk_value' })
+	const row = (await t.entry('apiKey'))!
+	const profile = {
+		kind: 'body' as const,
+		packageId: 'package-1',
+		endpoint: 'https://example.com/update',
+		method: 'POST' as const,
+		mediaType: 'application/json' as const,
+		fields: [['token']],
+		selectors: [],
+		output: { format: 'plaintext' as const },
+	}
+	const update = (inject: typeof profile | { kind: 'query'; param: string }) =>
+		credentialUpdateCapability.handler(
+			{ credential_id: row.id, inject },
+			t.owner,
+		)
+	await expect(update(profile)).rejects.toThrow("on the credential's page")
+	await expect(t.set({ name: 'apiKey', inject: profile })).rejects.toThrow(
+		"on the credential's page",
+	)
+	await t.env.APP_DB.prepare(
+		'UPDATE secret_entries SET inject_json = ? WHERE id = ?',
+	)
+		.bind(JSON.stringify(profile), row.id)
+		.run()
+	await expect(update({ kind: 'query', param: 'token' })).rejects.toThrow(
+		"on the credential's page",
+	)
+	expect(JSON.parse((await t.entry('apiKey'))!.inject_json)).toEqual(profile)
+})
+
 test('execute code cannot widen placement or change inject; narrowing and provider still work', async () => {
 	const t = await setup()
 	await t.set({ name: 'apiKey', value: 'sk_value' })
@@ -689,4 +734,145 @@ test('execute code cannot widen placement or change inject; narrowing and provid
 		),
 	).rejects.toThrow('cannot widen its placement')
 	expect(await t.entry('otherKey')).toBeNull()
+})
+
+test('credentialUpdate renames a secret in place: same id, value, mappings, and audited history', async () => {
+	const { sqlite, env, ownerId, owner, entry, audits, set } = await setup()
+	await set({ name: 'factoryToken', value: 'cf-token-value' })
+	const before = await entry('factoryToken')
+	sqlite.exec(
+		`INSERT INTO credential_mappings
+		 (id, org_id, package_id, need_key, target, credential_ids_json, created_at, updated_at)
+		 VALUES ('map-1', '${ownerId}', 'pkg-1', 'cloudflare', 'org', '["${before!.id}"]', 'now', 'now');`,
+	)
+	const result = await credentialUpdateCapability.handler(
+		{ credential_id: before!.id, name: 'workersAiToken' },
+		owner,
+	)
+	expect(result).toMatchObject({
+		credential_id: before!.id,
+		credential_kind: 'secret',
+		name: 'workersAiToken',
+		rename: { previous_name: 'factoryToken', known_references: [] },
+	})
+	expect(result.rename?.note).toMatch(/must be updated/)
+	const after = await entry('workersAiToken')
+	expect(after?.id).toBe(before!.id)
+	expect(after?.encrypted_value).toBe(before!.encrypted_value)
+	expect(await entry('factoryToken')).toBeNull()
+	const userId = ownerIdFromStored(ownerId)
+	await expect(
+		resolveSecret({ env, userId, name: 'workersAiToken', scope: 'user' }),
+	).resolves.toMatchObject({ found: true, value: 'cf-token-value' })
+	const mapping = sqlite
+		.prepare(
+			`SELECT credential_ids_json FROM credential_mappings WHERE id = 'map-1'`,
+		)
+		.get() as { credential_ids_json: string }
+	expect(JSON.parse(mapping.credential_ids_json)).toEqual([before!.id])
+	expect(await audits('credential.renamed')).toEqual([
+		{
+			resourceId: before!.id,
+			details: expect.objectContaining({
+				previousName: 'factoryToken',
+				fields: ['name'],
+			}),
+		},
+	])
+})
+
+test('credentialUpdate rename refuses a taken or malformed name and leaves the secret alone', async () => {
+	const { owner, entry, set } = await setup()
+	await set({ name: 'alpha', value: 'one' })
+	await set({ name: 'beta', value: 'two' })
+	const alpha = await entry('alpha')
+	await expect(
+		credentialUpdateCapability.handler(
+			{ credential_id: alpha!.id, name: 'beta' },
+			owner,
+		),
+	).rejects.toThrow('A secret named "beta" already exists in user scope.')
+	await expect(
+		credentialUpdateCapability.handler(
+			{ credential_id: alpha!.id, name: 'has space' },
+			owner,
+		),
+	).rejects.toThrow(/not a valid secret name/)
+	expect((await entry('alpha'))?.id).toBe(alpha!.id)
+	expect((await entry('beta'))?.encrypted_value).not.toBe(
+		alpha!.encrypted_value,
+	)
+})
+
+test('credentialUpdate rename only renames the account secret it was given, not a same-named one in another scope', async () => {
+	const { sqlite, ownerId, owner, entry, set } = await setup()
+	await set({ name: 'shared', value: 'account' })
+	const account = await entry('shared')
+	sqlite.exec(
+		`INSERT INTO secret_buckets (id, user_id, scope, binding_key)
+		 VALUES ('pkg-bucket', '${ownerId}', 'package', 'pkg-1');
+		 INSERT INTO secret_entries (id, bucket_id, name, encrypted_value, allowed_hosts, kind)
+		 VALUES ('pkg-shared', 'pkg-bucket', 'shared', 'ct', '[]', 'secret');`,
+	)
+	await expect(
+		credentialUpdateCapability.handler(
+			{ credential_id: 'pkg-shared', name: 'renamed' },
+			owner,
+		),
+	).rejects.toThrow(/Only account secrets can be renamed/)
+	expect((await entry('shared'))?.id).toBe(account!.id)
+	expect(await entry('renamed')).toBeNull()
+})
+
+test('credentialUpdate rename needs Write: read-only tokens and members are refused', async () => {
+	const { owner, member, ownerReadOnlyToken, entry, set } = await setup()
+	await set({ name: 'alpha', value: 'one' })
+	const alpha = await entry('alpha')
+	for (const ctx of [ownerReadOnlyToken, member]) {
+		await expect(
+			credentialUpdateCapability.handler(
+				{ credential_id: alpha!.id, name: 'renamed' },
+				ctx,
+			),
+		).rejects.toThrow()
+	}
+	expect(await entry('renamed')).toBeNull()
+	expect((await entry('alpha'))?.id).toBe(alpha!.id)
+	await expect(
+		credentialUpdateCapability.handler(
+			{ credential_id: alpha!.id, name: 'renamed' },
+			owner,
+		),
+	).resolves.toMatchObject({ name: 'renamed' })
+})
+
+test('name-based references keep the old name: the rename lists stored ones and the old name stops resolving', async () => {
+	const { sqlite, env, ownerId, owner, entry, set } = await setup()
+	await set({ name: 'signing', value: 'whsec' })
+	const signing = await entry('signing')
+	sqlite.exec(
+		`INSERT INTO webhook_endpoints
+		 (id, user_id, package_id, webhook_name, url_secret_hash, created_at, rotated_at, hmac_secret_name)
+		 VALUES ('wh-1', '${ownerId}', 'pkg-1', 'stripe', 'hash', 'now', 'now', 'signing');`,
+	)
+	const result = await credentialUpdateCapability.handler(
+		{ credential_id: signing!.id, name: 'stripeSigning' },
+		owner,
+	)
+	expect(result.rename?.known_references).toEqual([
+		{
+			kind: 'webhook-verification',
+			id: 'wh-1',
+			package_id: 'pkg-1',
+			label: 'Webhook stripe verification secret',
+		},
+	])
+	const userId = ownerIdFromStored(ownerId)
+	await expect(
+		resolveSecret({ env, userId, name: 'signing', scope: 'user' }),
+	).resolves.toMatchObject({ found: false })
+	const webhook = sqlite
+		.prepare(`SELECT hmac_secret_name FROM webhook_endpoints WHERE id = 'wh-1'`)
+		.get() as { hmac_secret_name: string }
+	expect(webhook.hmac_secret_name).toBe('signing')
 })

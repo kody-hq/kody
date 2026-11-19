@@ -1,4 +1,7 @@
-import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
+import {
+	grantedSecretAuthorityPackageIdSet,
+	resolveCallerSecretAuthority,
+} from '#mcp/secrets/secret-authority.ts'
 import type { StorageContext } from '#mcp/storage.ts'
 
 /**
@@ -47,4 +50,40 @@ export function attestedPackageStampFromCaller(input: {
 		packageStamp: attestedPackageStamp(authorityPackageId),
 		storageContext,
 	}
+}
+
+/**
+ * Which package is fetching. A CapabilityProxy claim is `claimed`. Otherwise
+ * the host-set per-package binding (`boundPackageId`), or else the host-set
+ * run package, is `attested`. Request headers never select the package
+ * (GHSA-5fv3): sandbox code can set, read, and replay any header.
+ */
+export function resolveGatewayPackageStamp(props: {
+	claimedPackageId?: string | null
+	boundPackageId?: string | null
+	grantedSecretAuthorityPackageIds?: ReadonlyArray<string>
+	storageContext: { packageId?: string | null } | null
+}): PackageStamp | null {
+	const claimed = claimedPackageStamp(props.claimedPackageId)
+	if (claimed) {
+		if (props.storageContext?.packageId || props.boundPackageId) {
+			throw new Error(
+				'Fetch gateway props cannot carry both a claimed package id and a run or bound package id.',
+			)
+		}
+		return claimed
+	}
+	const bound = props.boundPackageId?.trim() || null
+	if (bound) {
+		const grantedPackageIds = grantedSecretAuthorityPackageIdSet(
+			props.grantedSecretAuthorityPackageIds,
+		)
+		if (!grantedPackageIds?.has(bound)) {
+			throw new Error(
+				'Fetch gateway bound package id is not in the run grant set.',
+			)
+		}
+		return attestedPackageStamp(bound)
+	}
+	return attestedPackageStamp(props.storageContext?.packageId?.trim() || null)
 }

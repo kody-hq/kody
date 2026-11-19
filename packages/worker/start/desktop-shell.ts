@@ -61,6 +61,7 @@ export type DesktopShell = {
 		cancel: () => Promise<void>
 	}
 	navigation: {
+		initialState?: DesktopNavigationState | null
 		getState: () => Promise<DesktopNavigationState>
 		back: () => Promise<DesktopNavigationState>
 		forward: () => Promise<DesktopNavigationState>

@@ -65,6 +65,31 @@ export const adminFeatureFlagMetricReadoutSchema = z.discriminatedUnion(
 	],
 )
 
+const mcpEventsClientSupportCountsSchema = z.object({
+	users: z.number().int().min(0),
+	doesNotAdvertise: z.number().int().min(0),
+	advertisesNotSubscribed: z.number().int().min(0),
+	subscribed: z.number().int().min(0),
+})
+
+export const mcpEventsClientSupportReadoutSchema = z.discriminatedUnion(
+	'status',
+	[
+		z.object({
+			status: z.literal('unavailable'),
+			reason: z.string(),
+		}),
+		mcpEventsClientSupportCountsSchema.extend({
+			status: z.literal('ok'),
+			windowStart: z.string(),
+			windowEnd: z.string(),
+			clients: z.array(
+				mcpEventsClientSupportCountsSchema.extend({ clientName: z.string() }),
+			),
+		}),
+	],
+)
+
 export const adminFeatureFlagSchema = z.object({
 	key: z.string(),
 	description: z.string().nullable(),
@@ -73,6 +98,7 @@ export const adminFeatureFlagSchema = z.object({
 	stale: z.boolean(),
 	successMetric: featureFlagSuccessMetricSchema.nullable(),
 	metricReadout: adminFeatureFlagMetricReadoutSchema.optional(),
+	clientSupportReadout: mcpEventsClientSupportReadoutSchema.optional(),
 	global: z
 		.object({
 			enabled: z.boolean(),

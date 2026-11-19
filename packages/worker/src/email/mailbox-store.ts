@@ -122,6 +122,7 @@ const mailboxDrillResultMetaKeys = {
 
 function buildMailboxMessageFilterClauses(input: {
 	inboxId?: string | null
+	inboxIds?: ReadonlyArray<string> | null
 	threadId?: string | null
 	direction?: EmailDirection | null
 	processingStatus?: EmailProcessingStatus | null
@@ -146,6 +147,11 @@ function buildMailboxMessageFilterClauses(input: {
 	if (input.inboxId) {
 		clauses.push('inbox_id = ?')
 		params.push(input.inboxId)
+	}
+	if (input.inboxIds) {
+		// One bound parameter however many inboxes: DO SQLite caps bindings.
+		clauses.push('inbox_id IN (SELECT value FROM json_each(?))')
+		params.push(JSON.stringify(input.inboxIds))
 	}
 	if (input.threadId) {
 		clauses.push('thread_id = ?')

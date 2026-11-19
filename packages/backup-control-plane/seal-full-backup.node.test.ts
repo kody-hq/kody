@@ -3,6 +3,11 @@ import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 
 import {
+	pacedD1BackupSchemaVersion,
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
+import {
 	backupBlobKey,
 	backupStagingSchemaVersion,
 	sealedFullManifestKey,
@@ -25,6 +30,7 @@ import {
 	manifest,
 	putSqlStatsFixture,
 	signedManifest,
+	putPacedSeal,
 } from './backup-control-plane-test-support.ts'
 import {
 	BackupError,
@@ -34,14 +40,21 @@ import {
 } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import { putImmutableManifest } from './immutable-storage.ts'
+import { createR2CallBudget } from './r2-call-budget.ts'
 import {
 	readFullManifest,
 	sealFullBackupDay,
 	sealRecentCompleteDays,
 } from './seal-full-backup.ts'
-import { captureFullSealBlocked } from './sentry.ts'
+import {
+	captureFullSealBlocked,
+	captureSealScanSubrequestLimit,
+} from './sentry.ts'
 
-vi.mock('./sentry.ts', () => ({ captureFullSealBlocked: vi.fn() }))
+vi.mock('./sentry.ts', () => ({
+	captureFullSealBlocked: vi.fn(),
+	captureSealScanSubrequestLimit: vi.fn(),
+}))
 
 function sha256Text(value: string): string {
 	return createHash('sha256').update(value).digest('hex')
@@ -61,6 +74,23 @@ const sealedDumpKeys = (day: string) => ({
 const jobsSource = {
 	id: '44444444-4444-4444-8444-444444444444',
 	name: 'kody-jobs',
+}
+
+const auditSource = {
+	id: '55555555-5555-4555-8555-555555555555',
+	name: 'kody-audit',
+}
+
+/** Production shape: APP + AUDIT + JOBS paced, REST export off for all. */
+function usePacedOnlySources(env: BackupEnvironment) {
+	const app = { id: env.SOURCE_DATABASE_ID, name: env.SOURCE_DATABASE_NAME }
+	env.SOURCE_DATABASES = JSON.stringify([
+		{ ...app, restExport: false },
+		{ ...jobsSource, restExport: false },
+	])
+	env.D1_PACED_SOURCES = JSON.stringify([app, auditSource, jobsSource])
+	env.ALLOWED_SOURCE_DATABASE_IDS = `${app.id},${jobsSource.id}`
+	return [app, auditSource, jobsSource]
 }
 
 async function putBody(bucket: MemoryBucket, objectKey: string, body: string) {
@@ -107,9 +137,14 @@ async function putD1DayManifest(
 async function seedCompleteDay(
 	bucket: MemoryBucket,
 	day = '2026-07-22',
-	options: { duplicateIndexEntry?: boolean } = {},
+	options: { duplicateIndexEntry?: boolean; blobCount?: number } = {},
 ) {
 	const env = environment(bucket)
+	await putPacedSeal(
+		bucket,
+		{ id: env.SOURCE_DATABASE_ID, name: env.SOURCE_DATABASE_NAME },
+		day,
+	)
 	const { sqlKey } = await putD1DayManifest(
 		bucket,
 		env,
@@ -146,8 +181,12 @@ async function seedCompleteDay(
 			dumpBodies.runLog,
 		)),
 	}
-	const blobHash = 'e'.repeat(64)
-	await bucket.put(backupBlobKey(blobHash), 'x')
+	const blobHashes = Array.from({ length: options.blobCount ?? 1 }, (_, i) =>
+		i.toString(16).padStart(64, 'e'),
+	)
+	for (const blobHash of blobHashes) {
+		await bucket.put(backupBlobKey(blobHash), 'x')
+	}
 	const summary = {
 		schemaVersion: backupStagingSchemaVersion,
 		day,
@@ -177,7 +216,12 @@ async function seedCompleteDay(
 			'email-blobs': await putBody(
 				bucket,
 				stagingR2IndexKey(day, 'email-blobs'),
-				`{"key":"blob","size":1,"sha256":"${blobHash}"}\n`,
+				blobHashes
+					.map(
+						(blobHash, i) =>
+							`{"key":"blob-${i}","size":1,"sha256":"${blobHash}"}\n`,
+					)
+					.join(''),
 			),
 		},
 		artifactsIndex: await putBody(
@@ -185,7 +229,7 @@ async function seedCompleteDay(
 			stagingArtifactsIndexKey(day),
 			index([]),
 		),
-		blobsWritten: 1,
+		blobsWritten: blobHashes.length,
 		blobsReused: 0,
 		warnings: [],
 	}
@@ -231,7 +275,7 @@ test('sealFullBackupDay seals a complete day, is idempotent, short-circuits seal
 	assert.ok(sealed)
 	assert.equal(sealed?.payload.day, day)
 	assert.equal(
-		sealed?.payload.schemaVersion === 2
+		sealed?.payload.schemaVersion === 3
 			? sealed.payload.mailboxIndex.objectKey
 			: null,
 		`daily/full/${day}/mailbox-index.json`,
@@ -359,9 +403,10 @@ test('sealFullBackupDay fails closed on staging storage or mailbox sha mismatche
 	}
 })
 
-test('sealFullBackupDay refuses missing or unrestorable SQL stats before sealing', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
+test('missing or unrestorable REST SQL stats omit REST D1 evidence without blocking the seal', async () => {
+	const consoleLog = vi.spyOn(console, 'log')
+	consoleLog.mockImplementation(() => undefined)
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	const putBadStats = (bucket: MemoryBucket, day: string, sqlKey: string) =>
 		bucket.put(
 			`${sqlKey}.stats.json`,
@@ -375,26 +420,16 @@ test('sealFullBackupDay refuses missing or unrestorable SQL stats before sealing
 		const bucket = new MemoryBucket()
 		const seeded = await seedCompleteDay(bucket, '2026-07-31')
 		await prepare(bucket, seeded.day, seeded.sqlKey)
-		assert.deepEqual(await seeded.seal(), {
-			kind: 'incomplete',
-			day: seeded.day,
-			reason,
-		})
-		assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
-		const record = JSON.parse(
-			String(consoleError.mock.calls.at(-1)?.[0]),
-		) as Record<string, unknown>
-		assert.equal(record.event, 'full-backup-seal-skipped')
-		assert.equal(record.errorCode, reason)
+		assert.equal((await seeded.seal()).kind, 'sealed')
+		const payload = (await seeded.sealedManifest())?.payload
+		assert.equal(payload?.d1ManifestKey, undefined)
+		assert.equal(payload?.schemaVersion === 3 ? payload.d1Paced.length : 0, 1)
+		const omitted = consoleLog.mock.calls
+			.map((call) => JSON.parse(String(call[0])) as Record<string, unknown>)
+			.filter((record) => record.event === 'full-backup-rest-d1-omitted')
+			.at(-1)
+		assert.equal(omitted?.errorCode, reason)
 	}
-
-	// Stats that turn bad after sealing do not unseal the day.
-	const sealedBucket = new MemoryBucket()
-	const sealedDay = await seedCompleteDay(sealedBucket, '2026-07-31')
-	await putSqlStatsFixture(sealedBucket, sealedDay.day, sealedDay.sqlKey)
-	assert.equal((await sealedDay.seal()).kind, 'sealed')
-	await putBadStats(sealedBucket, sealedDay.day, sealedDay.sqlKey)
-	assert.deepEqual(await sealedDay.seal('04:01'), alreadySealed(sealedDay.day))
 })
 
 test('sealFullBackupDay is incomplete when the 501st referenced blob is missing', async () => {
@@ -429,54 +464,44 @@ test('sealFullBackupDay is incomplete when the 501st referenced blob is missing'
 	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
 })
 
-test('a day blocked on a missing D1 manifest opens a Sentry issue with that reason the next day', async () => {
-	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+test('REST D1 evidence is recorded only when every REST source has a restorable manifest', async () => {
 	vi.spyOn(console, 'log').mockImplementation(() => undefined)
-	const bucket = new MemoryBucket()
-	const seeded = await seedCompleteDay(bucket)
-	addJobsSource(seeded.env)
-
-	await sealRecentCompleteDays(
-		seeded.env,
-		new Date(`${seeded.day}T20:45:00.000Z`),
-		1,
-	)
-	assert.equal(vi.mocked(captureFullSealBlocked).mock.calls.length, 0)
-
-	await sealRecentCompleteDays(
-		seeded.env,
-		new Date('2026-07-23T04:45:00.000Z'),
-		2,
-	)
-	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
-		[{ day: seeded.day, reason: 'd1-manifest-missing' }],
-	])
-})
-
-test('sealFullBackupDay requires a restorable manifest for every SOURCE_DATABASES entry and records each one', async () => {
-	const consoleError = vi.spyOn(console, 'error')
-	consoleError.mockImplementation(() => undefined)
-	const bucket = new MemoryBucket()
-	const seeded = await seedCompleteDay(bucket)
-	addJobsSource(seeded.env)
-	assert.deepEqual(await seeded.seal(), {
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const partial = await seedCompleteDay(new MemoryBucket())
+	addJobsSource(partial.env)
+	// A REST export still in flight holds the seal until 12:00 UTC.
+	assert.deepEqual(await partial.seal('04:00'), {
 		kind: 'incomplete',
-		day: seeded.day,
-		reason: 'd1-manifest-missing',
+		day: partial.day,
+		reason: 'rest-d1-pending',
 	})
-	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
-	assert.equal(consoleError.mock.calls.length, 1)
+	assert.equal((await partial.seal('12:00')).kind, 'sealed')
+	assert.equal((await partial.sealedManifest())?.payload.d1Sources, undefined)
 
+	const corrupt = new MemoryBucket()
+	const corruptDay = await seedCompleteDay(corrupt)
+	await corrupt.put(
+		backupPayload(corruptDay.env, new Date(`${corruptDay.day}T12:00:00.000Z`))
+			.manifestKey,
+		'not json',
+	)
+	assert.equal((await corruptDay.seal()).kind, 'sealed')
+	assert.equal(
+		(await corruptDay.sealedManifest())?.payload.d1ManifestKey,
+		undefined,
+	)
+
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket)
+	addJobsSource(seeded.env)
 	const jobs = await putD1DayManifest(
 		bucket,
 		bindSourceDatabase(seeded.env, jobsSource),
 		seeded.day,
 		'CREATE TABLE jobs(id INTEGER);\n',
 	)
-	const result = await seeded.seal('04:01')
+	const result = await seeded.seal()
 	assert.equal(result.kind, 'sealed')
-	if (result.kind !== 'sealed') return
-	assert.equal(result.alreadySealed, false)
 	assert.deepEqual(
 		(await seeded.sealedManifest())?.payload.d1Sources?.map((source) => ({
 			databaseId: source.databaseId,
@@ -499,4 +524,217 @@ test('sealFullBackupDay requires a restorable manifest for every SOURCE_DATABASE
 			},
 		],
 	)
+})
+
+test('with restExport:false on every source, the full seal seals from the paced lane alone', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket, '2026-11-17')
+	const sources = usePacedOnlySources(seeded.env)
+	const seals: Array<{ manifestKey: string; manifestSha256: string }> = []
+	for (const source of sources) {
+		seals.push(await putPacedSeal(bucket, source, seeded.day))
+	}
+
+	const result = await seeded.seal()
+	assert.equal(result.kind, 'sealed')
+	const payload = (await seeded.sealedManifest())?.payload
+	assert.equal(payload?.schemaVersion, 3)
+	assert.deepEqual(
+		payload?.schemaVersion === 3 ? payload.d1Paced : null,
+		sources.map((source, index) => ({
+			databaseId: source.id,
+			databaseName: source.name,
+			...seals[index],
+		})),
+	)
+	assert.equal(payload?.d1ManifestKey, undefined)
+	assert.equal(payload?.d1Sources, undefined)
+})
+
+test('a missing paced seal blocks the full seal and opens one Sentry issue per source', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const seeded = await seedCompleteDay(bucket, '2026-11-17')
+	usePacedOnlySources(seeded.env)
+	await putPacedSeal(bucket, jobsSource, seeded.day)
+
+	assert.deepEqual(await seeded.seal(), {
+		kind: 'incomplete',
+		day: seeded.day,
+		reason: 'paced-d1-seal-missing',
+		source: 'kody-audit',
+	})
+	assert.equal(await bucket.head(sealedFullManifestKey(seeded.day)), null)
+
+	await sealRecentCompleteDays(
+		seeded.env,
+		new Date('2026-11-18T11:45:00.000Z'),
+		2,
+	)
+	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
+		[
+			{
+				day: seeded.day,
+				reason: 'paced-d1-seal-missing',
+				source: 'kody-audit',
+			},
+		],
+	])
+})
+
+test('a persistent R2 put failure on one day stays isolated and is logged with its cause', async () => {
+	const consoleError = vi.spyOn(console, 'error')
+	consoleError.mockImplementation(() => undefined)
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const bucket = new MemoryBucket()
+	const failing = await seedCompleteDay(bucket, '2026-07-22')
+	const healthy = await seedCompleteDay(bucket, '2026-07-21')
+	const put = bucket.put.bind(bucket)
+	bucket.put = async (key, value, options) => {
+		if (key.startsWith('daily/full/2026-07-22/')) {
+			throw new Error(
+				'put: We encountered an internal error. Please try again. (10001)',
+			)
+		}
+		return put(key, value, options)
+	}
+	await assert.rejects(
+		sealRecentCompleteDays(
+			failing.env,
+			new Date('2026-07-22T13:00:00.000Z'),
+			2,
+		),
+		(error: unknown) =>
+			error instanceof BackupError && error.code === 'r2-platform-error',
+	)
+	const failures = consoleError.mock.calls
+		.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+		.filter((record) => record.event === 'full-backup-seal-failure')
+	assert.deepEqual(failures, [
+		{
+			event: 'full-backup-seal-failure',
+			status: 'failure',
+			day: failing.day,
+			errorCode: 'r2-platform-error',
+		},
+	])
+	assert.equal((await healthy.sealedManifest())?.payload.day, healthy.day)
+	vi.restoreAllMocks()
+})
+
+function scanLogs(spy: { mock: { calls: Array<Array<unknown>> } }) {
+	return spy.mock.calls
+		.map(([line]) => JSON.parse(String(line)) as Record<string, unknown>)
+		.filter((record) => record.event === 'full-backup-seal-scan-stopped')
+}
+
+test('a scan with more work than its R2 call budget stops cleanly and the next run finishes', async () => {
+	const consoleLog = vi
+		.spyOn(console, 'log')
+		.mockImplementation(() => undefined)
+	const consoleError = vi
+		.spyOn(console, 'error')
+		.mockImplementation(() => undefined)
+	const measure = new MemoryBucket()
+	const measured = await seedCompleteDay(measure, '2026-07-22')
+	const counter = createR2CallBudget(
+		measure as unknown as R2Bucket,
+		Number.MAX_SAFE_INTEGER,
+	)
+	await sealFullBackupDay(
+		{ ...measured.env, BACKUP_BUCKET: counter.bucket },
+		measured.day,
+		new Date('2026-07-22T13:00:00.000Z'),
+	)
+	const oneDayCalls = counter.used()
+
+	const bucket = new MemoryBucket()
+	const today = await seedCompleteDay(bucket, '2026-07-22')
+	const yesterday = await seedCompleteDay(bucket, '2026-07-21')
+	const scheduledAt = new Date('2026-07-22T13:00:00.000Z')
+	const budget = oneDayCalls + 3
+
+	await sealRecentCompleteDays(today.env, scheduledAt, 2, budget)
+	assert.equal((await today.sealedManifest())?.payload.day, today.day)
+	assert.equal(await yesterday.sealedManifest(), null)
+	assert.deepEqual(scanLogs(consoleLog), [
+		{
+			event: 'full-backup-seal-scan-stopped',
+			status: 'success',
+			day: yesterday.day,
+			errorCode: 'r2-call-budget-exhausted',
+			r2Calls: budget,
+		},
+	])
+	assert.deepEqual(vi.mocked(captureFullSealBlocked).mock.calls, [
+		[{ day: yesterday.day, reason: 'r2-call-budget-exhausted' }],
+	])
+	assert.equal(consoleError.mock.calls.length, 0)
+
+	await sealRecentCompleteDays(today.env, scheduledAt, 2, budget)
+	assert.equal((await yesterday.sealedManifest())?.payload.day, yesterday.day)
+	assert.equal(scanLogs(consoleLog).length, 1)
+	vi.restoreAllMocks()
+	vi.mocked(captureFullSealBlocked).mockClear()
+})
+
+test('the Workers subrequest limit stops the scan without retrying or dispatching more calls', async () => {
+	vi.spyOn(console, 'log').mockImplementation(() => undefined)
+	const consoleError = vi
+		.spyOn(console, 'error')
+		.mockImplementation(() => undefined)
+	const memory = new MemoryBucket()
+	const today = await seedCompleteDay(memory, '2026-07-22', { blobCount: 200 })
+	await seedCompleteDay(memory, '2026-07-21')
+	await seedCompleteDay(memory, '2026-07-20')
+	const blobPrefix = backupBlobKey('e'.repeat(64)).slice(0, -64)
+	let limitReached = false
+	let callsAfterLimit = 0
+	const limited = new Proxy(memory, {
+		get(target, property, receiver) {
+			const value = Reflect.get(target, property, receiver) as unknown
+			if (
+				typeof value !== 'function' ||
+				!['head', 'get', 'put', 'list', 'delete'].includes(String(property))
+			) {
+				return value
+			}
+			return async (...args: Array<unknown>) => {
+				if (property === 'head' && String(args[0]).startsWith(blobPrefix)) {
+					limitReached = true
+				}
+				if (limitReached) {
+					callsAfterLimit += 1
+					throw new Error(
+						'Too many API requests by single Worker invocation. To configure this limit, refer to https://developers.cloudflare.com/workers/wrangler/configuration/#limits',
+					)
+				}
+				return (value as (...input: Array<unknown>) => unknown).apply(
+					target,
+					args,
+				)
+			}
+		},
+	})
+
+	await sealRecentCompleteDays(
+		{ ...today.env, BACKUP_BUCKET: limited as unknown as R2Bucket },
+		new Date('2026-07-22T13:00:00.000Z'),
+		3,
+	)
+
+	// Only the blob HEADs already in flight (pool of 32) fail; none of the
+	// other 168 blobs, no retries, and no later days.
+	assert.ok(callsAfterLimit <= 32, `${callsAfterLimit} calls after the limit`)
+	const stopped = scanLogs(consoleError)
+	assert.equal(stopped.length, 1)
+	assert.equal(stopped[0]?.day, today.day)
+	assert.equal(stopped[0]?.errorCode, 'worker-subrequest-limit')
+	assert.deepEqual(vi.mocked(captureSealScanSubrequestLimit).mock.calls, [
+		[{ day: today.day, r2Calls: stopped[0]?.r2Calls }],
+	])
+	assert.equal(await today.sealedManifest(), null)
+	vi.restoreAllMocks()
 })

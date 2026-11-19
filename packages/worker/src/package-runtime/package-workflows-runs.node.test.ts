@@ -16,6 +16,7 @@ import {
 	DynamicCallableWorkflowBase,
 	cancelWorkflowRunForUser,
 	createDynamicCallableWorkflow,
+	getPackageRunForUser,
 	dynamicCallableWorkflowsBindingName,
 	listWorkflowRunPageForUser,
 	listWorkflowRunsForUser,
@@ -74,6 +75,12 @@ vi.mock('#worker/run-records/service.ts', () => ({
 				},
 			]),
 		),
+	setWorkflowProjectionProgress: async (input: {
+		id: string
+		progress: unknown
+	}) => {
+		reportedRunProgress.push({ id: input.id, progress: input.progress })
+	},
 	releaseWorkflowProjectionIdempotencyKey: (...args: Array<unknown>) =>
 		runRecordMocks.releaseWorkflowProjectionIdempotencyKey(
 			...(args as [{ env: Env; userId: string; id: string }]),
@@ -146,8 +153,19 @@ function createWorkflowEnv(
 		DYNAMIC_CALLABLE_WORKFLOWS: binding.workflow,
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
-	} as Env
+		REPO_SESSION_BLOBS: {
+			async put(key: string, value: string) {
+				storedRunResults.set(key, value)
+			},
+		},
+	} as unknown as Env
 }
+
+/** Progress runs reported on their workflow projection, in order. */
+const reportedRunProgress: Array<{ id: string; progress: unknown }> = []
+
+/** What runs wrote to R2 staging, by object key. */
+const storedRunResults = new Map<string, string>()
 
 function createInline(
 	env: Env,
@@ -592,6 +610,49 @@ test('listWorkflowRunsForUser refreshes before applying status filter', async ()
 		filter: { status: 'running' },
 	})
 	expect(stillRunning).toEqual([])
+})
+
+test('getPackageRunForUser follows check and publish runs only, refreshed from the engine', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createWorkflowBinding({
+		existing: { id: 'dynwf-stopped', status: 'errored' },
+	})
+	const env = createWorkflowEnv(binding)
+	const userId = ownerIdFromStored('user-1')
+	const seed = (id: string, workflowName: string, status: string) =>
+		runRecordMocks.upsertWorkflowProjection({
+			env,
+			userId,
+			projection: {
+				id,
+				bindingName: dynamicCallableWorkflowsBindingName,
+				sourceType: 'inline',
+				workflowName,
+				idempotencyKey: `${id}-key`,
+				runAt: '2026-05-08T19:30:00.000Z',
+				status,
+				createdAt: '2026-05-08T19:30:00.000Z',
+				updatedAt: '2026-05-08T19:30:00.000Z',
+			},
+		})
+	// The engine stopped this run; its projection still says running.
+	await seed('dynwf-stopped', 'packageCheck', 'running')
+	// A duplicate dispatch can hand back a run that is still being created.
+	await seed('dynwf-creating', 'packagePublishExternalPush', 'creating')
+	await seed('dynwf-other', 'nightly-sync', 'errored')
+
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-stopped' }),
+	).resolves.toMatchObject({ status: 'errored' })
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-creating' }),
+	).resolves.toMatchObject({ status: 'queued' })
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-other' }),
+	).resolves.toBeNull()
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-missing' }),
+	).resolves.toBeNull()
 })
 
 test('listWorkflowRunsForUser status filter keeps older exact matches beyond the active window', async () => {
@@ -1173,6 +1234,65 @@ test('a durable publish run keeps a compact result and records its published com
 	expect(
 		new TextEncoder().encode(JSON.stringify(finish?.result)).length,
 	).toBeLessThan(runRecordMaxResultSnapshotBytes)
+	// The full answer is stored under the run id for packageRunResult.
+	const stored = JSON.parse(
+		storedRunResults.get(`package-runs/results/user-1/${created.id}.json`)!,
+	)
+	expect(stored.kind).toBe('packagePublishExternalPush')
+	expect(stored.result.manifest.exports).toEqual(exports)
+})
+
+test('a durable publish run that did not publish fails once and still stores the full refusal', async () => {
+	runRecordMocks.resetProjections()
+	runRecordMocks.finishRunRecord.mockClear()
+	const binding = createStatefulWorkflowBinding()
+	const env = createWorkflowEnv(binding)
+	const created = await createPublishRun(
+		env,
+		'user-1:publish-refused',
+		durablePublishWorkflowCode,
+	)
+	const refusal = {
+		status: 'checks_failed',
+		failed_checks: [{ kind: 'typecheck', ok: false, message: 'TS2345' }],
+		manifest: null,
+	}
+	// The publish reports a phase while it runs, as the capability would.
+	reportedRunProgress.length = 0
+	invocationMocks.runModuleWithRegistry.mockImplementationOnce(
+		async (...args: Array<unknown>) => {
+			const options = args[4] as {
+				reportProgress?: (update: {
+					progress: number
+					message?: string
+				}) => Promise<void>
+			}
+			await options.reportProgress?.({
+				progress: 1,
+				message: 'Running publish checks.',
+			})
+			return { result: refusal, logs: [] }
+		},
+	)
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).rejects.toThrow(
+		'packagePublishExternalPush returned checks_failed: typecheck: TS2345',
+	)
+	expect(reportedRunProgress).toEqual([
+		{
+			id: created.id,
+			progress: { phase: 'publish', message: 'Running publish checks.' },
+		},
+	])
+	expect(
+		JSON.parse(
+			storedRunResults.get(`package-runs/results/user-1/${created.id}.json`)!,
+		),
+	).toEqual({ kind: 'packagePublishExternalPush', result: refusal })
 })
 
 test('a custom inline workflow that reuses the publish name keeps its own result', async () => {
@@ -1194,5 +1314,57 @@ test('a custom inline workflow that reuses the publish name keeps its own result
 	expect(runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]).toMatchObject({
 		status: 'success',
 		result: custom,
+	})
+})
+
+test('durable publish failures keep platform attribution and report current publish and job state', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createStatefulWorkflowBinding()
+	const db = createWorkflowRunsDatabase({
+		savedPackage: {
+			id: syntheticPublishContext.packageId,
+			user_id: 'user-1',
+			kody_id: syntheticPublishContext.kodyId,
+			source_id: syntheticPublishContext.sourceId,
+		},
+		publishedCommit: syntheticPublishCommit,
+	})
+	const env = createWorkflowEnv(binding, db)
+	env.JOBS = {
+		listJobsForUser: async () => [
+			{
+				source_id: syntheticPublishContext.sourceId,
+				published_commit: 'old',
+			},
+			{
+				source_id: syntheticPublishContext.sourceId,
+				published_commit: syntheticPublishCommit,
+			},
+			{ source_id: 'unrelated-source', published_commit: 'old' },
+		],
+	} as unknown as Env['JOBS']
+	const created = await createPublishRun(
+		env,
+		'user-1:publish-platform-error',
+		durablePublishWorkflowCode,
+	)
+	const detail =
+		"Failed while finalizing the uploaded build: Cannot read properties of undefined (reading 'get')"
+	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: null,
+		error: detail,
+		logs: [],
+	})
+
+	const message = `Publish workflow: Publish applied: recorded, not serving. Job rebind: 1 of 2 existing jobs pinned to this commit. ${detail}`
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).rejects.toMatchObject({ name: 'Error', message })
+	expect(runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]).toMatchObject({
+		status: 'error',
+		error: { name: 'Error', message },
 	})
 })

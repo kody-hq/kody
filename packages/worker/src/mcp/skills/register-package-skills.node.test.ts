@@ -12,7 +12,6 @@ import {
 } from '#worker/package-registry/package-skills.ts'
 
 const mocks = vi.hoisted(() => ({
-	resolveCallerFeatureFlags: vi.fn(),
 	loadSource: vi.fn(),
 	listOwn: vi.fn(),
 	recordRead: vi.fn(),
@@ -23,10 +22,6 @@ vi.mock('#worker/package-registry/skill-read-events.ts', async (original) => ({
 		typeof import('#worker/package-registry/skill-read-events.ts')
 	>()),
 	recordSkillRead: mocks.recordRead,
-}))
-vi.mock('#mcp/capabilities/access-control.ts', () => ({
-	resolveCallerFeatureFlags: (...args: Array<unknown>) =>
-		mocks.resolveCallerFeatureFlags(...args),
 }))
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	listSavedPackagesWithCommunityProvenanceByUserId: (...args: Array<unknown>) =>
@@ -140,9 +135,6 @@ const supported = { 'io.modelcontextprotocol/skills': {} }
 beforeEach(async () => {
 	kvStore.clear()
 	for (const mock of Object.values(mocks)) mock.mockReset()
-	mocks.resolveCallerFeatureFlags.mockResolvedValue({
-		'mcp-skills-extension': true,
-	})
 	const record = {
 		id: 'pkg-1',
 		userId: ownerIdFromStored('user-1'),
@@ -173,7 +165,7 @@ beforeEach(async () => {
 	)
 })
 
-test('server/discover advertises the extension and resources when flag and client support are on', async () => {
+test('server/discover advertises the extension and resources when the client declares the extension', async () => {
 	const response = await callModern({
 		method: 'server/discover',
 		extensions: supported,
@@ -188,23 +180,6 @@ test('server/discover advertises nothing when the client does not declare the ex
 	const response = await callModern({ method: 'server/discover' })
 	expect(response.result?.['capabilities']).not.toHaveProperty('extensions')
 	expect(response.result?.['capabilities']).not.toHaveProperty('resources')
-	expect(mocks.resolveCallerFeatureFlags).not.toHaveBeenCalled()
-})
-
-test('server/discover advertises nothing when the flag is off for the caller', async () => {
-	mocks.resolveCallerFeatureFlags.mockResolvedValue({
-		'mcp-skills-extension': false,
-	})
-	const response = await callModern({
-		method: 'server/discover',
-		extensions: supported,
-	})
-	expect(response.result?.['capabilities']).not.toHaveProperty('extensions')
-	const list = await callModern({
-		method: 'skills/list',
-		extensions: supported,
-	})
-	expect(list.error?.code).toBe(-32601)
 })
 
 test('skills/list returns the complete SEP shape', async () => {

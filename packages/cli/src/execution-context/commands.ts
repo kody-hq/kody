@@ -1,3 +1,5 @@
+import { promisify } from 'node:util'
+import { execFile } from 'node:child_process'
 import {
 	appendFileSync,
 	existsSync,
@@ -10,6 +12,7 @@ import { cpus, platform, totalmem } from 'node:os'
 import {
 	ed25519JwkThumbprint,
 	ecpMaxConcurrentRunsCap,
+	ecpPublishBuildFeature,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	apiJson,
@@ -176,7 +179,19 @@ export function maxConcurrentRuns(
 	return parsed
 }
 
-function localCapabilities(maxConcurrent: number = defaultMaxConcurrentRuns) {
+/** Publish builds clone with `git`, so only a machine that has it takes them. */
+async function hasGit() {
+	try {
+		await promisify(execFile)('git', ['--version'], { timeout: 10_000 })
+		return true
+	} catch {
+		return false
+	}
+}
+
+async function localCapabilities(
+	maxConcurrent: number = defaultMaxConcurrentRuns,
+) {
 	return {
 		runtime: 'workerd',
 		node: process.versions.node,
@@ -184,7 +199,7 @@ function localCapabilities(maxConcurrent: number = defaultMaxConcurrentRuns) {
 		cpuCount: cpus().length,
 		memoryMb: Math.round(totalmem() / (1024 * 1024)),
 		maxConcurrent,
-		features: [],
+		features: (await hasGit()) ? [ecpPublishBuildFeature] : [],
 	}
 }
 
@@ -383,7 +398,7 @@ async function runCommand(
 			publicKeyJwk,
 			privateKey,
 			thumbprint,
-			capabilities: localCapabilities(),
+			capabilities: await localCapabilities(),
 			client: { name: 'kody-cli', version: input.clientVersion },
 		})
 		try {
@@ -984,7 +999,7 @@ Run \`kody daemon\` in a terminal, or fix that and run: kody daemon install --co
 				maxConcurrent,
 				client: { name: 'kody-cli', version: input.clientVersion },
 				capabilities: {
-					...localCapabilities(maxConcurrent),
+					...(await localCapabilities(maxConcurrent)),
 					...(manager ? { service: manager } : {}),
 				},
 				extraCapabilities: () => ({

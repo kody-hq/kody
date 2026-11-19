@@ -175,6 +175,8 @@ import { Route as BlogCategoryCategoryRouteImport } from './routes/blog.category
 import { Route as BlogSeriesSeriesRouteImport } from './routes/blog.series.$series'
 import { Route as BlogSlugOgDotpngRouteImport } from './routes/blog_.$slug_.og[.]png'
 import { Route as CommunityListingIdOgDotpngRouteImport } from './routes/community_.$listingId_.og[.]png'
+import { Route as DevMockupsIndexRouteImport } from './routes/dev.mockups.index'
+import { Route as DevMockupsSplatRouteImport } from './routes/dev.mockups.$'
 import { Route as DocsSlugOgDotpngRouteImport } from './routes/docs_.$slug_.og[.]png'
 import { Route as FileAssetsOrgSlugFileIdRouteImport } from './routes/file-assets_.$orgSlug.$fileId'
 import { Route as FileSessionOrgSlugFileIdRouteImport } from './routes/file-session_.$orgSlug.$fileId'
@@ -183,6 +185,7 @@ import { Route as IntegrationsLogosIntegrationSlugRouteImport } from './routes/i
 import { Route as IntegrationsProviderMarksSlugRouteImport } from './routes/integrations_.provider-marks_.$slug'
 import { Route as OauthPackageAppAuthorizeRouteImport } from './routes/oauth.package-app.authorize'
 import { Route as OauthPackageAppDeviceRouteImport } from './routes/oauth.package-app.device'
+import { Route as OauthPackageAppRunAsMeRouteImport } from './routes/oauth.package-app.run-as-me'
 import { Route as OfficePreviewOrgSlugKindRouteImport } from './routes/office-preview_.$orgSlug.$kind'
 import { Route as OnboardingStep1AgentRouteImport } from './routes/onboarding.step-1_.$agent'
 import { Route as OnboardingStep2ServiceRouteImport } from './routes/onboarding.step-2_.$service'
@@ -278,6 +281,7 @@ import { Route as AppAtChar123orgSlugChar125BillingMovePlanRouteImport } from '.
 import { Route as AppAtChar123orgSlugChar125BillingSuccessRouteImport } from './routes/_app.@{$orgSlug}_.-.billing_.success'
 import { Route as AppAtChar123orgSlugChar125CredentialsCredentialIdRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.$credentialId'
 import { Route as AppAtChar123orgSlugChar125CredentialsNewRouteImport } from './routes/_app.@{$orgSlug}_.-.credentials_.new'
+import { Route as AppAtChar123orgSlugChar125DevMockupsSplatRouteImport } from './routes/_app.@{$orgSlug}_.-.dev-mockups.$'
 import { Route as AppAtChar123orgSlugChar125EmailMessageIdRouteImport } from './routes/_app.@{$orgSlug}_.-.email_.$messageId'
 import { Route as AppAtChar123orgSlugChar125ExecutionContextsContextIdRouteImport } from './routes/_app.@{$orgSlug}_.-.execution-contexts_.$contextId'
 import { Route as AppAtChar123orgSlugChar125GrantsEveryoneRouteImport } from './routes/_app.@{$orgSlug}_.-.grants_.everyone'
@@ -1169,6 +1173,16 @@ const CommunityListingIdOgDotpngRoute =
     path: '/community/$listingId/og.png',
     getParentRoute: () => rootRouteImport,
   } as any)
+const DevMockupsIndexRoute = DevMockupsIndexRouteImport.update({
+  id: '/dev/mockups/',
+  path: '/dev/mockups/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const DevMockupsSplatRoute = DevMockupsSplatRouteImport.update({
+  id: '/dev/mockups/$',
+  path: '/dev/mockups/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsSlugOgDotpngRoute = DocsSlugOgDotpngRouteImport.update({
   id: '/docs_/$slug_/og.png',
   path: '/docs/$slug/og.png',
@@ -1211,6 +1225,11 @@ const OauthPackageAppAuthorizeRoute =
 const OauthPackageAppDeviceRoute = OauthPackageAppDeviceRouteImport.update({
   id: '/oauth/package-app/device',
   path: '/oauth/package-app/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OauthPackageAppRunAsMeRoute = OauthPackageAppRunAsMeRouteImport.update({
+  id: '/oauth/package-app/run-as-me',
+  path: '/oauth/package-app/run-as-me',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OfficePreviewOrgSlugKindRoute =
@@ -1772,6 +1791,12 @@ const AppAtChar123orgSlugChar125CredentialsNewRoute =
     path: '/@{$orgSlug}/-/credentials/new',
     getParentRoute: () => AppRoute,
   } as any)
+const AppAtChar123orgSlugChar125DevMockupsSplatRoute =
+  AppAtChar123orgSlugChar125DevMockupsSplatRouteImport.update({
+    id: '/@{$orgSlug}_/-/dev-mockups/$',
+    path: '/@{$orgSlug}/-/dev-mockups/$',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppAtChar123orgSlugChar125EmailMessageIdRoute =
   AppAtChar123orgSlugChar125EmailMessageIdRouteImport.update({
     id: '/@{$orgSlug}_/-/email_/$messageId',
@@ -2160,6 +2185,7 @@ export interface FileRoutesByFullPath {
   '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
+  '/dev/mockups/$': typeof DevMockupsSplatRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
   '/file-assets/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
   '/file-session/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
@@ -2168,12 +2194,14 @@ export interface FileRoutesByFullPath {
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
   '/profiles/$username/og.png': typeof ProfilesUsernameOgDotpngRoute
   '/admin/': typeof AppAdminIndexRoute
+  '/dev/mockups/': typeof DevMockupsIndexRoute
   '/.well-known/agent-skills/$skillId/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   '/@{$orgSlug}/-/connections/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
   '/@{$username}/$kodyId/assets/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
@@ -2264,6 +2292,7 @@ export interface FileRoutesByFullPath {
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/@{$orgSlug}/-/dev-mockups/$': typeof AppAtChar123orgSlugChar125DevMockupsSplatRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
@@ -2465,6 +2494,7 @@ export interface FileRoutesByTo {
   '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog/$slug/og.png': typeof BlogSlugOgDotpngRoute
   '/community/$listingId/og.png': typeof CommunityListingIdOgDotpngRoute
+  '/dev/mockups/$': typeof DevMockupsSplatRoute
   '/docs/$slug/og.png': typeof DocsSlugOgDotpngRoute
   '/file-assets/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
   '/file-session/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
@@ -2473,12 +2503,14 @@ export interface FileRoutesByTo {
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3/$agent': typeof OnboardingStep3AgentRoute
   '/profiles/$username/og.png': typeof ProfilesUsernameOgDotpngRoute
   '/admin': typeof AppAdminIndexRoute
+  '/dev/mockups': typeof DevMockupsIndexRoute
   '/.well-known/agent-skills/$skillId/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   '/@{$orgSlug}/-/connections/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
   '/@{$username}/$kodyId/assets/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
@@ -2569,6 +2601,7 @@ export interface FileRoutesByTo {
   '/@{$orgSlug}/-/billing/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/@{$orgSlug}/-/credentials/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/@{$orgSlug}/-/credentials/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/@{$orgSlug}/-/dev-mockups/$': typeof AppAtChar123orgSlugChar125DevMockupsSplatRoute
   '/@{$orgSlug}/-/email/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/@{$orgSlug}/-/execution-contexts/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/@{$orgSlug}/-/grants/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
@@ -2773,6 +2806,7 @@ export interface FileRoutesById {
   '/blog/series/$series': typeof BlogSeriesSeriesRoute
   '/blog_/$slug_/og.png': typeof BlogSlugOgDotpngRoute
   '/community_/$listingId_/og.png': typeof CommunityListingIdOgDotpngRoute
+  '/dev/mockups/$': typeof DevMockupsSplatRoute
   '/docs_/$slug_/og.png': typeof DocsSlugOgDotpngRoute
   '/file-assets_/$orgSlug/$fileId': typeof FileAssetsOrgSlugFileIdRoute
   '/file-session_/$orgSlug/$fileId': typeof FileSessionOrgSlugFileIdRoute
@@ -2781,12 +2815,14 @@ export interface FileRoutesById {
   '/integrations_/provider-marks_/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview_/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1_/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2_/$service': typeof OnboardingStep2ServiceRoute
   '/onboarding/step-3_/$agent': typeof OnboardingStep3AgentRoute
   '/profiles_/$username_/og.png': typeof ProfilesUsernameOgDotpngRoute
   '/_app/admin/': typeof AppAdminIndexRoute
+  '/dev/mockups/': typeof DevMockupsIndexRoute
   '/.well-known_/agent-skills_/$skillId_/SKILL.md': typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   '/@{$orgSlug}_/-/connections_/$': typeof AtChar123orgSlugChar125ConnectionsSplatRoute
   '/@{$username}_/$kodyId_/assets_/$': typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
@@ -2877,6 +2913,7 @@ export interface FileRoutesById {
   '/_app/@{$orgSlug}_/-/billing_/success': typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   '/_app/@{$orgSlug}_/-/credentials_/$credentialId': typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   '/_app/@{$orgSlug}_/-/credentials_/new': typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  '/_app/@{$orgSlug}_/-/dev-mockups/$': typeof AppAtChar123orgSlugChar125DevMockupsSplatRoute
   '/_app/@{$orgSlug}_/-/email_/$messageId': typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId': typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   '/_app/@{$orgSlug}_/-/grants_/everyone': typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
@@ -3081,6 +3118,7 @@ export interface FileRouteTypes {
     | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
+    | '/dev/mockups/$'
     | '/docs/$slug/og.png'
     | '/file-assets/$orgSlug/$fileId'
     | '/file-session/$orgSlug/$fileId'
@@ -3089,12 +3127,14 @@ export interface FileRouteTypes {
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
     | '/profiles/$username/og.png'
     | '/admin/'
+    | '/dev/mockups/'
     | '/.well-known/agent-skills/$skillId/SKILL.md'
     | '/@{$orgSlug}/-/connections/$'
     | '/@{$username}/$kodyId/assets/$'
@@ -3185,6 +3225,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
+    | '/@{$orgSlug}/-/dev-mockups/$'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/grants/everyone'
@@ -3386,6 +3427,7 @@ export interface FileRouteTypes {
     | '/blog/series/$series'
     | '/blog/$slug/og.png'
     | '/community/$listingId/og.png'
+    | '/dev/mockups/$'
     | '/docs/$slug/og.png'
     | '/file-assets/$orgSlug/$fileId'
     | '/file-session/$orgSlug/$fileId'
@@ -3394,12 +3436,14 @@ export interface FileRouteTypes {
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
     | '/onboarding/step-3/$agent'
     | '/profiles/$username/og.png'
     | '/admin'
+    | '/dev/mockups'
     | '/.well-known/agent-skills/$skillId/SKILL.md'
     | '/@{$orgSlug}/-/connections/$'
     | '/@{$username}/$kodyId/assets/$'
@@ -3490,6 +3534,7 @@ export interface FileRouteTypes {
     | '/@{$orgSlug}/-/billing/success'
     | '/@{$orgSlug}/-/credentials/$credentialId'
     | '/@{$orgSlug}/-/credentials/new'
+    | '/@{$orgSlug}/-/dev-mockups/$'
     | '/@{$orgSlug}/-/email/$messageId'
     | '/@{$orgSlug}/-/execution-contexts/$contextId'
     | '/@{$orgSlug}/-/grants/everyone'
@@ -3693,6 +3738,7 @@ export interface FileRouteTypes {
     | '/blog/series/$series'
     | '/blog_/$slug_/og.png'
     | '/community_/$listingId_/og.png'
+    | '/dev/mockups/$'
     | '/docs_/$slug_/og.png'
     | '/file-assets_/$orgSlug/$fileId'
     | '/file-session_/$orgSlug/$fileId'
@@ -3701,12 +3747,14 @@ export interface FileRouteTypes {
     | '/integrations_/provider-marks_/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview_/$orgSlug/$kind'
     | '/onboarding/step-1_/$agent'
     | '/onboarding/step-2_/$service'
     | '/onboarding/step-3_/$agent'
     | '/profiles_/$username_/og.png'
     | '/_app/admin/'
+    | '/dev/mockups/'
     | '/.well-known_/agent-skills_/$skillId_/SKILL.md'
     | '/@{$orgSlug}_/-/connections_/$'
     | '/@{$username}_/$kodyId_/assets_/$'
@@ -3797,6 +3845,7 @@ export interface FileRouteTypes {
     | '/_app/@{$orgSlug}_/-/billing_/success'
     | '/_app/@{$orgSlug}_/-/credentials_/$credentialId'
     | '/_app/@{$orgSlug}_/-/credentials_/new'
+    | '/_app/@{$orgSlug}_/-/dev-mockups/$'
     | '/_app/@{$orgSlug}_/-/email_/$messageId'
     | '/_app/@{$orgSlug}_/-/execution-contexts_/$contextId'
     | '/_app/@{$orgSlug}_/-/grants_/everyone'
@@ -3954,6 +4003,7 @@ export interface RootRouteChildren {
   BlogSeriesSeriesRoute: typeof BlogSeriesSeriesRoute
   BlogSlugOgDotpngRoute: typeof BlogSlugOgDotpngRoute
   CommunityListingIdOgDotpngRoute: typeof CommunityListingIdOgDotpngRoute
+  DevMockupsSplatRoute: typeof DevMockupsSplatRoute
   DocsSlugOgDotpngRoute: typeof DocsSlugOgDotpngRoute
   FileAssetsOrgSlugFileIdRoute: typeof FileAssetsOrgSlugFileIdRoute
   FileSessionOrgSlugFileIdRoute: typeof FileSessionOrgSlugFileIdRoute
@@ -3962,8 +4012,10 @@ export interface RootRouteChildren {
   IntegrationsProviderMarksSlugRoute: typeof IntegrationsProviderMarksSlugRoute
   OauthPackageAppAuthorizeRoute: typeof OauthPackageAppAuthorizeRoute
   OauthPackageAppDeviceRoute: typeof OauthPackageAppDeviceRoute
+  OauthPackageAppRunAsMeRoute: typeof OauthPackageAppRunAsMeRoute
   OfficePreviewOrgSlugKindRoute: typeof OfficePreviewOrgSlugKindRoute
   ProfilesUsernameOgDotpngRoute: typeof ProfilesUsernameOgDotpngRoute
+  DevMockupsIndexRoute: typeof DevMockupsIndexRoute
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
   AtChar123orgSlugChar125ConnectionsSplatRoute: typeof AtChar123orgSlugChar125ConnectionsSplatRoute
   AtChar123usernameChar125KodyIdAssetsSplatRoute: typeof AtChar123usernameChar125KodyIdAssetsSplatRoute
@@ -5148,6 +5200,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunityListingIdOgDotpngRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dev/mockups/': {
+      id: '/dev/mockups/'
+      path: '/dev/mockups'
+      fullPath: '/dev/mockups/'
+      preLoaderRoute: typeof DevMockupsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/dev/mockups/$': {
+      id: '/dev/mockups/$'
+      path: '/dev/mockups/$'
+      fullPath: '/dev/mockups/$'
+      preLoaderRoute: typeof DevMockupsSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs_/$slug_/og.png': {
       id: '/docs_/$slug_/og.png'
       path: '/docs/$slug/og.png'
@@ -5202,6 +5268,13 @@ declare module '@tanstack/react-router' {
       path: '/oauth/package-app/device'
       fullPath: '/oauth/package-app/device'
       preLoaderRoute: typeof OauthPackageAppDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/package-app/run-as-me': {
+      id: '/oauth/package-app/run-as-me'
+      path: '/oauth/package-app/run-as-me'
+      fullPath: '/oauth/package-app/run-as-me'
+      preLoaderRoute: typeof OauthPackageAppRunAsMeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/office-preview_/$orgSlug/$kind': {
@@ -5869,6 +5942,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/@{$orgSlug}_/-/dev-mockups/$': {
+      id: '/_app/@{$orgSlug}_/-/dev-mockups/$'
+      path: '/@{$orgSlug}/-/dev-mockups/$'
+      fullPath: '/@{$orgSlug}/-/dev-mockups/$'
+      preLoaderRoute: typeof AppAtChar123orgSlugChar125DevMockupsSplatRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/@{$orgSlug}_/-/email_/$messageId': {
       id: '/_app/@{$orgSlug}_/-/email_/$messageId'
       path: '/@{$orgSlug}/-/email/$messageId'
@@ -6257,6 +6337,7 @@ interface AppRouteChildren {
   AppAtChar123orgSlugChar125BillingSuccessRoute: typeof AppAtChar123orgSlugChar125BillingSuccessRoute
   AppAtChar123orgSlugChar125CredentialsCredentialIdRoute: typeof AppAtChar123orgSlugChar125CredentialsCredentialIdRoute
   AppAtChar123orgSlugChar125CredentialsNewRoute: typeof AppAtChar123orgSlugChar125CredentialsNewRoute
+  AppAtChar123orgSlugChar125DevMockupsSplatRoute: typeof AppAtChar123orgSlugChar125DevMockupsSplatRoute
   AppAtChar123orgSlugChar125EmailMessageIdRoute: typeof AppAtChar123orgSlugChar125EmailMessageIdRoute
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute: typeof AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute
   AppAtChar123orgSlugChar125GrantsEveryoneRoute: typeof AppAtChar123orgSlugChar125GrantsEveryoneRoute
@@ -6453,6 +6534,8 @@ const AppRouteChildren: AppRouteChildren = {
     AppAtChar123orgSlugChar125CredentialsCredentialIdRoute,
   AppAtChar123orgSlugChar125CredentialsNewRoute:
     AppAtChar123orgSlugChar125CredentialsNewRoute,
+  AppAtChar123orgSlugChar125DevMockupsSplatRoute:
+    AppAtChar123orgSlugChar125DevMockupsSplatRoute,
   AppAtChar123orgSlugChar125EmailMessageIdRoute:
     AppAtChar123orgSlugChar125EmailMessageIdRoute,
   AppAtChar123orgSlugChar125ExecutionContextsContextIdRoute:
@@ -6677,6 +6760,7 @@ const rootRouteChildren: RootRouteChildren = {
   BlogSeriesSeriesRoute: BlogSeriesSeriesRoute,
   BlogSlugOgDotpngRoute: BlogSlugOgDotpngRoute,
   CommunityListingIdOgDotpngRoute: CommunityListingIdOgDotpngRoute,
+  DevMockupsSplatRoute: DevMockupsSplatRoute,
   DocsSlugOgDotpngRoute: DocsSlugOgDotpngRoute,
   FileAssetsOrgSlugFileIdRoute: FileAssetsOrgSlugFileIdRoute,
   FileSessionOrgSlugFileIdRoute: FileSessionOrgSlugFileIdRoute,
@@ -6685,8 +6769,10 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsProviderMarksSlugRoute: IntegrationsProviderMarksSlugRoute,
   OauthPackageAppAuthorizeRoute: OauthPackageAppAuthorizeRoute,
   OauthPackageAppDeviceRoute: OauthPackageAppDeviceRoute,
+  OauthPackageAppRunAsMeRoute: OauthPackageAppRunAsMeRoute,
   OfficePreviewOrgSlugKindRoute: OfficePreviewOrgSlugKindRoute,
   ProfilesUsernameOgDotpngRoute: ProfilesUsernameOgDotpngRoute,
+  DevMockupsIndexRoute: DevMockupsIndexRoute,
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute:
     DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute,
   AtChar123orgSlugChar125ConnectionsSplatRoute:

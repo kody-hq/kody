@@ -141,7 +141,7 @@ function isBrowserAbortSentryEvent(
 	)
 }
 
-export function filterBrowserAbortSentryEvent<T extends SentryErrorEventLike>(
+function filterBrowserAbortSentryEvent<T extends SentryErrorEventLike>(
 	event: T,
 	originalException?: unknown,
 ): T | null {
@@ -185,7 +185,7 @@ function isFirefoxDomPermissionDeniedSentryEvent(
 	)
 }
 
-export function filterFirefoxDomPermissionDeniedSentryEvent<
+function filterFirefoxDomPermissionDeniedSentryEvent<
 	T extends SentryErrorEventLike,
 >(event: T, originalException?: unknown): T | null {
 	if (isFirefoxDomPermissionDeniedSentryEvent(event, originalException)) {
@@ -240,7 +240,7 @@ function isBrowserInjectedGlobalNoiseSentryEvent(
 	)
 }
 
-export function filterBrowserInjectedGlobalNoiseSentryEvent<
+function filterBrowserInjectedGlobalNoiseSentryEvent<
 	T extends SentryErrorEventLike,
 >(event: T, originalException?: unknown): T | null {
 	if (isBrowserInjectedGlobalNoiseSentryEvent(event, originalException)) {
@@ -1994,9 +1994,10 @@ function filterCrabAppleUserAgentSpoofSentryEvent<
  * D1 blips are not re-reported by the browser SDK after the server filter
  * already treats them as expected platform noise.
  */
-export function filterRetryableD1LockSentryEvent<
-	T extends SentryErrorEventLike,
->(event: T, _originalException?: unknown): T | null {
+function filterRetryableD1LockSentryEvent<T extends SentryErrorEventLike>(
+	event: T,
+	_originalException?: unknown,
+): T | null {
 	if (isBrowserRetryableD1LockSentryEvent(event)) return null
 	return event
 }

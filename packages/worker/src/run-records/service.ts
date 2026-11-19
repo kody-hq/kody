@@ -33,6 +33,7 @@ import type {
 	RunLogSqlBillingStats,
 } from './run-log-do.ts'
 import type {
+	WorkflowProjectionProgress,
 	WorkflowProjectionRecord,
 	WorkflowProjectionReserveResult,
 	WorkflowProjectionUpsertInput,
@@ -1495,6 +1496,21 @@ export async function releaseWorkflowProjectionIdempotencyKey(input: {
 		env: input.env,
 		userId: input.userId,
 	}).releaseWorkflowProjectionIdempotencyKey({ id: input.id })
+}
+
+export async function setWorkflowProjectionProgress(input: {
+	env: Env
+	userId: OwnerId
+	id: string
+	progress: WorkflowProjectionProgress
+}): Promise<{ ok: true }> {
+	return await runLogRpc({
+		env: input.env,
+		userId: input.userId,
+	}).setWorkflowProjectionProgress({
+		id: input.id,
+		progress: input.progress,
+	})
 }
 
 export async function getWorkflowProjection(input: {

@@ -170,6 +170,13 @@ export function pacedD1StagingManifestKey(
 	return `${pacedD1StagingPrefix(day, databaseName)}manifest.json`
 }
 
+export function pacedD1StagingNightMetaKey(
+	day: string,
+	databaseName: string,
+): string {
+	return `${pacedD1StagingPrefix(day, databaseName)}night-meta.json`
+}
+
 export function pacedD1StagingDataKey(
 	day: string,
 	databaseName: string,
@@ -306,6 +313,15 @@ export function pacedD1RetentionTierForDay(day: string): PacedD1RetentionTier {
 
 export function pacedD1ForcesFullBase(day: string): boolean {
 	return pacedD1RetentionTierForDay(day) === 'weekly'
+}
+
+/**
+ * Operator request to cut a full base on a weekday night. Read once when the
+ * night starts, so it only applies to a night that has not started yet.
+ */
+export function pacedD1ForceFullBaseRequestKey(day: string): string {
+	assertBackupDay(day)
+	return `staging/${day}/d1-paced-requests/force-full-base.json`
 }
 
 export function adaptPacedPageSize(input: {

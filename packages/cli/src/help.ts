@@ -90,7 +90,7 @@ Usage:
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
-               [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
+               [--credential <key=id:credential-id>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--run-jobs] [--simulate-latency] [--cold] [--clock <iso|ms>] [--cpu-limit-ms <n>] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
@@ -239,17 +239,19 @@ ${orgBlock}
              auth as \`kody api\`). Optional positional is a \`package_id\`, or a
              name (\`@owner/leaf\` or bare leaf) resolved to its package_id
              via \`packageList\` in the current org. Extra fields
-             via \`--params\` JSON (e.g. \`allow_force\`). Prints the API JSON
-             body. Exit 0 for \`published\`, \`already_published\` (including
-             when \`artifacts_rebuilt\` is true), and \`dispatched\` (poll
-             \`workflowRunList({ workflow_id })\`). Exit 1 for refusal/rejection
+             via \`--params\` JSON (e.g. \`allow_force\`). Publish always runs
+             as a durable workflow: the CLI follows it, prints each phase
+             to stderr, then prints the stored result JSON. Ctrl-C cancels
+             the run. Exit 0 for \`published\` and \`already_published\`
+             (including when \`artifacts_rebuilt\` is true). Exit 1 for a
+             run that failed, and for refusal/rejection
              statuses (\`checks_failed\`, \`locked\`, \`approval_required\`,
              \`not_fast_forward\`) — the API \`message\` (or a checks summary)
              goes to stderr, like npm. Auth / permission / network failures
              also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the
-             server — prefer \`kody api workflowRunList\` with \`workflow_id\`
+             server — prefer \`kody api packageRunResult\` with \`workflow_id\`
              when known before retrying).
              Re-publishing the same commit is safe: an active durable run is
              deduped; a finished publish returns \`already_published\`.
@@ -320,11 +322,10 @@ ${orgBlock}
              Automations set theirs with
              \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
              (read with \`automationExecutionGet\`).
-  --credential <key=name>
-             ADR 0068 call map: pick which credential each \`credential(key)\`
+  --credential <key=id:credential-id>
+             Pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.
-             \`--credential github=work\`, \`--credential x=org:work\`
-             (or \`personal:name\`), \`--credential github=\` for none on
+             Use an id from \`credentialList\`, or \`--credential github=\` for none on
              purpose. With \`--local\`, sent as CapabilityProxy top-level
              \`credentials\` (code never sets the map) after a
              \`credentialClientCheck\` preflight. With a \`kody login\` MCP
@@ -435,7 +436,10 @@ ${orgBlock}
              when a bundle input is gitignored / untracked-ignored, since
              publish builds the git snapshot), then runs the server publish
              checks on the same tree (\`packageCheck\`, the checks publish
-             runs, credential stamp gate included) with your login. Without
+             runs, credential stamp gate included) with your login. The
+             tree is uploaded once and checked in a durable run: phase and
+             artifact chunk progress prints to stderr, and Ctrl-C cancels
+             the run. Without
              \`--offline\`, a passing check means publish will not refuse it;
              \`--offline\` skips the server checks (a WARN says so) and that
              guarantee does not apply. \`--debug\` prints the publish checks

@@ -7,6 +7,11 @@ export default defineConfig({
 		'.': {
 			entry: [
 				...toolCliEntryFiles(process.cwd()),
+				// Husky hooks and Nx targets run these directly.
+				'tools/git-hook-checks.ts',
+				'tools/run-node-tests.ts',
+				'tools/run-tsc.ts',
+				'tools/run-workers-tests.ts',
 				'tools/files-spike/browser.ts',
 				'tools/files-spike/worker.ts',
 				'tools/files-spike/vitest.config.ts',
@@ -26,8 +31,6 @@ export default defineConfig({
 				'src/bin.ts',
 				'src/cli.ts',
 				'src/skill-refresh.ts',
-				'scripts/build.mjs',
-				'scripts/bench.mjs',
 				'test/**/*.ts',
 			],
 			project: ['src/**/*.ts', 'scripts/**/*.mjs', 'test/**/*.ts'],
