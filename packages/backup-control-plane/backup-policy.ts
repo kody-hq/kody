@@ -1,6 +1,5 @@
 import type {
 	BackupEnvironment,
-	BackupPayload,
 	LogRecord,
 	RetentionTier,
 	ScheduledBackupPayload,

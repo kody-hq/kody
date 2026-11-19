@@ -1,16 +1,11 @@
 import assert from 'node:assert/strict'
 
-import { test, vi } from 'vitest'
+import { test } from 'vitest'
 
-import {
-	DEFAULT_BACKUP_MAX_SOURCE_BYTES,
-	pollD1Export,
-	startD1Export,
-} from './d1-export-api.ts'
+import { pollD1Export, startD1Export } from './d1-export-api.ts'
 import {
 	environment,
 	exportEnvelope,
-	identityEnvelope,
 	backupError,
 } from './backup-control-plane-test-support.ts'
 
