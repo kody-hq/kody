@@ -9,14 +9,12 @@ import {
 } from '@kody-internal/shared/backup-staging.ts'
 
 import {
-	backupPayload,
 	configuredSourceDatabases,
 	isBackupEnabled,
 	pacedSourceDatabases,
-	restExportSourceDatabases,
 	utcDay,
 } from './backup-policy.ts'
-import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
+import type { BackupEnvironment } from './backup-types.ts'
 import {
 	dayColumnLegend,
 	deriveDayCells,
@@ -30,14 +28,11 @@ import {
 } from './day-status.ts'
 import { getD1Database } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
-import { readManifest } from './immutable-storage.ts'
-import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import type { PacedDrillProgress } from './paced-restore-drill.ts'
 import type { ProductionRestoreProgress } from './production-restore.ts'
 import type { RestoreConfirmToken } from './restore-confirm-token.ts'
 import { readFullManifest, readSealedPacedNight } from './seal-full-backup.ts'
 import type { SealStatusView } from './seal-day-run.ts'
-import { readSqlRestorability } from './sql-statement-stats.ts'
 
 const DASHBOARD_DAY_COUNT = 14
 
@@ -316,90 +311,9 @@ export async function collectDayStatuses(
 		date.setUTCDate(date.getUTCDate() - offset)
 		const day = utcDay(date)
 		const warnings: Array<string> = []
-		const sources = restExportSourceDatabases(env)
 		let d1Present = true
-		let d1Verified: boolean | null = null
-		let d1Restorable: boolean | null = null
-		for (const source of sources) {
-			const d1Key = backupPayload(
-				env,
-				new Date(`${day}T12:00:00.000Z`),
-				source,
-			).manifestKey
-			const label = sources.length === 1 ? '' : `${source.name}: `
-			let sourceManifest: BackupManifest | null = null
-			let sourceVerified = false
-			try {
-				sourceManifest = await readManifest(env.BACKUP_BUCKET, d1Key)
-				if (sourceManifest === null) {
-					d1Present = false
-					d1Verified = false
-					d1Restorable = false
-					warnings.push(`${label}D1 manifest missing`)
-					continue
-				}
-				sourceVerified = await verifyBackupManifestSignature(
-					env,
-					sourceManifest,
-				)
-				d1Verified =
-					d1Verified === false ? false : sourceVerified ? true : false
-				if (!sourceVerified) {
-					d1Restorable = false
-					warnings.push(`${label}D1 manifest signature invalid`)
-				}
-			} catch {
-				d1Verified = false
-				d1Present = false
-				d1Restorable = false
-				warnings.push(`${label}D1 manifest unreadable`)
-				continue
-			}
-			if (sourceManifest !== null && sourceVerified) {
-				try {
-					const restorability = await readSqlRestorability(
-						env.BACKUP_BUCKET,
-						day,
-						sourceManifest.payload.sql.objectKey,
-					)
-					switch (restorability.kind) {
-						case 'restorable':
-							if (d1Restorable !== false) d1Restorable = true
-							break
-						case 'unrestorable':
-							d1Restorable = false
-							warnings.push(
-								`${label}D1 SQL contains oversized statements and cannot be restored`,
-							)
-							break
-						case 'legacy-unknown':
-							warnings.push(
-								`${label}D1 restorability unknown: legacy backup has no SQL stats`,
-							)
-							break
-						case 'missing':
-							d1Restorable = false
-							warnings.push(
-								`${label}D1 is not restorable: required SQL stats are missing`,
-							)
-							break
-						case 'corrupt':
-							d1Restorable = false
-							warnings.push(
-								`${label}D1 is not restorable: SQL stats are unreadable`,
-							)
-							break
-						default: {
-							const exhaustive: never = restorability
-							throw exhaustive
-						}
-					}
-				} catch {
-					d1Restorable = false
-					warnings.push(`${label}D1 is not restorable: SQL stats lookup failed`)
-				}
-			}
-		}
+		const d1Verified: boolean | null = null
+		const d1Restorable: boolean | null = null
 		try {
 			for (const source of pacedSourceDatabases(env)) {
 				const paced = await readSealedPacedNight(env.BACKUP_BUCKET, source, day)
@@ -609,7 +523,7 @@ ${renderCell(day.cells.sealVerified)}
 	const body = `
 <header>
 	<h1>Kody DR backup control plane</h1>
-	<p>Operator dashboard for D1 export, full-day sealing, isolated drills, and graduated production restore.</p>
+	<p>Operator dashboard for full-day sealing, isolated drills, and graduated production restore.</p>
 </header>
 ${options.flashHtml ?? ''}
 <section class="panel">
@@ -652,9 +566,6 @@ ${options.flashHtml ?? ''}
 <section class="panel">
 	<h2>Actions</h2>
 	<div class="actions">
-		<form method="post" action="/actions/run-backup">
-			<button type="submit">Run today's D1 backup</button>
-		</form>
 		<form method="post" action="/actions/seal-day" class="actions">
 			<label>Day
 				<input type="text" name="day" placeholder="YYYY-MM-DD" required pattern="\\d{4}-\\d{2}-\\d{2}"/>

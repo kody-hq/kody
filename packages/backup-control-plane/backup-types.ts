@@ -6,7 +6,6 @@ export type RetentionTier = 'daily' | 'weekly'
 
 export interface BackupEnvironment {
 	BACKUP_BUCKET: R2Bucket
-	BACKUP_WORKFLOW: Workflow
 	RESTORE_WORKFLOW: Workflow
 	SEAL_WORKFLOW: Workflow
 	PACED_DRILL_WORKFLOW: Workflow
@@ -29,7 +28,6 @@ export interface BackupEnvironment {
 	BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64: string
 	TRUSTED_RESTORE_BASELINE_ID: string
 	TRUSTED_RESTORE_BASELINE_SHA256: string
-	BACKUP_MAX_AGE_HOURS?: string
 	BACKUP_MAX_SOURCE_BYTES?: string
 	ACCESS_TEAM_DOMAIN: string
 	ACCESS_APP_AUD: string
