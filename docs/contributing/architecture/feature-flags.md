@@ -182,8 +182,23 @@ receiving deliveries. Signed-in users can also turn it on from
 `execute` event count, goal increase: event-driven clients follow deliveries
 with execute calls. Exposures use `exposureRecording: mcp-events-clients`
 (dedicated write from the `registerMcpEvents` `events/*` handlers only), so
-execute and other non-events MCP callers stay out of the on/off cohorts. Enable
-for experiment members with
+execute and other non-events MCP callers stay out of the on/off cohorts.
+
+Because that cohort only counts `events/*` callers, it reads near zero when the
+connected hosts cannot use events at all (Claude Code, Codex, and Cursor never
+call `events/*`). `adminFeatureFlagList` therefore also attaches a
+`clientSupportReadout` for this flag, read from `kody_mcp_protocol_events`
+(blob9 records whether a request's client capabilities declare events). It
+splits month-to-date MCP users into `doesNotAdvertise` (never declared events
+and never called `events/*`), `advertisesNotSubscribed` (declared events or
+called an `events/*` method, never `events/subscribe`), and `subscribed`, in
+total and per client name. Readout criteria for ending the experiment (#3686):
+judge adoption only among users whose clients advertise events
+(`advertisesNotSubscribed + subscribed`), not all MCP users. A low on-cohort
+count with most users in `doesNotAdvertise` means host support is missing, not
+that the feature failed; remove only if events-advertising users stay below 10
+for the window, or if they advertise but almost none subscribe. Enable for
+experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
 

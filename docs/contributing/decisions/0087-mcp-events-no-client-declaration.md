@@ -33,7 +33,11 @@ liveness, connection-profile `read` grant, stamped `mcp` field) are unchanged.
 
 The `mcp-events-clients` exposure is written when the client calls an `events/*`
 method, not on every OAuth request, so clients that ignore the capability stay
-outside the experiment's cohorts.
+outside the experiment's cohorts. Adoption is read separately from MCP protocol
+events: each request records whether its client capabilities declare events, so
+the admin readout can split "client does not advertise events" from "advertises
+but does not subscribe". That readout is observe-only and does not gate
+registration.
 
 ## Consequences
 
