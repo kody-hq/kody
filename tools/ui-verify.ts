@@ -53,9 +53,17 @@ function canConnect(port: number) {
 async function startPinnedBrowser() {
 	if (spawnSync('docker', ['info'], { stdio: 'ignore' }).status !== 0)
 		return null
-	const pull = spawnSync('docker', ['pull', '--quiet', pinnedBrowserImage], {
+	// Registry pulls on CI runners sometimes drop mid-transfer.
+	let pull = spawnSync('docker', ['pull', '--quiet', pinnedBrowserImage], {
 		stdio: 'inherit',
 	})
+	for (let attempt = 1; pull.status !== 0 && attempt < 3; attempt++) {
+		console.warn(`docker pull ${pinnedBrowserImage} failed; retrying.`)
+		await delay(5000 * attempt)
+		pull = spawnSync('docker', ['pull', '--quiet', pinnedBrowserImage], {
+			stdio: 'inherit',
+		})
+	}
 	// Offline with the image cached still renders in the pinned browser.
 	const cached = () =>
 		spawnSync('docker', ['image', 'inspect', pinnedBrowserImage], {

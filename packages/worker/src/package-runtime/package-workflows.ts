@@ -57,7 +57,10 @@ import {
 	runStartedByClientFromCredentialKind,
 	normalizeRunStartedBy,
 } from '#worker/run-records/run-started-by.ts'
-import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
+import {
+	isPublishComputeLimitMessage,
+	publishOutsideCloudAdvice,
+} from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	beginRunRecord,
 	closeStoppedWorkflowAttemptRuns,
@@ -106,6 +109,7 @@ import { applyDynamicWorkflowSentryScope } from './package-workflows-sentry.ts'
 import {
 	compactDurablePublishResult,
 	durablePublishRefusalReason,
+	describeDurablePublishState,
 	isDurablePublishWorkflowCode,
 } from './durable-publish-result.ts'
 
@@ -342,11 +346,17 @@ function isPackageCheckWorkflow(
 	)
 }
 
+function shouldSuggestOffloadingPublish(
+	payload: DynamicCallableWorkflowPayload,
+) {
+	return isPublishWorkflow(payload) && !payload.params?.['publish_build_id']
+}
+
 function isPublishComputeFailure(
 	payload: DynamicCallableWorkflowPayload,
 	error: unknown,
 ) {
-	if (!isPublishWorkflow(payload)) return false
+	if (!shouldSuggestOffloadingPublish(payload)) return false
 	const message = getErrorMessage(error)
 	if (message.includes(publishOutsideCloudAdvice())) return false
 	return /timed out|CPU time|memory limit|compute limit/i.test(message)
@@ -2113,7 +2123,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				userId: payload.userId,
 				workflowId: event.instanceId,
 				outcome: 'failed',
-				...(isPublishWorkflow(payload)
+				...(shouldSuggestOffloadingPublish(payload)
 					? { failureHint: publishOutsideCloudAdvice() }
 					: {}),
 				waitUntil: (promise) => this.ctx.waitUntil(promise),
@@ -2489,11 +2499,11 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			)
 			logs = result.logs
 			if (result.error) {
-				if (isTransientDurableObjectResetError(result.error)) {
-					throw new Error(getErrorMessage(result.error))
-				}
 				const message = getErrorMessage(result.error)
 				const terminalIndex = message.indexOf(terminalInlineWorkflowErrorPrefix)
+				if (isTransientDurableObjectResetError(result.error)) {
+					throw new Error(message)
+				}
 				if (terminalIndex !== -1) {
 					throw terminalWorkflowStepError(
 						message.slice(
@@ -2501,6 +2511,8 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						),
 					)
 				}
+				// This is Kody's own publish wrapper, not user-authored code.
+				if (durablePublish) throw new Error(message)
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
@@ -2536,6 +2548,19 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			})
 			return value
 		} catch (error) {
+			if (durablePublish && !isAccountSuspendedError(error)) {
+				const state = await describeDurablePublishState({
+					env: this.env,
+					userId: payload.userId,
+					sourceId: payload.packageContext?.sourceId,
+					commit: payload.enqueuedCommit,
+				})
+				const message = `Publish workflow: ${state} ${getErrorMessage(error)}`
+				error =
+					isNonRetryableError(error) || isPublishComputeLimitMessage(message)
+						? terminalWorkflowStepError(message)
+						: new Error(message, { cause: error })
+			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
 				env: this.env,

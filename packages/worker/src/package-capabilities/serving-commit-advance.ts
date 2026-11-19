@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/cloudflare'
+import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import {
 	personIdFromStored,
 	type OwnerId,
@@ -183,6 +184,13 @@ async function syncJobsToCommit(input: ServingAdvanceInput) {
 		commit: input.commit,
 		actorUserId: input.actor?.userId,
 		actorCredential: input.actor?.credential ?? null,
+	}).catch((error: unknown) => {
+		throw new Error(
+			`Failed while rebinding package jobs: ${getErrorMessage(error)}`,
+			{
+				cause: error,
+			},
+		)
 	})
 	return true
 }

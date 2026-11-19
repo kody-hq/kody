@@ -82,7 +82,7 @@ function mapRow(row: Record<string, unknown>): PackageApprovalRequest {
 /**
  * Records a pending request, replacing any pending one for the same package
  * and reason. Asking again for the same commit and base returns the existing
- * request unchanged.
+ * request unless a new sealed upload replaces its continuation.
  */
 export async function enqueuePackageApprovalRequest(
 	db: D1Database,
@@ -94,6 +94,7 @@ export async function enqueuePackageApprovalRequest(
 		baseCommit: string | null
 		details: Record<string, unknown>
 		requestedByUserId: string | null
+		replaceSameCommitDetails?: boolean
 		now?: string
 	},
 ): Promise<PackageApprovalRequest> {
@@ -103,6 +104,20 @@ export async function enqueuePackageApprovalRequest(
 		existing.pendingCommit === input.pendingCommit &&
 		existing.baseCommit === input.baseCommit
 	) {
+		if (input.replaceSameCommitDetails) {
+			const update = await db
+				.prepare(
+					`UPDATE package_approval_requests SET details_json = ?
+					WHERE id = ? AND status = 'pending' AND details_json <> ?`,
+				)
+				.bind(
+					JSON.stringify(input.details),
+					existing.id,
+					JSON.stringify(input.details),
+				)
+				.run()
+			if (update.meta.changes) return { ...existing, details: input.details }
+		}
 		return existing
 	}
 	const now = input.now ?? new Date().toISOString()

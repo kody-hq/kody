@@ -1342,6 +1342,29 @@ async function dispatch(
 				}
 			}
 			try {
+				if (local && target === 'mock' && modulePath !== undefined) {
+					const { findLocalPackageExport, executeLocalPackageExport } =
+						await import('./dev/execute-local-package.js')
+					const localExport = await findLocalPackageExport({
+						modulePath,
+						...(localPackageInvoke && invoke ? { exportKey: invoke } : {}),
+					})
+					if (localExport) {
+						const result = await executeLocalPackageExport({
+							export: localExport,
+							resetStorage: parsed.values['reset-storage'] === true,
+							params: args.params,
+							conversationId: args.conversationId as string | undefined,
+							credentials,
+							passthroughHosts,
+							allowPrivateNetwork:
+								parsed.values['allow-private-network'] === true,
+							onStatus: (message) => writeErr(`${message}\n`),
+						})
+						write(formatToolResult(result, json))
+						return result.isError ? 1 : 0
+					}
+				}
 				if (target === 'mock') {
 					const { ensureMockTarget } = await import('./mock/mock-server.js')
 					const mock = await ensureMockTarget({
@@ -1349,6 +1372,7 @@ async function dispatch(
 						packageId: localPackageRun
 							? `local:${localPackageRun.kodyId}`
 							: undefined,
+						allowPackageStorage: false,
 						...(org ? { orgSlug: org } : {}),
 					})
 					apiUrl = mock.apiUrl
@@ -1825,6 +1849,7 @@ async function dispatch(
 												onStatus: (message) => io.stderr(`${message}\n`),
 											})
 											return {
+												api: { origin: kody.origin, apiToken: kody.apiToken },
 												upstream: local.createLocalKodyUpstream({
 													kody,
 													manifest,

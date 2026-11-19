@@ -30,7 +30,6 @@ import { notePackageAppPublishRequester } from '#worker/package-runtime/package-
 import { isExternalPublishSnapshotTooLargeMessage } from '#worker/repo/external-publish-clone.ts'
 import {
 	externalPublishResourceLimitMessage,
-	uploadedBuildPersistLimitMessage,
 	isPublishComputeLimitMessage,
 	type RepoCheckStep,
 } from '#worker/repo/isolated-runner-limit-message.ts'
@@ -116,6 +115,7 @@ import {
 	reportCapabilityProgress,
 	type McpReportProgress,
 } from '#mcp/progress.ts'
+import { isUserCodeError } from '#worker/user-code-error.ts'
 import {
 	readPromotedVersionFromManifest,
 	resolveListingBehindPublishHint,
@@ -201,14 +201,14 @@ function isExternalPublishResourceLimitError(error: unknown) {
 function throwIfExternalPublishResourceLimit(
 	error: unknown,
 	step: RepoCheckStep | null = null,
-	uploadedBuild = false,
+	offloadedBuild = false,
 ): never | void {
 	if (error instanceof McpCallerError) throw error
 	if (isDurableObjectIsolateResourceLimitResetError(error)) {
 		throw new McpCallerError(
-			uploadedBuild
-				? uploadedBuildPersistLimitMessage()
-				: externalPublishResourceLimitMessage(step),
+			isPublishComputeLimitMessage(getErrorMessage(error))
+				? getErrorMessage(error)
+				: externalPublishResourceLimitMessage(step, offloadedBuild),
 			{ cause: error },
 		)
 	}
@@ -230,6 +230,13 @@ function bundleCheckFailedFromRebuildError(error: unknown) {
 		ok: false as const,
 		message: getErrorMessage(error),
 	}
+}
+
+function failureDuringPublishPhase(error: unknown, phase: string) {
+	const ErrorType = error instanceof McpCallerError ? McpCallerError : Error
+	return new ErrorType(`Failed while ${phase}: ${getErrorMessage(error)}`, {
+		cause: error,
+	})
 }
 
 function logExternalPublishRetry(input: {
@@ -1034,6 +1041,7 @@ async function runExternalPublishAttempt(input: {
 	publisherRequest?: RequestContext | null
 	approvalViewer: ApprovalViewer | null
 	reportProgress?: McpReportProgress
+	durableReentry?: boolean
 	/** Publish offload: persist this verified upload instead of rebuilding. */
 	uploadedBuild?: UploadedPublishBuildRef | null
 }): Promise<Exclude<PublishExternalPushResult, { status: 'dispatched' }>> {
@@ -1046,7 +1054,12 @@ async function runExternalPublishAttempt(input: {
 		})
 	const maxAttempts = externalPublishRetryDelaysMs.length + 1
 	let lastTransientError: unknown = null
+	let phase = ''
+	const rebuildPhase = input.uploadedBuild
+		? 'finalizing the uploaded build'
+		: 'rebuilding published artifacts'
 	for (let attemptIndex = 0; attemptIndex < maxAttempts; attemptIndex += 1) {
+		phase = 'checking and recording the source commit'
 		const attempt = attemptIndex + 1
 		const sessionId =
 			attemptIndex === 0
@@ -1080,7 +1093,9 @@ async function runExternalPublishAttempt(input: {
 				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
 				// The publish builder typechecked this exact tree (verified by hash).
-				...(input.uploadedBuild ? { typecheckRanOffWorker: true } : {}),
+				...(input.uploadedBuild
+					? { uploadedBuildId: input.uploadedBuild.buildId }
+					: {}),
 			})
 			const publishMs = Date.now() - publishStartedAt
 			if (result.status === 'already_published') {
@@ -1110,6 +1125,7 @@ async function runExternalPublishAttempt(input: {
 							? `Already published after ${publishMs}ms — snapshot changed, rebuilding artifacts…`
 							: `Already published after ${publishMs}ms — confirming artifacts match this commit…`,
 				})
+				phase = rebuildPhase
 				const { durationMs: rebuildMs, value: rebuildOutcome } =
 					await timePublishExternalPushPhase(
 						{
@@ -1158,6 +1174,9 @@ async function runExternalPublishAttempt(input: {
 								if (isTransientDurableObjectResetError(error)) {
 									throw error
 								}
+								if (input.uploadedBuild && !isUserCodeError(error)) {
+									throw error
+								}
 								return {
 									ok: false as const,
 									failedCheck: bundleCheckFailedFromRebuildError(error),
@@ -1166,6 +1185,7 @@ async function runExternalPublishAttempt(input: {
 						},
 					)
 				if (!rebuildOutcome.ok) {
+					phase = 'restoring the previous publish after a failed rebuild'
 					await settleFailedPublishRebuild({
 						env: input.env,
 						baseUrl: input.baseUrl,
@@ -1183,6 +1203,7 @@ async function runExternalPublishAttempt(input: {
 				}
 				const artifactsRebuilt =
 					forceRebuild || rebuildOutcome.rebuiltTargetCount > 0
+				phase = 'checking dependents and preparing publish details'
 				const { durationMs: dependentsMs, value: alreadyPublishedExtras } =
 					await timePublishExternalPushPhase(
 						{
@@ -1279,6 +1300,7 @@ async function runExternalPublishAttempt(input: {
 					total: maxAttempts + 1,
 					message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
 				})
+				phase = 'confirming the serving commit'
 				await assertCurrent(publishedCommit)
 				if (tipMoved) {
 					return {
@@ -1374,6 +1396,7 @@ async function runExternalPublishAttempt(input: {
 				total: maxAttempts + 1,
 				message: `Checks passed in ${publishMs}ms — rebuilding published artifacts and indexing dependents…`,
 			})
+			phase = rebuildPhase
 			const { durationMs: rebuildMs, value: rebuildOutcome } =
 				await timePublishExternalPushPhase(
 					{
@@ -1417,6 +1440,9 @@ async function runExternalPublishAttempt(input: {
 							if (isTransientDurableObjectResetError(error)) {
 								throw error
 							}
+							if (input.uploadedBuild && !isUserCodeError(error)) {
+								throw error
+							}
 							return {
 								ok: false as const,
 								failedCheck: bundleCheckFailedFromRebuildError(error),
@@ -1425,6 +1451,7 @@ async function runExternalPublishAttempt(input: {
 					},
 				)
 			if (!rebuildOutcome.ok) {
+				phase = 'restoring the previous publish after a failed rebuild'
 				await settleFailedPublishRebuild({
 					env: input.env,
 					baseUrl: input.baseUrl,
@@ -1440,6 +1467,7 @@ async function runExternalPublishAttempt(input: {
 					manifest: result.manifest ?? null,
 				}
 			}
+			phase = 'checking dependents and preparing publish details'
 			const { durationMs: dependentsMs, value: publishedExtras } =
 				await timePublishExternalPushPhase(
 					{
@@ -1527,6 +1555,7 @@ async function runExternalPublishAttempt(input: {
 				total: maxAttempts + 1,
 				message: `Confirming the published commit after artifact rebuild (${rebuildMs}ms) and dependent checks (${dependentsMs}ms).`,
 			})
+			phase = 'confirming the serving commit'
 			await assertCurrent(result.published_commit)
 			return {
 				...result,
@@ -1542,19 +1571,30 @@ async function runExternalPublishAttempt(input: {
 				}),
 			} as const
 		} catch (error) {
-			if (
-				!(error instanceof McpCallerError) &&
-				isDurableObjectIsolateResourceLimitResetError(error)
-			) {
-				// The reset instance left its current step in storage; this call
-				// reaches a fresh isolate for the same session id.
-				const step = await readLastCheckStep(
-					repoSessionRpc(input.env, sessionId),
-				)
-				throwIfExternalPublishResourceLimit(error, step)
+			try {
+				if (
+					!(error instanceof McpCallerError) &&
+					isDurableObjectIsolateResourceLimitResetError(error)
+				) {
+					// The reset instance left its current step in storage.
+					const step = await readLastCheckStep(
+						repoSessionRpc(input.env, sessionId),
+					)
+					throwIfExternalPublishResourceLimit(
+						error,
+						step,
+						input.uploadedBuild != null,
+					)
+				}
+				throwIfExternalPublishResourceLimit(error)
+			} catch (limitOrCallerError) {
+				if (!input.durableReentry) throw limitOrCallerError
+				throw failureDuringPublishPhase(limitOrCallerError, phase)
 			}
-			throwIfExternalPublishResourceLimit(error)
 			if (!isTransientDurableObjectResetError(error)) {
+				if (input.durableReentry) {
+					throw failureDuringPublishPhase(error, phase)
+				}
 				throw error
 			}
 			lastTransientError = error
@@ -1579,7 +1619,7 @@ async function runExternalPublishAttempt(input: {
 		}
 	}
 	throw new Error(
-		`packagePublishExternalPush could not recover after ${maxAttempts} transient Durable Object reset attempts: ${getErrorMessage(
+		`packagePublishExternalPush could not recover after ${maxAttempts} transient Durable Object reset attempts while ${phase}: ${getErrorMessage(
 			lastTransientError,
 		)}`,
 	)
@@ -1731,6 +1771,7 @@ export const publishExternalPushCapability = defineDomainCapability(
 				publisherRequest: ctx.callerContext.request ?? null,
 				approvalViewer: optionalApprovalViewerForCaller(ctx),
 				reportProgress: ctx.reportProgress,
+				durableReentry,
 				uploadedBuild: publishBuildId
 					? await resolveUploadedPublishBuildForPublish({
 							db: ctx.env.APP_DB,
@@ -1740,6 +1781,12 @@ export const publishExternalPushCapability = defineDomainCapability(
 							commit: newCommit,
 							requesterUserId: publishRequesterPersonId(ctx.callerContext),
 							orgId: requireMcpRequest(ctx.callerContext).org.id,
+						}).catch((error: unknown) => {
+							if (!durableReentry) throw error
+							throw failureDuringPublishPhase(
+								error,
+								'validating the uploaded build',
+							)
 						})
 					: null,
 			}

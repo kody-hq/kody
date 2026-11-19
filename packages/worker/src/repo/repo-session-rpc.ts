@@ -32,7 +32,10 @@ import type {
 	RepoSessionSearchResult,
 	RepoSessionTreeResult,
 } from './types.ts'
-import type { RepoCheckStep } from './isolated-runner-limit-message.ts'
+import type {
+	LinkedPublishArtifactSizes,
+	RepoCheckStep,
+} from './isolated-runner-limit-message.ts'
 import type { PackageServingUpdate } from './package-serving-update.ts'
 // Type-only: an inline `type` specifier keeps a runtime import of
 // publish-work.ts and creates an import cycle through checks.ts.
@@ -220,8 +223,12 @@ export type RepoSessionRpc = {
 		userId: string
 		publishedCommit: string
 		buildId: string
+		diagnosticsId?: string
 		baseUrl?: string
 	}) => Promise<PersistUploadedPublishBuildResult>
+	getLinkedPublishArtifactSizes: (
+		diagnosticsId: string,
+	) => Promise<LinkedPublishArtifactSizes | null>
 	rebuildPublishedPackageArtifact: (payload: {
 		sessionId?: string
 		sourceId?: string
@@ -270,7 +277,7 @@ export type RepoSessionRpc = {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
-		typecheckRanOffWorker?: boolean
+		uploadedBuildId?: string
 		resumeFinalize?: boolean
 		publisherRequest?: RequestContext | null
 	}) => Promise<RepoExternalPublishResult>

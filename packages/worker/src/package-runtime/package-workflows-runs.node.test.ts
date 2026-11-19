@@ -1316,3 +1316,55 @@ test('a custom inline workflow that reuses the publish name keeps its own result
 		result: custom,
 	})
 })
+
+test('durable publish failures keep platform attribution and report current publish and job state', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createStatefulWorkflowBinding()
+	const db = createWorkflowRunsDatabase({
+		savedPackage: {
+			id: syntheticPublishContext.packageId,
+			user_id: 'user-1',
+			kody_id: syntheticPublishContext.kodyId,
+			source_id: syntheticPublishContext.sourceId,
+		},
+		publishedCommit: syntheticPublishCommit,
+	})
+	const env = createWorkflowEnv(binding, db)
+	env.JOBS = {
+		listJobsForUser: async () => [
+			{
+				source_id: syntheticPublishContext.sourceId,
+				published_commit: 'old',
+			},
+			{
+				source_id: syntheticPublishContext.sourceId,
+				published_commit: syntheticPublishCommit,
+			},
+			{ source_id: 'unrelated-source', published_commit: 'old' },
+		],
+	} as unknown as Env['JOBS']
+	const created = await createPublishRun(
+		env,
+		'user-1:publish-platform-error',
+		durablePublishWorkflowCode,
+	)
+	const detail =
+		"Failed while finalizing the uploaded build: Cannot read properties of undefined (reading 'get')"
+	invocationMocks.runModuleWithRegistry.mockResolvedValueOnce({
+		result: null,
+		error: detail,
+		logs: [],
+	})
+
+	const message = `Publish workflow: Publish applied: recorded, not serving. Job rebind: 1 of 2 existing jobs pinned to this commit. ${detail}`
+	await expect(
+		new DynamicCallableWorkflowBase({} as ExecutionContext, env).run(
+			queuedPayload(binding, created.id),
+			createInlineStep(),
+		),
+	).rejects.toMatchObject({ name: 'Error', message })
+	expect(runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]).toMatchObject({
+		status: 'error',
+		error: { name: 'Error', message },
+	})
+})

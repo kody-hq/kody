@@ -1021,6 +1021,11 @@ export async function startPackageAppDev(
 			}
 			void readDevCallBody(req)
 				.then(async ({ operation, input }) => {
+					if (operation === 'sync') {
+						await localKody.sync()
+						send(200, { result: null })
+						return
+					}
 					if (!devCallOperations.has(operation)) {
 						send(400, {
 							error: `Unsupported operation ${JSON.stringify(operation)}.`,

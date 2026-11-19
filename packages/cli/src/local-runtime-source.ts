@@ -306,8 +306,8 @@ export const packages = null;
 
 export function packageStorage() {
 	throw new Error(
-		'packageStorage() requires package provenance: this module was not bundled from a saved package and the run has no package context. ' +
-			'Ad hoc execute has no scratch SQLite helper. Persist durable state from a saved package with packageStorage().',
+		'packageStorage() requires package provenance. Local package state is only reachable from package exports. ' +
+			'Run kody execute --local --target mock --invoke <export> (or import the export).',
 	);
 }
 

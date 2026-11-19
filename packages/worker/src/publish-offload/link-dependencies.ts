@@ -34,6 +34,7 @@ import { collectStaticKodyPackageImportsFromFiles } from '#worker/package-runtim
 import { normalizePackageWorkspacePath } from '#worker/package-registry/manifest.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import { PublishBuildVerificationError } from './verify.ts'
+import { workerLoaderModulesByteSize } from './module-hashes.ts'
 
 /**
  * Placeholder path → `kody:@…` specifier for every other-package import the
@@ -80,7 +81,7 @@ type LinkedDependency = {
 /**
  * One publish's linked dependencies by `kody:@` specifier. Linking parses
  * the whole dependency artifact, and the result is the same for every
- * target, so targets that import the same package share one.
+ * target, so targets that import the same export share one.
  */
 export type LinkedDependencyArtifactCache = Map<
 	string,
@@ -93,6 +94,7 @@ async function linkDependency(input: {
 	userId: string
 	placeholder: string
 	specifier: string
+	onArtifact?: (artifact: { path: string; bytes: number }) => Promise<void>
 }): Promise<LinkedDependency> {
 	const { placeholder, specifier } = input
 	const artifact = await resolveCurrentDynamicPackageArtifact({
@@ -103,9 +105,15 @@ async function linkDependency(input: {
 	})
 	const packageId = artifact.packageContext?.packageId
 	if (!packageId) {
-		throw new PublishBuildVerificationError(
+		throw new Error(
 			`"${specifier}" has no recorded package identity, so Kody cannot link it. Ask its owner to publish it again.`,
 		)
+	}
+	if (input.onArtifact) {
+		await input.onArtifact({
+			path: specifier,
+			bytes: workerLoaderModulesByteSize(artifact.modules),
+		})
 	}
 	const artifactPrefix = linkedArtifactPrefix({
 		specifier,
@@ -150,6 +158,7 @@ export async function linkUploadedPackageImports(input: {
 	linkedImports: ReadonlyMap<string, string>
 	referenced: ReadonlySet<string>
 	artifactCache?: LinkedDependencyArtifactCache
+	onArtifact?: (artifact: { path: string; bytes: number }) => Promise<void>
 }) {
 	const modules: WorkerLoaderModules = { ...input.modules }
 	const publishedArtifactDependencies: Array<BundleArtifactDependency> = []
@@ -168,6 +177,7 @@ export async function linkUploadedPackageImports(input: {
 				userId: input.userId,
 				placeholder,
 				specifier,
+				onArtifact: input.onArtifact,
 			})
 			input.artifactCache?.set(specifier, pending)
 		}

@@ -59,6 +59,9 @@ export type StartDevRuntimeInput = {
 	 * served inline on the origin at `/@{handle}/packages/{leaf}`.
 	 */
 	packageAppPort?: number
+	/** Each wrangler process-group leader, so the host can kill it if it dies first. */
+	onSpawn?: (pid: number) => void
+	onExit?: (pid: number) => void
 }
 
 export type DevRuntimeSimulation = {
@@ -266,6 +269,8 @@ function spawnWrangler(input: {
 	cwd: string
 	source: DevRuntimeLogLine['source']
 	onLog?: StartDevRuntimeInput['onLog']
+	onSpawn?: StartDevRuntimeInput['onSpawn']
+	onExit?: StartDevRuntimeInput['onExit']
 }): ChildProcess {
 	const child = spawn(process.execPath, [wranglerBin(), ...input.args], {
 		cwd: input.cwd,
@@ -278,6 +283,8 @@ function spawnWrangler(input: {
 			CLOUDFLARE_ACCOUNT_ID: '',
 		},
 		stdio: ['ignore', 'pipe', 'pipe'],
+		// Own process group so teardown reaches wrangler's workerd and helpers.
+		detached: process.platform !== 'win32',
 	})
 	for (const stream of ['stdout', 'stderr'] as const) {
 		let buffer = ''
@@ -292,6 +299,21 @@ function spawnWrangler(input: {
 			}
 		})
 	}
+	const pid = child.pid
+	if (pid !== undefined) {
+		input.onSpawn?.(pid)
+		child.once('exit', () => {
+			// Survivors of a dead leader are orphans holding ports; reap them first.
+			if (process.platform !== 'win32') {
+				try {
+					process.kill(-pid, 'SIGKILL')
+				} catch {
+					// Group already gone.
+				}
+			}
+			input.onExit?.(pid)
+		})
+	}
 	return child
 }
 
@@ -299,6 +321,8 @@ async function runWrangler(input: {
 	args: Array<string>
 	cwd: string
 	onLog?: StartDevRuntimeInput['onLog']
+	onSpawn?: StartDevRuntimeInput['onSpawn']
+	onExit?: StartDevRuntimeInput['onExit']
 }) {
 	const lines: Array<string> = []
 	const child = spawnWrangler({
@@ -322,9 +346,24 @@ async function runWrangler(input: {
 function stopChild(child: ChildProcess) {
 	return new Promise<void>((done) => {
 		if (child.exitCode !== null || child.signalCode !== null) return done()
-		child.once('exit', () => done())
-		child.kill('SIGTERM')
-		setTimeout(() => child.kill('SIGKILL'), 5_000).unref()
+		const kill = (signal: NodeJS.Signals) => {
+			try {
+				if (process.platform !== 'win32' && child.pid) {
+					process.kill(-child.pid, signal)
+				} else child.kill(signal)
+			} catch {
+				// Already gone.
+			}
+		}
+		const timer = setTimeout(() => kill('SIGKILL'), 5_000)
+		timer.unref()
+		child.once('exit', () => {
+			clearTimeout(timer)
+			// Descendants that outlive the wrangler leader still hold ports.
+			kill('SIGKILL')
+			done()
+		})
+		kill('SIGTERM')
 	})
 }
 
@@ -477,6 +516,8 @@ export async function startDevRuntime(
 				args: ['d1', 'migrations', 'apply', binding, ...persist, '-c', config],
 				cwd: stateDir,
 				onLog: input.onLog,
+				onSpawn: input.onSpawn,
+				onExit: input.onExit,
 			})
 		}
 		if (!state.apiToken) {
@@ -506,6 +547,8 @@ export async function startDevRuntime(
 				],
 				cwd: stateDir,
 				onLog: input.onLog,
+				onSpawn: input.onSpawn,
+				onExit: input.onExit,
 			})
 			state.apiToken = token.token
 			writeLocalState(stateDir, state)
@@ -527,6 +570,8 @@ export async function startDevRuntime(
 			cwd: stateDir,
 			source: 'mock-cloudflare',
 			onLog: input.onLog,
+			onSpawn: input.onSpawn,
+			onExit: input.onExit,
 		})
 		children.push(mock)
 		const kodyLogTail: Array<string> = []
@@ -545,6 +590,8 @@ export async function startDevRuntime(
 			],
 			cwd: stateDir,
 			source: 'wrangler',
+			onSpawn: input.onSpawn,
+			onExit: input.onExit,
 			onLog: (line) => {
 				kodyLogTail.push(line.line)
 				if (kodyLogTail.length > 30) kodyLogTail.shift()

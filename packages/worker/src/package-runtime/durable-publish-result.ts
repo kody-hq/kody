@@ -2,6 +2,9 @@ import {
 	publishPhaseTimingFields,
 	type PublishPhaseTimings,
 } from '#worker/repo/publish-phase-timing.ts'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+import { jobsData } from '#worker/jobs/jobs-data.ts'
+import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
 
 const publishedExternalPushStatuses = ['published', 'already_published']
 
@@ -103,4 +106,42 @@ export function compactDurablePublishResult(
  */
 export function isDurablePublishWorkflowCode(code: string) {
 	return code === durablePublishWorkflowCode
+}
+
+export async function describeDurablePublishState(input: {
+	env: Env
+	userId: OwnerId
+	sourceId?: string | null
+	commit?: string | null
+}) {
+	const { env, userId, sourceId, commit } = input
+	let applied = 'unknown'
+	let jobPins = 'unknown'
+	if (sourceId && commit) {
+		const [source, jobs] = await Promise.allSettled([
+			Promise.resolve().then(() =>
+				getEntitySourceByIdForUser(env.APP_DB, { id: sourceId, userId }),
+			),
+			Promise.resolve().then(() => jobsData(env).listJobsForUser({ userId })),
+		])
+		if (source.status === 'fulfilled' && source.value) {
+			const row = source.value
+			applied =
+				row.serving_commit === commit
+					? 'yes, commit is serving'
+					: row.published_commit === commit
+						? row.held_commit === commit
+							? 'recorded, held for approval'
+							: 'recorded, not serving'
+						: 'commit is not current'
+		}
+		if (jobs.status === 'fulfilled') {
+			const pins = jobs.value.filter((job) => job.source_id === sourceId)
+			const matching = pins.filter((job) => job.published_commit === commit)
+			jobPins = pins.length
+				? `${matching.length} of ${pins.length} existing jobs pinned to this commit`
+				: 'no existing package jobs'
+		}
+	}
+	return `Publish applied: ${applied}. Job rebind: ${jobPins}.`
 }
