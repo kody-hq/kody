@@ -68,7 +68,8 @@ export async function grantResourceToProfile(input: {
 	permissions: ReadonlyArray<OrgPermission>
 	ifParentLacks: string
 }): Promise<{ grantId: string; profileName: string }> {
-	const { env, request, resource, permissions } = input
+	const { env, request, resource } = input
+	const permissions = [...new Set(input.permissions)]
 	const db = env.APP_DB
 	const orgId = request.org.id
 	if (
