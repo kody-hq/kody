@@ -305,3 +305,20 @@ test('accessGrant gives an existing profile run access on an execution context t
 		permissions: ['execution_context:command'],
 	})
 })
+
+test('a profile grant refuses a permission of the wrong credential family', async () => {
+	const { owner, credentialId } = await setup()
+	const profileId = await createProfile(owner, 'family-bot')
+	await expect(
+		accessGrantCapability.handler(
+			{
+				resource_type: 'credential',
+				resource_id: credentialId,
+				subject_type: 'profile',
+				subject_id: profileId,
+				permissions: ['integration:use'],
+			},
+			owner,
+		),
+	).rejects.toThrow('Permission integration:use cannot be granted on secret.')
+})
