@@ -13,7 +13,7 @@ export type EmailListInput = {
 	page: number
 	pageSize: number
 }
-type EmailListData = Omit<AccountEmailLoaderData, 'selectedMessage'>
+export type EmailListData = Omit<AccountEmailLoaderData, 'selectedMessage'>
 /** A member without the org-wide `email:read` grant. Expected, not a failure. */
 export type EmailMissingGrant = { missingGrant: 'email:read' }
 export type EmailListResult = EmailListData | EmailMissingGrant
