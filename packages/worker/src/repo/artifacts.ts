@@ -732,14 +732,6 @@ export async function requestArtifactsEnvelope<T>(
 			query: input.query,
 			body: input.body,
 		})
-		if (response.cfRay) {
-			console.info('artifacts-rest', {
-				method: input.method,
-				path: redactArtifactsRestPath(input.path),
-				status: response.status,
-				cfRay: response.cfRay,
-			})
-		}
 		const envelope = response.body as ArtifactApiEnvelope<T> | null
 		if (!envelope?.success) {
 			const primaryError = envelope?.errors?.[0]
@@ -754,6 +746,13 @@ export async function requestArtifactsEnvelope<T>(
 					messages: [],
 				} satisfies ArtifactApiEnvelope<T>
 			}
+			// CF-Ray lets Cloudflare support trace a failed Artifacts call.
+			console.warn('artifacts-rest', {
+				method: input.method,
+				path: redactArtifactsRestPath(input.path),
+				status: response.status,
+				cfRay: response.cfRay,
+			})
 			throw new Error(
 				message,
 				primaryError ? { cause: primaryError } : undefined,

@@ -1,4 +1,9 @@
 import { expect, test, vi } from 'vitest'
+import {
+	consoleInfo,
+	consoleWarn,
+	silenceExpectedConsoleWarns,
+} from '#worker/test-support/console-spies.ts'
 import type { ArtifactRepoHandle } from './artifacts.ts'
 
 const gitMocks = vi.hoisted(() => ({
@@ -247,6 +252,7 @@ test('artifacts REST client supports get, create, token, and delete operations',
 })
 
 test('ensureArtifactRepoReady uses the create result, recovers from concurrent create conflicts, and surfaces other conflicts', async () => {
+	silenceExpectedConsoleWarns(['artifacts-rest'])
 	const createFetch = mockFetch((method, url) => {
 		if (method === 'GET' && url.pathname.endsWith('/repos/repo-new')) {
 			return repoNotFound({ 'cf-ray': 'create-miss-ray' })
@@ -316,6 +322,7 @@ test('ensureArtifactRepoReady uses the create result, recovers from concurrent c
 })
 
 test('ensureArtifactRepoReady retries create when conflict leaves get not_found', async () => {
+	silenceExpectedConsoleWarns(['artifacts-rest'])
 	let getRepoCount = 0
 	let createCount = 0
 	const fetchMock = mockFetch((method, url) => {
@@ -353,6 +360,7 @@ test('ensureArtifactRepoReady retries create when conflict leaves get not_found'
 })
 
 test('artifacts REST client error paths and missing source repos', async () => {
+	silenceExpectedConsoleWarns(['artifacts-rest'])
 	const missingRepoFetch = mockFetch((method, url) =>
 		method === 'GET' && url.pathname.endsWith('/repos/repo-1')
 			? repoNotFound()
@@ -741,23 +749,41 @@ test('getArtifactsBinding prefers the native ARTIFACTS binding for the env names
 	expect(existsGets).toBeGreaterThan(1)
 })
 
-test('artifacts REST logs redact plaintext tokens on revoke', async () => {
+test('artifacts REST skips logging successful calls', async () => {
+	consoleWarn.mockImplementation(() => {})
+	mockFetch(() => apiResponse(null, { headers: { 'cf-ray': 'revoke-ray-ok' } }))
+
+	await getArtifactsBinding(restEnv).repo('repo-1').revokeToken?.('art_v1_ok')
+
+	const calls = [...consoleInfo.mock.calls, ...consoleWarn.mock.calls]
+	expect(calls.filter((call) => call[0] === 'artifacts-rest')).toEqual([])
+})
+
+test('artifacts REST failure logs keep cfRay and redact plaintext tokens', async () => {
 	const plaintext = 'art_v1_secret?expires=1760000100'
-	const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+	consoleWarn.mockImplementation(() => {})
 	mockFetch((method, url) => {
 		expect(method).toBe('DELETE')
 		expect(url.pathname).toContain(`/tokens/${encodeURIComponent(plaintext)}`)
-		return apiResponse(null, { headers: { 'cf-ray': 'revoke-ray-1' } })
+		return apiResponse(null, {
+			status: 500,
+			errors: [{ code: 10000, message: 'Internal error' }],
+			headers: { 'cf-ray': 'revoke-ray-1' },
+		})
 	})
 
-	await getArtifactsBinding(restEnv).repo('repo-1').revokeToken?.(plaintext)
+	await expect(
+		getArtifactsBinding(restEnv).repo('repo-1').revokeToken?.(plaintext),
+	).rejects.toThrow('Internal error')
 
-	const logged = info.mock.calls.filter((call) => call[0] === 'artifacts-rest')
+	const logged = consoleWarn.mock.calls.filter(
+		(call) => call[0] === 'artifacts-rest',
+	)
 	expect(logged).toHaveLength(1)
 	expect(logged[0]?.[1]).toEqual({
 		method: 'DELETE',
 		path: '/client/v4/accounts/acct/artifacts/namespaces/default/tokens/:token',
-		status: 200,
+		status: 500,
 		cfRay: 'revoke-ray-1',
 	})
 	expect(JSON.stringify(logged)).not.toContain(plaintext)

@@ -4,11 +4,13 @@
 	"main": "./worker.ts",
 	"compatibility_date": "2026-07-22",
 	"compatibility_flags": ["nodejs_compat"],
+	// CI cache traffic: keep a 10% sample of invocations for diagnosing R2
+	// failures. `wrangler tail` still streams every request live.
 	"observability": {
 		"enabled": true,
 		"logs": {
 			"enabled": true,
-			"head_sampling_rate": 1,
+			"head_sampling_rate": 0.1,
 			"invocation_logs": true,
 		},
 	},

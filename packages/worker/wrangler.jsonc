@@ -223,9 +223,9 @@
 		"enabled": true,
 		// Workers automatic tracing (beta): OTel-standard spans for handler
 		// invocations, outbound fetches, and binding calls (D1, KV, R2, DO,
-		// queues). Spans share the Workers Logs event quota, so traces are head
-		// sampled at 10% (this Worker emits ~15 spans per request) while logs
-		// stay at 100%. Local dev and tests ignore it. The production env adds
+		// queues). Spans are billed with Workers Logs events, so traces are head
+		// sampled at 2% (about 18 spans per request, still ~7k traces a day)
+		// while logs stay at 100%. Local dev and tests ignore it. The production env adds
 		// the Sentry OTLP export destination; the preview env turns traces off.
 		"logs": {
 			"enabled": true,
@@ -234,7 +234,7 @@
 		},
 		"traces": {
 			"enabled": true,
-			"head_sampling_rate": 0.1,
+			"head_sampling_rate": 0.02,
 		},
 	},
 	// Cron scheduling moved to the jobs worker (packages/jobs-worker, ADR
@@ -277,7 +277,7 @@
 				},
 				"traces": {
 					"enabled": true,
-					"head_sampling_rate": 0.1,
+					"head_sampling_rate": 0.02,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},
