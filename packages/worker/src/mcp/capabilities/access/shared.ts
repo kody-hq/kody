@@ -425,6 +425,9 @@ export async function grantTargetFamily(
 	if (resourceType === 'memory') {
 		await assertMemoryGrantsAllowedOnOrg(ctx.env.APP_DB, request.org.id)
 	}
+	// A profile may get run access the person it acts for already holds, as
+	// profileCreate allows; the caller-holds check covers the context itself.
+	if (resourceType === 'execution_context') return resourceType
 	const check = await grantTargetCheck(
 		ctx,
 		request.org.id,
