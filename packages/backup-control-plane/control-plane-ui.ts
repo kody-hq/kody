@@ -12,6 +12,8 @@ import {
 	backupPayload,
 	configuredSourceDatabases,
 	isBackupEnabled,
+	pacedSourceDatabases,
+	restExportSourceDatabases,
 	utcDay,
 } from './backup-policy.ts'
 import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
@@ -33,7 +35,7 @@ import { verifyBackupManifestSignature } from './manifest-signing.ts'
 import type { PacedDrillProgress } from './paced-restore-drill.ts'
 import type { ProductionRestoreProgress } from './production-restore.ts'
 import type { RestoreConfirmToken } from './restore-confirm-token.ts'
-import { readFullManifest } from './seal-full-backup.ts'
+import { readFullManifest, readSealedPacedNight } from './seal-full-backup.ts'
 import type { SealStatusView } from './seal-day-run.ts'
 import { readSqlRestorability } from './sql-statement-stats.ts'
 
@@ -314,8 +316,8 @@ export async function collectDayStatuses(
 		date.setUTCDate(date.getUTCDate() - offset)
 		const day = utcDay(date)
 		const warnings: Array<string> = []
-		const sources = configuredSourceDatabases(env)
-		let d1Present = sources.length > 0
+		const sources = restExportSourceDatabases(env)
+		let d1Present = true
 		let d1Verified: boolean | null = null
 		let d1Restorable: boolean | null = null
 		for (const source of sources) {
@@ -397,6 +399,18 @@ export async function collectDayStatuses(
 					warnings.push(`${label}D1 is not restorable: SQL stats lookup failed`)
 				}
 			}
+		}
+		try {
+			for (const source of pacedSourceDatabases(env)) {
+				const paced = await readSealedPacedNight(env.BACKUP_BUCKET, source, day)
+				if (paced.kind === 'incomplete') {
+					d1Present = false
+					warnings.push(`${source.name}: ${paced.reason}`)
+				}
+			}
+		} catch {
+			d1Present = false
+			warnings.push('paced D1 seals unreadable')
 		}
 
 		const summaryJson = await readBucketJson(

@@ -110,20 +110,6 @@ export const featureFlagDefinitions = [
 		},
 	},
 	{
-		key: 'mcp-skills-extension',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
-		description:
-			'Skills-over-MCP (SEP-2640) for package-shipped Agent Skills: packages may ship `skills/<name>/SKILL.md`, and when an MCP client advertises the skills extension Kody exposes those skills via skills/list, skills/get, and resources/read as a progressive enhancement. Signed-in users can opt in from /docs/package-skills; enable for experimenters via admin (adminFeatureFlagSet with audience experiments_opt_in). Off by default. Delete the flag and gate sites when the experiment ends.',
-		successMetric: {
-			eventType: 'execute',
-			measure: 'event_count',
-			goal: 'increase',
-			hypothesis:
-				'Skill-aware hosts that load package skills over MCP then act via execute, so experimenters with the extension on run more execute calls against skill-guided packages.',
-		},
-	},
-	{
 		key: 'mcp-events-extension',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
@@ -148,10 +134,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'repo-push-queue',
-		defaultEnabled: false,
-		defaultAudience: 'experiments_opt_in',
+		defaultEnabled: true,
 		description:
-			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. Off repos keep the isolate-local wait-and-retry proxy. Kept as a kill switch after the global rollout. Every push records an observe-only git_push usage event (path, outcome, Durable Object wall time, wait, queue depth, attempts) and an exposure for the repo owner; read queue cost with adminRepoPushQueueCost.',
+			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. On for everyone; off repos keep the isolate-local wait-and-retry proxy, which is removed (with this flag) after two clean weeks on the queue. Every push records an observe-only git_push usage event (path, outcome, Durable Object wall time, wait, queue depth, attempts) and an exposure for the repo owner; read queue cost with adminRepoPushQueueCost.',
 		exposureRecording: 'repo-push-owners',
 		successMetric: {
 			eventType: 'git_push',
@@ -201,9 +186,6 @@ export const featureFlagDefinitions = [
 ] as const satisfies ReadonlyArray<FeatureFlagDefinition>
 
 export type FeatureFlagKey = (typeof featureFlagDefinitions)[number]['key']
-
-export const mcpSkillsExtensionFlagKey =
-	'mcp-skills-extension' satisfies FeatureFlagKey
 
 export const mcpEventsExtensionFlagKey =
 	'mcp-events-extension' satisfies FeatureFlagKey

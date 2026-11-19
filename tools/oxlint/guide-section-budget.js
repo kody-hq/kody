@@ -6,8 +6,8 @@ import { cwd as processCwd } from 'node:process'
  * Must match `maxChars` in
  * `packages/worker/src/mcp/tools/search-constants.ts`.
  */
-export const maxGuideSectionChars = 6_000 * 4
-export const guideContentsModeLine =
+const maxGuideSectionChars = 6_000 * 4
+const guideContentsModeLine =
 	'- Contents: oversized guide; open a heading with `guide:{id}#{slug}`'
 
 const headingLinePattern = /^(#{1,6})\s+(.+?)\s*$/
@@ -15,11 +15,11 @@ const fencedBlockPattern = /^(`{3,}|~{3,})/
 const officialGuideFilePattern = /\.md$/
 const skipGuideNames = new Set(['README.md'])
 
-export function stripGuideFrontmatter(raw) {
+function stripGuideFrontmatter(raw) {
 	return parseGuideLintSource(raw).body
 }
 
-export function parseGuideLintMetadata(raw, slug) {
+function parseGuideLintMetadata(raw, slug) {
 	const parsed = parseGuideLintSource(raw)
 	return {
 		id: parsed.fields.get('id') || slug,
@@ -31,11 +31,11 @@ export function parseGuideLintMetadata(raw, slug) {
 	}
 }
 
-export function guideSectionModeLine(slug) {
+function guideSectionModeLine(slug) {
 	return `- Section: \`${slug}\``
 }
 
-export function buildGuideDetailHeaderLines(input) {
+function buildGuideDetailHeaderLines(input) {
 	return [
 		`# Guide — \`${input.id}\``,
 		'',
@@ -53,7 +53,7 @@ export function buildGuideDetailHeaderLines(input) {
 	]
 }
 
-export function guideSearchBodyBudget(input, maxChars = maxGuideSectionChars) {
+function guideSearchBodyBudget(input, maxChars = maxGuideSectionChars) {
 	const header = buildGuideDetailHeaderLines(input).join('\n')
 	const mode = Math.max(
 		guideContentsModeLine.length,
@@ -62,14 +62,14 @@ export function guideSearchBodyBudget(input, maxChars = maxGuideSectionChars) {
 	return Math.max(0, maxChars - header.length - mode - 3)
 }
 
-export function slugifyDocumentHeading(title) {
+function slugifyDocumentHeading(title) {
 	return normalizeHeadingKey(title)
 		.replace(/[^\p{L}\p{N}._-]+/gu, '-')
 		.replace(/-+/g, '-')
 		.replace(/^-+|-+$/g, '')
 }
 
-export function parseDocumentHeadings(markdown) {
+function parseDocumentHeadings(markdown) {
 	const lines = markdown.split('\n')
 	const parsed = []
 	let fence = null
@@ -119,10 +119,7 @@ export function parseDocumentHeadings(markdown) {
 	})
 }
 
-export function findOversizedDocumentSections(
-	markdown,
-	limit = maxGuideSectionChars,
-) {
+function findOversizedDocumentSections(markdown, limit = maxGuideSectionChars) {
 	const limitFor = typeof limit === 'function' ? limit : () => limit
 	const headings = parseDocumentHeadings(markdown)
 	const lines = markdown.split('\n')

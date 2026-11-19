@@ -202,6 +202,36 @@ on connected tool servers.
 - A token that already exists inside trusted code (a key the package just
   minted): `secretSet` persists it without returning it.
 
+## Renaming a secret
+
+Rename a secret on its page on the website (edit **Name** and save), or rename a
+user-scope secret with `credentialUpdate` and a new `name`. The secret keeps its
+credential id and value, so grants, package credential mappings, read history,
+and audit history stay attached, and the token does not need rotating. The
+rename needs Write on the secret, is recorded as `credential.renamed` in the
+audit log, and is refused when the name is taken in the same scope or uses
+characters a placeholder cannot reference (allowed: letters, numbers, dots,
+underscores, hyphens).
+
+```json
+{
+	"operationId": "credentialUpdate",
+	"params": {
+		"credential_id": "cred_…",
+		"name": "kodyCloudflareWorkersAiToken"
+	}
+}
+```
+
+References by name do not follow the rename, and there is no alias for the old
+name: `{{secret:<old name>}}` placeholders, package secret mounts, package and
+execute code that looks the secret up by name, and scripts keep resolving the
+old name and fail until you update them. The `credentialUpdate` response returns
+`rename.known_references` for the settings Kody stores by name (webhook
+verification secrets, secret provider door keys). Kody does not index package or
+execute source, so search your packages for the old name too. Send `name` on its
+own call, not with `provider`, `inject`, or `placement`.
+
 ## Where to go next
 
 - [Credentials](./credentials.md) — every credential kind, scoped clients, and

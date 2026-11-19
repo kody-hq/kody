@@ -21,7 +21,7 @@ const presentMatcherPattern =
 	/(?<!not)\.(?:toContain|toContainText|toHaveTextContent)\(\s*/g
 
 /** Shared prefix long enough to treat two needles as the same template family. */
-export const siblingPrefixLength = 16
+const siblingPrefixLength = 16
 
 const skipDirectoryPrefixes = ['e2e/playwright-report/']
 
@@ -29,7 +29,7 @@ export function isTestPath(relativePath) {
 	return testFilePattern.test(relativePath) || relativePath.startsWith('e2e/')
 }
 
-export function isInstructionalCopyNeedle(decoded, rawInner) {
+function isInstructionalCopyNeedle(decoded, rawInner) {
 	const trimmed = decoded.trim()
 	if (!/[A-Za-z]/.test(trimmed) || !/\s/.test(trimmed)) return false
 	if (/[<>]/.test(trimmed)) return false
@@ -48,7 +48,7 @@ export function isInstructionalCopyNeedle(decoded, rawInner) {
 	return words.length >= 3 || titleCaseLabel || /[.!?…]$/.test(trimmed)
 }
 
-export function longestCommonPrefixLength(left, right) {
+function longestCommonPrefixLength(left, right) {
 	const limit = Math.min(left.length, right.length)
 	let index = 0
 	while (index < limit && left[index] === right[index]) index += 1
@@ -314,23 +314,6 @@ export function loadTautologicalAbsenceCorpus(cwd = processCwd()) {
 		)
 	}
 	return contents
-}
-
-export function checkTautologicalAbsence(cwd = processCwd()) {
-	const contents = loadTautologicalAbsenceCorpus(cwd)
-	const matches = []
-	for (const [relativePath, content] of contents) {
-		matches.push(
-			...findTautologicalAbsenceMatches({
-				relativePath,
-				content,
-				otherContents: [...contents]
-					.filter(([candidate]) => candidate !== relativePath)
-					.map(([, otherContent]) => otherContent),
-			}),
-		)
-	}
-	return matches
 }
 
 export function otherContentsFromCorpus(corpus, relativePath) {

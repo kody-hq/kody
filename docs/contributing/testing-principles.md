@@ -2,7 +2,8 @@
 
 Durable rules: [Test the workflow](../principles/test-the-workflow.md) and
 [No invasive test-only code](../principles/no-invasive-test-only-code.md). This
-page is how to choose a flavor and run suites in this repo.
+page is how to choose a flavor and run suites in this repo. Whether and where to
+add a test: [Writing tests](./writing-tests.md).
 
 ## Test flavor decision matrix
 

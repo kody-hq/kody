@@ -30,6 +30,7 @@ import {
 	manifest,
 	putSqlStatsFixture,
 	signedManifest,
+	putPacedSeal,
 } from './backup-control-plane-test-support.ts'
 import {
 	BackupError,
@@ -72,39 +73,6 @@ const jobsSource = {
 const auditSource = {
 	id: '55555555-5555-4555-8555-555555555555',
 	name: 'kody-audit',
-}
-
-async function putPacedSeal(
-	bucket: MemoryBucket,
-	source: { id: string; name: string },
-	day: string,
-) {
-	const manifestKey = pacedD1SealedManifestKey(
-		pacedD1RetentionTierForDay(day),
-		source.id,
-		day,
-	)
-	const body = JSON.stringify({
-		schemaVersion: pacedD1BackupSchemaVersion,
-		databaseName: source.name,
-		databaseId: source.id,
-		day,
-		retentionTier: pacedD1RetentionTierForDay(day),
-		startedAt: `${day}T00:30:00.000Z`,
-		finishedAt: `${day}T01:30:00.000Z`,
-		prevDay: null,
-		prevManifestSha256: null,
-		schemaHash: 'a'.repeat(64),
-		schemaStableDuringWalk: true,
-		timeTravelBookmark: null,
-		extras: [],
-		sqliteSequence: [],
-		tables: {},
-		stats: {},
-		shadow: true,
-	})
-	await bucket.put(manifestKey, body)
-	return { manifestKey, manifestSha256: sha256Text(body) }
 }
 
 /** Production shape: APP + AUDIT + JOBS paced, REST export off for all. */

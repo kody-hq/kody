@@ -562,7 +562,7 @@ type RestD1Fields = {
  * The paced lane's sealed night for one source and day, or why it cannot be
  * referenced. A missing or corrupt paced seal blocks the full seal.
  */
-async function readSealedPacedNight(
+export async function readSealedPacedNight(
 	bucket: R2Bucket,
 	source: SourceDatabase,
 	day: string,

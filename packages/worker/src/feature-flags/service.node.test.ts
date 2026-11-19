@@ -314,7 +314,6 @@ function createFeatureFlagsTestDb(
 const registryKeys = [
 	'files-workspace',
 	'demo-indicator',
-	'mcp-skills-extension',
 	'mcp-events-extension',
 	'package-credential-suppliers',
 	'repo-push-queue',
@@ -377,7 +376,10 @@ test('isFeatureEnabled falls back to registry default when no DB state exists', 
 	const db = createFeatureFlagsTestDb()
 	expect(await enabledFor(db, [1, null])).toEqual([false, false])
 	await expect(getFeatureFlagsForUser(db, 1)).resolves.toEqual(
-		everyFlag(false, { 'credential-allowed-packages-safety-window': true }),
+		everyFlag(false, {
+			'credential-allowed-packages-safety-window': true,
+			'repo-push-queue': true,
+		}),
 	)
 })
 
@@ -451,6 +453,7 @@ test('user override wins over global off and global on; clear restores evaluatio
 		everyFlag(false, {
 			'demo-indicator': true,
 			'credential-allowed-packages-safety-window': true,
+			'repo-push-queue': true,
 		}),
 	)
 
@@ -469,7 +472,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 	const db = createFeatureFlagsTestDb()
 	await setFeatureFlagUserOverrides(db, [
 		{
-			key: 'mcp-skills-extension',
+			key: 'mcp-events-extension',
 			userId: 7,
 			enabled: true,
 			updatedBy: 7,
@@ -481,7 +484,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 			updatedBy: 7,
 		},
 	])
-	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
+	expect(await enabledFor(db, [7], 'mcp-events-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 
 	const originalPrepare = db.prepare.bind(db)
@@ -515,7 +518,7 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 				updatedBy: 7,
 			},
 			{
-				key: 'mcp-skills-extension',
+				key: 'mcp-events-extension',
 				userId: 7,
 				enabled: true,
 				updatedBy: 7,
@@ -523,8 +526,8 @@ test('setFeatureFlagUserOverrides writes paired keys atomically', async () => {
 		]),
 	).rejects.toThrow('second override write failed')
 	expect(db.overrides.has('demo-indicator:7')).toBe(false)
-	expect(db.overrides.has('mcp-skills-extension:7')).toBe(true)
-	expect(await enabledFor(db, [7], 'mcp-skills-extension')).toEqual([true])
+	expect(db.overrides.has('mcp-events-extension:7')).toBe(true)
+	expect(await enabledFor(db, [7], 'mcp-events-extension')).toEqual([true])
 	expect(await enabledFor(db, [7], 'profiles')).toEqual([true])
 })
 
@@ -541,6 +544,7 @@ test('getFeatureFlagEvaluationsForUser reports assignment sources', async () => 
 					enabled: true,
 					source: 'default',
 				},
+				'repo-push-queue': { enabled: true, source: 'default' },
 			},
 		),
 	)

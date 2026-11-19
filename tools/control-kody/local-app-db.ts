@@ -19,7 +19,7 @@ export function isLocalAppOrigin(origin: string) {
 	}
 }
 
-export function looksLikeUnreadyLocalAppDb(input: {
+function looksLikeUnreadyLocalAppDb(input: {
 	origin: string
 	status: number | null
 	detail: string

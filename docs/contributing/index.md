@@ -85,6 +85,7 @@ style, tests, MCP capabilities, and runtime architecture.
 ## Testing
 
 - [Testing principles](./testing-principles.md)
+- [Writing tests](./writing-tests.md)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
 - [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)

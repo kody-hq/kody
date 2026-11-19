@@ -2106,7 +2106,7 @@ function RunHistory(props: {
 }
 
 /** Cancel for an in-progress run, with a confirm step before it stops. */
-export function RunCancelControl(props: {
+function RunCancelControl(props: {
 	runId: string
 	cancelling: boolean
 	confirming: boolean
@@ -2260,7 +2260,7 @@ const hintCss = css({
 	color: colors.textMuted,
 })
 
-export function ContextOptInForm(props: {
+function ContextOptInForm(props: {
 	copy: ReturnType<typeof optInCopy>
 	chainFull: boolean
 	addToChain: boolean

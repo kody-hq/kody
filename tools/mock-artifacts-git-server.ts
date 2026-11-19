@@ -19,7 +19,7 @@ import path from 'node:path'
 const repoPathPattern =
 	/^\/git\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+\.git)(\/.*)?$/
 
-export function parseMockGitPath(pathname: string) {
+function parseMockGitPath(pathname: string) {
 	const match = repoPathPattern.exec(pathname)
 	if (!match) return null
 	const [, namespace, repo, rest] = match
@@ -42,7 +42,7 @@ const forkPathPattern =
  * worker calls this when it forks a repo, so the fork starts with the source
  * history the way an Artifacts fork does.
  */
-export function parseMockGitForkPath(pathname: string) {
+function parseMockGitForkPath(pathname: string) {
 	const match = forkPathPattern.exec(pathname)
 	if (!match) return null
 	const [, namespace, source, target] = match
@@ -58,7 +58,7 @@ export function parseMockGitForkPath(pathname: string) {
 }
 
 /** Artifacts accepts the repo token as a Bearer or as a Basic password. */
-export function hasRepoToken(header: string | undefined) {
+function hasRepoToken(header: string | undefined) {
 	if (header?.startsWith('Bearer ')) {
 		return header.slice('Bearer '.length).trim().length > 0
 	}

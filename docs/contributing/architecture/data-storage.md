@@ -1765,7 +1765,7 @@ app-owned keys in it. App-owned `BUNDLE_ARTIFACTS_KV` keys are:
   account teardown; live listing trees use the SHA-keyed source snapshot.
 - `package-skills-index:v1:{userId}:{packageId}:{publishedCommit}` — per-version
   Agent Skills index (frontmatter + digests, no file contents) written at
-  publish; served by Skills-over-MCP when `mcp-skills-extension` is on.
+  publish; served by Skills-over-MCP to clients that declare the extension.
 - `derived-cache:v1:mcp-oauth-refresh-family:{userId}:{grantId}` and
   `derived-cache:v1:mcp-oauth-refresh-replay:{userId}:{grantId}:{tokenHash}` —
   encrypted MCP OAuth refresh-family snapshots used so concurrent hosts sharing

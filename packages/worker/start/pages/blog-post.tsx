@@ -26,7 +26,7 @@ import { renderMarkdownNodes } from '../components/markdown-view.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import { BlogPostList, blogCategoryLabel } from './blog-parts.tsx'
 /** Blog posts are repo-authored, so they render with the first-party docs policy. */
-export const blogPostMarkdownOptions = {
+const blogPostMarkdownOptions = {
 	headingOffset: 0,
 	linkRel: 'noopener noreferrer',
 	linkPolicy: 'first-party',
