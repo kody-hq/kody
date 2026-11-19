@@ -4,7 +4,10 @@
 	"main": "./worker.ts",
 	"compatibility_date": "2026-07-22",
 	"compatibility_flags": ["nodejs_compat"],
-	"limits": { "cpu_ms": 300000 },
+	// The hourly seal scan budgets 20,000 R2 calls (seal-full-backup.ts);
+	// the 10,000 default leaves it no headroom.
+	// https://developers.cloudflare.com/workers/platform/limits/#subrequests
+	"limits": { "cpu_ms": 300000, "subrequests": 100000 },
 	"observability": {
 		"enabled": true,
 		"logs": {
