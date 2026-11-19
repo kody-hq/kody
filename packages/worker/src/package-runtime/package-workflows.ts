@@ -78,6 +78,7 @@ import type { McpProgressUpdate } from '#mcp/progress.ts'
 import {
 	durablePackageCheckWorkflowCode,
 	packageCheckWorkflowName,
+	packageRunWorkflowNames,
 } from './package-check-run.constants.ts'
 import {
 	creatingWorkflowProjectionStatus,
@@ -960,7 +961,7 @@ export async function findWorkflowRunByIdempotencyKey(input: {
 		: null
 }
 
-export async function getWorkflowRunForUser(input: {
+async function getWorkflowRunForUser(input: {
 	env: Pick<Env, 'RUN_LOG'>
 	userId: OwnerId
 	id: string
@@ -972,6 +973,48 @@ export async function getWorkflowRunForUser(input: {
 	})
 	return projection
 		? mapWorkflowProjectionToInspection(projection, input.userId)
+		: null
+}
+
+/**
+ * A packageCheck or packagePublishExternalPush run Kody dispatched, for
+ * whoever follows it (packageRunResult). Null for any other workflow run.
+ */
+export async function getPackageRunForUser(input: {
+	env: Pick<Env, 'DYNAMIC_CALLABLE_WORKFLOWS' | 'RUN_LOG'>
+	userId: OwnerId
+	id: string
+}): Promise<{
+	status: WorkflowRunStatus
+	progress: WorkflowProjectionProgress | null
+	lastError: string | null
+} | null> {
+	const env = input.env as Env
+	const projection = await getWorkflowProjection({
+		env,
+		userId: input.userId,
+		id: input.id,
+	})
+	if (
+		!projection ||
+		projection.sourceType !== 'inline' ||
+		!packageRunWorkflowNames.has(projection.workflowName ?? '')
+	) {
+		return null
+	}
+	const run = mapWorkflowProjectionToInspection(projection, input.userId)
+	// The engine can stop a run without the run writing its own end.
+	await refreshListedWorkflowRunStatuses({
+		env,
+		userId: input.userId,
+		rows: [run],
+		forceRefresh: false,
+	})
+	// A run still being created has a reservation and no engine status yet.
+	const status =
+		run.status ?? (projection.status === 'creating' ? 'queued' : null)
+	return status
+		? { status, progress: run.progress, lastError: run.lastError }
 		: null
 }
 

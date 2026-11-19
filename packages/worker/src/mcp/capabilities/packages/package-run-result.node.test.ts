@@ -11,7 +11,7 @@ import { packageRunResultKey } from '#worker/repo/package-check-upload.ts'
 const mockModule = vi.hoisted(() => ({
 	compileAccessForRequest: vi.fn(),
 	resolvePackageOwnerContext: vi.fn(),
-	getWorkflowRunForUser: vi.fn(),
+	getPackageRunForUser: vi.fn(),
 	listWorkflowRunPageForUser: vi.fn(),
 }))
 
@@ -29,8 +29,8 @@ vi.mock('#worker/package-registry/package-owner.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-workflows.ts', () => ({
-	getWorkflowRunForUser: (...args: Array<unknown>) =>
-		mockModule.getWorkflowRunForUser(...args),
+	getPackageRunForUser: (...args: Array<unknown>) =>
+		mockModule.getPackageRunForUser(...args),
 	listWorkflowRunPageForUser: (...args: Array<unknown>) =>
 		mockModule.listWorkflowRunPageForUser(...args),
 }))
@@ -75,7 +75,7 @@ function setup(input: {
 		resourcePermissions: new Map(),
 	})
 	mockModule.resolvePackageOwnerContext.mockResolvedValue({ ownerUserId })
-	mockModule.getWorkflowRunForUser.mockResolvedValue(input.run)
+	mockModule.getPackageRunForUser.mockResolvedValue(input.run)
 	const get = vi.fn(async (key: string) =>
 		input.stored && key === packageRunResultKey(ownerUserId, workflowId)
 			? { json: async () => input.stored }
@@ -86,13 +86,7 @@ function setup(input: {
 
 test('a token with package scopes only follows a run with packageRunResult, which workflowRunList refuses it', async () => {
 	const env = setup({
-		run: {
-			id: workflowId,
-			workflowName: 'packageCheck',
-			status: 'running',
-			progress,
-			lastError: null,
-		},
+		run: { status: 'running', progress, lastError: null },
 	})
 	const ctx = { env, callerContext: packageScopedToken() }
 
@@ -111,7 +105,7 @@ test('a token with package scopes only follows a run with packageRunResult, whic
 		progress,
 		last_error: null,
 	})
-	expect(mockModule.getWorkflowRunForUser).toHaveBeenCalledWith(
+	expect(mockModule.getPackageRunForUser).toHaveBeenCalledWith(
 		expect.objectContaining({ userId: ownerUserId, id: workflowId }),
 	)
 })
@@ -119,8 +113,6 @@ test('a token with package scopes only follows a run with packageRunResult, whic
 test('a finished run answers with its status and stored result together', async () => {
 	const env = setup({
 		run: {
-			id: workflowId,
-			workflowName: 'packagePublishExternalPush',
 			status: 'errored',
 			progress: null,
 			lastError: 'packagePublishExternalPush returned checks_failed',
@@ -145,16 +137,8 @@ test('a finished run answers with its status and stored result together', async 
 	})
 })
 
-test('package:read does not reveal a workflow run that is not a check or publish', async () => {
-	const env = setup({
-		run: {
-			id: workflowId,
-			workflowName: 'nightly-sync',
-			status: 'errored',
-			progress: null,
-			lastError: 'Upstream token expired.',
-		},
-	})
+test('a run id that is not a check or publish run answers nothing', async () => {
+	const env = setup({ run: null })
 	await expect(
 		packageRunResultCapability.handler(
 			{ workflow_id: workflowId },

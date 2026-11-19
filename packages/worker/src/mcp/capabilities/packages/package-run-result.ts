@@ -7,13 +7,7 @@ import {
 	requireMcpUser,
 } from '#mcp/capabilities/meta/require-user.ts'
 import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
-import { packageCheckWorkflowName } from '#worker/package-runtime/package-check-run.constants.ts'
 import { packageRunResultKey } from '#worker/repo/package-check-upload.ts'
-
-const packageRunWorkflowNames = new Set<string>([
-	packageCheckWorkflowName,
-	'packagePublishExternalPush',
-])
 
 export const packageRunResultCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
@@ -69,19 +63,15 @@ export const packageRunResultCapability = defineDomainCapability(
 				user,
 				request: requireMcpRequest(ctx.callerContext),
 			})
-			const { getWorkflowRunForUser } =
+			const { getPackageRunForUser } =
 				await import('#worker/package-runtime/package-workflows.ts')
 			// package:read follows package runs only: any other workflow run
 			// stays behind job:read (workflowRunList).
-			const found = await getWorkflowRunForUser({
+			const run = await getPackageRunForUser({
 				env: ctx.env,
 				userId: owner.ownerUserId,
 				id: args.workflow_id,
 			})
-			const run =
-				found && packageRunWorkflowNames.has(found.workflowName ?? '')
-					? found
-					: null
 			const state = {
 				status: run?.status ?? null,
 				progress: run?.progress ?? null,

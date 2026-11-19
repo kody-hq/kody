@@ -7,3 +7,9 @@ export const packageCheckWorkflowName = 'packageCheck'
  */
 export const durablePackageCheckWorkflowCode =
 	'// Built-in durable packageCheck run. Phases run as native workflow steps.'
+
+/** Names of the runs dispatched for packageCheck and packagePublishExternalPush. */
+export const packageRunWorkflowNames: ReadonlySet<string> = new Set([
+	packageCheckWorkflowName,
+	'packagePublishExternalPush',
+])

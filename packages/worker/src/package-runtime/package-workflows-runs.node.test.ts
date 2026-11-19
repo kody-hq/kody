@@ -16,6 +16,7 @@ import {
 	DynamicCallableWorkflowBase,
 	cancelWorkflowRunForUser,
 	createDynamicCallableWorkflow,
+	getPackageRunForUser,
 	dynamicCallableWorkflowsBindingName,
 	listWorkflowRunPageForUser,
 	listWorkflowRunsForUser,
@@ -609,6 +610,49 @@ test('listWorkflowRunsForUser refreshes before applying status filter', async ()
 		filter: { status: 'running' },
 	})
 	expect(stillRunning).toEqual([])
+})
+
+test('getPackageRunForUser follows check and publish runs only, refreshed from the engine', async () => {
+	runRecordMocks.resetProjections()
+	const binding = createWorkflowBinding({
+		existing: { id: 'dynwf-stopped', status: 'errored' },
+	})
+	const env = createWorkflowEnv(binding)
+	const userId = ownerIdFromStored('user-1')
+	const seed = (id: string, workflowName: string, status: string) =>
+		runRecordMocks.upsertWorkflowProjection({
+			env,
+			userId,
+			projection: {
+				id,
+				bindingName: dynamicCallableWorkflowsBindingName,
+				sourceType: 'inline',
+				workflowName,
+				idempotencyKey: `${id}-key`,
+				runAt: '2026-05-08T19:30:00.000Z',
+				status,
+				createdAt: '2026-05-08T19:30:00.000Z',
+				updatedAt: '2026-05-08T19:30:00.000Z',
+			},
+		})
+	// The engine stopped this run; its projection still says running.
+	await seed('dynwf-stopped', 'packageCheck', 'running')
+	// A duplicate dispatch can hand back a run that is still being created.
+	await seed('dynwf-creating', 'packagePublishExternalPush', 'creating')
+	await seed('dynwf-other', 'nightly-sync', 'errored')
+
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-stopped' }),
+	).resolves.toMatchObject({ status: 'errored' })
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-creating' }),
+	).resolves.toMatchObject({ status: 'queued' })
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-other' }),
+	).resolves.toBeNull()
+	await expect(
+		getPackageRunForUser({ env, userId, id: 'dynwf-missing' }),
+	).resolves.toBeNull()
 })
 
 test('listWorkflowRunsForUser status filter keeps older exact matches beyond the active window', async () => {
