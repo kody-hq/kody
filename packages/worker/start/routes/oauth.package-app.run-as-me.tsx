@@ -2,15 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { createElement } from 'react'
 import { PackageAppRunConsentPage } from '../pages/package-app-run-consent.tsx'
 import { loadPackageAppRunConsent } from '#start/server/package-app-run-consent'
+import { postPackageAppRunConsent } from '#start/server/package-app-run-consent-protocol'
 
 export const Route = createFileRoute('/oauth/package-app/run-as-me')({
 	server: {
 		handlers: {
-			POST: async ({ request }) => {
-				const { postPackageAppRunConsent } =
-					await import('../server/package-app-run-consent-protocol.ts')
-				return postPackageAppRunConsent({ request })
-			},
+			POST: ({ request }) => postPackageAppRunConsent({ request }),
 		},
 	},
 	staticData: {
