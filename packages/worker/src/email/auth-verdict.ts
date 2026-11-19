@@ -42,13 +42,45 @@ function parseMethodResultToken(token: string): EmailAuthMethodResult {
 	return 'unknown'
 }
 
-function mergeMethodResult(
-	current: EmailAuthMethodResult,
-	next: EmailAuthMethodResult,
-): EmailAuthMethodResult {
-	if (current === 'pass' || next === 'pass') return 'pass'
-	if (current !== 'unknown') return current
-	return next
+/** Split only outside quoted strings and nested comments. */
+function* splitAuthResults(
+	value: string,
+	separator: string,
+): Generator<string> {
+	let start = 0
+	let quoted = false
+	let commentDepth = 0
+	let escaped = false
+	for (let index = 0; index < value.length; index++) {
+		const char = value[index]
+		if (escaped) {
+			escaped = false
+			continue
+		}
+		if (char === '\\' && (quoted || commentDepth > 0)) {
+			escaped = true
+		} else if (commentDepth > 0) {
+			if (char === '(') commentDepth++
+			else if (char === ')') commentDepth--
+		} else if (char === '"') {
+			quoted = !quoted
+		} else if (!quoted) {
+			if (char === '(') commentDepth++
+			else if (char === separator) {
+				yield value.slice(start, index)
+				start = index + 1
+			}
+		}
+	}
+	yield value.slice(start)
+}
+
+/** Fetch joins duplicate headers with commas; only the first stamp is used. */
+function firstAuthResultsStamp(value: string): string | null {
+	for (const stamp of splitAuthResults(value, ',')) {
+		return stamp.trim() || null
+	}
+	return null
 }
 
 function parseAuthMethodResults(authResults: string | null): {
@@ -61,25 +93,28 @@ function parseAuthMethodResults(authResults: string | null): {
 	let dkim: EmailAuthMethodResult = 'unknown'
 	let dmarc: EmailAuthMethodResult = 'unknown'
 	let dmarcHeaderFrom: string | null = null
+	const seen = new Set<string>()
 	if (!authResults?.trim()) {
 		return { spf, dkim, dmarc, dmarcHeaderFrom }
 	}
 
-	for (const clause of authResults.split(';')) {
+	for (const clause of splitAuthResults(authResults, ';')) {
 		const match = clause.trim().match(methodClausePattern)
 		if (!match) continue
 		const method = match[1]!.toLowerCase()
 		const result = parseMethodResultToken(match[2]!)
+		const first = !seen.has(method)
+		seen.add(method)
 		if (method === 'spf') {
-			spf = mergeMethodResult(spf, result)
+			if (first) spf = result
 		} else if (method === 'dkim') {
-			dkim = mergeMethodResult(dkim, result)
-		} else if (method === 'dmarc') {
-			if (result === 'pass' && dmarc !== 'pass') {
+			if (first || result === 'pass') dkim = result
+		} else if (method === 'dmarc' && first) {
+			if (result === 'pass') {
 				dmarcHeaderFrom =
 					clause.match(headerFromPropertyPattern)?.[2]?.toLowerCase() ?? null
 			}
-			dmarc = mergeMethodResult(dmarc, result)
+			dmarc = result
 		}
 	}
 
@@ -95,7 +130,7 @@ function methodFailed(result: EmailAuthMethodResult): boolean {
  * value. Skips ARC `i=` instance tokens and method clauses.
  */
 export function extractAuthservId(headerValue: string): string | null {
-	for (const part of headerValue.split(';')) {
+	for (const part of splitAuthResults(headerValue, ';')) {
 		const token = part.trim()
 		if (!token) continue
 		if (/^i=\d+$/i.test(token)) continue
@@ -115,33 +150,10 @@ export function isCloudflareEmailAuthservId(authservId: string): boolean {
 	return id === 'cloudflare.net' || id.endsWith('.cloudflare.net')
 }
 
-/**
- * The Fetch `Headers` API joins duplicate header names with `", "`. Authentication-Results
- * must not be parsed as one clause list across stamps, so split before the next
- * authserv-id-looking segment.
- */
-export function splitCombinedAuthResultsHeader(value: string): Array<string> {
-	// ARC stamps may start with `i=<n>;` before the authserv-id. Allow that
-	// optional prefix so comma-joined ARC values still split.
-	return value
-		.split(/,(?=\s*(?:i=\d+;\s*)?[^,;=/\s]+;)/i)
-		.map((part) => part.trim())
-		.filter(Boolean)
-}
-
-/**
- * Leftmost stamp only. `Headers` joins duplicates with `", "`; later stamps are
- * attacker-controllable and must never be scanned for a forged Cloudflare
- * authserv-id. Cloudflare prepends its stamp, so the leftmost is the edge MTA.
- */
-export function leftmostAuthResultsStamp(value: string): string | null {
-	return splitCombinedAuthResultsHeader(value)[0] ?? null
-}
-
 function trustedLeftmostStamp(headers: Headers, name: string): string | null {
 	const raw = headers.get(name)?.trim()
 	if (!raw) return null
-	const leftmost = leftmostAuthResultsStamp(raw)
+	const leftmost = firstAuthResultsStamp(raw)
 	if (!leftmost) return null
 	const authservId = extractAuthservId(leftmost)
 	if (!authservId || !isCloudflareEmailAuthservId(authservId)) return null
@@ -170,12 +182,13 @@ export function selectTrustedCloudflareAuthResults(
  * (or Cloudflare ARC-Authentication-Results) header into a quarantine verdict.
  *
  * Policy:
+ * - SPF and DMARC use the first clause; DKIM passes if any signature passes.
  * - Quarantine (suspect) when DMARC is `fail`, or when there is no DMARC
  *   policy result (`none`) and both SPF and DKIM failed (`fail`/`softfail`).
  * - `authenticated` when DMARC is `pass`, or when (SPF or DKIM is `pass`) and
  *   DMARC is not `fail`.
  * - Missing / untrusted header (all three methods `unknown`) fails open:
- *   authenticated false, suspect false — so locally-injected/dev mail and
+ *   authenticated false, suspect false, so locally-injected/dev mail and
  *   unexpected upstream changes do not quarantine everything.
  * - `reason` is set only when suspect.
  */
@@ -183,9 +196,7 @@ export function resolveInboundEmailAuthVerdict(
 	authResults: string | null,
 ): EmailAuthVerdict {
 	// Defense in depth: never merge method results across a second stamp.
-	const singleStamp = authResults
-		? (leftmostAuthResultsStamp(authResults) ?? authResults)
-		: null
+	const singleStamp = authResults ? firstAuthResultsStamp(authResults) : null
 	const { spf, dkim, dmarc, dmarcHeaderFrom } =
 		parseAuthMethodResults(singleStamp)
 
