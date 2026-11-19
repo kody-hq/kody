@@ -32,7 +32,10 @@ import {
 	revokeProfileGrant,
 } from '#worker/profiles/service.ts'
 import { findLiveProfileGrant } from '#worker/profiles/store.ts'
-import type { GrantPreset } from '@kody-internal/shared/grant-presets.ts'
+import {
+	permissionsForGrantPreset,
+	type GrantPreset,
+} from '@kody-internal/shared/grant-presets.ts'
 import type { OrgPermission } from '@kody-internal/shared/org-permissions.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import {
@@ -150,11 +153,17 @@ async function grantResourceToExistingProfile(
 		input.resourceType,
 		input.resourceId,
 	)
-	const permissions = await resolveAuthorizedGrantPermissions(ctx, {
-		family,
-		preset: input.preset,
-		permissions: input.permissions,
-	})
+	// grantToProfile checks the permissions against the profile rules, the
+	// same ones profileCreate uses, so only a preset needs expanding here.
+	let permissions: ReadonlyArray<OrgPermission> = input.permissions ?? []
+	if (input.preset) {
+		if (family === 'org') {
+			throw new McpCallerError(
+				'Grant presets do not apply to the org resource. Pass an explicit permission list.',
+			)
+		}
+		permissions = permissionsForGrantPreset(family, input.preset)
+	}
 	const caller = await requireProfilesCaller(ctx)
 	const { grantId, profile } = await grantToProfile(caller, {
 		profileId: input.profileId,
