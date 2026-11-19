@@ -573,11 +573,11 @@ singleRequest: {
 
 Set the session header with the credential's existing `inject` option. Each
 optional extra header names a field already used in the login body. Kody logs
-in, sends exactly one request, then attempts a POST to the logout URL even if
-that request fails. Both requests use the approved session and extra headers on
-the same HTTPS origin as the login. Kody keeps no cached session and does not
-retry or follow redirects. Use this profile directly with
-`credential().fetch()`. The package never sees any login fields or session
+in, sends exactly one request, then attempts a POST to the logout URL when the
+response ends, the caller cancels, or the request fails. Both requests use the
+approved session and extra headers on the login's HTTPS origin. Kody keeps no
+cached session and does not retry or follow redirects. Use this profile directly
+with `credential().fetch()`. The package never sees any login fields or session
 tokens.
 
 `refreshToken` is for providers that rotate refresh tokens: `path` is where the

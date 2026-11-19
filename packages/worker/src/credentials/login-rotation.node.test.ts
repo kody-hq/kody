@@ -258,6 +258,8 @@ const singleRequestExchange = {
 
 test.each([
 	'success',
+	'stream',
+	'cancel stream',
 	'401',
 	'network error',
 	'logout error',
@@ -290,6 +292,8 @@ test.each([
 		})
 		const calls: Array<string> = []
 		const logouts: Array<Exchange> = []
+		const pending: Array<Promise<unknown>> = []
+		let closeResponse: (() => void) | undefined
 		let signedIn = 0
 		vi.stubGlobal(
 			'fetch',
@@ -321,6 +325,18 @@ test.each([
 			if (outcome === 'network error') throw new Error('Network error')
 			if (outcome === 'redirect')
 				return Response.redirect('https://api.example.com/next')
+			if (outcome === 'stream' || outcome === 'cancel stream') {
+				return new Response(
+					new ReadableStream<Uint8Array>({
+						start(controller) {
+							closeResponse = () => {
+								controller.enqueue(new TextEncoder().encode('report'))
+								controller.close()
+							}
+						},
+					}),
+				)
+			}
 			return new Response(`dummy-session-${signedIn} ${clientKey}`, {
 				status: outcome === '401' ? 401 : 200,
 			})
@@ -344,6 +360,7 @@ test.each([
 					},
 				}),
 				globalFetch: forward as unknown as typeof fetch,
+				waitUntil: (task) => pending.push(task),
 			})
 		await expect(
 			run('https://api.example.com:8443/v1/reports'),
@@ -364,15 +381,28 @@ test.each([
 				body: { code: 'invalid_request' },
 			})
 			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else if (outcome === 'stream' || outcome === 'cancel stream') {
+			const response = await run()
+			expect(calls).toEqual(['login', 'request'])
+			if (outcome === 'stream') {
+				closeResponse!()
+				expect(await response.text()).toBe('report')
+			} else {
+				await response.body!.cancel()
+			}
+			await Promise.all(pending.splice(0))
+			expect(calls).toEqual(['login', 'request', 'logout'])
 		} else {
 			const response = await run()
 			expect(response.status).toBe(outcome === '401' ? 401 : 200)
 			const body = await response.text()
+			await Promise.all(pending.splice(0))
 			expect(body).not.toContain('dummy-session-')
 			expect(body).not.toContain(clientKey)
 			expect(calls).toEqual(['login', 'request', 'logout'])
 			if (outcome === 'success') {
 				await (await run()).text()
+				await Promise.all(pending.splice(0))
 				expect(calls).toEqual([
 					'login',
 					'request',
