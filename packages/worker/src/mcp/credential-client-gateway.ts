@@ -35,6 +35,7 @@ export async function resolveCredentialClientPlacement(input: {
 	request: Request
 	attestedPackageId?: string
 	rejectedLoginSessionId?: string | null
+	registerLogout?: (logout: () => Promise<void>) => void
 }) {
 	return await applyCredentialClient({
 		env: input.env as Env,
@@ -62,6 +63,7 @@ export async function resolveCredentialClientPlacement(input: {
 			? { attestedPackageId: input.attestedPackageId }
 			: {}),
 		rejectedLoginSessionId: input.rejectedLoginSessionId ?? null,
+		registerLogout: input.registerLogout,
 	})
 }
 
@@ -78,6 +80,23 @@ export function withoutCodePlacement(
 			break
 		case 'query':
 			url.searchParams.delete(placement.param)
+			break
+		case 'single-request-login':
+			for (const name of placement.headers.keys()) headers.delete(name)
+			for (const name of Array.from(headers.keys())) {
+				if (name.startsWith('x-kody-')) headers.delete(name)
+			}
+			for (const name of [
+				'host',
+				'connection',
+				'upgrade',
+				'x-http-method-override',
+				'x-method-override',
+			]) {
+				headers.delete(name)
+			}
+			if (!headers.has('user-agent'))
+				headers.set('user-agent', 'kody-agent/1.0')
 			break
 		case 'body':
 		case 'path':
@@ -113,6 +132,9 @@ export function applyCredentialClientPlacement(
 			return rebuild(request, url, headers)
 		case 'query':
 			url.searchParams.set(placement.param, placement.value)
+			return rebuild(request, url, headers)
+		case 'single-request-login':
+			for (const [name, value] of placement.headers) headers.set(name, value)
 			return rebuild(request, url, headers)
 		case 'path': {
 			const allowed = new Headers({ 'user-agent': 'kody-agent/1.0' })

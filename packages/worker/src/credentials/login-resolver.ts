@@ -9,6 +9,7 @@
  */
 import { z } from 'zod'
 import { readBoundedBody } from '#mcp/capabilities/integrations/read-bounded-body.ts'
+import { isPublicFetchHostname } from '#mcp/events/ssrf.ts'
 import { encryptSecretValue, userSecretContext } from '#mcp/secrets/crypto.ts'
 import { storedCredentialRevision } from '#mcp/secrets/service.ts'
 import { optionalOrgAuditWriter } from '#worker/orgs/org-audit.ts'
@@ -21,6 +22,7 @@ import {
 	credentialHostsAllow,
 	CredentialLoginFailedError,
 	CredentialRequestRefusedError,
+	isCredentialPlacementHeader,
 } from './credential-request.ts'
 import type { CredentialResolver } from './credential-resolver.ts'
 import {
@@ -37,6 +39,7 @@ import {
 const maxSessionSeconds = 24 * 60 * 60
 const sessionExpirySkewMs = 30_000
 const exchangeTimeoutMs = 30_000
+const logoutTimeoutMs = 5_000
 const maxCachedSessions = 500
 const maxExchangeResponseBytes = 64 * 1024
 /** A failed exchange's body is read only for its OAuth `error` code. */
@@ -70,6 +73,20 @@ export const loginExchangeSchema = z
 			})
 			.strict()
 			.optional(),
+		singleRequest: z
+			.strictObject({
+				logoutUrl: z.url({ protocol: /^https$/ }),
+				headers: z
+					.array(
+						z.strictObject({
+							name: z.string().max(100).refine(isCredentialPlacementHeader),
+							field: z.string().regex(/^[A-Za-z0-9_.-]+$/),
+						}),
+					)
+					.max(8)
+					.default([]),
+			})
+			.optional(),
 	})
 	.strict()
 	.refine(
@@ -84,6 +101,39 @@ export const loginExchangeSchema = z
 			path: ['refreshToken', 'field'],
 		},
 	)
+	.superRefine((exchange, ctx) => {
+		const profile = exchange.singleRequest
+		if (!profile) return
+		const loginUrl = URL.parse(exchange.url)
+		const logoutUrl = URL.parse(profile.logoutUrl)
+		const names = profile.headers.map(({ name }) => name.toLowerCase())
+		if (
+			exchange.refreshToken ||
+			!loginUrl ||
+			loginUrl.protocol !== 'https:' ||
+			loginUrl.hash ||
+			!isPublicFetchHostname(loginUrl.hostname) ||
+			!logoutUrl ||
+			logoutUrl.origin !== loginUrl.origin ||
+			logoutUrl.username ||
+			logoutUrl.password ||
+			logoutUrl.hash ||
+			new Set(names).size !== names.length ||
+			profile.headers.some(
+				({ field }) =>
+					!Object.values(exchange.body).some((value) =>
+						value.includes(`{${field}}`),
+					),
+			)
+		) {
+			ctx.addIssue({
+				code: 'custom',
+				path: ['singleRequest'],
+				message:
+					'Single-request Login requires a same-origin logout URL, distinct headers from existing login fields, and no refresh token rotation.',
+			})
+		}
+	})
 
 const sessionInjectSchema = z.discriminatedUnion('kind', [
 	z.object({
@@ -106,6 +156,8 @@ export type ResolvedLoginSession = {
 	substitutedValues: ReadonlyArray<string>
 	/** Id of the stored session (never the session), for a 401 retry. */
 	sessionId: string | null
+	/** Additional protected headers; present only for a single-request session. */
+	singleRequestHeaders?: Headers
 }
 
 type Session = LoginSession & { sessionId: string | null }
@@ -354,6 +406,25 @@ function placeSession(
 	}
 }
 
+function credentialHeaderValue(value: string) {
+	if (!/^[\x20-\x7e]+$/.test(value)) misconfigured()
+	return value
+}
+
+async function logoutOnce(url: string, headers: Headers) {
+	try {
+		const response = await fetch(url, {
+			method: 'POST',
+			headers,
+			redirect: 'manual',
+			signal: AbortSignal.timeout(logoutTimeoutMs),
+		})
+		await response.body?.cancel()
+	} catch {
+		// Cleanup must not replace the protected request's result or error.
+	}
+}
+
 /** Audited like a value replacement; the details never carry the value. */
 async function auditRotatedValue(
 	input: { env: Env; actor: Parameters<typeof optionalOrgAuditWriter>[1] },
@@ -411,7 +482,35 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 				)
 			}
 			exchange = readExchange(found.configJson, found.allowedHosts)
-			inject = readInject(found.injectJson)
+			const sessionInject = readInject(found.injectJson)
+			inject = sessionInject
+			if (exchange.singleRequest) {
+				if (!credential.registerLogout) {
+					throw new CredentialRequestRefusedError(
+						'invalid_request',
+						'Use a single-request Login directly through credential().fetch().',
+					)
+				}
+				if (credential.requestUrl.origin !== exchange.url.origin) {
+					throw new CredentialRequestRefusedError(
+						'host_not_allowed',
+						'Single-request Login only sends sessions to the login origin.',
+					)
+				}
+				if (
+					sessionInject.kind !== 'header' ||
+					!isCredentialPlacementHeader(sessionInject.name) ||
+					exchange.singleRequest.headers.some(
+						({ name }) =>
+							name.toLowerCase() === sessionInject.name.toLowerCase(),
+					)
+				) {
+					misconfigured()
+				}
+				credentialHeaderValue(
+					sessionInject.format.replace('{value}', 'session'),
+				)
+			}
 			if (
 				credential.expectedInject &&
 				JSON.stringify(inject) !== JSON.stringify(credential.expectedInject)
@@ -425,6 +524,31 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 		const applyOnce = async (): Promise<ResolvedLoginSession> => {
 			// `authorize` returned, so the lookup, exchange, and inject are set.
 			const { found, readValue } = lookup!
+			const profile = exchange!.singleRequest
+			if (profile) {
+				const { fields } = readLoginFields(await readValue())
+				const headers = new Headers()
+				for (const { name, field } of profile.headers) {
+					headers.set(name, credentialHeaderValue(fields.get(field) ?? ''))
+				}
+				const { token } = await runExchange(exchange!, fields)
+				const placed = placeSession(inject!, token, null)
+				if (placed.placement.kind !== 'header') misconfigured()
+				const { name, value } = placed.placement
+				headers.set(name, credentialHeaderValue(value))
+				credential.registerLogout!(() => logoutOnce(profile.logoutUrl, headers))
+				call.subject.details = {
+					...call.subject.details,
+					session: 'single-request',
+				}
+				return {
+					...placed,
+					singleRequestHeaders: headers,
+					substitutedValues: [
+						...new Set([...placed.substitutedValues, ...headers.values()]),
+					],
+				}
+			}
 			const env = call.input.env
 			const key = `${found.credentialId}|${found.revision}`
 			const rejected = credential.rejectedSessionId ?? null

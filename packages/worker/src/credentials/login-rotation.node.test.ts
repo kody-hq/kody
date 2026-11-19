@@ -18,6 +18,9 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
+import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
+import { credentialClientHeaderName } from './credential-client-header.ts'
+import { signCredentialClientHandle } from './credential-client-handle.ts'
 import {
 	clearLoginSessionsForTests,
 	loginExchangeSchema,
@@ -243,6 +246,175 @@ async function setup() {
 		audits,
 	}
 }
+
+const singleRequestExchange = {
+	...jsonExchange,
+	body: { ...jsonExchange.body, clientKey: '{clientKey}' },
+	singleRequest: {
+		logoutUrl: 'https://api.example.com/v1/auth/logout',
+		headers: [{ name: 'X-Client-Key', field: 'clientKey' }],
+	},
+}
+
+test.each([
+	'success',
+	'401',
+	'network error',
+	'logout error',
+	'redirect',
+	'failed login',
+] as const)(
+	'single-request Login runs one protected request and cleans up: %s',
+	async (outcome) => {
+		const t = await setup()
+		const request = t.requestAs('bea', 'owner')
+		const clientKey = 'dummy-client-key'
+		const credentialId = await t.storeCredential({
+			name: 'ephemeral-reports',
+			exchange: singleRequestExchange,
+			value: JSON.stringify({ ...JSON.parse(fields), clientKey }),
+			inject: { kind: 'header', name: 'X-Session', format: '{value}' },
+		})
+		const binding = 'run:single-request-login'
+		const handle = await signCredentialClientHandle({
+			env: t.env,
+			handle: {
+				id: credentialId,
+				name: 'ephemeral-reports',
+				kind: 'login',
+				scope: 'org',
+				org: t.acmeId,
+				actor: request.actor!.userId,
+				binding,
+			},
+		})
+		const calls: Array<string> = []
+		const logouts: Array<Exchange> = []
+		let signedIn = 0
+		vi.stubGlobal(
+			'fetch',
+			vi.fn(async (url: string, init: RequestInit) => {
+				expect(init.redirect).toBe('manual')
+				if (url === singleRequestExchange.url) {
+					calls.push('login')
+					expect(init.body).toEqual(expect.stringContaining(clientKey))
+					if (outcome === 'failed login')
+						return new Response(null, { status: 403 })
+					return Response.json({
+						data: { token: `dummy-session-${++signedIn}` },
+					})
+				}
+				calls.push('logout')
+				logouts.push({ url, init })
+				if (outcome === 'logout error') throw new Error('Logout failed')
+				return new Response(null, { status: 204 })
+			}),
+		)
+		const forward = vi.fn(async (outbound: Request) => {
+			calls.push('request')
+			expect(outbound.redirect).toBe('manual')
+			expect(outbound.headers.has(credentialClientHeaderName)).toBe(false)
+			expect(outbound.headers.get('x-session')).toBe(
+				`dummy-session-${signedIn}`,
+			)
+			expect(outbound.headers.get('x-client-key')).toBe(clientKey)
+			if (outcome === 'network error') throw new Error('Network error')
+			if (outcome === 'redirect')
+				return Response.redirect('https://api.example.com/next')
+			return new Response(`dummy-session-${signedIn} ${clientKey}`, {
+				status: outcome === '401' ? 401 : 200,
+			})
+		})
+		const run = (url = 'https://api.example.com/v1/reports') =>
+			executeGatewayFetch({
+				env: t.env,
+				props: {
+					baseUrl: 'https://example.com',
+					userId: t.acmeId,
+					email: null,
+					request,
+					storageContext: null,
+					credentialClientBinding: binding,
+				},
+				request: new Request(url, {
+					headers: {
+						[credentialClientHeaderName]: handle,
+						'X-Client-Key': 'caller-value',
+						'X-Session': 'caller-session',
+					},
+				}),
+				globalFetch: forward as unknown as typeof fetch,
+			})
+		await expect(
+			run('https://api.example.com:8443/v1/reports'),
+		).rejects.toMatchObject({
+			body: { code: 'host_not_allowed' },
+		})
+		expect(calls).toEqual([])
+		if (outcome === 'failed login') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'login_failed' },
+			})
+			expect(calls).toEqual(['login'])
+		} else if (outcome === 'network error') {
+			await expect(run()).rejects.toThrow('Network error')
+			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else if (outcome === 'redirect') {
+			await expect(run()).rejects.toMatchObject({
+				body: { code: 'invalid_request' },
+			})
+			expect(calls).toEqual(['login', 'request', 'logout'])
+		} else {
+			const response = await run()
+			expect(response.status).toBe(outcome === '401' ? 401 : 200)
+			const body = await response.text()
+			expect(body).not.toContain('dummy-session-')
+			expect(body).not.toContain(clientKey)
+			expect(calls).toEqual(['login', 'request', 'logout'])
+			if (outcome === 'success') {
+				await (await run()).text()
+				expect(calls).toEqual([
+					'login',
+					'request',
+					'logout',
+					'login',
+					'request',
+					'logout',
+				])
+				expect(signedIn).toBe(2)
+			}
+		}
+		expect(
+			await t.db
+				.prepare('SELECT credential_id FROM login_credential_sessions')
+				.first(),
+		).toBeNull()
+		for (const [index, { url, init }] of logouts.entries()) {
+			expect(url).toBe(singleRequestExchange.singleRequest.logoutUrl)
+			expect(init).toMatchObject({ method: 'POST', redirect: 'manual' })
+			expect(init.signal?.aborted).toBe(false)
+			const headers = new Headers(init.headers)
+			expect(headers.get('x-session')).toBe(`dummy-session-${index + 1}`)
+			expect(headers.get('x-client-key')).toBe(clientKey)
+		}
+	},
+)
+
+test('single-request Login rejects a cross-origin logout and reserved request headers', () => {
+	const { singleRequest } = singleRequestExchange
+	for (const invalid of [
+		{ ...singleRequest, logoutUrl: 'https://other.example.com/logout' },
+		{ ...singleRequest, headers: [{ name: 'Host', field: 'clientKey' }] },
+		{ ...singleRequest, headers: [{ name: 'X-Client-Key', field: 'missing' }] },
+	]) {
+		expect(
+			loginExchangeSchema.safeParse({
+				...singleRequestExchange,
+				singleRequest: invalid,
+			}).success,
+		).toBe(false)
+	}
+})
 
 const refreshFields = JSON.stringify({ refresh_token: 'dummy-refresh-1' })
 const rotatingExchange = {

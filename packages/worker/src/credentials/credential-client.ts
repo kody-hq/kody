@@ -1390,6 +1390,7 @@ export async function refreshCredentialClient(
 export type CredentialClientPlacement =
 	| CredentialResolverPlacement
 	| { kind: 'url'; url: URL }
+	| { kind: 'single-request-login'; headers: Headers }
 
 export type AppliedCredentialClient = {
 	placement: CredentialClientPlacement
@@ -1449,6 +1450,7 @@ export async function applyCredentialClient(input: {
 	attestedPackageId?: string
 	/** A login session a host answered 401 to; the door drops it and re-mints. */
 	rejectedLoginSessionId?: string | null
+	registerLogout?: (logout: () => Promise<void>) => void
 }): Promise<AppliedCredentialClient> {
 	return await withClientErrors(input, async () => {
 		const ctx = {
@@ -1521,9 +1523,21 @@ export async function applyCredentialClient(input: {
 						credentialId: handle.id,
 						requestUrl,
 						rejectedSessionId: input.rejectedLoginSessionId ?? null,
+						registerLogout: input.registerLogout,
 					}),
 				)
 				const { placement } = session
+				if (session.singleRequestHeaders) {
+					return {
+						placement: {
+							kind: 'single-request-login',
+							headers: session.singleRequestHeaders,
+						},
+						substitutedValues: session.substitutedValues,
+						shape: 'single-request login session',
+						providerLabel,
+					}
+				}
 				return {
 					placement,
 					substitutedValues: session.substitutedValues,

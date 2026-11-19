@@ -559,6 +559,27 @@ never sees the refresh token or the access token. The owner creates or rotates
 the credential on the website or with `secretSet` outside a package: package
 code cannot set `kind`, `hosts`, or `login_exchange`.
 
+#### One request per login
+
+For providers that require sign-out after each operation, the credential owner
+can add a single-request profile to `login_exchange` with `secretSet`:
+
+```ts
+singleRequest: {
+	logoutUrl: 'https://api.example.com/v1/logout',
+	headers: [{ name: 'X-Client-Key', field: 'clientKey' }],
+},
+```
+
+Set the session header with the credential's existing `inject` option. Each
+optional extra header names a field already used in the login body. Kody logs
+in, sends exactly one request, then attempts a POST to the logout URL even if
+that request fails. Both requests use the approved session and extra headers on
+the same HTTPS origin as the login. Kody keeps no cached session and does not
+retry or follow redirects. Use this profile directly with
+`credential().fetch()`. The package never sees any login fields or session
+tokens.
+
 `refreshToken` is for providers that rotate refresh tokens: `path` is where the
 response carries the new one, and `field` is the login field it replaces (a
 field the body sends). When the response has a new one, Kody saves it in place

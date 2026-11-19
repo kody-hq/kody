@@ -210,6 +210,8 @@ export type CredentialTarget =
 				| { kind: 'query'; param: string }
 			/** The session a host just answered 401 to; it is dropped first. */
 			rejectedSessionId?: string | null
+			/** Only the fetch gateway owns the lifetime of a single-request session. */
+			registerLogout?: (logout: () => Promise<void>) => void
 	  }
 	/**
 	 * A `signing` credential picked by id: a JWT or HMAC signature made with

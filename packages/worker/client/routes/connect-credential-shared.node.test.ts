@@ -495,6 +495,25 @@ test('a login save builds its value from the exchange body fields', () => {
 	])
 })
 
+test('a link cannot activate a single-request profile the Login form does not show', () => {
+	const exchange = {
+		url: 'https://api.example.com/login',
+		tokenPath: 'token',
+		singleRequest: { logoutUrl: 'https://api.example.com/logout' },
+	}
+	const form = createKeyFormState(
+		query(
+			`kind=login&loginExchange=${encodeURIComponent(JSON.stringify(exchange))}`,
+		),
+	)
+	expect(
+		buildKeySaveBody({ kind: 'login', form, existing: null }),
+	).toMatchObject({
+		ok: false,
+		error: expect.stringContaining('secretSet'),
+	})
+})
+
 test('the agent prompt names the kind, credential, need, link, and error', () => {
 	expect(
 		credentialCreateAgentPrompt({
