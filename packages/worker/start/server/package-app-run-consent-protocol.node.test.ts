@@ -1,47 +1,60 @@
-import { beforeEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
+import * as authenticatedUser from '#app/authenticated-user.ts'
+import * as runConsent from '#app/package-app-run-consent.ts'
+import * as accountWrites from '#worker/account/deletion-state.ts'
+import * as deviceVerification from '#worker/oauth-device/verification.ts'
 import {
 	loadPackageAppRunConsentView,
 	postPackageAppRunConsent,
 } from './package-app-run-consent-protocol.ts'
 
-const state = vi.hoisted(() => ({
-	env: { APP_DB: {} } as Env,
-	authenticated: vi.fn(),
-	resolveOwner: vi.fn(),
-	resolveApp: vi.fn(),
-	canExecute: vi.fn(),
-	needsConsent: vi.fn(),
-	writeApproval: vi.fn(),
-	writeLease: vi.fn(async ({ write }: { write: () => Promise<unknown> }) =>
-		write(),
-	),
-	findDevice: vi.fn(),
-}))
-
-vi.mock('./request-env.ts', () => ({ getStartRequestEnv: () => state.env }))
+vi.mock('./request-env.ts', () => ({ getStartRequestEnv: () => env }))
 vi.mock('#app/authenticated-user.ts', () => ({
-	readAuthenticatedAppUser: state.authenticated,
+	readAuthenticatedAppUser: async () => ({
+		email: 'visitor@example.com',
+		username: 'visitor',
+		displayName: 'Visitor',
+		mcpUser: { userId: personId, username: 'visitor' },
+	}),
 }))
 vi.mock('#app/package-app-owner.ts', () => ({
-	resolvePackageAppOrgOwnerByHandle: state.resolveOwner,
+	resolvePackageAppOrgOwnerByHandle: async ({ handle }: { handle: string }) =>
+		handle === 'publisher'
+			? { userId: publisherId, username: 'publisher', displayName: 'Publisher' }
+			: null,
 }))
 vi.mock('#worker/package-invocations/module-artifacts.ts', () => ({
-	resolveSavedPackageForPackageAppSlug: state.resolveApp,
+	resolveSavedPackageForPackageAppSlug: async ({ slug }: { slug: string }) =>
+		slug === 'lantern'
+			? {
+					savedPackage: {
+						id: packageId,
+						name: '@publisher/lantern',
+						hasApp: true,
+					},
+					retired: false,
+				}
+			: null,
 }))
 vi.mock('#app/package-viewer-access.ts', () => ({
-	viewerCanExecutePackageApp: state.canExecute,
+	viewerCanExecutePackageApp: async () => true,
 }))
 vi.mock('#app/package-app-run-consent.ts', () => ({
-	approvePackageAppRun: state.writeApproval,
-	needsPackageAppRunConsentForPerson: state.needsConsent,
+	approvePackageAppRun: async () => ({}),
+	needsPackageAppRunConsentForPerson: async () => true,
 }))
 vi.mock('#worker/account/deletion-state.ts', () => ({
-	withAccountWriteLease: state.writeLease,
+	withAccountWriteLease: async ({ write }: { write: () => Promise<unknown> }) =>
+		write(),
 }))
 vi.mock('#worker/oauth-device/verification.ts', () => ({
-	findPendingPackageAppDeviceAuthorization: state.findDevice,
+	findPendingPackageAppDeviceAuthorization: async () => ({
+		kind: 'found',
+		row: { client_id: 'publisher/lantern' },
+	}),
 }))
 
+const env = { APP_DB: {} } as Env
 const origin = 'https://kody.test'
 const personId = 'visitor-person'
 const publisherId = 'publisher-org'
@@ -80,37 +93,15 @@ function submit(
 	})
 }
 
-beforeEach(() => {
-	vi.clearAllMocks()
-	state.authenticated.mockResolvedValue({
-		email: 'visitor@example.com',
-		username: 'visitor',
-		displayName: 'Visitor',
-		mcpUser: { userId: personId, username: 'visitor' },
-	})
-	state.resolveOwner.mockResolvedValue({
-		userId: publisherId,
-		username: 'publisher',
-		displayName: 'Publisher',
-	})
-	state.resolveApp.mockResolvedValue({
-		savedPackage: { id: packageId, name: '@publisher/lantern', hasApp: true },
-		retired: false,
-	})
-	state.canExecute.mockResolvedValue(true)
-	state.needsConsent.mockResolvedValue(true)
-	state.findDevice.mockResolvedValue({
-		kind: 'found',
-		row: { client_id: 'publisher/lantern' },
-	})
-})
-
 test('approval records the current visitor and app under a write lease before resuming', async () => {
+	using writeLease = vi.spyOn(accountWrites, 'withAccountWriteLease')
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 	const response = await submit('approve')
 
-	expect(state.writeLease).toHaveBeenCalledOnce()
-	expect(state.writeApproval).toHaveBeenCalledExactlyOnceWith(
-		state.env.APP_DB,
+	expect(writeLease).toHaveBeenCalledOnce()
+	expect(approve).toHaveBeenCalledExactlyOnceWith(
+		env.APP_DB,
 		personId,
 		packageId,
 	)
@@ -120,6 +111,9 @@ test('approval records the current visitor and app under a write lease before re
 })
 
 test('decline reloads the confirmation with no approval, navigation to the app, or session cookie', async () => {
+	using writeLease = vi.spyOn(accountWrites, 'withAccountWriteLease')
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 	const response = await submit('decline', { resume: oauthResume })
 	const location = confirmationUrl(oauthResume)
 	location.searchParams.set('declined', '1')
@@ -130,42 +124,49 @@ test('decline reloads the confirmation with no approval, navigation to the app, 
 	)
 	expect(response.headers.has('Refresh')).toBe(false)
 	expect(response.headers.has('Set-Cookie')).toBe(false)
-	expect(state.writeLease).not.toHaveBeenCalled()
-	expect(state.writeApproval).not.toHaveBeenCalled()
+	expect(writeLease).not.toHaveBeenCalled()
+	expect(approve).not.toHaveBeenCalled()
 	expect(
-		await loadPackageAppRunConsentView(new Request(location), state.env),
+		await loadPackageAppRunConsentView(new Request(location), env),
 	).toMatchObject({ declined: true, destination: oauthResume })
 })
 
 test.each(Object.keys(identity) as Array<keyof typeof identity>)(
 	'rejects a stale form when its %s no longer matches',
 	async (field) => {
+		using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 		const response = await submit('approve', {
 			formIdentity: { [field]: 'stale' },
 		})
 
 		expect(response.status).toBe(409)
-		expect(state.writeApproval).not.toHaveBeenCalled()
+		expect(approve).not.toHaveBeenCalled()
 	},
 )
 
 test('rejects a cross-origin approval before reading the visitor', async () => {
+	using readUser = vi.spyOn(authenticatedUser, 'readAuthenticatedAppUser')
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 	const response = await submit('approve', { origin: 'https://app.test' })
 
 	expect(response.status).toBe(403)
-	expect(state.authenticated).not.toHaveBeenCalled()
-	expect(state.writeApproval).not.toHaveBeenCalled()
+	expect(readUser).not.toHaveBeenCalled()
+	expect(approve).not.toHaveBeenCalled()
 })
 
 test.each([
 	['browser OAuth', oauthResume],
 	['device OAuth', deviceResume],
 ])('approval resumes matching %s authorization', async (_, resume) => {
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 	const response = await submit('approve', { resume })
 
 	expect(response.status).toBe(200)
 	expect(response.headers.get('Refresh')).toBe(`0; url=${resume}`)
-	expect(state.writeApproval).toHaveBeenCalledOnce()
+	expect(approve).toHaveBeenCalledOnce()
 })
 
 test.each([
@@ -173,22 +174,28 @@ test.each([
 	'/oauth/package-app/authorize?client_id=publisher/sibling',
 	'/account',
 ])('rejects an unrelated authorization resume %s', async (resume) => {
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+
 	const response = await submit('approve', { resume })
 
 	expect(response.status).toBe(404)
-	expect(state.writeApproval).not.toHaveBeenCalled()
+	expect(approve).not.toHaveBeenCalled()
 })
 
 test('rejects a device resume unavailable to the current visitor', async () => {
-	state.findDevice.mockResolvedValueOnce({ kind: 'not_found' })
+	using approve = vi.spyOn(runConsent, 'approvePackageAppRun')
+	using findDevice = vi
+		.spyOn(deviceVerification, 'findPendingPackageAppDeviceAuthorization')
+		.mockResolvedValue({ kind: 'not_found' })
+
 	const response = await submit('approve', { resume: deviceResume })
 
 	expect(response.status).toBe(404)
-	expect(state.findDevice).toHaveBeenCalledWith({
+	expect(findDevice).toHaveBeenCalledWith({
 		request: expect.any(Request),
-		env: state.env,
+		env,
 		user: { personId, email: 'visitor@example.com' },
 		userCode: 'ABCD-EFGH',
 	})
-	expect(state.writeApproval).not.toHaveBeenCalled()
+	expect(approve).not.toHaveBeenCalled()
 })
