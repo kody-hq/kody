@@ -302,7 +302,17 @@ function spawnWrangler(input: {
 	const pid = child.pid
 	if (pid !== undefined) {
 		input.onSpawn?.(pid)
-		child.once('exit', () => input.onExit?.(pid))
+		child.once('exit', () => {
+			// Survivors of a dead leader are orphans holding ports; reap them first.
+			if (process.platform !== 'win32') {
+				try {
+					process.kill(-pid, 'SIGKILL')
+				} catch {
+					// Group already gone.
+				}
+			}
+			input.onExit?.(pid)
+		})
 	}
 	return child
 }
