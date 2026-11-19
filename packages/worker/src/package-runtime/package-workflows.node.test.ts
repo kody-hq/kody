@@ -18,6 +18,7 @@ import type { PackageInvocationStoredResponse } from '#worker/package-invocation
 import type { WorkflowProjectionUpsertInput } from '#worker/run-records/service.ts'
 import { UserCodeError, isUserCodeError } from '#worker/user-code-error.ts'
 import { backgroundExecutorTimeoutMs } from '#mcp/executor-budgets.ts'
+import { publishOutsideCloudAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
 import {
 	durableObjectIsolateCpuResetMessage,
 	durableObjectIsolateMemoryResetMessage,
@@ -691,9 +692,11 @@ test.each([
 			status: 'errored',
 			lastError: expect.stringContaining('Publish applied:'),
 		})
+		expect(findRun(created.id)?.lastError).toContain(message)
 		expect(lastFinish()).toMatchObject({
 			status: 'error',
 			skipErrorSubscriptions: false,
+			error: { message: expect.stringContaining(publishOutsideCloudAdvice()) },
 		})
 	} finally {
 		invoke.mockReset()

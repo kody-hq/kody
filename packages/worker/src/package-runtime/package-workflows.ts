@@ -97,7 +97,7 @@ import {
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
 import {
-	isDurableObjectIsolateResourceLimitResetError,
+	getDurableObjectIsolateResourceLimitResetMessage,
 	isTransientDurableObjectResetError,
 } from '#worker/durable-object-reset-retry.ts'
 import { UserCodeError } from '#worker/user-code-error.ts'
@@ -2558,10 +2558,17 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					sourceId: payload.packageContext?.sourceId,
 					commit: payload.enqueuedCommit,
 				})
-				const message = `Publish workflow: ${state} ${getErrorMessage(error)}`
+				const errorMessage = getErrorMessage(error)
+				const resetMessage =
+					getDurableObjectIsolateResourceLimitResetMessage(error)
+				const reason =
+					resetMessage && !errorMessage.includes(resetMessage)
+						? `${errorMessage} Caused by: ${resetMessage}`
+						: errorMessage
+				const message = `Publish workflow: ${state} ${reason}`
 				error =
 					isNonRetryableError(error) ||
-					isDurableObjectIsolateResourceLimitResetError(error) ||
+					resetMessage ||
 					isPublishComputeLimitMessage(message)
 						? terminalWorkflowStepError(message)
 						: new Error(message, { cause: error })
