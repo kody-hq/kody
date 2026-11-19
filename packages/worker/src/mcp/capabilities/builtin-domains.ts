@@ -1,3 +1,4 @@
+import { importCapabilityManifest } from '#worker/capability-manifest-module.ts'
 import type { Capability, DomainSpec } from './types.ts'
 
 /**
@@ -109,7 +110,7 @@ function createLazyHandler(
 let builtinDomainsMemo: Promise<ReadonlyArray<DomainSpec>> | null = null
 
 export function loadBuiltinDomains(): Promise<ReadonlyArray<DomainSpec>> {
-	builtinDomainsMemo ??= import('./capability-manifest.generated.mjs')
+	builtinDomainsMemo ??= importCapabilityManifest()
 		.then(({ capabilityManifest }) =>
 			capabilityManifest.domains.map(
 				({ capabilities, ...domain }): DomainSpec => ({
