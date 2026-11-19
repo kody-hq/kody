@@ -1,4 +1,9 @@
 import { z } from 'zod'
+import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
+
+export function vaultItemRefContext(ownerId: OwnerId, bindingId: string) {
+	return `vault-item:${ownerId}:${bindingId}`
+}
 
 const vaultItemConfigSchema = z.strictObject({
 	kind: z.literal('vault-item'),

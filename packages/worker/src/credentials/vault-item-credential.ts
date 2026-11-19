@@ -11,7 +11,10 @@ import {
 import { invokeSealedSecretProvider } from '#mcp/secrets/secret-providers/sealed-invoke.ts'
 import { resolveProviderSecret } from '#mcp/secrets/secret-providers/service.ts'
 import { saveSecret, type StoredCredential } from '#mcp/secrets/service.ts'
-import { readVaultItemConfig } from '#mcp/secrets/vault-item-config.ts'
+import {
+	readVaultItemConfig,
+	vaultItemRefContext,
+} from '#mcp/secrets/vault-item-config.ts'
 import type { OrgAuditWriter } from '#worker/orgs/org-audit.ts'
 import {
 	credentialHostsSchema,
@@ -28,10 +31,6 @@ import {
 	type CredentialTargetFor,
 } from './credential-resolver.ts'
 import { CredentialRequestRefusedError } from './credential-request.ts'
-
-function refContext(ownerId: OwnerId, bindingId: string) {
-	return `vault-item:${ownerId}:${bindingId}`
-}
 
 export async function createVaultItemCredential(input: {
 	env: Env
@@ -73,7 +72,7 @@ export async function createVaultItemCredential(input: {
 		encryptedRef: await encryptSecretValue(
 			input.env,
 			ref,
-			refContext(input.ownerId, binding.credentialId),
+			vaultItemRefContext(input.ownerId, binding.credentialId),
 		),
 	}
 	await saveSecret({
@@ -139,7 +138,7 @@ export async function prepareVaultItemRead(
 			const ref = await decryptSecretValue(
 				input.env,
 				config.encryptedRef,
-				refContext(found.ownerId, config.bindingId),
+				vaultItemRefContext(found.ownerId, config.bindingId),
 			)
 			const resolved = await resolveProviderSecret({
 				env: input.env,
