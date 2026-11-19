@@ -448,7 +448,9 @@ async function mapPool<T, R>(
 	let nextIndex = 0
 	let firstError: unknown
 	async function worker() {
-		while (nextIndex < items.length) {
+		// Stop dispatching after a failure: past a Workers subrequest limit
+		// every remaining call fails too.
+		while (firstError === undefined && nextIndex < items.length) {
 			const index = nextIndex
 			nextIndex += 1
 			const item = items[index]
