@@ -64,6 +64,7 @@ import {
 	setSecretsAllowedHosts,
 	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
+import { assertPlaceholderSecretName } from '#mcp/secrets/secret-name-references.ts'
 import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	credentialHostsSchema,
@@ -1969,6 +1970,7 @@ export async function saveAccountSecret(input: {
 	let renamedInPlace = false
 	if (willRenameInPlace && currentSecret) {
 		try {
+			assertPlaceholderSecretName(name)
 			// Audited once below, after the save succeeds, so a rolled back
 			// rename leaves no audit row.
 			const renamed = await renameSecret({

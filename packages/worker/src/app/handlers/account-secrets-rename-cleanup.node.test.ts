@@ -698,6 +698,30 @@ test('account secrets save rolls back an in-place rename when the later write fa
 	])
 })
 
+test('account secrets save refuses renaming to a name a placeholder cannot reference', async () => {
+	mockSecretsListing([makeSecret('Henry')])
+	mockModule.renameSecret.mockClear()
+
+	const response = await createHandler()(
+		postRequest({
+			action: 'save',
+			currentId: 'user::::Henry',
+			name: 'Henry Ford',
+			scope: 'user',
+			value: 'new value',
+			allowedHosts: [],
+			allowedPackages: [],
+			placement: null,
+		}),
+	)
+	expect(response.status).toBe(400)
+	expect(response.data).toMatchObject({
+		ok: false,
+		error: expect.stringMatching(/not a valid secret name/),
+	})
+	expect(mockModule.renameSecret).not.toHaveBeenCalled()
+})
+
 test('account secrets save still refuses moving an opt-in credential across scopes without its kind', async () => {
 	const placement = {
 		id: 'cred-webhook',
