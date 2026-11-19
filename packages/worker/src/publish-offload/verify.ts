@@ -1,8 +1,5 @@
 import type { PublishedPackageArtifactBuildTarget } from '#worker/package-runtime/package-artifact-targets.ts'
-import {
-	collectBundlerResolvedSpecifiers,
-	isKodyVirtualImportSpecifier,
-} from '#worker/package-runtime/import-specifiers.ts'
+import { isKodyVirtualImportSpecifier } from '#worker/package-runtime/import-specifiers.ts'
 import {
 	publicRuntimeModulePath,
 	resolveRelativeModulePath,
@@ -12,6 +9,7 @@ import {
 	isKodyRuntimeModulePath,
 } from '#worker/package-runtime/runtime-source-modules.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
+import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
 import { snapshotStringToBytes } from '#universal/package-file-media.ts'
 import { sha256Hex, workerLoaderModuleBytes } from './module-hashes.ts'
 import { publishOffloadLimits } from './policy.ts'
@@ -161,89 +159,233 @@ export function matchUploadedTargets(input: {
 
 const platformVirtualPathPattern = /(^|\/)\.__kody_virtual__\//
 const linkedPathPattern = /(^|\/)\.__kody_linked__\//
-const boundCreatorNamePattern = /__kodyCreatePackageBound[\w$]*/g
-const boundCreatorCallPattern =
-	/__kodyCreatePackageBound[\w$]*\(\s*("(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'|[^)\s]+)\s*\)/g
+const kodyModuleMarkerPattern = /__kody_(?:virtual|linked)__/i
+const platformModuleMarkerPattern = /__kody_virtual__/i
+const boundCreatorPrefix = '__kodyCreatePackageBound'
 const preBindingRepairNames = [
 	'__kodyPreBindingBoundFetch',
 	'__kodyPreBindingBoundKody',
 	'__kodyMeterStaticPackageExport',
 ]
 
-const namedImportPattern =
-	/\bimport\s*(?:[\w$]+\s*,\s*)?\{([^}]*)\}\s*from\s*(["'])[^"'\n]*\2/g
-const platformModuleImportPatterns = [
-	/\bimport\s*(?:[\w$]+\s*,\s*)?\*\s*as\s+[\w$]+\s*from\s*["'][^"'\n]*__kody_virtual__/,
-	/\bexport\s*(?:\*|\{[^}]*\})\s*(?:as\s+[\w$]+\s*)?from\s*["'][^"'\n]*__kody_virtual__/,
-	/\b(?:import|require)\s*\(\s*["'`][^"'`\n]*__kody_virtual__/,
-]
-const nonLiteralDynamicLoadPattern =
-	/\b(?:import|require)\s*\(\s*(?!["'][^"'`\n]*["']\s*\))/
+type AstNode = ModuleAstNode & { start?: number | null; end?: number | null }
 
-/**
- * The bound-identity check below reads `creator("<id>")` calls, so an
- * uploaded module may only name a creator in a named import (kept or
- * aliased to another creator name) or a direct literal call. Namespace
- * imports and re-exports of platform modules, and imports or requires of a
- * computed path, would reach a creator under another name and are refused.
- * Returns the direct calls.
- */
-function assertBoundCreatorsOnlyCalledDirectly(input: {
-	source: string
-	label: string
-}) {
-	const { source, label } = input
-	for (const pattern of platformModuleImportPatterns) {
-		if (pattern.test(source)) {
-			fail(
-				`${label} imports a Kody platform module as a namespace or by re-export.`,
-			)
-		}
-	}
-	if (nonLiteralDynamicLoadPattern.test(source)) {
-		fail(
-			`${label} imports or requires a computed module path, which a build made outside Kody cloud may not do.`,
-		)
-	}
-	const allowed = new Set<number>()
-	for (const match of source.matchAll(namedImportPattern)) {
-		const clauseStart = match.index + match[0].indexOf('{') + 1
-		for (const name of match[1]!.matchAll(boundCreatorNamePattern)) {
-			allowed.add(clauseStart + name.index)
-		}
-		for (const specifier of match[1]!.split(',')) {
-			const [imported, local] = specifier.trim().split(/\s+as\s+/)
-			const names = [imported, local].filter(Boolean) as Array<string>
-			if (!names.some((name) => name.startsWith('__kodyCreatePackageBound'))) {
-				continue
-			}
-			if (!names.every((name) => name.startsWith('__kodyCreatePackageBound'))) {
-				fail(`${label} renames the runtime helper ${imported}.`)
-			}
-		}
-	}
-	const directCalls = [...source.matchAll(boundCreatorCallPattern)]
-	for (const call of directCalls) allowed.add(call.index)
-	for (const name of source.matchAll(boundCreatorNamePattern)) {
-		if (!allowed.has(name.index)) {
-			fail(
-				`${label} refers to the runtime helper ${name[0]} outside a direct call.`,
-			)
-		}
-	}
-	return directCalls
+function isAstNode(value: unknown): value is AstNode {
+	return (
+		value != null &&
+		typeof value === 'object' &&
+		typeof (value as { type?: unknown }).type === 'string'
+	)
 }
 
-function parseBoundId(raw: string) {
-	if (raw.startsWith('"')) {
-		try {
-			return JSON.parse(raw) as string
-		} catch {
-			return null
+function isBoundCreatorName(name: unknown): name is string {
+	return typeof name === 'string' && name.startsWith(boundCreatorPrefix)
+}
+
+/**
+ * A string or substitution-free template written without escapes, so the
+ * specifier the loader resolves is the text the checks read.
+ */
+function readPlainLiteral(node: unknown) {
+	if (!isAstNode(node)) return null
+	if (node.type === 'StringLiteral') {
+		const raw = (node.extra as { raw?: unknown } | undefined)?.raw
+		const value = node.value
+		if (typeof raw !== 'string' || typeof value !== 'string') return null
+		return { value, escaped: raw.slice(1, -1) !== value }
+	}
+	if (node.type === 'TemplateLiteral') {
+		const expressions = node.expressions as Array<unknown>
+		const quasis = node.quasis as Array<{
+			value: { raw: string; cooked?: string | null }
+		}>
+		if (expressions.length !== 0 || quasis.length !== 1) return null
+		const { raw, cooked } = quasis[0]!.value
+		if (typeof cooked !== 'string') return null
+		return { value: cooked, escaped: raw !== cooked }
+	}
+	return null
+}
+
+function matchesMarker(pattern: RegExp, specifier: string) {
+	if (pattern.test(specifier)) return true
+	try {
+		return pattern.test(decodeURIComponent(specifier))
+	} catch {
+		return true
+	}
+}
+
+function namesKodyModule(specifier: string) {
+	return matchesMarker(kodyModuleMarkerPattern, specifier)
+}
+
+function namesPlatformModule(specifier: string) {
+	return matchesMarker(platformModuleMarkerPattern, specifier)
+}
+
+/**
+ * Parses an uploaded module and checks how it reaches Kody modules and the
+ * package-bound runtime creators. The identity check reads
+ * `creator("<id>")` calls, so a creator may only be imported by its plain
+ * name from a Kody module (kept, or aliased to another creator name) and
+ * then called directly with a string literal. Platform modules may only be
+ * imported with plain named or default imports: no namespace imports,
+ * re-exports, string import names, `import()` or `require()`. Specifiers
+ * may not use escapes, and computed `import()` / `require()` are refused.
+ * Returns every static specifier and every creator call's package id.
+ */
+async function inspectUploadedModule(input: { source: string; label: string }) {
+	const { source, label } = input
+	let program: unknown
+	try {
+		program = await parseModuleSource(source)
+	} catch {
+		fail(`${label} does not parse as a module.`)
+	}
+	const specifiers: Array<string> = []
+	const boundIds: Array<string | null> = []
+	const allowedCreatorNodes = new Set<unknown>()
+
+	function readSpecifier(node: unknown, what: string) {
+		const literal = readPlainLiteral(node)
+		if (literal === null) {
+			fail(
+				`${label} ${what} a computed module path, which a build made outside Kody cloud may not do.`,
+			)
+		}
+		if (literal.escaped) {
+			fail(`${label} writes a module path with escape sequences.`)
+		}
+		const specifier = literal.value
+		if (
+			namesKodyModule(specifier) &&
+			!specifier.startsWith('./') &&
+			!specifier.startsWith('../')
+		) {
+			fail(
+				`${label} imports "${specifier}", which is not part of this package.`,
+			)
+		}
+		specifiers.push(specifier)
+		return specifier
+	}
+
+	function checkImportDeclaration(node: AstNode) {
+		const specifier = readSpecifier(node.source, 'imports')
+		const platform = namesPlatformModule(specifier)
+		for (const entry of (node.specifiers as Array<AstNode>) ?? []) {
+			const local = (entry.local as AstNode | undefined)?.name
+			if (entry.type === 'ImportNamespaceSpecifier') {
+				if (platform) {
+					fail(`${label} imports a Kody platform module as a namespace.`)
+				}
+				continue
+			}
+			if (entry.type === 'ImportDefaultSpecifier') {
+				if (isBoundCreatorName(local)) {
+					fail(`${label} renames a default import to ${local}.`)
+				}
+				continue
+			}
+			const imported = entry.imported as AstNode
+			if (imported.type !== 'Identifier') {
+				if (platform) {
+					fail(`${label} imports a Kody platform export by a string name.`)
+				}
+				if (isBoundCreatorName(local)) {
+					fail(`${label} renames an import to ${local}.`)
+				}
+				continue
+			}
+			const importedName = imported.name as string
+			if (isBoundCreatorName(importedName) !== isBoundCreatorName(local)) {
+				fail(`${label} renames the runtime helper ${importedName}.`)
+			}
+			allowedCreatorNodes.add(imported)
+			allowedCreatorNodes.add(entry.local)
 		}
 	}
-	if (raw.startsWith("'")) return raw.slice(1, -1)
-	return null
+
+	function checkCreatorCall(node: AstNode) {
+		const callee = node.callee as AstNode
+		if (callee.type !== 'Identifier' || !isBoundCreatorName(callee.name)) {
+			return
+		}
+		allowedCreatorNodes.add(callee)
+		const args = node.arguments as Array<AstNode>
+		const literal = args.length === 1 ? readPlainLiteral(args[0]) : null
+		boundIds.push(literal?.value ?? null)
+	}
+
+	function visit(node: unknown): void {
+		if (Array.isArray(node)) {
+			for (const item of node) visit(item)
+			return
+		}
+		if (!isAstNode(node)) return
+		switch (node.type) {
+			case 'ImportDeclaration':
+				checkImportDeclaration(node)
+				break
+			case 'ExportAllDeclaration':
+			case 'ExportNamedDeclaration':
+				if (node.source != null) {
+					const specifier = readSpecifier(node.source, 'exports')
+					if (namesPlatformModule(specifier)) {
+						fail(`${label} re-exports a Kody platform module.`)
+					}
+				}
+				break
+			case 'ImportExpression': {
+				const specifier = readSpecifier(node.source, 'imports')
+				if (namesPlatformModule(specifier)) {
+					fail(`${label} imports a Kody platform module dynamically.`)
+				}
+				break
+			}
+			case 'CallExpression': {
+				const callee = node.callee as AstNode
+				if (
+					callee.type === 'Import' ||
+					(callee.type === 'Identifier' && callee.name === 'require')
+				) {
+					const specifier = readSpecifier(
+						(node.arguments as Array<unknown>)[0],
+						callee.type === 'Import' ? 'imports' : 'requires',
+					)
+					if (namesPlatformModule(specifier)) {
+						fail(`${label} imports a Kody platform module dynamically.`)
+					}
+				}
+				checkCreatorCall(node)
+				break
+			}
+			case 'Identifier':
+				if (isBoundCreatorName(node.name) && !allowedCreatorNodes.has(node)) {
+					fail(
+						`${label} refers to the runtime helper ${node.name} outside a direct call.`,
+					)
+				}
+				break
+			default:
+				break
+		}
+		for (const [key, value] of Object.entries(node)) {
+			if (
+				key === 'loc' ||
+				key === 'extra' ||
+				key === 'leadingComments' ||
+				key === 'trailingComments' ||
+				key === 'innerComments'
+			) {
+				continue
+			}
+			if (value != null && typeof value === 'object') visit(value)
+		}
+	}
+	visit(program)
+	return { specifiers, boundIds }
 }
 
 function assertSafeModulePath(path: string) {
@@ -277,19 +419,15 @@ function assertSafeModulePath(path: string) {
  * so is a `kody:` import the build left unrewritten.
  * Returns the placeholders the module imports.
  */
-async function assertImportsStayInPackage(input: {
+function assertImportsStayInPackage(input: {
 	path: string
-	source: string
+	specifiers: ReadonlyArray<string>
 	label: string
 	ownPackageId: string
 	linkedImports: ReadonlyMap<string, string>
 	referenced: Set<string>
 }) {
-	const specifiers = await collectBundlerResolvedSpecifiers(input.source)
-	if (specifiers === null) {
-		fail(`${input.label} does not parse as a module.`)
-	}
-	for (const specifier of specifiers) {
+	for (const specifier of input.specifiers) {
 		if (isKodyVirtualImportSpecifier(specifier)) {
 			fail(
 				`${input.label} still imports "${specifier}". A build rewrites kody: imports to modules Kody supplies at load time, and this one did not, so the bundle would fail to load. Update the Kody CLI (or the execution context daemon) and build again, or publish with --context cloud.`,
@@ -366,32 +504,31 @@ export async function verifyUploadedTargetModules(input: {
 			)
 		}
 		const module = input.modules[path]!
-		const source =
-			typeof module === 'string' ? module : (module.js ?? module.cjs ?? null)
+		const label = `module "${path}" of "${uploaded.entryPoint}"`
+		if (typeof module !== 'string' && module.cjs !== undefined) {
+			fail(`${label} is a CommonJS module, which a build never produces.`)
+		}
+		const source = typeof module === 'string' ? module : (module.js ?? null)
 		if (source === null) continue
 		for (const name of preBindingRepairNames) {
 			if (source.includes(name)) {
-				fail(
-					`module "${path}" of "${uploaded.entryPoint}" uses the reserved runtime name ${name}.`,
-				)
+				fail(`${label} uses the reserved runtime name ${name}.`)
 			}
 		}
-		const label = `module "${path}" of "${uploaded.entryPoint}"`
-		const directCalls = assertBoundCreatorsOnlyCalledDirectly({
+		const { specifiers, boundIds } = await inspectUploadedModule({
 			source,
 			label,
 		})
-		for (const match of directCalls) {
-			const id = parseBoundId(match[1]!)
+		for (const id of boundIds) {
 			if (id !== input.ownPackageId) {
 				fail(
 					`${label} binds runtime calls to ${id === null ? 'a computed package id' : `package "${id}"`}, not this package. A build made outside Kody cloud may not contain another Kody package; Kody links those itself.`,
 				)
 			}
 		}
-		await assertImportsStayInPackage({
+		assertImportsStayInPackage({
 			path,
-			source,
+			specifiers,
 			label,
 			ownPackageId: input.ownPackageId,
 			linkedImports: input.linkedImports,
