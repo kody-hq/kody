@@ -169,3 +169,114 @@ test('DR ops seal-status returns 404 for missing instance and 503 for status rea
 		'Unable to read seal workflow status.',
 	)
 })
+
+test('DR ops paced-drill-status returns progress JSON, 404 with workflow status when no progress exists, 400, 503 and 401', async () => {
+	const env = environment()
+	const runId = 'paced-drill-2026-11-19-1795086936505'
+	const progress = {
+		runId,
+		day: '2026-11-19',
+		status: 'running',
+		sources: [{ databaseName: 'kody', phase: 'importing', unitsDone: 3 }],
+	}
+	await env.BACKUP_BUCKET.put(
+		`staging/2026-11-19/d1-paced/isolated-restore-drill/${runId}.json`,
+		JSON.stringify(progress),
+	)
+	const ok = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(ok.status, 200)
+	assert.deepEqual(await ok.json(), progress)
+
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			throw new Error('instance not found')
+		},
+	} as unknown as Workflow
+	const missing = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-1',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(missing.status, 404)
+	assert.equal(
+		((await missing.json()) as { error: string }).error,
+		'Paced drill run not found.',
+	)
+
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			return {
+				async status() {
+					return { status: 'queued' as const }
+				},
+			}
+		},
+	} as unknown as Workflow
+	const queued = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-2',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(queued.status, 404)
+	assert.deepEqual(await queued.json(), {
+		ok: false,
+		error: 'No paced drill progress recorded yet.',
+		workflowStatus: 'queued',
+	})
+
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			return {
+				async status() {
+					throw new Error('workflows unavailable')
+				},
+			}
+		},
+	} as unknown as Workflow
+	const statusFailure = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-2',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(statusFailure.status, 503)
+
+	const malformed = await handleControlPlaneFetch(
+		drOpsRequest('/__maintenance/paced-drill-status?id=nope', {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(malformed.status, 400)
+
+	env.BACKUP_BUCKET.get = async () => {
+		throw new Error('bucket unavailable')
+	}
+	const unreadable = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(unreadable.status, 503)
+
+	const unauthorized = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+			bearer: null,
+		}),
+		env,
+	)
+	assert.equal(unauthorized.status, 401)
+})
