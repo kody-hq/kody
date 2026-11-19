@@ -6,7 +6,10 @@ import {
 	integrationAuthFailureReasons,
 } from '#universal/connection-trouble.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
-import { isSecureCredentialUrl } from '#worker/integrations/secure-credential-url.ts'
+import {
+	isPublicCredentialEndpoint,
+	isSecureCredentialUrl,
+} from '#worker/integrations/secure-credential-url.ts'
 
 export const integrationFlowValues = ['pkce', 'confidential', 'device'] as const
 
@@ -56,8 +59,7 @@ export const integrationAuthorizationSchema = z
 export const integrationConfigSchema = z.object({
 	name: integrationNameSchema,
 	tokenUrl: z.string().url().refine(isSecureCredentialUrl, {
-		message:
-			'Token URL must use https and a public host (http is only allowed for localhost).',
+		message: 'Token URL must use https (http is only allowed for localhost).',
 	}),
 	apiBaseUrl: z.string().url().optional().nullable(),
 	flow: z.enum(integrationFlowValues),
@@ -79,7 +81,7 @@ export const integrationConfigSchema = z.object({
 		.url()
 		.refine(isSecureCredentialUrl, {
 			message:
-				'Device authorization URL must use https and a public host (http is only allowed for localhost).',
+				'Device authorization URL must use https (http is only allowed for localhost).',
 		})
 		.optional()
 		.nullable(),
@@ -143,7 +145,11 @@ export const integrationSaveSchema = z
 			.url()
 			.refine(isSecureCredentialUrl, {
 				message:
-					'Token URL must use https and a public host (http is only allowed for localhost).',
+					'Token URL must use https (http is only allowed for localhost).',
+			})
+			.refine(isPublicCredentialEndpoint, {
+				message:
+					'Token URL must not target a private, link-local, or reserved address.',
 			})
 			.optional(),
 		apiBaseUrl: z.string().url().nullable().optional(),
@@ -157,7 +163,11 @@ export const integrationSaveSchema = z
 			.url()
 			.refine(isSecureCredentialUrl, {
 				message:
-					'Device authorization URL must use https and a public host (http is only allowed for localhost).',
+					'Device authorization URL must use https (http is only allowed for localhost).',
+			})
+			.refine(isPublicCredentialEndpoint, {
+				message:
+					'Device authorization URL must not target a private, link-local, or reserved address.',
 			})
 			.nullable()
 			.optional(),

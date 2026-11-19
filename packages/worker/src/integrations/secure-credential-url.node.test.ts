@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import {
 	assertSecureCredentialUrl,
 	isLoopbackHostname,
+	isPublicCredentialEndpoint,
 	isSecureCredentialUrl,
 } from './secure-credential-url.ts'
 import {
@@ -25,9 +26,7 @@ test('isSecureCredentialUrl requires https except for loopback http', () => {
 test('assertSecureCredentialUrl returns a clear rejection for plain http', () => {
 	expect(
 		assertSecureCredentialUrl('http://evil.example/token', 'Token URL'),
-	).toBe(
-		'Token URL must use https and a public host (http is only allowed for localhost).',
-	)
+	).toBe('Token URL must use https (http is only allowed for localhost).')
 	expect(
 		assertSecureCredentialUrl('https://auth.example.com/token', 'Token URL'),
 	).toBeNull()
@@ -40,10 +39,10 @@ test('assertSafeDeviceAuthorizationUrl and assertSafeTokenUrl reject non-loopbac
 	expect(
 		assertSafeDeviceAuthorizationUrl('http://oauth.example.com/device'),
 	).toBe(
-		'Device authorization URL must use https and a public host (http is only allowed for localhost).',
+		'Device authorization URL must use https (http is only allowed for localhost).',
 	)
 	expect(assertSafeTokenUrl('http://oauth.example.com/token')).toBe(
-		'Token URL must use https and a public host (http is only allowed for localhost).',
+		'Token URL must use https (http is only allowed for localhost).',
 	)
 	expect(
 		assertSafeDeviceAuthorizationUrl('http://localhost:8787/device'),
@@ -60,7 +59,7 @@ test('isLoopbackHostname covers localhost variants', () => {
 	expect(isLoopbackHostname('oauth.example.com')).toBe(false)
 })
 
-test('isSecureCredentialUrl refuses private, link-local, and reserved token hosts', () => {
+test('isPublicCredentialEndpoint refuses private, link-local, and reserved token hosts', () => {
 	for (const value of [
 		'https://169.254.169.254/token',
 		'https://10.0.0.5/token',
@@ -68,8 +67,21 @@ test('isSecureCredentialUrl refuses private, link-local, and reserved token host
 		'https://167772161/token',
 		'https://[fd00::1]/token',
 		'https://[::ffff:10.0.0.1]/token',
+		'http://auth.example.com/token',
 	]) {
-		expect(isSecureCredentialUrl(value)).toBe(false)
+		expect(isPublicCredentialEndpoint(value)).toBe(false)
 	}
-	expect(isSecureCredentialUrl('https://localhost:8787/token')).toBe(true)
+	for (const value of [
+		'https://auth.example.com/token',
+		'https://localhost:8787/token',
+		'https://localhost./token',
+		'http://127.0.0.1:8787/token',
+	]) {
+		expect(isPublicCredentialEndpoint(value)).toBe(true)
+	}
+	// Stored rows still parse; only save and fetch apply the host check.
+	expect(isSecureCredentialUrl('https://169.254.169.254/token')).toBe(true)
+	expect(assertSafeTokenUrl('https://169.254.169.254/token')).toBe(
+		'Token URL must not target a private, link-local, or reserved address.',
+	)
 })

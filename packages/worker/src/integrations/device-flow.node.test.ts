@@ -86,7 +86,7 @@ test('startDeviceAuthorization rejects non-loopback http device and token URLs',
 	expect(rejectedDevice).toEqual({
 		ok: false,
 		error:
-			'Device authorization URL must use https and a public host (http is only allowed for localhost).',
+			'Device authorization URL must use https (http is only allowed for localhost).',
 		status: 400,
 	})
 	const rejectedToken = await startDeviceAuthorization({
@@ -97,8 +97,7 @@ test('startDeviceAuthorization rejects non-loopback http device and token URLs',
 	})
 	expect(rejectedToken).toEqual({
 		ok: false,
-		error:
-			'Token URL must use https and a public host (http is only allowed for localhost).',
+		error: 'Token URL must use https (http is only allowed for localhost).',
 		status: 400,
 	})
 	expect(fetchImpl).not.toHaveBeenCalled()
