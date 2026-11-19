@@ -37,6 +37,7 @@ import {
 } from './mock-storage.js'
 
 export type MockServerOptions = {
+	allowPackageStorage?: boolean
 	sessionId?: string
 	resetStorage?: boolean
 	host?: string
@@ -94,6 +95,7 @@ export async function startMockServer(
 			getState,
 			mutateState: (change) => mutateMockSession({ sessionId, env }, change),
 			packageId,
+			allowPackageStorage: options.allowPackageStorage ?? true,
 			orgSlug,
 			env,
 		})
@@ -129,6 +131,7 @@ export async function startMockServer(
 
 /** Ensure a mock is running and return its API origin + token for CLI wiring. */
 export async function ensureMockTarget(input: {
+	allowPackageStorage?: boolean
 	sessionId?: string
 	resetStorage?: boolean
 	packageId?: string
@@ -151,6 +154,7 @@ export async function ensureMockTarget(input: {
 		}
 	}
 	const server = await startMockServer({
+		allowPackageStorage: input.allowPackageStorage,
 		sessionId: input.sessionId,
 		resetStorage: input.resetStorage,
 		packageId: input.packageId,
@@ -166,6 +170,7 @@ export async function ensureMockTarget(input: {
 }
 
 type RequestCtx = {
+	allowPackageStorage: boolean
 	getState: () => Promise<MockSessionState>
 	mutateState: <T>(change: (state: MockSessionState) => T) => Promise<T>
 	packageId: string
@@ -347,6 +352,18 @@ async function dispatchCapabilityCall(
 	ctx: RequestCtx,
 ): Promise<unknown> {
 	const state = await ctx.getState()
+	if (
+		!ctx.allowPackageStorage &&
+		/^kody\.(?:__mockPackageStorage|packageStorage)/.test(pathKey)
+	) {
+		throw new StructuredCliError({
+			code: 'package_storage_requires_export',
+			message:
+				'Local package state is only reachable from package exports. Run kody execute --local --target mock --invoke <export> (or import the export).',
+			fix: 'Run kody execute --local --target mock --invoke <export> (or import the export).',
+			target: 'mock',
+		})
+	}
 	switch (pathKey) {
 		case 'kody.metaGetCurrentUser':
 			return mockCurrentUser(state, ctx.orgSlug)
