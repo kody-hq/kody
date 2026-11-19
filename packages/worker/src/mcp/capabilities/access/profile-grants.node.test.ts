@@ -9,6 +9,7 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test } from 'vitest'
+import { z } from 'zod'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { saveSecret } from '#mcp/secrets/service.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -133,15 +134,19 @@ async function createProfile(
 	name: string,
 	parentProfileId?: string,
 ) {
-	const profile = await profileCreateCapability.handler(
-		{
-			name,
-			...(parentProfileId ? { parent_profile_id: parentProfileId } : {}),
-		},
-		ctx,
+	const profile = profileIdSchema.parse(
+		await profileCreateCapability.handler(
+			{
+				name,
+				...(parentProfileId ? { parent_profile_id: parentProfileId } : {}),
+			},
+			ctx,
+		),
 	)
 	return profile.id
 }
+
+const profileIdSchema = z.object({ id: z.string() })
 
 test('accessGrant gives an existing profile a credential, and accessList and accessRevoke see it', async () => {
 	const { owner, credentialId } = await setup()
