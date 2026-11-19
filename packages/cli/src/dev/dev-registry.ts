@@ -7,7 +7,7 @@
 
 import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { KodyTarget } from '../target.js'
 import { userCacheDir } from '../workerd-binary.js'
 import { isProcessAlive } from './process-reaper.js'
@@ -91,7 +91,7 @@ export async function writeDevRegistration(
 				flag: 'wx',
 			},
 		)
-		if (localKody && isPrivateRegistration(await lstat(temporary))) {
+		if (localKody && isPrivateRegistration(await lstat(temporary), temporary)) {
 			await writeFile(temporary, `${JSON.stringify(registration, null, 2)}\n`)
 		}
 		await rename(temporary, path)
@@ -189,7 +189,7 @@ async function readRegistration(path: string): Promise<DevRegistration | null> {
 			...(parsed.localKody &&
 			typeof parsed.localKody.origin === 'string' &&
 			typeof parsed.localKody.apiToken === 'string' &&
-			isPrivateRegistration(file)
+			isPrivateRegistration(file, path)
 				? { localKody: parsed.localKody }
 				: {}),
 		}
@@ -198,6 +198,16 @@ async function readRegistration(path: string): Promise<DevRegistration | null> {
 	}
 }
 
-function isPrivateRegistration(file: { mode: number; uid: number }): boolean {
+function isPrivateRegistration(
+	file: { mode: number; uid: number },
+	path: string,
+): boolean {
+	if (process.platform === 'win32') {
+		// Windows user cache directories inherit per-user ACLs, not POSIX modes.
+		const within = relative(resolve(userCacheDir()), resolve(path))
+		return (
+			within !== '..' && !within.startsWith(`..${sep}`) && !isAbsolute(within)
+		)
+	}
 	return (file.mode & 0o777) === 0o600 && file.uid === process.getuid?.()
 }

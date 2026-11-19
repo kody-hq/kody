@@ -23,6 +23,55 @@ import {
 } from '../src/dev/dev-registry.js'
 import { ensureMockTarget } from '../src/mock/mock-server.js'
 
+test('Windows registration credentials stay within the user cache without getuid', async () => {
+	const cache = await mkdtemp(join(tmpdir(), 'kody-win-registration-'))
+	const outside = await mkdtemp(join(tmpdir(), 'kody-other-registration-'))
+	const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
+	const getuid = Object.getOwnPropertyDescriptor(process, 'getuid')
+	const previousCache = process.env.KODY_CACHE_DIR
+	try {
+		process.env.KODY_CACHE_DIR = cache
+		Object.defineProperty(process, 'platform', {
+			value: 'win32',
+			configurable: true,
+		})
+		Object.defineProperty(process, 'getuid', {
+			value: undefined,
+			configurable: true,
+		})
+		const registration = {
+			pid: process.pid,
+			root: cache,
+			target: 'mock' as const,
+			origin: 'http://127.0.0.1:4321',
+			port: 4321,
+			basePath: '',
+			localKody: { origin: 'http://127.0.0.1:4322', apiToken: 'private-token' },
+		}
+		await writeDevRegistration(registration)
+		const running = await findRunningDevServer({
+			root: cache,
+			target: 'mock',
+			fetchFn: async () =>
+				Response.json({ package: { root: cache }, target: 'mock' }),
+		})
+		assert.deepEqual(running?.registration.localKody, registration.localKody)
+		const external = await writeDevRegistration(registration, outside)
+		assert.equal(
+			JSON.parse(await readFile(external, 'utf8')).localKody,
+			undefined,
+		)
+	} finally {
+		Object.defineProperty(process, 'platform', platform)
+		if (getuid) Object.defineProperty(process, 'getuid', getuid)
+		else delete (process as { getuid?: unknown }).getuid
+		if (previousCache === undefined) delete process.env.KODY_CACHE_DIR
+		else process.env.KODY_CACHE_DIR = previousCache
+		await rm(cache, { recursive: true, force: true })
+		await rm(outside, { recursive: true, force: true })
+	}
+})
+
 test('declared exports execute through a private attached local Kody session', async () => {
 	const root = await realpath(await mkdtemp(join(tmpdir(), 'kody-export-')))
 	const cache = await mkdtemp(join(tmpdir(), 'kody-export-cache-'))
