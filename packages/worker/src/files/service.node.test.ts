@@ -232,10 +232,14 @@ test('grant management cannot bypass a restricted ancestor through a direct chil
 
 test('file reads are filtered, and a read grant never permits writing or deleting', async () => {
 	const f = await fixture()
-	expect((await listFiles(f.context())).files).toEqual([])
+	expect(await listFiles(f.context())).toMatchObject({
+		files: [],
+		storage: { usedBytes: null },
+	})
 	await expect(getFile(f.context(), f.file.id)).rejects.toThrow()
 	expect(f.store.read).not.toHaveBeenCalled()
 	await f.grant('file', f.file.id, ['file:read'])
+	expect((await listFiles(f.context())).storage.usedBytes).toBeNull()
 	expect((await listFiles(f.context())).files.map((file) => file.id)).toEqual([
 		f.file.id,
 	])

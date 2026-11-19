@@ -269,7 +269,10 @@ export function FilesPage({
 	const [storageOpen, setStorageOpen] = useState(false)
 	const { includedBytes, usedBytes, external } = data.storage
 	const storageFull =
-		!external && includedBytes > 0 && usedBytes >= includedBytes
+		!external &&
+		includedBytes > 0 &&
+		usedBytes !== null &&
+		usedBytes >= includedBytes
 	const formatStorage = (bytes: number) => {
 		const mebibytes = bytes / (1024 * 1024)
 		return mebibytes > 0 && mebibytes < 0.01
@@ -344,19 +347,16 @@ export function FilesPage({
 	const [message, setMessage] = useState('')
 	const quotaError = message.includes(fileStorageQuotaError)
 	const storageBlocked =
-		!external &&
-		(storageFull ||
-			!data.writes_enabled ||
-			quotaError ||
-			uploads.jobs.some(
-				(job) =>
-					job.org === data.orgSlug &&
-					job.status === 'failed' &&
-					job.error?.includes(fileStorageQuotaError),
-			))
+		quotaError ||
+		(!external && (storageFull || !data.writes_enabled)) ||
+		uploads.jobs.some(
+			(job) =>
+				job.org === data.orgSlug &&
+				job.status === 'failed' &&
+				job.error?.includes(fileStorageQuotaError),
+		)
 	const showStorageRecovery =
-		data.canManageStorage &&
-		(embedded ? !external && quotaError : storageBlocked)
+		data.canManageStorage && (embedded ? quotaError : storageBlocked)
 	const [preview, setPreview] = useState(
 		fileViewerKind(
 			selected?.file.name ?? '',
@@ -1260,7 +1260,7 @@ export function FilesPage({
 							color: colors.textMuted,
 						}}
 					>
-						{!embedded && (
+						{!embedded && usedBytes !== null && (
 							<>
 								<span role="status">
 									{formatStorage(usedBytes)} of {formatStorage(includedBytes)}{' '}
@@ -2347,13 +2347,9 @@ export function FilesPage({
 												toolbarRef={collaborationToolbar}
 												canManageStorage={data.canManageStorage}
 												revisionId={selected.file.revisionId!}
-												onVersionChange={
-													binary
-														? () => {
-																void refresh()
-															}
-														: undefined
-												}
+												onVersionChange={() => {
+													void refresh()
+												}}
 												title={documentTitle}
 												pageChildren={data.files
 													.filter(

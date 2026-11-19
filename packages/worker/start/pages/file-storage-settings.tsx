@@ -307,14 +307,16 @@ export default function FileStorageSettings({
 								Create credential
 							</a>
 						</p>
-						{credentials.isError && (
+						{(credentials.isError || credentials.data?.length === 0) && (
 							<Button
 								variant="secondary"
 								size="sm"
 								type="button"
 								onClick={() => void credentials.refetch()}
 							>
-								Retry loading credentials
+								{credentials.isError
+									? 'Retry loading credentials'
+									: 'Refresh credentials'}
 							</Button>
 						)}
 						<div css={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>

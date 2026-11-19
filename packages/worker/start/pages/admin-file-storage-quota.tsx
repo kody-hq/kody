@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
 	readAdminFileStorageQuota,
 	updateAdminFileStorageQuota,
@@ -24,11 +24,15 @@ export function AdminFileStorageQuota({ orgId }: { orgId?: string }) {
 		queryFn: () => readAdminFileStorageQuota({ data: { orgId } }),
 	})
 	const [reason, setReason] = useState('')
+	const quotaInput = useRef<HTMLInputElement>(null)
 	const save = useMutation({
 		mutationFn: (bytes: number | null) =>
 			updateAdminFileStorageQuota({ data: { orgId, bytes, reason } }),
 		onSuccess: (result) => {
 			client.setQueryData(queryKey, result)
+			if (quotaInput.current) {
+				quotaInput.current.value = String(result.includedBytes / bytesPerMiB)
+			}
 			setReason('')
 			void client.invalidateQueries({ queryKey: ['admin-file-storage-quota'] })
 		},
@@ -59,17 +63,27 @@ export function AdminFileStorageQuota({ orgId }: { orgId?: string }) {
 						event.preventDefault()
 						const value = new FormData(event.currentTarget).get('quota')
 						if (typeof value !== 'string' || !value) return
-						save.mutate(Math.round(Number(value) * bytesPerMiB))
+						const bytes = Math.round(Number(value) * bytesPerMiB)
+						if (Number(value) > 0 && bytes === 0) {
+							quotaInput.current?.setCustomValidity(
+								`Enter zero or at least ${1 / bytesPerMiB} MiB (1 byte).`,
+							)
+							quotaInput.current?.reportValidity()
+							return
+						}
+						save.mutate(bytes)
 					}}
 				>
 					<label css={fieldCss}>
 						<span css={fieldLabelCss}>Included storage (MiB)</span>
 						<Input
+							ref={quotaInput}
 							key={data.includedBytes}
+							onChange={(event) => event.currentTarget.setCustomValidity('')}
 							name="quota"
 							type="number"
 							min="0"
-							max={Math.floor(Number.MAX_SAFE_INTEGER / bytesPerMiB)}
+							max={Number.MAX_SAFE_INTEGER / bytesPerMiB}
 							step="any"
 							required
 							defaultValue={data.includedBytes / bytesPerMiB}

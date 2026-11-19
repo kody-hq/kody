@@ -112,6 +112,7 @@ async function scope(ctx: CapabilityContext, focusFileId?: string) {
 		store,
 		files,
 		holds,
+		canReadStorageUsage: access.permissions.has('file:read') && orgRead.allowed,
 		require,
 		accessFor: (id: string) => ({
 			write: holds('file:write', id),
@@ -132,7 +133,10 @@ export async function listFiles(ctx: CapabilityContext, includeTrash = false) {
 		files: files.map((file) => ({ ...file, access: s.accessFor(file.id) })),
 		can_create: s.holds('file:create'),
 		writes_enabled: storage.includedBytes > 0 || storage.external,
-		storage,
+		storage: {
+			...storage,
+			usedBytes: s.canReadStorageUsage ? storage.usedBytes : null,
+		},
 	}
 }
 async function describeFile(

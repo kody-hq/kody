@@ -235,8 +235,10 @@ For local UI iteration:
 
 ```sh
 FILES_INCLUDED_BYTES=1048576 PORT=3748 npm run dev
-# In another terminal, if this checkout has no local database yet:
+
+# In another terminal, apply pending migrations on every checkout:
 npm run migrate:local
+# Seed only when setting up a fresh database:
 node tools/seed-test-data.ts --local
 ```
 

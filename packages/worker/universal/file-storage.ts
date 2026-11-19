@@ -4,7 +4,7 @@ export const fileStorageQuotaError =
 	'This workspace has reached its included file storage limit.'
 export const fileStorageUsageSchema = z.object({
 	includedBytes: z.number().int().nonnegative(),
-	usedBytes: z.number().int().nonnegative(),
+	usedBytes: z.number().int().nonnegative().nullable(),
 	external: z.boolean(),
 })
 
