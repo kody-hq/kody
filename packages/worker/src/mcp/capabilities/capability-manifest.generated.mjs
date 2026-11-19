@@ -64,12 +64,13 @@ export const capabilityManifest = {
 								"enum": [
 									"user",
 									"team",
-									"org"
+									"org",
+									"profile"
 								],
-								"description": "user, team, or org. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org."
+								"description": "user, team, org, or profile. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org. profile is one of your agent profiles (subject_id from profileList): you must hold each permission, every parent profile must hold it too, and no manage access on the resource is needed."
 							},
 							"subject_id": {
-								"description": "Person id or team id. Omit when passing username or team_slug, and for an org subject.",
+								"description": "Person id, team id, or profile id (prf_...). Omit when passing username or team_slug, and for an org subject.",
 								"type": "string",
 								"minLength": 1
 							},
@@ -156,7 +157,8 @@ export const capabilityManifest = {
 										"enum": [
 											"user",
 											"team",
-											"org"
+											"org",
+											"profile"
 										]
 									},
 									"subject_id": {
@@ -223,13 +225,13 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AccessGrantInput = {\n\t/** package, app, job, credential, memory, email, or org. secret or integration take a name instead of a credential id. */\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\" | \"secret\" | \"integration\"\n\tresource_id: string\n\t/** user, team, or org. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org. */\n\tsubject_type: \"user\" | \"team\" | \"org\"\n\t/** Person id or team id. Omit when passing username or team_slug, and for an org subject. */\n\tsubject_id?: string\n\tusername?: string\n\tteam_slug?: string\n\tpreset?: \"read\" | \"use\" | \"contribute\" | \"manage\"\n\t/** Advanced grant. Do not combine with preset. */\n\tpermissions?: Array<string>\n\t/** When the grant stops counting (ISO 8601, in the future). null never expires. Omit to keep an existing grant's expiry (a new grant never expires). */\n\texpires_at?: string | null\n\t/** Owners only. true lets this person or team push, publish, and change the package even while it has unmappable credentials (publisher-supplied or shared with app visitors), so they could make its code use those credentials. false (the default) keeps changes owner-only while the package has them; running it is unaffected. Omit to keep the grant's current choice. Not available for everyone-in-org or profile grants. */\n\tallow_changes_despite_unmappable_credentials?: boolean\n}",
-					"outputTypeDefinition": "type AccessGrantOutput = {\n\tgrant: {\n\tid: string\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\"\n\tresource_id: string\n\tsubject_type: \"user\" | \"team\" | \"org\"\n\tsubject_id: string\n\tpreset: \"read\" | \"use\" | \"contribute\" | \"manage\" | null\n\tpermissions: Array<string>\n\t/** When the grant stops counting (ISO). Null never expires. */\n\texpires_at: string | null\n\t/** True when an org Owner or Admin let this subject change or publish the package even while it has unmappable credentials. */\n\tallow_changes_despite_unmappable_credentials: boolean\n}\n\t/** Share-time warnings, e.g. the package has unmappable credentials this grant could make its code use. The grant was still saved. */\n\twarnings: Array<string>\n}"
+					"inputTypeDefinition": "type AccessGrantInput = {\n\t/** package, app, job, credential, memory, email, or org. secret or integration take a name instead of a credential id. */\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\" | \"secret\" | \"integration\"\n\tresource_id: string\n\t/** user, team, org, or profile. org means everyone in this organization: every current and future member, resolved live, so someone who leaves loses it at once. It covers only this one resource and is not available on resource_type org. profile is one of your agent profiles (subject_id from profileList): you must hold each permission, every parent profile must hold it too, and no manage access on the resource is needed. */\n\tsubject_type: \"user\" | \"team\" | \"org\" | \"profile\"\n\t/** Person id, team id, or profile id (prf_...). Omit when passing username or team_slug, and for an org subject. */\n\tsubject_id?: string\n\tusername?: string\n\tteam_slug?: string\n\tpreset?: \"read\" | \"use\" | \"contribute\" | \"manage\"\n\t/** Advanced grant. Do not combine with preset. */\n\tpermissions?: Array<string>\n\t/** When the grant stops counting (ISO 8601, in the future). null never expires. Omit to keep an existing grant's expiry (a new grant never expires). */\n\texpires_at?: string | null\n\t/** Owners only. true lets this person or team push, publish, and change the package even while it has unmappable credentials (publisher-supplied or shared with app visitors), so they could make its code use those credentials. false (the default) keeps changes owner-only while the package has them; running it is unaffected. Omit to keep the grant's current choice. Not available for everyone-in-org or profile grants. */\n\tallow_changes_despite_unmappable_credentials?: boolean\n}",
+					"outputTypeDefinition": "type AccessGrantOutput = {\n\tgrant: {\n\tid: string\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\"\n\tresource_id: string\n\tsubject_type: \"user\" | \"team\" | \"org\" | \"profile\"\n\tsubject_id: string\n\tpreset: \"read\" | \"use\" | \"contribute\" | \"manage\" | null\n\tpermissions: Array<string>\n\t/** When the grant stops counting (ISO). Null never expires. */\n\texpires_at: string | null\n\t/** True when an org Owner or Admin let this subject change or publish the package even while it has unmappable credentials. */\n\tallow_changes_despite_unmappable_credentials: boolean\n}\n\t/** Share-time warnings, e.g. the package has unmappable credentials this grant could make its code use. The grant was still saved. */\n\twarnings: Array<string>\n}"
 				},
 				{
 					"name": "accessRevoke",
 					"domain": "access",
-					"description": "Revoke one live grant in the organization this request is bound to. You need manage access on that grant resource (or member:write for an organization grant).",
+					"description": "Revoke one live grant in the organization this request is bound to. You need manage access on that grant resource (or member:write for an organization grant). A profile grant (subject_type profile) is revoked by the person the profile acts for, or a profile above it.",
 					"keywords": [
 						"grant",
 						"revoke",
@@ -281,7 +283,7 @@ export const capabilityManifest = {
 				{
 					"name": "accessList",
 					"domain": "access",
-					"description": "List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.",
+					"description": "List live grants in the organization this request is bound to. Filter by resource or subject when you already know which one you want. Pass subject_type profile to list the grants on your agent profiles. A grant whose expires_at has passed is still listed (until it is rewritten or revoked) but grants no access.",
 					"keywords": [
 						"grant",
 						"list",
@@ -322,11 +324,13 @@ export const capabilityManifest = {
 								"minLength": 1
 							},
 							"subject_type": {
+								"description": "profile lists the grants on your own agent profiles (needs profile:manage). Without it, profile grants are not listed.",
 								"type": "string",
 								"enum": [
 									"user",
 									"team",
-									"org"
+									"org",
+									"profile"
 								]
 							},
 							"subject_id": {
@@ -371,7 +375,8 @@ export const capabilityManifest = {
 											"enum": [
 												"user",
 												"team",
-												"org"
+												"org",
+												"profile"
 											]
 										},
 										"subject_id": {
@@ -431,8 +436,8 @@ export const capabilityManifest = {
 						],
 						"additionalProperties": false
 					},
-					"inputTypeDefinition": "type AccessListInput = {\n\t/** secret or integration with a resource_id filter by that credential name. */\n\tresource_type?: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\" | \"secret\" | \"integration\"\n\tresource_id?: string\n\tsubject_type?: \"user\" | \"team\" | \"org\"\n\tsubject_id?: string\n}",
-					"outputTypeDefinition": "type AccessListOutput = {\n\tgrants: Array<{\n\tid: string\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\"\n\tresource_id: string\n\tsubject_type: \"user\" | \"team\" | \"org\"\n\tsubject_id: string\n\tpreset: \"read\" | \"use\" | \"contribute\" | \"manage\" | null\n\tpermissions: Array<string>\n\t/** When the grant stops counting (ISO). Null never expires. */\n\texpires_at: string | null\n\t/** True when an org Owner or Admin let this subject change or publish the package even while it has unmappable credentials. */\n\tallow_changes_despite_unmappable_credentials: boolean\n}>\n}"
+					"inputTypeDefinition": "type AccessListInput = {\n\t/** secret or integration with a resource_id filter by that credential name. */\n\tresource_type?: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\" | \"secret\" | \"integration\"\n\tresource_id?: string\n\t/** profile lists the grants on your own agent profiles (needs profile:manage). Without it, profile grants are not listed. */\n\tsubject_type?: \"user\" | \"team\" | \"org\" | \"profile\"\n\tsubject_id?: string\n}",
+					"outputTypeDefinition": "type AccessListOutput = {\n\tgrants: Array<{\n\tid: string\n\tresource_type: \"package\" | \"file\" | \"app\" | \"job\" | \"credential\" | \"memory\" | \"email\" | \"execution_context\" | \"machine_capability\" | \"org\"\n\tresource_id: string\n\tsubject_type: \"user\" | \"team\" | \"org\" | \"profile\"\n\tsubject_id: string\n\tpreset: \"read\" | \"use\" | \"contribute\" | \"manage\" | null\n\tpermissions: Array<string>\n\t/** When the grant stops counting (ISO). Null never expires. */\n\texpires_at: string | null\n\t/** True when an org Owner or Admin let this subject change or publish the package even while it has unmappable credentials. */\n\tallow_changes_despite_unmappable_credentials: boolean\n}>\n}"
 				},
 				{
 					"name": "packageCollaboratorList",
