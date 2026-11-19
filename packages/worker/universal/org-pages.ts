@@ -12,6 +12,7 @@ const orgOwnedAccountSections = [
 	'agents',
 	'apps',
 	'credentials',
+	'dev-mockups',
 	'email',
 	'execution-contexts',
 	'files',

@@ -7,6 +7,7 @@ import { loadDevMockups } from '#start/server/dev-mockups'
 export const Route = createFileRoute('/_app/@{$orgSlug}_/-/dev-mockups/$')({
 	staticData: {
 		navigation: { rail: 'workspace', item: 'overview', itemFromSearch: 'rail' },
+		orgScope: {},
 	},
 	validateSearch: (search: Record<string, unknown>) => ({
 		state: typeof search.state === 'string' ? search.state : undefined,
