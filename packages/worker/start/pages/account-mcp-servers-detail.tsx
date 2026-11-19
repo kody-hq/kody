@@ -157,7 +157,7 @@ function McpServerUsageForm(props: {
 	)
 }
 
-export type McpServerPackageApproval = {
+type McpServerPackageApproval = {
 	packageId: string
 	packageName: string
 	alreadyGranted: boolean
