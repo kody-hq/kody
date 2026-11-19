@@ -158,7 +158,7 @@ th { color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; lette
 td { white-space: nowrap; }
 td.wrap { white-space: normal; }
 @media (max-width: 640px) {
-	table.cards thead { display: none; }
+	table.cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 	table.cards tr { display: block; padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
 	table.cards td { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.2rem 0; border-bottom: 0; white-space: normal; text-align: right; }
 	table.cards td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 0.75rem; text-align: left; flex: none; }
