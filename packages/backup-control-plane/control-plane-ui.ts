@@ -157,6 +157,13 @@ th, td { text-align: left; padding: 0.5rem 0.45rem; border-bottom: 1px solid var
 th { color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; letter-spacing: 0.03em; }
 td { white-space: nowrap; }
 td.wrap { white-space: normal; }
+@media (max-width: 640px) {
+	table.cards thead { display: none; }
+	table.cards tr { display: block; padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
+	table.cards td { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.2rem 0; border-bottom: 0; white-space: normal; text-align: right; }
+	table.cards td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 0.75rem; text-align: left; flex: none; }
+	table.cards td code { word-break: break-all; }
+}
 .neutral { color: var(--color-text-muted); }
 .ok { color: var(--color-primary-text); font-weight: 600; }
 .warn { color: var(--color-warning-text); font-weight: 600; }
@@ -737,10 +744,10 @@ export function renderSealStatusPage(input: {
 }
 
 function drillCell(value: boolean | null): string {
-	if (value === null) return '<td>pending</td>'
+	if (value === null) return '<td data-label="Result">pending</td>'
 	return value
-		? '<td style="color: var(--color-primary-text)">PASS</td>'
-		: '<td style="color: var(--color-danger)"><strong>FAIL</strong></td>'
+		? '<td data-label="Result" style="color: var(--color-primary-text)">PASS</td>'
+		: '<td data-label="Result" style="color: var(--color-danger)"><strong>FAIL</strong></td>'
 }
 
 export function renderPacedDrillStatusPage(
@@ -757,12 +764,12 @@ export function renderPacedDrillStatusPage(
 			const rows = source.tables
 				.map(
 					(table) => `<tr>
-	<td>${escapeHtml(table.table)}</td>
-	<td>${table.manifestCount}</td>
-	<td>${table.importedRows}</td>
-	<td>${table.targetCount === null ? '?' : table.targetCount}</td>
-	<td><code>${escapeHtml(table.manifestChecksum)}</code></td>
-	<td><code>${escapeHtml(table.targetChecksum ?? '?')}</code></td>
+	<td data-label="Table">${escapeHtml(table.table)}</td>
+	<td data-label="Manifest rows">${table.manifestCount}</td>
+	<td data-label="Imported rows">${table.importedRows}</td>
+	<td data-label="Target rows">${table.targetCount === null ? '?' : table.targetCount}</td>
+	<td data-label="Manifest checksum"><code>${escapeHtml(table.manifestChecksum)}</code></td>
+	<td data-label="Target checksum"><code>${escapeHtml(table.targetChecksum ?? '?')}</code></td>
 	${drillCell(table.ok)}
 </tr>`,
 				)
@@ -771,7 +778,7 @@ export function renderPacedDrillStatusPage(
 	<h2>${escapeHtml(source.databaseName)}: ${escapeHtml(source.phase)}</h2>
 	<p>Units ${source.unitsDone} of ${source.unitsTotal}. Chain ${escapeHtml(source.chainDays.join(', ') || 'n/a')}. quick_check ${escapeHtml(source.quickCheck ?? 'n/a')}.${source.keptForInspection ? ` Target ${escapeHtml(source.targetDatabaseId ?? '')} kept for inspection.` : ''}</p>
 	${source.error ? `<p><strong>${escapeHtml(source.error)}</strong></p>` : ''}
-	<table>
+	<table class="cards">
 		<thead><tr><th>Table</th><th>Manifest rows</th><th>Imported rows</th><th>Target rows</th><th>Manifest checksum</th><th>Target checksum</th><th>Result</th></tr></thead>
 		<tbody>${rows}</tbody>
 	</table>

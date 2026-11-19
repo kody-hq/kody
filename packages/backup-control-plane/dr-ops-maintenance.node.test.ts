@@ -169,3 +169,44 @@ test('DR ops seal-status returns 404 for missing instance and 503 for status rea
 		'Unable to read seal workflow status.',
 	)
 })
+
+test('DR ops paced-drill-status returns the run progress as JSON, 404 for unknown runs, 401 without the bearer', async () => {
+	const env = environment()
+	const runId = 'paced-drill-2026-11-19-1795086936505'
+	const progress = {
+		runId,
+		day: '2026-11-19',
+		status: 'running',
+		sources: [{ databaseName: 'kody', phase: 'importing', unitsDone: 3 }],
+	}
+	await env.BACKUP_BUCKET.put(
+		`staging/2026-11-19/d1-paced/isolated-restore-drill/${runId}.json`,
+		JSON.stringify(progress),
+	)
+	const ok = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(ok.status, 200)
+	assert.deepEqual(await ok.json(), progress)
+
+	const missing = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-1',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(missing.status, 404)
+
+	const unauthorized = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+			bearer: null,
+		}),
+		env,
+	)
+	assert.equal(unauthorized.status, 401)
+})

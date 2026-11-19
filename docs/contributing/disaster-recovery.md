@@ -544,10 +544,11 @@ excludes `/__maintenance/*` from the Access application
 ([#2477](https://github.com/kentcdodds/kody/issues/2477)). The bearer alone
 cannot bypass edge Access.
 
-| Method | Path                             | Action                                                                                 |
-| ------ | -------------------------------- | -------------------------------------------------------------------------------------- |
-| `POST` | `/__maintenance/dr-seal`         | JSON `{ "day": "YYYY-MM-DD" }` — enqueue `kody-production-seal-day` (`seal-day-<day>`) |
-| `GET`  | `/__maintenance/seal-status?id=` | JSON seal workflow status (`describeSealStatus` view) for `seal-day-YYYY-MM-DD` ids    |
+| Method | Path                                    | Action                                                                                                                                              |
+| ------ | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/__maintenance/dr-seal`                | JSON `{ "day": "YYYY-MM-DD" }` — enqueue `kody-production-seal-day` (`seal-day-<day>`)                                                              |
+| `GET`  | `/__maintenance/seal-status?id=`        | JSON seal workflow status (`describeSealStatus` view) for `seal-day-YYYY-MM-DD` ids                                                                 |
+| `GET`  | `/__maintenance/paced-drill-status?id=` | JSON isolated paced drill progress (status, per-source phase and units, per-table rows, checksums and result) for `paced-drill-YYYY-MM-DD-<ms>` ids |
 
 ### Isolated restore drill
 

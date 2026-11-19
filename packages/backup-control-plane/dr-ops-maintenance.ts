@@ -11,8 +11,11 @@ import {
 } from './seal-day-run.ts'
 import { enqueueWorkflow } from './workflow-trigger.ts'
 
+import { readPacedDrillProgress } from './paced-restore-drill.ts'
+
 const drSealPath = '/__maintenance/dr-seal'
 const drSealStatusPath = '/__maintenance/seal-status'
+const pacedDrillStatusPath = '/__maintenance/paced-drill-status'
 
 function readBearerToken(request: Request) {
 	const auth = request.headers.get('Authorization')?.trim()
@@ -30,7 +33,11 @@ function notConfiguredResponse() {
 }
 
 function isDrOpsMaintenancePath(pathname: string) {
-	return pathname === drSealPath || pathname === drSealStatusPath
+	return (
+		pathname === drSealPath ||
+		pathname === drSealStatusPath ||
+		pathname === pacedDrillStatusPath
+	)
 }
 
 async function assertDrOpsBearer(request: Request, env: BackupEnvironment) {
@@ -179,6 +186,15 @@ export async function handleDrOpsMaintenanceRequest(
 
 	if (request.method !== 'GET') {
 		return new Response('Method Not Allowed', { status: 405 })
+	}
+	if (url.pathname === pacedDrillStatusPath) {
+		const progress = await readPacedDrillProgress(
+			env,
+			url.searchParams.get('id')?.trim() ?? '',
+		)
+		return progress
+			? Response.json(progress)
+			: Response.json({ error: 'paced drill run not found' }, { status: 404 })
 	}
 	return handleDrSealStatusGet(request, env)
 }
