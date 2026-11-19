@@ -130,9 +130,12 @@ async function ensureDevRuntime(
 	} catch (error) {
 		await rm(staging, { recursive: true, force: true }).catch(() => {})
 		const npmOutput = String((error as { npmOutput?: unknown }).npmOutput ?? '')
-		const registry = /\b(ETARGET|E404)\b|No matching version found/.test(
-			npmOutput,
+		const [scope, name] = devRuntimePackageName.slice(1).split('/')
+		const runtimeNotFound = new RegExp(
+			`(No matching version found for|404 Not Found - GET \\S*|404\\s+'?)\\s*@${scope}(/|%2f)${name}\\b`,
+			'i',
 		)
+		const registry = runtimeNotFound.test(npmOutput)
 			? 'missing'
 			: /\b(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(
 						npmOutput,

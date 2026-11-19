@@ -20,6 +20,8 @@ const npmStderr = {
 	offline:
 		'npm error code ENOTFOUND\nnpm error network request to https://registry.example failed',
 	'install error': 'npm error code EACCES\nnpm error permission denied',
+	'dependency missing':
+		'npm error code ETARGET\nnpm error notarget No matching version found for wrangler@99.0.0.',
 } as const
 
 for (const scenario of Object.keys(npmStderr) as Array<
