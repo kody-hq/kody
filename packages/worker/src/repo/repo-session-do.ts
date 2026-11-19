@@ -5006,7 +5006,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		requestedByUserId?: string | null
 		publisherRequest?: RequestContext | null
 		deferBundleCheckToRebuild?: boolean
-		typecheckRanOffWorker?: boolean
+		uploadedBuildId?: string
 		resumeFinalize?: boolean
 	}): Promise<RepoExternalPublishResult> {
 		const source = await getEntitySourceById(this.env.APP_DB, input.sourceId)
@@ -5017,7 +5017,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		// Clone, checks, credential scans, and finalize each run on a fresh
 		// throwaway isolate over one staged tree; this Durable Object only
 		// coordinates (kody-hq/kody#4078).
-		const runner = this.publishWorkRunner(input.typecheckRanOffWorker === true)
+		const runner = this.publishWorkRunner(Boolean(input.uploadedBuildId))
 		const recordCheckStep = runner.isolated ? null : this.checkStepRecorder()
 		const cloned = await runner.cloneExternalRef({
 			userId: input.userId,
@@ -5067,8 +5067,8 @@ class RepoSessionBase extends DurableObject<Env> {
 				...(input.deferBundleCheckToRebuild
 					? { deferBundleCheckToRebuild: true }
 					: {}),
-				...(input.typecheckRanOffWorker === true
-					? { typecheckRanOffWorker: true }
+				...(input.uploadedBuildId
+					? { uploadedBuildId: input.uploadedBuildId }
 					: {}),
 				...(input.resumeFinalize ? { resumeFinalize: true } : {}),
 			}).finally(() => this.clearCheckStep())

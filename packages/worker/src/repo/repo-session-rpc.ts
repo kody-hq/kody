@@ -274,7 +274,7 @@ export type RepoSessionRpc = {
 		credentialNeedsApproved?: boolean
 		requestedByUserId?: string | null
 		deferBundleCheckToRebuild?: boolean
-		typecheckRanOffWorker?: boolean
+		uploadedBuildId?: string
 		resumeFinalize?: boolean
 		publisherRequest?: RequestContext | null
 	}) => Promise<RepoExternalPublishResult>

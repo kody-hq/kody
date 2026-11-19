@@ -1128,7 +1128,9 @@ async function runExternalPublishAttempt(input: {
 				publisherRequest: input.publisherRequest ?? null,
 				deferBundleCheckToRebuild: true,
 				// The publish builder typechecked this exact tree (verified by hash).
-				...(input.uploadedBuild ? { typecheckRanOffWorker: true } : {}),
+				...(input.uploadedBuild
+					? { uploadedBuildId: input.uploadedBuild.buildId }
+					: {}),
 			})
 			const publishMs = Date.now() - publishStartedAt
 			assertNotAborted(input.signal)
