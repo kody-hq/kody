@@ -596,17 +596,16 @@ Actions logs a reconciliation skip and deploys normally. The admin token is
 never installed as a Worker secret. Enable gates and source identity vars live
 in that package's `wrangler.jsonc`.
 
-Workflow bindings are `BACKUP_WORKFLOW`, `RESTORE_WORKFLOW`, and
-`SEAL_WORKFLOW`.
+Workflow bindings are `RESTORE_WORKFLOW`, `SEAL_WORKFLOW`, and
+`PACED_DRILL_WORKFLOW`.
 
 Non-secret vars:
 
 - `ENABLE_PRODUCTION_D1_BACKUPS` / `BACKUP_BENCHMARK_APPROVED` — both must be
   exactly `"true"` or schedules stay inert.
 - `SOURCE_ACCOUNT_ID` / `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` plus
-  `SOURCE_DATABASES` (JSON array of `{ id, name }` or `{ id, name, restExport }`
-  objects; the nightly REST path exports every entry whose `restExport` is
-  omitted or `true`) and `ALLOWED_SOURCE_ACCOUNT_IDS` /
+  `SOURCE_DATABASES` (JSON array of `{ id, name }` objects: the D1 databases
+  graduated restore targets, including legacy REST-era days) and `ALLOWED_SOURCE_ACCOUNT_IDS` /
   `ALLOWED_SOURCE_DATABASE_IDS`. `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME`
   are the primary APP_DB (`kody`) identity and the single-database fallback when
   `SOURCE_DATABASES` is unset. Every listed id must appear in
