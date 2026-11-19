@@ -96,3 +96,37 @@ test('composition refuses duplicate locations case-insensitively and Basic auth 
 		),
 	).rejects.toThrow('distinct')
 })
+
+test('two-Key Basic auth can carry an explicitly approved public JSON body', async () => {
+	const profile = credentialCompositionSchema.parse({
+		...target,
+		sites: [{ kind: 'basic', usernameId: 'one', passwordId: 'two' }],
+	})
+	const jsonRequest = (contentType = 'application/json') =>
+		new Request(endpoint, {
+			method: 'POST',
+			headers: { 'content-type': contentType },
+			body: '{"limit":10}',
+		})
+	await expect(
+		prepareCredentialComposition(profile, jsonRequest()),
+	).rejects.toThrow('explicitly approve')
+	const approved = credentialCompositionSchema.parse({
+		...profile,
+		publicBody: 'application/json',
+	})
+	const apply = await prepareCredentialComposition(approved, jsonRequest())
+	const { placement } = apply(
+		new Map([
+			['one', 'user'],
+			['two', 'pass'],
+		]),
+	)
+	expect(placement).toMatchObject({ kind: 'composition', body: '{"limit":10}' })
+	if (placement.kind !== 'composition') throw new Error('Expected composition')
+	expect(placement.headers.get('content-type')).toBe('application/json')
+	expect(placement.headers.get('authorization')).toBe('Basic dXNlcjpwYXNz')
+	await expect(
+		prepareCredentialComposition(approved, jsonRequest('text/plain')),
+	).rejects.toThrow('application/json')
+})

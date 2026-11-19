@@ -4,6 +4,7 @@ import {
 	bodyPlacementSchema,
 	isCanonicalEndpoint,
 	prepareBodyPlacements,
+	readJsonPlacementBody,
 } from './body-placement.ts'
 import { CredentialRequestRefusedError } from './credential-request.ts'
 import type { CredentialFillSite } from './fill-placement.ts'
@@ -67,9 +68,22 @@ export const credentialCompositionSchema = z
 		endpoint: z.string().max(2000).refine(isCanonicalEndpoint),
 		method: z.enum(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']),
 		entryCredentialId: credentialId,
+		publicBody: z.literal('application/json').optional(),
 		sites: z.array(compositionSite).min(1).max(16),
 	})
 	.superRefine((profile, ctx) => {
+		if (
+			profile.publicBody &&
+			(profile.method === 'GET' ||
+				profile.method === 'HEAD' ||
+				profile.sites.some((site) => site.kind === 'body'))
+		) {
+			ctx.addIssue({
+				code: 'custom',
+				message:
+					'Approve a public JSON body only on a body-capable method without credential body fields.',
+			})
+		}
 		const ids = compositionCredentialIds(profile)
 		if (ids.size < 2 || ids.size > 8 || !ids.has(profile.entryCredentialId)) {
 			ctx.addIssue({
@@ -182,7 +196,7 @@ export async function prepareCredentialComposition(
 		refuse('This request does not match the approved credential composition.')
 	}
 	const bodies = profile.sites.filter((site) => site.kind === 'body')
-	if (bodies.length === 0 && request.body !== null) {
+	if (!profile.publicBody && bodies.length === 0 && request.body !== null) {
 		refuse('A composed request must explicitly approve its body placement.')
 	}
 	const fieldNames = new Set<string>()
@@ -218,6 +232,10 @@ export async function prepareCredentialComposition(
 				request,
 			)
 		: null
+	const publicBody =
+		profile.publicBody && request.body !== null
+			? JSON.stringify(await readJsonPlacementBody(request))
+			: undefined
 	return (
 		values: ReadonlyMap<string, string>,
 		connectionRedactions: ReadonlyArray<string> = [],
@@ -284,8 +302,10 @@ export async function prepareCredentialComposition(
 			}
 		}
 		const body = applyBody?.(bodies.map((site) => value(site.credentialId)))
-		if (body) {
+		if (body || publicBody !== undefined) {
 			headers.set('content-type', 'application/json')
+		}
+		if (body) {
 			for (const text of body.substitutedValues) substitutedValues.add(text)
 		}
 		return {
@@ -293,7 +313,7 @@ export async function prepareCredentialComposition(
 				kind: 'composition',
 				url,
 				headers,
-				body: body?.body,
+				body: body?.body ?? publicBody,
 				sealed: body?.sealed ?? false,
 			},
 			substitutedValues: [...substitutedValues],

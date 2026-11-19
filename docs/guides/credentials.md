@@ -421,7 +421,8 @@ fetch. Omit approved headers, query parameters, and body fields from the
 request. An owner can include two Keys for Basic auth, several values in one
 header, or an approved OAuth or Login connection with another Key in the JSON
 body. Keep secret values out of profiles and review **Fill placement** for each
-Key.
+Key. For a request with no protected body fields, approve caller-supplied JSON
+explicitly with `publicBody: "application/json"` on the composition profile.
 
 To create a vault-backed Key, choose a provider binding, item ID, and field in
 **Secret providers**. Map the resulting Key by ID like any other. The package

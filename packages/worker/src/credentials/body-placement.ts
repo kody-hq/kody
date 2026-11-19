@@ -131,7 +131,17 @@ function isObject(value: unknown): value is JsonObject {
 	return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
 
-async function readJsonObject(request: Request) {
+function hasJsonMediaType(request: Request) {
+	return (
+		/^application\/json(?:\s*;\s*charset\s*=\s*utf-8)?$/i.test(
+			request.headers.get('content-type') ?? '',
+		) && !request.headers.has('content-encoding')
+	)
+}
+
+export async function readJsonPlacementBody(request: Request) {
+	if (!hasJsonMediaType(request))
+		refuse('The credential placement requires an application/json body.')
 	if (!request.body)
 		refuse('The credential placement requires a JSON object body.')
 	const reader = request.body.getReader()
@@ -260,16 +270,13 @@ export async function prepareBodyPlacements(
 	if (
 		request.url !== placement.endpoint ||
 		request.method !== placement.method ||
-		!/^application\/json(?:\s*;\s*charset\s*=\s*utf-8)?$/i.test(
-			request.headers.get('content-type') ?? '',
-		) ||
-		request.headers.has('content-encoding')
+		!hasJsonMediaType(request)
 	) {
 		refuse(
 			'This request does not match the approved credential placement endpoint, method, and media type.',
 		)
 	}
-	const body = await readJsonObject(request)
+	const body = await readJsonPlacementBody(request)
 	if (placement.graphql) {
 		if (
 			Object.keys(body).some((key) => key !== 'variables') ||
