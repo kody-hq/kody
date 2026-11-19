@@ -321,8 +321,8 @@ test('lockIntegrationToPackage switches any-context usage to packages and reject
 			audit: null,
 		})
 	expect(await lock('pkg-drafts')).toMatchObject({
-		usageMode: 'packages',
-		allowedPackageIds: ['pkg-drafts'],
+		outcome: 'locked',
+		connection: { usageMode: 'packages', allowedPackageIds: ['pkg-drafts'] },
 	})
 	await expect(canUse()).rejects.toBeInstanceOf(
 		IntegrationPackageAccessDeniedError,

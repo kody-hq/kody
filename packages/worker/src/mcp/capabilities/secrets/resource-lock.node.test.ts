@@ -15,6 +15,7 @@ import {
 	saveSecret,
 } from '#mcp/secrets/service.ts'
 import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-support/apply-all-migrations.ts'
+import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
 import { resourceLockCapability } from './resource-lock.ts'
@@ -313,4 +314,142 @@ test('resourceLock requires the permission mapped to each kind before side effec
 
 	expect(lockIntegrationSpy).not.toHaveBeenCalled()
 	expect(lockMcpServerSpy).not.toHaveBeenCalled()
+})
+
+function scopedLockHarness(slug: string) {
+	const { sqlite, env } = createHarness()
+	env.AUDIT_DB = createAuditTestDb()
+	const ownerId = ownerIdFromStored(`user-${slug}`)
+	const now = '2026-01-01T00:00:00.000Z'
+	sqlite
+		.prepare(
+			`INSERT INTO orgs (id, slug, created_at, updated_at) VALUES (?, ?, ?, ?)`,
+		)
+		.run(ownerId, slug, now, now)
+	seedPackage(sqlite, { id: 'pkg-drafts', userId: ownerId, kodyId: 'drafts' })
+	seedPackage(sqlite, { id: 'pkg-sender', userId: ownerId, kodyId: 'sender' })
+	const ctx = {
+		env,
+		callerContext: createMcpCallerContext({
+			source: { kind: 'mcp-oauth' },
+			scopes: ['integration:use'],
+			baseUrl: 'https://kody.codes',
+			user: {
+				userId: personIdFromStored(`user-${slug}`),
+				username: slug,
+				email: `${slug}@example.com`,
+				displayName: slug,
+			},
+		}),
+	}
+	return { sqlite, env, ownerId, ctx }
+}
+
+test('resourceLock with only integration:use cannot widen a locked integration', async () => {
+	const { env, ownerId, ctx } = scopedLockHarness('ivy')
+	await integrationService.upsertIntegration({
+		env,
+		userId: ownerId,
+		config: {
+			name: 'google',
+			tokenUrl: 'https://oauth2.googleapis.com/token',
+			apiBaseUrl: 'https://www.googleapis.com',
+			flow: 'confidential',
+			clientId: 'google-client-id',
+			requiredHosts: ['www.googleapis.com'],
+		},
+		audit: null,
+	})
+	const usage = async () =>
+		(
+			await integrationService.getJoinedIntegration({
+				env,
+				userId: ownerId,
+				name: 'google',
+			})
+		)?.connection.allowedPackageIds
+
+	const firstLock = await resourceLockCapability.handler(
+		{ kind: 'integration', name: 'google', package_id: 'pkg-drafts' },
+		ctx,
+	)
+	expect(await usage()).toEqual(['pkg-drafts'])
+	expect(firstLock).toMatchObject({
+		kind: 'integration',
+		usage_mode: 'packages',
+		allowed_package_ids: ['pkg-drafts'],
+	})
+
+	const widen = await resourceLockCapability.handler(
+		{ kind: 'integration', name: 'google', package_id: 'pkg-sender' },
+		ctx,
+	)
+	expect(await usage()).toEqual(['pkg-drafts'])
+	expect(firstLock).toMatchObject({ status: 'locked' })
+	expect(widen).toMatchObject({
+		kind: 'integration',
+		status: 'approval_required',
+		allowed_package_ids: ['pkg-drafts'],
+	})
+	if (widen.kind !== 'integration') throw new Error('Expected integration.')
+	const approval = new URL(widen.approval_url)
+	expect(approval.pathname).toBe('/@ivy/-/integrations/approve')
+	expect(approval.searchParams.get('name')).toBe('google')
+	expect(approval.searchParams.get('package_id')).toBe('pkg-sender')
+	expect(widen.message).toContain(widen.approval_url)
+	expect(await usage()).toEqual(['pkg-drafts'])
+
+	const again = await resourceLockCapability.handler(
+		{ kind: 'integration', name: 'google', package_id: 'pkg-drafts' },
+		ctx,
+	)
+	expect(again).toMatchObject({ status: 'already_granted' })
+	expect(await usage()).toEqual(['pkg-drafts'])
+})
+
+test('resourceLock with only integration:use cannot widen a locked MCP server', async () => {
+	const { sqlite, env, ownerId, ctx } = scopedLockHarness('max')
+	sqlite
+		.prepare(
+			`INSERT INTO mcp_server_settings (id, user_id, name, url, enabled)
+			 VALUES ('mcp-exa', ?, 'exa', 'https://mcp.example.com/mcp', 1)`,
+		)
+		.run(ownerId)
+	const usage = async () =>
+		(
+			await mcpServerService.getMcpServerSettingById({
+				env,
+				userId: ownerId,
+				id: 'mcp-exa',
+			})
+		)?.allowedPackageIds
+
+	const firstLock = await resourceLockCapability.handler(
+		{ kind: 'mcp_server', server: 'exa', package_id: 'pkg-drafts' },
+		ctx,
+	)
+	expect(await usage()).toEqual(['pkg-drafts'])
+	expect(firstLock).toMatchObject({
+		kind: 'mcp_server',
+		usage_mode: 'packages',
+		allowed_package_ids: ['pkg-drafts'],
+	})
+
+	const widen = await resourceLockCapability.handler(
+		{ kind: 'mcp_server', server: 'exa', package_id: 'pkg-sender' },
+		ctx,
+	)
+	expect(await usage()).toEqual(['pkg-drafts'])
+	expect(firstLock).toMatchObject({ status: 'locked' })
+	expect(widen).toMatchObject({
+		kind: 'mcp_server',
+		status: 'approval_required',
+		allowed_package_ids: ['pkg-drafts'],
+	})
+	if (widen.kind !== 'mcp_server') throw new Error('Expected mcp_server.')
+	const approval = new URL(widen.approval_url)
+	expect(approval.pathname).toBe('/@max/-/mcp-servers/mcp-exa')
+	expect(approval.searchParams.get('package_id')).toBe('pkg-sender')
+	expect(widen.message).toContain(widen.approval_url)
+	expect(await usage()).toEqual(['pkg-drafts'])
 })

@@ -14,7 +14,11 @@ import {
 	assertSafeDeviceAuthorizationUrl,
 	assertSafeTokenUrl,
 } from './device-flow.ts'
-import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
+import {
+	normalizeAllowedPackages,
+	planPackageLock,
+	type PackageLockOutcome,
+} from '#mcp/secrets/allowed-packages.ts'
 import { getSavedPackageById } from '#worker/package-registry/repo.ts'
 import { stampFirstIntegration } from '#worker/identity/activation-stamps.ts'
 import {
@@ -1663,9 +1667,9 @@ export async function grantIntegrationPackage(input: {
 }
 
 /**
- * Tighten-only usage lock. Switches the connection from any context to
- * packages mode and adds `packageId`. Additional grants accumulate.
- * Unlocking or removing a grant is website-only.
+ * Agent-facing package lock. See `planPackageLock`: the first lock applies,
+ * widening an existing lock returns `approval_required` and changes nothing.
+ * Owners add packages on the website through `grantIntegrationPackage`.
  */
 export async function lockIntegrationToPackage(input: {
 	env: Pick<Env, 'APP_DB'>
@@ -1673,7 +1677,11 @@ export async function lockIntegrationToPackage(input: {
 	name: string
 	packageId: string
 	audit: OrgAuditWriter | null
-}): Promise<UserIntegrationConnection> {
+}): Promise<{
+	outcome: PackageLockOutcome
+	connection: UserIntegrationConnection
+	packageKodyId: string
+}> {
 	const name = canonicalIntegrationName(input.name)
 	const packageId = input.packageId.trim()
 	if (!name) {
@@ -1697,22 +1705,25 @@ export async function lockIntegrationToPackage(input: {
 	if (!savedPackage) {
 		throw new Error('Saved package not found for this user.')
 	}
-	if (
-		existing.connection.usageMode === 'packages' &&
-		existing.connection.allowedPackageIds.includes(packageId)
-	) {
-		return existing.connection
-	}
-	const allowedPackageIds = normalizeAllowedPackages([
-		...existing.connection.allowedPackageIds,
+	const plan = planPackageLock({
+		usageMode: existing.connection.usageMode,
+		allowedPackageIds: existing.connection.allowedPackageIds,
 		packageId,
-	])
+	})
+	const packageKodyId = savedPackage.kodyId
+	if (plan.outcome !== 'locked') {
+		return {
+			outcome: plan.outcome,
+			connection: existing.connection,
+			packageKodyId,
+		}
+	}
 	const updated = await updateIntegrationUsage({
 		db: input.env.APP_DB,
 		userId: input.userId,
 		name,
 		usageMode: 'packages',
-		allowedPackageIds,
+		allowedPackageIds: plan.allowedPackageIds,
 	})
 	if (!updated) {
 		throw new Error(`Unable to lock integration "${name}" to a package.`)
@@ -1731,7 +1742,7 @@ export async function lockIntegrationToPackage(input: {
 		before: existing.connection,
 		after: saved.connection,
 	})
-	return saved.connection
+	return { outcome: 'locked', connection: saved.connection, packageKodyId }
 }
 
 async function auditIntegrationUsage(input: {
