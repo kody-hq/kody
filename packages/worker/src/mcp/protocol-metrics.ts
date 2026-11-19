@@ -282,13 +282,13 @@ export async function classifyMcpProtocolRequest(
 			? params?.['clientInfo']
 			: undefined
 
-	const eventsSupport = classifyMcpEventsClientSupport(
-		isRecord(meta)
-			? meta[CLIENT_CAPABILITIES_META_KEY]
-			: method === 'initialize'
-				? params?.['capabilities']
-				: undefined,
-	)
+	const eventsSupport =
+		classifyMcpEventsClientSupport(
+			isRecord(meta) ? meta[CLIENT_CAPABILITIES_META_KEY] : undefined,
+		) ||
+		(method === 'initialize'
+			? classifyMcpEventsClientSupport(params?.['capabilities'])
+			: '')
 
 	const toolName =
 		method === 'tools/call' && isRecord(params)

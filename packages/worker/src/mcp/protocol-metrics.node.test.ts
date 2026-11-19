@@ -407,6 +407,7 @@ test('classifyMcpProtocolRequest records whether the client declares MCP Events'
 					protocolVersion: '2025-06-18',
 					capabilities: { experimental: { events: {} } },
 					clientInfo: { name: 'legacy-host', version: '1.0.0' },
+					_meta: { progressToken: 1 },
 				},
 			}),
 		),
