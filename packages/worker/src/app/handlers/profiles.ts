@@ -357,10 +357,7 @@ async function loadGrantOptions(
 	]
 }
 
-/**
- * Org secrets and vaults the person can use, with "read locally" (ADR 0097),
- * and org integrations and MCP servers they can use.
- */
+/** Org secrets and vaults the person can use, with "read locally" (ADR 0097). */
 async function loadSecretGrantOptions(
 	env: Env,
 	request: RequestContext | null | undefined,
@@ -374,13 +371,18 @@ async function loadSecretGrantOptions(
 	const permissions = ['secret:use', 'secret:read_local']
 	return [
 		...credentials
-			.filter((item) => item.scope === 'org' && item.packageId === null)
+			.filter(
+				(item) =>
+					item.kind === 'secret' &&
+					item.scope === 'org' &&
+					item.packageId === null,
+			)
 			.slice(0, maxSecretGrantOptions)
 			.map((item) => ({
 				resourceType: 'credential',
 				resourceId: item.id,
 				label: item.name,
-				permissions: item.kind === 'secret' ? permissions : ['integration:use'],
+				permissions,
 			})),
 		...providers.map((binding) => ({
 			resourceType: 'credential',
