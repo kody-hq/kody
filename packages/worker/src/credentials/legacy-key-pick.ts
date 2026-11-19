@@ -24,7 +24,12 @@ export async function pickLegacyMappedKey(input: {
 	declaredNeed?: SavedCredentialNeed
 }) {
 	const { env, request, packageId, reference } = input
-	if (!request?.actor || (reference.scope && reference.scope !== 'user')) {
+	if (
+		!request?.actor ||
+		(reference.scope &&
+			reference.scope !== 'user' &&
+			!(reference.scope === 'package' && packageId))
+	) {
 		return null
 	}
 	const callPicks = Object.hasOwn(
@@ -92,6 +97,7 @@ export async function pickLegacyMappedKey(input: {
 			(credential) =>
 				credential.id === id &&
 				credential.kind === 'secret' &&
+				(reference.scope !== 'package' || credential.packageId === packageId) &&
 				(need?.supplier !== 'publisher' || credential.scope === 'org'),
 		)
 	if (!selected || (need && !mappedCredentialFitsNeed(selected, need))) {

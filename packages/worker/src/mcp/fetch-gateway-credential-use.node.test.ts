@@ -516,105 +516,123 @@ async function setupDeclaredPackage(input: {
 	return { expandAsPackage, env, db, ownerId, packageId, now }
 }
 
-test('legacy references use the mapped ID after rename and never fall back after an explicit clear', async () => {
-	const auditDb = createAuditTestDb()
-	mockPackageManifest('@compat/mailer', {
-		resend: {
-			kind: 'secret',
-			provider: 'resend',
-			description: 'Resend API key.',
-		},
-	})
-	vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
-		{
-			key: 'resend',
-			kind: 'secret',
-			provider: 'resend',
-			description: 'Resend API key.',
-			multiple: false,
-		},
-	])
-	const { db, env, ownerId, packageId, now, expandAsPackage } =
-		await setupDeclaredPackage({
-			username: 'compat',
-			packageName: '@compat/mailer',
-			auditDb,
+test.each(['user', 'package'] as const)(
+	'legacy %s references use the mapped ID after rename and never fall back after an explicit clear',
+	async (scope) => {
+		const auditDb = createAuditTestDb()
+		mockPackageManifest('@compat/mailer', {
+			resend: {
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Resend API key.',
+			},
 		})
-	const save = (name: string, value: string) =>
-		secretService.saveSecret({
+		vi.spyOn(needsClosure, 'loadPublishedCredentialNeeds').mockResolvedValue([
+			{
+				key: 'resend',
+				kind: 'secret',
+				provider: 'resend',
+				description: 'Resend API key.',
+				multiple: false,
+			},
+		])
+		const { db, env, ownerId, packageId, now, expandAsPackage } =
+			await setupDeclaredPackage({
+				username: 'compat',
+				packageName: '@compat/mailer',
+				auditDb,
+			})
+		const storageContext = {
+			packageId,
+			appId: null,
+			sessionId: null,
+			storageId: null,
+		}
+		const save = (name: string, value: string) =>
+			secretService.saveSecret({
+				env,
+				userId: ownerId,
+				scope,
+				storageContext,
+				name,
+				value,
+				audit: null,
+			})
+		await save('resend', 'mapped-credential')
+		const row = await db
+			.prepare(
+				"UPDATE secret_entries SET provider = 'resend', allowed_hosts = ? WHERE name = 'resend' RETURNING id",
+			)
+			.bind('["api.resend.com"]')
+			.first<{ id: string }>()
+		const setMapping = async (credentialIds: Array<string>) => {
+			await buildWriteCredentialMappingStatement({
+				db,
+				orgId: ownerId,
+				packageId,
+				needKey: 'resend',
+				target: { target: 'org' },
+				credentialIds,
+				updatedByUserId: ownerId,
+				now,
+			}).run()
+			noteCredentialMappingWritesCommitted(db)
+		}
+		const expand = () =>
+			expandAsPackage('https://api.resend.com/emails', {
+				headers: {
+					'X-Api-Key':
+						scope === 'package'
+							? '{{secret:resend|scope=package}}'
+							: '{{secret:resend}}',
+				},
+			})
+		await setMapping([row!.id])
+		await secretService.renameSecret({
 			env,
 			userId: ownerId,
-			scope: 'user',
-			name,
-			value,
+			scope,
+			storageContext,
+			fromName: 'resend',
+			toName: 'renamed',
 			audit: null,
 		})
-	await save('resend', 'mapped-credential')
-	const row = await db
-		.prepare(
-			"UPDATE secret_entries SET provider = 'resend', allowed_hosts = ? WHERE name = 'resend' RETURNING id",
-		)
-		.bind('["api.resend.com"]')
-		.first<{ id: string }>()
-	const setMapping = async (credentialIds: Array<string>) => {
-		await buildWriteCredentialMappingStatement({
-			db,
-			orgId: ownerId,
-			packageId,
-			needKey: 'resend',
-			target: { target: 'org' },
-			credentialIds,
-			updatedByUserId: ownerId,
-			now,
-		}).run()
-		noteCredentialMappingWritesCommitted(db)
-	}
-	const expand = () =>
-		expandAsPackage('https://api.resend.com/emails', {
-			headers: { 'X-Api-Key': '{{secret:resend}}' },
-		})
-	await setMapping([row!.id])
-	await secretService.renameSecret({
-		env,
-		userId: ownerId,
-		scope: 'user',
-		fromName: 'resend',
-		toName: 'renamed',
-		audit: null,
-	})
-	await save('resend', 'legacy-name-credential')
-	expect((await expand()).headers.get('X-Api-Key')).toBe('mapped-credential')
-	for (const ids of [[], ['stale-id'], [row!.id, 'another-id']]) {
-		await setMapping(ids)
-		await expect(expand()).rejects.toThrow(/requires one available Key mapping/)
-	}
-	const usage = await auditDb
-		.prepare(
-			`SELECT result, org_id, resource_id, details_json FROM org_audit_events
+		await save('resend', 'legacy-name-credential')
+		expect((await expand()).headers.get('X-Api-Key')).toBe('mapped-credential')
+		for (const ids of [[], ['stale-id'], [row!.id, 'another-id']]) {
+			await setMapping(ids)
+			await expect(expand()).rejects.toThrow(
+				/requires one available Key mapping/,
+			)
+		}
+		const usage = await auditDb
+			.prepare(
+				`SELECT result, org_id, resource_id, details_json FROM org_audit_events
 		WHERE action = 'credential.legacy_fill' ORDER BY result`,
+			)
+			.all<{
+				result: string
+				org_id: string
+				resource_id: string
+				details_json: string
+			}>()
+		expect(
+			usage.results.map(({ result, org_id, resource_id, details_json }) => ({
+				result,
+				org_id,
+				resource_id,
+				details: JSON.parse(details_json),
+			})),
+		).toEqual(
+			['denied', 'denied', 'denied', 'success'].map((result) => ({
+				result,
+				org_id: ownerId,
+				resource_id: packageId,
+				details: { surface: 'package', mode: 'need', counts: { header: 1 } },
+			})),
 		)
-		.all<{
-			result: string
-			org_id: string
-			resource_id: string
-			details_json: string
-		}>()
-	expect(
-		usage.results.map(({ result, org_id, resource_id, details_json }) => ({
-			result,
-			org_id,
-			resource_id,
-			details: JSON.parse(details_json),
-		})),
-	).toEqual(
-		['denied', 'denied', 'denied', 'success'].map((result) => ({
-			result,
-			org_id: ownerId,
-			resource_id: packageId,
-			details: { surface: 'package', mode: 'need', counts: { header: 1 } },
-		})),
-	)
-})
+	},
+)
 
 test('leak: a declared package fills its credentials anywhere on an allowed host over HTTPS, and is refused elsewhere before they resolve', async () => {
 	mockPackageManifest('@ownerp/mailer', {
