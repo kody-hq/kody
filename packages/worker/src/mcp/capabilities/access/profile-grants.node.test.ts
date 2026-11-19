@@ -240,3 +240,68 @@ test('a profile grant needs the caller to hold each permission, the profile to b
 		),
 	).rejects.toThrow('A profile grant has no expiry of its own.')
 })
+
+test('accessGrant gives an existing profile profile:manage on the org, as profileCreate allows', async () => {
+	const { owner, orgId } = await setup()
+	const profileId = await createProfile(owner, 'manager-bot')
+	const { grant } = await accessGrantCapability.handler(
+		{
+			resource_type: 'org',
+			resource_id: orgId,
+			subject_type: 'profile',
+			subject_id: profileId,
+			permissions: ['profile:manage', 'org:read'],
+		},
+		owner,
+	)
+	expect(grant).toMatchObject({
+		resource_type: 'org',
+		subject_id: profileId,
+		permissions: expect.arrayContaining(['profile:manage', 'org:read']),
+	})
+})
+
+test('a repeated permission is stored once on a profile grant', async () => {
+	const { owner, credentialId } = await setup()
+	const profileId = await createProfile(owner, 'repeat-bot')
+	const { grant } = await accessGrantCapability.handler(
+		{
+			resource_type: 'credential',
+			resource_id: credentialId,
+			subject_type: 'profile',
+			subject_id: profileId,
+			permissions: ['secret:use', 'secret:use'],
+		},
+		owner,
+	)
+	expect(grant.permissions).toEqual(['secret:use'])
+})
+
+test('accessGrant gives an existing profile run access on an execution context the caller operates', async () => {
+	const { owner, db, orgId, ownerId } = await setup()
+	await db
+		.prepare(
+			`INSERT INTO execution_contexts (id, org_id, operator_user_id, all_members, name,
+				public_key_jwk, thumbprint, created_at)
+			 VALUES ('ec_mac', ?, ?, 0, 'mac', '{}', 'thumb', ?)`,
+		)
+		.bind(orgId, ownerId, now)
+		.run()
+	const profileId = await createProfile(owner, 'runner-bot')
+	const { grant } = await accessGrantCapability.handler(
+		{
+			resource_type: 'execution_context',
+			resource_id: 'ec_mac',
+			subject_type: 'profile',
+			subject_id: profileId,
+			permissions: ['execution_context:command'],
+		},
+		owner,
+	)
+	expect(grant).toMatchObject({
+		resource_type: 'execution_context',
+		resource_id: 'ec_mac',
+		subject_id: profileId,
+		permissions: ['execution_context:command'],
+	})
+})
