@@ -310,3 +310,27 @@ test('API token queries rank guide:api_tokens above similarly named capabilities
 		})
 	}
 })
+
+test('queries where the user must supply a secret rank guide:connect_secret first', async () => {
+	const fullRegistry = await getStaticRegistry()
+	for (const query of [
+		'user needs to enter an API key',
+		'ask the user to enter an api key',
+		'ask user for token',
+		'save a secret',
+		'connect secret',
+		'secret setup url',
+	]) {
+		const { matches } = await searchUnified({
+			env: {} as Env,
+			query,
+			limit: 5,
+			registry: fullRegistry,
+			optionalRows: emptyOptionalRows,
+		})
+		expect({ query, top: matches[0] }).toEqual({
+			query,
+			top: expect.objectContaining({ type: 'guide', id: 'connect_secret' }),
+		})
+	}
+})

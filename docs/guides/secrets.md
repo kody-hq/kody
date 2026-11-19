@@ -194,7 +194,7 @@ on connected tool servers.
 
 - Pasting a key or PAT: the agent sends you a prefilled `/connect/secret-set`
   link; you paste the value into the page, never into chat. URL shape and
-  parameters: [Secret setup URL reference](./account-secret-setup.md).
+  parameters: [Ask the user to save a secret](./account-secret-setup.md).
 - Building an integration around one or more secrets:
   [Secret-backed integrations](./secret-backed-integration.md).
 - Using a password-manager item without pasting it into Kody:
