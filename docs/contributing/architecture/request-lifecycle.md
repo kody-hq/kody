@@ -129,7 +129,11 @@ Requests are handled in this order:
 7. Public `@username` ingress handled in `packages/worker/src/index.ts` before
    the OAuth provider / app router (needs `ExecutionContext` for background
    work). Production forwards package-app paths to `kody-runtime` via
-   `RUNTIME_WORKER`; webhook ingress stays on origin:
+   `RUNTIME_WORKER`; webhook ingress stays on origin. A D1 storage blip
+   (overload, lock, export, network drop) that escapes a `kody-runtime` request
+   is answered with a `503` and `Retry-After: 5` carrying the shared "briefly
+   unavailable" message, so the forward never surfaces it as a Cloudflare 1101.
+   Other runtime errors still throw:
    - `POST /@{username}/webhooks/:packageKodyId/:webhookName/:urlSecret` —
      inbound package webhooks (see [Inbound webhooks](./webhooks.md))
    - Retired `/@{username}/connectors/...` paths return `404`. Use outbound MCP
