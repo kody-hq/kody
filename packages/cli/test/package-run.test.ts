@@ -10,8 +10,16 @@ import {
 
 type Call = { method: string; path: string; body: unknown }
 
-/** A fake API: `/v1/workflow-runs` answers with each queued run in turn. */
-function createApi(runs: Array<Record<string, unknown>>, result: unknown) {
+/**
+ * A fake API for a token with package scopes only: `packageRunResult` answers
+ * with each queued run in turn (and the result once the run is terminal),
+ * and `workflowRunList` is forbidden.
+ */
+function createApi(
+	runs: Array<Record<string, unknown>>,
+	result: unknown,
+	options: { canCancel?: boolean } = {},
+) {
 	const calls: Array<Call> = []
 	let poll = 0
 	const fetchFn = (async (
@@ -51,17 +59,24 @@ function createApi(runs: Array<Record<string, unknown>>, result: unknown) {
 			return json({ status: 'dispatched', workflow_id: 'wf-1' })
 		}
 		if (url.pathname === '/v1/workflow-runs') {
-			const run = runs[Math.min(poll, runs.length - 1)]
-			poll += 1
-			return json({ workflows: [{ id: 'wf-1', ...run }] })
+			return json({ error: { code: 'forbidden', message: 'job:read' } }, 403)
 		}
 		if (url.pathname === '/v1/workflow-runs/wf-1/cancel') {
-			return json({ ok: true })
+			return options.canCancel === false
+				? json({ error: { code: 'forbidden', message: 'job:execute' } }, 403)
+				: json({ ok: true })
 		}
+		const run: Record<string, unknown> = {
+			progress: null,
+			last_error: null,
+			...runs[Math.min(poll, runs.length - 1)],
+		}
+		poll += 1
+		const stored = run.status !== 'running' && run.status !== 'queued'
 		return json(
-			result === null
-				? { available: false, kind: null, result: null }
-				: { available: true, kind: 'packageCheck', result },
+			stored && result !== null
+				? { available: true, kind: 'packageCheck', result, ...run }
+				: { available: false, kind: null, result: null, ...run },
 		)
 	}) as typeof fetch
 	return { calls, client: { token: 'kody_at_test', fetchFn, pollMs: 1 } }
@@ -74,7 +89,7 @@ const checkResult = {
 	notices: [],
 }
 
-test('a check uploads the tree, starts the run, and prints each new phase or chunk count once', async () => {
+test('a check uploads the tree, starts the run, and follows it with packageRunResult alone, printing each new phase or chunk count once', async () => {
 	const building = (done: number) => ({
 		status: 'running',
 		progress: {
@@ -167,5 +182,31 @@ test('a run Kody failed rejects with its last error; a stored refusal is returne
 	assert.deepEqual(
 		await followPackageRun({ ...refused.client, workflowId: 'wf-1' }),
 		refusal,
+	)
+})
+
+test('a token that cannot cancel says the run keeps going', async () => {
+	const api = createApi([{ status: 'running' }], null, { canCancel: false })
+	const controller = new AbortController()
+	const following = followPackageRun({
+		...api.client,
+		workflowId: 'wf-1',
+		signal: controller.signal,
+	})
+	controller.abort()
+	await assert.rejects(
+		following,
+		(error: unknown) =>
+			error instanceof PackageRunCancelledError &&
+			/could not cancel it/.test(error.message),
+	)
+})
+
+test('a run id the account does not have rejects', async () => {
+	const api = createApi([{ status: null }], null)
+	await assert.rejects(
+		followPackageRun({ ...api.client, workflowId: 'wf-1' }),
+		(error: unknown) =>
+			error instanceof PackageRunFailedError && /not found/.test(error.message),
 	)
 })

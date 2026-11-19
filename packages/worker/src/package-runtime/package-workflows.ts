@@ -960,7 +960,7 @@ export async function findWorkflowRunByIdempotencyKey(input: {
 		: null
 }
 
-async function getWorkflowRunForUser(input: {
+export async function getWorkflowRunForUser(input: {
 	env: Pick<Env, 'RUN_LOG'>
 	userId: OwnerId
 	id: string
@@ -2428,7 +2428,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
 					runSurface: 'workflow',
 					// A durable publish reports its phases on the run, where
-					// workflowRunList shows them to whoever is polling.
+					// packageRunResult shows them to whoever is polling.
 					...(durablePublish
 						? {
 								reportProgress: async (update: McpProgressUpdate) => {

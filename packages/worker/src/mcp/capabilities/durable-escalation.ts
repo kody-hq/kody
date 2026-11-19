@@ -84,7 +84,7 @@ function createDispatchedHandle(input: {
 		idempotency_key: input.idempotencyKey,
 		run_status: input.workflow.status ?? null,
 		message:
-			'Work was dispatched to a durable workflow. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not retry the same operation while the run is active.',
+			'Work was dispatched to a durable workflow. Poll with packageRunResult({ workflow_id }) until the run is terminal; do not retry the same operation while the run is active.',
 	}
 }
 
@@ -212,7 +212,7 @@ export async function dispatchDurableRun(input: {
 					idempotency_key: existing.idempotencyKey,
 					run_status: existing.status,
 					message:
-						'An active durable run already exists for this idempotency key. Poll with workflowRunList({ workflow_id }) until the run is terminal; do not create another run.',
+						'An active durable run already exists for this idempotency key. Poll with packageRunResult({ workflow_id }) until the run is terminal; do not create another run.',
 				},
 			}
 		}

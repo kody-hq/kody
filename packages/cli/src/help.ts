@@ -251,7 +251,7 @@ ${orgBlock}
              also exit 1; with \`--json\`, stdout also gets
              \`{ error, message, sent }\` where \`sent\` is \`false\` (connect
              phase — request not sent) or \`"unknown"\` (may have reached the
-             server — prefer \`kody api workflowRunList\` with \`workflow_id\`
+             server — prefer \`kody api packageRunResult\` with \`workflow_id\`
              when known before retrying).
              Re-publishing the same commit is safe: an active durable run is
              deduped; a finished publish returns \`already_published\`.

@@ -119,7 +119,6 @@ async function runPublishWithRun(run: {
 					'/v1/packages/{package_id}/external-push': {
 						post: { operationId: 'packagePublishExternalPush' },
 					},
-					'/v1/workflow-runs': { get: { operationId: 'workflowRunList' } },
 					'/v1/packages/runs/{workflow_id}': {
 						get: { operationId: 'packageRunResult' },
 					},
@@ -131,29 +130,19 @@ async function runPublishWithRun(run: {
 			assert.equal((init?.method ?? 'GET').toUpperCase(), 'POST')
 			return json({ status: 'dispatched', workflow_id: 'wf-1' })
 		}
-		if (url.pathname === '/v1/workflow-runs') {
-			assert.equal(url.searchParams.get('workflow_id'), 'wf-1')
-			return json({
-				workflows: [
-					{
-						id: 'wf-1',
-						status: run.status,
-						last_error: run.lastError ?? null,
-						progress: { phase: 'checks', message: 'Running publish checks.' },
-					},
-				],
-			})
-		}
 		assert.equal(url.pathname, '/v1/packages/runs/wf-1')
-		return json(
-			run.result === null
+		return json({
+			...(run.result === null
 				? { available: false, kind: null, result: null }
 				: {
 						available: true,
 						kind: 'packagePublishExternalPush',
 						result: run.result,
-					},
-		)
+					}),
+			status: run.status,
+			last_error: run.lastError ?? null,
+			progress: { phase: 'checks', message: 'Running publish checks.' },
+		})
 	}) as typeof fetch
 
 	let stdout = ''

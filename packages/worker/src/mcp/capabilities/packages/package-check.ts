@@ -75,7 +75,7 @@ export const packageCheckCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'Dry-run a git-push publish on an uploaded package tree without saving, pushing, or publishing anything. Upload the tree first (`POST /v1/packages/check-uploads`, see packageCheckUploadCreate), then pass its `upload_id`. The check always runs as a durable workflow, never in the calling request: this returns `{ status: "dispatched", workflow_id }` right away. Poll workflowRunList({ workflow_id }) until the run is terminal (its `progress` shows the current phase and artifact chunk counts), then read the result with packageRunResult({ workflow_id }); cancel with workflowRunCancel. The tree goes through what a git-push publish does after its clone, in the same throwaway isolates: `.kodyignore`, the checked-out tree cap, the same checks with the same options (manifest, credential stamp gate, docs, skills, dependencies, typecheck, lint), then every published artifact built the way the publish rebuild builds it (same targets, per-isolate batches, and waves), saving nothing. Not run: cloning the pushed commit from Artifacts. In the result, `ok: false` means publish would refuse this tree with the same messages in `checks`. A run that ends errored hit a Kody infrastructure failure, not a package problem. Calling again with the same upload while its run is active returns that run. `kody dev check` calls this.',
+			'Dry-run a git-push publish on an uploaded package tree without saving, pushing, or publishing anything. Upload the tree first (`POST /v1/packages/check-uploads`, see packageCheckUploadCreate), then pass its `upload_id`. The check always runs as a durable workflow, never in the calling request: this returns `{ status: "dispatched", workflow_id }` right away. Poll packageRunResult({ workflow_id }) until its `status` is terminal (its `progress` shows the current phase and artifact chunk counts); the same answer then carries the result. Cancel with workflowRunCancel. The tree goes through what a git-push publish does after its clone, in the same throwaway isolates: `.kodyignore`, the checked-out tree cap, the same checks with the same options (manifest, credential stamp gate, docs, skills, dependencies, typecheck, lint), then every published artifact built the way the publish rebuild builds it (same targets, per-isolate batches, and waves), saving nothing. Not run: cloning the pushed commit from Artifacts. In the result, `ok: false` means publish would refuse this tree with the same messages in `checks`. A run that ends errored hit a Kody infrastructure failure, not a package problem. Calling again with the same upload while its run is active returns that run. `kody dev check` calls this.',
 		keywords: [
 			'package',
 			'check',
@@ -108,7 +108,7 @@ export const packageCheckCapability = defineDomainCapability(
 			status: z.literal('dispatched'),
 			workflow_id: z
 				.string()
-				.describe('Poll with workflowRunList({ workflow_id }).'),
+				.describe('Poll with packageRunResult({ workflow_id }).'),
 			workflow_name: z.string(),
 			idempotency_key: z.string(),
 			run_status: z.string().nullable(),

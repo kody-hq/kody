@@ -1271,12 +1271,14 @@ the commit it clones, so a dev check result is the best predictor of a publish:
   (`POST /v1/packages/check-uploads`, streamed to short-lived storage), starts
   the run with `packageCheck({ upload_id })`, which answers
   `{ status: "dispatched", workflow_id }` right away, and polls
-  `workflowRunList({ workflow_id })`. It prints each phase and artifact chunk
-  count as the run reports it, then reads the full result with
-  `packageRunResult({ workflow_id })`. Each phase is a durable step in its own
-  throwaway isolate. Ctrl-C cancels the run (`workflowRunCancel`). Checking the
-  same upload again while its run is active returns that run. The token needs
-  `job:read` to follow the run (and `job:execute` to cancel it).
+  `packageRunResult({ workflow_id })`. It prints each phase and artifact chunk
+  count as the run reports it, and the same answer carries the full result once
+  the run finishes. Each phase is a durable step in its own throwaway isolate.
+  Ctrl-C cancels the run (`workflowRunCancel`). Checking the same upload again
+  while its run is active returns that run. Following a run needs only
+  `package:read`, so a token with package scopes alone works. Cancelling needs
+  `job:execute`: without it Ctrl-C stops the CLI and says the run keeps going on
+  Kody.
 - **Same retries.** A durable publish retries an attempt that hit a compute
   limit or timed out, so `kody dev check` runs the server checks up to 3 times
   (a fresh upload and run each time) when a check reports a memory or CPU limit,
@@ -1501,14 +1503,16 @@ publish checks run.
    publish never runs inside the request: the tool always returns
    `status: "dispatched"` with a `workflow_id`, and the publish runs as a
    durable workflow. `dispatched` includes `phase_timings.total_ms` as
-   time-to-dispatch. Poll with `workflowRunList({ workflow_id })` (CLI:
-   `kody api workflowRunList --params '{"workflow_id":"<id>"}'`) until the run
-   is terminal, then read the full answer (manifest, static dependents, hints,
-   or the refusal) with `packageRunResult({ workflow_id })`; it is kept for one
-   day. Each run in `workflowRunList` carries `progress` (`phase`, `message`,
-   and `done` / `total` while artifacts build). Do not retry the same publish
-   while the run is active. `kody package publish` does all of this for you: it
-   prints progress, prints the stored result, and Ctrl-C cancels the run.
+   time-to-dispatch. Poll with `packageRunResult({ workflow_id })` (CLI:
+   `kody api packageRunResult --params '{"workflow_id":"<id>"}'`), which needs
+   only `package:read`, until its `status` is terminal. It carries `progress`
+   (`phase`, `message`, and `done` / `total` while artifacts build),
+   `last_error`, and, once the run finishes, the full answer in `result`
+   (manifest, static dependents, hints, or the refusal), kept for one day.
+   `workflowRunList({ workflow_id })` shows the same run to a caller with
+   `job:read`. Do not retry the same publish while the run is active.
+   `kody package publish` does all of this for you: it prints progress, prints
+   the stored result, and Ctrl-C cancels the run.
 
    A durable publish run that ends `complete` (its run in `runList` / `runGet`
    has status `success`) means the publish finished as `published` or
@@ -1525,8 +1529,8 @@ publish checks run.
    If the CLI or client loses the HTTP response (for example
    `fetch failed: UND_ERR_SOCKET`) before you see `dispatched` or a terminal
    status, the outcome is unknown until you check. Prefer
-   `workflowRunList({ workflow_id })` when you still have the id; otherwise list
-   recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
+   `packageRunResult({ workflow_id })` when you still have the id; otherwise
+   list recent runs with `workflowRunList` (CLI: `kody api workflowRunList`),
    optionally filtering with `package_id`, `status`, or `since`. Re-calling
    publish for the **same** commit is safe: an active durable run for that
    commit is deduped and returns the existing `dispatched` handle; a completed

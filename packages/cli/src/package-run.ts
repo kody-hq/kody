@@ -39,8 +39,12 @@ export type FollowPackageRunInput = PackageRunClient & {
 }
 
 export class PackageRunCancelledError extends Error {
-	constructor(workflowId: string) {
-		super(`Cancelled run ${workflowId}.`)
+	constructor(workflowId: string, cancelled = true) {
+		super(
+			cancelled
+				? `Cancelled run ${workflowId}.`
+				: `Stopped following run ${workflowId}, but could not cancel it (cancelling needs \`job:execute\`); it keeps running on Kody.`,
+		)
 		this.name = 'PackageRunCancelledError'
 	}
 }
@@ -104,9 +108,8 @@ async function sleep(ms: number, signal: AbortSignal | undefined) {
 }
 
 /**
- * Poll `workflowRunList` until the run is terminal, then return its stored
- * result (`packageRunResult`). Rejects with {@link PackageRunFailedError}
- * when the run ended without one.
+ * Poll `packageRunResult` until the run stores its result, and return it.
+ * Rejects with {@link PackageRunFailedError} when the run ended without one.
  */
 export async function followPackageRun(
 	input: FollowPackageRunInput,
@@ -115,22 +118,24 @@ export async function followPackageRun(
 	let lastProgress = ''
 	for (;;) {
 		if (signal?.aborted) {
-			await callOpenApiOperation({
+			const cancelled = await callOpenApiOperation({
 				...client,
 				operationId: 'workflowRunCancel',
 				params: { id: workflowId },
-			}).catch(() => {})
-			throw new PackageRunCancelledError(workflowId)
+			}).then(
+				() => true,
+				() => false,
+			)
+			throw new PackageRunCancelledError(workflowId, cancelled)
 		}
-		const page = asRecord(
+		// One read under `package:read`: the run's status and progress, and its
+		// stored result once there is one.
+		const run = asRecord(
 			await callOpenApiOperation({
 				...client,
-				operationId: 'workflowRunList',
-				params: { workflow_id: workflowId, limit: 1 },
+				operationId: 'packageRunResult',
+				params: { workflow_id: workflowId },
 			}),
-		)
-		const run = asRecord(
-			Array.isArray(page?.workflows) ? page.workflows[0] : null,
 		)
 		const progress = readProgress(run?.progress)
 		if (progress) {
@@ -140,19 +145,19 @@ export async function followPackageRun(
 				onProgress?.(progress)
 			}
 		}
+		// A publish that was refused ends its run errored and still stores the
+		// full refusal; a run Kody itself failed stores nothing.
+		const result = asRecord(run?.result)
+		if (result) return result
 		const status = typeof run?.status === 'string' ? run.status : null
-		if (status && terminalRunStatuses.has(status)) {
-			// A publish that was refused ends its run errored and still stores
-			// the full refusal; a run Kody itself failed stores nothing.
-			const stored = asRecord(
-				await callOpenApiOperation({
-					...client,
-					operationId: 'packageRunResult',
-					params: { workflow_id: workflowId },
-				}),
-			)
-			const result = asRecord(stored?.result)
-			if (result) return result
+		if (!status) {
+			throw new PackageRunFailedError({
+				workflowId,
+				status: 'unknown',
+				reason: `Run ${workflowId} was not found.`,
+			})
+		}
+		if (terminalRunStatuses.has(status)) {
 			throw new PackageRunFailedError({
 				workflowId,
 				status,
