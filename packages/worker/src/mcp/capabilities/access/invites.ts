@@ -1,4 +1,8 @@
 import { fileStoreRpc } from '#worker/files/client.ts'
+import {
+	fileTreePermission,
+	loadFileAncestors,
+} from '#worker/files/tree-access.ts'
 import { inviteRoleDenial, isSeatRole } from '#worker/orgs/admin-role-rules.ts'
 import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import {
@@ -200,7 +204,40 @@ async function inviteManagePermission(
 	return manageAccessPermission(resourceType)
 }
 
-async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
+/** File access follows the folder tree, as it does when the invite is made. */
+async function inviterManagesFile(
+	env: Env,
+	invite: StoredInvite,
+	access: Awaited<ReturnType<typeof inviterAccess>>,
+) {
+	const orgId = ownerIdFromStored(invite.orgId)
+	const fileId = invite.resourceId ?? ''
+	const store = fileStoreRpc(env, orgId)
+	const files = await loadFileAncestors(
+		(id) => store.metadata(orgId, id),
+		fileId,
+	)
+	// A deleted file is reported by the target check that follows.
+	if (!files.has(fileId)) return true
+	return fileTreePermission(
+		{
+			orgId,
+			permissions: access.orgPermissions,
+			isOwner: access.isOwner,
+			resourcePermissions: access.resourcePermissions,
+			credentialScopes: null,
+		},
+		files,
+		'file:manage_access',
+		fileId,
+	)
+}
+
+async function assertInviterStillValid(
+	env: Env,
+	db: D1Database,
+	invite: StoredInvite,
+) {
 	const requireOwner = invite.kind === 'membership' && invite.role === 'owner'
 	const inviter = await db
 		.prepare(
@@ -251,11 +288,13 @@ async function assertInviterStillValid(db: D1Database, invite: StoredInvite) {
 		if (!hasOwnerAuthority(access)) {
 			const permission = await inviteManagePermission(db, invite)
 			const held =
-				access.orgPermissions.has(permission) ||
-				(access.resourcePermissions
-					.get(resourceGrantKey(invite.resourceType, invite.resourceId))
-					?.has(permission) ??
-					false)
+				invite.resourceType === 'file'
+					? await inviterManagesFile(env, invite, access)
+					: access.orgPermissions.has(permission) ||
+						(access.resourcePermissions
+							.get(resourceGrantKey(invite.resourceType, invite.resourceId))
+							?.has(permission) ??
+							false)
 			if (!held) throw noLongerAllowed()
 		}
 	}
@@ -389,7 +428,7 @@ async function acceptStoredInvite(input: {
 			'This invite is no longer valid because the organization is not active.',
 		)
 	}
-	await assertInviterStillValid(input.db, invite)
+	await assertInviterStillValid(input.env, input.db, invite)
 	const grantTarget = await assertInviteTargetsStillValid(
 		input.env,
 		input.db,
