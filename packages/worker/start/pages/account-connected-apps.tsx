@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { toast } from '#client/toast.ts'
 import {
+	removeConnectedAppRunApproval,
 	revokeConnectedApp,
 	revokeConnectedAppAgent,
 	revokeConnectedAppScope,
@@ -80,6 +81,13 @@ export function AccountConnectedAppsPage({
 			scope: string
 			disconnectCredentialIds: Array<string>
 		}) => revokeConnectedAppScope({ data: input }),
+		onMutate: () => invalidate,
+		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
+	})
+	const runApprovalMutation = useMutation({
+		gcTime: 0,
+		mutationFn: (packageId: string) =>
+			removeConnectedAppRunApproval({ data: { packageId } }),
 		onMutate: () => invalidate,
 		onSettled: (_result, _error, _input, reconcile) => reconcile?.(),
 	})
@@ -167,13 +175,68 @@ export function AccountConnectedAppsPage({
 			)
 	}
 
+	function removeRunApproval(
+		app: AccountConnectedAppsLoaderData['runApprovals'][number],
+	) {
+		const isCurrent = capture()
+		void runApprovalMutation.mutateAsync(app.packageId).then(
+			() => {
+				if (isCurrent())
+					toast.success(`${app.appName} will ask before it runs as you again.`)
+			},
+			(error: unknown) => {
+				if (isCurrent())
+					toast.error(
+						error instanceof Error
+							? error.message
+							: 'Unable to remove approval.',
+					)
+			},
+		)
+	}
+
 	return (
 		<AccountManagementShell layout="form" currentHref={currentHref}>
 			<AccountPageHeader
 				title="Connected apps"
-				description="Apps you signed in to with Kody, and agents you connected. Revoke one to stop it from using your Kody account."
+				description="Manage apps and agents you connected to your Kody account."
 				currentHref={currentHref}
 			/>
+			<AccountManagementPanel
+				title="Apps allowed to run as you"
+				description="Remove an approval to make that app ask the next time you open it."
+				ariaLabel="Apps allowed to run as you"
+			>
+				{payload.runApprovals.length > 0 ? (
+					<ul css={listCss}>
+						{payload.runApprovals.map((app) => (
+							<li key={app.packageId} css={rowCss}>
+								<AppMark iconUrl={null} />
+								<div css={rowBodyCss}>
+									<span css={rowTitleCss}>{app.appName}</span>
+									<span css={mutedCss}>
+										By {app.publisherName} (@{app.publisher})
+									</span>
+								</div>
+								<Button
+									type="button"
+									variant="secondary"
+									aria-label={`Remove approval for ${app.appName}`}
+									disabled={
+										runApprovalMutation.isPending &&
+										runApprovalMutation.variables === app.packageId
+									}
+									onClick={() => removeRunApproval(app)}
+								>
+									Remove
+								</Button>
+							</li>
+						))}
+					</ul>
+				) : (
+					<p css={emptyCss}>You have no approvals to run apps as you.</p>
+				)}
+			</AccountManagementPanel>
 			<AccountManagementPanel
 				title="Apps you signed in to"
 				description="Package apps that know who you are through Sign in with Kody. An app runs with its publisher's credentials; it uses your own data or credentials only where you allowed it."

@@ -229,6 +229,11 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 	},
 	{ kind: 'user_id', table: 'usage_attribution_daily' },
 	{
+		kind: 'user_columns',
+		table: 'package_app_run_consents',
+		columns: ['person_id'],
+	},
+	{
 		kind: 'bucket_parent',
 		table: 'package_app_grant_credential_mappings',
 		parentTable: 'package_app_oauth_grants',
