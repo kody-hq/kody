@@ -278,6 +278,8 @@ function spawnWrangler(input: {
 			CLOUDFLARE_ACCOUNT_ID: '',
 		},
 		stdio: ['ignore', 'pipe', 'pipe'],
+		// Own process group so teardown reaches wrangler's workerd and helpers.
+		detached: process.platform !== 'win32',
 	})
 	for (const stream of ['stdout', 'stderr'] as const) {
 		let buffer = ''
@@ -322,9 +324,24 @@ async function runWrangler(input: {
 function stopChild(child: ChildProcess) {
 	return new Promise<void>((done) => {
 		if (child.exitCode !== null || child.signalCode !== null) return done()
-		child.once('exit', () => done())
-		child.kill('SIGTERM')
-		setTimeout(() => child.kill('SIGKILL'), 5_000).unref()
+		const kill = (signal: NodeJS.Signals) => {
+			try {
+				if (process.platform !== 'win32' && child.pid) {
+					process.kill(-child.pid, signal)
+				} else child.kill(signal)
+			} catch {
+				// Already gone.
+			}
+		}
+		const timer = setTimeout(() => kill('SIGKILL'), 5_000)
+		timer.unref()
+		child.once('exit', () => {
+			clearTimeout(timer)
+			// Descendants that outlive the wrangler leader still hold ports.
+			kill('SIGKILL')
+			done()
+		})
+		kill('SIGTERM')
 	})
 }
 
