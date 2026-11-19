@@ -456,10 +456,14 @@ documented in [setup-manifest.md](../setup-manifest.md), and the
 duplicate SDK traces) in
 [environment-variables.md](../environment-variables.md).
 
-Billing note: each span is one observability event sharing the Workers Logs
-quota (10M events/month included on Workers Paid). Sampling is controlled by
-`observability.traces.head_sampling_rate` (defaults to full sampling, fine at
-current traffic).
+Billing note: logs and spans are billed together by ingested GB (Workers Paid
+includes 50 GB ingested and 10 GB-month stored). Each span is one event of about
+1.7 KB and a `kody-production` request emits about 18, so production traces are
+head sampled at 2% via `observability.traces.head_sampling_rate`;
+`tools/ci/worker-observability.node.test.ts` pins every Worker's rates. Log
+`console.info` only for rare events: per-request success logs (for example one
+line per Cloudflare REST call) cost more than they help, so log those calls on
+failure with `console.warn`.
 
 ### Browser errors and session replay
 

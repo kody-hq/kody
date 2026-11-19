@@ -20,7 +20,7 @@
 		},
 		"traces": {
 			"enabled": true,
-			"head_sampling_rate": 0.25,
+			"head_sampling_rate": 0.05,
 		},
 	},
 	"env": {
