@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Global, type CSSObject } from '@emotion/react'
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import { toast } from '#client/toast.ts'
 import type { DesktopNavigationState, DesktopShell } from '../desktop-shell.ts'
@@ -14,20 +14,21 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 	const [shell, setShell] = useState<DesktopShell | null>(null)
 	const [state, setState] = useState<DesktopNavigationState | null>(null)
 	const [addressOpen, setAddressOpen] = useState(false)
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const bridge = window.kodyDesktop
 		if (bridge?.version !== 1) return
+		setShell(bridge)
+		setState(bridge.navigation.initialState ?? null)
 		let active = true
+		let receivedUpdate = false
 		const unsubscribe = bridge.navigation.onChange((next) => {
+			receivedUpdate = true
 			if (active) setState(next)
 		})
 		void bridge.navigation
 			.getState()
 			.then((next) => {
-				if (active) {
-					setShell(bridge)
-					setState(next)
-				}
+				if (active && !receivedUpdate) setState(next)
 			})
 			.catch((error: unknown) => toast.error(String(error)))
 		return () => {
@@ -35,8 +36,8 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 			unsubscribe()
 		}
 	}, [])
-	if (!shell || !state) return null
-	const integratedTitlebar = state.integratedTitlebar && !state.fullscreen
+	if (!shell) return null
+	const integratedTitlebar = state?.integratedTitlebar && !state.fullscreen
 	async function navigate(
 		action: 'back' | 'forward' | 'home' | 'copyAddress' | 'openInBrowser',
 	) {
@@ -117,7 +118,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					type="button"
 					aria-label="Back"
 					title="Back"
-					disabled={!state.canGoBack}
+					disabled={!state?.canGoBack}
 					css={buttonCss}
 					onClick={() => void navigate('back')}
 				>
@@ -127,7 +128,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 					type="button"
 					aria-label="Forward"
 					title="Forward"
-					disabled={!state.canGoForward}
+					disabled={!state?.canGoForward}
 					css={buttonCss}
 					onClick={() => void navigate('forward')}
 				>
@@ -187,7 +188,7 @@ export function DesktopNavigation({ homeHref }: { homeHref: string }) {
 								background="canvas"
 								aria-label="Page address"
 								readOnly
-								value={state.url}
+								value={state?.url ?? window.location.href}
 								onFocus={(event) => event.currentTarget.select()}
 								css={{
 									width: '100%',

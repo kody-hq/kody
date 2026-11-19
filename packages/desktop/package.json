@@ -9,6 +9,7 @@
     "pack": "electron-builder --config electron-builder.cjs --dir --publish never",
     "test": "node --test test/*.test.cjs",
     "validate": "npm test",
+    "test:windows": "node --test test/win-appinstaller.test.cjs test/windows-publisher.test.cjs",
     "test:smoke": "node test/smoke.cjs",
     "test:execution-ui": "node test/execution-ui-smoke.cjs",
     "test:execution-shell": "node test/execution-shell-smoke.cjs",

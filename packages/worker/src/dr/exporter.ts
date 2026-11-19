@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	assertBackupDay,
@@ -8,10 +9,12 @@ import {
 	parseStagingSummary,
 	stagingArtifactsIndexKey,
 	stagingMailboxDumpKey,
+	stagingMailboxDumpPartKey,
 	stagingMailboxIndexKey,
 	stagingPrefix,
 	stagingR2IndexKey,
 	stagingRunLogDumpKey,
+	stagingRunLogDumpPartKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
 	stagingStorageDumpPartKey,
@@ -156,6 +159,8 @@ type OwnerLaneProgress = {
 	partialOwnerId: string | null
 	dumpChunkCount: number
 	dumpChunkHead: string | null
+	/** Closed parts of the partial owner's dump once it outgrows the buffer. */
+	dumpParts?: Array<OwnerIndexEntry>
 	partialEntryCount: number
 	partialBytes: number
 	entryChunkCount: number
@@ -325,6 +330,7 @@ function createInitialOwnerLaneProgress(): OwnerLaneProgress {
 		partialOwnerId: null,
 		dumpChunkCount: 0,
 		dumpChunkHead: null,
+		dumpParts: [],
 		partialEntryCount: 0,
 		partialBytes: 0,
 		entryChunkCount: 0,
@@ -429,6 +435,7 @@ function isOwnerLaneProgress(value: unknown): value is OwnerLaneProgress {
 		isNullableString(lane.partialOwnerId) &&
 		isNonNegativeInteger(lane.dumpChunkCount) &&
 		isNullableString(lane.dumpChunkHead) &&
+		(lane.dumpParts === undefined || Array.isArray(lane.dumpParts)) &&
 		isNonNegativeInteger(lane.partialEntryCount) &&
 		isNonNegativeInteger(lane.partialBytes) &&
 		isNonNegativeInteger(lane.entryChunkCount) &&
@@ -583,14 +590,12 @@ async function loadOrCreateProgress(input: {
 	}
 }
 
-const oversizedMailboxDumpWarningPrefix = 'mailbox dump too large: '
-const oversizedRunLogDumpWarningPrefix = 'run-log dump too large: '
-
 function resetPartialOwnerState(lane: OwnerLaneProgress) {
 	lane.pageStartAfter = null
 	lane.partialOwnerId = null
 	lane.dumpChunkCount = 0
 	lane.dumpChunkHead = null
+	lane.dumpParts = []
 	lane.partialEntryCount = 0
 	lane.partialBytes = 0
 }
@@ -617,23 +622,16 @@ async function collectHandledOwnerIds(input: {
 	s3: DrBackupS3Client
 	progress: DrExporterProgress
 	lane: OwnerLaneProgress
-	oversizedWarningPrefix: string
 }) {
 	const chunkEntries = await readLinkedChunkEntries<OwnerIndexEntry>({
 		s3: input.s3,
 		headKey: input.lane.entryChunkHead,
 		chunkCount: input.lane.entryChunkCount,
 	})
-	const handled = new Set([
+	return new Set([
 		...chunkEntries.map((entry) => entry.ownerId),
 		...input.lane.pendingEntries.map((entry) => entry.ownerId),
 	])
-	for (const warning of input.progress.warnings) {
-		if (warning.startsWith(input.oversizedWarningPrefix)) {
-			handled.add(warning.slice(input.oversizedWarningPrefix.length))
-		}
-	}
-	return handled
 }
 
 type OwnerExportPage = {
@@ -652,8 +650,8 @@ async function exportOwnerPhase(input: {
 	laneName: 'mailbox' | 'run-log'
 	indexKind: 'mailbox-index' | 'run-log-index'
 	initialCursor: string | null
-	oversizedWarningPrefix: string
 	dumpKey: (day: string, ownerId: OwnerId) => string
+	dumpPartKey: (day: string, ownerId: OwnerId, sha256: string) => string
 	fetchPage: (
 		ownerId: OwnerId,
 		startAfter: string | null,
@@ -666,7 +664,6 @@ async function exportOwnerPhase(input: {
 		s3: input.s3,
 		progress,
 		lane: input.lane,
-		oversizedWarningPrefix: input.oversizedWarningPrefix,
 	})
 	const budgetExhausted = () =>
 		Date.now() - input.startedAtMs >= input.timeBudgetMs
@@ -674,6 +671,38 @@ async function exportOwnerPhase(input: {
 	// one partial dump, so the rest stay in memory until this tick commits
 	// them. A crash refetches them; a healthy tick does not.
 	const heldFirstPages: Array<{ ownerId: OwnerId; page: OwnerExportPage }> = []
+
+	async function closeOwnerDumpPart(
+		ownerId: OwnerId,
+		body: string,
+		options: { split: boolean },
+	) {
+		const parts = input.lane.dumpParts ?? []
+		const objectKey = options.split
+			? input.dumpPartKey(progress.day, ownerId, await sha256Hex(body))
+			: input.dumpKey(progress.day, ownerId)
+		const storedBody = await putImmutableOutput({
+			s3: input.s3,
+			key: objectKey,
+			body,
+			contentType: 'application/x-ndjson',
+		})
+		const summary = await fileSummary(objectKey, storedBody)
+		input.lane.dumpParts = [
+			...parts,
+			{
+				ownerId,
+				...(options.split ? { part: parts.length } : {}),
+				objectKey,
+				entryCount: ndjsonEntryCount(storedBody),
+				bytes: summary.bytes,
+				sha256: summary.sha256,
+			},
+		]
+		input.lane.dumpChunkHead = null
+		input.lane.dumpChunkCount = 0
+		input.lane.partialBytes = 0
+	}
 
 	async function consumeOwnerPage(
 		ownerId: OwnerId,
@@ -687,14 +716,18 @@ async function exportOwnerPhase(input: {
 		const pageBytes = utf8ByteLength(pageBody)
 		input.lane.partialEntryCount += page.entries.length
 		if (
-			input.lane.partialBytes + pageBytes >
-			drExportMaxStorageDumpBufferBytes
+			input.lane.partialBytes > 0 &&
+			input.lane.partialBytes + pageBytes > drExportMaxStorageDumpBufferBytes
 		) {
-			progress.warnings.push(`${input.oversizedWarningPrefix}${ownerId}`)
-			input.lane.ownerIndex += 1
-			resetPartialOwnerState(input.lane)
-			handledOwnerIds.add(ownerId)
-			return 'complete'
+			await closeOwnerDumpPart(
+				ownerId,
+				await readLinkedChunkBody({
+					s3: input.s3,
+					headKey: input.lane.dumpChunkHead,
+					chunkCount: input.lane.dumpChunkCount,
+				}),
+				{ split: true },
+			)
 		}
 		if (pageBody.length > 0) {
 			input.lane.dumpChunkHead = await putLinkedChunk({
@@ -714,26 +747,16 @@ async function exportOwnerPhase(input: {
 			input.lane.pageStartAfter = page.nextStartAfter
 			return 'truncated'
 		}
-		const objectKey = input.dumpKey(progress.day, ownerId)
 		const body = await readLinkedChunkBody({
 			s3: input.s3,
 			headKey: input.lane.dumpChunkHead,
 			chunkCount: input.lane.dumpChunkCount,
 		})
-		const storedBody = await putImmutableOutput({
-			s3: input.s3,
-			key: objectKey,
-			body,
-			contentType: 'application/x-ndjson',
-		})
-		const summary = await fileSummary(objectKey, storedBody)
-		input.lane.pendingEntries.push({
-			ownerId,
-			objectKey,
-			entryCount: ndjsonEntryCount(storedBody),
-			bytes: summary.bytes,
-			sha256: summary.sha256,
-		})
+		const split = (input.lane.dumpParts?.length ?? 0) > 0
+		if (body.length > 0 || !split) {
+			await closeOwnerDumpPart(ownerId, body, { split })
+		}
+		input.lane.pendingEntries.push(...(input.lane.dumpParts ?? []))
 		if (input.lane.pendingEntries.length >= indexChunkEntryLimit) {
 			await flushOwnerIndexChunk({
 				s3: input.s3,
@@ -934,8 +957,8 @@ async function exportMailboxPhase(input: {
 		laneName: 'mailbox',
 		indexKind: 'mailbox-index',
 		initialCursor: null,
-		oversizedWarningPrefix: oversizedMailboxDumpWarningPrefix,
 		dumpKey: stagingMailboxDumpKey,
+		dumpPartKey: stagingMailboxDumpPartKey,
 		async fetchPage(ownerId, startAfter) {
 			const page = await mailboxRpc({
 				env: input.env,
@@ -972,8 +995,8 @@ async function exportRunLogPhase(input: {
 		laneName: 'run-log',
 		indexKind: 'run-log-index',
 		initialCursor: runLogInitialCursor,
-		oversizedWarningPrefix: oversizedRunLogDumpWarningPrefix,
 		dumpKey: stagingRunLogDumpKey,
+		dumpPartKey: stagingRunLogDumpPartKey,
 		async fetchPage(ownerId, startAfter) {
 			const page = await runLogRpc({
 				env: input.env,
@@ -1074,6 +1097,16 @@ async function exportStoragePhase(input: {
 					abortedAttempts: stall.attempts,
 				}),
 			)
+			Sentry.withScope((scope) => {
+				scope.setFingerprint(['dr', 'export-storage-identity-skipped'])
+				scope.setTag('dr.cause', 'export-storage-identity-skipped')
+				scope.setTag('dr.day', progress.day)
+				scope.setContext('dr_export', { identity: suspect.identity })
+				Sentry.captureMessage(
+					'DR export left out a storage identity whose dump kept aborting the exporter',
+					'error',
+				)
+			})
 			progress.warnings.push(
 				`${failedStorageDumpWarningPrefix}${suspect.identity}`,
 			)

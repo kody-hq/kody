@@ -44,6 +44,7 @@ import {
 	withCredentialAudit,
 } from '#mcp/capabilities/secrets/secret-set-opt-in.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { isPublicCredentialEndpoint } from '#worker/integrations/secure-credential-url.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import type { StorageContext } from '#mcp/storage.ts'
@@ -63,6 +64,7 @@ import {
 	setSecretsAllowedHosts,
 	setSecretsAllowedPackages,
 } from '#mcp/secrets/service.ts'
+import { assertPlaceholderSecretName } from '#mcp/secrets/secret-name-references.ts'
 import type { SecretScope } from '#mcp/secrets/types.ts'
 import {
 	credentialHostsSchema,
@@ -1119,6 +1121,12 @@ async function exchangeOAuthToken(input: {
 		)
 	}
 
+	if (!isPublicCredentialEndpoint(input.tokenUrl)) {
+		return operationResult(
+			{ ok: false, error: 'Token URL must use https and a public host.' },
+			400,
+		)
+	}
 	const response = await fetch(input.tokenUrl, {
 		method: 'POST',
 		headers: exchangeRequest.headers,
@@ -1962,6 +1970,7 @@ export async function saveAccountSecret(input: {
 	let renamedInPlace = false
 	if (willRenameInPlace && currentSecret) {
 		try {
+			assertPlaceholderSecretName(name)
 			// Audited once below, after the save succeeds, so a rolled back
 			// rename leaves no audit row.
 			const renamed = await renameSecret({

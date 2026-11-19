@@ -1,4 +1,6 @@
 import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
+import { sendGatedTransactionalEmail } from '#worker/email/transactional-send-policy.ts'
 import { personalOrgId } from '@kody-internal/shared/owner-person-ids.ts'
 import { deleteUserAccount } from '#app/account-deletion.ts'
 import { scheduleFounderWelcomeEmail } from '#app/founder-welcome-email.ts'
@@ -473,6 +475,35 @@ export async function mergeGuestIntoAccount(
 		personUserId: guest.personId,
 		keepOAuthGrants: true,
 	})
+	await (async () => {
+		const config = resolveTransactionalEmailConfig({
+			env,
+			requestUrl: input.baseUrl,
+		})
+		if (!config) throw new Error('Email configuration unavailable')
+		const reviewUrl = new URL('/account/connected-apps', config.appBaseUrl).href
+		const text = `A guest account was merged into your Kody account. The agent connection that created it now has access to your account, including its packages, secrets, email and jobs. Review or revoke connected apps: ${reviewUrl}`
+		const sent = await sendGatedTransactionalEmail({
+			db,
+			config: {
+				accountId: env.CLOUDFLARE_ACCOUNT_ID,
+				apiBaseUrl: env.CLOUDFLARE_API_BASE_URL,
+				apiToken: env.CLOUDFLARE_API_TOKEN,
+			},
+			category: 'essential',
+			kind: 'guest_claim_merged',
+			message: {
+				to: target.email,
+				from: config.fromEmail,
+				subject: 'A guest account was merged into your Kody account',
+				text,
+				html: `<p>A guest account was merged into your Kody account. The agent connection that created it now has access to your account, including its packages, secrets, email and jobs.</p><p><a href="${reviewUrl}">Review or revoke connected apps</a></p>`,
+			},
+		})
+		if (!sent.ok) console.warn('guest-claim-notification-failed')
+	})().catch((error: unknown) =>
+		console.warn('guest-claim-notification-failed', error),
+	)
 	void logAuditEvent({
 		db: auditDatabaseFromEnv(env),
 		category: 'auth',

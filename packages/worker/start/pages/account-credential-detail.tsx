@@ -1,5 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 
 import { css } from '@emotion/react'
@@ -10,6 +9,7 @@ import {
 	TimestampValue,
 } from './account-management-components.tsx'
 import { CredentialHostsEditor } from './account-credential-hosts-editor.tsx'
+import { CredentialEditAction } from './account-credential-edit.tsx'
 import { CredentialFillPlacementEditor } from './account-credential-fill-placement-editor.tsx'
 import { RecordChips, recordBodyCss } from './record-table.tsx'
 import {
@@ -310,6 +310,10 @@ export function renderCredentialDetail(input: {
 	credential: CredentialListItem
 	detail: AccountCredentialDetail | null
 	manageHref: string
+	/** The org that owns the credential, where Edit saves it. */
+	editOrgSlug: string
+	/** The list without this record, for after a delete. */
+	listHref: string
 	teamOrg: boolean
 	packagesById: ReadonlyMap<string, { kodyId: string }>
 	/** The organization whose credential is being edited. */
@@ -628,11 +632,14 @@ export function renderCredentialDetail(input: {
 
 			<p css={mutedCss}>Values never appear here.</p>
 
-			<div>
-				<Button href={input.manageHref} variant="secondary">
-					{editLabel(credential.kind)}
-				</Button>
-			</div>
+			<CredentialEditAction
+				key={credential.id}
+				credential={credential}
+				editOrgSlug={input.editOrgSlug}
+				manageHref={input.manageHref}
+				listHref={input.listHref}
+				label={editLabel(credential.kind)}
+			/>
 		</section>
 	)
 }

@@ -167,20 +167,6 @@ small badge in the app chrome and exists so the system stays exercised
 end-to-end. Experiment flags live in the same registry and are removed in the
 same way: delete the definition and every gate site.
 
-`mcp-skills-extension` is an experiment (default **off**, registry
-`defaultAudience: experiments_opt_in`) for Skills-over-MCP (SEP-2640). Packages
-may ship Agent Skills at `skills/<name>/SKILL.md`; publish validates them and
-stores a per-package-version skills index. When on for a caller and the MCP
-client advertises the skills extension, Kody exposes those skills through
-`skills/list`, `skills/get`, and `resources/read` as a progressive enhancement.
-When off (or the client does not advertise the extension), the MCP surface stays
-`search` / `execute` / `api`. Signed-in users can opt themselves in from
-`/docs/package-skills`. The declared `successMetric` is `execute` event count,
-goal increase: skill-aware hosts load package skills, then act via `execute`.
-Enable for experiment members with
-`adminFeatureFlagSet({ key: "mcp-skills-extension", enabled: true, audience: "experiments_opt_in" })`.
-Remove the flag and gate sites when the experiment ends.
-
 `mcp-events-extension` is an experiment (default **off**, registry
 `defaultAudience: experiments_opt_in`) for the draft MCP Events extension
 (webhook delivery only; see
@@ -196,34 +182,50 @@ receiving deliveries. Signed-in users can also turn it on from
 `execute` event count, goal increase: event-driven clients follow deliveries
 with execute calls. Exposures use `exposureRecording: mcp-events-clients`
 (dedicated write from the `registerMcpEvents` `events/*` handlers only), so
-execute and other non-events MCP callers stay out of the on/off cohorts. Enable
-for experiment members with
+execute and other non-events MCP callers stay out of the on/off cohorts.
+
+Because that cohort only counts `events/*` callers, it reads near zero when the
+connected hosts cannot use events at all (Claude Code, Codex, and Cursor never
+call `events/*`). `adminFeatureFlagList` therefore also attaches a
+`clientSupportReadout` for this flag, read from `kody_mcp_protocol_events`
+(blob9 records whether a request's client capabilities declare events). It
+splits month-to-date MCP users into `doesNotAdvertise` (never declared events
+and never called `events/*`), `advertisesNotSubscribed` (declared events or
+called an `events/*` method, never `events/subscribe`), and `subscribed`, in
+total and per client name. Readout criteria for ending the experiment (#3686):
+judge adoption only among users whose clients advertise events
+(`advertisesNotSubscribed + subscribed`), not all MCP users. A low on-cohort
+count with most users in `doesNotAdvertise` means host support is missing, not
+that the feature failed; remove only if events-advertising users stay below 10
+for the window, or if they advertise but almost none subscribe. Enable for
+experiment members with
 `adminFeatureFlagSet({ key: "mcp-events-extension", enabled: true, audience: "experiments_opt_in" })`.
 Remove the flag and gate sites when the experiment ends.
 
 `repo-push-queue` is the repo-scoped kill switch for the per-repo push queue
-([ADR 0075](../decisions/0075-repo-push-queue-worker.md)); it stays in the
-registry after the global rollout so operators can turn the queue off. Its
-`successMetric` is the observe-only `git_push` event, `error_rate`, goal
-decrease: pushes should stop failing with busy (`503` + `Retry-After`), timeout
-(the queue's 90s budget), or other errors. Every receive-pack through the
-plain-repo git proxy records one `git_push` event for the repo owner
-(`entity_sources.user_id`, a person's stable id or an org id) with entity id
-`queued` or `direct`, the outcome and error name, wall time (the Durable
-Object's own wall time for queued pushes), wait before the first Artifacts send,
-queue depth on arrival, and Artifacts attempts. Exposures use
-`exposureRecording: 'repo-push-owners'`: the proxy writes one per push for the
-repo owner with the same evaluation that routed it, so the readout joins
-exposures and pushes on the owner id. An owner whose repos saw both values in
-the window counts as mixed, and owners with an allowlisted repo
-(`adminFeatureFlagRepoOverride`, source `override`) or an owner override land in
-the override cohort. Pushes on a deploy without the `REPO_PUSH_QUEUE` binding
-(local dev) or where flag evaluation failed record `git_push` but no exposure.
-Queue cost numbers (per path: ok/busy/timeout/error counts and rates, average
-and max wall time, total wall seconds, wait, attempts and busy retries, queue
-depth) come from `adminRepoPushQueueCost({ days })`, which returns aggregates
-only (never owners, usernames, or repo ids). Production writes go only to
-Analytics Engine; there is no per-push D1 write.
+([ADR 0075](../decisions/0075-repo-push-queue-worker.md)). It is on for everyone
+(registry `defaultEnabled: true`, no audience gate) and stays in the registry
+only as a temporary kill switch: after two clean weeks on the queue, the direct
+wait-and-retry path and the flag are deleted together. Its `successMetric` is
+the observe-only `git_push` event, `error_rate`, goal decrease: pushes should
+stop failing with busy (`503` + `Retry-After`), timeout (the queue's 90s
+budget), or other errors. Every receive-pack through the plain-repo git proxy
+records one `git_push` event for the repo owner (`entity_sources.user_id`, a
+person's stable id or an org id) with entity id `queued` or `direct`, the
+outcome and error name, wall time (the Durable Object's own wall time for queued
+pushes), wait before the first Artifacts send, queue depth on arrival, and
+Artifacts attempts. Exposures use `exposureRecording: 'repo-push-owners'`: the
+proxy writes one per push for the repo owner with the same evaluation that
+routed it, so the readout joins exposures and pushes on the owner id. An owner
+whose repos saw both values in the window counts as mixed, and owners with an
+allowlisted repo (`adminFeatureFlagRepoOverride`, source `override`) or an owner
+override land in the override cohort. Pushes on a deploy without the
+`REPO_PUSH_QUEUE` binding (local dev) or where flag evaluation failed record
+`git_push` but no exposure. Queue cost numbers (per path: ok/busy/timeout/error
+counts and rates, average and max wall time, total wall seconds, wait, attempts
+and busy retries, queue depth) come from `adminRepoPushQueueCost({ days })`,
+which returns aggregates only (never owners, usernames, or repo ids). Production
+writes go only to Analytics Engine; there is no per-push D1 write.
 
 ## Success metrics
 

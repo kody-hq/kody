@@ -1,6 +1,5 @@
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
-import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishBuildState } from './publish-build-state.ts'
@@ -323,12 +322,12 @@ function rejected(message: string) {
 /**
  * Commit-time gate for `packagePublishExternalPush({ publish_build_id })`:
  * the flag is on, the build belongs to this package, publisher and pushed
- * commit, and it is sealed. Its Kody package imports are linked and
- * checked when the upload is committed (6C).
+ * commit, and it is sealed. Durable publish runs on the runtime Worker,
+ * which doesn't have the upload bucket. RepoSession reads and verifies the
+ * sealed document and links its Kody package imports before serving.
  */
 export async function resolveUploadedPublishBuildForPublish(input: {
-	env: Env
-	request: RequestContext | null | undefined
+	db: D1Database
 	buildId: string
 	packageId: string
 	sourceId: string
@@ -338,7 +337,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 }): Promise<UploadedPublishBuildRef> {
 	if (
 		!(await isPublishOffloadEnabledFor(
-			input.env.APP_DB,
+			input.db,
 			input.requesterUserId,
 			input.orgId,
 		))
@@ -347,7 +346,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 			'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
 		)
 	}
-	const row = await getPublishBuild(input.env.APP_DB, input.buildId)
+	const row = await getPublishBuild(input.db, input.buildId)
 	if (
 		!row ||
 		row.package_id !== input.packageId ||
@@ -367,11 +366,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	if (row.status === 'rejected') {
 		throw rejected(row.message ?? 'this build already failed verification.')
 	}
-	const document = await readPublishBuildDocument({
-		bucket: input.env.REPO_SESSION_BLOBS,
-		row,
-	})
-	if (!document) throw rejected('the build has no sealed manifest.')
+	if (!row.document_sha256) throw rejected('the build has no sealed manifest.')
 	return {
 		buildId: row.id,
 		origin: row.origin,

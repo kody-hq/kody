@@ -38,6 +38,7 @@ import type {
 	StoredBackup,
 } from './backup-types.ts'
 import { signBackupManifest } from './manifest-signing.ts'
+import { captureRestExportFailure } from './sentry.ts'
 
 /**
  * Persist per-object statement-length statistics next to the SQL object and
@@ -365,6 +366,7 @@ export async function runBackupRuntime(
 	const startedAt = event.timestamp.toISOString()
 	let payload: BackupPayload | undefined
 	let objectKey: string | undefined
+	let sourceName: string | undefined
 	try {
 		if (!isBackupEnabled(env)) {
 			throw new BackupError(
@@ -380,6 +382,7 @@ export async function runBackupRuntime(
 			checkedPayload.day,
 			checkedPayload.retentionTier,
 		)
+		sourceName = source.name
 		const sourceEnv = bindSourceDatabase(env, source)
 		await step.do(
 			'verify-source-identity',
@@ -604,6 +607,11 @@ export async function runBackupRuntime(
 			objectKey,
 			manifestKey: payload?.manifestKey,
 			errorCode: errorCode(error),
+		})
+		captureRestExportFailure({
+			databaseName: sourceName ?? 'unknown',
+			day: payload?.day,
+			code: errorCode(error),
 		})
 		throw error
 	}

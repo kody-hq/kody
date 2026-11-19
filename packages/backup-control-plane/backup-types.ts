@@ -9,16 +9,21 @@ export interface BackupEnvironment {
 	BACKUP_WORKFLOW: Workflow
 	RESTORE_WORKFLOW: Workflow
 	SEAL_WORKFLOW: Workflow
+	PACED_DRILL_WORKFLOW: Workflow
 	CLOUDFLARE_API_TOKEN: string
 	SOURCE_ACCOUNT_ID: string
 	SOURCE_DATABASE_ID: string
 	SOURCE_DATABASE_NAME: string
 	SOURCE_DATABASES?: string
+	/** JSON `[{ id, name }]` of paced D1 sources (full seal D1 source of truth). */
+	D1_PACED_SOURCES?: string
 	ALLOWED_SOURCE_ACCOUNT_IDS: string
 	ALLOWED_SOURCE_DATABASE_IDS: string
 	ENABLE_PRODUCTION_D1_BACKUPS: string
 	BACKUP_BENCHMARK_APPROVED: string
 	BUILD_COMMIT: string
+	SENTRY_DSN?: string
+	SENTRY_ENVIRONMENT?: string
 	BACKUP_MANIFEST_SIGNING_KEY_ID: string
 	BACKUP_MANIFEST_SIGNING_PRIVATE_KEY_PKCS8_BASE64: string
 	BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64: string
@@ -118,8 +123,12 @@ export interface LogRecord {
 		| 'full-backup-sealed'
 		| 'full-backup-already-sealed'
 		| 'full-backup-seal-skipped'
+		| 'full-backup-rest-d1-omitted'
 		| 'full-backup-seal-failure'
 		| 'restore-drill-started'
+		| 'paced-restore-drill-source-passed'
+		| 'paced-restore-drill-source-failed'
+		| 'ui-run-paced-drill'
 		| 'restore-drill-success'
 		| 'restore-drill-failure'
 		| 'production-restore-safety-export-started'

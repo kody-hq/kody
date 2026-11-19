@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 
-export type StartupBundleOverageName = 'origin' | 'platform' | 'runtime'
+type StartupBundleOverageName = 'origin' | 'platform' | 'runtime'
 
 export type StartupBundleOverage = {
 	name: StartupBundleOverageName
@@ -16,13 +16,11 @@ export type StartupBundleOverageIssueAction =
 
 const startupBundleOverageIssueLabel = 'friction'
 
-export function startupBundleOverageIssueTitle(name: StartupBundleOverageName) {
+function startupBundleOverageIssueTitle(name: StartupBundleOverageName) {
 	return `Startup budget overage: ${name}`
 }
 
-export function startupBundleOverageIssueMarker(
-	name: StartupBundleOverageName,
-) {
+function startupBundleOverageIssueMarker(name: StartupBundleOverageName) {
 	return `<!-- kody-startup-bundle-overage:${name} -->`
 }
 
@@ -75,7 +73,7 @@ function buildStartupBundleOverageIssueBody(
 	return `${lines.join('\n').trimEnd()}\n`
 }
 
-export function shouldReportStartupBundleOverageIssue(
+function shouldReportStartupBundleOverageIssue(
 	env: NodeJS.ProcessEnv = process.env,
 ) {
 	const token = env.GH_TOKEN ?? env.GITHUB_TOKEN

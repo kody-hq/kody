@@ -1,5 +1,4 @@
 import {
-	pacedD1BackupSchemaVersion,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedDataKey,
 	pacedD1SealedDataPartKey,
@@ -22,61 +21,12 @@ import {
 	sha256HexOfText,
 	type PacedD1IndexEntry,
 } from '@kody-internal/shared/backup-d1-paced-encode.ts'
-import { isRecord } from '@kody-internal/shared/is-record.ts'
+import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
 import type { PacedD1SourceConfig } from '#worker/dr/d1-paced-backup-sources.ts'
-
-export type PacedD1PartsPointer = {
-	schemaVersion: typeof pacedD1BackupSchemaVersion
-	kind: 'paced-d1-parts'
-	partCount: number
-	dataSha256: string
-	indexSha256: string
-	dataPartDigests: Array<string>
-	indexPartDigests: Array<string>
-}
-
-const sha256Pattern = /^[0-9a-f]{64}$/
-
-export function parsePacedD1PartsPointer(
-	text: string,
-): PacedD1PartsPointer | null {
-	const trimmed = text.trim()
-	if (!trimmed.startsWith('{')) return null
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(trimmed) as unknown
-	} catch {
-		return null
-	}
-	if (
-		!isRecord(parsed) ||
-		parsed.schemaVersion !== pacedD1BackupSchemaVersion ||
-		parsed.kind !== 'paced-d1-parts' ||
-		!Number.isSafeInteger(parsed.partCount) ||
-		(parsed.partCount as number) < 0 ||
-		typeof parsed.dataSha256 !== 'string' ||
-		!sha256Pattern.test(parsed.dataSha256) ||
-		typeof parsed.indexSha256 !== 'string' ||
-		!sha256Pattern.test(parsed.indexSha256) ||
-		!Array.isArray(parsed.dataPartDigests) ||
-		!Array.isArray(parsed.indexPartDigests) ||
-		parsed.dataPartDigests.length !== parsed.partCount ||
-		parsed.indexPartDigests.length !== parsed.partCount ||
-		!parsed.dataPartDigests.every(
-			(digest) => typeof digest === 'string' && sha256Pattern.test(digest),
-		) ||
-		!parsed.indexPartDigests.every(
-			(digest) => typeof digest === 'string' && sha256Pattern.test(digest),
-		)
-	) {
-		return null
-	}
-	return parsed as PacedD1PartsPointer
-}
 
 async function putImmutable(
 	s3: DrBackupS3Client,

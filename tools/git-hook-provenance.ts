@@ -43,7 +43,7 @@ const emptyDocument = (): GitHookProvenanceDocument => ({
 	checks: {},
 })
 
-export function provenanceFilePath(repoRoot = process.cwd()) {
+function provenanceFilePath(repoRoot = process.cwd()) {
 	return join(repoRoot, gitHookProvenanceRelativePath)
 }
 

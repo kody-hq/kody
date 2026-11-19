@@ -1,3 +1,4 @@
+import { resolveReadableEmailInboxFilter } from '#worker/email/authorize-email-message.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -51,10 +52,17 @@ export const emailMessageListCapability = defineDomainCapability(
 		}),
 		async handler(args, ctx) {
 			const user = await requireVerifiedEmailAccountUser(ctx)
+			const ownerId = emailOwnerOrgId(ctx, user)
+			const inboxFilter = await resolveReadableEmailInboxFilter({
+				env: ctx.env,
+				request: ctx.callerContext.request,
+				ownerId,
+				inboxId: args.inbox_id ?? null,
+			})
 			const messages = await listOwnerEmailMessages({
 				env: ctx.env,
-				ownerId: emailOwnerOrgId(ctx, user),
-				inboxId: args.inbox_id ?? null,
+				ownerId,
+				...inboxFilter,
 				direction: args.direction ?? null,
 				processingStatus: args.processing_status ?? null,
 				deliveryStatus: args.delivery_status ?? null,

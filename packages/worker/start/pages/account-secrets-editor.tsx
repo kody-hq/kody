@@ -49,6 +49,8 @@ export type SecretEditorProps = {
 	removeAllowedHost: (index: number) => void
 	addAllowedPackage: (packageId: string) => void
 	removeAllowedPackage: (packageId: string) => void
+	/** Inline editors close without saving. */
+	onCancel?: () => void
 }
 
 export function SecretEditor(props: SecretEditorProps) {
@@ -80,6 +82,7 @@ export function SecretEditor(props: SecretEditorProps) {
 		removeAllowedHost,
 		addAllowedPackage,
 		removeAllowedPackage,
+		onCancel,
 	} = props
 	return (
 		<form
@@ -119,7 +122,17 @@ export function SecretEditor(props: SecretEditorProps) {
 					},
 				}}
 			>
-				<Field label="Name">
+				<Field
+					label="Name"
+					description={
+						selectedSecret &&
+						!isCreating &&
+						editorState.name.trim() !== selectedSecret.name &&
+						editorState.scope === selectedSecret.scope
+							? `Renaming keeps this secret's id, value, grants, package credential mappings, and history. References by name do not follow: update {{secret:${selectedSecret.name}}} placeholders and code that names "${selectedSecret.name}" to the new name.`
+							: undefined
+					}
+				>
 					<Input
 						type="text"
 						required
@@ -275,6 +288,16 @@ export function SecretEditor(props: SecretEditorProps) {
 				>
 					{saveState === 'saving' ? 'Saving...' : 'Save'}
 				</Button>
+				{onCancel ? (
+					<Button
+						type="button"
+						disabled={isMutating}
+						variant="secondary"
+						onClick={onCancel}
+					>
+						Cancel
+					</Button>
+				) : null}
 				{editorState.currentId ? (
 					<>
 						{disconnected ? null : (

@@ -19,7 +19,7 @@ import type { BackupEnvironment } from './backup-types.ts'
 import {
 	htmlResponse,
 	renderDashboard,
-	renderDrillReport,
+	renderPacedDrillStatusPage,
 	renderEnqueueResult,
 	renderMessagePage,
 	renderRestoreAlreadyStartedPage,
@@ -35,7 +35,12 @@ import {
 	issueRestoreConfirmToken,
 	verifyRestoreConfirmToken,
 } from './restore-confirm-token.ts'
-import { runRestoreDrill } from './restore-drill.ts'
+import {
+	dayFromPacedDrillRunId,
+	latestPacedSealedDay,
+	pacedDrillRunId,
+	readPacedDrillProgress,
+} from './paced-restore-drill.ts'
 import {
 	dayFromSealWorkflowInstanceId,
 	describeSealStatus,
@@ -134,6 +139,23 @@ async function handleAuthenticated(
 		}
 	}
 
+	if (request.method === 'GET' && path === '/paced-drill-status') {
+		const runId = url.searchParams.get('id') ?? ''
+		const progress = await readPacedDrillProgress(env, runId)
+		if (progress === null) {
+			return htmlResponse(
+				renderPacedDrillStatusPage({
+					runId,
+					day: dayFromPacedDrillRunId(runId) ?? '',
+					status: 'running',
+					updatedAt: 'not yet, the run is queued',
+					sources: [],
+				}),
+			)
+		}
+		return htmlResponse(renderPacedDrillStatusPage(progress))
+	}
+
 	if (request.method === 'GET' && path === '/restore-status') {
 		const id = url.searchParams.get('id')
 		if (!id) {
@@ -225,21 +247,20 @@ async function handleAuthenticated(
 			location.searchParams.set('id', instanceId)
 			return seeOther(location.toString())
 		}
-		case '/actions/run-drill': {
-			const day = requireDay(form.get('day'))
-			const report = await runRestoreDrill(env, day, {
-				database: form.get('database') ?? undefined,
-			})
+		case '/actions/run-paced-drill': {
+			const now = new Date()
+			const day = await latestPacedSealedDay(env, now)
+			const runId = pacedDrillRunId(day, now)
+			await enqueueWorkflow(env.PACED_DRILL_WORKFLOW, runId, { runId, day })
 			safeLog({
-				event: 'ui-run-drill',
-				status: report.errorCode === null ? 'success' : 'failure',
+				event: 'ui-run-paced-drill',
+				status: 'success',
 				day,
-				errorCode: report.errorCode ?? undefined,
+				instanceId: runId,
 			})
-			return htmlResponse(
-				renderDrillReport(report),
-				report.errorCode === null ? 200 : 500,
-			)
+			const location = new URL('/paced-drill-status', request.url)
+			location.searchParams.set('id', runId)
+			return seeOther(location.toString())
 		}
 		case '/actions/restore/prepare': {
 			const day = requireDay(form.get('day'))
@@ -255,9 +276,20 @@ async function handleAuthenticated(
 				renderRestorePreparePage({
 					day,
 					sourceDatabaseName: env.SOURCE_DATABASE_NAME,
-					sqlObjectKey: validated.sqlObjectKey,
-					sqlBytes: validated.sqlBytes,
-					sqlSha256: validated.sqlSha256,
+					d1:
+						validated.kind === 'paced'
+							? {
+									kind: 'paced',
+									sourceNames: validated.pacedSources.map(
+										(source) => source.name,
+									),
+								}
+							: {
+									kind: 'rest',
+									sqlObjectKey: validated.sqlObjectKey,
+									sqlBytes: validated.sqlBytes,
+									sqlSha256: validated.sqlSha256,
+								},
 					token,
 				}),
 			)

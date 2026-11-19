@@ -9,8 +9,9 @@ for user-facing Kody product feedback. This page is for developing the
 that needs a secret handshake, a type that lies.
 
 This page is the policy for humans and agents: when to file, where it belongs,
-and how to judge fixes. Durable API, qualify, daily investigation steps, and
-operator controls live in
+and how to judge fixes. The filing API and qualify rules live in
+[@kody/kody-factory](https://kody.codes/@kody/kody-factory) (`friction/file`).
+The daily sweep and its operator controls live in
 [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log). Do not
 write entries under `.agents/friction-log/`. Prefer fewer high-signal issues and
 one clear contract over aliases, special-cases, or session noise.
@@ -32,7 +33,7 @@ Search open `friction` issues first (`gh issue list --label friction` or
 `kody:@kentcdodds/friction-log/scan`). Comment on a match instead of opening a
 duplicate.
 
-`create` / `file` also **soft-skip** (no throw; result lands in `skipped`) when
+`friction/file` also **soft-skips** (no throw; result lands in `skipped`) when
 qualify fails: missing/invalid `target`, no reproducible gap, or
 session-bound/transient shape. Treat soft-skip as "do not file," not as a
 retry-with-aliases signal.
@@ -43,8 +44,7 @@ papercuts that still meet the bar above.
 
 ## Where it belongs
 
-Both `create` and `file` require
-`target: { host: 'github' | 'kody', repo: string }`.
+`friction/file` requires `target: { host: 'github' | 'kody', repo: string }`.
 
 | Ownership                                                                                | `target`                                                                                                     | Route                                                                                           |
 | ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
@@ -89,18 +89,20 @@ Humans can use the
 [Friction issue form](../../.github/ISSUE_TEMPLATE/friction.yml), which applies
 the `friction` label.
 
-Agents file leftovers through `kody:@kentcdodds/friction-log/file` (`target` +
-`items`, including a one-element array) via prefer-local CLI execute when
-available
+Agents file leftovers through `kody:@kody/kody-factory/friction/file` (run with
+`--org kody`; `target` + `items`, including a one-element array) via
+prefer-local CLI execute
 ([prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md)).
-Use `./create` only for its top-level single-issue fields (not `items`). If
-`--local` cannot run, fix the environment so local works. Open API / MCP `api`
-cannot invoke this package export, and hosted MCP `execute` is banned. Always
-pass `target`. Contract, fields, soft-skip shapes, and examples live in the
-[package](https://kody.codes/@kentcdodds/friction-log).
+It opens the same labeled GitHub issue (or Patch wake) as the old export. If the
+factory export errors, use the old `kody:@kentcdodds/friction-log/file` (run
+without `--org kody`) with the same params. If `--local` cannot run, fix the
+environment so local works. Open API / MCP `api` cannot invoke this package
+export, and hosted MCP `execute` is banned. Always pass `target`. Contract,
+fields, soft-skip shapes, and examples live in the
+[factory package](https://kody.codes/@kody/kody-factory).
 
 [file-friction](../../.agents/skills/file-friction/SKILL.md) is the short entry
-point outside the ship-pr leftover pass. Ship-pr uses `./file` before Discord.
+point outside the ship-pr leftover pass. Ship-pr files leftovers before Discord.
 
 Do not use `gh issue create` or `kody:@kentcdodds/github/request` POST to
 `/repos/kody-hq/kody/issues`. Those paths can omit the `friction` label, so the

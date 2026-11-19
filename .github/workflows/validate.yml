@@ -1112,8 +1112,9 @@ jobs:
           test/dev-local-kody-mapped-deps.test.ts
 
   cli_windows:
-    # Windows execution contexts (kody daemon, host folders, Task Scheduler):
-    # x64 natively and Windows on Arm running the x64 workerd under emulation.
+    # Windows paths, shells, keyring, and installers (kody daemon, host
+    # folders, Task Scheduler, workerd binary): x64 natively and Windows on
+    # Arm running the x64 workerd under emulation.
     strategy:
       fail-fast: false
       matrix:
@@ -1152,11 +1153,13 @@ jobs:
       - name: 📥 Install deps
         uses: ./.github/actions/npm-ci
 
-      - name: 🧪 CLI validate
-        run: npm run cli:validate
+      # The full CLI and desktop suites run once, on Linux. Windows runs
+      # only the path, shell, keyring, and installer tests.
+      - name: 🧪 CLI Windows tests
+        run: npm run test:windows -w @kodycodes/cli
 
-      - name: Desktop validate
-        run: npm run desktop:validate
+      - name: Desktop Windows tests
+        run: npm run test:windows -w @kodycodes/desktop
 
   validate:
     # Final merge gate stays on GitHub-hosted ubuntu-latest even when

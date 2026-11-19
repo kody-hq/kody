@@ -18,6 +18,7 @@ import {
 	type MailboxCountResult,
 	type MailboxDeliveryEventInput,
 	type MailboxDeliveryEventRecord,
+	type MailboxExportRow,
 	type MailboxMessageInput,
 	type MailboxMessageRecord,
 	type MailboxRpc,
@@ -35,8 +36,11 @@ import {
 	loadVerifiedMailboxIndex,
 } from '#worker/dr/mailbox-import-media.ts'
 import {
-	parseMailboxDump,
-	type ParsedMailboxDump,
+	parseMailboxDumpRows,
+	summarizeMailboxDump,
+	type MailboxDumpRowKind,
+	type MailboxDumpRowOf,
+	type MailboxDumpSummary,
 } from '#worker/dr/mailbox-import-snapshot.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 
@@ -120,21 +124,74 @@ function requireNonNegativeInteger(value: unknown, field: string): number {
 	return value
 }
 
-async function loadVerifiedMailboxDump(
+type MailboxOwnerDump = { ownerId: string; parts: Array<OwnerIndexEntry> }
+
+type MailboxDumpReader = MailboxDumpSummary & {
+	rows<K extends MailboxDumpRowKind>(
+		kind: K,
+		from: number,
+	): AsyncGenerator<MailboxDumpRowOf<K>>
+}
+
+/** Reads one verified part at a time; rows stream instead of loading whole. */
+async function openMailboxDump(
 	s3: DrBackupS3Client,
 	day: string,
-	entry: OwnerIndexEntry,
-): Promise<ParsedMailboxDump> {
-	const text = await loadVerifiedMailboxDumpText({ s3, day, entry })
-	return parseMailboxDump(text, entry.entryCount)
+	owner: MailboxOwnerDump,
+	sourceOwnerId: OwnerId,
+): Promise<MailboxDumpReader> {
+	const loadPart = async (index: number) => {
+		const part = owner.parts[index]!
+		const text = await loadVerifiedMailboxDumpText({
+			s3,
+			day,
+			ownerId: owner.ownerId,
+			parts: [part],
+		})
+		return parseMailboxDumpRows(text, part.entryCount)
+	}
+	const summary = await summarizeMailboxDump({
+		partCount: owner.parts.length,
+		loadPart,
+		onRow: (row) => assertCanonicalDumpBlobKey(row, sourceOwnerId),
+	})
+	return {
+		...summary,
+		async *rows<K extends MailboxDumpRowKind>(kind: K, from: number) {
+			let kindIndex = 0
+			for (let index = 0; index < owner.parts.length; index += 1) {
+				const inPart = summary.partCounts[index]![kind]
+				if (kindIndex + inPart <= from) {
+					kindIndex += inPart
+					continue
+				}
+				for (const row of await loadPart(index)) {
+					if (row.kind !== kind) continue
+					if (kindIndex >= from) yield row.row as MailboxDumpRowOf<K>
+					kindIndex += 1
+				}
+			}
+		},
+	}
+}
+
+function groupOwnerDumps(index: MailboxIndex): Array<MailboxOwnerDump> {
+	const owners: Array<MailboxOwnerDump> = []
+	for (const entry of index.entries) {
+		const last = owners.at(-1)
+		if (last?.ownerId === entry.ownerId) last.parts.push(entry)
+		else owners.push({ ownerId: entry.ownerId, parts: [entry] })
+	}
+	return owners
 }
 
 function selectOwners(
 	index: MailboxIndex,
 	selection: MailboxImportOwnerSelection,
-): Array<OwnerIndexEntry> {
-	if (selection === 'all-from-index') return index.entries
-	const byOwner = new Map(index.entries.map((entry) => [entry.ownerId, entry]))
+): Array<MailboxOwnerDump> {
+	const all = groupOwnerDumps(index)
+	if (selection === 'all-from-index') return all
+	const byOwner = new Map(all.map((owner) => [owner.ownerId, owner]))
 	return selection.map((ownerId) => {
 		const entry = byOwner.get(ownerId)
 		if (!entry) {
@@ -295,11 +352,12 @@ function mailboxCountsEqual(
 	)
 }
 
-function assertCanonicalDumpBlobKeys(
-	dump: ParsedMailboxDump,
+function assertCanonicalDumpBlobKey(
+	row: MailboxExportRow,
 	sourceOwnerId: OwnerId,
 ): void {
-	for (const message of dump.messages) {
+	if (row.kind === 'message') {
+		const message = row.row
 		const expectedRawMimeKey = emailRawMimeKey(sourceOwnerId, message.id)
 		if (
 			(message.direction === 'inbound' &&
@@ -310,20 +368,20 @@ function assertCanonicalDumpBlobKeys(
 		) {
 			throw failure(`mailbox dump has a non-canonical raw MIME key`)
 		}
-		for (const attachment of dump.attachmentsByMessage.get(message.id) ?? []) {
-			const expectedAttachmentKey = emailAttachmentBlobKey(
-				sourceOwnerId,
-				message.id,
-				attachment.id,
-			)
-			if (
-				(attachment.storageKind === 'external' &&
-					attachment.storageKey !== expectedAttachmentKey) ||
-				(attachment.storageKind !== 'external' &&
-					attachment.storageKey !== null)
-			) {
-				throw failure(`mailbox dump has a non-canonical attachment key`)
-			}
+	}
+	if (row.kind === 'attachment') {
+		const attachment = row.row
+		const expectedAttachmentKey = emailAttachmentBlobKey(
+			sourceOwnerId,
+			attachment.messageId,
+			attachment.id,
+		)
+		if (
+			(attachment.storageKind === 'external' &&
+				attachment.storageKey !== expectedAttachmentKey) ||
+			(attachment.storageKind !== 'external' && attachment.storageKey !== null)
+		) {
+			throw failure(`mailbox dump has a non-canonical attachment key`)
 		}
 	}
 }
@@ -468,7 +526,7 @@ function validateCursorProgress(
 
 function validateCursorRowIndex(
 	cursor: MailboxImportCursor,
-	dump: ParsedMailboxDump,
+	dump: { counts: MailboxCountResult },
 ): void {
 	let maximum = 0
 	switch (cursor.phase) {
@@ -480,15 +538,15 @@ function validateCursorRowIndex(
 			break
 		case 'preflight-threads':
 		case 'threads':
-			maximum = dump.threads.length
+			maximum = dump.counts.threads
 			break
 		case 'preflight-messages':
 		case 'messages':
-			maximum = dump.messages.length
+			maximum = dump.counts.messages
 			break
 		case 'preflight-delivery-events':
 		case 'delivery-events':
-			maximum = dump.deliveryEvents.length
+			maximum = dump.counts.deliveryEvents
 			break
 		default: {
 			const exhaustive: never = cursor.phase
@@ -596,9 +654,8 @@ export async function runMailboxImportTick(input: {
 
 	while (cursor.ownerIndex < owners.length && cursor.phase !== 'done') {
 		const owner = owners[cursor.ownerIndex]!
-		const dump = await loadVerifiedMailboxDump(s3, input.day, owner)
 		const sourceOwnerId = owner.ownerId as OwnerId
-		assertCanonicalDumpBlobKeys(dump, sourceOwnerId)
+		const dump = await openMailboxDump(s3, input.day, owner, sourceOwnerId)
 		validateCursorRowIndex(cursor, dump)
 		const target = targetOwnerId(sourceOwnerId, input.day, drill)
 		const preflightId = preflightOwnerId(sourceOwnerId, input.day)
@@ -632,82 +689,78 @@ export async function runMailboxImportTick(input: {
 			cursor.rowIndex = 0
 		}
 
-		while (
+		if (
 			(cursor.phase === 'preflight-threads' || cursor.phase === 'threads') &&
-			cursor.rowIndex < dump.threads.length
+			cursor.rowIndex < dump.counts.threads
 		) {
-			if (budgetExhausted()) break
-			await restoreThread({
-				mailbox:
-					cursor.phase === 'preflight-threads' ? preflightMailbox : mailbox,
-				ownerId: cursor.phase === 'preflight-threads' ? preflightId : target,
-				thread: dump.threads[cursor.rowIndex]!,
-				progress: progressFor(cursor, owners.length, rowsProcessed),
-			})
-			cursor.rowIndex += 1
-			rowsProcessed += 1
+			for await (const thread of dump.rows('thread', cursor.rowIndex)) {
+				if (budgetExhausted()) break
+				await restoreThread({
+					mailbox:
+						cursor.phase === 'preflight-threads' ? preflightMailbox : mailbox,
+					ownerId: cursor.phase === 'preflight-threads' ? preflightId : target,
+					thread,
+					progress: progressFor(cursor, owners.length, rowsProcessed),
+				})
+				cursor.rowIndex += 1
+				rowsProcessed += 1
+			}
 		}
 		if (
 			cursor.phase === 'preflight-threads' &&
-			cursor.rowIndex >= dump.threads.length
+			cursor.rowIndex >= dump.counts.threads
 		) {
 			cursor.phase = 'preflight-messages'
 			cursor.rowIndex = 0
 		}
-		if (cursor.phase === 'threads' && cursor.rowIndex >= dump.threads.length) {
+		if (cursor.phase === 'threads' && cursor.rowIndex >= dump.counts.threads) {
 			cursor.phase = 'messages'
 			cursor.rowIndex = 0
 		}
 
-		while (
+		if (
 			(cursor.phase === 'preflight-messages' || cursor.phase === 'messages') &&
-			cursor.rowIndex < dump.messages.length
+			cursor.rowIndex < dump.counts.messages
 		) {
-			if (budgetExhausted()) break
-			const sourceMessage = dump.messages[cursor.rowIndex]!
-			const sourceAttachments =
-				dump.attachmentsByMessage.get(sourceMessage.id) ?? []
-			rowsProcessed += await restoreMessage({
-				mailbox:
-					cursor.phase === 'preflight-messages' ? preflightMailbox : mailbox,
-				ownerId: cursor.phase === 'preflight-messages' ? preflightId : target,
-				message: sourceMessage,
-				attachments: sourceAttachments,
-				blobOwnerId:
-					cursor.phase === 'preflight-messages'
-						? preflightId
-						: drill
-							? target
-							: null,
-				progress: progressFor(cursor, owners.length, rowsProcessed),
-			})
-			cursor.rowIndex += 1
+			for await (const sourceMessage of dump.rows('message', cursor.rowIndex)) {
+				if (budgetExhausted()) break
+				const sourceAttachments =
+					dump.attachmentsByMessage.get(sourceMessage.id) ?? []
+				rowsProcessed += await restoreMessage({
+					mailbox:
+						cursor.phase === 'preflight-messages' ? preflightMailbox : mailbox,
+					ownerId: cursor.phase === 'preflight-messages' ? preflightId : target,
+					message: sourceMessage,
+					attachments: sourceAttachments,
+					blobOwnerId:
+						cursor.phase === 'preflight-messages'
+							? preflightId
+							: drill
+								? target
+								: null,
+					progress: progressFor(cursor, owners.length, rowsProcessed),
+				})
+				cursor.rowIndex += 1
+			}
 		}
 		if (
 			cursor.phase === 'preflight-messages' &&
-			cursor.rowIndex >= dump.messages.length
+			cursor.rowIndex >= dump.counts.messages
 		) {
 			cursor.phase = 'preflight-delivery-events'
 			cursor.rowIndex = 0
 		}
 		if (
 			cursor.phase === 'messages' &&
-			cursor.rowIndex >= dump.messages.length
+			cursor.rowIndex >= dump.counts.messages
 		) {
 			cursor.phase = 'delivery-events'
 			cursor.rowIndex = 0
 		}
 
-		while (
-			(cursor.phase === 'preflight-delivery-events' ||
-				cursor.phase === 'delivery-events') &&
-			cursor.rowIndex < dump.deliveryEvents.length
-		) {
-			if (budgetExhausted()) break
-			const events = dump.deliveryEvents.slice(
-				cursor.rowIndex,
-				cursor.rowIndex + mailboxUpsertDeliveryEventsMax,
-			)
+		const restoreEventBatch = async (
+			events: Array<MailboxDumpRowOf<'delivery_event'>>,
+		) => {
 			rowsProcessed += await restoreDeliveryEvents({
 				mailbox:
 					cursor.phase === 'preflight-delivery-events'
@@ -721,15 +774,31 @@ export async function runMailboxImportTick(input: {
 			cursor.rowIndex += events.length
 		}
 		if (
+			(cursor.phase === 'preflight-delivery-events' ||
+				cursor.phase === 'delivery-events') &&
+			cursor.rowIndex < dump.counts.deliveryEvents &&
+			!budgetExhausted()
+		) {
+			let batch: Array<MailboxDumpRowOf<'delivery_event'>> = []
+			for await (const event of dump.rows('delivery_event', cursor.rowIndex)) {
+				batch.push(event)
+				if (batch.length < mailboxUpsertDeliveryEventsMax) continue
+				await restoreEventBatch(batch)
+				batch = []
+				if (budgetExhausted()) break
+			}
+			if (batch.length > 0) await restoreEventBatch(batch)
+		}
+		if (
 			cursor.phase === 'preflight-delivery-events' &&
-			cursor.rowIndex >= dump.deliveryEvents.length
+			cursor.rowIndex >= dump.counts.deliveryEvents
 		) {
 			cursor.phase = 'preflight-verify'
 			cursor.rowIndex = 0
 		}
 		if (
 			cursor.phase === 'delivery-events' &&
-			cursor.rowIndex >= dump.deliveryEvents.length
+			cursor.rowIndex >= dump.counts.deliveryEvents
 		) {
 			cursor.phase = 'verify'
 			cursor.rowIndex = 0

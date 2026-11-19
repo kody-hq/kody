@@ -397,7 +397,9 @@ one-time setup on the credential's page on the website, or with the MCP `api`
 tool (`credentialUpdate`). Changing inject or widening placement is refused from
 `execute` (hosted or `--local`), package, and app code, with a link to the
 credential's page; narrowing placement and setting the provider still work
-there. `credentialList` returns each credential's `id`:
+there. `credentialUpdate` also renames a Key in place with `name`; see
+[Renaming a secret](./secrets.md#renaming-a-secret). `credentialList` returns
+each credential's `id`:
 
 ```json
 {

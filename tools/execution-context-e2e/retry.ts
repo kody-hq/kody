@@ -19,7 +19,7 @@ const retryableExecutionContextCliPatterns = [
 	/socket hang up/,
 ] as const
 
-export function cliFailureText(error: unknown): string {
+function cliFailureText(error: unknown): string {
 	if (!(error instanceof Error)) return String(error)
 	const extra = error as Error & { stdout?: unknown; stderr?: unknown }
 	return [error.message, extra.stdout, extra.stderr]
@@ -27,7 +27,7 @@ export function cliFailureText(error: unknown): string {
 		.join('\n')
 }
 
-export function isRetryableExecutionContextCliFailure(text: string) {
+function isRetryableExecutionContextCliFailure(text: string) {
 	return retryableExecutionContextCliPatterns.some((pattern) =>
 		pattern.test(text),
 	)

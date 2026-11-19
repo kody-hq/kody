@@ -76,15 +76,30 @@ function setGlobal(
 		.run(key, input.enabled ? 1 : 0, input.rolloutPercent, input.audience)
 }
 
-test('repo flag is off by default and the repo allowlist turns one repo on', async () => {
+test('repo push queue is on by default for every repo owner', async () => {
 	const { db, sources } = createRepoFlagTest()
+	expect(
+		await evaluateRepoFeatureFlag(db, key, {
+			sourceId: sources[0]!,
+			ownerId: ownerStableId,
+		}),
+	).toEqual({ enabled: true, source: 'default', repoOverride: false })
+})
+
+test('with the global switch off, the repo allowlist turns one repo on', async () => {
+	const { sqlite, db, sources } = createRepoFlagTest()
 	const [target, other] = sources as [string, string]
+	setGlobal(sqlite, {
+		enabled: false,
+		rolloutPercent: null,
+		audience: 'everyone',
+	})
 	expect(
 		await evaluateRepoFeatureFlag(db, key, {
 			sourceId: target,
 			ownerId: ownerStableId,
 		}),
-	).toEqual({ enabled: false, source: 'default', repoOverride: false })
+	).toEqual({ enabled: false, source: 'global', repoOverride: false })
 
 	await setFeatureFlagRepoOverride(db, {
 		key,
@@ -207,8 +222,13 @@ test('percentage rollout buckets per repo, not per owner', async () => {
 })
 
 test('admin repo override and check capabilities allowlist one repo and report its evaluation', async () => {
-	const { db, sources } = createRepoFlagTest()
+	const { sqlite, db, sources } = createRepoFlagTest()
 	const target = sources[0]!
+	setGlobal(sqlite, {
+		enabled: false,
+		rolloutPercent: null,
+		audience: 'everyone',
+	})
 	const ctx = {
 		env: { APP_DB: db, AUDIT_DB: db } as Env,
 		callerContext: createMcpCallerContext({

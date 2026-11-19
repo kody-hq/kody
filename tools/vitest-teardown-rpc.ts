@@ -6,10 +6,7 @@
  */
 const teardownRpcMessage = /Closing rpc while "[^"]+" was pending/
 
-export function isVitestTeardownRpcError(error: {
-	name?: string
-	message?: string
-}) {
+function isVitestTeardownRpcError(error: { name?: string; message?: string }) {
 	return (
 		error.name === 'EnvironmentTeardownError' &&
 		teardownRpcMessage.test(error.message ?? '')

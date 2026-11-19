@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import { createHash } from 'node:crypto'
@@ -11,15 +12,18 @@ import {
 	sealedFullPrefix,
 	stagingArtifactsIndexKey,
 	stagingMailboxDumpKey,
+	stagingMailboxDumpPartKey,
 	stagingMailboxIndexKey,
 	stagingR2IndexKey,
 	stagingRunLogDumpKey,
+	stagingRunLogDumpPartKey,
 	stagingRunLogIndexKey,
 	stagingStorageDumpKey,
 	stagingStorageDumpPartKey,
 	stagingStorageIndexKey,
 	stagingSummaryKey,
 	type StorageIndex,
+	type OwnerIndexEntry,
 } from '@kody-internal/shared/backup-staging.ts'
 import { sha256Hex } from '#worker/dr/sha256.ts'
 import {
@@ -1162,6 +1166,7 @@ test('storage pages are byte-bounded and a single-page dump skips the chunk roun
 test('a storage identity whose serial attempts keep aborting is skipped', async () => {
 	const bad = encodeStorageIdentity('user-a', 'job:1')
 	consoleError.mockImplementation(() => {})
+	const captureMessage = vi.spyOn(Sentry, 'captureMessage')
 	storageMocks.exportStorage.mockReset()
 	storageMocks.exportStorage.mockImplementation(async () => {
 		throw new Error('page too large')
@@ -1206,7 +1211,104 @@ test('a storage identity whose serial attempts keep aborting is skipped', async 
 		'dr_export_storage_identity_skipped',
 		expect.stringContaining(bad),
 	)
+	expect(captureMessage).toHaveBeenCalledWith(
+		'DR export left out a storage identity whose dump kept aborting the exporter',
+		'error',
+	)
+	captureMessage.mockRestore()
 })
+
+test.each(['mailbox', 'run-log'] as const)(
+	'a %s dump over the buffer is exported in parts instead of skipped',
+	async (lane) => {
+		const pad = 'x'.repeat(7 * 1024 * 1024)
+		const initial = lane === 'mailbox' ? 'start' : 'job-run-observability:'
+		const nextPage: Record<string, string | null> = {
+			[initial]: 'p1',
+			p1: 'p2',
+			p2: null,
+		}
+		const page = (startAfter: string | null | undefined) => {
+			const key = startAfter ?? 'start'
+			const next = nextPage[key]
+			if (next === undefined) throw new Error(`unexpected page ${key}`)
+			return { key, next }
+		}
+		mockStorageEntries([])
+		mockRunLogPage()
+		mailboxMocks.exportMailbox.mockResolvedValue({
+			rows: [],
+			truncated: false,
+			nextStartAfter: null,
+		})
+		if (lane === 'mailbox') {
+			mailboxMocks.exportMailbox.mockImplementation(
+				async (input: { startAfter?: string | null }) => {
+					const { key, next } = page(input.startAfter)
+					return {
+						rows: [{ kind: 'thread', row: { id: key, pad } }],
+						truncated: next !== null,
+						nextStartAfter: next,
+					}
+				},
+			)
+		} else {
+			runLogMocks.exportRuns.mockImplementation(
+				async (input: { startAfter?: string | null }) => {
+					const { key, next } = page(input.startAfter)
+					return {
+						runs: [],
+						logs: [],
+						packageInvocations: [],
+						workflowProjections: [],
+						jobRunObservability: [{ jobId: key, pad }],
+						packageRunSuccesses: [],
+						activationMilestones: [],
+						truncated: next !== null,
+						nextStartAfter: next,
+					}
+				},
+			)
+		}
+		const { client, readText } = createMemoryS3()
+		const exported = await runDrExportTick({
+			env: createEnv({
+				APP_DB: createDb({ users: [{ ownerId: ownerIdFromStored('user-a') }] }),
+			}),
+			now: at('01:00'),
+			timeBudgetMs: 60_000,
+			s3: client,
+		})
+		expect(exported.summaryWritten).toBe(true)
+		const index = JSON.parse(
+			await readText(
+				lane === 'mailbox'
+					? stagingMailboxIndexKey(day)
+					: stagingRunLogIndexKey(day),
+			),
+		) as { entries: Array<OwnerIndexEntry> }
+		expect(
+			index.entries.map((entry) => [entry.part, entry.entryCount]),
+		).toEqual([
+			[0, 2],
+			[1, 1],
+		])
+		const partKey =
+			lane === 'mailbox' ? stagingMailboxDumpPartKey : stagingRunLogDumpPartKey
+		for (const entry of index.entries) {
+			expect(entry.objectKey).toBe(partKey(day, entry.ownerId, entry.sha256))
+			expect(entry.bytes).toBeLessThanOrEqual(drExportMaxStorageDumpBufferBytes)
+		}
+		const rows = (
+			await Promise.all(
+				index.entries.map(async (entry) =>
+					(await readText(entry.objectKey)).trim().split('\n'),
+				),
+			)
+		).flat()
+		expect(rows).toHaveLength(3)
+	},
+)
 
 test('a storage dump over the buffer is exported in parts and restores whole', async () => {
 	const value = 'x'.repeat(7 * 1024 * 1024)

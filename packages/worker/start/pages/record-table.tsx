@@ -11,8 +11,14 @@ import {
 	RecordSelectionCheckbox,
 } from './record-table-data-controls.tsx'
 import { nestedSurfaceDarkCss } from '#universal/styles/surface.ts'
-import type { CSSObject } from '@emotion/react'
+import { keyframes, type CSSObject } from '@emotion/react'
 import {
+	documentDeepLinkFocus,
+	recordHighlightMs,
+	revealDeepLinkedRecord,
+} from './record-deep-link.ts'
+import {
+	useEffect,
 	useId,
 	useRef,
 	useLayoutEffect,
@@ -363,6 +369,21 @@ const cardFallbackCss: CSSObject = {
 	'& tr[data-record-row] > td::before': { content: 'none' },
 }
 
+const recordHighlight = keyframes({
+	from: { backgroundColor: colors.primarySoftStrong },
+	to: { backgroundColor: colors.primarySoftest },
+})
+
+/** The brief flash on a record a deep link opened; static under reduced motion. */
+const recordHighlightCss: CSSObject = {
+	animation: `${recordHighlight} ${recordHighlightMs}ms ease-out`,
+	'@media (prefers-reduced-motion: reduce)': {
+		animation: 'none',
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: '-2px',
+	},
+}
+
 const rowCss: CSSObject = {
 	'&[data-selected]': {
 		backgroundColor: colors.primarySoftest,
@@ -371,6 +392,7 @@ const rowCss: CSSObject = {
 	// Same offset as `accountSectionCss`: clear the sticky site header when
 	// scroll restoration lands on this row.
 	'&[data-record-focus]': { scrollMarginTop: '5.5rem' },
+	'&[data-record-highlight]': recordHighlightCss,
 	[hoverMq]: {
 		'&:not([data-selected]):hover': { backgroundColor: colors.background },
 	},
@@ -546,6 +568,26 @@ export function RecordTable(props: RecordTableProps) {
 			!selectedRowVisible &&
 			(props.recordLoading || props.busy),
 		)
+
+		const sectionRef = useRef<HTMLElement>(null)
+		useEffect(() => {
+			const target = sectionRef.current?.querySelector<HTMLElement>(
+				'[data-record-focus]',
+			)
+			if (
+				documentDeepLinkFocus({
+					// A fragment (such as #fill-placement) owns the landing spot.
+					spaNavigated:
+						document.documentElement.hasAttribute('data-spa-nav') ||
+						window.location.hash !== '',
+					// A create form (`/new`) is not a record a link points at.
+					hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
+				}) &&
+				target
+			) {
+				revealDeepLinkedRecord(target)
+			}
+		}, [selectedId, expandedInTable, orphanedRecord])
 
 		const table = (
 			// oxlint-disable-next-line kody-custom/no-raw-table -- RecordTable owns its responsive card layout, sorting, and row selection.
@@ -881,6 +923,7 @@ export function RecordTable(props: RecordTableProps) {
 
 		return (
 			<section
+				ref={sectionRef}
 				aria-label={props.ariaLabel}
 				aria-busy={props.busy ? 'true' : undefined}
 				data-record-focus-pending={focusPending ? 'true' : undefined}
@@ -1064,7 +1107,11 @@ export function RecordTable(props: RecordTableProps) {
 				{(mode === 'pane' || orphanedRecord) && props.record ? (
 					<div
 						data-record-focus={orphanedRecord ? 'true' : undefined}
-						css={{ ...paneCss, scrollMarginTop: '5.5rem' }}
+						css={{
+							...paneCss,
+							scrollMarginTop: '5.5rem',
+							'&[data-record-highlight]': recordHighlightCss,
+						}}
 					>
 						{props.record}
 					</div>

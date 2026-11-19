@@ -8,8 +8,8 @@ description: >
 ---
 
 ```bash
-npx @kodycodes/cli execute --local \
-  --code 'import run from "kody:@kentcdodds/ship-pr/tick"; export default (p) => run(p)' \
+npx @kodycodes/cli execute --local --org kody \
+  --code 'import run from "kody:@kody/kody-factory/ship-pr/tick"; export default (p) => run(p)' \
   --params '{
     "prUrl": "https://github.com/OWNER/REPO/pull/N",
     "risk": "medium",
@@ -17,7 +17,12 @@ npx @kodycodes/cli execute --local \
   }'
 ```
 
-Follow what it returns, re-ticking until `exit.done`.
+Follow what it returns, re-ticking until `exit.done`. The PR also shows up as a
+card on the factory board, so anyone can see where it is.
+
+The old `kody:@kentcdodds/ship-pr/tick` (run without `--org kody`) still works
+and takes the same params. Use it if the factory tick errors, and file friction
+on `@kody/kody-factory`.
 
 - **Risk:** pick `low`, `medium`, or `high` yourself. High means auth, secrets,
   billing, data migrations, destructive changes, or anything hard to undo.

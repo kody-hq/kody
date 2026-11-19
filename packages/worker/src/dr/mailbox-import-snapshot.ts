@@ -19,14 +19,6 @@ import {
 } from '#worker/email/mailbox-types.ts'
 import { MaintenanceFailureError } from '#worker/maintenance-handler.ts'
 
-export type ParsedMailboxDump = {
-	threads: Array<MailboxThreadRecord>
-	messages: Array<MailboxMessageRecord>
-	attachmentsByMessage: Map<string, Array<MailboxAttachmentRecord>>
-	deliveryEvents: Array<MailboxDeliveryEventRecord>
-	counts: MailboxCountResult
-}
-
 function failure(message: string): MaintenanceFailureError {
 	return new MaintenanceFailureError(message, {
 		progress: null,
@@ -499,10 +491,16 @@ function parseDumpRow(value: unknown): MailboxExportRow {
 	}
 }
 
-export function parseMailboxDump(
+export type MailboxDumpRowKind = MailboxExportRow['kind']
+export type MailboxDumpRowOf<K extends MailboxDumpRowKind> = Extract<
+	MailboxExportRow,
+	{ kind: K }
+>['row']
+
+export function parseMailboxDumpRows(
 	text: string,
 	entryCount: number,
-): ParsedMailboxDump {
+): Array<MailboxExportRow> {
 	const lines = text.length === 0 ? [] : text.split('\n')
 	if (lines.at(-1) === '') lines.pop()
 	const rows = lines.map((line) => {
@@ -519,50 +517,76 @@ export function parseMailboxDump(
 			`mailbox dump entry count mismatch: expected ${entryCount}, got ${rows.length}`,
 		)
 	}
-	const threads: Array<MailboxThreadRecord> = []
-	const messages: Array<MailboxMessageRecord> = []
-	const attachments: Array<MailboxAttachmentRecord> = []
-	const deliveryEvents: Array<MailboxDeliveryEventRecord> = []
+	return rows
+}
+
+export type MailboxDumpSummary = {
+	counts: MailboxCountResult
+	attachmentsByMessage: Map<string, Array<MailboxAttachmentRecord>>
+	/** Rows of each kind in each part, so a reader can skip whole parts. */
+	partCounts: Array<Record<MailboxDumpRowKind, number>>
+}
+
+/**
+ * Validate a dump one part at a time. Only ids, references and attachment
+ * metadata stay in memory, so a large split dump never loads whole.
+ */
+export async function summarizeMailboxDump(input: {
+	partCount: number
+	loadPart: (index: number) => Promise<Array<MailboxExportRow>>
+	onRow: (row: MailboxExportRow) => void
+}): Promise<MailboxDumpSummary> {
 	const idsByKind = {
 		thread: new Set<string>(),
 		message: new Set<string>(),
 		attachment: new Set<string>(),
 		delivery_event: new Set<string>(),
 	}
-	for (const row of rows) {
-		if (idsByKind[row.kind].has(row.row.id)) {
-			throw failure(`mailbox dump contains a duplicate ${row.kind} id`)
-		}
-		idsByKind[row.kind].add(row.row.id)
-		switch (row.kind) {
-			case 'thread':
-				threads.push(row.row)
-				break
-			case 'message':
-				messages.push(row.row)
-				break
-			case 'attachment':
-				attachments.push(row.row)
-				break
-			case 'delivery_event':
-				deliveryEvents.push(row.row)
-				break
-			default: {
-				const exhaustive: never = row
-				throw failure(`unhandled mailbox dump row: ${String(exhaustive)}`)
+	const messageThreadRefs: Array<[string, string]> = []
+	const eventMessageRefs: Array<[string, string]> = []
+	const attachments: Array<MailboxAttachmentRecord> = []
+	const partCounts: Array<Record<MailboxDumpRowKind, number>> = []
+	for (let index = 0; index < input.partCount; index += 1) {
+		const counts = { thread: 0, message: 0, attachment: 0, delivery_event: 0 }
+		for (const row of await input.loadPart(index)) {
+			if (idsByKind[row.kind].has(row.row.id)) {
+				throw failure(`mailbox dump contains a duplicate ${row.kind} id`)
+			}
+			idsByKind[row.kind].add(row.row.id)
+			counts[row.kind] += 1
+			input.onRow(row)
+			switch (row.kind) {
+				case 'thread':
+					break
+				case 'message':
+					if (row.row.threadId !== null) {
+						messageThreadRefs.push([row.row.id, row.row.threadId])
+					}
+					break
+				case 'attachment':
+					attachments.push(row.row)
+					break
+				case 'delivery_event':
+					if (row.row.messageId !== null) {
+						eventMessageRefs.push([row.row.id, row.row.messageId])
+					}
+					break
+				default: {
+					const exhaustive: never = row
+					throw failure(`unhandled mailbox dump row: ${String(exhaustive)}`)
+				}
 			}
 		}
+		partCounts.push(counts)
 	}
-	const threadIds = new Set(threads.map((thread) => thread.id))
-	const messageIds = new Set(messages.map((message) => message.id))
-	for (const message of messages) {
-		if (message.threadId !== null && !threadIds.has(message.threadId)) {
-			throw failure(`mailbox message ${message.id} references a missing thread`)
+	for (const [messageId, threadId] of messageThreadRefs) {
+		if (!idsByKind.thread.has(threadId)) {
+			throw failure(`mailbox message ${messageId} references a missing thread`)
 		}
 	}
 	const attachmentsByMessage = new Map<string, Array<MailboxAttachmentRecord>>()
 	for (const attachment of attachments) {
-		if (!messageIds.has(attachment.messageId)) {
+		if (!idsByKind.message.has(attachment.messageId)) {
 			throw failure(
 				`mailbox attachment ${attachment.id} references a missing message`,
 			)
@@ -571,23 +595,21 @@ export function parseMailboxDump(
 		grouped.push(attachment)
 		attachmentsByMessage.set(attachment.messageId, grouped)
 	}
-	for (const event of deliveryEvents) {
-		if (event.messageId !== null && !messageIds.has(event.messageId)) {
+	for (const [eventId, messageId] of eventMessageRefs) {
+		if (!idsByKind.message.has(messageId)) {
 			throw failure(
-				`mailbox delivery event ${event.id} references a missing message`,
+				`mailbox delivery event ${eventId} references a missing message`,
 			)
 		}
 	}
 	return {
-		threads,
-		messages,
-		attachmentsByMessage,
-		deliveryEvents,
 		counts: {
-			threads: threads.length,
-			messages: messages.length,
-			attachments: attachments.length,
-			deliveryEvents: deliveryEvents.length,
+			threads: idsByKind.thread.size,
+			messages: idsByKind.message.size,
+			attachments: idsByKind.attachment.size,
+			deliveryEvents: idsByKind.delivery_event.size,
 		},
+		attachmentsByMessage,
+		partCounts,
 	}
 }

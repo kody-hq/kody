@@ -66,9 +66,10 @@ export function UsernameChoiceField(props: {
 	const checkAvailability = useServerFn(checkWebsiteUsernameAvailability)
 	const generatedId = useId()
 	const inputId = props.inputId ?? `${generatedId}-username`
-	const tipId = `${generatedId}-username-tip`
-	const tipAnchor = `--${generatedId.replace(/:/g, '')}-username-tip`
-	const availabilityId = `${generatedId}-username-availability`
+	const idPrefix = props.inputId ?? generatedId
+	const tipId = `${idPrefix}-username-tip`
+	const tipAnchor = `--${idPrefix.replace(/:/g, '')}-username-tip`
+	const availabilityId = `${idPrefix}-username-availability`
 	const [availabilitySnapshot, , availabilityActor] = useActor(
 		usernameAvailabilityState,
 	)

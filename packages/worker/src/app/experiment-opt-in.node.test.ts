@@ -9,7 +9,6 @@ vi.mock('#worker/feature-flags/service.ts', () => ({
 import { setWebsiteExperiment } from './experiment-opt-in.ts'
 
 test.each([
-	['package-skills', 'mcp-skills-extension', true],
 	['mcp-events', 'mcp-events-extension', true],
 	['execution-contexts', 'execution-contexts', true],
 	['execution-contexts', 'execution-contexts', false],
@@ -59,7 +58,7 @@ test('failed opt-in is not audited as success', async () => {
 			env: { APP_DB: {} } as Env,
 			request: new Request('https://kody.example/_serverFn/optin'),
 			user: { userId: 7, email: 'jane@example.com' },
-			experiment: 'package-skills',
+			experiment: 'mcp-events',
 			enabled: true,
 		}),
 	).rejects.toThrow('database unavailable')

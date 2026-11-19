@@ -26,7 +26,7 @@ test('a non-retryable backup failure inside a workflow step runs exactly once', 
 	const cases = [
 		{
 			workflow: new ProductionSealDayWorkflow({} as never, environment()),
-			code: 'd1-manifest-missing',
+			code: 'paced-d1-seal-missing',
 		},
 		{
 			workflow: new ProductionDrRestoreWorkflow({} as never, environment()),

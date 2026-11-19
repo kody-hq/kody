@@ -42,8 +42,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Release notes](./release-notes.md) (PR bodies / Discord; **May break
   packages** heading)
 - [Writing blog posts](./blog.md) (category, series, frontmatter schema)
-- [Friction log](./friction-log.md) (when/where/how-to-fix policy; package owns
-  create/file/daily at
+- [Friction log](./friction-log.md) (when/where/how-to-fix policy; filing at
+  [@kody/kody-factory](https://kody.codes/@kody/kody-factory), daily sweep at
   [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))
 - [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md ratchet,
   Validate unit-job timing, ship-pr review-bot sort)
@@ -85,6 +85,7 @@ style, tests, MCP capabilities, and runtime architecture.
 ## Testing
 
 - [Testing principles](./testing-principles.md)
+- [Writing tests](./writing-tests.md)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
 - [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)

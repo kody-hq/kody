@@ -61,7 +61,7 @@ function triggerTestId(placement: WorkspaceSwitcherPlacement) {
  * keeps the current page when the target org can open it, otherwise opens
  * that org's workspace home.
  */
-export function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
+function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 	const viewer = { displayName: data.displayName, avatarUrl: data.avatarUrl }
 	const listed = data.organizations.some((org) => org.slug === data.currentSlug)
 	// Stale session lists can omit the URL org on `/@slug/-/…`. Show a
