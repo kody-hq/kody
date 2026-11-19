@@ -214,7 +214,10 @@ function GuestClaimForms(props: {
 								</h2>
 								<p css={mutedCss}>
 									Packages, memories, jobs, and run history move into your
-									account. Name clashes get a new name.
+									account. Name clashes get a new name. The agent connection
+									that created this guest keeps working and will act as{' '}
+									{data.signedInAccount.username} with access to that account,
+									including its packages, secrets, email and jobs.
 								</p>
 								<Button
 									type="submit"

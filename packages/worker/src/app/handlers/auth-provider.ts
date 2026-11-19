@@ -82,7 +82,6 @@ import {
 	GuestClaimError,
 	guestClaimDonePath,
 	guestComesWithCounts,
-	mergeGuestIntoAccount,
 } from '#worker/guest/guest-claim.ts'
 
 function oauthCodeForAccountEmail(
@@ -420,14 +419,6 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				}
 				if (existingConnection && !target) return back('account_unavailable')
 				if (target) {
-					await mergeGuestIntoAccount({
-						env,
-						guest,
-						target,
-						baseUrl: url.origin,
-						method: 'social',
-						provider,
-					})
 					if (!existingConnection) {
 						await createConnection({
 							provider,
@@ -445,7 +436,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 							email: target.email,
 						},
 						claimPath,
-						{ destination: guestClaimDonePath(claim.code, 'merge', comesWith) },
+						{ destination: claimPath },
 					)
 				}
 				if (!email) return back('no_verified_email')

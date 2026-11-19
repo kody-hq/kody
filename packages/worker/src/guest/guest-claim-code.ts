@@ -126,7 +126,39 @@ function isPlausibleEmail(email: string) {
 	return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 254
 }
 
-function claimCodeEmail(input: { code: string; appBaseUrl: string }) {
+async function enforceClaimLimit(
+	db: D1Database,
+	key: string,
+	maxRequests: number,
+) {
+	const result = await checkRateLimit(db, key, {
+		maxRequests,
+		windowSeconds: 3600,
+	})
+	if (!result.allowed)
+		throw new GuestClaimCodeError(
+			'rate_limited',
+			'Too many claim requests. Wait an hour and try again.',
+		)
+}
+
+function claimCodeEmail(input: {
+	code: string
+	appBaseUrl: string
+	mode: 'new' | 'merge'
+}) {
+	if (input.mode === 'merge') {
+		const subject = `Give your agent access to your Kody account: ${input.code}`
+		const text = `This code gives the agent that asked access to the existing Kody account for this email, including its packages, secrets, email and jobs.\n\nYour code is ${input.code}. It expires in 15 minutes. Only enter it or share it with your own agent.\n\nIf you did not ask for this, ignore this email. Your account is unchanged.`
+		return {
+			subject,
+			text,
+			html: text
+				.split('\n\n')
+				.map((part) => `<p>${part}</p>`)
+				.join(''),
+		}
+	}
 	const subject = `Your Kody claim code: ${input.code}`
 	const text = [
 		`Your code to claim your Kody guest account is ${input.code}.`,
@@ -165,6 +197,7 @@ export async function startGuestClaim(input: {
 	username?: string | null
 	merge?: boolean
 	requestUrl: string
+	requestIp?: string | null
 	now?: Date
 }): Promise<GuestClaimStartResult> {
 	const { env, guest } = input
@@ -178,6 +211,9 @@ export async function startGuestClaim(input: {
 		)
 	}
 	const mode = input.merge ? 'merge' : 'new'
+	await enforceClaimLimit(db, `guest-claim-start:email:${email}`, 5)
+	if (input.requestIp)
+		await enforceClaimLimit(db, `guest-claim-start:ip:${input.requestIp}`, 10)
 	let username: string | null = null
 	if (mode === 'merge') {
 		if (!(await findClaimTargetByEmail(db, email))) {
@@ -219,26 +255,28 @@ export async function startGuestClaim(input: {
 	const now = input.now ?? new Date()
 	const code = mintSixDigitCode()
 	const expiresAt = new Date(now.getTime() + guestClaimCodeTtlMs).toISOString()
-	await db
-		.prepare(
-			`INSERT INTO guest_claim_codes
+	const writeCode = () =>
+		db
+			.prepare(
+				`INSERT INTO guest_claim_codes
 				(person_id, email, username, mode, code_hash, attempts, expires_at, created_at)
 			 VALUES (?, ?, ?, ?, ?, 0, ?, ?)
 			 ON CONFLICT(person_id) DO UPDATE SET
 				email = excluded.email, username = excluded.username, mode = excluded.mode,
 				code_hash = excluded.code_hash, attempts = 0,
 				expires_at = excluded.expires_at, created_at = excluded.created_at`,
-		)
-		.bind(
-			guest.personId,
-			email,
-			username,
-			mode,
-			await hashClaimCode(code),
-			expiresAt,
-			now.toISOString(),
-		)
-		.run()
+			)
+			.bind(
+				guest.personId,
+				email,
+				username,
+				mode,
+				codeHash,
+				expiresAt,
+				now.toISOString(),
+			)
+			.run()
+	const codeHash = await hashClaimCode(code)
 	const emailConfig = resolveTransactionalEmailConfig({
 		env,
 		requestUrl: input.requestUrl,
@@ -246,7 +284,11 @@ export async function startGuestClaim(input: {
 		appBaseUrl: new URL(input.requestUrl).origin,
 		fromEmail: `kody@${new URL(input.requestUrl).hostname}`,
 	}
-	const message = claimCodeEmail({ code, appBaseUrl: emailConfig.appBaseUrl })
+	const message = claimCodeEmail({
+		code,
+		appBaseUrl: emailConfig.appBaseUrl,
+		mode,
+	})
 	const nonProduction = isNonProductionRuntime(env)
 	const sent = await sendGatedTransactionalEmail({
 		db,
@@ -296,6 +338,7 @@ export async function startGuestClaim(input: {
 				: 'Kody could not send the claim code email. Try again in a minute.',
 		)
 	}
+	await writeCode()
 	return {
 		email,
 		mode,
@@ -312,13 +355,14 @@ export async function finishGuestClaim(input: {
 	guest: GuestAccount
 	code: string
 	baseUrl: string
+	requestIp?: string | null
 	now?: Date
 	/** `email_code` from the claim page, `agent` (default) from guestClaimFinish. */
 	method?: 'email_code' | 'agent'
 }): Promise<GuestClaimResult> {
 	const { env, guest } = input
 	const db = env.APP_DB
-	const row = await db
+	let row = await db
 		.prepare(`SELECT * FROM guest_claim_codes WHERE person_id = ?`)
 		.bind(guest.personId)
 		.first<ClaimCodeRow>()
@@ -329,6 +373,28 @@ export async function finishGuestClaim(input: {
 		)
 	}
 	const now = input.now ?? new Date()
+	await enforceClaimLimit(db, `guest-claim-finish:email:${row.email}`, 10)
+	if (input.requestIp)
+		await enforceClaimLimit(db, `guest-claim-finish:ip:${input.requestIp}`, 30)
+	const consumed = await db
+		.prepare(
+			`UPDATE guest_claim_codes SET attempts = attempts + 1 WHERE person_id = ? AND attempts < ? AND expires_at > ? RETURNING *`,
+		)
+		.bind(guest.personId, guestClaimCodeMaxAttempts, now.toISOString())
+		.first<ClaimCodeRow>()
+	if (consumed) row = consumed
+	else {
+		const current = await db
+			.prepare(`SELECT * FROM guest_claim_codes WHERE person_id = ?`)
+			.bind(guest.personId)
+			.first<ClaimCodeRow>()
+		if (!current)
+			throw new GuestClaimCodeError(
+				'code_missing',
+				'No claim is in progress. Start again to get a new code.',
+			)
+		row = current
+	}
 	if (Date.parse(row.expires_at) <= now.getTime()) {
 		throw new GuestClaimCodeError(
 			'code_expired',
@@ -336,7 +402,7 @@ export async function finishGuestClaim(input: {
 			{ deliveryNote: await latestClaimCodeDeliveryNote(db, row.email) },
 		)
 	}
-	if (row.attempts >= guestClaimCodeMaxAttempts) {
+	if (!consumed) {
 		throw new GuestClaimCodeError(
 			'too_many_attempts',
 			'Too many wrong codes. Start the claim again to get a new one.',
@@ -347,18 +413,31 @@ export async function finishGuestClaim(input: {
 	if (
 		!(await timingSafeEqualString(await hashClaimCode(code), row.code_hash))
 	) {
-		await db
-			.prepare(
-				`UPDATE guest_claim_codes SET attempts = attempts + 1 WHERE person_id = ?`,
-			)
-			.bind(guest.personId)
-			.run()
+		if (row.attempts >= guestClaimCodeMaxAttempts) {
+			await db
+				.prepare(
+					`DELETE FROM guest_claim_codes WHERE person_id = ? AND code_hash = ?`,
+				)
+				.bind(guest.personId, row.code_hash)
+				.run()
+		}
 		throw new GuestClaimCodeError(
 			'code_invalid',
 			'That code is not right. Check the email and try again.',
 			{ deliveryNote: await latestClaimCodeDeliveryNote(db, row.email) },
 		)
 	}
+	const deleted = await db
+		.prepare(
+			`DELETE FROM guest_claim_codes WHERE person_id = ? AND code_hash = ?`,
+		)
+		.bind(guest.personId, row.code_hash)
+		.run()
+	if (deleted.meta.changes !== 1)
+		throw new GuestClaimCodeError(
+			'code_missing',
+			'No claim is in progress. Start again to get a new code.',
+		)
 	if (row.mode === 'merge') {
 		const target = await findClaimTargetByEmail(db, row.email)
 		if (!target) {

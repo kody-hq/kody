@@ -17,6 +17,7 @@ import {
 } from './guest-accounts.ts'
 
 const mocks = vi.hoisted(() => ({
+	sendEmail: vi.fn(async (_input: unknown) => ({ ok: true as const })),
 	scheduleFounderWelcomeEmail: vi.fn(),
 	// Never settles: a slow or stuck dispatch must not hold up a claim.
 	dispatch: vi.fn((_input: { event: unknown }) => new Promise<never>(() => {})),
@@ -30,7 +31,7 @@ vi.mock('#worker/identity/user-lifecycle-package-subscriptions.ts', () => ({
 	dispatchUserLifecycleSubscriptionEvent: mocks.dispatch,
 }))
 vi.mock('#worker/email/transactional-send-policy.ts', () => ({
-	sendGatedTransactionalEmail: async () => ({ ok: true as const }),
+	sendGatedTransactionalEmail: mocks.sendEmail,
 }))
 vi.mock('#worker/billing/signup-welcome-credits.ts', () => ({
 	maybeGrantSignupWelcomeCredits: async () => {},
@@ -294,6 +295,26 @@ test('the claim page email code (merge) emits one user.guest_claimed with counts
 		code: devCode!,
 	})
 	expect(finish.headers.get('Location')).toContain('result=claimed')
+	expect(finish.headers.has('Set-Cookie')).toBe(false)
+	expect(mocks.sendEmail).toHaveBeenCalledWith(
+		expect.objectContaining({
+			kind: 'guest_claim_code',
+			message: expect.objectContaining({
+				subject: expect.stringContaining('Give your agent access'),
+				text: expect.stringContaining('packages, secrets, email and jobs'),
+			}),
+		}),
+	)
+	expect(mocks.sendEmail).toHaveBeenCalledWith(
+		expect.objectContaining({
+			kind: 'guest_claim_merged',
+			category: 'essential',
+			message: expect.objectContaining({
+				to: 'owner@example.test',
+				text: expect.stringContaining('/account/connected-apps'),
+			}),
+		}),
+	)
 
 	const memoriesLeft = sqlite
 		.prepare('SELECT COUNT(*) AS n FROM mcp_memories WHERE user_id = ?')

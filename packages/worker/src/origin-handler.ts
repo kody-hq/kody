@@ -232,11 +232,25 @@ const appHandler = withCors({
 			})
 		}
 
-		if (request.method === 'POST' && rateLimitedAuthPaths.has(url.pathname)) {
+		if (
+			request.method === 'POST' &&
+			(rateLimitedAuthPaths.has(url.pathname) ||
+				url.pathname.startsWith('/claim/'))
+		) {
 			const ip = getRequestIp(request) ?? 'unknown'
 			const rateLimitKey = `auth:ip:${ip}`
 			const result = await checkAuthRateLimit(env, rateLimitKey)
 			if (!result.allowed) {
+				if (url.pathname.startsWith('/claim/')) {
+					await discardUnreadRequestBody(request)
+					return new Response(null, {
+						status: 303,
+						headers: {
+							Location: `${url.pathname}?error=rate_limited`,
+							'Retry-After': String(result.retryAfterSeconds ?? 60),
+						},
+					})
+				}
 				// A non-JSON social-login start is a document navigation, so a
 				// JSON 429 body would render as raw text; bounce back to the
 				// login page instead. 303 forces a GET. (The first-party UI
