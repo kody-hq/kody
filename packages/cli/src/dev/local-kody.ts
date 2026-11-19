@@ -10,6 +10,7 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { windowsFileLaunch } from '../execution-context/windows-command.js'
@@ -35,6 +36,7 @@ import {
 	packageAppHostEntryQueryParam,
 } from '@kody-internal/shared/public-urls.ts'
 import { localUsernameFor } from './dev-app-origin.js'
+import { devWorkDirPrefix, startProcessReaper } from './process-reaper.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
 
@@ -50,6 +52,8 @@ export type DevRuntimeModule = {
 			coldIsolates?: boolean
 			clockOffsetMs?: number
 		}
+		onSpawn?: (pid: number) => void
+		onExit?: (pid: number) => void
 		onLog?: (line: {
 			source: string
 			stream: 'stdout' | 'stderr'
@@ -234,6 +238,10 @@ export async function startLocalKody(input: {
 		allowPrivateNetwork: input.allowPrivateNetwork,
 	})
 	const outbound = gateway ? await startOutboundGateway(gateway) : null
+	// Kills the wrangler groups if this process dies before close() runs.
+	const reaper = await startProcessReaper({
+		workDir: await mkdtemp(join(tmpdir(), devWorkDirPrefix)),
+	})
 	try {
 		const kody = await runtime.startDevRuntime({
 			stateDir,
@@ -242,15 +250,19 @@ export async function startLocalKody(input: {
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
 			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
+			onSpawn: (pid) => reaper.trackGroup(pid),
+			onExit: (pid) => reaper.untrackGroup(pid),
 		})
 		return {
 			...kody,
 			close: async () => {
 				await kody.close()
+				reaper.close()
 				await outbound?.close()
 			},
 		}
 	} catch (error) {
+		reaper.close()
 		await outbound?.close()
 		throw error
 	}

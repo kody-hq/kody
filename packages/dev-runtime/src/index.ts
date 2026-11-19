@@ -59,6 +59,9 @@ export type StartDevRuntimeInput = {
 	 * served inline on the origin at `/@{handle}/packages/{leaf}`.
 	 */
 	packageAppPort?: number
+	/** Each wrangler process-group leader, so the host can kill it if it dies first. */
+	onSpawn?: (pid: number) => void
+	onExit?: (pid: number) => void
 }
 
 export type DevRuntimeSimulation = {
@@ -266,6 +269,8 @@ function spawnWrangler(input: {
 	cwd: string
 	source: DevRuntimeLogLine['source']
 	onLog?: StartDevRuntimeInput['onLog']
+	onSpawn?: StartDevRuntimeInput['onSpawn']
+	onExit?: StartDevRuntimeInput['onExit']
 }): ChildProcess {
 	const child = spawn(process.execPath, [wranglerBin(), ...input.args], {
 		cwd: input.cwd,
@@ -294,6 +299,11 @@ function spawnWrangler(input: {
 			}
 		})
 	}
+	const pid = child.pid
+	if (pid !== undefined) {
+		input.onSpawn?.(pid)
+		child.once('exit', () => input.onExit?.(pid))
+	}
 	return child
 }
 
@@ -301,6 +311,8 @@ async function runWrangler(input: {
 	args: Array<string>
 	cwd: string
 	onLog?: StartDevRuntimeInput['onLog']
+	onSpawn?: StartDevRuntimeInput['onSpawn']
+	onExit?: StartDevRuntimeInput['onExit']
 }) {
 	const lines: Array<string> = []
 	const child = spawnWrangler({
@@ -494,6 +506,8 @@ export async function startDevRuntime(
 				args: ['d1', 'migrations', 'apply', binding, ...persist, '-c', config],
 				cwd: stateDir,
 				onLog: input.onLog,
+				onSpawn: input.onSpawn,
+				onExit: input.onExit,
 			})
 		}
 		if (!state.apiToken) {
@@ -523,6 +537,8 @@ export async function startDevRuntime(
 				],
 				cwd: stateDir,
 				onLog: input.onLog,
+				onSpawn: input.onSpawn,
+				onExit: input.onExit,
 			})
 			state.apiToken = token.token
 			writeLocalState(stateDir, state)
@@ -544,6 +560,8 @@ export async function startDevRuntime(
 			cwd: stateDir,
 			source: 'mock-cloudflare',
 			onLog: input.onLog,
+			onSpawn: input.onSpawn,
+			onExit: input.onExit,
 		})
 		children.push(mock)
 		const kodyLogTail: Array<string> = []
@@ -562,6 +580,8 @@ export async function startDevRuntime(
 			],
 			cwd: stateDir,
 			source: 'wrangler',
+			onSpawn: input.onSpawn,
+			onExit: input.onExit,
 			onLog: (line) => {
 				kodyLogTail.push(line.line)
 				if (kodyLogTail.length > 30) kodyLogTail.shift()
