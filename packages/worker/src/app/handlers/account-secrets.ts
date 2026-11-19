@@ -44,6 +44,7 @@ import {
 	withCredentialAudit,
 } from '#mcp/capabilities/secrets/secret-set-opt-in.ts'
 import { normalizeAllowedHosts } from '#mcp/secrets/allowed-hosts.ts'
+import { isSecureCredentialUrl } from '#worker/integrations/secure-credential-url.ts'
 import { normalizeAllowedPackages } from '#mcp/secrets/allowed-packages.ts'
 import { classifyBulkApprovalHosts } from '#mcp/secrets/host-approval.ts'
 import type { StorageContext } from '#mcp/storage.ts'
@@ -1119,6 +1120,12 @@ async function exchangeOAuthToken(input: {
 		)
 	}
 
+	if (!isSecureCredentialUrl(input.tokenUrl)) {
+		return operationResult(
+			{ ok: false, error: 'Token URL must use https and a public host.' },
+			400,
+		)
+	}
 	const response = await fetch(input.tokenUrl, {
 		method: 'POST',
 		headers: exchangeRequest.headers,

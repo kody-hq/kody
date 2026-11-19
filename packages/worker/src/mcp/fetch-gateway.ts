@@ -139,6 +139,7 @@ import {
 } from '#worker/package-runtime/package-app-visit-ticket.ts'
 import { normalizeChangedIntrinsicNames } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
 import { kodyDevOutboundFetch } from '#worker/package-runtime/kody-dev-simulation.ts'
+import { isPublicFetchHostname } from '#mcp/events/ssrf.ts'
 
 type FetchGatewayProps = {
 	baseUrl: string
@@ -393,6 +394,25 @@ function hasRunContext(props: FetchGatewayProps | undefined) {
 	return typeof props?.baseUrl === 'string'
 }
 
+/**
+ * Every hop the gateway sends (first request, login retry, followed
+ * redirect) goes through this fetch, so loopback and private, link-local,
+ * or reserved IP literals are refused on each one. `kody dev` mocks skip it.
+ */
+function publicHostsOnly(fetcher: typeof fetch): typeof fetch {
+	return async (resource, init) => {
+		const url = new URL(
+			resource instanceof Request ? resource.url : String(resource),
+		)
+		if (!isPublicFetchHostname(url.hostname)) {
+			throw new Error(
+				`Outbound fetch to "${url.hostname}" was refused: sandbox fetch only reaches public hosts, not loopback, private, link-local, or reserved addresses.`,
+			)
+		}
+		return await fetcher(resource, init)
+	}
+}
+
 export async function executeGatewayFetch(input: {
 	env: FetchGatewayEnv
 	props: FetchGatewayProps
@@ -416,8 +436,11 @@ async function fetchThroughGateway(
 	input: Parameters<typeof executeGatewayFetch>[0],
 ): Promise<Response> {
 	const resolved = await applyPackageAppVisitTicketToGateway(input)
+	const devOutboundFetch = resolved.globalFetch
+		? null
+		: kodyDevOutboundFetch(resolved.env)
 	const globalFetch =
-		resolved.globalFetch ?? kodyDevOutboundFetch(resolved.env) ?? fetch
+		devOutboundFetch ?? publicHostsOnly(resolved.globalFetch ?? fetch)
 	const startedAtMs = Date.now()
 	let response: Response | undefined
 	let deadline: OutboundFetchDeadline | undefined

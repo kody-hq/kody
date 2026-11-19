@@ -25,7 +25,9 @@ test('isSecureCredentialUrl requires https except for loopback http', () => {
 test('assertSecureCredentialUrl returns a clear rejection for plain http', () => {
 	expect(
 		assertSecureCredentialUrl('http://evil.example/token', 'Token URL'),
-	).toBe('Token URL must use https (http is only allowed for localhost).')
+	).toBe(
+		'Token URL must use https and a public host (http is only allowed for localhost).',
+	)
 	expect(
 		assertSecureCredentialUrl('https://auth.example.com/token', 'Token URL'),
 	).toBeNull()
@@ -38,10 +40,10 @@ test('assertSafeDeviceAuthorizationUrl and assertSafeTokenUrl reject non-loopbac
 	expect(
 		assertSafeDeviceAuthorizationUrl('http://oauth.example.com/device'),
 	).toBe(
-		'Device authorization URL must use https (http is only allowed for localhost).',
+		'Device authorization URL must use https and a public host (http is only allowed for localhost).',
 	)
 	expect(assertSafeTokenUrl('http://oauth.example.com/token')).toBe(
-		'Token URL must use https (http is only allowed for localhost).',
+		'Token URL must use https and a public host (http is only allowed for localhost).',
 	)
 	expect(
 		assertSafeDeviceAuthorizationUrl('http://localhost:8787/device'),
@@ -56,4 +58,18 @@ test('isLoopbackHostname covers localhost variants', () => {
 	expect(isLoopbackHostname('[::1]')).toBe(true)
 	expect(isLoopbackHostname('mock.localhost')).toBe(true)
 	expect(isLoopbackHostname('oauth.example.com')).toBe(false)
+})
+
+test('isSecureCredentialUrl refuses private, link-local, and reserved token hosts', () => {
+	for (const value of [
+		'https://169.254.169.254/token',
+		'https://10.0.0.5/token',
+		'https://192.168.1.10/token',
+		'https://167772161/token',
+		'https://[fd00::1]/token',
+		'https://[::ffff:10.0.0.1]/token',
+	]) {
+		expect(isSecureCredentialUrl(value)).toBe(false)
+	}
+	expect(isSecureCredentialUrl('https://localhost:8787/token')).toBe(true)
 })

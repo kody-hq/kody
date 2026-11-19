@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import {
 	assertMcpEventCallbackUrl,
 	fetchMcpEventCallback,
+	isPublicFetchHostname,
 	isPublicIpv4,
 	isPublicIpv6,
 	McpEventCallbackUrlError,
@@ -140,4 +141,32 @@ test('fetchMcpEventCallback re-validates, never follows redirects, and bounds th
 			signal: expect.any(AbortSignal),
 		}),
 	)
+})
+
+test('isPublicFetchHostname refuses loopback names and non-public IP literals', () => {
+	for (const value of [
+		'http://localhost/',
+		'http://app.localhost/',
+		'http://127.0.0.1/',
+		'http://2130706433/',
+		'http://0177.0.0.1/',
+		'http://0x7f.1/',
+		'http://169.254.169.254/latest/meta-data/',
+		'http://10.0.0.1/',
+		'http://192.168.1.1/',
+		'http://[::1]/',
+		'http://[fd00::1]/',
+		'http://[fe80::1]/',
+		'http://[::ffff:127.0.0.1]/',
+		'http://[::ffff:169.254.169.254]/',
+	]) {
+		expect(isPublicFetchHostname(new URL(value).hostname)).toBe(false)
+	}
+	for (const value of [
+		'https://api.example.com/',
+		'https://1.1.1.1/',
+		'https://[2606:4700::1111]/',
+	]) {
+		expect(isPublicFetchHostname(new URL(value).hostname)).toBe(true)
+	}
 })

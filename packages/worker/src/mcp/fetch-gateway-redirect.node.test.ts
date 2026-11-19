@@ -263,3 +263,60 @@ test('ordinary redirect follow does not downgrade https to http', async () => {
 		'http://api.example.com/insecure',
 	)
 })
+
+test('outbound fetch to loopback, private, or metadata hosts is refused before sending', async () => {
+	vi.spyOn(usageModule, 'recordUsage').mockResolvedValue(undefined)
+	const fetchStub = vi.fn(async () => new Response('internal', { status: 200 }))
+	for (const url of [
+		'http://169.254.169.254/latest/meta-data/',
+		'http://127.0.0.1:8080/',
+		'http://2130706433/',
+		'http://localhost/',
+		'http://10.0.0.1/',
+		'http://[fd00::1]/',
+		'http://[::ffff:127.0.0.1]/',
+	]) {
+		await expect(
+			executeGatewayFetch({
+				env,
+				props,
+				request: new Request(url),
+				globalFetch: fetchStub as unknown as typeof fetch,
+			}),
+		).rejects.toThrow(/only reaches public hosts/)
+	}
+	expect(fetchStub).not.toHaveBeenCalled()
+})
+
+test('a followed redirect to a private host is refused', async () => {
+	vi.spyOn(usageModule, 'recordUsage').mockResolvedValue(undefined)
+	const encoder = new TextEncoder()
+	const body = new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(encoder.encode('hello'))
+			controller.close()
+		},
+	})
+	const fetchStub = vi.fn(async (request: Request) => {
+		await request.text()
+		return new Response(null, {
+			status: 302,
+			headers: { Location: 'https://169.254.169.254/latest/meta-data/' },
+		})
+	})
+	await expect(
+		executeGatewayFetch({
+			env,
+			props,
+			request: new Request('https://api.example.com/start', {
+				method: 'POST',
+				headers: { 'Content-Type': 'text/plain' },
+				body,
+				redirect: 'follow',
+				duplex: 'half',
+			} as RequestInit & { duplex: 'half' }),
+			globalFetch: fetchStub as unknown as typeof fetch,
+		}),
+	).rejects.toThrow(/only reaches public hosts/)
+	expect(fetchStub).toHaveBeenCalledTimes(1)
+})
