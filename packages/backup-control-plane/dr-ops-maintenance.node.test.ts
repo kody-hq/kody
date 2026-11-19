@@ -192,6 +192,11 @@ test('DR ops paced-drill-status returns progress JSON, 404 with workflow status 
 	assert.equal(ok.status, 200)
 	assert.deepEqual(await ok.json(), progress)
 
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			throw new Error('instance not found')
+		},
+	} as unknown as Workflow
 	const missing = await handleControlPlaneFetch(
 		drOpsRequest(
 			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-1',
@@ -228,6 +233,25 @@ test('DR ops paced-drill-status returns progress JSON, 404 with workflow status 
 		workflowStatus: 'queued',
 	})
 
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			return {
+				async status() {
+					throw new Error('workflows unavailable')
+				},
+			}
+		},
+	} as unknown as Workflow
+	const statusFailure = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-2',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(statusFailure.status, 503)
+
 	const malformed = await handleControlPlaneFetch(
 		drOpsRequest('/__maintenance/paced-drill-status?id=nope', {
 			method: 'GET',
@@ -236,7 +260,6 @@ test('DR ops paced-drill-status returns progress JSON, 404 with workflow status 
 	)
 	assert.equal(malformed.status, 400)
 
-	vi.spyOn(console, 'error').mockImplementation(() => undefined)
 	env.BACKUP_BUCKET.get = async () => {
 		throw new Error('bucket unavailable')
 	}

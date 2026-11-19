@@ -193,24 +193,40 @@ async function handlePacedDrillStatusGet(url: URL, env: BackupEnvironment) {
 		)
 	}
 	if (progress) return Response.json(progress)
-	let workflowStatus: string | null = null
+	let instance: Awaited<
+		ReturnType<BackupEnvironment['PACED_DRILL_WORKFLOW']['get']>
+	>
 	try {
-		workflowStatus = (await (await env.PACED_DRILL_WORKFLOW.get(id)).status())
-			.status
+		instance = await env.PACED_DRILL_WORKFLOW.get(id)
 	} catch {
-		workflowStatus = null
+		return Response.json(
+			{ ok: false, error: 'Paced drill run not found.' },
+			{ status: 404 },
+		)
 	}
-	return Response.json(
-		{
-			ok: false,
-			error:
-				workflowStatus === null
-					? 'Paced drill run not found.'
-					: 'No paced drill progress recorded yet.',
-			workflowStatus,
-		},
-		{ status: 404 },
-	)
+	try {
+		const { status } = await instance.status()
+		return Response.json(
+			{
+				ok: false,
+				error: 'No paced drill progress recorded yet.',
+				workflowStatus: status,
+			},
+			{ status: 404 },
+		)
+	} catch (error) {
+		console.error(
+			'dr_ops_paced_drill_status_lookup_failed',
+			JSON.stringify({
+				id,
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		)
+		return Response.json(
+			{ ok: false, error: 'Unable to read paced drill workflow status.' },
+			{ status: 503 },
+		)
+	}
 }
 
 export async function handleDrOpsMaintenanceRequest(
