@@ -18,6 +18,10 @@ import { after, before, test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runCli } from '../src/cli.js'
 import {
+	buildLocalPackageContext,
+	runLocalPackageModule,
+} from '../src/local-package-run.js'
+import {
 	egressPolicyFromGrant,
 	localExecuteEgressPolicy,
 } from '../src/local-egress.js'
@@ -965,6 +969,158 @@ export default async function main() {
 			args: [{ key: 'resend' }],
 			credentials: { resend: 'prod' },
 		})
+	},
+)
+
+test(
+	'local package execution preflights and forwards selected credentials',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const dir = mkdtempSync(join(tmpdir(), 'kody-package-credential-'))
+		const file = join(dir, 'entry.ts')
+		writeFileSync(
+			file,
+			`import { credential } from 'kody:runtime'
+export default async function main() {
+	const opened = await credential('resend')
+	return { name: opened.name }
+}`,
+		)
+		const result = await runLocalPackageModule({
+			modulePath: file,
+			token: goodToken,
+			apiUrl,
+			target: 'prod',
+			packageContext: buildLocalPackageContext({
+				kodyId: 'test',
+				hostedUrl: 'http://127.0.0.1:0',
+			}),
+			credentials: { resend: 'prod' },
+		})
+		assert.equal(result.isError, false)
+		assert.equal(
+			(result.structuredContent as { result: { name: string } }).result.name,
+			'prod',
+		)
+		for (const name of [
+			'kody.credentialClientCheck',
+			'kody.credentialClientOpen',
+		]) {
+			const call = proxyRequests.find(
+				(request) =>
+					Array.isArray((request.body as { path?: unknown })?.path) &&
+					(request.body as { path: Array<string> }).path.join('.') === name,
+			)
+			assert.ok(call, name)
+			assert.deepEqual((call.body as { credentials: unknown }).credentials, {
+				resend: 'prod',
+			})
+		}
+	},
+)
+
+test(
+	'execute --local --file passes credential picks from a package checkout',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const dir = mkdtempSync(join(tmpdir(), 'kody-package-cli-credential-'))
+		writeFileSync(
+			join(dir, 'package.json'),
+			JSON.stringify({ name: '@test/demo', kody: { id: 'demo' } }),
+		)
+		writeFileSync(
+			join(dir, 'entry.ts'),
+			`import { credential } from 'kody:runtime'
+export default async function main() { return { name: (await credential('resend')).name } }`,
+		)
+		const previousCwd = process.cwd()
+		let stdout = ''
+		let stderr = ''
+		try {
+			process.chdir(dir)
+			const code = await runCli(
+				[
+					'execute',
+					'--local',
+					'--token',
+					goodToken,
+					'--api-url',
+					apiUrl,
+					'--file',
+					'entry.ts',
+					'--credential',
+					'resend=prod',
+					'--json',
+				],
+				{
+					stdout: (text) => {
+						stdout += text
+					},
+					stderr: (text) => {
+						stderr += text
+					},
+				},
+			)
+			assert.equal(code, 0, stderr)
+			assert.equal(JSON.parse(stdout).structuredContent.result.name, 'prod')
+		} finally {
+			process.chdir(previousCwd)
+		}
+	},
+)
+
+test(
+	'local package execution pins checked credential choices and rejects unsupported hosts',
+	{ timeout: 180_000 },
+	async () => {
+		reset()
+		const dir = mkdtempSync(join(tmpdir(), 'kody-package-pinned-'))
+		const file = join(dir, 'entry.ts')
+		writeFileSync(
+			file,
+			`import { credential } from 'kody:runtime'
+export default async function main() { return { name: (await credential('demoToken')).name } }`,
+		)
+		const input = {
+			modulePath: file,
+			token: goodToken,
+			apiUrl,
+			target: 'prod' as const,
+			packageContext: buildLocalPackageContext({
+				kodyId: 'test',
+				hostedUrl: 'http://127.0.0.1:0',
+			}),
+			credentials: { demoToken: 'old-label' },
+		}
+		const result = await runLocalPackageModule(input)
+		assert.equal(result.isError, false)
+		const open = proxyRequests.find(
+			(request) =>
+				Array.isArray((request.body as { path?: unknown })?.path) &&
+				(request.body as { path: Array<string> }).path.join('.') ===
+					'kody.credentialClientOpen',
+		)
+		assert.deepEqual((open?.body as { credentials: unknown }).credentials, {
+			demoToken: [{ id: 'pinned-id' }],
+		})
+		reset()
+		sessionStatus = {
+			status: 200,
+			body: { scopes: ['capability-proxy'], expiresAt: null, features: [] },
+		}
+		await assert.rejects(
+			runLocalPackageModule(input),
+			/does not support --credential/,
+		)
+		assert.equal(
+			proxyRequests.some(
+				(request) => request.url === `/${localPackageGraphPath}`,
+			),
+			false,
+		)
+		reset()
 	},
 )
 
