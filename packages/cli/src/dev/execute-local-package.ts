@@ -1,4 +1,4 @@
-import { realpath } from 'node:fs/promises'
+import { readFile, realpath } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { loadPackageManifest } from '../package-manifest.js'
 import { resolveExecuteInvokeCode } from '../invoke-passthrough.js'
@@ -9,6 +9,7 @@ import { resolveLocalKodySession } from './local-kody-session.js'
 export async function findLocalPackageExport(input: {
 	cwd?: string
 	modulePath?: string
+	exportKey?: string
 }) {
 	let manifest
 	try {
@@ -17,10 +18,22 @@ export async function findLocalPackageExport(input: {
 		return null
 	}
 	if (!input.modulePath) return null
+	const raw = JSON.parse(await readFile(manifest.packageJsonPath, 'utf8'))
+	const exports =
+		typeof raw.exports === 'string' ? { '.': raw.exports } : (raw.exports ?? {})
 	const modulePath = await realpath(
 		resolve(input.cwd ?? process.cwd(), input.modulePath),
 	)
-	for (const [key, path] of Object.entries(manifest.exports)) {
+	const exportKey = input.exportKey?.trim().replace(/^\.\//, '')
+	for (const [key, target] of Object.entries(exports)) {
+		const conditional = target as { import?: unknown; default?: unknown } | null
+		const path =
+			typeof target === 'string'
+				? target
+				: (conditional?.import ?? conditional?.default)
+		if (typeof path !== 'string') continue
+		if (exportKey !== undefined && key.replace(/^\.\//, '') === exportKey)
+			return { manifest, key }
 		const exportedPath = await realpath(resolve(manifest.root, path)).catch(
 			() => null,
 		)

@@ -1345,7 +1345,10 @@ async function dispatch(
 				if (local && target === 'mock' && modulePath !== undefined) {
 					const { findLocalPackageExport, executeLocalPackageExport } =
 						await import('./dev/execute-local-package.js')
-					const localExport = await findLocalPackageExport({ modulePath })
+					const localExport = await findLocalPackageExport({
+						modulePath,
+						...(localPackageInvoke && invoke ? { exportKey: invoke } : {}),
+					})
 					if (localExport) {
 						const result = await executeLocalPackageExport({
 							export: localExport,

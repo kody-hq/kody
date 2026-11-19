@@ -308,3 +308,48 @@ test('execute mock storage capabilities refuse scratch writes while other capabi
 		await rm(cache, { recursive: true, force: true })
 	}
 })
+
+test('local export files match the runtime import target before default', async () => {
+	const root = await mkdtemp(join(tmpdir(), 'kody-export-conditions-'))
+	try {
+		await writeFile(
+			join(root, 'package.json'),
+			JSON.stringify({
+				name: '@seed/conditions',
+				exports: {
+					'./seed': { default: './default.ts', import: './import.ts' },
+					'./fallback': { default: './default.ts' },
+					'./require': { require: './require.ts' },
+				},
+			}),
+		)
+		for (const file of ['default.ts', 'import.ts', 'require.ts'])
+			await writeFile(join(root, file), 'export default () => 1')
+		assert.equal(
+			(await findLocalPackageExport({ cwd: root, modulePath: './import.ts' }))
+				?.key,
+			'./seed',
+		)
+		assert.equal(
+			(await findLocalPackageExport({ cwd: root, modulePath: './default.ts' }))
+				?.key,
+			'./fallback',
+		)
+		assert.equal(
+			await findLocalPackageExport({ cwd: root, modulePath: './require.ts' }),
+			null,
+		)
+		assert.equal(
+			(
+				await findLocalPackageExport({
+					cwd: root,
+					modulePath: './default.ts',
+					exportKey: './seed',
+				})
+			)?.key,
+			'./seed',
+		)
+	} finally {
+		await rm(root, { recursive: true, force: true })
+	}
+})
