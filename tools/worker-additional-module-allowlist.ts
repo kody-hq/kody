@@ -15,6 +15,14 @@ export const guideGeneratedModuleNames = [
 	'guide-metadata.mjs',
 ] as const
 
+/**
+ * Committed generated modules under `packages/worker/src`, kept out of the
+ * main script and loaded through `import()` (see `builtin-domains.ts`).
+ */
+export const committedGeneratedEsModuleNames = [
+	'capability-manifest.generated.mjs',
+] as const
+
 export const kodyGeneratedEsModuleNames = [
 	'worker-bundler.mjs',
 	'worker-bundler-typescript.mjs',

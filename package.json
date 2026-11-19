@@ -78,6 +78,7 @@
     "deploy-guardrails:check": "node tools/check-deploy-guardrails.ts",
     "workflows:check": "node tools/check-workflow-refs.ts",
     "origin-production-exports:check": "node tools/check-origin-production-exports.ts",
+    "capabilities:manifest": "KODY_UPDATE_CAPABILITY_MANIFEST=1 vitest run --config vitest.node.config.ts packages/worker/src/mcp/capabilities/capability-manifest.node.test.ts",
     "worker-startup-bundles:check": "node tools/check-worker-startup-bundles.ts",
     "worker-startup-time:check": "node tools/check-worker-startup-time.ts",
     "migrations:check": "node tools/check-migrations.ts",

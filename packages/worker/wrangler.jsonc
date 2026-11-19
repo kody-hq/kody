@@ -88,6 +88,8 @@
 				"generated/guide-metadata.mjs",
 				"./generated/guide-catalog.mjs",
 				"./generated/guide-metadata.mjs",
+				"mcp/capabilities/capability-manifest.generated.mjs",
+				"./mcp/capabilities/capability-manifest.generated.mjs",
 				"node_modules/.kody-generated/worker-bundler.mjs",
 				"node_modules/.kody-generated/worker-bundler-typescript.mjs",
 				"node_modules/.kody-generated/oauth-provider.mjs",

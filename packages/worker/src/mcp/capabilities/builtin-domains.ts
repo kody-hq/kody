@@ -1,16 +1,23 @@
-import type { DomainSpec } from './types.ts'
+import { importCapabilityManifest } from '#worker/capability-manifest-module.ts'
+import type { Capability, DomainSpec } from './types.ts'
 
 /**
  * Builtin domains merged by `buildCapabilityRegistry` in `registry.ts`.
  *
- * Loaded through dynamic `import()` on purpose. Every domain module pulls in
- * its capability files, and each of those constructs Zod input/output schemas
- * at module scope — several hundred schemas across the fleet. With static
- * imports that work runs during Worker startup, which Cloudflare caps at a
- * fixed CPU budget measured at upload time; it was the single largest item in
- * the origin startup profile. esbuild keeps these modules in the same bundle
- * but evaluates them lazily, so the cost moves to the first request that
- * needs the registry and is then memoized for the isolate lifetime.
+ * The registry is built from `capability-manifest.generated.mjs`: every
+ * builtin capability's metadata, JSON Schemas, and type definitions,
+ * precomputed from the real definitions. Search, listings, docs, access
+ * filtering, and reindexing read only that data, so they never evaluate a
+ * domain module. Each manifest capability's `handler` loads its own domain
+ * module on first call, so a fresh isolate pays Zod schema construction and
+ * handler module evaluation only for the domains a request dispatches into.
+ *
+ * The manifest is a separate generated module behind `import()`: Vite origin
+ * emits it as its own chunk and Wrangler sibling workers upload it through
+ * the allowlisted `find_additional_modules` rule, so it adds nothing to the
+ * main script V8 parses on cold start. After changing a builtin capability
+ * or domain, run `npm run capabilities:manifest`; the drift test in
+ * `capability-manifest.node.test.ts` fails until the manifest matches.
  *
  * Do not import a `*\/domain.ts` module (or a capability definition file)
  * statically from anything on the startup path: one static edge makes esbuild
@@ -21,43 +28,103 @@ import type { DomainSpec } from './types.ts'
  * `[...(await loadBuiltinDomains()), ...extraDomains]` where each extra domain
  * is a real `DomainSpec` with bundled `Capability` handlers.
  */
-const builtinDomainLoaders: ReadonlyArray<() => Promise<DomainSpec>> = [
-	() => import('./access/domain.ts').then((m) => m.accessDomain),
-	() => import('./account/domain.ts').then((m) => m.accountDomain),
-	() => import('./admin/domain.ts').then((m) => m.adminDomain),
-	() => import('./apps/domain.ts').then((m) => m.appsDomain),
-	() => import('./community/domain.ts').then((m) => m.communityDomain),
-	() => import('./coding/domain.ts').then((m) => m.codingDomain),
-	() => import('./email/domain.ts').then((m) => m.emailDomain),
-	() =>
+export const builtinDomainModuleLoaders: Readonly<
+	Record<string, () => Promise<DomainSpec>>
+> = {
+	access: () => import('./access/domain.ts').then((m) => m.accessDomain),
+	account: () => import('./account/domain.ts').then((m) => m.accountDomain),
+	admin: () => import('./admin/domain.ts').then((m) => m.adminDomain),
+	apps: () => import('./apps/domain.ts').then((m) => m.appsDomain),
+	community: () =>
+		import('./community/domain.ts').then((m) => m.communityDomain),
+	coding: () => import('./coding/domain.ts').then((m) => m.codingDomain),
+	email: () => import('./email/domain.ts').then((m) => m.emailDomain),
+	executionContexts: () =>
 		import('./execution-contexts/domain.ts').then(
 			(m) => m.executionContextsDomain,
 		),
-	() => import('./files/domain.ts').then((m) => m.filesDomain),
-	() => import('./follow/domain.ts').then((m) => m.followDomain),
-	() => import('./integrations/domain.ts').then((m) => m.integrationsDomain),
-	() => import('./jobs/domain.ts').then((m) => m.jobsDomain),
-	() => import('./mcp-servers/domain.ts').then((m) => m.mcpServersDomain),
-	() => import('./meta/domain.ts').then((m) => m.metaDomain),
-	() => import('./profiles/domain.ts').then((m) => m.profilesDomain),
-	() => import('./orgs/domain.ts').then((m) => m.orgsDomain),
-	() => import('./packages/domain.ts').then((m) => m.packagesDomain),
-	() => import('./repo/domain.ts').then((m) => m.repoDomain),
-	() => import('./runs/domain.ts').then((m) => m.runsDomain),
-	() => import('./secrets/domain.ts').then((m) => m.secretsDomain),
-	() => import('./storage/domain.ts').then((m) => m.storageDomain),
-	() => import('./webhooks/domain.ts').then((m) => m.webhooksDomain),
-]
+	files: () => import('./files/domain.ts').then((m) => m.filesDomain),
+	follow: () => import('./follow/domain.ts').then((m) => m.followDomain),
+	integrations: () =>
+		import('./integrations/domain.ts').then((m) => m.integrationsDomain),
+	jobs: () => import('./jobs/domain.ts').then((m) => m.jobsDomain),
+	mcpServers: () =>
+		import('./mcp-servers/domain.ts').then((m) => m.mcpServersDomain),
+	meta: () => import('./meta/domain.ts').then((m) => m.metaDomain),
+	profiles: () => import('./profiles/domain.ts').then((m) => m.profilesDomain),
+	orgs: () => import('./orgs/domain.ts').then((m) => m.orgsDomain),
+	packages: () => import('./packages/domain.ts').then((m) => m.packagesDomain),
+	repo: () => import('./repo/domain.ts').then((m) => m.repoDomain),
+	runs: () => import('./runs/domain.ts').then((m) => m.runsDomain),
+	secrets: () => import('./secrets/domain.ts').then((m) => m.secretsDomain),
+	storage: () => import('./storage/domain.ts').then((m) => m.storageDomain),
+	webhooks: () => import('./webhooks/domain.ts').then((m) => m.webhooksDomain),
+}
+
+const builtinDomainModuleMemos = new Map<string, Promise<DomainSpec>>()
+
+/** Loads one builtin domain module (real definitions and handlers). */
+export function loadBuiltinDomainModule(name: string): Promise<DomainSpec> {
+	let memo = builtinDomainModuleMemos.get(name)
+	if (!memo) {
+		const load = Object.hasOwn(builtinDomainModuleLoaders, name)
+			? builtinDomainModuleLoaders[name]
+			: undefined
+		if (!load) {
+			return Promise.reject(new Error(`Unknown builtin domain "${name}"`))
+		}
+		memo = load().catch((error: unknown) => {
+			// A failed load must not poison every later call for the isolate.
+			builtinDomainModuleMemos.delete(name)
+			throw error
+		})
+		builtinDomainModuleMemos.set(name, memo)
+	}
+	return memo
+}
+
+async function loadBuiltinCapabilityHandler(
+	domainName: string,
+	capabilityName: string,
+): Promise<Capability['handler']> {
+	const domain = await loadBuiltinDomainModule(domainName)
+	const capability = domain.capabilities.find(
+		(candidate) => candidate.name === capabilityName,
+	)
+	if (!capability) {
+		throw new Error(
+			`Builtin capability "${capabilityName}" is missing from domain "${domainName}"; run npm run capabilities:manifest`,
+		)
+	}
+	return capability.handler
+}
+
+function createLazyHandler(
+	domainName: string,
+	capabilityName: string,
+): Capability['handler'] {
+	return async (args, ctx) =>
+		(await loadBuiltinCapabilityHandler(domainName, capabilityName))(args, ctx)
+}
 
 let builtinDomainsMemo: Promise<ReadonlyArray<DomainSpec>> | null = null
 
 export function loadBuiltinDomains(): Promise<ReadonlyArray<DomainSpec>> {
-	builtinDomainsMemo ??= Promise.all(
-		builtinDomainLoaders.map((load) => load()),
-	).catch((error: unknown) => {
-		// A failed load must not poison every later call for the isolate.
-		builtinDomainsMemo = null
-		throw error
-	})
+	builtinDomainsMemo ??= importCapabilityManifest()
+		.then(({ capabilityManifest }) =>
+			capabilityManifest.domains.map(
+				({ capabilities, ...domain }): DomainSpec => ({
+					...domain,
+					capabilities: capabilities.map((capability): Capability => ({
+						...capability,
+						handler: createLazyHandler(domain.name, capability.name),
+					})),
+				}),
+			),
+		)
+		.catch((error: unknown) => {
+			builtinDomainsMemo = null
+			throw error
+		})
 	return builtinDomainsMemo
 }
