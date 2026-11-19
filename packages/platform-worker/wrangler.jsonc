@@ -160,7 +160,7 @@
 		},
 		"traces": {
 			"enabled": true,
-			"head_sampling_rate": 0.1,
+			"head_sampling_rate": 0.02,
 		},
 	},
 	"env": {
@@ -174,7 +174,7 @@
 				},
 				"traces": {
 					"enabled": true,
-					"head_sampling_rate": 0.1,
+					"head_sampling_rate": 0.02,
 					"destinations": ["sentry-otlp-traces"],
 				},
 			},

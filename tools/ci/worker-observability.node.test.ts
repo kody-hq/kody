@@ -17,11 +17,11 @@ async function readConfig(path: string) {
 }
 
 // Per-Worker trace sampling sized by spans per day (spans bill as observability
-// events): kody-production 2%, platform and runtime 10%, jobs and API 5%,
+// events): kody-production and platform 2%, runtime 10%, jobs and API 5%,
 // low-volume Workers keep everything. Logs stay at 100% in production.
 const productionSampling = [
 	['packages/worker/wrangler.jsonc', 0.02],
-	['packages/platform-worker/wrangler.jsonc', 0.1],
+	['packages/platform-worker/wrangler.jsonc', 0.02],
 	['packages/runtime-worker/wrangler.jsonc', 0.1],
 	['packages/jobs-worker/wrangler.jsonc', 0.05],
 	['packages/api-worker/wrangler.jsonc', 0.05],
