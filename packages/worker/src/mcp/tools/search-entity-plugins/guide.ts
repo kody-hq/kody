@@ -19,9 +19,11 @@ import { buildEntityRef, buildGuideUsage } from '../search-format-helpers.ts'
 import { buildCandidateBaseScore } from '../search-scoring.ts'
 import {
 	buildSearchPhrases,
+	dropSearchStopwords,
 	extractMeaningfulSearchTokens,
 	extractSearchTokens,
 	normalizeSearchText,
+	singularizeSearchToken,
 } from '../understand-search-query.ts'
 
 const advertisedPublicGuides = guideMetadataList.filter(
@@ -37,6 +39,16 @@ function searchableGuides(includeAdmin: boolean) {
 
 function guideBelongsInDomain(domain: string | undefined) {
 	return domain == null || domain === capabilityDomainNames.coding
+}
+
+/**
+ * Plural-folded overlap, so "revoke api key" scores the "API keys" guide as a
+ * full match instead of tying with any guide that says "API key".
+ */
+function guideLexicalScore(query: string, doc: string) {
+	const fold = (text: string) =>
+		extractSearchTokens(text).map(singularizeSearchToken).join(' ')
+	return lexicalScore(fold(query), fold(doc))
 }
 
 function guideSearchText(guide: GuideMetadata) {
@@ -93,7 +105,10 @@ function queryNarrowsGuideBySummary(
 }
 
 function guideHasStrongQueryMatch(query: string, guide: GuideMetadata) {
-	const identity = normalizeSearchText(guideSearchText(guide))
+	const searchText = guideSearchText(guide)
+	// The query drops stopwords, so match phrases against both forms: "ask user"
+	// must hit a title that says "Ask the user".
+	const identity = `${normalizeSearchText(searchText)}\n${dropSearchStopwords(searchText)}`
 	const tokens = guideQueryTokens(query)
 	if (tokens.length === 0) return false
 	const focusedQuery = tokens.join(' ')
@@ -141,8 +156,8 @@ export const guideSearchEntityPlugin = {
 			.map((guide) => {
 				// A summary-phrase match has no identity overlap to score.
 				const lexical =
-					lexicalScore(input.query, guideSearchText(guide)) ||
-					lexicalScore(input.query, guide.summary)
+					guideLexicalScore(input.query, guideSearchText(guide)) ||
+					guideLexicalScore(input.query, guide.summary)
 				return {
 					match: {
 						type: 'guide' as const,

@@ -6,6 +6,11 @@ Credential setup uses **saved secrets**, **`/connect/oauth`** for OAuth,
 **`/connect/secret-set`** for API keys and PATs, or execution-time persistence
 when a token already exists inside trusted code.
 
+When the user has to type the value, send a prefilled `/connect/secret-set` link
+instead of asking for the value in chat or calling `secretSet`, which needs the
+value itself. Search finds the URL shape and params as `guide:connect_secret`
+([Ask the user to save a secret](../guides/account-secret-setup.md)).
+
 Use **search** first to discover saved secret references or integrations before
 switching to **execute**.
 
@@ -157,7 +162,7 @@ org deletes the app.
 The account create/edit form has the same optional expiry field. Agents
 prefilling **`/connect/secret-set`** can set **`expiresAt`** as a query
 parameter so the human pastes the token without typing the date. See
-[Account secret setup](../guides/account-secret-setup.md).
+[Ask the user to save a secret](../guides/account-secret-setup.md).
 
 A connection authorizes _your_ agent — and any code you run or install — to act
 as you on that provider. Kody does not control or supervise what your agent does
