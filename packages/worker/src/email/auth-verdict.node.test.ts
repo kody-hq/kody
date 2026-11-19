@@ -285,29 +285,31 @@ test('uses only the first header stamp', () => {
 	}
 })
 
-test('preserves quoted strings and comments', () => {
-	for (const detail of [
-		'(sender, address; dmarc=fail)',
-		'(sender (nested, address; dmarc=fail))',
-		String.raw`(sender \), address; dmarc=fail)`,
-		'smtp.mailfrom="local,part; dmarc=fail@example.com"',
-		String.raw`smtp.mailfrom="local\",part; dmarc=fail@example.com"`,
+test('stops at the first raw comma', () => {
+	for (const [detail, closing] of [
+		['a"b', 'x"'],
+		['a(b', 'x)'],
 	]) {
-		const stamp = `mx.cloudflare.net; spf=pass ${detail}; dkim=pass; dmarc=pass header.from=acme.com`
+		const stamp = `mx.cloudflare.net; dkim=fail header.d=${detail}; dmarc=fail header.from=acme.com`
 		const headers = new Headers()
 		headers.append('Authentication-Results', stamp)
-		headers.append('Authentication-Results', 'dmarc=fail')
+		headers.append(
+			'Authentication-Results',
+			`${closing}; dmarc=pass header.from=acme.com`,
+		)
 		expect(selectTrustedCloudflareAuthResults(headers)).toBe(stamp)
-		expect(
-			resolveInboundEmailAuthVerdict(headers.get('Authentication-Results')),
-		).toMatchObject({
-			spf: 'pass',
-			dkim: 'pass',
-			dmarc: 'pass',
-			dmarcHeaderFrom: 'acme.com',
-			authenticated: true,
-			suspect: false,
-		})
+		for (const input of [
+			selectTrustedCloudflareAuthResults(headers),
+			headers.get('Authentication-Results'),
+		]) {
+			expect(resolveInboundEmailAuthVerdict(input)).toMatchObject({
+				dkim: 'fail',
+				dmarc: 'fail',
+				dmarcHeaderFrom: null,
+				authenticated: false,
+				suspect: true,
+			})
+		}
 	}
 })
 

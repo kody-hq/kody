@@ -42,45 +42,9 @@ function parseMethodResultToken(token: string): EmailAuthMethodResult {
 	return 'unknown'
 }
 
-/** Split only outside quoted strings and nested comments. */
-function* splitAuthResults(
-	value: string,
-	separator: string,
-): Generator<string> {
-	let start = 0
-	let quoted = false
-	let commentDepth = 0
-	let escaped = false
-	for (let index = 0; index < value.length; index++) {
-		const char = value[index]
-		if (escaped) {
-			escaped = false
-			continue
-		}
-		if (char === '\\' && (quoted || commentDepth > 0)) {
-			escaped = true
-		} else if (commentDepth > 0) {
-			if (char === '(') commentDepth++
-			else if (char === ')') commentDepth--
-		} else if (char === '"') {
-			quoted = !quoted
-		} else if (!quoted) {
-			if (char === '(') commentDepth++
-			else if (char === separator) {
-				yield value.slice(start, index)
-				start = index + 1
-			}
-		}
-	}
-	yield value.slice(start)
-}
-
-/** Fetch joins duplicate headers with commas; only the first stamp is used. */
+/** Fetch joins duplicate headers with commas; stop at the first raw comma. */
 function firstAuthResultsStamp(value: string): string | null {
-	for (const stamp of splitAuthResults(value, ',')) {
-		return stamp.trim() || null
-	}
-	return null
+	return value.split(',', 1)[0]?.trim() || null
 }
 
 function parseAuthMethodResults(authResults: string | null): {
@@ -98,7 +62,7 @@ function parseAuthMethodResults(authResults: string | null): {
 		return { spf, dkim, dmarc, dmarcHeaderFrom }
 	}
 
-	for (const clause of splitAuthResults(authResults, ';')) {
+	for (const clause of authResults.split(';')) {
 		const match = clause.trim().match(methodClausePattern)
 		if (!match) continue
 		const method = match[1]!.toLowerCase()
@@ -130,7 +94,7 @@ function methodFailed(result: EmailAuthMethodResult): boolean {
  * value. Skips ARC `i=` instance tokens and method clauses.
  */
 export function extractAuthservId(headerValue: string): string | null {
-	for (const part of splitAuthResults(headerValue, ';')) {
+	for (const part of headerValue.split(';')) {
 		const token = part.trim()
 		if (!token) continue
 		if (/^i=\d+$/i.test(token)) continue
