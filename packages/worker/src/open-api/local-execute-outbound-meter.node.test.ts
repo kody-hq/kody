@@ -16,6 +16,7 @@ import {
 	createSavedPackageRecord,
 	moduleGraphMockModule as mockModule,
 } from '#worker/test-support/module-graph.ts'
+import { addInProcessPackageGraphIsolates } from '#worker/test-support/local-execute-package-graph.ts'
 import { createOpenApiTestHarness } from '#worker/test-support/open-api-http.ts'
 
 vi.mock('#worker/package-registry/repo.ts', async (importOriginal) => ({
@@ -30,6 +31,11 @@ vi.mock('#worker/package-registry/source.ts', async (importOriginal) => ({
 		mockModule.loadPackageSourceBySourceId(...args),
 	loadServingPackageSourceBySourceId: (...args: Array<unknown>) =>
 		mockModule.loadPackageSourceBySourceId(...args),
+	loadPackageSourceRowForUser: async () => ({
+		id: 'source-1',
+		published_commit: 'commit-1',
+		serving_commit: 'commit-1',
+	}),
 }))
 
 vi.mock(
@@ -100,6 +106,7 @@ function stubPublishedGreetPackage(ownerUserId: string) {
 
 async function createApiWithExhaustedOutboundMeter() {
 	const api = await createOpenApiTestHarness()
+	addInProcessPackageGraphIsolates(api.env as Env)
 	await api.userMeter.seed({
 		userId: api.userId,
 		resource: 'outbound_fetches_per_day',

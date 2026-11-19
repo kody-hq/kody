@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseCiShard } from './ci-shard.ts'
 import { isExecutedDirectly } from './node-runtime.ts'
+import { testModuleMapVitestArgs } from './test-module-map.ts'
 
 export function workersUnitTestArgs(shardValue: string | undefined) {
 	const shard = parseCiShard(shardValue)
@@ -21,6 +22,7 @@ if (isExecutedDirectly(import.meta.url)) {
 				new URL('../node_modules/vitest/vitest.mjs', import.meta.url),
 			),
 			...workersUnitTestArgs(process.env.WORKERS_TEST_SHARD),
+			...testModuleMapVitestArgs(),
 			...process.argv.slice(2),
 		],
 		{ stdio: 'inherit' },

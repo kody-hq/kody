@@ -10,13 +10,21 @@ import { listRunRecords } from '#worker/run-records/service.ts'
 import type { RunRecord } from '#worker/run-records/types.ts'
 import { getWebhookEndpointByKey } from '#worker/webhooks/repo.ts'
 import {
+	webhookDeliveryStateValues,
+	type WebhookDeliveryState,
+} from '#worker/webhooks/types.ts'
+import {
 	requirePackageRef,
 	toDeliveryCapability,
 	webhookDeliverySchema,
 	webhookPackageRefSchema,
 } from './shared.ts'
 
-const webhookOutcomeValues = ['delivered', 'rejected', 'failed'] as const
+const inFlightStates = new Set<WebhookDeliveryState>([
+	'accepted',
+	'queued',
+	'started',
+])
 
 function metadataString(
 	metadata: Record<string, unknown>,
@@ -40,29 +48,61 @@ function metadataNumber(
 	return null
 }
 
-function metadataOutcome(
-	metadata: Record<string, unknown>,
-): (typeof webhookOutcomeValues)[number] | null {
-	const raw = metadataString(metadata, ['outcome'])
-	if (raw === 'delivered' || raw === 'rejected' || raw === 'failed') {
-		return raw
-	}
-	return null
+function isDeliveryState(value: string | null): value is WebhookDeliveryState {
+	return (
+		value != null &&
+		(webhookDeliveryStateValues as ReadonlyArray<string>).includes(value)
+	)
 }
 
-function deliveryOutcome(
-	run: RunRecord,
-): (typeof webhookOutcomeValues)[number] {
-	const explicit = metadataOutcome(run.metadata)
-	if (explicit) return explicit
-	return 'failed'
+/**
+ * State comes from the row's metadata. A row the RunLog interrupted while
+ * still in flight (consumer killed, hold expired) reads as `failed`; rows
+ * written before states existed fall back to their terminal outcome.
+ */
+function deliveryState(run: RunRecord): WebhookDeliveryState {
+	const raw = metadataString(run.metadata, ['state'])
+	const outcome = metadataString(run.metadata, ['outcome'])
+	const recorded: WebhookDeliveryState = isDeliveryState(raw)
+		? raw
+		: outcome === 'delivered'
+			? 'succeeded'
+			: outcome === 'rejected'
+				? 'rejected'
+				: run.status === 'running'
+					? 'accepted'
+					: 'failed'
+	if (inFlightStates.has(recorded) && run.status !== 'running') {
+		return run.status === 'success' ? 'succeeded' : 'failed'
+	}
+	return recorded
+}
+
+function deliveryOutcome(state: WebhookDeliveryState) {
+	switch (state) {
+		case 'succeeded':
+			return 'delivered' as const
+		case 'rejected':
+			return 'rejected' as const
+		case 'failed':
+			return 'failed' as const
+		case 'accepted':
+		case 'queued':
+		case 'started':
+			return 'pending' as const
+	}
 }
 
 function toDeliveryFromRunRecord(run: RunRecord) {
-	const outcome = deliveryOutcome(run)
+	const state = deliveryState(run)
+	const outcome = deliveryOutcome(state)
 	const httpStatus =
 		metadataNumber(run.metadata, ['http_status', 'httpStatus']) ??
-		(outcome === 'delivered' ? 202 : outcome === 'rejected' ? 400 : 502)
+		(outcome === 'delivered' || outcome === 'pending'
+			? 202
+			: outcome === 'rejected'
+				? 400
+				: 502)
 	const payloadBytes =
 		metadataNumber(run.metadata, ['payload_bytes', 'payloadBytes']) ?? 0
 	const webhookName =
@@ -70,13 +110,18 @@ function toDeliveryFromRunRecord(run: RunRecord) {
 		metadataString(run.metadata, ['webhook_name', 'webhookName']) ??
 		''
 	const error =
-		metadataString(run.metadata, ['error']) ?? run.errorMessage ?? null
+		metadataString(run.metadata, ['error']) ??
+		run.errorMessage ??
+		metadataString(run.metadata, ['lastError']) ??
+		null
 	return toDeliveryCapability({
 		id: run.id,
 		packageId: run.packageId ?? '',
 		webhookName,
-		receivedAt: run.startedAt,
+		receivedAt: metadataString(run.metadata, ['receivedAt']) ?? run.startedAt,
 		outcome,
+		state,
+		attempts: metadataNumber(run.metadata, ['attempts']),
 		httpStatus,
 		error,
 		payloadBytes,
@@ -90,7 +135,7 @@ export const webhookDeliveryListCapability = defineDomainCapability(
 		contextRuns: 'allow',
 		orgPermission: 'package:read',
 		description:
-			'List recent inbound webhook deliveries for one minted package webhook from run records (metadata only; payload bodies are never stored).',
+			'List recent inbound webhook deliveries for one minted package webhook from run records (metadata only; payload bodies are never stored). Ack deliveries appear as soon as Kody accepts them, with `state` accepted, queued, or started until they finish.',
 		keywords: ['webhook', 'delivery', 'log', 'debug', 'history', 'runs'],
 		readOnly: true,
 		idempotent: true,

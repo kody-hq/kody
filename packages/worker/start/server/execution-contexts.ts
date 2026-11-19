@@ -326,6 +326,57 @@ export const removeExecutionContextShare = createServerFn({ method: 'POST' })
 		)
 	})
 
+export const grantExecutionContextMachineAccess = createServerFn({
+	method: 'POST',
+})
+	.validator(
+		z.object({
+			orgSlug,
+			contextId: segment,
+			capability: z.object({
+				kind: z.enum(['command', 'lan']),
+				name: z.string().min(1).max(200),
+			}),
+			subject: z.discriminatedUnion('kind', [
+				z.object({
+					kind: z.literal('user'),
+					username: z.string().trim().min(1).max(64),
+				}),
+				z.object({ kind: z.literal('team'), slug: segment }),
+				z.object({ kind: z.literal('org') }),
+				z.object({ kind: z.literal('profile'), profileId: segment }),
+			]),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const { grantExecutionContextMachineAccessForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			grantExecutionContextMachineAccessForUser({
+				...input,
+				contextId: data.contextId,
+				capability: data.capability,
+				subject: data.subject,
+			}),
+		)
+	})
+
+export const revokeExecutionContextMachineAccess = createServerFn({
+	method: 'POST',
+})
+	.validator(z.object({ orgSlug, contextId: segment, grantId: segment }))
+	.handler(async ({ data }) => {
+		const { revokeExecutionContextMachineAccessForUser } =
+			await import('../../src/app/handlers/execution-contexts.ts')
+		return mutate(data.orgSlug, (input) =>
+			revokeExecutionContextMachineAccessForUser({
+				...input,
+				contextId: data.contextId,
+				grantId: data.grantId,
+			}),
+		)
+	})
+
 export const redirectExecutionContextsEntry = createServerFn({ method: 'GET' })
 	.validator((href: string) => {
 		if (

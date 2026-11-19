@@ -140,13 +140,13 @@ function collectTypeOnlyLocalNames(body: Array<unknown>) {
 	return typeNames
 }
 
-function collectOwnExports(source: string): {
+async function collectOwnExports(source: string): Promise<{
 	names: Set<string>
 	starSpecifiers: Array<string>
-} | null {
+} | null> {
 	let program: unknown
 	try {
-		program = parseModuleSource(source)
+		program = await parseModuleSource(source)
 	} catch {
 		return null
 	}
@@ -241,10 +241,10 @@ function collectOwnExports(source: string): {
  * never forwards one). Returns `null` when the source does not parse so
  * callers can leave the verdict to the bundler.
  */
-export function moduleSourceDeclaresDefaultExport(
+export async function moduleSourceDeclaresDefaultExport(
 	source: string,
-): boolean | null {
-	const collected = collectOwnExports(source)
+): Promise<boolean | null> {
+	const collected = await collectOwnExports(source)
 	return collected ? collected.names.has('default') : null
 }
 
@@ -257,10 +257,10 @@ export function moduleSourceDeclaresDefaultExport(
  * name that is not a plain ASCII identifier (those also fall back to the
  * unmetered passthrough).
  */
-export function collectModuleExportNames(input: {
+export async function collectModuleExportNames(input: {
 	files: Record<string, string>
 	modulePath: string
-}): Array<string> {
+}): Promise<Array<string>> {
 	const names = new Set<string>()
 	const visited = new Set<string>()
 	const queue: Array<string> = [input.modulePath]
@@ -270,7 +270,7 @@ export function collectModuleExportNames(input: {
 		visited.add(modulePath)
 		const source = input.files[modulePath]
 		if (typeof source !== 'string') continue
-		const collected = collectOwnExports(source)
+		const collected = await collectOwnExports(source)
 		if (!collected) continue
 		for (const name of collected.names) names.add(name)
 		for (const starSpecifier of collected.starSpecifiers) {

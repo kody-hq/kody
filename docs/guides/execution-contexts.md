@@ -45,6 +45,13 @@ call. Three things are added, and only when you allow them:
   command grant can run shell commands there (see
   [Run commands on the machine](#run-commands-on-the-machine)).
 
+Code runs the same way too. Execute code is a TypeScript module everywhere: Kody
+cloud, a context, and `execute --local` apply the same TypeScript transform, so
+annotations, `enum`, `satisfies`, and top-level `await` work on all three. A
+daemon older than this support is skipped for TypeScript code (reason
+`typescript_daemon_outdated`, which says to run `kody daemon update`), so the
+run falls through the chain instead of failing with a syntax error.
+
 Credentials stay in Kody cloud and never reach the machine. When code on your
 machine calls a service with a credential, that request leaves from Kody cloud,
 which adds the credential on the way out. The machine sees the response, not the
@@ -142,19 +149,20 @@ the context, so the daemon starts at login or boot and restarts after a crash:
   hidden and restarts the daemon after a crash. Windows on Arm runs the x64
   runtime under emulation.
 
-| Command                                        | What it does                                         |
-| ---------------------------------------------- | ---------------------------------------------------- |
-| `kody daemon status` (`--json`)                | Names each problem with the command that fixes it    |
-| `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                 |
-| `kody daemon restart`                          | Restarts after runs in flight finish                 |
-| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)  |
-| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere     |
-| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)  |
-| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere       |
-| `kody daemon install`                          | Installs the service, or repairs it                  |
-| `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context |
-| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine  |
-| `kody update`                                  | Installs the latest CLI and moves services onto it   |
+| Command                                        | What it does                                           |
+| ---------------------------------------------- | ------------------------------------------------------ |
+| `kody daemon status` (`--json`)                | Names each problem with the command that fixes it      |
+| `kody daemon health` (`--max-age <s>`)         | Exits 0 only while connected: a container health check |
+| `kody daemon logs` (`--lines <n>`, `--follow`) | Shows the daemon log                                   |
+| `kody daemon restart`                          | Restarts after runs in flight finish                   |
+| `kody daemon start` / `stop`                   | Starts or stops the service (or the running daemon)    |
+| `kody daemon pause` / `resume` (`--context`)   | Server-side pause: chains skip it, from anywhere       |
+| `kody daemon update` (`--context`)             | Updates now (same as `kody update` on this machine)    |
+| `kody daemon config [show\|set ...]`           | Concurrency cap and auto-update, from anywhere         |
+| `kody daemon install`                          | Installs the service, or repairs it                    |
+| `kody daemon uninstall` (`--unregister`)       | Removes the service and offers to revoke the context   |
+| `kody daemon auto-update on\|off\|status`      | Auto-update switch for every daemon on this machine    |
+| `kody update`                                  | Installs the latest CLI and moves services onto it     |
 
 Install the CLI globally (`npm install -g @kodycodes/cli`). The service refuses
 to run from `npx`, `pnpm dlx`, or `bunx`, because those copies are deleted.
@@ -294,6 +302,14 @@ first entry that can take it. An entry is skipped when it is offline, busy, you
 lost access to it, or it lacks what the run `requires`. When no context can take
 the run, it runs on Kody cloud.
 
+A machine counts as offline as soon as its heartbeat goes quiet: the daemon
+pings every 30 seconds, and a context whose last ping is older than 45 seconds
+is skipped. A machine that goes to sleep between pings can still be offered one
+run; when it does not accept within 10 seconds that run moves on, and the
+context reads as offline until its next ping, so later runs skip it at once.
+After the machine wakes, the daemon pings again before deciding its connection
+is dead, so a short sleep does not force a reconnect.
+
 A run can also pick where it goes:
 
 - `context: "my-laptop"` runs there and does not fall back. Add
@@ -314,6 +330,26 @@ When every slot is taken, the machine is busy, and busy works like offline: the
 run moves to the next chain entry or Kody cloud. A run that named one `context`
 without `fallback: "chain"` fails instead, with an error that says to retry when
 a run finishes or pass `fallback: "chain"`.
+
+## Time limits on a machine
+
+Every run on an execution context, whether `execute`, a job, a webhook, a
+subscription, or a package workflow step, stops at the context grant's
+`timeoutMs` instead of the Kody cloud budgets: 90 s by default, up to 15
+minutes. Change it with
+`executionContextUpdate({ id, grant: { limits: { timeoutMs } } })`.
+
+- **`execute`** waits for the result as long as its transport allows (about 45 s
+  over MCP, about 105 s for the CLI's `kody execute --context`), then returns
+  `inProgress: true` with the `runId`. The run keeps going on the machine.
+- **Jobs, webhooks, subscriptions and workflow steps** wait up to 5 minutes for
+  the run on the machine. A longer run is handed off: the automation's result
+  reads `status: "running_on_execution_context"` with the context run's `runId`.
+- **`runGet`** shows the run as `running` until it ends or its deadline passes.
+  Kody reconciles it to `platform_interrupted` (outcome unknown) only a few
+  minutes after that deadline, and only if the machine never reported an end. At
+  the deadline itself the run is stopped and ends with "The run was cancelled
+  (deadline).".
 
 ## Where a run ran: `ranOn`
 

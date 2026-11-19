@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { isRedirect } from '@tanstack/react-router'
 import { postPackageCredentialChanges } from '../package-credential-changes.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -12,10 +13,6 @@ import type {
 	PackageCredentialsWriteError,
 } from '#universal/credential-contracts.ts'
 import { credentialRefLabel } from '#universal/package-credentials-page.ts'
-import {
-	getPillButtonCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	type MappingDraft,
@@ -34,8 +31,7 @@ import {
 	type MappingCellInput,
 	renderStored,
 } from './package-credentials-tabs.tsx'
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 const linkButtonCss = {
 	padding: 0,
 	border: 'none',
@@ -211,11 +207,11 @@ export function usePackageMappingEditor(
 		const choices = mappingOptions(input.need, input.target)
 		const group = `mapping-${state.key}`
 		const multiple = input.need.multiple
+		const Choice = multiple ? Checkbox : Radio
 		const draft = state.draft
 		const radio = (mode: 'inherit' | 'none', label: string) => (
 			<label css={optionCss}>
-				<input
-					type="radio"
+				<Radio
 					name={group}
 					value={mode}
 					checked={draft.mode === mode}
@@ -250,8 +246,7 @@ export function usePackageMappingEditor(
 					</legend>
 					{choices.map((choice) => (
 						<label key={choice.id} css={optionCss}>
-							<input
-								type={multiple ? 'checkbox' : 'radio'}
+							<Choice
 								name={group}
 								value={choice.id}
 								checked={draft.mode === 'pick' && draft.ids.includes(choice.id)}
@@ -309,24 +304,24 @@ export function usePackageMappingEditor(
 				) : null}
 				{renderMessages(input, state)}
 				<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-					<button
+					<Button
 						type="submit"
 						disabled={state.saving}
 						data-testid="package-mapping-save"
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						{state.saving ? 'Saving…' : 'Save mapping'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={state.saving}
-						css={secondaryButtonCss}
+						variant="secondary"
 						onClick={() => {
 							openEditor(null)
 						}}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			</form>
 		)
@@ -348,22 +343,22 @@ export function usePackageMappingEditor(
 					</p>
 					{renderMessages(input, open)}
 					<div css={{ display: 'flex', gap: spacing.sm }}>
-						<button
+						<Button
 							type="submit"
 							disabled={open.saving}
 							data-testid="package-mapping-clear"
-							css={primaryButtonCss}
+							variant="primary"
 						>
 							{open.saving ? 'Clearing…' : 'Clear mapping'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={open.saving}
-							css={secondaryButtonCss}
+							variant="secondary"
 							onClick={() => openEditor(null)}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</form>
 			)

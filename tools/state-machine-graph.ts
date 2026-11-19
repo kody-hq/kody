@@ -20,7 +20,7 @@ export function extractMachineGraph(machine: LifecycleMachine, file: string) {
 	)
 }
 
-export function extractMachineGraphSource(
+function extractMachineGraphSource(
 	id: string,
 	source: string,
 	file = 'machine.ts',

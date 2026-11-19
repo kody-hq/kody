@@ -3,16 +3,21 @@
  * D1-first identity upsert, and building + persisting package artifact
  * targets. Loading, reuse, and rebuild live in `published-bundle-artifacts.ts`.
  */
+import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import {
 	publishedBundleArtifactIdentityKey,
+	type PublishedBundleArtifactBuiltIn,
 	type PublishedBundleArtifactUpsertInput,
 	upsertPublishedBundleArtifactRow,
 	upsertPublishedBundleArtifactRows,
 } from '#worker/repo/published-bundle-artifacts-repo.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
-import type { PublishedPackageArtifactBuildTarget } from './package-artifact-targets.ts'
+import {
+	publishedPackageArtifactBuildKey,
+	type PublishedPackageArtifactBuildTarget,
+} from './package-artifact-targets.ts'
 import { packageBindingRewriteVersion } from './pre-binding-artifact-repair.ts'
 import {
 	type BundleArtifactDependency,
@@ -37,6 +42,39 @@ export type PersistPublishedBundleArtifactInput = {
 	dependencies: Array<BundleArtifactDependency>
 	dynamicDependencies?: Array<BundleArtifactDynamicDependency>
 	packageContext?: PublishedBundleArtifact['packageContext']
+	/** Where these modules were built. Omitted means Kody cloud. */
+	builtIn?: BundleArtifactBuiltIn
+}
+
+/** Recorded on the artifact row for information; nothing is decided by it. */
+export type BundleArtifactBuiltIn = {
+	origin: PublishedBundleArtifactBuiltIn
+	contextName?: string | null
+}
+
+/**
+ * SHA-256 of an artifact's stored modules: each module is hashed on its own
+ * (binary data by its bytes, the rest as JSON), then the main module name and
+ * the `[path, hash]` pairs in path order are hashed together. Two artifacts
+ * with the same hash run the same code.
+ */
+export async function bundleArtifactSha256(input: {
+	mainModule: string
+	modules: WorkerLoaderModules
+}) {
+	const moduleHashes = await Promise.all(
+		Object.keys(input.modules)
+			.sort()
+			.map(async (modulePath) => {
+				const module = input.modules[modulePath]!
+				const hashed =
+					typeof module === 'string' || module.data === undefined
+						? module
+						: { ...module, data: await sha256Hex(module.data) }
+				return [modulePath, await sha256Hex(JSON.stringify(hashed))]
+			}),
+	)
+	return await sha256Hex(JSON.stringify([input.mainModule, moduleHashes]))
 }
 
 export type PublishedPackageArtifactBuilders = {
@@ -88,6 +126,9 @@ export function toDbRowInput(input: {
 	entryPoint: string
 	kvKey: string
 	dependencies: Array<BundleArtifactDependency>
+	/** Omitted means Kody cloud; null means not recorded. */
+	builtIn?: BundleArtifactBuiltIn | null
+	bundleSha256: string
 }): PublishedBundleArtifactUpsertInput {
 	return {
 		userId: input.userId,
@@ -98,6 +139,12 @@ export function toDbRowInput(input: {
 		entryPoint: input.entryPoint,
 		kvKey: input.kvKey,
 		dependenciesJson: JSON.stringify(input.dependencies),
+		builtIn: input.builtIn === null ? null : (input.builtIn?.origin ?? 'cloud'),
+		builtContextName:
+			input.builtIn?.origin === 'context'
+				? (input.builtIn.contextName ?? null)
+				: null,
+		bundleSha256: input.bundleSha256,
 	}
 }
 
@@ -132,9 +179,9 @@ export type PreparedPublishedBundleArtifactPersist = {
 	rowInput: PublishedBundleArtifactUpsertInput
 }
 
-export function preparePublishedBundleArtifactPersist(
+export async function preparePublishedBundleArtifactPersist(
 	input: PersistPublishedBundleArtifactInput,
-): PreparedPublishedBundleArtifactPersist | null {
+): Promise<PreparedPublishedBundleArtifactPersist | null> {
 	if (
 		!input.source.published_commit ||
 		!hasPublishedRuntimeArtifacts(input.env)
@@ -180,6 +227,8 @@ export function preparePublishedBundleArtifactPersist(
 			entryPoint,
 			kvKey,
 			dependencies: input.dependencies,
+			builtIn: input.builtIn,
+			bundleSha256: await bundleArtifactSha256(artifact),
 		}),
 	}
 }
@@ -220,7 +269,9 @@ export async function persistPublishedBundleArtifacts(
 ): Promise<Array<string | null>> {
 	if (inputs.length === 0) return []
 	const preparedByIndex: Array<PreparedPublishedBundleArtifactPersist | null> =
-		inputs.map((input) => preparePublishedBundleArtifactPersist(input))
+		await Promise.all(
+			inputs.map((input) => preparePublishedBundleArtifactPersist(input)),
+		)
 	const prepared = dedupePreparedPublishedBundleArtifacts(
 		preparedByIndex.filter(
 			(entry): entry is PreparedPublishedBundleArtifactPersist => entry != null,
@@ -361,6 +412,44 @@ export async function buildPublishedPackageArtifactTargetBundle(
 	}
 }
 
+/**
+ * Builds each distinct bundle once. Five jobs and an export on one entry
+ * file are six targets but one `module` bundle, and every build composes the
+ * entry's `kody:@` imports, so rebuilding it per target multiplied that cost.
+ */
+export function memoizePublishedPackageArtifactBuilders(
+	builders: PublishedPackageArtifactBuilders,
+): PublishedPackageArtifactBuilders {
+	type Build = PublishedPackageArtifactBuilders['buildModuleBundle']
+	const built = new Map<string, ReturnType<Build>>()
+	const once =
+		(
+			bundleKind: PublishedPackageArtifactBuildTarget['bundleKind'],
+			build: Build,
+		): Build =>
+		(args) => {
+			const key = publishedPackageArtifactBuildKey({
+				bundleKind,
+				entryPoint: args.entryPoint,
+			})
+			let pending = built.get(key)
+			if (!pending) {
+				pending = build(args)
+				built.set(key, pending)
+			}
+			return pending
+		}
+	return {
+		buildAppBundle: once('app', builders.buildAppBundle),
+		buildAppClientBundle: once('app-client', builders.buildAppClientBundle),
+		buildModuleBundle: once('module', builders.buildModuleBundle),
+		buildImportableModuleBundle: once(
+			'importable-module',
+			builders.buildImportableModuleBundle,
+		),
+	}
+}
+
 export function toPersistPublishedPackageArtifactInput(input: {
 	env: Env
 	userId: string
@@ -373,6 +462,7 @@ export function toPersistPublishedPackageArtifactInput(input: {
 		dependencies: Array<BundleArtifactDependency>
 		dynamicDependencies?: Array<BundleArtifactDynamicDependency>
 	}
+	builtIn?: BundleArtifactBuiltIn
 }): PersistPublishedBundleArtifactInput {
 	return {
 		env: input.env,
@@ -390,6 +480,7 @@ export function toPersistPublishedPackageArtifactInput(input: {
 			kodyId: input.savedPackage.kodyId,
 			sourceId: input.savedPackage.sourceId,
 		},
+		...(input.builtIn ? { builtIn: input.builtIn } : {}),
 	}
 }
 
@@ -434,6 +525,8 @@ export async function persistPublishedPackageArtifactTargets(
 		source: EntitySourceRow
 		savedPackage: SavedPackageRecord
 		targets: ReadonlyArray<PublishedPackageArtifactBuildTarget>
+		/** Where the builders' modules were built. Omitted means Kody cloud. */
+		builtIn?: BundleArtifactBuiltIn
 	} & PublishedPackageArtifactBuilders,
 ): Promise<Array<PersistPublishedPackageArtifactTargetResult>> {
 	if (input.targets.length === 0) return []
@@ -449,7 +542,7 @@ export async function persistPublishedPackageArtifactTargets(
 				...input,
 				target,
 			})
-			const prepared = preparePublishedBundleArtifactPersist(
+			const prepared = await preparePublishedBundleArtifactPersist(
 				toPersistPublishedPackageArtifactInput({
 					env: input.env,
 					userId: input.userId,
@@ -457,6 +550,7 @@ export async function persistPublishedPackageArtifactTargets(
 					savedPackage: input.savedPackage,
 					target,
 					bundle,
+					builtIn: input.builtIn,
 				}),
 			)
 			if (!prepared) {

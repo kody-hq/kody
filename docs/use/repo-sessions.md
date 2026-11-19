@@ -159,7 +159,8 @@ If you find an active session you no longer need, pass its `id` as `session_id`
 to `repoDiscardSession` to close it. One-shot package helpers that open a
 session to read or write should discard in a `finally` so leftovers do not
 accumulate against the `repo_sessions` entitlement. Unused (never-checkpointed)
-sessions are swept after 30 minutes idle; checkpointed sessions are swept after
+sessions, and sessions Kody opened for a `packageSave` that never reached
+publish, are swept after 30 minutes idle; checkpointed sessions are swept after
 7 days idle.
 
 **Storage:** while a session is active, its workspace scratch (Durable Object

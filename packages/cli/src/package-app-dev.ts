@@ -127,6 +127,7 @@ import { redact } from './redact.js'
 import type { KodyTarget } from './target.js'
 import { ensureWorkerdBinary } from './workerd-binary.js'
 import { defaultDevHost, planDevListen } from './dev/dev-host.js'
+import { devPackageAppOrigin, localUsernameFor } from './dev/dev-app-origin.js'
 
 export type PackageAppDevOptions = {
 	manifest: KodyPackageManifest
@@ -145,7 +146,11 @@ export type PackageAppDevOptions = {
 	 * it. Without either, any free port.
 	 */
 	defaultPort?: number
-	/** Public mount path the Node proxy strips (default ''). */
+	/**
+	 * Old path shape: the app under this path on the owner's host instead of
+	 * at the root of its own (default ''). With `localKody` the only such path
+	 * is `/{kodyId}`; anything else is rejected.
+	 */
 	appBasePath?: string
 	/** User-owned token org selection (`?org=`), same as execute --local. */
 	org?: string
@@ -238,13 +243,22 @@ export type PackageAppDevServer = {
  * app on its origin, instead of a per-build workerd with a stub runtime.
  */
 export type LocalKodyUpstream = {
+	/** Where the local Kody workers listen. */
 	origin: string
-	/** `/@{username}/packages/{name}` on the local origin. */
-	appPath: string
-	/** Session `Cookie` header for the local account. */
-	cookie: string
-	/** Save the working tree into the local Kody. */
+	/** Handle of the local account that owns the saved copy. */
+	username: string
+	/**
+	 * `Cookie` header that signs the local account in to the app on its own
+	 * host (`rootMounted`) or on the owner's host under `/{kodyId}`.
+	 */
+	appSessionCookie: (input: { rootMounted: boolean }) => Promise<string>
+	/**
+	 * Save the working tree into the local Kody, after the mapped local deps
+	 * (`.kody/deps.json` / `package.json#kody.localDeps`) it imports.
+	 */
 	sync: () => Promise<void>
+	/** Files of the mapped local deps the last sync saved. */
+	watchPaths: () => ReadonlyArray<string>
 	/** Email captured by the local email boundary instead of being sent. */
 	listOutbox: () => Promise<unknown>
 	/** Package id of the local saved copy, once the first sync lands. */
@@ -296,7 +310,20 @@ export async function startPackageAppDev(
 	assertTokenSafeApiUrl(options.apiUrl)
 
 	const host = options.host ?? defaultDevHost
-	const appBasePath = normalizeBasePath(options.appBasePath ?? '')
+	const appBasePath = resolveDevAppBasePath(options)
+	const appOriginAt = (port: number) =>
+		devPackageAppOrigin({
+			username:
+				options.localKody?.username ?? localUsernameFor(options.manifest),
+			kodyId: options.manifest.kodyId,
+			port,
+			appBasePath,
+		})
+	if (options.localKody && !appOriginAt(1)) {
+		throw new Error(
+			`${options.manifest.name} cannot be served on its own host: "${options.manifest.kodyId}" and its scope do not form a valid {name}--{scope} host label (lowercase letters, digits and single hyphens, at most 63 characters together).`,
+		)
+	}
 	const root = options.manifest.root
 	const runSecret = randomBytes(32).toString('hex')
 	const emit = (event: DevEvent) => options.onEvent?.(event)
@@ -380,63 +407,103 @@ export async function startPackageAppDev(
 		throw error
 	}
 	const address = proxy.address() as AddressInfo
-	const listenPlan = planDevListen({ bindHost: host, port: address.port })
+	const appOrigin = appOriginAt(address.port)
+	const listenPlan = planDevListen({
+		bindHost: host,
+		port: address.port,
+		appOrigin,
+	})
 	const { hostedUrl, localUrl, networkUrls } = listenPlan
-	// Realtime `/ws` upgrades go straight to the local Kody origin.
-	proxy.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
-		const upstream = active?.upstream
-		const publicHost = resolveAllowedDevHost({
+	const allowedHostFor = (req: IncomingMessage) =>
+		resolveAllowedDevHost({
 			incomingHost: req.headers.host,
 			trustedHost: trustedDevHostFromHostedUrl(hostedUrl),
 			aliases: [
 				...(options.hostAliases ?? []),
 				...listenPlan.extraAllowedHosts(),
+				...(appOrigin ? [new URL(appOrigin).host] : []),
 			],
 		})
-		if (!upstream || !publicHost) {
-			socket.destroy()
-			return
-		}
+	/**
+	 * The host and Origin the runtime sees. The app has one origin, so a
+	 * request that came in on another address of this server (127.0.0.1, or a
+	 * LAN IP in front of local Kody) is presented as the app's own: local Kody
+	 * routes by Host like production, and same-origin checks keep working.
+	 */
+	const presentAs = (
+		req: IncomingMessage,
+		publicHost: string,
+		viaLocalKody: boolean,
+	) => {
+		const host =
+			appOrigin && (viaLocalKody || hostedUrl === appOrigin)
+				? new URL(appOrigin).host
+				: publicHost
+		const origin =
+			req.headers.origin === `http://${publicHost}`
+				? `http://${host}`
+				: req.headers.origin
+		return { host, origin }
+	}
+	let appSession: Promise<string> | null = null
+	/** Where a request goes on local Kody: same path, the local account signed in. */
+	const localKodyTarget = async (
+		upstream: LocalKodyUpstream,
+		req: IncomingMessage,
+	) => {
 		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
-		const restPath = stripMount(incomingUrl.pathname, appBasePath)
 		const forwardUrl = new URL(
 			buildTrustedDevForwardUrl({
 				baseUrl: upstream.origin,
-				restPath: `${upstream.appPath}${restPath === '/' ? '/' : restPath}`,
+				restPath: incomingUrl.pathname,
 				search: incomingUrl.search,
 			}),
 		)
-		const upstreamReq = httpRequest(forwardUrl, {
-			method: req.method,
-			headers: devVisitorHeaders(req.headers, {
-				host: forwardUrl.host,
-				cookie: upstream.cookie,
-			}),
+		// An anonymous probe carries no cookies at all: the browser's own may
+		// include a ticket local Kody issued to the signed-in visitor.
+		if (isAnonymousDevVisitor(req.headers)) {
+			return { forwardUrl, cookie: undefined }
+		}
+		appSession ??= upstream.appSessionCookie({ rootMounted: !appBasePath })
+		const session = await appSession.catch((error: unknown) => {
+			appSession = null
+			throw error
 		})
-		upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
-			const lines = [
-				`HTTP/1.1 101 ${upstreamRes.statusMessage ?? 'Switching Protocols'}`,
-			]
-			for (let i = 0; i < upstreamRes.rawHeaders.length; i += 2) {
-				lines.push(
-					`${upstreamRes.rawHeaders[i]}: ${upstreamRes.rawHeaders[i + 1]}`,
-				)
+		return {
+			forwardUrl,
+			cookie: [req.headers.cookie, session].filter(Boolean).join('; '),
+		}
+	}
+	const setHeader = (
+		headers: Record<string, string | number | Array<string> | undefined>,
+		name: string,
+		value: string | undefined,
+	) => {
+		if (value === undefined) delete headers[name]
+		else headers[name] = value
+	}
+	// Realtime `/ws` upgrades go straight to the local Kody origin.
+	proxy.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+		void (async () => {
+			const upstream = active?.upstream
+			const publicHost = allowedHostFor(req)
+			if (!upstream || !publicHost) {
+				socket.destroy()
+				return
 			}
-			socket.write(`${lines.join('\r\n')}\r\n\r\n`)
-			if (upstreamHead.length > 0) socket.write(upstreamHead)
-			if (head.length > 0) upstreamSocket.write(head)
-			upstreamSocket.pipe(socket).pipe(upstreamSocket)
-			upstreamSocket.on('error', () => socket.destroy())
-			socket.on('error', () => upstreamSocket.destroy())
-		})
-		upstreamReq.on('response', (upstreamRes) => {
-			socket.end(
-				`HTTP/1.1 ${upstreamRes.statusCode ?? 502} ${upstreamRes.statusMessage ?? ''}\r\nconnection: close\r\n\r\n`,
-			)
-			upstreamRes.resume()
-		})
-		upstreamReq.on('error', () => socket.destroy())
-		upstreamReq.end()
+			const { forwardUrl, cookie } = await localKodyTarget(upstream, req)
+			const presented = presentAs(req, publicHost, true)
+			const headers: IncomingHttpHeaders = { ...req.headers }
+			delete headers[devVisitorHeader]
+			setHeader(headers, 'host', presented.host)
+			setHeader(headers, 'origin', presented.origin)
+			setHeader(headers, 'cookie', cookie)
+			const upstreamReq = httpRequest(forwardUrl, {
+				method: req.method,
+				headers,
+			})
+			proxyUpgrade(upstreamReq, socket, head)
+		})().catch(() => socket.destroy())
 	})
 	try {
 		await options.onListening?.({
@@ -579,25 +646,42 @@ export async function startPackageAppDev(
 				bundler.build(),
 				clientBundler ? clientBundler.build() : Promise.resolve(null),
 			])
-			const midBuildEdits =
-				(await watcher?.track(
-					[
-						...bundle.inputs,
-						...(client?.inputs ?? []),
-						options.manifest.packageJsonPath,
-					],
-					{ ignoreChanges: files },
-				)) ?? []
-			// Queue mid-build edits for the next loop iteration directly — do not
-			// call onChange (debounced); chokidar may already have the same paths
-			// pending and would double-schedule a rebuild after debounce.
-			if (midBuildEdits.length > 0) {
-				for (const path of midBuildEdits) changedFiles.add(path)
-				rebuildAgain = true
+			const depFiles = options.localKody?.watchPaths() ?? []
+			const trackInputs = async () => {
+				const midBuildEdits =
+					(await watcher?.track(
+						[
+							...bundle.inputs,
+							...(client?.inputs ?? []),
+							options.manifest.packageJsonPath,
+						],
+						{
+							ignoreChanges: files,
+							external: options.localKody?.watchPaths(),
+						},
+					)) ?? []
+				// Queue mid-build edits for the next loop iteration directly — do not
+				// call onChange (debounced); chokidar may already have the same paths
+				// pending and would double-schedule a rebuild after debounce.
+				if (midBuildEdits.length > 0) {
+					for (const path of midBuildEdits) changedFiles.add(path)
+					rebuildAgain = true
+				}
 			}
+			await trackInputs()
+			// A mapped local dep or dep map edit leaves the bundle as is but still
+			// has to be saved into the local Kody.
+			const depChanged =
+				options.localKody !== undefined &&
+				files.some(
+					(file) =>
+						depFiles.includes(file) ||
+						file === options.manifest.packageJsonPath,
+				)
 			if (
 				active &&
 				!buildFailure &&
+				!depChanged &&
 				bundle.code === active.code &&
 				client?.name === active.client?.name
 			) {
@@ -618,7 +702,13 @@ export async function startPackageAppDev(
 				}
 				return
 			}
-			const generation = await startGeneration(bundle, client)
+			let generation: Generation
+			try {
+				generation = await startGeneration(bundle, client)
+			} finally {
+				// The sync may have found a new set of mapped local dep files.
+				if (options.localKody) await trackInputs()
+			}
 			if (closed) {
 				await stopGeneration(generation)
 				return
@@ -994,14 +1084,7 @@ export async function startPackageAppDev(
 		res: ServerResponse,
 	): Promise<void> {
 		try {
-			const publicHost = resolveAllowedDevHost({
-				incomingHost: req.headers.host,
-				trustedHost: trustedDevHostFromHostedUrl(hostedUrl),
-				aliases: [
-					...(options.hostAliases ?? []),
-					...listenPlan.extraAllowedHosts(),
-				],
-			})
+			const publicHost = allowedHostFor(req)
 			if (!publicHost) {
 				res.writeHead(400, { 'content-type': 'text/plain; charset=utf-8' })
 				res.end(
@@ -1065,13 +1148,16 @@ export async function startPackageAppDev(
 		}
 	}
 
-	function forwardRequest(
+	async function forwardRequest(
 		generation: Generation,
 		req: IncomingMessage,
 		res: ServerResponse,
 		/** Allowlisted Host this request came in on (LAN or loopback alias). */
-		trustedHost: string,
+		publicHost: string,
 	): Promise<void> {
+		const upstream = generation.upstream
+		const presented = presentAs(req, publicHost, Boolean(upstream))
+		const trustedHost = presented.host
 		const incomingUrl = new URL(req.url ?? '/', hostedUrl)
 		const restPath = stripMount(incomingUrl.pathname, appBasePath)
 		const publicUrl = buildTrustedDevPublicUrl({
@@ -1079,17 +1165,16 @@ export async function startPackageAppDev(
 			restPath,
 			search: incomingUrl.search,
 		})
-		const upstream = generation.upstream
-		const forwardUrl = new URL(
-			buildTrustedDevForwardUrl({
-				baseUrl:
-					upstream?.origin ?? `http://127.0.0.1:${generation.workerd.port}`,
-				restPath: upstream
-					? `${upstream.appPath}${restPath === '/' ? '/' : restPath}`
-					: restPath,
-				search: incomingUrl.search,
-			}),
-		)
+		const localKody = upstream ? await localKodyTarget(upstream, req) : null
+		const forwardUrl =
+			localKody?.forwardUrl ??
+			new URL(
+				buildTrustedDevForwardUrl({
+					baseUrl: `http://127.0.0.1:${generation.workerd.port}`,
+					restPath,
+					search: incomingUrl.search,
+				}),
+			)
 		const tag: DevRequestTag = {
 			id: String(++requestCounter),
 			method: req.method ?? 'GET',
@@ -1102,10 +1187,9 @@ export async function startPackageAppDev(
 			runSecret,
 			requestId: tag.id,
 		})
-		if (upstream) {
-			headers.host = forwardUrl.host
-			if (isAnonymousDevVisitor(req.headers)) delete headers.cookie
-			else headers.cookie = upstream.cookie
+		setHeader(headers, 'origin', presented.origin)
+		if (localKody) {
+			setHeader(headers, 'cookie', localKody.cookie)
 			delete headers[devVisitorHeader]
 		}
 		const startedAt = performance.now()
@@ -1126,6 +1210,8 @@ export async function startPackageAppDev(
 				forwardUrl,
 				{ method: req.method, headers },
 				(upstreamRes) => {
+					// Local Kody no longer accepts the session: sign in again next time.
+					if (upstreamRes.headers['x-kody-handoff']) appSession = null
 					if (upstreamRes.headers[devErrorHeader]) {
 						void readStream(upstreamRes)
 							.then((raw) => {
@@ -1528,6 +1614,35 @@ function normalizeBasePath(value: string): string {
 	return withSlash.replace(/\/+$/, '')
 }
 
+/**
+ * The path the app is served under: '' at the root of its own host, or the
+ * old path shape on the owner's host. Local Kody routes like production, so
+ * there the only old path is `/{kodyId}`.
+ */
+function resolveDevAppBasePath(options: {
+	appBasePath?: string
+	localKody?: LocalKodyUpstream
+	manifest: Pick<KodyPackageManifest, 'kodyId' | 'name'>
+}): string {
+	const requested = normalizeBasePath(options.appBasePath ?? '')
+	const oldPath = `/${options.manifest.kodyId}`
+	if (
+		options.localKody &&
+		requested &&
+		options.localKody.username === options.manifest.kodyId
+	) {
+		throw new Error(
+			`--app-base-path does not apply to ${options.manifest.name}: a profile package is only served at the root of its owner's host. Drop --app-base-path.`,
+		)
+	}
+	if (options.localKody && requested && requested !== oldPath) {
+		throw new Error(
+			`--app-base-path ${requested} is not an address local Kody serves. Drop --app-base-path to serve the app at the root of its own host, or pass ${oldPath} for the old path address.`,
+		)
+	}
+	return requested
+}
+
 function stripMount(pathname: string, appBasePath: string): string {
 	if (!appBasePath) return pathname || '/'
 	if (pathname === appBasePath) return '/'
@@ -1553,15 +1668,36 @@ function isAnonymousDevVisitor(headers: IncomingHttpHeaders) {
 	return String(headers[devVisitorHeader] ?? '').trim() === 'anonymous'
 }
 
-function devVisitorHeaders(
-	base: IncomingHttpHeaders,
-	local: { host: string; cookie: string },
-): IncomingHttpHeaders {
-	const headers: IncomingHttpHeaders = { ...base, host: local.host }
-	delete headers[devVisitorHeader]
-	if (isAnonymousDevVisitor(base)) delete headers.cookie
-	else headers.cookie = local.cookie
-	return headers
+/** Pipes a WebSocket upgrade between the browser socket and local Kody. */
+function proxyUpgrade(
+	upstreamReq: ReturnType<typeof httpRequest>,
+	socket: Duplex,
+	head: Buffer,
+) {
+	upstreamReq.on('upgrade', (upstreamRes, upstreamSocket, upstreamHead) => {
+		const lines = [
+			`HTTP/1.1 101 ${upstreamRes.statusMessage ?? 'Switching Protocols'}`,
+		]
+		for (let i = 0; i < upstreamRes.rawHeaders.length; i += 2) {
+			lines.push(
+				`${upstreamRes.rawHeaders[i]}: ${upstreamRes.rawHeaders[i + 1]}`,
+			)
+		}
+		socket.write(`${lines.join('\r\n')}\r\n\r\n`)
+		if (upstreamHead.length > 0) socket.write(upstreamHead)
+		if (head.length > 0) upstreamSocket.write(head)
+		upstreamSocket.pipe(socket).pipe(upstreamSocket)
+		upstreamSocket.on('error', () => socket.destroy())
+		socket.on('error', () => upstreamSocket.destroy())
+	})
+	upstreamReq.on('response', (upstreamRes) => {
+		socket.end(
+			`HTTP/1.1 ${upstreamRes.statusCode ?? 502} ${upstreamRes.statusMessage ?? ''}\r\nconnection: close\r\n\r\n`,
+		)
+		upstreamRes.resume()
+	})
+	upstreamReq.on('error', () => socket.destroy())
+	upstreamReq.end()
 }
 
 const devCallOperations = new Set([

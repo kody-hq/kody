@@ -12,8 +12,7 @@ runs:
         cache: npm
 
     - name: 📥 Install
-      shell: bash
-      run: npm ci
+      uses: ./.github/actions/npm-ci
 
     - name: 🧪 OS keychain entries (macOS security CLI)
       shell: bash

@@ -12,7 +12,7 @@ import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import type { ViewerListingInstall } from '#universal/community-public-types.ts'
 import type { PackageRepoActions } from '#universal/package-repo-actions.ts'
 import { routes } from '#universal/routes.ts'
-import { getAppBaseUrl, getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveSavedPackageForPackageAppSlug } from '#worker/package-invocations/module-artifacts.ts'
 import { buildPackagePublishApprovalPath } from '#worker/package-registry/package-publish-lock.ts'
 
@@ -175,7 +175,6 @@ export async function resolvePackageAppLinks(input: {
 	hasPackage: boolean
 	ownerUserId?: string
 	hasApp?: boolean
-	requestUrl?: string
 }): Promise<{
 	packageAppHref: string | null
 	packageAppOriginHref: string | null
@@ -238,7 +237,6 @@ async function appIsPubliclyServable(input: {
 	username: string
 	kodyId: string
 	ownerUserId?: string
-	requestUrl?: string
 }): Promise<boolean> {
 	try {
 		const ownerUserId = await resolveLinkOwnerUserId(input)
@@ -252,7 +250,6 @@ async function appIsPubliclyServable(input: {
 			await resolveInternetVisibleApprovedCommit({
 				env: input.env,
 				lookup,
-				requestUrl: input.requestUrl ?? getAppBaseUrl({ env: input.env }),
 			}),
 		)
 	} catch {
@@ -340,7 +337,6 @@ function ownerPackageSourceAhead(ownerPackage: {
 export async function buildPackageRepoActionsForPage(
 	page: Extract<PackagePageAccess, { kind: 'page' }>,
 	env: Env,
-	request?: Request,
 ) {
 	const owner = page.ownerPackage
 	const actions = buildPackageRepoActions({
@@ -370,7 +366,6 @@ export async function buildPackageRepoActionsForPage(
 	})
 	const links = await resolvePackageAppLinks({
 		env,
-		requestUrl: request?.url,
 		username: page.username,
 		kodyId: page.kodyId,
 		viewerMayRun: page.viewerMayRun === true,

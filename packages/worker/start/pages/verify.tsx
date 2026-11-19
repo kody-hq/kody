@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import { useCallback, useState, type FormEvent } from 'react'
 import { useActor } from '@xstate/react'
@@ -19,11 +22,6 @@ import {
 } from '#universal/safe-redirect.ts'
 import {
 	cardCss,
-	fieldCss,
-	fieldLabelCss,
-	getPrimaryButtonCss,
-	inputCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -39,8 +37,8 @@ import {
 } from '../components/device-sign-in-option.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
 import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { Input } from '../components/input.tsx'
 function buildLoginHref(redirectTo: string | null) {
 	return redirectTo
 		? `/login?redirectTo=${encodeURIComponent(redirectTo)}`
@@ -172,9 +170,8 @@ export function VerifyRoute() {
 				onSubmit={handleSubmit}
 			>
 				<Honeypot />
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Verification code</span>
-					<input
+				<Field label="Verification code">
+					<Input
 						type="text"
 						name="code"
 						required
@@ -184,18 +181,22 @@ export function VerifyRoute() {
 						pattern="[0-9]{6}"
 						placeholder="123456"
 						onChange={() => setFormErrorDismissed(true)}
-						css={inputCss}
 					/>
-				</label>
+				</Field>
 				{turnstileSiteKey ? (
 					<div
 						className={turnstileWidgetClassName}
 						data-sitekey={turnstileSiteKey}
 					></div>
 				) : null}
-				<button type="submit" disabled={isSubmitting} css={primaryButtonCss}>
+				<Button
+					type="submit"
+					disabled={isSubmitting}
+					variant="primary"
+					size="md"
+				>
 					{isSubmitting ? 'Verifying...' : 'Verify'}
-				</button>
+				</Button>
 				{(message ?? formErrorMessage) ? (
 					<p
 						aria-live="polite"
@@ -219,15 +220,15 @@ export function VerifyRoute() {
 				note={
 					turnstileSiteKey
 						? deviceSignInTarget
-							? 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so use Sign in on another device, or turn JavaScript on.'
+							? 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so use Sign in with another device, or turn JavaScript on.'
 							: 'JavaScript is off. The two-factor step needs a quick human check that uses JavaScript, so turn JavaScript on to finish signing in.'
 						: 'JavaScript is off, so this form submits as a plain page. Enter your code and press Verify.'
 				}
 			/>
 			<div css={{ display: 'grid', gap: spacing.sm }}>
-				<SiteLink href={buildLoginHref(getRedirectTo())} css={mutedLinkCss}>
+				<TextLink tone="muted" href={buildLoginHref(getRedirectTo())}>
 					Back to login
-				</SiteLink>
+				</TextLink>
 			</div>
 		</section>
 	)
@@ -238,8 +239,3 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-
-const primaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

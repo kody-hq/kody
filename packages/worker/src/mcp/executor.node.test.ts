@@ -1,3 +1,4 @@
+import { repoCheckStepResourceLimitAdvice } from '#worker/repo/isolated-runner-limit-message.ts'
 import { expect, test } from 'vitest'
 import {
 	createHostSecretAccessDeniedBatchMessage,
@@ -1703,6 +1704,53 @@ test('executor maps secret errors, formats guidance, and truncates on UTF-8 boun
 		kind: 'execution_timed_out',
 		timedOutAfterMs: 90_000,
 		suggestedAction: { type: 'fix_code' },
+	})
+	// Only an ad hoc execute caller holds the module and can rerun it locally.
+	expect(
+		getExecutionErrorDetails(
+			new Error(createExecutorSandboxTimeoutMessage(90_000)),
+		),
+	).not.toHaveProperty('alternativeAction')
+	expect(
+		getExecutionErrorDetails(
+			new Error(createExecutorSandboxTimeoutMessage(90_000)),
+			{ adHocExecute: true },
+		),
+	).toMatchObject({
+		kind: 'execution_timed_out',
+		nextStep: expect.stringContaining(
+			'npx -y @kodycodes/cli@latest execute --local --file <file>',
+		),
+		suggestedAction: { type: 'fix_code' },
+		alternativeAction: {
+			type: 'run_locally',
+			command: 'npx -y @kodycodes/cli@latest execute --local --file <file>',
+			requires: ['node>=22', 'kody_cli_signed_in'],
+		},
+	})
+	// A build that ran out of room on Kody cloud names the local build, even
+	// when the limit message also mentions a timeout.
+	expect(
+		getExecutionErrorDetails(
+			new Error('Package publish failed.', {
+				cause: new Error(
+					`Publish timed out. ${repoCheckStepResourceLimitAdvice(null)}`,
+				),
+			}),
+		),
+	).toMatchObject({
+		kind: 'package_build_limit',
+		nextStep: expect.stringContaining('https://kody.codes/account/experiments'),
+		suggestedAction: {
+			type: 'publish_local_build',
+			command:
+				'npx -y @kodycodes/cli@latest package publish <package> --build local',
+			requires: [
+				'node>=22',
+				'kody_cli_signed_in',
+				'execution_contexts_experiment',
+			],
+		},
 	})
 	const timeoutCases: Array<[string | Error, number | null]> = [
 		[executorSandboxTimeoutMessage, null],

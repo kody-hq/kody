@@ -6,12 +6,9 @@ import {
 	type KeyFormState,
 	loginFieldNames,
 } from '#client/routes/connect-credential-shared.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	inputCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input, Select, Textarea } from '../components/input.tsx'
 const mutedCss = { margin: 0, color: colors.textMuted }
 const labelHintCss = {
 	fontWeight: typography.fontWeight.normal,
@@ -49,17 +46,15 @@ export function renderLoginFields(input: {
 								{...passwordManagerIgnoreProps}
 								value={state.loginFields[field] ?? ''}
 								revealNoun={field}
-								css={inputCss}
 								onChange={(event) => setField(event.currentTarget.value)}
 							/>
 						) : (
-							<input
+							<Input
 								id={id}
 								required
 								autoFocus={index === 0 && Boolean(state.name)}
 								{...passwordManagerIgnoreProps}
 								value={state.loginFields[field] ?? ''}
-								css={inputCss}
 								onChange={(event) => setField(event.currentTarget.value)}
 							/>
 						)}
@@ -114,13 +109,12 @@ export function renderLoginExchange(input: {
 					<label htmlFor="connect-credential-exchange-url" css={fieldLabelCss}>
 						Login URL
 					</label>
-					<input
+					<Input
 						id="connect-credential-exchange-url"
 						type="url"
 						required
 						value={exchange.url}
 						placeholder="https://api.example.com/login"
-						css={inputCss}
 						onChange={(event) =>
 							setExchange({ url: event.currentTarget.value })
 						}
@@ -133,10 +127,9 @@ export function renderLoginExchange(input: {
 					>
 						Sent as
 					</label>
-					<select
+					<Select
 						id="connect-credential-exchange-format"
 						value={exchange.bodyFormat}
-						css={inputCss}
 						onChange={(event) =>
 							setExchange({
 								bodyFormat:
@@ -146,7 +139,7 @@ export function renderLoginExchange(input: {
 					>
 						<option value="json">JSON</option>
 						<option value="form">Form fields</option>
-					</select>
+					</Select>
 				</div>
 				<div css={fieldCss}>
 					<label htmlFor="connect-credential-exchange-body" css={fieldLabelCss}>
@@ -156,12 +149,11 @@ export function renderLoginExchange(input: {
 							field)
 						</span>
 					</label>
-					<textarea
+					<Textarea
 						id="connect-credential-exchange-body"
 						rows={2}
 						required
 						value={exchange.body}
-						css={inputCss}
 						onChange={(event) =>
 							setExchange({ body: event.currentTarget.value })
 						}
@@ -175,12 +167,11 @@ export function renderLoginExchange(input: {
 						Token path{' '}
 						<span css={labelHintCss}>(where the response holds it)</span>
 					</label>
-					<input
+					<Input
 						id="connect-credential-exchange-token"
 						required
 						value={exchange.tokenPath}
 						placeholder="data.token"
-						css={inputCss}
 						onChange={(event) =>
 							setExchange({ tokenPath: event.currentTarget.value })
 						}

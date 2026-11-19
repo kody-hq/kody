@@ -47,9 +47,12 @@ async function setup() {
 	const sqlite = new DatabaseSync(':memory:')
 	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
 	const db = createD1FromSqlite(sqlite)
-	const env = { APP_DB: db } as unknown as Env
+	const env = {
+		APP_DB: db,
+		SECRET_STORE_KEY: 'guest-test-secret-store-key-32-characters-ok',
+	} as unknown as Env
 	const created = await createGuestAccount({
-		db,
+		env,
 		requestIp: '203.0.113.7',
 		clientName: 'Test Agent',
 		now: start,
@@ -156,7 +159,7 @@ test('claim codes stop working after too many wrong tries or once expired', asyn
 			baseUrl: 'https://kody.test',
 			now: start,
 		}),
-	).rejects.toMatchObject({ code: 'too_many_attempts' })
+	).rejects.toMatchObject({ code: 'code_missing' })
 
 	const restarted = await startGuestClaim({
 		env,
@@ -175,6 +178,143 @@ test('claim codes stop working after too many wrong tries or once expired', asyn
 			now: new Date(start.getTime() + 16 * 60 * 1000),
 		}),
 	).rejects.toMatchObject({ code: 'code_expired' })
+})
+
+test('parallel wrong codes consume at most five attempts', async () => {
+	const { env, guest, sqlite } = await setup()
+	const started = await startGuestClaim({
+		env,
+		guest,
+		email: 'person@example.test',
+		username: 'person',
+		requestUrl,
+		now: start,
+	})
+	const wrong = started.devCode === '111111' ? '222222' : '111111'
+	const results = await Promise.all(
+		Array.from({ length: 50 }, () =>
+			finishGuestClaim({
+				env,
+				guest,
+				code: wrong,
+				baseUrl: requestUrl,
+				now: start,
+			}).catch((error: unknown) => error),
+		),
+	)
+	expect(
+		results.filter(
+			(result) => (result as { code: string }).code === 'code_invalid',
+		),
+	).toHaveLength(5)
+	expect(sqlite.prepare('SELECT * FROM guest_claim_codes').all()).toHaveLength(
+		0,
+	)
+	await expect(
+		finishGuestClaim({
+			env,
+			guest,
+			code: started.devCode!,
+			baseUrl: requestUrl,
+			now: start,
+		}),
+	).rejects.toMatchObject({ code: 'code_missing' })
+})
+
+test('parallel correct codes finish once', async () => {
+	const { env, guest } = await setup()
+	const started = await startGuestClaim({
+		env,
+		guest,
+		email: 'person@example.test',
+		username: 'person',
+		requestUrl,
+		now: start,
+	})
+	const results = await Promise.allSettled(
+		Array.from({ length: 2 }, () =>
+			finishGuestClaim({
+				env,
+				guest,
+				code: started.devCode!,
+				baseUrl: requestUrl,
+				now: start,
+			}),
+		),
+	)
+	expect(
+		results.filter((result) => result.status === 'fulfilled'),
+	).toHaveLength(1)
+})
+
+test('a failed production send leaves no code row', async () => {
+	const { env, guest, sqlite } = await setup()
+	runtime.nonProduction = false
+	sendGatedTransactionalEmail.mockResolvedValueOnce({
+		ok: false,
+		error: 'provider_error',
+	})
+	try {
+		await expect(
+			startGuestClaim({
+				env,
+				guest,
+				email: 'person@example.test',
+				username: 'person',
+				requestUrl,
+				now: start,
+			}),
+		).rejects.toMatchObject({ code: 'send_failed' })
+		expect(
+			sqlite.prepare('SELECT * FROM guest_claim_codes').all(),
+		).toHaveLength(0)
+	} finally {
+		runtime.nonProduction = true
+	}
+})
+
+test.each([
+	['guest-claim-start:email:person@example.test', 5, 'start'],
+	['guest-claim-start:ip:203.0.113.8', 10, 'start'],
+	['guest-claim-finish:email:person@example.test', 10, 'finish'],
+	['guest-claim-finish:ip:203.0.113.8', 30, 'finish'],
+] as const)('claim limits apply to %s', async (key, cap, phase) => {
+	const { env, guest, sqlite } = await setup()
+	const started = await startGuestClaim({
+		env,
+		guest,
+		email: 'person@example.test',
+		username: 'person',
+		requestUrl,
+		now: start,
+	})
+	for (let i = 0; i < cap; i++)
+		sqlite
+			.prepare('INSERT INTO _rate_limits (key, ts) VALUES (?, ?)')
+			.run(key, Math.floor(Date.now() / 1000))
+	const result =
+		phase === 'start'
+			? startGuestClaim({
+					env,
+					guest,
+					email: 'PERSON@example.test',
+					username: 'person',
+					requestUrl,
+					requestIp: '203.0.113.8',
+					now: start,
+				})
+			: finishGuestClaim({
+					env,
+					guest,
+					code: started.devCode!,
+					baseUrl: requestUrl,
+					requestIp: '203.0.113.8',
+					now: start,
+				})
+	await expect(result).rejects.toMatchObject({ code: 'rate_limited' })
+	expect(
+		sqlite.prepare('SELECT attempts FROM guest_claim_codes').get(),
+	).toEqual({ attempts: 0 })
 })
 
 test('a merge request needs an existing account for that email', async () => {

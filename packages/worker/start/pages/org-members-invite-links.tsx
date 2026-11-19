@@ -1,4 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import {
 	createOrganizationInviteLink,
 	revokeOrganizationInviteLink,
@@ -8,12 +15,6 @@ import type {
 	OrgMembersTeamOption,
 } from '#universal/loader-data.ts'
 import { orgRoleLabel } from '#universal/org-pages.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-	getSelectCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	mq,
@@ -31,12 +32,10 @@ import { useInviteHandoff } from '../use-invite-handoff.ts'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { Input, Select } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 async function copyText(text: string) {
 	try {
@@ -211,17 +210,17 @@ export function OrgMembersInviteLinks({
 									</span>
 								</span>
 								<span css={rowActionsCss}>
-									<button
+									<Button
 										type="button"
 										disabled={pending}
-										css={getDangerPillCss({ size: 'sm' })}
+										variant="danger"
 										onClick={() => void revokeLink(link.id)}
 									>
 										{revokeMutation.isPending &&
 										revokeMutation.variables?.linkId === link.id
 											? 'Revoking…'
 											: 'Revoke'}
-									</button>
+									</Button>
 								</span>
 							</div>
 						</li>
@@ -236,9 +235,9 @@ export function OrgMembersInviteLinks({
 			{copiedLinkUrl ? (
 				<div css={copiedLinkCss} data-testid="invite-link-url">
 					<code css={copiedLinkCodeCss}>{copiedLinkUrl}</code>
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={async () => {
 							const active = capture()
 							const copied = await copyText(copiedLinkUrl)
@@ -252,7 +251,7 @@ export function OrgMembersInviteLinks({
 						}}
 					>
 						{renderIcon('copy', { size: '1.05rem' })}Copy again
-					</button>
+					</Button>
 				</div>
 			) : null}
 
@@ -265,12 +264,13 @@ export function OrgMembersInviteLinks({
 						void createLink()
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Role</span>
-						<select
+					<Field
+						label="Role"
+						description="Anyone with the link joins as this role. Owner cannot be granted through a link."
+					>
+						<Select
 							value={role}
 							aria-label="Invite link role"
-							data-field-ring
 							css={roleSelectCss}
 							onChange={(event) =>
 								setRole(event.currentTarget.value as typeof role)
@@ -281,30 +281,23 @@ export function OrgMembersInviteLinks({
 									{orgRoleLabel(value)}
 								</option>
 							))}
-						</select>
-						<p css={accountFieldNoteCss}>
-							Anyone with the link joins as this role. Owner cannot be granted
-							through a link.
-						</p>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Label (optional)</span>
-						<input
+						</Select>
+					</Field>
+					<Field
+						label="Label (optional)"
+						description="Helps you tell your links apart. Only admins see it."
+					>
+						<Input
 							value={label}
-							data-field-ring
 							autoComplete="off"
 							placeholder="Engineering onboarding"
-							css={accountInputCss}
 							onChange={(event) => setLabel(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
-							Helps you tell your links apart. Only admins see it.
-						</p>
-					</label>
+					</Field>
 					{teams.length > 0 ? (
 						<fieldset css={teamFieldsetCss}>
-							<span css={accountFieldLabelCss}>Default teams (optional)</span>
-							<p css={accountFieldNoteCss}>
+							<span css={fieldLabelCss}>Default teams (optional)</span>
+							<p css={fieldDescriptionCss}>
 								People who join with this link are also added to these teams.
 							</p>
 							<ul css={teamListCss}>
@@ -313,8 +306,7 @@ export function OrgMembersInviteLinks({
 									return (
 										<li key={team.id}>
 											<label css={teamOptionCss}>
-												<input
-													type="checkbox"
+												<Checkbox
 													checked={checked}
 													onChange={() => toggleTeam(team.id)}
 												/>
@@ -326,85 +318,73 @@ export function OrgMembersInviteLinks({
 							</ul>
 						</fieldset>
 					) : null}
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>
-							Allowed email domains (optional)
-						</span>
-						<input
+					<Field
+						label="Allowed email domains (optional)"
+						description="Leave blank to allow any verified email. Domains check the account’s verified email."
+					>
+						<Input
 							value={domains}
-							data-field-ring
 							autoComplete="off"
 							placeholder="example.com, partner.org"
-							css={accountInputCss}
 							onChange={(event) => setDomains(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
-							Leave blank to allow any verified email. Domains check the
-							account’s verified email.
-						</p>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Max uses (optional)</span>
-						<input
+					</Field>
+					<Field label="Max uses (optional)">
+						<Input
 							value={maxUses}
-							data-field-ring
 							inputMode="numeric"
 							autoComplete="off"
 							placeholder="Unlimited"
-							css={accountInputCss}
 							onChange={(event) => setMaxUses(event.currentTarget.value)}
 						/>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Expires in days</span>
-						<input
+					</Field>
+					<Field
+						label="Expires in days"
+						description="Links expire after 7 days by default (up to 365)."
+					>
+						<Input
 							value={days}
-							data-field-ring
 							inputMode="numeric"
 							autoComplete="off"
-							css={accountInputCss}
 							onChange={(event) => setDays(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
-							Links expire after 7 days by default (up to 365).
-						</p>
-					</label>
-					<p css={accountFieldNoteCss}>
+					</Field>
+					<p css={fieldDescriptionCss}>
 						Copy the link now. Kody only stores a hash, so you can&apos;t see it
 						again later.
 					</p>
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={pending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 							data-testid="org-invite-link-copy"
 						>
 							{renderIcon('link', { size: '1.05rem' })}
 							{creating ? 'Creating…' : 'Copy invite link'}
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={creating}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={closeForm}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : (
 				<div css={accountActionsCss}>
-					<button
+					<Button
 						type="button"
 						disabled={pending}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						data-testid="org-invite-link-open-create"
 						onClick={() => setFormOpen(true)}
 					>
 						{renderIcon('plus', { size: '1.05rem' })}
 						Create invite link
-					</button>
+					</Button>
 				</div>
 			)}
 		</AccountManagementPanel>
@@ -418,7 +398,7 @@ const formCss: CSSObject = {
 }
 
 const teamFieldsetCss: CSSObject = {
-	...accountFieldCss,
+	...fieldCss,
 	border: 0,
 	margin: 0,
 	padding: 0,
@@ -441,7 +421,6 @@ const teamOptionCss: CSSObject = {
 }
 
 const roleSelectCss: CSSObject = {
-	...getSelectCss(),
 	// Match the People row Owner select: keep the control compact inside the
 	// form grid (grid items stretch to full width by default).
 	width: 'auto',

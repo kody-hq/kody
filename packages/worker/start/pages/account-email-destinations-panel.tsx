@@ -1,20 +1,14 @@
 /** @jsxImportSource @emotion/react */
-import type { CSSObject } from '@emotion/react'
+import { Badge } from '../components/badge.tsx'
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
+
 import type { FormEvent } from 'react'
 import type { EmailNotificationDestination } from '#universal/email-destinations.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
-	AccountManagementPanel,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
-	verifiedPillCss,
-} from './account-management-components.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 
 export type AccountEmailDestinationsPanelProps = {
 	destinations: Array<EmailNotificationDestination>
@@ -50,8 +44,6 @@ export function renderAccountEmailDestinationsPanel(
 		onSetDefault,
 		onRemove,
 	} = props
-	const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const compactPillButtonCss = getPillButtonCss({ size: 'sm' })
 	const isSending = status === 'sending'
 
 	return (
@@ -87,15 +79,13 @@ export function renderAccountEmailDestinationsPanel(
 						>
 							<p css={{ margin: 0 }}>{destination.email}</p>
 							{destination.kind === 'identity' ? (
-								<span css={badgeCss}>Account email</span>
+								<Badge>Account email</Badge>
 							) : null}
-							{destination.isDefault ? (
-								<span css={badgeCss}>Default</span>
-							) : null}
+							{destination.isDefault ? <Badge>Default</Badge> : null}
 							{destination.verified ? (
-								<span css={verifiedPillCss}>Verified</span>
+								<Badge tone="accent">Verified</Badge>
 							) : (
-								<span css={pendingBadgeCss}>Unverified</span>
+								<Badge tone="warning">Unverified</Badge>
 							)}
 						</div>
 						<div
@@ -106,46 +96,46 @@ export function renderAccountEmailDestinationsPanel(
 							}}
 						>
 							{destination.verified && !destination.isDefault ? (
-								<button
+								<Button
 									type="button"
 									disabled={isSending}
 									onClick={() => {
 										onSetDefault(destination.id)
 									}}
-									css={compactPillButtonCss}
+									variant="primary"
 								>
 									{pendingId === destination.id && isSending
 										? 'Saving…'
 										: 'Set as default'}
-								</button>
+								</Button>
 							) : null}
 							{!destination.verified && destination.kind === 'additional' ? (
-								<button
+								<Button
 									type="button"
 									disabled={isSending}
 									onClick={() => {
 										onResend(destination.id)
 									}}
-									css={compactGhostButtonCss}
+									variant="secondary"
 								>
 									{pendingId === destination.id && isSending
 										? 'Sending…'
 										: 'Resend verification'}
-								</button>
+								</Button>
 							) : null}
 							{destination.canRemove ? (
-								<button
+								<Button
 									type="button"
 									disabled={isSending}
 									onClick={() => {
 										onRemove(destination.id)
 									}}
-									css={compactGhostButtonCss}
+									variant="secondary"
 								>
 									{pendingId === destination.id && isSending
 										? 'Removing…'
 										: 'Remove'}
-								</button>
+								</Button>
 							) : null}
 						</div>
 					</li>
@@ -160,38 +150,40 @@ export function renderAccountEmailDestinationsPanel(
 						gap: spacing.md,
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Add an address</span>
-						<input
+					<Field
+						label="Add an address"
+						description={
+							<>
+								Up to {additionalLimit}extras besides your account email. We
+								send a verification link before emailSend can use this address.
+								New accounts can request that link 24 hours after signup.
+							</>
+						}
+					>
+						<Input
 							type="email"
 							name="email"
 							autoComplete="email"
 							value={draftEmail}
 							disabled={isSending}
 							onInput={onDraftEmailInput}
-							css={{ ...accountInputCss, maxWidth: '28rem' }}
+							css={{ maxWidth: '28rem' }}
 						/>
-						<span css={accountFieldNoteCss}>
-							Up to {additionalLimit} extras besides your account email. We send
-							a verification link before emailSend can use this address. New
-							accounts can request that link 24 hours after signup.
-						</span>
-					</label>
-					<button
+					</Field>
+					<Button
 						type="submit"
 						disabled={isSending || draftEmail.trim().length === 0}
-						css={{
-							...getPillButtonCss({ size: 'sm', mobileFullWidth: true }),
-							justifySelf: 'start',
-						}}
+						variant="primary"
+						mobileFullWidth
+						css={{ justifySelf: 'start' }}
 					>
 						{isSending && pendingId === null
 							? 'Sending…'
 							: 'Send verification link'}
-					</button>
+					</Button>
 				</form>
 			) : (
-				<p css={accountFieldNoteCss}>
+				<p css={fieldDescriptionCss}>
 					You have reached the {additionalLimit} extra-address limit.
 				</p>
 			)}
@@ -209,16 +201,4 @@ export function renderAccountEmailDestinationsPanel(
 			) : null}
 		</AccountManagementPanel>
 	)
-}
-
-const badgeCss: CSSObject = {
-	...verifiedPillCss,
-	backgroundColor: colors.primarySoftest,
-	color: colors.textMuted,
-}
-
-const pendingBadgeCss: CSSObject = {
-	...verifiedPillCss,
-	backgroundColor: colors.primarySoftest,
-	color: colors.warningText,
 }

@@ -64,7 +64,7 @@ const beliefs: ReadonlyArray<Belief> = [
 		title: 'You own what your agents build.',
 		body: 'The useful things your agents make should not be locked inside one vendor\u2019s chat history or someone else\u2019s runtime.',
 		inProduct:
-			'Packages are code in your account that you can open, change, schedule, and republish. Installing a public package gives you a fork you own. Kody itself is Fair Source.',
+			'Packages are code in your account that you can open, change, schedule, and republish. Installing a public package gives you a fork you own. Kody itself is source-available under a license based on the Functional Source License, free for personal, family, nonprofit, and classroom use.',
 		docSlug: 'package-sharing',
 		docLabel: 'Sharing a package',
 	},

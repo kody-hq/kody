@@ -1,3 +1,4 @@
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { fileObjectReader } from '#worker/files/object-storage.ts'
 import { fileStoreRpc } from '#worker/files/client.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -132,12 +133,13 @@ async function decodeCursor(
 	if (!value) {
 		return { v: accountR2CursorVersion, state: { stage: 'avatar' } }
 	}
+	const hmacKey = await cursorHmacKey(env)
 	try {
 		const [payload, signature, extra] = value.split('.')
 		if (!payload || !signature || extra) throw new Error('invalid envelope')
 		const valid = await crypto.subtle.verify(
 			'HMAC',
-			await cursorHmacKey(env),
+			hmacKey,
 			decodeBase64UrlBytes(signature),
 			new TextEncoder().encode(payload),
 		)
@@ -153,8 +155,8 @@ async function decodeCursor(
 		}
 		return parsed
 	} catch {
-		throw new Error(
-			'Invalid or unsupported r2_object cursor; restart without startAfter.',
+		throw new McpCallerError(
+			'Invalid or unsupported r2_object cursor; restart the r2_object section without start_after.',
 		)
 	}
 }

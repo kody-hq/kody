@@ -7,7 +7,7 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createWriteStream, existsSync } from 'node:fs'
-import { createServer } from 'node:http'
+import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
@@ -18,12 +18,23 @@ import {
 	resolveMockFetchGateway,
 	type MockFetchGateway,
 } from '../mock/mock-fetch-gateway.js'
+import { lexableModuleSource } from '../fetch-body-package-scan.js'
+import { listSavedPackageImports } from '../local-package-graph.js'
+import {
+	listMappedLocalDeps,
+	localDepsRelativePath,
+} from '../mock-local-deps.js'
 import { collectPackageCheckFiles } from '../package-check-files.js'
 import type { KodyPackageManifest } from '../package-manifest.js'
 import { readPackageVersion } from '../package-info.js'
 import { StructuredCliError } from '../structured-error.js'
 import { userCacheDir } from '../workerd-binary.js'
 import type { LocalKodyUpstream } from '../package-app-dev.js'
+import {
+	buildPackageAppOpenPath,
+	packageAppHostEntryQueryParam,
+} from '@kody-internal/shared/public-urls.ts'
+import { localUsernameFor } from './dev-app-origin.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
 
@@ -33,6 +44,7 @@ export type DevRuntimeModule = {
 		stateDir: string
 		port?: number
 		username: string
+		packageAppPort?: number
 		simulation?: {
 			storageLatencyMs?: number
 			coldIsolates?: boolean
@@ -184,14 +196,12 @@ async function npmInstall(
 	})
 }
 
-/** Local account username: the package scope when there is one. */
-export function localUsernameFor(manifest: Pick<KodyPackageManifest, 'name'>) {
-	const scope = /^@([a-z0-9][a-z0-9-]*)\//i.exec(manifest.name)?.[1]
-	return (scope ?? 'dev').toLowerCase()
-}
+export { localUsernameFor }
 
 export async function startLocalKody(input: {
 	manifest: KodyPackageManifest
+	/** Port package apps are reached on (the `kody dev` proxy port). */
+	packageAppPort: number
 	env?: NodeJS.ProcessEnv
 	simulation?: Parameters<DevRuntimeModule['startDevRuntime']>[0]['simulation']
 	passthroughHosts?: ReadonlyArray<string>
@@ -228,6 +238,7 @@ export async function startLocalKody(input: {
 		const kody = await runtime.startDevRuntime({
 			stateDir,
 			username: localUsernameFor(input.manifest),
+			packageAppPort: input.packageAppPort,
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
 			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
@@ -284,6 +295,29 @@ async function startOutboundGateway(gateway: MockFetchGateway) {
 	}
 }
 
+/**
+ * `name=value` of each cookie local Kody sets for `host`. node:http because
+ * fetch cannot send a Host other than the address it connects to.
+ */
+function readSetCookies(input: { origin: string; host: string; path: string }) {
+	return new Promise<Array<string>>((resolve, reject) => {
+		const request = httpRequest(
+			new URL(input.path, input.origin),
+			{ headers: { host: input.host } },
+			(response) => {
+				response.resume()
+				resolve(
+					(response.headers['set-cookie'] ?? [])
+						.map((cookie) => cookie.split(';')[0]!.trim())
+						.filter((pair) => !pair.endsWith('=')),
+				)
+			},
+		)
+		request.on('error', reject)
+		request.end()
+	})
+}
+
 /** Saves the working tree into local Kody through the real packageSave route. */
 export function createLocalKodyUpstream(input: {
 	kody: LocalKody
@@ -294,6 +328,9 @@ export function createLocalKodyUpstream(input: {
 }): LocalKodyUpstream {
 	const fetchFn = input.fetchFn ?? fetch
 	let packageId: string | null = null
+	const savedIds = new Map<string, string>()
+	const savedHashes = new Map<string, string>()
+	let watchPaths: ReadonlyArray<string> = []
 	// The same capability proxy `kody execute --local` uses, so each call runs
 	// the real capability handler on the local stack.
 	const call = async (operation: string, args: unknown) => {
@@ -340,50 +377,214 @@ export function createLocalKodyUpstream(input: {
 			})
 		}
 	}
+	const save = async (request: {
+		files: Array<{ path: string; content: string }>
+		packageId: string | undefined
+		what: string
+	}) => {
+		const response = await fetchFn(`${input.kody.origin}/v1/packages`, {
+			method: 'POST',
+			headers: {
+				authorization: `Bearer ${input.kody.apiToken}`,
+				'content-type': 'application/json',
+			},
+			// The local copy is owned by kody dev and mirrors the working tree, so
+			// replacing it on each build is the intent, not a destructive edit.
+			body: JSON.stringify({
+				...(request.packageId ? { package_id: request.packageId } : {}),
+				confirm_destructive_overwrite: true,
+				files: request.files,
+			}),
+		})
+		const body = (await response.json().catch(() => null)) as Record<
+			string,
+			unknown
+		> | null
+		if (!response.ok) {
+			throw new Error(
+				`Saving ${request.what} into local Kody failed (HTTP ${response.status}): ${JSON.stringify(body).slice(0, 500)}`,
+			)
+		}
+		const saved = (body?.package ?? body) as Record<string, unknown> | null
+		const id = saved?.package_id ?? saved?.id
+		return typeof id === 'string' ? id : null
+	}
 	return {
 		origin: input.kody.origin,
-		appPath: `/@${input.kody.username}/packages/${input.manifest.kodyId}`,
-		cookie: input.kody.sessionCookie,
+		username: input.kody.username,
+		appSessionCookie: async ({ rootMounted }) => {
+			// The sign-in a browser does: Kody hands its session off to the app's
+			// host, which answers with that host's own session cookie.
+			const open = new URL(
+				buildPackageAppOpenPath({
+					username: input.kody.username,
+					kodyId: input.manifest.kodyId,
+				}),
+				input.kody.origin,
+			)
+			if (rootMounted) open.searchParams.set(packageAppHostEntryQueryParam, '1')
+			const handoff = await fetchFn(open, {
+				redirect: 'manual',
+				headers: { cookie: input.kody.sessionCookie },
+			})
+			const location = handoff.headers.get('location')
+			const target = location ? new URL(location, open) : null
+			const cookies = target
+				? await readSetCookies({
+						origin: input.kody.origin,
+						host: target.host,
+						path: `${target.pathname}${target.search}`,
+					})
+				: []
+			if (cookies.length === 0) {
+				throw new Error(
+					`Local Kody did not sign in to the app${target ? ` at ${target.origin}` : ''} (HTTP ${handoff.status}).`,
+				)
+			}
+			return cookies.join('; ')
+		},
 		listOutbox: () => input.kody.listOutbox(),
 		packageId: () => packageId,
 		call,
 		sync: async () => {
-			const tree = await collectPackageCheckFiles(input.manifest.root)
-			const files = Object.entries(tree.files).map(([path, content]) => ({
-				path,
-				content,
-			}))
-			const response = await fetchFn(`${input.kody.origin}/v1/packages`, {
-				method: 'POST',
-				headers: {
-					authorization: `Bearer ${input.kody.apiToken}`,
-					'content-type': 'application/json',
-				},
-				// The local copy is owned by kody dev and mirrors the working tree, so
-				// replacing it on each build is the intent, not a destructive edit.
-				body: JSON.stringify({
-					...(packageId ? { package_id: packageId } : {}),
-					confirm_destructive_overwrite: true,
-					files,
-				}),
+			const trees = new Map<string, Record<string, string>>()
+			const readTree = async (root: string) => {
+				let files = trees.get(root)
+				if (!files) {
+					files = (await collectPackageCheckFiles(root)).files
+					trees.set(root, files)
+				}
+				return files
+			}
+			// The same dep map `kody execute --local` binds from: each mapped dep
+			// is saved under its mapped name before anything that imports it.
+			const deps = await listMappedLocalDeps({
+				selfManifest: input.manifest,
+				listImports: async (root) => listTreeImports(await readTree(root)),
 			})
-			const body = (await response.json().catch(() => null)) as Record<
-				string,
-				unknown
-			> | null
-			if (!response.ok) {
-				throw new Error(
-					`Saving the working tree into local Kody failed (HTTP ${response.status}): ${JSON.stringify(body).slice(0, 500)}`,
+			const packages = [
+				...deps.map((dep) => ({
+					name: dep.name,
+					root: dep.manifest.root,
+					rename: dep.manifest.name !== dep.name,
+				})),
+				{ name: input.manifest.name, root: input.manifest.root, rename: false },
+			]
+			// Watched before saving, so fixing a dep that failed to save rebuilds.
+			// The root's dep map sits under `.kody/`, which the root watch skips.
+			const depFiles = [join(input.manifest.root, localDepsRelativePath)]
+			for (const dep of deps) {
+				const tree = await readTree(dep.manifest.root)
+				depFiles.push(
+					...Object.keys(tree).map((path) => join(dep.manifest.root, path)),
 				)
 			}
-			const saved = (body?.package ?? body) as Record<string, unknown> | null
-			const id = saved?.package_id ?? saved?.id
-			if (typeof id === 'string') packageId = id
+			watchPaths = depFiles
+			// Checked after watching, so fixing the mapping rebuilds.
+			assertDepsInAppScope(input.manifest, deps)
+			let changed = false
+			for (const pkg of packages) {
+				const tree = await readTree(pkg.root)
+				const files = Object.entries(tree).map(([path, content]) => ({
+					path,
+					content:
+						pkg.rename && path === 'package.json'
+							? renamePackageJson(content, pkg.name)
+							: content,
+				}))
+				const hash = createHash('sha256')
+					.update(JSON.stringify(files))
+					.digest('hex')
+				// Unchanged deps are not re-saved. Once one changes, everything
+				// after it (its dependents) is, so none keeps a stale copy.
+				const isRoot = pkg.root === input.manifest.root
+				if (!isRoot && !changed && savedHashes.get(pkg.name) === hash) continue
+				changed = true
+				// Forgotten until the save lands, so a failed package and its
+				// dependents all re-save on the next sync.
+				savedHashes.delete(pkg.name)
+				const id = await save({
+					files,
+					packageId: savedIds.get(pkg.name),
+					what: isRoot
+						? 'the working tree'
+						: `mapped local dep ${pkg.name} (${pkg.root})`,
+				})
+				if (id) savedIds.set(pkg.name, id)
+				savedHashes.set(pkg.name, hash)
+			}
+			packageId = savedIds.get(input.manifest.name) ?? packageId
 			// Saving re-syncs package jobs onto the real local scheduler. They only
 			// fire on schedule with --run-jobs; otherwise `kody dev job` runs them.
 			if (!input.runJobs) await pauseJobs()
 			if (packageId) await enableSubscriptions(packageId)
 		},
+		watchPaths: () => watchPaths,
+	}
+}
+
+/**
+ * Local Kody saves into the app's own account, and like hosted Kody that only
+ * accepts packages in its scope, so a mapped dep from another scope stops the
+ * sync before anything is saved.
+ */
+function assertDepsInAppScope(
+	manifest: KodyPackageManifest,
+	deps: ReadonlyArray<{ name: string; manifest: KodyPackageManifest }>,
+) {
+	const scope = localUsernameFor(manifest)
+	const foreign = deps.filter((dep) => localUsernameFor(dep) !== scope)
+	if (foreign.length === 0) return
+	const lines = foreign.map((dep) => {
+		const leaf = dep.name.split('/').at(-1)
+		return `- ${dep.name} (mapped to ${dep.manifest.root}): fork it into @${scope}, for example as @${scope}/${leaf}, then import and map that copy.`
+	})
+	throw new Error(
+		[
+			`Mapped local deps must be in the app's own scope (@${scope}). Local Kody can only save deps in the app's scope, like hosted Kody, where imports resolve only within the caller's org.`,
+			...lines,
+		].join('\n'),
+	)
+}
+
+const sourceModulePattern = /\.[cm]?[jt]sx?$/
+
+/** `kody:@` specifiers the source modules in a package tree import. */
+async function listTreeImports(files: Record<string, string>) {
+	const found = new Set<string>()
+	for (const [path, source] of Object.entries(files)) {
+		if (!sourceModulePattern.test(path) || /\.d\.[cm]?ts$/.test(path)) continue
+		const code = await lexableModuleSource(path, source).catch(() => null)
+		if (code === null) continue
+		for (const specifier of await listSavedPackageImports(code)) {
+			found.add(specifier)
+		}
+	}
+	return [...found]
+}
+
+/**
+ * `package.json` with `name` set to the name importers use for the dep, and
+ * an explicit `kody.id` set to match its leaf.
+ */
+function renamePackageJson(content: string, name: string) {
+	try {
+		const pkg = JSON.parse(content) as Record<string, unknown>
+		const kody = pkg.kody as Record<string, unknown> | undefined
+		const id = name.split('/').at(-1)
+		return `${JSON.stringify(
+			{
+				...pkg,
+				name,
+				...(kody && typeof kody === 'object' && 'id' in kody
+					? { kody: { ...kody, id } }
+					: {}),
+			},
+			null,
+			'\t',
+		)}\n`
+	} catch {
+		return content
 	}
 }
 

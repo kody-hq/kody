@@ -1,6 +1,8 @@
 /**
- * First-party blog image paths: origin-relative files under
- * `packages/worker/public/images/`. Shared by frontmatter `image` fields and
+ * First-party blog image paths: origin-relative `/images/...` paths, either
+ * static files under `packages/worker/public/images/` or, for
+ * `/images/blog/...`, R2 objects served by the worker
+ * (`#worker/blog/blog-image-store.ts`). Shared by frontmatter `image` fields and
  * inline post-body screenshots so both follow one rule.
  */
 export const BLOG_IMAGE_PATTERN =

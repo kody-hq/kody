@@ -1,5 +1,5 @@
 import type * as RateLimitModule from '#app/rate-limit.ts'
-import type * as TwoFactorModule from '#app/two-factor.ts'
+import type * as TwoFactorModule from '#worker/identity/two-factor.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {
@@ -11,7 +11,7 @@ import {
 	verifyTwoFactorCode,
 	isTwoFactorEnabled,
 	cancelTwoFactorSetup,
-} from '#app/two-factor.ts'
+} from '#worker/identity/two-factor.ts'
 import {
 	startAccountTwoFactorSetup,
 	confirmAccountTwoFactorSetup,
@@ -23,7 +23,7 @@ vi.mock('#app/rate-limit.ts', async (original) => ({
 	checkAuthRateLimit: vi.fn(),
 	checkRateLimit: vi.fn(),
 }))
-vi.mock('#app/two-factor.ts', async (original) => ({
+vi.mock('#worker/identity/two-factor.ts', async (original) => ({
 	...(await original<typeof TwoFactorModule>()),
 	verifyTwoFactorCode: vi.fn(),
 	isTwoFactorEnabled: vi.fn(),

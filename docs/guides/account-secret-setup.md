@@ -2,17 +2,17 @@
 id: connect_secret
 title: Secret setup URL reference
 summary:
-  Hosted /connect/secret-set URL shape, query params, approval policy for API
-  keys and PATs, and post-hoc package approval URLs including bulk approve.
+  Hosted credential setup URL shape, query params, approval policy for API keys
+  and PATs, and post-hoc package approval URLs including bulk approve.
 category: platform
 ---
 
 # Secret setup URL reference
 
-Use the hosted **`/connect/secret-set`** page whenever the user needs to enter a
-secret value such as an API key or personal access token. That page has one job:
-set this secret. Secrets stay on the setup page; send the URL and wait until
-they confirm save.
+Use the hosted Key form whenever the user needs to enter a secret value such as
+an API key or personal access token. Both `/connect/credential?kind=secret` and
+`/connect/secret-set` open the same form. Send the URL and wait until the user
+confirms they saved the key.
 
 In-app "New secret" from `/@<slug>/-/secrets` opens `/@<slug>/-/secrets/new`
 without query params. Prefill links that include `name` redirect to
@@ -33,17 +33,14 @@ Use it when:
   `secretJwtSign`) is missing
 - the user needs to rotate a stored secret value
 
-Send the `/connect/secret-set` URL and have them paste into **Secret value** on
-that page.
+Send the setup URL and have the user review **Allowed hosts**, then paste the
+secret into **Value**.
 
 ## URL format
 
 Provide the user a URL like:
 
-`https://<your-kody-origin>/connect/secret-set?name=exampleApiKey&description=Example%20API%20key&expiresAt=2026-12-01T00:00:00.000Z&allowedHosts=api.example.com&scope=user&allowedPackages=pkg_123`
-
-When `name` is present, the page focuses and scrolls to the secret value input
-so the user can paste immediately.
+`https://<your-kody-origin>/connect/credential?kind=secret&kindMode=required&name=exampleApiKey&description=Example%20API%20key&expiresAt=2026-12-01T00:00:00.000Z&allowedHosts=api.example.com,uploads.example.com&scope=user&allowedPackages=pkg_123`
 
 ## Query params
 
@@ -52,18 +49,21 @@ so the user can paste immediately.
 | `name`            | yes      | Secret name (for example `exampleApiKey`).                                                                                                                                                                                                                            |
 | `description`     | no       | Human-readable description shown in the UI.                                                                                                                                                                                                                           |
 | `expiresAt`       | no       | Optional. Kody’s cutoff for sending the secret, separate from the provider token’s own expiration. UTC ISO (`2026-12-01T00:00:00.000Z`) or a `YYYY-MM-DD` date stored as midnight UTC. Prefills Expires. Leave omitted and Kody keeps the secret until it is deleted. |
-| `allowedHosts`    | no       | Comma-separated hosts to review for approval.                                                                                                                                                                                                                         |
+| `allowedHosts`    | no       | Comma-separated public host names. Prefills the editable **Allowed hosts** field. Repeated parameters also work.                                                                                                                                                      |
 | `allowedPackages` | no       | Comma-separated saved package ids to review for approval.                                                                                                                                                                                                             |
 | `scope`           | no       | `user` (default) or `package`.                                                                                                                                                                                                                                        |
 | `packageId`       | no       | Required when `scope=package`. Use the saved package id that owns the secret.                                                                                                                                                                                         |
 
 ## Approval policy reminders
 
-- A prefilled `allowedHosts` list is shown on the setup page. Saving writes that
-  list with the secret.
-- When the save URL omitted hosts, or a later call says a host is not approved,
-  open **`/connect/secrets`** (`name` / `names` and `hosts`). Package grants use
-  `/@<slug>/-/secrets/approve`.
+- Saving writes the reviewed list with the secret. Enter public host names such
+  as `api.example.com` or `https://api.example.com`. Correct invalid entries
+  before saving. Kody lowercases and deduplicates the saved list.
+- When replacing a key, the field starts with the current hosts plus any hosts
+  suggested by the link. Edit that list to replace it. A blank field keeps the
+  current hosts. For a new key, a blank field gives it no approved hosts.
+- To approve a host later, open **`/connect/secrets`** (`name` / `names` and
+  `hosts`). Package grants use `/@<slug>/-/secrets/approve`.
 - `hosts` must be hostname-shaped. Truncated or path-bearing values are rejected
   on that page and are not written to `allowedHosts`.
 

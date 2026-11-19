@@ -57,7 +57,7 @@ export function PublicFileShell({
 	return (
 		<div
 			css={{
-				height: '100dvh',
+				height: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
 				display: 'flex',
 				flexDirection: 'column',
 				background: colors.background,
@@ -312,7 +312,7 @@ export function SharedFileUnavailable() {
 	return (
 		<div
 			css={{
-				minHeight: '100dvh',
+				minHeight: 'calc(100dvh - var(--desktop-toolbar-height, 0px))',
 				display: 'grid',
 				placeItems: 'center',
 				background: colors.background,

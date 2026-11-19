@@ -11,7 +11,8 @@ import {
 	type WalkthroughHostPick,
 	type WalkthroughHostSlot,
 } from '#universal/walkthrough-hosts.ts'
-import { colors, radius } from '#universal/styles/tokens.ts'
+import { colors } from '#universal/styles/tokens.ts'
+import { getSquircleCss } from '#universal/styles/style-primitives.ts'
 
 /**
  * Story setup for the How Kody works transcript and the homepage loop.
@@ -94,6 +95,7 @@ function renderHostSelect(
 				}
 				aria-hidden="true"
 			/>
+			{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- inline select set in running prose */}
 			<select
 				aria-label={label}
 				value={selected.id}
@@ -162,7 +164,7 @@ const selectCss = {
 	margin: '0 0.15em',
 	padding: '0.15em calc(0.5em + 16px) 0.15em 1.65em',
 	border: `1px solid ${colors.border}`,
-	borderRadius: radius.full,
+	...getSquircleCss('xs'),
 	backgroundColor: colors.surface,
 	color: colors.text,
 	font: 'inherit',

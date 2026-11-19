@@ -403,6 +403,30 @@ export const bakedOpenApiRoutes = [
 		pathParamNames: [],
 	},
 	{
+		operationId: 'executionContextMachineAccessGrant',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextMachineAccessList',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextMachineAccessPackagesSet',
+		method: 'PUT',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access/packages',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextMachineAccessRevoke',
+		method: 'DELETE',
+		pathTemplate: '/v1/execution-contexts/{id}/machine-access/{grant_id}',
+		pathParamNames: ['id', 'grant_id'],
+	},
+	{
 		operationId: 'executionContextNoticeDismiss',
 		method: 'POST',
 		pathTemplate: '/v1/execution-contexts/{id}/notices/dismiss',
@@ -472,6 +496,12 @@ export const bakedOpenApiRoutes = [
 		operationId: 'executionContextShareSet',
 		method: 'PUT',
 		pathTemplate: '/v1/execution-contexts/{id}/sharing',
+		pathParamNames: ['id'],
+	},
+	{
+		operationId: 'executionContextShellSuggestions',
+		method: 'GET',
+		pathTemplate: '/v1/execution-contexts/{id}/shell-suggestions',
 		pathParamNames: ['id'],
 	},
 	{

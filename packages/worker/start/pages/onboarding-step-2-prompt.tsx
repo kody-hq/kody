@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 
-import { SiteLink } from '../components/site-link.tsx'
 import { CopyCard } from './onboarding-mcp-client-cards.tsx'
 import {
 	onboardingCopyStep2PromptLabel,
@@ -9,7 +9,6 @@ import {
 	onboardingStep2Prompt,
 } from '#universal/onboarding-process.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 
 export function OnboardingStep2Prompt() {
 	return (
@@ -21,9 +20,9 @@ export function OnboardingStep2Prompt() {
 			/>
 			<p css={guidePointerCss} data-testid="onboarding-guide-pointer">
 				Depth lives in the{' '}
-				<SiteLink href={onboardingGuideHref} css={guideLinkCss}>
+				<TextLink href={onboardingGuideHref} css={guideLinkCss}>
 					onboarding guide
-				</SiteLink>
+				</TextLink>
 				. The prompt tells your agent to retrieve it.
 			</p>
 		</div>
@@ -45,6 +44,5 @@ const guidePointerCss: CSSObject = {
 }
 
 const guideLinkCss: CSSObject = {
-	...primaryLinkCss,
 	fontWeight: 600,
 }

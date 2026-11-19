@@ -1,10 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import type { ReactNode } from 'react'
 import { BuildWithAgentButton } from '../../components/build-with-agent-button.tsx'
-import { SiteLink } from '../../components/site-link.tsx'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
-
-const featureCtaCss = getPillButtonCss()
 
 /**
  * Primary call to action on the feature pages: the site's shared pill, so it
@@ -12,9 +9,14 @@ const featureCtaCss = getPillButtonCss()
  */
 export function FeatureCtaLink(props: { href: string; children: ReactNode }) {
 	return (
-		<SiteLink className="feature-cta" href={props.href} css={featureCtaCss}>
+		<Button
+			className="feature-cta"
+			href={props.href}
+			variant="primary"
+			size="lg"
+		>
 			{props.children}
-		</SiteLink>
+		</Button>
 	)
 }
 

@@ -184,6 +184,35 @@ test('loadPackageManifestBySourceId reads and caches manifest-only sources', asy
 	})
 })
 
+test('loadPackageManifestBySourceId reads the serving commit while the published one is held', async () => {
+	mockModule.getEntitySourceById.mockResolvedValue({
+		...createPackageSourceRow('source-held-1', 'commit-held'),
+		serving_commit: 'commit-live',
+		held_commit: 'commit-held',
+	})
+	mockModule.loadPublishedEntityManifest.mockImplementation(
+		async (input: { source: { published_commit: string } }) => ({
+			source: input.source,
+			content: JSON.stringify({
+				...manifest,
+				kody: { ...manifest.kody, description: input.source.published_commit },
+			}),
+		}),
+	)
+	const input = createLoadSourceInput('source-held-1')
+
+	const live = await loadPackageManifestBySourceId(input)
+	const held = await loadPackageManifestBySourceId({
+		...input,
+		commit: 'commit-held',
+	})
+
+	expect(live.source.published_commit).toBe('commit-live')
+	expect(live.manifest.kody.description).toBe('commit-live')
+	expect(held.source.published_commit).toBe('commit-held')
+	expect(held.manifest.kody.description).toBe('commit-held')
+})
+
 test('loadPackageManifestBySourceId retries a transient D1 export error', async () => {
 	const source = createPackageSourceRow('source-retry-export', 'commit-retry-1')
 	const { app: _app, ...kody } = manifest.kody

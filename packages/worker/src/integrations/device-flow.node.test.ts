@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { expect, test, vi } from 'vitest'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
+import { sealPlatformSecret } from '#mcp/secrets/crypto.ts'
 import {
 	completeDevicePendingSession,
 	consumeDevicePendingSession,
@@ -17,7 +18,8 @@ function createSqliteEnv() {
 	return {
 		OAUTH_KV: kv,
 		APP_DB: createD1FromSqlite(sqlite),
-	} as Pick<Env, 'OAUTH_KV' | 'APP_DB'>
+		SECRET_STORE_KEY: 'device-flow-test-secret-store-key',
+	} as Pick<Env, 'OAUTH_KV' | 'APP_DB' | 'SECRET_STORE_KEY'>
 }
 
 const baseStart = {
@@ -386,7 +388,12 @@ test('completeDevicePendingSession keeps a receipt after provider expiry', async
 	pending.expiresAtMs = Date.now() - 1_000
 	await env.OAUTH_KV!.put(
 		`integration-device-session:${baseStart.userId}:${started.sessionId}`,
-		JSON.stringify(pending),
+		await sealPlatformSecret(
+			env,
+			'integration-device-session',
+			`integration-device-session:${baseStart.userId}:${started.sessionId}`,
+			JSON.stringify(pending),
+		),
 	)
 	await completeDevicePendingSession({
 		env,
@@ -667,4 +674,97 @@ test('startDeviceAuthorization refuses empty scopes for Slack without defaults',
 	expect(started.status).toBe(400)
 	expect(started.error).toContain('requires OAuth scopes')
 	expect(fetchImpl).not.toHaveBeenCalled()
+})
+
+test('pending sessions are sealed at rest and bound to user and session', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'dc-sealed-secret',
+			user_code: 'SEAL-0001',
+			verification_uri: 'https://auth.example.com/verify',
+			expires_in: 600,
+			interval: 5,
+		}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		provider: 'sealed-provider',
+		clientSecret: 'client-secret-sealed',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	if (!started.ok) return
+	const key = `integration-device-session:${baseStart.userId}:${started.sessionId}`
+	const stored = await env.OAUTH_KV!.get(key)
+	expect(stored).toMatch(/^v2\./)
+	expect(stored).not.toContain('dc-sealed-secret')
+	expect(stored).not.toContain('client-secret-sealed')
+	const loaded = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(loaded?.deviceCode).toBe('dc-sealed-secret')
+
+	// A ciphertext copied to another user's or session's key does not open.
+	await env.OAUTH_KV!.put(
+		`integration-device-session:other-user:${started.sessionId}`,
+		stored!,
+	)
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: 'other-user',
+			sessionId: started.sessionId,
+		}),
+	).toBeNull()
+	await env.OAUTH_KV!.put(
+		`integration-device-session:${baseStart.userId}:other-session`,
+		stored!,
+	)
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: baseStart.userId,
+			sessionId: 'other-session',
+		}),
+	).toBeNull()
+})
+
+test('plaintext pending sessions fail closed', async () => {
+	const env = createSqliteEnv()
+	const fetchImpl = vi.fn(async () =>
+		jsonResponse({
+			device_code: 'dc-legacy',
+			user_code: 'LEGA-0001',
+			verification_uri: 'https://auth.example.com/verify',
+			expires_in: 600,
+			interval: 5,
+		}),
+	)
+	const started = await startDeviceAuthorization({
+		env,
+		...baseStart,
+		provider: 'legacy-provider',
+		fetchImpl,
+	})
+	expect(started.ok).toBe(true)
+	if (!started.ok) return
+	const pending = await loadDevicePendingSession({
+		env,
+		userId: baseStart.userId,
+		sessionId: started.sessionId,
+	})
+	expect(pending?.deviceCode).toBe('dc-legacy')
+	const key = `integration-device-session:${baseStart.userId}:${started.sessionId}`
+	await env.OAUTH_KV!.put(key, JSON.stringify(pending))
+	expect(
+		await loadDevicePendingSession({
+			env,
+			userId: baseStart.userId,
+			sessionId: started.sessionId,
+		}),
+	).toBeNull()
 })

@@ -8,7 +8,7 @@ import {
 	destroyAuthCookie,
 	isSecureRequest,
 } from '#app/auth-session.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -60,7 +60,8 @@ import { scheduleKitSubscriberSync } from '#worker/kit/subscriber-sync.ts'
 import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import {
 	firstTouchAttributionCreateFields,
-	parseFirstTouchAttribution,
+	readFirstTouchAttributionFromCookie,
+	serializeFirstTouchAttributionCookie,
 } from '#universal/first-touch-attribution.ts'
 import {
 	resolveReferralCodeForSignup,
@@ -170,9 +171,7 @@ export async function authenticateWebsite({
 	)
 	const signupAttribution =
 		normalizedMode === 'signup'
-			? parseFirstTouchAttribution({
-					body: typeof body === 'object' && body !== null ? body : undefined,
-				})
+			? readFirstTouchAttributionFromCookie(request.headers.get('Cookie'))
 			: null
 	const rememberMeValue =
 		typeof body === 'object' && body !== null
@@ -438,6 +437,15 @@ export async function authenticateWebsite({
 					password_hash: passwordHash,
 					...firstTouchAttributionCreateFields(signupAttribution),
 					last_active_at: createdAt,
+					...(typeof body === 'object' &&
+					body !== null &&
+					(body as Record<string, unknown>).whatsNewEmailOptIn === true
+						? {
+								whats_new_email_opt_in: 1,
+								whats_new_email_opt_in_updated_at: createdAt,
+								whats_new_email_opt_in_source: 'signup',
+							}
+						: {}),
 				},
 				{
 					returnRow: true,
@@ -782,6 +790,10 @@ export async function authenticateWebsite({
 		headers.append(
 			'Set-Cookie',
 			serializeReferralCookie({ code: null, secure }),
+		)
+		headers.append(
+			'Set-Cookie',
+			serializeFirstTouchAttributionCookie({ attribution: null, secure }),
 		)
 		return authOperationResult(signupAcceptedBody(normalizedMode), { headers })
 	}

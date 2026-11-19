@@ -381,6 +381,57 @@ credential for `secretJwtSign` or signature keys. They are suggestions only,
 without credential names; nothing is suggested for a placement no type fits,
 including basic auth that names two secrets.
 
+### Machine access (`kody.machine`)
+
+A package whose code uses a machine's named commands, local network destinations
+or host folders on an [execution context](./execution-contexts.md) declares them
+in `kody.machine`. Each key is the name the machine gives the entry.
+
+```json
+{
+	"name": "@acme/nas-ops",
+	"exports": { ".": "./index.ts" },
+	"kody": {
+		"description": "Operate the NAS.",
+		"machine": {
+			"kdocker": {
+				"kind": "command",
+				"description": "Restart and inspect containers on the NAS"
+			},
+			"nas": {
+				"kind": "lan",
+				"hosts": ["192.168.1.10"],
+				"ports": [5001],
+				"description": "Call the Synology API"
+			},
+			"runner": {
+				"kind": "fs",
+				"mode": "rw",
+				"description": "Write build output"
+			}
+		}
+	}
+}
+```
+
+- `kind` is `command`, `lan` or `fs`, and `description` says why the package
+  needs it. There is no entry for the unrestricted shell.
+- `lan` may list the `hosts` (IP addresses or CIDR ranges, never host names) and
+  `ports` it expects, and `fs` gives the `mode` (`ro` or `rw`). These tell the
+  person approving what to expect; a run gets what the machine defines.
+- A package that uses a named command or local network destination it did not
+  declare fails with `machine_need_undeclared`. For host folders it is only
+  recorded for now.
+- A machine can give a command, a destination and a folder the same name. To
+  declare more than one, use a list with one entry per kind:
+  `"nas": [{ "kind": "lan", ... }, { "kind": "fs", ... }]`.
+- Declaring grants nothing. The machine defines each entry and its operator
+  decides which packages may use it.
+- A package declares what its own runs use. Access does not pass through
+  imports: the package you run needs the entry, not the helper it imports.
+- A package can declare at most 20 entries. `packageGet` returns them as
+  `machine.needs`.
+
 ### npm dependencies
 
 Saved packages may declare runtime npm dependencies in `package.json`
@@ -1056,6 +1107,27 @@ and recorded in the org activity log on its own. If the capability set was
 already approved, `packageUpdate` and the settings toggle turn internet-visible
 on immediately without another Approve click.
 
+Republishing an approved internet-visible app does not interrupt anyone.
+Everyone keeps the approved version until the new one finishes building. If the
+new version asks for the same capabilities or fewer, its approval carries
+forward and everyone switches to it right away. If it asks for more, everyone,
+including you and other members of the account, stays on the approved version
+until you approve the new capability set; members and public visitors never run
+different versions. While they wait, the package page shows **Everyone is still
+on the previous version** with an **Approve to update everyone** link, and the
+publish response includes `held_for_approval` with the commit everyone still
+runs (`serving_commit`), the new commit (`held_commit`), and `approval_url`.
+Approving moves everyone to the new version. Jobs, subscriptions, webhooks,
+events, and skills stay on the approved version too: a job the new version
+removes keeps running as it was, a job it adds starts only after you approve
+(enabled as you), and no job runs the new code until then. The **Public
+release** panel shows the commit everyone is on and the published commit that
+waits for approval. To try the new version before you approve it, use local dev
+or a dev check.
+
+Apps that are not internet-visible switch to each new version as soon as it
+finishes building.
+
 When the published version has no [security audit](#security-audit) yet, both
 responses also return the next step for the agent. `packageUpdate` returns
 `security_audit` next to `approval_url`; the settings toggle returns
@@ -1212,6 +1284,13 @@ publish also counts the rest of the checked-out repo toward the 32 MiB cap.
 | Any single file                           | 10 MiB                      |
 | Checked-out tree for `git push` publishes | 32 MiB                      |
 | JS/TS source scanned in the main isolate  | 256 KiB (more gets its own) |
+| Code the credential stamp scan reads      | 450,000 syntax nodes        |
+
+The credential stamp scan parses every JS/TS module the runtime can import,
+committed build output included, and its cost grows with the amount of code in
+them. Past the limit the scan stops before it reads the rest and names the
+heaviest modules. Import less from the server entry points, or list code the
+runtime never imports in `.kodyignore`.
 
 Each check isolate also has a fixed memory and CPU budget. When a step runs out,
 the error names the step (cloning, staging the package files, reading the source
@@ -1345,8 +1424,12 @@ publish checks run.
    calls `packagePublishExternalPush` with `publish_build_id`. Kody re-runs the
    cheap checks, verifies the uploaded tree and bundles, and only then serves
    the commit. Successful results include `build_origin` (`cloud`, `cli`, or
-   `context`). Builds outside Kody cloud need the `publish-offload` feature
-   flag. See
+   `context`). `packageGet` also returns `provenance`: for each stored artifact
+   of the published commit, where it was built and a SHA-256 of its modules. It
+   is a record only. Kody does not check that an uploaded build was compiled
+   from the pushed source, and nothing uses the record to allow or refuse a
+   publish or a community listing. Builds outside Kody cloud need the
+   `publish-offload` feature flag. See
    [Publish packages too big for Kody cloud](../guides/publish-large-packages.md).
    If the package tip already matched HEAD before this request began, the tool
    returns `already_published` (true no-op tip). That result still runs the

@@ -556,7 +556,15 @@ function asDiscoveryMetadata(overrides: Record<string, unknown> = {}) {
 	}
 }
 
-test('OAuth provider refuses discovery whose authorize or token endpoint leaves the issuer origin (#3284)', async () => {
+const offIssuerSite = (field: string) =>
+	new RegExp(
+		`${mcpOAuthFailedCode}[\\s\\S]*${field} .*not on its issuer's origin or registrable domain`,
+	)
+const issuerNotEchoed = new RegExp(
+	`${mcpOAuthFailedCode}[\\s\\S]*issuer .*does not match the discovered authorization server`,
+)
+
+test('OAuth provider refuses discovery whose authorize or token endpoint leaves the issuer site (#3284)', async () => {
 	const { storage, values } = createMemoryStorage()
 	const provider = makeProvider(storage, 'client-1')
 
@@ -573,11 +581,17 @@ test('OAuth provider refuses discovery whose authorize or token endpoint leaves 
 				token_endpoint: 'https://evil.example/token',
 			}) as never,
 		),
-	).rejects.toThrow(
-		new RegExp(
-			`${mcpOAuthFailedCode}[\\s\\S]*token_endpoint .*different origin`,
-		),
-	)
+	).rejects.toThrow(offIssuerSite('token_endpoint'))
+	await expect(
+		provider.saveDiscoveryState({
+			authorizationServerUrl: 'https://a.github.io',
+			authorizationServerMetadata: {
+				issuer: 'https://a.github.io',
+				authorization_endpoint: 'https://b.github.io/authorize',
+				token_endpoint: 'https://a.github.io/token',
+			},
+		} as never),
+	).rejects.toThrow(offIssuerSite('authorization_endpoint'))
 	expect(values.get('/Kody/server-home/oauth_discovery')).toBeUndefined()
 
 	await provider.saveDiscoveryState(asDiscoveryMetadata() as never)
@@ -586,7 +600,82 @@ test('OAuth provider refuses discovery whose authorize or token endpoint leaves 
 	})
 })
 
-test('OAuth provider refresh path re-asserts issuer origin on cached discovery (#3284)', async () => {
+test('OAuth provider saves and re-reads sibling-host discovery on one registrable domain (Slack, Datadog, Figma)', async () => {
+	for (const discovery of [
+		{
+			authorizationServerUrl: 'https://mcp.slack.com/',
+			authorizationServerMetadata: {
+				issuer: 'https://mcp.slack.com',
+				authorization_endpoint: 'https://slack.com/oauth/v2_user/authorize',
+				token_endpoint: 'https://slack.com/api/oauth.v2.user.access',
+				response_types_supported: ['code'],
+				code_challenge_methods_supported: ['S256'],
+			},
+		},
+		{
+			authorizationServerUrl: 'https://mcp.us5.datadoghq.com/v1/mcp',
+			authorizationServerMetadata: {
+				issuer: 'https://mcp.us5.datadoghq.com/v1/mcp',
+				authorization_endpoint: 'https://us5.datadoghq.com/oauth2/v1/authorize',
+				token_endpoint: 'https://us5.datadoghq.com/api/v2/oauth2/token',
+				registration_endpoint:
+					'https://us5.datadoghq.com/api/v2/oauth2/register',
+				response_types_supported: ['code'],
+				code_challenge_methods_supported: ['S256'],
+			},
+		},
+		{
+			authorizationServerUrl: 'https://api.figma.com/',
+			authorizationServerMetadata: {
+				issuer: 'https://api.figma.com',
+				authorization_endpoint: 'https://www.figma.com/oauth/mcp',
+				token_endpoint: 'https://api.figma.com/v1/oauth/token',
+				response_types_supported: ['code'],
+				code_challenge_methods_supported: ['S256'],
+				authorization_response_iss_parameter_supported: true,
+			},
+		},
+	]) {
+		const { storage, values } = createMemoryStorage()
+		const provider = makeProvider(storage, 'client-1')
+		await provider.saveDiscoveryState(discovery as never)
+		expect(values.get('/Kody/server-home/oauth_discovery')).toEqual(discovery)
+		expect(await provider.discoveryState()).toEqual(discovery)
+	}
+})
+
+test('OAuth provider refuses discovery whose issuer does not echo the discovered AS URL (RFC 8414)', async () => {
+	const { storage, values } = createMemoryStorage()
+	const provider = makeProvider(storage, 'client-1')
+
+	await expect(
+		provider.saveDiscoveryState({
+			...asDiscoveryMetadata({
+				issuer: 'https://evil.example',
+				authorization_endpoint: 'https://evil.example/authorize',
+				token_endpoint: 'https://evil.example/token',
+			}),
+			authorizationServerUrl: 'https://auth.example',
+		} as never),
+	).rejects.toThrow(issuerNotEchoed)
+	await expect(
+		provider.saveDiscoveryState({
+			...asDiscoveryMetadata(),
+			authorizationServerUrl: 'https://auth.example/tenant',
+		} as never),
+	).rejects.toThrow(issuerNotEchoed)
+	expect(values.get('/Kody/server-home/oauth_discovery')).toBeUndefined()
+
+	await provider.saveDiscoveryState({
+		...asDiscoveryMetadata(),
+		authorizationServerUrl: 'https://auth.example/',
+	} as never)
+	expect(values.get('/Kody/server-home/oauth_discovery')).toMatchObject({
+		authorizationServerUrl: 'https://auth.example/',
+	})
+})
+
+test('OAuth provider refresh path re-asserts the issuer site on cached discovery (#3284)', async () => {
 	const { storage, values } = createMemoryStorage()
 	const provider = makeProvider(storage, 'client-1')
 	// Pre-check / tampered cache: write past saveDiscoveryState.
@@ -598,10 +687,44 @@ test('OAuth provider refresh path re-asserts issuer origin on cached discovery (
 	)
 
 	await expect(provider.discoveryState()).rejects.toThrow(
-		new RegExp(
-			`${mcpOAuthFailedCode}[\\s\\S]*token_endpoint .*different origin`,
-		),
+		offIssuerSite('token_endpoint'),
 	)
+
+	values.set('/Kody/server-home/oauth_discovery', {
+		authorizationServerUrl: 'https://a.workers.dev',
+		authorizationServerMetadata: {
+			issuer: 'https://a.workers.dev',
+			authorization_endpoint: 'https://a.workers.dev/authorize',
+			token_endpoint: 'https://b.workers.dev/token',
+		},
+	})
+	await expect(provider.discoveryState()).rejects.toThrow(
+		offIssuerSite('token_endpoint'),
+	)
+})
+
+test('OAuth provider refresh path refuses cached discovery whose issuer does not echo the AS URL (RFC 8414)', async () => {
+	const { storage, values } = createMemoryStorage()
+	const provider = makeProvider(storage, 'client-1')
+	// Cached before the issuer-echo check shipped: same-origin endpoints, wrong issuer.
+	values.set('/Kody/server-home/oauth_discovery', {
+		...asDiscoveryMetadata({
+			issuer: 'https://other.example',
+			authorization_endpoint: 'https://other.example/authorize',
+			token_endpoint: 'https://other.example/token',
+		}),
+		authorizationServerUrl: 'https://auth.example',
+	})
+	await expect(provider.discoveryState()).rejects.toThrow(issuerNotEchoed)
+
+	values.set('/Kody/server-home/oauth_discovery', {
+		authorizationServerMetadata:
+			asDiscoveryMetadata().authorizationServerMetadata,
+	})
+	await expect(provider.discoveryState()).rejects.toThrow(McpOAuthFailedError)
+
+	values.set('/Kody/server-home/oauth_discovery', asDiscoveryMetadata())
+	expect(await provider.discoveryState()).toEqual(asDiscoveryMetadata())
 })
 
 test('OAuth attempt identity: happy path, remove/re-add, client mismatch, and refresh without pending', async () => {

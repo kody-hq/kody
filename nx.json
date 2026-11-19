@@ -68,8 +68,10 @@
 				},
 				{
 					"env": "NODE_TEST_SHARD"
-				}
-			]
+				},
+				{ "env": "KODY_TEST_MODULE_MAP_OUT" }
+			],
+			"outputs": ["{workspaceRoot}/.tmp/test-module-map/node-unit.json"]
 		},
 		"test-workers": {
 			"cache": true,
@@ -78,8 +80,10 @@
 				"^default",
 				"suiteSupport",
 				{ "env": "CI" },
-				{ "env": "WORKERS_TEST_SHARD" }
-			]
+				{ "env": "WORKERS_TEST_SHARD" },
+				{ "env": "KODY_TEST_MODULE_MAP_OUT" }
+			],
+			"outputs": ["{workspaceRoot}/.tmp/test-module-map/workers-unit.json"]
 		},
 		"test-mcp": {
 			"cache": true,

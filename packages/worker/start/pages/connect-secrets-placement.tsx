@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
@@ -9,7 +10,6 @@ import { connectSecretsInput } from '../connect-input.ts'
 import { connectSecretsQuery } from '../connect-approval-queries.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.tsx'
 import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
 import { routes } from '#universal/routes.ts'
@@ -33,8 +33,6 @@ import {
 import {
 	cardCss,
 	getAccentCalloutCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -53,12 +51,6 @@ const headerCss: CSSObject = {
 	justifyItems: 'center',
 	textAlign: 'center' as const,
 }
-
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
 
 const sectionCss: CSSObject = { display: 'grid', gap: spacing.xs }
 const labelCss: CSSObject = { color: colors.textMuted }
@@ -184,18 +176,23 @@ export function ConnectSecretsPlacementApproval({
 		credentials.length > 0 &&
 		pendingParts.length === 0 &&
 		pendingHosts.length === 0
+	// Allowed only once the re-read request shows nothing left to approve.
 	const done =
-		(completed === 'approve' || nothingPending) &&
+		nothingPending &&
 		missingNames.length === 0 &&
 		rejectedHosts.length === 0 &&
 		!data.approvalError
 	const partlyDone =
 		!done &&
-		(completed === 'approve' || nothingPending) &&
+		nothingPending &&
 		(missingNames.length > 0 ||
 			rejectedHosts.length > 0 ||
 			Boolean(data.approvalError))
-	const error = data.placementApprovalError ?? data.approvalError ?? null
+	const unconfirmed =
+		completed === 'approve' && credentials.length > 0 && !nothingPending
+			? 'Kody could not confirm this approval was saved. Try again.'
+			: null
+	const error = data.placementApprovalError ?? data.approvalError ?? unconfirmed
 	const canApprove =
 		!done &&
 		completed !== 'reject' &&
@@ -228,6 +225,7 @@ export function ConnectSecretsPlacementApproval({
 					data: { orgSlug, refresh: connectSecretsInput(url.search) },
 				})
 			}
+			await refresh()
 			if (isCurrent()) setCompleted('approve')
 		} catch (caught) {
 			if (isCurrent())
@@ -236,7 +234,6 @@ export function ConnectSecretsPlacementApproval({
 						? caught.message
 						: 'Unable to approve this request.',
 				)
-		} finally {
 			await refresh()
 		}
 	}
@@ -442,13 +439,14 @@ export function ConnectSecretsPlacementApproval({
 
 					{canApprove ? (
 						<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-							<button
+							<Button
 								type="button"
 								disabled={submitting}
 								onClick={() => {
 									void approve()
 								}}
-								css={primaryButtonCss}
+								variant="primary"
+								size="md"
 								data-testid="connect-secrets-placement-approve"
 							>
 								{submitting
@@ -457,26 +455,28 @@ export function ConnectSecretsPlacementApproval({
 											parts: pendingParts,
 											hostCount: pendingHosts.length,
 										})}
-							</button>
-							<button
+							</Button>
+							<Button
 								type="button"
 								disabled={submitting}
 								onClick={() => {
 									setMessage(null)
 									setCompleted('reject')
 								}}
-								css={secondaryButtonCss}
+								variant="secondary"
+								size="md"
 							>
 								Decline
-							</button>
+							</Button>
 						</div>
 					) : (
-						<SiteLink
+						<Button
 							href={routes.accountCredentials.href()}
-							css={secondaryButtonCss}
+							variant="secondary"
+							size="md"
 						>
 							Back to credentials
-						</SiteLink>
+						</Button>
 					)}
 				</section>
 			) : null}

@@ -2,9 +2,14 @@ import { base64ToBytes, bytesToBase64 } from '@kody-internal/shared/base64.ts'
 import type { WorkerLoaderModules } from '#worker/worker-loader-types.ts'
 import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { repoRelativeSourceFiles } from '#worker/repo/published-source-files.ts'
+import {
+	restoreLinkedArtifactGroups,
+	storeLinkedArtifactGroups,
+} from './linked-artifact-store.ts'
 import { repairInlinedFacadeBindingsInArtifact } from './inlined-facade-binding-repair.ts'
 import {
 	isRepairableArtifactKind,
+	repairGlobalObjectFetchReadsInArtifact,
 	repairPreBindingPublishedArtifact,
 } from './pre-binding-artifact-repair.ts'
 
@@ -736,11 +741,18 @@ export async function writePublishedBundleArtifact(input: {
 			artifactName: input.artifact.artifactName,
 			entryPoint: input.artifact.entryPoint,
 		})
-	const serialized = JSON.stringify({
-		...input.artifact,
+	const kv = getBundleArtifactsKv(input.env)
+	const { modules, linkedArtifacts } = await storeLinkedArtifactGroups({
+		kv,
+		sourceId: input.artifact.sourceId,
+		publishedCommit: input.artifact.publishedCommit,
 		modules: serializeWorkerLoaderModules(input.artifact.modules),
 	})
-	const kv = getBundleArtifactsKv(input.env)
+	const serialized = JSON.stringify({
+		...input.artifact,
+		modules,
+		...(linkedArtifacts.length > 0 ? { linkedArtifacts } : {}),
+	})
 	await Promise.all([
 		kv.put(kvKey, serialized),
 		writePackageAppWorkerTemplatePart({
@@ -843,12 +855,14 @@ export async function readPackageAppWorkerTemplate(input: {
 		publishedCommit: input.publishedCommit,
 	}
 	const [storedApp, storedClient] = await Promise.all([
-		kv.get(buildPackageAppWorkerTemplateKvKey(identity), 'json'),
+		kv
+			.get(buildPackageAppWorkerTemplateKvKey(identity), 'json')
+			.then((stored) => restoreLinkedArtifactGroups({ kv, stored })),
 		input.clientEntry
 			? kv.get(buildPackageAppClientPointerKvKey(identity), 'json')
 			: null,
 	])
-	const app = parseStoredPublishedBundleArtifact(storedApp)
+	const app = await parseStoredPublishedBundleArtifact(storedApp)
 	const appMatches =
 		app?.kind === 'app' &&
 		app.sourceId === input.sourceId &&
@@ -875,20 +889,24 @@ export async function readPublishedBundleArtifact(input: {
 	env: Env
 	kvKey: string
 }) {
-	return parseStoredPublishedBundleArtifact(
-		await getBundleArtifactsKv(input.env).get(input.kvKey, 'json'),
+	const kv = getBundleArtifactsKv(input.env)
+	return await parseStoredPublishedBundleArtifact(
+		await restoreLinkedArtifactGroups({
+			kv,
+			stored: await kv.get(input.kvKey, 'json'),
+		}),
 	)
 }
 
-function parseStoredPublishedBundleArtifact(
+async function parseStoredPublishedBundleArtifact(
 	stored: unknown,
-): PublishedBundleArtifact | null {
+): Promise<PublishedBundleArtifact | null> {
 	if (!stored || typeof stored !== 'object') return null
 	const artifact = stored as StoredPublishedBundleArtifact
 	if (!isUsableStoredPublishedBundleArtifact(artifact)) {
 		return null
 	}
-	const loaded = {
+	const loaded: PublishedBundleArtifact = {
 		version: artifact.version,
 		kind: artifact.kind,
 		artifactName: artifact.artifactName,
@@ -909,13 +927,15 @@ function parseStoredPublishedBundleArtifact(
 		...(artifact.packageBindingRewrite === undefined
 			? {}
 			: { packageBindingRewrite: artifact.packageBindingRewrite }),
-	} satisfies PublishedBundleArtifact
+	}
 	// Browser bundles (`app-client`) are served byte-identical: the pre-binding
 	// repair imports the shared runtime module, which only resolves inside a
 	// Worker isolate. Only isolate-loaded kinds get the read-time repair.
 	if (!isRepairableArtifactKind(loaded.kind)) return loaded
 	return repairInlinedFacadeBindingsInArtifact(
-		repairPreBindingPublishedArtifact(loaded),
+		await repairGlobalObjectFetchReadsInArtifact(
+			await repairPreBindingPublishedArtifact(loaded),
+		),
 	)
 }
 

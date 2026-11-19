@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { cardCss } from '#universal/styles/style-primitives.ts'
+import { Table } from '../components/table.tsx'
 
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { FunnelChart } from '../charts/funnel-chart.tsx'
@@ -106,15 +107,7 @@ function renderPlanTable(input: {
 				subscription. `effectivePlan` is the entitlement after overlays.
 			</p>
 			<TableScroller>
-				<table
-					aria-label={input.ariaLabel}
-					aria-describedby={descriptionId}
-					css={{
-						width: '100%',
-						borderCollapse: 'collapse',
-						fontSize: typography.fontSize.sm,
-					}}
-				>
+				<Table aria-label={input.ariaLabel} aria-describedby={descriptionId}>
 					<thead>
 						<tr>
 							<th
@@ -167,7 +160,7 @@ function renderPlanTable(input: {
 							)
 						})}
 					</tbody>
-				</table>
+				</Table>
 			</TableScroller>
 		</div>
 	)
@@ -254,14 +247,7 @@ export function renderLaunchSignals(signals: AdminInsightsLaunchSignals) {
 							No paid Stripe subscriptions yet.
 						</p>
 					) : (
-						<table
-							aria-label="Paid subscriptions by plan and interval"
-							css={{
-								width: '100%',
-								borderCollapse: 'collapse',
-								fontSize: typography.fontSize.sm,
-							}}
-						>
+						<Table aria-label="Paid subscriptions by plan and interval">
 							<thead>
 								<tr>
 									<th
@@ -304,7 +290,7 @@ export function renderLaunchSignals(signals: AdminInsightsLaunchSignals) {
 									</tr>
 								))}
 							</tbody>
-						</table>
+						</Table>
 					)}
 				</ChartCard>
 				<ChartCard
@@ -408,14 +394,7 @@ export function renderOnboardingFunnelSummary(
 				</p>
 			</div>
 			<TableScroller>
-				<table
-					aria-label="Unique users by onboarding stage"
-					css={{
-						width: '100%',
-						borderCollapse: 'collapse',
-						fontSize: typography.fontSize.sm,
-					}}
-				>
+				<Table aria-label="Unique users by onboarding stage">
 					<thead>
 						<tr>
 							<th scope="col" css={{ ...tableHeadCellCss, textAlign: 'left' }}>
@@ -451,7 +430,7 @@ export function renderOnboardingFunnelSummary(
 							</tr>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			</TableScroller>
 		</section>
 	)

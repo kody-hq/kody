@@ -14,8 +14,8 @@ cannot publish: TanStack Start's generated entry and manifest modules and
 server-function compiler, other Vite-plugin frameworks, compiled CSS, generated
 route trees. `kody package publish --build local` and `--build context` already
 move bundling off Kody cloud, and Kody already checks the uploaded manifest
-against the pushed commit and rebuilds a sample of targets. Neither runs a
-package's own build command, and both need a machine the author operates.
+against the pushed commit. Neither runs a package's own build command, and both
+need a machine the author operates.
 
 ## Decision
 
@@ -43,8 +43,8 @@ Kent decided on 2026-11-06:
 - Packages without a build step see no change in behavior or cost.
 - The box gets no Kody secrets or package credentials, a committed lockfile with
   `npm ci`, outbound network limited to the package registry, and hard time and
-  memory caps. Kody's manifest, identity, size, and sample-rebuild checks still
-  run; the sample rebuild for a built package runs in a fresh box.
+  memory caps. Kody's manifest, identity, and size checks still run. Kody does
+  not rebuild an uploaded build (the sample rebuild was removed).
 - Kody pays for box time it then bills; build-cache hits on an unchanged source
   and lockfile hash cost nothing.
 - **Revisit if** box cost or abuse outgrows the credit price, a community

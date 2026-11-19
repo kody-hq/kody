@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import { toast } from '#client/toast.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -37,7 +38,6 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	getDangerPillCss,
 	getLogoWellCss,
 	getSwapLabelCss,
 } from '#universal/styles/style-primitives.ts'
@@ -220,13 +220,14 @@ export function useAccountConnectedAgents(
 																/>
 															</span>
 														</span>
-														<button
+														<Button
 															type="button"
 															aria-label={
 																revokeIsArmed
 																	? `Confirm revoke ${revokeName}`
 																	: `Revoke ${revokeName}`
 															}
+															variant="danger"
 															css={dangerButtonCss}
 															onBlur={() => setRevokeArmed(null)}
 															onClick={() => {
@@ -250,7 +251,7 @@ export function useAccountConnectedAgents(
 															>
 																Confirm revoke
 															</span>
-														</button>
+														</Button>
 													</li>
 												)
 											})}
@@ -366,4 +367,4 @@ const connectionRowCss: CSSObject = {
 	paddingInlineStart: spacing.lg,
 }
 
-const dangerButtonCss = [getDangerPillCss({ size: 'sm' }), getSwapLabelCss()]
+const dangerButtonCss = getSwapLabelCss()

@@ -17,14 +17,15 @@ function manifest(kodyExtra: Record<string, unknown> = {}) {
 	)}\n`
 }
 
-test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent', () => {
+test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent', async () => {
 	const arrayFiles = {
 		'package.json': manifest({
 			dependencies: ['@user/helper', '@other/lib'],
 		}),
 		'index.ts': 'export const ready = true\n',
 	}
-	const arrayDetect = kodyDependenciesToWildcardMapCodemod.detect(arrayFiles)
+	const arrayDetect =
+		await kodyDependenciesToWildcardMapCodemod.detect(arrayFiles)
 	expect(arrayDetect).toEqual([
 		{
 			path: 'package.json',
@@ -32,7 +33,7 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 		},
 	])
 	const arrayTransform =
-		kodyDependenciesToWildcardMapCodemod.transform(arrayFiles)
+		await kodyDependenciesToWildcardMapCodemod.transform(arrayFiles)
 	expect(arrayTransform.changed).toBe(true)
 	expect(arrayTransform.changedPaths).toEqual(['package.json'])
 	expect(arrayTransform.needsManual).toEqual([])
@@ -44,7 +45,7 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 	})
 	expect(arrayTransform.files['index.ts']).toBe(arrayFiles['index.ts'])
 
-	const secondPass = kodyDependenciesToWildcardMapCodemod.transform(
+	const secondPass = await kodyDependenciesToWildcardMapCodemod.transform(
 		arrayTransform.files,
 	)
 	expect(secondPass.changed).toBe(false)
@@ -52,7 +53,7 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 		arrayTransform.files['package.json'],
 	)
 	expect(
-		kodyDependenciesToWildcardMapCodemod.detect(arrayTransform.files),
+		await kodyDependenciesToWildcardMapCodemod.detect(arrayTransform.files),
 	).toEqual([])
 
 	const aliasFiles = {
@@ -63,7 +64,8 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 			},
 		}),
 	}
-	const aliasDetect = kodyDependenciesToWildcardMapCodemod.detect(aliasFiles)
+	const aliasDetect =
+		await kodyDependenciesToWildcardMapCodemod.detect(aliasFiles)
 	expect(aliasDetect).toEqual([
 		{
 			path: 'package.json',
@@ -71,7 +73,7 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 		},
 	])
 	const aliasTransform =
-		kodyDependenciesToWildcardMapCodemod.transform(aliasFiles)
+		await kodyDependenciesToWildcardMapCodemod.transform(aliasFiles)
 	expect(aliasTransform.changed).toBe(true)
 	expect(
 		JSON.parse(aliasTransform.files['package.json']!).kody.dependencies,
@@ -84,7 +86,7 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 		'package.json': manifest({ dependencies: [] }),
 	}
 	const emptyTransform =
-		kodyDependenciesToWildcardMapCodemod.transform(emptyArray)
+		await kodyDependenciesToWildcardMapCodemod.transform(emptyArray)
 	expect(emptyTransform.changed).toBe(true)
 	expect(
 		JSON.parse(emptyTransform.files['package.json']!).kody.dependencies,
@@ -95,28 +97,31 @@ test('0005 rewrites array and latest-alias maps to name-to-* and is idempotent',
 			dependencies: { '@user/helper': '*' },
 		}),
 	}
-	expect(kodyDependenciesToWildcardMapCodemod.detect(alreadyMigrated)).toEqual(
-		[],
-	)
 	expect(
-		kodyDependenciesToWildcardMapCodemod.transform(alreadyMigrated).changed,
+		await kodyDependenciesToWildcardMapCodemod.detect(alreadyMigrated),
+	).toEqual([])
+	expect(
+		await kodyDependenciesToWildcardMapCodemod.transform(alreadyMigrated)
+			.changed,
 	).toBe(false)
 })
 
-test('0005 leaves unsupported shapes for manual review and skips missing manifests', () => {
+test('0005 leaves unsupported shapes for manual review and skips missing manifests', async () => {
 	const semverFiles = {
 		'package.json': manifest({
 			dependencies: { '@user/helper': '^1.2.3' },
 		}),
 	}
-	expect(kodyDependenciesToWildcardMapCodemod.detect(semverFiles)).toEqual([
+	expect(
+		await kodyDependenciesToWildcardMapCodemod.detect(semverFiles),
+	).toEqual([
 		{
 			path: 'package.json',
 			message: expect.stringContaining('review and update manually'),
 		},
 	])
 	const semverTransform =
-		kodyDependenciesToWildcardMapCodemod.transform(semverFiles)
+		await kodyDependenciesToWildcardMapCodemod.transform(semverFiles)
 	expect(semverTransform.changed).toBe(false)
 	expect(semverTransform.files['package.json']).toBe(
 		semverFiles['package.json'],
@@ -134,7 +139,7 @@ test('0005 leaves unsupported shapes for manual review and skips missing manifes
 		}),
 	}
 	const invalidNameTransform =
-		kodyDependenciesToWildcardMapCodemod.transform(invalidName)
+		await kodyDependenciesToWildcardMapCodemod.transform(invalidName)
 	expect(invalidNameTransform.changed).toBe(false)
 	expect(invalidNameTransform.needsManual).toEqual([
 		{
@@ -146,18 +151,20 @@ test('0005 leaves unsupported shapes for manual review and skips missing manifes
 	const noManifest = {
 		'index.ts': 'export const ready = true\n',
 	}
-	expect(kodyDependenciesToWildcardMapCodemod.detect(noManifest)).toEqual([
-		{
-			path: 'package.json',
-			message: expect.stringContaining('missing or not valid JSON'),
-		},
-	])
+	expect(await kodyDependenciesToWildcardMapCodemod.detect(noManifest)).toEqual(
+		[
+			{
+				path: 'package.json',
+				message: expect.stringContaining('missing or not valid JSON'),
+			},
+		],
+	)
 
 	const noKody = {
 		'package.json': `${JSON.stringify({ name: '@user/demo' }, null, '\t')}\n`,
 	}
-	expect(kodyDependenciesToWildcardMapCodemod.detect(noKody)).toEqual([])
-	expect(kodyDependenciesToWildcardMapCodemod.transform(noKody).changed).toBe(
-		false,
-	)
+	expect(await kodyDependenciesToWildcardMapCodemod.detect(noKody)).toEqual([])
+	expect(
+		await kodyDependenciesToWildcardMapCodemod.transform(noKody).changed,
+	).toBe(false)
 })

@@ -50,6 +50,21 @@ type Attachment = {
 	presence: FilePresence
 	session: FileSessionProof
 }
+type SessionAccess = Awaited<ReturnType<typeof fileCollaborationAccess>>
+/**
+ * Access resolved during one handler run, keyed by session. Sockets from the
+ * same session share one lookup; the next handler run resolves again, so a
+ * revoked grant still closes its sockets on the next broadcast.
+ */
+type AccessPass = Map<string, Promise<SessionAccess>>
+const sessionKey = (attachment: Attachment) =>
+	JSON.stringify([attachment.request, attachment.session.issuedAt])
+function assertUnexpired(session: FileSessionProof | undefined) {
+	if (!session?.expiresAt || session.expiresAt <= Date.now())
+		throw new Error('Session expired.')
+}
+const unavailableCode = (error: unknown) =>
+	error instanceof Error && error.message === 'Session expired.' ? 4000 : 4003
 export class FileRoom extends DurableObject<Env> {
 	private ledger: CommentLedger
 	private agentPresence = new Map<string, FilePresence>()
@@ -178,13 +193,17 @@ export class FileRoom extends DurableObject<Env> {
 			if (action === 'edited' && !access.write)
 				throw new Error('Write access is required.')
 			await this.touch(actor, action)
+			const pass: AccessPass = new Map()
 			if (action === 'edited')
-				await this.broadcast({
-					type: 'file',
-					revisionId: state.revisionId,
-					sequence: state.sequence,
-				})
-			await this.broadcastPresence()
+				await this.broadcast(
+					{
+						type: 'file',
+						revisionId: state.revisionId,
+						sequence: state.sequence,
+					},
+					pass,
+				)
+			await this.broadcastPresence(pass)
 		})
 	}
 	private async recent() {
@@ -401,8 +420,10 @@ export class FileRoom extends DurableObject<Env> {
 		request: RequestContext,
 		session: FileSessionProof,
 	) {
-		if (!session?.expiresAt || session.expiresAt <= Date.now())
-			throw new Error('Session expired.')
+		assertUnexpired(session)
+		await this.assertSessionLive(request, session.issuedAt)
+	}
+	private async assertSessionLive(request: RequestContext, issuedAt: number) {
 		const person = await this.env.APP_DB.prepare(
 			'SELECT password_changed_at, suspended_at, deleting_at FROM users WHERE stable_user_id = ? AND deleted_at IS NULL',
 		)
@@ -417,78 +438,104 @@ export class FileRoom extends DurableObject<Env> {
 			person.suspended_at ||
 			person.deleting_at ||
 			isCredentialInvalidatedByStoredPasswordChange({
-				issuedAtMs: session.issuedAt,
+				issuedAtMs: issuedAt,
 				storedPasswordChangedAt: person.password_changed_at,
 			})
 		)
 			throw new Error('Session access was revoked.')
 	}
-	private async sessionAccess(attachment: Attachment, fileId: string) {
-		await this.assertSession(attachment.request, attachment.session)
+	private async sessionAccess(
+		attachment: Attachment,
+		fileId: string,
+		pass: AccessPass = new Map(),
+	) {
+		assertUnexpired(attachment.session)
+		const key = sessionKey(attachment)
+		let access = pass.get(key)
+		if (!access) {
+			access = this.resolveAccess(attachment, fileId)
+			pass.set(key, access)
+		}
+		return access
+	}
+	private async resolveAccess(attachment: Attachment, fileId: string) {
+		await this.assertSessionLive(
+			attachment.request,
+			attachment.session.issuedAt,
+		)
 		return fileCollaborationAccess(this.env, attachment.request, fileId)
 	}
-
-	private async broadcast(message: RoomServerMessage) {
-		const state = await this.ctx.storage.get<RoomState>('room')
-		if (!state) return
-		for (const ws of this.ctx.getWebSockets()) {
-			try {
-				const attachment = ws.deserializeAttachment() as Attachment
-				const { access } = await this.sessionAccess(attachment, state.fileId)
-				if (!access.read) {
-					ws.close(4003, 'Access revoked')
-					continue
-				}
-				ws.send(JSON.stringify(message))
-			} catch (error) {
-				ws.close(
-					error instanceof Error && error.message === 'Session expired.'
-						? 4000
-						: 4003,
-					'Session unavailable',
-				)
-			}
+	/** Closes sockets that lost access and returns the rest with their actors. */
+	private async readableSockets(fileId: string, pass: AccessPass) {
+		const sockets = this.ctx.getWebSockets()
+		const outcomes = await Promise.allSettled(
+			sockets.map(async (ws) =>
+				this.sessionAccess(
+					ws.deserializeAttachment() as Attachment,
+					fileId,
+					pass,
+				),
+			),
+		)
+		const readable: Array<{ ws: WebSocket; actor: CollaborationActor }> = []
+		sockets.forEach((ws, index) => {
+			const outcome = outcomes[index]!
+			if (outcome.status === 'rejected')
+				ws.close(unavailableCode(outcome.reason), 'Session unavailable')
+			else if (!outcome.value.access.read) ws.close(4003, 'Access revoked')
+			else readable.push({ ws, actor: outcome.value.actor })
+		})
+		return readable
+	}
+	private send(ws: WebSocket, payload: string) {
+		try {
+			ws.send(payload)
+		} catch (error) {
+			ws.close(unavailableCode(error), 'Session unavailable')
 		}
 	}
-	private async broadcastNotifications() {
+
+	private async broadcast(
+		message: RoomServerMessage,
+		pass: AccessPass = new Map(),
+	) {
+		const state = await this.ctx.storage.get<RoomState>('room')
+		if (!state) return
+		const payload = JSON.stringify(message)
+		for (const { ws } of await this.readableSockets(state.fileId, pass))
+			this.send(ws, payload)
+	}
+	private async broadcastNotifications(pass: AccessPass = new Map()) {
 		const state = await this.ctx.storage.get<RoomState>('room')
 		if (!state) return
 		await Promise.all(
-			this.ctx.getWebSockets().map(async (ws) => {
-				try {
-					const attachment = ws.deserializeAttachment() as Attachment
-					const { actor, access } = await this.sessionAccess(
-						attachment,
-						state.fileId,
-					)
-					if (!access.read) {
-						ws.close(4003, 'Access revoked')
-						return
+			(await this.readableSockets(state.fileId, pass)).map(
+				async ({ ws, actor }) => {
+					try {
+						this.send(
+							ws,
+							JSON.stringify({
+								type: 'notifications',
+								notifications: await this.ledger.notifications(actor.id),
+							} satisfies RoomServerMessage),
+						)
+					} catch {
+						ws.close(4003, 'Session unavailable')
 					}
-					ws.send(
-						JSON.stringify({
-							type: 'notifications',
-							notifications: await this.ledger.notifications(actor.id),
-						} satisfies RoomServerMessage),
-					)
-				} catch (error) {
-					ws.close(
-						error instanceof Error && error.message === 'Session expired.'
-							? 4000
-							: 4003,
-						'Session unavailable',
-					)
-				}
-			}),
+				},
+			),
 		)
 	}
 
-	private async broadcastPresence() {
-		await this.broadcast({
-			type: 'presence',
-			presence: this.presence(),
-			recent: await this.recent(),
-		})
+	private async broadcastPresence(pass: AccessPass = new Map()) {
+		await this.broadcast(
+			{
+				type: 'presence',
+				presence: this.presence(),
+				recent: await this.recent(),
+			},
+			pass,
+		)
 	}
 	private async accept(
 		state: RoomState,
@@ -864,7 +911,12 @@ export class FileRoom extends DurableObject<Env> {
 						? message.command.operationId
 						: undefined
 			if (!state) throw new Error('File not found.')
-			const { access } = await this.sessionAccess(attachment, state.fileId)
+			const pass: AccessPass = new Map()
+			const { access } = await this.sessionAccess(
+				attachment,
+				state.fileId,
+				pass,
+			)
 			if (!access.read) {
 				ws.close(4003, 'Access revoked')
 				return
@@ -950,7 +1002,7 @@ export class FileRoom extends DurableObject<Env> {
 					attachment.presence.actor,
 					message.state === 'editing' ? 'edited' : 'viewed',
 				)
-				await this.broadcastPresence()
+				await this.broadcastPresence(pass)
 			}
 		} catch (error) {
 			if (error instanceof Error && error.message === 'Session expired.') {
@@ -989,7 +1041,8 @@ export class FileRoom extends DurableObject<Env> {
 					.first<{ stable_user_id: string }>()
 				return user?.stable_user_id ?? null
 			})
-			await this.broadcastNotifications()
+			const pass: AccessPass = new Map()
+			await this.broadcastNotifications(pass)
 			const tickets = await this.ctx.storage.list<{ expiresAt: number }>({
 				prefix: 'ticket:',
 			})
@@ -1010,7 +1063,7 @@ export class FileRoom extends DurableObject<Env> {
 				)
 					ws.close(4000, 'Session expired')
 			}
-			await this.broadcastPresence()
+			await this.broadcastPresence(pass)
 			const expired = await this.ctx.storage.list<RecentParticipant>({
 				prefix: 'recent:',
 			})

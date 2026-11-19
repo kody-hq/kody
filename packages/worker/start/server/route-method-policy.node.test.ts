@@ -58,3 +58,24 @@ test('reads of POST-only protocols return 405 instead of rendering a document', 
 		expect(response?.headers.get('Allow')).toBe('POST')
 	}
 })
+
+test('unknown paths answer 404 to JSON reads before Start can answer 406', async () => {
+	state.match.mockReturnValue([[], {}, undefined])
+	const response = await rejectUnsupportedRouteMethod(
+		new Request('https://kody.test/.well-known/ai-catalog.json', {
+			headers: { accept: 'application/json' },
+		}),
+	)
+	expect(response?.status).toBe(404)
+	await expect(response?.json()).resolves.toEqual({
+		ok: false,
+		error: 'Not found.',
+	})
+	expect(
+		await rejectUnsupportedRouteMethod(
+			new Request('https://kody.test/.well-known/ai-catalog.json', {
+				headers: { accept: 'text/html' },
+			}),
+		),
+	).toBeUndefined()
+})

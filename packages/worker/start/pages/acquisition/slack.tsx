@@ -1,11 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../../components/button.tsx'
 import { useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import { CopyTextButton } from '../../components/copy-text-button.tsx'
 import { slack } from '#universal/acquisition/slack.ts'
 import { acquisitionPageMeta } from '#universal/acquisition/metadata.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 const releases = [
 	{
 		repo: 'acme/web',
@@ -40,9 +40,9 @@ export function SlackPage() {
 						the next one. Include the source links and keep track of what’s
 						already been posted.
 					</p>
-					<SiteLink href="#try-it" css={getPillButtonCss()}>
+					<Button href="#try-it" variant="primary" size="lg">
 						Build your Slack workflow
-					</SiteLink>
+					</Button>
 				</div>
 			</header>
 			<section className="digest" aria-label="Example GitHub release digest">
@@ -230,9 +230,9 @@ export function SlackPage() {
 						Connect your agent to Kody, then use this prompt to start building
 						the package.
 					</p>
-					<SiteLink href="/onboarding" css={getPillButtonCss()}>
+					<Button href="/onboarding" variant="primary" size="lg">
 						Connect your agent
-					</SiteLink>
+					</Button>
 				</div>
 				<div className="prompt">
 					<blockquote>{slack.prompt}</blockquote>

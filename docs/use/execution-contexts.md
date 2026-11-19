@@ -48,11 +48,20 @@ Execution contexts are an experiment. Turn them on at
   `executionContextSharePreview`, and the sharing capabilities. Find them with
   `search({ query: "execution context" })`. Shared-box access notices appear
   once in execute and search `notices` (`context-elevation` for a grantee;
-  `context-misconfigured` for the operator). See
+  `context-misconfigured` for the operator). The operator also gets
+  `context-open-shell` while the machine has host commands on and the shell has
+  no package list. It stays on the context page and in what is waiting on you
+  until you limit the shell to listed packages, turn host commands off on the
+  machine, or dismiss it with fingerprint `open-shell` to keep the shell as it
+  is. On the context page the notice lists the packages and programs that used
+  the shell in the last 30 days; `executionContextShellSuggestions` returns the
+  same with example commands. List those packages for the shell, or define the
+  programs as named commands on the machine. See
   [Shared-box best practices](../guides/execution-contexts.md#shared-box-best-practices).
 - Token scopes: reads (`executionContextList`, `executionContextGet`, sharing
   and run lists, `executionChainGet`) need `execution_context:read`. Sharing
   changes (`executionContextShareSet`, `executionContextShareRemove`,
+  `executionContextMachineAccessGrant`, `executionContextMachineAccessRevoke`,
   `executionContextAttach`, `executionContextDetach`) need
   `execution_context:manage_access`. `executionContextNoticeDismiss`,
   `executionChainSet`, opt-in and opt-out need `execution_context:execute`. A
@@ -63,8 +72,12 @@ Execution contexts are an experiment. Turn them on at
   `kody daemon install | status [--json] | logs | start | stop | restart | uninstall`,
   `kody daemon auto-update [on | off | status]` (on by default), `kody update`,
   `kody context policy allow <path> [--mode ro|rw]`,
-  `kody daemon [--max-concurrent <n>]` (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8,
-  default 2), `kody chain show | add | remove`,
+  `kody context capability [list] | add command|lan <file.json> | remove command|lan <name>`
+  (defines named commands and local network destinations on this machine and
+  tells Kody their names; the operator's runs can use a named command and reach
+  a named local network destination), `kody daemon [--max-concurrent <n>]`
+  (`KODY_CONTEXT_MAX_CONCURRENT`, 1 to 8, default 2),
+  `kody chain show | add | remove`,
   `kody context commands [status | on | off] [--context <name>] [--json]`,
   `kody context cancel-run <name> <run id>`.
 - Cancel a run on a machine with `executionContextRunCancel({ id, run_id })`
@@ -89,19 +102,76 @@ chain meanwhile.
 It never downgrades. A failed download or install keeps the old version running
 and retries with backoff (1h, doubling to 24h); a new version that crashes right
 after starting is skipped and the old one takes over again. Each step is logged
-in the daemon log (`kody daemon logs`).
+in the daemon log (`kody daemon logs`), including a check that found nothing
+newer and a latest version that is skipped because it failed to start here.
+`kody daemon health --json` reports the last check and its error; see
+[liveness](#liveness-and-health-checks).
 
 - `kody daemon auto-update status` (`--json`): on or off, the last check, the
   latest version, and recent updates. `kody daemon status` shows it too.
 - `kody daemon auto-update off` / `on`: the machine-wide switch, stored as
   `autoUpdate` in `execution-context-policy.json`. Running daemons pick it up at
   their next check. `KODY_DAEMON_AUTO_UPDATE=0` turns it off for one daemon.
-- The desktop app: **This machine** (in the web account menu) > Turn off / Turn
-  on automatic updates.
+- The desktop app: **This machine** (in the web account menu) > the **Automatic
+  updates** toggle.
 - The context page shows the daemon's CLI version and whether auto-update is on.
 
 Existing installs need nothing: a daemon started from a CLI that has auto-update
 turns it on at its next restart (or run `kody update` once).
+
+## Liveness and health checks
+
+The daemon pings Kody every 30 seconds on every connection, including each one
+it opens after a drop. No answer within 10 seconds, or a socket that stopped
+without a close event, closes that connection and opens a new one. Three more
+guards make a daemon that cannot recover exit nonzero, so systemd, launchd, the
+Windows task, or a container restart policy starts it again:
+
+- No working connection to Kody for 30 minutes of running time while no run is
+  in flight: a daemon under a service, an update supervisor, or in a container
+  logs why and exits 1. A daemon in a terminal keeps retrying, since nothing
+  would start it again.
+- An event loop stuck for 5 minutes: a watchdog thread kills the process.
+- A machine that sleeps does not trip either one; both count running time.
+
+`kody daemon health` reads the state file the daemon rewrites every 30 seconds,
+so it needs no network and no login. It exits 0 when a daemon is running and
+heard Kody within `--max-age` seconds (default 120), and 1 when no daemon runs,
+the daemon is frozen, or it has been disconnected or unanswered for longer.
+`--json` prints `healthy`, `reason` (`ok`, `not-running`, `no-health-data`,
+`stalled`, `disconnected`, `heartbeat-stale`), `connected`, `lastHeartbeatAt`,
+`lastHeartbeatAgeSeconds`, and the last auto-update check with its error.
+`kody daemon status --json` carries the same object as `health` and exits 1 when
+a running daemon is unhealthy.
+
+In a container, run an init process and add the health check:
+
+```yaml
+services:
+  kody:
+    image: your-kody-image
+    command: ['kody', 'daemon']
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'kody', 'daemon', 'health']
+      interval: 60s
+      timeout: 20s
+      start_period: 60s
+      retries: 3
+```
+
+The Dockerfile form is
+`HEALTHCHECK --interval=60s --timeout=20s --start-period=60s --retries=3 CMD kody daemon health`.
+
+`init: true` matters: Linux ignores a kill signal that PID 1 sends itself, so
+without an init process the watchdog cannot end a frozen daemon. The daemon logs
+a warning when it starts as PID 1. Docker marks a failing container `unhealthy`
+but does not restart it on its own; Swarm and Kubernetes do, and plain Docker or
+Compose needs a watcher such as
+[autoheal](https://github.com/willfarrell/docker-autoheal). Keep the CLI store
+(`~/.local/share/kody/cli`, or `KODY_CLI_STORE_DIR`) on a volume so an
+auto-updated version survives a recreated container.
 
 ## One runner per machine
 
@@ -117,12 +187,14 @@ naming the other process and stops instead of reconnecting in a loop.
 Install the desktop app from
 [kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
 (canonical) or the shareable shortcut
-[https://kody.codes/download](https://kody.codes/download). The desktop app and
-the CLI share this machine's registration and its runner:
+[https://kody.codes/download](https://kody.codes/download). On Windows, trust
+the sideloading certificate once, then open the App Installer link
+([Windows install](../../packages/desktop/README.md#windows-install-and-updates)).
+The desktop app and the CLI share this machine's registration and its runner:
 
 - When `kody daemon install` set up a service, or a daemon already runs, the app
-  adopts it. **This machine** shows that runner and its version, and Pause,
-  Resume, and Restart control the service
+  adopts it. **This machine** shows that runner (hover the status line for its
+  version), and Pause, Resume, and Restart control the service
   (`kody daemon start | stop | restart`).
 - Setup offers **Use this machine's existing registration** when the CLI already
   registered this machine, instead of creating a second context. It checks first
@@ -245,6 +317,82 @@ Contacts if the run looks up names. The runner then stops when you quit the app.
   `commands_operator_only`, and legacy command shares confer nothing. Commands
   get the daemon's environment without `KODY_*` variables and cannot use a
   credential folder as `cwd`.
+- Named local network destinations: with the local network off, a run's `fetch`
+  to an address and port that the machine defined with
+  `kody context capability add lan` goes through once Kody allows it. The same
+  rules as named commands apply (the operator or a grant, the
+  `machine_capability:use` scope, the package rule), and the same errors. Only
+  IP addresses match: a host name is never matched, even one that resolves to a
+  listed address. Each use is audited as `lan_used` with the name, address and
+  port. Egress mode `none` still refuses everything.
+- Host folders have names too: `kody context policy show` lists each allowed
+  folder with the name Kody knows it by (the folder's own name). The first time
+  a run touches a folder, Kody is asked and records `fs_used` with that name and
+  the run's packages. Folders stay for the operator's own runs.
+- Named commands:
+  `kody.command.run({ capability: 'kdocker', args: ['restart', 'plex'] })` (and
+  `start`) runs a command the machine defined with
+  `kody context capability add command`. The machine's definition fixes the
+  executable, folder, environment and timeout ceiling, no shell is involved, and
+  the arguments must match one of its allowed shapes. Only `args`, `timeoutMs`
+  and `maxOutputBytes` are accepted. It works with the shell
+  (`kody context commands`) off. The machine's operator can use one, and so can
+  anyone the operator shared it with (see the next item). A token needs the
+  `machine_capability:use` scope, and every saved package the run loaded
+  directly must be one the operator's org wrote or adopted. Kody's audit row
+  holds the name and arguments, not the executable path. Errors:
+  `machine_capability_off` (the machine defines no such command),
+  `machine_capability_not_granted`, `machine_capability_package_not_allowed`
+  (names the packages), `machine_command_args_refused` (lists the allowed
+  shapes).
+- Sharing machine access: the operator shares one named command or local network
+  destination with a person, a team, or everyone in the org using
+  `executionContextMachineAccessGrant`
+  (`{ id, kind: "command" | "lan", name, username | team_slug | everyone: true }`).
+  The person also needs the context shared with them, and their runs then use it
+  by name like the operator's. `executionContextMachineAccessList` shows each
+  entry and who has it; `executionContextMachineAccessRevoke` takes a grant
+  back, and the next use is refused. The unrestricted shell and host folders are
+  never shared. The machine needs CLI 3.42.0 or later.
+- Profiles: a run acting as a profile uses a named command or local network
+  destination only when the profile, and every parent profile, was given it.
+  Give one of your own profiles an entry you can use yourself with
+  `executionContextMachineAccessGrant` and `profile_id` in place of a person
+  (parents first). You take it back with `executionContextMachineAccessRevoke`.
+  A profile grant never widens what you can use. A run acting as a profile can
+  only pass an entry down to its own sub-profiles.
+  `executionContextMachineAccessList` shows you the grants on your own profiles
+  when you do not manage the machine.
+- Packages: by default your own code and packages your org wrote or adopted may
+  use an entry. To limit a named command, local network destination or host
+  folder to chosen packages, the operator passes the full list of package ids to
+  `executionContextMachineAccessPackagesSet`
+  (`{ id, kind: "shell" | "command" | "lan" | "fs", name, package_ids }`; the
+  unrestricted shell is kind `shell`, name `shell`, on a machine with host
+  commands on). With packages listed, a run may use the entry only when every
+  saved package it loaded directly is on the list, and code that is not a saved
+  package may not use it. An empty list lifts the limit. This is also how you
+  let a package from someone else use an entry without adopting it. The list
+  never shares the entry with another person. A machine with the whole local
+  network turned on also lists it, as kind `lan`, name `*`, and each run's first
+  use of a local address and port is audited as `lan_used`. It cannot be shared.
+  You can limit it to packages once the machine runs Kody CLI 3.44.0 or newer;
+  Kody refuses the list on an older machine, which would not check it. The list
+  covers local addresses and `localhost` and `.local` names, not other host
+  names that resolve to a local address, so define named destinations for a
+  strict limit.
+- In the app: a context's detail page has a Machine access section that lists
+  its named commands, local network destinations and host folders with who holds
+  each one, and any package limit. The operator gives or takes back access
+  there. Someone the machine is shared with sees the entries their own profiles
+  hold and can give one of their profiles an entry. Host folders are listed as
+  operator only.
+- A saved package the run loaded directly must declare each named command and
+  local network destination it uses in
+  [`kody.machine`](./packages.md#machine-access-kodymachine). Otherwise the call
+  fails with `machine_need_undeclared`, which names the package and the JSON to
+  add. Code that is not a saved package declares nothing. For host folders a
+  missing declaration is recorded and does not fail the run yet.
 - Errors: `execution_context_commands_off` (the machine has not opted in),
   `execution_context_command_not_granted` (the caller lacks the command grant),
   `execution_context_command_requires_context` (the run is in Kody cloud or a

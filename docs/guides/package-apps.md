@@ -111,6 +111,24 @@ host resolves to the same app. `https://kody.codes/@{username}/packages/…` is
 not the hosted origin: visitors who may run the app hand off to it; everyone
 else stays on the package page (or a same-origin landing).
 
+### Profile package: own your whole host
+
+A package named after its owner, `@{username}/{username}` (like a GitHub
+`username/username` repository), is a profile package. Once it is published with
+an app, that app is served at the root of `https://{username}.kody.run/` and
+owns every path on that host (except Kody's reserved `/-/` paths, the same
+sign-in and health paths every app host has). Kody serves nothing else there: no
+other app of yours is mounted under it, and no path is redirected or rewritten,
+so `/newsletter/unsubscribe` reaches your profile app as
+`/newsletter/unsubscribe`.
+
+It is a normal app: same build, sign-in, limits and `packageContext`
+(`appBasePath` is `""`). Use it when an address under
+`https://{username}.kody.run/` must keep answering in place, for example a
+one-click unsubscribe link in mail you already sent or a webhook URL registered
+with another service. Delete the package, or remove its app, and the host goes
+back to its default behavior.
+
 **Open app** is one control. For someone who may run the app it goes to
 `/@{username}/packages/<name>/open` on kody.codes, which mints a short-lived
 handoff token and redirects to the hosted origin (`*.kody.run` or a verified
@@ -343,18 +361,20 @@ means an Owner of the owning org, which is the publisher only in a personal org.
 - A publish with no known person behind it (for example an external push with no
   requester) clears the recorded publisher, so the app never keeps running as
   someone who did not ship that code.
-- Authority is capped twice: only the capabilities the app lists in
-  `kody.app.capabilities` run as that person, and only within what that person
-  may do in the org right now.
+- Publishing never changes the person an Owner picked. That choice stays until
+  an Owner changes it, whoever publishes.
+- Authority is capped twice: only the capabilities the app may call (see the
+  next bullet) run as that person, and only within what that person may do in
+  the org right now.
 - The cap covers every Kody capability call made while the app runs, including
-  calls made by packages the app imports. Publish is moving to compute an app's
-  effective requirement from its own declarations plus its whole import closure,
-  and to enforce it. Until then the running app's manifest is the one checked,
-  so today the fix is to list the capabilities its dependencies call in the
-  app's own `kody.app.capabilities`. Imported packages declare their own calls
-  in `kody.capabilities`; publish and `kody dev check` warn when a package's
-  modules, or the packages they import, call a capability its list does not
-  cover
+  calls made by packages the app imports. At run time an app may call what it
+  listed in `kody.app.capabilities` plus what those imported packages declared
+  when the app was bundled. Bundles published before dependencies recorded
+  declarations still use only the app's list, so list those imported names in
+  `kody.app.capabilities` until you republish. Publish and `kody dev check`
+  already walk the static import closure and warn on gaps; they still ask apps
+  to list imported needs in `kody.app.capabilities`. They do not fail the check
+  until the rollout switch flips
   ([ADR 0089](../contributing/decisions/0089-packages-declare-capabilities.md)).
 
 ```json
@@ -392,11 +412,13 @@ though its own code never calls them:
 }
 ```
 
-Without them the call fails with `PackageAppCapabilityNotDeclaredError`, which
-names the capability to add and, when known, the app (package name and version)
-and the imported package that made the call. Add it to the importing app's
-`kody.app.capabilities` and republish the app. For `credential.named`, declare
-the credential in `kody.credentials` and open it with `credential(key)` instead.
+If `@example/helper` does not declare them, or the app's bundle was built before
+dependencies recorded declarations, the call fails with
+`PackageAppCapabilityNotDeclaredError`, which names the capability to add and,
+when known, the app (package name and version) and the imported package that
+made the call. Add it to the importing app's `kody.app.capabilities` and
+republish the app. For `credential.named`, declare the credential in
+`kody.credentials` and open it with `credential(key)` instead.
 
 MCP server tools are declared one tool at a time as `mcp:<server>:<tool>`:
 `kody.mcp.home.court_get_status(input)` (or `kody.mcp['home'].court_get_status`)
@@ -521,11 +543,10 @@ cookies, layout, redirects, and websocket facets.
 
 **When Node ≥22 and `@kodycodes/cli` are available**, start here for unpublished
 apps. From the package directory the CLI serves `kody.app.entry` on localhost
-via workerd with hot reload. The path is mount-stripped the same way as
-production; `packageContext.hostedUrl` and `appBasePath` point at localhost.
-Bundling reuses the same esbuild path as publish. If the agent cannot run a
-local CLI, skip this section and use `repoRunChecks` + post-publish
-`packageAppFetch` instead.
+via workerd with hot reload, at the root of its own `*.localhost` origin like
+the hosted app; `packageContext.hostedUrl` is that local origin. Bundling reuses
+the same esbuild path as publish. If the agent cannot run a local CLI, skip this
+section and use `repoRunChecks` + post-publish `packageAppFetch` instead.
 
 ```bash
 cd ./my-package
@@ -541,8 +562,16 @@ and highlight workers, and `kody dev` starts them under local wrangler with
 local D1, Durable Objects, KV, R2, queues, workflows and worker loaders. Each
 rebuild saves the working tree into that local Kody through the real
 `packageSave` route, and every request runs through the hosted package app
-runtime. Nothing is proxied to hosted Kody, and nothing you do locally touches
-your hosted account.
+runtime. Mapped local deps (`.kody/deps.json` and `package.json#kody.localDeps`,
+the same maps `kody execute --local` reads) that the package imports, directly
+or through another mapped dep, are saved first, each under the name it is mapped
+as. Editing a mapped dep re-saves it and the packages that import it. Like
+hosted Kody, local Kody only saves packages in the app's own scope, so a mapped
+dep from another scope (an `@danj` app mapping `kody:@someone/shared`) stops the
+save before anything is saved, with a message naming the dep and its mapped
+path. Fork the dep into the app's scope (for example as `@danj/shared`), then
+import and map that copy. Nothing is proxied to hosted Kody, and nothing you do
+locally touches your hosted account.
 
 So under `kody dev` the hosted code runs for:
 
@@ -565,15 +594,15 @@ survives restarts. Delete that directory to start over.
 `--target prod` and `execute --local` use a lighter working-tree bridge instead.
 It runs the bundle in a local workerd and sends `kody.*` calls to Kody (mock or
 prod) through the CapabilityProxy. `--target prod` does **not** give the working
-tree hosted `packageStorage` or `packageSecrets`; see
-[Gap 8](#gap-8-working-tree-storage-on---target-prod).
+tree hosted `packageStorage` or `packageSecrets`, by design; see
+[Won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod).
 
-| Command + target           | `packageStorage`                               | `packageSecrets`                       | Outbound network                                  |
-| -------------------------- | ---------------------------------------------- | -------------------------------------- | ------------------------------------------------- |
-| `kody dev` **mock**        | Real StorageRunner Durable Object, local state | Placeholders only, never a real secret | `.kody/mocks.ts` (fail closed), else public hosts |
-| `kody dev` **prod**        | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
-| `execute --local` **mock** | Scratch SQLite on the CLI mock                 | Throws (light bridge)                  | `.kody/mocks.ts` (fail closed), else public hosts |
-| `execute --local` **prod** | Throws (gap 8)                                 | Throws (gap 8)                         | Real network                                      |
+| Command + target           | `packageStorage`                                                                         | `packageSecrets`                                                                         | Outbound network                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `kody dev` **mock**        | Real StorageRunner Durable Object, local state                                           | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
+| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| `execute --local` **mock** | Scratch SQLite on the CLI mock                                                           | Throws (light bridge)                                                                    | `.kody/mocks.ts` (fail closed), else public hosts |
+| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
 
 ### Boundary mocks in `kody dev`
 
@@ -668,15 +697,31 @@ approximate it. These are simulations, not exact timing.
 - **Memory.** Not enforced. Workerd cannot meter a single app isolate, so a
   package that goes over the 128 MB isolate limit only fails hosted.
 
-### Gap 8: working-tree storage on `--target prod`
+### Won't do: storage, secrets, email, events and packages on `--target prod`
 
 `kody dev --target prod` and `execute --local --target prod` run the working
-tree against real Kody, but the working tree has no published package id, so
-hosted storage and secrets cannot trust it. `packageStorage()` and
-`packageSecrets` throw, and `email`, `events` and `packages` are `null` on the
-light bridge. This is the only gap on the `kody dev` allowlist, and the trust
-rule stays as it is. Use `--target mock` for all of these, or publish and use
-`packageAppFetch`.
+tree against real Kody, but they do not give it hosted `packageStorage`,
+`packageSecrets`, `email`, `events` or `packages`. `packageStorage()` and
+`packageSecrets` throw an error that says so, and `email`, `events` and
+`packages` are `null` on the light bridge. Nothing is skipped silently or
+answered with an empty result.
+
+This is intentional, not a gap. The working tree is unpublished local code with
+no published package id, so hosted storage and secrets cannot trust it. Publish
+is the trust boundary: letting unpublished code reach a published package's real
+storage or secrets would let anyone with a working tree read or write production
+data without publishing.
+
+Do this instead:
+
+- Use `--target mock`. `kody dev` runs the hosted storage, email, events and
+  packages code against local state, with
+  [mock package secrets](#mock-package-secrets).
+- Publish, then call the published app with `packageAppFetch`.
+
+There are no open gaps left on the `kody dev` allowlist. CI still fails when a
+working-tree export is nulled or refused without being listed as an open gap or
+a won't-do.
 
 ### Capabilities outside the guarded surface
 
@@ -697,10 +742,29 @@ publish entrypoint) and is ignored on `--target prod`; git-tracked files under
 files. See
 [Package lifecycle → Mock outbound fetch](./package-lifecycle.md#mock-outbound-fetch-with-.kody-mocks.ts).
 
-`kody dev` serves at base path `''` by default (`--ready-file` reports
-`basePath`). Hosted apps mount at `/<package-name>`. Pass
-`--app-base-path /<package-name>` when you need the local proxy to strip the
-same mount and set `packageContext.appBasePath` to match production.
+`kody dev` serves the app at the root of its own local origin,
+`http://<package-name>--<scope>.localhost:<port>/`, the local form of the hosted
+`https://<package-name>--<username>.kody.run/`. `<scope>` is the package scope
+(`dev` for an unscoped package). `packageContext.hostedUrl` is that origin and
+`appBasePath` is `''`, so links, cookies (host-only, `Path=/`) and same-origin
+checks behave as they do when hosted. A profile package (`@<name>/<name>`) is
+served at `http://<name>.localhost:<port>/`.
+
+Browsers resolve `*.localhost` to this machine on their own. Node's `fetch` may
+not on every platform, so `kody dev` also answers on `http://127.0.0.1:<port>/`
+(printed as `local:`, and `localUrl` in the `--ready-file` JSON). It is the same
+app. Use that address from scripts.
+
+With `--host` and `--target mock`, another device reaches the app on the LAN
+address, but `packageContext.hostedUrl` (and absolute URLs built from it,
+including the client module URL) still names the `*.localhost` origin, which
+only resolves on this machine. Relative links work everywhere.
+
+`--app-base-path /<package-name>` serves the old path address instead: the app
+under `/<package-name>` on `http://<scope>.localhost:<port>`, with
+`packageContext.appBasePath` set to match. Use it only to test code that must
+keep working on the old address until it stops serving. With `--target mock`
+that is the only path accepted.
 
 While it runs, `kody dev`:
 

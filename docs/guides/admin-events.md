@@ -43,7 +43,8 @@ capability for full contents.
 
 ## `email.system-message.sent` (admins)
 
-A successful `adminSystemEmailSend` / `sendSystemEmail` fans
+A successful `adminSystemEmailSend` / `sendSystemEmail` or
+`adminWhatsNewEmailSend` / `sendNewsletterEmail` fans
 `email.system-message.sent` to packages saved by users who hold the admin role
 at dispatch time. This includes sends from the `@kentcdodds/system-email`
 utility and raw capability calls. A non-admin package may declare the topic, but
@@ -151,6 +152,57 @@ redelivery safe, but a stored failed invocation replays rather than
 automatically rerunning; the DLQ is the recovery surface. Terminal handler
 execution failures are isolated without preventing attempts for sibling
 subscribers.
+
+## `whats_new.consent.changed` (admins)
+
+Every What's New in Kody consent or recipient change made on the site writes a
+`whats_new_consent_outbox` row and enqueues a durable
+`whats_new.consent.changed` attempt, so a newsletter package can keep its own
+consent ledger current without polling. The Queue consumer dispatches only to
+packages saved by users who hold the admin role when the message is processed.
+
+Sources that emit it:
+
+- a confirmed `/newsletter` sign-up (`newsletter_page`)
+- an account whose address was just verified, with its sign-up checkbox choice
+  (`signup`) or no choice (`opted_in: null`): password sign-up, OAuth sign-up, a
+  claimed guest, and an admin marking an address verified
+- `adminWhatsNewOptInSet` with source `admin`
+- a verified email change, with the account's current choice, so the
+  subscriber's address stays current
+
+`adminWhatsNewOptInSet` with source `email_link` does not emit: that call is the
+newsletter package reporting a choice it already recorded. It passes
+`occurred_at` so the site keeps the time the person made the choice.
+
+Besides site admins' own packages, this topic is delivered to packages owned by
+the orgs listed by id in `WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS` (the kody org
+in production). The payload carries subscriber addresses, so a package in any
+other org never receives it, whether or not it declares the topic.
+
+```ts
+type WhatsNewConsentChangedEvent = {
+	event: 'whats_new.consent.changed'
+	event_id: string
+	subscriber: { stable_user_id: string; email: string; username: string }
+	consent: {
+		opted_in: boolean | null
+		source:
+			'signup' | 'settings' | 'email_link' | 'admin' | 'newsletter_page' | null
+		occurred_at: string
+	}
+}
+```
+
+`stable_user_id` is the account id, or the `newsletter_signups` id for an
+address with no account. Queue messages contain only the outbox row id; the
+address is loaded at dispatch, and a row whose recipient no longer exists is
+dropped. The row is deleted once every subscriber handled the event. While no
+package subscribes, or none has the subscription turned on, the row is kept and
+does not count an attempt. A failed handler or infrastructure error retries and
+can reach the DLQ; each attempt uses a fresh idempotency key, so handlers must
+dedupe on `event_id`. A row that was never delivered is enqueued again by the
+next change, up to 8 attempts. Recording never fails the change that caused it.
 
 ## `community.activity.recorded` (admins)
 

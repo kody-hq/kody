@@ -3,6 +3,7 @@ const { test } = require('node:test')
 const {
 	appleDelaysMs,
 	classifyFailure,
+	classifyMacPackagingFailure,
 	runWithRetry,
 } = require('../scripts/release-retry.cjs')
 
@@ -112,4 +113,25 @@ test('does not retry a fatal failure', () => {
 			error.kind === 'fatal' && /failed with exit 1/.test(error.message),
 	)
 	assert.equal(fake.calls.length, 1)
+})
+
+test('Mac packaging retries codesign timestamp and dmg detach hiccups only', () => {
+	for (const output of [
+		'Kody.app/Contents/Resources/esbuild.wasm: A timestamp was expected but was not found.',
+		'dmgbuild.core.DMGError: Unable to detach device cleanly: hdiutil: couldn\'t eject "disk2" - Resource busy',
+		stapleLost,
+	])
+		assert.equal(classifyMacPackagingFailure(output), 'transient', output)
+	for (const output of [
+		'Kody.app: invalid signature (code or signature have been modified)',
+		'Kody.app: invalid signature\nesbuild.wasm: A timestamp was expected but was not found.',
+		'⨯ Cannot find module electron',
+		'',
+	])
+		assert.equal(classifyMacPackagingFailure(output), 'fatal', output)
+	assert.equal(
+		classifyFailure('A timestamp was expected but was not found.'),
+		'fatal',
+		'signature checks outside packaging still fail fast on a missing timestamp',
+	)
 })

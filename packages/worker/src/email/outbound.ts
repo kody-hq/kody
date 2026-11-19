@@ -74,6 +74,8 @@ import {
 	ensurePlatformSenderIdentity,
 	listEmailInboxAddressesForUser,
 } from './repo.ts'
+import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { entitlementEmailForOwner } from '#worker/request-context/owner-id.ts'
 import type { EmailMessageRecord, EmailProcessingStatus } from './types.ts'
 
 type SendEmailEnv = Pick<
@@ -687,6 +689,19 @@ export async function sendOutboundEmail(
 			accountEmail: input.accountEmail,
 			userId: actorPersonId,
 		})
+		const entitlementEmail = entitlementEmailForOwner(
+			{
+				user: {
+					userId: actorPersonId,
+					email: sender.accountEmail,
+					personalOrgId: await loadPersonalOrgIdForPerson(
+						input.env.APP_DB,
+						actorPersonId,
+					),
+				},
+			},
+			input.userId,
+		)
 		const acceptedSenderDomains = getAcceptedUserEmailDomains(input.env)
 		const requestedFrom =
 			input.from == null
@@ -850,7 +865,7 @@ export async function sendOutboundEmail(
 			await assertWithinEntitlement({
 				db: input.env.APP_DB,
 				userId: input.userId,
-				email: sender.accountEmail,
+				email: entitlementEmail,
 				resource: 'email_message_bytes',
 				requested: 0,
 				getCurrent: async () =>
@@ -868,7 +883,7 @@ export async function sendOutboundEmail(
 			db: input.env.APP_DB,
 			env: input.env,
 			userId: input.userId,
-			email: sender.accountEmail,
+			email: entitlementEmail,
 			requested:
 				estimateEntitlementStorageEntryBytes({
 					key: messageIdHeader,
@@ -891,7 +906,7 @@ export async function sendOutboundEmail(
 			db: input.env.APP_DB,
 			env: input.env,
 			userId: input.userId,
-			email: sender.accountEmail,
+			email: entitlementEmail,
 			resource: 'email_sends_per_day',
 			now: entitlementNow,
 		})

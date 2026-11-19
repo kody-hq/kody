@@ -1,3 +1,4 @@
+import { loadModuleSourceParser } from '#worker/module-source.ts'
 import { readListingAheadFlag } from '#universal/community-listing-ahead.ts'
 import {
 	buildPackageSearchProjection,
@@ -57,11 +58,11 @@ export async function buildSavedPackageSearchRows(input: {
 					baseUrl: input.baseUrl,
 					userId: record.userId,
 					sourceId: record.sourceId,
-				}).then((loaded) => ({
-					projection: buildPackageSearchProjection(
-						loaded.manifest,
-						loaded.files,
-					),
+				}).then(async (loaded) => ({
+					projection: buildPackageSearchProjection(loaded.manifest, {
+						files: loaded.files,
+						parser: await loadModuleSourceParser(),
+					}),
 					readmeSnippet: buildPackageReadmeSnippet({
 						files: loaded.files,
 						maxChars: 1_000,

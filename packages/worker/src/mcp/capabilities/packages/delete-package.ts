@@ -34,6 +34,7 @@ export const deletePackageCapability = defineDomainCapability(
 	capabilityDomainNames.packages,
 	{
 		name: 'packageDelete',
+		walletGuard: 'repo_change',
 		contextRuns: 'deny',
 		orgPermission: 'package:delete',
 		description:

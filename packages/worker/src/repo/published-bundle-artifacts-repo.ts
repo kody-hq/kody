@@ -15,8 +15,23 @@ export type PublishedBundleArtifactRecord = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
+	/** Where the stored artifact was built; null for a row written before it was recorded. */
+	builtIn: PublishedBundleArtifactBuiltIn | null
+	/** Execution context name when `builtIn` is `context`. */
+	builtContextName: string | null
+	/** SHA-256 of the stored modules; see `bundleArtifactSha256`. */
+	bundleSha256: string | null
 	createdAt: string
 	updatedAt: string
+}
+
+/** Kody cloud, the publisher's CLI, or one of their execution contexts. */
+export type PublishedBundleArtifactBuiltIn = 'cloud' | 'cli' | 'context'
+
+function toBuiltIn(value: unknown): PublishedBundleArtifactBuiltIn | null {
+	return value === 'cloud' || value === 'cli' || value === 'context'
+		? value
+		: null
 }
 
 export type PublishedBundleArtifactUpsertInput = {
@@ -28,6 +43,9 @@ export type PublishedBundleArtifactUpsertInput = {
 	entryPoint: string
 	kvKey: string
 	dependenciesJson: string
+	builtIn?: PublishedBundleArtifactBuiltIn | null
+	builtContextName?: string | null
+	bundleSha256?: string | null
 }
 
 export type StaticDependentBundleArtifactRow = {
@@ -63,6 +81,13 @@ function mapRow(row: Record<string, unknown>): PublishedBundleArtifactRecord {
 		entryPoint: String(row['entry_point']),
 		kvKey: String(row['kv_key']),
 		dependenciesJson: String(row['dependencies_json'] ?? '[]'),
+		builtIn: toBuiltIn(row['built_in']),
+		builtContextName:
+			typeof row['built_context_name'] === 'string'
+				? row['built_context_name']
+				: null,
+		bundleSha256:
+			typeof row['bundle_sha256'] === 'string' ? row['bundle_sha256'] : null,
 		createdAt: String(row['created_at']),
 		updatedAt: String(row['updated_at']),
 	}
@@ -407,6 +432,45 @@ export async function listPublishedBundleArtifactsBySourceId(
 	return (result.results ?? []).map(mapRow)
 }
 
+export type PublishedBundleArtifactProvenanceRow = {
+	artifactKind: string
+	artifactName: string | null
+	entryPoint: string
+	builtIn: PublishedBundleArtifactBuiltIn | null
+	builtContextName: string | null
+	bundleSha256: string | null
+}
+
+/** Build origin and module hash of each artifact stored for one commit. */
+export async function listPublishedBundleArtifactProvenance(
+	db: D1Database,
+	input: { userId: string; sourceId: string; publishedCommit: string },
+): Promise<Array<PublishedBundleArtifactProvenanceRow>> {
+	const result = await db
+		.prepare(
+			`SELECT artifact_kind, artifact_name, entry_point, built_in,
+				built_context_name, bundle_sha256
+			FROM published_bundle_artifacts
+			WHERE user_id = ? AND source_id = ? AND published_commit = ?
+			ORDER BY artifact_kind, artifact_name, entry_point`,
+		)
+		.bind(input.userId, input.sourceId, input.publishedCommit)
+		.all<Record<string, unknown>>()
+	return (result.results ?? []).map((row) => ({
+		artifactKind: String(row['artifact_kind']),
+		artifactName:
+			row['artifact_name'] == null ? null : String(row['artifact_name']),
+		entryPoint: String(row['entry_point']),
+		builtIn: toBuiltIn(row['built_in']),
+		builtContextName:
+			typeof row['built_context_name'] === 'string'
+				? row['built_context_name']
+				: null,
+		bundleSha256:
+			typeof row['bundle_sha256'] === 'string' ? row['bundle_sha256'] : null,
+	}))
+}
+
 export function isPublishedBundleArtifactIdentityConflict(error: unknown) {
 	return errorCauseChainIncludes(
 		error,
@@ -526,8 +590,9 @@ function prepareUnguardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, created_at, updated_at
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				entry_point, kv_key, dependencies_json, built_in, built_context_name,
+				bundle_sha256, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		)
 		.bind(
 			id,
@@ -539,6 +604,9 @@ function prepareUnguardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.builtIn ?? null,
+			input.builtContextName ?? null,
+			input.bundleSha256 ?? null,
 			now,
 			now,
 		)
@@ -554,9 +622,10 @@ function prepareGuardedInsert(
 		.prepare(
 			`INSERT INTO published_bundle_artifacts (
 				id, user_id, source_id, published_commit, artifact_kind, artifact_name,
-				entry_point, kv_key, dependencies_json, created_at, updated_at
+				entry_point, kv_key, dependencies_json, built_in, built_context_name,
+				bundle_sha256, created_at, updated_at
 			)
-			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+			SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
 			WHERE EXISTS (
 				SELECT 1 FROM entity_sources
 				WHERE id = ?
@@ -575,6 +644,9 @@ function prepareGuardedInsert(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.builtIn ?? null,
+			input.builtContextName ?? null,
+			input.bundleSha256 ?? null,
 			now,
 			now,
 			input.sourceId,
@@ -593,6 +665,7 @@ function prepareUnguardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
+				built_in = ?, built_context_name = ?, bundle_sha256 = ?,
 				updated_at = ?
 			WHERE id = ?`,
 		)
@@ -605,6 +678,9 @@ function prepareUnguardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.builtIn ?? null,
+			input.builtContextName ?? null,
+			input.bundleSha256 ?? null,
 			now,
 			input.id,
 		)
@@ -620,6 +696,7 @@ function prepareGuardedUpdate(
 			`UPDATE published_bundle_artifacts
 			SET user_id = ?, source_id = ?, published_commit = ?, artifact_kind = ?,
 				artifact_name = ?, entry_point = ?, kv_key = ?, dependencies_json = ?,
+				built_in = ?, built_context_name = ?, bundle_sha256 = ?,
 				updated_at = ?
 			WHERE id = ?
 				AND EXISTS (
@@ -639,6 +716,9 @@ function prepareGuardedUpdate(
 			input.entryPoint,
 			input.kvKey,
 			input.dependenciesJson,
+			input.builtIn ?? null,
+			input.builtContextName ?? null,
+			input.bundleSha256 ?? null,
 			now,
 			input.id,
 			input.sourceId,

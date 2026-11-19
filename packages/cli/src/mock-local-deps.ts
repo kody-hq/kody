@@ -29,7 +29,7 @@ import {
 type LocalDepMap = Record<string, string>
 
 /** Relative path for the optional local-deps map file. */
-const localDepsRelativePath = '.kody/deps.json'
+export const localDepsRelativePath = '.kody/deps.json'
 
 /**
  * Parse `kody:@scope/name/export` → `{ packageName: '@scope/name', exportKey }`.
@@ -120,6 +120,64 @@ function resolveDepRoot(
 	return isAbsolute(rel) ? rel : resolve(packageRoot, rel)
 }
 
+async function loadMappedDepManifest(
+	packageRoot: string,
+	packageName: string,
+	map: LocalDepMap,
+): Promise<KodyPackageManifest | undefined> {
+	const depRoot = resolveDepRoot(packageRoot, packageName, map)
+	if (!depRoot) return undefined
+	try {
+		await access(join(depRoot, 'package.json'))
+		return await loadPackageManifest(depRoot)
+	} catch {
+		throw new LocalPackageGraphError(
+			`Local dep ${JSON.stringify(packageName)} points at ${JSON.stringify(depRoot)} but no package.json was found.`,
+			{ code: 'local_dep_missing' },
+		)
+	}
+}
+
+type MappedLocalDep = {
+	/** The mapped `@scope/name`, which the importer's `kody:@` imports use. */
+	name: string
+	manifest: KodyPackageManifest
+}
+
+/**
+ * Mapped local deps (`.kody/deps.json` / `package.json#kody.localDeps` of
+ * `selfManifest`) that its source reaches through `kody:@` imports, directly
+ * or through another mapped dep, dependencies before their dependents.
+ * `listImports` returns the `kody:@` specifiers a package root's source uses.
+ */
+export async function listMappedLocalDeps(input: {
+	selfManifest: KodyPackageManifest
+	listImports: (root: string) => Promise<ReadonlyArray<string>>
+}): Promise<Array<MappedLocalDep>> {
+	const packageRoot = input.selfManifest.root
+	const depMap = await loadLocalDepMap(packageRoot)
+	if (Object.keys(depMap).length === 0) return []
+	const ordered: Array<MappedLocalDep> = []
+	const visited = new Set<string>([input.selfManifest.name])
+	async function visit(root: string): Promise<void> {
+		for (const specifier of await input.listImports(root)) {
+			const parsed = parseKodyPackageSpecifier(specifier)
+			if (!parsed || visited.has(parsed.packageName)) continue
+			visited.add(parsed.packageName)
+			const manifest = await loadMappedDepManifest(
+				packageRoot,
+				parsed.packageName,
+				depMap,
+			)
+			if (!manifest) continue
+			await visit(manifest.root)
+			ordered.push({ name: parsed.packageName, manifest })
+		}
+	}
+	await visit(packageRoot)
+	return ordered
+}
+
 /**
  * Bundle locally-resolvable `kody:@` imports. Returns modules plus the list of
  * imports that still need published package-graph.
@@ -162,18 +220,11 @@ export async function resolveLocalPackageModules(input: {
 		if (selfManifest && parsed.packageName === selfManifest.name) {
 			manifest = selfManifest
 		} else if (packageRoot) {
-			const depRoot = resolveDepRoot(packageRoot, parsed.packageName, depMap)
-			if (depRoot) {
-				try {
-					await access(join(depRoot, 'package.json'))
-					manifest = await loadPackageManifest(depRoot)
-				} catch {
-					throw new LocalPackageGraphError(
-						`Local dep ${JSON.stringify(parsed.packageName)} points at ${JSON.stringify(depRoot)} but no package.json was found.`,
-						{ code: 'local_dep_missing' },
-					)
-				}
-			}
+			manifest = await loadMappedDepManifest(
+				packageRoot,
+				parsed.packageName,
+				depMap,
+			)
 		}
 
 		if (!manifest) {

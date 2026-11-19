@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/cloudflare'
 import { checkFreshness } from './freshness-check.ts'
 import { runFreshnessAndRetry } from './freshness-retry.ts'
 import {
@@ -12,16 +13,19 @@ import {
 import type { BackupEnvironment } from './backup-types.ts'
 import { handleControlPlaneFetch } from './control-plane-fetch.ts'
 import { sealRecentCompleteDays } from './seal-full-backup.ts'
+import { buildControlPlaneSentryOptions } from './sentry.ts'
 import {
 	enqueueBackup,
 	enqueueBackupRetry,
 	primaryBackupTimeForDay,
 	type EnqueueResult,
 } from './workflow-trigger.ts'
+import { withRetryingBackupBucket } from './r2-retry.ts'
 
 export { ProductionD1BackupWorkflow } from './backup-workflow.ts'
 export { ProductionDrRestoreWorkflow } from './restore-workflow.ts'
 export { ProductionSealDayWorkflow } from './seal-day-workflow.ts'
+export { PacedRestoreDrillWorkflow } from './paced-restore-drill-workflow.ts'
 
 export const BACKUP_CRON = '15 2 * * *'
 export const FRESHNESS_CRON = '45 * * * *'
@@ -180,16 +184,16 @@ async function scheduled(
 	}
 }
 
-export default {
+const handler = {
 	async fetch(request: Request, env: BackupEnvironment): Promise<Response> {
-		return handleControlPlaneFetch(request, env)
+		return handleControlPlaneFetch(request, withRetryingBackupBucket(env))
 	},
 	async scheduled(
 		controller: ScheduledController,
 		env: BackupEnvironment,
 	): Promise<void> {
 		try {
-			await scheduled(controller, env)
+			await scheduled(controller, withRetryingBackupBucket(env))
 		} catch (error) {
 			safeLog({
 				event: 'backup-failure',
@@ -199,4 +203,9 @@ export default {
 			throw error
 		}
 	},
-}
+} satisfies ExportedHandler<BackupEnvironment>
+
+export default Sentry.withSentry(
+	(env: BackupEnvironment) => buildControlPlaneSentryOptions(env),
+	handler,
+)

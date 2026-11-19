@@ -86,6 +86,12 @@ export class OpenApiError extends Error {
 	/** `error.details.reason` from the failed response, when there was one. */
 	readonly reason: string | null
 	/**
+	 * `error.details.run_id` / `idempotency_key`: an execute whose answer
+	 * failed after it started this run, so callers can follow it.
+	 */
+	readonly runId: string | null
+	readonly idempotencyKey: string | null
+	/**
 	 * Set when `fetch` rejected before an HTTP response. `false` = connect
 	 * phase (nothing sent); `"unknown"` = body may have reached the server.
 	 */
@@ -98,6 +104,8 @@ export class OpenApiError extends Error {
 			code?: string | null
 			requestId?: string | null
 			reason?: string | null
+			runId?: string | null
+			idempotencyKey?: string | null
 			sent?: RequestSentStatus
 		} = {},
 	) {
@@ -107,6 +115,8 @@ export class OpenApiError extends Error {
 		this.code = options.code ?? null
 		this.requestId = options.requestId ?? null
 		this.reason = options.reason ?? null
+		this.runId = options.runId ?? null
+		this.idempotencyKey = options.idempotencyKey ?? null
 		if (options.sent !== undefined) this.sent = options.sent
 	}
 }
@@ -716,13 +726,20 @@ async function readJson(response: Response): Promise<unknown> {
 	}
 }
 
-function readErrorBody(
-	body: unknown,
-): { code: string | null; message: string; reason: string | null } | null {
+type ErrorBody = {
+	code: string | null
+	message: string
+	reason: string | null
+	runId: string | null
+	idempotencyKey: string | null
+}
+
+function readErrorBody(body: unknown): ErrorBody | null {
 	if (!isRecord(body) || body.error == null) return null
 	const { error } = body
+	const none = { reason: null, runId: null, idempotencyKey: null }
 	if (typeof error === 'string') {
-		return { code: null, message: error, reason: null }
+		return { code: null, message: error, ...none }
 	}
 	if (isRecord(error)) {
 		const code = typeof error.code === 'string' ? error.code : null
@@ -730,13 +747,18 @@ function readErrorBody(
 			typeof error.message === 'string'
 				? error.message
 				: (code ?? JSON.stringify(error))
-		const reason =
-			isRecord(error.details) && typeof error.details.reason === 'string'
-				? error.details.reason
-				: null
-		return { code, message, reason }
+		const details = isRecord(error.details) ? error.details : {}
+		const text = (value: unknown) =>
+			typeof value === 'string' && value ? value : null
+		return {
+			code,
+			message,
+			reason: text(details.reason),
+			runId: text(details.run_id),
+			idempotencyKey: text(details.idempotency_key),
+		}
 	}
-	return { code: null, message: String(error), reason: null }
+	return { code: null, message: String(error), ...none }
 }
 
 function describeOpenApiFailure(
@@ -747,7 +769,14 @@ function describeOpenApiFailure(
 ): OpenApiError {
 	const failure = readErrorBody(body)
 	const code = failure?.code ?? null
-	const meta = { status, code, requestId, reason: failure?.reason ?? null }
+	const meta = {
+		status,
+		code,
+		requestId,
+		reason: failure?.reason ?? null,
+		runId: failure?.runId ?? null,
+		idempotencyKey: failure?.idempotencyKey ?? null,
+	}
 	const detail = failure?.message ? ` Server said: ${failure.message}` : ''
 	if (status === 401) {
 		return new OpenApiError(rejectedApiTokenMessage(detail), meta)

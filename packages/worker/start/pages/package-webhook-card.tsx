@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
-
-import { SiteLink } from '../components/site-link.tsx'
 
 import {
 	AccountManagementMessage,
@@ -25,17 +26,9 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	mutedLinkCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
+import { Input } from '../components/input.tsx'
 
 export type WebhookConfirmation = {
 	armed: boolean
@@ -286,14 +279,14 @@ export function renderPackageWebhookCard(input: {
 				>
 					{!webhook.approved ? (
 						webhook.approvalUrl ? (
-							<SiteLink
+							<Button
 								href={webhook.approvalUrl}
 								aria-label={`Approve ${webhookLabel}`}
 								data-testid="package-webhook-approve"
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Approve
-							</SiteLink>
+							</Button>
 						) : (
 							<span css={{ color: colors.textMuted }}>
 								Approve it from this package's Credentials page.
@@ -301,18 +294,18 @@ export function renderPackageWebhookCard(input: {
 						)
 					) : null}
 					{webhook.approved ? (
-						<SiteLink
+						<TextLink
+							tone="muted"
 							href={packageCredentialsTabHref({
 								username,
 								kodyId,
 								tab: 'triggers',
 							})}
-							css={mutedLinkCss}
 						>
 							Turn off on Triggers
-						</SiteLink>
+						</TextLink>
 					) : null}
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						aria-label={
@@ -320,15 +313,15 @@ export function renderPackageWebhookCard(input: {
 								? `Confirm rotate URL for ${webhookLabel}`
 								: `Rotate URL for ${webhookLabel}`
 						}
-						css={dangerButtonCss}
+						variant="danger"
 						onClick={rotateCheck.onClick}
 						onBlur={rotateCheck.onBlur}
 					>
 						{rotateCheck.armed ? 'Confirm rotate' : 'Rotate URL'}
-					</button>
-					<SiteLink href={input.deliveriesHref} css={mutedLinkCss}>
+					</Button>
+					<TextLink tone="muted" href={input.deliveriesHref}>
 						Recent deliveries
-					</SiteLink>
+					</TextLink>
 				</div>
 			) : null}
 
@@ -352,9 +345,7 @@ export function renderPackageWebhookCard(input: {
 					Turning it off on Triggers makes this URL answer 404. Turn it back on
 					by Approving the same URL. Removing the declaration from the package
 					manifest retires the ingress.{' '}
-					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
-						Inbound webhooks docs
-					</SiteLink>
+					<TextLink href={webhooksDocHref}>Inbound webhooks docs</TextLink>
 				</p>
 			) : null}
 
@@ -394,33 +385,27 @@ export function renderPackageWebhookCard(input: {
 							Creates another URL under <code>{webhook.name}</code> with its own
 							Approve. Give it a short label so you can tell them apart.
 						</p>
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Instance label</span>
-							<input
+						<Field label="Instance label">
+							<Input
+								size="sm"
 								name="instanceLabel"
 								type="text"
 								required
 								maxLength={64}
 								placeholder="staging"
 								disabled={isMutating}
-								css={{
-									padding: `${spacing.xs} ${spacing.sm}`,
-									border: `1px solid ${colors.border}`,
-									borderRadius: '4px',
-									fontFamily: 'inherit',
-								}}
 							/>
-						</label>
+						</Field>
 						<div>
-							<button
+							<Button
 								type="submit"
 								disabled={isMutating}
 								aria-label={`Mint another URL for ${webhook.packageKodyId}/${webhook.name}`}
 								data-testid="package-webhook-mint-another-submit"
-								css={primaryButtonCss}
+								variant="primary"
 							>
 								Mint another URL
-							</button>
+							</Button>
 						</div>
 					</form>
 				</details>
@@ -447,16 +432,16 @@ function renderUrlSection(input: {
 					export once approved.
 				</p>
 				<div>
-					<button
+					<Button
 						type="button"
 						disabled={isMutating}
 						aria-label={`Mint URL for ${webhook.packageKodyId}/${webhook.name}`}
 						data-testid="package-webhook-mint"
-						css={primaryButtonCss}
+						variant="primary"
 						onClick={() => onIntent({ intent: 'mint' })}
 					>
 						Mint URL
-					</button>
+					</Button>
 				</div>
 			</div>
 		)
@@ -471,15 +456,15 @@ function renderUrlSection(input: {
 					variant="pill"
 				/>
 				<div>
-					<button
+					<Button
 						type="button"
 						aria-label={`Hide URL for ${webhook.packageKodyId}/${webhook.name}`}
 						data-testid="package-webhook-hide-url"
-						css={secondaryButtonCss}
+						variant="secondary"
 						onClick={onHideUrl}
 					>
 						Hide URL
-					</button>
+					</Button>
 				</div>
 			</div>
 		)
@@ -500,16 +485,16 @@ function renderUrlSection(input: {
 				audit log.
 			</p>
 			<div>
-				<button
+				<Button
 					type="button"
 					disabled={isMutating}
 					aria-label={`Reveal URL for ${webhook.packageKodyId}/${webhook.name}`}
 					data-testid="package-webhook-reveal"
-					css={secondaryButtonCss}
+					variant="secondary"
 					onClick={() => onIntent({ intent: 'reveal' })}
 				>
 					Reveal URL
-				</button>
+				</Button>
 			</div>
 		</div>
 	)

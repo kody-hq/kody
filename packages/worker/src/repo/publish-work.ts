@@ -351,6 +351,8 @@ export type ExternalRefCloneRequest = {
 	userId: OwnerId
 	source: EntitySourceRow
 	commit: string
+	/** Branch to clone instead of the default branch; `expectedHead` is its tip. */
+	branch?: string
 	expectedHead?: string | null
 	/** Published commit to test ancestry against before the clone is dropped. */
 	previousCommit: string | null
@@ -486,7 +488,7 @@ export function createInlinePublishHeavyWork(input: {
 				}
 			}
 			const patternNotice = noticesInput.includePatternNotice
-				? credentialPatternNoticeForFiles(
+				? await credentialPatternNoticeForFiles(
 						publishedFiles,
 						input.publishedFilesSourceRoot ?? source.source_root,
 					)

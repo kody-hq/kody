@@ -2,10 +2,14 @@ import { expect, test } from 'vitest'
 import {
 	buildPackageAppCustomHostnamePath,
 	buildPackageAppCustomHostnameUrl,
+	buildPackageAppHostOrigin,
 	buildPackageAppOpenPath,
 	buildPackageAppPath,
+	buildPackageAppRootOrigin,
 	buildPackageAppSubdomainPath,
 	buildPackagePagePath,
+	parsePackageAppHostLabel,
+	resolveHostedPackageAppUrl,
 } from './public-urls.ts'
 
 test('saved-package pages and hosted package-app mounts use different paths', () => {
@@ -41,4 +45,84 @@ test('saved-package pages and hosted package-app mounts use different paths', ()
 			origin: 'https://app.customer.example/',
 		}),
 	).toBe('https://app.customer.example/')
+})
+
+test('per-app host labels split into leaf and handle, and build the app origin', () => {
+	expect(parsePackageAppHostLabel('hn-pulse--kentcdodds')).toEqual({
+		leaf: 'hn-pulse',
+		handle: 'kentcdodds',
+	})
+	const longest = `${'a'.repeat(29)}--${'b'.repeat(32)}`
+	expect(longest).toHaveLength(63)
+	expect(parsePackageAppHostLabel(longest)).toEqual({
+		leaf: 'a'.repeat(29),
+		handle: 'b'.repeat(32),
+	})
+	for (const label of [
+		`${'a'.repeat(30)}--${'b'.repeat(32)}`,
+		'kentcdodds',
+		'xn--kentcdodds',
+		'--kentcdodds',
+		'demo--',
+		'demo--a--kentcdodds',
+		'demo---kentcdodds',
+		'-demo--kentcdodds',
+		'Demo--kentcdodds',
+		'demo--xy',
+	]) {
+		expect({ label, parsed: parsePackageAppHostLabel(label) }).toEqual({
+			label,
+			parsed: null,
+		})
+	}
+	expect(
+		buildPackageAppHostOrigin({
+			packageAppOrigin: 'http://localhost:8788',
+			username: 'KentCDodds',
+			kodyId: 'hn-pulse',
+		}),
+	).toBe('http://hn-pulse--kentcdodds.localhost:8788')
+	// A legacy leaf with no valid host label has no app host.
+	expect(
+		buildPackageAppHostOrigin({
+			packageAppOrigin: 'https://kody.run',
+			username: 'kentcdodds',
+			kodyId: 'hn_pulse',
+		}),
+	).toBeNull()
+})
+
+test('a profile package is addressed at the root of its owner host', () => {
+	expect(
+		buildPackageAppRootOrigin({
+			packageAppOrigin: 'https://kody.run',
+			username: 'Kody',
+			kodyId: 'kody',
+		}),
+	).toBe('https://kody.kody.run')
+	expect(
+		buildPackageAppRootOrigin({
+			packageAppOrigin: 'https://kody.run',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}),
+	).toBe('https://newsletter--kody.kody.run')
+	expect(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: 'http://localhost:8788',
+			appBaseUrl: 'http://localhost:3742',
+			username: 'kody',
+			kodyId: 'kody',
+			restPath: '/newsletter/unsubscribe',
+		}),
+	).toBe('http://kody.localhost:8788/newsletter/unsubscribe')
+	// Other packages keep the owner-subdomain path until the links flip.
+	expect(
+		resolveHostedPackageAppUrl({
+			packageAppBaseUrl: 'https://kody.run',
+			appBaseUrl: 'https://kody.codes',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}),
+	).toBe('https://kody.kody.run/newsletter')
 })

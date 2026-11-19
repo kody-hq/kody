@@ -54,6 +54,12 @@ export function isPackageAppOauthCallbackPathname(pathname: string) {
 	)
 }
 
+/**
+ * Set on the authorize URL that is sent to `/login`. Authorize sends a visitor
+ * to `/login` only while this is absent, so the two can never bounce forever.
+ */
+export const packageAppOauthLoginAttemptParam = 'login_attempt'
+
 export const packageAppOauthPkceCookieName = '__Host-kody_pkg_oauth'
 export const packageAppOauthPkceCookieNameInsecure = 'kody_pkg_oauth'
 

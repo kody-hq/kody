@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import {
 	colors,
 	radius,
@@ -6,7 +7,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 
 type UndoToastProps = {
 	message: string
@@ -47,16 +47,16 @@ export function UndoToast(props: UndoToastProps) {
 			>
 				{props.message}
 			</p>
-			<button
+			<Button
 				type="button"
 				data-testid="undo-toast-undo"
 				onClick={() => {
 					props.onUndo()
 				}}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				{props.undoLabel ?? 'Undo'}
-			</button>
+			</Button>
 		</div>
 	)
 }

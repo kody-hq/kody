@@ -7,6 +7,11 @@ export default defineConfig({
 		'.': {
 			entry: [
 				...toolCliEntryFiles(process.cwd()),
+				// Husky hooks and Nx targets run these directly.
+				'tools/git-hook-checks.ts',
+				'tools/run-node-tests.ts',
+				'tools/run-tsc.ts',
+				'tools/run-workers-tests.ts',
 				'tools/files-spike/browser.ts',
 				'tools/files-spike/worker.ts',
 				'tools/files-spike/vitest.config.ts',
@@ -17,6 +22,7 @@ export default defineConfig({
 				'tools/markdown-perf/sample-entry.mjs',
 				'e2e/**/*.ts',
 				'vitest*.ts',
+				'playwright*.config.ts',
 			],
 			project: ['tools/**/*.{ts,js,mjs,cjs}', '*.ts', 'e2e/**/*.ts'],
 		},
@@ -67,6 +73,9 @@ export default defineConfig({
 			project: ['src/**/*.ts'],
 		},
 		'packages/highlight-worker': {
+			project: ['src/**/*.ts'],
+		},
+		'packages/push-queue-worker': {
 			project: ['src/**/*.ts'],
 		},
 		'packages/api-worker': {

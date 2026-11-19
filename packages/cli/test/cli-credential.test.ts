@@ -494,3 +494,186 @@ test('desktop login selection never reads or replaces stored API tokens and neve
 		/must be login/,
 	)
 })
+
+const deadLogin: StoredCredentials = {
+	...login,
+	org: 'acme',
+	accessToken: 'kody_at_login_dead',
+	expiresAt: Date.now() - 3_600_000,
+}
+const liveStored: StoredApiToken = {
+	...stored,
+	token: 'kody_at_stored_live',
+	expiresAt: new Date(Date.now() + 14 * 86_400_000).toISOString(),
+}
+
+test('KODY_API_TOKEN wins over an expired login and an old-slot token', () => {
+	for (const purpose of ['call', 'session', 'mint'] as const) {
+		const credential = resolveCliCredential({
+			env: { KODY_API_TOKEN: 'kody_at_env' },
+			apiUrl,
+			mcpUrl,
+			purpose,
+			loadApiToken: () => liveStored,
+			loadLogin: () => deadLogin,
+		})
+		assert.equal(credential?.source, 'env')
+		assert.equal(credential?.token, 'kody_at_env')
+	}
+})
+
+async function withDeadLogin(
+	options: { stored: boolean; env?: string },
+	run: (input: {
+		authHeaders: Array<string>
+		capture: (
+			args: Array<string>,
+		) => Promise<{ code: number; stdout: string; stderr: string }>
+	}) => Promise<void>,
+) {
+	const home = mkdtempSync(join(tmpdir(), 'kody-cli-dead-login-'))
+	const saved = {
+		XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+		HOME: process.env.HOME,
+		KODY_API_TOKEN: process.env.KODY_API_TOKEN,
+		KODY_API_URL: process.env.KODY_API_URL,
+		KODY_MCP_URL: process.env.KODY_MCP_URL,
+		KODY_ORG: process.env.KODY_ORG,
+	}
+	process.env.XDG_CONFIG_HOME = home
+	process.env.HOME = home
+	if (options.env) process.env.KODY_API_TOKEN = options.env
+	else delete process.env.KODY_API_TOKEN
+	delete process.env.KODY_ORG
+	process.env.KODY_MCP_URL = mcpUrl
+	process.env.KODY_API_URL = apiUrl
+	if (options.stored) saveStoredApiToken(liveStored)
+	saveCredentials(deadLogin, createFileBackend(fileStorePath(mcpUrl)))
+	const authHeaders: Array<string> = []
+	const previousFetch = globalThis.fetch
+	clearOpenApiRouteCache()
+	globalThis.fetch = (async (
+		input: Parameters<typeof fetch>[0],
+		init?: RequestInit,
+	) => {
+		const url = new URL(String(input))
+		const auth = new Headers(init?.headers).get('authorization') ?? ''
+		authHeaders.push(auth)
+		const json = (body: unknown, status = 200) =>
+			new Response(JSON.stringify(body), {
+				status,
+				headers: { 'content-type': 'application/json' },
+			})
+		if (auth === 'Bearer kody_at_login_dead') {
+			return json({ error: { code: 'unauthorized', message: 'expired' } }, 401)
+		}
+		if (url.pathname === '/v1/tokens/current') {
+			return json({
+				id: 'tok_stored_old',
+				name: 'kody-cli-bootstrap',
+				scopes: stored.scopes,
+				expires_at: liveStored.expiresAt,
+			})
+		}
+		if (url.pathname === '/v1/me') {
+			return json({ user_id: 'user_1', email: 'a@example.com' })
+		}
+		if (url.pathname === '/v1/execute') {
+			return json({ content: [{ type: 'text', text: 'ran' }], isError: false })
+		}
+		return new Response('not found', { status: 404 })
+	}) as typeof fetch
+	try {
+		await run({
+			authHeaders,
+			capture: async (args) => {
+				let stdout = ''
+				let stderr = ''
+				const code = await runCli(args, {
+					stdout: (text) => (stdout += text),
+					stderr: (text) => (stderr += text),
+				})
+				return { code, stdout, stderr }
+			},
+		})
+	} finally {
+		globalThis.fetch = previousFetch
+		clearOpenApiRouteCache()
+		deleteStoredApiToken(apiUrl)
+		deleteCredentials(mcpUrl, undefined, undefined, { org: 'acme' })
+		deleteCredentials(mcpUrl)
+		for (const [key, value] of Object.entries(saved)) {
+			if (value === undefined) delete process.env[key]
+			else process.env[key] = value
+		}
+	}
+}
+
+test('with an expired login and a live old-slot token, status and execute name the same expired credential', async () => {
+	await withDeadLogin({ stored: true }, async ({ authHeaders, capture }) => {
+		const status = await capture(['status'])
+		assert.equal(status.code, 0, status.stderr)
+		assert.match(
+			status.stdout,
+			/access token expires: \S+ \(expired; no refresh token, run `kody login` if `kody whoami` fails\)/,
+		)
+		assert.match(
+			status.stdout,
+			/credential in use \(every command\): saved CLI credential \(org acme\)/,
+		)
+
+		const execute = await capture([
+			'execute',
+			'--code',
+			'export default () => 1',
+		])
+		assert.equal(execute.code, 1)
+		assert.match(
+			execute.stderr,
+			/The saved CLI credential \(org acme\) expired at \S+ and has no refresh token\. Run `kody login`/,
+		)
+		assert.doesNotMatch(execute.stderr, /Stored API token/)
+		assert.ok(!authHeaders.includes('Bearer kody_at_stored_live'))
+	})
+})
+
+test('KODY_API_TOKEN wins for execute over an expired login', async () => {
+	await withDeadLogin(
+		{ stored: false, env: 'kody_at_env' },
+		async ({ authHeaders, capture }) => {
+			const execute = await capture([
+				'execute',
+				'--code',
+				'export default () => 1',
+			])
+			assert.equal(execute.code, 0, execute.stderr)
+			assert.deepEqual(authHeaders, ['Bearer kody_at_env'])
+		},
+	)
+})
+
+test('an expired login with nothing else names the saved credential, never a stored API token', async () => {
+	await withDeadLogin({ stored: false }, async ({ capture }) => {
+		const status = await capture(['status'])
+		assert.match(
+			status.stdout,
+			/access token expires: \S+ \(expired; no refresh token, run `kody login` if `kody whoami` fails\)/,
+		)
+		assert.match(
+			status.stdout,
+			/credential in use \(every command\): saved CLI credential \(org acme\)/,
+		)
+
+		const execute = await capture([
+			'execute',
+			'--code',
+			'export default () => 1',
+		])
+		assert.equal(execute.code, 1)
+		assert.match(
+			execute.stderr,
+			/The saved CLI credential \(org acme\) expired at \S+ and has no refresh token\. Run `kody login`/,
+		)
+		assert.doesNotMatch(execute.stderr, /Stored API token/)
+	})
+})

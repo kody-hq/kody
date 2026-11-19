@@ -54,7 +54,7 @@ function freshIp() {
 	return `203.0.113.${nextIp}`
 }
 
-/** The limited browser presses "Sign in on another device" on `/login`. */
+/** The limited browser presses "Sign in with another device" on `/login`. */
 async function startOnLimitedBrowser(
 	input: { ip?: string; redirectTo?: string; rememberMe?: boolean } = {},
 ) {
@@ -252,6 +252,61 @@ test('remember-me on the asking browser carries into the session', async () => {
 		.getSetCookie()
 		.find((c) => !c.includes('kody_account_device'))
 	expect(session).toMatch(/Max-Age=\d+/)
+	await expect(
+		readParsedAuthSession(
+			new Request(appOrigin, {
+				headers: { Cookie: session?.split(';')[0] ?? '' },
+			}),
+		),
+	).resolves.toMatchObject({ session: { rememberMe: true } })
+})
+
+test('the code screen saves Keep this browser signed in on the request', async () => {
+	await clearApproveLimit()
+	const cookie = await started({})
+	await expect(pendingCode(cookie)).resolves.toMatchObject({
+		rememberMe: false,
+	})
+	const save = (rememberMe: boolean, origin = appOrigin) => {
+		const body = new URLSearchParams({ intent: 'remember' })
+		if (rememberMe) body.set('rememberMe', 'on')
+		return startAccountDeviceSignIn({
+			env,
+			request: new Request(`${appOrigin}${accountDeviceSignInPath}`, {
+				method: 'POST',
+				headers: {
+					Cookie: cookie,
+					Origin: origin,
+					'Content-Type': 'application/x-www-form-urlencoded',
+				},
+				body,
+			}),
+		})
+	}
+	const crossOrigin = await save(true, 'https://evil.example')
+	expect(crossOrigin.status).toBe(403)
+	const saved = await save(true)
+	expect(saved.status).toBe(303)
+	expect(saved.headers.get('Location')).toBe('/login/device')
+	// Saving never starts a second sign-in.
+	expect(saved.headers.get('Set-Cookie')).toBeNull()
+	const { userCode, rememberMe } = await pendingCode(cookie)
+	expect(rememberMe).toBe(true)
+	await expect(save(false)).resolves.toMatchObject({ status: 303 })
+	await expect(pendingCode(cookie)).resolves.toMatchObject({
+		rememberMe: false,
+	})
+	await save(true)
+
+	await decide(userCode, 'approve', true)
+	const finished = await handleAccountDeviceSignInDocument({
+		env,
+		request: limitedRequest(cookie),
+	})
+	if (!(finished instanceof Response)) throw new Error('Expected a redirect')
+	const session = finished.headers
+		.getSetCookie()
+		.find((c) => !c.includes('kody_account_device'))
 	await expect(
 		readParsedAuthSession(
 			new Request(appOrigin, {

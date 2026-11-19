@@ -9,13 +9,17 @@ import { parseYoutubeVideoId } from '#universal/youtube-watch.ts'
  * > Watch: Real video title
  * ```
  *
+ * Use `[!WATCH-VERTICAL]` instead of `[!WATCH]` for a 9:16 recording
+ * (phone-shot video) so the player keeps the video's shape instead of
+ * pillarboxing it in a 16:9 frame.
+ *
  * The formatter may wrap that into one blockquote paragraph. The marker
  * and URL stay first; the rest of the block is the caption. The docs
  * renderer turns it into the lite YouTube player. Raw markdown (agents,
  * GitHub) keeps the title and URL as a blockquote. Link-only mentions
  * stay ordinary markdown links and never use this marker.
  */
-const watchMarkerRe = /^\[!WATCH\]\s+(\S+)\s*(.*)$/
+const watchMarkerRe = /^\[!WATCH(-VERTICAL)?\]\s+(\S+)\s*(.*)$/
 const watchLabelPrefixRe = /^Watch:\s+/
 
 export type DocWatchEmbed = {
@@ -26,6 +30,8 @@ export type DocWatchEmbed = {
 	label: string
 	/** Real video title, used for the iframe and play button. */
 	title: string
+	/** `true` for a `[!WATCH-VERTICAL]` block (9:16 video). */
+	vertical: boolean
 }
 
 export function docYoutubeWatchUrl(videoId: string): string {
@@ -42,11 +48,11 @@ export function parseDocWatchBlock(raw: string): DocWatchEmbed | null {
 	const [markerLine, ...labelLines] = lines
 	if (!markerLine) return null
 	const marker = watchMarkerRe.exec(markerLine.trim())
-	const target = marker?.[1] ?? ''
+	const target = marker?.[2] ?? ''
 	if (!/^https?:\/\//i.test(target)) return null
 	const videoId = parseYoutubeVideoId(target)
 	if (!videoId) return null
-	const label = [marker?.[2], ...labelLines]
+	const label = [marker?.[3], ...labelLines]
 		.map((line) => line?.trim() ?? '')
 		.filter(Boolean)
 		.join(' ')
@@ -57,6 +63,7 @@ export function parseDocWatchBlock(raw: string): DocWatchEmbed | null {
 		href: docYoutubeWatchUrl(videoId),
 		label,
 		title: title || label,
+		vertical: Boolean(marker?.[1]),
 	}
 }
 

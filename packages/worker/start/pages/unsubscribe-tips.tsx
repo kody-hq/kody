@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	cardCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -41,13 +40,18 @@ export function UnsubscribeTipsRoute({
 					{data.ok ? data.message : data.error}
 				</p>
 				{data.ok ? (
-					<SiteLink href="/account" css={ctaButtonCss}>
+					<Button
+						href="/account"
+						variant="primary"
+						size="md"
+						css={ctaButtonCss}
+					>
 						Go to account
-					</SiteLink>
+					</Button>
 				) : (
-					<SiteLink href="/account" css={mutedLinkCss}>
+					<TextLink tone="muted" href="/account">
 						Go to account
-					</SiteLink>
+					</TextLink>
 				)}
 			</div>
 		</section>
@@ -62,7 +66,6 @@ const pageCss = {
 }
 
 const ctaButtonCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }

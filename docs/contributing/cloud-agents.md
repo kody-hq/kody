@@ -105,11 +105,10 @@ longer typechecks. Hook Node processes, `tools/run-nx.ts`, and
 `tools/run-tsc.ts` (`npm run typecheck:start`) raise the heap to 8GB unless
 `NODE_OPTIONS` already sets `--max-old-space-size`, so Cloud Agent VMs do not
 OOM at Node's default ~2GB limit during pre-push typecheck or parallel
-`validate` (#4114, #4531). Non-docs pushes run typecheck, Knip and
-`vitest related --run` for node-unit and workers-unit over pushed non-deleted
-source/test paths. When more than 150 test files in a project relate to the
-push, the hook runs only the pushed tests and same-named siblings and leaves the
-rest to CI (`KODY_PRE_PUSH_RELATED_TEST_CAP=all` runs them all). Global
+`validate` (#4114, #4531). Non-docs pushes run typecheck, Knip and related
+node-unit and workers-unit tests, chosen from which modules each test loaded in
+the newest Validate run (needs an authenticated `gh`; otherwise
+`vitest related --run`). See [checks](./setup/checks.md). Global
 configuration/setup/migration inputs or unreadable paths fall back to full
 `npm run test:push`; only full suites record test provenance. Existing
 validate-recorded Knip/test tree skips remain. See [checks](./setup/checks.md)
@@ -217,6 +216,13 @@ review-thread replies.
 Write those with `kody:@kentcdodds/github/request` (kody-bot) or Cursor
 `ManagePullRequest` `post_comment` / `in_reply_to`. See
 [ship-pr](../../.agents/skills/ship-pr/SKILL.md).
+
+`ManagePullRequest` `create_pr` always opens the PR from the run's designated
+`cursor/…` branch, even when another ref points at the same commit, and GitHub
+cannot change a PR's head later. When a task names a different head branch (for
+example a `cleanup/docs-freshness-YYYY-MM-DD` footer), push that branch and
+create the PR once with `kody:@kentcdodds/github/request`
+`POST /repos/kody-hq/kody/pulls` and that `head`. Do not use `create_pr` for it.
 
 ## GitHub token expiry mid-run
 
@@ -461,7 +467,8 @@ seed write D1 under `.wrangler/state`, the directory Vite persists.
   automation). Mock repo remotes are real git: `cli.ts` serves them from bare
   repos under `.wrangler/state/mock-artifacts-git`
   (`tools/mock-artifacts-git-server.ts`), so plain repos (`repoCreate`, push
-  through `repoGetGitRemote`, then `repoOpenSession`) exercise RepoSession
-  locally. Saved packages still use mock source snapshots, so a package repo
-  session needs a preview. Production and preview keep the real binding; use a
-  PR preview only when you need that remote Artifacts namespace.
+  through `repoGetGitRemote`, then `repoOpenSession`) and saved packages
+  (`packageSave`, publish, then `repoOpenSession` with a package target)
+  exercise RepoSession locally. Only MCP E2E, which starts no git server, keeps
+  the mock source-snapshot lane. Production and preview keep the real binding;
+  use a PR preview only when you need that remote Artifacts namespace.

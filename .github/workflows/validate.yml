@@ -409,9 +409,22 @@ jobs:
       - name: 🧪 Node unit tests
         run: npm run test:node
         env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
           MIGRATION_VALIDATION_BASE: >-
             ${{ github.event.pull_request.base.sha ||
             github.event.merge_group.base_sha || github.event.before || '' }}
+
+      # Pre-push picks related tests from which modules each test loaded here
+      # (tools/test-module-map.ts).
+      - name: 🗺️ Upload test module map
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-node-unit-${{ matrix.shard }}
+          path: ${{ github.workspace }}/.tmp/test-module-map/node-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: ⏱️ Unit shard budget (watch 700s / hard 840s)
         if: success()
@@ -488,6 +501,18 @@ jobs:
       - name: ☁️ Workers unit tests
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
+        env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+
+      - name: 🗺️ Upload test module map
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-workers-unit-${{ matrix.shard }}
+          path: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success()
@@ -572,6 +597,19 @@ jobs:
         if: env.RETRY == 'true'
         id: attempt
         run: bash tools/ci/workers-unit-attempt.sh
+        env:
+          KODY_TEST_MODULE_MAP_OUT:
+            ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+
+      - name: 🗺️ Upload test module map
+        if: success() && env.RETRY == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-module-map-workers-unit-${{ matrix.shard }}
+          path: ${{ github.workspace }}/.tmp/test-module-map/workers-unit.json
+          retention-days: 7
+          if-no-files-found: ignore
+          overwrite: true
 
       - name: ⏱️ Unit shard budget (watch 620s / hard 780s)
         if: success() && env.RETRY == 'true'
@@ -754,6 +792,68 @@ jobs:
             echo "- no_cache: \`${VALIDATE_NO_CACHE}\`"
             echo "- duration_seconds: **${dur}**"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # `npm run ui:verify`: component gallery and key pages in light and dark,
+  # desktop and mobile; axe, keyboard focus sweep, and visual diffs against
+  # e2e/ui-verify/baselines. The report and screenshots upload on every run
+  # so reviewers can see the rendering (docs/contributing/ui-verify.md).
+  ui_verify:
+    runs-on:
+      ${{ (inputs.runner != '' && inputs.runner != '(repo default)' &&
+      inputs.runner) || vars.CI_RUNNER || 'ubuntu-latest' }}
+    name: 🖼️ UI verify
+    timeout-minutes: 25
+    needs: tested_tree
+    if: >-
+      !cancelled() && needs.tested_tree.outputs.skip != 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.draft ==
+      false)
+    steps:
+      - name: 📦 Checkout
+        uses: actions/checkout@v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: 🧰 Setup
+        uses: ./.github/actions/setup-validate
+        with:
+          playwright: 'true'
+          worker-env: 'true'
+          no_cache: ${{ env.VALIDATE_NO_CACHE }}
+
+      # Same workerd / Vite webServer crash retry as the E2E shards; real
+      # check failures never retry.
+      - name: 🖼️ npm run ui:verify
+        run: |
+          set -u
+          npm run ui:verify 2>&1 | tee ui-verify-attempt-1.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -eq 0 ]; then
+            exit 0
+          fi
+          if ! node tools/ci/retry-classifiers.ts e2e ui-verify-attempt-1.log; then
+            exit "$status"
+          fi
+          echo "::warning::Playwright webServer died on start or mid-run; retrying ui:verify once with a fresh server."
+          npm run ui:verify
+
+      - name: 📝 Report summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f .tmp/ui-verify/report.md ]; then
+            cat .tmp/ui-verify/report.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: 📤 Upload UI verify report and screenshots
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-verify
+          path: .tmp/ui-verify
+          if-no-files-found: ignore
+          retention-days: 14
 
   e2e_report:
     runs-on: ubuntu-latest
@@ -999,9 +1099,22 @@ jobs:
       - name: 🧪 Local contract suite
         run: npm test -w @kodycodes/dev-runtime
 
+      # The CLI suite skips this test when the runtime is not built.
+      - name: 🧪 kody dev with mapped local deps
+        working-directory: packages/cli
+        env:
+          KODY_REQUIRE_DEV_RUNTIME: '1'
+          KODY_CLI_CREDENTIAL_STORE: file
+          KODY_SKIP_SKILL_REFRESH: '1'
+          KODY_SKIP_GIT_HELPER_REFRESH: '1'
+        run:
+          npx tsx --test --test-force-exit
+          test/dev-local-kody-mapped-deps.test.ts
+
   cli_windows:
-    # Windows execution contexts (kody daemon, host folders, Task Scheduler):
-    # x64 natively and Windows on Arm running the x64 workerd under emulation.
+    # Windows paths, shells, keyring, and installers (kody daemon, host
+    # folders, Task Scheduler, workerd binary): x64 natively and Windows on
+    # Arm running the x64 workerd under emulation.
     strategy:
       fail-fast: false
       matrix:
@@ -1038,13 +1151,15 @@ jobs:
           cache: npm
 
       - name: 📥 Install deps
-        run: npm ci
+        uses: ./.github/actions/npm-ci
 
-      - name: 🧪 CLI validate
-        run: npm run cli:validate
+      # The full CLI and desktop suites run once, on Linux. Windows runs
+      # only the path, shell, keyring, and installer tests.
+      - name: 🧪 CLI Windows tests
+        run: npm run test:windows -w @kodycodes/cli
 
-      - name: Desktop validate
-        run: npm run desktop:validate
+      - name: Desktop Windows tests
+        run: npm run test:windows -w @kodycodes/desktop
 
   validate:
     # Final merge gate stays on GitHub-hosted ubuntu-latest even when
@@ -1061,6 +1176,7 @@ jobs:
       - mcp
       - e2e
       - e2e_report
+      - ui_verify
       - cli
       - cli_windows
       - dev_runtime

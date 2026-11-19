@@ -46,7 +46,7 @@ test('seal workflow step returns a sealed day and does not retry an incomplete d
 		(error: unknown) =>
 			error instanceof NonRetryableError &&
 			error.message ===
-				'[d1-manifest-missing] Day 2026-09-22 is not ready to seal (d1-manifest-missing).',
+				'[paced-d1-seal-missing] Day 2026-09-22 is not ready to seal (paced-d1-seal-missing for production-db).',
 	)
 	assert.equal(engine.attempts, 1)
 	assert.deepEqual(engine.names, [sealDayStepName, sealDayStepName])
@@ -54,7 +54,7 @@ test('seal workflow step returns a sealed day and does not retry an incomplete d
 		.map((call) => JSON.parse(String(call[0])))
 		.find((log) => log.event === 'ui-seal-day')
 	assert.equal(operatorFailure?.status, 'failure')
-	assert.equal(operatorFailure?.errorCode, 'd1-manifest-missing')
+	assert.equal(operatorFailure?.errorCode, 'paced-d1-seal-missing')
 
 	await assert.rejects(
 		completeSealDay(env, 'not-a-day', async () => {

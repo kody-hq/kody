@@ -1,5 +1,6 @@
 import {
 	describeModuleSourceParseError,
+	loadModuleSourceParser,
 	moduleSourceParserPlugins,
 	parseModuleSource,
 	type ModuleAstNode,
@@ -107,13 +108,13 @@ function moduleImportNodesCacheKey(
 
 /**
  * One Babel parse + one AST walk for both literal import sites and dynamic
- * `import()` expressions. Callers that previously parsed twice for rewrite
- * should use this (or {@link collectModuleImportNodesCached}) instead.
+ * `import()` expressions. Callers that need both kinds of nodes should use
+ * this (or {@link collectModuleImportNodesCached}).
  */
-export function collectModuleImportNodes(
+export async function collectModuleImportNodes(
 	source: string,
 	options?: ModuleImportScanOptions,
-): CollectedModuleImportNodes {
+): Promise<CollectedModuleImportNodes> {
 	const literalImports: Array<LiteralImportNode> = []
 	const dynamicImportExpressions: Array<DynamicImportExpressionNode> = []
 
@@ -209,9 +210,10 @@ export function collectModuleImportNodes(
 		}
 	}
 
+	// A parser that fails to load is a broken build, not unparseable source.
+	await loadModuleSourceParser()
 	try {
-		const program = parseModuleSource(source, { filePath: options?.filePath })
-		visit(program)
+		visit(await parseModuleSource(source, { filePath: options?.filePath }))
 	} catch {
 		return { literalImports: [], dynamicImportExpressions: [] }
 	}
@@ -226,27 +228,27 @@ export function collectModuleImportNodes(
 	}
 }
 
-export function collectModuleImportNodesCached(
+export async function collectModuleImportNodesCached(
 	cache: ModuleImportNodesCache | undefined,
 	source: string,
 	options?: ModuleImportScanOptions,
-): CollectedModuleImportNodes {
+): Promise<CollectedModuleImportNodes> {
 	if (!cache) {
-		return collectModuleImportNodes(source, options)
+		return await collectModuleImportNodes(source, options)
 	}
 	const key = moduleImportNodesCacheKey(source, options)
 	const hit = cache.get(key)
 	if (hit) return hit
-	const nodes = collectModuleImportNodes(source, options)
+	const nodes = await collectModuleImportNodes(source, options)
 	cache.set(key, nodes)
 	return nodes
 }
 
-export function collectLiteralImportNodes(
+export async function collectLiteralImportNodes(
 	source: string,
 	options?: ModuleImportScanOptions,
-): Array<LiteralImportNode> {
-	return collectModuleImportNodes(source, options).literalImports
+): Promise<Array<LiteralImportNode>> {
+	return (await collectModuleImportNodes(source, options)).literalImports
 }
 
 const typeOnlyWrapperNodeTypes = new Set([
@@ -300,11 +302,11 @@ function readStaticSpecifierNode(wrapped: unknown): string | null {
  * are skipped. Returns null when the source does not parse, so callers can
  * fail closed instead of treating unparseable code as import-free.
  */
-export function collectBundlerResolvedSpecifiers(
+export async function collectBundlerResolvedSpecifiers(
 	source: string,
 	options?: { filePath?: string | null },
-): Array<string> | null {
-	const result = parseBundlerResolvedSpecifiers(source, options)
+): Promise<Array<string> | null> {
+	const result = await parseBundlerResolvedSpecifiers(source, options)
 	return result.ok ? result.specifiers : null
 }
 
@@ -312,15 +314,17 @@ export function collectBundlerResolvedSpecifiers(
  * {@link collectBundlerResolvedSpecifiers} with the parse error (line,
  * column, message) kept so callers can report why a module did not parse.
  */
-export function parseBundlerResolvedSpecifiers(
+export async function parseBundlerResolvedSpecifiers(
 	source: string,
 	options?: { filePath?: string | null },
-):
+): Promise<
 	| { ok: true; specifiers: Array<string> }
-	| { ok: false; error: ModuleSourceParseError } {
+	| { ok: false; error: ModuleSourceParseError }
+> {
+	await loadModuleSourceParser()
 	let program: unknown
 	try {
-		program = parseModuleSource(source, { filePath: options?.filePath })
+		program = await parseModuleSource(source, { filePath: options?.filePath })
 	} catch (error) {
 		return { ok: false, error: describeModuleSourceParseError(error) }
 	}
@@ -381,19 +385,19 @@ export function parseBundlerResolvedSpecifiers(
 	return { ok: true, specifiers }
 }
 
-export function collectLiteralImportSpecifiers(
+export async function collectLiteralImportSpecifiers(
 	source: string,
 	options?: ModuleImportScanOptions,
-): Array<string> {
-	return collectLiteralImportNodes(source, options).map(
+): Promise<Array<string>> {
+	return (await collectLiteralImportNodes(source, options)).map(
 		(node) => node.specifier,
 	)
 }
 
-export function collectDynamicImportExpressionNodes(
+export async function collectDynamicImportExpressionNodes(
 	source: string,
-): Array<DynamicImportExpressionNode> {
-	return collectModuleImportNodes(source).dynamicImportExpressions
+): Promise<Array<DynamicImportExpressionNode>> {
+	return (await collectModuleImportNodes(source)).dynamicImportExpressions
 }
 
 export function isBarePackageImportSpecifier(specifier: string) {
@@ -419,4 +423,13 @@ export function getBarePackageNameFromSpecifier(specifier: string) {
 		return `${scope}/${name}`
 	}
 	return specifier.split('/', 2)[0] ?? specifier
+}
+
+/**
+ * `kody:runtime` and `kody:@owner/package` exist only in source. A build
+ * rewrites every one to a module the loader supplies, so one left in a
+ * bundle is an import the loader cannot provide.
+ */
+export function isKodyVirtualImportSpecifier(specifier: string) {
+	return specifier.startsWith('kody:')
 }

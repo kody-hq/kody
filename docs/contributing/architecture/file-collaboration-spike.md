@@ -191,10 +191,17 @@ production foundation below adds the actual Kody bindings and entry points.
 
 `packages/worker/src/files/` adds the org-owned `FileStore` Durable Object. It
 owns the catalog, revision manifests, upload intents, deleted-id tombstones, and
-quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2
+quota decisions. Immutable content lives in the dedicated `FILE_BLOBS` R2 bucket
+by default; a configured provider can store it in an external R2 or Amazon S3
 bucket. The signed-in `/@org/-/files` page, `fileList`, `fileGet`, `fileCreate`,
-`fileWrite`, and `fileDelete` capabilities, and `/v1/files` API operations all
-use the same authorization service. File grants also work in profile snapshots.
+`fileWrite`, `pagePatch`, and `fileDelete` capabilities, and `/v1/files` API
+operations all use the same authorization service. Tree checks
+(`fileTreeAccess`) intersect restrictions down the ancestry: a missing file or
+parent is not-found, and a denial carries the authorizer's error rather than a
+generic sentence. File grants also work in profile snapshots. Workspace pages
+(`application/vnd.kody.page+json`) store typed blocks (text, numbered lists,
+callouts, Mermaid, collapse, contents, links, tables, and file embeds);
+`pagePatch` edits them by stable block id.
 
 The initial bounds are 64 files per org, 64 KiB of UTF-8 text per revision, and
 16 MiB per binary revision. All revisions count against the workspace allowance.
@@ -207,8 +214,14 @@ content returns the original revision, conflicting bases return both versions,
 and deleted ids cannot be reused. Upload intents reserve capacity before R2
 writes, allowing the same upload to recover after an interrupted commit. File
 resource grants use Kody's existing read, write, delete, and manage-access
-permissions. File metadata and revision bytes join account export, and account
-or org deletion purges the bucket prefix before clearing the catalog.
+permissions. The file access panel reuses `listResourceCollaborators` (the same
+subject projection as package collaborators; profile grants stay package-only).
+File metadata and revision bytes join account export:
+`collectAccountR2Inventory` lists FileStore keys (labeled `FILE_BLOBS`;
+`fileObjectReader` resolves each object's provider). Account or org deletion
+calls `FileStore.purge`, which deletes external-provider objects, then
+prefix-deletes `files:v1/{ownerId}/` in `FILE_BLOBS` before clearing the
+catalog.
 
 The page supports creating and uploading text, source editing, Markdown and
 isolated HTML previews, downloads, immutable history, restore as a new revision,

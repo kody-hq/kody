@@ -1,23 +1,17 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import type { FormEvent } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import type { AccountSecretDetail } from '#universal/loader-data.ts'
 import { Combobox, type ComboboxOption } from '../components/combobox.tsx'
 import { AllowedPackagesPicker } from '../components/allowed-packages-picker.tsx'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	getSelectCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldLabelCss } from '#universal/styles/style-primitives.ts'
 import { SecretEditorFields } from './secret-editor-fields.tsx'
 import {
 	MetadataGrid,
 	TimestampValue,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { recordBodyCss } from './record-table.tsx'
 import {
@@ -25,8 +19,7 @@ import {
 	type SecretScope,
 	formatRelativeTtl,
 } from './account-secrets-shared.ts'
-
-const selectCss = getSelectCss()
+import { Input, Select } from '../components/input.tsx'
 
 export type SecretEditorProps = {
 	isCreating: boolean
@@ -56,6 +49,8 @@ export type SecretEditorProps = {
 	removeAllowedHost: (index: number) => void
 	addAllowedPackage: (packageId: string) => void
 	removeAllowedPackage: (packageId: string) => void
+	/** Inline editors close without saving. */
+	onCancel?: () => void
 }
 
 export function SecretEditor(props: SecretEditorProps) {
@@ -87,6 +82,7 @@ export function SecretEditor(props: SecretEditorProps) {
 		removeAllowedHost,
 		addAllowedPackage,
 		removeAllowedPackage,
+		onCancel,
 	} = props
 	return (
 		<form
@@ -126,10 +122,18 @@ export function SecretEditor(props: SecretEditorProps) {
 					},
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Name</span>
-					<input
-						data-field-ring
+				<Field
+					label="Name"
+					description={
+						selectedSecret &&
+						!isCreating &&
+						editorState.name.trim() !== selectedSecret.name &&
+						editorState.scope === selectedSecret.scope
+							? `Renaming keeps this secret's id, value, grants, package credential mappings, and history. References by name do not follow: update {{secret:${selectedSecret.name}}} placeholders and code that names "${selectedSecret.name}" to the new name.`
+							: undefined
+					}
+				>
+					<Input
 						type="text"
 						required
 						value={editorState.name}
@@ -140,14 +144,11 @@ export function SecretEditor(props: SecretEditorProps) {
 								name: event.currentTarget.value,
 							})
 						}}
-						css={accountInputCss}
 					/>
-				</label>
+				</Field>
 
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Scope</span>
-					<select
-						data-field-ring
+				<Field label="Scope">
+					<Select
 						value={editorState.scope}
 						onChange={(event) => {
 							const scope = event.currentTarget.value as SecretScope
@@ -160,14 +161,13 @@ export function SecretEditor(props: SecretEditorProps) {
 										: '',
 							})
 						}}
-						css={selectCss}
 					>
 						<option value="user">User</option>
 						{canCreatePackageSecrets ? (
 							<option value="package">Package</option>
 						) : null}
-					</select>
-				</label>
+					</Select>
+				</Field>
 			</div>
 
 			{editorState.scope === 'package' ? (
@@ -278,20 +278,30 @@ export function SecretEditor(props: SecretEditorProps) {
 					flexWrap: 'wrap',
 				}}
 			>
-				<button
+				<Button
 					type="submit"
 					disabled={
 						isMutating ||
 						(editorState.scope === 'package' && !editorState.packageId)
 					}
-					css={primaryButtonCss}
+					variant="primary"
 				>
 					{saveState === 'saving' ? 'Saving...' : 'Save'}
-				</button>
+				</Button>
+				{onCancel ? (
+					<Button
+						type="button"
+						disabled={isMutating}
+						variant="secondary"
+						onClick={onCancel}
+					>
+						Cancel
+					</Button>
+				) : null}
 				{editorState.currentId ? (
 					<>
 						{disconnected ? null : (
-							<button
+							<Button
 								type="button"
 								disabled={isMutating}
 								aria-label={
@@ -304,7 +314,7 @@ export function SecretEditor(props: SecretEditorProps) {
 										? `Click again to clear the value for "${editorState.name}" and keep the record`
 										: `Clear the value for "${editorState.name}" but keep the record and placement. Distinct from Delete.`
 								}
-								css={secondaryButtonCss}
+								variant="secondary"
 								onBlur={onDisconnectReset}
 								onClick={() => {
 									if (disconnectArmed) {
@@ -318,9 +328,9 @@ export function SecretEditor(props: SecretEditorProps) {
 									: disconnectArmed
 										? 'Confirm disconnect'
 										: 'Disconnect'}
-							</button>
+							</Button>
 						)}
-						<button
+						<Button
 							type="button"
 							disabled={isMutating}
 							aria-label={
@@ -333,7 +343,7 @@ export function SecretEditor(props: SecretEditorProps) {
 									? `Click again to permanently delete "${editorState.name}"`
 									: `Permanently delete "${editorState.name}" and every record of it, including placement. Distinct from Disconnect.`
 							}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={onDeleteReset}
 							onClick={() => {
 								if (deleteArmed) {
@@ -347,14 +357,10 @@ export function SecretEditor(props: SecretEditorProps) {
 								: deleteArmed
 									? 'Confirm delete'
 									: 'Delete'}
-						</button>
+						</Button>
 					</>
 				) : null}
 			</div>
 		</form>
 	)
 }
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })

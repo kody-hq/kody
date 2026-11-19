@@ -74,6 +74,7 @@ import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	getPackageAppAnonymousRealtimeMode,
 	getPackageAppClientReadableCookieNames,
+	getPackageAppEntryPath,
 } from '#worker/package-registry/manifest.ts'
 import { loadServingPackageSourceBySourceId } from '#worker/package-registry/source.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
@@ -156,6 +157,16 @@ export type PackageAppPath = {
 	openHandoff?: boolean
 }
 
+/**
+ * App path below the package leaf. A trailing slash is part of the URL the
+ * visitor asked for, so it is forwarded as-is: an app that canonicalizes
+ * `/admin` to `/admin/` would otherwise redirect to itself forever.
+ */
+function packageAppRestPath(parts: Array<string>, pathname: string) {
+	if (parts.length === 0) return '/'
+	return `/${parts.join('/')}${pathname.endsWith('/') ? '/' : ''}`
+}
+
 export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 	const parts = pathname.split('/').filter(Boolean)
 	const rawUsername = parts[0]?.startsWith('@') ? parts[0].slice(1) : ''
@@ -177,7 +188,7 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
 	return {
 		username,
 		kodyId,
-		restPath: restParts.length > 0 ? `/${restParts.join('/')}` : '/',
+		restPath: packageAppRestPath(restParts, pathname),
 		mount: 'username-path',
 		...(openHandoff ? { openHandoff: true } : {}),
 	}
@@ -212,10 +223,7 @@ export function parsePackageAppSubdomainPath(input: {
 	return {
 		username: input.username,
 		kodyId,
-		restPath:
-			parts.length > leafIndex + 1
-				? `/${parts.slice(leafIndex + 1).join('/')}`
-				: '/',
+		restPath: packageAppRestPath(parts.slice(leafIndex + 1), input.pathname),
 		mount: 'user-subdomain',
 	}
 }
@@ -235,7 +243,7 @@ export function parsePackageAppCustomHostnamePath(input: {
 	return {
 		username: input.username,
 		kodyId: input.kodyId,
-		restPath: parts.length > 0 ? `/${parts.join('/')}` : '/',
+		restPath: packageAppRestPath(parts, pathname),
 		mount: 'custom-hostname',
 	}
 }
@@ -1021,6 +1029,9 @@ async function servePackageAppRequestWithId(input: {
 				slug: kodyId,
 			}),
 	)
+	// `hasApp` projects the published commit, and publish moves it before the
+	// serving commit advances, so it only rules packages out. The manifest at
+	// the commit actually served decides below whether an app answers.
 	if (!slugLookup || !slugLookup.savedPackage.hasApp) {
 		return attachPackageAppServerTiming(
 			new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
@@ -1186,12 +1197,20 @@ async function servePackageAppRequestWithId(input: {
 		}
 	}
 
+	// Anonymous visitors run the commit its owner approved for them (ADR
+	// 0069). A republish that asks for more is held, so that is the commit
+	// members run too; the pin only covers a cached approval that trails a
+	// serving advance.
+	const anonymousCommit = visitor
+		? null
+		: (input.approvedPublishedCommit ?? null)
 	const loadSourceFiles = async () => {
 		const packageSource = await loadServingPackageSourceBySourceId({
 			env,
 			baseUrl,
 			userId: owner.userId,
 			sourceId: savedPackage.sourceId,
+			commit: anonymousCommit,
 		})
 		return packageSource.files
 	}
@@ -1213,6 +1232,11 @@ async function servePackageAppRequestWithId(input: {
 			kodyId: urlSlug,
 		})
 		try {
+			const refusal = refuseUnapprovedAnonymousServe({
+				visitor,
+				approvedPublishedCommit: anonymousCommit,
+			})
+			if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 			const packageManifest = await pushServerTiming(
 				serverTiming,
 				'manifest',
@@ -1221,14 +1245,15 @@ async function servePackageAppRequestWithId(input: {
 						env,
 						userId: owner.userId,
 						sourceId: savedPackage.sourceId,
+						commit: anonymousCommit,
 					}),
 			)
-			const refusal = refuseUnapprovedAnonymousServe({
-				visitor,
-				approvedPublishedCommit: input.approvedPublishedCommit,
-				publishedCommit: packageManifest.source.published_commit,
-			})
-			if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
+			if (!getPackageAppEntryPath(packageManifest.manifest)) {
+				return attachPackageAppServerTiming(
+					new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+					serverTiming,
+				)
+			}
 			return attachPackageAppServerTiming(
 				await pushServerTiming(serverTiming, 'assets', () =>
 					servePackageAppAssetRequest({
@@ -1311,12 +1336,18 @@ async function servePackageAppRequestWithId(input: {
 		)
 		// Settled below or abandoned on refusal; never an unhandled rejection.
 		suppliersEnabledPending.catch(() => {})
+		const refusal = refuseUnapprovedAnonymousServe({
+			visitor,
+			approvedPublishedCommit: anonymousCommit,
+		})
+		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 		const [packageManifest, callerContext] = await Promise.all([
 			pushServerTiming(serverTiming, 'manifest', () =>
 				loadInvokeManifestBySourceId({
 					env,
 					userId: owner.userId,
 					sourceId: savedPackage.sourceId,
+					commit: anonymousCommit,
 				}),
 			),
 			pushServerTiming(serverTiming, 'billing', () =>
@@ -1336,15 +1367,15 @@ async function servePackageAppRequestWithId(input: {
 				}),
 			),
 		])
+		if (!getPackageAppEntryPath(packageManifest.manifest)) {
+			return attachPackageAppServerTiming(
+				new Response(buildPackageAppNotFoundMessage(), { status: 404 }),
+				serverTiming,
+			)
+		}
 		clientReadableCookieNames = getPackageAppClientReadableCookieNames(
 			packageManifest.manifest,
 		)
-		const refusal = refuseUnapprovedAnonymousServe({
-			visitor,
-			approvedPublishedCommit: input.approvedPublishedCommit,
-			publishedCommit: packageManifest.source.published_commit,
-		})
-		if (refusal) return attachPackageAppServerTiming(refusal, serverTiming)
 		const suppliersEnabled = await suppliersEnabledPending
 		const visitorNeeds = suppliersEnabled
 			? savedCredentialNeeds(
@@ -1353,6 +1384,8 @@ async function servePackageAppRequestWithId(input: {
 							env,
 							userId: owner.userId,
 							sourceId: savedPackage.sourceId,
+							// Every visitor gets the needs of the commit they run.
+							source: packageManifest.source,
 							request: callerContext.request,
 						}),
 					),
@@ -1507,6 +1540,7 @@ async function servePackageAppRequestWithId(input: {
 			source: packageManifest.source,
 			manifest: packageManifest.manifest,
 			loadSourceFiles,
+			pinnedCommit: anonymousCommit,
 			serverTiming,
 			runtime: {
 				callerContext,

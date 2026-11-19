@@ -33,8 +33,10 @@ const csrfAppEntry = `export default {
 }
 `
 
+// Sends the Host a browser on `hostedUrl` would, over the loopback address:
+// Node cannot resolve `*.localhost` on every platform.
 function proxyRequest(
-	hostedUrl: string,
+	server: { hostedUrl: string; localUrl: string },
 	input: {
 		method: string
 		path: string
@@ -42,14 +44,14 @@ function proxyRequest(
 		body?: string
 	},
 ): Promise<{ status: number; body: string }> {
-	const url = new URL(input.path, hostedUrl)
+	const url = new URL(input.path, server.localUrl)
 	return new Promise((resolve, reject) => {
 		const req = httpRequest(
 			url,
 			{
 				method: input.method,
 				headers: {
-					host: url.host,
+					host: new URL(server.hostedUrl).host,
 					...input.headers,
 				},
 			},
@@ -73,7 +75,7 @@ function proxyRequest(
 test('kody dev request.url uses the trusted listen origin', async () => {
 	await withDevServer(
 		async ({ server }) => {
-			const response = await proxyRequest(server.hostedUrl, {
+			const response = await proxyRequest(server, {
 				method: 'GET',
 				path: '/',
 			})
@@ -101,7 +103,7 @@ test('same-origin POST passes app CSRF; cross-origin POST gets 403', async () =>
 	await withDevServer(
 		async ({ server }) => {
 			const origin = new URL(server.hostedUrl).origin
-			const same = await proxyRequest(server.hostedUrl, {
+			const same = await proxyRequest(server, {
 				method: 'POST',
 				path: '/form',
 				headers: {
@@ -113,7 +115,7 @@ test('same-origin POST passes app CSRF; cross-origin POST gets 403', async () =>
 			assert.equal(same.status, 200)
 			assert.equal(same.body, 'ok')
 
-			const cross = await proxyRequest(server.hostedUrl, {
+			const cross = await proxyRequest(server, {
 				method: 'POST',
 				path: '/form',
 				headers: {
@@ -124,6 +126,25 @@ test('same-origin POST passes app CSRF; cross-origin POST gets 403', async () =>
 			})
 			assert.equal(cross.status, 403)
 			assert.equal(cross.body, 'csrf')
+
+			// The loopback address is the same app: it is presented on the app's
+			// origin, so a same-origin POST from there still passes.
+			const loopback = {
+				hostedUrl: server.localUrl,
+				localUrl: server.localUrl,
+			}
+			const viaLoopback = await proxyRequest(loopback, {
+				method: 'POST',
+				path: '/form',
+				headers: {
+					origin: server.localUrl,
+					'content-type': 'application/x-www-form-urlencoded',
+				},
+				body: 'a=1',
+			})
+			assert.equal(viaLoopback.status, 200)
+			const seen = await proxyRequest(loopback, { method: 'GET', path: '/' })
+			assert.equal((JSON.parse(seen.body) as { origin: string }).origin, origin)
 		},
 		{
 			prepare: async (root) => {
@@ -136,7 +157,7 @@ test('same-origin POST passes app CSRF; cross-origin POST gets 403', async () =>
 test('unrecognized Host is rejected before the package app runs', async () => {
 	await withDevServer(
 		async ({ server }) => {
-			const url = new URL(server.hostedUrl)
+			const url = new URL(server.localUrl)
 			const rejected = await new Promise<{ status: number; body: string }>(
 				(resolve, reject) => {
 					const req = httpRequest(

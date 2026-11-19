@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { writeClipboardText } from '#client/clipboard.ts'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
@@ -14,9 +16,6 @@ import {
 	fieldCss,
 	fieldLabelCss,
 	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
@@ -26,12 +25,12 @@ import { useState, type FormEvent } from 'react'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementShell,
 	AccountPageHeader,
 	TimestampValue,
 } from './account-management-components.tsx'
+import { Input, Textarea } from '../components/input.tsx'
 
 type CreatedClient = AccountMcpOauthClientsLoaderData['clients'][number] & {
 	clientSecret: string
@@ -80,10 +79,6 @@ export function AccountMcpOauthClientsPage({
 	})
 
 	const [revokeArmed, setRevokeArmed] = useState<string | null>(null)
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-
-	const ghostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	async function handleCreate(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault()
@@ -198,10 +193,8 @@ export function AccountMcpOauthClientsPage({
 								gap: spacing.md,
 							}}
 						>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Label</span>
-								<input
-									data-field-ring
+							<Field label="Label">
+								<Input
 									type="text"
 									value={labelDraft}
 									maxLength={80}
@@ -211,13 +204,10 @@ export function AccountMcpOauthClientsPage({
 											(event.currentTarget as HTMLInputElement).value,
 										)
 									}}
-									css={accountInputCss}
 								/>
-							</label>
-							<label css={fieldCss}>
-								<span css={fieldLabelCss}>Redirect URIs</span>
-								<textarea
-									data-field-ring
+							</Field>
+							<Field label="Redirect URIs">
+								<Textarea
 									rows={3}
 									value={redirectUrisDraft}
 									disabled={isBusy}
@@ -228,16 +218,15 @@ export function AccountMcpOauthClientsPage({
 										)
 									}}
 									css={{
-										...accountInputCss,
 										minHeight: '5.5rem',
 										resize: 'vertical',
 									}}
 								/>
-							</label>
+							</Field>
 							<div>
-								<button type="submit" disabled={isBusy} css={primaryButtonCss}>
+								<Button type="submit" disabled={isBusy} variant="primary">
 									{isBusy ? 'Working…' : 'Create client'}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</section>
@@ -265,26 +254,24 @@ export function AccountMcpOauthClientsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<input
-										data-field-ring
+									<Input
 										type="text"
 										value={createdClient.clientId}
 										readOnly
 										{...passwordManagerIgnoreProps}
 										css={{
-											...accountInputCss,
 											flex: '1 1 16rem',
 										}}
 									/>
-									<button
+									<Button
 										type="button"
 										onClick={() => {
 											void copyValue(createdClient!.clientId, 'client ID')
 										}}
-										css={ghostButtonCss}
+										variant="secondary"
 									>
 										Copy
-									</button>
+									</Button>
 								</div>
 							</label>
 							<label css={fieldCss}>
@@ -297,18 +284,16 @@ export function AccountMcpOauthClientsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<input
-										data-field-ring
+									<Input
 										type="password"
 										value={createdClient.clientSecret}
 										readOnly
 										{...passwordManagerIgnoreProps}
 										css={{
-											...accountInputCss,
 											flex: '1 1 16rem',
 										}}
 									/>
-									<button
+									<Button
 										type="button"
 										onClick={() => {
 											void copyValue(
@@ -316,10 +301,10 @@ export function AccountMcpOauthClientsPage({
 												'client secret',
 											)
 										}}
-										css={ghostButtonCss}
+										variant="secondary"
 									>
 										Copy
-									</button>
+									</Button>
 								</div>
 							</label>
 						</section>
@@ -404,10 +389,10 @@ export function AccountMcpOauthClientsPage({
 											</p>
 										</div>
 										{client.revokedAt ? null : (
-											<button
+											<Button
 												type="button"
 												disabled={isBusy}
-												css={dangerButtonCss}
+												variant="danger"
 												onBlur={() => setRevokeArmed(null)}
 												onClick={() => {
 													if (revokeArmed === client.id) {
@@ -417,7 +402,7 @@ export function AccountMcpOauthClientsPage({
 												}}
 											>
 												{revokeArmed === client.id ? 'Revoke now' : 'Revoke'}
-											</button>
+											</Button>
 										)}
 									</li>
 								))}

@@ -1,17 +1,25 @@
 /** @jsxImportSource @emotion/react */
+import { permanentHandleInputProps } from '#client/handle-field.ts'
+import { Badge } from '../components/badge.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import {
-	getHandleFormatError,
+	getHandleFormatProblem,
 	handleFormatHint,
 	suggestHandle,
 } from '@kody-internal/shared/handle-rules.ts'
-import { permanentHandleInputProps } from '#client/handle-field.ts'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from '../components/handle-suggestion.tsx'
+
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import {
 	usePendingInviteActions,
 	renderPendingInviteActions,
 	type PendingInviteActions,
 } from './pending-invite-actions.tsx'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -51,19 +59,17 @@ import {
 	AccountManagementShell,
 	AccountManagementPanel,
 	AccountPageHeader,
-	accountInputCss,
 	AccountManagementMessage,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
 import {
-	getPillButtonCss,
-	getGhostButtonCss,
 	hoverMq,
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 export function OrganizationsPage({
 	data,
 }: {
@@ -79,13 +85,13 @@ export function OrganizationsPage({
 				description="Each organization has its own repositories, secrets, and members. Open one to work in it, or switch from your avatar menu. Deleted organizations you owned can be restored here for 30 days."
 				currentHref={pageLocation.href}
 				actions={
-					<SiteLink
+					<Button
 						href={routes.accountOrganizationsNew.href()}
 						data-testid="account-organizations-create"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 					>
 						{renderIcon('plus', { size: '1.05rem' })}Create organization
-					</SiteLink>
+					</Button>
 				}
 			/>
 			<AccountManagementPanel
@@ -129,19 +135,19 @@ export function OrganizationsPage({
 								pills: [{ label: 'Deleted', tone: 'quiet' }],
 								testId: 'restorable-organization',
 								trailing: (
-									<button
+									<Button
 										type="button"
 										data-testid="restore-organization"
 										aria-label={`Restore @${org.slug}`}
 										disabled={restore.isPending}
-										css={getPillButtonCss({ size: 'sm' })}
+										variant="primary"
 										onClick={() => restore.submit(org.slug)}
 									>
 										{restore.isPending &&
 										restore.variables?.orgSlug === org.slug
 											? 'Restoring…'
 											: 'Restore'}
-									</button>
+									</Button>
 								),
 							}),
 						)}
@@ -186,7 +192,12 @@ function CreateOrganizationForm() {
 	const [clientError, setClientError] = useState<{
 		message: string
 		field: 'displayName' | 'slug'
+		suggestion?: string | null
 	} | null>(null)
+	const slugInputRef = useRef<HTMLInputElement>(null)
+	const slugSuggestion = useVerifiedHandleSuggestion(
+		clientError?.field === 'slug' ? (clientError.suggestion ?? null) : null,
+	)
 	const restore = useOrganizationRestore()
 	const [restorableSlug, setRestorableSlug] = useState<string | null>(
 		draft.get('restorableSlug'),
@@ -244,6 +255,21 @@ function CreateOrganizationForm() {
 							createError ??
 							mutation.error?.message ??
 							draft.get('error')}
+						{clientError?.field === 'slug' ? (
+							<HandleSuggestion
+								suggestion={slugSuggestion}
+								disabled={mutation.isPending}
+								onApply={(suggestion) => {
+									slugInputRef.current?.focus()
+									setSlug(suggestion)
+									setSlugEdited(true)
+									setClientError(null)
+									setRestorableSlug(null)
+									setCreateError(null)
+									setConfirming(false)
+								}}
+							/>
+						) : null}
 					</span>
 				</AccountManagementMessage>
 			) : null}
@@ -254,14 +280,14 @@ function CreateOrganizationForm() {
 			) : null}
 			{restorableSlug ? (
 				<div css={accountActionsCss} data-testid="create-org-restore">
-					<button
+					<Button
 						type="button"
 						disabled={restore.isPending || mutation.isPending}
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={() => restore.submit(restorableSlug)}
 					>
 						{restore.isPending ? 'Restoring…' : `Restore @${restorableSlug}`}
-					</button>
+					</Button>
 				</div>
 			) : null}
 			<AccountManagementPanel title="Details">
@@ -280,11 +306,15 @@ function CreateOrganizationForm() {
 							setConfirming(false)
 							return
 						}
-						const error = getHandleFormatError(slug.trim(), {
+						const slugProblem = getHandleFormatProblem(slug.trim(), {
 							label: 'Handle',
 						})
-						if (error) {
-							setClientError({ message: error, field: 'slug' })
+						if (slugProblem) {
+							setClientError({
+								message: slugProblem.message,
+								field: 'slug',
+								suggestion: slugProblem.suggestion,
+							})
 							setConfirming(false)
 							return
 						}
@@ -314,11 +344,11 @@ function CreateOrganizationForm() {
 					}}
 					css={formCss}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Name</span>
-						<input
-							data-field-ring
-							css={accountInputCss}
+					<Field
+						label="Name"
+						description="Shown in the header and to members. You can change it later."
+					>
+						<Input
 							name="displayName"
 							aria-invalid={clientError?.field === 'displayName' || undefined}
 							aria-describedby={
@@ -340,18 +370,15 @@ function CreateOrganizationForm() {
 								}
 							}}
 						/>
-						<p css={accountFieldNoteCss}>
-							Shown in the header and to members. You can change it later.
-						</p>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Handle</span>
+					</Field>
+					<label css={fieldCss}>
+						<span css={fieldLabelCss}>Handle</span>
 						<span css={slugFieldCss}>
 							<span aria-hidden="true" css={slugPrefixCss}>
 								kody.codes/@
 							</span>
-							<input
-								data-field-ring
+							<Input
+								ref={slugInputRef}
 								css={slugInputCss}
 								aria-describedby={[
 									'create-organization-slug-note',
@@ -375,7 +402,7 @@ function CreateOrganizationForm() {
 								required
 							/>
 						</span>
-						<p id="create-organization-slug-note" css={accountFieldNoteCss}>
+						<p id="create-organization-slug-note" css={fieldDescriptionCss}>
 							{handleFormatHint} {handlePermanentNote} Your organization's URL
 							will be{' '}
 							<strong data-testid="create-organization-url-preview">
@@ -395,7 +422,7 @@ function CreateOrganizationForm() {
 					/>
 					{confirming ? (
 						<p
-							css={accountFieldNoteCss}
+							css={fieldDescriptionCss}
 							role="status"
 							data-testid="create-organization-confirm"
 						>
@@ -405,23 +432,20 @@ function CreateOrganizationForm() {
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							disabled={mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{mutation.isPending
 								? 'Creating…'
 								: confirming
 									? 'Yes, create organization'
 									: 'Create organization'}
-						</button>
-						<SiteLink
-							href="/account/organizations"
-							css={getGhostButtonCss({ size: 'sm' })}
-						>
+						</Button>
+						<Button href="/account/organizations" variant="secondary">
 							Cancel
-						</SiteLink>
+						</Button>
 					</div>
 				</form>
 			</AccountManagementPanel>
@@ -476,12 +500,12 @@ function renderOrgRow(input: {
 			{input.pills.length > 0 ? (
 				<span css={orgRowPillsCss}>
 					{input.pills.map((pill) => (
-						<span
+						<Badge
 							key={pill.label}
-							css={pill.tone === 'accent' ? accentPillCss : quietPillCss}
+							tone={pill.tone === 'accent' ? 'accent' : 'neutral'}
 						>
 							{pill.label}
-						</span>
+						</Badge>
 					))}
 				</span>
 			) : null}
@@ -644,29 +668,6 @@ const orgRowPillsCss: CSSObject = {
 	flexShrink: 0,
 }
 
-const pillBaseCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	fontSize: '0.8rem',
-	fontWeight: 600,
-	lineHeight: 1.4,
-	borderRadius: radius.full,
-	padding: '0.1rem 0.6rem',
-	whiteSpace: 'nowrap' as const,
-}
-
-const accentPillCss: CSSObject = {
-	...pillBaseCss,
-	color: colors.primaryText,
-	backgroundColor: colors.primarySoft,
-}
-
-const quietPillCss: CSSObject = {
-	...pillBaseCss,
-	color: colors.textMuted,
-	boxShadow: `inset 0 0 0 1px ${colors.border}`,
-}
-
 const orgRowChevronCss: CSSObject = {
 	display: 'inline-flex',
 	flexShrink: 0,
@@ -698,7 +699,6 @@ const slugPrefixCss: CSSObject = {
 }
 
 const slugInputCss: CSSObject = {
-	...accountInputCss,
 	flex: '1 1 auto',
 	minWidth: 0,
 	borderTopLeftRadius: 0,

@@ -5,16 +5,20 @@ import { expect, test, vi } from 'vitest'
 import {
 	pacedD1RetentionTierForDay,
 	pacedD1SealedDataKey,
+	pacedD1SealedDataPartKey,
 	pacedD1SealedIndexKey,
+	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
 	pacedD1StagingDataKey,
 	pacedD1StagingDataPartKey,
+	pacedD1StagingIndexKey,
 	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
 	pacedD1StagingProgressKey,
 	parsePacedD1NightManifest,
 	parsePacedD1ProgressCursor,
 } from '@kody-internal/shared/backup-d1-paced.ts'
+import { sha256HexOfText } from '@kody-internal/shared/backup-d1-paced-encode.ts'
 import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
@@ -33,6 +37,10 @@ import {
 	shouldRunD1PacedFreshnessCron,
 	shouldRunD1PacedRestoreDrillCron,
 } from '#worker/dr/d1-paced-backup.ts'
+import {
+	D1PacedBackupLeaseLostError,
+	claimD1PacedBackupLease,
+} from '#worker/dr/d1-paced-backup-lease.ts'
 import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
 import {
 	D1PacedRestoreDrillError,
@@ -43,7 +51,10 @@ import {
 	readLatestD1PacedRestoreDrill,
 	setD1PacedRestoreDrillSourceActive,
 } from '#worker/dr/d1-paced-restore-drill-progress.ts'
-import { collectD1PacedStatus } from '#worker/dr/d1-paced-status.ts'
+import {
+	collectD1PacedStatus,
+	handleD1PacedForceFullBaseRequest,
+} from '#worker/dr/d1-paced-status.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 
 const day = '2026-10-24'
@@ -121,6 +132,18 @@ function seedSqlite(rowCount = 3) {
 	return sqlite
 }
 
+/** APP_DB holds the scheduled lane leases the paced backup tick claims. */
+function createAppD1(sqlite: DatabaseSync) {
+	sqlite.exec(`
+		CREATE TABLE scheduled_lane_leases (
+			lane TEXT PRIMARY KEY,
+			holder TEXT NOT NULL,
+			expires_at TEXT NOT NULL
+		);
+	`)
+	return createD1FromSqlite(sqlite)
+}
+
 function sourcesJson(
 	entries: Array<{ binding: string; name: string; id: string }>,
 ) {
@@ -138,7 +161,7 @@ function createEnv(overrides: Record<string, unknown> = {}) {
 		DR_D1_PACED_SOURCES: sourcesJson([
 			{ binding: 'APP_DB', name: 'kody', id: appId },
 		]),
-		APP_DB: createD1FromSqlite(seedSqlite()),
+		APP_DB: createAppD1(seedSqlite()),
 		AUDIT_DB: createD1FromSqlite(seedSqlite(1)),
 		...overrides,
 	} as unknown as Env
@@ -240,7 +263,7 @@ test('one full night writes a shadow staging manifest and seals it', async () =>
 		skipped: false,
 		manifestsWritten: 1,
 		nightsSealed: 1,
-		tablesCompleted: 1,
+		tablesCompleted: 2,
 		day,
 	})
 	const raw = await client.getText(pacedD1StagingManifestKey(day, 'kody'))
@@ -248,7 +271,10 @@ test('one full night writes a shadow staging manifest and seals it', async () =>
 	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
 	expect(manifest.shadow).toBe(true)
 	expect(manifest.databaseId).toBe(appId)
-	expect(Object.keys(manifest.tables)).toEqual(['items'])
+	expect(Object.keys(manifest.tables)).toEqual([
+		'items',
+		'scheduled_lane_leases',
+	])
 	expect(manifest.tables.items?.mode).toBe('full')
 	expect(manifest.tables.items?.count).toBe(3)
 	// Finalize always leaves a parts pointer (never a monolithic TSV body).
@@ -308,7 +334,7 @@ test('byte-capped part flush keeps buffer bounded and resumes after crash', asyn
 			.run(`i${i}`, body)
 	}
 	const env = createEnv({
-		APP_DB: createD1FromSqlite(sqlite),
+		APP_DB: createAppD1(sqlite),
 	})
 	let peakBuffered = 0
 	const partMaxBytes = 8_000
@@ -400,7 +426,7 @@ test('full base past the old 8 MiB tick cap finishes in one tick with bounded pa
 	expect(rowCount * body.length).toBeLessThan(d1PacedBackupTickByteBudget)
 
 	const result = await runD1PacedBackupTick({
-		env: createEnv({ APP_DB: createD1FromSqlite(sqlite) }),
+		env: createEnv({ APP_DB: createAppD1(sqlite) }),
 		now: at('01:00'),
 		s3: client,
 		walkerOpts: { minGapMs: 0, sleep: async () => {} },
@@ -428,7 +454,7 @@ test('full base past the old 8 MiB tick cap finishes in one tick with bounded pa
 test('resume mid-table continues from lastRowid across ticks', async () => {
 	const { client, objects } = createMemoryS3()
 	const env = createEnv({
-		APP_DB: createD1FromSqlite(seedSqlite(6)),
+		APP_DB: createAppD1(seedSqlite(6)),
 	})
 	let nowMs = 0
 	const first = await runD1PacedBackupTick({
@@ -543,7 +569,7 @@ test('seal resume skips already-sealed tables instead of re-verifying them', asy
 		.prepare(`INSERT INTO _rate_limits (key, count) VALUES (?, ?)`)
 		.run('x', 1)
 	const env = createEnv({
-		APP_DB: createD1FromSqlite(sqlite),
+		APP_DB: createAppD1(sqlite),
 	})
 	await runD1PacedBackupTick({
 		env,
@@ -600,7 +626,7 @@ test('seal resume skips already-sealed tables instead of re-verifying them', asy
 	})
 	expect(finished).toMatchObject({
 		complete: true,
-		tablesSealed: 2,
+		tablesSealed: 3,
 	})
 	expect(objects.has(notesDataKey)).toBe(true)
 	expect(objects.has(notesIndexKey)).toBe(true)
@@ -616,7 +642,7 @@ test('catch-up seeds today after finishing a stranded older night', async () => 
 	const { client } = createMemoryS3()
 	const olderDay = '2026-10-23'
 	const env = createEnv({
-		APP_DB: createD1FromSqlite(seedSqlite(4)),
+		APP_DB: createAppD1(seedSqlite(4)),
 	})
 	let nowMs = 0
 	const stranded = await runD1PacedBackupTick({
@@ -663,7 +689,7 @@ test('catch-up seeds today after finishing a stranded older night', async () => 
 test('delta night reuses previous staging manifest and index', async () => {
 	const { client } = createMemoryS3()
 	const sqlite = seedSqlite(2)
-	const env = createEnv({ APP_DB: createD1FromSqlite(sqlite) })
+	const env = createEnv({ APP_DB: createAppD1(sqlite) })
 	const baseDay = '2026-10-23' // Friday
 	const nextDay = '2026-10-24' // Saturday — daily / delta (Sunday forces full)
 	await runD1PacedBackupTick({
@@ -785,7 +811,7 @@ async function sealTwoSourcesForDrill() {
 	const { client } = createMemoryS3()
 	const appSqlite = seedSqlite()
 	const env = createEnv({
-		APP_DB: createD1FromSqlite(appSqlite),
+		APP_DB: createAppD1(appSqlite),
 		DR_D1_PACED_SOURCES: sourcesJson([
 			{ binding: 'APP_DB', name: 'kody', id: appId },
 			{ binding: 'AUDIT_DB', name: 'kody-audit', id: auditId },
@@ -816,7 +842,7 @@ const sundayAt = (time: string) => new Date(`2026-10-25T${time}:00.000Z`)
 test('restore drill verifies sealed night against live counts', async () => {
 	const { client } = createMemoryS3()
 	const appSqlite = seedSqlite()
-	const env = createEnv({ APP_DB: createD1FromSqlite(appSqlite) })
+	const env = createEnv({ APP_DB: createAppD1(appSqlite) })
 	await runD1PacedBackupTick({
 		env,
 		now: at('01:00'),
@@ -1038,7 +1064,7 @@ test('paced status reports staging and sealed presence', async () => {
 	const { client } = createMemoryS3()
 	const appSqlite = seedSqlite()
 	applyDrillProgressMigration(appSqlite)
-	const env = createEnv({ APP_DB: createD1FromSqlite(appSqlite) })
+	const env = createEnv({ APP_DB: createAppD1(appSqlite) })
 	expect(
 		await collectD1PacedStatus({ env, now: at('01:00'), s3: client }),
 	).toMatchObject({
@@ -1071,4 +1097,379 @@ test('paced status reports staging and sealed presence', async () => {
 		sealedPresent: true,
 		bound: true,
 	})
+})
+
+function seedWideItems(rowCount: number) {
+	const sqlite = new DatabaseSync(':memory:')
+	sqlite.exec(
+		`CREATE TABLE items (id TEXT PRIMARY KEY NOT NULL, body TEXT NOT NULL);`,
+	)
+	for (let i = 1; i <= rowCount; i += 1) {
+		sqlite
+			.prepare(`INSERT INTO items (id, body) VALUES (?, ?)`)
+			.run(`i${i}`, 'x'.repeat(2000))
+	}
+	return sqlite
+}
+
+function gate() {
+	let open!: () => void
+	const opened = new Promise<void>((resolve) => (open = resolve))
+	return { open, opened }
+}
+
+/** A tick that stops inside its first page until `resume.open()` is called. */
+function startPausedTick(input: {
+	env: Env
+	client: DrBackupS3Client
+	now: Date
+	pageSize: number
+}) {
+	const paused = gate()
+	const resume = gate()
+	let pages = 0
+	const tick = runD1PacedBackupTick({
+		env: input.env,
+		now: input.now,
+		s3: input.client,
+		partMaxBytes: 8_000,
+		walkerOpts: {
+			minPage: input.pageSize,
+			maxPage: input.pageSize,
+			minGapMs: 0,
+			sleep: async () => {},
+			onPage: async () => {
+				pages += 1
+				if (pages !== 1) return
+				paused.open()
+				await resume.opened
+			},
+		},
+	})
+	return { tick, paused: paused.opened, resume: resume.open }
+}
+
+async function runNightToSeal(input: {
+	env: Env
+	client: DrBackupS3Client
+	day: string
+}) {
+	for (let minute = 10; minute < 20; minute += 1) {
+		const result = await runD1PacedBackupTick({
+			env: input.env,
+			now: new Date(`${input.day}T01:${minute}:00.000Z`),
+			s3: input.client,
+			partMaxBytes: 8_000,
+			walkerOpts: { ...fastWalker, minPage: 2, maxPage: 2 },
+		})
+		if (result.nightsSealed > 0 || result.reason === 'already-complete') return
+	}
+	throw new Error(`night ${input.day} did not seal`)
+}
+
+async function drillItems(input: {
+	env: Env
+	client: DrBackupS3Client
+	day: string
+}) {
+	await runD1PacedRestoreDrillTick({
+		env: input.env,
+		now: new Date('2026-11-01T07:05:00.000Z'),
+		s3: input.client,
+		day: input.day,
+	}).catch(() => {})
+	const run = await readLatestD1PacedRestoreDrill(input.env.APP_DB)
+	return run?.sources[0]?.tables.find((table) => table.table === 'items')
+}
+
+test('a second backup tick skips while the first still holds the lane', async () => {
+	const { client } = createMemoryS3()
+	const sqlite = seedWideItems(40)
+	const env = createEnv({ APP_DB: createAppD1(sqlite) })
+	const baseDay = '2026-10-25'
+	const deltaDay = '2026-10-26'
+
+	const first = startPausedTick({
+		env,
+		client,
+		now: new Date(`${baseDay}T01:00:00.000Z`),
+		pageSize: 3,
+	})
+	await first.paused
+	const overlapping = await runD1PacedBackupTick({
+		env,
+		now: new Date(`${baseDay}T01:00:01.000Z`),
+		s3: client,
+		partMaxBytes: 8_000,
+		walkerOpts: { ...fastWalker, minPage: 2, maxPage: 2 },
+	})
+	expect(overlapping).toMatchObject({ skipped: true, reason: 'lease-held' })
+	first.resume()
+	await first.tick
+
+	await runNightToSeal({ env, client, day: baseDay })
+	await runNightToSeal({ env, client, day: deltaDay })
+	applyDrillProgressMigration(sqlite)
+	expect(await drillItems({ env, client, day: deltaDay })).toMatchObject({
+		manifestCount: 40,
+		restoredCount: 40,
+		ok: true,
+	})
+})
+
+test('a tick that outlived its lease stops before writing over the tick that took the lane', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		const { client } = createMemoryS3()
+		const sqlite = seedWideItems(40)
+		const env = createEnv({ APP_DB: createAppD1(sqlite) })
+		const baseDay = '2026-10-25'
+		const deltaDay = '2026-10-26'
+		vi.setSystemTime(new Date(`${baseDay}T01:00:00.000Z`))
+
+		const stale = startPausedTick({
+			env,
+			client,
+			now: new Date(`${baseDay}T01:00:00.000Z`),
+			pageSize: 3,
+		})
+		await stale.paused
+		// The stale tick hangs past its lease, so the next tick takes the lane
+		// and writes the same table from the same starting progress.
+		vi.setSystemTime(new Date(`${baseDay}T01:05:00.000Z`))
+		let pages = 0
+		const takeover = await runD1PacedBackupTick({
+			env,
+			now: new Date(`${baseDay}T01:05:00.000Z`),
+			s3: client,
+			partMaxBytes: 8_000,
+			walkerOpts: {
+				...fastWalker,
+				minPage: 2,
+				maxPage: 2,
+				onPage: () => {
+					pages += 1
+				},
+				shouldStop: () => pages >= 4,
+			},
+		})
+		expect(takeover).toMatchObject({ skipped: false, tablesCompleted: 0 })
+
+		stale.resume()
+		await expect(stale.tick).rejects.toBeInstanceOf(D1PacedBackupLeaseLostError)
+
+		await runNightToSeal({ env, client, day: baseDay })
+		vi.setSystemTime(new Date(`${deltaDay}T01:00:00.000Z`))
+		await runNightToSeal({ env, client, day: deltaDay })
+		const manifest = parsePacedD1NightManifest(
+			JSON.parse(
+				(await client.getText(pacedD1StagingManifestKey(deltaDay, 'kody')))!
+					.text,
+			),
+		)
+		expect(manifest.tables.items).toMatchObject({ count: 40, deletes: 0 })
+		applyDrillProgressMigration(sqlite)
+		expect(await drillItems({ env, client, day: deltaDay })).toMatchObject({
+			manifestCount: 40,
+			restoredCount: 40,
+			ok: true,
+		})
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+/**
+ * Repeat the last `items` part of a night as one more part, with the parts
+ * pointer and night manifest digests rewritten to match: the artifact shape
+ * two overlapping ticks used to leave behind.
+ */
+async function repeatLastItemsPart(input: {
+	objects: Map<string, { bytes: Uint8Array; etag: string }>
+	day: string
+	location: 'staging' | 'sealed'
+}) {
+	const tier = pacedD1RetentionTierForDay(input.day)
+	const sealed = input.location === 'sealed'
+	const keys = {
+		manifest: sealed
+			? pacedD1SealedManifestKey(tier, appId, input.day)
+			: pacedD1StagingManifestKey(input.day, 'kody'),
+		data: sealed
+			? pacedD1SealedDataKey(tier, appId, input.day, 'items')
+			: pacedD1StagingDataKey(input.day, 'kody', 'items'),
+		index: sealed
+			? pacedD1SealedIndexKey(tier, appId, input.day, 'items')
+			: pacedD1StagingIndexKey(input.day, 'kody', 'items'),
+		dataPart: (part: number) =>
+			sealed
+				? pacedD1SealedDataPartKey(tier, appId, input.day, 'items', part)
+				: pacedD1StagingDataPartKey(input.day, 'kody', 'items', part),
+		indexPart: (part: number) =>
+			sealed
+				? pacedD1SealedIndexPartKey(tier, appId, input.day, 'items', part)
+				: pacedD1StagingIndexPartKey(input.day, 'kody', 'items', part),
+	}
+	const readText = (key: string) =>
+		new TextDecoder().decode(input.objects.get(key)!.bytes)
+	const writeText = (key: string, text: string) => {
+		const bytes = encode(text)
+		input.objects.set(key, { bytes, etag: etagFor(bytes) })
+	}
+	const pointer = JSON.parse(readText(keys.data)) as {
+		partCount: number
+		dataSha256: string
+		indexSha256: string
+		dataPartDigests: Array<string>
+		indexPartDigests: Array<string>
+	}
+	const last = pointer.partCount - 1
+	input.objects.set(
+		keys.dataPart(last + 1),
+		input.objects.get(keys.dataPart(last))!,
+	)
+	input.objects.set(
+		keys.indexPart(last + 1),
+		input.objects.get(keys.indexPart(last))!,
+	)
+	pointer.partCount += 1
+	pointer.dataPartDigests.push(pointer.dataPartDigests[last]!)
+	pointer.indexPartDigests.push(pointer.indexPartDigests[last]!)
+	pointer.dataSha256 = await sha256HexOfText(
+		`${pointer.dataPartDigests.join('\n')}\n`,
+	)
+	pointer.indexSha256 = await sha256HexOfText(
+		`${pointer.indexPartDigests.join('\n')}\n`,
+	)
+	writeText(keys.data, `${JSON.stringify(pointer)}\n`)
+	writeText(keys.index, `${JSON.stringify(pointer)}\n`)
+	const manifest = JSON.parse(readText(keys.manifest)) as {
+		tables: Record<string, { dataSha256: string; indexSha256: string }>
+	}
+	manifest.tables.items!.dataSha256 = pointer.dataSha256
+	manifest.tables.items!.indexSha256 = pointer.indexSha256
+	writeText(keys.manifest, `${JSON.stringify(manifest)}\n`)
+}
+
+test('seal rejects a table index that repeats a rowid and writes nothing sealed for it', async () => {
+	const { client, objects } = createMemoryS3()
+	const env = createEnv({ APP_DB: createAppD1(seedWideItems(12)) })
+	await runNightToSeal({ env, client, day })
+	for (const key of objects.keys()) {
+		if (!key.startsWith('staging/')) objects.delete(key)
+	}
+	await repeatLastItemsPart({ objects, day, location: 'staging' })
+
+	await expect(
+		sealPacedD1SourceNight({
+			s3: client,
+			source: { binding: 'APP_DB', name: 'kody', id: appId },
+			day,
+		}),
+	).rejects.toThrow(
+		'paced D1 index for kody.items on 2026-10-24 is not strictly increasing: [9] follows [12]',
+	)
+	expect(
+		[...objects.keys()].filter((key) => !key.startsWith('staging/')),
+	).toEqual([])
+})
+
+test('restore drill counts a rowid the full base carries twice once, like a restore', async () => {
+	const { client, objects } = createMemoryS3()
+	const sqlite = seedWideItems(12)
+	const env = createEnv({ APP_DB: createAppD1(sqlite) })
+	const baseDay = '2026-10-25'
+	await runNightToSeal({ env, client, day: baseDay })
+	await repeatLastItemsPart({ objects, day: baseDay, location: 'sealed' })
+	applyDrillProgressMigration(sqlite)
+
+	expect(await drillItems({ env, client, day: baseDay })).toMatchObject({
+		manifestCount: 12,
+		restoredCount: 12,
+		ok: true,
+	})
+})
+
+function forceFullBaseRequest(day: string, secret = 'restore-secret') {
+	return new Request(
+		`https://kody.codes/__maintenance/dr-paced-force-full-base?day=${day}`,
+		{ method: 'POST', headers: { Authorization: `Bearer ${secret}` } },
+	)
+}
+
+test('a force-full-base request cuts a full base on a weekday night', async () => {
+	const { client } = createMemoryS3()
+	const sqlite = seedSqlite(2)
+	const env = createEnv({
+		APP_DB: createAppD1(sqlite),
+		DR_RESTORE_SECRET: 'restore-secret',
+	})
+	const baseDay = '2026-10-23' // Friday
+	const nextDay = '2026-10-24' // Saturday, normally a delta night
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${baseDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const requestedAt = new Date(`${baseDay}T15:00:00.000Z`)
+	expect(
+		(
+			await handleD1PacedForceFullBaseRequest(
+				forceFullBaseRequest(nextDay, 'wrong'),
+				env,
+				client,
+				requestedAt,
+			)
+		).status,
+	).toBe(401)
+	const tick = await claimD1PacedBackupLease(env.APP_DB)
+	expect(
+		(
+			await handleD1PacedForceFullBaseRequest(
+				forceFullBaseRequest(nextDay),
+				env,
+				client,
+				requestedAt,
+			)
+		).status,
+	).toBe(409)
+	await tick!.release()
+	const accepted = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest(nextDay),
+		env,
+		client,
+		requestedAt,
+	)
+	expect(accepted.status).toBe(200)
+	await runD1PacedBackupTick({
+		env,
+		now: new Date(`${nextDay}T01:00:00.000Z`),
+		s3: client,
+		walkerOpts: fastWalker,
+	})
+	const raw = await client.getText(pacedD1StagingManifestKey(nextDay, 'kody'))
+	const manifest = parsePacedD1NightManifest(JSON.parse(raw!.text))
+	expect(manifest.retentionTier).toBe('daily')
+	expect(manifest.tables.items?.mode).toBe('full')
+	expect(manifest.tables.items?.count).toBe(2)
+	const late = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest(nextDay),
+		env,
+		client,
+		new Date(`${nextDay}T02:00:00.000Z`),
+	)
+	expect(late.status).toBe(409)
+})
+
+test('a force-full-base request only accepts today or tomorrow', async () => {
+	const { client } = createMemoryS3()
+	const env = createEnv({ DR_RESTORE_SECRET: 'restore-secret' })
+	const response = await handleD1PacedForceFullBaseRequest(
+		forceFullBaseRequest('2026-10-20'),
+		env,
+		client,
+		new Date('2026-10-23T15:00:00.000Z'),
+	)
+	expect(response.status).toBe(400)
 })

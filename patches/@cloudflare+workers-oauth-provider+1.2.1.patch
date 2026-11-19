@@ -35,7 +35,7 @@ index b450880..d5d75c5 100644
     * Prefix for the cookies the consent and upstream helpers set (`<prefix>consent`,
     * `<prefix>upstream`, `<prefix>approvals`). Must start with `__Host-`, which keeps them
 diff --git a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
-index 5ff842d..2346234 100644
+index 5ff842d..1723691 100644
 --- a/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
 +++ b/node_modules/@cloudflare/workers-oauth-provider/dist/oauth-provider.js
 @@ -637,6 +637,16 @@ function validateClientIdentifierUrl(clientId) {
@@ -109,6 +109,53 @@ index 5ff842d..2346234 100644
  		return resolved;
  	} catch (error) {
  		if (abortController.signal.aborted) throw new Error(`Client metadata fetch timed out after ${CIMD_FETCH_TIMEOUT_MS}ms`);
+@@ -2882,7 +2904,7 @@ var OAuthProviderImpl = class {
+ 				category: "client-authentication",
+ 				reason: "client_secret_not_registered"
+ 			});
+-			if (await hashSecret(clientSecret) !== clientInfo.clientSecret) return this.createInvalidClientResponse("Client authentication failed: invalid client_secret", basicAuthenticationAttempted, {
++			if (!timingSafeEqual(await hashSecret(clientSecret), String(clientInfo.clientSecret ?? ""))) return this.createInvalidClientResponse("Client authentication failed: invalid client_secret", basicAuthenticationAttempted, {
+ 				category: "client-authentication",
+ 				reason: "client_secret_mismatch"
+ 			});
+@@ -3129,7 +3151,7 @@ var OAuthProviderImpl = class {
+ 			reason: "grant_not_found"
+ 		});
+ 		const codeHash = await hashSecret(code);
+-		if (!grantData.authCodeId || codeHash !== grantData.authCodeId) return this.createErrorResponse("invalid_grant", { description: "Invalid authorization code" }, {
++		if (!grantData.authCodeId || !timingSafeEqual(codeHash, grantData.authCodeId)) return this.createErrorResponse("invalid_grant", { description: "Invalid authorization code" }, {
+ 			category: "authorization-code-grant",
+ 			reason: "code_mismatch"
+ 		});
+@@ -3179,7 +3201,7 @@ var OAuthProviderImpl = class {
+ 				reason: "code_verifier_missing"
+ 			});
+ 			const hashBuffer = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+-			if (base64UrlEncode(String.fromCharCode(...new Uint8Array(hashBuffer))) !== grantData.codeChallenge) return this.createErrorResponse("invalid_grant", { description: "Invalid PKCE code_verifier" }, {
++			if (!timingSafeEqual(base64UrlEncode(String.fromCharCode(...new Uint8Array(hashBuffer))), String(grantData.codeChallenge ?? ""))) return this.createErrorResponse("invalid_grant", { description: "Invalid PKCE code_verifier" }, {
+ 				category: "authorization-code-grant",
+ 				reason: "code_verifier_mismatch"
+ 			});
+@@ -3314,8 +3336,8 @@ var OAuthProviderImpl = class {
+ 			category: "refresh-token-grant",
+ 			reason: "grant_not_found"
+ 		});
+-		const isCurrentToken = grantData.refreshTokenId === providedTokenHash;
+-		const isPreviousToken = grantData.previousRefreshTokenId === providedTokenHash;
++		const isCurrentToken = typeof grantData.refreshTokenId === "string" && timingSafeEqual(grantData.refreshTokenId, providedTokenHash);
++		const isPreviousToken = typeof grantData.previousRefreshTokenId === "string" && timingSafeEqual(grantData.previousRefreshTokenId, providedTokenHash);
+ 		if (!isCurrentToken && !isPreviousToken) return this.createErrorResponse("invalid_grant", { description: "Invalid refresh token" }, {
+ 			category: "refresh-token-grant",
+ 			reason: "refresh_token_mismatch"
+@@ -3910,7 +3932,7 @@ var OAuthProviderImpl = class {
+ 	async revokeRefreshIfOwned(tokenId, userId, grantId, clientInfo, env) {
+ 		const grantData = await env.OAUTH_KV.get(`grant:${userId}:${grantId}`, { type: "json" });
+ 		if (!grantData) return false;
+-		if (!(grantData.refreshTokenId === tokenId || grantData.previousRefreshTokenId === tokenId)) return false;
++		if (!(typeof grantData.refreshTokenId === "string" && timingSafeEqual(grantData.refreshTokenId, tokenId) || typeof grantData.previousRefreshTokenId === "string" && timingSafeEqual(grantData.previousRefreshTokenId, tokenId))) return false;
+ 		if (grantData.clientId !== clientInfo.clientId) return false;
+ 		await this.createOAuthHelpers(env).revokeGrant(grantId, userId);
+ 		return true;
 @@ -4330,10 +4352,40 @@ var OAuthProviderImpl = class {
  				return env.OAUTH_KV.get(clientKey$1, { type: "json" });
  			}

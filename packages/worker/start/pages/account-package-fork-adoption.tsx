@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { adoptPackageFork } from '#start/server/package-mutations'
 import type { CSSObject } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
@@ -16,16 +18,13 @@ import type {
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	getPillButtonCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	TimestampValue,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountTextareaCss,
 } from './account-management-components.tsx'
+import { Textarea } from '../components/input.tsx'
 
 export function AccountPackageForkAdoption(props: {
 	packageDetail: AccountPackageDetail
@@ -86,7 +85,7 @@ export function AccountPackageForkAdoption(props: {
 						you wrote.
 					</p>
 					{communityFork.adoptionNote ? (
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							Review note: {communityFork.adoptionNote}
 						</p>
 					) : null}
@@ -97,23 +96,20 @@ export function AccountPackageForkAdoption(props: {
 					css={{ display: 'grid', gap: spacing.sm }}
 					onSubmit={submitAdoption}
 				>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						This package is a fork of {upstream}. Until you adopt it, it can
 						only read user secrets you allow one at a time. Adopting lets it
 						read and use your user secrets like a package you wrote. Review the
 						source first. Agents cannot adopt for you.
 					</p>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>What you reviewed</span>
-						<textarea
+					<Field label="What you reviewed">
+						<Textarea
 							name="reviewNote"
 							data-testid="community-fork-adoption-note"
-							data-field-ring
 							required
 							minLength={communityForkAdoptionReviewNoteMinLength}
 							placeholder="Which files you read and why you trust this fork."
 							value={reviewNote}
-							css={accountTextareaCss}
 							onChange={(event) => {
 								if (!(event.currentTarget instanceof HTMLTextAreaElement)) {
 									return
@@ -121,14 +117,14 @@ export function AccountPackageForkAdoption(props: {
 								setReviewNote(event.currentTarget.value)
 							}}
 						/>
-					</label>
+					</Field>
 					{error ? (
 						<p role="alert" css={errorTextCss}>
 							{error}
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="community-fork-adopt"
 							disabled={
@@ -136,10 +132,10 @@ export function AccountPackageForkAdoption(props: {
 								reviewNote.trim().length <
 									communityForkAdoptionReviewNoteMinLength
 							}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{submitting ? 'Adopting…' : 'Adopt fork'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

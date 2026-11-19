@@ -17,6 +17,8 @@ import {
 	resolveCreditWalletState,
 	resolveEffectivePlan,
 	resolveEntitlementLimit,
+	resolveEntitlementLimits,
+	type PlanLimits,
 	resolveWeeklyEntitlementLimit,
 	type DailyEntitlementResource,
 	type EntitlementResource,
@@ -345,6 +347,31 @@ export async function resolveLiveEntitlementForResource(input: {
 }
 
 /**
+ * Effective limit table with live limit overrides, for the denial-of-wallet
+ * guards: an admin raise binds on the next call.
+ */
+export async function resolveLiveOverriddenLimits(input: {
+	db: D1Database
+	userId: OwnerId
+	email: string | null | undefined
+	now?: Date
+}): Promise<PlanLimits> {
+	const now = input.now ?? new Date()
+	return resolveEntitlementLimits(
+		await withLiveLimitOverrides({
+			db: input.db,
+			orgId: input.userId,
+			entitlement: getCachedUserEntitlement(input.db, {
+				userId: input.userId,
+				email: input.email,
+			}),
+			now,
+		}),
+		now,
+	)
+}
+
+/**
  * Resolve the effective plan, entitlement ladder, and credit wallet state
  * for a user. Missing userId, invalid stable ids, and no matching row
  * resolve to public `free` without warning. Stored plan values go through
@@ -513,8 +540,6 @@ function createEntitlementLookupCache<T>() {
 }
 
 const cachedUserEntitlements = createEntitlementLookupCache<UserEntitlement>()
-const cachedStableUserAccounts =
-	createEntitlementLookupCache<StableUserAccount | null>()
 
 /**
  * {@link getUserEntitlement} behind the short-TTL hot-path cache. Use only
@@ -558,10 +583,11 @@ async function withLiveLimitOverrides(input: {
 	db: D1Database
 	orgId: string
 	entitlement: Promise<UserEntitlement>
-	resource: EntitlementResource
+	/** Omit when the caller only reads override-backed limits. */
+	resource?: EntitlementResource
 	now: Date
 }): Promise<UserEntitlement> {
-	if (!isLimitOverrideResource(input.resource)) {
+	if (input.resource && !isLimitOverrideResource(input.resource)) {
 		return await input.entitlement
 	}
 	const [entitlement, limitOverrides] = await Promise.all([
@@ -586,23 +612,6 @@ export async function getCachedUserPlan(
 	input: { userId: string; email: string | null | undefined },
 ): Promise<PlanName> {
 	return (await getCachedUserEntitlement(db, input)).plan
-}
-
-/**
- * {@link findUserAccountByStableUserId} behind the short-TTL hot-path cache,
- * for per-fetch account reverse-resolution in the fetch gateway.
- */
-export async function findCachedUserAccountByStableUserId(
-	db: D1Database,
-	stableUserId: string,
-): Promise<StableUserAccount | null> {
-	const trimmed = stableUserId.trim()
-	if (!trimmed) return null
-	return await cachedStableUserAccounts.getOrCreate(
-		db,
-		trimmed,
-		async () => await findUserAccountByStableUserId(db, trimmed),
-	)
 }
 
 /**
@@ -1561,6 +1570,30 @@ export async function entitlementOrgPaths(
 /** Signup org billing page, or a placeholder when the org cannot be read. */
 export async function entitlementBillingPath(db: D1Database, userId: string) {
 	return (await entitlementOrgPaths(db, userId)).billingPath
+}
+
+/**
+ * The storage byte limit {@link assertWithinEntitlement} would enforce, for
+ * writes that check the limit inside the storage Durable Object instead of
+ * before it.
+ */
+export async function readStorageBytesEntitlementLimit(input: {
+	db: D1Database
+	userId: OwnerId
+	email: string | null | undefined
+}): Promise<number> {
+	const now = new Date()
+	const entitlement = await withLiveLimitOverrides({
+		db: input.db,
+		orgId: input.userId,
+		entitlement: getCachedUserEntitlement(input.db, {
+			userId: input.userId,
+			email: input.email,
+		}),
+		resource: 'storage_bytes',
+		now,
+	})
+	return resolveEntitlementLimit(entitlement, 'storage_bytes', now)
 }
 
 export async function assertWithinStorageBytesEntitlement(input: {

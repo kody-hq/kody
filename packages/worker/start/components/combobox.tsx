@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { spacing } from '#universal/styles/tokens.ts'
 import {
 	fieldLabelCss,
-	getSelectCss,
+	getSelectControlCss,
 	visuallyHiddenCss,
 } from '#universal/styles/style-primitives.ts'
 import { renderIcon } from './icon.tsx'
@@ -15,6 +15,7 @@ import {
 	overlayPositionerCss,
 } from './overlay-styles.ts'
 
+/** One Combobox choice. `keywords` are extra prefix-match strings. */
 export type ComboboxOption = {
 	id: string
 	label: string
@@ -43,6 +44,11 @@ function matchesOption(option: ComboboxOption, query: string) {
 	].some((value) => value.toLocaleLowerCase().startsWith(normalized))
 }
 
+/**
+ * Filterable labeled picker. `selectOnly` renders a Base UI Select (no typing);
+ * otherwise a Base UI Combobox whose list filters by label prefix and optional
+ * keywords. Portals into the nearest dialog when nested.
+ */
 export function Combobox(props: ComboboxProps) {
 	const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(
 		null,
@@ -86,7 +92,11 @@ export function Combobox(props: ComboboxProps) {
 						id={props.id}
 						aria-labelledby={labelId}
 						data-field-ring
-						css={{ ...getSelectCss(), textAlign: 'left', userSelect: 'none' }}
+						css={{
+							...getSelectControlCss(),
+							textAlign: 'left',
+							userSelect: 'none',
+						}}
 					>
 						<Select.Value placeholder={props.placeholder} />
 					</Select.Trigger>
@@ -135,7 +145,7 @@ export function Combobox(props: ComboboxProps) {
 						id={props.id}
 						data-field-ring
 						placeholder={props.placeholder}
-						css={{ ...getSelectCss(), cursor: 'text' }}
+						css={{ ...getSelectControlCss(), cursor: 'text' }}
 					/>
 					<BaseCombobox.Portal container={portalContainer ?? undefined}>
 						<BaseCombobox.Positioner sideOffset={4} css={overlayPositionerCss}>

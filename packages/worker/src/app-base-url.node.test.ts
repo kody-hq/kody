@@ -152,6 +152,34 @@ test('parsePackageAppRequestHost classifies apex, user subdomains, and rejects e
 			'https://kentcdodds.kodyapps.dev/packages/demo',
 			{ kind: 'user-subdomain', username: 'kentcdodds', role: 'canonical' },
 		],
+		// One app's own host: `{leaf}--{handle}`. A reserved leaf, a malformed
+		// leaf or handle, and the wrong scheme never route to an app.
+		[
+			env,
+			'https://newsletter--kentcdodds.kodyapps.dev/admin/',
+			{
+				kind: 'app-subdomain',
+				username: 'kentcdodds',
+				kodyId: 'newsletter',
+				role: 'canonical',
+			},
+		],
+		[
+			env,
+			'https://ai--my-team.kodyapps.dev/',
+			{
+				kind: 'app-subdomain',
+				username: 'my-team',
+				kodyId: 'ai',
+				role: 'canonical',
+			},
+		],
+		[env, 'https://xn--kentcdodds.kodyapps.dev/', unrecognized],
+		[env, 'https://--kentcdodds.kodyapps.dev/', unrecognized],
+		[env, 'https://demo--xy.kodyapps.dev/', unrecognized],
+		[env, 'https://demo--a--kentcdodds.kodyapps.dev/', unrecognized],
+		[env, 'http://demo--kentcdodds.kodyapps.dev/', unrecognized],
+		[env, 'https://demo--kentcdodds.kodyapps.dev./', unrecognized],
 		// Hostnames the wildcard route still delivers, but that no user can own:
 		// nested labels, invalid username labels, and the wrong scheme.
 		[env, 'https://a.b.kodyapps.dev/', unrecognized],
@@ -177,6 +205,16 @@ test('parsePackageAppRequestHost classifies apex, user subdomains, and rejects e
 			legacyEnv,
 			'https://alice.kodyapps.dev/packages/demo',
 			{ kind: 'user-subdomain', username: 'alice', role: 'legacy' },
+		],
+		[
+			legacyEnv,
+			'https://demo--alice.kodyapps.dev/',
+			{
+				kind: 'app-subdomain',
+				username: 'alice',
+				kodyId: 'demo',
+				role: 'legacy',
+			},
 		],
 		[legacyEnv, 'https://kodyapps.dev/', { kind: 'apex', role: 'legacy' }],
 		[legacyEnv, 'https://kody.run/', { kind: 'apex', role: 'canonical' }],
@@ -263,6 +301,11 @@ test('legacy package-app subdomain redirect is opt-in GET/HEAD only', () => {
 		'https://alice.kody.run/packages/demo?tab=1',
 	)
 
+	expect(
+		redirectFor('https://demo--alice.kodyapps.dev/report?tab=1')?.headers.get(
+			'location',
+		),
+	).toBe('https://demo--alice.kody.run/report?tab=1')
 	expect(
 		redirectFor('https://alice.kodyapps.dev/packages/demo', { method: 'POST' }),
 	).toBeNull()

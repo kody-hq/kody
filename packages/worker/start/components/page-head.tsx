@@ -50,7 +50,7 @@ const contentNames = new Set([
 ])
 
 /** Only route content tags are replaced. Router still owns assets, scripts and CSP. */
-export function mergePageHeadTags(
+function mergePageHeadTags(
 	tags: Array<RouterManagedTag>,
 	head: ResolvedDocumentHead,
 	previousHead: ResolvedDocumentHead | undefined,

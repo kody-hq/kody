@@ -1,7 +1,7 @@
 import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
-	guestClaimUrl,
+	readGuestClaimUrl,
 	guestPhase,
 	readGuestAccountByPerson,
 } from '#worker/guest/guest-accounts.ts'
@@ -74,8 +74,8 @@ type OAuthExecutionContext = ExecutionContext & {
 
 /**
  * RFC 9728 path-aware PRM URL for `<origin>/mcp`
- * (`/.well-known/oauth-protected-resource/mcp`). v1 of the OAuth provider
- * serves only this document; the root well-known path is not an alias.
+ * (`/.well-known/oauth-protected-resource/mcp`). This is the document the
+ * `/mcp` challenge names and the only one whose `resource` is a token audience.
  */
 export function mcpProtectedResourceMetadataUrl(origin: string) {
 	return `${origin}${protectedResourceMetadataPath}${mcpResourcePath}`
@@ -89,15 +89,50 @@ export function mcpProtectedResourceMetadataUrl(origin: string) {
  */
 export function buildProtectedResourceMetadata(origin: string) {
 	return {
+		...buildOriginProtectedResourceMetadata(origin),
 		resource: mcpOAuthResourceUri(origin),
+	}
+}
+
+/**
+ * PRM for the origin itself, served at the root well-known path. RFC 9728
+ * section 3.3 requires `resource` to be the identifier the well-known URL was
+ * built from, so this document names `<origin>`, never `<origin>/mcp`. It
+ * tells scanners which authorization server and scopes protect this origin.
+ * MCP clients do not reach it: the `/mcp` challenge and the path-aware
+ * document both answer first, and tokens stay bound to `<origin>/mcp`.
+ */
+export function buildOriginProtectedResourceMetadata(origin: string) {
+	return {
+		resource: origin,
 		authorization_servers: [origin],
 		scopes_supported: mcpOauthScopes,
 		bearer_methods_supported: ['header'],
 	}
 }
 
-export function isProtectedResourceMetadataRequest(pathname: string) {
-	return pathname === `${protectedResourceMetadataPath}${mcpResourcePath}`
+export function handleOriginProtectedResourceMetadataRequest(
+	request: Request,
+	origin: string,
+) {
+	if (request.method === 'OPTIONS') {
+		return new Response(null, {
+			status: 204,
+			headers: { 'Content-Length': '0' },
+		})
+	}
+	if (request.method !== 'GET' && request.method !== 'HEAD') {
+		return new Response('Method not allowed', {
+			status: 405,
+			headers: { Allow: 'GET, HEAD, OPTIONS' },
+		})
+	}
+	return new Response(
+		request.method === 'HEAD'
+			? null
+			: JSON.stringify(buildOriginProtectedResourceMetadata(origin)),
+		{ headers: { 'Content-Type': 'application/json' } },
+	)
 }
 
 export const mcpInvalidTokenDescription =
@@ -549,6 +584,7 @@ export async function handleMcpRequest({
 		clientName: classification.clientName,
 		clientVersion: classification.clientVersion,
 		packageIdentityParam: classification.packageIdentityParam,
+		eventsSupport: classification.eventsSupport,
 		// person-keyed (not personal org)
 		userId: personalOrgId(mcpUser.userId),
 		requestHost: (() => {
@@ -634,7 +670,7 @@ export async function handleMcpRequest({
 				guestErrorPayload({
 					code: 'guest_claim_required',
 					blocked: 'running code and saving changes',
-					claimUrl: guest ? guestClaimUrl(origin, guest.claimCode) : null,
+					claimUrl: guest ? await readGuestClaimUrl(env, origin, guest) : null,
 				}),
 			)
 		}

@@ -1,19 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useState, type FormEvent } from 'react'
-import {
-	accountActionsCss,
-	accountFieldNoteCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { accountActionsCss } from './account-management-components.tsx'
 import { saveCredentialHosts } from '#start/server/credential-hosts'
 import { useCredentialMutation } from '../credential-mutation.ts'
 import type { CredentialHostSettings } from '#universal/credentials-list.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input } from '../components/input.tsx'
 type CredentialHostsEditorProps = {
 	credentialId: string
 	credentialName: string
@@ -53,8 +48,6 @@ const addFormCss = css({
 	gap: spacing.sm,
 	alignItems: 'center',
 })
-
-const inputCss = css({ ...accountInputCss, flex: '1 1 16rem' })
 
 const errorCss = css({
 	margin: 0,
@@ -154,17 +147,17 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 		return (
 			<div css={css({ display: 'grid', gap: spacing.xs })}>
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="credential-hosts-edit"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={startEditing}
 					>
 						Edit hosts
-					</button>
+					</Button>
 				</div>
 				{status ? (
-					<p role="status" css={css(accountFieldNoteCss)}>
+					<p role="status" css={css(fieldDescriptionCss)}>
 						{status}
 					</p>
 				) : null}
@@ -176,7 +169,7 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 			data-testid="credential-hosts-editor"
 			css={css({ display: 'grid', gap: spacing.sm })}
 		>
-			<p css={css(accountFieldNoteCss)}>
+			<p css={css(fieldDescriptionCss)}>
 				Kody places this credential only on HTTPS requests to these hosts. Enter
 				each host name, such as api.example.com. Wildcards, ports, and paths are
 				not allowed.
@@ -191,34 +184,32 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 				{draft.map((host) => (
 					<li key={host} css={rowCss}>
 						<span css={hostCss}>{host}</span>
-						<button
+						<Button
 							type="button"
 							aria-label={`Remove ${host}`}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={() => remove(host)}
 						>
 							Remove
-						</button>
+						</Button>
 					</li>
 				))}
 			</ul>
 			<form css={addFormCss} onSubmit={addTyped}>
-				<input
+				<Input
 					type="text"
 					name="host"
-					data-field-ring
 					data-testid="credential-hosts-input"
 					aria-label="Host to allow"
 					placeholder="api.example.com"
 					autoComplete="off"
 					spellCheck={false}
 					value={typed}
-					css={inputCss}
 					onChange={(event) => setTyped(event.currentTarget.value)}
 				/>
-				<button type="submit" css={css(getGhostButtonCss({ size: 'sm' }))}>
+				<Button type="submit" variant="secondary">
 					Add host
-				</button>
+				</Button>
 			</form>
 			{error ? (
 				<p role="alert" css={errorCss}>
@@ -226,23 +217,23 @@ export function CredentialHostsEditor(props: CredentialHostsEditorProps) {
 				</p>
 			) : null}
 			<div css={css(accountActionsCss)}>
-				<button
+				<Button
 					type="button"
 					data-testid="credential-hosts-save"
 					disabled={saving}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 					onClick={() => void save()}
 				>
 					{saving ? 'Saving…' : 'Save hosts'}
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					disabled={saving}
-					css={getGhostButtonCss({ size: 'sm' })}
+					variant="secondary"
 					onClick={cancel}
 				>
 					Cancel
-				</button>
+				</Button>
 			</div>
 		</div>
 	)

@@ -45,7 +45,7 @@ export function contextFixture(
 	}
 }
 
-export const sharedBuildbox = contextFixture({
+const sharedBuildbox = contextFixture({
 	id: 'ec_buildbox',
 	name: 'buildbox',
 	operator: { handle: 'sam' },
@@ -71,7 +71,7 @@ const offlineServer = contextFixture({
 	chainUsage: { inMyChain: true, chainCount: 1 },
 })
 
-export function chainFixture(
+function chainFixture(
 	entries: ExecutionChain['entries'] = [{ kind: 'cloud' }],
 ): ExecutionChain {
 	return { entries, strict: false, updatedAt: null, updatedBy: null }

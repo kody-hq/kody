@@ -22,6 +22,8 @@ export type PathSummary = {
 		phases?: Record<string, Percentiles>
 	}
 	errors: number
+	/** Error count per message (first 160 characters), when any sample failed. */
+	failures?: Record<string, number>
 }
 
 export type OverheadSummary = {
@@ -32,7 +34,7 @@ export type OverheadSummary = {
 }
 
 /** Nearest-rank percentile; `p` in [0, 100]. */
-export function percentile(values: Array<number>, p: number) {
+function percentile(values: Array<number>, p: number) {
 	if (values.length === 0) return Number.NaN
 	const sorted = [...values].sort((a, b) => a - b)
 	const rank = Math.ceil((p / 100) * sorted.length)
@@ -57,6 +59,7 @@ export function summarizePath(input: {
 	cold: PhaseSample | null
 	warm: Array<PhaseSample>
 	errors: number
+	failures?: Record<string, number>
 }): PathSummary {
 	const walls = input.warm.map((sample) => sample.wallMs)
 	const tools = input.warm
@@ -81,6 +84,9 @@ export function summarizePath(input: {
 			...(phaseNames.size ? { phases } : {}),
 		},
 		errors: input.errors,
+		...(input.failures && Object.keys(input.failures).length
+			? { failures: input.failures }
+			: {}),
 	}
 }
 

@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -22,9 +23,7 @@ import {
 	renderPackageWebhookCard as PackageWebhookCard,
 } from './package-webhook-card.tsx'
 import { AccountManagementMessage } from './account-management-components.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { detailSectionCss } from '../components/community-detail-sections.tsx'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
 export function PackageWebhookSettings({
 	username,
@@ -153,9 +152,7 @@ export function PackageWebhookSettings({
 					This package declares no webhooks yet. Add a{' '}
 					<code>kody.webhooks</code> entry to its <code>package.json</code> and
 					publish it.{' '}
-					<SiteLink href={webhooksDocHref} css={primaryLinkCss}>
-						Inbound webhooks docs
-					</SiteLink>
+					<TextLink href={webhooksDocHref}>Inbound webhooks docs</TextLink>
 				</p>
 			) : null}
 			{status === 'ready' && webhooks.length ? (

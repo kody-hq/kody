@@ -196,6 +196,7 @@ vi.mock('./profile-repo.ts', () =>
 const {
 	publishCommunityListing,
 	unpublishCommunityListing,
+	resolveCommunityReport,
 	rateCommunityListing,
 	reportCommunityListing,
 	searchCommunityListings,
@@ -630,6 +631,55 @@ test('unpublishCommunityListing deletes active listings and cascades cleanup', a
 		'unpublish',
 		'listing-1',
 		expect.any(Error),
+	)
+})
+
+test('unpublish and hard delete keep the listing row when the legacy snapshot delete fails', async () => {
+	// The row is the only handle a retry or account export has on the key.
+	mockModule.getCommunityListingById.mockResolvedValue(sampleListing())
+	mockModule.getCommunityReportById.mockResolvedValue({
+		id: 'report-1',
+		listingId: 'listing-1',
+		status: 'open',
+	})
+	mockModule.deleteCommunityListing.mockResolvedValue(true)
+	mockModule.resolveCommunityReportRow.mockResolvedValue(true)
+	mockModule.deleteCommunitySnapshot.mockRejectedValue(new Error('kv down'))
+	const unpublish = () =>
+		unpublishCommunityListing({
+			env: createEnv(),
+			userId: ownerIdFromStored('owner-1'),
+			listingId: 'listing-1',
+		})
+	const hardDelete = () =>
+		resolveCommunityReport({
+			env: createEnv(),
+			adminUserId: 'admin-1',
+			reportId: 'report-1',
+			action: 'delete',
+		})
+
+	await expect(unpublish()).rejects.toThrow('kv down')
+	await expect(hardDelete()).rejects.toThrow('kv down')
+	expect(mockModule.deleteCommunityListing).not.toHaveBeenCalled()
+	expect(mockModule.resolveCommunityReportRow).not.toHaveBeenCalled()
+	expect(mockModule.deleteCommunityRatingsByListingId).not.toHaveBeenCalled()
+
+	mockModule.deleteCommunitySnapshot.mockReset()
+	await unpublish()
+	await hardDelete()
+	expect(
+		mockModule.deleteCommunitySnapshot.mock.calls.map((call) => call[1]),
+	).toEqual(['listing-1', 'listing-1'])
+	const [unpublishSnapshot, deleteSnapshot] =
+		mockModule.deleteCommunitySnapshot.mock.invocationCallOrder
+	const [unpublishRow, deleteRow] =
+		mockModule.deleteCommunityListing.mock.invocationCallOrder
+	expect(unpublishSnapshot).toBeLessThan(unpublishRow ?? 0)
+	expect(deleteSnapshot).toBeLessThan(deleteRow ?? 0)
+	expect(mockModule.resolveCommunityReportRow).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({ reportId: 'report-1', status: 'resolved' }),
 	)
 })
 

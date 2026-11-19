@@ -20,7 +20,7 @@ import { colors, radius, typography } from '#universal/styles/tokens.ts'
  * one over. The same `videoId` still starts when `autoplay` becomes true so
  * the hero chooser can play the already-selected clip.
  */
-export function nextLightPlayerPlaying(input: {
+function nextLightPlayerPlaying(input: {
 	playing: boolean
 	renderedVideoId: string
 	videoId: string

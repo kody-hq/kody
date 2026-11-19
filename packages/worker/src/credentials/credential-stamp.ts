@@ -1,8 +1,9 @@
 /**
  * Build-time credential stamp (issue #3836): sealed allowlist of literal
- * credential keys a package may resolve, plus dependency stamp pins. Phase 1
- * sealed publish; phase 2 fleet-seals existing packages (mcp literals +
- * inferred descriptions). Runtime fail-closed enforcement is phase 3.
+ * credential keys a package may resolve, plus dependency stamp pins. Publish
+ * fails closed on non-literal or unstampable use. Fleet seal (`0014`) and
+ * convert (`0015`) fill missing slots and descriptions. A stored stamp limits
+ * every run of that package to its declared slots (ADR 0068, 2026-10-16).
  */
 import { canonicalJsonStringify } from '@kody-internal/shared/canonical-json.ts'
 import { sha256Hex } from '@kody-internal/shared/sha256.ts'
@@ -10,16 +11,19 @@ import {
 	type AstNode,
 	constantsWithoutShadows,
 	forEachScannableModule,
+	shareModulePasses,
 	getNodeName,
 	parseModule,
 	readModuleParseError,
 	resolveStringExpression,
 	scannableModuleFilePattern,
+	scannableModuleWalk,
 	unwrapExpression,
 	walkAst,
 } from '#worker/credentials/module-placeholder-scan.ts'
 import {
 	isVaultCredentialUsePlacement,
+	mergePackageCredentialScans,
 	scanPackageCredentials,
 	type PackageCredentialScan,
 } from '#worker/credentials/credential-inventory-scan.ts'
@@ -28,6 +32,7 @@ import {
 	secretProviderSlotExample,
 } from '#worker/credentials/credential-needs.ts'
 import type { ResolvedSecretProviderSlots } from '#worker/credentials/secret-provider-slots.ts'
+import type { PackageCodemodFinding } from '#worker/package-codemods/types.ts'
 import {
 	getPackageAppClientEntryPath,
 	getPackageAppEntryPath,
@@ -64,9 +69,10 @@ export const credentialStampFileName = 'credential-stamp.json'
  * Soft cap for AST-walking a single module during stamp seal. Larger
  * prebuilt client bundles (e.g. @kentcdodds/world-builder's ~1.7MB
  * `public/client/main.js`) reset the Durable Object CPU budget when parsed.
- * Client/prebuilt assets never resolve credentials server-side; skipping them
- * keeps publish and fleet restamp safe until the dedicated publish-path fix
- * (agent bc-58c7f5e0) lands. UTF-8 byte length.
+ * Client/prebuilt assets never resolve credentials server-side, so
+ * {@link omitOversizedCredentialStampModules} drops those modules from the
+ * AST walks used by publish, fleet restamp, and credential-pattern-check.
+ * UTF-8 byte length.
  */
 export const credentialStampMaxModuleScanBytes = 256 * 1024
 
@@ -165,12 +171,15 @@ export type CredentialStampScan = {
 	jwtSignKeys: Array<string>
 	/** Literal integration / createAuthenticatedFetch account names. */
 	oauthKeys: Array<string>
+	/** The credential inventory of the scanned modules, with sites. */
 	scan: PackageCredentialScan
+	/** Every 0010 legacy-pattern finding of the scanned modules. */
+	legacyFindings: Array<PackageCodemodFinding>
 }
 
 /**
- * A slot the phase-2 seal codemod / backfill can write without overwriting an
- * existing description.
+ * A slot the `0014` seal codemod / stamp backfill can write without
+ * overwriting an existing description.
  */
 export type CredentialStampSealSlot = {
 	key: string
@@ -195,8 +204,8 @@ const packageManifestPath = 'package.json'
 
 /**
  * 0010 labels that cannot be sealed into a stamp allowlist. `kody.mcp` stays
- * off this list: phase 2 stamps literal server names and fails dynamic access
- * via {@link scanLiteralMcpServerKeys}. Non-literal names, `|scope=`,
+ * off this list: {@link scanLiteralMcpServerKeys} stamps literal server names
+ * and fails dynamic access. Non-literal names, `|scope=`,
  * packageSecrets.get, and plain http still fail closed. Manifest-only
  * `kody.secretMounts` is a compat finding: publish may keep it for stale
  * static dependents, and it does not fail this gate.
@@ -672,12 +681,13 @@ const unparsedCredentialMentionPattern = /\b(?:credentials?|kody)\b/
  * A server-runtime module the parser rejects could alias or pass credential
  * around unseen, so it fails closed when it mentions credential or kody.
  */
-function unparsedServerModuleFailure(
+async function unparsedServerModuleFailure(
 	path: string,
 	source: string,
-): CredentialStampGateFailure | null {
+): Promise<CredentialStampGateFailure | null> {
 	if (!unparsedCredentialMentionPattern.test(source)) return null
-	const parseError = readModuleParseError(source) ?? 'unknown parse error'
+	const parseError =
+		(await readModuleParseError(source)) ?? 'unknown parse error'
 	return {
 		code: 'non_literal',
 		path,
@@ -703,9 +713,9 @@ function nonLiteralFixMessage(kind: string) {
  * entry except `app-client`, plus modules reachable from those entries.
  * Modules shared with the UI graph follow the server rule.
  */
-export function collectServerRuntimeModulePaths(
+export async function collectServerRuntimeModulePaths(
 	files: Record<string, string>,
-): Set<string> {
+): Promise<Set<string>> {
 	const manifestSource = files[packageManifestPath]
 	if (manifestSource == null) return new Set()
 	let manifest: AuthoredPackageJson
@@ -757,7 +767,7 @@ export function collectServerRuntimeModulePaths(
 	// About 100 entries share most modules; parse each module once.
 	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const entry of serverEntries) {
-		for (const path of collectReachableSourceFilePaths({
+		for (const path of await collectReachableSourceFilePaths({
 			files,
 			entryPoint: entry,
 			rootPackage,
@@ -826,15 +836,14 @@ function isEvalOrFunctionTarget(node: AstNode | null | undefined): boolean {
 const serverEvalTextFallbackPattern =
 	/\b(?:globalThis|window|global|self)\s*(?:\?\.)?\s*(?:\.\s*(?:eval|Function)\b|\[\s*['"](?:eval|Function)['"]\s*\])|\beval\s*\(|\b(?:new\s+)?Function\s*\(|\bimport\s*\(\s*[^'"`]/
 
-function scanServerEvalFailures(
+async function scanServerEvalFailures(
 	files: Record<string, string>,
 	serverPaths: ReadonlySet<string>,
-): Array<CredentialStampGateFailure> {
+): Promise<Array<CredentialStampGateFailure>> {
 	const failures: Array<CredentialStampGateFailure> = []
-	for (const path of [...serverPaths].sort()) {
+	const visit = async (path: string, parsed: AstNode | null) => {
 		const source = files[path]
-		if (source == null) continue
-		const parsed = parseModule(source)
+		if (source == null) return
 		if (!parsed) {
 			if (serverEvalTextFallbackPattern.test(source)) {
 				failures.push({
@@ -843,7 +852,7 @@ function scanServerEvalFailures(
 					message: `${path}: server-runtime code looks like it uses eval, new Function, or a non-literal import(). Remove those from execute/export/handler/trigger and Worker app graphs (UI/client bundles may keep them). Shared modules follow the server rule.`,
 				})
 			}
-			continue
+			return
 		}
 		let foundEval = false
 		walkAst(parsed, (node) => {
@@ -857,7 +866,7 @@ function scanServerEvalFailures(
 				foundEval = true
 			}
 		})
-		const dynamicImports = collectDynamicImportExpressionNodes(source)
+		const dynamicImports = await collectDynamicImportExpressionNodes(source)
 		const hasNonLiteralImport = dynamicImports.some(
 			(node) => node.literalSpecifier == null,
 		)
@@ -869,24 +878,41 @@ function scanServerEvalFailures(
 			})
 		}
 	}
-	return failures
+	await forEachScannableModule(
+		files,
+		async (path, parsed) => {
+			if (serverPaths.has(path)) await visit(path, parsed)
+		},
+		{ sorted: true },
+	)
+	// Server-reachable modules the runtime walk does not list.
+	const walk = await scannableModuleWalk(files)
+	for (const path of [...serverPaths].sort()) {
+		if (walk.listed.has(path) || !walk.visits(path) || files[path] == null) {
+			continue
+		}
+		await visit(path, await parseModule(files[path]))
+	}
+	return failures.sort(compareFailurePaths)
 }
 
 /**
  * Collect literal `kody.mcp.SERVER` / `kody.mcp["SERVER"]` names and fail on
  * dynamic access (`kody.mcp[variable]`, `const { mcp } = kody` then computed).
  */
-export function scanLiteralMcpServerKeys(files: Record<string, string>): {
+export async function scanLiteralMcpServerKeys(
+	files: Record<string, string>,
+): Promise<{
 	keys: Array<string>
 	failures: Array<CredentialStampGateFailure>
-} {
+}> {
 	files = omitOversizedCredentialStampModules(files)
 	const keys = new Set<string>()
 	const failures: Array<CredentialStampGateFailure> = []
 	const declaredMcpKeys = declaredMcpCredentialKeys(
 		readManifestCredentialSlots(files[packageManifestPath]),
 	)
-	forEachScannableModule(files, (path, parsed, constants) => {
+	await forEachScannableModule(files, (path, parsed, constants) => {
 		const source = files[path]!
 		if (!parsed) {
 			if (
@@ -1507,13 +1533,13 @@ export function inferCredentialStampDescription(input: {
 }
 
 /**
- * Plan phase-2 seal updates: add missing slots / descriptions where inferable,
- * and list blocking failures / uninferable keys that need an agent or owner.
+ * Plan seal updates: add missing slots / descriptions where inferable, and
+ * list blocking failures / uninferable keys that need an agent or owner.
  */
-export function planCredentialStampSeal(
+export async function planCredentialStampSeal(
 	files: Record<string, string>,
-): CredentialStampSealPlan {
-	const scanned = scanCredentialStamp(files)
+): Promise<CredentialStampSealPlan> {
+	const scanned = await scanCredentialStamp(files)
 	const slots = readManifestCredentialSlots(files[packageManifestPath])
 	const mcpKeySet = new Set(scanned.mcpKeys)
 	const jwtKeySet = new Set(scanned.jwtSignKeys)
@@ -1649,25 +1675,221 @@ export function applyCredentialStampSealPlan(
 }
 
 /**
+ * What the module walks of a credential stamp scan found, before sealing.
+ * Plain data with nothing derived across modules, so the results of walks
+ * over disjoint sets of modules merge into the result for all of them.
+ */
+export type CredentialStampPasses = {
+	scan: PackageCredentialScan
+	/** Valid literal keys from credential helpers and named references. */
+	keys: Array<string>
+	oauthKeys: Array<string>
+	moduleFailures: Array<CredentialStampGateFailure>
+	mcp: { keys: Array<string>; failures: Array<CredentialStampGateFailure> }
+	legacyFindings: Array<PackageCodemodFinding>
+	serverEvalFailures: Array<CredentialStampGateFailure>
+}
+
+/**
+ * Walk the modules of `files` for a credential stamp. `files` must already
+ * be without oversized modules ({@link omitOversizedCredentialStampModules}).
+ * When the file map adopted a module plan, only that plan's modules are
+ * walked; {@link mergeCredentialStampPasses} joins the parts.
+ */
+export async function collectCredentialStampPasses(
+	files: Record<string, string>,
+	serverPaths: ReadonlySet<string>,
+): Promise<CredentialStampPasses> {
+	const keys = new Set<string>()
+	const oauthKeys = new Set<string>()
+	const slots = readManifestCredentialSlots(files[packageManifestPath])
+	const moduleFailures: Array<CredentialStampGateFailure> = []
+	// One parse of each module serves every scan below.
+	const [scan, , , mcp, legacyFindings, serverEvalFailures] =
+		await shareModulePasses(files, [
+			// Sites ride along so the publish check reads its request-placement
+			// hits from this scan instead of walking every module again.
+			() =>
+				scanPackageCredentials({
+					files,
+					slots: toInventorySlots(slots),
+					sites: true,
+				}),
+			() =>
+				scanModuleCredentialReferences(files, (_path) => ({
+					add: () => {},
+					named: (name, kind) => {
+						if (packageCredentialSlotNamePattern.test(name)) {
+							keys.add(name)
+							if (kind === 'integration') oauthKeys.add(name)
+						}
+					},
+					// Non-literal helper args are refused via 0010 unstampable patterns.
+					computed: () => {},
+					// Vault placeholders are gated from inventory placements below: only
+					// request / credential-mapped sites fail the stamp. Display strings
+					// (status example/help fields) are not credential uses.
+					unnamed: () => {},
+				})),
+			() =>
+				forEachScannableModule(files, async (path, parsed, constants) => {
+					if (!parsed && serverPaths.has(path)) {
+						const failure = await unparsedServerModuleFailure(
+							path,
+							files[path]!,
+						)
+						if (failure) moduleFailures.push(failure)
+					}
+					const keyScan: KeyScan = {
+						key: (key) => {
+							if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
+							else {
+								moduleFailures.push({
+									code: 'invalid_key',
+									path,
+									message: `${path}: credential("${key}") is not a valid kody.credentials key. Rename it.`,
+								})
+							}
+						},
+						computed: () => {
+							moduleFailures.push({
+								code: 'non_literal',
+								path,
+								message: nonLiteralFixMessage(
+									`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
+								),
+							})
+						},
+						named: () => {
+							moduleFailures.push({
+								code: 'credential_named',
+								path,
+								message: `${path}: credential.named() is only for ad hoc execute and unshared personal-org packages (not stamped). ${credentialStampConversionFixGuidance}`,
+							})
+						},
+						indirect: () => {
+							moduleFailures.push({
+								code: 'non_literal',
+								path,
+								message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
+							})
+						},
+					}
+					if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
+					else scanUnparsedCredentialKeys(files[path]!, keyScan)
+				}),
+			() => scanLiteralMcpServerKeys(files),
+			() =>
+				detectLegacyCredentialPatternsCodemod.detect(files, {
+					packageName: '',
+				}),
+			() => scanServerEvalFailures(files, serverPaths),
+		])
+
+	return {
+		scan,
+		keys: [...keys].sort(),
+		oauthKeys: [...oauthKeys].sort(),
+		moduleFailures,
+		mcp,
+		legacyFindings,
+		serverEvalFailures,
+	}
+}
+
+function compareFailurePaths(
+	left: CredentialStampGateFailure,
+	right: CredentialStampGateFailure,
+) {
+	const leftPath = left.path ?? ''
+	const rightPath = right.path ?? ''
+	return leftPath < rightPath ? -1 : leftPath > rightPath ? 1 : 0
+}
+
+/**
+ * Join the 0010 findings of walks over disjoint module sets, given in sorted
+ * module order. Every part reports the manifest findings; one of each stays.
+ */
+export function mergeLegacyCredentialFindings(
+	parts: ReadonlyArray<ReadonlyArray<PackageCodemodFinding>>,
+): Array<PackageCodemodFinding> {
+	const seen = new Set<string>()
+	const findings: Array<PackageCodemodFinding> = []
+	for (const finding of parts.flat()) {
+		const key = JSON.stringify([finding.path ?? null, finding.message])
+		if (seen.has(key)) continue
+		seen.add(key)
+		findings.push(finding)
+	}
+	return findings.sort((left, right) =>
+		(left.path ?? '').localeCompare(right.path ?? ''),
+	)
+}
+
+/**
+ * Join the passes of walks over disjoint module sets, given in sorted module
+ * order, into what one walk over all of them returns.
+ */
+export function mergeCredentialStampPasses(
+	parts: ReadonlyArray<CredentialStampPasses>,
+): CredentialStampPasses {
+	return {
+		scan: mergePackageCredentialScans(parts.map((part) => part.scan)),
+		keys: [...new Set(parts.flatMap((part) => part.keys))].sort(),
+		oauthKeys: [...new Set(parts.flatMap((part) => part.oauthKeys))].sort(),
+		moduleFailures: parts.flatMap((part) => part.moduleFailures),
+		mcp: {
+			keys: [...new Set(parts.flatMap((part) => part.mcp.keys))].sort(),
+			failures: dedupeFailures(parts.flatMap((part) => part.mcp.failures)),
+		},
+		legacyFindings: mergeLegacyCredentialFindings(
+			parts.map((part) => part.legacyFindings),
+		),
+		serverEvalFailures: parts
+			.flatMap((part) => part.serverEvalFailures)
+			.sort(compareFailurePaths),
+	}
+}
+
+/**
  * Scan package source for stampable literal credential keys and publish-time
  * gate failures (non-literal uses, unstampable legacy patterns, server eval).
  */
-export function scanCredentialStamp(
+export async function scanCredentialStamp(
 	files: Record<string, string>,
 	options: {
 		/** From {@link resolveSecretProviderSlots}; unresolved slots seal nothing. */
 		secretProviders?: ResolvedSecretProviderSlots
 	} = {},
-): CredentialStampScan {
+): Promise<CredentialStampScan> {
 	files = omitOversizedCredentialStampModules(files)
-	const keys = new Set<string>()
+	return sealCredentialStamp(
+		files[packageManifestPath],
+		await collectCredentialStampPasses(
+			files,
+			await collectServerRuntimeModulePaths(files),
+		),
+		options,
+	)
+}
+
+/**
+ * Turn the module passes of a whole tree into its stamp: the sorted keys and
+ * the gate failures, checked against the manifest's `kody.credentials`.
+ */
+export function sealCredentialStamp(
+	manifestSource: string | undefined,
+	passes: CredentialStampPasses,
+	options: {
+		secretProviders?: ResolvedSecretProviderSlots
+	} = {},
+): CredentialStampScan {
+	const { scan, moduleFailures, mcp, legacyFindings, serverEvalFailures } =
+		passes
+	const keys = new Set(passes.keys)
+	const oauthKeys = new Set(passes.oauthKeys)
 	const failures: Array<CredentialStampGateFailure> = []
-	const oauthKeys = new Set<string>()
-	const slots = readManifestCredentialSlots(files[packageManifestPath])
-	const scan = scanPackageCredentials({
-		files,
-		slots: toInventorySlots(slots),
-	})
+	const slots = readManifestCredentialSlots(manifestSource)
 
 	for (const reference of scan.references) {
 		// `|scope=` is refused via the 0010 unstampable pattern list.
@@ -1704,22 +1926,6 @@ export function scanCredentialStamp(
 		})
 	}
 
-	scanModuleCredentialReferences(files, (_path) => ({
-		add: () => {},
-		named: (name, kind) => {
-			if (packageCredentialSlotNamePattern.test(name)) {
-				keys.add(name)
-				if (kind === 'integration') oauthKeys.add(name)
-			}
-		},
-		// Non-literal helper args are refused via 0010 unstampable patterns.
-		computed: () => {},
-		// Vault placeholders are gated from inventory placements below: only
-		// request / credential-mapped sites fail the stamp. Display strings
-		// (status example/help fields) are not credential uses.
-		unnamed: () => {},
-	}))
-
 	// A vault use seals only through a described kind "secret-provider" slot
 	// for its literal provider id. Refs stay governed by per-package grants.
 	const providerSlots = secretProviderSlotKeysByProvider(
@@ -1752,58 +1958,11 @@ export function scanCredentialStamp(
 	}
 	failures.push(...(options.secretProviders?.failures ?? []))
 
-	const serverPaths = collectServerRuntimeModulePaths(files)
-	forEachScannableModule(files, (path, parsed, constants) => {
-		if (!parsed && serverPaths.has(path)) {
-			const failure = unparsedServerModuleFailure(path, files[path]!)
-			if (failure) failures.push(failure)
-		}
-		const keyScan: KeyScan = {
-			key: (key) => {
-				if (packageCredentialSlotNamePattern.test(key)) keys.add(key)
-				else {
-					failures.push({
-						code: 'invalid_key',
-						path,
-						message: `${path}: credential("${key}") is not a valid kody.credentials key. Rename it.`,
-					})
-				}
-			},
-			computed: () => {
-				failures.push({
-					code: 'non_literal',
-					path,
-					message: nonLiteralFixMessage(
-						`${path}: credential() / credentials() / credential.visitor() was called with a non-literal key. Call it with a literal key, e.g. credential.visitor("SLOT") for a need each visitor supplies.`,
-					),
-				})
-			},
-			named: () => {
-				failures.push({
-					code: 'credential_named',
-					path,
-					message: `${path}: credential.named() is only for ad hoc execute and unshared personal-org packages (not stamped). ${credentialStampConversionFixGuidance}`,
-				})
-			},
-			indirect: () => {
-				failures.push({
-					code: 'non_literal',
-					path,
-					message: `${path}: passes credential/credentials around instead of calling it with a literal key. Call credential("SLOT"), credentials("SLOT"), or credential.visitor("SLOT") directly. Type-only uses are fine: for a client type, import type { KodyCredentialClient } from "kody:runtime" (or write typeof credential inside a type). ${credentialStampConversionFixGuidance}`,
-				})
-			},
-		}
-		if (parsed) scanParsedCredentialKeys(parsed, constants, keyScan)
-		else scanUnparsedCredentialKeys(files[path]!, keyScan)
-	})
-
-	const mcp = scanLiteralMcpServerKeys(files)
+	failures.push(...moduleFailures)
 	for (const key of mcp.keys) keys.add(key)
 	failures.push(...mcp.failures)
 
-	for (const finding of detectLegacyCredentialPatternsCodemod.detect(files, {
-		packageName: '',
-	})) {
+	for (const finding of legacyFindings) {
 		const pattern = legacyCredentialPatternFromMessage(finding.message)
 		if (pattern == null || !unstampableLegacyPatterns.has(pattern)) continue
 		failures.push({
@@ -1813,7 +1972,7 @@ export function scanCredentialStamp(
 		})
 	}
 
-	failures.push(...scanServerEvalFailures(files, serverPaths))
+	failures.push(...serverEvalFailures)
 
 	const sortedKeys = [...keys].sort()
 	const staleManifestKeys = Object.keys(slots)
@@ -1838,6 +1997,7 @@ export function scanCredentialStamp(
 		jwtSignKeys: [...jwtSignKeys].sort(),
 		oauthKeys: [...oauthKeys].sort(),
 		scan,
+		legacyFindings,
 	}
 }
 

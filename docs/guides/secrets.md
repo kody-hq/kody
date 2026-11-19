@@ -82,7 +82,10 @@ boundary, on the final serialized request, and only for hosts you approved.
   Pass the secret as `private_key_secret_name` (a saved secret name **or** the
   opaque ref from `packageSecrets.get`). When `aud` is not an https URL, pass
   **`send_to_host`** (bare host) so the sealed JWT fills on that host's
-  registrable domain. An https `aud` already names the fill domain. See
+  registrable domain. An https `aud` already names the fill domain. A token a
+  token endpoint returns for the JWT (Google's `oauth2.googleapis.com/token`)
+  fills on the exact hosts approved on the signing key; `send_to_host` does not
+  change where that token goes. See
   [Signing JWTs with saved secrets](../use/secrets-and-values.md#signing-jwts-with-saved-secrets).
 
 - **Saving a token from a token exchange**: a token response (`access_token`,
@@ -198,6 +201,36 @@ on connected tool servers.
   [Custom secret providers](./secret-providers.md).
 - A token that already exists inside trusted code (a key the package just
   minted): `secretSet` persists it without returning it.
+
+## Renaming a secret
+
+Rename a secret on its page on the website (edit **Name** and save), or rename a
+user-scope secret with `credentialUpdate` and a new `name`. The secret keeps its
+credential id and value, so grants, package credential mappings, read history,
+and audit history stay attached, and the token does not need rotating. The
+rename needs Write on the secret, is recorded as `credential.renamed` in the
+audit log, and is refused when the name is taken in the same scope or uses
+characters a placeholder cannot reference (allowed: letters, numbers, dots,
+underscores, hyphens).
+
+```json
+{
+	"operationId": "credentialUpdate",
+	"params": {
+		"credential_id": "cred_…",
+		"name": "kodyCloudflareWorkersAiToken"
+	}
+}
+```
+
+References by name do not follow the rename, and there is no alias for the old
+name: `{{secret:<old name>}}` placeholders, package secret mounts, package and
+execute code that looks the secret up by name, and scripts keep resolving the
+old name and fail until you update them. The `credentialUpdate` response returns
+`rename.known_references` for the settings Kody stores by name (webhook
+verification secrets, secret provider door keys). Kody does not index package or
+execute source, so search your packages for the old name too. Send `name` on its
+own call, not with `provider`, `inject`, or `placement`.
 
 ## Where to go next
 

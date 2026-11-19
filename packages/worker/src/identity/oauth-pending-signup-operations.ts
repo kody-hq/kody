@@ -1,3 +1,4 @@
+import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import { authOperationResult } from './auth-operation-result.ts'
 import { createOauthSignupAccount } from './oauth-signup-account.ts'
 import {
@@ -11,13 +12,14 @@ import {
 	readOauthPendingSignup,
 	setOauthPendingSignupSecret,
 } from '#app/oauth-pending-signup.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
 } from '#app/verify-session.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { withAccountCreatedQuery } from '#universal/fathom-events.ts'
+import { serializeFirstTouchAttributionCookie } from '#universal/first-touch-attribution.ts'
 import { serializeReferralCookie } from '#universal/referral-cookie.ts'
 import {
 	defaultPostVerificationRedirect,
@@ -102,7 +104,7 @@ export async function completeOauthPendingSignup({
 			: typeof body.pendingCsrf === 'string'
 				? body.pendingCsrf
 				: ''
-	if (!csrf || csrf !== pending.csrf) {
+	if (!csrf || !(await timingSafeEqualString(csrf, pending.csrf))) {
 		void logAuditEvent({
 			db: auditDatabaseFromEnv(env),
 			category: 'auth',
@@ -140,7 +142,6 @@ export async function completeOauthPendingSignup({
 		providerDisplayName: pending.providerUsername ?? pending.displayName,
 		email: pending.email,
 		username,
-		attribution: pending.attribution,
 		accessToken: pending.accessToken,
 		requestIp,
 		path: url.pathname,
@@ -209,10 +210,10 @@ export async function completeOauthPendingSignup({
 			secure,
 		)
 		appendCookies(headers, [verifyCookie, await destroyAuthCookie(secure)])
-		headers.append(
-			'Set-Cookie',
+		appendCookies(headers, [
 			serializeReferralCookie({ code: null, secure }),
-		)
+			serializeFirstTouchAttributionCookie({ attribution: null, secure }),
+		])
 		return authOperationResult(
 			{
 				ok: true as const,
@@ -240,6 +241,7 @@ export async function completeOauthPendingSignup({
 	appendCookies(headers, [
 		sessionCookie,
 		serializeReferralCookie({ code: null, secure }),
+		serializeFirstTouchAttributionCookie({ attribution: null, secure }),
 	])
 
 	return authOperationResult(

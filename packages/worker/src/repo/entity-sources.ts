@@ -28,6 +28,7 @@ function mapEntitySourceRow(row: Record<string, unknown>): EntitySourceRow {
 			row['published_commit'] == null ? null : String(row['published_commit']),
 		serving_commit:
 			row['serving_commit'] == null ? null : String(row['serving_commit']),
+		held_commit: row['held_commit'] == null ? null : String(row['held_commit']),
 		indexed_commit:
 			row['indexed_commit'] == null ? null : String(row['indexed_commit']),
 		manifest_path: String(row['manifest_path']),
@@ -264,9 +265,9 @@ export async function updateEntitySource(
 }
 
 /**
- * Move `published_commit` back from a publish that did not succeed. Guarded by
- * compare-and-set on the failed commit so a newer publish that already won the
- * pointer is never clobbered.
+ * Roll back a failed publish to the most recent built commit. An earlier
+ * publish may have moved the published pointer without finishing its build.
+ * Choose the rollback target from the built pointers in the same write.
  */
 export async function revertEntitySourcePublishedCommit(
 	db: D1Database,
@@ -274,32 +275,37 @@ export async function revertEntitySourcePublishedCommit(
 		id: string
 		userId: OwnerId
 		failedCommit: string
-		restoreCommit: string
 	},
-): Promise<boolean> {
-	const result = await runD1WithRetry(() =>
+): Promise<string | null> {
+	const row = await runD1WithRetry(() =>
 		db
 			.prepare(
 				`UPDATE entity_sources
-			SET published_commit = ?, updated_at = ?
-			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+			SET published_commit = COALESCE(held_commit, serving_commit), updated_at = ?
+			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}
+				AND COALESCE(held_commit, serving_commit) IS NOT NULL
+				AND serving_commit IS NOT published_commit
+				AND held_commit IS NOT published_commit
+			RETURNING published_commit`,
 			)
 			.bind(
-				input.restoreCommit,
 				new Date().toISOString(),
 				input.id,
 				input.userId,
 				input.failedCommit,
 			)
-			.run(),
+			.first<{ published_commit: string }>(),
 	)
-	return (result.meta.changes ?? 0) > 0
+	return row?.published_commit ?? null
 }
 
 /**
  * Compare-and-set the serving pointer to `commit` once every artifact target
  * for it is saved. Succeeds only while `commit` is still the published
  * commit, so a stale rebuild cannot move serving to a superseded commit.
+ * `alsoWrite` statements run in the same D1 transaction, before the pointer
+ * moves; `thenWrite` statements run in it right after. Publish and rebuild code advance through `advanceServingCommit`
+ * (package-capabilities), which carries an app's public approval forward.
  */
 export async function advanceEntitySourceServingCommit(
 	db: D1Database,
@@ -308,13 +314,62 @@ export async function advanceEntitySourceServingCommit(
 		userId: OwnerId
 		commit: string
 	},
+	alsoWrite: ReadonlyArray<D1PreparedStatement> = [],
+	thenWrite: ReadonlyArray<D1PreparedStatement> = [],
 ): Promise<boolean> {
+	const advance = db
+		.prepare(
+			`UPDATE entity_sources
+			SET serving_commit = ?, held_commit = ?, updated_at = ?
+			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+		)
+		.bind(
+			input.commit,
+			null,
+			new Date().toISOString(),
+			input.id,
+			input.userId,
+			input.commit,
+		)
+	if (alsoWrite.length === 0 && thenWrite.length === 0) {
+		const result = await runD1WithRetry(() => advance.run())
+		return (result.meta.changes ?? 0) > 0
+	}
+	const results = await runD1WithRetry(() =>
+		db.batch([...alsoWrite, advance, ...thenWrite]),
+	)
+	return (results[alsoWrite.length]?.meta.changes ?? 0) > 0
+}
+
+/**
+ * Record that `commit` (still the published commit) is built but waits for
+ * capability approval, leaving `serving_commit` where it is.
+ */
+export async function holdEntitySourceCommit(
+	db: D1Database,
+	input: { id: string; userId: OwnerId; commit: string },
+): Promise<boolean> {
+	// The guard re-checks what the hold decision read, so an approval or a
+	// visibility change that lands while the decision runs is never lost.
 	const result = await runD1WithRetry(() =>
 		db
 			.prepare(
 				`UPDATE entity_sources
-			SET serving_commit = ?, updated_at = ?
-			WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}`,
+				SET held_commit = ?, updated_at = ?
+				WHERE id = ? AND user_id = ? AND published_commit = ?${andLiveDeletedAtSql()}
+					AND EXISTS (
+						SELECT 1 FROM saved_packages AS package
+						WHERE package.source_id = entity_sources.id
+							AND package.is_internet_visible = 1${andLiveDeletedAtSql('package')}
+					)
+					AND NOT EXISTS (
+						SELECT 1 FROM saved_packages AS package
+						JOIN package_capability_approvals AS approval
+							ON approval.package_id = package.id
+							AND approval.owner_user_id = entity_sources.user_id
+						WHERE package.source_id = entity_sources.id
+							AND approval.published_commit = entity_sources.published_commit
+					)`,
 			)
 			.bind(
 				input.commit,

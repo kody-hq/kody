@@ -85,7 +85,7 @@ export const entitlementResourceVisibility: Record<
 		kind: 'counter',
 		whatCounts: 'Active editing sessions opened by agents against your repos.',
 		howToReduce:
-			'Discard finished sessions with repoDiscardSession. Unused (never-checkpointed) sessions are swept after 30 minutes idle; checkpointed sessions are swept after 7 days idle. Successful publish releases session scratch from storage counts; the catalog row is retained for 14 days.',
+			'Discard finished sessions with repoDiscardSession. Unused (never-checkpointed) sessions, and package-save sessions that never reached publish, are swept after 30 minutes idle; checkpointed sessions are swept after 7 days idle. Successful publish releases session scratch from storage counts; the catalog row is retained for 14 days.',
 	},
 	email_sends_per_day: {
 		group: 'daily',

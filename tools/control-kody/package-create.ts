@@ -14,7 +14,7 @@ import {
 const kodyIdPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const scopedPackageNamePattern =
 	/^@([a-z0-9][a-z0-9._-]*)\/([a-z0-9]+(?:-[a-z0-9]+)*)$/i
-export const headAheadFileName = 'preview-head-ahead.txt'
+const headAheadFileName = 'preview-head-ahead.txt'
 
 const packageCreateExecuteCode = `import { kody } from 'kody:runtime'
 export default async function main(input = {}) {
@@ -75,7 +75,7 @@ type PackageCreateCallToolOptions = {
 	maxTotalTimeout?: number
 }
 
-export type PackageCreateCallTool = (
+type PackageCreateCallTool = (
 	params: {
 		name: string
 		arguments: Record<string, unknown>
@@ -99,15 +99,6 @@ export function isLowerKebabKodyId(value: string) {
 	return Boolean(scoped && kodyIdPattern.test(scoped[2] ?? ''))
 }
 
-export function matchesCreatedPackage(input: {
-	requested: string
-	kodyId?: string
-	name?: string
-}) {
-	const requested = input.requested.trim()
-	return input.kodyId === requested || input.name === requested
-}
-
 export function isProductionKodyOrigin(origin: string) {
 	try {
 		const hostname = new URL(origin).hostname.replace(/\.+$/, '')
@@ -117,7 +108,7 @@ export function isProductionKodyOrigin(origin: string) {
 	}
 }
 
-export function usernameFromPackageName(name: string, kodyId: string) {
+function usernameFromPackageName(name: string, kodyId: string) {
 	const suffix = `/${kodyId}`
 	if (!name.startsWith('@') || !name.endsWith(suffix)) return null
 	const username = name.slice(1, name.length - suffix.length)
@@ -248,7 +239,7 @@ export async function createPreviewPackage(input: {
 	}
 }
 
-export type GitAuthorIdentity = {
+type GitAuthorIdentity = {
 	name: string
 	email: string
 }
@@ -262,7 +253,7 @@ export type GitRemoteResult = {
 	setup_commands?: Array<string>
 }
 
-export async function pushHeadAheadCommit(remote: GitRemoteResult) {
+async function pushHeadAheadCommit(remote: GitRemoteResult) {
 	const parent = await mkdtemp(path.join(tmpdir(), 'control-kody-pkg-'))
 	const cloneDir = path.join(parent, remote.kody_id)
 	try {

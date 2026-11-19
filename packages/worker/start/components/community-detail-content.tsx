@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
+import { Badge } from '../components/badge.tsx'
 import type { CSSProperties, ReactNode } from 'react'
 import { SiteLink } from './site-link.tsx'
 import type { PublicCommunityListing } from '#universal/community-public-types.ts'
@@ -244,22 +245,20 @@ function renderListingHead(input: {
 		>
 			<div css={listingBadgeGroupCss}>
 				{input.showSourceAheadStatus ? (
-					<span
+					<Badge
 						data-testid="community-detail-source-ahead-badge"
 						title="Default-branch HEAD is newer than the last package publish. Source at HEAD is already public; runtime still uses the published commit."
-						css={badgeCss}
 					>
 						HEAD ahead of published
-					</span>
+					</Badge>
 				) : null}
 				{input.listing.featured ? (
-					<span
+					<Badge
 						data-testid="community-detail-featured-badge"
 						title="An admin featured this package as an onboarding starter install."
-						css={badgeCss}
 					>
 						Featured
-					</span>
+					</Badge>
 				) : null}
 			</div>
 		</header>
@@ -277,18 +276,6 @@ const listingBadgeGroupCss = {
 	alignItems: 'center',
 	flexWrap: 'wrap' as const,
 	gap: '0.35rem',
-}
-
-const badgeCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: '0.15rem 0.55rem',
-	borderRadius: '999px',
-	fontSize: '0.78rem',
-	fontWeight: 600,
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
 }
 
 function buildPromoteToPackagePrompt(kodyId: string) {

@@ -803,6 +803,9 @@ export async function unpublishCommunityListing(input: {
 		)
 	}
 
+	// Delete the legacy snapshot while the row still exists: it is the only
+	// handle a retry or account export has on this key.
+	await deleteCommunitySnapshot(input.env.BUNDLE_ARTIFACTS_KV, input.listingId)
 	const deleted = await deleteCommunityListing(input.env.APP_DB, {
 		listingId: input.listingId,
 		ownerUserId: input.userId,
@@ -823,7 +826,6 @@ export async function unpublishCommunityListing(input: {
 		input.env.APP_DB,
 		input.listingId,
 	)
-	await deleteCommunitySnapshot(input.env.BUNDLE_ARTIFACTS_KV, input.listingId)
 	await updateSavedPackage(input.env.APP_DB, {
 		userId: input.userId,
 		packageId: listing.packageId,
@@ -2789,6 +2791,12 @@ export async function resolveCommunityReport(input: {
 				listingId: report.listingId,
 				includeDelisted: true,
 			})
+			// Before the row goes, so a failed KV delete leaves the report open
+			// with the listing still there for a retry.
+			await deleteCommunitySnapshot(
+				input.env.BUNDLE_ARTIFACTS_KV,
+				report.listingId,
+			)
 			const deleted = await deleteCommunityListing(input.env.APP_DB, {
 				listingId: report.listingId,
 			})
@@ -2810,10 +2818,6 @@ export async function resolveCommunityReport(input: {
 				)
 				await deleteCommunityActivityEventsByListingId(
 					input.env.APP_DB,
-					report.listingId,
-				)
-				await deleteCommunitySnapshot(
-					input.env.BUNDLE_ARTIFACTS_KV,
 					report.listingId,
 				)
 				invalidateCommunityPublicCache()

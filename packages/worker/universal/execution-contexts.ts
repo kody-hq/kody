@@ -99,6 +99,59 @@ export type ExecutionContextSharing = {
 	accessRoster?: ExecutionContextAccessRoster
 }
 
+export type ExecutionContextMachineAccessSubject =
+	| { kind: 'everyone' }
+	| { kind: 'team'; slug: string }
+	| { kind: 'user'; handle: string }
+	| { kind: 'profile'; id: string; name: string }
+
+export type ExecutionContextMachineAccessEntry = {
+	id: string
+	kind: 'shell' | 'command' | 'lan' | 'fs'
+	name: string
+	description: string | null
+	/** Host folders are never shared. */
+	shareable: boolean
+	/** Set for people who manage the machine. Empty means no package limit. */
+	allowedPackages?: Array<{ id: string; name: string }>
+	grants: Array<{
+		grantId: string
+		subject: ExecutionContextMachineAccessSubject
+	}>
+}
+
+/**
+ * What the machine defines and who holds each entry. Someone who does not
+ * manage the machine gets only the entries granted to their own profiles.
+ */
+export type ExecutionContextMachineAccess = {
+	/** Only the operator shares with people, teams or everyone. */
+	canGrant: boolean
+	capabilities: Array<ExecutionContextMachineAccessEntry>
+	/** The viewer's own active profiles in this org. */
+	profiles: Array<{ id: string; name: string }>
+}
+
+export const machineAccessKindLabels: Record<
+	ExecutionContextMachineAccessEntry['kind'],
+	string
+> = {
+	shell: 'Unrestricted shell',
+	command: 'Named commands',
+	lan: 'Local network destinations',
+	fs: 'Host folders',
+}
+
+export function machineAccessSubjectLabel(
+	subject: ExecutionContextMachineAccessSubject,
+	orgSlug: string,
+) {
+	if (subject.kind === 'everyone') return `Everyone in @${orgSlug}`
+	if (subject.kind === 'team') return `Team ${subject.slug}`
+	if (subject.kind === 'profile') return `Profile ${subject.name}`
+	return `@${subject.handle}`
+}
+
 export type ExecutionContextGrantSummary = {
 	fs: number
 	fsMode?: 'read' | 'write'
@@ -119,8 +172,21 @@ type ExecutionContextBoxEntry = {
 	resource: string | null
 }
 
+/** What the unrestricted shell was used for, from the audit log. */
+export type ExecutionContextShellUse = {
+	commands: number
+	/** Older shell commands exist beyond the ones counted. */
+	more: boolean
+	adHocCommands: number
+	packages: Array<{ id: string; name: string; commands: number }>
+	programs: Array<{ program: string; commands: number; needShell: number }>
+	morePrograms: number
+}
+
 export type ExecutionContextListItem = {
 	/** The viewer's own excess-access notice (ADR 0096). */
+	/** The operator's undismissed notice that the shell has no package list. */
+	openShell?: { fingerprint: string; use?: ExecutionContextShellUse }
 	elevation?: {
 		fingerprint: string
 		dismissed: boolean
@@ -145,6 +211,7 @@ export type ExecutionContextListItem = {
 	isOperator: boolean
 	myPermissions: Array<ExecutionContextPermission>
 	sharing?: ExecutionContextSharing
+	machineAccess?: ExecutionContextMachineAccess
 	registeredBy?: { handle: string }
 	status: ExecutionContextStatus
 	acceptingRuns: boolean
@@ -907,8 +974,15 @@ const executionContextAuditLabels: Record<string, string> = {
 	chain_removed: 'Removed from a chain',
 	commands_enabled: 'Commands turned on (on the machine)',
 	commands_disabled: 'Commands turned off',
+	machine_capabilities_changed:
+		'Machine access definitions changed (on the machine)',
 	command_started: 'Command started',
 	command_finished: 'Command finished',
+	lan_used: 'Local network destination used',
+	fs_used: 'Host folder used',
+	machine_access_granted: 'Machine access shared',
+	machine_access_revoked: 'Machine access taken back',
+	machine_access_packages_changed: 'Machine access packages changed',
 	run_cancelled: 'Run cancelled',
 	paused: 'Paused',
 	resumed: 'Resumed',

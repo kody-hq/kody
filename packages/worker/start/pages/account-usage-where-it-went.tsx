@@ -1,14 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { whereItWentSectionId } from '#universal/org-pages.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { useState } from 'react'
 import { AreaChart } from '../charts/area-chart.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
-import {
-	AccountManagementPanel,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
 import { RecordTable } from './record-table.tsx'
 import {
 	creditAttributionDefaultVisiblePackages,
@@ -20,12 +18,8 @@ import {
 } from '#universal/credit-attribution.ts'
 import { formatOnCreditsMicroUsd } from '#universal/usage-presentation.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { descriptionCss } from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 
 /**
  * "Where it went" on `/account/usage`: ranked packages + Ad hoc for this
@@ -168,9 +162,7 @@ export function WhereItWentPanel({
 											) : null}
 											{row.href ? (
 												<p css={{ margin: 0 }}>
-													<SiteLink href={row.href} css={primaryLinkCss}>
-														Open package
-													</SiteLink>
+													<TextLink href={row.href}>Open package</TextLink>
 												</p>
 											) : null}
 										</>
@@ -249,7 +241,7 @@ function PackageVisitorsTable({
 			<h3 css={{ margin: 0, fontSize: typography.fontSize.lg }}>Visitors</h3>
 			<label css={{ display: 'grid', gap: spacing.xs }}>
 				Search visitors
-				<input
+				<Input
 					type="search"
 					value={search}
 					onChange={(event) => {
@@ -257,38 +249,28 @@ function PackageVisitorsTable({
 						setPage(0)
 					}}
 					placeholder="Search usernames"
-					data-field-ring
 					data-visitors-search
-					css={accountInputCss}
 				/>
 			</label>
 			<div css={{ display: 'flex', gap: spacing.sm }}>
-				<button
+				<Button
 					type="button"
 					aria-pressed={sort === 'credits'}
 					onClick={() => setSort('credits')}
 					data-visitors-sort="credits"
-					css={
-						sort === 'credits'
-							? getPillButtonCss({ size: 'sm' })
-							: getGhostButtonCss({ size: 'sm' })
-					}
+					variant={sort === 'credits' ? 'primary' : 'secondary'}
 				>
 					Sort by credits
-				</button>
-				<button
+				</Button>
+				<Button
 					type="button"
 					aria-pressed={sort === 'username'}
 					onClick={() => setSort('username')}
 					data-visitors-sort="username"
-					css={
-						sort === 'username'
-							? getPillButtonCss({ size: 'sm' })
-							: getGhostButtonCss({ size: 'sm' })
-					}
+					variant={sort === 'username' ? 'primary' : 'secondary'}
 				>
 					Sort by username
-				</button>
+				</Button>
 			</div>
 			{rows.some((row) => row.billedToVisitorOrg) ? (
 				<p css={descriptionCss} data-visitors-billed-elsewhere>
@@ -334,25 +316,25 @@ function PackageVisitorsTable({
 			/>
 			{pageCount > 1 ? (
 				<div css={{ display: 'flex', gap: spacing.sm, alignItems: 'center' }}>
-					<button
+					<Button
 						type="button"
 						disabled={currentPage === 0}
 						onClick={() => setPage(currentPage - 1)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Previous
-					</button>
+					</Button>
 					<span>
 						Page {currentPage + 1} of {pageCount}
 					</span>
-					<button
+					<Button
 						type="button"
 						disabled={currentPage + 1 >= pageCount}
 						onClick={() => setPage(currentPage + 1)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Next
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</section>

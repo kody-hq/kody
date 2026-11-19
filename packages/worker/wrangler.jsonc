@@ -95,6 +95,7 @@
 				"node_modules/.kody-generated/isomorphic-git.mjs",
 				"node_modules/.kody-generated/postal-mime.mjs",
 				"node_modules/.kody-generated/codemode-normalize.mjs",
+				"node_modules/.kody-generated/module-source-parser.mjs",
 				"node_modules/.kody-generated/disposable-email-domains.mjs",
 				"./node_modules/.kody-generated/worker-bundler.mjs",
 				"./node_modules/.kody-generated/worker-bundler-typescript.mjs",
@@ -103,6 +104,7 @@
 				"./node_modules/.kody-generated/isomorphic-git.mjs",
 				"./node_modules/.kody-generated/postal-mime.mjs",
 				"./node_modules/.kody-generated/codemode-normalize.mjs",
+				"./node_modules/.kody-generated/module-source-parser.mjs",
 				"./node_modules/.kody-generated/disposable-email-domains.mjs",
 			],
 			"fallthrough": true,
@@ -344,6 +346,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {
@@ -685,6 +689,14 @@
 				// capture is unaffected.
 				"SENTRY_TRACES_SAMPLE_RATE": 0,
 				"ARTIFACTS_NAMESPACE": "production",
+				// Lets the one-time package app host migration reminder (Dec 3,
+				// 2026) send. Only production sets it; see
+				// package-codemods/host-migration-reminder.ts.
+				"PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED": "true",
+				// When https://{handle}.kody.run/{app}/ stops serving apps and
+				// only redirects to https://{app}--{handle}.kody.run/. Matches
+				// packageAppPathMountCutoverAt; unset elsewhere on purpose.
+				"PACKAGE_APP_PATH_MOUNT_CUTOVER_AT": "2026-12-17T20:45:00Z",
 				// Origin hosted package apps are served from. Must stay a
 				// separate registrable domain from APP_BASE_URL — that is what
 				// makes package code cross-site from the app origin, so
@@ -713,6 +725,8 @@
 				"FATHOM_SITE_ID": "WKKSDJGN",
 				// Public playlist whose latest Atom-feed videos may open in
 				// the site-wide `/?youtubeId=` overlay. Tests leave this unset.
+				// The kody org: its @kody/newsletter package keeps the consent ledger.
+				"WHATS_NEW_CONSENT_FIRST_PARTY_ORG_IDS": "aa90d35a58288ab2f2335d601c7c171737ce161cc7ecb1676bd010e3b5a3c499",
 				"YOUTUBE_ALLOWED_PLAYLIST_IDS": "PLV5CVI1eNcJhP4nrJt85L7PxHjebFpDfY",
 				// Public (non-secret) Stripe Price ids for production
 				// subscriptions. Coupled to the live Stripe account: if a
@@ -957,6 +971,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {
@@ -1352,6 +1368,8 @@
 					"/styles.css",
 					"/client-entry.js",
 					"/assets/*",
+					// Weekly blog screenshots live in R2 (COMMUNITY_ASSETS, blog-images/).
+					"/images/blog/*",
 				],
 			},
 			"durable_objects": {

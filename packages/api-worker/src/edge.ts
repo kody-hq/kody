@@ -5,6 +5,8 @@ import {
 import {
 	apiRequestIdHeader,
 	describeApiRequestProgress,
+	describeStartedExecuteRun,
+	executeRunProgressStep,
 	parseApiRequestProgress,
 	type ApiRequestProgress,
 } from '@kody-internal/shared/api-request-progress.ts'
@@ -15,9 +17,11 @@ import {
 
 /**
  * Edge half of `api.kody.codes`. Everything here runs before the request
- * reaches origin: CORS, rate limits, header stripping, and the body cap.
- * Authentication and the operation itself run in origin's `KodyApi`
- * entrypoint (`packages/worker/src/open-api/`), next to D1.
+ * reaches origin: CORS, rate limits, header stripping, the 5 MiB JSON body
+ * cap, gateway-fetch streaming (Cloudflare ~100 MiB upload limit), and the
+ * execution-context WebSocket connect hop. Authentication and the operation
+ * itself run in origin's `KodyApi` entrypoint
+ * (`packages/worker/src/open-api/`), next to D1.
  */
 
 export type ApiWorkerEnv = {
@@ -33,14 +37,23 @@ export type ApiWorkerEnv = {
 /** Matches `maxApiRequestBodyBytes` in origin's open-api request parsing. */
 export const maxApiRequestBodyBytes = 5 * 1024 * 1024
 
+/** Matches `maxPackageCheckRequestBodyBytes` in origin's api-body-limits. */
+export const maxPackageCheckRequestBodyBytes = 24 * 1024 * 1024
+const packageCheckPath = '/v1/packages/check'
+
+function maxBodyBytesFor(method: string, pathname: string) {
+	return method === 'POST' && pathname === packageCheckPath
+		? maxPackageCheckRequestBodyBytes
+		: maxApiRequestBodyBytes
+}
+
 /**
  * Cloudflare Worker request upload limit on Free/Pro. Matches origin's
  * `maxGatewayFetchUploadBytes` for `POST /v1/capability-proxy/gateway-fetch`.
  */
 export const maxGatewayFetchUploadBytes = 100 * 1024 * 1024
 
-export const capabilityProxyGatewayFetchPath =
-	'/v1/capability-proxy/gateway-fetch'
+const capabilityProxyGatewayFetchPath = '/v1/capability-proxy/gateway-fetch'
 
 const forwardedPathPattern = /^\/(?:|openapi\.json|v1(?:\/.*)?)$/
 const allowedMethods = ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']
@@ -68,7 +81,7 @@ const corsAllowHeaders = [
 ].join(', ')
 
 /** Static policy advertisement (CF RateLimit binding does not expose remaining). */
-export const apiEdgeRateLimitPolicy = 'ip;q=600;w=60, token;q=300;w=60'
+const apiEdgeRateLimitPolicy = 'ip;q=600;w=60, token;q=300;w=60'
 
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',
@@ -118,12 +131,12 @@ function isCapabilityProxyGatewayFetchRequest(
 	return method === 'POST' && pathname === capabilityProxyGatewayFetchPath
 }
 
-export function gatewayFetchDeclaredBodyExceedsUploadLimit(headers: Headers) {
+function gatewayFetchDeclaredBodyExceedsUploadLimit(headers: Headers) {
 	const declared = Number(headers.get('Content-Length') ?? '0')
 	return Number.isFinite(declared) && declared > maxGatewayFetchUploadBytes
 }
 
-export function gatewayFetchUploadLimitMessage() {
+function gatewayFetchUploadLimitMessage() {
 	return `Request body exceeds the Worker upload limit of ${maxGatewayFetchUploadBytes} bytes (100 MiB).`
 }
 
@@ -156,9 +169,9 @@ function buildForwardHeaders(
 	return forwarded
 }
 
-async function readCappedBody(request: Request) {
+async function readCappedBody(request: Request, maxBytes: number) {
 	const declared = Number(request.headers.get('Content-Length') ?? '0')
-	if (declared > maxApiRequestBodyBytes) return null
+	if (declared > maxBytes) return null
 	if (!request.body) return new Uint8Array(0)
 	const reader = request.body.getReader()
 	const chunks: Array<Uint8Array> = []
@@ -167,7 +180,7 @@ async function readCappedBody(request: Request) {
 		const { done, value } = await reader.read()
 		if (done) break
 		total += value.byteLength
-		if (total > maxApiRequestBodyBytes) {
+		if (total > maxBytes) {
 			await reader.cancel()
 			return null
 		}
@@ -223,9 +236,6 @@ async function rateLimitKeys(request: Request) {
 	}
 }
 
-/** Response header that names one API request, for support and logs. */
-export { apiRequestIdHeader }
-
 /**
  * Cloudflare's ray id when present (it also keys the Workers logs for this
  * request), otherwise a random id.
@@ -234,6 +244,11 @@ function readRequestId(request: Request) {
 	return request.headers.get('CF-Ray')?.trim() || crypto.randomUUID()
 }
 
+/**
+ * Public `fetch` for this worker: health, CORS, rate limits, body caps, then
+ * origin. JSON routes buffer at {@link maxApiRequestBodyBytes}; gateway-fetch
+ * streams and uses {@link maxGatewayFetchUploadBytes}.
+ */
 export async function handleApiEdgeRequest(
 	request: Request,
 	env: ApiWorkerEnv,
@@ -324,12 +339,13 @@ async function routeApiEdgeRequest(
 
 	let body: Uint8Array<ArrayBuffer> | undefined
 	if (bodyMethods.has(request.method)) {
-		const capped = await readCappedBody(request)
+		const maxBytes = maxBodyBytesFor(request.method, url.pathname)
+		const capped = await readCappedBody(request, maxBytes)
 		if (!capped) {
 			return errorResponse(
 				413,
 				'payload_too_large',
-				`Request body exceeds ${maxApiRequestBodyBytes} bytes.`,
+				`Request body exceeds ${maxBytes} bytes.`,
 			)
 		}
 		body = capped
@@ -351,23 +367,29 @@ async function routeApiEdgeRequest(
 const originResourceLimitPattern =
 	/exceeded (?:its )?(?:memory|cpu)|memory limit|cpu time limit|resource limits?/i
 
-export function describeOriginForwardFailure(
+function describeOriginForwardFailure(
 	error: unknown,
 	requestId: string,
 	progress: ApiRequestProgress | null = null,
 ) {
 	const detail = error instanceof Error ? error.message : String(error)
+	const startedRun = progress?.step === executeRunProgressStep ? progress : null
 	if (originResourceLimitPattern.test(detail)) {
-		const described = progress ? describeApiRequestProgress(progress) : null
+		const described =
+			progress && progress.step !== executeRunProgressStep
+				? describeApiRequestProgress(progress)
+				: null
 		return {
 			reason: 'origin_resource_limit' as const,
 			message: [
 				`The Kody API ran out of server memory or CPU time${described?.where ?? ''} before it answered this request (request id ${requestId}).`,
 				described?.size,
-				'This is a server limit, not a login or network problem. CPU and ' +
-					'memory use vary between runs, so a retry can pass, but a ' +
-					'request this close to the limit can keep failing on some runs. ' +
-					'Quote the request id when you report it.',
+				startedRun
+					? `${describeStartedExecuteRun(startedRun)} Quote the request id when you report it.`
+					: 'This is a server limit, not a login or network problem. CPU and ' +
+						'memory use vary between runs, so a retry can pass, but a ' +
+						'request this close to the limit can keep failing on some runs. ' +
+						'Quote the request id when you report it.',
 			]
 				.filter(Boolean)
 				.join(' '),
@@ -375,11 +397,30 @@ export function describeOriginForwardFailure(
 	}
 	return {
 		reason: 'origin_unreachable' as const,
-		message: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
+		message: startedRun
+			? `The Kody API stopped before it answered this request (request id ${requestId}). ${describeStartedExecuteRun(startedRun)}`
+			: `The Kody API is temporarily unavailable (request id ${requestId}). Retry in a few seconds; if it keeps failing, quote the request id when you report it.`,
 	}
 }
 
-export const executionContextConnectPath = '/v1/execution-contexts/connect'
+function progressDetails(progress: ApiRequestProgress) {
+	if (progress.step === executeRunProgressStep) {
+		return {
+			step: progress.step,
+			run_id: progress.runId,
+			...(progress.idempotencyKey
+				? { idempotency_key: progress.idempotencyKey }
+				: {}),
+		}
+	}
+	return {
+		step: progress.step,
+		package_bytes: progress.totalBytes,
+		package_files: progress.fileCount,
+	}
+}
+
+const executionContextConnectPath = '/v1/execution-contexts/connect'
 
 const executionContextConnectHeaderNames = [
 	'Upgrade',
@@ -484,11 +525,7 @@ async function fetchOrigin(
 	try {
 		return withEdgeHeaders(await env.KODY_API.fetch(forwarded))
 	} catch (error) {
-		const progress = originResourceLimitPattern.test(
-			error instanceof Error ? error.message : String(error),
-		)
-			? await readOriginRequestProgress(env, requestId)
-			: null
+		const progress = await readOriginRequestProgress(env, requestId)
 		const failure = describeOriginForwardFailure(error, requestId, progress)
 		console.error('api-worker-forward-failed', error, {
 			requestId,
@@ -505,13 +542,7 @@ async function fetchOrigin(
 						details: {
 							reason: failure.reason,
 							request_id: requestId,
-							...(progress
-								? {
-										step: progress.step,
-										package_bytes: progress.totalBytes,
-										package_files: progress.fileCount,
-									}
-								: {}),
+							...(progress ? progressDetails(progress) : {}),
 						},
 					},
 				},
@@ -521,7 +552,8 @@ async function fetchOrigin(
 					// automatic retry; callers that know the operation decide.
 					headers: {
 						'Cache-Control': 'no-store',
-						...(failure.reason === 'origin_unreachable'
+						...(failure.reason === 'origin_unreachable' &&
+						progress?.step !== executeRunProgressStep
 							? { 'Retry-After': '5' }
 							: {}),
 					},

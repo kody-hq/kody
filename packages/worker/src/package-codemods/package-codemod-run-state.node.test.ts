@@ -5,7 +5,7 @@ import {
 import { expect, test } from 'vitest'
 import { packageCodemodRunState } from './package-codemod-run-state.ts'
 
-test('codemod runs heartbeat, resume from failed or abandoned, and completed continuations may complete or fail', () => {
+test('codemod runs heartbeat, resume from failed or abandoned, and completed continuations may complete or fail', async () => {
 	expect(canHandle(packageCodemodRunState, 'running', 'CONTINUE')).toBe(true)
 	expect(canHandle(packageCodemodRunState, 'running', 'COMPLETE')).toBe(true)
 	expect(canHandle(packageCodemodRunState, 'failed', 'CONTINUE')).toBe(true)

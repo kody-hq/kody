@@ -2,9 +2,6 @@
   "name": "@kody/highlight-worker",
   "private": true,
   "type": "module",
-  "exports": {
-    "./*": "./src/*"
-  },
   "dependencies": {
     "@tanstack/highlight": "^1.2.0"
   }

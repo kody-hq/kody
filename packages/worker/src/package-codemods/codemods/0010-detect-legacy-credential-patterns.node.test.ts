@@ -15,9 +15,9 @@ function manifest(kody: Record<string, unknown> = {}) {
 	})
 }
 
-function patternsByPath(files: Record<string, string>) {
+async function patternsByPath(files: Record<string, string>) {
 	const result: Record<string, Array<LegacyCredentialPattern | null>> = {}
-	for (const finding of detectLegacyCredentialPatternsCodemod.detect(
+	for (const finding of await detectLegacyCredentialPatternsCodemod.detect(
 		files,
 		packageContext,
 	)) {
@@ -28,17 +28,17 @@ function patternsByPath(files: Record<string, string>) {
 	return result
 }
 
-function modulePatterns(source: string) {
+async function modulePatterns(source: string) {
 	return (
-		patternsByPath({ 'package.json': manifest(), 'index.ts': source })[
+		(await patternsByPath({ 'package.json': manifest(), 'index.ts': source }))[
 			'index.ts'
 		] ?? []
 	)
 }
 
-test('0010 tells literal names from computed ones', () => {
+test('0010 tells literal names from computed ones', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				"import { createAuthenticatedFetch, packageSecrets, secretHeaders } from 'kody:runtime'",
 				'export default async function run() {',
@@ -52,7 +52,7 @@ test('0010 tells literal names from computed ones', () => {
 	).toEqual(['literal secret', 'packageSecrets.get'])
 
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				"import { packageSecrets, secretHeaders, oauthClientCredentials } from 'kody:runtime'",
 				'export default async function run(name, opts) {',
@@ -66,7 +66,7 @@ test('0010 tells literal names from computed ones', () => {
 	).toEqual(['literal secret', 'computed secret', 'packageSecrets.get'])
 
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				"import { createAuthenticatedFetch, kody } from 'kody:runtime'",
 				'export default async function run(provider) {',
@@ -79,20 +79,20 @@ test('0010 tells literal names from computed ones', () => {
 	).toEqual(['computed integration'])
 })
 
-test('0010 finds kody.mcp through aliases, brackets, optional chains, and destructuring', () => {
+test('0010 finds kody.mcp through aliases, brackets, optional chains, and destructuring', async () => {
 	for (const source of [
 		"import { kody as k } from 'kody:runtime'\nexport default () => k.mcp.home.tool({})",
 		"import { kody } from 'kody:runtime'\nexport default () => kody['mcp']['home'].tool({})",
 		"import { kody } from 'kody:runtime'\nexport default () => kody?.mcp?.home",
 		"import { kody } from 'kody:runtime'\nconst { mcp } = kody\nexport default () => mcp.home",
 	]) {
-		expect(modulePatterns(source)).toEqual(['kody.mcp'])
+		expect(await modulePatterns(source)).toEqual(['kody.mcp'])
 	}
 })
 
-test('0010 flags scope options on secret helpers and the |scope= suffix', () => {
+test('0010 flags scope options on secret helpers and the |scope= suffix', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				"import { kody, secretHeaders } from 'kody:runtime'",
 				'export default async function run() {',
@@ -104,35 +104,37 @@ test('0010 flags scope options on secret helpers and the |scope= suffix', () => 
 	).toEqual(['literal secret', '|scope='])
 })
 
-test('0010 flags a computed |scope= suffix', () => {
+test('0010 flags a computed |scope= suffix', async () => {
 	for (const source of [
 		'export const p = (n: string, s: string) => `{{secret:${n}|scope=${s}}}`',
 		"export const p = (s: string) => '{{secret:KEY|scope=' + s + '}}'",
 		"export const p = (n: string, s: string) => '{{secret:' + n + '|scope=' + s + '}}'",
 	]) {
-		expect(modulePatterns(source)).toContain('|scope=')
+		expect(await modulePatterns(source)).toContain('|scope=')
 	}
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			'export default function broken( {\n\t`{{secret:KEY|scope=${s}}}`\n',
 		),
 	).toEqual(['computed secret', '|scope='])
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"export default function broken( {\n\t'{{secret:KEY|scope=' + s\n",
 		),
 	).toEqual(['computed secret', '|scope='])
 	expect(
-		modulePatterns("export const note = 'Use |scope=user for user secrets.'"),
+		await modulePatterns(
+			"export const note = 'Use |scope=user for user secrets.'",
+		),
 	).toEqual(['|scope='])
 	expect(
-		modulePatterns("export const note = 'the |scope= suffix is retired'"),
+		await modulePatterns("export const note = 'the |scope= suffix is retired'"),
 	).toEqual([])
 })
 
-test('0010 reads secretMounts and webhook secretName from package.json', () => {
+test('0010 reads secretMounts and webhook secretName from package.json', async () => {
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': manifest({
 				secretMounts: { token: { name: 'token' } },
 				webhooks: [
@@ -151,7 +153,7 @@ test('0010 reads secretMounts and webhook secretName from package.json', () => {
 	).toEqual({ 'package.json': ['secretMounts', 'webhook secretName'] })
 
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': manifest({
 				webhooks: [
 					{ name: 'github', export: '.', verification: { secretName: 's' } },
@@ -161,9 +163,9 @@ test('0010 reads secretMounts and webhook secretName from package.json', () => {
 	).toEqual({ 'package.json': ['webhook secretName'] })
 })
 
-test('0010 ignores comments, unrelated strings, Markdown, and clean manifests', () => {
+test('0010 ignores comments, unrelated strings, Markdown, and clean manifests', async () => {
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': manifest({
 				credentials: {
 					GOOGLE: { kind: 'oauth', provider: 'google', description: 'x' },
@@ -182,9 +184,9 @@ test('0010 ignores comments, unrelated strings, Markdown, and clean manifests', 
 	).toEqual({})
 })
 
-test('0010 ignores calls named after Object.prototype methods', () => {
+test('0010 ignores calls named after Object.prototype methods', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				'export const hex = (b: number) => b.toString(16)',
 				"export const has = (o: object) => o.hasOwnProperty('k')",
@@ -210,13 +212,13 @@ const slotManifest = manifest({
 	},
 })
 
-test('0010 does not report references that name a declared slot of their kind', () => {
-	const declared = (source: string) =>
-		patternsByPath({ 'package.json': slotManifest, 'index.ts': source })[
-			'index.ts'
-		] ?? []
+test('0010 does not report references that name a declared slot of their kind', async () => {
+	const declared = async (source: string) =>
+		(
+			await patternsByPath({ 'package.json': slotManifest, 'index.ts': source })
+		)['index.ts'] ?? []
 	expect(
-		declared(
+		await declared(
 			[
 				"import { createAuthenticatedFetch, kody, packageSecrets } from 'kody:runtime'",
 				'export default async function run() {',
@@ -229,25 +231,25 @@ test('0010 does not report references that name a declared slot of their kind', 
 		),
 	).toEqual([])
 	expect(
-		declared("export const h = { Authorization: '{{secret:otherKey}}' }"),
+		await declared("export const h = { Authorization: '{{secret:otherKey}}' }"),
 	).toEqual(['literal secret'])
 	expect(
-		declared(
+		await declared(
 			"import { createAuthenticatedFetch } from 'kody:runtime'\nexport default () => createAuthenticatedFetch('cursorApiKey')",
 		),
 	).toEqual(['literal secret'])
 	expect(
-		declared(
+		await declared(
 			"export const h = { Authorization: 'Basic {{secret-basic:username=cursorApiKey,password=otherKey}}' }",
 		),
 	).toEqual(['literal secret'])
 	expect(
-		declared(
+		await declared(
 			"export const h = { Authorization: 'Bearer {{secret:cursorApiKey|scope=user}}' }",
 		),
 	).toEqual(['|scope='])
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': slotManifest,
 			'index.ts':
 				"export default function broken( {\n\tcreateAuthenticatedFetch('slack')\n\t'{{secret:cursorApiKey}}'",
@@ -255,40 +257,42 @@ test('0010 does not report references that name a declared slot of their kind', 
 	).toEqual({})
 })
 
-test('0010 treats an omitted slot kind as matching fetch-capable placeholders', () => {
+test('0010 treats an omitted slot kind as matching fetch-capable placeholders', async () => {
 	const omittedKindManifest = manifest({
 		credentials: {
 			github: { description: 'Read PRs to summarize them.' },
 		},
 	})
-	const declared = (source: string) =>
-		patternsByPath({
-			'package.json': omittedKindManifest,
-			'index.ts': source,
-		})['index.ts'] ?? []
+	const declared = async (source: string) =>
+		(
+			await patternsByPath({
+				'package.json': omittedKindManifest,
+				'index.ts': source,
+			})
+		)['index.ts'] ?? []
 	expect(
-		declared(
+		await declared(
 			"export const h = { Authorization: 'Bearer {{secret:github}}', b: '{{integration-token:github}}' }",
 		),
 	).toEqual([])
 	expect(
-		declared("export const h = { Authorization: '{{secret:other}}' }"),
+		await declared("export const h = { Authorization: '{{secret:other}}' }"),
 	).toEqual(['literal secret'])
 })
 
-test('0010 resolves module-level string constants, including relative imports', () => {
+test('0010 resolves module-level string constants, including relative imports', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"const S = 'slack'; export const f = () => createAuthenticatedFetch(S)",
 		),
 	).toEqual(['literal secret'])
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"let S = 'slack'; export const f = () => createAuthenticatedFetch(S)",
 		),
 	).toEqual(['computed integration'])
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': slotManifest,
 			'src/names.ts': [
 				"export const SLACK_INTEGRATION = 'slack' as const",
@@ -307,22 +311,24 @@ test('0010 resolves module-level string constants, including relative imports', 
 		}),
 	).toEqual({})
 	expect(
-		patternsByPath({
-			'package.json': manifest(),
-			'src/names.ts': "export const KEY = 'stripe'",
-			'src/a.ts': [
-				"import { KEY } from './names.ts'",
-				"import { OTHER } from 'some-package'",
-				"export const body = JSON.stringify({ k: '{{secret:' + KEY + '}}' })",
-				'export const other = `{{secret:${OTHER}}}`',
-			].join('\n'),
-		})['src/a.ts'],
+		(
+			await patternsByPath({
+				'package.json': manifest(),
+				'src/names.ts': "export const KEY = 'stripe'",
+				'src/a.ts': [
+					"import { KEY } from './names.ts'",
+					"import { OTHER } from 'some-package'",
+					"export const body = JSON.stringify({ k: '{{secret:' + KEY + '}}' })",
+					'export const other = `{{secret:${OTHER}}}`',
+				].join('\n'),
+			})
+		)['src/a.ts'],
 	).toEqual(['literal secret', 'computed secret'])
 })
 
-test('0010 resolves constants across cyclic relative imports', () => {
+test('0010 resolves constants across cyclic relative imports', async () => {
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': slotManifest,
 			'src/a.ts': [
 				"import { B } from './b.js'",
@@ -339,9 +345,9 @@ test('0010 resolves constants across cyclic relative imports', () => {
 	).toEqual({})
 })
 
-test('0010 ignores placeholder-shaped prose that names nothing', () => {
+test('0010 ignores placeholder-shaped prose that names nothing', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				"export const r = (s: string) => s.replace(/x/g, '{{secret:<name>}}')",
 				"export const redacted = '{{secret:…}}'",
@@ -352,13 +358,15 @@ test('0010 ignores placeholder-shaped prose that names nothing', () => {
 		),
 	).toEqual([])
 	expect(
-		modulePatterns("export const f = (name) => '{{secret:' + name + '}}'"),
+		await modulePatterns(
+			"export const f = (name) => '{{secret:' + name + '}}'",
+		),
 	).toEqual(['computed secret'])
 })
 
-test('0010 falls back to text for unparseable modules', () => {
+test('0010 falls back to text for unparseable modules', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				'export default function broken( {',
 				"\tcreateAuthenticatedFetch('google')",
@@ -375,7 +383,7 @@ test('0010 falls back to text for unparseable modules', () => {
 	])
 
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			[
 				'export default function broken( {',
 				'\tpackageSecrets.get(alias)',
@@ -389,18 +397,18 @@ test('0010 falls back to text for unparseable modules', () => {
 		'packageSecrets.get',
 	])
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			'export default function broken( {\n\tkody.secretJwtSign(input)\n',
 		),
 	).toEqual(['computed secret'])
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"export default function broken( {\n\tkody.integrationTokenRefresh({ name: 'github' })\n",
 		),
 	).toEqual(['literal secret'])
 })
 
-test('0010 does not flag where in a request a declared placeholder sits', () => {
+test('0010 does not flag where in a request a declared placeholder sits', async () => {
 	const slots = manifest({
 		credentials: {
 			TOKEN: { kind: 'secret', provider: 'telegram', description: 'x' },
@@ -415,7 +423,7 @@ test('0010 does not flag where in a request a declared placeholder sits', () => 
 		"new URLSearchParams({ token: '{{integration-token:github}}' })",
 	]) {
 		expect(
-			patternsByPath({
+			await patternsByPath({
 				'package.json': slots,
 				'index.ts': `export default async () => {\n\t${statement}\n}`,
 			}),
@@ -423,28 +431,30 @@ test('0010 does not flag where in a request a declared placeholder sits', () => 
 	}
 })
 
-test('0010 flags plain http fetches in modules that use placeholders', () => {
+test('0010 flags plain http fetches in modules that use placeholders', async () => {
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"export default () => fetch('http://api.example.com/v1', { headers: { Authorization: 'Bearer {{secret:S}}' } })",
 		),
 	).toContain('plain http')
 	expect(
-		modulePatterns("export default () => fetch('http://api.example.com/v1')"),
+		await modulePatterns(
+			"export default () => fetch('http://api.example.com/v1')",
+		),
 	).toEqual([])
 	expect(
-		modulePatterns(
+		await modulePatterns(
 			"export default () => fetch('https://api.example.com/v1', { headers: { Authorization: 'Bearer {{secret:S}}' } })",
 		),
 	).not.toContain('plain http')
 })
 
-test('0010 transform writes nothing and returns the findings as needsManual', () => {
+test('0010 transform writes nothing and returns the findings as needsManual', async () => {
 	const files = {
 		'package.json': manifest({ secretMounts: {} }),
 		'index.ts': "export default () => '{{secret:TOKEN}}'",
 	}
-	const result = detectLegacyCredentialPatternsCodemod.transform(
+	const result = await detectLegacyCredentialPatternsCodemod.transform(
 		files,
 		packageContext,
 	)
@@ -458,7 +468,7 @@ test('0010 transform writes nothing and returns the findings as needsManual', ()
 	).toEqual(['literal secret', 'secretMounts'])
 })
 
-test('0010 flags partially computed |scope= suffixes but not a bare delimiter', () => {
+test('0010 flags partially computed |scope= suffixes but not a bare delimiter', async () => {
 	for (const source of [
 		'export const p = (ending: string) => `{{secret:KEY|scope=pack${ending}}}`',
 		"export const p = (ending: string) => '{{secret:KEY|scope=pack' + ending + '}}'",
@@ -466,13 +476,13 @@ test('0010 flags partially computed |scope= suffixes but not a bare delimiter', 
 		"export const p = (ending: string) => '{{secret:KEY' + '|scope=' + ending + '}}'",
 		"const PREFIX = '{{secret:KEY|scope='\nexport const p = (ending: string) => PREFIX + ending + '}}'",
 	]) {
-		expect(modulePatterns(source)).toContain('|scope=')
+		expect(await modulePatterns(source)).toContain('|scope=')
 	}
-	expect(modulePatterns("export const label = '|scope='")).toEqual([])
-	expect(modulePatterns('export const label = `|scope=`')).toEqual([])
+	expect(await modulePatterns("export const label = '|scope='")).toEqual([])
+	expect(await modulePatterns('export const label = `|scope=`')).toEqual([])
 })
 
-test('0010 does not resolve a locally shadowed binding as the module constant', () => {
+test('0010 does not resolve a locally shadowed binding as the module constant', async () => {
 	for (const body of [
 		'export default (NAME) => createAuthenticatedFetch(NAME)',
 		'export default (arg) => {\n\tconst NAME = arg\n\treturn createAuthenticatedFetch(NAME)\n}',
@@ -483,22 +493,24 @@ test('0010 does not resolve a locally shadowed binding as the module constant', 
 		'export default function run() {\n\tconst f = function NAME() {\n\t\treturn createAuthenticatedFetch(NAME as unknown as string)\n\t}\n\treturn f()\n}',
 	]) {
 		expect(
-			patternsByPath({
-				'package.json': slotManifest,
-				'index.ts': [
-					"import { createAuthenticatedFetch } from 'kody:runtime'",
-					"const NAME = 'slack'",
-					body,
-				].join('\n'),
-			})['index.ts'],
+			(
+				await patternsByPath({
+					'package.json': slotManifest,
+					'index.ts': [
+						"import { createAuthenticatedFetch } from 'kody:runtime'",
+						"const NAME = 'slack'",
+						body,
+					].join('\n'),
+				})
+			)['index.ts'],
 		).toEqual(['computed integration'])
 	}
 })
 
-test('0010 skips package test files unless an export, entry, or import reaches them', () => {
+test('0010 skips package test files unless an export, entry, or import reaches them', async () => {
 	const legacy = "export const h = { a: '{{secret:TOKEN}}' }"
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': JSON.stringify({
 				name: '@acme/demo',
 				exports: {
@@ -535,7 +547,7 @@ test('0010 skips package test files unless an export, entry, or import reaches t
 		'src/latest.ts': ['literal secret'],
 	})
 	expect(
-		patternsByPath({
+		await patternsByPath({
 			'package.json': JSON.stringify({
 				name: '@acme/demo',
 				exports: {

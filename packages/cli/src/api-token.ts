@@ -141,13 +141,12 @@ function apiTokenMintInstructions(): string {
  * Shared guidance for every missing or invalid CLI auth failure. Agents hit
  * this wall; put the MCP bootstrap path first and never ask a human for a token.
  */
-function notAuthenticatedGuidance(
-	lifetime: CliTokenLifetimeAlias = 'short',
-): string {
+function notAuthenticatedGuidance(): string {
 	return (
 		`If you are an agent connected to the Kody MCP server, call the MCP \`api\` tool with ` +
-		`operationId \`cliCredentialBootstrap\` and params \`{ lifetime: "${lifetime}", scopes: [...] }\` ` +
-		`(not \`execute\`, which is refused) and run the returned \`cli_command\`; ` +
+		`operationId \`cliCredentialBootstrap\` and no params (the \`kody login\` credential: ` +
+		`every scope your role grants, 14-day idle TTL; \`lifetime: "short"\` has no refresh and ` +
+		`expires mid-task in waiting loops) (not \`execute\`, which is refused) and run the returned \`cli_command\`; ` +
 		`never ask a human to paste a token. Humans: run \`kody login\`. ` +
 		apiTokenMintInstructions()
 	)
@@ -157,12 +156,9 @@ function notAuthenticatedGuidance(
  * One generic not-authenticated message for missing or invalid auth (all
  * commands). Optional `purpose` names the command that failed.
  */
-export function notAuthenticatedMessage(
-	purpose?: string,
-	lifetime: CliTokenLifetimeAlias = 'short',
-): string {
+export function notAuthenticatedMessage(purpose?: string): string {
 	const head = purpose ? `${purpose}: not authenticated.` : 'Not authenticated.'
-	return `${head} ${notAuthenticatedGuidance(lifetime)}`
+	return `${head} ${notAuthenticatedGuidance()}`
 }
 
 /**

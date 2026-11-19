@@ -24,8 +24,6 @@ import { readOrgSlugFromUrl } from '#universal/org-binding/url.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -832,13 +830,3 @@ export const connectOauthRedirectUriValueCss = {
 	fontSize: typography.fontSize.base,
 	fontWeight: typography.fontWeight.medium,
 }
-
-export const connectOauthPrimaryButtonCss = getPrimaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-
-export const connectOauthSecondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})

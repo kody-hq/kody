@@ -48,10 +48,55 @@ Any other key (including `tags`) fails the build.
 
 ## Inline screenshots
 
-Put body images at `packages/worker/public/images/blog/<post-slug>/<name>.<ext>`
-(webp preferred, at most about 1600px wide and about 400 KiB) and embed them as
-`![Caption](/images/blog/<post-slug>/<name>.webp)`. Alt text is required, and
-never hotlink GitHub attachment URLs; other hrefs render as links.
+Blog screenshots live in Cloudflare R2, not in this repo. Do not commit files
+under `packages/worker/public/images/blog/`. The worker serves
+`/images/blog/<post-slug>/<name>.<ext>` from the `kody-community-assets` bucket
+(binding `COMMUNITY_ASSETS`) at key `blog-images/<post-slug>/<name>.<ext>`, with
+long-lived immutable caching, so upload a new file name instead of replacing an
+object. Names are lowercase letters, digits, and dashes with an `avif`, `jpg`,
+`jpeg`, `png`, or `webp` extension. The weekly post automation uploads its
+screenshots there and hands the session ready paths.
+
+Embed them as `![Caption](/images/blog/<post-slug>/<name>.webp)` or use the same
+path in frontmatter `image`. Alt text is required, and never hotlink GitHub
+attachment URLs; other hrefs render as links.
+
+## Video embeds
+
+Put a YouTube video in a post (or guide) with a watch block. It renders the
+click-to-play lite player; raw markdown keeps it as a quote.
+
+```md
+> [!WATCH] https://www.youtube.com/watch?v=xxxxxxxxxxx Watch: Real video title
+```
+
+Use `[!WATCH-VERTICAL]` for a 9:16 phone-shot video so it gets a narrow 9:16
+player instead of a pillarboxed 16:9 one. Video ids in watch blocks are
+allowlisted for the thumbnail proxy automatically.
+
+## Video roundups: What's new in Kody
+
+Every other week Kent records a "What's new in Kody" video, and a blog post goes
+with it. This is separate from the automated `kody-weekly-YYYY-MM-DD` posts; do
+not change those.
+
+- Slug `whats-new-in-kody-<episode-date>` (the date in the video title),
+  category `updates`, `date` = the day the post ships. Once a second episode
+  ships, add a `whats-new-in-kody` series to `blog-taxonomy.ts` and set it on
+  every episode (a series needs two posts).
+- The video goes first, as a watch block (`[!WATCH-VERTICAL]` for the usual
+  vertical recording).
+- A short intro in Kent's voice: first person, warm, plain words, the PR count
+  from the video.
+- One `##` section per featured topic, in the order the video covers them:
+  **What changed**, **Why it matters**, **Try it** (docs or page link when one
+  exists). Say when something is behind a flag or an early access experiment.
+- A **Rapid fire** bullet list for the quick hits, then **The full list**
+  linking the weekly posts the episode's window covers.
+- Sources: the final narration (`.srt`), the episode beats, and the release
+  notes. Every claim must trace to them or to the repo; no invented UI, numbers,
+  or quotes. Screenshots only if real. No em dashes.
+- Example: `whats-new-in-kody-2026-11-12.md`.
 
 ## Picking a category
 

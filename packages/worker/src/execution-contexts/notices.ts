@@ -10,8 +10,16 @@ import {
  * org, kind and subject holds the current state. A notification is a move
  * to a new fingerprint that adds an entry or changes the box login; only the
  * subject dismisses an elevation, and misconfigurations are not dismissible.
+ * `open_shell` tells the operator the machine gives their runs an unrestricted
+ * shell with no package list; the operator dismisses it to keep the shell.
  */
-export type NoticeKind = 'elevation' | 'misconfigured'
+export type NoticeKind = 'elevation' | 'misconfigured' | 'open_shell'
+
+/**
+ * The open shell notice has one state, so its fingerprint never changes: the
+ * operator's "keep it" holds until the notice is cleared and raised again.
+ */
+export const openShellFingerprint = 'open-shell'
 export type NoticeSurface = 'execute' | 'search'
 
 type NoticeRow = {
@@ -192,8 +200,40 @@ export async function recordMisconfigurations(
 	return raise
 }
 
+/**
+ * Raises or clears the operator's notice that the machine has an unrestricted
+ * shell with no package list. Returns true when it is newly raised.
+ */
+export async function recordOpenShell(
+	db: D1Database,
+	input: {
+		contextId: string
+		orgId: string
+		operatorId: string
+		open: boolean
+	},
+): Promise<boolean> {
+	const key = {
+		contextId: input.contextId,
+		orgId: input.orgId,
+		kind: 'open_shell' as const,
+		subject: input.operatorId,
+	}
+	if (!input.open) {
+		await clear(db, key)
+		return false
+	}
+	if (await readRow(db, key)) return false
+	await write(db, key, {
+		fingerprint: openShellFingerprint,
+		detail: {},
+		raise: true,
+	})
+	return true
+}
+
 /** Only the subject dismisses, and only the fingerprint they saw. */
-export async function dismissElevation(
+export async function dismissNotice(
 	db: D1Database,
 	input: {
 		contextId: string
@@ -202,10 +242,12 @@ export async function dismissElevation(
 		fingerprint: string
 	},
 ): Promise<'dismissed' | 'changed' | 'none'> {
+	const kind =
+		input.fingerprint === openShellFingerprint ? 'open_shell' : 'elevation'
 	const row = await readRow(db, {
 		contextId: input.contextId,
 		orgId: input.orgId,
-		kind: 'elevation',
+		kind,
 		subject: input.userId,
 	})
 	if (!row) return 'none'
@@ -214,9 +256,15 @@ export async function dismissElevation(
 		.prepare(
 			`UPDATE execution_context_notices
 			 SET dismissed_fingerprint = fingerprint, dismissed_at = ?
-			 WHERE context_id = ? AND org_id = ? AND kind = 'elevation' AND subject_user_id = ?`,
+			 WHERE context_id = ? AND org_id = ? AND kind = ? AND subject_user_id = ?`,
 		)
-		.bind(new Date().toISOString(), input.contextId, input.orgId, input.userId)
+		.bind(
+			new Date().toISOString(),
+			input.contextId,
+			input.orgId,
+			kind,
+			input.userId,
+		)
 		.run()
 	return 'dismissed'
 }
@@ -228,7 +276,7 @@ export type StoredNotice = {
 	fingerprint: string
 	dismissed: boolean
 	raisedAt: string
-	detail: ElevationDetail | MisconfigDetail
+	detail: ElevationDetail | MisconfigDetail | Record<string, never>
 }
 
 function toNotice(row: NoticeRow): StoredNotice {
@@ -239,7 +287,7 @@ function toNotice(row: NoticeRow): StoredNotice {
 		fingerprint: row.fingerprint,
 		dismissed: row.dismissed_fingerprint === row.fingerprint,
 		raisedAt: row.raised_at,
-		detail: JSON.parse(row.detail_json) as ElevationDetail | MisconfigDetail,
+		detail: JSON.parse(row.detail_json) as StoredNotice['detail'],
 	}
 }
 
@@ -257,8 +305,8 @@ export async function listContextNotices(
 }
 
 /**
- * The viewer's undismissed elevations plus misconfigurations on contexts
- * they operate, in one org.
+ * The viewer's undismissed elevations, plus misconfigurations and the
+ * undismissed open shell notice on contexts they operate, in one org.
  */
 export async function listNoticesForViewer(
 	db: D1Database,
@@ -281,12 +329,16 @@ export async function listNoticesForViewer(
 			 WHERE n.org_id = ?
 			   AND ((n.kind = 'elevation' AND n.subject_user_id = ?
 			         AND (n.dismissed_fingerprint IS NULL OR n.dismissed_fingerprint != n.fingerprint))
-			     OR (n.kind = 'misconfigured' AND c.operator_user_id = ?))
+			     OR (n.kind = 'misconfigured' AND c.operator_user_id = ?)
+			     OR (n.kind = 'open_shell' AND n.subject_user_id = ? AND c.operator_user_id = ?
+			         AND (n.dismissed_fingerprint IS NULL OR n.dismissed_fingerprint != n.fingerprint)))
 			   AND (? IS NULL OR n.context_id = ?) ${undelivered}
 			 ORDER BY n.raised_at DESC LIMIT 20`,
 		)
 		.bind(
 			input.orgId,
+			input.userId,
+			input.userId,
 			input.userId,
 			input.userId,
 			input.contextId ?? null,
@@ -373,6 +425,17 @@ export function noticePayload(
 			fingerprint: notice.fingerprint,
 			summary: `${notice.contextName} is logged in as an account that can do ${entries.length} thing${entries.length === 1 ? '' : 's'} you can't. Your runs there use only your own access, but anyone with host access on that machine acts with the machine's access.`,
 			entries: entries.slice(0, 50),
+			href,
+			dismissible: true,
+		}
+	}
+	if (notice.kind === 'open_shell') {
+		return {
+			kind: 'context-open-shell' as const,
+			contextId: notice.contextId,
+			contextName: notice.contextName,
+			fingerprint: notice.fingerprint,
+			summary: `${notice.contextName} gives your runs an unrestricted shell, including every package you wrote or adopted. Limit the shell to listed packages with executionContextMachineAccessPackagesSet, or define named commands on the machine and turn the shell off there. executionContextShellSuggestions lists the packages and programs that used the shell, from its audit log. To keep the shell as it is, dismiss this notice.`,
 			href,
 			dismissible: true,
 		}

@@ -1,8 +1,17 @@
 # Account write lease repair
 
-Account write leases do not expire. A crashed writer intentionally blocks
-account deletion until an administrator verifies that the process is gone and
-releases its exact token with an audit reason.
+Account write leases expire. A lease lapses 2 minutes after its last renewal,
+and a running writer renews it every 30 seconds
+(`packages/worker/src/account/write-lease-timing.ts`). A writer whose isolate
+was killed stops renewing, so it stops blocking account and org deletion on its
+own. Once a deletion is waiting, a lapsed lease is dropped: a writer that comes
+back afterwards has lost its lease and its write fails.
+
+A deletion refused by active writes returns a `409` (`account_writes_active`)
+that names the holders. A blocking lease that is still held after 5 minutes is
+reported to Sentry as a warning, because a live writer should not run that long.
+Manual repair is for that case: a writer that keeps renewing but will not
+finish.
 
 Read-only MCP traffic (`initialize`, `tools/list`, `ping`, and `search`) does
 not acquire a write lease; mutating `tools/call` (including `execute`) still

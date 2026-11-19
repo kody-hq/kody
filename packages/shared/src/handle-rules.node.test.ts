@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import {
 	diagnoseHandleFormat,
+	getHandleFormatError,
+	getHandleFormatProblem,
 	isValidHandle,
 	suggestHandle,
 } from './handle-rules.ts'
@@ -28,6 +30,7 @@ test('diagnoseHandleFormat covers spaces, diacritics, length, and edge hyphens',
 	expect(diagnoseHandleFormat('-joe')).toBe('leading-hyphen')
 	expect(diagnoseHandleFormat('joe-')).toBe('trailing-hyphen')
 	expect(diagnoseHandleFormat('joe!')).toBe('other-characters')
+	expect(diagnoseHandleFormat('joe--cool')).toBe('consecutive-hyphens')
 	expect(diagnoseHandleFormat('some-user')).toBeNull()
 	// Trailing whitespace alone does not fail once trimmed.
 	expect(diagnoseHandleFormat('kent ')).toBeNull()
@@ -40,4 +43,28 @@ test('isValidHandle matches the DNS-safe username pattern', () => {
 	expect(isValidHandle('kent ')).toBe(true)
 	expect(isValidHandle('kent_cdodds')).toBe(false)
 	expect(isValidHandle('ján')).toBe(false)
+	// `--` separates the package leaf from the handle in a per-app host label.
+	expect(isValidHandle('joe-cool-guy')).toBe(true)
+	expect(isValidHandle('joe--cool')).toBe(false)
+	expect(isValidHandle('notes--kent')).toBe(false)
+	expect(getHandleFormatError('joe--cool')).toBe(
+		"Username can't include two hyphens in a row.",
+	)
+})
+
+test('getHandleFormatProblem keeps the unverified suggestion out of the message', () => {
+	expect(getHandleFormatProblem('jsdklfjsdlsks;j')).toEqual({
+		message: 'Username can only use a–z letters, numbers, and hyphens.',
+		suggestion: 'jsdklfjsdlsks-j',
+	})
+	expect(getHandleFormatProblem('Acme Co', { label: 'Handle' })).toEqual({
+		message: "Handle can't include spaces.",
+		suggestion: 'acme-co',
+	})
+	expect(getHandleFormatProblem('')).toEqual({
+		message: 'Username is required.',
+		suggestion: null,
+	})
+	expect(getHandleFormatProblem('ab')?.suggestion).toBeNull()
+	expect(getHandleFormatProblem('kent')).toBeNull()
 })

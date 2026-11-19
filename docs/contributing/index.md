@@ -25,6 +25,10 @@ style, tests, MCP capabilities, and runtime architecture.
   snapshot, migrate, verify, restore on a branch preview; operator/CI only)
 - [control-kody](./control-kody.md) (Feature Map + CLI; daily
   `@kentcdodds/verification-skill-maintain`)
+- [UI verify](./ui-verify.md) (`npm run ui:verify`: gallery and key pages, axe,
+  keyboard focus, visual baselines; run before calling UI work done)
+- [UI components](./ui-components.md) (shared Button, Field, form controls; lint
+  rules that keep raw controls out)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)
 - [Cursor Cloud Agent notes](./cloud-agents.md)
 - [Nx remote cache](../../packages/nx-cache/readme.md) (self-hosted HTTP cache
@@ -38,8 +42,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Release notes](./release-notes.md) (PR bodies / Discord; **May break
   packages** heading)
 - [Writing blog posts](./blog.md) (category, series, frontmatter schema)
-- [Friction log](./friction-log.md) (when/where/how-to-fix policy; package owns
-  create/file/daily at
+- [Friction log](./friction-log.md) (when/where/how-to-fix policy; filing at
+  [@kody/kody-factory](https://kody.codes/@kody/kody-factory), daily sweep at
   [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))
 - [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md ratchet,
   Validate unit-job timing, ship-pr review-bot sort)
@@ -81,9 +85,11 @@ style, tests, MCP capabilities, and runtime architecture.
 ## Testing
 
 - [Testing principles](./testing-principles.md)
+- [Writing tests](./writing-tests.md)
 - [End-to-end testing](./end-to-end-testing.md)
 - [Weekly site performance](./weekly-site-perf.md)
 - [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)
+- [Hosted execute `kody:@` import baseline](./performance/prebuilt-imports-baseline-2026-11-16.md)
 - [MCP latency bench](./latency-bench.md)
 - [Mock API servers](./mock-api-servers.md)
 - [Package discovery routing evaluation](./package-discovery-evaluation.md)

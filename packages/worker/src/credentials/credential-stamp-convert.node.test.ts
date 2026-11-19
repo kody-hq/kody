@@ -20,13 +20,13 @@ function manifest(
 	)}\n`
 }
 
-test('leaves |scope=package alone (would widen to session secrets)', () => {
+test('leaves |scope=package alone (would widen to session secrets)', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts':
 			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' }",
 	}
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		packageName: '@acme/demo',
 		files,
 	})
@@ -38,7 +38,7 @@ test('leaves |scope=package alone (would widen to session secrets)', () => {
 	expect(result.needsManual).toHaveLength(1)
 })
 
-test('adds allowlisted undeclared remix then seals literal credentials', () => {
+test('adds allowlisted undeclared remix then seals literal credentials', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts': [
@@ -49,8 +49,8 @@ test('adds allowlisted undeclared remix then seals literal credentials', () => {
 			'}',
 		].join('\n'),
 	}
-	expect(collectAllowlistedUndeclaredBareDeps(files)).toEqual(['remix'])
-	const result = convertCredentialStampFiles({
+	expect(await collectAllowlistedUndeclaredBareDeps(files)).toEqual(['remix'])
+	const result = await convertCredentialStampFiles({
 		packageName: '@acme/demo',
 		files,
 	})
@@ -61,7 +61,7 @@ test('adds allowlisted undeclared remix then seals literal credentials', () => {
 	expect(parsed.kody.credentials.API_KEY.description).toMatch(/API_KEY/)
 })
 
-test('collects side-effect bare imports for allowlisted deps', () => {
+test('collects side-effect bare imports for allowlisted deps', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts': [
@@ -72,8 +72,8 @@ test('collects side-effect bare imports for allowlisted deps', () => {
 			'}',
 		].join('\n'),
 	}
-	expect(collectAllowlistedUndeclaredBareDeps(files)).toEqual(['remix'])
-	const result = convertCredentialStampFiles({
+	expect(await collectAllowlistedUndeclaredBareDeps(files)).toEqual(['remix'])
+	const result = await convertCredentialStampFiles({
 		packageName: '@acme/demo',
 		files,
 	})
@@ -83,13 +83,13 @@ test('collects side-effect bare imports for allowlisted deps', () => {
 	expect(parsed.dependencies.remix).toBe('3.0.0')
 })
 
-test('skips Kent holdouts without changing files', () => {
+test('skips Kent holdouts without changing files', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts':
 			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=package}}' }",
 	}
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		packageName: '@kentcdodds/raycast',
 		files,
 	})
@@ -99,7 +99,7 @@ test('skips Kent holdouts without changing files', () => {
 	expect(result.needsManual).toHaveLength(1)
 })
 
-test('skips computed credential names without rewriting source', () => {
+test('skips computed credential names without rewriting source', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts': [
@@ -109,7 +109,7 @@ test('skips computed credential names without rewriting source', () => {
 			'}',
 		].join('\n'),
 	}
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		packageName: '@acme/demo',
 		files,
 	})
@@ -119,13 +119,13 @@ test('skips computed credential names without rewriting source', () => {
 	expect(result.needsManual).toHaveLength(1)
 })
 
-test('leaves |scope=user alone (would change which secret resolves)', () => {
+test('leaves |scope=user alone (would change which secret resolves)', async () => {
 	const files = {
 		'package.json': manifest(),
 		'src/index.ts':
 			"export const h = { Authorization: 'Bearer {{secret:TOKEN|scope=user}}' }",
 	}
-	const result = convertCredentialStampFiles({
+	const result = await convertCredentialStampFiles({
 		packageName: '@acme/demo',
 		files,
 	})

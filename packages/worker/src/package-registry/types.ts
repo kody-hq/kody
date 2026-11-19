@@ -922,6 +922,105 @@ export type PackagePublishDefinition = z.infer<
 	typeof packagePublishDefinitionSchema
 >
 
+const packageMachineNeedNamePattern = /^[a-z0-9][a-z0-9_-]{0,62}$/
+const maxPackageMachineNeeds = 20
+const machineNeedDescription = z.string().min(1).max(500)
+
+/**
+ * One `kody.machine` entry: machine access the package's code uses on an
+ * execution context. The key is the name the machine gives the entry. `hosts`,
+ * `ports` and `mode` say what the package expects, for the person approving;
+ * the machine's own definition is what a run gets.
+ */
+export const packageMachineNeedSchema = z.discriminatedUnion('kind', [
+	z.strictObject({
+		kind: z.literal('command'),
+		description: machineNeedDescription,
+	}),
+	z.strictObject({
+		kind: z.literal('lan'),
+		description: machineNeedDescription,
+		hosts: z
+			.array(z.union([z.ipv4(), z.ipv6(), z.cidrv4(), z.cidrv6()]))
+			.min(1)
+			.max(20)
+			.optional(),
+		ports: z
+			.array(z.number().int().min(1).max(65535))
+			.min(1)
+			.max(20)
+			.optional(),
+	}),
+	z.strictObject({
+		kind: z.literal('fs'),
+		description: machineNeedDescription,
+		mode: z.enum(['ro', 'rw']),
+	}),
+])
+
+export type PackageMachineNeed = z.infer<typeof packageMachineNeedSchema>
+
+/**
+ * A machine may give a command, a local network destination and a host folder
+ * the same name, so one key can hold a list with one entry per kind.
+ */
+const packageMachineNeedListSchema = z
+	.array(packageMachineNeedSchema)
+	.min(1)
+	.max(3)
+	.refine(
+		(needs) => new Set(needs.map((need) => need.kind)).size === needs.length,
+		{ message: 'A list can hold one entry per kind.' },
+	)
+
+// Not a union: its error would hide which field of the entry is wrong.
+const packageMachineNeedEntrySchema = z.unknown().transform((value, ctx) => {
+	const parsed = Array.isArray(value)
+		? packageMachineNeedListSchema.safeParse(value)
+		: packageMachineNeedSchema.safeParse(value)
+	if (parsed.success) return parsed.data
+	for (const issue of parsed.error.issues) {
+		ctx.addIssue({ code: 'custom', message: issue.message, path: issue.path })
+	}
+	return z.NEVER
+})
+
+/** The needs a `kody.machine` map declares under `name`. */
+export function packageMachineNeedsFor(
+	needs:
+		| Record<string, PackageMachineNeed | Array<PackageMachineNeed>>
+		| undefined,
+	name: string,
+): Array<PackageMachineNeed> {
+	const entry = needs && Object.hasOwn(needs, name) ? needs[name] : undefined
+	return entry === undefined ? [] : Array.isArray(entry) ? entry : [entry]
+}
+
+export const packageMachineNeedsSchema = z
+	.record(z.string(), packageMachineNeedEntrySchema)
+	.superRefine((needs, ctx) => {
+		const names = Object.keys(needs)
+		const count = names.reduce(
+			(total, name) => total + packageMachineNeedsFor(needs, name).length,
+			0,
+		)
+		if (count > maxPackageMachineNeeds) {
+			ctx.addIssue({
+				code: 'custom',
+				message: `kody.machine can declare at most ${maxPackageMachineNeeds} entries.`,
+			})
+		}
+		for (const name of names) {
+			if (!packageMachineNeedNamePattern.test(name)) {
+				ctx.addIssue({
+					code: 'custom',
+					path: [name],
+					message: `kody.machine key ${JSON.stringify(name)} must be the entry's name on the machine: lowercase letters, digits, "-" or "_" (at most 63 characters), e.g. "kdocker".`,
+				})
+			}
+		}
+	})
+
 export const authoredPackageKodySchema = z.object({
 	id: z.string().regex(kodyPackageIdPattern).optional(),
 	// No max here: this schema is shared by load/parse. Enforce
@@ -939,6 +1038,8 @@ export const authoredPackageKodySchema = z.object({
 	 */
 	capabilities: packageCapabilityDeclarationsSchema.optional(),
 	credentials: packageCredentialsSchema.optional(),
+	/** Machine access the package's code uses on an execution context. */
+	machine: packageMachineNeedsSchema.optional(),
 	secretMounts: z
 		.record(z.string().min(1), packageSecretMountDefinitionSchema)
 		.optional(),

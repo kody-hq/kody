@@ -42,7 +42,7 @@ import { recordMcpConnectFunnelEvent } from '#worker/identity/onboarding-funnel.
 import { createDb, usersTable } from './db.ts'
 import { upgradePasswordHashIfNeeded } from './password-upgrade.ts'
 import { wantsJson } from './utils.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import { verifyPassword } from '@kody-internal/shared/password-hash.ts'
 import { invalidClientIdMismatchMessage } from '@kody-internal/shared/oauth-messages.ts'
 import {
@@ -1650,7 +1650,7 @@ async function completeGuestAuthorization(input: {
 	const client = await helpers.lookupClient(authRequest.clientId)
 	const clientName = client?.clientName?.trim() || null
 	const created = await createGuestAccount({
-		db: env.APP_DB,
+		env,
 		requestIp: requestIp ?? null,
 		clientName,
 	})

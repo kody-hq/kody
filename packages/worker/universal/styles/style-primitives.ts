@@ -15,290 +15,264 @@ import {
  */
 export const hoverMq = '@media (hover: hover) and (pointer: fine)'
 
-type ButtonCssOptions = {
-	size?: 'md' | 'lg'
-	weight?: keyof typeof typography.fontWeight
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
+export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg'
+
+export type ButtonStyleOptions = {
+	/**
+	 * `primary` is the filled call to action, `secondary` its outlined
+	 * sibling, `ghost` a borderless control for toolbars and quiet actions,
+	 * and `danger` the outlined destructive action that fills on hover.
+	 */
+	variant?: ButtonVariant
+	/**
+	 * `sm` (default, 36px) for ordinary content and settings actions, `md`
+	 * (40px) for form submits, `lg` (48px) for prominent calls to action, `xs`
+	 * for value-sized controls that ride along with an id or a toolbar.
+	 */
+	size?: ButtonSize
+	/** Square button holding only an icon; pair it with an accessible name. */
+	iconOnly?: boolean
 	mobileFullWidth?: boolean
 }
 
-function getBaseButtonCss(options: ButtonCssOptions = {}) {
-	const size = options.size ?? 'md'
-	const weight = options.weight ?? 'medium'
-
-	return {
-		padding: `${spacing.sm} ${size === 'lg' ? spacing.lg : spacing.md}`,
-		borderRadius: radius.full,
-		fontFamily: typography.fontFamilyDisplay,
-		fontSize: typography.fontSize.base,
-		fontWeight: typography.fontWeight[weight],
-		cursor: 'pointer',
-		transition: `transform ${transitions.fast}, background-color ${transitions.normal}, border-color ${transitions.normal}, opacity ${transitions.normal}`,
-		'&:disabled': {
-			cursor: 'not-allowed',
-			opacity: 0.7,
-		},
-		...(options.mobileFullWidth
-			? {
-					[mq.mobile]: {
-						width: '100%',
-					},
-				}
-			: {}),
-	}
-}
+const buttonSizes = {
+	xs: {
+		paddingBlock: '0.375rem',
+		height: '1.75rem',
+		coarseHeight: '2.25rem',
+		paddingInline: '0.5rem',
+		gap: '0.25rem',
+		font: '650 0.75rem/1rem',
+		radius: '0.375rem',
+		squircleRadius: '0.75rem',
+	},
+	sm: {
+		paddingBlock: '0.5rem',
+		height: '2.25rem',
+		coarseHeight: '2.75rem',
+		paddingInline: '0.875rem',
+		gap: '0.375rem',
+		font: '650 0.875rem/1.25rem',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+	md: {
+		paddingBlock: '0.625rem',
+		height: '2.5rem',
+		coarseHeight: '2.75rem',
+		paddingInline: '1.125rem',
+		gap: '0.5rem',
+		font: '650 1rem/1.25rem',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+	lg: {
+		paddingBlock: '1rem',
+		height: '3rem',
+		coarseHeight: '3rem',
+		paddingInline: '1.7rem',
+		gap: '0.5rem',
+		font: '650 1rem/1',
+		radius: '0.625rem',
+		squircleRadius: '1.125rem',
+	},
+} as const satisfies Record<ButtonSize, Record<string, string>>
 
 /**
- * Motion kill for buttons. Declared last in each variant literal so it wins
- * the cascade over both the press scale and the hover lift.
+ * Squircle corners: a rounded rectangle everywhere, a superellipse where
+ * `corner-shape` is supported. Buttons get it through `getButtonCss`;
+ * specialized controls that are not buttons (tabs, segmented filters, toggles)
+ * use it directly so no control falls back to the full-radius pill.
  */
-const buttonReducedMotionCss = {
-	'@media (prefers-reduced-motion: reduce)': {
-		// Keep the color/opacity fades — reduced motion drops movement,
-		// not feedback.
-		transition: `background-color ${transitions.normal}, border-color ${transitions.normal}, color ${transitions.normal}, opacity ${transitions.normal}, box-shadow ${transitions.normal}`,
-		'&:not(:disabled):hover': { transform: 'none' },
-		'&:not(:disabled):active': { transform: 'none' },
-	},
-}
-
-export function getPrimaryButtonCss(options?: ButtonCssOptions) {
+export function getSquircleCss(size: ButtonSize = 'sm') {
+	const { radius, squircleRadius } = buttonSizes[size]
 	return {
-		...getBaseButtonCss(options),
-		border: 'none',
-		backgroundColor: colors.primary,
-		color: colors.onPrimary,
-		// Press feedback works everywhere, including touch.
-		'&:not(:disabled):active': {
-			backgroundColor: colors.primaryActive,
-			transform: 'scale(0.97)',
+		borderRadius: radius,
+		'@supports (corner-shape: squircle)': {
+			borderRadius: squircleRadius,
+			cornerShape: 'squircle',
 		},
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: colors.primaryHover,
-				transform: 'translateY(-1px)',
-			},
-			// Re-declared inside the media block so the press scale beats the
-			// hover lift while both apply.
-			'&:not(:disabled):active': {
-				transform: 'scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
 	}
 }
 
-export function getSecondaryButtonCss(options?: ButtonCssOptions) {
-	return {
-		...getBaseButtonCss(options),
-		border: `1px solid ${colors.border}`,
-		backgroundColor: 'transparent',
-		color: colors.text,
-		'&:not(:disabled):active': {
-			backgroundColor: colors.primarySoft,
-			transform: 'scale(0.97)',
-		},
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: colors.primarySoftest,
-				borderColor: colors.primary,
-				transform: 'translateY(-1px)',
-			},
-			'&:not(:disabled):active': {
-				transform: 'scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
+const pressTransform = 'translateY(0) scale(0.97)'
+
+function getButtonVariantCss(variant: ButtonVariant) {
+	switch (variant) {
+		case 'primary':
+			return {
+				backgroundColor: colors.primary,
+				color: colors.onPrimary,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: colors.primaryHover,
+						color: colors.onPrimary,
+						transform: 'translateY(-1px)',
+						boxShadow: `0 6px 20px -8px oklch(from ${colors.primary} l c h / 0.6)`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
+		case 'secondary':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.text,
+				boxShadow: `inset 0 0 0 1.5px ${colors.border}`,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: colors.surface,
+						color: colors.text,
+						transform: 'translateY(-1px)',
+						boxShadow: `inset 0 0 0 1.5px ${colors.textMuted}`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
+		case 'ghost':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.text,
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: `color-mix(in srgb, ${colors.text} 8%, transparent)`,
+						color: colors.text,
+					},
+				},
+			}
+		case 'danger':
+			return {
+				backgroundColor: 'transparent',
+				color: colors.danger,
+				boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
+				'@supports (color: oklch(from red l c h / 0.45))': {
+					boxShadow: `inset 0 0 0 1.5px oklch(from ${colors.danger} l c h / 0.45)`,
+				},
+				[hoverMq]: {
+					'&:not(:disabled):hover': {
+						backgroundColor: `oklch(from ${colors.danger} l c h / 0.12)`,
+						transform: 'translateY(-1px)',
+						boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
+					},
+					'&:not(:disabled):active': { transform: pressTransform },
+				},
+			}
 	}
 }
 
-export function getDangerButtonCss(options?: ButtonCssOptions) {
+function buildButtonCss(options: ButtonStyleOptions) {
+	const size = buttonSizes[options.size ?? 'sm']
 	return {
-		...getBaseButtonCss(options),
-		border: 'none',
-		backgroundColor: colors.danger,
-		color: colors.onDanger,
-		'&:not(:disabled):active': {
-			backgroundColor: colors.danger,
-			transform: 'scale(0.97)',
-		},
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: colors.dangerHover,
-				transform: 'translateY(-1px)',
-			},
-			'&:not(:disabled):active': {
-				transform: 'scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
-	}
-}
-
-type PillButtonCssOptions = {
-	mobileFullWidth?: boolean
-	/**
-	 * `sm` is the 36px squircle for ordinary content and settings actions.
-	 * `md` (default) keeps the larger pill for prominent calls to action.
-	 */
-	size?: 'md' | 'sm'
-}
-
-function getBasePillButtonCss(options: PillButtonCssOptions = {}) {
-	const small = options.size === 'sm'
-	return {
+		boxSizing: 'border-box' as const,
 		display: 'inline-flex',
 		alignItems: 'center',
 		justifyContent: 'center',
-		gap: small ? '0.375rem' : '0.5rem',
-		font: `650 ${small ? '0.875rem/1.25rem' : '1rem/1'} ${typography.fontFamilyDisplay}`,
-		borderRadius: small ? '0.625rem' : radius.full,
-		padding: small ? '0.5rem 0.875rem' : '0.95rem 1.7rem',
-		...(small
-			? {
-					boxSizing: 'border-box' as const,
-					minHeight: '2.25rem',
-					// Equal corner radii keep the curve independent of label width.
-					// Older browsers retain the rounded-rectangle base above.
-					'@supports (corner-shape: squircle)': {
-						borderRadius: '1.125rem',
-						cornerShape: 'squircle',
-					},
-					'@media (any-pointer: coarse)': {
-						minHeight: '2.75rem',
-					},
-				}
-			: {}),
-		cursor: 'pointer',
+		gap: size.gap,
+		minHeight: size.height,
+		padding: options.iconOnly
+			? 0
+			: `${size.paddingBlock} ${size.paddingInline}`,
+		...(options.iconOnly ? { minWidth: size.height, flex: 'none' } : {}),
+		margin: 0,
+		border: 'none',
+		font: `${size.font} ${typography.fontFamilyDisplay}`,
+		textAlign: 'center' as const,
 		textDecoration: 'none',
 		whiteSpace: 'nowrap' as const,
-		transition: `background-color 160ms ${transitions.easeOut}, color 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}, box-shadow 160ms ${transitions.easeOut}`,
-		'&:disabled': {
+		cursor: 'pointer',
+		...getSquircleCss(options.size),
+		'@media (any-pointer: coarse)': {
+			minHeight: size.coarseHeight,
+			...(options.iconOnly ? { minWidth: size.coarseHeight } : {}),
+		},
+		transition: `background-color 160ms ${transitions.easeOut}, color 160ms ${transitions.easeOut}, transform 160ms ${transitions.easeOut}, box-shadow 160ms ${transitions.easeOut}, opacity 160ms ${transitions.easeOut}`,
+		'&:disabled, &[aria-disabled="true"]': {
 			cursor: 'not-allowed',
 			opacity: 0.7,
 		},
-		'&:not(:disabled):active': {
-			transform: 'translateY(0) scale(0.97)',
+		// Press feedback works everywhere, including touch.
+		'&:not(:disabled):active': { transform: pressTransform },
+		...getButtonVariantCss(options.variant ?? 'primary'),
+		...(options.mobileFullWidth ? { [mq.mobile]: { width: '100%' } } : {}),
+		// Declared last so reduced motion wins over both the press and the lift.
+		'@media (prefers-reduced-motion: reduce)': {
+			transition: `background-color ${transitions.normal}, border-color ${transitions.normal}, color ${transitions.normal}, opacity ${transitions.normal}, box-shadow ${transitions.normal}`,
+			'&:not(:disabled):hover': { transform: 'none' },
+			'&:not(:disabled):active': { transform: 'none' },
 		},
-		...(options.mobileFullWidth
-			? {
-					[mq.mobile]: {
-						width: '100%',
-					},
-				}
-			: {}),
 	}
 }
 
-export function getPillButtonCss(options?: PillButtonCssOptions) {
-	return {
-		...getBasePillButtonCss(options),
-		border: 'none',
-		backgroundColor: colors.primary,
-		color: colors.onPrimary,
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: colors.primaryHover,
-				color: colors.onPrimary,
-				transform: 'translateY(-1px)',
-				boxShadow: `0 6px 20px -8px oklch(from ${colors.primary} l c h / 0.6)`,
-			},
-			'&:not(:disabled):active': {
-				transform: 'translateY(0) scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
+const buttonCssCache = new Map<string, ReturnType<typeof buildButtonCss>>()
+
+/**
+ * The one button look: every button and button-styled link renders through
+ * `<Button>` (start/components/button.tsx), which applies this. Call it
+ * directly only for elements `<Button>` cannot be (a `<label>` for a file
+ * input, a `<summary>`, static HTML via `renderButtonStylesheet`).
+ */
+export function getButtonCss(options: ButtonStyleOptions = {}) {
+	const key = `${options.variant ?? 'primary'}:${options.size ?? 'sm'}:${options.iconOnly ? 1 : 0}:${options.mobileFullWidth ? 1 : 0}`
+	let css = buttonCssCache.get(key)
+	if (!css) {
+		css = buildButtonCss(options)
+		buttonCssCache.set(key, css)
 	}
+	return css
 }
 
-export function getGhostButtonCss(options?: PillButtonCssOptions) {
-	return {
-		...getBasePillButtonCss(options),
-		border: 'none',
-		backgroundColor: 'transparent',
-		color: colors.text,
-		boxShadow: `inset 0 0 0 1.5px ${colors.border}`,
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: colors.surface,
-				color: colors.text,
-				transform: 'translateY(-1px)',
-				boxShadow: `inset 0 0 0 1.5px ${colors.textMuted}`,
-			},
-			'&:not(:disabled):active': {
-				transform: 'translateY(0) scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
+type StaticCssObject = { [key: string]: string | number | StaticCssObject }
+
+function nestSelector(parent: string, child: string) {
+	const parents = parent.split(',').map((part) => part.trim())
+	return child
+		.split(',')
+		.map((part) => part.trim())
+		.flatMap((part) =>
+			parents.map((outer) =>
+				part.includes('&') ? part.replaceAll('&', outer) : `${outer} ${part}`,
+			),
+		)
+		.join(',')
+}
+
+/** Serializes an Emotion-style object for documents that load no app bundle. */
+export function renderStaticCss(selector: string, styles: object): string {
+	const declarations: Array<string> = []
+	const nested: Array<string> = []
+	for (const [key, value] of Object.entries(styles as StaticCssObject)) {
+		if (typeof value === 'object') {
+			nested.push(
+				key.startsWith('@')
+					? `${key}{${renderStaticCss(selector, value)}}`
+					: renderStaticCss(nestSelector(selector, key), value),
+			)
+		} else {
+			const property = key.startsWith('--')
+				? key
+				: key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
+			declarations.push(`${property}:${value}`)
+		}
 	}
+	const own = declarations.length
+		? `${selector}{${declarations.join(';')}}`
+		: ''
+	return own + nested.join('')
 }
 
 /**
- * Destructive action in the redesign's pill vocabulary — the ghost button's
- * quiet shape carrying the danger color. Deliberately not a solid red fill:
- * these sit inline in account and admin lists next to ordinary actions, and a
- * filled pill would shout for attention the action has not earned yet. The
- * ring and the color say "destructive"; hover commits to it.
+ * The `getButtonCss` look as plain CSS for static documents (the uncaught
+ * error page), keyed by selector, so those buttons cannot drift from
+ * `<Button>`.
  */
-export function getDangerPillCss(options?: PillButtonCssOptions) {
-	return {
-		...getBasePillButtonCss(options),
-		border: 'none',
-		backgroundColor: 'transparent',
-		color: colors.danger,
-		boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
-		'@supports (color: oklch(from red l c h / 0.45))': {
-			boxShadow: `inset 0 0 0 1.5px oklch(from ${colors.danger} l c h / 0.45)`,
-		},
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				backgroundColor: `oklch(from ${colors.danger} l c h / 0.12)`,
-				transform: 'translateY(-1px)',
-				boxShadow: `inset 0 0 0 1.5px ${colors.danger}`,
-			},
-			'&:not(:disabled):active': {
-				transform: 'translateY(0) scale(0.97)',
-			},
-		},
-		...buttonReducedMotionCss,
-	}
-}
-
-/**
- * Control that sits beside a value rather than in an action row — the copy
- * button of an `IdValue`. Deliberately not a pill: at this size the display
- * face and the full radius read as a second value, and the pill's `sm`
- * padding would take most of a metadata column from the id it belongs to.
- * It borrows the chrome of the code chip next to it instead.
- */
-export function getChipButtonCss() {
-	return {
-		display: 'inline-flex',
-		alignItems: 'center',
-		justifyContent: 'center',
-		flex: 'none',
-		padding: '0.18rem 0.4rem',
-		borderRadius: radius.sm,
-		border: `1px solid ${colors.border}`,
-		backgroundColor: 'transparent',
-		color: colors.textMuted,
-		fontFamily: typography.fontFamily,
-		fontSize: typography.fontSize.xs,
-		fontWeight: typography.fontWeight.semibold,
-		lineHeight: 1.4,
-		cursor: 'pointer',
-		whiteSpace: 'nowrap' as const,
-		transition: `color 160ms ${transitions.easeOut}, border-color 160ms ${transitions.easeOut}`,
-		[hoverMq]: {
-			'&:not(:disabled):hover': {
-				color: colors.primaryText,
-				borderColor: colors.primary,
-			},
-		},
-		'&:not(:disabled):active': {
-			transform: 'scale(0.97)',
-		},
-		...buttonReducedMotionCss,
-	}
+export function renderButtonStylesheet(
+	rules: Record<string, ButtonStyleOptions>,
+) {
+	return Object.entries(rules)
+		.map(([selector, options]) =>
+			renderStaticCss(selector, getButtonCss(options)),
+		)
+		.join('')
 }
 
 /**
@@ -883,87 +857,93 @@ export const nativeDisclosureCss = {
 
 export const fieldCss = {
 	display: 'grid',
-	gap: spacing.xs,
+	gap: '0.45rem',
 	minWidth: 0,
 }
 
 export const fieldLabelCss = {
-	color: colors.text,
-	fontWeight: typography.fontWeight.medium,
-	fontSize: typography.fontSize.sm,
-}
-
-export const inputCss = {
-	width: '100%',
-	minWidth: 0,
-	maxWidth: '100%',
-	padding: spacing.sm,
-	borderRadius: radius.md,
-	border: `1px solid ${colors.fieldBorder}`,
-	backgroundColor: colors.background,
-	color: colors.text,
-	fontSize: typography.fontSize.base,
-	fontFamily: typography.fontFamily,
-	boxSizing: 'border-box' as const,
-}
-
-/** Label-over-input stack from the redesign's `.field` (login prototype). */
-export const authFieldCss = {
-	display: 'flex',
-	flexDirection: 'column' as const,
-	gap: '0.45rem',
-}
-
-export const authFieldLabelCss = {
 	fontSize: '0.92rem',
 	fontWeight: 600,
 	color: colors.text,
 }
 
-/** Label row with a trailing quiet link ("Forgot password?"). */
-export const authFieldLabelRowCss = {
+/** Label row with a trailing quiet action ("Forgot password?"). */
+export const fieldLabelRowCss = {
 	display: 'flex',
 	alignItems: 'baseline',
 	justifyContent: 'space-between',
 	gap: spacing.md,
 }
 
-type AuthInputCssOptions = {
+export const fieldDescriptionCss = {
+	margin: 0,
+	fontSize: '0.92rem',
+	color: colors.textMuted,
+}
+
+export const fieldErrorCss = {
+	margin: 0,
+	fontSize: '0.92rem',
+	color: colors.error,
+}
+
+type ControlSize = 'sm' | 'md'
+
+export type FieldControlStyleOptions = {
 	/**
-	 * `canvas` inputs sit on a `surface` panel and read as wells in the page
-	 * ground color (the login panel); `surface` is the default when the input
-	 * sits directly on the canvas.
+	 * `md` (default, 48px) for forms, `sm` (36px) for toolbars, filters, and
+	 * dense rows. Heights line up with the `lg` and `sm` Button sizes.
+	 */
+	size?: ControlSize
+	/**
+	 * `canvas` controls sit on a `surface` panel and read as wells in the page
+	 * ground color; `surface` (default) is for controls on the canvas.
 	 */
 	background?: 'canvas' | 'surface'
 }
 
+const controlSizes = {
+	sm: {
+		font: '0.875rem',
+		lineHeight: 1.5,
+		paddingY: '0.375rem',
+		paddingX: '0.625rem',
+		squircle: 'xs',
+	},
+	md: {
+		font: '1rem',
+		lineHeight: 1.2,
+		paddingY: '0.85rem',
+		paddingX: '1.05rem',
+		squircle: 'lg',
+	},
+} as const satisfies Record<ControlSize, Record<string, string | number>>
+
 /**
- * Individually bordered input from the redesign: the focus ring is drawn on
- * the field itself (green border + soft glow). Markup contract: put
- * `data-field-ring` on the input so the unlayered global `:focus-visible`
- * outline in `public/styles.css` stands down — otherwise it double-rings and
- * forces its 4px radius onto the 12px field.
+ * The bordered text field look shared by `Input`, `Textarea`, and `Select`.
+ * The field draws its own focus ring (green border and soft glow), so the
+ * element carries `data-field-ring` to stand down the global outline.
  */
-export function getAuthInputCss(options: AuthInputCssOptions = {}) {
+export function getFieldControlCss(options: FieldControlStyleOptions = {}) {
+	const size = controlSizes[options.size ?? 'md']
+	// Dense containers such as the workspace panel retune every field inside
+	// them through the `--control-*` variables; the size is the fallback.
 	return {
-		font: `400 var(--control-font-size, 1rem)/var(--control-line-height, 1.2) ${typography.fontFamilyBody}`,
+		font: `400 var(--control-font-size, ${size.font})/var(--control-line-height, ${size.lineHeight}) ${typography.fontFamilyBody}`,
 		color: colors.text,
 		backgroundColor:
 			options.background === 'canvas' ? colors.background : colors.surface,
 		border: `1px solid ${colors.fieldBorder}`,
-		borderRadius: 'var(--control-radius, 12px)',
-		padding:
-			'var(--control-padding-y, 0.85rem) var(--control-padding-x, 1.05rem)',
+		...getSquircleCss(size.squircle),
+		padding: `var(--control-padding-y, ${size.paddingY}) var(--control-padding-x, ${size.paddingX})`,
 		minHeight: 'var(--control-min-height, auto)',
 		minWidth: 0,
 		width: '100%',
+		maxWidth: '100%',
 		boxSizing: 'border-box' as const,
 		transition: `border-color 160ms ${transitions.easeOut}`,
-		// Text wider than the field is otherwise sliced through a letter. This
-		// has to sit on the input, not on `::placeholder` — `text-overflow` is
-		// not one of the properties that pseudo-element accepts — and it covers
-		// an overlong value as well as an overlong placeholder. Fields wide
-		// enough for their text never see the ellipsis.
+		// Text wider than the field is otherwise sliced through a letter; this
+		// covers an overlong value as well as an overlong placeholder.
 		textOverflow: 'ellipsis',
 		'&::placeholder': {
 			color: colors.textMuted,
@@ -976,22 +956,26 @@ export function getAuthInputCss(options: AuthInputCssOptions = {}) {
 		'&[aria-invalid="true"]': {
 			borderColor: colors.error,
 		},
+		'&:disabled': {
+			cursor: 'not-allowed',
+			opacity: 0.6,
+		},
 	}
 }
 
-/**
- * `<select>` in the redesign's field vocabulary: the same box as
- * `getAuthInputCss` with a small solid caret. The themed background image is
- * inset from the right edge, with an extra 8px gap between text and caret.
- *
- * Markup contract: same as `getAuthInputCss` — put `data-field-ring` on the
- * element so the global `:focus-visible` outline stands down for the field's
- * own green ring.
- */
-export function getSelectCss(options: AuthInputCssOptions = {}) {
-	const caretInset = 'var(--control-padding-x, 1.05rem)'
+export function getTextareaControlCss(options: FieldControlStyleOptions = {}) {
 	return {
-		...getAuthInputCss(options),
+		...getFieldControlCss(options),
+		resize: 'vertical' as const,
+		minHeight: '7rem',
+	}
+}
+
+/** The field look with a small solid caret inset from the right edge. */
+export function getSelectControlCss(options: FieldControlStyleOptions = {}) {
+	const caretInset = controlSizes[options.size ?? 'md'].paddingX
+	return {
+		...getFieldControlCss(options),
 		appearance: 'none' as const,
 		WebkitAppearance: 'none' as const,
 		cursor: 'pointer',
@@ -1001,6 +985,17 @@ export function getSelectCss(options: AuthInputCssOptions = {}) {
 		backgroundPosition: `right ${caretInset} center`,
 		backgroundSize: '8px 5px',
 	}
+}
+
+/** Native checkbox and radio: the theme accent at a touch-friendly size. */
+export const choiceControlCss = {
+	flex: 'none',
+	width: '1.125rem',
+	height: '1.125rem',
+	margin: 0,
+	accentColor: colors.primary,
+	cursor: 'pointer',
+	'&:disabled': { cursor: 'not-allowed' },
 }
 
 /**
@@ -1064,12 +1059,6 @@ export const visuallyHiddenUntilFocusedCss = {
 	},
 }
 
-export const textareaCss = {
-	...inputCss,
-	resize: 'vertical' as const,
-	minHeight: '7rem',
-}
-
 export const listCss = {
 	margin: 0,
 	paddingLeft: spacing.lg,
@@ -1104,39 +1093,6 @@ export const detailValueCss = {
 	color: colors.text,
 	overflowWrap: 'anywhere',
 	whiteSpace: 'normal',
-}
-
-export const primaryLinkCss = {
-	color: colors.primaryText,
-	fontWeight: typography.fontWeight.medium,
-	textDecoration: 'none',
-	'&:hover': {
-		textDecoration: 'underline',
-	},
-}
-
-export const mutedLinkCss = {
-	color: colors.textMuted,
-	fontSize: typography.fontSize.sm,
-	textDecoration: 'none',
-	'&:hover': {
-		textDecoration: 'underline',
-	},
-}
-
-export function getAlertCardCss(type: 'error' | 'info' = 'info') {
-	return {
-		margin: 0,
-		padding: spacing.md,
-		borderRadius: radius.md,
-		border: `1px solid ${type === 'error' ? colors.error : colors.primary}`,
-		backgroundColor:
-			type === 'error'
-				? 'color-mix(in srgb, var(--color-danger) 8%, var(--color-surface))'
-				: colors.primarySoftest,
-		color: type === 'error' ? colors.error : colors.text,
-		fontSize: typography.fontSize.sm,
-	}
 }
 
 /**

@@ -823,3 +823,68 @@ test('a stamped package uses a vault provider only through a declared secret-pro
 		}),
 	)
 })
+
+function heldSource(userId: string) {
+	vi.spyOn(entitySources, 'getEntitySourceById').mockResolvedValue({
+		id: 'source-held',
+		published_commit: 'held-commit',
+		serving_commit: 'served-commit',
+		held_commit: 'held-commit',
+		user_id: userId,
+	} as unknown as Awaited<ReturnType<typeof entitySources.getEntitySourceById>>)
+}
+
+test("a commit held for approval does not widen the running code's declarations", async () => {
+	const t = await setup()
+	await t.storeSecret(t.acmeId, 'RESEND')
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/mailer',
+	})
+	enforcement(false)
+	stamp(true)
+	heldSource(t.acmeId)
+	const loadNeeds = vi
+		.spyOn(needsClosure, 'loadPublishedCredentialNeeds')
+		.mockImplementation(async (input) =>
+			input.source?.published_commit === 'held-commit' ? [need('RESEND')] : [],
+		)
+	await expect(
+		t.fill({ orgId: t.acmeId, packageId, header: 'Bearer {{secret:RESEND}}' }),
+	).rejects.toMatchObject({ code: 'credential_need_undeclared' })
+	expect(loadNeeds).toHaveBeenCalledWith(
+		expect.objectContaining({
+			source: expect.objectContaining({ published_commit: 'served-commit' }),
+		}),
+	)
+})
+
+test('stamp presence reads the commit everyone runs while a newer one is held', async () => {
+	const t = await setup()
+	const packageId = await t.savePackage({
+		ownerId: t.acmeId,
+		name: '@acme/mailer',
+	})
+	vi.spyOn(runtimeArtifacts, 'hasPublishedRuntimeArtifacts').mockReturnValue(
+		true,
+	)
+	const readStamp = vi
+		.spyOn(runtimeArtifacts, 'readPublishedCredentialStamp')
+		.mockImplementation(async (input) =>
+			input.publishedCommit === 'held-commit'
+				? { version: 1, keys: [], depStamps: [], stampHash: 'abc' }
+				: null,
+		)
+	heldSource(t.acmeId)
+	await expect(
+		stampPresence.packageCarriesCredentialStamp({
+			env: t.env,
+			request: null,
+			orgId: t.acmeId,
+			packageId,
+		}),
+	).resolves.toBe(false)
+	expect(readStamp).toHaveBeenCalledWith(
+		expect.objectContaining({ publishedCommit: 'served-commit' }),
+	)
+})

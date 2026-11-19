@@ -47,6 +47,7 @@ function createRetentionDb() {
 			entity_id TEXT NOT NULL,
 			repo_id TEXT NOT NULL,
 			published_commit TEXT,
+			serving_commit TEXT,
 			deleted_at TEXT,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
@@ -61,6 +62,9 @@ function createRetentionDb() {
 			entry_point TEXT NOT NULL,
 			kv_key TEXT NOT NULL,
 			dependencies_json TEXT NOT NULL DEFAULT '[]',
+			built_in TEXT,
+			built_context_name TEXT,
+			bundle_sha256 TEXT,
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
@@ -626,6 +630,43 @@ test('published bundle artifact retention deletes stale rows, KV blobs, and sour
 	])
 })
 
+test("published bundle retention deletes a commit's linked dependency modules with its last artifact", async () => {
+	const { sqlite, db } = createRetentionDb()
+	const stored = new Set([
+		'linked-artifact:v1:source-gone:commit-old:hash-a',
+		'linked-artifact:v1:source-kept:commit-old:hash-b',
+	])
+	const env = {
+		APP_DB: db,
+		BUNDLE_ARTIFACTS_KV: {
+			delete: async (key: string) => void stored.delete(key),
+			list: async ({ prefix }: { prefix: string }) => ({
+				keys: [...stored]
+					.filter((name) => name.startsWith(prefix))
+					.map((name) => ({ name })),
+				list_complete: true,
+			}),
+		},
+		REPO_SESSION_INDEX:
+			createInMemoryRepoSessionIndexEnv(db).REPO_SESSION_INDEX,
+	} as unknown as Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
+	const stale = publishedBundleArtifactRetentionDays + 1
+	insertRows(sqlite, 'published_bundle_artifacts', artifactColumns, [
+		artifactRow('gone', 'source-gone', 'commit-old', stale),
+		artifactRow('kept-old', 'source-kept', 'commit-old', stale),
+		artifactRow('kept-new', 'source-kept', 'commit-old', stale - 1),
+	])
+
+	await prunePublishedBundleArtifactsForRetention({ env, now, batchSize: 10 })
+
+	expect(selectColumn(sqlite, 'published_bundle_artifacts', 'id')).toEqual([
+		'kept-new',
+	])
+	expect([...stored]).toEqual([
+		'linked-artifact:v1:source-kept:commit-old:hash-b',
+	])
+})
+
 test('published bundle retention keeps artifacts while entity_sources are soft-deleted', async () => {
 	const { sqlite, db } = createRetentionDb()
 	const kvDelete = vi.fn(async () => undefined)
@@ -668,6 +709,59 @@ test('published bundle retention keeps artifacts while entity_sources are soft-d
 	expect(kvDelete).not.toHaveBeenCalled()
 	expect(selectColumn(sqlite, 'published_bundle_artifacts', 'id')).toEqual([
 		'artifact-restore-window',
+	])
+})
+
+test('published bundle retention keeps the serving commit while a newer publish is unfinished', async () => {
+	const { sqlite, db } = createRetentionDb()
+	const kvDelete = vi.fn(async () => undefined)
+	const env = {
+		APP_DB: db,
+		BUNDLE_ARTIFACTS_KV: { delete: kvDelete },
+		REPO_SESSION_INDEX:
+			createInMemoryRepoSessionIndexEnv(db).REPO_SESSION_INDEX,
+	} as unknown as Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'>
+	// published_commit moved to commit-new, its finalize died before any
+	// target was built, and everyone still runs commit-serving.
+	insertRows(sqlite, 'entity_sources', entitySourceColumns, [
+		entitySourceRow('source-unfinished', 'commit-new'),
+	])
+	sqlite
+		.prepare(
+			`UPDATE entity_sources SET serving_commit = 'commit-serving' WHERE id = 'source-unfinished'`,
+		)
+		.run()
+	const stale = publishedBundleArtifactRetentionDays + 1
+	insertRows(sqlite, 'published_bundle_artifacts', artifactColumns, [
+		artifactRow(
+			'artifact-serving',
+			'source-unfinished',
+			'commit-serving',
+			stale,
+		),
+		artifactRow('artifact-old', 'source-unfinished', 'commit-old', stale),
+	])
+
+	expect(
+		await prunePublishedBundleArtifactsForRetention({
+			env,
+			now,
+			batchSize: 10,
+		}),
+	).toEqual({
+		deletedRows: 1,
+		deletedKvKeys: 1,
+		deletedSnapshotKvKeys: 4,
+		kvDeleteErrors: 0,
+		hasMore: false,
+	})
+	expect(kvDelete).toHaveBeenCalledWith('kv:artifact-old')
+	expect(kvDelete).not.toHaveBeenCalledWith('kv:artifact-serving')
+	expect(kvDelete).not.toHaveBeenCalledWith(
+		'source-snapshot:v1:source-unfinished:commit-serving',
+	)
+	expect(selectColumn(sqlite, 'published_bundle_artifacts', 'id')).toEqual([
+		'artifact-serving',
 	])
 })
 

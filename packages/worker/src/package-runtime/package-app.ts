@@ -1,4 +1,12 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	createIntrinsicChangeDetectorSource,
+	normalizeChangedIntrinsicNames,
+} from '#worker/package-runtime/intrinsic-change-detector-source.ts'
+import {
+	servingCommitForSource,
+	toServingSourceView,
+	toUnheldSourceView,
+} from '#worker/repo/serving-commit.ts'
 import {
 	kodyDevClockOffsetMs,
 	kodyDevClockShimSource,
@@ -36,7 +44,11 @@ import {
 	type DynamicWorkerUsageTailProps,
 } from '#worker/usage/dynamic-worker-cpu.ts'
 import { packageAppWarmCpuSampleRate } from '#universal/package-app-cpu-samples.ts'
+import { packageInvocationClientDisconnectedErrorName } from '#worker/caller-disconnect.ts'
 import {
+	packageAppCallerDisconnectGraceExpiredLog,
+	packageAppCallerDisconnectGraceExpiredMessage,
+	packageAppCallerDisconnectGraceMs,
 	packageAppRequestIdHeader,
 	packageAppRuntimeErrorHeader,
 	packageAppRuntimeRunIdHeader,
@@ -80,10 +92,10 @@ import { timingSafeEqualString } from '@kody-internal/shared/timing-safe.ts'
 import type { FetchGatewayProps } from '#mcp/fetch-gateway.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
-	assertStorageRunnerWriteWithinEntitlement,
 	createPackageStorageAccessDeniedMessage,
 	createPackageStorageOwnerOnlyMessage,
 	createStorageBytesEntitlementRunCache,
+	writeStorageWithinEntitlement,
 	storageSqlNeedsWriteEntitlement,
 	storageRunnerRpc,
 } from '#worker/storage-runner.ts'
@@ -129,8 +141,12 @@ import {
 	resolveCallerCredentialPackageId,
 } from '#worker/mcp/credential-client-tools.ts'
 import type { AdditionalKodyTools } from '#worker/mcp/runtime-helper-manifest.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
 import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
+import {
+	runAsSandboxCall,
 	runWithCurrentSecretAuthority,
 	runWithSecretAuthorityScope,
 	secretAuthorityHeaderName,
@@ -537,6 +553,7 @@ function __kodyCreateAppPackageBindings(bridge, identity) {
 						packageId,
 						new __kodyRequestCaptured(requestInput, init),
 						__kodyCurrentVisitTicket(),
+						__kodyChangedIntrinsics(),
 					),
 				),
 			kodyCall: async (name, args) => await boundCapability({ name, args }),
@@ -623,6 +640,7 @@ if (!globalThis[__kodyEvaluateFetchPatchedSymbol]) {
 	};
 	globalThis[__kodyEvaluateFetchPatchedSymbol] = true;
 }
+${createIntrinsicChangeDetectorSource()}
 
 function buildFacetName(rawFacetName) {
 	return typeof rawFacetName === 'string' && rawFacetName.trim().length > 0
@@ -1267,6 +1285,46 @@ function finishRuntimeRun(runtimeBridge, executionCtx, input) {
 	);
 }
 
+// When the caller disconnects, the runtime cancels this invocation and only
+// waitUntil work keeps running. Holding the handler in waitUntil lets it
+// finish and record its outcome. A handler still running after the grace is
+// reported instead of leaving the run without an outcome.
+function serveThroughCallerDisconnect(executionCtx, request, input) {
+	const startedAt = Date.now();
+	const handled = input.handle();
+	let settled = false;
+	const done = handled.then(
+		() => {
+			settled = true;
+		},
+		() => {
+			settled = true;
+		},
+	);
+	executionCtx.waitUntil(done);
+	const onDisconnect = () => {
+		if (settled) return;
+		input.onDisconnect(Date.now() - startedAt);
+		let graceTimer;
+		const grace = new Promise((resolve) => {
+			graceTimer = setTimeout(resolve, input.graceMs);
+		});
+		executionCtx.waitUntil(
+			Promise.race([done, grace]).then(() => {
+				clearTimeout(graceTimer);
+				if (!settled) input.onGraceExpired();
+			}),
+		);
+	};
+	const signal = request.signal;
+	if (signal?.aborted) {
+		onDisconnect();
+	} else {
+		signal?.addEventListener('abort', onDisconnect, { once: true });
+	}
+	return handled;
+}
+
 function resolveRealtimeHandler(userModule, facetName) {
 	const facetExportName = buildFacetClassExportName(facetName);
 	if (typeof userModule[facetExportName] === 'function') {
@@ -1383,6 +1441,38 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 			${mcpServerNamesExpr},
 			identityOnlyVisitor,
 		);
+		let runFinished = false;
+		const finishRun = (finish) => {
+			if (runFinished) return;
+			runFinished = true;
+			finishRuntimeRun(runtimeBridge, this.ctx, {
+				run: runtimeRun,
+				...finish,
+				logs: consoleCapture.logs,
+			});
+		};
+		return await serveThroughCallerDisconnect(this.ctx, request, {
+			graceMs: ${packageAppCallerDisconnectGraceMs},
+			onDisconnect: (elapsedMs) => {
+				console.warn(
+					'package-app-caller-disconnected ' +
+						JSON.stringify({
+							elapsedMs,
+							graceMs: ${packageAppCallerDisconnectGraceMs},
+						}),
+				);
+			},
+			onGraceExpired: () => {
+				console.error(${JSON.stringify(packageAppCallerDisconnectGraceExpiredLog)});
+				finishRun({
+					status: 'error',
+					error: {
+						name: ${JSON.stringify(packageInvocationClientDisconnectedErrorName)},
+						message: ${JSON.stringify(packageAppCallerDisconnectGraceExpiredMessage)},
+					},
+				});
+			},
+			handle: async () => {
 		try {
 			consoleCapture.install();
 			const response = await __kodyVisitStorage.run({ ticket: visitTicket }, async () => await __kodyRuntimeStorage.run(runtime, async () => await __kodyRunUserCode(this.env, async () => {
@@ -1439,24 +1529,20 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 				});
 				outgoing = tagPackageAppRuntimeRun(outgoing, runtimeRunId);
 			}
-			finishRuntimeRun(runtimeBridge, this.ctx, {
-				run: runtimeRun,
+			finishRun({
 				status: 'success',
 				metadata: {
 					httpStatus: response.status,
 				},
-				logs: consoleCapture.logs,
 			});
 			return outgoing;
 		} catch (error) {
 			const enrichedError = enrichUnboundPackagesInvokeError(error);
 			const runtimeRunId = await readRuntimeRunId(runtimeRun);
 			console.error('package-app-runtime-threw', { runtimeRunId });
-			finishRuntimeRun(runtimeBridge, this.ctx, {
-				run: runtimeRun,
+			finishRun({
 				status: 'error',
 				error: serializeRuntimeError(enrichedError),
-				logs: consoleCapture.logs,
 			});
 			// Dynamic Worker fetch does not preserve custom Error properties.
 			// Return a tagged 500 so the serve path can log runtimeRunId and
@@ -1471,6 +1557,8 @@ export class ${packageAppEntrypointName} extends WorkerEntrypoint {
 		} finally {
 			consoleCapture.restore();
 		}
+			},
+		});
 	}
 
 	async handleRealtimeEvent(payload) {
@@ -1903,17 +1991,18 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	private readonly storageBytesEntitlementCache =
 		createStorageBytesEntitlementRunCache()
 
-	private async assertStorageWriteAllowed(input: {
-		storageId: string
-		requested?: number
-	}) {
-		await assertStorageRunnerWriteWithinEntitlement({
+	private async writeStorageAllowed<T>(
+		input: { storageId: string } & Pick<
+			Parameters<typeof writeStorageWithinEntitlement<T>>[0],
+			'method' | 'write' | 'legacyRequested' | 'legacyWrite'
+		>,
+	) {
+		return await writeStorageWithinEntitlement<T>({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			email: this.ctx.props.email,
-			storageId: input.storageId,
-			requested: input.requested,
 			cache: this.storageBytesEntitlementCache,
+			...input,
 		})
 	}
 
@@ -2171,6 +2260,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageId: string,
 		request: Request,
 		visitTicket?: string | null,
+		changedIntrinsics?: unknown,
 	) {
 		const boundPackageId = await this.assertPackageBindingCapability(
 			token,
@@ -2195,6 +2285,7 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 							null)
 						: null,
 					credentialClientBinding: this.credentialBindingFor(visit),
+					changedIntrinsics: normalizeChangedIntrinsicNames(changedIntrinsics),
 				},
 			})
 			.fetch(forwarded)
@@ -2347,8 +2438,18 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		const invoke = () =>
 			capability.handler(input.args, { env: this.env, callerContext })
 		const grantedPackageIds = new Set(this.ctx.props.packageStorageGrantIds)
-		return await runWithSecretAuthorityScope(grantedPackageIds, () =>
-			runWithCurrentSecretAuthority(boundPackageId, invoke),
+		return await runAsSandboxCall(
+			boundPackageId?.trim()
+				? null
+				: {
+						surface: 'app',
+						pattern: 'shared_capability',
+						loadedPackageIds: [...grantedPackageIds],
+					},
+			() =>
+				runWithSecretAuthorityScope(grantedPackageIds, () =>
+					runWithCurrentSecretAuthority(boundPackageId, invoke),
+				),
 		)
 	}
 
@@ -2562,20 +2663,35 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 	}) {
 		// package app bridges always mark packageStorage SQL writable, so skip
 		// the all-bucket fan-out for pure reads and idempotent DDL.
-		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
-			await this.assertStorageWriteAllowed({
-				storageId: input.storageId,
-				requested: estimateEntitlementStorageSqlWriteBytes({
-					query: input.query,
-					params: input.params,
-				}),
-			})
-		}
-		return await this.getStorageRunner(
+		const runner = this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
-		).sqlQuery({
+		)
+		if (input.writable && storageSqlNeedsWriteEntitlement(input.query)) {
+			return await this.writeStorageAllowed({
+				storageId: input.storageId,
+				method: 'sqlQueryWithinLimit',
+				write: (maxDatabaseBytes) =>
+					runner.sqlQueryWithinLimit({
+						query: input.query,
+						params: input.params,
+						maxDatabaseBytes,
+					}),
+				legacyRequested: () =>
+					estimateEntitlementStorageSqlWriteBytes({
+						query: input.query,
+						params: input.params,
+					}),
+				legacyWrite: () =>
+					runner.sqlQuery({
+						query: input.query,
+						params: input.params,
+						writable: input.writable,
+					}),
+			})
+		}
+		return await runner.sqlQuery({
 			query: input.query,
 			params: input.params,
 			writable: input.writable,
@@ -2589,34 +2705,32 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		packageAppVisitorUserId?: string
 		billedOrgId?: OwnerId
 	}) {
-		const existing = await this.getStorageRunner(
+		const runner = this.getStorageRunner(
 			input.storageId,
 			input.packageAppVisitorUserId,
 			input.billedOrgId,
-		).getValue({ key: input.key })
-		await this.assertStorageWriteAllowed({
+		)
+		return await this.writeStorageAllowed({
 			storageId: input.storageId,
-			requested: estimateEntitlementStorageEntryByteDelta({
-				next: {
+			method: 'setValueWithinLimit',
+			write: (maxDatabaseBytes) =>
+				runner.setValueWithinLimit({
 					key: input.key,
 					value: input.value,
-				},
-				existing:
-					existing.value === null
-						? null
-						: {
-								key: input.key,
-								value: existing.value,
-							},
-			}),
-		})
-		return await this.getStorageRunner(
-			input.storageId,
-			input.packageAppVisitorUserId,
-			input.billedOrgId,
-		).setValue({
-			key: input.key,
-			value: input.value,
+					maxDatabaseBytes,
+				}),
+			legacyRequested: async () => {
+				const existing = await runner.getValue({ key: input.key })
+				return estimateEntitlementStorageEntryByteDelta({
+					next: { key: input.key, value: input.value },
+					existing:
+						existing.value === null
+							? null
+							: { key: input.key, value: existing.value },
+				})
+			},
+			legacyWrite: () =>
+				runner.setValue({ key: input.key, value: input.value }),
 		})
 	}
 
@@ -3101,7 +3215,10 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 				return await createDynamicCallableWorkflow({
 					env: this.env,
 					userId: this.ctx.props.userId,
-					userEmail: callerContext.user?.email ?? this.ctx.props.email,
+					userEmail: entitlementEmailForOwner(
+						callerContext,
+						this.ctx.props.userId,
+					),
 					packageContext: {
 						packageId: this.ctx.props.packageId,
 						kodyId: this.ctx.props.kodyId,
@@ -3426,10 +3543,16 @@ export class PackageAppRuntimeBridge extends WorkerEntrypoint<
 		visitTicket: string | null | undefined,
 	): Promise<'publisher' | 'executor' | null> {
 		const callerContext = await this.createCallerContext(null, visitTicket)
+		const source = await getEntitySourceById(
+			this.env.APP_DB,
+			this.ctx.props.sourceId,
+		)
 		const needs = await loadPublishedCredentialNeeds({
 			env: this.env,
 			userId: this.ctx.props.userId,
 			sourceId: this.ctx.props.sourceId,
+			// The needs of the commit the app runs, not one held for approval.
+			source: source ? toUnheldSourceView(source) : null,
 			request: callerContext.request,
 		})
 		return needs.find((need) => need.key === credentialKey)?.supplier ?? null
@@ -3809,6 +3932,8 @@ async function resolvePackageAppBundledArtifact(input: {
 	}
 	loadSourceFiles?: () => Promise<Record<string, string>>
 	sourceFiles?: Record<string, string>
+	/** The commit `loadSourceFiles` reads when it trails the serving commit. */
+	pinnedCommit?: string | null
 	baseUrl: string
 }) {
 	const appEntry = getPackageAppEntryPath(input.manifest)
@@ -3870,7 +3995,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	})
 	// A pre-fix bundle that inlines other packages may need one rebuild so
 	// each package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5).
-	if (currentArtifact && !isUnrepairablePreBindingArtifact(currentArtifact)) {
+	if (
+		currentArtifact &&
+		!(await isUnrepairablePreBindingArtifact(currentArtifact))
+	) {
 		return servePublishedArtifact(currentArtifact)
 	}
 	// Only a caller that passes no source at all keeps serving the published
@@ -3889,10 +4017,10 @@ async function resolvePackageAppBundledArtifact(input: {
 	const sourceFiles = await resolvePackageAppSourceFiles(input)
 	if (
 		currentArtifact &&
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: currentArtifact,
 			sourceFiles,
-		})
+		}))
 	) {
 		return servePublishedArtifact(currentArtifact)
 	}
@@ -3923,6 +4051,14 @@ async function resolvePackageAppBundledArtifact(input: {
 		userId: input.userId,
 		sourceId: input.savedPackage.sourceId,
 	})
+	// A visitor pinned to an older approved commit must not save its rebuild
+	// as the newer commit's bundle.
+	if (
+		input.pinnedCommit &&
+		input.pinnedCommit !== servingCommitForSource(persistableSource)
+	) {
+		return compiled
+	}
 	await persistPublishedBundleArtifact({
 		env: input.env,
 		userId: input.userId,
@@ -3994,6 +4130,7 @@ async function buildPackageAppWorkerOptionsUncached(
 		manifest?: AuthoredPackageJson
 		loadSourceFiles?: () => Promise<Record<string, string>>
 		sourceFiles?: Record<string, string>
+		pinnedCommit?: string | null
 		runtime: {
 			callerContext: ReturnType<typeof createMcpCallerContext>
 			servingUsername?: string
@@ -4050,6 +4187,7 @@ async function buildPackageAppWorkerOptionsUncached(
 				savedPackage: input.savedPackage,
 				loadSourceFiles: input.loadSourceFiles,
 				sourceFiles: input.sourceFiles,
+				pinnedCommit: input.pinnedCommit,
 			}),
 		published && published.client !== undefined
 			? published.client
@@ -4115,7 +4253,7 @@ async function buildPackageAppWorkerOptionsUncached(
 			packageBindingIds: packageStorageGrantIds,
 			packageBindingToken,
 			rewriteNullPackagesInvoke:
-				modulesContainUnboundPackagesInvokeAccess(hydratedModules),
+				await modulesContainUnboundPackagesInvokeAccess(hydratedModules),
 			preloadMcpServerNames: modulesReferenceKodyMcp(bundled.modules),
 			identityOnlyOrgSlug: identityOnlyOrgSlugOf(input.runtime),
 			packageAppApexHostnames: listPackageAppOrigins({
@@ -4245,7 +4383,7 @@ async function readPublishedPackageAppWorkerTemplate(input: {
 			clientEntry: getPackageAppClientEntryPath(input.manifest),
 		})
 		const app =
-			parts.app && !isUnrepairablePreBindingArtifact(parts.app)
+			parts.app && !(await isUnrepairablePreBindingArtifact(parts.app))
 				? servePublishedAppArtifact(parts.app)
 				: null
 		return { bundled: app, client: parts.client }
@@ -4317,6 +4455,7 @@ export async function buildPackageAppWorker(input: {
 	manifest?: AuthoredPackageJson
 	loadSourceFiles?: () => Promise<Record<string, string>>
 	sourceFiles?: Record<string, string>
+	pinnedCommit?: string | null
 	runtime: {
 		callerContext: ReturnType<typeof createMcpCallerContext>
 		servingUsername?: string

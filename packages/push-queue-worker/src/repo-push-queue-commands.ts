@@ -30,7 +30,7 @@ export type ParsedReceivePackCommands = {
  */
 export const receivePackCommandPrefixLimitBytes = 64 * 1024
 
-export function isZeroOid(oid: string) {
+function isZeroOid(oid: string) {
 	return /^0+$/i.test(oid)
 }
 
@@ -206,9 +206,10 @@ export function buildStaleFetchFirstReportStatus(
 /**
  * Collect refs that report-status marked `ok` or `ng`. Understands plain and
  * sideband-wrapped (band 1) result bodies. Progress (band 2) is skipped;
- * fatals (band 3) end the scan.
+ * fatals (band 3) end the scan. Callers that only need `ok` use
+ * {@link collectReportStatusOkRefs}.
  */
-export function collectReportStatusRefOutcomes(body: Uint8Array): {
+function collectReportStatusRefOutcomes(body: Uint8Array): {
 	ok: Set<string>
 	ng: Set<string>
 } {
@@ -231,6 +232,7 @@ export function collectReportStatusRefOutcomes(body: Uint8Array): {
 	return { ok, ng }
 }
 
+/** Refs that report-status marked `ok`. `ng` stays internal to landed-ref cache updates. */
 export function collectReportStatusOkRefs(body: Uint8Array): Set<string> {
 	return collectReportStatusRefOutcomes(body).ok
 }

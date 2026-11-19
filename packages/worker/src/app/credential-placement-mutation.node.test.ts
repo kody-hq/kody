@@ -305,6 +305,88 @@ test('an owner approval link widens a headers-only Key to the body in one click'
 	})
 })
 
+test('approving the body on a legacy Key that already fills it from an observed opt-in records the approval', async () => {
+	const t = await setup()
+	await t.set({ name: 'throttlePassword', value: 'pw_value' })
+	const id = (await t.entry('throttlePassword'))!.id
+	// The 0195 migration state: no stored placement, body opted in because
+	// Kody once observed it there.
+	await t.db
+		.prepare(`UPDATE secret_entries SET placement_json = NULL WHERE id = ?`)
+		.bind(id)
+		.run()
+	await t.db
+		.prepare(
+			`INSERT INTO credential_fill_placement_opt_ins (credential_id, query, path, body, source, updated_at)
+			 VALUES (?, 0, 0, 1, 'observed', ?)`,
+		)
+		.bind(id, now)
+		.run()
+	const owner = {
+		request: t.owner.callerContext.request,
+		mcpUser: t.owner.callerContext.user,
+	} as never
+	await expect(
+		credentialPlacementApprovalLinkCapability.handler(
+			{ name: 'throttlePassword', parts: ['body'] },
+			t.owner,
+		),
+	).resolves.toMatchObject({
+		status: 'approval_required',
+		pending_parts: ['body'],
+		placement: null,
+	})
+	await expect(
+		loadCredentialPlacementApprovalView({
+			env: t.owner.env,
+			user: owner,
+			names: ['throttlePassword'],
+			parts: ['body'],
+		}),
+	).resolves.toMatchObject({
+		credentials: [
+			{
+				name: 'throttlePassword',
+				placement: null,
+				pendingParts: ['body'],
+				placementAfter: { headers: true, body: true },
+			},
+		],
+	})
+	await expect(
+		approveCredentialPlacement({
+			env: t.owner.env,
+			user: owner,
+			names: ['throttlePassword'],
+			parts: ['body'],
+		}),
+	).resolves.toMatchObject({
+		status: 200,
+		data: { ok: true, approved: ['throttlePassword'], alreadyAllowed: [] },
+	})
+	expect(
+		JSON.parse((await t.entry('throttlePassword'))!.placement_json!),
+	).toEqual({ headers: true, body: true })
+	await expect(
+		t.db
+			.prepare(
+				`SELECT body, source FROM credential_fill_placement_opt_ins WHERE credential_id = ?`,
+			)
+			.bind(id)
+			.first(),
+	).resolves.toEqual({ body: 1, source: 'owner' })
+	const listed = await secretListCapability.handler({ scope: 'user' }, t.owner)
+	expect(
+		listed.secrets.find((secret) => secret.name === 'throttlePassword'),
+	).toMatchObject({ placement: { headers: true, body: true } })
+	await expect(
+		credentialPlacementApprovalLinkCapability.handler(
+			{ name: 'throttlePassword', parts: ['body'] },
+			t.owner,
+		),
+	).resolves.toMatchObject({ status: 'already_allowed', pending_parts: [] })
+})
+
 test('approving the body never opts in a code-set query the owner did not see', async () => {
 	const t = await setup()
 	await t.set({ name: 'apiKey', value: 'sk_value' })

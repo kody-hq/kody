@@ -1,5 +1,9 @@
+import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	pacedD1BackupSchemaVersion,
+	pacedD1ForceFullBaseRequestKey,
+	type PacedD1NightManifest,
+	type PacedD1ProgressCursor,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedIndexKey,
 	pacedD1SealedIndexPartKey,
@@ -9,13 +13,12 @@ import {
 	pacedD1StagingIndexKey,
 	pacedD1StagingIndexPartKey,
 	pacedD1StagingManifestKey,
+	pacedD1StagingNightMetaKey,
 	pacedD1StagingPrefix,
 	pacedD1StagingProgressKey,
+	type PacedD1TableManifest,
 	parsePacedD1NightManifest,
 	parsePacedD1ProgressCursor,
-	type PacedD1NightManifest,
-	type PacedD1ProgressCursor,
-	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
 	parsePacedD1IndexLine,
@@ -48,14 +51,15 @@ import {
 	shouldRunD1PacedBackupCron,
 } from '#worker/dr/d1-paced-backup-schedule.ts'
 import {
+	claimD1PacedBackupLease,
+	guardDrBackupS3Writes,
+} from '#worker/dr/d1-paced-backup-lease.ts'
+import {
 	parseD1PacedSources,
 	resolvePacedD1Binding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
-import {
-	parsePacedD1PartsPointer,
-	sealPacedD1SourceNight,
-} from '#worker/dr/d1-paced-backup-seal.ts'
+import { sealPacedD1SourceNight } from '#worker/dr/d1-paced-backup-seal.ts'
 
 export {
 	d1PacedBackupCatchUpLookbackDays,
@@ -119,6 +123,7 @@ type NightMeta = {
 	bytesOut: number
 	queryMs: Array<number>
 	wallStartedAtMs: number
+	forceFullBase: boolean
 }
 
 type LaneProgress = {
@@ -167,10 +172,6 @@ function utcDayMinus(day: string, daysBack: number) {
 	const date = new Date(`${day}T00:00:00.000Z`)
 	date.setUTCDate(date.getUTCDate() - daysBack)
 	return date.toISOString().slice(0, 10)
-}
-
-function pacedD1StagingNightMetaKey(day: string, databaseName: string) {
-	return `${pacedD1StagingPrefix(day, databaseName)}night-meta.json`
 }
 
 function pacedD1StagingTableManifestKey(
@@ -544,6 +545,7 @@ async function loadOrCreateNightMeta(input: {
 			if (parsed.schemaHash !== input.schema.schemaHash) {
 				parsed.schemaStableDuringWalk = false
 			}
+			parsed.forceFullBase = parsed.forceFullBase === true
 			return parsed
 		}
 	}
@@ -566,6 +568,9 @@ async function loadOrCreateNightMeta(input: {
 		bytesOut: 0,
 		queryMs: [],
 		wallStartedAtMs: Date.now(),
+		forceFullBase:
+			(await input.s3.getText(pacedD1ForceFullBaseRequestKey(input.day))) !==
+			null,
 	}
 	await input.s3.put(key, `${JSON.stringify(meta)}\n`, {
 		contentType: 'application/json',
@@ -1000,6 +1005,7 @@ async function workSourceTick(input: {
 			day: input.day,
 			tableSchemaHash: table.schemaHash,
 			prevSchemaHash: prevTable?.schemaHash,
+			forceFullBase: meta.forceFullBase,
 		})
 
 		// Mid-table resume: lastRowid set. Walk-complete-pending-finalize:
@@ -1321,134 +1327,143 @@ export async function runD1PacedBackupTick(input: {
 		return empty('sources-unset')
 	}
 
-	const s3 = input.s3 ?? createDrBackupS3Client(config)
-	if (mode === 'nightly' || mode === 'catch-up') {
-		const stranded = await findStrandedPacedDay({
-			s3,
-			today,
-			lookbackDays: d1PacedBackupCatchUpLookbackDays,
-			sources,
-			env: input.env,
-		})
-		if (stranded) {
-			day = stranded
-		} else if (mode === 'catch-up') {
-			return empty('no-stranded-day')
+	const lease = await claimD1PacedBackupLease(input.env.APP_DB)
+	if (!lease) return empty('lease-held')
+	const s3 = guardDrBackupS3Writes(
+		input.s3 ?? createDrBackupS3Client(config),
+		lease,
+	)
+	try {
+		if (mode === 'nightly' || mode === 'catch-up') {
+			const stranded = await findStrandedPacedDay({
+				s3,
+				today,
+				lookbackDays: d1PacedBackupCatchUpLookbackDays,
+				sources,
+				env: input.env,
+			})
+			if (stranded) {
+				day = stranded
+			} else if (mode === 'catch-up') {
+				return empty('no-stranded-day')
+			}
 		}
-	}
 
-	const timeBudgetMs = input.timeBudgetMs ?? d1PacedBackupRunTimeBudgetMs
-	const startedAtMs = Date.now()
+		const timeBudgetMs = input.timeBudgetMs ?? d1PacedBackupRunTimeBudgetMs
+		const startedAtMs = Date.now()
 
-	// Cheap exit when every bound source already finished and sealed tonight.
-	// Seal may span ticks under the time budget (large APP/AUDIT nights).
-	let allDone = true
-	let bindingsMissing = 0
-	let nightsSealed = 0
-	for (const source of sources) {
-		if (!resolvePacedD1Binding(input.env, source.binding)) {
-			bindingsMissing += 1
-			continue
-		}
-		if (!(await sourceHasManifest(s3, day, source.name))) {
+		// Cheap exit when every bound source already finished and sealed tonight.
+		// Seal may span ticks under the time budget (large APP/AUDIT nights).
+		let allDone = true
+		let bindingsMissing = 0
+		let nightsSealed = 0
+		for (const source of sources) {
+			if (!resolvePacedD1Binding(input.env, source.binding)) {
+				bindingsMissing += 1
+				continue
+			}
+			if (!(await sourceHasManifest(s3, day, source.name))) {
+				allDone = false
+				continue
+			}
+			if (await sourceHasSealedManifest(s3, source, day)) {
+				continue
+			}
 			allDone = false
-			continue
+			if (
+				await ensureSourceSealed({
+					s3,
+					source,
+					day,
+					startedAtMs,
+					timeBudgetMs,
+				})
+			) {
+				nightsSealed += 1
+			}
 		}
-		if (await sourceHasSealedManifest(s3, source, day)) {
-			continue
+		if (allDone) {
+			return {
+				day,
+				mode,
+				skipped: nightsSealed === 0,
+				reason: nightsSealed === 0 ? 'already-complete' : undefined,
+				timeBudgetExhausted: false,
+				sourcesWorked: 0,
+				tablesCompleted: 0,
+				manifestsWritten: 0,
+				nightsSealed,
+				bindingsMissing,
+			}
 		}
-		allDone = false
-		if (
-			await ensureSourceSealed({
+
+		const lane = await loadLaneProgress(s3, day)
+		let sourcesWorked = 0
+		let tablesCompleted = 0
+		let manifestsWritten = 0
+		let timeBudgetExhausted = false
+
+		for (let offset = 0; offset < sources.length; offset += 1) {
+			const index = (lane.nextSourceIndex + offset) % sources.length
+			const source = sources[index]!
+			const db = resolvePacedD1Binding(input.env, source.binding)
+			if (!db) {
+				continue
+			}
+			const alreadyManifest = await sourceHasManifest(s3, day, source.name)
+			const alreadySealed = alreadyManifest
+				? await sourceHasSealedManifest(s3, source, day)
+				: false
+			if (alreadyManifest && alreadySealed) continue
+
+			const result = await workSourceTick({
+				env: input.env,
 				s3,
 				source,
+				db,
 				day,
+				now,
 				startedAtMs,
 				timeBudgetMs,
+				walkerOpts: input.walkerOpts,
+				partMaxBytes: input.partMaxBytes,
+				tickByteBudget: input.tickByteBudget,
 			})
-		) {
-			nightsSealed += 1
+			sourcesWorked += 1
+			tablesCompleted += result.tablesCompleted
+			if (result.manifestWritten) manifestsWritten += 1
+			if (result.nightSealed) nightsSealed += 1
+			lane.nextSourceIndex = (index + 1) % sources.length
+			await persistLaneProgress(s3, lane)
+			if (result.timeBudgetExhausted) {
+				timeBudgetExhausted = true
+				break
+			}
+			if (Date.now() - startedAtMs >= timeBudgetMs) {
+				timeBudgetExhausted = true
+				break
+			}
 		}
-	}
-	if (allDone) {
-		return {
+
+		const tickResult: D1PacedBackupTickResult = {
 			day,
 			mode,
-			skipped: nightsSealed === 0,
-			reason: nightsSealed === 0 ? 'already-complete' : undefined,
-			timeBudgetExhausted: false,
-			sourcesWorked: 0,
-			tablesCompleted: 0,
-			manifestsWritten: 0,
+			skipped: false,
+			timeBudgetExhausted,
+			sourcesWorked,
+			tablesCompleted,
+			manifestsWritten,
 			nightsSealed,
 			bindingsMissing,
 		}
+		console.info(
+			'dr_d1_paced_backup_tick',
+			JSON.stringify({ ...tickResult, elapsedMs: Date.now() - startedAtMs }),
+		)
+		return tickResult
+	} finally {
+		await lease.release()
 	}
-
-	const lane = await loadLaneProgress(s3, day)
-	let sourcesWorked = 0
-	let tablesCompleted = 0
-	let manifestsWritten = 0
-	let timeBudgetExhausted = false
-
-	for (let offset = 0; offset < sources.length; offset += 1) {
-		const index = (lane.nextSourceIndex + offset) % sources.length
-		const source = sources[index]!
-		const db = resolvePacedD1Binding(input.env, source.binding)
-		if (!db) {
-			continue
-		}
-		const alreadyManifest = await sourceHasManifest(s3, day, source.name)
-		const alreadySealed = alreadyManifest
-			? await sourceHasSealedManifest(s3, source, day)
-			: false
-		if (alreadyManifest && alreadySealed) continue
-
-		const result = await workSourceTick({
-			env: input.env,
-			s3,
-			source,
-			db,
-			day,
-			now,
-			startedAtMs,
-			timeBudgetMs,
-			walkerOpts: input.walkerOpts,
-			partMaxBytes: input.partMaxBytes,
-			tickByteBudget: input.tickByteBudget,
-		})
-		sourcesWorked += 1
-		tablesCompleted += result.tablesCompleted
-		if (result.manifestWritten) manifestsWritten += 1
-		if (result.nightSealed) nightsSealed += 1
-		lane.nextSourceIndex = (index + 1) % sources.length
-		await persistLaneProgress(s3, lane)
-		if (result.timeBudgetExhausted) {
-			timeBudgetExhausted = true
-			break
-		}
-		if (Date.now() - startedAtMs >= timeBudgetMs) {
-			timeBudgetExhausted = true
-			break
-		}
-	}
-
-	const tickResult: D1PacedBackupTickResult = {
-		day,
-		mode,
-		skipped: false,
-		timeBudgetExhausted,
-		sourcesWorked,
-		tablesCompleted,
-		manifestsWritten,
-		nightsSealed,
-		bindingsMissing,
-	}
-	console.info(
-		'dr_d1_paced_backup_tick',
-		JSON.stringify({ ...tickResult, elapsedMs: Date.now() - startedAtMs }),
-	)
-	return tickResult
 }
 
 /**

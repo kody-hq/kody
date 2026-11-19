@@ -18,6 +18,7 @@ import {
 } from './package-app-diagnostics.ts'
 import {
 	parsePackageAppCustomHostnamePath,
+	parsePackageAppPath,
 	parsePackageAppSubdomainPath,
 	servePackageAppRequest,
 	createPackageCodeRequest,
@@ -53,6 +54,35 @@ test('subdomain paths parse the short /{name} form and the legacy /packages/{nam
 		restPath: '/report',
 		mount: 'user-subdomain',
 	})
+})
+
+test('package app paths forward a trailing slash so apps never redirect to themselves', () => {
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/newsletter/admin/',
+			username: 'kody',
+		}),
+	).toMatchObject({ kodyId: 'newsletter', restPath: '/admin/' })
+	expect(
+		parsePackageAppSubdomainPath({
+			pathname: '/newsletter/admin',
+			username: 'kody',
+		}),
+	).toMatchObject({ kodyId: 'newsletter', restPath: '/admin' })
+	expect(
+		parsePackageAppSubdomainPath({ pathname: '/newsletter/', username: 'kody' })
+			?.restPath,
+	).toBe('/')
+	expect(
+		parsePackageAppPath('/@kody/packages/newsletter/admin/')?.restPath,
+	).toBe('/admin/')
+	expect(
+		parsePackageAppCustomHostnamePath({
+			pathname: '/admin/',
+			username: 'kody',
+			kodyId: 'newsletter',
+		}).restPath,
+	).toBe('/admin/')
 })
 
 test('subdomain paths never parse reserved first segments or a bare /packages', () => {
@@ -1777,4 +1807,42 @@ test('an app 5xx passes through when HEAD is published, for JSON callers, and fo
 	const ok = await serveHelloWorld({ kodyId: 'stale-app', init: htmlPage })
 	expect(ok.status).toBe(200)
 	expect(mockModule.resolveCachedArtifactSourceHead).not.toHaveBeenCalled()
+})
+
+function seedPublishedAppAheadOfServing(kodyId: string) {
+	const fixture = seedFixture({ kodyId })
+	const servedManifest = JSON.parse(fixture.manifestContent)
+	delete servedManifest.kody.app
+	mockModule.loadPublishedEntityManifest.mockResolvedValue({
+		source: fixture.source,
+		content: JSON.stringify(servedManifest),
+	})
+	return fixture
+}
+
+const servedCommitWithoutAppNotFoundBody =
+	'Saved package app not found. Declare package.json#kody.app and publish, then smoke-test the fetch handler with packageAppFetch.'
+
+test('a served commit without kody.app is the normal 404 while hasApp already projects the next publish', async () => {
+	const kodyId = 'app-pending-serve'
+	seedPublishedAppAheadOfServing(kodyId)
+	mockModule.buildPackageAppWorker.mockClear()
+
+	const response = await serveHelloWorld({ kodyId, restPath: '/opt-in' })
+
+	expect(response.status).toBe(404)
+	expect(await response.text()).toBe(servedCommitWithoutAppNotFoundBody)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+})
+
+test('/_assets/ is the normal 404 when the served commit has no kody.app', async () => {
+	const kodyId = 'asset-pending-serve'
+	seedPublishedAppAheadOfServing(kodyId)
+	mockModule.loadPackageSourceBySourceId.mockClear()
+
+	const response = await asset('app.css', undefined, kodyId)
+
+	expect(response.status).toBe(404)
+	expect(await response.text()).toBe(servedCommitWithoutAppNotFoundBody)
+	expect(mockModule.loadPackageSourceBySourceId).not.toHaveBeenCalled()
 })

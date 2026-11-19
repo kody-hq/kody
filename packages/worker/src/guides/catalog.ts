@@ -40,6 +40,7 @@ import organizations from '../../../../docs/guides/organizations.md'
 import packageSharing from '../../../../docs/guides/package-sharing.md'
 import sharedPackages from '../../../../docs/guides/shared-packages.md'
 import packageSkills from '../../../../docs/guides/package-skills.md'
+import packageExportJsdoc from '../../../../docs/guides/package-export-jsdoc.md'
 import packageApps from '../../../../docs/guides/package-apps.md'
 import packageAppCustomDomains from '../../../../docs/guides/package-app-custom-domains.md'
 import packageLifecycle from '../../../../docs/guides/package-lifecycle.md'
@@ -125,6 +126,7 @@ const guideSources: Array<{ slug: string; raw: string }> = [
 	{ slug: 'package-sharing', raw: packageSharing },
 	{ slug: 'shared-packages', raw: sharedPackages },
 	{ slug: 'package-skills', raw: packageSkills },
+	{ slug: 'package-export-jsdoc', raw: packageExportJsdoc },
 	{ slug: 'package-apps', raw: packageApps },
 	{ slug: 'package-app-custom-domains', raw: packageAppCustomDomains },
 	{ slug: 'package-subscriptions', raw: packageSubscriptions },

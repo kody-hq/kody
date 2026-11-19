@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { OrgTeamInviteLinks } from './org-teams-invite-links.tsx'
 import {
 	createOrganizationTeam,
@@ -8,10 +10,6 @@ import {
 import type { OrgTeamsLoaderData } from '#universal/loader-data.ts'
 import { orgIdentity } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -30,12 +28,9 @@ import {
 	AccountManagementShell,
 	AccountPageHeader,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { Input, Select } from '../components/input.tsx'
 
 function memberLabel(member: {
 	displayName: string | null
@@ -173,10 +168,10 @@ function OrgTeamsContent({
 															) : null}
 														</span>
 														{data.canRemoveMembers ? (
-															<button
+															<Button
 																type="button"
 																disabled={pending}
-																css={getDangerPillCss({ size: 'sm' })}
+																variant="danger"
 																onBlur={() => setConfirmed(null)}
 																onClick={() => {
 																	if (confirmed !== key) {
@@ -199,7 +194,7 @@ function OrgTeamsContent({
 																{confirmed === key
 																	? 'Confirm remove'
 																	: 'Remove'}
-															</button>
+															</Button>
 														) : null}
 													</div>
 												</li>
@@ -211,7 +206,7 @@ function OrgTeamsContent({
 								)}
 								{data.canManage ? (
 									<div css={addRowCss}>
-										<select
+										<Select
 											aria-label={`Add member to ${team.name}`}
 											value={addByTeam[team.id] ?? ''}
 											css={selectCss}
@@ -235,11 +230,11 @@ function OrgTeamsContent({
 														{memberLabel(member)}
 													</option>
 												))}
-										</select>
-										<button
+										</Select>
+										<Button
 											type="button"
 											disabled={!addByTeam[team.id] || pending}
-											css={getPillButtonCss({ size: 'sm' })}
+											variant="primary"
 											onClick={() =>
 												post(
 													() =>
@@ -258,7 +253,7 @@ function OrgTeamsContent({
 											}
 										>
 											{renderIcon('plus', { size: '1.05rem' })}Add
-										</button>
+										</Button>
 									</div>
 								) : null}
 								{data.canCreateInviteLinks ? (
@@ -299,52 +294,42 @@ function OrgTeamsContent({
 							)
 						}}
 					>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Handle</span>
-							<input
+						<Field
+							label="Handle"
+							description="Unique inside this organization. Lowercase letters, numbers, and hyphens."
+						>
+							<Input
 								value={createSlug}
 								required
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) => setCreateSlug(event.currentTarget.value)}
 							/>
-							<p css={accountFieldNoteCss}>
-								Unique inside this organization. Lowercase letters, numbers, and
-								hyphens.
-							</p>
-						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Name</span>
-							<input
+						</Field>
+						<Field label="Name">
+							<Input
 								value={createName}
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) => setCreateName(event.currentTarget.value)}
 							/>
-						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Description</span>
-							<input
+						</Field>
+						<Field label="Description">
+							<Input
 								value={createDescription}
-								data-field-ring
 								autoComplete="off"
-								css={accountInputCss}
 								onChange={(event) =>
 									setCreateDescription(event.currentTarget.value)
 								}
 							/>
-						</label>
+						</Field>
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="submit"
 								disabled={pending || createSlug.trim().length === 0}
-								css={getPillButtonCss({ size: 'sm' })}
+								variant="primary"
 							>
 								{renderIcon('plus', { size: '1.05rem' })}
 								{createMutation.isPending ? 'Creating…' : 'Create team'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				</AccountManagementPanel>
@@ -429,7 +414,6 @@ const addRowCss: CSSObject = {
 }
 
 const selectCss: CSSObject = {
-	...accountInputCss,
 	width: 'auto',
 	minWidth: '12rem',
 	flex: '1 1 auto',

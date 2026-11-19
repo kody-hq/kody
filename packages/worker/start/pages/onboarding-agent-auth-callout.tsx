@@ -6,7 +6,6 @@ import {
 	type OnboardingAgentSurface,
 	codexMcpLoginCommand,
 	hermesMcpLoginCommand,
-	isDefaultKodyMcpUrl,
 	museMcpLoginCommand,
 	openClawMcpLoginCommand,
 	openCodeMcpAuthCommand,
@@ -26,9 +25,7 @@ export function AgentAuthCallout(props: {
 			data-testid="onboarding-authenticate-callout"
 		>
 			<strong>Authenticate Kody before you continue</strong>
-			<span>
-				{renderAgentAuthHint(props.agent, props.surface, props.mcpServerUrl)}
-			</span>
+			<span>{renderAgentAuthHint(props.agent, props.surface)}</span>
 			<span>
 				Approve the <strong>{new URL(props.mcpServerUrl).host}</strong> OAuth
 				window. This is the step that connects your agent to your factory.
@@ -40,9 +37,7 @@ export function AgentAuthCallout(props: {
 function renderAgentAuthHint(
 	kind: McpClientKind,
 	surface: OnboardingAgentSurface,
-	mcpServerUrl: string,
 ) {
-	const productionPlugin = isDefaultKodyMcpUrl(mcpServerUrl)
 	switch (kind) {
 		case 'cursor-local':
 			return (
@@ -80,32 +75,18 @@ function renderAgentAuthHint(
 				</>
 			)
 		case 'chatgpt':
-			return productionPlugin ? (
-				<>Complete OAuth when ChatGPT prompts you after adding the plugin.</>
-			) : (
-				<>Complete OAuth when ChatGPT prompts you after creating the app.</>
+			return (
+				<>
+					After you add the MCP server, select <strong>Authenticate</strong> and
+					sign in to Kody when ChatGPT asks.
+				</>
 			)
 		case 'codex':
-			if (surface === 'mobile') {
-				return productionPlugin ? (
-					<>
-						Complete OAuth when the ChatGPT app prompts you after adding the
-						plugin.
-					</>
-				) : (
-					<>Complete OAuth when the ChatGPT app prompts you.</>
-				)
-			}
-			return productionPlugin ? (
+			return (
 				<>
-					After adding the plugin, complete OAuth when ChatGPT prompts you. If
-					you used the Codex CLI instead, run{' '}
-					<code>{codexMcpLoginCommand}</code>.
-				</>
-			) : (
-				<>
-					Run <code>{codexMcpLoginCommand}</code> if OAuth does not start
-					automatically.
+					After you add the MCP server, run <code>{codexMcpLoginCommand}</code>{' '}
+					if sign-in does not start, or select <strong>Authenticate</strong> in
+					the MCP servers list.
 				</>
 			)
 		case 'claude-desktop':

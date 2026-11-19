@@ -666,6 +666,30 @@ test('evidence reports missing, malformed, and mismatched payloads explicitly', 
 	})
 	expect(JSON.stringify(outage.targets)).not.toContain(secretMarker)
 
+	// The same holds when the read that fails is a linked dependency's modules.
+	const intactPayload = (await realGet(brokenKey, 'text'))!
+	await t.kv.put(
+		brokenKey,
+		JSON.stringify({
+			...JSON.parse(intactPayload),
+			linkedArtifacts: [
+				{ prefix: '.__kody_linked__/artifacts/ab', sha256: 'x' },
+			],
+		}),
+	)
+	mutableKv.get = (async (k: string, type?: 'text' | 'json') => {
+		if (k.startsWith('linked-artifact:')) throw new Error('kv down')
+		return realGet(k, type as 'text')
+	}) as typeof realGet
+	const linkedOutage = await evidence(t)
+	mutableKv.get = realGet
+	await t.kv.put(brokenKey, intactPayload)
+	expect(
+		linkedOutage.targets.find(
+			(target) => target.key === 'module|.|src/index.ts',
+		),
+	).toMatchObject({ selected: { status: 'kv_unavailable' } })
+
 	// Manifest snapshot missing: never recovered or written on read, and
 	// identity rows and jobs are still reported.
 	await t.kv.delete(t.manifestSnapshotKey)
@@ -995,7 +1019,6 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 			packageId,
 			sourceId,
 			failedCommit,
-			restoreCommit: oldCommit,
 			sentryScope: 'test',
 		})
 	mocks.refreshSavedPackageProjection
@@ -1014,7 +1037,7 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 	expect(t.jobRow('job-reconcile').published_commit).toBe(failedCommit)
 
 	// Retry finishes the repair instead of reporting `superseded`.
-	expect(await settle()).toBe('restored')
+	expect(await settle()).toEqual({ status: 'restored', commit: oldCommit })
 	expect(mocks.refreshSavedPackageProjection).toHaveBeenCalledTimes(2)
 	expect(mocks.refreshSavedPackageProjection).toHaveBeenLastCalledWith(
 		expect.objectContaining({ sourceId, rebuildArtifacts: false }),
@@ -1028,7 +1051,7 @@ test('failed-publish settlement resumes after a refresh failure and restores old
 		enabled: 0,
 	})
 	// A further retry stays a safe repeat.
-	expect(await settle()).toBe('restored')
+	expect(await settle()).toEqual({ status: 'restored', commit: oldCommit })
 
 	const { targets } = await evidence(t)
 	expect(selectedHashes(targets)).toEqual(selectedHashes(before.targets))
@@ -1059,10 +1082,9 @@ test('failed-publish settlement never touches a pointer a newer publish owns', a
 			packageId,
 			sourceId,
 			failedCommit,
-			restoreCommit: oldCommit,
 			sentryScope: 'test',
 		}),
-	).toBe('superseded')
+	).toEqual({ status: 'superseded' })
 	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
 	expect(
 		t.sqlite
@@ -1071,4 +1093,28 @@ test('failed-publish settlement never touches a pointer a newer publish owns', a
 	).toEqual({ published_commit: newerCommit })
 	expect(t.jobRow('job-reconcile').published_commit).toBe(newerCommit)
 	expect(t.jobRow('job-periodic').enabled).toBe(0)
+})
+
+test('failed-publish settlement keeps a commit already served by an overlapping attempt', async () => {
+	const t = createTest()
+	await simulateFailedPublish(t)
+	t.setSource(failedCommit, failedCommit)
+
+	await expect(
+		settleFailedPublishRebuild({
+			env: t.env,
+			baseUrl: 'https://example.com',
+			ownerUserId: ownerIdFromStored(ownerId),
+			packageId,
+			sourceId,
+			failedCommit,
+			sentryScope: 'test',
+		}),
+	).resolves.toEqual({ status: 'unchanged' })
+	expect(mocks.refreshSavedPackageProjection).not.toHaveBeenCalled()
+	expect(
+		t.sqlite
+			.prepare(`SELECT published_commit FROM entity_sources WHERE id = ?`)
+			.get(sourceId),
+	).toEqual({ published_commit: failedCommit })
 })

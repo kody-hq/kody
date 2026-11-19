@@ -45,6 +45,7 @@ export const runGetCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runGet',
+		walletGuard: 'run_read',
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:

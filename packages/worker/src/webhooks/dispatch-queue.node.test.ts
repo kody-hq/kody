@@ -3,6 +3,7 @@ import {
 	type OwnerId,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
+import { ownerCapDeferralDelaySeconds } from '#worker/owner-cap-deferral.ts'
 import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	handleWebhookDispatchQueue,
@@ -22,7 +23,23 @@ import { parseWebhookJsonBody } from './params.ts'
 const mocks = vi.hoisted(() => ({
 	dispatchWebhookInvocation: vi.fn(),
 	recordWebhookDelivery: vi.fn(),
+	markAckWebhookDelivery: vi.fn(),
+	startAckWebhookDeliveryAttempt: vi.fn(
+		async (..._args: Array<unknown>) => true,
+	),
+	getRunRecord: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 }))
+
+vi.mock('#worker/run-records/service.ts', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('#worker/run-records/service.ts')>()
+	return {
+		...actual,
+		getRunRecord: (...args: Array<unknown>) => mocks.getRunRecord(...args),
+	}
+})
 
 vi.mock('./delivery.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./delivery.ts')>()
@@ -32,6 +49,10 @@ vi.mock('./delivery.ts', async (importOriginal) => {
 			mocks.dispatchWebhookInvocation(...args),
 		recordWebhookDelivery: (...args: Array<unknown>) =>
 			mocks.recordWebhookDelivery(...args),
+		markAckWebhookDelivery: (...args: Array<unknown>) =>
+			mocks.markAckWebhookDelivery(...args),
+		startAckWebhookDeliveryAttempt: (...args: Array<unknown>) =>
+			mocks.startAckWebhookDeliveryAttempt(...args),
 	}
 })
 
@@ -555,4 +576,151 @@ test('queue hydrates spilled payloads, deletes them after terminal work, and ack
 			invocationId: 'delivery-missing',
 		}),
 	)
+})
+
+test('the consumer marks the accepted row started, then queued with the reason when an attempt fails before the export runs', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation
+		.mockRejectedValueOnce(new Error('No such module ".__kody_linked__/x"'))
+		.mockResolvedValueOnce({
+			status: 503,
+			body: { ok: false, error: { code: 'artifact_preparation_failed' } },
+		})
+	const crashed = createQueueMessage('crashed', createMessage())
+	const transient = createQueueMessage('transient', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([crashed, transient]), {} as Env)
+
+	expect([crashed, transient].map(queueOutcome)).toEqual([retried, retried])
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	const marks = mocks.markAckWebhookDelivery.mock.calls.map(
+		([input]) =>
+			[
+				input.delivery.deliveryId,
+				input.state,
+				input.lastError ?? null,
+			] as const,
+	)
+	expect(mocks.startAckWebhookDeliveryAttempt).toHaveBeenCalledTimes(2)
+	expect(marks).toEqual([
+		[
+			'delivery-1',
+			'queued',
+			'dispatch_processing_failed: No such module ".__kody_linked__/x"',
+		],
+		['delivery-1', 'queued', 'artifact_preparation_failed'],
+	])
+})
+
+test('a thrown processing error on the last attempt finishes the row failed instead of waiting for the hold', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.dispatchWebhookInvocation.mockRejectedValueOnce(new Error('boom'))
+	const last = {
+		...createQueueMessage('last', createMessage()),
+		attempts: webhookDispatchMaxRetries,
+	}
+
+	await handleWebhookDispatchQueue(createBatch([last]), {} as Env)
+
+	expect(queueOutcome(last)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({
+			outcome: 'failed',
+			error: 'invocation_retry_exhausted',
+			invocationErrorCode: 'dispatch_processing_failed',
+			invocationId: 'delivery-1',
+			attempts: webhookDispatchMaxRetries,
+		}),
+	)
+})
+
+test('a redelivered spilled message whose delivery already finished is acked without overwriting the row', async () => {
+	mocks.getRunRecord.mockResolvedValueOnce({
+		run: { id: 'delivery-1', status: 'success' },
+		logs: [],
+	})
+	const spilled = createMessage()
+	spilled.params.request.body = ''
+	spilled.params.request.json = null
+	const redelivered = createQueueMessage('redelivered', {
+		...spilled,
+		payloadKvKey: webhookDispatchPayloadKvKey('user-1', 'delivery-1'),
+	})
+	const kv = { get: vi.fn(async () => null), delete: vi.fn() }
+
+	await handleWebhookDispatchQueue(createBatch([redelivered]), {
+		BUNDLE_ARTIFACTS_KV: kv,
+	} as unknown as Env)
+
+	expect(queueOutcome(redelivered)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+})
+
+test('a delivery whose owner is at the started limit is re-sent with a delay instead of run or retried, and keeps its attempt count', async () => {
+	mocks.startAckWebhookDeliveryAttempt
+		.mockResolvedValueOnce(false)
+		.mockResolvedValueOnce(true)
+	mocks.dispatchWebhookInvocation.mockResolvedValueOnce(handledResponse)
+	const send =
+		vi.fn<(body: unknown, options?: { delaySeconds?: number }) => void>()
+	const env = { WEBHOOK_DISPATCH_QUEUE: { send } } as unknown as Env
+	const overLimit = {
+		...createQueueMessage('over-limit', createMessage()),
+		attempts: 3,
+	}
+
+	await handleWebhookDispatchQueue(createBatch([overLimit]), env)
+
+	expect(queueOutcome(overLimit)).toEqual(acked)
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+	expect(mocks.recordWebhookDelivery).not.toHaveBeenCalled()
+	const [resent, options] = send.mock.calls[0] ?? []
+	expect(resent).toMatchObject({
+		deliveryId: 'delivery-1',
+		deferrals: 1,
+		priorAttempts: 2,
+	})
+	expect(options?.delaySeconds).toBeGreaterThanOrEqual(3)
+	expect(options?.delaySeconds).toBeLessThanOrEqual(5)
+	expect(mocks.markAckWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({ state: 'queued', attempts: 2 }),
+	)
+
+	// The re-sent message starts its own queue count; the delivery's does not reset.
+	const redelivered = createQueueMessage(
+		'redelivered',
+		parseWebhookDispatchQueueMessage(resent),
+	)
+	await handleWebhookDispatchQueue(createBatch([redelivered]), env)
+
+	expect(queueOutcome(redelivered)).toEqual(acked)
+	expect(mocks.recordWebhookDelivery).toHaveBeenCalledWith(
+		expect.objectContaining({ outcome: 'delivered', attempts: 3 }),
+	)
+})
+
+test('a deferral that cannot be re-sent retries the original message so the delivery is not lost', async () => {
+	consoleError.mockImplementation(() => {})
+	mocks.startAckWebhookDeliveryAttempt.mockResolvedValueOnce(false)
+	const env = {
+		WEBHOOK_DISPATCH_QUEUE: {
+			send: vi.fn(async () => {
+				throw new Error('queue unavailable')
+			}),
+		},
+	} as unknown as Env
+	const overLimit = createQueueMessage('over-limit', createMessage())
+
+	await handleWebhookDispatchQueue(createBatch([overLimit]), env)
+
+	expect(queueOutcome(overLimit)).toEqual(retried)
+	expect(mocks.dispatchWebhookInvocation).not.toHaveBeenCalled()
+})
+
+test('deferral delay doubles per deferral and stops at five minutes', () => {
+	const longest = (deferrals: number) =>
+		ownerCapDeferralDelaySeconds(deferrals, () => 1)
+	expect([0, 1, 2, 6, 50].map(longest)).toEqual([5, 10, 20, 300, 300])
+	expect(ownerCapDeferralDelaySeconds(6, () => 0)).toBe(150)
 })

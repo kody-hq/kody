@@ -167,7 +167,7 @@ first-party credential leak to package code) showed up in the surfaces reviewed.
 
 - **Area:** security
 - **Location:** `classifyNormalizedApprovalHost` in
-  `packages/worker/src/mcp/secrets/approval-host-shape.ts`
+  `packages/worker/universal/approval-host-shape.ts`
 - **Evidence:** Canonical IPv4/IPv6 hosts are accepted (`reason: null`). There
   is no private / link-local / metadata denylist. Secret-bearing fetch only
   checks exact `allowedHosts` membership. Non-secret fetch has no SSRF denylist

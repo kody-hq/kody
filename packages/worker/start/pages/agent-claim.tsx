@@ -1,4 +1,8 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { buildAuthLink } from '#client/auth-links.ts'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
@@ -10,14 +14,7 @@ import type {
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
-	inputCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
 	pageHeaderCss,
@@ -27,8 +24,8 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { AuthorizeOrgField } from './oauth-authorize-org-picker.tsx'
+import { Input } from '../components/input.tsx'
 
 const agentClaimAntiPhishingMessage =
 	'Only continue if you asked an agent to connect Kody and the code matches the one it showed you.'
@@ -62,9 +59,9 @@ export function AgentClaimRoute(props: { data: AgentClaimPageData }) {
 				<p css={pageDescriptionCss}>{agentClaimLead(data)}</p>
 			</header>
 			{renderAgentClaimBody(data)}
-			<SiteLink href="/" css={mutedLinkCss}>
+			<TextLink tone="muted" href="/">
 				Back home
-			</SiteLink>
+			</TextLink>
 		</section>
 	)
 }
@@ -115,9 +112,14 @@ function renderAgentClaimBody(data: AgentClaimPageData) {
 		case 'email_unverified':
 			return (
 				<section css={cardCss}>
-					<a href="/pending-verification" css={primaryLinkCss}>
+					<Button
+						href="/pending-verification"
+						variant="primary"
+						size="md"
+						reloadDocument
+					>
 						Resend verification email
-					</a>
+					</Button>
 				</section>
 			)
 		case 'not_found':
@@ -135,15 +137,22 @@ function SignedOutCard(props: {
 		<section css={cardCss} data-testid="agent-claim-signed-out">
 			<p css={descriptionCss}>{agentClaimAntiPhishingMessage}</p>
 			<div css={actionsCss}>
-				<a href={buildAuthLink('/login', data.redirectTo)} css={primaryLinkCss}>
+				<Button
+					href={buildAuthLink('/login', data.redirectTo)}
+					variant="primary"
+					size="md"
+					reloadDocument
+				>
 					Sign in to continue
-				</a>
-				<a
+				</Button>
+				<Button
 					href={buildAuthLink('/signup', data.redirectTo)}
-					css={secondaryLinkCss}
+					variant="secondary"
+					size="md"
+					reloadDocument
 				>
 					Create an account
-				</a>
+				</Button>
 			</div>
 		</section>
 	)
@@ -171,21 +180,17 @@ function ConsentCard(props: {
 					not connect an MCP host.
 				</p>
 			</section>
-			<p
-				role="note"
-				css={getAlertCardCss('error')}
-				data-testid="agent-claim-anti-phishing"
-			>
+			<Alert role="note" tone="error" data-testid="agent-claim-anti-phishing">
 				{agentClaimAntiPhishingMessage}
-			</p>
+			</Alert>
 			<section css={insetCardCss}>
 				<p css={signedInCss}>Signed in as {account.displayName}</p>
 				<p css={descriptionCss}>{account.email}</p>
 			</section>
 			{error ? (
-				<p role="alert" css={getAlertCardCss('error')}>
+				<Alert role="alert" tone="error">
 					{error}
-				</p>
+				</Alert>
 			) : null}
 			<form
 				method="post"
@@ -194,9 +199,8 @@ function ConsentCard(props: {
 				data-testid="agent-claim-form"
 			>
 				<input type="hidden" name="claim_attempt_token" value={attemptToken} />
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Code from your agent</span>
-					<input
+				<Field label="Code from your agent">
+					<Input
 						type="text"
 						name="user_code"
 						required
@@ -208,7 +212,7 @@ function ConsentCard(props: {
 						placeholder="BCDF-GHJK"
 						css={codeInputCss}
 					/>
-				</label>
+				</Field>
 				<AuthorizeOrgField
 					orgs={request.orgs}
 					selectedOrgSlug={orgSlug}
@@ -216,24 +220,26 @@ function ConsentCard(props: {
 					onChange={setOrgSlug}
 				/>
 				<div css={actionsCss}>
-					<button
+					<Button
 						type="submit"
 						name="decision"
 						value="approve"
 						disabled={orgMissing}
-						css={primaryButtonCss}
+						variant="primary"
+						size="md"
 					>
 						Approve
-					</button>
-					<button
+					</Button>
+					<Button
 						type="submit"
 						name="decision"
 						value="deny"
 						formNoValidate
-						css={secondaryButtonCss}
+						variant="secondary"
+						size="md"
 					>
 						Deny
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>
@@ -245,28 +251,12 @@ const pageCss = {
 	maxWidth: '28rem',
 	margin: '0 auto',
 }
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const primaryLinkCss = {
-	...primaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	...secondaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
 const actionsCss = {
 	display: 'flex',
 	flexWrap: 'wrap' as const,
 	gap: spacing.sm,
 }
 const codeInputCss = {
-	...inputCss,
 	fontFamily: typography.fontFamilyMono,
 	fontSize: typography.fontSize.lg,
 	letterSpacing: '0.12em',

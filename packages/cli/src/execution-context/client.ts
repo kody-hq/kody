@@ -12,6 +12,7 @@ import {
 	type EcpPublishedKey,
 	type EcpCryptoKey,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
+import type { AdvertisedMachineCapability } from './machine-capabilities.js'
 import {
 	formatUnreachableApiMessage,
 	requestSentStatus,
@@ -301,6 +302,52 @@ export async function setContextCommands(input: {
 		name: string
 		commands: { enabled: boolean; enabledAt?: string | null }
 		grantVersion: number
+	}
+}
+
+/**
+ * Machine access: reports the named commands and local network destinations
+ * this machine defines, signed with the context key so only this machine can
+ * add or widen one. Omit `capabilities` to read what Kody has.
+ */
+export async function syncContextCapabilities(input: {
+	apiUrl: string
+	ecid: string
+	privateKey: EcpCryptoKey
+	capabilities?: ReadonlyArray<AdvertisedMachineCapability>
+	fetchFn?: typeof fetch
+	signal?: AbortSignal
+}) {
+	const response = await signedFetch({
+		apiUrl: input.apiUrl,
+		ecid: input.ecid,
+		privateKey: input.privateKey,
+		...(input.fetchFn ? { fetchFn: input.fetchFn } : {}),
+		...(input.signal ? { signal: input.signal } : {}),
+		method: 'POST',
+		pathAndQuery: `${executionContextsPath}/capabilities`,
+		body: JSON.stringify(
+			input.capabilities === undefined
+				? {}
+				: { capabilities: input.capabilities },
+		),
+		headers: { 'content-type': 'application/json' },
+	})
+	if (!response.ok) throw await readError(response)
+	return (await response.json()) as {
+		id: string
+		name: string
+		capabilities: Array<{
+			id: string
+			kind: 'command' | 'lan'
+			name: string
+			description: string
+		}>
+		changes?: {
+			added: Array<string>
+			changed: Array<string>
+			removed: Array<string>
+		}
 	}
 }
 

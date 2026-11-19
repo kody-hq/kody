@@ -103,22 +103,29 @@ test('resourceLock returns a secret approval URL without widening allowed_packag
 		}),
 	}
 
-	const approvalUrl =
-		'https://kody.codes/@ada/-/secrets/user/openai-api-key?package_id=pkg-notes&package=notes'
 	const pending = await resourceLockCapability.handler(
 		{ kind: 'secret', name: 'openai-api-key', package_id: 'pkg-notes' },
 		ctx,
 	)
-	expect(pending).toEqual({
+	expect(pending).toMatchObject({
 		kind: 'secret',
 		name: 'openai-api-key',
 		scope: 'user',
 		allowed_packages: [],
-		usage_url: 'https://kody.codes/@ada/-/secrets/user/openai-api-key',
 		status: 'approval_required',
-		approval_url: approvalUrl,
-		message: expect.stringContaining(approvalUrl),
 	})
+	if (pending.kind !== 'secret') {
+		throw new Error('Expected a secret resource lock result.')
+	}
+	const pendingApproval = new URL(pending.approval_url)
+	expect(pendingApproval.origin).toBe('https://kody.codes')
+	expect(pendingApproval.pathname).toBe('/@ada/-/secrets/user/openai-api-key')
+	expect(pendingApproval.searchParams.get('package_id')).toBe('pkg-notes')
+	expect(pendingApproval.searchParams.get('package')).toBe('notes')
+	expect(pending.usage_url).toBe(
+		`${pendingApproval.origin}${pendingApproval.pathname}`,
+	)
+	expect(pending.message).toContain(pending.approval_url)
 	expect(await allowedPackagesFor(env, userId, 'openai-api-key')).toEqual([])
 
 	const websiteGrant = await lockSecretToPackage({
@@ -134,16 +141,18 @@ test('resourceLock returns a secret approval URL without widening allowed_packag
 		{ kind: 'secret', name: 'openai-api-key', package_id: 'pkg-notes' },
 		ctx,
 	)
-	expect(alreadyGranted).toEqual({
+	expect(alreadyGranted).toMatchObject({
 		kind: 'secret',
 		name: 'openai-api-key',
 		scope: 'user',
 		allowed_packages: ['pkg-notes'],
-		usage_url: 'https://kody.codes/@ada/-/secrets/user/openai-api-key',
 		status: 'already_granted',
-		approval_url: approvalUrl,
-		message: expect.any(String),
 	})
+	if (alreadyGranted.kind !== 'secret') {
+		throw new Error('Expected a secret resource lock result.')
+	}
+	expect(alreadyGranted.approval_url).toBe(pending.approval_url)
+	expect(alreadyGranted.usage_url).toBe(pending.usage_url)
 	expect(await allowedPackagesFor(env, userId, 'openai-api-key')).toEqual([
 		'pkg-notes',
 	])
@@ -158,9 +167,13 @@ test('resourceLock returns a secret approval URL without widening allowed_packag
 	}
 	expect(additional.status).toBe('approval_required')
 	expect(additional.allowed_packages).toEqual(['pkg-notes'])
-	expect(additional.approval_url).toBe(
-		'https://kody.codes/@ada/-/secrets/user/openai-api-key?package_id=pkg-mail&package=mail',
+	const additionalApproval = new URL(additional.approval_url)
+	expect(additionalApproval.origin).toBe('https://kody.codes')
+	expect(additionalApproval.pathname).toBe(
+		'/@ada/-/secrets/user/openai-api-key',
 	)
+	expect(additionalApproval.searchParams.get('package_id')).toBe('pkg-mail')
+	expect(additionalApproval.searchParams.get('package')).toBe('mail')
 	expect(await allowedPackagesFor(env, userId, 'openai-api-key')).toEqual([
 		'pkg-notes',
 	])
@@ -187,8 +200,8 @@ test('resourceLock returns a secret approval URL without widening allowed_packag
 			(error: unknown) => error,
 		)
 	expect(missingSecret).toBeInstanceOf(McpCallerError)
-	expect((missingSecret as Error).message).toContain(
-		'Secret not found for this scope.',
+	expect((missingSecret as Error).message).toMatch(
+		/Secret "missing-secret" not found in user scope/,
 	)
 	expect(await allowedPackagesFor(env, userId, 'openai-api-key')).toEqual([
 		'pkg-notes',

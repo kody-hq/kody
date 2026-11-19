@@ -670,7 +670,7 @@ account creation can be retried once the environment is fixed.
 `POST /session` (`packages/worker/src/app/handlers/session.ts`) includes `roles`
 and `permissions` in the session payload when the cookie is valid. Unclaimed
 guest accounts (Try it out) also include `guest`: `phase`, `claimUrl`,
-`fullAccessUntil`, and `deleteAt`.
+`fullAccessUntil`, and `deleteAt` when the sealed claim code can be opened.
 
 The Start root loads request-scoped identity and shell data through
 `packages/worker/start/routes/__root.tsx` and
@@ -1007,26 +1007,28 @@ identities, tokens, recipients, and message content. A six-hour KV cooldown
 suppresses repeat pages. Delivery is best-effort (no Queue).
 
 **Admins can see** operator-owned system mail for reserved platform addresses
-(`kody`, `support`, `abuse`, `postmaster`, `security`, `admin`, and `psl`). That
-mail is stored under `system:email` as platform content, not under Kent's or any
-other user's account. Admin reads through MCP (`adminSystemEmailList`,
-`adminSystemEmailGet`) and the `/admin/system-email` UI are audit logged. Admins
-can **delete** that operator-owned mail with `adminSystemEmailDelete` (and the
-matching delete action on `/admin/system-email`), which removes the message row,
-attachments, delivery-event rows, blobs, and an empty parent thread — never
-user-owned mailbox content. Admins can also **send** from those reserved
-addresses with `adminSystemEmailSend` (also audit logged, with redacted
-recipients) and list or clear hard-bounce suppressions of system mail with
-`adminEmailSuppressionList` / `adminEmailSuppressionClear` (clears are audit
-logged with redacted recipients), and trace sent system mail with its delivery
-reports via `adminSystemEmailSendList`: that channel speaks for the platform, so
-it uses no user mailbox, sender identity, or plan entitlement, and it never
-reads or writes user-owned mail. Stored system mail also fans out metadata
-(never bodies or attachment bytes) on the `email.system-message.received`
-package subscription topic, and only to packages saved by users who hold the
-admin role at dispatch time — a non-admin subscriber never receives the event,
-and revoking admin stops delivery immediately. Successful reserved-sender sends
-fan `email.system-message.sent` the same admin-only way. That outbound topic
+(`systemEmailLocals`: `kody`, `support`, `abuse`, `dmca`, `postmaster`,
+`security`, `admin`, `psl`, `kent`, and `news`). That mail is stored under
+`system:email` as platform content, not under Kent's or any other user's
+account. Admin reads through MCP (`adminSystemEmailList`, `adminSystemEmailGet`)
+and the `/admin/system-email` UI are audit logged. Admins can **delete** that
+operator-owned mail with `adminSystemEmailDelete` (and the matching delete
+action on `/admin/system-email`), which removes the message row, attachments,
+delivery-event rows, blobs, and an empty parent thread — never user-owned
+mailbox content. Admins can also **send** from transactional reserved addresses
+with `adminSystemEmailSend` and from `news@` with `adminWhatsNewEmailSend` (also
+audit logged, with redacted recipients) and list or clear hard-bounce
+suppressions of system mail with `adminEmailSuppressionList` /
+`adminEmailSuppressionClear` (clears are audit logged with redacted recipients),
+and trace sent system mail with its delivery reports via
+`adminSystemEmailSendList`: that channel speaks for the platform, so it uses no
+user mailbox, sender identity, or plan entitlement, and it never reads or writes
+user-owned mail. Stored system mail also fans out metadata (never bodies or
+attachment bytes) on the `email.system-message.received` package subscription
+topic, and only to packages saved by users who hold the admin role at dispatch
+time — a non-admin subscriber never receives the event, and revoking admin stops
+delivery immediately. Successful reserved-sender sends fan
+`email.system-message.sent` the same admin-only way. That outbound topic
 includes the sent correspondence (recipients, subject, and bodies) because those
 sends are not written to the dedicated inbound graph (the graph refuses
 provider-message-id rows). It does not include user-owned mailbox content.

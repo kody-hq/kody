@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 
 import {
 	backupFullManifestLegacySchemaVersion,
+	backupFullManifestRestD1SchemaVersion,
 	backupFullManifestSchemaVersion,
 	backupFullManifestSignatureAlgorithm,
 	canonicalBackupFullManifestPayload,
@@ -35,6 +36,15 @@ function samplePayload(): BackupFullManifestPayload {
 			'email-blobs': indexRef('r2-index/email-blobs.ndjson', 8, 'c'),
 		},
 		artifactsIndex: indexRef('artifacts-index.json', 4, 'd'),
+		d1Paced: [
+			{
+				databaseId: '22222222-2222-4222-8222-222222222222',
+				databaseName: 'kody',
+				manifestKey:
+					'daily/d1-paced/22222222-2222-4222-8222-222222222222/2026-07-22/manifest.json',
+				manifestSha256: '1'.repeat(64),
+			},
+		],
 		sealedAt: '2026-07-22T12:00:00.000Z',
 		buildCommit: 'abc123',
 		signing: {
@@ -45,10 +55,10 @@ function samplePayload(): BackupFullManifestPayload {
 }
 
 function signedManifest(
-	payload: BackupFullManifestPayload,
+	payload: BackupFullManifest['payload'],
 ): BackupFullManifest {
 	return {
-		schemaVersion: backupFullManifestSchemaVersion,
+		schemaVersion: payload.schemaVersion,
 		payload,
 		signature: {
 			algorithm: backupFullManifestSignatureAlgorithm,
@@ -59,7 +69,7 @@ function signedManifest(
 				privateKey,
 			).toString('base64'),
 		},
-	}
+	} as BackupFullManifest
 }
 
 test('parseBackupFullManifest accepts a signed envelope and rejects shape drift', () => {
@@ -90,6 +100,7 @@ test('parseBackupFullManifest accepts a signed envelope and rejects shape drift'
 	const {
 		mailboxIndex: _mailboxIndex,
 		runLogIndex: _runLogIndex,
+		d1Paced: _d1Paced,
 		...legacy
 	} = payload
 	expect(
@@ -113,7 +124,7 @@ test('parseBackupFullManifest accepts declared d1Sources and keeps historical pa
 		{
 			databaseId: '22222222-2222-4222-8222-222222222222',
 			databaseName: 'kody',
-			manifestKey: payload.d1ManifestKey,
+			manifestKey: 'daily/d1/db/2026-07-22/manifest.json',
 			manifestSha256: 'a'.repeat(64),
 		},
 		{
@@ -171,4 +182,51 @@ test('full-manifest parse/sign/verify round-trip with Ed25519', async () => {
 	await expect(
 		verify({ ...manifest.payload, buildCommit: 'tampered' }),
 	).resolves.toBe(false)
+})
+
+test('schema 3 makes paced D1 required and REST D1 optional as a group', () => {
+	const payload = samplePayload()
+	const {
+		d1ManifestKey: _d1ManifestKey,
+		d1ManifestSha256: _d1ManifestSha256,
+		...pacedOnly
+	} = payload
+	const manifest = signedManifest(pacedOnly)
+	expect(parseBackupFullManifest(manifest).payload).toEqual(pacedOnly)
+
+	const { d1Paced: _d1Paced, ...withoutPaced } = payload
+	for (const [input, error] of [
+		[signedManifest(withoutPaced as typeof payload), /invalid versioned shape/],
+		[signedManifest({ ...payload, d1Paced: [] }), /invalid versioned shape/],
+		[
+			signedManifest({ ...pacedOnly, d1ManifestKey: payload.d1ManifestKey }),
+			/invalid signed values/,
+		],
+		[
+			signedManifest({
+				...pacedOnly,
+				d1Sources: [
+					{
+						databaseId: '22222222-2222-4222-8222-222222222222',
+						databaseName: 'kody',
+						manifestKey: 'daily/d1/db/2026-07-22/manifest.json',
+						manifestSha256: 'a'.repeat(64),
+					},
+				],
+			}),
+			/invalid signed values/,
+		],
+	] as const) {
+		expect(() => parseBackupFullManifest(input)).toThrow(error)
+	}
+
+	const { d1Paced: _paced, ...restOnly } = payload
+	expect(
+		parseBackupFullManifest(
+			signedManifest({
+				...restOnly,
+				schemaVersion: backupFullManifestRestD1SchemaVersion,
+			} as BackupFullManifest['payload']),
+		).payload.schemaVersion,
+	).toBe(backupFullManifestRestD1SchemaVersion)
 })

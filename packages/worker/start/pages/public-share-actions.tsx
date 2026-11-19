@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { readWebsiteSessionInfo } from '#start/server/session-info'
@@ -8,9 +9,7 @@ import {
 	copyPublicFileStep,
 } from '#start/server/public-file-copy'
 import { colors } from '#universal/styles/tokens.ts'
-import { getPillButtonCss } from '#universal/styles/style-primitives.ts'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useHydrated } from '../components/use-hydrated.ts'
 
 export const shareActionCss = {
@@ -171,26 +170,24 @@ export function PublicShareActions({
 					<ShareIcon kind="download" />
 				</a>
 			)}
-			<button
+			<Button
 				ref={trigger}
 				disabled={!hydrated}
-				css={{
-					...getPillButtonCss(),
-					fontSize: 13,
-					padding: '7px 13px',
-					whiteSpace: 'nowrap',
-				}}
+				variant="primary"
+				size="lg"
+				css={{ fontSize: 13, padding: '7px 13px', whiteSpace: 'nowrap' }}
 				onClick={() => {
 					setMessage('')
 					setOpen(true)
 				}}
 			>
 				Use in Kody <ShareIcon kind="arrow" />
-			</button>
+			</Button>
 			{open && (
-				<ModalDialog
-					label="Use in Kody"
-					width={440}
+				<Dialog
+					open
+					aria-label="Use in Kody"
+					size="sm"
 					flush
 					onClose={closeDialog}
 				>
@@ -233,12 +230,13 @@ export function PublicShareActions({
 									Saved {plan.count === 1 ? 'a copy' : `${plan.count} items`} to
 									your files.
 								</p>
-								<SiteLink
+								<Button
 									href={`/@${plan.destination}/-/files?file=${plan.fileId}`}
-									css={getPillButtonCss()}
+									variant="primary"
+									size="lg"
 								>
 									Open copy in Kody <ShareIcon kind="arrow" />
-								</SiteLink>
+								</Button>
 							</>
 						) : (
 							<>
@@ -264,15 +262,17 @@ export function PublicShareActions({
 											Retry sign-in check
 										</button>
 									) : !session.data ? (
-										<SiteLink
+										<Button
 											href={`/login?redirectTo=${encodeURIComponent(`${currentHref()}&use=true`)}`}
-											css={getPillButtonCss()}
+											variant="primary"
+											size="lg"
 										>
 											Sign in to save a copy
-										</SiteLink>
+										</Button>
 									) : (
-										<button
-											css={getPillButtonCss()}
+										<Button
+											variant="primary"
+											size="lg"
 											disabled={busy}
 											onClick={() => void save()}
 										>
@@ -288,7 +288,7 @@ export function PublicShareActions({
 											) : (
 												'Save a copy in Kody'
 											)}
-										</button>
+										</Button>
 									)}
 									{busy && plan && (
 										<progress
@@ -346,7 +346,7 @@ export function PublicShareActions({
 							</span>
 						)}
 					</div>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)

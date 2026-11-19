@@ -1,47 +1,33 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef } from 'react'
 import type {
 	useRecordTableModel,
 	RecordTableOptions,
 } from './record-table-model.ts'
 import type { RecordTableColumn } from './record-table.tsx'
-import { Menu } from '@base-ui/react/menu'
 import {
-	overlayItemCss,
-	overlayPopupCss,
-	overlayPositionerCss,
-} from '../components/overlay-styles.ts'
+	Menu,
+	MenuCheckboxItem,
+	MenuContent,
+	MenuTrigger,
+} from '../components/menu.tsx'
 import { colors } from '#universal/styles/tokens.ts'
+import { Select } from '../components/input.tsx'
+import { Button } from '../components/button.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 type Model = ReturnType<typeof useRecordTableModel>
-const control = {
-	padding: '0.25rem 0.45rem',
-	fontSize: '0.75rem',
-	color: colors.text,
-	background: colors.surface,
-	border: `1px solid ${colors.border}`,
-	borderRadius: '0.25rem',
-}
 export function RecordSelectionCheckbox({
 	label,
 	checked,
-	mixed,
 	disabled,
 	onChange,
 }: {
 	label: string
-	checked: boolean
-	mixed?: boolean
+	checked: boolean | 'mixed'
 	disabled?: boolean
 	onChange: (value: boolean) => void
 }) {
-	const ref = useRef<HTMLInputElement>(null)
-	useEffect(() => {
-		if (ref.current) ref.current.indeterminate = Boolean(mixed && !checked)
-	}, [mixed, checked])
 	return (
-		<input
-			ref={ref}
-			type="checkbox"
+		<Checkbox
 			aria-label={label}
 			checked={checked}
 			disabled={disabled}
@@ -72,27 +58,21 @@ export function RecordTableDataControls({
 					{options.selection.actions(selected, selectedIds)}
 				</>
 			) : null}
-			<Menu.Root modal={false}>
-				<Menu.Trigger
+			<Menu>
+				<MenuTrigger
 					aria-label="Columns"
 					title="Choose columns"
-					css={{
-						...control,
-						marginLeft: 'auto',
-						cursor: 'pointer',
-						...(iconOnly
-							? {
-									width: 28,
-									height: 28,
-									padding: 4,
-									display: 'grid',
-									placeItems: 'center',
-									border: 0,
-									background: 'transparent',
-									'&:hover': { background: colors.borderSubtle },
-								}
-							: {}),
-					}}
+					render={
+						<Button
+							variant={iconOnly ? 'ghost' : 'secondary'}
+							size="xs"
+							iconOnly={iconOnly}
+							css={{
+								marginLeft: 'auto',
+								'@media (any-pointer: coarse)': { minHeight: 28, minWidth: 28 },
+							}}
+						/>
+					}
 				>
 					{iconOnly ? (
 						<svg
@@ -110,40 +90,29 @@ export function RecordTableDataControls({
 					) : (
 						'Columns'
 					)}
-				</Menu.Trigger>
-				<Menu.Portal>
-					<Menu.Positioner
-						align="end"
-						sideOffset={4}
-						css={overlayPositionerCss}
-					>
-						<Menu.Popup
-							aria-label="Choose columns"
-							css={{ ...overlayPopupCss, width: '13rem' }}
-						>
-							{columns.map((column) => {
-								const modelColumn = model.getColumn(column.key)!
-								return (
-									<Menu.CheckboxItem
-										key={column.key}
-										checked={modelColumn.getIsVisible()}
-										disabled={!modelColumn.getCanHide()}
-										onCheckedChange={(checked) =>
-											modelColumn.toggleVisibility(checked)
-										}
-										css={overlayItemCss}
-									>
-										<span css={{ width: '1rem' }}>
-											<Menu.CheckboxItemIndicator>✓</Menu.CheckboxItemIndicator>
-										</span>
-										{column.label}
-									</Menu.CheckboxItem>
-								)
-							})}
-						</Menu.Popup>
-					</Menu.Positioner>
-				</Menu.Portal>
-			</Menu.Root>
+				</MenuTrigger>
+				<MenuContent
+					align="end"
+					aria-label="Choose columns"
+					css={{ width: '13rem' }}
+				>
+					{columns.map((column) => {
+						const modelColumn = model.getColumn(column.key)!
+						return (
+							<MenuCheckboxItem
+								key={column.key}
+								checked={modelColumn.getIsVisible()}
+								disabled={!modelColumn.getCanHide()}
+								onCheckedChange={(checked) =>
+									modelColumn.toggleVisibility(checked)
+								}
+							>
+								{column.label}
+							</MenuCheckboxItem>
+						)
+					})}
+				</MenuContent>
+			</Menu>
 		</div>
 	)
 }
@@ -173,9 +142,9 @@ export function RecordTablePagination({ model }: { model: Model }) {
 			</span>
 			<label>
 				Rows{' '}
-				<select
+				<Select
+					size="sm"
 					aria-label="Rows per page"
-					css={control}
 					value={pageSize}
 					onChange={(event) =>
 						model.setPagination({
@@ -189,29 +158,31 @@ export function RecordTablePagination({ model }: { model: Model }) {
 							{size}
 						</option>
 					))}
-				</select>
+				</Select>
 			</label>
-			<button
+			<Button
 				type="button"
-				css={control}
+				variant="secondary"
+				size="xs"
 				aria-label="Previous page"
 				disabled={!model.getCanPreviousPage()}
 				onClick={() => model.previousPage()}
 			>
 				‹
-			</button>
+			</Button>
 			<span>
 				Page {pageIndex + 1} of {Math.max(1, model.getPageCount())}
 			</span>
-			<button
+			<Button
 				type="button"
-				css={control}
+				variant="secondary"
+				size="xs"
 				aria-label="Next page"
 				disabled={!model.getCanNextPage()}
 				onClick={() => model.nextPage()}
 			>
 				›
-			</button>
+			</Button>
 		</div>
 	)
 }

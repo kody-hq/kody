@@ -152,7 +152,7 @@ test('kody dev injects the live-reload client and pushes reload / build_error ov
 		assert.match(client.headers['content-type'] ?? '', /javascript/)
 		assert.match(client.body, /new EventSource/)
 
-		const stream = openEventStream(`${server.url}/__kody/dev/events`)
+		const stream = openEventStream(`${server.localUrl}/__kody/dev/events`)
 		try {
 			const hello = await waitFor(
 				async () => stream.events.find((event) => event.event === 'hello'),

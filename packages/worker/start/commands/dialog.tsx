@@ -17,11 +17,13 @@ import { rankCommands, parseCommandQuery, type Command } from './model.ts'
 import { readCommandHistory, saveCommandHistory } from './preferences.ts'
 import {
 	dialogCss,
-	inputCss,
 	rowCss,
 	footerCss,
-	smallButtonCss,
+	pressedCss,
+	compactSelectCss,
 } from './styles.ts'
+import { Button } from '../components/button.tsx'
+import { Input, Select } from '../components/input.tsx'
 
 export function CommandDialog({
 	session,
@@ -459,6 +461,7 @@ export function CommandDialog({
 			?.scrollIntoView({ block: 'nearest' })
 	}, [index, selectionId])
 	return (
+		// oxlint-disable-next-line kody-custom/no-raw-dialog -- command palette owns its own combobox focus model.
 		<dialog
 			ref={dialog}
 			aria-label="Search and commands"
@@ -480,17 +483,24 @@ export function CommandDialog({
 					</h2>
 					<p>{confirmation.confirm}</p>
 					<div css={{ display: 'flex', gap: 8 }}>
-						<button
-							css={smallButtonCss}
+						<Button
+							variant="secondary"
+							size="xs"
+
 							disabled={busy}
 							onClick={() => void execute(confirmation, true)}
 						>
 							{busy ? 'Working…' : 'Confirm'}{' '}
 							<kbd>{formatForDisplay('Mod+Enter')}</kbd>
-						</button>
-						<button css={smallButtonCss} disabled={busy} onClick={back}>
+						</Button>
+						<Button
+							variant="secondary"
+							size="xs"
+							disabled={busy}
+							onClick={back}
+						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</div>
 			) : help ? (
@@ -512,10 +522,8 @@ export function CommandDialog({
 						}}
 					>
 						{renderIcon('search', { size: '20px' })}
-						<input
+						<Input
 							ref={input}
-							data-field-ring
-							css={inputCss}
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							placeholder={
@@ -534,13 +542,15 @@ export function CommandDialog({
 							autoComplete="off"
 							maxLength={200}
 						/>
-						<button
-							css={smallButtonCss}
+						<Button
+							variant="secondary"
+							size="xs"
+
 							onClick={back}
 							aria-label="Close commands"
 						>
 							Esc
-						</button>
+						</Button>
 					</div>
 					<div
 						css={{
@@ -553,25 +563,27 @@ export function CommandDialog({
 						}}
 					>
 						{actions ? (
-							<button
-								css={smallButtonCss}
+							<Button
+								variant="secondary"
+								size="xs"
+
 								onClick={() => {
 									setActions(null)
 									resetSelection()
 								}}
 							>
 								Back
-							</button>
+							</Button>
 						) : (
 							<>
-								<select
+								<Select
 									aria-label="Search workspace"
 									value={slug ?? ''}
 									onChange={(event) => {
 										setSlug(event.target.value)
 										resetSelection()
 									}}
-									css={{ ...smallButtonCss, maxWidth: 230 }}
+									css={compactSelectCss}
 								>
 									{session?.organizations?.map((org) => (
 										<option key={org.slug} value={org.slug}>
@@ -579,9 +591,11 @@ export function CommandDialog({
 										</option>
 									))}
 									{!session ? <option value="">Kody</option> : null}
-								</select>
-								<button
-									css={smallButtonCss}
+								</Select>
+								<Button
+									variant="secondary"
+									size="xs"
+									css={pressedCss}
 									aria-pressed={favorites}
 									onClick={() => {
 										setFavorites((value) => !value)
@@ -589,9 +603,11 @@ export function CommandDialog({
 									}}
 								>
 									Favorites
-								</button>
-								<button
-									css={smallButtonCss}
+								</Button>
+								<Button
+									variant="secondary"
+									size="xs"
+									css={pressedCss}
 									aria-pressed={parsed.commandsOnly}
 									onClick={() =>
 										updateQuery(
@@ -602,7 +618,7 @@ export function CommandDialog({
 									}
 								>
 									Commands
-								</button>
+								</Button>
 							</>
 						)}
 						<span
@@ -712,20 +728,24 @@ export function CommandDialog({
 						) : null}
 					</div>
 					<div css={footerCss}>
-						<button css={smallButtonCss} onClick={() => setHelp(true)}>
+						<Button variant="secondary" size="xs" onClick={() => setHelp(true)}>
 							Keyboard shortcuts
-						</button>
+						</Button>
 						<span css={{ marginLeft: 'auto' }}>↑ ↓</span>
-						<button
-							css={smallButtonCss}
+						<Button
+							variant="secondary"
+							size="xs"
+
 							disabled={!active || busy}
 							onClick={() => void execute(active)}
 						>
 							{busy ? 'Working…' : 'Open'} ↵
-						</button>
+						</Button>
 						{!actions ? (
-							<button
-								css={smallButtonCss}
+							<Button
+								variant="secondary"
+								size="xs"
+
 								disabled={!selected}
 								onClick={() => {
 									if (selected) {
@@ -735,7 +755,7 @@ export function CommandDialog({
 								}}
 							>
 								Actions {formatForDisplay('Mod+ArrowRight')}
-							</button>
+							</Button>
 						) : null}
 					</div>
 				</>
@@ -748,15 +768,17 @@ export function CommandDialog({
 			{failures.length ? (
 				<div role="status" css={{ padding: '8px 20px', fontSize: 12 }}>
 					Could not search {failures.join(', ')}.{' '}
-					<button
-						css={smallButtonCss}
+					<Button
+						variant="secondary"
+						size="xs"
+
 						onClick={() => {
 							for (const search of searches)
 								if (search.isError) void search.refetch()
 						}}
 					>
 						Retry
-					</button>
+					</Button>
 				</div>
 			) : null}
 		</dialog>

@@ -9,6 +9,7 @@ import {
 	getErrorMessage,
 } from '@kody-internal/shared/error-message.ts'
 import { McpCallerError, isMcpCallerError } from '#mcp/caller-error.ts'
+import { findWalletGuardLimitError } from '#worker/wallet-guard/enforce.ts'
 import {
 	executionContextErrorCodes,
 	isExecutionContextError,
@@ -20,6 +21,7 @@ import {
 } from '#worker/authorization/authorize.ts'
 import {
 	AccountDeletionInProgressError,
+	AccountDeletionWritersActiveError,
 	AccountWriteLeaseLostError,
 } from '#worker/account/deletion-state.ts'
 import {
@@ -113,6 +115,7 @@ const platformApiErrorCodes = [
 	'not_found',
 	'method_not_allowed',
 	'account_deleting',
+	'account_writes_active',
 	'payload_too_large',
 	'unsupported_media_type',
 	'rate_limited',
@@ -122,6 +125,7 @@ const platformApiErrorCodes = [
 	'package_import_unresolved',
 	'package_import_unpublished',
 	'unsupported_dynamic_package_import',
+	'package_graph_resource_limit',
 	'publish_not_applied',
 	'internal_error',
 ] as const
@@ -288,6 +292,25 @@ export function toApiError(
 			cause: error,
 		})
 	}
+	const writersActive = getErrorCauseChain(error).find(
+		(entry) => entry instanceof AccountDeletionWritersActiveError,
+	)
+	if (writersActive) {
+		return new ApiError({
+			status: 409,
+			code: 'account_writes_active',
+			message: writersActive.message,
+			details: {
+				active_writes: writersActive.activeWriteCount,
+				held_by: writersActive.blockingLeases.map((lease) => ({
+					holder: lease.holder,
+					acquired_at: lease.acquiredAt,
+				})),
+				retryable: true,
+			},
+			cause: error,
+		})
+	}
 	if (error instanceof AccountDeletionInProgressError) {
 		return new ApiError({
 			status: 409,
@@ -303,6 +326,19 @@ export function toApiError(
 			code: 'account_deleting',
 			message:
 				'Account deletion is in progress; retry after the current write finishes.',
+			cause: error,
+		})
+	}
+	const walletGuardError = findWalletGuardLimitError(error)
+	if (walletGuardError) {
+		return new ApiError({
+			status: 429,
+			code: 'rate_limited',
+			message: walletGuardError.message,
+			details: walletGuardError.details,
+			headers: {
+				'Retry-After': String(walletGuardError.details.retryAfterSeconds),
+			},
 			cause: error,
 		})
 	}

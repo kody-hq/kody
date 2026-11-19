@@ -1,4 +1,10 @@
 import {
+	buildPackageAppHostLabel,
+	isPackageAppHostLabelReservedPackageLeaf,
+	packageAppHostLabelMaxLength,
+	packageAppHostLabelSeparator,
+} from './package-app-host-label.ts'
+import {
 	isPackageAppHostNonLeafFirstSegment,
 	packageAppHostLegacyMountSegment,
 } from './package-app-host-paths.ts'
@@ -47,6 +53,15 @@ export function buildPackageAppPath(input: {
  */
 export const packageAppOpenPathSegment = 'open'
 
+/**
+ * Marks an app-origin entry URL that came from the app's own
+ * `{leaf}--{handle}` host, so the handoff returns there instead of the
+ * owner's shared subdomain. Both hosts serve the same app until the old
+ * address stops serving, when every handoff targets the app host and this
+ * marker goes away.
+ */
+export const packageAppHostEntryQueryParam = '__kody_app_host'
+
 export function buildPackageAppOpenPath(input: {
 	username: string
 	kodyId: string
@@ -78,9 +93,11 @@ export function buildPackageAppUrl(input: {
  * - `username-path`: `/@{username}/packages/{kodyId}` — the app-origin entry
  *   point (which redirects into the handoff) and the non-production inline
  *   serving shape.
- * - `custom-hostname`: `https://{customer-host}/{rest}` — a verified app-level
- *   custom hostname. The package is bound by hostname, so the path has no
- *   username or slug. The app is mounted at `/`.
+ * - `custom-hostname`: `https://{host}/{rest}` — a host bound to one app: a
+ *   verified app-level custom hostname, or the app's own
+ *   `{leaf}--{handle}` host on the package-app domain. The package is bound
+ *   by hostname, so the path has no username or slug. The app is mounted at
+ *   `/`.
  */
 export type PackageAppMount =
 	| 'user-subdomain'
@@ -92,8 +109,12 @@ export type PackageAppMount =
  * 3–32 chars; alphanumeric edges), because every user owns a `{username}.`
  * subdomain on the package-app domain. Also used to validate subdomain labels
  * from wildcard-routed hostnames, which can be arbitrary strings.
+ *
+ * `--` is banned so a per-app host label `{leaf}--{handle}` splits at exactly
+ * one place and never reads as a handle.
  */
-export const dnsSafeUsernamePattern = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/
+export const dnsSafeUsernamePattern =
+	/^(?![a-z0-9-]*--)[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/
 
 /**
  * Anchor-free source of {@link dnsSafeUsernamePattern}. Embed this fragment
@@ -159,6 +180,74 @@ export function buildPackageAppSubdomainUrl(input: {
 	return `${buildPackageAppSubdomainOrigin(input)}${buildPackageAppSubdomainPath(input)}`
 }
 
+const packageAppHostLabelLeafPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
+/**
+ * Split a per-app host label `{leaf}--{handle}` into its package leaf and
+ * owner handle. Null for anything else: a bare handle, a reserved leaf,
+ * uppercase input, or a label over the DNS limit.
+ */
+export function parsePackageAppHostLabel(label: string) {
+	if (label.length > packageAppHostLabelMaxLength) return null
+	const separatorIndex = label.indexOf(packageAppHostLabelSeparator)
+	if (separatorIndex <= 0) return null
+	const leaf = label.slice(0, separatorIndex)
+	const handle = label.slice(
+		separatorIndex + packageAppHostLabelSeparator.length,
+	)
+	if (!packageAppHostLabelLeafPattern.test(leaf)) return null
+	if (isPackageAppHostLabelReservedPackageLeaf(leaf)) return null
+	if (!dnsSafeUsernamePattern.test(handle)) return null
+	return { leaf, handle }
+}
+
+/**
+ * A profile package is named after its owner (`@{slug}/{slug}`, like a
+ * GitHub `username/username` repository). Its app owns the owner's bare
+ * `{slug}` host instead of a `{leaf}--{handle}` host.
+ */
+export function isProfilePackage(input: { username: string; kodyId: string }) {
+	const username = input.username.trim().toLowerCase()
+	return username !== '' && input.kodyId === username
+}
+
+/**
+ * Origin where a package app is mounted at `/`: the owner's bare host for a
+ * profile package, otherwise the app's own `{leaf}--{handle}` host. Null when
+ * the pair has no routable host.
+ */
+export function buildPackageAppRootOrigin(input: {
+	packageAppOrigin: string
+	username: string
+	kodyId: string
+}) {
+	if (!isProfilePackage(input)) return buildPackageAppHostOrigin(input)
+	if (!isDnsSafeUsername(input.username.toLowerCase())) return null
+	return buildPackageAppSubdomainOrigin(input)
+}
+
+/**
+ * Origin of one package app's own host: `{leaf}--{handle}.` prefixed onto the
+ * configured package-app origin's hostname, preserving scheme and port. Null
+ * when the pair has no valid host label (for example a legacy leaf that is not
+ * lower-kebab-case), so callers fall back to another address instead of
+ * emitting a host that cannot route.
+ */
+export function buildPackageAppHostOrigin(input: {
+	packageAppOrigin: string
+	username: string
+	kodyId: string
+}) {
+	const label = buildPackageAppHostLabel({
+		leaf: input.kodyId,
+		handle: input.username,
+	})
+	if (!parsePackageAppHostLabel(label)) return null
+	const url = new URL(input.packageAppOrigin)
+	url.hostname = `${label}.${url.hostname}`
+	return url.origin
+}
+
 /**
  * Path on a customer custom hostname. The bound app owns the host root, so
  * there is no `/{kodyId}` prefix. An empty rest path is `/`.
@@ -178,7 +267,8 @@ export function buildPackageAppCustomHostnameUrl(input: {
 
 /**
  * Canonical browser URL for a hosted package app: the per-user subdomain of
- * the package-app origin when one is configured, or the path-based mount on
+ * the package-app origin when one is configured (its root for a profile
+ * package), or the path-based mount on
  * the app origin when a non-production deployment serves package apps inline.
  */
 export function resolveHostedPackageAppUrl(input: {
@@ -189,6 +279,19 @@ export function resolveHostedPackageAppUrl(input: {
 	restPath?: string | null
 }) {
 	if (input.packageAppBaseUrl) {
+		const profileOrigin = isProfilePackage(input)
+			? buildPackageAppRootOrigin({
+					packageAppOrigin: input.packageAppBaseUrl,
+					username: input.username,
+					kodyId: input.kodyId,
+				})
+			: null
+		if (profileOrigin) {
+			return buildPackageAppCustomHostnameUrl({
+				origin: profileOrigin,
+				restPath: input.restPath,
+			})
+		}
 		return buildPackageAppSubdomainUrl({
 			packageAppOrigin: input.packageAppBaseUrl,
 			username: input.username,

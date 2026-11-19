@@ -4,13 +4,14 @@ import { LoadingIndicator } from './loading-indicator.tsx'
 const FileStorageSettings = lazy(
 	() => import('../pages/file-storage-settings.tsx'),
 )
-import { SiteLink } from './site-link.tsx'
-import { Menu } from '@base-ui/react/menu'
+import { Button } from './button.tsx'
 import {
-	overlayItemCss,
-	overlayPopupCss,
-	overlayPositionerCss,
-} from './overlay-styles.ts'
+	Menu,
+	MenuContent,
+	MenuItem,
+	MenuLinkItem,
+	MenuTrigger,
+} from './menu.tsx'
 import { colors } from '#universal/styles/tokens.ts'
 export function WorkspaceCreateMenu({
 	orgSlug,
@@ -29,23 +30,13 @@ export function WorkspaceCreateMenu({
 	if (!canCreate && !canManageStorage) return null
 	return (
 		<>
-			<Menu.Root modal={false}>
-				<Menu.Trigger
-					css={{
-						display: 'grid',
-						placeItems: 'center',
-						width: 28,
-						height: 28,
-						padding: 0,
-						border: 0,
-						borderRadius: 4,
-						background: 'transparent',
-						color: colors.textMuted,
-						cursor: 'pointer',
-						'&:hover': { background: colors.borderSubtle },
-					}}
+			<Menu>
+				<MenuTrigger
 					aria-label="Create"
 					title="Create"
+					render={
+						<Button variant="ghost" size="xs" iconOnly css={denseIconCss} />
+					}
 				>
 					<svg
 						width="16"
@@ -54,59 +45,34 @@ export function WorkspaceCreateMenu({
 						fill="none"
 						stroke="currentColor"
 						strokeWidth="1.3"
+						aria-hidden="true"
 					>
 						<path d="M8 2v12M2 8h12" />
 					</svg>
-				</Menu.Trigger>
-				<Menu.Portal>
-					<Menu.Positioner
-						align="start"
-						sideOffset={4}
-						css={overlayPositionerCss}
-					>
-						<Menu.Popup
-							aria-label="Create item"
-							css={{ ...overlayPopupCss, minWidth: 170 }}
-						>
-							{canCreate && (
-								<>
-									<Menu.LinkItem
-										css={overlayItemCss}
-										render={
-											<SiteLink
-												href={`/@${orgSlug}/-/files?new=page${parentId ? `&parent=${parentId}` : ''}`}
-											/>
-										}
-									>
-										New page
-									</Menu.LinkItem>
-									<Menu.LinkItem
-										css={overlayItemCss}
-										render={
-											<SiteLink
-												href={`/@${orgSlug}/-/files?new=folder${parentId ? `&parent=${parentId}` : ''}`}
-											/>
-										}
-									>
-										New directory
-									</Menu.LinkItem>
-									<Menu.Item css={overlayItemCss} onClick={onUpload}>
-										Upload files
-									</Menu.Item>
-								</>
-							)}
-							{canManageStorage && (
-								<Menu.Item
-									css={overlayItemCss}
-									onClick={() => setStorageOpen(true)}
-								>
-									Storage settings
-								</Menu.Item>
-							)}
-						</Menu.Popup>
-					</Menu.Positioner>
-				</Menu.Portal>
-			</Menu.Root>
+				</MenuTrigger>
+				<MenuContent aria-label="Create item">
+					{canCreate && (
+						<>
+							<MenuLinkItem
+								href={`/@${orgSlug}/-/files?new=page${parentId ? `&parent=${parentId}` : ''}`}
+							>
+								New page
+							</MenuLinkItem>
+							<MenuLinkItem
+								href={`/@${orgSlug}/-/files?new=folder${parentId ? `&parent=${parentId}` : ''}`}
+							>
+								New directory
+							</MenuLinkItem>
+							<MenuItem onClick={onUpload}>Upload files</MenuItem>
+						</>
+					)}
+					{canManageStorage && (
+						<MenuItem onClick={() => setStorageOpen(true)}>
+							Storage settings
+						</MenuItem>
+					)}
+				</MenuContent>
+			</Menu>
 			{storageOpen && (
 				<Suspense
 					fallback={<LoadingIndicator label="Opening storage settings" />}
@@ -119,4 +85,10 @@ export function WorkspaceCreateMenu({
 			)}
 		</>
 	)
+}
+
+// Sits in 28px explorer rows, so touch keeps the same size.
+const denseIconCss = {
+	color: colors.textMuted,
+	'@media (any-pointer: coarse)': { minHeight: 28, minWidth: 28 },
 }

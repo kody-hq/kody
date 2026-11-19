@@ -64,7 +64,7 @@ export async function completeSealDay(
 			})
 			throw new BackupError(
 				result.reason,
-				`Day ${result.day} is not ready to seal (${result.reason}).`,
+				`Day ${result.day} is not ready to seal (${result.reason}${result.source ? ` for ${result.source}` : ''}).`,
 			)
 		default: {
 			const exhaustive: never = result

@@ -590,55 +590,6 @@ export function formatConnectOauthCaughtError(
 	return fallback
 }
 
-/**
- * Distinguish real Kody session expiry (401 Unauthorized) from provider token
- * exchange failures that historically leaked through as HTTP 401.
- */
-function formatOAuthExchangeFailure(input: {
-	status: number
-	data: Record<string, unknown> | null
-}): { treatAsSessionExpired: boolean; error: string } {
-	if (isOAuthExchangeSessionExpired(input)) {
-		return { treatAsSessionExpired: true, error: 'Session expired.' }
-	}
-	const errorDescription =
-		typeof input.data?.error_description === 'string' &&
-		input.data.error_description.trim()
-			? input.data.error_description.trim()
-			: typeof input.data?.error === 'string' && input.data.error.trim()
-				? input.data.error.trim()
-				: null
-	return {
-		treatAsSessionExpired: false,
-		error: errorDescription ?? 'Token exchange failed.',
-	}
-}
-
-function isOAuthExchangeSessionExpired(input: {
-	status: number
-	data: Record<string, unknown> | null
-}) {
-	if (input.status !== 401) return false
-	if (hasProviderOAuthExchangeError(input.data)) return false
-	return true
-}
-
-function hasProviderOAuthExchangeError(data: Record<string, unknown> | null) {
-	if (!data) return false
-	if (typeof data.providerStatus === 'number') return true
-	if (
-		typeof data.error_description === 'string' &&
-		data.error_description.trim()
-	) {
-		return true
-	}
-	return (
-		typeof data.error === 'string' &&
-		data.error.trim() !== '' &&
-		data.error !== 'Unauthorized.'
-	)
-}
-
 function resolveConnectOauthTokenExchangeStyle(input: {
 	tokenUrl: string
 	queryStyle: TokenExchangeStyle | null

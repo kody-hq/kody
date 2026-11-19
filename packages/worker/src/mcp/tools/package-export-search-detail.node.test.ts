@@ -6,6 +6,22 @@ import type { AuthoredPackageJson } from '#worker/package-registry/types.ts'
 import { formatPackageExportEntityDetail } from './package-export-search-detail.ts'
 import { formatEntityDetailMarkdown } from './search-format-detail.ts'
 import type { SearchEntityDetail } from './search-format-types.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
+import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
+
+const parser = await loadModuleSourceParser()
+
+function withExports(
+	detail: Omit<Extract<SearchEntityDetail, { type: 'package' }>, 'exports'>,
+): Extract<SearchEntityDetail, { type: 'package' }> {
+	return {
+		...detail,
+		exports: buildPackageSearchProjection(detail.manifest, {
+			files: detail.files,
+			parser,
+		}).exports,
+	}
+}
 
 function createHomeControlsDetail(
 	section?: string,
@@ -21,7 +37,7 @@ function createHomeControlsDetail(
 			description: 'Home control helpers.',
 		},
 	} satisfies AuthoredPackageJson
-	return {
+	return withExports({
 		type: 'package',
 		id: 'home-controls',
 		title: '@user/home-controls',
@@ -76,7 +92,7 @@ export default async function bondAreaShades(input: {
 `,
 		},
 		...(section ? { section } : {}),
-	}
+	})
 }
 
 test('package heading detail returns one export contract without packageGet', () => {

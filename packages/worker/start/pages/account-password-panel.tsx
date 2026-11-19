@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -7,24 +10,16 @@ import { usePageInvalidation } from '../page-invalidation.ts'
 import { useHydrated } from '../components/use-hydrated.ts'
 import { useState, useEffect, useRef, type FormEvent } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { SiteLink } from '../components/site-link.tsx'
 import { toast } from '#client/toast.ts'
 import {
 	AccountManagementPanel,
 	accountActionsCss,
 	accountDisclosureCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
 import { changePassword } from '#start/server/security-mutations'
 import { minPasswordLength } from '@kody-internal/shared/password-policy.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { Input } from '../components/input.tsx'
 export function AccountPasswordPanel(props: {
 	hasUsablePassword: boolean
 	onPasswordSet: () => void
@@ -176,67 +171,58 @@ export function AccountPasswordPanel(props: {
 						}}
 						onSubmit={handleSubmit}
 					>
-						<p css={accountFieldNoteCss}>
+						<p css={fieldDescriptionCss}>
 							{hasUsablePassword
 								? 'Other browser sessions and connected MCP hosts will need to sign in again.'
 								: 'This account signs in with a connected provider or passkey. Setting a password lets you also sign in with email.'}
 						</p>
 						{hasUsablePassword ? (
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Current password</span>
-								<input
+							<Field label="Current password">
+								<Input
 									type="password"
 									name="currentPassword"
-									data-field-ring
 									required
 									autoComplete="current-password"
 									value={currentPassword}
-									css={accountInputCss}
 									onInput={updateCurrentPassword}
 								/>
-							</label>
+							</Field>
 						) : null}
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>New password</span>
-							<input
+						<Field label="New password">
+							<Input
 								type="password"
 								name="newPassword"
-								data-field-ring
 								required
 								minLength={minPasswordLength}
 								autoComplete="new-password"
 								placeholder={`At least ${minPasswordLength} characters`}
 								value={newPassword}
-								css={accountInputCss}
 								onInput={updateNewPassword}
 							/>
-						</label>
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Confirm new password</span>
-							<input
+						</Field>
+						<Field label="Confirm new password">
+							<Input
 								type="password"
 								name="confirmPassword"
-								data-field-ring
 								required
 								minLength={minPasswordLength}
 								autoComplete="new-password"
 								value={confirmPassword}
-								css={accountInputCss}
 								onInput={updateConfirmPassword}
 							/>
-						</label>
+						</Field>
 						<div>
-							<button
+							<Button
 								type="submit"
 								disabled={!hydrated || isSaving || !canSubmit}
-								css={compactPillButtonCss}
+								variant="primary"
 							>
 								{isSaving
 									? 'Saving...'
 									: hasUsablePassword
 										? 'Update password'
 										: 'Set password'}
-							</button>
+							</Button>
 						</div>
 						{message ? (
 							<p
@@ -252,19 +238,16 @@ export function AccountPasswordPanel(props: {
 					</form>
 				</details>
 				<div css={accountActionsCss}>
-					<SiteLink href="/account/two-factor" css={compactGhostButtonCss}>
+					<Button href="/account/two-factor" variant="secondary">
 						Two-factor authentication
-					</SiteLink>
-					<SiteLink href="/account/passkeys" css={compactGhostButtonCss}>
+					</Button>
+					<Button href="/account/passkeys" variant="secondary">
 						Passkeys
-					</SiteLink>
+					</Button>
 				</div>
 			</AccountManagementPanel>
 		)
 	}
 }
-
-const compactPillButtonCss = getPillButtonCss({ size: 'sm' })
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
 
 const mutationResources = ['loadAccountPage'] as const

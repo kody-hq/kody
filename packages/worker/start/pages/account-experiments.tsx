@@ -1,10 +1,14 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { updateExperiments } from '#start/server/account-mutations'
 import { setExperiment } from '#start/server/experiment-opt-in'
 import type { SelfServeExperimentState } from '#universal/feature-flags/experiments.ts'
-import { primaryLinkCss } from '#universal/styles/style-primitives.ts'
-import { SiteLink } from '../components/site-link.tsx'
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import type { AccountExperimentsLoaderData } from '#universal/loader-data.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
@@ -16,10 +20,8 @@ import {
 	AccountManagementPanel,
 	AccountManagementShell,
 	AccountPageHeader,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
 } from './account-management-components.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AccountExperimentsPage({
 	payload,
@@ -113,15 +115,14 @@ export function AccountExperimentsPage({
 				>
 					<label
 						css={{
-							...accountFieldCss,
+							...fieldCss,
 							display: 'grid',
 							gridTemplateColumns: 'auto 1fr',
 							gap: spacing.md,
 							alignItems: 'start',
 						}}
 					>
-						<input
-							type="checkbox"
+						<Checkbox
 							checked={optedIn}
 							disabled={saving}
 							onChange={(event) => {
@@ -140,7 +141,7 @@ export function AccountExperimentsPage({
 						<span>
 							<span
 								css={{
-									...accountFieldLabelCss,
+									...fieldLabelCss,
 									display: 'block',
 									marginBottom: spacing.xs,
 									fontSize: typography.fontSize.base,
@@ -148,7 +149,7 @@ export function AccountExperimentsPage({
 							>
 								Opt into experiments
 							</span>
-							<span css={accountFieldNoteCss}>
+							<span css={fieldDescriptionCss}>
 								Expect unfinished UI, changing behavior, and occasional rough
 								edges. Opt out here whenever you want to leave the audience.
 							</span>
@@ -260,18 +261,14 @@ function ExperimentCatalog({
 						data-experiment={experiment.id}
 						data-enabled={enabled ? 'true' : 'false'}
 					>
-						<input
+						<Checkbox
 							id={inputId}
-							type="checkbox"
-							role="switch"
 							checked={enabled}
-							aria-checked={enabled}
 							disabled={mutation.isPending}
 							aria-describedby={`${inputId}-summary`}
-							onChange={(event) => {
-								if (!(event.currentTarget instanceof HTMLInputElement)) return
+							onChange={(event) =>
 								void toggle(experiment, event.currentTarget.checked)
-							}}
+							}
 							css={checkboxCss}
 						/>
 						<div css={{ display: 'grid', gap: spacing.xs, minWidth: 0 }}>
@@ -294,9 +291,7 @@ function ExperimentCatalog({
 								{experiment.choice === 'kody' && enabled
 									? 'Kody turned this on for you. '
 									: null}
-								<SiteLink href={experiment.docsPath} css={primaryLinkCss}>
-									Read the guide
-								</SiteLink>
+								<TextLink href={experiment.docsPath}>Read the guide</TextLink>
 							</p>
 						</div>
 					</li>
@@ -325,10 +320,7 @@ const catalogItemCss = {
 }
 
 const checkboxCss = {
-	width: '1.25rem',
-	height: '1.25rem',
 	marginTop: '0.2rem',
-	accentColor: colors.primary,
 }
 
 const catalogHeadingCss = {
@@ -339,7 +331,7 @@ const catalogHeadingCss = {
 }
 
 const catalogTitleCss = {
-	...accountFieldLabelCss,
+	...fieldLabelCss,
 	fontSize: typography.fontSize.base,
 	cursor: 'pointer',
 }

@@ -43,11 +43,10 @@ export type PublishBuildDocument = {
 
 export type UploadedPublishBuildRef = {
 	buildId: string
-	communityListed: boolean
 	origin: PublishBuildOrigin
 	contextName: string | null
 }
 
 export type PersistUploadedPublishBuildResult =
-	| { ok: true; targetCount: number; sampledTargetCount: number }
+	| { ok: true; targetCount: number }
 	| { ok: false; message: string }

@@ -13,6 +13,13 @@ import { isWorkersHungRequestCanceledError } from '@kody-internal/shared/workers
 export const jobD1UnavailableRearmDelayMs = 30_000
 
 /**
+ * Re-check interval while the owner account is fenced for deletion. A
+ * completed deletion purges the JobManager; an aborted one resumes jobs on the
+ * next wake without any abort path re-syncing this alarm.
+ */
+export const jobAccountDeletionDeferralMs = 15 * 60_000
+
+/**
  * When `error` is a retryable D1 lock/export blip, arm a short-backoff alarm
  * and return true so the Durable Object alarm handler can return without
  * rethrowing (preserving CF alarm retries and ensuring a follow-up wake).

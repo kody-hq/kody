@@ -59,6 +59,8 @@ export const listPackageSubscriptionsCapability = defineDomainCapability(
 			'artifacts push',
 			'platform.feedback.submitted',
 			'platform feedback submitted',
+			'whats_new.consent.changed',
+			'newsletter consent changed',
 			'community.activity.recorded',
 			'community activity recorded',
 			'community.listing.published',

@@ -5,7 +5,6 @@ import {
 	isCloudflareEmailAuthservId,
 	resolveInboundEmailAuthVerdict,
 	selectTrustedCloudflareAuthResults,
-	splitCombinedAuthResultsHeader,
 } from './auth-verdict.ts'
 
 test('isCloudflareEmailAuthservId accepts Cloudflare ids and rejects lookalikes', () => {
@@ -84,16 +83,6 @@ test('selectTrustedCloudflareAuthResults ignores forged and third-party stamps',
 		'i=1; mx.cloudflare.net; spf=pass; dkim=pass; dmarc=pass',
 	)
 
-	// Headers joins duplicates with ", "; ARC instance prefixes must still split,
-	// but a later Cloudflare stamp after a third-party leftmost stamp is ignored.
-	expect(
-		splitCombinedAuthResultsHeader(
-			'i=1; mx.google.com; arc=none, i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
-		),
-	).toEqual([
-		'i=1; mx.google.com; arc=none',
-		'i=2; mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail',
-	])
 	const joinedArc = new Headers()
 	joinedArc.append('ARC-Authentication-Results', 'i=1; mx.google.com; arc=none')
 	joinedArc.append(
@@ -250,7 +239,7 @@ test('resolveInboundEmailAuthVerdict keeps the header.from domain of the passing
 		resolveInboundEmailAuthVerdict(
 			'mx.cloudflare.net; dmarc=fail header.from=other.example; dmarc=pass header.from=example.com',
 		).dmarcHeaderFrom,
-	).toBe('example.com')
+	).toBeNull()
 	expect(
 		resolveInboundEmailAuthVerdict('mx.cloudflare.net; dmarc=pass')
 			.dmarcHeaderFrom,
@@ -260,4 +249,94 @@ test('resolveInboundEmailAuthVerdict keeps the header.from domain of the passing
 			'mx.cloudflare.net; dmarc=fail header.from=example.com',
 		).dmarcHeaderFrom,
 	).toBeNull()
+})
+
+test('uses only the first header stamp', () => {
+	const stamp = 'mx.cloudflare.net; spf=fail; dkim=fail; dmarc=fail'
+	for (const name of ['Authentication-Results', 'ARC-Authentication-Results']) {
+		const first = name.startsWith('ARC-') ? `i=1; ${stamp}` : stamp
+		for (const later of [
+			'dmarc=pass header.from=acme.com',
+			'dkim=none; dmarc=pass header.from=acme.com',
+			'x=y; dmarc=pass header.from=acme.com; spf=pass',
+		]) {
+			const headers = new Headers()
+			headers.append(name, first)
+			headers.append(name, later)
+			expect(selectTrustedCloudflareAuthResults(headers)).toBe(first)
+			for (const input of [
+				selectTrustedCloudflareAuthResults(headers),
+				headers.get(name),
+			]) {
+				expect(resolveInboundEmailAuthVerdict(input)).toMatchObject({
+					spf: 'fail',
+					dkim: 'fail',
+					dmarc: 'fail',
+					dmarcHeaderFrom: null,
+					authenticated: false,
+					suspect: true,
+				})
+			}
+			const reversed = new Headers()
+			reversed.append(name, later)
+			reversed.append(name, first)
+			expect(selectTrustedCloudflareAuthResults(reversed)).toBeNull()
+		}
+	}
+})
+
+test('stops at the first raw comma', () => {
+	for (const [detail, closing] of [
+		['a"b', 'x"'],
+		['a(b', 'x)'],
+	]) {
+		const stamp = `mx.cloudflare.net; dkim=fail header.d=${detail}; dmarc=fail header.from=acme.com`
+		const headers = new Headers()
+		headers.append('Authentication-Results', stamp)
+		headers.append(
+			'Authentication-Results',
+			`${closing}; dmarc=pass header.from=acme.com`,
+		)
+		expect(selectTrustedCloudflareAuthResults(headers)).toBe(stamp)
+		for (const input of [
+			selectTrustedCloudflareAuthResults(headers),
+			headers.get('Authentication-Results'),
+		]) {
+			expect(resolveInboundEmailAuthVerdict(input)).toMatchObject({
+				dkim: 'fail',
+				dmarc: 'fail',
+				dmarcHeaderFrom: null,
+				authenticated: false,
+				suspect: true,
+			})
+		}
+	}
+})
+
+test('uses first SPF and DMARC clauses', () => {
+	for (const first of ['fail', 'pass', 'unrecognized']) {
+		const expected = first === 'unrecognized' ? 'unknown' : first
+		expect(
+			resolveInboundEmailAuthVerdict(
+				`mx.cloudflare.net; spf=${first}; spf=pass; dmarc=${first} header.from=first.example; dmarc=pass header.from=later.example`,
+			),
+		).toMatchObject({
+			spf: expected,
+			dmarc: expected,
+			dmarcHeaderFrom: first === 'pass' ? 'first.example' : null,
+			authenticated: first === 'pass',
+		})
+	}
+})
+
+test('uses any DKIM pass or the first result', () => {
+	for (const [clauses, expected] of [
+		['dkim=fail; dkim=pass; dkim=fail', 'pass'],
+		['dkim=unrecognized; dkim=fail', 'unknown'],
+		['dkim=fail; dkim=none', 'fail'],
+	]) {
+		expect(
+			resolveInboundEmailAuthVerdict(`mx.cloudflare.net; ${clauses}`).dkim,
+		).toBe(expected)
+	}
 })

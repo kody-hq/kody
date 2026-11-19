@@ -15,6 +15,22 @@ import type {
 	SearchMatch,
 	SlimSearchMatch,
 } from './search-format-types.ts'
+import { loadModuleSourceParser } from '#worker/module-source.ts'
+import { buildPackageSearchProjection } from '#worker/package-registry/manifest.ts'
+
+const parser = await loadModuleSourceParser()
+
+function withExports(
+	detail: Omit<Extract<SearchEntityDetail, { type: 'package' }>, 'exports'>,
+): Extract<SearchEntityDetail, { type: 'package' }> {
+	return {
+		...detail,
+		exports: buildPackageSearchProjection(detail.manifest, {
+			files: detail.files,
+			parser,
+		}).exports,
+	}
+}
 
 type PackageDetail = Extract<SearchEntityDetail, { type: 'package' }>
 type CapabilitySpecInput = Extract<
@@ -88,40 +104,42 @@ function packageDetail(input: {
 	files?: Record<string, string>
 }) {
 	const { kodyId, name, description } = input
-	return formatEntityDetailMarkdown({
-		type: 'package',
-		id: kodyId,
-		title: name,
-		description,
-		baseUrl: 'http://localhost',
-		ownerUsername: 'test-user',
-		hostedUrl: input.hostedUrl ?? null,
-		listingAhead: input.listingAhead ?? null,
-		record: {
-			id: input.recordId,
-			userId: ownerIdFromStored('user-1'),
-			name,
-			kodyId,
+	return formatEntityDetailMarkdown(
+		withExports({
+			type: 'package',
+			id: kodyId,
+			title: name,
 			description,
-			tags: [],
-			searchText: null,
-			sourceId: `source-${input.recordId}`,
-			hasApp: input.hasApp ?? false,
-			hasSkills: false,
-			hidden: false,
-			isPrivate: false,
-			isInternetVisible: false,
-			lockedAt: null,
-			createdAt: '2026-03-20T00:00:00.000Z',
-			updatedAt: '2026-03-20T00:00:00.000Z',
-		},
-		manifest: {
-			name,
-			exports: input.exports ?? { '.': './index.ts' },
-			kody: { id: kodyId, description, ...input.kody },
-		},
-		files: { 'package.json': '{}', ...input.files },
-	})
+			baseUrl: 'http://localhost',
+			ownerUsername: 'test-user',
+			hostedUrl: input.hostedUrl ?? null,
+			listingAhead: input.listingAhead ?? null,
+			record: {
+				id: input.recordId,
+				userId: ownerIdFromStored('user-1'),
+				name,
+				kodyId,
+				description,
+				tags: [],
+				searchText: null,
+				sourceId: `source-${input.recordId}`,
+				hasApp: input.hasApp ?? false,
+				hasSkills: false,
+				hidden: false,
+				isPrivate: false,
+				isInternetVisible: false,
+				lockedAt: null,
+				createdAt: '2026-03-20T00:00:00.000Z',
+				updatedAt: '2026-03-20T00:00:00.000Z',
+			},
+			manifest: {
+				name,
+				exports: input.exports ?? { '.': './index.ts' },
+				kody: { id: kodyId, description, ...input.kody },
+			},
+			files: { 'package.json': '{}', ...input.files },
+		}),
+	)
 }
 
 function packageMatch(

@@ -15,7 +15,7 @@ import {
 import {
 	twoFactorVerificationType,
 	verifyTwoFactorCode,
-} from '#app/two-factor.ts'
+} from '#worker/identity/two-factor.ts'
 import {
 	destroyVerifySessionCookie,
 	readVerifySession,
@@ -129,7 +129,7 @@ export async function verifyWebsiteTwoFactor({
 	const codeValid =
 		liveUserRecord != null &&
 		(await verifyTwoFactorCode({
-			db: env.APP_DB,
+			env,
 			userId: liveUserRecord.id,
 			code,
 			type: twoFactorVerificationType,

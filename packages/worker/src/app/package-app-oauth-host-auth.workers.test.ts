@@ -1,17 +1,23 @@
 import { env, exports } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test } from 'vitest'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
 	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
+import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const packageAppOrigin = 'https://packages.isolated.test'
 const ownerUsername = 'pkglogout'
 const ownerPackageAppOrigin = `https://${ownerUsername}.packages.isolated.test`
 const stableUserId = testStableUserIdFromEmail('pkg-logout-owner@example.com')
+
+// The shared host looks up the owner's profile package on every auth route.
+beforeEach(async () => {
+	await ensureOrgsTestSchema(env.APP_DB)
+})
 
 function configureOrigins() {
 	const mutableEnv = env as unknown as Record<string, string | undefined>

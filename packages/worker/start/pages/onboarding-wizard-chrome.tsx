@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { type CSSProperties, useState } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -17,8 +18,6 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	getGhostButtonCss,
-	getPillButtonCss,
 	hoverMq,
 	inlineSpinnerCss,
 	visuallyHiddenCss,
@@ -425,9 +424,11 @@ export function WizardNavigation(props: {
 	}
 	return (
 		<footer css={wizardNavCss}>
-			<button
+			<Button
 				type="button"
 				disabled={!onBack && previousStep == null}
+				variant="secondary"
+				size="lg"
 				css={wizardBackButtonCss}
 				onClick={() => {
 					if (onBack) onBack()
@@ -435,17 +436,19 @@ export function WizardNavigation(props: {
 				}}
 			>
 				Back
-			</button>
+			</Button>
 			<div css={wizardNavTrailingCss}>
 				{onSkip && skipLabel ? (
-					<button
+					<Button
 						type="button"
+						variant="secondary"
+						size="lg"
 						css={wizardSkipButtonCss}
 						onClick={onSkip}
 						data-testid="onboarding-wizard-skip"
 					>
 						{skipLabel}
-					</button>
+					</Button>
 				) : null}
 				{connectWaitLabel ? (
 					<div
@@ -457,18 +460,22 @@ export function WizardNavigation(props: {
 						<span css={visuallyHiddenCss}>{connectWaitLabel}</span>
 					</div>
 				) : lastStep ? (
-					<SiteLink
+					<Button
 						href={lastStep.exploreHref}
 						data-testid="onboarding-wizard-explore-packages"
+						variant="secondary"
+						size="lg"
 						css={wizardExploreLinkCss}
 					>
 						{onboardingExplorePackagesLabel}
-					</SiteLink>
+					</Button>
 				) : (
-					<button
+					<Button
 						type="button"
 						disabled={!onNext && nextStep == null}
 						aria-label={nextLabels.full}
+						variant="primary"
+						size="lg"
 						css={wizardNextButtonCss}
 						onBlur={() => setConfirmed(false)}
 						onClick={() => {
@@ -487,7 +494,7 @@ export function WizardNavigation(props: {
 						<span data-next-label="terse" css={wizardNextLabelTerseCss}>
 							{nextLabels.terse}
 						</span>
-					</button>
+					</Button>
 				)}
 			</div>
 		</footer>
@@ -600,7 +607,6 @@ const wizardNavTrailingCss = {
 } satisfies CSSObject
 
 const wizardSkipButtonCss = {
-	...getGhostButtonCss(),
 	minWidth: '6.5rem',
 } satisfies CSSObject
 
@@ -614,7 +620,6 @@ const wizardButtonDisabledCss = {
 } satisfies CSSObject
 
 const wizardNextButtonCss = {
-	...getPillButtonCss(),
 	minWidth: '6.5rem',
 	...wizardButtonDisabledCss,
 } satisfies CSSObject
@@ -636,12 +641,10 @@ const wizardConnectWaitCss = {
 } satisfies CSSObject
 
 const wizardExploreLinkCss = {
-	...getGhostButtonCss(),
 	minWidth: '6.5rem',
 } satisfies CSSObject
 
 const wizardBackButtonCss = {
-	...getGhostButtonCss(),
 	minWidth: '6.5rem',
 	...wizardButtonDisabledCss,
 	'&:disabled': {

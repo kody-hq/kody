@@ -11,8 +11,14 @@ import {
 } from './seal-day-run.ts'
 import { enqueueWorkflow } from './workflow-trigger.ts'
 
+import {
+	dayFromPacedDrillRunId,
+	readPacedDrillProgress,
+} from './paced-restore-drill.ts'
+
 const drSealPath = '/__maintenance/dr-seal'
 const drSealStatusPath = '/__maintenance/seal-status'
+const pacedDrillStatusPath = '/__maintenance/paced-drill-status'
 
 function readBearerToken(request: Request) {
 	const auth = request.headers.get('Authorization')?.trim()
@@ -30,7 +36,11 @@ function notConfiguredResponse() {
 }
 
 function isDrOpsMaintenancePath(pathname: string) {
-	return pathname === drSealPath || pathname === drSealStatusPath
+	return (
+		pathname === drSealPath ||
+		pathname === drSealStatusPath ||
+		pathname === pacedDrillStatusPath
+	)
 }
 
 async function assertDrOpsBearer(request: Request, env: BackupEnvironment) {
@@ -158,6 +168,67 @@ async function handleDrSealStatusGet(
  * `DR_OPS_SECRET` only — not `DR_RESTORE_SECRET` — so ops credentials cannot
  * reach production restore, purge, or delete paths.
  */
+async function handlePacedDrillStatusGet(url: URL, env: BackupEnvironment) {
+	const id = url.searchParams.get('id')?.trim() ?? ''
+	if (dayFromPacedDrillRunId(id) === null) {
+		return Response.json(
+			{ ok: false, error: 'Expected id=paced-drill-YYYY-MM-DD-<ms>.' },
+			{ status: 400 },
+		)
+	}
+	let progress: Awaited<ReturnType<typeof readPacedDrillProgress>>
+	try {
+		progress = await readPacedDrillProgress(env, id)
+	} catch (error) {
+		console.error(
+			'dr_ops_paced_drill_status_read_failed',
+			JSON.stringify({
+				id,
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		)
+		return Response.json(
+			{ ok: false, error: 'Unable to read paced drill progress.' },
+			{ status: 503 },
+		)
+	}
+	if (progress) return Response.json(progress)
+	let instance: Awaited<
+		ReturnType<BackupEnvironment['PACED_DRILL_WORKFLOW']['get']>
+	>
+	try {
+		instance = await env.PACED_DRILL_WORKFLOW.get(id)
+	} catch {
+		return Response.json(
+			{ ok: false, error: 'Paced drill run not found.' },
+			{ status: 404 },
+		)
+	}
+	try {
+		const { status } = await instance.status()
+		return Response.json(
+			{
+				ok: false,
+				error: 'No paced drill progress recorded yet.',
+				workflowStatus: status,
+			},
+			{ status: 404 },
+		)
+	} catch (error) {
+		console.error(
+			'dr_ops_paced_drill_status_lookup_failed',
+			JSON.stringify({
+				id,
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		)
+		return Response.json(
+			{ ok: false, error: 'Unable to read paced drill workflow status.' },
+			{ status: 503 },
+		)
+	}
+}
+
 export async function handleDrOpsMaintenanceRequest(
 	request: Request,
 	env: BackupEnvironment,
@@ -179,6 +250,9 @@ export async function handleDrOpsMaintenanceRequest(
 
 	if (request.method !== 'GET') {
 		return new Response('Method Not Allowed', { status: 405 })
+	}
+	if (url.pathname === pacedDrillStatusPath) {
+		return handlePacedDrillStatusGet(url, env)
 	}
 	return handleDrSealStatusGet(request, env)
 }

@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import {
 	dismissAdminCommunityReport,
@@ -8,14 +10,7 @@ import {
 	banAdminReportOwner,
 } from '#start/server/admin-mutations'
 import type { AdminCommunityReportsLoaderData } from '#universal/loader-data.ts'
-import {
-	cardCss,
-	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { cardCss, descriptionCss } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import { useMutation } from '@tanstack/react-query'
 import { useState, type MouseEvent } from 'react'
@@ -28,8 +23,8 @@ import {
 	AccountManagementShell,
 	AdminPageHeader,
 	IdValue,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
 /**
  * `IdValue` is a flex row (value plus copy control), so the label beside it
  * needs a flex line of its own rather than the default text flow.
@@ -131,8 +126,6 @@ export function AdminCommunityReportsPage({
 			},
 		)
 	}
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 	const isMutating = mutation.isPending
 	const pending = false
 	const status: string = 'ready'
@@ -212,10 +205,8 @@ export function AdminCommunityReportsPage({
 								</p>
 								<p css={descriptionCss}>{report.reason}</p>
 
-								<label css={fieldCss}>
-									<span css={fieldLabelCss}>Moderation note</span>
-									<input
-										data-field-ring
+								<Field label="Moderation note">
+									<Input
 										value={getNote(report.id)}
 										disabled={isMutating}
 										placeholder="Optional note for dismiss, delist, delete, or ban"
@@ -225,9 +216,8 @@ export function AdminCommunityReportsPage({
 												(event.target as HTMLInputElement).value,
 											)
 										}}
-										css={accountInputCss}
 									/>
-								</label>
+								</Field>
 
 								<div
 									css={{
@@ -236,16 +226,16 @@ export function AdminCommunityReportsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<button
+									<Button
 										disabled={isMutating}
 										onClick={() =>
 											void submitReportAction(report.id, 'dismiss')
 										}
-										css={secondaryButtonCss}
+										variant="secondary"
 									>
 										Dismiss
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -272,13 +262,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'delist')
 											? 'Confirm delist'
 											: 'Delist'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -305,13 +295,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'delete')
 											? 'Confirm delete'
 											: 'Delete'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -338,13 +328,13 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'ban_reporter')
 											? 'Confirm ban reporter'
 											: 'Ban reporter'}
-									</button>
-									<button
+									</Button>
+									<Button
 										disabled={isMutating}
 										{...{
 											onBlur: () => {
@@ -371,12 +361,12 @@ export function AdminCommunityReportsPage({
 												})()
 											},
 										}}
-										css={dangerButtonCss}
+										variant="danger"
 									>
 										{isDoubleCheckActive(report.id, 'ban_reportee')
 											? 'Confirm ban owner'
 											: 'Ban owner'}
-									</button>
+									</Button>
 								</div>
 							</article>
 						))

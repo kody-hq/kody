@@ -1,7 +1,8 @@
 /**
  * First-touch marketing attribution captured at signup (email or OAuth).
  * These fields are the acquisition story. Values are write-once on the user
- * row — never overwrite later UTMs.
+ * row and never overwrite later UTMs. The browser keeps the first touch in
+ * the `kody_first_touch` cookie until signup reads and clears it.
  * Referral share links use a last-wins `kody_ref` cookie, not this payload.
  */
 
@@ -70,67 +71,26 @@ export function parseFirstTouchAttribution(input: {
 	searchParams?: URLSearchParams | null
 	landingPath?: unknown
 	referrer?: unknown
-	body?: unknown
 }): FirstTouchAttribution {
-	const fromBody =
-		input.body && typeof input.body === 'object'
-			? (input.body as Record<string, unknown>)
-			: null
 	const params = input.searchParams ?? null
 
-	function readParam(key: string, bodyKeys: Array<string>) {
-		const fromQuery = params?.get(key)
-		if (fromQuery != null && fromQuery.trim()) {
-			return normalizeAttributionValue(fromQuery)
-		}
-		if (!fromBody) return null
-		for (const bodyKey of bodyKeys) {
-			const normalized = normalizeAttributionValue(fromBody[bodyKey])
-			if (normalized) return normalized
-		}
-		return null
+	function readParam(key: string) {
+		return normalizeAttributionValue(params?.get(key))
 	}
-
-	const landingPath =
-		normalizeLandingPath(input.landingPath) ??
-		normalizeLandingPath(params?.get('landing_path')) ??
-		normalizeLandingPath(fromBody?.landingPath) ??
-		normalizeLandingPath(fromBody?.landing_path)
-
-	const referrer =
-		normalizeReferrer(input.referrer) ??
-		normalizeReferrer(params?.get('referrer')) ??
-		normalizeReferrer(fromBody?.referrer) ??
-		normalizeReferrer(fromBody?.firstTouchReferrer)
 
 	return {
-		utmSource: readParam('utm_source', ['utmSource', 'utm_source']),
-		utmMedium: readParam('utm_medium', ['utmMedium', 'utm_medium']),
-		utmCampaign: readParam('utm_campaign', ['utmCampaign', 'utm_campaign']),
-		utmContent: readParam('utm_content', ['utmContent', 'utm_content']),
-		utmTerm: readParam('utm_term', ['utmTerm', 'utm_term']),
-		landingPath,
-		referrer,
+		utmSource: readParam('utm_source'),
+		utmMedium: readParam('utm_medium'),
+		utmCampaign: readParam('utm_campaign'),
+		utmContent: readParam('utm_content'),
+		utmTerm: readParam('utm_term'),
+		landingPath:
+			normalizeLandingPath(input.landingPath) ??
+			normalizeLandingPath(params?.get('landing_path')),
+		referrer:
+			normalizeReferrer(input.referrer) ??
+			normalizeReferrer(params?.get('referrer')),
 	}
-}
-
-/**
- * Flatten attribution into JSON-safe fields for the OAuth login-state cookie
- * and signup POST body (camelCase, omit nulls).
- */
-export function serializeFirstTouchAttributionForTransport(
-	attribution: FirstTouchAttribution | null | undefined,
-): Record<string, string> {
-	if (!hasFirstTouchAttribution(attribution) || !attribution) return {}
-	const out: Record<string, string> = {}
-	if (attribution.utmSource) out.utmSource = attribution.utmSource
-	if (attribution.utmMedium) out.utmMedium = attribution.utmMedium
-	if (attribution.utmCampaign) out.utmCampaign = attribution.utmCampaign
-	if (attribution.utmContent) out.utmContent = attribution.utmContent
-	if (attribution.utmTerm) out.utmTerm = attribution.utmTerm
-	if (attribution.landingPath) out.landingPath = attribution.landingPath
-	if (attribution.referrer) out.referrer = attribution.referrer
-	return out
 }
 
 export function firstTouchAttributionToUserColumns(
@@ -182,12 +142,25 @@ export function firstTouchAttributionCreateFields(
 	return out
 }
 
-/** Append standard utm_* / landing_path / referrer keys for OAuth start URLs. */
-export function appendAttributionQueryParams(
-	params: URLSearchParams,
+export const firstTouchAttributionCookieName = 'kody_first_touch'
+const firstTouchAttributionCookieMaxAgeSeconds = 7 * 24 * 60 * 60
+// Browsers drop cookies over 4096 bytes, and percent-encoding can grow the
+// capped values past that, so the least useful fields go first.
+const maxFirstTouchCookieValueLength = 3800
+const cookieFieldDropOrder = [
+	'referrer',
+	'landing_path',
+	'utm_term',
+	'utm_content',
+	'utm_campaign',
+	'utm_medium',
+] as const
+
+function serializeFirstTouchAttributionCookieValue(
 	attribution: FirstTouchAttribution | null | undefined,
-) {
-	if (!hasFirstTouchAttribution(attribution) || !attribution) return
+): string {
+	const params = new URLSearchParams()
+	if (!attribution) return ''
 	if (attribution.utmSource) params.set('utm_source', attribution.utmSource)
 	if (attribution.utmMedium) params.set('utm_medium', attribution.utmMedium)
 	if (attribution.utmCampaign)
@@ -197,4 +170,43 @@ export function appendAttributionQueryParams(
 	if (attribution.landingPath)
 		params.set('landing_path', attribution.landingPath)
 	if (attribution.referrer) params.set('referrer', attribution.referrer)
+	for (const key of cookieFieldDropOrder) {
+		if (params.toString().length <= maxFirstTouchCookieValueLength) break
+		params.delete(key)
+	}
+	return params.toString()
+}
+
+/**
+ * `Set-Cookie` / `document.cookie` string for the first-touch cookie. Pass
+ * `attribution: null` to clear it. The value is URL-encoded query syntax, so
+ * it never contains `;`, `,`, quotes, or whitespace.
+ */
+export function serializeFirstTouchAttributionCookie(input: {
+	attribution: FirstTouchAttribution | null
+	secure: boolean
+}): string {
+	const value = serializeFirstTouchAttributionCookieValue(input.attribution)
+	const maxAge = value ? firstTouchAttributionCookieMaxAgeSeconds : 0
+	const secure = input.secure ? '; Secure' : ''
+	return `${firstTouchAttributionCookieName}=${value}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`
+}
+
+/** Re-applies the parse caps because the browser can edit the cookie. */
+export function readFirstTouchAttributionFromCookie(
+	cookieHeader: string | null | undefined,
+): FirstTouchAttribution | null {
+	if (!cookieHeader) return null
+	for (const part of cookieHeader.split(';')) {
+		const trimmed = part.trim()
+		const separator = trimmed.indexOf('=')
+		if (separator <= 0) continue
+		if (trimmed.slice(0, separator) !== firstTouchAttributionCookieName)
+			continue
+		const attribution = parseFirstTouchAttribution({
+			searchParams: new URLSearchParams(trimmed.slice(separator + 1)),
+		})
+		if (hasFirstTouchAttribution(attribution)) return attribution
+	}
+	return null
 }

@@ -1,10 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
 import {
 	surfaceCardCss,
 	nestedSurfaceDarkCss,
 } from '#universal/styles/surface.ts'
 import type { CSSObject } from '@emotion/react'
-import { SiteLink } from '../components/site-link.tsx'
 import { chartColor, formatIntegerNumber } from '#client/charts/chart-theme.ts'
 import { AccountManagementPanel } from './account-management-components.tsx'
 import {
@@ -23,7 +23,6 @@ import {
 import {
 	descriptionCss,
 	getAccentCalloutCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 
 /**
@@ -66,9 +65,7 @@ export function renderCreditsAlarm(
 			<p css={descriptionCss}>{alarm.body}</p>
 			{options.showAction ? (
 				<p css={{ margin: 0 }}>
-					<SiteLink href={alarm.action.href} css={primaryLinkCss}>
-						{alarm.action.label}
-					</SiteLink>
+					<TextLink href={alarm.action.href}>{alarm.action.label}</TextLink>
 				</p>
 			) : null}
 		</div>

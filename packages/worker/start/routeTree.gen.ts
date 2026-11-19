@@ -33,6 +33,7 @@ import { Route as GuidesDotmdRouteImport } from './routes/guides[.]md'
 import { Route as HealthRouteImport } from './routes/health'
 import { Route as LlmsDottxtRouteImport } from './routes/llms[.]txt'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as NewsletterRouteImport } from './routes/newsletter'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as PendingVerificationRouteImport } from './routes/pending-verification'
 import { Route as PricingRouteImport } from './routes/pricing'
@@ -76,18 +77,24 @@ import { Route as ConnectSecretsRouteImport } from './routes/connect.secrets'
 import { Route as ConnectWebhookApplyRouteImport } from './routes/connect.webhook-apply'
 import { Route as DesktopLoginRouteImport } from './routes/desktop.login'
 import { Route as DesktopSessionRouteImport } from './routes/desktop.session'
+import { Route as DevUiRouteImport } from './routes/dev.ui'
 import { Route as DocsIndexRouteImport } from './routes/docs.index'
 import { Route as DocsSlugRouteImport } from './routes/docs.$slug'
 import { Route as DocsConnectRouteImport } from './routes/docs.connect'
 import { Route as DocsConnectDotmdRouteImport } from './routes/docs_.connect[.]md'
 import { Route as DocsLlmsDottxtRouteImport } from './routes/docs_.llms[.]txt'
 import { Route as DocsChar123slugChar125DotmdRouteImport } from './routes/docs_.{$slug}[.]md'
+import { Route as FeaturesAgentProfilesRouteImport } from './routes/features_.agent-profiles'
 import { Route as FeaturesAppsRouteImport } from './routes/features_.apps'
+import { Route as FeaturesContextRouteImport } from './routes/features_.context'
 import { Route as FeaturesCredentialsRouteImport } from './routes/features_.credentials'
+import { Route as FeaturesEmailRouteImport } from './routes/features_.email'
+import { Route as FeaturesFilesRouteImport } from './routes/features_.files'
 import { Route as FeaturesIntegrationsRouteImport } from './routes/features_.integrations'
 import { Route as FeaturesMemoryRouteImport } from './routes/features_.memory'
 import { Route as FeaturesPackagesRouteImport } from './routes/features_.packages'
 import { Route as FeaturesSecretsRouteImport } from './routes/features_.secrets'
+import { Route as FeaturesSkillsRouteImport } from './routes/features_.skills'
 import { Route as FeaturesTriggersRouteImport } from './routes/features_.triggers'
 import { Route as ForBusinessRouteImport } from './routes/for.business'
 import { Route as GuidesSplatRouteImport } from './routes/guides_.$'
@@ -98,6 +105,7 @@ import { Route as IntegrationsGmailRouteImport } from './routes/integrations_.gm
 import { Route as IntegrationsSlackRouteImport } from './routes/integrations_.slack'
 import { Route as JoinTokenRouteImport } from './routes/join.$token'
 import { Route as LoginDeviceRouteImport } from './routes/login_.device'
+import { Route as NewsletterConfirmRouteImport } from './routes/newsletter_.confirm'
 import { Route as OauthAuthorizeRouteImport } from './routes/oauth.authorize'
 import { Route as OauthCallbackRouteImport } from './routes/oauth.callback'
 import { Route as OgChar123pageChar125DotpngRouteImport } from './routes/og_.{$page}[.]png'
@@ -256,6 +264,7 @@ import { Route as CommunityListingIdFilesSplatRouteImport } from './routes/commu
 import { Route as CommunityListingIdAssetsSplatRouteImport } from './routes/community_.$listingId_.assets_.$'
 import { Route as CommunityListingIdIconIconCommitRouteImport } from './routes/community_.$listingId_.icon_.$iconCommit'
 import { Route as CommunityListingIdRawSplatRouteImport } from './routes/community_.$listingId_.raw_.$'
+import { Route as ImagesBlogSlugFileRouteImport } from './routes/images_.blog_.$slug_.$file'
 import { Route as OrgsOrgSlugAvatarFileRouteImport } from './routes/orgs_.$orgSlug_.avatar_.$file'
 import { Route as ProfilesUsernameAvatarFileRouteImport } from './routes/profiles_.$username_.avatar_.$file'
 import { Route as SharedFilesOrgSlugRootIdTokenRouteImport } from './routes/shared-files.$orgSlug.$rootId.$token'
@@ -423,6 +432,11 @@ const LlmsDottxtRoute = LlmsDottxtRouteImport.update({
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsletterRoute = NewsletterRouteImport.update({
+  id: '/newsletter',
+  path: '/newsletter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OnboardingRoute = OnboardingRouteImport.update({
@@ -647,6 +661,11 @@ const DesktopSessionRoute = DesktopSessionRouteImport.update({
   path: '/desktop/session',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DevUiRoute = DevUiRouteImport.update({
+  id: '/dev/ui',
+  path: '/dev/ui',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DocsIndexRoute = DocsIndexRouteImport.update({
   id: '/docs/',
   path: '/docs/',
@@ -678,14 +697,34 @@ const DocsChar123slugChar125DotmdRoute =
     path: '/docs/{$slug}.md',
     getParentRoute: () => rootRouteImport,
   } as any)
+const FeaturesAgentProfilesRoute = FeaturesAgentProfilesRouteImport.update({
+  id: '/features_/agent-profiles',
+  path: '/features/agent-profiles',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeaturesAppsRoute = FeaturesAppsRouteImport.update({
   id: '/features_/apps',
   path: '/features/apps',
   getParentRoute: () => rootRouteImport,
 } as any)
+const FeaturesContextRoute = FeaturesContextRouteImport.update({
+  id: '/features_/context',
+  path: '/features/context',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FeaturesCredentialsRoute = FeaturesCredentialsRouteImport.update({
   id: '/features_/credentials',
   path: '/features/credentials',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesEmailRoute = FeaturesEmailRouteImport.update({
+  id: '/features_/email',
+  path: '/features/email',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesFilesRoute = FeaturesFilesRouteImport.update({
+  id: '/features_/files',
+  path: '/features/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeaturesIntegrationsRoute = FeaturesIntegrationsRouteImport.update({
@@ -706,6 +745,11 @@ const FeaturesPackagesRoute = FeaturesPackagesRouteImport.update({
 const FeaturesSecretsRoute = FeaturesSecretsRouteImport.update({
   id: '/features_/secrets',
   path: '/features/secrets',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FeaturesSkillsRoute = FeaturesSkillsRouteImport.update({
+  id: '/features_/skills',
+  path: '/features/skills',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FeaturesTriggersRoute = FeaturesTriggersRouteImport.update({
@@ -756,6 +800,11 @@ const JoinTokenRoute = JoinTokenRouteImport.update({
 const LoginDeviceRoute = LoginDeviceRouteImport.update({
   id: '/login_/device',
   path: '/login/device',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NewsletterConfirmRoute = NewsletterConfirmRouteImport.update({
+  id: '/newsletter_/confirm',
+  path: '/newsletter/confirm',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OauthAuthorizeRoute = OauthAuthorizeRouteImport.update({
@@ -1639,6 +1688,11 @@ const CommunityListingIdRawSplatRoute =
     path: '/community/$listingId/raw/$',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ImagesBlogSlugFileRoute = ImagesBlogSlugFileRouteImport.update({
+  id: '/images_/blog_/$slug_/$file',
+  path: '/images/blog/$slug/$file',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgsOrgSlugAvatarFileRoute = OrgsOrgSlugAvatarFileRouteImport.update({
   id: '/orgs_/$orgSlug_/avatar_/$file',
   path: '/orgs/$orgSlug/avatar/$file',
@@ -1965,6 +2019,7 @@ export interface FileRoutesByFullPath {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
@@ -2007,17 +2062,23 @@ export interface FileRoutesByFullPath {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
   '/docs/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features/apps': typeof FeaturesAppsRoute
+  '/features/context': typeof FeaturesContextRoute
   '/features/credentials': typeof FeaturesCredentialsRoute
+  '/features/email': typeof FeaturesEmailRoute
+  '/features/files': typeof FeaturesFilesRoute
   '/features/integrations': typeof FeaturesIntegrationsRoute
   '/features/memory': typeof FeaturesMemoryRoute
   '/features/packages': typeof FeaturesPackagesRoute
   '/features/secrets': typeof FeaturesSecretsRoute
+  '/features/skills': typeof FeaturesSkillsRoute
   '/features/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
@@ -2028,6 +2089,7 @@ export interface FileRoutesByFullPath {
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login/device': typeof LoginDeviceRoute
+  '/newsletter/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2187,6 +2249,7 @@ export interface FileRoutesByFullPath {
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
+  '/images/blog/$slug/$file': typeof ImagesBlogSlugFileRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -2262,6 +2325,7 @@ export interface FileRoutesByTo {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
   '/privacy': typeof PrivacyRoute
@@ -2303,17 +2367,23 @@ export interface FileRoutesByTo {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs/connect.md': typeof DocsConnectDotmdRoute
   '/docs/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features/apps': typeof FeaturesAppsRoute
+  '/features/context': typeof FeaturesContextRoute
   '/features/credentials': typeof FeaturesCredentialsRoute
+  '/features/email': typeof FeaturesEmailRoute
+  '/features/files': typeof FeaturesFilesRoute
   '/features/integrations': typeof FeaturesIntegrationsRoute
   '/features/memory': typeof FeaturesMemoryRoute
   '/features/packages': typeof FeaturesPackagesRoute
   '/features/secrets': typeof FeaturesSecretsRoute
+  '/features/skills': typeof FeaturesSkillsRoute
   '/features/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides/$': typeof GuidesSplatRoute
@@ -2324,6 +2394,7 @@ export interface FileRoutesByTo {
   '/integrations/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login/device': typeof LoginDeviceRoute
+  '/newsletter/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2483,6 +2554,7 @@ export interface FileRoutesByTo {
   '/community/$listingId/assets/$': typeof CommunityListingIdAssetsSplatRoute
   '/community/$listingId/icon/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community/$listingId/raw/$': typeof CommunityListingIdRawSplatRoute
+  '/images/blog/$slug/$file': typeof ImagesBlogSlugFileRoute
   '/orgs/$orgSlug/avatar/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles/$username/avatar/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -2560,6 +2632,7 @@ export interface FileRoutesById {
   '/health': typeof HealthRoute
   '/llms.txt': typeof LlmsDottxtRoute
   '/login': typeof LoginRoute
+  '/newsletter': typeof NewsletterRoute
   '/onboarding': typeof OnboardingRouteWithChildren
   '/pending-verification': typeof PendingVerificationRoute
   '/pricing': typeof PricingRoute
@@ -2602,17 +2675,23 @@ export interface FileRoutesById {
   '/connect/webhook-apply': typeof ConnectWebhookApplyRoute
   '/desktop/login': typeof DesktopLoginRoute
   '/desktop/session': typeof DesktopSessionRoute
+  '/dev/ui': typeof DevUiRoute
   '/docs/$slug': typeof DocsSlugRoute
   '/docs/connect': typeof DocsConnectRoute
   '/docs_/connect.md': typeof DocsConnectDotmdRoute
   '/docs_/llms.txt': typeof DocsLlmsDottxtRoute
   '/docs_/{$slug}.md': typeof DocsChar123slugChar125DotmdRoute
+  '/features_/agent-profiles': typeof FeaturesAgentProfilesRoute
   '/features_/apps': typeof FeaturesAppsRoute
+  '/features_/context': typeof FeaturesContextRoute
   '/features_/credentials': typeof FeaturesCredentialsRoute
+  '/features_/email': typeof FeaturesEmailRoute
+  '/features_/files': typeof FeaturesFilesRoute
   '/features_/integrations': typeof FeaturesIntegrationsRoute
   '/features_/memory': typeof FeaturesMemoryRoute
   '/features_/packages': typeof FeaturesPackagesRoute
   '/features_/secrets': typeof FeaturesSecretsRoute
+  '/features_/skills': typeof FeaturesSkillsRoute
   '/features_/triggers': typeof FeaturesTriggersRoute
   '/for/business': typeof ForBusinessRoute
   '/guides_/$': typeof GuidesSplatRoute
@@ -2623,6 +2702,7 @@ export interface FileRoutesById {
   '/integrations_/slack': typeof IntegrationsSlackRoute
   '/join/$token': typeof JoinTokenRoute
   '/login_/device': typeof LoginDeviceRoute
+  '/newsletter_/confirm': typeof NewsletterConfirmRoute
   '/oauth/authorize': typeof OauthAuthorizeRoute
   '/oauth/callback': typeof OauthCallbackRoute
   '/og_/{$page}.png': typeof OgChar123pageChar125DotpngRoute
@@ -2782,6 +2862,7 @@ export interface FileRoutesById {
   '/community_/$listingId_/assets_/$': typeof CommunityListingIdAssetsSplatRoute
   '/community_/$listingId_/icon_/$iconCommit': typeof CommunityListingIdIconIconCommitRoute
   '/community_/$listingId_/raw_/$': typeof CommunityListingIdRawSplatRoute
+  '/images_/blog_/$slug_/$file': typeof ImagesBlogSlugFileRoute
   '/orgs_/$orgSlug_/avatar_/$file': typeof OrgsOrgSlugAvatarFileRoute
   '/profiles_/$username_/avatar_/$file': typeof ProfilesUsernameAvatarFileRoute
   '/shared-files/$orgSlug/$rootId/$token': typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -2859,6 +2940,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/onboarding'
     | '/pending-verification'
     | '/pricing'
@@ -2901,17 +2983,23 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
     | '/docs/llms.txt'
     | '/docs/{$slug}.md'
+    | '/features/agent-profiles'
     | '/features/apps'
+    | '/features/context'
     | '/features/credentials'
+    | '/features/email'
+    | '/features/files'
     | '/features/integrations'
     | '/features/memory'
     | '/features/packages'
     | '/features/secrets'
+    | '/features/skills'
     | '/features/triggers'
     | '/for/business'
     | '/guides/$'
@@ -2922,6 +3010,7 @@ export interface FileRouteTypes {
     | '/integrations/slack'
     | '/join/$token'
     | '/login/device'
+    | '/newsletter/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3081,6 +3170,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
     | '/community/$listingId/raw/$'
+    | '/images/blog/$slug/$file'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3156,6 +3246,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/pending-verification'
     | '/pricing'
     | '/privacy'
@@ -3197,17 +3288,23 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs/connect.md'
     | '/docs/llms.txt'
     | '/docs/{$slug}.md'
+    | '/features/agent-profiles'
     | '/features/apps'
+    | '/features/context'
     | '/features/credentials'
+    | '/features/email'
+    | '/features/files'
     | '/features/integrations'
     | '/features/memory'
     | '/features/packages'
     | '/features/secrets'
+    | '/features/skills'
     | '/features/triggers'
     | '/for/business'
     | '/guides/$'
@@ -3218,6 +3315,7 @@ export interface FileRouteTypes {
     | '/integrations/slack'
     | '/join/$token'
     | '/login/device'
+    | '/newsletter/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og/{$page}.png'
@@ -3377,6 +3475,7 @@ export interface FileRouteTypes {
     | '/community/$listingId/assets/$'
     | '/community/$listingId/icon/$iconCommit'
     | '/community/$listingId/raw/$'
+    | '/images/blog/$slug/$file'
     | '/orgs/$orgSlug/avatar/$file'
     | '/profiles/$username/avatar/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3453,6 +3552,7 @@ export interface FileRouteTypes {
     | '/health'
     | '/llms.txt'
     | '/login'
+    | '/newsletter'
     | '/onboarding'
     | '/pending-verification'
     | '/pricing'
@@ -3495,17 +3595,23 @@ export interface FileRouteTypes {
     | '/connect/webhook-apply'
     | '/desktop/login'
     | '/desktop/session'
+    | '/dev/ui'
     | '/docs/$slug'
     | '/docs/connect'
     | '/docs_/connect.md'
     | '/docs_/llms.txt'
     | '/docs_/{$slug}.md'
+    | '/features_/agent-profiles'
     | '/features_/apps'
+    | '/features_/context'
     | '/features_/credentials'
+    | '/features_/email'
+    | '/features_/files'
     | '/features_/integrations'
     | '/features_/memory'
     | '/features_/packages'
     | '/features_/secrets'
+    | '/features_/skills'
     | '/features_/triggers'
     | '/for/business'
     | '/guides_/$'
@@ -3516,6 +3622,7 @@ export interface FileRouteTypes {
     | '/integrations_/slack'
     | '/join/$token'
     | '/login_/device'
+    | '/newsletter_/confirm'
     | '/oauth/authorize'
     | '/oauth/callback'
     | '/og_/{$page}.png'
@@ -3675,6 +3782,7 @@ export interface FileRouteTypes {
     | '/community_/$listingId_/assets_/$'
     | '/community_/$listingId_/icon_/$iconCommit'
     | '/community_/$listingId_/raw_/$'
+    | '/images_/blog_/$slug_/$file'
     | '/orgs_/$orgSlug_/avatar_/$file'
     | '/profiles_/$username_/avatar_/$file'
     | '/shared-files/$orgSlug/$rootId/$token'
@@ -3752,6 +3860,7 @@ export interface RootRouteChildren {
   HealthRoute: typeof HealthRoute
   LlmsDottxtRoute: typeof LlmsDottxtRoute
   LoginRoute: typeof LoginRoute
+  NewsletterRoute: typeof NewsletterRoute
   OnboardingRoute: typeof OnboardingRouteWithChildren
   PendingVerificationRoute: typeof PendingVerificationRoute
   PricingRoute: typeof PricingRoute
@@ -3792,17 +3901,23 @@ export interface RootRouteChildren {
   ConnectWebhookApplyRoute: typeof ConnectWebhookApplyRoute
   DesktopLoginRoute: typeof DesktopLoginRoute
   DesktopSessionRoute: typeof DesktopSessionRoute
+  DevUiRoute: typeof DevUiRoute
   DocsSlugRoute: typeof DocsSlugRoute
   DocsConnectRoute: typeof DocsConnectRoute
   DocsConnectDotmdRoute: typeof DocsConnectDotmdRoute
   DocsLlmsDottxtRoute: typeof DocsLlmsDottxtRoute
   DocsChar123slugChar125DotmdRoute: typeof DocsChar123slugChar125DotmdRoute
+  FeaturesAgentProfilesRoute: typeof FeaturesAgentProfilesRoute
   FeaturesAppsRoute: typeof FeaturesAppsRoute
+  FeaturesContextRoute: typeof FeaturesContextRoute
   FeaturesCredentialsRoute: typeof FeaturesCredentialsRoute
+  FeaturesEmailRoute: typeof FeaturesEmailRoute
+  FeaturesFilesRoute: typeof FeaturesFilesRoute
   FeaturesIntegrationsRoute: typeof FeaturesIntegrationsRoute
   FeaturesMemoryRoute: typeof FeaturesMemoryRoute
   FeaturesPackagesRoute: typeof FeaturesPackagesRoute
   FeaturesSecretsRoute: typeof FeaturesSecretsRoute
+  FeaturesSkillsRoute: typeof FeaturesSkillsRoute
   FeaturesTriggersRoute: typeof FeaturesTriggersRoute
   ForBusinessRoute: typeof ForBusinessRoute
   GuidesSplatRoute: typeof GuidesSplatRoute
@@ -3813,6 +3928,7 @@ export interface RootRouteChildren {
   IntegrationsSlackRoute: typeof IntegrationsSlackRoute
   JoinTokenRoute: typeof JoinTokenRoute
   LoginDeviceRoute: typeof LoginDeviceRoute
+  NewsletterConfirmRoute: typeof NewsletterConfirmRoute
   OauthAuthorizeRoute: typeof OauthAuthorizeRoute
   OauthCallbackRoute: typeof OauthCallbackRoute
   OgChar123pageChar125DotpngRoute: typeof OgChar123pageChar125DotpngRoute
@@ -3858,6 +3974,7 @@ export interface RootRouteChildren {
   CommunityListingIdAssetsSplatRoute: typeof CommunityListingIdAssetsSplatRoute
   CommunityListingIdIconIconCommitRoute: typeof CommunityListingIdIconIconCommitRoute
   CommunityListingIdRawSplatRoute: typeof CommunityListingIdRawSplatRoute
+  ImagesBlogSlugFileRoute: typeof ImagesBlogSlugFileRoute
   OrgsOrgSlugAvatarFileRoute: typeof OrgsOrgSlugAvatarFileRoute
   ProfilesUsernameAvatarFileRoute: typeof ProfilesUsernameAvatarFileRoute
   SharedFilesOrgSlugRootIdTokenRoute: typeof SharedFilesOrgSlugRootIdTokenRoute
@@ -4035,6 +4152,13 @@ declare module '@tanstack/react-router' {
       path: '/login'
       fullPath: '/login'
       preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletter': {
+      id: '/newsletter'
+      path: '/newsletter'
+      fullPath: '/newsletter'
+      preLoaderRoute: typeof NewsletterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/onboarding': {
@@ -4338,6 +4462,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DesktopSessionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/dev/ui': {
+      id: '/dev/ui'
+      path: '/dev/ui'
+      fullPath: '/dev/ui'
+      preLoaderRoute: typeof DevUiRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/docs/': {
       id: '/docs/'
       path: '/docs'
@@ -4380,6 +4511,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DocsChar123slugChar125DotmdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features_/agent-profiles': {
+      id: '/features_/agent-profiles'
+      path: '/features/agent-profiles'
+      fullPath: '/features/agent-profiles'
+      preLoaderRoute: typeof FeaturesAgentProfilesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/features_/apps': {
       id: '/features_/apps'
       path: '/features/apps'
@@ -4387,11 +4525,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof FeaturesAppsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/features_/context': {
+      id: '/features_/context'
+      path: '/features/context'
+      fullPath: '/features/context'
+      preLoaderRoute: typeof FeaturesContextRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/features_/credentials': {
       id: '/features_/credentials'
       path: '/features/credentials'
       fullPath: '/features/credentials'
       preLoaderRoute: typeof FeaturesCredentialsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/email': {
+      id: '/features_/email'
+      path: '/features/email'
+      fullPath: '/features/email'
+      preLoaderRoute: typeof FeaturesEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/files': {
+      id: '/features_/files'
+      path: '/features/files'
+      fullPath: '/features/files'
+      preLoaderRoute: typeof FeaturesFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/features_/integrations': {
@@ -4420,6 +4579,13 @@ declare module '@tanstack/react-router' {
       path: '/features/secrets'
       fullPath: '/features/secrets'
       preLoaderRoute: typeof FeaturesSecretsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/features_/skills': {
+      id: '/features_/skills'
+      path: '/features/skills'
+      fullPath: '/features/skills'
+      preLoaderRoute: typeof FeaturesSkillsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/features_/triggers': {
@@ -4490,6 +4656,13 @@ declare module '@tanstack/react-router' {
       path: '/login/device'
       fullPath: '/login/device'
       preLoaderRoute: typeof LoginDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/newsletter_/confirm': {
+      id: '/newsletter_/confirm'
+      path: '/newsletter/confirm'
+      fullPath: '/newsletter/confirm'
+      preLoaderRoute: typeof NewsletterConfirmRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/oauth/authorize': {
@@ -5598,6 +5771,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CommunityListingIdRawSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/images_/blog_/$slug_/$file': {
+      id: '/images_/blog_/$slug_/$file'
+      path: '/images/blog/$slug/$file'
+      fullPath: '/images/blog/$slug/$file'
+      preLoaderRoute: typeof ImagesBlogSlugFileRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/orgs_/$orgSlug_/avatar_/$file': {
       id: '/orgs_/$orgSlug_/avatar_/$file'
       path: '/orgs/$orgSlug/avatar/$file'
@@ -6400,6 +6580,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthRoute: HealthRoute,
   LlmsDottxtRoute: LlmsDottxtRoute,
   LoginRoute: LoginRoute,
+  NewsletterRoute: NewsletterRoute,
   OnboardingRoute: OnboardingRouteWithChildren,
   PendingVerificationRoute: PendingVerificationRoute,
   PricingRoute: PricingRoute,
@@ -6441,17 +6622,23 @@ const rootRouteChildren: RootRouteChildren = {
   ConnectWebhookApplyRoute: ConnectWebhookApplyRoute,
   DesktopLoginRoute: DesktopLoginRoute,
   DesktopSessionRoute: DesktopSessionRoute,
+  DevUiRoute: DevUiRoute,
   DocsSlugRoute: DocsSlugRoute,
   DocsConnectRoute: DocsConnectRoute,
   DocsConnectDotmdRoute: DocsConnectDotmdRoute,
   DocsLlmsDottxtRoute: DocsLlmsDottxtRoute,
   DocsChar123slugChar125DotmdRoute: DocsChar123slugChar125DotmdRoute,
+  FeaturesAgentProfilesRoute: FeaturesAgentProfilesRoute,
   FeaturesAppsRoute: FeaturesAppsRoute,
+  FeaturesContextRoute: FeaturesContextRoute,
   FeaturesCredentialsRoute: FeaturesCredentialsRoute,
+  FeaturesEmailRoute: FeaturesEmailRoute,
+  FeaturesFilesRoute: FeaturesFilesRoute,
   FeaturesIntegrationsRoute: FeaturesIntegrationsRoute,
   FeaturesMemoryRoute: FeaturesMemoryRoute,
   FeaturesPackagesRoute: FeaturesPackagesRoute,
   FeaturesSecretsRoute: FeaturesSecretsRoute,
+  FeaturesSkillsRoute: FeaturesSkillsRoute,
   FeaturesTriggersRoute: FeaturesTriggersRoute,
   ForBusinessRoute: ForBusinessRoute,
   GuidesSplatRoute: GuidesSplatRoute,
@@ -6462,6 +6649,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsSlackRoute: IntegrationsSlackRoute,
   JoinTokenRoute: JoinTokenRoute,
   LoginDeviceRoute: LoginDeviceRoute,
+  NewsletterConfirmRoute: NewsletterConfirmRoute,
   OauthAuthorizeRoute: OauthAuthorizeRoute,
   OauthCallbackRoute: OauthCallbackRoute,
   OgChar123pageChar125DotpngRoute: OgChar123pageChar125DotpngRoute,
@@ -6513,6 +6701,7 @@ const rootRouteChildren: RootRouteChildren = {
   CommunityListingIdAssetsSplatRoute: CommunityListingIdAssetsSplatRoute,
   CommunityListingIdIconIconCommitRoute: CommunityListingIdIconIconCommitRoute,
   CommunityListingIdRawSplatRoute: CommunityListingIdRawSplatRoute,
+  ImagesBlogSlugFileRoute: ImagesBlogSlugFileRoute,
   OrgsOrgSlugAvatarFileRoute: OrgsOrgSlugAvatarFileRoute,
   ProfilesUsernameAvatarFileRoute: ProfilesUsernameAvatarFileRoute,
   SharedFilesOrgSlugRootIdTokenRoute: SharedFilesOrgSlugRootIdTokenRoute,

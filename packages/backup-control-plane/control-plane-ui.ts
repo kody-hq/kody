@@ -12,6 +12,8 @@ import {
 	backupPayload,
 	configuredSourceDatabases,
 	isBackupEnabled,
+	pacedSourceDatabases,
+	restExportSourceDatabases,
 	utcDay,
 } from './backup-policy.ts'
 import type { BackupEnvironment, BackupManifest } from './backup-types.ts'
@@ -30,10 +32,10 @@ import { getD1Database } from './d1-import-api.ts'
 import { verifyBackupFullManifestSignature } from './full-manifest-signing.ts'
 import { readManifest } from './immutable-storage.ts'
 import { verifyBackupManifestSignature } from './manifest-signing.ts'
-import type { DrillReport } from './restore-drill.ts'
+import type { PacedDrillProgress } from './paced-restore-drill.ts'
 import type { ProductionRestoreProgress } from './production-restore.ts'
 import type { RestoreConfirmToken } from './restore-confirm-token.ts'
-import { readFullManifest } from './seal-full-backup.ts'
+import { readFullManifest, readSealedPacedNight } from './seal-full-backup.ts'
 import type { SealStatusView } from './seal-day-run.ts'
 import { readSqlRestorability } from './sql-statement-stats.ts'
 
@@ -88,7 +90,6 @@ function layout(
 	--font-body: 'Wix Madefor Text', system-ui, sans-serif;
 	--font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 	--radius-card: 14px;
-	--radius-full: 999px;
 	--danger-bg: color-mix(in srgb, var(--color-danger) 12%, var(--color-surface));
 	--accent: ${accent};
 }
@@ -158,6 +159,13 @@ th, td { text-align: left; padding: 0.5rem 0.45rem; border-bottom: 1px solid var
 th { color: var(--color-text-muted); font-weight: 600; font-size: 0.75rem; letter-spacing: 0.03em; }
 td { white-space: nowrap; }
 td.wrap { white-space: normal; }
+@media (max-width: 640px) {
+	table.cards thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+	table.cards tr { display: block; padding: 0.6rem 0; border-bottom: 1px solid var(--color-border); }
+	table.cards td { display: flex; justify-content: space-between; gap: 0.75rem; padding: 0.2rem 0; border-bottom: 0; white-space: normal; text-align: right; }
+	table.cards td::before { content: attr(data-label); color: var(--color-text-muted); font-size: 0.75rem; text-align: left; flex: none; }
+	table.cards td code { word-break: break-all; }
+}
 .neutral { color: var(--color-text-muted); }
 .ok { color: var(--color-primary-text); font-weight: 600; }
 .warn { color: var(--color-warning-text); font-weight: 600; }
@@ -178,13 +186,16 @@ button, .button {
 	border: 1px solid transparent;
 	background: var(--color-primary);
 	color: var(--color-on-primary);
-	border-radius: var(--radius-full);
+	border-radius: 0.625rem;
 	padding: 0.5rem 0.95rem;
 	font: inherit;
 	font-weight: 600;
 	cursor: pointer;
 	text-decoration: none;
 	display: inline-block;
+}
+@supports (corner-shape: squircle) {
+	button, .button { border-radius: 1.125rem; corner-shape: squircle; }
 }
 button:hover, .button:hover { background: var(--color-primary-hover); }
 button.danger, .button.danger {
@@ -305,8 +316,8 @@ export async function collectDayStatuses(
 		date.setUTCDate(date.getUTCDate() - offset)
 		const day = utcDay(date)
 		const warnings: Array<string> = []
-		const sources = configuredSourceDatabases(env)
-		let d1Present = sources.length > 0
+		const sources = restExportSourceDatabases(env)
+		let d1Present = true
 		let d1Verified: boolean | null = null
 		let d1Restorable: boolean | null = null
 		for (const source of sources) {
@@ -388,6 +399,18 @@ export async function collectDayStatuses(
 					warnings.push(`${label}D1 is not restorable: SQL stats lookup failed`)
 				}
 			}
+		}
+		try {
+			for (const source of pacedSourceDatabases(env)) {
+				const paced = await readSealedPacedNight(env.BACKUP_BUCKET, source, day)
+				if (paced.kind === 'incomplete') {
+					d1Present = false
+					warnings.push(`${source.name}: ${paced.reason}`)
+				}
+			}
+		} catch {
+			d1Present = false
+			warnings.push('paced D1 seals unreadable')
 		}
 
 		const summaryJson = await readBucketJson(
@@ -638,21 +661,8 @@ ${options.flashHtml ?? ''}
 			</label>
 			<button type="submit">Seal day</button>
 		</form>
-		<form method="post" action="/actions/run-drill" class="actions">
-			<label>Day
-				<input type="text" name="day" placeholder="YYYY-MM-DD" required pattern="\\d{4}-\\d{2}-\\d{2}"/>
-			</label>
-			<label>Database
-				<select name="database">
-					${sources
-						.map(
-							(source) =>
-								`<option value="${escapeHtml(source.name)}">${escapeHtml(source.name)}</option>`,
-						)
-						.join('')}
-				</select>
-			</label>
-			<button type="submit">Run isolated restore drill</button>
+		<form method="post" action="/actions/run-paced-drill" class="actions" onsubmit="return confirm('Start an isolated paced restore drill for APP, AUDIT and JOBS?');">
+			<button type="submit">Run isolated paced restore drill</button>
 		</form>
 	</div>
 	<p>Seal day queues the work and returns immediately. The status page shows progress, success, or why the day is not ready.</p>
@@ -747,45 +757,87 @@ export function renderSealStatusPage(input: {
 	return layout(title, body, { danger })
 }
 
-export function renderDrillReport(report: DrillReport): string {
-	const failed = report.errorCode !== null
-	const counts = report.tableCounts
-		.map(
-			(entry) =>
-				`${entry.table}=${entry.count === null ? '?' : String(entry.count)}`,
-		)
-		.join(', ')
-	const details = [
-		`day=${report.day}`,
-		`sourceDatabaseName=${report.sourceDatabaseName}`,
-		`sourceDatabaseId=${report.sourceDatabaseId}`,
-		`databaseName=${report.databaseName}`,
-		`databaseId=${report.databaseId ?? 'n/a'}`,
-		`quickCheck=${report.quickCheck ?? 'n/a'}`,
-		`tableCounts=${counts || 'n/a'}`,
-		`keptForInspection=${String(report.keptForInspection)}`,
-		report.errorCode ? `errorCode=${report.errorCode}` : null,
-		report.errorMessage ? `errorMessage=${report.errorMessage}` : null,
-	]
-		.filter(Boolean)
-		.join('\n')
-	return renderMessagePage(
-		failed ? 'Restore drill failed' : 'Restore drill complete',
-		failed
-			? 'The isolated drill did not complete cleanly. The drill database was kept for inspection when creation succeeded.'
-			: 'Isolated restore drill completed and the temporary database was deleted.',
-		{ danger: failed, details },
-	)
+function drillCell(value: boolean | null): string {
+	if (value === null) return '<td data-label="Result">pending</td>'
+	return value
+		? '<td data-label="Result" style="color: var(--color-primary-text)">PASS</td>'
+		: '<td data-label="Result" style="color: var(--color-danger)"><strong>FAIL</strong></td>'
+}
+
+export function renderPacedDrillStatusPage(
+	progress: PacedDrillProgress,
+): string {
+	const running = progress.status === 'running'
+	const verdict = running
+		? 'RUNNING'
+		: progress.status === 'passed'
+			? 'PASS'
+			: 'FAIL'
+	const sources = progress.sources
+		.map((source) => {
+			const rows = source.tables
+				.map(
+					(table) => `<tr>
+	<td data-label="Table">${escapeHtml(table.table)}</td>
+	<td data-label="Manifest rows">${table.manifestCount}</td>
+	<td data-label="Imported rows">${table.importedRows}</td>
+	<td data-label="Target rows">${table.targetCount === null ? '?' : table.targetCount}</td>
+	<td data-label="Manifest checksum"><code>${escapeHtml(table.manifestChecksum)}</code></td>
+	<td data-label="Target checksum"><code>${escapeHtml(table.targetChecksum ?? '?')}</code></td>
+	${drillCell(table.ok)}
+</tr>`,
+				)
+				.join('')
+			return `<section class="panel${source.phase === 'failed' ? ' danger' : ''}">
+	<h2>${escapeHtml(source.databaseName)}: ${escapeHtml(source.phase)}</h2>
+	<p>Units ${source.unitsDone} of ${source.unitsTotal}. Chain ${escapeHtml(source.chainDays.join(', ') || 'n/a')}. quick_check ${escapeHtml(source.quickCheck ?? 'n/a')}.${source.keptForInspection ? ` Target ${escapeHtml(source.targetDatabaseId ?? '')} kept for inspection.` : ''}</p>
+	${source.error ? `<p><strong>${escapeHtml(source.error)}</strong></p>` : ''}
+	<table class="cards">
+		<thead><tr><th>Table</th><th>Manifest rows</th><th>Imported rows</th><th>Target rows</th><th>Manifest checksum</th><th>Target checksum</th><th>Result</th></tr></thead>
+		<tbody>${rows}</tbody>
+	</table>
+</section>`
+		})
+		.join('')
+	const body = `<section class="panel${progress.status === 'failed' ? ' danger' : ''}">
+	<h1>Paced restore drill: ${verdict}</h1>
+	<p>Run ${escapeHtml(progress.runId)} restores the sealed paced chain ending ${escapeHtml(progress.day)} into isolated drill databases. Updated ${escapeHtml(progress.updatedAt)}.</p>
+	<p><a class="button" href="/">Dashboard</a></p>
+	${running ? `<meta http-equiv="refresh" content="5"/>` : ''}
+</section>
+${sources}`
+	return layout('Paced restore drill', body, {
+		danger: progress.status === 'failed',
+	})
 }
 
 export function renderRestorePreparePage(input: {
 	day: string
 	sourceDatabaseName: string
-	sqlObjectKey: string
-	sqlBytes: number
-	sqlSha256: string
+	d1:
+		| {
+				kind: 'rest'
+				sqlObjectKey: string
+				sqlBytes: number
+				sqlSha256: string
+		  }
+		| { kind: 'paced'; sourceNames: Array<string> }
 	token: RestoreConfirmToken
 }): string {
+	const d1Evidence =
+		input.d1.kind === 'paced'
+			? `<div class="kv"><span>D1 source</span><strong>Sealed paced chains: ${escapeHtml(input.d1.sourceNames.join(', '))}</strong></div>`
+			: `<div class="kv"><span>SQL bytes</span><strong>${escapeHtml(String(input.d1.sqlBytes))}</strong></div>`
+	const d1Details =
+		input.d1.kind === 'paced'
+			? ''
+			: disclosure(
+					'SQL object',
+					`<div class="grid">
+			<div class="kv"><span>Object key</span><strong>${escapeHtml(input.d1.sqlObjectKey)}</strong></div>
+			<div class="kv"><span>SHA-256</span><strong>${escapeHtml(input.d1.sqlSha256)}</strong></div>
+		</div>`,
+				)
 	const body = `
 <header>
 	<h1>Confirm PRODUCTION restore</h1>
@@ -796,16 +848,10 @@ export function renderRestorePreparePage(input: {
 	<div class="grid">
 		<div class="kv"><span>Day</span><strong>${escapeHtml(input.day)}</strong></div>
 		<div class="kv"><span>Database name</span><strong>${escapeHtml(input.sourceDatabaseName)}</strong></div>
-		<div class="kv"><span>SQL bytes</span><strong>${escapeHtml(String(input.sqlBytes))}</strong></div>
+		${d1Evidence}
 		<div class="kv"><span>Token expires</span><strong>${escapeHtml(input.token.expiresAt)}</strong></div>
 	</div>
-	${disclosure(
-		'SQL object',
-		`<div class="grid">
-			<div class="kv"><span>Object key</span><strong>${escapeHtml(input.sqlObjectKey)}</strong></div>
-			<div class="kv"><span>SHA-256</span><strong>${escapeHtml(input.sqlSha256)}</strong></div>
-		</div>`,
-	)}
+	${d1Details}
 	<form method="post" action="/actions/restore/execute" class="actions" style="margin-top:1rem" onsubmit="return confirm('Type-confirm and EXECUTE production restore now?');">
 		<input type="hidden" name="day" value="${escapeHtml(input.day)}"/>
 		<input type="hidden" name="expiresAt" value="${escapeHtml(input.token.expiresAt)}"/>

@@ -210,14 +210,17 @@ explicitly approved for admin review, operator-owned system email, and the
 documented metadata projection for activity on public community listings.
 
 `adminSystemEmailSend` is the operator correspondence channel: it sends from a
-reserved system sender (`kody@<apex>` by default) to arbitrary recipients, so
-the platform can answer a feedback report or a system-inbox message. It never
-touches a user mailbox, sender identity, or plan entitlement, and it carries its
-own per-sender daily cap. Mail from `kody@` sets Reply-To to `support@<apex>`
-unless `reply_to` is provided. User mail keeps its own boundary: `emailSend` is
-notify-self (verified email destinations only) and `emailReply` is reply-only.
-`emailReply` refuses quarantined inbound mail (`quarantined_inbound_reply`)
-until `emailMessageClassify` releases it (`classification: "accepted"`).
+reserved transactional system sender (`kody@<apex>` by default) to arbitrary
+recipients, so the platform can answer a feedback report or a system-inbox
+message. It never touches a user mailbox, sender identity, or plan entitlement,
+and it carries its own per-sender daily cap. Mail from `kody@` sets Reply-To to
+`support@<apex>` unless `reply_to` is provided. What's New mail is
+`adminWhatsNewEmailSend` from `news@` (one recipient, its own daily counter);
+`adminSystemEmailSend` cannot select `news`. User mail keeps its own boundary:
+`emailSend` is notify-self (verified email destinations only) and `emailReply`
+is reply-only. `emailReply` refuses quarantined inbound mail
+(`quarantined_inbound_reply`) until `emailMessageClassify` releases it
+(`classification: "accepted"`).
 
 Platform feedback list/get is the only admin capability surface that reviews
 user-authored private text, and only after explicit approval. Community activity

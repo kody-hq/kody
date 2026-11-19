@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { QueryKey } from '@tanstack/react-query'
 import {
 	AccountManagementPanel,
@@ -21,7 +22,6 @@ import {
 	orgGrantsPath,
 	orgIdentity,
 } from '#universal/org-pages.ts'
-import { getGhostButtonCss } from '#universal/styles/style-primitives.ts'
 import { renderIcon } from '../components/icon.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 function personLabel(person: OrgCollaboratorView) {
@@ -102,15 +102,15 @@ export function OrgCollaboratorsPage({
 													</ul>
 												) : null}
 											</span>
-											<SiteLink
+											<Button
 												href={orgGrantAccessPath(data.org.slug, person.userId)}
 												data-testid="org-collaborator-access"
 												aria-label={`Access for ${personLabel(person)}`}
-												css={getGhostButtonCss({ size: 'sm' })}
+												variant="secondary"
 											>
 												{renderIcon('key', { size: '1.05rem' })}
 												Access
-											</SiteLink>
+											</Button>
 										</div>
 									</li>
 								)

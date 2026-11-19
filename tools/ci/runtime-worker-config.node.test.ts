@@ -222,6 +222,11 @@ test('generate rewrites worker names, copies resource ids, and patches the main 
 		class_name: 'RepoSessionIndex',
 		script_name: 'kody-pr-7-platform',
 	})
+	// Workflow steps with `execution` reach the context's session DO.
+	expect(byName(previewEnv, 'EXECUTION_CONTEXT_SESSION')).toMatchObject({
+		class_name: 'ExecutionContextSessionV1',
+		script_name: 'kody-pr-7-platform',
+	})
 	// Resource identifiers are copied from the provisioned main config.
 	expect(previewEnv?.d1_databases?.[0]).toMatchObject({
 		binding: 'APP_DB',
@@ -320,6 +325,12 @@ test('generate publishes the package-app custom domain for production', async ()
 	expect(runtime.env?.production?.routes).toEqual(packageAppRoutes)
 	expect(runtime.env?.production?.name).toBe('kody-runtime')
 	expect(runtime.env?.production?.workers_dev).toBe(true)
+	expect(
+		byName(runtime.env?.production, 'EXECUTION_CONTEXT_SESSION'),
+	).toMatchObject({
+		class_name: 'ExecutionContextSessionV1',
+		script_name: 'kody-platform',
+	})
 	// The storage transfer migration survives generation untouched.
 	expect(runtime.migrations?.[0]?.tag).toBe('v1')
 	expect(Array.isArray(runtime.migrations?.[0]?.transferred_classes)).toBe(true)

@@ -8,6 +8,7 @@ import {
 import { readLocalPolicy, setLocalAutoUpdateEnabled } from './fs-access.js'
 import { killProcessTree } from '../process-tree.js'
 import { describeHolder, lockPathFor, runnerLockHolder } from './runner-lock.js'
+import { daemonHealth } from './health.js'
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
@@ -393,6 +394,30 @@ function runnerFor(apiUrl: string, ecid: string) {
 	return runnerLockHolder(lockPathFor(statePath))
 }
 
+/** Liveness of this context's daemon, from the state file it keeps. */
+function contextHealth(
+	apiUrl: string,
+	ecid: string | null | undefined,
+	maxAgeSeconds?: number,
+) {
+	const runner = ecid ? runnerFor(apiUrl, ecid) : null
+	return daemonHealth({
+		state: ecid
+			? runtimeState(
+					servicePaths({
+						apiUrl,
+						ecid,
+						manager: serviceManagerFor() ?? 'systemd',
+					}).statePath,
+				)
+			: null,
+		alive: (pid) => runner?.pid === pid,
+		...(maxAgeSeconds === undefined
+			? {}
+			: { maxHeartbeatAgeMs: maxAgeSeconds * 1000 }),
+	})
+}
+
 /**
  * `kody daemon start|stop`: controls the service when one is installed, else
  * stops the terminal or desktop daemon holding the runner lock (it drains).
@@ -612,6 +637,7 @@ export async function runDaemonServiceCommand(
 		maxConcurrent?: number
 		keyStorage?: string
 		lines?: string
+		maxAge?: string
 		follow?: boolean
 		unregister?: boolean
 		revoke: (ecid: string) => Promise<void>
@@ -619,6 +645,33 @@ export async function runDaemonServiceCommand(
 ): Promise<number> {
 	const ecid = localContextId(env.apiUrl, input.context)
 	const manager = serviceManagerFor(env.platform)
+	if (input.sub === 'health') {
+		const maxAge = input.maxAge === undefined ? undefined : Number(input.maxAge)
+		if (maxAge !== undefined && !(Number.isFinite(maxAge) && maxAge > 0)) {
+			throw new Error('--max-age needs a number of seconds above 0.')
+		}
+		const health = contextHealth(env.apiUrl, ecid, maxAge)
+		const autoUpdate = await autoUpdateStatus(env.clientVersion)
+		env.write(
+			env.json
+				? `${JSON.stringify(
+						{
+							...health,
+							ecid,
+							autoUpdate: {
+								enabled: autoUpdate.enabled,
+								latestVersion: autoUpdate.latestVersion,
+								lastCheckAt: autoUpdate.lastCheckAt,
+								lastError: autoUpdate.lastError,
+							},
+						},
+						null,
+						2,
+					)}\n`
+				: `${health.healthy ? 'Healthy' : 'Unhealthy'}: ${health.message}\n`,
+		)
+		return health.healthy ? 0 : 1
+	}
 	if (input.sub === 'status') {
 		const planned =
 			ecid && manager && !ephemeral(env)
@@ -646,11 +699,13 @@ export async function runDaemonServiceCommand(
 		const name = ecid ? readStoredContext(env.apiUrl, ecid)?.name : undefined
 		const autoUpdate = await autoUpdateStatus(env.clientVersion)
 		const runner = ecid ? runnerFor(env.apiUrl, ecid) : null
+		const health = runner ? contextHealth(env.apiUrl, ecid) : null
 		env.write(
 			env.json
 				? `${JSON.stringify(
 						{
 							...status,
+							health,
 							contextName: name ?? null,
 							contexts: storedContextIds(env.apiUrl).map((id) => ({
 								ecid: id,
@@ -662,9 +717,12 @@ export async function runDaemonServiceCommand(
 						null,
 						2,
 					)}\n`
-				: `${formatServiceStatus(status, name)}\n${runner ? `  Runner: ${describeHolder(runner)}\n` : ''}${formatAutoUpdateLine(autoUpdate)}\n`,
+				: `${formatServiceStatus(status, name)}\n${runner ? `  Runner: ${describeHolder(runner)}\n` : ''}${health ? `  Connection: ${health.healthy ? '' : 'unhealthy. '}${health.message}\n` : ''}${formatAutoUpdateLine(autoUpdate)}\n`,
 		)
-		return status.problems.length === 0 ? 0 : 1
+		// A daemon from before health reporting is not a problem by itself.
+		const lostKody =
+			health !== null && !health.healthy && health.reason !== 'no-health-data'
+		return status.problems.length === 0 && !lostKody ? 0 : 1
 	}
 	if (input.sub === 'stop' || input.sub === 'start') {
 		if (!ecid)

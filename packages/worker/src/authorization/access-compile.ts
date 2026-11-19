@@ -4,6 +4,10 @@
  * source of truth; access_cache is a derived write-through cache keyed by
  * access_epoch.
  */
+import {
+	chunkArray,
+	maxD1BoundParameters,
+} from '@kody-internal/shared/chunk.ts'
 import { permissionsForGrantPreset } from '@kody-internal/shared/grant-presets.ts'
 import {
 	isOrgPermission,
@@ -255,34 +259,48 @@ export const liveGrantRowSubjects = {
 	},
 } as const satisfies GrantSubjectChoices
 
+/** Live grant rows reaching `userId` in each of `orgIds`, keyed by org id. */
 async function loadLiveGrantRows(
 	db: D1Database,
-	orgId: string,
+	orgIds: ReadonlyArray<string>,
 	userId: string,
 	now: string,
-): Promise<Array<GrantRow>> {
+): Promise<Map<string, Array<GrantRow>>> {
+	const rowsByOrg = new Map<string, Array<GrantRow>>()
 	const subjectMatch = grantSubjectMatchSql({
 		subjects: liveGrantRowSubjects,
 		personId: userId,
-		boundOrgId: orgId,
 		now,
 	})
-	const result = await db
-		.prepare(
-			`SELECT g.resource_type AS resource_type,
-			        g.resource_id AS resource_id,
-			        gp.permission AS permission,
-			        g.expires_at AS expires_at,
-			        g.allow_unmappable_credential_changes AS allow_unmappable_credential_changes
-			 FROM grants g
-			 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
-			 WHERE g.org_id = ?
-			   AND g.deleted_at IS NULL
-			   AND ${subjectMatch.sql}`,
-		)
-		.bind(orgId, ...subjectMatch.binds)
-		.all<GrantRow>()
-	return result.results ?? []
+	const chunkSize = maxD1BoundParameters - subjectMatch.binds.length
+	for (const chunk of chunkArray(orgIds, chunkSize)) {
+		const result = await db
+			.prepare(
+				`SELECT g.org_id AS org_id,
+				        g.resource_type AS resource_type,
+				        g.resource_id AS resource_id,
+				        gp.permission AS permission,
+				        g.expires_at AS expires_at,
+				        g.allow_unmappable_credential_changes AS allow_unmappable_credential_changes
+				 FROM grants g
+				 INNER JOIN grant_permissions gp ON gp.grant_id = g.id
+				 WHERE g.org_id IN (${chunk.map(() => '?').join(', ')})
+				   AND g.deleted_at IS NULL
+				   AND ${subjectMatch.sql}`,
+			)
+			.bind(...chunk, ...subjectMatch.binds)
+			.all<GrantRow & { org_id: string }>()
+		for (const { org_id, ...row } of result.results ?? []) {
+			pushRow(rowsByOrg, org_id, row)
+		}
+	}
+	return rowsByOrg
+}
+
+function pushRow<Row>(map: Map<string, Array<Row>>, key: string, row: Row) {
+	const rows = map.get(key)
+	if (rows) rows.push(row)
+	else map.set(key, [row])
 }
 
 const allMembersContextPermissions = permissionsForGrantPreset(
@@ -300,21 +318,36 @@ const allMembersContextPermissions = permissionsForGrantPreset(
  */
 async function loadAllMembersContextGrantRows(
 	db: D1Database,
-	orgId: string,
-): Promise<Array<GrantRow>> {
-	let contextIds: Array<string>
+	orgIds: ReadonlyArray<string>,
+): Promise<Map<string, Array<GrantRow>>> {
+	const rowsByOrg = new Map<string, Array<GrantRow>>()
 	try {
-		const result = await db
-			.prepare(
-				`SELECT id AS context_id FROM execution_contexts
-				 WHERE org_id = ? AND all_members = 1
-				 UNION
-				 SELECT context_id FROM execution_context_org_attachments
-				 WHERE org_id = ? AND all_members = 1`,
-			)
-			.bind(orgId, orgId)
-			.all<{ context_id: string }>()
-		contextIds = (result.results ?? []).map((row) => row.context_id)
+		for (const chunk of chunkArray(
+			orgIds,
+			Math.floor(maxD1BoundParameters / 2),
+		)) {
+			const placeholders = chunk.map(() => '?').join(', ')
+			const result = await db
+				.prepare(
+					`SELECT org_id, id AS context_id FROM execution_contexts
+					 WHERE org_id IN (${placeholders}) AND all_members = 1
+					 UNION
+					 SELECT org_id, context_id FROM execution_context_org_attachments
+					 WHERE org_id IN (${placeholders}) AND all_members = 1`,
+				)
+				.bind(...chunk, ...chunk)
+				.all<{ org_id: string; context_id: string }>()
+			for (const row of result.results ?? []) {
+				for (const permission of allMembersContextPermissions) {
+					pushRow(rowsByOrg, row.org_id, {
+						resource_type: 'execution_context',
+						resource_id: row.context_id,
+						permission,
+						expires_at: null,
+					})
+				}
+			}
+		}
 	} catch (error) {
 		// Incomplete test DBs may lack the execution context tables (0189);
 		// production always has them.
@@ -322,18 +355,11 @@ async function loadAllMembersContextGrantRows(
 			error instanceof Error &&
 			/no such table:\s*execution_context/i.test(error.message)
 		) {
-			return []
+			return new Map()
 		}
 		throw error
 	}
-	return contextIds.flatMap((contextId) =>
-		allMembersContextPermissions.map((permission) => ({
-			resource_type: 'execution_context',
-			resource_id: contextId,
-			permission,
-			expires_at: null,
-		})),
-	)
+	return rowsByOrg
 }
 
 function dbCanPrepare(db: D1Database) {
@@ -345,32 +371,39 @@ type OrgAccessRow = {
 	memberCreation: OrgMemberCreation
 }
 
-async function readOrgEpoch(
+/** Epoch and member-creation settings for each live org in `orgIds`. */
+async function readOrgEpochs(
 	db: D1Database,
-	orgId: string,
-): Promise<OrgAccessRow | null> {
+	orgIds: ReadonlyArray<string>,
+): Promise<Map<string, OrgAccessRow>> {
 	if (!dbCanPrepare(db)) {
 		throw new Error(
-			`APP_DB cannot prepare statements while compiling access for org ${orgId}.`,
+			`APP_DB cannot prepare statements while compiling access for org ${orgIds.join(', ')}.`,
 		)
 	}
+	const rows = new Map<string, OrgAccessRow>()
 	try {
-		const row = await db
-			.prepare(
-				`SELECT access_epoch, members_can_create_packages,
-				        members_can_create_credentials
-				 FROM orgs WHERE id = ?${andLiveDeletedAtSql()}`,
-			)
-			.bind(orgId)
-			.first<{
-				access_epoch: number
-				members_can_create_packages: number | null
-				members_can_create_credentials: number | null
-			}>()
-		if (!row) return null
-		return {
-			epoch: Number(row.access_epoch) || 0,
-			memberCreation: memberCreationFromRow(row),
+		for (const chunk of chunkArray(orgIds, maxD1BoundParameters)) {
+			const result = await db
+				.prepare(
+					`SELECT id, access_epoch, members_can_create_packages,
+					        members_can_create_credentials
+					 FROM orgs
+					 WHERE id IN (${chunk.map(() => '?').join(', ')})${andLiveDeletedAtSql()}`,
+				)
+				.bind(...chunk)
+				.all<{
+					id: string
+					access_epoch: number
+					members_can_create_packages: number | null
+					members_can_create_credentials: number | null
+				}>()
+			for (const row of result.results ?? []) {
+				rows.set(row.id, {
+					epoch: Number(row.access_epoch) || 0,
+					memberCreation: memberCreationFromRow(row),
+				})
+			}
 		}
 	} catch (error) {
 		// Incomplete test DBs may lack the orgs table; production always has it
@@ -379,64 +412,84 @@ async function readOrgEpoch(
 			error instanceof Error &&
 			/no such table:\s*orgs/i.test(error.message)
 		) {
-			return null
+			return rows
 		}
 		throw error
 	}
+	return rows
 }
 
-async function readAccessCache(
+/** Fresh access_cache rows for `userId` at each org's current epoch. */
+async function readAccessCaches(
 	db: D1Database,
-	orgId: string,
 	userId: string,
-	epoch: number,
+	epochs: ReadonlyMap<string, number>,
 	now: string,
-): Promise<CompiledAccess | null> {
-	const row = await db
-		.prepare(
-			`SELECT epoch, compiled_json, valid_until
-			 FROM access_cache
-			 WHERE org_id = ? AND user_id = ?`,
-		)
-		.bind(orgId, userId)
-		.first<AccessCacheRow>()
-	if (!row || Number(row.epoch) !== epoch) return null
-	const validUntil = row.valid_until ?? null
-	if (compiledAccessExpired({ validUntil }, now)) return null
-	const parsed = parseCompiledJson(row.compiled_json)
-	if (!parsed) return null
-	return {
-		orgId: orgId as OwnerId,
-		epoch,
-		...parsed,
-		validUntil,
+): Promise<Map<string, CompiledAccess>> {
+	const cached = new Map<string, CompiledAccess>()
+	for (const chunk of chunkArray(
+		[...epochs.keys()],
+		maxD1BoundParameters - 1,
+	)) {
+		const result = await db
+			.prepare(
+				`SELECT org_id, epoch, compiled_json, valid_until
+				 FROM access_cache
+				 WHERE user_id = ? AND org_id IN (${chunk.map(() => '?').join(', ')})`,
+			)
+			.bind(userId, ...chunk)
+			.all<AccessCacheRow & { org_id: string }>()
+		for (const row of result.results ?? []) {
+			const epoch = epochs.get(row.org_id)
+			if (epoch === undefined || Number(row.epoch) !== epoch) continue
+			const validUntil = row.valid_until ?? null
+			if (compiledAccessExpired({ validUntil }, now)) continue
+			const parsed = parseCompiledJson(row.compiled_json)
+			if (!parsed) continue
+			cached.set(row.org_id, {
+				orgId: row.org_id as OwnerId,
+				epoch,
+				...parsed,
+				validUntil,
+			})
+		}
 	}
+	return cached
 }
 
-async function writeAccessCache(
+async function writeAccessCaches(
 	db: D1Database,
-	compiled: CompiledAccess,
+	compiled: ReadonlyArray<CompiledAccess>,
 	userId: string,
 ) {
-	await db
-		.prepare(
-			`INSERT INTO access_cache (org_id, user_id, epoch, compiled_json, computed_at, valid_until)
-			 VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT(org_id, user_id) DO UPDATE SET
-			   epoch = excluded.epoch,
-			   compiled_json = excluded.compiled_json,
-			   computed_at = excluded.computed_at,
-			   valid_until = excluded.valid_until`,
-		)
-		.bind(
-			compiled.orgId,
-			userId,
-			compiled.epoch,
-			serializeCompiled(compiled),
-			new Date().toISOString(),
-			compiled.validUntil,
-		)
-		.run()
+	const computedAt = new Date().toISOString()
+	const columnsPerRow = 6
+	for (const chunk of chunkArray(
+		compiled,
+		Math.floor(maxD1BoundParameters / columnsPerRow),
+	)) {
+		await db
+			.prepare(
+				`INSERT INTO access_cache (org_id, user_id, epoch, compiled_json, computed_at, valid_until)
+				 VALUES ${chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ')}
+				 ON CONFLICT(org_id, user_id) DO UPDATE SET
+				   epoch = excluded.epoch,
+				   compiled_json = excluded.compiled_json,
+				   computed_at = excluded.computed_at,
+				   valid_until = excluded.valid_until`,
+			)
+			.bind(
+				...chunk.flatMap((entry) => [
+					entry.orgId,
+					userId,
+					entry.epoch,
+					serializeCompiled(entry),
+					computedAt,
+					entry.validUntil,
+				]),
+			)
+			.run()
+	}
 }
 
 function compileFromRoleAndGrants(input: {
@@ -550,13 +603,61 @@ export async function compileAccessForRequest(input: {
 	db: D1Database
 	request: RequestContext
 }): Promise<CompiledAccess> {
-	const { request } = input
-	if (!request.actor) return noCompiledAccess(request.org.id)
-	return await compileAccessForActor({
+	const [compiled] = await compileAccessForRequests({
 		db: input.db,
-		orgId: request.org.id,
-		userId: request.actor.userId,
-		role: request.membership?.role ?? null,
+		requests: [input.request],
+	})
+	if (!compiled) throw new Error(`No compile for org ${input.request.org.id}.`)
+	return compiled
+}
+
+/**
+ * {@link compileAccessForRequest} for many requests, in input order, with
+ * one set of reads per actor (see {@link compileAccessForActorInOrgs}). A page
+ * that checks one person in each of their orgs calls this first, so the
+ * per-org `computeEffectivePermissions` calls after it reuse the memo.
+ */
+export async function compileAccessForRequests(input: {
+	db: D1Database
+	requests: ReadonlyArray<RequestContext>
+}): Promise<Array<CompiledAccess>> {
+	const results: Array<CompiledAccess | undefined> = input.requests.map(
+		(request) => (request.actor ? undefined : noCompiledAccess(request.org.id)),
+	)
+	const byActor = new Map<
+		string,
+		Array<{ index: number; orgId: OwnerId; role: OrgRole | null }>
+	>()
+	input.requests.forEach((request, index) => {
+		if (!request.actor) return
+		const entry = {
+			index,
+			orgId: request.org.id,
+			role: request.membership?.role ?? null,
+		}
+		const entries = byActor.get(request.actor.userId)
+		if (entries) entries.push(entry)
+		else byActor.set(request.actor.userId, [entry])
+	})
+	await Promise.all(
+		[...byActor].map(async ([userId, entries]) => {
+			const compiled = await compileAccessForActorInOrgs({
+				db: input.db,
+				userId,
+				orgs: entries,
+			})
+			entries.forEach((entry, position) => {
+				results[entry.index] = compiled[position]
+			})
+		}),
+	)
+	return results.map((compiled, index) => {
+		if (!compiled) {
+			throw new Error(
+				`No compile for org ${input.requests[index]?.org.id ?? 'unknown'}.`,
+			)
+		}
+		return compiled
 	})
 }
 
@@ -572,55 +673,113 @@ export async function compileAccessForActor(input: {
 	userId: string
 	role: OrgRole | null
 }): Promise<CompiledAccess> {
-	const { orgId, userId, role } = input
-	if (role === 'owner') return ownerCompiledAccess(orgId, 0)
-	if (role === 'admin') return adminCompiledAccess(orgId, 0)
+	const [compiled] = await compileAccessForActorInOrgs({
+		db: input.db,
+		userId: input.userId,
+		orgs: [{ orgId: input.orgId, role: input.role }],
+	})
+	if (!compiled) throw new Error(`No compile for org ${input.orgId}.`)
+	return compiled
+}
 
+/**
+ * {@link compileAccessForActor} for one person in many orgs, in input order.
+ * The orgs that need a compile share one set of reads instead of paying
+ * them per org, and every result joins the per-request memo, so a later
+ * `computeEffectivePermissions` in one of these orgs reads nothing.
+ */
+export async function compileAccessForActorInOrgs(input: {
+	db: D1Database
+	userId: string
+	orgs: ReadonlyArray<{ orgId: OwnerId; role: OrgRole | null }>
+}): Promise<Array<CompiledAccess>> {
+	const { db, userId } = input
+	let queued: Array<{ orgId: OwnerId; role: OrgRole | null }> = []
+	let batch: Promise<Map<string, CompiledAccess | Error>> | null = null
+	const load = async (org: { orgId: OwnerId; role: OrgRole | null }) => {
+		queued.push(org)
+		// Every memo miss in this call queues before the microtask runs, so
+		// they compile together. A reload after a stale value starts a new one.
+		batch ??= Promise.resolve().then(() => {
+			const orgs = queued
+			queued = []
+			batch = null
+			return compileUncached(db, userId, orgs)
+		})
+		const result = (await batch).get(org.orgId)
+		if (!result) throw new Error(`No compile for org ${org.orgId}.`)
+		if (result instanceof Error) throw result
+		return result
+	}
 	// One HTTP request can derive many request contexts for the same person
 	// (a page checking several package permissions), so share the compile
 	// across the request. Every new request still reads access_epoch, and a
 	// long run recompiles once a grant it used expires.
-	return await memoizePerRequest({
-		key: `compiled-access:${orgId}:${userId}:${role ?? 'none'}`,
-		load: () => compileUncached(input.db, orgId, userId, role),
-		isFresh: (compiled) => !compiledAccessExpired(compiled),
-	})
+	return await Promise.all(
+		input.orgs.map(async (org) => {
+			if (org.role === 'owner') return ownerCompiledAccess(org.orgId, 0)
+			if (org.role === 'admin') return adminCompiledAccess(org.orgId, 0)
+			return await memoizePerRequest({
+				key: `compiled-access:${org.orgId}:${userId}:${org.role ?? 'none'}`,
+				load: () => load(org),
+				isFresh: (compiled) => !compiledAccessExpired(compiled),
+			})
+		}),
+	)
 }
 
+/** Compile each org for `userId`, or the error that org's compile hit. */
 async function compileUncached(
 	db: D1Database,
-	orgId: OwnerId,
 	userId: string,
-	role: OrgRole | null,
-): Promise<CompiledAccess> {
-	const orgRow = await readOrgEpoch(db, orgId)
-	if (orgRow === null) {
-		throw new Error(`Org ${orgId} was not found while compiling access.`)
+	orgs: ReadonlyArray<{ orgId: OwnerId; role: OrgRole | null }>,
+): Promise<Map<string, CompiledAccess | Error>> {
+	const roles = new Map(orgs.map((org) => [org.orgId, org.role]))
+	const orgIds = [...roles.keys()]
+	const results = new Map<string, CompiledAccess | Error>()
+	const orgRows = await readOrgEpochs(db, orgIds)
+	for (const orgId of orgIds) {
+		if (!orgRows.has(orgId)) {
+			results.set(
+				orgId,
+				new Error(`Org ${orgId} was not found while compiling access.`),
+			)
+		}
 	}
-	const { epoch, memberCreation } = orgRow
+	const epochs = new Map([...orgRows].map(([orgId, row]) => [orgId, row.epoch]))
+	if (epochs.size === 0) return results
 	const now = new Date().toISOString()
-
-	const cached = await readAccessCache(db, orgId, userId, epoch, now)
-	if (cached) return cached
+	const cached = await readAccessCaches(db, userId, epochs, now)
+	for (const [orgId, compiled] of cached) results.set(orgId, compiled)
+	const misses = [...epochs.keys()].filter((orgId) => !cached.has(orgId))
+	if (misses.length === 0) return results
 
 	const [liveGrantRows, allMembersRows] = await Promise.all([
-		loadLiveGrantRows(db, orgId, userId, now),
-		role ? loadAllMembersContextGrantRows(db, orgId) : [],
+		loadLiveGrantRows(db, misses, userId, now),
+		loadAllMembersContextGrantRows(
+			db,
+			misses.filter((orgId) => roles.get(orgId as OwnerId)),
+		),
 	])
-	const grantRows = [...liveGrantRows, ...allMembersRows]
-	const compiled = compileFromRoleAndGrants({
-		orgId,
-		epoch,
-		role,
-		grantRows,
-		memberCreation,
-	})
+	const compiled = misses.map((orgId) =>
+		compileFromRoleAndGrants({
+			orgId: orgId as OwnerId,
+			epoch: epochs.get(orgId) ?? 0,
+			role: roles.get(orgId as OwnerId) ?? null,
+			grantRows: [
+				...(liveGrantRows.get(orgId) ?? []),
+				...(allMembersRows.get(orgId) ?? []),
+			],
+			memberCreation: orgRows.get(orgId)?.memberCreation,
+		}),
+	)
+	for (const entry of compiled) results.set(entry.orgId, entry)
 	try {
-		await writeAccessCache(db, compiled, userId)
+		await writeAccessCaches(db, compiled, userId)
 	} catch {
 		// Cache is derived; a write failure must not block the request.
 	}
-	return compiled
+	return results
 }
 
 /**

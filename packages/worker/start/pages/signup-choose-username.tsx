@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
@@ -19,11 +20,7 @@ import { handlePermanenceConfirmMessage } from '@kody-internal/shared/handle-per
 import { completeOauthPendingSignup } from '#start/server/auth-mutations'
 import type { CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
-import {
-	getPillButtonCss,
-	getSwapLabelCss,
-	hoverMq,
-} from '#universal/styles/style-primitives.ts'
+import { getSwapLabelCss, hoverMq } from '#universal/styles/style-primitives.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import { normalizeRedirectTo } from '#universal/safe-redirect.ts'
 import { SiteLink } from '../components/site-link.tsx'
@@ -267,9 +264,11 @@ export function SignupChooseUsernamePage(props: {
 							</p>
 						) : null}
 
-						<button
+						<Button
 							type="submit"
 							disabled={!hydrated || isSubmitting || !canSubmit}
+							variant="primary"
+							size="lg"
 							css={authSubmitCss}
 						>
 							<span
@@ -286,7 +285,7 @@ export function SignupChooseUsernamePage(props: {
 							>
 								Creating account…
 							</span>
-						</button>
+						</Button>
 					</form>
 
 					<footer
@@ -365,7 +364,6 @@ const formCss: CSSObject = {
 }
 
 const authSubmitCss = [
-	getPillButtonCss(),
 	getSwapLabelCss(),
 	{
 		marginTop: '0.3rem',

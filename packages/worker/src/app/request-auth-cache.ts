@@ -14,6 +14,7 @@
 import * as Sentry from '@sentry/cloudflare'
 import {
 	destroyAuthCookie,
+	getAuthSessionExpiresAtMs,
 	isAuthSessionExpired,
 	isSecureRequest,
 	readParsedAuthSession,
@@ -77,6 +78,8 @@ export type ResolvedRequestAuth = {
 	sessionUserId: string | null
 	setCookie?: string | undefined
 	user: ResolvedAuthUser | null
+	/** Absolute expiry (ms) of the accepted `kody_session`; set with `user`. */
+	sessionExpiresAt?: number
 }
 
 const requestAuthStore = new WeakMap<Request, Promise<ResolvedRequestAuth>>()
@@ -217,6 +220,10 @@ async function resolveRequestAuth(
 	return {
 		sessionUserId: session.stableUserId,
 		setCookie: setCookie ?? undefined,
+		sessionExpiresAt: getAuthSessionExpiresAtMs({
+			rememberMe: session.rememberMe,
+			issuedAt,
+		}),
 		user: {
 			userId: userRecord.id,
 			email: userRecord.email,

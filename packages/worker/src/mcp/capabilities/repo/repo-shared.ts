@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { repoCheckKinds } from '#worker/repo/checks.ts'
 import { credentialNeedChangeSchema } from '#mcp/capabilities/packages/shared.ts'
+import { heldForApprovalSchema } from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import {
 	packageIdLookupDescription,
 	packageKodyIdRequiredInput,
@@ -653,6 +654,7 @@ export const repoPublishSessionOutputSchema = z.discriminatedUnion('status', [
 		message: z.string(),
 		package_shaped: z.boolean().optional(),
 		notice: z.string().nullable().optional(),
+		held_for_approval: heldForApprovalSchema,
 	}),
 	z.object({
 		status: z.literal('checks_outdated'),

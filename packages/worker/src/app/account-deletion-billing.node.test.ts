@@ -150,7 +150,11 @@ test('account deletion cancels Stripe billing before cleanup and keeps customer 
 					{
 						id: undefined,
 						quantity: undefined,
-						price: { id: 'price_gratitext_premium_15' },
+						price: {
+							id: 'price_gratitext_premium_15',
+							unit_amount: undefined,
+							recurring: undefined,
+						},
 						current_period_end: undefined,
 					},
 				],

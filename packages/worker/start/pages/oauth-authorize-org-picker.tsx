@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { Field } from '../components/field.tsx'
 import {
 	oauthAuthorizeOrgField,
 	type OAuthAuthorizeConsentOrg,
@@ -7,10 +9,9 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	inputCss,
-	getAlertCardCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Select } from '../components/input.tsx'
 
 export function AuthorizeOrgField(props: {
 	orgs: readonly OAuthAuthorizeConsentOrg[]
@@ -46,18 +47,16 @@ export function AuthorizeOrgField(props: {
 					value={field.slug}
 					data-testid="oauth-authorize-org"
 				/>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Organization</span>
-					<select
-						css={inputCss}
+				<Field label="Organization">
+					<Select
 						value={field.slug}
 						disabled
 						aria-disabled="true"
 						data-testid="oauth-authorize-org-disabled"
 					>
 						<option value={field.slug}>{label}</option>
-					</select>
-				</label>
+					</Select>
+				</Field>
 				<p
 					css={{
 						...descriptionCss,
@@ -73,24 +72,23 @@ export function AuthorizeOrgField(props: {
 	}
 	if (field.kind === 'missing')
 		return (
-			<p
+			<Alert
 				role="alert"
 				data-testid="oauth-authorize-org-missing"
-				css={getAlertCardCss('error')}
+				tone="error"
 			>
 				This account has no organization to bind this connection to.
-			</p>
+			</Alert>
 		)
 	if (field.kind === 'pending') return null
 	return (
 		<div css={fieldCss} data-testid="oauth-authorize-org-picker">
 			<label css={labelBlockCss}>
 				<span css={fieldLabelCss}>Organization</span>
-				<select
+				<Select
 					name="org"
 					required
 					data-testid="oauth-authorize-org"
-					css={inputCss}
 					value={field.selectedSlug ?? ''}
 					onChange={(event) =>
 						props.onChange(event.currentTarget.value.trim() || null)
@@ -108,7 +106,7 @@ export function AuthorizeOrgField(props: {
 								: `@${org.slug}`}
 						</option>
 					))}
-				</select>
+				</Select>
 			</label>
 			<p css={hintCss}>
 				The agent runs as this workspace. Local compute is separate from which

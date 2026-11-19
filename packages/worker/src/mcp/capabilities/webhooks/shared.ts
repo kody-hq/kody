@@ -1,5 +1,9 @@
 import { z } from 'zod'
 import {
+	webhookDeliveryStateValues,
+	type WebhookDeliveryState,
+} from '#worker/webhooks/types.ts'
+import {
 	packageIdLookupDescription,
 	packageKodyIdOptionalCamelInput,
 } from '#worker/package-registry/package-name.ts'
@@ -151,7 +155,21 @@ export const webhookDeliverySchema = z.object({
 	package_id: z.string(),
 	webhook_name: z.string(),
 	received_at: z.string(),
-	outcome: z.enum(['delivered', 'rejected', 'failed']),
+	outcome: z
+		.enum(['delivered', 'rejected', 'failed', 'pending'])
+		.describe(
+			'Terminal result; `pending` while an ack delivery is accepted, queued, or started.',
+		),
+	state: z
+		.enum(webhookDeliveryStateValues)
+		.describe(
+			'Delivery lifecycle: accepted (row written before the 202), queued, started (a consumer attempt is running), then succeeded, failed, or rejected.',
+		),
+	attempts: z
+		.number()
+		.int()
+		.nullable()
+		.describe('Queue delivery attempts so far (ack mode); null for sync.'),
 	http_status: z.number().int(),
 	error: z.string().nullable(),
 	payload_bytes: z.number().int(),
@@ -265,7 +283,9 @@ export function toDeliveryCapability(delivery: {
 	packageId: string
 	webhookName: string
 	receivedAt: string
-	outcome: 'delivered' | 'rejected' | 'failed'
+	outcome: 'delivered' | 'rejected' | 'failed' | 'pending'
+	state: WebhookDeliveryState
+	attempts: number | null
 	httpStatus: number
 	error: string | null
 	payloadBytes: number
@@ -276,6 +296,8 @@ export function toDeliveryCapability(delivery: {
 		webhook_name: delivery.webhookName,
 		received_at: delivery.receivedAt,
 		outcome: delivery.outcome,
+		state: delivery.state,
+		attempts: delivery.attempts,
 		http_status: delivery.httpStatus,
 		error: delivery.error,
 		payload_bytes: delivery.payloadBytes,

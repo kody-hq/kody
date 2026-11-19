@@ -6,7 +6,7 @@
  */
 
 import { createHash } from 'node:crypto'
-import type { Server } from 'node:http'
+import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { StructuredCliError } from '../structured-error.js'
 
@@ -59,6 +59,21 @@ export async function listenDevServer(
 		message: `Ports ${input.port}–${wrapPort(input.port + attempts - 1)} on ${input.host} are all in use.`,
 		fix: 'Stop old `kody dev` processes, or pass --port 0 for any free port.',
 	})
+}
+
+/**
+ * The port `listenDevServer` would bind, found by binding and releasing it.
+ * For callers that must know the port before the dev server starts.
+ */
+export async function reserveDevPort(input: {
+	host: string
+	port: number
+	explicit: boolean
+}): Promise<number> {
+	const probe = createServer()
+	const port = await listenDevServer(probe, input)
+	await new Promise<void>((resolve) => probe.close(() => resolve()))
+	return port
 }
 
 function portInUseError(host: string, port: number): StructuredCliError {

@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	disconnectAccountProvider,
 	syncDiscordMemberRole as syncDiscordRole,
@@ -7,11 +9,6 @@ import type { loadAccountPage } from '#start/server/account-page'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountConnectionsLoaderData } from '#universal/loader-data.ts'
 import { getOauthLoginErrorMessage } from '#universal/oauth-login-errors.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	mutedLinkCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
 	useIsMutating,
@@ -21,7 +18,6 @@ import {
 import { useRouteContext } from '@tanstack/react-router'
 import { useState } from 'react'
 import { ProviderIcon } from '../components/provider-icons.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	settleAccountMutation,
@@ -302,14 +298,14 @@ export function useAccountConnections(
 												: 'Connected'}
 										</span>
 										{connection.provider === 'discord' ? (
-											<SiteLink
+											<TextLink
+												tone="muted"
 												href={kodyDiscordInviteUrl}
 												target="_blank"
 												rel="noreferrer"
-												css={mutedLinkCss}
 											>
 												Join the Kody Discord
-											</SiteLink>
+											</TextLink>
 										) : null}
 									</span>
 									<span
@@ -321,16 +317,16 @@ export function useAccountConnections(
 									>
 										{connection.provider === 'discord' &&
 										canSyncDiscordRoles ? (
-											<button
+											<Button
 												type="button"
 												disabled={connectionsBusy}
-												css={compactGhostButtonCss}
+												variant="secondary"
 												onClick={onSyncDiscordMemberRole}
 											>
 												Sync Discord roles
-											</button>
+											</Button>
 										) : null}
-										<button
+										<Button
 											type="button"
 											disabled={connectionsBusy || !canDisconnect}
 											title={
@@ -338,11 +334,11 @@ export function useAccountConnections(
 													? undefined
 													: 'This connection is your only way to sign in. Set a password or register a passkey first.'
 											}
-											css={dangerButtonCss}
+											variant="danger"
 											onClick={() => onDisconnectProvider(connection.provider)}
 										>
 											Disconnect
-										</button>
+										</Button>
 									</span>
 								</li>
 							))}
@@ -361,16 +357,16 @@ export function useAccountConnections(
 							}}
 						>
 							{availableProviders.map((provider) => (
-								<button
+								<Button
 									key={provider.id}
 									type="button"
 									disabled={connectionsBusy}
-									css={compactGhostButtonCss}
+									variant="secondary"
 									onClick={() => onConnectProvider(provider.id)}
 								>
 									<ProviderIcon providerId={provider.id} />
 									Connect {provider.label}
-								</button>
+								</Button>
 							))}
 						</div>
 					) : null}
@@ -379,7 +375,3 @@ export function useAccountConnections(
 		)
 	}
 }
-
-const compactGhostButtonCss = getGhostButtonCss({ size: 'sm' })
-
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })

@@ -1,4 +1,8 @@
-import { toServingSourceView } from '#worker/repo/serving-commit.ts'
+import {
+	toPinnedSourceView,
+	toServingSourceView,
+	toUnheldSourceView,
+} from '#worker/repo/serving-commit.ts'
 import { runD1WithRetry } from '#worker/d1-retry.ts'
 import {
 	getEntitySourceById,
@@ -303,14 +307,20 @@ export async function loadPackageSourceBySourceId(input: {
 /**
  * {@link loadPackageSourceBySourceId} at the serving commit: what runtime
  * readers (apps, modules, `kody:@` imports) run while a publish still builds.
+ * `commit` pins an earlier published commit instead.
  */
 export async function loadServingPackageSourceBySourceId(input: {
 	env: Env
 	baseUrl: string
 	userId: string
 	sourceId: string
+	commit?: string | null
 }): Promise<LoadedPackageSource> {
-	return await loadPackageSourceForView(input, toServingSourceView)
+	const { commit } = input
+	return await loadPackageSourceForView(
+		input,
+		commit ? (row) => toPinnedSourceView(row, commit) : toServingSourceView,
+	)
 }
 
 async function loadPackageSourceForView(
@@ -356,11 +366,18 @@ async function loadPackageSourceForView(
 	})
 }
 
+/**
+ * The manifest an app's definitions follow: the published commit, or the
+ * serving commit while the published one is held for approval
+ * (`toUnheldSourceView`). `commit` pins one published commit instead, for
+ * code that inspects that exact commit (such as its capability approval).
+ */
 export async function loadPackageManifestBySourceId(input: {
 	env: Env
 	baseUrl: string
 	userId: string
 	sourceId: string
+	commit?: string | null
 }): Promise<LoadedPackageManifest> {
 	if (!canResolveRepoBackedPackageSource(input.env)) {
 		throw new Error('Saved package source bindings are not available.')
@@ -370,10 +387,13 @@ export async function loadPackageManifestBySourceId(input: {
 		userId: input.userId,
 		sourceId: input.sourceId,
 	})
+	const { commit } = input
 	return await loadPackageManifestForSource({
 		env: input.env,
 		userId: input.userId,
-		source,
+		source: commit
+			? toPinnedSourceView(source, commit)
+			: toUnheldSourceView(source),
 	})
 }
 
@@ -430,10 +450,6 @@ export async function loadPackageManifestForSource(input: {
 				content: published.content,
 			}),
 		}) as LoadedPackageManifest
-	}
-	const cachedManifest = packageManifestCache.get(cacheKey)
-	if (cachedManifest) {
-		return await cachedManifest
 	}
 	return await packageManifestCache.getOrCreate({
 		cacheKey,

@@ -1,5 +1,5 @@
 import {
-	backupFullManifestSchemaVersion,
+	backupFullManifestLegacySchemaVersion,
 	backupFullManifestSignatureAlgorithm,
 	canonicalBackupFullManifestPayload,
 	parseBackupFullManifest,
@@ -11,6 +11,8 @@ import {
 	sealedFullManifestKey,
 	sealedFullPrefix,
 	stagingMailboxDumpKey,
+	stagingMailboxDumpPartKey,
+	stagingPrefix,
 	type MailboxIndex,
 	type OwnerIndexEntry,
 } from '@kody-internal/shared/backup-staging.ts'
@@ -61,8 +63,8 @@ async function verifyFullManifestSignature(
 	configuration: ReturnType<typeof readSignatureConfiguration>,
 ): Promise<boolean> {
 	if (
-		manifest.schemaVersion !== backupFullManifestSchemaVersion ||
-		manifest.payload.schemaVersion !== backupFullManifestSchemaVersion ||
+		manifest.schemaVersion === backupFullManifestLegacySchemaVersion ||
+		manifest.payload.schemaVersion !== manifest.schemaVersion ||
 		manifest.payload.signing.keyId !== configuration.keyId ||
 		manifest.signature.keyId !== configuration.keyId ||
 		manifest.payload.signing.algorithm !==
@@ -141,6 +143,7 @@ function parseMailboxIndex(value: unknown, day: string): MailboxIndex {
 		throw failure('sealed mailbox index has an invalid versioned shape')
 	}
 	const ownerIds = new Set<string>()
+	let previous: { ownerId: string; part: unknown } | null = null
 	for (const entry of value.entries) {
 		if (
 			!isRecord(entry) ||
@@ -148,24 +151,67 @@ function parseMailboxIndex(value: unknown, day: string): MailboxIndex {
 			entry.ownerId.length === 0 ||
 			entry.ownerId !== entry.ownerId.trim() ||
 			typeof entry.objectKey !== 'string' ||
-			entry.objectKey !== stagingMailboxDumpKey(day, entry.ownerId) ||
 			!Number.isSafeInteger(entry.entryCount) ||
 			Number(entry.entryCount) < 0 ||
 			!Number.isSafeInteger(entry.bytes) ||
 			Number(entry.bytes) < 0 ||
 			typeof entry.sha256 !== 'string' ||
 			!sha256Pattern.test(entry.sha256) ||
-			ownerIds.has(entry.ownerId)
+			!isExpectedDumpEntry({
+				day,
+				ownerId: entry.ownerId,
+				objectKey: entry.objectKey,
+				sha256: entry.sha256,
+				part: entry.part,
+				previous,
+				ownerIds,
+			})
 		) {
 			throw failure('sealed mailbox index contains an invalid owner entry')
 		}
 		ownerIds.add(entry.ownerId)
+		previous = { ownerId: entry.ownerId, part: entry.part }
 	}
 	return value as MailboxIndex
 }
 
-function sealedDumpKey(day: string, ownerId: string): string {
-	return `${sealedFullPrefix(day)}mailbox/${encodeURIComponent(ownerId)}.ndjson`
+/**
+ * An unsplit dump is one entry without `part`. A split dump lists parts
+ * 0..n-1 consecutively, each keyed by its content hash.
+ */
+function isExpectedDumpEntry(input: {
+	day: string
+	ownerId: string
+	objectKey: string
+	sha256: string
+	part: unknown
+	previous: { ownerId: string; part: unknown } | null
+	ownerIds: Set<string>
+}): boolean {
+	if (input.part === undefined) {
+		return (
+			!input.ownerIds.has(input.ownerId) &&
+			input.objectKey === stagingMailboxDumpKey(input.day, input.ownerId)
+		)
+	}
+	if (
+		input.objectKey !==
+		stagingMailboxDumpPartKey(input.day, input.ownerId, input.sha256)
+	) {
+		return false
+	}
+	const previous = input.previous
+	if (
+		previous?.ownerId === input.ownerId &&
+		typeof previous.part === 'number'
+	) {
+		return input.part === previous.part + 1
+	}
+	return input.part === 0 && !input.ownerIds.has(input.ownerId)
+}
+
+function sealedDumpKey(day: string, stagingKey: string): string {
+	return `${sealedFullPrefix(day)}${stagingKey.slice(stagingPrefix(day).length)}`
 }
 
 export async function loadVerifiedMailboxIndex(input: {
@@ -188,7 +234,7 @@ export async function loadVerifiedMailboxIndex(input: {
 		throw failure(`sealed full manifest is invalid: ${getErrorMessage(error)}`)
 	}
 	if (
-		manifest.schemaVersion !== backupFullManifestSchemaVersion ||
+		manifest.schemaVersion === backupFullManifestLegacySchemaVersion ||
 		manifest.payload.day !== input.day
 	) {
 		throw failure('sealed full manifest does not cover the requested day')
@@ -236,22 +282,27 @@ export async function loadVerifiedMailboxIndex(input: {
 export async function loadVerifiedMailboxDumpText(input: {
 	s3: DrBackupS3Client
 	day: string
-	entry: OwnerIndexEntry
+	ownerId: string
+	/** The owner's index entries: one unsplit dump or parts 0..n-1. */
+	parts: Array<OwnerIndexEntry>
 }): Promise<string> {
-	if (
-		input.entry.objectKey !==
-		stagingMailboxDumpKey(input.day, input.entry.ownerId)
-	) {
-		throw failure(
-			`mailbox dump key does not match owner ${input.entry.ownerId}`,
+	let text = ''
+	for (const entry of input.parts) {
+		const expectedKey =
+			entry.part === undefined
+				? stagingMailboxDumpKey(input.day, input.ownerId)
+				: stagingMailboxDumpPartKey(input.day, input.ownerId, entry.sha256)
+		if (entry.ownerId !== input.ownerId || entry.objectKey !== expectedKey) {
+			throw failure(`mailbox dump key does not match owner ${input.ownerId}`)
+		}
+		const key = sealedDumpKey(input.day, entry.objectKey)
+		const bytes = await getRequiredBytes(input.s3, key, 'sealed mailbox dump')
+		await verifyFileBytes(
+			bytes,
+			entry,
+			`sealed mailbox dump for ${input.ownerId}`,
 		)
+		text += decodeUtf8(bytes, `sealed mailbox dump for ${input.ownerId}`)
 	}
-	const key = sealedDumpKey(input.day, input.entry.ownerId)
-	const bytes = await getRequiredBytes(input.s3, key, 'sealed mailbox dump')
-	await verifyFileBytes(
-		bytes,
-		input.entry,
-		`sealed mailbox dump for ${input.entry.ownerId}`,
-	)
-	return decodeUtf8(bytes, `sealed mailbox dump for ${input.entry.ownerId}`)
+	return text
 }

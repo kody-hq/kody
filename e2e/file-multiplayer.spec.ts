@@ -59,7 +59,12 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 		let connected = true
 		let connection: WebSocketRoute | undefined
 		let serverConnection: WebSocketRoute | undefined
-		await collaborator.routeWebSocket('**/file-session/**', (socket) => {
+		let connectLive!: () => void
+		const liveConnection = new Promise<void>((resolve) => {
+			connectLive = resolve
+		})
+		await collaborator.routeWebSocket('**/file-session/**', async (socket) => {
+			await liveConnection
 			if (!connected) {
 				void socket.close({ code: 4001 })
 				return
@@ -74,6 +79,9 @@ test('collaborators jump to a live caret and merge edits after a disconnect', as
 			.click()
 		const guestEditor = collaborator.getByLabel('Page content', { exact: true })
 		await expect(guestEditor).toContainText('Shared paragraph')
+		await expect(guestEditor).toHaveAttribute('contenteditable', 'false')
+		connectLive()
+		await expect(guestEditor).toHaveAttribute('contenteditable', 'true')
 		await guestEditor.getByText('Shared paragraph', { exact: true }).click()
 		await guestEditor.press('End')
 		await guestEditor.pressSequentially(' together')

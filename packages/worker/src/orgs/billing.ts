@@ -92,6 +92,88 @@ export async function countLiveSeats(
 	return row?.count ?? 0
 }
 
+/**
+ * Admin seat comp (`orgs.comped_seats`). A manual paid plan grant with a
+ * whole-number cap covers that many live seats; NULL covers every seat. The
+ * cap binds only while the org has no paid Stripe plan, because a paid
+ * subscription bills every live seat through seat sync.
+ */
+export class CompedSeatLimitError extends Error {
+	override name = 'CompedSeatLimitError'
+
+	constructor(compedSeats: number) {
+		super(compedSeatLimitMessage(compedSeats))
+	}
+}
+
+export function compedSeatLimitMessage(compedSeats: number): string {
+	const seats =
+		compedSeats === 1
+			? '1 complimentary seat'
+			: `${compedSeats} complimentary seats`
+	return `This organization has used all ${seats}. An Owner or Admin can remove a member or move one to the Billing role to free a seat, or email support@kody.codes to ask for more seats.`
+}
+
+/**
+ * SQL predicate on the org row aliased `alias`: true when the comped seat
+ * cap applies and every comped seat is taken. Seat-adding membership writes
+ * append `AND NOT (...)` so the check and the write are one statement.
+ */
+export function compedSeatCapFullSql(alias: string): string {
+	return `(${alias}.comped_seats IS NOT NULL
+		AND ${alias}.plan <> 'free'
+		AND (${alias}.stripe_plan IS NULL OR ${alias}.stripe_plan NOT IN (${paidStripePlanNames.map((name) => `'${name}'`).join(', ')}))
+		AND (
+			SELECT COUNT(*)
+			FROM org_memberships seat_m
+			INNER JOIN users seat_u
+			  ON seat_u.stable_user_id = seat_m.user_id
+			 AND seat_u.deleted_at IS NULL
+			WHERE seat_m.org_id = ${alias}.id
+			  AND seat_m.role IN ('owner', 'admin', 'member')
+			  AND seat_m.deleted_at IS NULL
+		) >= ${alias}.comped_seats)`
+}
+
+/** The org's comped seat cap when it is full, else null. */
+export async function readFullCompedSeatCap(
+	db: D1Database,
+	orgId: string,
+): Promise<number | null> {
+	const row = await db
+		.prepare(
+			`SELECT o.comped_seats AS comped_seats
+			 FROM orgs o
+			 WHERE o.id = ? AND o.deleted_at IS NULL AND ${compedSeatCapFullSql('o')}`,
+		)
+		.bind(orgId)
+		.first<{ comped_seats: number }>()
+	return row ? row.comped_seats : null
+}
+
+/**
+ * Refuse a new seat (invite or join) when the comp is full. A person who is
+ * already a live member keeps their row as is, so they take no new seat.
+ */
+export async function assertCompedSeatAvailable(
+	db: D1Database,
+	orgId: string,
+	joiningUserId?: string,
+): Promise<void> {
+	if (joiningUserId) {
+		const live = await db
+			.prepare(
+				`SELECT 1 AS ok FROM org_memberships
+				 WHERE org_id = ? AND user_id = ? AND deleted_at IS NULL`,
+			)
+			.bind(orgId, joiningUserId)
+			.first<{ ok: number }>()
+		if (live) return
+	}
+	const cap = await readFullCompedSeatCap(db, orgId)
+	if (cap !== null) throw new CompedSeatLimitError(cap)
+}
+
 /** User ids for live owners and billing-role members (invoice recipients). */
 export async function listOrgBillingRecipientUserIds(
 	db: D1Database,

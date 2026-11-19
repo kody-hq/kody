@@ -23,10 +23,7 @@ connect can share. There is no separate Kody chat app to learn.
 Getting started is three steps, and the in-app page at `/onboarding` walks you
 through each one.
 
-> [!WATCH] https://www.youtube.com/watch?v=F_7hefxmEIw Watch: Install the Kody
-> ChatGPT plugin — web, desktop, and mobile
-
-Also watch:
+Watch:
 [Raycast runs Kody scripts — add a command with an agent in seconds](https://www.youtube.com/watch?v=OgQajyS0Sws).
 
 ## Before you start
@@ -119,7 +116,12 @@ memory or package you just made — in a different product, with no setup
 repeated. Watch:
 [Build in Cursor, then run it from Claude Code or ChatGPT](https://www.youtube.com/watch?v=iGMkgjXc8Ho).
 
-Connecting that second agent gives Pro free for two weeks, once per account.
+Claude Code and Claude Desktop are both Claude, so connecting both counts as one
+ecosystem. Pick a host from another group to finish Step 3.
+
+Connecting that second agent gives Pro free for two weeks, once per account. If
+you already pay for Pro, Kody credits 2 weeks of your plan to your Stripe
+balance instead, so your next invoice is lower by that amount.
 
 ## Where to go next
 

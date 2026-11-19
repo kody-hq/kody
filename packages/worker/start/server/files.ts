@@ -46,7 +46,7 @@ async function previewFile(
 ) {
 	const [
 		{ websiteCapabilityContext },
-		{ getFileDescriptor },
+		{ getFile },
 		{ fileCollaborationEnabled },
 	] = await Promise.all([
 		import('../../src/app/website-capability.ts'),
@@ -55,19 +55,11 @@ async function previewFile(
 	])
 	if (!(await fileCollaborationEnabled(input.env, input.user.request)))
 		throw notFound()
-	const descriptor = await getFileDescriptor(
-		websiteCapabilityContext(input),
-		fileId,
-		revisionId,
+	return getSchema.parse(
+		await getFile(websiteCapabilityContext(input), fileId, revisionId, {
+			streamBinary: true,
+		}),
 	)
-	return descriptor.file.encoding === 'base64'
-		? descriptor
-		: getSchema.parse(
-				await call(input, 'fileGet', {
-					file_id: fileId,
-					revision_id: revisionId,
-				}),
-			)
 }
 export const readFilePreview = createServerFn({ method: 'GET' })
 	.validator(
@@ -105,10 +97,11 @@ export const loadFilesPage = createServerFn({ method: 'GET' })
 			await import('../../src/files/feature.ts')
 		if (!(await fileCollaborationEnabled(env, user.request))) throw notFound()
 		const input = { env, request, user }
-		const list = listSchema.parse(
-			await call(input, 'fileList', { include_trash: true }),
-		)
-		const selected = data.fileId ? await previewFile(input, data.fileId) : null
+		const [files, selected] = await Promise.all([
+			call(input, 'fileList', { include_trash: true }),
+			data.fileId ? previewFile(input, data.fileId) : null,
+		])
+		const list = listSchema.parse(files)
 
 		const embeds: z.infer<typeof fileDocumentSchema>[] = []
 		return {
@@ -287,4 +280,27 @@ export const readFileHistory = createServerFn({ method: 'GET' })
 						}),
 					),
 		)
+	})
+
+export const readPageLinkTitle = createServerFn({ method: 'POST' })
+	.validator(z.object({ url: z.string().max(2048) }))
+	.handler(async ({ data }) => {
+		const { withWebsiteRead } = await import('./mutation-context.ts')
+		return withWebsiteRead({}, async ({ env, user }) => {
+			const [{ checkRateLimit }, { fetchLinkPreviewTitle }] = await Promise.all(
+				[
+					import('../../src/rate-limit.ts'),
+					import('../../src/files/link-preview.ts'),
+				],
+			)
+			const limit = await checkRateLimit(
+				env.APP_DB,
+				`page-link-preview:${user.mcpUser.userId}`,
+				{
+					maxRequests: 30,
+					windowSeconds: 60,
+				},
+			)
+			return limit.allowed ? fetchLinkPreviewTitle(data.url) : null
+		})
 	})

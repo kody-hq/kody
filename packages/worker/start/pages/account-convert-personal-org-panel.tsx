@@ -1,5 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { useState } from 'react'
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
+import { useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { convertPersonalOrganization } from '#start/server/convert-personal-org'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -9,18 +15,15 @@ import { useRouter } from '@tanstack/react-router'
 import { toast } from '#client/toast.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
+import { getHandleFormatProblem } from '@kody-internal/shared/handle-rules.ts'
+import {
+	HandleSuggestion,
+	useVerifiedHandleSuggestion,
+} from '../components/handle-suggestion.tsx'
 
 export function AccountConvertPersonalOrgPanel({
 	username,
@@ -34,6 +37,13 @@ export function AccountConvertPersonalOrgPanel({
 	const [newHandle, setNewHandle] = useState('')
 	const [confirmation, setConfirmation] = useState('')
 	const [error, setError] = useState<string | null>(null)
+	const handleInputRef = useRef<HTMLInputElement>(null)
+	const handleProblem = newHandle.trim()
+		? getHandleFormatProblem(newHandle.trim())
+		: null
+	const handleSuggestion = useVerifiedHandleSuggestion(
+		handleProblem?.suggestion ?? null,
+	)
 	const router = useRouter()
 	const mutation = useMutation(
 		conversionMutationOptions(client, convertPersonalOrganization),
@@ -53,10 +63,10 @@ export function AccountConvertPersonalOrgPanel({
 		>
 			{!confirmOpen ? (
 				<div>
-					<button
+					<Button
 						type="button"
 						data-testid="account-convert-personal-org-start"
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 						onClick={() => {
 							setConfirmOpen(true)
 							setConfirmation('')
@@ -64,7 +74,7 @@ export function AccountConvertPersonalOrgPanel({
 						}}
 					>
 						Convert @{current || '…'}…
-					</button>
+					</Button>
 				</div>
 			) : (
 				<form
@@ -133,41 +143,64 @@ export function AccountConvertPersonalOrgPanel({
 						email, and billing stay there. Your new personal organization starts
 						from your current name and avatar.
 					</p>
-					<div css={accountFieldCss}>
-						<label htmlFor="convert-new-handle" css={accountFieldLabelCss}>
+					<div css={fieldCss}>
+						<label htmlFor="convert-new-handle" css={fieldLabelCss}>
 							New personal handle
 						</label>
-						<input
+						<Input
+							ref={handleInputRef}
 							id="convert-new-handle"
 							name="newHandle"
 							data-testid="account-convert-personal-org-handle"
-							data-field-ring
 							autoComplete="off"
 							spellCheck={false}
 							value={newHandle}
 							placeholder="new-handle"
-							css={accountInputCss}
 							disabled={mutation.isPending}
+							aria-invalid={handleProblem ? true : undefined}
+							aria-describedby={
+								handleProblem ? 'convert-new-handle-error' : undefined
+							}
 							onChange={(event) => setNewHandle(event.currentTarget.value)}
 						/>
-						<p css={accountFieldNoteCss}>
+						{handleProblem ? (
+							<p
+								id="convert-new-handle-error"
+								aria-live="polite"
+								data-testid="account-convert-personal-org-handle-error"
+								css={{
+									margin: 0,
+									color: colors.danger,
+									fontSize: typography.fontSize.sm,
+								}}
+							>
+								{handleProblem.message}
+								<HandleSuggestion
+									suggestion={handleSuggestion}
+									disabled={mutation.isPending}
+									onApply={(suggestion) => {
+										handleInputRef.current?.focus()
+										setNewHandle(suggestion)
+									}}
+								/>
+							</p>
+						) : null}
+						<p css={fieldDescriptionCss}>
 							This becomes your username and the handle of your new personal
 							organization. Choose carefully, handles stay put after this.
 						</p>
 					</div>
-					<div css={accountFieldCss}>
-						<label htmlFor="convert-confirm" css={accountFieldLabelCss}>
+					<div css={fieldCss}>
+						<label htmlFor="convert-confirm" css={fieldLabelCss}>
 							Type {expected} to confirm
 						</label>
-						<input
+						<Input
 							id="convert-confirm"
 							name="confirmation"
 							data-testid="account-convert-personal-org-confirm"
-							data-field-ring
 							autoComplete="off"
 							spellCheck={false}
 							value={confirmation}
-							css={accountInputCss}
 							disabled={mutation.isPending}
 							onChange={(event) => setConfirmation(event.currentTarget.value)}
 						/>
@@ -186,9 +219,9 @@ export function AccountConvertPersonalOrgPanel({
 						</p>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							disabled={mutation.isPending}
 							onClick={() => {
 								setConfirmOpen(false)
@@ -197,19 +230,15 @@ export function AccountConvertPersonalOrgPanel({
 							}}
 						>
 							Cancel
-						</button>
-						<button
+						</Button>
+						<Button
 							type="submit"
 							data-testid="account-convert-personal-org-submit"
-							css={
-								ready
-									? getDangerPillCss({ size: 'sm' })
-									: getPillButtonCss({ size: 'sm' })
-							}
+							variant={ready ? 'danger' : 'primary'}
 							disabled={!ready}
 						>
 							{mutation.isPending ? 'Converting…' : 'Convert organization'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}

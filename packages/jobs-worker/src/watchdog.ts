@@ -15,23 +15,24 @@ import { getWorkerStateValue, putWorkerStateValue } from './store.ts'
 
 /**
  * Platform cron that detects enabled recurring jobs that should already have
- * run (or are permanently skipped by a stuck occurrence fence) and re-arms
- * each affected user's JobManager alarm. Complements at-least-once claim
- * safety: leases recover overlapping runs, but nothing else notices when a
- * per-user Durable Object alarm is lost or a fence leaves next_run_at stuck.
+ * run (or are permanently skipped by a stuck occurrence fence) and
+ * best-effort re-arms each affected user's JobManager alarm (at most 50 users
+ * per tick; individual syncs may fail; scans may be truncated). Complements
+ * at-least-once claim safety: leases recover overlapping runs, but nothing
+ * else notices when a per-user Durable Object alarm is lost or a fence leaves
+ * next_run_at stuck.
  */
 
 /** Due jobs older than this are treated as silently overdue. */
-export const jobScheduleWatchdogGraceMs = 5 * 60 * 1_000
-export const jobScheduleWatchdogPageSize = 100
+const jobScheduleWatchdogGraceMs = 5 * 60 * 1_000
+const jobScheduleWatchdogPageSize = 100
 /** Cap cross-user page accumulation so a large backlog cannot OOM the cron. */
-export const jobScheduleWatchdogMaxRowsPerTick = 5_000
-export const jobScheduleWatchdogMaxUsersPerTick = 50
-export const jobScheduleWatchdogMaxJobsLogged = 20
+const jobScheduleWatchdogMaxRowsPerTick = 5_000
+const jobScheduleWatchdogMaxUsersPerTick = 50
+const jobScheduleWatchdogMaxJobsLogged = 20
 /** Avoid re-paging Sentry on the same sustained overdue set every tick. */
-export const jobScheduleWatchdogAlertCooldownMinutes = 6 * 60
-export const jobScheduleWatchdogAlertStateKey =
-	'ops-alert:job-schedule-watchdog:v1'
+const jobScheduleWatchdogAlertCooldownMinutes = 6 * 60
+const jobScheduleWatchdogAlertStateKey = 'ops-alert:job-schedule-watchdog:v1'
 
 export type JobScheduleWatchdogResult = {
 	overdueJobCount: number
@@ -134,6 +135,13 @@ async function maybeCaptureWatchdogAlert(input: {
 	return alerted
 }
 
+/**
+ * Scan silently overdue and stuck-skipped jobs, repair stuck fences, and
+ * best-effort re-arm each affected user's JobManager alarm (at most 50 users
+ * per tick; individual syncs may fail; scans may be truncated). Caps page
+ * accumulation and Sentry cooldown live in this module; cadence is
+ * `shouldRunJobScheduleWatchdogCron` (every 15 minutes).
+ */
 export async function runJobScheduleWatchdogTick(input: {
 	env: JobsWorkerEnv
 	now?: Date

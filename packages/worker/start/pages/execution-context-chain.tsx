@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
@@ -21,14 +22,11 @@ import {
 	skippedLabel,
 	unusableReasonCopy,
 } from '#universal/execution-contexts.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import { formatTimestamp } from '../components/local-timestamp.tsx'
 import { AccountManagementMessage } from './account-management-components.tsx'
 import { selectCss } from './package-collaborators-parts.tsx'
+import { Select } from '../components/input.tsx'
 
 const saveDelayMs = 600
 
@@ -328,13 +326,13 @@ export function ExecutionChainPanel(props: {
 						{notice.text}
 					</AccountManagementMessage>
 					{notice.retry ? (
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={() => notice.retry && persist(notice.retry)}
 						>
 							Apply my change again
-						</button>
+						</Button>
 					) : null}
 				</div>
 			) : null}
@@ -398,29 +396,29 @@ export function ExecutionChainPanel(props: {
 								)}
 							</div>
 							<div css={actionsCss}>
-								<button
+								<Button
 									type="button"
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									disabled={index === 0}
 									data-chain-focus={`${entry.id}|up`}
 									aria-label={`Move ${nameFor(entry.id)} up`}
 									onClick={() => move(entry.id, -1)}
 								>
 									Up
-								</button>
-								<button
+								</Button>
+								<Button
 									type="button"
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									disabled={index === contextEntries.length - 1}
 									data-chain-focus={`${entry.id}|down`}
 									aria-label={`Move ${nameFor(entry.id)} down`}
 									onClick={() => move(entry.id, 1)}
 								>
 									Down
-								</button>
-								<button
+								</Button>
+								<Button
 									type="button"
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									aria-label={`Remove ${nameFor(entry.id)} from your chain`}
 									onClick={() =>
 										persist(
@@ -433,7 +431,7 @@ export function ExecutionChainPanel(props: {
 									}
 								>
 									Remove
-								</button>
+								</Button>
 							</div>
 						</li>
 					)
@@ -476,9 +474,9 @@ export function ExecutionChainPanel(props: {
 										Without Kody cloud, runs fail when no context in your chain
 										can take them.
 									</span>
-									<button
+									<Button
 										type="button"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={() => {
 											setConfirmStrict(false)
 											persist(
@@ -493,23 +491,23 @@ export function ExecutionChainPanel(props: {
 										}}
 									>
 										Remove Kody cloud
-									</button>
-									<button
+									</Button>
+									<Button
 										type="button"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={() => setConfirmStrict(false)}
 									>
 										Keep it
-									</button>
+									</Button>
 								</>
 							) : (
-								<button
+								<Button
 									type="button"
-									css={getGhostButtonCss({ size: 'sm' })}
+									variant="secondary"
 									onClick={() => setConfirmStrict(true)}
 								>
 									Remove Kody cloud
-								</button>
+								</Button>
 							)}
 						</div>
 					</li>
@@ -524,9 +522,9 @@ export function ExecutionChainPanel(props: {
 				}}
 			>
 				{hasCloud ? null : (
-					<button
+					<Button
 						type="button"
-						css={getPillButtonCss({ size: 'sm' })}
+						variant="primary"
 						onClick={() =>
 							persist(
 								{ ...chain, entries: [...entries, { kind: 'cloud' }] },
@@ -535,7 +533,7 @@ export function ExecutionChainPanel(props: {
 						}
 					>
 						Add Kody cloud back
-					</button>
+					</Button>
 				)}
 				{addable.length > 0 ? (
 					<>
@@ -547,7 +545,7 @@ export function ExecutionChainPanel(props: {
 							}}
 						>
 							<span>Add a context</span>
-							<select
+							<Select
 								value={addId}
 								disabled={full}
 								onChange={(event) => setAddId(event.target.value)}
@@ -559,11 +557,11 @@ export function ExecutionChainPanel(props: {
 										{context.name}
 									</option>
 								))}
-							</select>
+							</Select>
 						</label>
-						<button
+						<Button
 							type="button"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							disabled={full || !addId}
 							onClick={() => {
 								const context = byId.get(addId)
@@ -581,7 +579,7 @@ export function ExecutionChainPanel(props: {
 							}}
 						>
 							Add to chain
-						</button>
+						</Button>
 						{full ? (
 							<span css={mutedCss}>
 								Your chain is full. Remove a context to add another.

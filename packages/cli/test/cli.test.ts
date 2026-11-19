@@ -231,6 +231,24 @@ test('argvIncludesJsonFlag and formatCliErrorJson expose additive sent', () => {
 			sent: 'unknown',
 		},
 	)
+	assert.deepEqual(
+		formatCliErrorJson(
+			new OpenApiError('run may still be going', {
+				status: 503,
+				code: 'internal_error',
+				runId: 'run-1',
+				idempotencyKey: 'key-1',
+			}),
+		),
+		{
+			error: true,
+			message: 'run may still be going',
+			status: 503,
+			code: 'internal_error',
+			runId: 'run-1',
+			idempotencyKey: 'key-1',
+		},
+	)
 })
 
 test('runCli --json prints sent:false on connect-phase Open API failures', async () => {

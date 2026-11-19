@@ -1,14 +1,10 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from './button.tsx'
 import { publicAsset } from '../public-assets.ts'
-import { SiteLink } from './site-link.tsx'
 import { CopyTextButton } from './copy-text-button.tsx'
 import { ErrorAgentPromptButton } from './error-agent-prompt-button.tsx'
 import { routes } from '#universal/routes.ts'
 import { buildPackageNoAccessErrorAgentPrompt } from '#universal/error-agent-prompt-presets.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
 import {
 	illustratedErrorActionsCss,
@@ -68,13 +64,14 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 			</p>
 			<nav aria-label="What to try next" css={illustratedErrorActionsCss}>
 				{packageAppHref ? (
-					<SiteLink
+					<Button
 						href={packageAppHref}
 						data-testid="package-app-origin-link"
-						css={getPillButtonCss()}
+						variant="primary"
+						size="lg"
 					>
 						Open the app
-					</SiteLink>
+					</Button>
 				) : null}
 				<CopyTextButton
 					value={requestMessage}
@@ -83,15 +80,12 @@ export function PackageNoAccessPage(props: PackageNoAccessPageProps) {
 					variant="pill"
 					ariaLabel="Copy an access request message for the package owner"
 				/>
-				<SiteLink href={sharingDocsHref} css={getPillButtonCss({ size: 'sm' })}>
+				<Button href={sharingDocsHref} variant="primary">
 					How sharing works
-				</SiteLink>
-				<SiteLink
-					href={routes.home.href()}
-					css={getGhostButtonCss({ size: 'sm' })}
-				>
+				</Button>
+				<Button href={routes.home.href()} variant="secondary">
 					Go home
-				</SiteLink>
+				</Button>
 			</nav>
 			<ErrorAgentPromptButton prompt={prompt} />
 		</section>

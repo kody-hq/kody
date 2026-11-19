@@ -15,7 +15,7 @@ import {
 	callerCanAccessCapability,
 	filterCapabilityRegistryForCaller,
 	filterCapabilityRegistryMcpServersForCaller,
-	callerFeatureFlagEvaluationFailed,
+	callerFeatureFlagEvaluationFailure,
 	callerFeatureFlagEvaluationTtlMs,
 	resolveCallerFeatureFlags,
 	type CallerFeatureFlags,
@@ -56,7 +56,6 @@ function createFlagMap(enabled: boolean): CallerFeatureFlags {
 		'files-workspace': false,
 		'demo-indicator': enabled,
 		profiles: false,
-		'mcp-skills-extension': false,
 		'mcp-events-extension': false,
 		'package-credential-suppliers': false,
 		'repo-push-queue': false,
@@ -482,9 +481,8 @@ test('flag evaluation failure fails closed, skips exposures, and is not cached',
 	const env = createFlagResolveEnv(7)
 	flagMocks.getFeatureFlagEvaluationsForUser.mockReset()
 	flagMocks.recordFeatureFlagExposures.mockClear()
-	flagMocks.getFeatureFlagEvaluationsForUser.mockRejectedValue(
-		new Error('d1 down'),
-	)
+	const d1Error = new Error('d1 down')
+	flagMocks.getFeatureFlagEvaluationsForUser.mockRejectedValue(d1Error)
 	const caller = () =>
 		createMcpCallerContext({
 			source: { kind: 'mcp-oauth' },
@@ -500,7 +498,9 @@ test('flag evaluation failure fails closed, skips exposures, and is not cached',
 	const firstContext = caller()
 	const flags = await resolveCallerFeatureFlags(env, firstContext)
 	expect(flags.profiles).toBe(false)
-	expect(await callerFeatureFlagEvaluationFailed(env, firstContext)).toBe(true)
+	expect(await callerFeatureFlagEvaluationFailure(env, firstContext)).toEqual({
+		cause: d1Error,
+	})
 	expect(flagMocks.recordFeatureFlagExposures).not.toHaveBeenCalled()
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).toHaveBeenCalledTimes(1)
 
@@ -546,7 +546,7 @@ test('an unresolved flag user is not cached across requests', async () => {
 
 	const missing = await resolveCallerFeatureFlags(env, caller())
 	expect(missing.profiles).toBe(false)
-	expect(await callerFeatureFlagEvaluationFailed(env, caller())).toBe(false)
+	expect(await callerFeatureFlagEvaluationFailure(env, caller())).toBeNull()
 	expect(flagMocks.getFeatureFlagEvaluationsForUser).not.toHaveBeenCalled()
 
 	numericUserId = 11

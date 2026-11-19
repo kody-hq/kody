@@ -1,8 +1,5 @@
 {
   "name": "@kody/api-docs-worker",
   "private": true,
-  "type": "module",
-  "exports": {
-    "./*": "./src/*"
-  }
+  "type": "module"
 }

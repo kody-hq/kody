@@ -9,13 +9,7 @@ import {
 	type DragEventHandler,
 } from 'react'
 import { createTouchHold } from './touch-hold.ts'
-import { colors } from '#universal/styles/tokens.ts'
-import { Menu } from '@base-ui/react/menu'
-import {
-	overlayItemCss,
-	overlayPopupCss,
-	overlayPositionerCss,
-} from './overlay-styles.ts'
+import { Menu, MenuContent, MenuItem } from './menu.tsx'
 
 export type ContextAction = {
 	id: string
@@ -199,45 +193,34 @@ export function ContextMenuSurface({
 				}}
 			>
 				{children}
-				<Menu.Root
-					modal={false}
+				<Menu
 					open={!!open}
 					onOpenChange={(next) => {
 						if (!next) setOpen(null)
 					}}
 				>
-					<Menu.Portal container={open?.container ?? undefined}>
-						<Menu.Positioner
-							anchor={open?.anchor}
-							align="start"
-							css={overlayPositionerCss}
-						>
-							<Menu.Popup
-								aria-label="Context actions"
-								finalFocus={(type) =>
-									type === 'keyboard' ? trigger.current : false
-								}
-								css={{ ...overlayPopupCss, minWidth: 180 }}
+					<MenuContent
+						container={open?.container ?? undefined}
+						anchor={open?.anchor}
+						sideOffset={0}
+						aria-label="Context actions"
+						finalFocus={(type) =>
+							type === 'keyboard' ? trigger.current : false
+						}
+						css={{ minWidth: 180 }}
+					>
+						{open?.actions.map((action) => (
+							<MenuItem
+								key={action.id}
+								disabled={action.disabled}
+								tone={action.danger ? 'danger' : 'default'}
+								onClick={() => void action.run()}
 							>
-								{open?.actions.map((action) => (
-									<Menu.Item
-										key={action.id}
-										disabled={action.disabled}
-										css={{
-											...overlayItemCss,
-											minHeight: 32,
-											color: action.danger ? colors.danger : colors.text,
-											'@media (pointer: coarse)': { minHeight: 44 },
-										}}
-										onClick={() => void action.run()}
-									>
-										{action.label}
-									</Menu.Item>
-								))}
-							</Menu.Popup>
-						</Menu.Positioner>
-					</Menu.Portal>
-				</Menu.Root>
+								{action.label}
+							</MenuItem>
+						))}
+					</MenuContent>
+				</Menu>
 			</div>
 		</ContextMenuOpener>
 	)

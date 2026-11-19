@@ -1,3 +1,4 @@
+import type { WalletGuardName } from '#universal/wallet-guards.ts'
 import type { JsonSchemaToolDescriptor } from '@cloudflare/codemode'
 import { z, type ZodType } from 'zod'
 import type { PermissionString, RoleName } from '#universal/permissions.ts'
@@ -108,6 +109,11 @@ export type CapabilityDefinition<
 	 * operator may call it. The operator's own runs are not gated.
 	 */
 	contextRuns: CapabilityContextRunsPolicy
+	/**
+	 * Denial-of-wallet guard this call counts against, per person and per
+	 * org, before the handler runs. See `#universal/wallet-guards.ts`.
+	 */
+	walletGuard?: WalletGuardName
 	/**
 	 * The capability needs a live person: role, membership, and invite
 	 * changes. It never runs from a triggered run (cron

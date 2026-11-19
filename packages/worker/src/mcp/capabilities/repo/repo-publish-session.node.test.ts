@@ -8,6 +8,7 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { CommunityActionError } from '#worker/community/errors.ts'
 import { buildPublishedPublishChecksKvKey } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as EntitySourcesModule from '#worker/repo/entity-sources.ts'
+import type * as HeldForApprovalNoticeModule from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createMemoryKvNamespace } from '#worker/test-support/memory-kv.ts'
@@ -21,6 +22,7 @@ const mockModule = vi.hoisted(() => ({
 	absorbCommunityForkUpstream: vi.fn(),
 	getSavedPackageById: vi.fn(),
 	refreshSavedPackageProjection: vi.fn(),
+	buildHeldForApprovalPublishNotice: vi.fn(),
 }))
 
 vi.mock('#worker/package-registry/service.ts', () => ({
@@ -64,6 +66,15 @@ vi.mock('#worker/community/service.ts', () => ({
 		mockModule.absorbCommunityForkUpstream(...args),
 }))
 
+vi.mock(
+	'#mcp/capabilities/packages/held-for-approval-publish-notice.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof HeldForApprovalNoticeModule>()),
+		buildHeldForApprovalPublishNotice: (...args: Array<unknown>) =>
+			mockModule.buildHeldForApprovalPublishNotice(...args),
+	}),
+)
+
 const { repoPublishSessionCapability } =
 	await import('./repo-publish-session.ts')
 
@@ -101,8 +112,15 @@ function resetMocks() {
 		user_id: ownerIdFromStored('user-1'),
 		entity_kind: 'package',
 		entity_id: 'package-1',
+		published_commit: 'commit-1',
+		serving_commit: 'commit-1',
 	})
 	mockModule.absorbCommunityForkUpstream.mockResolvedValue(undefined)
+	mockModule.getSavedPackageById.mockResolvedValue({
+		id: 'package-1',
+		kodyId: 'demo',
+	})
+	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(null)
 	mockModule.repoSessionRpc.mockReturnValue({
 		getSessionInfo: vi.fn(async () => ({
 			entity_type: 'package',
@@ -158,6 +176,63 @@ test('repoPublishSession keeps a successful publish when fork absorb fails and s
 			}),
 		)
 	}
+})
+
+test('repoPublishSession tells the agent when everyone stays on the previous approved version', async () => {
+	resetMocks()
+	const held = {
+		serving_commit: 'approved-commit',
+		held_commit: 'commit-1',
+		approval_url: 'https://kody.test/@user/demo/approve-capabilities',
+		message:
+			'Everyone is still on the previous version (approved) until you approve the new capabilities that commit-1 asks for.',
+	}
+	mockModule.buildHeldForApprovalPublishNotice.mockResolvedValue(held)
+	mockModule.getEntitySourceByIdForUser.mockResolvedValue({
+		id: 'source-1',
+		user_id: ownerIdFromStored('user-1'),
+		entity_kind: 'package',
+		entity_id: 'package-1',
+		published_commit: 'commit-1',
+		serving_commit: 'approved-commit',
+		held_commit: 'commit-1',
+	})
+
+	const result = await repoPublishSessionCapability.handler(
+		{ session_id: 'session-1' },
+		createCtx(),
+	)
+
+	expect(result).toEqual({
+		status: 'ok',
+		session_id: 'session-1',
+		published_commit: 'commit-1',
+		message: 'Published session to repo-artifacts-1.',
+		held_for_approval: held,
+	})
+	expect(mockModule.buildHeldForApprovalPublishNotice).toHaveBeenCalledWith(
+		expect.objectContaining({ packageId: 'package-1', kodyId: 'demo' }),
+	)
+})
+
+test('repoPublishSession still reports a completed publish when the held-for-approval lookup rejects', async () => {
+	resetMocks()
+	mockModule.buildHeldForApprovalPublishNotice.mockRejectedValueOnce(
+		new Error('D1 unavailable'),
+	)
+	const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+	const result = await repoPublishSessionCapability.handler(
+		{ session_id: 'session-1' },
+		createCtx(),
+	)
+
+	expect(result).toMatchObject({
+		status: 'ok',
+		published_commit: 'commit-1',
+	})
+	expect(result).not.toHaveProperty('held_for_approval')
+	warn.mockRestore()
 })
 
 test('repoPublishSession keeps the credential notice on a locked publish', async () => {
@@ -242,10 +317,10 @@ test('repoPublishSession reports a compute-limit reset as a caller error naming 
  * RepoSession finalize moves published_commit, re-projects job pins, and
  * seals the tip before repoPublishSession rebuilds artifacts in a second
  * step. A failed rebuild must settle like packagePublishExternalPush does:
- * drop the seal and compare-and-set the pointer back to the session base,
+ * drop the seal and compare-and-set the pointer back to the last built commit,
  * never over a newer publish, while serving_commit stays on the last build.
  */
-test('repoPublishSession rolls a failed artifact rebuild back to the session base', async () => {
+test('repoPublishSession rolls a failed artifact rebuild back to the last built commit', async () => {
 	const ownerId = ownerIdFromStored('user-1')
 	const runPublish = async (input: {
 		sessionInfo: { base_commit: string; published_commit: string }
@@ -254,6 +329,12 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 		resetMocks()
 		const sqlite = new DatabaseSync(':memory:')
 		sqlite.exec(entitySourcesTableSql)
+		const { getEntitySourceByIdForUser } = await vi.importActual<
+			typeof EntitySourcesModule
+		>('#worker/repo/entity-sources.ts')
+		mockModule.getEntitySourceByIdForUser.mockImplementation(
+			getEntitySourceByIdForUser,
+		)
 		sqlite
 			.prepare(
 				`INSERT INTO entity_sources (id, user_id, entity_kind, entity_id, repo_id, published_commit, serving_commit, created_at, updated_at)
@@ -329,7 +410,7 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 	expect((failed.error as Error).message).toMatch(
 		/bundle artifact rebuild failed/,
 	)
-	expect((failed.error as Error).message).toMatch(/rolled back to "commit-old"/)
+	expect((failed.error as Error).message).toMatch(/built commit "commit-old"/)
 	expect(failed.row).toEqual({
 		published_commit: 'commit-old',
 		serving_commit: 'commit-old',
@@ -362,7 +443,7 @@ test('repoPublishSession rolls a failed artifact rebuild back to the session bas
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 
 	// A resumed publish (an interrupted attempt already moved the pointer to
-	// the session HEAD) still restores the session base, the last good commit.
+	// the session HEAD) still restores the last built commit.
 	const resumed = await runPublish({
 		sessionInfo: { base_commit: 'commit-old', published_commit: 'commit-new' },
 	})

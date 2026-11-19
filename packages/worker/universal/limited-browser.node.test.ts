@@ -75,7 +75,7 @@ test('device sign-in is offered for package app redirects only', () => {
 
 test('the human check error only mentions another device when it is offered', () => {
 	expect(authFormErrorMessage('human_check', { deviceSignIn: true })).toMatch(
-		/Sign in on another device/,
+		/Sign in with another device/,
 	)
 	const withoutOption = authFormErrorMessage('human_check')
 	expect(withoutOption).not.toMatch(/another device/i)

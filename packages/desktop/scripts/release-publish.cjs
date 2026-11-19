@@ -12,9 +12,10 @@ const { tmpdir } = require('node:os')
 const { join } = require('node:path')
 const {
 	assertDraft,
-	assertFeedCoverage,
 	releaseAssetNames,
 	releaseNotes,
+	releasePlan,
+	targetAssetNames,
 	uploadedAssetNames,
 } = require('./release-plan.cjs')
 const {
@@ -24,6 +25,7 @@ const {
 	runWithRetry,
 	sleepSync,
 } = require('./release-retry.cjs')
+const { assertAppInstaller } = require('./win-appinstaller.cjs')
 
 // Uploads only the assets the draft is missing, then publishes it as latest
 // only when every expected asset and update feed is present and consistent.
@@ -95,11 +97,24 @@ function assertFeed(name, text, version, assets, sha512Of) {
 	}
 }
 
+function findSupersededDrafts(json, repo, version) {
+	const published = version.split('.').map(Number)
+	return json(['api', '--paginate', '--slurp', `repos/${repo}/releases`])
+		.flat()
+		.filter((release) => {
+			const parts = release.tag_name.match(/^v(\d+)\.(\d+)\.(\d+)$/)
+			if (!release.draft || !parts) return false
+			const order = published
+				.map((part, index) => Number(parts[index + 1]) - part)
+				.find((part) => part !== 0)
+			return order < 0
+		})
+}
+
 function publishRelease({
 	repo,
 	version,
 	sourceSha,
-	scope,
 	assetsDir,
 	gh = defaultGh,
 	log = (line) => process.stderr.write(`${line}\n`),
@@ -117,10 +132,6 @@ function publishRelease({
 		if (!/HTTP 404/.test(error.output ?? '')) throw error
 	}
 	if (latest) {
-		assertFeedCoverage(
-			scope,
-			latest.assets.map((asset) => asset.name),
-		)
 		const published = latest.tag_name.match(/^v(\d+)\.(\d+)\.(\d+)$/)
 		if (!published) throw new Error('Unexpected published desktop tag.')
 		const next = version.split('.').map(Number)
@@ -130,8 +141,8 @@ function publishRelease({
 		if (!(order > 0))
 			throw new Error('Bump the desktop version above the published release.')
 	}
-	const notes = releaseNotes(sourceSha, scope)
-	const expected = releaseAssetNames(version, scope)
+	const notes = releaseNotes(sourceSha)
+	const expected = releaseAssetNames(version)
 	const findDraft = () =>
 		json(['api', '--paginate', '--slurp', `repos/${repo}/releases`])
 			.flat()
@@ -163,12 +174,7 @@ function publishRelease({
 			release = findDraft()
 		}
 	}
-	assertDraft(
-		{ ...release, isDraft: release.draft },
-		sourceSha,
-		scope,
-		expected,
-	)
+	assertDraft({ ...release, isDraft: release.draft }, sourceSha, expected)
 
 	const local = new Map(
 		readdirSync(assetsDir).map((name) => [name, join(assetsDir, name)]),
@@ -197,17 +203,24 @@ function publishRelease({
 	}
 
 	release = json(['api', `repos/${repo}/releases/${release.id}`])
-	assertDraft(
-		{ ...release, isDraft: release.draft },
-		sourceSha,
-		scope,
-		expected,
-	)
+	assertDraft({ ...release, isDraft: release.draft }, sourceSha, expected)
 	const uploaded = uploadedAssetNames(release)
-	const missing = expected.filter((name) => !uploaded.includes(name))
+	const missing = releasePlan({})
+		.matrix.include.map((target) => ({
+			target,
+			names: targetAssetNames(version, target).filter(
+				(name) => !uploaded.includes(name),
+			),
+		}))
+		.filter(({ names }) => names.length)
 	if (missing.length)
 		throw new Error(
-			`Draft ${tag} is missing ${missing.join(', ')}; it stays a draft until a re-run uploads them.`,
+			`Draft ${tag} is missing ${missing
+				.map(
+					({ target, names }) =>
+						`${target.platform} ${target.arch} (${names.join(', ')})`,
+				)
+				.join('; ')}; it stays a draft until a re-run uploads them.`,
 		)
 	const assets = release.assets
 	const sha512Of = (asset) => {
@@ -228,30 +241,30 @@ function publishRelease({
 		rmSync(copy, { force: true })
 		return hash
 	}
+	const text = (name) => {
+		const asset = assets.find((candidate) => candidate.name === name)
+		const file = local.get(name)
+		if (file && digests.get(name) === asset.digest)
+			return readFileSync(file, 'utf8')
+		const copy = join(workDir, name)
+		gh(
+			[
+				'api',
+				'-H',
+				'Accept: application/octet-stream',
+				`repos/${repo}/releases/assets/${asset.id}`,
+			],
+			{ toFile: copy },
+		)
+		return readFileSync(copy, 'utf8')
+	}
 	try {
+		for (const name of expected.filter((name) => /^latest.*\.yml$/.test(name)))
+			assertFeed(name, text(name), version, assets, sha512Of)
 		for (const name of expected.filter((name) =>
-			/^latest.*\.yml$/.test(name),
-		)) {
-			const asset = assets.find((candidate) => candidate.name === name)
-			const file = local.get(name)
-			let text
-			if (file && digests.get(name) === asset.digest)
-				text = readFileSync(file, 'utf8')
-			else {
-				const copy = join(workDir, name)
-				gh(
-					[
-						'api',
-						'-H',
-						'Accept: application/octet-stream',
-						`repos/${repo}/releases/assets/${asset.id}`,
-					],
-					{ toFile: copy },
-				)
-				text = readFileSync(copy, 'utf8')
-			}
-			assertFeed(name, text, version, assets, sha512Of)
-		}
+			name.endsWith('.appinstaller'),
+		))
+			assertAppInstaller(name, text(name), version, uploaded)
 	} finally {
 		rmSync(workDir, { recursive: true, force: true })
 	}
@@ -274,17 +287,27 @@ function publishRelease({
 	if (now.tag_name !== tag)
 		throw new Error(`Published ${tag}, but latest is ${now.tag_name}.`)
 	log(`Published ${tag} with ${expected.length} assets.`)
+	// A draft below the published version can never publish, so drop it
+	// instead of leaving an incomplete release behind.
+	for (const draft of findSupersededDrafts(json, repo, version)) {
+		log(`Deleting superseded draft ${draft.tag_name}.`)
+		gh(['api', '-X', 'DELETE', `repos/${repo}/releases/${draft.id}`])
+	}
 	return { tag, assets: expected.length }
 }
 
 if (require.main === module) {
-	publishRelease({
-		repo: process.env.GH_REPO,
-		version: process.env.RELEASE_VERSION,
-		sourceSha: process.env.SOURCE_SHA,
-		scope: process.env.RELEASE_PLATFORMS || 'mac',
-		assetsDir: process.argv[2] ?? 'release-assets',
-	})
+	try {
+		publishRelease({
+			repo: process.env.GH_REPO,
+			version: process.env.RELEASE_VERSION,
+			sourceSha: process.env.SOURCE_SHA,
+			assetsDir: process.argv[2] ?? 'release-assets',
+		})
+	} catch (error) {
+		console.log(`::error title=Desktop release not published::${error.message}`)
+		process.exitCode = 1
+	}
 }
 
 module.exports = { assertFeed, parseFeed, publishRelease }

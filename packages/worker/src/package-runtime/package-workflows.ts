@@ -174,7 +174,7 @@ export type DynamicCallableWorkflowPayload =
 			runAt: string
 			planDate: string | null
 			params?: PackageWorkflowParams
-			lineage?: RequestLineage
+			lineage: RequestLineage
 			/**
 			 * Published commit resolved at enqueue. Absent on instances queued
 			 * before enqueue provenance existed (and when nothing was published).
@@ -200,10 +200,18 @@ export type DynamicCallableWorkflowPayload =
 			runAt: string
 			planDate: string | null
 			params?: PackageWorkflowParams
-			lineage?: RequestLineage
+			lineage: RequestLineage
 			/** Package commit the launching operation targets (for example a publish). */
 			enqueuedCommit?: string
 	  }
+
+/** The payload fields a run projection or instance id reads; no lineage. */
+type WorkflowPayloadFields =
+	DynamicCallableWorkflowPayload extends infer Payload
+		? Payload extends unknown
+			? Omit<Payload, 'lineage'>
+			: never
+		: never
 
 export type WorkflowRunInspection = {
 	id: string
@@ -323,20 +331,16 @@ function isPublishComputeFailure(
 const packageWorkflowTokenId = 'internal:package-workflows'
 
 /**
- * Instances created before payloads carried lineage have no person behind
- * them, so they hold no permissions. The starter's stored role is a snapshot
- * from enqueue time, so each step re-reads their live membership (like jobs
- * and enablements): a starter who lost access to the org runs nothing, and a
- * demoted one never exceeds their current role.
+ * The starter's stored role is a snapshot from enqueue time, so each step
+ * re-reads their live membership (like jobs and enablements): a starter who
+ * lost access to the org runs nothing, and a demoted one never exceeds their
+ * current role.
  */
 async function workflowRequestSource(
 	db: D1Database,
 	payload: DynamicCallableWorkflowPayload,
 ): Promise<RequestSource> {
 	const lineage = payload.lineage
-	if (!lineage) {
-		return { kind: 'platform-event', sourceId: packageWorkflowTokenId }
-	}
 	const actorId = lineage.actor ? String(lineage.actor.userId) : null
 	const orgId = String(payload.userId)
 	// Legacy equal-id personal orgs are owned by the person themself, and a
@@ -379,12 +383,11 @@ function liveStarterMembership(
 	return null
 }
 
-/** Person + client from the starter lineage; null for legacy payloads. */
+/** Person + client from the starter lineage. */
 function workflowStartedBy(
 	payload: Pick<DynamicCallableWorkflowPayload, 'lineage'>,
 ) {
 	const lineage = payload.lineage
-	if (!lineage) return null
 	return normalizeRunStartedBy({
 		userId: lineage.actor?.userId ?? null,
 		username: lineage.actor?.username ?? null,
@@ -597,7 +600,7 @@ function createInlineWorkflowPayload(input: {
 	runAt?: string | Date
 	params?: PackageWorkflowParams | null
 	planDate?: string | null
-	lineage: RequestLineage | null
+	lineage: RequestLineage
 	enqueuedCommit?: string | null
 }): DynamicCallableWorkflowPayload {
 	const runAt = normalizeRunAt(input.runAt)
@@ -622,7 +625,7 @@ function createInlineWorkflowPayload(input: {
 		runAt,
 		planDate: input.planDate?.trim() || createPackageWorkflowPlanDate(runAt),
 		...(params === undefined ? {} : { params }),
-		...(input.lineage ? { lineage: input.lineage } : {}),
+		lineage: input.lineage,
 	}
 }
 
@@ -637,7 +640,7 @@ function createDynamicPackageWorkflowPayload(input: {
 	runAt?: string | Date
 	params?: PackageWorkflowParams | null
 	planDate?: string | null
-	lineage: RequestLineage | null
+	lineage: RequestLineage
 	enqueuedCommit?: string | null
 	sourceRevision?: WorkflowSourceRevisionPolicy | null
 	execution?: AutomationExecution | null
@@ -669,7 +672,7 @@ function createDynamicPackageWorkflowPayload(input: {
 		runAt,
 		planDate: input.planDate?.trim() || createPackageWorkflowPlanDate(runAt),
 		...(params === undefined ? {} : { params }),
-		...(input.lineage ? { lineage: input.lineage } : {}),
+		lineage: input.lineage,
 		...(enqueuedCommit ? { enqueuedCommit } : {}),
 		...(pinned ? { sourceRevision: 'pinned' as const } : {}),
 		...(input.execution ? { execution: input.execution } : {}),
@@ -688,6 +691,9 @@ function validateDynamicCallableWorkflowPayload(
 		record['params'] as PackageWorkflowParams | null | undefined,
 	)
 	const lineage = parseRequestLineage(record['lineage'])
+	if (!lineage) {
+		throw new Error('Dynamic callable workflow payload has no request lineage.')
+	}
 	if (sourceType === 'inline') {
 		if (record['version'] !== 3) {
 			throw new Error('Inline workflow payload version must be 3.')
@@ -848,7 +854,7 @@ function createWorkflowCreateResult(input: {
 }
 
 function payloadSourceRevision(
-	payload: Extract<DynamicCallableWorkflowPayload, { sourceType: 'package' }>,
+	payload: Extract<WorkflowPayloadFields, { sourceType: 'package' }>,
 ): WorkflowSourceRevisionPolicy {
 	return payload.sourceRevision === 'pinned' ? 'pinned' : 'latest'
 }
@@ -947,7 +953,7 @@ async function getWorkflowRunForUser(input: {
 
 function buildWorkflowProjectionUpsert(input: {
 	id: string
-	payload: DynamicCallableWorkflowPayload
+	payload: WorkflowPayloadFields
 	status: string | null
 	now?: string
 	lastError?: string | null
@@ -986,7 +992,7 @@ function buildWorkflowProjectionUpsert(input: {
  * an inline run was launched under (for example a durable publish), so
  * `package_id` filters find both after the idempotency key is released.
  */
-function workflowPayloadProvenance(payload: DynamicCallableWorkflowPayload) {
+function workflowPayloadProvenance(payload: WorkflowPayloadFields) {
 	if (payload.sourceType === 'package') {
 		return {
 			packageId: payload.packageId,
@@ -1004,7 +1010,7 @@ function workflowPayloadProvenance(payload: DynamicCallableWorkflowPayload) {
 
 function payloadFromWorkflowInspection(
 	row: WorkflowRunInspection,
-): DynamicCallableWorkflowPayload {
+): WorkflowPayloadFields {
 	if (row.sourceType === 'package') {
 		return {
 			version: 2,
@@ -1070,7 +1076,7 @@ async function createInlineWorkflowInstanceId(input: {
 }
 
 async function createDynamicCallableWorkflowInstanceId(
-	payload: DynamicCallableWorkflowPayload,
+	payload: WorkflowPayloadFields,
 	options?: {
 		includeRunAt?: boolean
 	},
@@ -1089,7 +1095,7 @@ async function projectWorkflowRun(input: {
 	env: Pick<Env, 'RUN_LOG'>
 	userId: OwnerId
 	id: string
-	payload: DynamicCallableWorkflowPayload
+	payload: WorkflowPayloadFields
 	status: string | null
 	now?: string
 	lastError?: string | null
@@ -1130,7 +1136,7 @@ async function projectWorkflowRun(input: {
 async function updateWorkflowRunStatus(input: {
 	env: Pick<Env, 'RUN_LOG'>
 	id: string
-	payload: DynamicCallableWorkflowPayload
+	payload: WorkflowPayloadFields
 	status: string
 	lastError?: string | null
 	completedAt?: string | null
@@ -2312,6 +2318,15 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 			context: {
 				surface: 'workflow',
 				name: payload.workflowName,
+				// A failed run must name its package and commit on its own: the
+				// workflow projection that also holds them is pruned separately.
+				...(payload.packageContext
+					? {
+							packageId: payload.packageContext.packageId,
+							kodyId: payload.packageContext.kodyId,
+							sourceId: payload.packageContext.sourceId ?? null,
+						}
+					: {}),
 				workflowId: instanceId,
 				storageId: null,
 				idempotencyKey: payload.idempotencyKey,
@@ -2321,17 +2336,24 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					...(stepCtx?.attempt != null
 						? { workflow_step_attempt: stepCtx.attempt }
 						: {}),
+					...(payload.enqueuedCommit
+						? { enqueued_commit: payload.enqueuedCommit }
+						: {}),
 				},
 			},
 			waitUntil,
 		})
 		let logs: Array<string> | undefined
+		const durablePublish =
+			isPublishWorkflow(payload) && isDurablePublishWorkflowCode(payload.code)
 		try {
 			const result = await runModuleWithRegistry(
 				this.env,
 				callerContext,
 				payload.code,
-				payload.params,
+				durablePublish && payload.enqueuedCommit
+					? { ...payload.params, expected_head: payload.enqueuedCommit }
+					: payload.params,
 				{
 					packageContext: payload.packageContext,
 					executorTimeoutMs: backgroundExecutorTimeoutMs,
@@ -2355,10 +2377,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
-			if (
-				isPublishWorkflow(payload) &&
-				isDurablePublishWorkflowCode(payload.code)
-			) {
+			if (durablePublish) {
 				const publish = compactDurablePublishResult(
 					value,
 					payload.enqueuedCommit ?? null,

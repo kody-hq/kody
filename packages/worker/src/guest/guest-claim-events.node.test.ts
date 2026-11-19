@@ -11,17 +11,20 @@ import {
 	testCookieSecret,
 } from '#worker/test-support/auth-provider-harness.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	createGuestAccount,
 	readGuestAccountByPerson,
 } from './guest-accounts.ts'
 
 const mocks = vi.hoisted(() => ({
+	sendEmail: vi.fn(async (_input: unknown) => ({ ok: true as const })),
 	scheduleFounderWelcomeEmail: vi.fn(),
 	// Never settles: a slow or stuck dispatch must not hold up a claim.
 	dispatch: vi.fn((_input: { event: unknown }) => new Promise<never>(() => {})),
 	readAuthenticatedAppUser: vi.fn(),
 	deleteUserAccount: vi.fn(async () => {}),
+	exportRunHistoryPage: vi.fn(async () => ({ runs: [], nextAfterId: null })),
 }))
 vi.mock('#app/founder-welcome-email.ts', () => ({
 	scheduleFounderWelcomeEmail: mocks.scheduleFounderWelcomeEmail,
@@ -30,7 +33,7 @@ vi.mock('#worker/identity/user-lifecycle-package-subscriptions.ts', () => ({
 	dispatchUserLifecycleSubscriptionEvent: mocks.dispatch,
 }))
 vi.mock('#worker/email/transactional-send-policy.ts', () => ({
-	sendGatedTransactionalEmail: async () => ({ ok: true as const }),
+	sendGatedTransactionalEmail: mocks.sendEmail,
 }))
 vi.mock('#worker/billing/signup-welcome-credits.ts', () => ({
 	maybeGrantSignupWelcomeCredits: async () => {},
@@ -71,7 +74,7 @@ vi.mock('#worker/jobs/inspect.ts', () => ({
 vi.mock('#worker/run-records/service.ts', () => ({
 	runLogRpc: () => ({
 		countRunHistory: async () => 3,
-		exportRunHistoryPage: async () => ({ runs: [], nextAfterId: null }),
+		exportRunHistoryPage: mocks.exportRunHistoryPage,
 		importRunHistory: async () => ({ imported: 0 }),
 	}),
 }))
@@ -98,9 +101,10 @@ async function setup() {
 		APP_DB: db,
 		APP_BASE_URL: baseUrl,
 		COOKIE_SECRET: testCookieSecret,
+		SECRET_STORE_KEY: 'guest-test-secret-store-key-32-characters-ok',
 	} as unknown as Env
 	const created = await createGuestAccount({
-		db,
+		env: env.current,
 		requestIp: '203.0.113.7',
 		clientName: 'Test Agent',
 		now: start,
@@ -122,7 +126,12 @@ async function setup() {
 	`)
 	const guest = await readGuestAccountByPerson(db, created.personId)
 	if (!guest) throw new Error('guest row missing')
-	return { sqlite, db, guest, created }
+	return {
+		sqlite,
+		db,
+		guest: { ...guest, claimCode: created.claimCode },
+		created,
+	}
 }
 
 const seededCounts = {
@@ -200,12 +209,29 @@ function capabilityContext(personId: string) {
 test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', async () => {
 	mocks.scheduleFounderWelcomeEmail.mockClear()
 	const { sqlite, guest, created } = await setup()
+	const storedClaim = sqlite
+		.prepare(
+			'SELECT claim_code, claim_code_encrypted FROM guest_accounts WHERE person_id = ?',
+		)
+		.get(created.personId) as {
+		claim_code: string
+		claim_code_encrypted: string
+	}
+	expect(storedClaim.claim_code).not.toBe(guest.claimCode)
+	expect(storedClaim.claim_code_encrypted).toMatch(/^v2\./)
+	expect(JSON.stringify(storedClaim)).not.toContain(guest.claimCode)
+
 	const started = (await guestClaimStartCapability.handler(
 		{ email: 'claimer@example.test', username: 'claimer' } as never,
 		capabilityContext(created.personId),
 	)) as { dev_code?: string | null }
 	const devCode = started.dev_code
-	expect(devCode).toBeTruthy()
+	expect(devCode).toMatch(/^\d{6}$/)
+	const storedEmailCode = sqlite
+		.prepare('SELECT code_hash FROM guest_claim_codes WHERE person_id = ?')
+		.get(created.personId) as { code_hash: string }
+	expect(storedEmailCode.code_hash).not.toBe(devCode)
+	expect(storedEmailCode.code_hash).not.toContain(devCode)
 	const result = await guestClaimFinishCapability.handler(
 		{ code: String(devCode) },
 		capabilityContext(created.personId),
@@ -236,14 +262,15 @@ test('guestClaimFinish (agent) emits one user.guest_claimed for a new account', 
 			created_at: guest.createdAt,
 			expires_at: guest.expiresAt,
 			claimed_at: claimedAt,
-			phase: expect.stringMatching(/^(active|hold)$/),
+			phase:
+				Date.parse(guest.expiresAt) > Date.parse(claimedAt) ? 'active' : 'hold',
 		},
 		claimed_at: claimedAt,
 		counts: seededCounts,
 		renamed_packages: 0,
 	})
 	expect(JSON.stringify(event)).not.toContain(guest.claimCode)
-	expect(JSON.stringify(event)).not.toContain(String(devCode))
+	expect(JSON.stringify(event)).not.toContain(devCode)
 	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledTimes(1)
 	expect(mocks.scheduleFounderWelcomeEmail).toHaveBeenCalledWith(
 		expect.objectContaining({ stableUserId: guest.personId }),
@@ -270,6 +297,26 @@ test('the claim page email code (merge) emits one user.guest_claimed with counts
 		code: devCode!,
 	})
 	expect(finish.headers.get('Location')).toContain('result=claimed')
+	expect(finish.headers.has('Set-Cookie')).toBe(false)
+	expect(mocks.sendEmail).toHaveBeenCalledWith(
+		expect.objectContaining({
+			kind: 'guest_claim_code',
+			message: expect.objectContaining({
+				subject: expect.stringContaining('Give your agent access'),
+				text: expect.stringContaining('packages, secrets, email and jobs'),
+			}),
+		}),
+	)
+	expect(mocks.sendEmail).toHaveBeenCalledWith(
+		expect.objectContaining({
+			kind: 'guest_claim_merged',
+			category: 'essential',
+			message: expect.objectContaining({
+				to: 'owner@example.test',
+				text: expect.stringContaining('/account/connected-apps'),
+			}),
+		}),
+	)
 
 	const memoriesLeft = sqlite
 		.prepare('SELECT COUNT(*) AS n FROM mcp_memories WHERE user_id = ?')
@@ -295,6 +342,46 @@ test('the claim page email code (merge) emits one user.guest_claimed with counts
 	expect(JSON.stringify(event)).not.toContain(devCode!)
 	// Merging into an existing account never re-sends the founder welcome.
 	expect(mocks.scheduleFounderWelcomeEmail).not.toHaveBeenCalled()
+})
+
+test('a correct code can be retried after a transfer failure', async () => {
+	const { sqlite, guest } = await setup()
+	await seedTarget(sqlite)
+	const started = await claimPost(guest.claimCode, {
+		action: 'email_start',
+		email: 'owner@example.test',
+		mode: 'merge',
+	})
+	const code = new URL(
+		started.headers.get('Location')!,
+		baseUrl,
+	).searchParams.get('dev_code')!
+	const before = sqlite.prepare('SELECT * FROM guest_claim_codes').get()!
+	mocks.exportRunHistoryPage.mockRejectedValueOnce(
+		new Error('Run history unavailable'),
+	)
+	consoleError.mockImplementation(() => {})
+	const failed = await claimPost(guest.claimCode, {
+		action: 'email_finish',
+		code,
+	})
+	expect(failed.headers.get('Location')).toContain('error=merge_blocked')
+	expect(consoleError).toHaveBeenCalledWith(
+		'guest-claim-run-history-move-failed',
+		expect.any(Error),
+	)
+	expect(sqlite.prepare('SELECT * FROM guest_claim_codes').get()).toEqual({
+		...before,
+		attempts: 1,
+	})
+	const retried = await claimPost(guest.claimCode, {
+		action: 'email_finish',
+		code,
+	})
+	expect(retried.headers.get('Location')).toContain('result=claimed')
+	expect(
+		sqlite.prepare('SELECT * FROM guest_claim_codes').get(),
+	).toBeUndefined()
 })
 
 test('signed-in merge on the claim page emits one user.guest_claimed and no user.deleted', async () => {
@@ -369,15 +456,25 @@ test('guestClaimStart reports provider acceptance and wrong codes point to the c
 		claim_url: claimUrl,
 		code_delivery: 'accepted',
 		provider_message_id: null,
-		next_step: expect.stringContaining('send them claim_url instead'),
+		code_sent_to: 'claimer@example.test',
 	})
+	expect(String((started as { next_step?: string }).next_step)).toContain(
+		'claimer@example.test',
+	)
+	expect(String((started as { next_step?: string }).next_step)).toContain(
+		'claim_url',
+	)
 	await expect(
 		guestClaimFinishCapability.handler(
 			{ code: '000000x' },
 			capabilityContext(created.personId),
 		),
-	).rejects.toThrow(
-		`If the code email did not arrive, send them the claim link instead: ${claimUrl}`,
-	)
+	).rejects.toMatchObject({
+		message: expect.stringMatching(
+			new RegExp(
+				`That code is not right\\. Check the email and try again\\. \\(code_invalid\\).*${claimUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`,
+			),
+		),
+	})
 	expect(mocks.dispatch).not.toHaveBeenCalled()
 })

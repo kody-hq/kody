@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 import path from 'node:path'
@@ -19,7 +19,7 @@ import path from 'node:path'
 const repoPathPattern =
 	/^\/git\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+\.git)(\/.*)?$/
 
-export function parseMockGitPath(pathname: string) {
+function parseMockGitPath(pathname: string) {
 	const match = repoPathPattern.exec(pathname)
 	if (!match) return null
 	const [, namespace, repo, rest] = match
@@ -34,8 +34,31 @@ export function parseMockGitPath(pathname: string) {
 	return { namespace, repo, rest: rest ?? '' }
 }
 
+const forkPathPattern =
+	/^\/fork\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+\.git)\/([A-Za-z0-9._-]+\.git)$/
+
+/**
+ * `POST /fork/<namespace>/<source>.git/<target>.git`: the mock Cloudflare
+ * worker calls this when it forks a repo, so the fork starts with the source
+ * history the way an Artifacts fork does.
+ */
+function parseMockGitForkPath(pathname: string) {
+	const match = forkPathPattern.exec(pathname)
+	if (!match) return null
+	const [, namespace, source, target] = match
+	if (
+		!namespace ||
+		!source ||
+		!target ||
+		[namespace, source, target].some((part) => part.startsWith('.'))
+	) {
+		return null
+	}
+	return { namespace, source, target }
+}
+
 /** Artifacts accepts the repo token as a Bearer or as a Basic password. */
-export function hasRepoToken(header: string | undefined) {
+function hasRepoToken(header: string | undefined) {
 	if (header?.startsWith('Bearer ')) {
 		return header.slice('Bearer '.length).trim().length > 0
 	}
@@ -98,6 +121,31 @@ function writeCgiResponse(
 function createMockArtifactsGitServer(input: { root: string }) {
 	return http.createServer((request, response) => {
 		const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+		const fork = parseMockGitForkPath(url.pathname)
+		if (fork && request.method === 'POST') {
+			if (!hasRepoToken(request.headers.authorization)) {
+				response.writeHead(401).end('Unauthorized')
+				return
+			}
+			const sourceDir = path.join(input.root, fork.namespace, fork.source)
+			const targetDir = path.join(input.root, fork.namespace, fork.target)
+			try {
+				if (existsSync(targetDir)) {
+					response.writeHead(409).end('fork target already exists')
+					return
+				}
+				if (existsSync(path.join(sourceDir, 'HEAD'))) {
+					cpSync(sourceDir, targetDir, { recursive: true })
+				} else {
+					ensureBareRepo(targetDir)
+				}
+			} catch (error) {
+				response.writeHead(500).end(String(error))
+				return
+			}
+			response.writeHead(204).end()
+			return
+		}
 		const target = parseMockGitPath(url.pathname)
 		if (!target) {
 			response.writeHead(404).end('Not Found')

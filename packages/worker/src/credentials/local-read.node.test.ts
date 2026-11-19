@@ -11,7 +11,10 @@ import {
 import type { OrgRole } from '@kody-internal/shared/request-context.ts'
 import { expect, test, vi } from 'vitest'
 import type { ApiTokenRecord } from '#worker/api-tokens/service.ts'
-import { setCredentialLocalReads } from '#app/credential-local-reads.ts'
+import {
+	loadLocalReadsApproval,
+	setCredentialLocalReads,
+} from '#app/credential-local-reads.ts'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
 import { upsertGrant } from '#worker/orgs/access-writes.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
@@ -347,4 +350,167 @@ test('local-read list helpers tolerate nullish D1 results', async () => {
 	await expect(listLocalReadSettings(db, ['cred-1'])).resolves.toEqual(
 		new Map(),
 	)
+})
+
+async function insertSecret(
+	t: Awaited<ReturnType<typeof setup>>,
+	input: {
+		id: string
+		name: string
+		scope: 'user' | 'package'
+		bindingKey?: string
+		kind?: 'secret' | 'url'
+		allowedPackages?: Array<string>
+	},
+) {
+	await t.db
+		.prepare(
+			`INSERT OR IGNORE INTO secret_buckets (id, user_id, scope, binding_key, created_at, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?)`,
+		)
+		.bind(
+			`bucket-${input.id}`,
+			t.orgId,
+			input.scope,
+			input.bindingKey ?? '',
+			now,
+			now,
+		)
+		.run()
+	const bucket = await t.db
+		.prepare(
+			`SELECT id FROM secret_buckets WHERE user_id = ? AND scope = ? AND binding_key = ?`,
+		)
+		.bind(t.orgId, input.scope, input.bindingKey ?? '')
+		.first<{ id: string }>()
+	const bucketId = bucket!.id
+	await t.db
+		.prepare(
+			`INSERT INTO secret_entries (id, bucket_id, name, description, encrypted_value,
+			   allowed_hosts, allowed_packages, created_at, updated_at, inject_json, source_json, kind)
+			 VALUES (?, ?, ?, '', 'x', '[]', ?, ?, ?, 'null', 'null', ?)`,
+		)
+		.bind(
+			input.id,
+			bucketId,
+			input.name,
+			JSON.stringify(input.allowedPackages ?? []),
+			now,
+			now,
+			input.kind ?? 'secret',
+		)
+		.run()
+}
+
+function sessionUser(
+	request: ReturnType<Awaited<ReturnType<typeof setup>>['request']>,
+) {
+	return {
+		request,
+		mcpUser: { userId: request.actor?.userId },
+	} as unknown as AuthenticatedAppUser
+}
+
+test('an account secret locked to packages can be read locally', async () => {
+	const t = await setup()
+	await t.db
+		.prepare(`UPDATE secret_entries SET allowed_packages = ? WHERE name = ?`)
+		.bind(JSON.stringify(['pkg-a', 'pkg-b']), 'databaseUrl')
+		.run()
+	const credentialId = await t.idOf('databaseUrl')
+	const result = await t.read({
+		request: t.request(t.ownerStableId, 'owner', 'owner'),
+		token: token('cli-login'),
+		names: ['databaseUrl'],
+	})
+	expect(result).toMatchObject({
+		ok: false,
+		refusals: [
+			{
+				reason: 'local_reads_off',
+				approveUrl: `https://kody.example/@owner/-/credentials/${credentialId}/local-reads`,
+			},
+		],
+	})
+	const approval = await loadLocalReadsApproval({
+		env: t.env,
+		user: sessionUser(t.request(t.ownerStableId, 'owner', 'owner', 'session')),
+		orgSlug: 'owner',
+		credentialId,
+	})
+	expect(approval).toMatchObject({ ok: true, canChange: true, enabled: false })
+})
+
+test('a package secret is refused with the reason and no link, and its page offers the fix', async () => {
+	const t = await setup()
+	await insertSecret(t, {
+		id: 'pkg-secret',
+		name: 'wakeToken',
+		scope: 'package',
+		bindingKey: 'pkg-wake',
+	})
+	const result = await t.read({
+		request: t.request(t.ownerStableId, 'owner', 'owner'),
+		token: token('cli-login'),
+		names: ['wakeToken'],
+	})
+	expect(result).toMatchObject({
+		ok: false,
+		refusals: [{ reason: 'not_found', approveUrl: null }],
+	})
+	if (result.ok) return
+	expect(result.refusals[0]?.message).toContain('package secrets')
+	expect(result.refusals[0]?.message).toContain('{{secret:wakeToken}}')
+
+	const user = sessionUser(
+		t.request(t.ownerStableId, 'owner', 'owner', 'session'),
+	)
+	const approval = await loadLocalReadsApproval({
+		env: t.env,
+		user,
+		orgSlug: 'owner',
+		credentialId: 'pkg-secret',
+	})
+	expect(approval).toEqual({
+		ok: false,
+		name: 'wakeToken',
+		message: expect.stringContaining(
+			'wakeToken is a package secret. It belongs to the package pkg-wake',
+		),
+		fix: {
+			label: 'Save as an account secret',
+			href: '/@owner/-/credentials/new?kind=secret&name=wakeToken&allowedPackages=pkg-wake',
+		},
+		detailHref: '/@owner/-/credentials/pkg-secret',
+	})
+	const save = await setCredentialLocalReads({
+		env: t.env,
+		user,
+		credentialId: 'pkg-secret',
+		enabled: true,
+	})
+	expect(save.status).toBe(400)
+	expect(await readLocalReadSetting(t.db, 'pkg-secret')).toBeNull()
+})
+
+test('a secret URL page says only Keys can be read locally', async () => {
+	const t = await setup()
+	await insertSecret(t, {
+		id: 'url-secret',
+		name: 'hookUrl',
+		scope: 'user',
+		kind: 'url',
+	})
+	const approval = await loadLocalReadsApproval({
+		env: t.env,
+		user: sessionUser(t.request(t.ownerStableId, 'owner', 'owner', 'session')),
+		orgSlug: 'owner',
+		credentialId: 'url-secret',
+	})
+	expect(approval).toMatchObject({
+		ok: false,
+		name: 'hookUrl',
+		message: expect.stringContaining('only Keys can be read locally'),
+		fix: null,
+	})
 })

@@ -1160,6 +1160,13 @@ test('a durable publish run keeps a compact result and records its published com
 			createInlineStep(),
 		),
 	).resolves.toEqual(expected)
+	expect(invocationMocks.runModuleWithRegistry).toHaveBeenLastCalledWith(
+		expect.anything(),
+		expect.anything(),
+		durablePublishWorkflowCode,
+		expect.objectContaining({ expected_head: syntheticPublishCommit }),
+		expect.anything(),
+	)
 	const finish = runRecordMocks.finishRunRecord.mock.calls.at(-1)?.[0]
 	expect(finish).toMatchObject({ status: 'success', result: expected })
 	expect(finish?.handle?.context.publishedCommit).toBe(syntheticPublishCommit)

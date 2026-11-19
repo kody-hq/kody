@@ -1,10 +1,11 @@
 /** @jsxImportSource @emotion/react */
+import {
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
 import type { CSSObject } from '@emotion/react'
 import { spacing } from '#universal/styles/tokens.ts'
-import {
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-} from '../pages/account-management-components.tsx'
+import { Radio } from './choice-controls.tsx'
 
 export type OrgProfileVisibilityChoice = 'public' | 'private'
 
@@ -35,16 +36,15 @@ export function OrgVisibilityFieldset(props: {
 	const baseId = props.testId ?? 'org-visibility'
 	return (
 		<fieldset css={fieldsetCss} data-testid={props.testId}>
-			<legend css={accountFieldLabelCss}>Page visibility</legend>
+			<legend css={fieldLabelCss}>Page visibility</legend>
 			{options.map((option) => {
 				// The note describes the radio instead of labelling it, so its
 				// copy ("name, photo") does not match label lookups like "Name".
 				const noteId = `${baseId}-${option.value}-note`
 				return (
 					<div key={option.value} css={optionCss}>
-						<input
+						<Radio
 							id={`${baseId}-${option.value}`}
-							type="radio"
 							name="profileVisibility"
 							value={option.value}
 							checked={props.value === option.value}
@@ -59,7 +59,7 @@ export function OrgVisibilityFieldset(props: {
 							{/* Clicking the note picks the option like its label does; the radio stays the accessible control. */}
 							<span
 								id={noteId}
-								css={[accountFieldNoteCss, { cursor: 'pointer' }]}
+								css={[fieldDescriptionCss, { cursor: 'pointer' }]}
 								onClick={() => {
 									if (!props.disabled) props.onChange(option.value)
 								}}
@@ -70,7 +70,7 @@ export function OrgVisibilityFieldset(props: {
 					</div>
 				)
 			})}
-			<p css={accountFieldNoteCss}>
+			<p css={fieldDescriptionCss}>
 				This controls kody.codes/@{props.handle || 'your-handle'}. Members are
 				never listed, and private packages never show there.
 			</p>

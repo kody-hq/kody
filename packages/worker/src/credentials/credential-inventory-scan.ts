@@ -324,12 +324,12 @@ export function emptyPlaceholderCounts(): Record<PlaceholderMatchKind, number> {
 	}
 }
 
-export function scanPackageCredentials(input: {
+export async function scanPackageCredentials(input: {
 	files: Record<string, string>
 	slots: Record<string, PackageCredentialSlot> | undefined
 	/** Record each reference's module path and line (publish warnings). */
 	sites?: boolean
-}): PackageCredentialScan {
+}): Promise<PackageCredentialScan> {
 	const scan: PackageCredentialScan = {
 		placeholders: emptyPlaceholderCounts(),
 		references: [],
@@ -344,7 +344,7 @@ export function scanPackageCredentials(input: {
 		})),
 		unparsedModules: 0,
 	}
-	forEachScannableModule(
+	await forEachScannableModule(
 		input.files,
 		(path, parsed, constants) => {
 			if (parsed) {
@@ -368,6 +368,34 @@ export function scanPackageCredentials(input: {
 		{ sorted: true },
 	)
 	return scan
+}
+
+/**
+ * Join the scans of disjoint module sets of one package, given in sorted
+ * module order, into what one scan of all of them returns.
+ */
+export function mergePackageCredentialScans(
+	parts: ReadonlyArray<PackageCredentialScan>,
+): PackageCredentialScan {
+	const placeholders = emptyPlaceholderCounts()
+	for (const part of parts) {
+		for (const kind of Object.keys(
+			placeholders,
+		) as Array<PlaceholderMatchKind>) {
+			placeholders[kind] += part.placeholders[kind]
+		}
+	}
+	return {
+		placeholders,
+		references: parts.flatMap((part) => part.references),
+		vaultPlacements: parts.flatMap((part) => part.vaultPlacements),
+		vaultUses: parts.flatMap((part) => part.vaultUses),
+		jwtSignCalls: parts.reduce((sum, part) => sum + part.jwtSignCalls, 0),
+		jwtSignSecretNames: parts.flatMap((part) => part.jwtSignSecretNames),
+		// Declared in the manifest, so every part lists the same slots.
+		slots: parts[0]?.slots ?? [],
+		unparsedModules: parts.reduce((sum, part) => sum + part.unparsedModules, 0),
+	}
 }
 
 function nodeLine(node: AstNode): number | null {

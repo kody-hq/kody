@@ -5,6 +5,7 @@ import { afterEach, test, vi } from 'vitest'
 
 import { NonRetryableError } from 'cloudflare:workflows'
 import { acceptUploadStepResult, runBackupRuntime } from './backup-runtime.ts'
+import { captureRestExportFailure } from './sentry.ts'
 import { DEFAULT_BACKUP_MAX_SOURCE_BYTES } from './d1-export-api.ts'
 import { readManifest } from './immutable-storage.ts'
 import {
@@ -28,6 +29,8 @@ import {
 	backupError,
 } from './backup-control-plane-test-support.ts'
 import { withNonRetryableBackupErrors } from './workflow-step-boundary.ts'
+
+vi.mock('./sentry.ts', () => ({ captureRestExportFailure: vi.fn() }))
 
 afterEach(() => {
 	vi.restoreAllMocks()
@@ -325,6 +328,15 @@ test('oversized SQL writes stats then fails retryably without a day manifest', a
 	const events = consoleEvents(consoleError)
 	assert.ok(events.includes('backup-unrestorable-statements'))
 	assert.ok(events.includes('backup-failure'))
+	assert.deepEqual(vi.mocked(captureRestExportFailure).mock.calls, [
+		[
+			{
+				databaseName: env.SOURCE_DATABASE_NAME,
+				day: '2026-07-31',
+				code: 'backup-unrestorable-statements',
+			},
+		],
+	])
 })
 
 test('cached pre-stats uploads are allowed only for legacy backup days; conflicting stats block the manifest', async () => {

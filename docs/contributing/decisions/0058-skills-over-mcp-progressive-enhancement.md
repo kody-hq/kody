@@ -44,3 +44,9 @@ any host                                  -> search package:@you/pkg#skills/x/SK
 - Revisit (flip the default or delete the flag) once Claude or Cursor consume
   MCP-served skills live. Delete the flag and gate sites when the experiment
   ends.
+
+## Update (2026-11-19)
+
+Promoted to everyone. The `mcp-skills-extension` flag and its gate sites are
+deleted; the only remaining condition is that the client advertises
+`io.modelcontextprotocol/skills` on the request.

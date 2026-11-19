@@ -17,7 +17,11 @@ type EmailAction = {
 	url: string
 }
 
-export type EmailAfterActionBlock = string | { kind: 'quote'; text: string }
+export type EmailAfterActionBlock =
+	| string
+	| { kind: 'quote'; text: string }
+	/** Preformatted text the reader copies as is (line breaks kept). */
+	| { kind: 'code'; text: string }
 
 /** A body paragraph, or one that ends in a link (rendered as an anchor in HTML). */
 export type EmailBodyBlock = string | { text: string; link: EmailAction }
@@ -38,6 +42,8 @@ export type TransactionalEmailContent = {
 	preheader: string
 	/** Large headline at the top of the card. */
 	heading: string
+	/** Leave the heading out of the plain text, for when it repeats the subject. */
+	textOmitsHeading?: boolean
 	/** Body paragraphs shown above the action button. */
 	body: Array<EmailBodyBlock>
 	/** Primary call to action. */
@@ -100,6 +106,8 @@ function bodyText(values: Array<EmailBodyBlock>) {
 	)
 }
 
+const codeStyle = `margin: 0 0 16px; padding: 12px 16px; border: 1px solid ${colors.border}; border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; line-height: 1.5; color: ${colors.text}; white-space: pre-wrap; word-break: break-word;`
+
 function afterActionBlocks(
 	values: Array<EmailAfterActionBlock>,
 	mutedStyle: string,
@@ -109,6 +117,9 @@ function afterActionBlocks(
 		.map((value) => {
 			if (typeof value === 'string') {
 				return `<p class="kody-muted" style="${mutedStyle}">${escapeHtml(value)}</p>`
+			}
+			if (value.kind === 'code') {
+				return `<pre class="kody-text" style="${codeStyle}">${escapeHtml(value.text)}</pre>`
 			}
 			return `<blockquote class="kody-text" style="${quoteStyle}">${escapeHtml(value.text)}</blockquote>`
 		})
@@ -130,7 +141,11 @@ function brandImage(
 
 function afterActionText(values: Array<EmailAfterActionBlock>) {
 	return values.map((value) =>
-		typeof value === 'string' ? value : `"${value.text}"`,
+		typeof value === 'string'
+			? value
+			: value.kind === 'code'
+				? value.text
+				: `"${value.text}"`,
 	)
 }
 
@@ -146,8 +161,8 @@ export function renderTransactionalEmail(
 		? `
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 24px 0;">
               <tr>
-                <td align="center" bgcolor="${colors.accent}" style="border-radius: 999px;">
-                  <a href="${escapeHtml(action.url)}" class="kody-button" style="display: inline-block; padding: 14px 28px; font-family: ${fontStack}; font-size: 16px; font-weight: 600; line-height: 1; color: ${colors.accentText}; text-decoration: none; border-radius: 999px;">${escapeHtml(action.label)}</a>
+                <td align="center" bgcolor="${colors.accent}" style="border-radius: 10px;">
+                  <a href="${escapeHtml(action.url)}" class="kody-button" style="display: inline-block; padding: 14px 28px; font-family: ${fontStack}; font-size: 16px; font-weight: 600; line-height: 1; color: ${colors.accentText}; text-decoration: none; border-radius: 10px;">${escapeHtml(action.label)}</a>
                 </td>
               </tr>
             </table>
@@ -246,7 +261,7 @@ export function renderTransactionalEmail(
 </html>`
 
 	const text = [
-		content.heading,
+		...(content.textOmitsHeading ? [] : [content.heading]),
 		...bodyText(content.body),
 		...(action ? [`${action.label}: ${action.url}`] : []),
 		...(secondaryAction

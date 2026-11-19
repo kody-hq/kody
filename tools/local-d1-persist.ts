@@ -44,7 +44,7 @@ function wranglerPersistToFromEnvFile(contents: string) {
 	return undefined
 }
 
-export function envWithWorkerPersistFile(
+function envWithWorkerPersistFile(
 	env: NodeJS.ProcessEnv,
 	contents: string | undefined,
 ) {

@@ -3,8 +3,8 @@
 Kody is your agents' cloud. Accounts isolate packages, jobs, credentials,
 memories, connectors, email, and durable storage for individuals and teams.
 
-Reuse existing UI components and styles. Extend shared controls for shared
-behavior. Never add unstyled native selects. Verify the rendered result.
+Reuse existing UI components; extend shared controls. Never add unstyled native
+selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
 `npm run validate` is the local gate. Verify UI/API with
 [control-kody](./docs/contributing/control-kody.md) first.
 
@@ -12,7 +12,7 @@ Open the page that owns the task:
 
 - Docs map: [contributing](./docs/contributing/index.md) ·
   [principles](./docs/principles/index.md) · [skills](./.agents/skills/) ·
-  [blog posts](./docs/contributing/blog.md) (category and series rules)
+  [blog posts](./docs/contributing/blog.md) (category, series, video roundups)
 - Invite a whole team: [organizations](./docs/guides/organizations.md)
   (`guide:organizations`, `inviteLinkCreate`)
 - Cloud Agent VM gotchas (Node, Playwright, dev server, seeding, limits):

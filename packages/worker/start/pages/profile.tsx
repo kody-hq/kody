@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	profilePageCss,
@@ -20,11 +21,7 @@ import { ProfileContent } from '../components/profile-content.tsx'
 import { renderProfileIdentity } from '../components/profile-identity.tsx'
 import { ProfileRepositorySearchInput } from '../components/profile-search-field.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldCss, fieldLabelCss } from '#universal/styles/style-primitives.ts'
 export function ProfileRoute({
 	data: savedData,
 	currentHref,
@@ -110,12 +107,9 @@ export function ProfileRoute({
 						filters={filters}
 					/>
 				</label>
-				<button
-					type="submit"
-					css={{ ...getPillButtonCss({ size: 'sm' }), alignSelf: 'end' }}
-				>
+				<Button type="submit" variant="primary" css={{ alignSelf: 'end' }}>
 					Search
-				</button>
+				</Button>
 			</form>
 
 			{visibleList ? (

@@ -1,6 +1,5 @@
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
 import { McpCallerError } from '#worker/mcp/caller-error.ts'
-import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import { isPublishOffloadEnabledFor } from './flag.ts'
 import { sha256Hex } from './module-hashes.ts'
 import { publishBuildState } from './publish-build-state.ts'
@@ -31,7 +30,7 @@ export type PublishBuildRow = {
 	context_name: string | null
 	ticket_sha256: string
 	status: PublishBuildStatus
-	document_json: string | null
+	document_sha256: string | null
 	message: string | null
 	created_at: string
 	updated_at: string
@@ -52,6 +51,19 @@ export function publishBuildBlobKey(buildId: string, sha256: string) {
 
 export function publishBuildBlobPrefix(buildId: string) {
 	return `publish-builds/${buildId}/`
+}
+
+/**
+ * The sealed build document lives in R2, not D1: a large package's file and
+ * module manifest outgrows the D1 import statement limit (see
+ * backup-restore-safety.ts) and would make the APP_DB backup unrestorable.
+ */
+export function publishBuildDocumentKey(buildId: string, sha256: string) {
+	return `${publishBuildDocumentPrefix(buildId)}${sha256}.json`
+}
+
+function publishBuildDocumentPrefix(buildId: string) {
+	return `publish-build-documents/${buildId}/`
 }
 
 function randomToken(bytes = 32) {
@@ -158,20 +170,22 @@ export async function authenticatePublishBuildTicket(input: {
 
 export async function sealPublishBuild(input: {
 	db: D1Database
+	bucket: R2Bucket
 	buildId: string
 	document: PublishBuildDocument
 }) {
+	const body = JSON.stringify(input.document)
+	const sha256 = await sha256Hex(body)
+	await input.bucket.put(publishBuildDocumentKey(input.buildId, sha256), body, {
+		httpMetadata: { contentType: 'application/json' },
+	})
 	const result = await input.db
 		.prepare(
 			`UPDATE publish_builds
-			SET status = 'sealed', document_json = ?, updated_at = ?
+			SET status = 'sealed', document_sha256 = ?, updated_at = ?
 			WHERE id = ? AND status IN ${sealGuard}`,
 		)
-		.bind(
-			JSON.stringify(input.document),
-			new Date().toISOString(),
-			input.buildId,
-		)
+		.bind(sha256, new Date().toISOString(), input.buildId)
 		.run()
 	return (result.meta.changes ?? 0) > 0
 }
@@ -201,17 +215,22 @@ export async function finishPublishBuild(input: {
 		.run()
 }
 
-async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
+async function deletePrefix(bucket: R2Bucket, prefix: string) {
 	let cursor: string | undefined
 	do {
 		const page = await bucket.list({
-			prefix: publishBuildBlobPrefix(buildId),
+			prefix,
 			...(cursor ? { cursor } : {}),
 		})
 		const keys = page.objects.map((object) => object.key)
 		if (keys.length > 0) await bucket.delete(keys)
 		cursor = page.truncated ? page.cursor : undefined
 	} while (cursor)
+}
+
+async function deletePublishBuildBlobs(bucket: R2Bucket, buildId: string) {
+	await deletePrefix(bucket, publishBuildBlobPrefix(buildId))
+	await deletePrefix(bucket, publishBuildDocumentPrefix(buildId))
 }
 
 /**
@@ -234,7 +253,7 @@ export async function purgeExpiredPublishBuilds(input: {
 		.prepare(
 			`SELECT id, status FROM publish_builds
 			WHERE expires_at < ?
-				AND (status != 'committed' OR document_json IS NOT NULL)
+				AND (status != 'committed' OR document_sha256 IS NOT NULL)
 			ORDER BY expires_at LIMIT ?`,
 		)
 		.bind(cutoff, input.limit ?? 10)
@@ -244,7 +263,7 @@ export async function purgeExpiredPublishBuilds(input: {
 		if (row.status === 'committed') {
 			await input.db
 				.prepare(
-					`UPDATE publish_builds SET document_json = NULL, updated_at = ?
+					`UPDATE publish_builds SET document_sha256 = NULL, updated_at = ?
 					WHERE id = ?`,
 				)
 				.bind(new Date().toISOString(), row.id)
@@ -261,9 +280,16 @@ export async function purgeExpiredPublishBuilds(input: {
 	return results.length
 }
 
-export function parsePublishBuildDocument(row: PublishBuildRow) {
-	if (!row.document_json) return null
-	return JSON.parse(row.document_json) as PublishBuildDocument
+export async function readPublishBuildDocument(input: {
+	bucket: R2Bucket
+	row: Pick<PublishBuildRow, 'id' | 'document_sha256'>
+}) {
+	if (!input.row.document_sha256) return null
+	const object = await input.bucket.get(
+		publishBuildDocumentKey(input.row.id, input.row.document_sha256),
+	)
+	if (!object) return null
+	return JSON.parse(await object.text()) as PublishBuildDocument
 }
 
 /** 11B: where the serving build of a commit was made, for package info. */
@@ -287,24 +313,6 @@ export async function getCommittedPublishBuildOrigin(input: {
 	}
 }
 
-export async function isPackageCommunityListed(
-	db: D1Database,
-	packageId: string,
-) {
-	const row = await db
-		.prepare(
-			`SELECT 1 AS listed FROM community_listings
-			WHERE ${communityListingPackageColumn} = ? AND status = 'active'
-				AND deleted_at IS NULL
-			LIMIT 1`,
-		)
-		.bind(packageId)
-		.first<{ listed: number }>()
-	return row != null
-}
-
-const communityListingPackageColumn = 'package_id'
-
 function rejected(message: string) {
 	return new McpCallerError(
 		`Publish build rejected: ${message} ${publishBuildRejectionHint}`,
@@ -314,12 +322,12 @@ function rejected(message: string) {
 /**
  * Commit-time gate for `packagePublishExternalPush({ publish_build_id })`:
  * the flag is on, the build belongs to this package, publisher and pushed
- * commit, and it is sealed. Its Kody package imports are linked and
- * checked when the upload is committed (6C).
+ * commit, and it is sealed. Durable publish runs on the runtime Worker,
+ * which doesn't have the upload bucket. RepoSession reads and verifies the
+ * sealed document and links its Kody package imports before serving.
  */
 export async function resolveUploadedPublishBuildForPublish(input: {
-	env: Env
-	request: RequestContext | null | undefined
+	db: D1Database
 	buildId: string
 	packageId: string
 	sourceId: string
@@ -329,7 +337,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 }): Promise<UploadedPublishBuildRef> {
 	if (
 		!(await isPublishOffloadEnabledFor(
-			input.env.APP_DB,
+			input.db,
 			input.requesterUserId,
 			input.orgId,
 		))
@@ -338,7 +346,7 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 			'publish_build_id needs the publish-offload feature flag, which is off for this account. Publish without it to build on Kody cloud.',
 		)
 	}
-	const row = await getPublishBuild(input.env.APP_DB, input.buildId)
+	const row = await getPublishBuild(input.db, input.buildId)
 	if (
 		!row ||
 		row.package_id !== input.packageId ||
@@ -358,14 +366,9 @@ export async function resolveUploadedPublishBuildForPublish(input: {
 	if (row.status === 'rejected') {
 		throw rejected(row.message ?? 'this build already failed verification.')
 	}
-	const document = parsePublishBuildDocument(row)
-	if (!document) throw rejected('the build has no sealed manifest.')
+	if (!row.document_sha256) throw rejected('the build has no sealed manifest.')
 	return {
 		buildId: row.id,
-		communityListed: await isPackageCommunityListed(
-			input.env.APP_DB,
-			input.packageId,
-		).catch(() => false),
 		origin: row.origin,
 		contextName: row.context_name,
 	}

@@ -750,6 +750,7 @@ function InlineFileRename({
 			}}
 			css={{ position: 'absolute', left: 31, right: 7, top: 3, zIndex: 2 }}
 		>
+			{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- inline rename sized to the 26px tree row */}
 			<input
 				aria-label="Rename file"
 				autoFocus

@@ -9,6 +9,8 @@
  * are reported as `unconvertible` for an agent attempt then Kent notify.
  * Durable Object CPU / isolate-reset failures (large prebuilt client assets)
  * are `deferred_scan_budget` — a known publish-path bug, not stop-and-notify.
+ * Each package is scanned in its own throwaway `RepoSession` isolate, so a
+ * package too large to scan defers itself instead of resetting the caller.
  */
 import {
 	errorCauseChainIncludes,
@@ -282,6 +284,179 @@ async function listCandidatePackages(input: {
 	}
 }
 
+type CredentialStampFleetPackageIdentity = {
+	packageId: string
+	ownerUserId: OwnerId
+	packageName: string
+	kodyId: string
+	sourceId: string
+}
+
+export type IsolatedCredentialStampFleetPackageRequest =
+	CredentialStampFleetPackageIdentity & {
+		baseUrl: string
+		/** The commit the caller read; the scan fails if it has moved. */
+		publishedCommit: string
+		dryRun: boolean
+	}
+
+export type IsolatedCredentialStampFleetPackageResult = {
+	outcome: CredentialStampFleetOutcome
+	/** No complete stamp at the published commit, whatever happened next. */
+	missingStamp: boolean
+}
+
+type IsolatedCredentialStampFleetStub = {
+	scanIsolatedCredentialStampFleetPackage(
+		input: IsolatedCredentialStampFleetPackageRequest,
+	): Promise<IsolatedCredentialStampFleetPackageResult>
+}
+
+function failureOutcome(
+	input: CredentialStampFleetPackageIdentity & {
+		publishedCommit: string | null
+	},
+	error: unknown,
+): CredentialStampFleetOutcome {
+	return {
+		...input,
+		stampKeyCount: 0,
+		outcome: isCredentialStampScanBudgetFailure(error)
+			? 'deferred_scan_budget'
+			: 'failed',
+		error: getErrorMessage(error),
+	}
+}
+
+/**
+ * One package of the fleet scan: load its published source, plan the seal,
+ * compare the stored stamp, and restamp when asked. Runs in a throwaway
+ * `RepoSession` isolate. Whole package sources and the syntax walk over them
+ * reset the shared API isolate, and every other request in it, when the fleet
+ * loop did this inline (2026-11-16).
+ */
+export async function runIsolatedCredentialStampFleetPackage(
+	env: Env,
+	request: IsolatedCredentialStampFleetPackageRequest,
+): Promise<IsolatedCredentialStampFleetPackageResult> {
+	const { dryRun, publishedCommit } = request
+	const base = {
+		packageId: request.packageId,
+		ownerUserId: request.ownerUserId,
+		packageName: request.packageName,
+		kodyId: request.kodyId,
+		sourceId: request.sourceId,
+		publishedCommit,
+	}
+	let missingStamp = false
+	try {
+		const loaded = await loadPackageSourceBySourceId({
+			env,
+			baseUrl: request.baseUrl,
+			userId: request.ownerUserId,
+			sourceId: request.sourceId,
+		})
+		const loadedCommit = loaded.source.published_commit?.trim() || null
+		if (loadedCommit !== publishedCommit) {
+			throw new Error(
+				`Published commit changed from "${publishedCommit}" to "${loadedCommit ?? 'unpublished'}" while scanning; retry this package.`,
+			)
+		}
+		// Nested packages arrive keyed from the repo root; scope like
+		// storePublishedCredentialStamp / packageSourceFiles before seal.
+		const { files: packageFiles } = packageSourceFiles({
+			source: loaded.source,
+			files: loaded.files,
+		})
+		const plan = await planCredentialStampSeal(packageFiles)
+		// Seal-plan scan size, not declared package.json slot count. A
+		// package can be outcome "stamped" with stampKeyCount 0 when the
+		// scan misses uses (e.g. cm.mcp?.['home'] before optional/bracket
+		// detection) and the stored stamp is also empty, so they still match.
+		const stampKeyCount = plan.keys.length
+		if (plan.blockingFailures.length > 0) {
+			return {
+				outcome: {
+					...base,
+					stampKeyCount,
+					outcome: 'unconvertible',
+					blockingFailureCodes: [
+						...new Set(plan.blockingFailures.map((failure) => failure.code)),
+					].sort(),
+					blockingFailures: sampleFleetBlockingFailures(plan.blockingFailures),
+				},
+				missingStamp,
+			}
+		}
+		if (plan.uninferableKeys.length > 0 || plan.updates.length > 0) {
+			return {
+				outcome: { ...base, stampKeyCount, outcome: 'needs_manifest' },
+				missingStamp,
+			}
+		}
+		const existing = await readPublishedCredentialStamp({
+			env,
+			sourceId: loaded.source.id,
+			publishedCommit,
+		})
+		const liveDepPins = isStoredCredentialStamp(existing)
+			? await resolvePublishedCredentialDepStamps({
+					env,
+					userId: request.ownerUserId,
+					packageName: request.packageName,
+					// Same oversized omit as seal planning / loadDependencyStamps.
+					files: omitOversizedCredentialStampModules(packageFiles),
+				})
+			: []
+		const stampCurrent =
+			isStoredCredentialStamp(existing) &&
+			stampKeysMatchPlan(existing, plan.keys) &&
+			stampDepPinsMatch(existing, liveDepPins)
+		if (stampCurrent) {
+			return {
+				outcome: { ...base, stampKeyCount, outcome: 'stamped' },
+				missingStamp,
+			}
+		}
+		missingStamp = true
+		if (dryRun) {
+			return {
+				outcome: { ...base, stampKeyCount, outcome: 'would_restamp' },
+				missingStamp,
+			}
+		}
+		const sourceAgain = await loadPackageSourceRowForUser({
+			env,
+			userId: request.ownerUserId,
+			sourceId: request.sourceId,
+		})
+		const commitAgain = sourceAgain.published_commit?.trim() || null
+		if (commitAgain !== publishedCommit) {
+			throw new Error(
+				`Published commit changed from "${publishedCommit}" to "${commitAgain ?? 'unpublished'}" before restamp; retry this package.`,
+			)
+		}
+		const stored = await storePublishedCredentialStamp({
+			env,
+			source: sourceAgain,
+			publishedCommit,
+			files: loaded.files,
+		})
+		if (stored == null) {
+			throw new Error(
+				`Failed to store credential stamp for source "${loaded.source.id}" at commit "${publishedCommit}".`,
+			)
+		}
+		return {
+			outcome: { ...base, stampKeyCount, outcome: 'restamped' },
+			missingStamp,
+		}
+	} catch (error) {
+		// Error classes do not survive the RPC boundary; classify here.
+		return { outcome: failureOutcome(base, error), missingStamp }
+	}
+}
+
 /**
  * Fleet scan/apply for published packages missing a complete credential stamp
  * at the current published commit. dryRun (default) reports only; apply
@@ -344,7 +519,15 @@ export async function runCredentialStampFleet(input: {
 	let skippedUnpublished = 0
 
 	for (const savedPackage of packages) {
+		const identity = {
+			packageId: savedPackage.id,
+			ownerUserId: savedPackage.userId,
+			packageName: savedPackage.name,
+			kodyId: savedPackage.kodyId,
+			sourceId: savedPackage.sourceId,
+		}
 		let publishedCommit: string | null = null
+		let scanned: IsolatedCredentialStampFleetPackageResult
 		try {
 			const source = await loadPackageSourceRowForUser({
 				env: input.env,
@@ -355,11 +538,7 @@ export async function runCredentialStampFleet(input: {
 			if (!publishedCommit) {
 				skippedUnpublished += 1
 				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
+					...identity,
 					publishedCommit: null,
 					stampKeyCount: 0,
 					outcome: 'skipped_unpublished',
@@ -367,173 +546,53 @@ export async function runCredentialStampFleet(input: {
 				continue
 			}
 			publishedPackages += 1
-			const loaded = await loadPackageSourceBySourceId({
-				env: input.env,
+			// A fresh id per package puts its scan in its own isolate, never
+			// the calling isolate. The instance never touches its storage.
+			const stub = input.env.REPO_SESSION.get(
+				input.env.REPO_SESSION.idFromName(
+					`isolated-credential-stamp-fleet-${savedPackage.id}-${crypto.randomUUID()}`,
+				),
+			) as unknown as IsolatedCredentialStampFleetStub
+			scanned = await stub.scanIsolatedCredentialStampFleetPackage({
+				...identity,
 				baseUrl: input.baseUrl,
-				userId: savedPackage.userId,
-				sourceId: savedPackage.sourceId,
-			})
-			const loadedCommit = loaded.source.published_commit?.trim() || null
-			if (loadedCommit !== publishedCommit) {
-				throw new Error(
-					`Published commit changed from "${publishedCommit}" to "${loadedCommit ?? 'unpublished'}" while scanning; retry this package.`,
-				)
-			}
-			// Nested packages arrive keyed from the repo root; scope like
-			// storePublishedCredentialStamp / packageSourceFiles before seal.
-			const { files: packageFiles } = packageSourceFiles({
-				source: loaded.source,
-				files: loaded.files,
-			})
-			const plan = planCredentialStampSeal(packageFiles)
-			// Seal-plan scan size, not declared package.json slot count. A
-			// package can be outcome "stamped" with stampKeyCount 0 when the
-			// scan misses uses (e.g. cm.mcp?.['home'] before optional/bracket
-			// detection) and the stored stamp is also empty — they still match.
-			const stampKeyCount = plan.keys.length
-			if (plan.blockingFailures.length > 0) {
-				unconvertiblePackages += 1
-				for (const failure of plan.blockingFailures) {
-					unconvertibleFailureCodes.add(failure.code)
-				}
-				const blockingFailureCodes = [
-					...new Set(plan.blockingFailures.map((failure) => failure.code)),
-				].sort()
-				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
-					publishedCommit,
-					stampKeyCount,
-					outcome: 'unconvertible',
-					blockingFailureCodes,
-					blockingFailures: sampleFleetBlockingFailures(plan.blockingFailures),
-				})
-				continue
-			}
-			if (plan.uninferableKeys.length > 0 || plan.updates.length > 0) {
-				needsManifestPackages += 1
-				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
-					publishedCommit,
-					stampKeyCount,
-					outcome: 'needs_manifest',
-				})
-				continue
-			}
-			const existing = await readPublishedCredentialStamp({
-				env: input.env,
-				sourceId: source.id,
 				publishedCommit,
-			})
-			const liveDepPins = isStoredCredentialStamp(existing)
-				? await resolvePublishedCredentialDepStamps({
-						env: input.env,
-						userId: savedPackage.userId,
-						packageName: savedPackage.name,
-						// Same oversized omit as seal planning / loadDependencyStamps.
-						files: omitOversizedCredentialStampModules(packageFiles),
-					})
-				: []
-			const stampCurrent =
-				isStoredCredentialStamp(existing) &&
-				stampKeysMatchPlan(existing, plan.keys) &&
-				stampDepPinsMatch(existing, liveDepPins)
-			if (stampCurrent) {
-				stampedPackages += 1
-				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
-					publishedCommit,
-					stampKeyCount,
-					outcome: 'stamped',
-				})
-				continue
-			}
-			missingStampPackages += 1
-			if (dryRun) {
-				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
-					publishedCommit,
-					stampKeyCount,
-					outcome: 'would_restamp',
-				})
-				continue
-			}
-			const sourceAgain = await loadPackageSourceRowForUser({
-				env: input.env,
-				userId: savedPackage.userId,
-				sourceId: savedPackage.sourceId,
-			})
-			const commitAgain = sourceAgain.published_commit?.trim() || null
-			if (commitAgain !== publishedCommit) {
-				throw new Error(
-					`Published commit changed from "${publishedCommit}" to "${commitAgain ?? 'unpublished'}" before restamp; retry this package.`,
-				)
-			}
-			const stored = await storePublishedCredentialStamp({
-				env: input.env,
-				source: sourceAgain,
-				publishedCommit,
-				files: loaded.files,
-			})
-			if (stored == null) {
-				throw new Error(
-					`Failed to store credential stamp for source "${source.id}" at commit "${publishedCommit}".`,
-				)
-			}
-			restampedPackages += 1
-			outcomes.push({
-				packageId: savedPackage.id,
-				ownerUserId: savedPackage.userId,
-				packageName: savedPackage.name,
-				kodyId: savedPackage.kodyId,
-				sourceId: savedPackage.sourceId,
-				publishedCommit,
-				stampKeyCount,
-				outcome: 'restamped',
+				dryRun,
 			})
 		} catch (error) {
-			if (isCredentialStampScanBudgetFailure(error)) {
-				deferredScanBudgetPackages += 1
-				outcomes.push({
-					packageId: savedPackage.id,
-					ownerUserId: savedPackage.userId,
-					packageName: savedPackage.name,
-					kodyId: savedPackage.kodyId,
-					sourceId: savedPackage.sourceId,
-					publishedCommit,
-					stampKeyCount: 0,
-					outcome: 'deferred_scan_budget',
-					error: getErrorMessage(error),
-				})
-				continue
+			scanned = {
+				outcome: failureOutcome({ ...identity, publishedCommit }, error),
+				missingStamp: false,
 			}
-			failedPackages += 1
-			outcomes.push({
-				packageId: savedPackage.id,
-				ownerUserId: savedPackage.userId,
-				packageName: savedPackage.name,
-				kodyId: savedPackage.kodyId,
-				sourceId: savedPackage.sourceId,
-				publishedCommit,
-				stampKeyCount: 0,
-				outcome: 'failed',
-				error: getErrorMessage(error),
-			})
+		}
+		const { outcome } = scanned
+		outcomes.push(outcome)
+		if (scanned.missingStamp) missingStampPackages += 1
+		switch (outcome.outcome) {
+			case 'stamped':
+				stampedPackages += 1
+				break
+			case 'needs_manifest':
+				needsManifestPackages += 1
+				break
+			case 'unconvertible':
+				unconvertiblePackages += 1
+				for (const code of outcome.blockingFailureCodes) {
+					unconvertibleFailureCodes.add(code)
+				}
+				break
+			case 'restamped':
+				restampedPackages += 1
+				break
+			case 'deferred_scan_budget':
+				deferredScanBudgetPackages += 1
+				break
+			case 'failed':
+				failedPackages += 1
+				break
+			case 'would_restamp':
+			case 'skipped_unpublished':
+				break
 		}
 	}
 

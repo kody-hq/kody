@@ -1,8 +1,8 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import {
 	apiRequestProgressKvKey,
+	apiRequestProgressSteps,
 	isApiRequestId,
-	packageCheckProgressSteps,
 	parseApiRequestProgress,
 	type ApiRequestProgress,
 } from '@kody-internal/shared/api-request-progress.ts'
@@ -62,7 +62,7 @@ export async function readApiRequestProgress(input: {
 	const kv = progressKv(input.env)
 	if (!kv || !isApiRequestId(input.requestId)) return null
 	const recorded = await Promise.all(
-		packageCheckProgressSteps.map((step) =>
+		apiRequestProgressSteps.map((step) =>
 			kv
 				.get(apiRequestProgressKvKey(input.requestId, step), 'json')
 				.catch(() => null),

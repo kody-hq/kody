@@ -1,5 +1,4 @@
 import {
-	pacedD1BackupSchemaVersion,
 	pacedD1RetentionTierForDay,
 	pacedD1SealedDataKey,
 	pacedD1SealedDataPartKey,
@@ -16,64 +15,18 @@ import {
 	type PacedD1RetentionTier,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
+	createPacedD1IndexOrderCheck,
+	parsePacedD1IndexLine,
 	sha256HexOfBytes,
 	sha256HexOfText,
+	type PacedD1IndexEntry,
 } from '@kody-internal/shared/backup-d1-paced-encode.ts'
-import { isRecord } from '@kody-internal/shared/is-record.ts'
+import { parsePacedD1PartsPointer } from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	DrBackupPreconditionFailedError,
 	type DrBackupS3Client,
 } from '#worker/dr/backup-s3.ts'
 import type { PacedD1SourceConfig } from '#worker/dr/d1-paced-backup-sources.ts'
-
-export type PacedD1PartsPointer = {
-	schemaVersion: typeof pacedD1BackupSchemaVersion
-	kind: 'paced-d1-parts'
-	partCount: number
-	dataSha256: string
-	indexSha256: string
-	dataPartDigests: Array<string>
-	indexPartDigests: Array<string>
-}
-
-const sha256Pattern = /^[0-9a-f]{64}$/
-
-export function parsePacedD1PartsPointer(
-	text: string,
-): PacedD1PartsPointer | null {
-	const trimmed = text.trim()
-	if (!trimmed.startsWith('{')) return null
-	let parsed: unknown
-	try {
-		parsed = JSON.parse(trimmed) as unknown
-	} catch {
-		return null
-	}
-	if (
-		!isRecord(parsed) ||
-		parsed.schemaVersion !== pacedD1BackupSchemaVersion ||
-		parsed.kind !== 'paced-d1-parts' ||
-		!Number.isSafeInteger(parsed.partCount) ||
-		(parsed.partCount as number) < 0 ||
-		typeof parsed.dataSha256 !== 'string' ||
-		!sha256Pattern.test(parsed.dataSha256) ||
-		typeof parsed.indexSha256 !== 'string' ||
-		!sha256Pattern.test(parsed.indexSha256) ||
-		!Array.isArray(parsed.dataPartDigests) ||
-		!Array.isArray(parsed.indexPartDigests) ||
-		parsed.dataPartDigests.length !== parsed.partCount ||
-		parsed.indexPartDigests.length !== parsed.partCount ||
-		!parsed.dataPartDigests.every(
-			(digest) => typeof digest === 'string' && sha256Pattern.test(digest),
-		) ||
-		!parsed.indexPartDigests.every(
-			(digest) => typeof digest === 'string' && sha256Pattern.test(digest),
-		)
-	) {
-		return null
-	}
-	return parsed as PacedD1PartsPointer
-}
 
 async function putImmutable(
 	s3: DrBackupS3Client,
@@ -178,6 +131,16 @@ async function isTableAlreadySealed(input: {
 	return data.exists && index.exists
 }
 
+function assertIndexBodyAscending(
+	body: string,
+	assertAscending: (entry: PacedD1IndexEntry) => void,
+) {
+	if (body.length === 0) return
+	for (const line of body.replace(/\n$/, '').split('\n')) {
+		assertAscending(parsePacedD1IndexLine(line))
+	}
+}
+
 async function sealTableArtifacts(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
@@ -218,6 +181,9 @@ async function sealTableArtifacts(input: {
 		)
 	}
 
+	const assertAscending = createPacedD1IndexOrderCheck(
+		`${input.source.name}.${input.table} on ${input.day}`,
+	)
 	const dataPointer = parsePacedD1PartsPointer(stagingDataText.text)
 	const indexPointer = parsePacedD1PartsPointer(stagingIndexText.text)
 	if (dataPointer || indexPointer) {
@@ -238,6 +204,24 @@ async function sealTableArtifacts(input: {
 		) {
 			throw new Error(
 				`paced D1 parts pointer digests disagree with manifest for ${input.source.name}.${input.table}`,
+			)
+		}
+
+		// Whole index first: a table whose index repeats a rowid must not leave
+		// any immutable sealed object behind.
+		for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
+			const indexPart = await readStagingBytes({
+				s3: input.s3,
+				stagingKey: pacedD1StagingIndexPartKey(
+					input.day,
+					input.source.name,
+					input.table,
+					partIndex,
+				),
+			})
+			assertIndexBodyAscending(
+				new TextDecoder().decode(indexPart),
+				assertAscending,
 			)
 		}
 
@@ -322,6 +306,8 @@ async function sealTableArtifacts(input: {
 		])
 		return
 	}
+
+	assertIndexBodyAscending(stagingIndexText.text, assertAscending)
 
 	// Legacy monolithic staging bodies (pre-parts-pointer nights). Sequential
 	// verify-before-write so reseal never holds data+index together.

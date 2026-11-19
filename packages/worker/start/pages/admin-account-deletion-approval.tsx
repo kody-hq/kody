@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { approveAdminAccountDeletion } from '#start/server/admin-account-deletion'
@@ -7,12 +8,7 @@ import {
 	type AdminAccountDeletionApprovalState,
 } from '#universal/admin-account-deletion.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import { routes } from '#universal/routes.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import {
 	AccountManagementMessage,
 	AccountManagementPanel,
@@ -21,6 +17,7 @@ import {
 	accountActionsCss,
 } from './account-management-components.tsx'
 import { AdminAccountDeletionSummaryList } from './admin-account-deletion-summary.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AdminAccountDeletionApprovalPage(props: {
 	approvalId: string
@@ -102,8 +99,7 @@ export function AdminAccountDeletionApprovalPage(props: {
 									alignItems: 'flex-start',
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									data-testid="admin-account-deletion-acknowledge"
 									checked={acknowledged}
 									onChange={(event) => {
@@ -121,20 +117,17 @@ export function AdminAccountDeletionApprovalPage(props: {
 							</AccountManagementMessage>
 						) : null}
 						<div css={accountActionsCss}>
-							<SiteLink
-								href={routes.adminUsers.href()}
-								css={getGhostButtonCss({ size: 'sm' })}
-							>
+							<Button href={routes.adminUsers.href()} variant="secondary">
 								Cancel
-							</SiteLink>
-							<button
+							</Button>
+							<Button
 								type="submit"
 								disabled={!canApprove}
 								data-testid="admin-account-deletion-approve"
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 							>
 								{mutation.isPending ? 'Deleting…' : 'Approve'}
-							</button>
+							</Button>
 						</div>
 					</form>
 				) : null}

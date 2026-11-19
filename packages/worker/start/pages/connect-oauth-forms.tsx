@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import type { FormEvent } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
@@ -18,12 +21,9 @@ import {
 	cardTitleCss,
 	descriptionCss,
 	detailValueCss as sourceDetailValueCss,
-	fieldCss,
 	fieldLabelCss,
-	inputCss,
 	insetCardCss,
 	listCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import type {
 	ConnectOauthConfig,
@@ -32,11 +32,9 @@ import type {
 } from '#client/routes/connect-oauth-config.ts'
 import { renderProviderInstructions } from './connect-oauth-detail.tsx'
 import { renderReplaceConfirmation } from './connect-oauth-sections.tsx'
-import {
-	connectOauthAdvancedDetailsCss,
-	connectOauthPrimaryButtonCss,
-	connectOauthSecondaryButtonCss,
-} from './connect-oauth-shared.ts'
+import { connectOauthAdvancedDetailsCss } from './connect-oauth-shared.ts'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 function renderScopePicker(input: {
 	config: ConnectOauthConfig
@@ -87,8 +85,7 @@ function renderScopePicker(input: {
 									fontSize: typography.fontSize.sm,
 								}}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									checked={currentConfig.scopes.includes(scope)}
 									onChange={() => input.onToggleScope(scope)}
 								/>
@@ -155,19 +152,17 @@ export function ConnectOauthCredentialsForm(props: {
 				css={{ display: 'grid', gap: spacing.md }}
 				onSubmit={props.onSubmit}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Client ID</span>
-					<input
+				<Field label="Client ID">
+					<Input
 						name="oauthClientId"
 						required
 						{...passwordManagerIgnoreProps}
 						value={props.clientIdInput}
-						css={inputCss}
 						onChange={(event) => {
 							props.onClientIdInput(event.currentTarget.value)
 						}}
 					/>
-				</label>
+				</Field>
 				<p css={descriptionCss}>
 					{props.hasStoredClientId
 						? 'Stored on the OAuth app for this connection.'
@@ -183,40 +178,40 @@ export function ConnectOauthCredentialsForm(props: {
 							<p css={descriptionCss}>
 								You can continue without re-entering it.
 							</p>
-							<button
+							<Button
 								type="button"
-								css={connectOauthSecondaryButtonCss}
+								variant="secondary"
+								size="md"
 								onClick={() => {
 									props.onRevealStoredClientSecret()
 								}}
 							>
 								Replace stored client secret
-							</button>
+							</Button>
 						</section>
 					) : (
-						<label css={fieldCss}>
-							<span css={fieldLabelCss}>Client Secret</span>
-							<input
+						<Field label="Client Secret">
+							<Input
 								name="oauthClientSecret"
 								type="password"
 								required
 								{...passwordManagerIgnoreProps}
 								value={props.clientSecretInput}
-								css={inputCss}
 								onChange={(event) => {
 									props.onClientSecretInput(event.currentTarget.value)
 								}}
 							/>
-						</label>
+						</Field>
 					)
 				) : null}
-				<button
+				<Button
 					type="submit"
 					disabled={props.submitting}
-					css={connectOauthPrimaryButtonCss}
+					variant="primary"
+					size="md"
 				>
 					Save and continue
-				</button>
+				</Button>
 			</form>
 		</section>
 	)
@@ -258,10 +253,11 @@ export function renderConnectStep(input: {
 			{/* The primary button yields to the replace confirmation so a
 			    different-app overwrite is never one ambient click away. */}
 			{input.wouldReplace && !input.replaceConfirmed ? null : (
-				<button
+				<Button
 					type="button"
 					disabled={input.submitting}
-					css={connectOauthPrimaryButtonCss}
+					variant="primary"
+					size="md"
 					onClick={() => {
 						input.onConnect()
 					}}
@@ -269,17 +265,18 @@ export function renderConnectStep(input: {
 					{input.config.flow === 'device'
 						? 'Start device authorization'
 						: `Continue to ${input.config.provider}`}
-				</button>
+				</Button>
 			)}
 			{input.onEditCredentials ? (
-				<button
+				<Button
 					type="button"
 					disabled={input.submitting}
-					css={connectOauthSecondaryButtonCss}
+					variant="secondary"
+					size="md"
 					onClick={input.onEditCredentials}
 				>
 					Edit app credentials
-				</button>
+				</Button>
 			) : null}
 			{input.wouldReplace && !input.replaceConfirmed
 				? null
@@ -319,15 +316,16 @@ export function renderDeviceStep(input: {
 			{input.errorMessage ? (
 				<div css={{ display: 'grid', gap: spacing.md }}>
 					<p css={{ margin: 0, color: colors.text }}>{input.errorMessage}</p>
-					<button
+					<Button
 						type="button"
-						css={connectOauthPrimaryButtonCss}
+						variant="primary"
+						size="md"
 						onClick={() => {
 							input.onRestart()
 						}}
 					>
 						Start again
-					</button>
+					</Button>
 				</div>
 			) : (
 				<div css={{ display: 'grid', gap: spacing.md }}>
@@ -367,23 +365,24 @@ export function renderDeviceStep(input: {
 							: 'Checking authorization status…'}{' '}
 						Code expires in {expiryLabel}.
 					</p>
-					<a
+					<TextLink
+						reloadDocument
 						href={verificationHref}
 						target="_blank"
 						rel="noreferrer noopener"
-						css={primaryLinkCss}
 					>
 						Open {input.config.provider} to enter the code
-					</a>
-					<button
+					</TextLink>
+					<Button
 						type="button"
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={() => {
 							input.onRestart()
 						}}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			)}
 		</section>
@@ -415,9 +414,7 @@ export function renderSuccessCard(input: {
 					copyLabel="Copy prompt"
 				/>
 			</div>
-			<SiteLink href={input.connectionHref} css={primaryLinkCss}>
-				View this connection
-			</SiteLink>
+			<TextLink href={input.connectionHref}>View this connection</TextLink>
 		</section>
 	)
 }

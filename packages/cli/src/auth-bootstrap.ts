@@ -13,6 +13,7 @@ import { readPackageVersion } from './package-info.js'
 import type { StoredApiToken } from './api-token-store.js'
 import { storedCredentialsFromApiToken } from './cli-credential.js'
 import {
+	loadCredentials,
 	saveCredentials,
 	type SecretBackend,
 	type StoreResolution,
@@ -334,12 +335,23 @@ function saveRedeemedCredential(input: {
 	backend?: SecretBackend
 	resolution?: StoreResolution
 }): { backend: SecretBackend } {
+	const mcpUrl = input.mcpUrl || defaultMcpUrl
+	if (!input.org) {
+		// Without an org the token would sit in `pending` while commands keep
+		// using the active org's older login.
+		const active = loadCredentials(mcpUrl, input.backend, input.resolution)
+		if (active?.org) {
+			throw new Error(
+				`Bootstrap redeem named no org, so the new credential would not replace the saved login for org "${active.org}". Run \`kody logout --org ${active.org}\`, then mint a new code and run \`kody auth bootstrap\` again.`,
+			)
+		}
+	}
 	const expiresAt = input.stored.expiresAt
 		? Date.parse(input.stored.expiresAt)
 		: undefined
 	return saveCredentials(
 		storedCredentialsFromApiToken({
-			mcpUrl: input.mcpUrl || defaultMcpUrl,
+			mcpUrl,
 			token: input.stored.token,
 			expiresAt,
 			scopes: input.stored.scopes ?? [],
@@ -482,6 +494,8 @@ export async function authBootstrapWithScopes(input: {
 	scopes: ReadonlyArray<string>
 	lifetime: ResolvedCliTokenLifetime
 	mint: (params: Record<string, unknown>) => Promise<unknown>
+	/** `--org` the mint targeted, if any. */
+	org?: string
 	apiUrl?: string
 	mcpUrl?: string
 	fetchFn?: typeof fetch
@@ -502,10 +516,19 @@ export async function authBootstrapWithScopes(input: {
 		fetchFn: input.fetchFn,
 	})
 	const stored = storedApiTokenFromRedeem({ apiUrl, redeemed })
+	// This user's own credential minted the code, so an org-less redeem
+	// replaces the login for the org it targeted.
 	const saved = saveRedeemedCredential({
 		stored,
 		mcpUrl: input.mcpUrl,
-		org: redeemed.login_org?.slug,
+		org:
+			redeemed.login_org?.slug ??
+			input.org ??
+			loadCredentials(
+				input.mcpUrl || defaultMcpUrl,
+				input.backend,
+				input.resolution,
+			)?.org,
 		backend: input.backend,
 		resolution: input.resolution,
 	})

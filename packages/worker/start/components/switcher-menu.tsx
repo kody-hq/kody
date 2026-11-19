@@ -1,7 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import type { ReactNode } from 'react'
-import { Menu } from '@base-ui/react/menu'
-import { overlayPopupCss, overlayPositionerCss } from './overlay-styles.ts'
+import { MenuContent, MenuLinkItem } from './menu.tsx'
 import { SiteLink } from './site-link.tsx'
 import { type IconName, renderIcon } from './icon.tsx'
 import {
@@ -24,12 +23,16 @@ export type SwitcherRow = {
 	label: string
 	detail: string | null
 	ariaCurrent: 'true' | 'page' | undefined
-	/** The organization the page is acting in; drawn with a check. */
+	/** The current workspace organization; drawn with a check. */
 	selected: boolean
 	leading: ReactNode
 	badge: string | null
 }
 
+/**
+ * One switcher link. Pass `menu` inside a `SwitcherPopup` so Base UI owns
+ * keyboard highlight.
+ */
 export function renderSwitcherRow(row: SwitcherRow, menu = false) {
 	const link = (
 		<SiteLink
@@ -55,7 +58,11 @@ export function renderSwitcherRow(row: SwitcherRow, menu = false) {
 			) : null}
 		</SiteLink>
 	)
-	return menu ? <Menu.LinkItem key={row.key} render={link} /> : link
+	return menu ? (
+		<MenuLinkItem key={row.key} href={row.href} render={link} />
+	) : (
+		link
+	)
 }
 
 export function renderIconWell(name: IconName) {
@@ -66,6 +73,10 @@ export function renderIconWell(name: IconName) {
 	)
 }
 
+/**
+ * Account and workspace switcher panel on the shared menu (portal, light
+ * dismiss, Escape, and focus return). Callers supply the trigger and rows.
+ */
 export function SwitcherPopup({
 	testId,
 	label,
@@ -80,29 +91,20 @@ export function SwitcherPopup({
 	children: ReactNode
 }) {
 	return (
-		<Menu.Portal>
-			<Menu.Positioner align={align} sideOffset={6} css={overlayPositionerCss}>
-				<Menu.Popup
-					data-testid={testId}
-					aria-label={label}
-					css={{
-						...overlayPopupCss,
-						display: 'grid',
-						width,
-						maxHeight: 'var(--available-height)',
-						padding: '0.5rem',
-						transition: `opacity 160ms ${transitions.easeOut}, translate 160ms ${transitions.easeOut}`,
-						'&[data-starting-style], &[data-ending-style]': {
-							opacity: 0,
-							translate: '0 -6px',
-						},
-						'@media (prefers-reduced-motion: reduce)': { transition: 'none' },
-					}}
-				>
-					{children}
-				</Menu.Popup>
-			</Menu.Positioner>
-		</Menu.Portal>
+		<MenuContent
+			data-testid={testId}
+			aria-label={label}
+			align={align}
+			sideOffset={6}
+			css={{
+				display: 'grid',
+				width,
+				maxHeight: 'var(--available-height)',
+				padding: '0.5rem',
+			}}
+		>
+			{children}
+		</MenuContent>
 	)
 }
 

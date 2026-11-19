@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
@@ -14,7 +15,6 @@ import type {
 	AccountConnectedAppView,
 } from '#universal/loader-data.ts'
 import {
-	getDangerPillCss,
 	getLogoWellCss,
 	getSwapLabelCss,
 } from '#universal/styles/style-primitives.ts'
@@ -319,11 +319,12 @@ function RevokeButton(props: {
 	)
 	return (
 		<div css={revokeActionsCss}>
-			<button
+			<Button
 				type="button"
 				aria-label={
 					props.armed ? `Confirm revoke ${props.name}` : `Revoke ${props.name}`
 				}
+				variant="danger"
 				css={dangerButtonCss}
 				onClick={() => {
 					if (props.armed) props.onConfirm([...selectedIds])
@@ -347,7 +348,7 @@ function RevokeButton(props: {
 				>
 					Confirm revoke
 				</span>
-			</button>
+			</Button>
 			{props.armed ? (
 				<>
 					<AccountConnectedAppDisconnectOptions
@@ -355,13 +356,9 @@ function RevokeButton(props: {
 						selectedIds={selectedIds}
 						onChange={(ids) => setSelectedIds(ids)}
 					/>
-					<button
-						type="button"
-						css={secondaryButtonCss}
-						onClick={props.onDisarm}
-					>
+					<Button type="button" variant="secondary" onClick={props.onDisarm}>
 						Cancel
-					</button>
+					</Button>
 				</>
 			) : null}
 		</div>
@@ -386,22 +383,24 @@ function ScopeRevokeButton(props: {
 				selectedIds={selectedIds}
 				onChange={(ids) => setSelectedIds(ids)}
 			/>
-			<button
+			<Button
 				type="button"
 				aria-label={`Confirm revoke ${props.label}`}
+				variant="danger"
 				css={dangerButtonCss}
 				onClick={() => props.onConfirm([...selectedIds])}
 			>
 				Confirm revoke
-			</button>
-			<button type="button" css={secondaryButtonCss} onClick={props.onDisarm}>
+			</Button>
+			<Button type="button" variant="secondary" onClick={props.onDisarm}>
 				Cancel
-			</button>
+			</Button>
 		</div>
 	) : (
-		<button
+		<Button
 			type="button"
 			aria-label={`Revoke ${props.label}`}
+			variant="danger"
 			css={dangerButtonCss}
 			onClick={() => {
 				setSelectedIds(new Set())
@@ -409,7 +408,7 @@ function ScopeRevokeButton(props: {
 			}}
 		>
 			Revoke
-		</button>
+		</Button>
 	)
 }
 
@@ -509,16 +508,6 @@ const scopeRevokeActionsCss: CSSObject = {
 	gap: spacing.xs,
 }
 
-const secondaryButtonCss: CSSObject = {
-	border: `1px solid ${colors.border}`,
-	borderRadius: radius.sm,
-	padding: `${spacing.xs} ${spacing.sm}`,
-	background: colors.surface,
-	color: colors.text,
-	font: 'inherit',
-	cursor: 'pointer',
-}
-
 const emptyCss: CSSObject = { color: colors.textMuted, margin: 0 }
 
 const markImageCss: CSSObject = {
@@ -528,4 +517,4 @@ const markImageCss: CSSObject = {
 	objectFit: 'contain',
 }
 
-const dangerButtonCss = [getDangerPillCss({ size: 'sm' }), getSwapLabelCss()]
+const dangerButtonCss = getSwapLabelCss()

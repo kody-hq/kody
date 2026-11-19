@@ -2,9 +2,6 @@
   "name": "@kody/push-queue-worker",
   "private": true,
   "type": "module",
-  "exports": {
-    "./*": "./src/*"
-  },
   "dependencies": {
     "@kody-internal/shared": "file:../shared"
   }

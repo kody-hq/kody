@@ -96,7 +96,7 @@ type CallerFeatureFlagResolution =
 			evaluations: Record<FeatureFlagKey, FeatureFlagEvaluation>
 	  }
 	| { status: 'anonymous' | 'unresolved' }
-	| { status: 'failed' }
+	| { status: 'failed'; cause: unknown }
 
 /**
  * Cross-request evaluation cache for stateless `/mcp` (a new caller context
@@ -184,7 +184,7 @@ async function loadCallerFeatureFlagResolution(
 				if (error instanceof UnresolvedFeatureFlagUser) {
 					return { status: 'unresolved' }
 				}
-				return { status: 'failed' }
+				return { status: 'failed', cause: error }
 			}
 		})()
 		callerFeatureFlagResolutions.set(callerContext, promise)
@@ -215,16 +215,16 @@ export async function resolveCallerFeatureFlagEvaluations(
 }
 
 /**
- * True when this request's flag read threw (D1 or evaluation). Anonymous
- * callers and unknown stable ids are fail-closed, not failures. A failure
- * must refuse execute before any worker loads.
+ * The error when this request's flag read threw (D1 or evaluation), else
+ * null. Anonymous callers and unknown stable ids are fail-closed, not
+ * failures. A failure must refuse execute before any worker loads.
  */
-export async function callerFeatureFlagEvaluationFailed(
+export async function callerFeatureFlagEvaluationFailure(
 	env: Env,
 	callerContext: McpCallerContext,
-): Promise<boolean> {
+): Promise<{ cause: unknown } | null> {
 	const resolution = await loadCallerFeatureFlagResolution(env, callerContext)
-	return resolution.status === 'failed'
+	return resolution.status === 'failed' ? { cause: resolution.cause } : null
 }
 
 /**

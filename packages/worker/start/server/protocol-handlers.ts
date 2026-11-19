@@ -30,6 +30,7 @@ import {
 	createLlmsTxtHandler,
 } from '#app/handlers/docs.ts'
 import { createYoutubeThumbHandler } from '#app/handlers/youtube-thumb.ts'
+import { createBlogImageHandler } from '#app/handlers/blog-image.ts'
 import { createAccountExportHandler } from '#app/handlers/account-export.ts'
 import { createAccountPackagesApiHandler } from '#app/handlers/account-packages.ts'
 import { createMcpServerLogoHandler } from '#app/handlers/mcp-server-logo.ts'
@@ -238,6 +239,18 @@ export const docDetailOgImageHttp = ({
 
 export const llmsTxtHttp = ({ request }: { request: Request; params: {} }) =>
 	createLlmsTxtHandler(getStartRequestEnv())({ request })
+
+export const blogImageHttp = ({
+	request,
+	params,
+}: {
+	request: Request
+	params: { slug: string; file: string }
+}) =>
+	createBlogImageHandler(getStartRequestEnv())({
+		request,
+		params: { slug: params.slug, file: params.file },
+	})
 
 export const youtubeThumbHttp = ({
 	request,

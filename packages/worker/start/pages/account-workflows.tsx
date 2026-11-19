@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { usePageCommands } from '../commands/context.tsx'
 import { createListDetailLinks } from '#client/list-detail-route.ts'
@@ -21,9 +23,6 @@ import { routes } from '#universal/routes.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import {
@@ -34,7 +33,6 @@ import {
 import { useRouteContext, useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { workflowCancellationMutationOptions } from '../workflow-cancellation-mutation.ts'
 import { collectionSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -121,9 +119,7 @@ function packageValue(
 	})
 	if (!scope) return '—'
 	return (
-		<SiteLink href={packageHrefFromScope(scope)} css={primaryLinkCss}>
-			{workflow.kodyId}
-		</SiteLink>
+		<TextLink href={packageHrefFromScope(scope)}>{workflow.kodyId}</TextLink>
 	)
 }
 
@@ -205,9 +201,6 @@ export function AccountWorkflowsPage({
 
 	const isMutating = useIsMutating({ mutationKey }) > 0
 	const router = useRouter()
-
-	const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function getCurrentHref() {
 		return currentHref
@@ -545,10 +538,10 @@ export function AccountWorkflowsPage({
 										flexWrap: 'wrap',
 									}}
 								>
-									<button
+									<Button
 										type="button"
 										disabled={isMutating}
-										css={dangerButtonCss}
+										variant="danger"
 										onBlur={() => setCancelArmed(false)}
 										onClick={() => {
 											if (!cancelArmed) {
@@ -566,18 +559,18 @@ export function AccountWorkflowsPage({
 										}}
 									>
 										{cancelArmed ? 'Confirm cancel' : 'Cancel run'}
-									</button>
+									</Button>
 									{cancelArmed ? (
-										<button
+										<Button
 											type="button"
 											disabled={isMutating}
 											onClick={() => {
 												setCancelArmed(false)
 											}}
-											css={secondaryButtonCss}
+											variant="secondary"
 										>
 											Keep running
-										</button>
+										</Button>
 									) : null}
 								</div>
 							) : null}

@@ -34,6 +34,7 @@ const pageErrors = new Set<GuestClaimPageError>([
 	'code_expired',
 	'too_many_attempts',
 	'send_failed',
+	'rate_limited',
 	'already_claimed',
 	'deleted',
 	'username_invalid',
@@ -131,7 +132,7 @@ export const loadGuestClaimPage = createServerFn({ method: 'GET' })
 				},
 			}
 		}
-		const guest = await readGuestAccountByClaimCode(env.APP_DB, data.code)
+		const guest = await readGuestAccountByClaimCode(env, data.code)
 		if (!guest || guest.claimedAt || Date.parse(guest.deleteAt) <= Date.now()) {
 			return { kind: 'not_found' }
 		}

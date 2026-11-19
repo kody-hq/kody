@@ -92,7 +92,7 @@ export function moduleLoaderForPath(path: string): Loader {
 	}
 }
 
-async function lexableModuleSource(
+export async function lexableModuleSource(
 	path: string,
 	source: string,
 ): Promise<string> {

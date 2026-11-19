@@ -1,17 +1,22 @@
 /**
  * End-to-end execution context check against a PR preview (never production):
  * register a throwaway context, run the daemon, execute on it with a host
- * folder and a host command, stop the daemon, assert no workerd is left, then revoke and delete.
+ * folder and a host command, run a workflow step on it, stop the daemon,
+ * assert no workerd is left, then revoke and delete.
  * See docs/contributing/execution-context-e2e.md.
  */
-import { execFileSync, fork } from 'node:child_process'
+import { execFileSync, fork, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { openRehearsalSession } from '../preview-rehearsal/kody-session.ts'
-import { mintCliToken } from '../preview-rehearsal/cli-token.ts'
+import {
+	callCapability,
+	mintCliToken,
+	readStringAt,
+} from '../preview-rehearsal/cli-token.ts'
 import { shouldRetryExecutionContextCli } from './retry.ts'
 
 const appOrigin = (process.env.PREVIEW_ORIGIN ?? '').replace(/\/+$/, '')
@@ -117,6 +122,107 @@ function findShellResult(
 	return null
 }
 
+type RehearsalSession = Awaited<ReturnType<typeof openRehearsalSession>>
+
+// `workflows.create` with `execution` (ADR 0086): the step runs a package
+// export on the context, so it reads the host folder.
+async function runWorkflowStepOnContext(session: RehearsalSession) {
+	writeFileSync(join(folder, 'workflow.txt'), 'read by the workflow step')
+	const packageJson = {
+		name: `@user-me/${name.slice(0, 50)}-wf`,
+		version: '1.0.0',
+		description: 'Execution context e2e workflow step',
+		exports: { './on-context': './src/on-context.ts' },
+		kody: { description: 'Execution context e2e workflow step' },
+	}
+	const saved = await callCapability(session, 'packageSave', {
+		files: [
+			{
+				path: 'package.json',
+				content: `${JSON.stringify(packageJson, null, 2)}\n`,
+			},
+			{
+				path: 'README.md',
+				content:
+					'# Execution context e2e workflow step\n\nReads a host folder file from a workflow step on an execution context. Created and deleted by the e2e.\n',
+			},
+			{
+				path: 'AGENTS.md',
+				content:
+					'# Agents\n\nThrowaway package for `tools/execution-context-e2e/run.ts`. `./on-context` takes `{ folder }` and returns `{ read }`.\n',
+			},
+			{
+				path: 'src/on-context.ts',
+				content: `import { readFile } from 'node:fs/promises'
+export default async function onContext(params) {
+	const sep = params.folder.includes('\\\\') ? '\\\\' : '/'
+	return { read: await readFile(params.folder + sep + 'workflow.txt', 'utf8') }
+}
+`,
+			},
+		],
+	})
+	const packageId = readStringAt(saved, ['package_id'], 'packageSave')
+	const created = await session.execute(
+		`import { workflows } from 'kody:runtime'
+export default async function main(params) {
+	return await workflows.create(params)
+}
+`,
+		{
+			exportName: './on-context',
+			packageId,
+			params: { folder },
+			execution: { context: name },
+		},
+	)
+	const workflowId = readStringAt(created, ['id'], 'workflows.create')
+	log(`workflow ${workflowId} created on ${name}`)
+	const deadline = Date.now() + 180_000
+	for (;;) {
+		const listed = (await session.api('runList', {
+			workflow_id: workflowId,
+			error_triage: 'all',
+		})) as {
+			runs?: Array<{
+				status?: string
+				error_message?: string | null
+				metadata?: { result?: unknown }
+			}>
+		}
+		const run = listed?.runs?.[0]
+		if (run?.status === 'success') {
+			if (
+				!JSON.stringify(run.metadata?.result).includes('read by the workflow')
+			)
+				throw new Error(
+					`The workflow step did not read the host folder: ${JSON.stringify(run.metadata?.result)}`,
+				)
+			break
+		}
+		// A failed attempt can still be retried, so only a terminal workflow
+		// status ends the wait.
+		if (run?.status === 'error') {
+			const workflow = (await session.api('workflowRunList', {
+				workflow_id: workflowId,
+			})) as { workflows?: Array<{ status?: string | null }> }
+			const status = workflow?.workflows?.[0]?.status
+			if (status === 'errored' || status === 'terminated')
+				throw new Error(`The workflow step failed: ${run.error_message}`)
+		}
+		if (Date.now() > deadline)
+			throw new Error(
+				`The workflow step never finished: ${JSON.stringify(listed)}`,
+			)
+		await delay(3000)
+	}
+	log(`workflow step ran on ${name}`)
+	await callCapability(session, 'packageDelete', {
+		package_id: packageId,
+		confirm_name: packageJson.name,
+	}).catch((error: Error) => log(`package delete failed: ${error.message}`))
+}
+
 async function main() {
 	// With `preview-seed:team-org` the seed user is in two orgs and OAuth makes
 	// it pick one; the context lives in the personal org.
@@ -126,6 +232,16 @@ async function main() {
 		{ orgSlug: 'user-me' },
 	)
 	let ecid: string | null = null
+	// Its own process: `cli` blocks this one while a run is in flight.
+	const lanServer = spawn(
+		process.execPath,
+		[
+			'-e',
+			`const server = require('node:http').createServer((_request, response) => response.end('lan:from-the-machine'))
+server.listen(0, '127.0.0.1', () => console.log(server.address().port))`,
+		],
+		{ stdio: ['ignore', 'pipe', 'inherit'], windowsHide: true },
+	)
 	try {
 		const token = await mintCliToken(
 			session,
@@ -153,6 +269,93 @@ async function main() {
 		})
 		await cli(env, ['context', 'commands', 'on', '--context', name, '--json'])
 		log('host commands turned on locally')
+		const lanFile = join(folder, 'lan.json')
+		writeFileSync(
+			lanFile,
+			JSON.stringify({ name: 'e2e-lan', hosts: ['192.0.2.10'], ports: [443] }),
+		)
+		const defined = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'lan',
+				lanFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		const told = defined.contexts.find((context) => context.id === ecid)
+		if (!told || told.error) {
+			throw new Error(
+				`Kody did not accept this machine's capability report: ${told?.error ?? 'context not reported'}`,
+			)
+		}
+		const removed = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'remove',
+				'lan',
+				'e2e-lan',
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (removed.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the capability removal.')
+		}
+		log('machine access definition reported to Kody and removed')
+		const commandFile = join(folder, 'command.json')
+		writeFileSync(
+			commandFile,
+			JSON.stringify({
+				name: 'e2e-named',
+				exec: [
+					process.execPath,
+					'-e',
+					'console.log("named:" + process.argv[1])',
+				],
+				args: [[{ pattern: '[a-z]+' }]],
+			}),
+		)
+		const named = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'command',
+				commandFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (named.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the named command.')
+		}
+		const [lanPortLine] = (await once(lanServer.stdout, 'data')) as [Buffer]
+		const lanPort = Number(String(lanPortLine).trim())
+		if (!Number.isInteger(lanPort) || lanPort < 1) {
+			throw new Error('The local test server did not report its port.')
+		}
+		writeFileSync(
+			lanFile,
+			JSON.stringify({
+				name: 'e2e-local',
+				hosts: ['127.0.0.1'],
+				ports: [lanPort],
+			}),
+		)
+		const local = JSON.parse(
+			await cli(env, [
+				'context',
+				'capability',
+				'add',
+				'lan',
+				lanFile,
+				'--json',
+			]),
+		) as { contexts: Array<{ id: string; error?: string }> }
+		if (local.contexts.some((context) => context.error)) {
+			throw new Error('Kody did not accept the local network destination.')
+		}
 
 		const daemon = fork(
 			join(import.meta.dirname, 'daemon-host.cjs'),
@@ -187,7 +390,14 @@ export default async function main() {
 		command: ${JSON.stringify(shellCommand)},
 		cwd: folder,
 	})
-	return { seed, sum: 20 + 22, shell }
+	const named = await kody.command.run({ capability: 'e2e-named', args: ['hello'] })
+	const refused = await kody.command
+		.run({ capability: 'e2e-named', args: ['hello; id'] })
+		.then(() => 'ran', (error) => String(error))
+	const lan = await fetch('http://127.0.0.1:${lanPort}/').then((response) => response.text())
+	const lanRefused = await fetch('http://127.0.0.1:${lanPort === 65535 ? lanPort - 1 : lanPort + 1}/')
+		.then(() => 'reached', (error) => 'lan-refused: ' + String(error))
+	return { seed, sum: 20 + 22, shell, named: { out: named.stdout, refused }, lan, lanRefused }
 }
 `,
 		)
@@ -212,6 +422,24 @@ export default async function main() {
 		if (shell?.exitCode !== 0 || !shell.stdout?.includes(shellMarker))
 			throw new Error(`The host command did not run: ${JSON.stringify(shell)}`)
 		log(`host command ok on ${process.platform}`)
+		if (
+			!output.includes('named:hello') ||
+			!output.includes('machine_command_args_refused')
+		)
+			throw new Error(
+				'The named command did not run, or its bad arguments were not refused.',
+			)
+		log(`named command ok on ${process.platform}`)
+		if (
+			!output.includes('lan:from-the-machine') ||
+			!output.includes('lan-refused:')
+		)
+			throw new Error(
+				'The run did not reach the named local network destination, or reached a port it does not cover.',
+			)
+		log(`named local network destination ok on ${process.platform}`)
+
+		await runWorkflowStepOnContext(session)
 
 		daemon.send('stop')
 		const [code] = await Promise.race([
@@ -239,6 +467,7 @@ export default async function main() {
 			log('revoked and deleted the context')
 		}
 		await session.close()
+		lanServer.kill()
 		rmSync(home, { recursive: true, force: true })
 		rmSync(folder, { recursive: true, force: true })
 	}

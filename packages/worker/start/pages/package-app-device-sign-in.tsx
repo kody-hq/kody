@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Alert } from '../components/alert.tsx'
+import { Button } from '../components/button.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
 // oxlint-disable-next-line import/consistent-type-specifier-style
@@ -8,9 +10,6 @@ import {
 	cardCss,
 	descriptionCss,
 	fieldLabelCss,
-	getAlertCardCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	insetCardCss,
 	pageDescriptionCss,
 	pageEyebrowCss,
@@ -50,7 +49,7 @@ export function PackageAppDeviceSignInPage(props: {
 function titleFor(data: PackageAppDeviceSignInView) {
 	switch (data.kind) {
 		case 'pending':
-			return 'Sign in on another device'
+			return 'Sign in with another device'
 		case 'denied':
 			return 'Sign-in was denied'
 		case 'expired':
@@ -71,7 +70,7 @@ function leadFor(data: PackageAppDeviceSignInView) {
 		case 'none':
 			return data.error === 'rate_limited'
 				? 'Too many sign-in requests from this network. Wait a minute, then start again from the app.'
-				: 'Start from the app you were signing in to, then choose "Sign in on another device".'
+				: 'Start from the app you were signing in to, then choose "Sign in with another device".'
 	}
 }
 
@@ -83,13 +82,15 @@ function renderBody(data: PackageAppDeviceSignInView) {
 		case 'expired':
 			return (
 				<div css={actionsCss}>
-					<a
+					<Button
 						href={data.startAgainUrl}
-						css={primaryLinkCss}
+						variant="primary"
+						size="md"
+						reloadDocument
 						data-testid="package-app-device-start-again"
 					>
 						Start again
-					</a>
+					</Button>
 				</div>
 			)
 		case 'none':
@@ -151,19 +152,21 @@ function PendingCard(props: {
 					and continues to the app on its own.
 				</p>
 				<div css={actionsCss}>
-					<a
+					<Button
 						href={packageAppOauthPaths.device}
-						css={secondaryLinkCss}
+						variant="secondary"
+						size="md"
+						reloadDocument
 						data-testid="package-app-device-check-now"
 					>
 						Check now
-					</a>
+					</Button>
 				</div>
 			</section>
-			<p role="note" css={getAlertCardCss('info')}>
+			<Alert role="note" tone="info">
 				Only approve on a device you trust, and only if you started this sign-in
 				here yourself.
-			</p>
+			</Alert>
 		</>
 	)
 }
@@ -182,21 +185,6 @@ const pageCss = {
 	...stackedPageCss,
 	maxWidth: '32rem',
 	margin: '0 auto',
-}
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const primaryLinkCss = {
-	...primaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const secondaryLinkCss = {
-	...secondaryButtonCss,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
 }
 const actionsCss = {
 	display: 'flex',

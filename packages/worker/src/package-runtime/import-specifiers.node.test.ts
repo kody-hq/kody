@@ -9,8 +9,8 @@ import {
 } from './import-specifiers.ts'
 import { collectStaticKodyPackageImportsFromFiles } from './static-kody-imports.ts'
 
-test('collectLiteralImportSpecifiers ignores type-only import and export sources', () => {
-	const specifiers = collectLiteralImportSpecifiers(
+test('collectLiteralImportSpecifiers ignores type-only import and export sources', async () => {
+	const specifiers = await collectLiteralImportSpecifiers(
 		[
 			'import type { Config } from "kody:@kentcdodds/types/config"',
 			'import helper from "kody:@kentcdodds/helper/run"',
@@ -32,8 +32,8 @@ test('collectLiteralImportSpecifiers ignores type-only import and export sources
 	])
 })
 
-test('collectLiteralImportSpecifiers includes declarations and TS import types when requested', () => {
-	const specifiers = collectLiteralImportSpecifiers(
+test('collectLiteralImportSpecifiers includes declarations and TS import types when requested', async () => {
+	const specifiers = await collectLiteralImportSpecifiers(
 		[
 			'import type { Config } from "kody:@kentcdodds/types/config"',
 			'export type { Other } from "kody:@kentcdodds/types/other"',
@@ -49,7 +49,7 @@ test('collectLiteralImportSpecifiers includes declarations and TS import types w
 	])
 })
 
-test('collectModuleImportNodes parses once for literal and dynamic import sites', () => {
+test('collectModuleImportNodes parses once for literal and dynamic import sites', async () => {
 	const source = [
 		'import helper from "./helper.ts"',
 		'const value = await import("./dynamic.ts")',
@@ -58,7 +58,7 @@ test('collectModuleImportNodes parses once for literal and dynamic import sites'
 	const parseSpy = vi.spyOn(moduleSource, 'parseModuleSource')
 	parseSpy.mockClear()
 
-	const nodes = collectModuleImportNodes(source)
+	const nodes = await collectModuleImportNodes(source)
 	expect(parseSpy).toHaveBeenCalledTimes(1)
 	expect(nodes.literalImports.map((node) => node.specifier)).toEqual([
 		'./helper.ts',
@@ -70,14 +70,14 @@ test('collectModuleImportNodes parses once for literal and dynamic import sites'
 	)
 
 	// Legacy helpers stay compatible with the combined collector.
-	expect(collectLiteralImportNodes(source)).toEqual(nodes.literalImports)
-	expect(collectDynamicImportExpressionNodes(source)).toEqual(
+	expect(await collectLiteralImportNodes(source)).toEqual(nodes.literalImports)
+	expect(await collectDynamicImportExpressionNodes(source)).toEqual(
 		nodes.dynamicImportExpressions,
 	)
 	parseSpy.mockRestore()
 })
 
-test('dynamic import() with TS assertion or static template stays literal', () => {
+test('dynamic import() with TS assertion or static template stays literal', async () => {
 	const cases: Array<{ source: string; specifier: string }> = [
 		{
 			source: `await import('kody:@kentcdodds/grok-bot/wake' as \`kody:@\${string}/\${string}\`)`,
@@ -93,16 +93,16 @@ test('dynamic import() with TS assertion or static template stays literal', () =
 		},
 	]
 	for (const { source, specifier } of cases) {
-		const nodes = collectDynamicImportExpressionNodes(source)
+		const nodes = await collectDynamicImportExpressionNodes(source)
 		expect(nodes, source).toHaveLength(1)
 		expect(nodes[0]?.literalSpecifier, source).toBe(specifier)
 		expect(
-			collectLiteralImportNodes(source).map((node) => node.specifier),
+			(await collectLiteralImportNodes(source)).map((node) => node.specifier),
 			source,
 		).toEqual([specifier])
 	}
 
-	const computed = collectDynamicImportExpressionNodes(
+	const computed = await collectDynamicImportExpressionNodes(
 		'await import(subscriber.importSpecifier)',
 	)
 	expect(computed).toHaveLength(1)
@@ -115,19 +115,19 @@ const genericArrowWithImports = [
 	'export default () => first([helper])',
 ].join('\n')
 
-test('import scans pick the parser by file extension', () => {
+test('import scans pick the parser by file extension', async () => {
 	expect(
-		collectLiteralImportSpecifiers(genericArrowWithImports, {
+		await collectLiteralImportSpecifiers(genericArrowWithImports, {
 			filePath: 'src/app.ts',
 		}),
 	).toEqual(['kody:@kentcdodds/helper/run'])
 	expect(
-		parseBundlerResolvedSpecifiers(genericArrowWithImports, {
+		await parseBundlerResolvedSpecifiers(genericArrowWithImports, {
 			filePath: 'src/app.ts',
 		}),
 	).toEqual({ ok: true, specifiers: ['kody:@kentcdodds/helper/run'] })
 	expect(
-		parseBundlerResolvedSpecifiers(genericArrowWithImports, {
+		await parseBundlerResolvedSpecifiers(genericArrowWithImports, {
 			filePath: 'src/app.tsx',
 		}),
 	).toEqual({
@@ -139,8 +139,10 @@ test('import scans pick the parser by file extension', () => {
 		},
 	})
 	expect(
-		collectStaticKodyPackageImportsFromFiles({
-			'src/app.ts': genericArrowWithImports,
-		}).map((entry) => entry.specifier),
+		(
+			await collectStaticKodyPackageImportsFromFiles({
+				'src/app.ts': genericArrowWithImports,
+			})
+		).map((entry) => entry.specifier),
 	).toEqual(['kody:@kentcdodds/helper/run'])
 })

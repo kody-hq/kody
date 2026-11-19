@@ -252,6 +252,17 @@ test('anonymous and signed-in outsiders are not redirected to an app custom host
 	expect(new URL(ownerResponse.headers.get('Location') ?? '').origin).toBe(
 		customOrigin,
 	)
+
+	// A visitor who started on the app's own host returns there: the custom
+	// hostname would hold the session and leave the app host signed out.
+	const appHostResponse = await workerFetch(
+		`${appOrigin}/@${ownerUsername}/packages/demo/open?__kody_app_host=1`,
+		{ headers: { Cookie: sessionCookie } },
+	)
+	expect(appHostResponse.status).toBe(302)
+	expect(new URL(appHostResponse.headers.get('Location') ?? '').origin).toBe(
+		`https://demo--${ownerUsername}.packages.isolated.test`,
+	)
 })
 
 test('a verified app custom hostname serves at / behind the same host-only handoff', async () => {
@@ -378,6 +389,28 @@ test('internet-visible apps skip an org-level custom hostname and go to the subd
 	expect(new URL(privateEntry.headers.get('Location') ?? '').host).toBe(
 		orgHostname,
 	)
+
+	// The path-mount cutover retires `{handle}.kody.run/{app}/` only. The org
+	// domain keeps serving its apps by path, so the handoff still lands.
+	const mutableEnv = env as unknown as Record<string, string | undefined>
+	mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT = '2020-01-01T00:00:00Z'
+	try {
+		const afterCutoverEntry = await workerFetch(
+			`${appOrigin}/@${orgSlug}/packages/${privateApp.slug}`,
+			{ headers: { Cookie: memberSession.split(';')[0] ?? '' } },
+		)
+		const handoffLocation = new URL(
+			afterCutoverEntry.headers.get('Location') ?? '',
+		)
+		expect(handoffLocation.host).toBe(orgHostname)
+		const handoff = await workerFetch(handoffLocation)
+		expect(handoff.status).toBe(302)
+		expect(
+			new URL(handoff.headers.get('Location') ?? '', handoffLocation).host,
+		).toBe(orgHostname)
+	} finally {
+		delete mutableEnv.PACKAGE_APP_PATH_MOUNT_CUTOVER_AT
+	}
 
 	// The org domain serves only session-gated apps. A signed-out visitor of
 	// an internet-visible app is not redirected there or to the subdomain;

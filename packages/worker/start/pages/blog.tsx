@@ -16,6 +16,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { revealRef } from '../components/reveal.ts'
 import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import {
 	BlogCategoryNav,
 	BlogPostList,
@@ -92,12 +93,13 @@ export function BlogRoute({ data }: { data: BlogLoaderData }) {
 						Product updates
 					</h2>
 					<BlogPostList posts={data.updates} showCategory={false} />
-					<SiteLink
+					<TextLink
+						tone="prose"
 						href={routes.blogCategory.href({ category: 'updates' })}
 						css={blogInlineLinkCss}
 					>
 						All updates →
-					</SiteLink>
+					</TextLink>
 				</section>
 			) : null}
 

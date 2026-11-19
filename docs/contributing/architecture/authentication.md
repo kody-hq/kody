@@ -41,6 +41,14 @@ Referral share links set a separate last-wins `kody_ref` cookie (one week, not
 overwrites the previous referrer. Signup persists a `referrals` row from that
 cookie. See [Referral Pro credit](./entitlements.md#referral-pro-credit).
 
+First-touch marketing attribution uses a separate first-touch-wins
+`kody_first_touch` cookie with the same conventions (one week, `Path=/`,
+`SameSite=Lax`, `Secure` on HTTPS, not `httpOnly`). The browser writes it on the
+first page view and never overwrites it, so it survives new tabs. Password and
+OAuth signup read it from the request `Cookie` header when the account is
+created, re-apply the parse caps, persist the `utm_*` and `first_touch_*`
+columns, and clear it.
+
 The cookie payload stores:
 
 - `v: 2`
@@ -391,7 +399,7 @@ never locked out.
 
 Both are opt-in and adapted from the Epic Stack.
 
-**TOTP two-factor** (`packages/worker/src/app/two-factor.ts`):
+**TOTP two-factor** (`packages/worker/src/identity/two-factor.ts`):
 
 - The `verifications` table (Epic Stack shape: `type` + `target` with TOTP
   config) stores secrets. An active row with `type = '2fa'` and
@@ -910,13 +918,17 @@ routed from `packages/worker/src/index.ts`.
   email link is opened elsewhere, so the original OAuth query remains resumable.
   Signup never auto-approves; the person clicks Approve after they return. **Try
   it out** creates a guest person and finishes authorization in the same
-  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo`.
-  Signed-in vs signed-out chrome on that page comes from the SSR-embedded app
-  session; the route does not wait on a separate browser `/session` fetch before
-  rendering approve or login. Social buttons use the same SSR-embedded provider
-  list as `/login`, so a full-document load does not wait on
-  `/auth/providers.json`. The approve control stays inert until hydration so the
-  visible button cannot submit a GET that drops `client_id`.
+  request. Unclaimed guest sessions carry `guest` from `loadSessionInfo` when
+  the sealed claim code opens; a missing `guest` block is not proof the account
+  was claimed. The claim URL is opened from the sealed claim code;
+  `guest_accounts.claim_code` stores only a SHA-256 lookup hash
+  (`packages/worker/src/guest/guest-accounts.ts`). Signed-in vs signed-out
+  chrome on that page comes from the SSR-embedded app session; the route does
+  not wait on a separate browser `/session` fetch before rendering approve or
+  login. Social buttons use the same SSR-embedded provider list as `/login`, so
+  a full-document load does not wait on `/auth/providers.json`. The approve
+  control stays inert until hydration so the visible button cannot submit a GET
+  that drops `client_id`.
 - Approval is rejected before `completeAuthorization` when the account email is
   unverified, so no grant/token is created until verification succeeds.
 

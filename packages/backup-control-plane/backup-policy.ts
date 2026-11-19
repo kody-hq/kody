@@ -68,12 +68,15 @@ function hasExactKeys(
 	)
 }
 
-function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
+function parseSourceDatabasesJson(
+	value: string,
+	label = 'SOURCE_DATABASES',
+): Array<SourceDatabase> {
 	const trimmed = value.trim()
 	if (trimmed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
+			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
 		)
 	}
 	let parsed: unknown
@@ -82,13 +85,13 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 	} catch {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
+			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
 		)
 	}
 	if (!Array.isArray(parsed) || parsed.length === 0) {
 		throw new BackupError(
 			'invalid-source-databases',
-			'SOURCE_DATABASES must be a JSON array of { id, name } or { id, name, restExport } objects',
+			`${label} must be a JSON array of { id, name } or { id, name, restExport } objects`,
 		)
 	}
 	const sources: Array<SourceDatabase> = []
@@ -98,7 +101,7 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 		if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) {
 			throw new BackupError(
 				'invalid-source-databases',
-				'SOURCE_DATABASES entries must be { id, name } or { id, name, restExport } objects',
+				`${label} entries must be { id, name } or { id, name, restExport } objects`,
 			)
 		}
 		const record = entry as Record<string, unknown>
@@ -109,7 +112,7 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 		if (!hasExactKeys(record, allowedKeys)) {
 			throw new BackupError(
 				'invalid-source-databases',
-				'SOURCE_DATABASES entries must be { id, name } or { id, name, restExport } objects',
+				`${label} entries must be { id, name } or { id, name, restExport } objects`,
 			)
 		}
 		if (
@@ -120,13 +123,13 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 		) {
 			throw new BackupError(
 				'invalid-source-databases',
-				'SOURCE_DATABASES entries need a UUID id and a non-empty name',
+				`${label} entries need a UUID id and a non-empty name`,
 			)
 		}
 		if (hasRestExport && typeof record.restExport !== 'boolean') {
 			throw new BackupError(
 				'invalid-source-databases',
-				'SOURCE_DATABASES restExport must be a boolean when present',
+				`${label} restExport must be a boolean when present`,
 			)
 		}
 		const id = record.id
@@ -134,7 +137,7 @@ function parseSourceDatabasesJson(value: string): Array<SourceDatabase> {
 		if (ids.has(id.toLowerCase()) || names.has(name)) {
 			throw new BackupError(
 				'duplicate-source-database',
-				'SOURCE_DATABASES contains a duplicate id or name',
+				`${label} contains a duplicate id or name`,
 			)
 		}
 		ids.add(id.toLowerCase())
@@ -161,6 +164,45 @@ export function restExportSourceDatabases(
 	env: BackupEnvironment,
 ): Array<SourceDatabase> {
 	return configuredSourceDatabases(env).filter(sourceRestExportEnabled)
+}
+
+/**
+ * Paced D1 sources (`D1_PACED_SOURCES`, same ids as the worker's
+ * `DR_D1_PACED_SOURCES`). Their sealed paced nights are the full seal's D1
+ * source of truth (read-only R2 keys); the list must include the primary.
+ */
+export function pacedSourceDatabases(
+	env: BackupEnvironment,
+): Array<SourceDatabase> {
+	assertConfiguredIdentity(env)
+	if (env.D1_PACED_SOURCES === undefined) {
+		throw new BackupError(
+			'invalid-paced-sources',
+			'D1_PACED_SOURCES must list the paced D1 sources',
+		)
+	}
+	const sources = parseSourceDatabasesJson(
+		env.D1_PACED_SOURCES,
+		'D1_PACED_SOURCES',
+	)
+	if (sources.some((source) => source.restExport !== undefined)) {
+		throw new BackupError(
+			'invalid-paced-sources',
+			'D1_PACED_SOURCES entries must be { id, name } objects',
+		)
+	}
+	if (
+		!sources.some(
+			(source) =>
+				source.id.toLowerCase() === env.SOURCE_DATABASE_ID.toLowerCase(),
+		)
+	) {
+		throw new BackupError(
+			'invalid-paced-sources',
+			'D1_PACED_SOURCES must include SOURCE_DATABASE_ID',
+		)
+	}
+	return sources
 }
 
 export function primarySourceDatabase(env: BackupEnvironment): SourceDatabase {

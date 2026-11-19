@@ -1,5 +1,8 @@
 import { bytesToBase64 } from '@kody-internal/shared/base64.ts'
-import { resolveHostedPackageAppUrl } from '@kody-internal/shared/public-urls.ts'
+import {
+	isProfilePackage,
+	resolveHostedPackageAppUrl,
+} from '@kody-internal/shared/public-urls.ts'
 import { z } from 'zod'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
@@ -12,7 +15,10 @@ import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-inte
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
-import { resolvePackageOwnerContext } from '#worker/package-registry/package-owner.ts'
+import {
+	packageOwnerEntitlementEmail,
+	resolvePackageOwnerContext,
+} from '#worker/package-registry/package-owner.ts'
 import {
 	buildPlainRepoPromotionErrorMessage,
 	findPlainRepoPromotionHint,
@@ -401,7 +407,14 @@ export const packageAppFetchCapability = defineDomainCapability(
 				username: owner.ownerScope,
 				kodyId: savedPackage.kodyId,
 				restPath: restPathOnly,
-				mount: packageAppOrigin ? 'user-subdomain' : 'username-path',
+				mount: !packageAppOrigin
+					? 'username-path'
+					: isProfilePackage({
+								username: owner.ownerScope,
+								kodyId: savedPackage.kodyId,
+						  })
+						? 'custom-hostname'
+						: 'user-subdomain',
 			}
 
 			const requestHeaders = collectSafeRequestHeaders(args.headers)
@@ -423,7 +436,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 				owner: {
 					userId: owner.ownerUserId,
 					username: owner.ownerScope,
-					email: owner.ownerEmail,
+					email: packageOwnerEntitlementEmail(owner) ?? '',
 					displayName: resolveDisplayName({
 						email: owner.ownerEmail,
 						username: owner.ownerScope,

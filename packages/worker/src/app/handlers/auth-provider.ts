@@ -25,7 +25,7 @@ import {
 	type OauthProfile,
 	type OauthProviderId,
 } from '#app/oauth-providers.ts'
-import { isTwoFactorEnabled } from '#app/two-factor.ts'
+import { isTwoFactorEnabled } from '#worker/identity/two-factor.ts'
 import {
 	createVerifySessionCookie,
 	setVerifySessionSecret,
@@ -82,7 +82,6 @@ import {
 	GuestClaimError,
 	guestClaimDonePath,
 	guestComesWithCounts,
-	mergeGuestIntoAccount,
 } from '#worker/guest/guest-claim.ts'
 
 function oauthCodeForAccountEmail(
@@ -402,7 +401,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				redirect(`${claimPath}?error=${encodeURIComponent(error)}`, [
 					clearStateCookie,
 				])
-			const guest = await readGuestAccountByClaimCode(env.APP_DB, claim.code)
+			const guest = await readGuestAccountByClaimCode(env, claim.code)
 			if (!guest || guest.claimedAt) {
 				return redirect(claimPath, [clearStateCookie])
 			}
@@ -420,14 +419,6 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				}
 				if (existingConnection && !target) return back('account_unavailable')
 				if (target) {
-					await mergeGuestIntoAccount({
-						env,
-						guest,
-						target,
-						baseUrl: url.origin,
-						method: 'social',
-						provider,
-					})
 					if (!existingConnection) {
 						await createConnection({
 							provider,
@@ -445,7 +436,7 @@ export function createAuthProviderCallbackHandler(env: Env) {
 							email: target.email,
 						},
 						claimPath,
-						{ destination: guestClaimDonePath(claim.code, 'merge', comesWith) },
+						{ destination: claimPath },
 					)
 				}
 				if (!email) return back('no_verified_email')
@@ -756,7 +747,6 @@ export function createAuthProviderCallbackHandler(env: Env) {
 				displayName: profile.displayName,
 				suggestedUsername,
 				redirectTo,
-				attribution: loginState.attribution,
 				csrf: generateOauthRandomValue(),
 				accessToken,
 				issuedAt: Date.now(),

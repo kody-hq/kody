@@ -541,13 +541,16 @@ test('a failing check is logged and retried instead of stopping the updater', as
 		firstDelayMs: 0,
 		intervalMs: 20,
 	})
-	await new Promise((resolve) => setTimeout(resolve, 200))
+	// Poll instead of one fixed sleep: slow CI timers (Windows) may fire late.
+	const failures = () =>
+		lines.filter((line) => line.includes('check failed')).length
+	const deadline = Date.now() + 5_000
+	while (failures() < 2 && Date.now() < deadline) {
+		await new Promise((resolve) => setTimeout(resolve, 20))
+	}
 	updater.stop()
 	assert.match(lines.join('\n'), /Auto-update: check failed/)
-	assert.ok(
-		lines.filter((line) => line.includes('check failed')).length >= 2,
-		'it keeps checking on schedule',
-	)
+	assert.ok(failures() >= 2, 'it keeps checking on schedule')
 })
 
 test('the idle deadline forces the update and says so', async () => {
@@ -660,4 +663,57 @@ test('a lock whose pid now belongs to another process, or predates boot, is take
 			chmodSync(path, 0o600)
 		}
 	}
+})
+
+test('the updater logs a check that found nothing newer, once, and a skipped bad version', async () => {
+	const store = freshStore()
+	const lines: Array<string> = []
+	const updater = update.startDaemonUpdater({
+		selfVersion: '3.11.0',
+		setting: async () => ({ enabled: true, source: 'default' }),
+		busy: () => ({ runs: 0, background: 0 }),
+		log: (line) => lines.push(line),
+		onReady: () => {},
+		store,
+		fetchFn: registry({ version: '3.11.0' }),
+		deps,
+		firstDelayMs: 3_600_000,
+	})
+	assert.equal((await updater.checkNow()).kind, 'up-to-date')
+	assert.equal((await updater.checkNow()).kind, 'up-to-date')
+	updater.stop()
+	assert.equal(
+		lines.filter((line) =>
+			line.includes('checked npm; kody 3.11.0 is current (latest is 3.11.0)'),
+		).length,
+		1,
+		lines.join('\n'),
+	)
+
+	writeFileSync(
+		join(store, 'update-state.json'),
+		JSON.stringify({ bad: ['3.12.0'] }),
+	)
+	const skipped: Array<string> = []
+	const next = update.startDaemonUpdater({
+		selfVersion: '3.11.0',
+		setting: async () => ({ enabled: true, source: 'default' }),
+		busy: () => ({ runs: 0, background: 0 }),
+		log: (line) => skipped.push(line),
+		onReady: () => {},
+		store,
+		fetchFn: registry({ version: '3.12.0' }),
+		deps,
+		firstDelayMs: 3_600_000,
+	})
+	assert.deepEqual(await next.checkNow(), {
+		kind: 'up-to-date',
+		latest: '3.12.0',
+		skippedBad: true,
+	})
+	next.stop()
+	assert.match(
+		skipped.join('\n'),
+		/kody 3\.12\.0 failed to start on this machine before, so it is skipped/,
+	)
 })

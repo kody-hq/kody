@@ -1,7 +1,7 @@
 import { loadBoxAccess } from './box-access.ts'
 import { excessForUser } from './box-notices.ts'
 import { ExecutionContextError } from './errors.ts'
-import { dismissElevation } from './notices.ts'
+import { dismissNotice, openShellFingerprint } from './notices.ts'
 import { type ExecutionContextCaller, loadVisibleContext } from './service.ts'
 import { canManageContext } from './store.ts'
 
@@ -20,9 +20,10 @@ export async function dismissContextNotice(
 		})
 	}
 	const { row } = await loadVisibleContext(caller, ref)
-	const result = await dismissElevation(caller.env.APP_DB, {
+	const result = await dismissNotice(caller.env.APP_DB, {
 		contextId: row.id,
-		orgId: caller.orgId,
+		// The open shell notice belongs to the machine, so it lives in its own org.
+		orgId: fingerprint === openShellFingerprint ? row.org_id : caller.orgId,
 		userId: caller.userId,
 		fingerprint,
 	})

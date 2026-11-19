@@ -1,7 +1,7 @@
 /**
  * Permanent handle rules (usernames and organization slugs). One source of
  * truth for format checks, HTML progressive-enhancement hints, and the
- * client-side copy that explains what is wrong and suggests a valid handle.
+ * client-side copy that explains what is wrong and derives a valid handle.
  *
  * The DNS-safe pattern lives in {@link dnsSafeUsernamePattern} because every
  * handle is also a subdomain label; this module owns diagnosis and messaging.
@@ -17,7 +17,7 @@ export const handleMaxLength = 32
 
 /** Short format hint for `title` / helper text under handle fields. */
 export const handleFormatHint =
-	'Use 3 to 32 letters (a–z), numbers, and hyphens. Start and end with a letter or number.'
+	'Use 3 to 32 letters (a–z), numbers, and single hyphens. Start and end with a letter or number.'
 
 /**
  * HTML `pattern` value (no anchors). Forms that set `noValidate` keep this as
@@ -27,7 +27,7 @@ export const handleHtmlPattern = dnsSafeUsernamePatternSource
 
 /** Case-insensitive HTML pattern for fields that lowercase on submit. */
 export const handleHtmlPatternCaseInsensitive =
-	'[A-Za-z0-9][A-Za-z0-9\\-]{1,30}[A-Za-z0-9]'
+	'(?![A-Za-z0-9\\-]*--)[A-Za-z0-9][A-Za-z0-9\\-]{1,30}[A-Za-z0-9]'
 
 export type HandleFormatIssue =
 	| 'required'
@@ -40,6 +40,7 @@ export type HandleFormatIssue =
 	| 'too-long'
 	| 'leading-hyphen'
 	| 'trailing-hyphen'
+	| 'consecutive-hyphens'
 
 export type HandleFormatLabel = 'Username' | 'Handle'
 
@@ -113,6 +114,9 @@ export function diagnoseHandleFormat(raw: string): HandleFormatIssue | null {
 	if (normalized.length > handleMaxLength) return 'too-long'
 	if (normalized.startsWith('-')) return 'leading-hyphen'
 	if (normalized.endsWith('-')) return 'trailing-hyphen'
+	if (/^[a-z0-9-]+$/.test(normalized) && normalized.includes('--')) {
+		return 'consecutive-hyphens'
+	}
 
 	if (!dnsSafeUsernamePattern.test(normalized)) {
 		if (/[^a-z0-9-]/.test(normalized)) return 'other-characters'
@@ -146,6 +150,8 @@ function issueMessage(
 			return `${label} can't start with a hyphen.`
 		case 'trailing-hyphen':
 			return `${label} can't end with a hyphen.`
+		case 'consecutive-hyphens':
+			return `${label} can't include two hyphens in a row.`
 		default: {
 			const exhaustive: never = issue
 			return exhaustive
@@ -153,29 +159,50 @@ function issueMessage(
 	}
 }
 
+export type HandleFormatProblem = {
+	message: string
+	/**
+	 * A valid handle derived from the input, or null. Unverified: show it only
+	 * after an availability check (see `useVerifiedHandleSuggestion`).
+	 */
+	suggestion: string | null
+}
+
 /**
- * Human-facing format error for a handle field. Includes a `Try …` suggestion
- * when one can be derived and differs from the trimmed lowercase input.
+ * Format problem for a handle field: the message plus a format-valid
+ * suggestion when one can be derived and differs from the trimmed lowercase
+ * input. Callers render the suggestion themselves once it is confirmed free.
  */
-export function getHandleFormatError(
+export function getHandleFormatProblem(
 	raw: string,
 	options: { label?: HandleFormatLabel } = {},
-): string | null {
+): HandleFormatProblem | null {
 	const label = options.label ?? 'Username'
 	const issue = diagnoseHandleFormat(raw)
 	if (!issue) return null
 
 	const message = issueMessage(issue, label)
-	if (issue === 'required') return message
+	if (issue === 'required') return { message, suggestion: null }
 
 	const suggestion = suggestHandle(raw)
 	const normalized = normalizeHandle(raw)
-	if (suggestion && suggestion !== normalized) {
-		return `${message} Try ${suggestion}.`
+	return {
+		message,
+		suggestion: suggestion && suggestion !== normalized ? suggestion : null,
 	}
-	return message
+}
+
+/**
+ * Human-facing format error for a handle field. Never names a suggestion:
+ * an unchecked suggestion may already be taken.
+ */
+export function getHandleFormatError(
+	raw: string,
+	options: { label?: HandleFormatLabel } = {},
+): string | null {
+	return getHandleFormatProblem(raw, options)?.message ?? null
 }
 
 /** Generic server-style requirements line (API responses, reserved fallbacks). */
 export const handleFormatRequirements =
-	'Username must be 3 to 32 characters, use only letters, numbers, and hyphens, and start and end with a letter or number.'
+	'Username must be 3 to 32 characters, use only letters, numbers, and single hyphens (no two in a row), and start and end with a letter or number.'

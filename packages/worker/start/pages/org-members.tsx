@@ -1,4 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
+import { Field } from '../components/field.tsx'
+import {
+	fieldCss,
+	fieldLabelCss,
+	fieldDescriptionCss,
+} from '#universal/styles/style-primitives.ts'
+import { Button } from '../components/button.tsx'
 import {
 	inviteOrganizationMember,
 	setOrganizationMemberRole,
@@ -16,12 +24,6 @@ import {
 } from '#universal/org-pages.ts'
 import { routes } from '#universal/routes.ts'
 import {
-	getDangerPillCss,
-	getPillButtonCss,
-	getSelectCss,
-	getGhostButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
 	colors,
 	mq,
 	radius,
@@ -32,16 +34,11 @@ import type { CSSObject } from '@emotion/react'
 import type { QueryKey } from '@tanstack/react-query'
 import { useState } from 'react'
 import { renderIcon } from '../components/icon.tsx'
-import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import { UserAvatar } from '../components/user-avatar.tsx'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountFieldNoteCss,
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementPanel,
 	AccountManagementShell,
@@ -49,6 +46,7 @@ import {
 } from './account-management-components.tsx'
 import { OrgMembersInviteLinks } from './org-members-invite-links.tsx'
 import { useOrgPeopleMutation } from './org-people-mutation.ts'
+import { Input, Select } from '../components/input.tsx'
 const memberRoles = ['owner', 'admin', 'member', 'billing'] as const
 const adminLimitsCopy =
 	'Admins can do everything an Owner can, except remove, demote, or change an Owner, make anyone an Owner, or delete the organization.'
@@ -157,7 +155,7 @@ function OrgMembersContent({
 			) : null}
 			<AccountManagementPanel title="People" ariaLabel="Organization members">
 				{data.canManage && !viewerIsOwner ? (
-					<p css={accountFieldNoteCss} data-testid="org-members-role-limits">
+					<p css={fieldDescriptionCss} data-testid="org-members-role-limits">
 						{viewerHasOwnerAuthority
 							? 'As an Admin, you cannot change or remove an Owner, or make anyone an Owner.'
 							: 'Only an Owner or Admin can change or remove an Owner or Admin.'}
@@ -202,19 +200,19 @@ function OrgMembersContent({
 										</span>
 									</span>
 									{member.role === 'owner' || member.role === 'admin' ? null : (
-										<SiteLink
+										<Button
 											href={orgGrantAccessPath(data.org.slug, member.userId)}
 											data-testid="org-member-access"
 											aria-label={`Access for ${memberName(member)}`}
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 										>
 											{renderIcon('key', { size: '1.05rem' })}
 											Access
-										</SiteLink>
+										</Button>
 									)}
 									{data.canManage ? (
 										<span css={rowActionsCss}>
-											<select
+											<Select
 												aria-label={`Role for ${memberName(member)}`}
 												value={
 													updatingRole
@@ -246,12 +244,12 @@ function OrgMembersContent({
 														{orgRoleLabel(role)}
 													</option>
 												))}
-											</select>
-											<button
+											</Select>
+											<Button
 												type="button"
 												disabled={lastOwner || targetLocked || pending}
 												title={lockedTitle}
-												css={getDangerPillCss({ size: 'sm' })}
+												variant="danger"
 												onBlur={() => setConfirmed(null)}
 												onClick={() => {
 													if (confirmed !== member.userId) {
@@ -273,11 +271,11 @@ function OrgMembersContent({
 												{confirmed === member.userId
 													? 'Confirm remove'
 													: 'Remove'}
-											</button>
+											</Button>
 										</span>
 									) : (
 										<span css={rowActionsCss}>
-											<span css={quietPillCss}>{member.roleLabel}</span>
+											<Badge>{member.roleLabel}</Badge>
 										</span>
 									)}
 								</div>
@@ -313,30 +311,29 @@ function OrgMembersContent({
 										}),
 									'Invite created. Send this prompt to them.',
 									(result) => {
-										setInvitee('')
+										// The list refetch settles first; keep anything typed meanwhile.
+										setInvitee((current) =>
+											current === invitee ? '' : current,
+										)
 										setInvitePrompt(result.invite?.prompt ?? null)
 									},
 								)
 							}}
 						>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Email or username</span>
-								<input
+							<Field
+								label="Email or username"
+								description="It waits on their Waiting page, or they can paste the invite prompt into their agent."
+							>
+								<Input
 									value={invitee}
 									required
-									data-field-ring
 									autoComplete="off"
-									css={accountInputCss}
 									onChange={(event) => setInvitee(event.currentTarget.value)}
 								/>
-								<p css={accountFieldNoteCss}>
-									It waits on their Waiting page, or they can paste the invite
-									prompt into their agent.
-								</p>
-							</label>
-							<label css={accountFieldCss}>
-								<span css={accountFieldLabelCss}>Role</span>
-								<select
+							</Field>
+							<label css={fieldCss}>
+								<span css={fieldLabelCss}>Role</span>
+								<Select
 									value={inviteRole}
 									css={selectCss}
 									onChange={(event) =>
@@ -350,9 +347,9 @@ function OrgMembersContent({
 											{orgRoleLabel(role)}
 										</option>
 									))}
-								</select>
+								</Select>
 								<p
-									css={accountFieldNoteCss}
+									css={fieldDescriptionCss}
 									data-testid="org-invite-admin-note"
 								>
 									{adminLimitsCopy}
@@ -360,14 +357,14 @@ function OrgMembersContent({
 								</p>
 							</label>
 							<div css={accountActionsCss}>
-								<button
+								<Button
 									type="submit"
 									disabled={pending || invitee.trim().length === 0}
-									css={getPillButtonCss({ size: 'sm' })}
+									variant="primary"
 								>
 									{renderIcon('plus', { size: '1.05rem' })}
 									{inviteMutation.isPending ? 'Inviting…' : 'Send invite'}
-								</button>
+								</Button>
 							</div>
 						</form>
 					</AccountManagementPanel>
@@ -398,11 +395,11 @@ function OrgMembersContent({
 										</span>
 									</span>
 									{invite.kind === 'membership' ? (
-										<button
+										<Button
 											type="button"
 											disabled={pending}
 											data-testid="org-invite-revoke"
-											css={getDangerPillCss({ size: 'sm' })}
+											variant="danger"
 											onClick={() =>
 												post(
 													() =>
@@ -418,7 +415,7 @@ function OrgMembersContent({
 											revokeMutation.variables?.inviteId === invite.id
 												? 'Revoking…'
 												: 'Revoke'}
-										</button>
+										</Button>
 									) : null}
 								</div>
 							</li>
@@ -504,24 +501,12 @@ const rowActionsCss: CSSObject = {
 }
 
 const selectCss: CSSObject = {
-	...getSelectCss(),
 	width: 'auto',
 	minWidth: '8rem',
 	[mq.mobile]: {
 		minWidth: 'min(100%, 8rem)',
 		maxWidth: '100%',
 	},
-}
-
-const quietPillCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	fontSize: '0.8rem',
-	fontWeight: 600,
-	borderRadius: radius.full,
-	padding: '0.1rem 0.6rem',
-	color: colors.textMuted,
-	boxShadow: `inset 0 0 0 1px ${colors.border}`,
 }
 
 const formCss: CSSObject = {

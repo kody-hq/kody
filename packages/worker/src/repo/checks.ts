@@ -65,6 +65,7 @@ import {
 	isolatedBundleChunkConcurrency,
 	isolatedBundleChunkSize,
 	isolatedTypecheckChunkSize,
+	type IsolatedCheckPhaseOutcome,
 	type IsolatedCheckPhaseRunner,
 } from './isolated-check-phases.ts'
 import {
@@ -91,18 +92,22 @@ import {
 	type SecretPlaceholderRequestPlacementMode,
 	secretPlaceholderRequestPlacementPublishMode,
 } from '#worker/credentials/secret-placeholder-request-placement.ts'
+import { partitionSecretPlaceholderRequestPlacementHits } from '#worker/credentials/secret-placeholder-request-placement-allowance.ts'
 import {
 	buildCredentialPatternCheck,
 	type CredentialPatternCheckResult,
+	type CredentialTreeScanner,
 } from './credential-pattern-check.ts'
 import {
 	resolveSecretProviderSlots,
 	type ResolvedSecretProviderSlots,
 } from '#worker/credentials/secret-provider-slots.ts'
 import {
+	cloudBuildRuntimeSourceTooLargeMessage,
 	isRepoCheckResourceLimitMessage,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
+import { publishSizeHints } from './publish-size-hints.ts'
 import { credentialNeedKeyNotes } from '#worker/credentials/credential-needs.ts'
 import { computeCredentialNeedsClosure } from '#worker/credentials/credential-needs-closure.ts'
 import { republishedNeedsNote } from '#worker/enablements/republish-needs-note.ts'
@@ -256,6 +261,12 @@ const repoChecksSyntheticTsconfigExtendsPath =
  */
 export const repoChecksSourceMaxFiles = 2_000
 export const repoChecksSourceMaxTotalBytes = 15 * 1024 * 1024
+/**
+ * Most runtime source, reachable from the entry points, that Kody cloud will
+ * try to build. Checked before any build step. A build made with
+ * `--build local` or on an execution context is not held to it.
+ */
+export const repoChecksCloudBuildMaxRuntimeSourceBytes = 8 * 1024 * 1024
 
 async function loadWorkerBundlerSnapshotTools() {
 	// Keep the experimental bundler out of the Worker's top-level deploy graph.
@@ -892,25 +903,25 @@ function getDeclaredStaticKodyPackageDependencies(
 	return listKodyPackageDependencyNames(manifest.kody.dependencies)
 }
 
-function getImportedStaticKodyPackageDependencies(input: {
+async function getImportedStaticKodyPackageDependencies(input: {
 	manifest: AuthoredPackageJson
 	sourceFiles: Record<string, string>
 }) {
 	return Array.from(
 		new Set(
-			collectStaticKodyPackageImportsFromFiles(input.sourceFiles)
+			(await collectStaticKodyPackageImportsFromFiles(input.sourceFiles))
 				.map((imported) => imported.packageName)
 				.filter((packageName) => packageName !== input.manifest.name),
 		),
 	).sort((left, right) => left.localeCompare(right))
 }
 
-function validateStaticKodyPackageDependencyDeclarations(input: {
+async function validateStaticKodyPackageDependencyDeclarations(input: {
 	manifest: AuthoredPackageJson
 	sourceFiles: Record<string, string>
 }) {
 	const declared = getDeclaredStaticKodyPackageDependencies(input.manifest)
-	const imported = getImportedStaticKodyPackageDependencies(input)
+	const imported = await getImportedStaticKodyPackageDependencies(input)
 	const missing = imported.filter(
 		(packageName) => !declared.includes(packageName),
 	)
@@ -1035,7 +1046,7 @@ function isUnavailablePackageTypesDiagnostic(diagnostic: TypecheckDiagnostic) {
 	)
 }
 
-function collectReachableTypecheckSourceFiles(input: {
+async function collectReachableTypecheckSourceFiles(input: {
 	sourceFiles: Record<string, string>
 	targets: Array<PackageTypecheckTarget>
 }) {
@@ -1043,7 +1054,7 @@ function collectReachableTypecheckSourceFiles(input: {
 	const paths = new Set<string>()
 	const importNodesCache: ModuleImportNodesCache = new Map()
 	for (const target of input.targets) {
-		for (const path of collectReachableSourceFilePaths({
+		for (const path of await collectReachableSourceFilePaths({
 			files: input.sourceFiles,
 			entryPoint: target.path,
 			rootPackage,
@@ -1222,10 +1233,12 @@ const lintPassedMessage =
 const scannableModuleFilePattern = /\.(?:[cm]?[jt]s|[jt]sx)$/
 const maxAmbientStorageReportedFiles = 5
 
-function moduleImportsAmbientStorage(source: string, filePath: string) {
+async function moduleImportsAmbientStorage(source: string, filePath: string) {
 	let parsed: ModuleAstNode
 	try {
-		parsed = parseModuleSource(source, { filePath }) as unknown as ModuleAstNode
+		parsed = (await parseModuleSource(source, {
+			filePath,
+		})) as unknown as ModuleAstNode
 	} catch {
 		return false
 	}
@@ -1260,7 +1273,7 @@ function moduleImportsAmbientStorage(source: string, filePath: string) {
 	return false
 }
 
-export function collectAmbientStorageImportFiles(
+export async function collectAmbientStorageImportFiles(
 	sourceFiles: Record<string, string>,
 ) {
 	const filePaths: Array<string> = []
@@ -1268,7 +1281,7 @@ export function collectAmbientStorageImportFiles(
 		if (!scannableModuleFilePattern.test(filePath)) continue
 		if (isTypeDeclarationFilePath(filePath)) continue
 		if (!source.includes('kody:runtime')) continue
-		if (moduleImportsAmbientStorage(source, filePath)) {
+		if (await moduleImportsAmbientStorage(source, filePath)) {
 			filePaths.push(filePath)
 		}
 	}
@@ -1326,20 +1339,21 @@ function formatKodyIgnoredDeclarationNote(input: {
 	)
 }
 
-function buildLintCheck(sourceFiles: Record<string, string>): {
+async function buildLintCheck(sourceFiles: Record<string, string>): Promise<{
 	ok: boolean
 	message: string
-} {
+}> {
 	// Permanent authoring guard: unsupported invocation forms fail every
 	// publish with the replacement named. Runtime teaching errors provide the
 	// same guidance when these forms reach execution.
 	const removedUsageFailure = formatRemovedInvocationUsageFailure(
-		collectDeprecatedInvocationUsage(sourceFiles),
+		await collectDeprecatedInvocationUsage(sourceFiles),
 	)
 	if (removedUsageFailure) {
 		return { ok: false, message: removedUsageFailure }
 	}
-	const ambientStorageFiles = collectAmbientStorageImportFiles(sourceFiles)
+	const ambientStorageFiles =
+		await collectAmbientStorageImportFiles(sourceFiles)
 	if (ambientStorageFiles.length === 0) {
 		return { ok: true, message: lintPassedMessage }
 	}
@@ -1425,7 +1439,7 @@ export async function runPackageTypecheckLanguageService(input: {
 		const reachableSourceFilePaths =
 			baseTsconfig == null
 				? undefined
-				: collectReachableTypecheckSourceFiles({
+				: await collectReachableTypecheckSourceFiles({
 						sourceFiles: input.sourceFiles,
 						targets: input.targets,
 					})
@@ -1653,12 +1667,23 @@ async function buildCredentialNeedsCheck(input: {
 }
 
 /**
- * Above this much JS/TS source, the credential stamp scan runs in its own
- * throwaway isolate (like bundle chunks and typecheck) so its parse heap
- * never stacks on the caller's. Publish and `kody dev check` both take the
+ * Above this much JS/TS source, the credential stamp scan runs in throwaway
+ * isolates (like bundle chunks and typecheck) so its parse heap and CPU time
+ * never stack on the caller's. Publish and `kody dev check` both take the
  * same branch for the same tree, so a dev check pass predicts publish.
  */
 export const isolatedCredentialScanMinSourceBytes = 256 * 1024
+
+/**
+ * Most syntax nodes one isolate walks for the credential scan. The walk's
+ * CPU time grows with the node count: one isolate walking a 370,000 node
+ * tree used 17 to 30 seconds of its 32 second CPU limit and ran out on some
+ * attempts. A chunk this size stays several times under the limit.
+ */
+export const isolatedCredentialScanChunkAstNodes = 60_000
+
+/** Chunks are short walks, so a few at a time keep the scan's wall time low. */
+const isolatedCredentialScanChunkConcurrency = 4
 
 const credentialScanSourcePattern = /\.(?:[cm]?[jt]sx?)$/i
 const credentialScanTextEncoder = new TextEncoder()
@@ -1673,12 +1698,65 @@ function credentialScanSourceBytes(sourceFiles: Record<string, string>) {
 	return bytes
 }
 
+/** An isolated credential scan phase that did not return its result. */
+class IsolatedCredentialScanFailure extends Error {
+	readonly outcome: IsolatedCheckPhaseOutcome
+
+	constructor(outcome: IsolatedCheckPhaseOutcome) {
+		super(outcome.message)
+		this.name = 'IsolatedCredentialScanFailure'
+		this.outcome = outcome
+	}
+}
+
+function isolatedCredentialTreeScanner(input: {
+	runner: IsolatedCheckPhaseRunner
+	stagingKey: string
+	userId: string
+}): CredentialTreeScanner {
+	const { runner, stagingKey, userId } = input
+	return {
+		async plan() {
+			const outcome = await runner.run({
+				phase: 'credentials-plan',
+				stagingKey,
+				userId,
+				maxChunkAstNodes: isolatedCredentialScanChunkAstNodes,
+			})
+			if (!outcome.credentialPlan) {
+				throw new IsolatedCredentialScanFailure(outcome)
+			}
+			return outcome.credentialPlan
+		},
+		chunks: (requests) =>
+			mapPool(
+				requests,
+				isolatedCredentialScanChunkConcurrency,
+				async (chunk) => {
+					const outcome = await runner.run({
+						phase: 'credentials-chunk',
+						stagingKey,
+						userId,
+						chunk,
+					})
+					if (!outcome.credentialChunk) {
+						throw new IsolatedCredentialScanFailure(outcome)
+					}
+					return outcome.credentialChunk
+				},
+			),
+	}
+}
+
 async function runCredentialPatternCheck(input: {
 	sourceFiles: Record<string, string>
 	env?: Env
 	userId?: string
 	secretProviders?: ResolvedSecretProviderSlots
 }): Promise<CredentialPatternCheckResult> {
+	const options = input.secretProviders
+		? { secretProviders: input.secretProviders }
+		: {}
 	const runner =
 		input.env &&
 		input.userId &&
@@ -1687,40 +1765,30 @@ async function runCredentialPatternCheck(input: {
 			? createIsolatedCheckPhaseRunner(input.env)
 			: null
 	if (!runner || !input.userId) {
-		return buildCredentialPatternCheck(
-			input.sourceFiles,
-			input.secretProviders ? { secretProviders: input.secretProviders } : {},
-		)
+		return await buildCredentialPatternCheck(input.sourceFiles, options)
 	}
 	const stagingKey = await runner.stage({
 		userId: input.userId,
 		sourceFiles: input.sourceFiles,
 	})
 	try {
-		const outcome = await runner.run({
-			phase: 'credentials',
-			stagingKey,
-			userId: input.userId,
-			...(input.secretProviders
-				? { secretProviders: input.secretProviders }
-				: {}),
+		return await buildCredentialPatternCheck(input.sourceFiles, {
+			...options,
+			scanner: isolatedCredentialTreeScanner({
+				runner,
+				stagingKey,
+				userId: input.userId,
+			}),
 		})
+	} catch (error) {
+		if (!(error instanceof IsolatedCredentialScanFailure)) throw error
 		return {
 			kind: 'credentials',
-			ok: outcome.ok,
-			message: outcome.message,
-			...platformFailureOrigin([outcome]),
-			sourceFiles:
-				outcome.changedFiles && Object.keys(outcome.changedFiles).length > 0
-					? { ...input.sourceFiles, ...outcome.changedFiles }
-					: input.sourceFiles,
-			stampKeys: outcome.stampKeys ?? [],
-			...(outcome.requestPlacementHits
-				? { requestPlacementHits: outcome.requestPlacementHits }
-				: {}),
-			...(outcome.fetchBodyHits
-				? { fetchBodyHits: outcome.fetchBodyHits }
-				: {}),
+			ok: false,
+			message: error.outcome.message,
+			...platformFailureOrigin([error.outcome]),
+			sourceFiles: input.sourceFiles,
+			stampKeys: [],
 		}
 	} finally {
 		await runner.discard(stagingKey)
@@ -1922,6 +1990,26 @@ export async function runRepoChecks(input: {
 			}
 			collected[path] = content
 		}
+		// Reachable runtime source is at most the whole tree, so most packages
+		// skip the import scan.
+		if (
+			input.typecheckRanOffWorker !== true &&
+			totalBytes > repoChecksCloudBuildMaxRuntimeSourceBytes
+		) {
+			const { runtime } = publishSizeHints({
+				files: collected,
+				runtimeOnly: true,
+			})
+			if (runtime.bytes > repoChecksCloudBuildMaxRuntimeSourceBytes) {
+				return {
+					ok: false as const,
+					message: cloudBuildRuntimeSourceTooLargeMessage({
+						runtime,
+						maxBytes: repoChecksCloudBuildMaxRuntimeSourceBytes,
+					}),
+				}
+			}
+		}
 		return {
 			ok: true as const,
 			collected,
@@ -1984,7 +2072,7 @@ export async function runRepoChecks(input: {
 	// The isolated credentials phase already parsed every module, so it
 	// returns these hits too; this isolate never re-parses the whole tree.
 	const placementNotice = credentialCheckOk
-		? secretPlaceholderRequestPlacementNotice({
+		? await secretPlaceholderRequestPlacementNotice({
 				sourceFiles,
 				mode: enforceCredentialStamp
 					? secretPlaceholderRequestPlacementPublishMode
@@ -1992,15 +2080,18 @@ export async function runRepoChecks(input: {
 				...(credentialPatternCheck.requestPlacementHits
 					? { hits: credentialPatternCheck.requestPlacementHits }
 					: {}),
+				...(input.env?.APP_DB ? { db: input.env.APP_DB } : {}),
+				...(input.userId ? { ownerId: input.userId } : {}),
+				...(input.baseUrl ? { baseUrl: input.baseUrl } : {}),
 			})
 		: null
 	const fetchBodyWarning = credentialCheckOk
-		? fetchBodySecretResolutionNotice(
+		? await fetchBodySecretResolutionNotice(
 				sourceFiles,
 				credentialPatternCheck.fetchBodyHits,
 			)
 		: null
-	const placementBlocks = placementNotice?.mode === 'fail'
+	const placementBlocks = placementNotice?.blocks === true
 	results.push({
 		kind: credentialPatternCheck.kind,
 		ok: credentialCheckOk && !placementBlocks,
@@ -2065,7 +2156,7 @@ export async function runRepoChecks(input: {
 			sourceFiles,
 			clientDeclared: getPackageAppClientEntryPath(manifest) !== null,
 		}),
-		validatePackageAppGraphSeparation({ manifest, sourceFiles }),
+		await validatePackageAppGraphSeparation({ manifest, sourceFiles }),
 	]
 	const failedPackageAppSurfaceCheck = packageAppSurfaceChecks.find(
 		(check) => !check.ok,
@@ -2114,7 +2205,7 @@ export async function runRepoChecks(input: {
 		})
 	}
 	await input.onStep?.('lint')
-	const lintCheck = buildLintCheck(sourceFiles)
+	const lintCheck = await buildLintCheck(sourceFiles)
 	await input.onStep?.('bundle')
 	const { createFileSystemSnapshot } = await loadWorkerBundlerSnapshotTools()
 	const snapshot = await createFileSystemSnapshot(
@@ -2128,7 +2219,7 @@ export async function runRepoChecks(input: {
 	const packageJson = snapshot.read('package.json')
 	const declaredNpmDependencies = parseDeclaredNpmDependencies(packageJson)
 	const staticKodyDependencyCheck =
-		validateStaticKodyPackageDependencyDeclarations({
+		await validateStaticKodyPackageDependencyDeclarations({
 			manifest,
 			sourceFiles,
 		})
@@ -2165,7 +2256,7 @@ export async function runRepoChecks(input: {
 		}
 	}
 	const bundleTargets = collectPackageBundleTargets(manifest)
-	const barePackageImportCheck = validateBarePackageImportDeclarations({
+	const barePackageImportCheck = await validateBarePackageImportDeclarations({
 		manifest,
 		sourceFiles,
 		entryPoints: bundleTargets,
@@ -2274,7 +2365,7 @@ export async function runRepoChecks(input: {
 						}
 					}
 					const callableTargetsMissingDefaultExport =
-						collectEntrypointsMissingDefaultExport({
+						await collectEntrypointsMissingDefaultExport({
 							snapshot,
 							targets: typecheckTargets.filter(
 								(target) => target.kind === 'callable',
@@ -2317,10 +2408,10 @@ export async function runRepoChecks(input: {
 			return value
 		}
 
-		const cheapBundleCheckResult = (): {
+		const cheapBundleCheckResult = async (): Promise<{
 			ok: boolean
 			message: string
-		} => {
+		}> => {
 			if (missingBundleTargets.length > 0) {
 				return {
 					ok: false,
@@ -2336,7 +2427,7 @@ export async function runRepoChecks(input: {
 			) {
 				// Rebuild runs after the tip moves, so refuse imports esbuild
 				// could never resolve before promotion.
-				const unresolvedImports = collectUnresolvedRelativeImports({
+				const unresolvedImports = await collectUnresolvedRelativeImports({
 					files: sourceFiles,
 					entryPoints: bundleTargets.map((target) => target.path),
 				})
@@ -2366,16 +2457,16 @@ export async function runRepoChecks(input: {
 			failureOrigin?: RepoCheckFailureOrigin
 		}> => {
 			if (input.deferBundleCheckToRebuild === true) {
-				return cheapBundleCheckResult()
+				return await cheapBundleCheckResult()
 			}
 			const { value } = await timePublishExternalPushPhase(
 				{ phase: 'checks/bundle', timings: input.phaseTimings },
 				async () => {
 					if (missingBundleTargets.length > 0) {
-						return cheapBundleCheckResult()
+						return await cheapBundleCheckResult()
 					}
 					if (!bundleContext) {
-						return cheapBundleCheckResult()
+						return await cheapBundleCheckResult()
 					}
 					if (isolatedRunner && stagingKey) {
 						return await runChunkedBundleValidation({
@@ -2525,41 +2616,60 @@ export async function runRepoSourceWalkChecks(input: {
 
 /**
  * Credential placeholders a fetch puts in a request body, URL, or query.
- * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}.
+ * `mode` comes from {@link secretPlaceholderRequestPlacementPublishMode}. In
+ * `fail` mode a placeholder blocks only when the publishing org's credential
+ * does not already allow that part; one it allows only warns.
  */
-function secretPlaceholderRequestPlacementNotice(input: {
+async function secretPlaceholderRequestPlacementNotice(input: {
 	sourceFiles: Record<string, string>
 	mode: SecretPlaceholderRequestPlacementMode
 	/** Already found by the isolated credentials phase. */
 	hits?: ReadonlyArray<SecretPlaceholderRequestPlacementHit>
-}): { mode: SecretPlaceholderRequestPlacementMode; message: string } | null {
+	db?: D1Database
+	ownerId?: string
+	baseUrl?: string
+}): Promise<{ blocks: boolean; message: string } | null> {
+	const hits =
+		input.hits ??
+		(await findSecretPlaceholderRequestPlacements(input.sourceFiles))
+	const split =
+		input.mode === 'fail' && input.db && input.ownerId && input.baseUrl
+			? await partitionSecretPlaceholderRequestPlacementHits({
+					db: input.db,
+					ownerId: input.ownerId,
+					baseUrl: input.baseUrl,
+					hits,
+				})
+			: { blocked: [...hits], allowed: [] }
 	const message = formatSecretPlaceholderRequestPlacementNotice({
-		hits:
-			input.hits ?? findSecretPlaceholderRequestPlacements(input.sourceFiles),
+		hits: split.blocked,
+		allowed: split.allowed,
 		mode: input.mode,
 	})
-	return message ? { mode: input.mode, message } : null
+	return message
+		? { blocks: input.mode === 'fail' && split.blocked.length > 0, message }
+		: null
 }
 
 /**
  * Advisory publish note. Omitted when the credential stamp gate already
  * failed, so that failure stays the message authors fix first.
  */
-function fetchBodySecretResolutionNotice(
+async function fetchBodySecretResolutionNotice(
 	sourceFiles: Record<string, string>,
 	hits?: ReadonlyArray<{ path: string; line: number }>,
-): string | null {
+): Promise<string | null> {
 	return formatFetchBodySecretResolutionWarning(
-		hits ?? findFetchBodySecretResolutionHits(sourceFiles),
+		hits ?? (await findFetchBodySecretResolutionHits(sourceFiles)),
 	)
 }
 
 /** Every fetch whose body the gateway would still scan, by module and line. */
-export function findFetchBodySecretResolutionHits(
+export async function findFetchBodySecretResolutionHits(
 	sourceFiles: Record<string, string>,
-): Array<{ path: string; line: number }> {
+): Promise<Array<{ path: string; line: number }>> {
 	const hits: Array<{ path: string; line: number }> = []
-	for (const path of listScannableModulePaths(sourceFiles)) {
+	for (const path of await listScannableModulePaths(sourceFiles)) {
 		const source = sourceFiles[path]
 		if (typeof source !== 'string') continue
 		for (const hit of findFetchBodiesMissingSecretResolution(source)) {

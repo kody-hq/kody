@@ -1,4 +1,5 @@
 import { getStartRequestEnv } from './request-env.ts'
+import { getRequestIp } from '#worker/audit-log.ts'
 
 // Server route handlers for `/claim/<code>`. Kept apart from the loader so the
 // client build drops this module with `server.handlers`.
@@ -69,7 +70,7 @@ export async function handleGuestClaimPost({
 	const pagePath = `/claim/${encodeURIComponent(code)}`
 	const fail = (error: string, extra?: Record<string, string>) =>
 		seeOther(`${pagePath}?${new URLSearchParams({ error, ...extra })}`)
-	const guest = await readGuestAccountByClaimCode(env.APP_DB, code)
+	const guest = await readGuestAccountByClaimCode(env, code)
 	if (!guest || guest.claimedAt) return fail('already_claimed')
 	const action = String(form.get('action') ?? '')
 	const baseUrl = getAppBaseUrl({ env, requestUrl: request.url })
@@ -95,6 +96,7 @@ export async function handleGuestClaimPost({
 				username: field('username') || null,
 				merge: field('mode') === 'merge',
 				requestUrl: request.url,
+				requestIp: getRequestIp(request),
 			})
 			const next = new URLSearchParams({ step: 'code', email: started.email })
 			if (started.devCode) next.set('dev_code', started.devCode)
@@ -108,8 +110,10 @@ export async function handleGuestClaimPost({
 				code: field('code'),
 				baseUrl,
 				method: 'email_code',
+				requestIp: getRequestIp(request),
 			})
-			const setCookie = await loginAs(result.personId)
+			const setCookie =
+				result.mode === 'new' ? await loginAs(result.personId) : undefined
 			return seeOther(
 				claim.guestClaimDonePath(code, result.mode, comesWith),
 				setCookie ? { 'Set-Cookie': setCookie } : undefined,

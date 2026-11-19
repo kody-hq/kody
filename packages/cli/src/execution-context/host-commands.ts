@@ -15,6 +15,11 @@ import {
 	type WindowsShell,
 } from './windows-command.ts'
 import { credentialDenylist, isDeniedPath } from './fs-access.js'
+import {
+	MachineCapabilityError,
+	resolveMachineCommand,
+	type MachineCommandDefinition,
+} from './machine-capabilities.js'
 
 /**
  * Host commands (`kody.command.*`, ADR 0093): real OS processes on the
@@ -26,8 +31,11 @@ import { credentialDenylist, isDeniedPath } from './fs-access.js'
 
 type HostCommandsDenialCode =
 	| 'execution_context_commands_off'
+	| 'execution_context_command_not_granted'
 	| 'invalid_request'
 	| 'not_found'
+	| 'machine_capability_off'
+	| 'machine_command_args_refused'
 
 class HostCommandError extends Error {
 	constructor(
@@ -37,6 +45,13 @@ class HostCommandError extends Error {
 		super(`${message} (${code})`)
 		this.name = 'HostCommandError'
 	}
+}
+
+function shellOperatorOnlyError() {
+	return new HostCommandError(
+		'execution_context_command_not_granted',
+		"Shell commands run only for this machine's operator. A command the operator shared with you runs by name: kody.command.run({ capability, args }).",
+	)
 }
 
 type HostCommandSpec = {
@@ -56,6 +71,12 @@ type HostCommandSpec = {
 	stdin?: string
 	timeoutMs?: number
 	maxOutputBytes?: number
+	/**
+	 * A command the machine defines by name (`kody context capability add
+	 * command`). Takes `args` only: the executable, cwd and env are the
+	 * definition's, and no shell is involved.
+	 */
+	capability?: string
 }
 
 type HostCommandLifecycle = 'status' | 'output' | 'kill' | 'list'
@@ -72,8 +93,11 @@ type HostCommandAuthorize = (
 				cwd: string
 				envKeys: Array<string>
 				background: boolean
+				/** Set for a named command, with the caller's arguments. */
+				capability?: string
+				args?: Array<string>
 		  }
-		| { lifecycle: HostCommandLifecycle },
+		| { lifecycle: HostCommandLifecycle; capability?: string },
 ) => Promise<void>
 
 export type HostCommandFinished = {
@@ -99,6 +123,11 @@ export type HostCommandRunContext = {
 	requesterUserId: string
 	signal: AbortSignal
 	authorize: HostCommandAuthorize
+	/**
+	 * True for a run whose requester is not the machine's operator. It can use
+	 * the named commands Kody says it was granted, never the shell.
+	 */
+	namedOnly?: boolean
 }
 
 const hostCommandLimits = {
@@ -187,6 +216,8 @@ type Job = {
 	ownerUserId: string
 	command: string
 	cwd: string
+	/** The named command this job runs, if it is one. */
+	capability?: string
 	child: ChildProcess
 	pid: number | undefined
 	startedAt: number
@@ -204,6 +235,9 @@ type Job = {
 type PreparedCommand = {
 	display: string
 	cwd: string
+	/** What Kody and the run see as the cwd. Empty for a named command, whose cwd stays on the machine. */
+	shownCwd: string
+	named?: { capability: string; args: Array<string> }
 	env: NodeJS.ProcessEnv
 	envKeys: Array<string>
 	stdin: string | undefined
@@ -277,6 +311,23 @@ export type HostCommandsOptions = {
 	platform?: NodeJS.Platform
 	/** Folders a command may not use as its cwd; defaults to the credential denylist. */
 	deniedPaths?: ReadonlyArray<string>
+	/** Looks up a named command in this machine's local policy. */
+	namedCommand?: (name: string) => Promise<MachineCommandDefinition | undefined>
+}
+
+const namedCommandFields = new Set([
+	'capability',
+	'args',
+	'timeoutMs',
+	'maxOutputBytes',
+])
+
+function namedCapability(input: unknown) {
+	const capability =
+		typeof input === 'object' && input !== null && !Array.isArray(input)
+			? (input as { capability?: unknown }).capability
+			: undefined
+	return capability === undefined ? null : { capability }
 }
 
 /**
@@ -300,7 +351,7 @@ export class HostCommands {
 	#unreported: Array<HostCommandFinished> = []
 	#foreground = new Map<
 		ChildProcess,
-		{ reason: HostCommandFinished['reason'] }
+		{ reason: HostCommandFinished['reason']; named: boolean }
 	>()
 	#pendingStarts = 0
 	#localEnabled: boolean
@@ -308,8 +359,10 @@ export class HostCommands {
 	#grantEnabled = false
 	readonly #platform: NodeJS.Platform
 	readonly #deniedPaths: ReadonlyArray<string>
+	readonly #namedCommand: HostCommandsOptions['namedCommand']
 
 	constructor(options: HostCommandsOptions = {}) {
+		this.#namedCommand = options.namedCommand
 		this.#localEnabled = options.localEnabled === true
 		this.#platform = options.platform ?? process.platform
 		this.#deniedPaths = options.deniedPaths ?? credentialDenylist()
@@ -320,6 +373,7 @@ export class HostCommands {
 		return this.#localEnabled && this.#grantEnabled
 	}
 
+	// Turning the shell off ends shell commands. Named commands do not depend on it.
 	setLocalEnabled(enabled: boolean) {
 		this.#localEnabled = enabled
 		if (!enabled) this.killAll('commands_off')
@@ -364,15 +418,19 @@ export class HostCommands {
 
 	/** Dispatches one `kody.command.<name>(args)` call from a run. */
 	async call(name: string, args: unknown, run: HostCommandRunContext) {
-		this.assertAvailable()
-		if (
-			name === 'status' ||
-			name === 'output' ||
-			name === 'kill' ||
-			name === 'list'
-		) {
-			await run.authorize({ lifecycle: name })
+		const named =
+			name === 'run' || name === 'start'
+				? namedCapability(args) !== null
+				: name === 'list'
+					? true
+					: await this.#authorizeNamedJob(name, args, run)
+		if (!named) {
+			if (run.namedOnly) throw shellOperatorOnlyError()
 			this.assertAvailable()
+			if (name === 'status' || name === 'output' || name === 'kill') {
+				await run.authorize({ lifecycle: name })
+				this.assertAvailable()
+			}
 		}
 		switch (name) {
 			case 'run':
@@ -386,7 +444,7 @@ export class HostCommands {
 			case 'kill':
 				return this.kill(args, run)
 			case 'list':
-				return this.list(run)
+				return await this.#list(run)
 			default:
 				throw new HostCommandError(
 					'invalid_request',
@@ -395,10 +453,174 @@ export class HostCommands {
 		}
 	}
 
+	#ownJobs(run: HostCommandRunContext) {
+		return [...this.#jobs.values()].filter(
+			(job) => job.ownerUserId === run.requesterUserId,
+		)
+	}
+
+	/**
+	 * A lifecycle call on the caller's own named-command job is authorized
+	 * against that command, so it works with the shell off.
+	 */
+	async #authorizeNamedJob(
+		name: string,
+		args: unknown,
+		run: HostCommandRunContext,
+	) {
+		if (name !== 'status' && name !== 'output' && name !== 'kill') return false
+		const id =
+			typeof args === 'string'
+				? args
+				: (args as { commandId?: unknown } | null)?.commandId
+		const job = typeof id === 'string' ? this.#jobs.get(id) : undefined
+		if (!job?.capability || job.ownerUserId !== run.requesterUserId) {
+			return false
+		}
+		await run.authorize({ lifecycle: name, capability: job.capability })
+		return true
+	}
+
+	/**
+	 * `list` for a caller the shell rules refuse: their named-command jobs,
+	 * each command authorized on its own, so a command that was removed or is
+	 * no longer granted hides only its own jobs. Null when none is allowed.
+	 */
+	async #allowedNamedJobs(run: HostCommandRunContext) {
+		const allowed = new Set<string>()
+		const capabilities = new Set(
+			this.#ownJobs(run).flatMap((job) =>
+				job.capability ? [job.capability] : [],
+			),
+		)
+		for (const capability of capabilities) {
+			await run.authorize({ lifecycle: 'list', capability }).then(
+				() => allowed.add(capability),
+				() => {},
+			)
+		}
+		return allowed.size > 0 ? allowed : null
+	}
+
+	async #list(run: HostCommandRunContext) {
+		try {
+			if (run.namedOnly) throw shellOperatorOnlyError()
+			this.assertAvailable()
+			await run.authorize({ lifecycle: 'list' })
+			this.assertAvailable()
+		} catch (error) {
+			const allowed = await this.#allowedNamedJobs(run)
+			if (!allowed) throw error
+			return this.list(run, { capabilities: allowed })
+		}
+		return this.list(run)
+	}
+
+	async #prepareNamed(
+		spec: Record<string, unknown>,
+		background: boolean,
+	): Promise<PreparedCommand> {
+		const name = spec.capability
+		if (typeof name !== 'string' || name.length === 0) {
+			throw new HostCommandError(
+				'invalid_request',
+				'`capability` is the name of a command this machine defines.',
+			)
+		}
+		const extra = Object.keys(spec).filter(
+			(key) => !namedCommandFields.has(key),
+		)
+		if (extra.length > 0) {
+			throw new HostCommandError(
+				'invalid_request',
+				`A named command takes \`args\`, \`timeoutMs\` and \`maxOutputBytes\` only. The machine's definition sets the rest, so remove ${extra.map((key) => `\`${key}\``).join(', ')}.`,
+			)
+		}
+		const definition = await this.#namedCommand?.(name)
+		if (!definition) {
+			throw new HostCommandError(
+				'machine_capability_off',
+				`This machine defines no command named "${name}". Its owner defines one on the machine with \`kody context capability add command <file.json>\`; \`kody context capability list\` shows what is defined.`,
+			)
+		}
+		const args = spec.args ?? []
+		let resolved: ReturnType<typeof resolveMachineCommand>
+		try {
+			resolved = resolveMachineCommand(definition, args)
+		} catch (error) {
+			if (error instanceof MachineCapabilityError) {
+				throw new HostCommandError(
+					error.code === 'machine_command_args_refused'
+						? error.code
+						: 'invalid_request',
+					error.message,
+				)
+			}
+			throw error
+		}
+		if (background && !resolved.background) {
+			throw new HostCommandError(
+				'invalid_request',
+				`Command "${name}" does not run in the background on this machine. Use kody.command.run.`,
+			)
+		}
+		const cwd = resolved.cwd ?? homedir()
+		const cwdStat = await stat(cwd).catch(() => null)
+		if (!cwdStat?.isDirectory()) {
+			throw new HostCommandError(
+				'invalid_request',
+				`The folder command "${name}" runs in is missing on this machine. Its owner fixes the definition's "cwd".`,
+			)
+		}
+		const maxTimeoutMs = Math.min(
+			resolved.timeoutMs,
+			background
+				? hostCommandLimits.backgroundMaxTimeoutMs
+				: hostCommandLimits.foregroundMaxTimeoutMs,
+		)
+		const env = inheritedCommandEnv()
+		const launch =
+			this.#platform !== 'win32'
+				? { file: resolved.file, argv: resolved.args, verbatim: false }
+				: windowsFileLaunch(resolved.file, resolved.args, env)
+		const callerArgs = args as Array<string>
+		return {
+			// The name and the caller's arguments: the executable path stays here.
+			display: [name, ...callerArgs].join(' '),
+			cwd,
+			shownCwd: '',
+			named: { capability: name, args: callerArgs },
+			env,
+			envKeys: [],
+			stdin: undefined,
+			timeoutMs: clampInt(
+				spec.timeoutMs,
+				maxTimeoutMs,
+				maxTimeoutMs,
+				Math.min(background ? 1000 : 100, maxTimeoutMs),
+			),
+			maxOutputBytes: clampInt(
+				spec.maxOutputBytes,
+				hostCommandLimits.defaultOutputBytes,
+				hostCommandLimits.maxOutputBytes,
+				1024,
+			),
+			file: launch.file,
+			argv: launch.argv,
+			verbatim: launch.verbatim,
+		}
+	}
+
 	async #prepare(
 		input: unknown,
 		background: boolean,
 	): Promise<PreparedCommand> {
+		if (namedCapability(input)) {
+			return await this.#prepareNamed(
+				input as Record<string, unknown>,
+				background,
+			)
+		}
 		const raw = typeof input === 'string' ? { command: input } : input
 		const spec = (raw ?? {}) as HostCommandSpec
 		if (typeof spec !== 'object' || Array.isArray(spec)) {
@@ -528,6 +750,7 @@ export class HostCommands {
 		return {
 			display,
 			cwd,
+			shownCwd: cwd,
 			env,
 			envKeys: Object.keys(extraEnv).sort(),
 			stdin: spec.stdin,
@@ -576,15 +799,19 @@ export class HostCommands {
 		await run.authorize({
 			commandId,
 			command: prepared.display,
-			cwd: prepared.cwd,
+			cwd: prepared.shownCwd,
 			envKeys: prepared.envKeys,
 			background: false,
+			...prepared.named,
 		})
-		this.assertAvailable()
+		if (!prepared.named) this.assertAvailable()
 		const startedAt = Date.now()
 		const stdout = new OutputBuffer(prepared.maxOutputBytes)
 		const stderr = new OutputBuffer(prepared.maxOutputBytes)
-		const ended = { reason: 'exited' as HostCommandFinished['reason'] }
+		const ended = {
+			reason: 'exited' as HostCommandFinished['reason'],
+			named: prepared.named !== undefined,
+		}
 		const child = this.#spawn(prepared)
 		this.#foreground.set(child, ended)
 		child.stdout?.on('data', (chunk: Buffer) => stdout.write(chunk))
@@ -619,7 +846,7 @@ export class HostCommands {
 			commandId,
 			runId: run.runId,
 			command: prepared.display,
-			cwd: prepared.cwd,
+			cwd: prepared.shownCwd,
 			exitCode: outcome.code,
 			signal: outcome.signal,
 			durationMs,
@@ -669,11 +896,12 @@ export class HostCommands {
 			await run.authorize({
 				commandId,
 				command: prepared.display,
-				cwd: prepared.cwd,
+				cwd: prepared.shownCwd,
 				envKeys: prepared.envKeys,
 				background: true,
+				...prepared.named,
 			})
-			this.assertAvailable()
+			if (!prepared.named) this.assertAvailable()
 			child = this.#spawn(prepared)
 		} finally {
 			this.#pendingStarts--
@@ -683,7 +911,8 @@ export class HostCommands {
 			runId: run.runId,
 			ownerUserId: run.requesterUserId,
 			command: prepared.display,
-			cwd: prepared.cwd,
+			cwd: prepared.shownCwd,
+			...(prepared.named ? { capability: prepared.named.capability } : {}),
 			child,
 			pid: child.pid,
 			startedAt: Date.now(),
@@ -794,6 +1023,7 @@ export class HostCommands {
 			durationMs: (job.endedAt ?? Date.now()) - job.startedAt,
 			stdoutBytes: job.stdout.total,
 			stderrBytes: job.stderr.total,
+			...(job.capability ? { capability: job.capability } : {}),
 			...(job.error && job.state === 'failed' ? { error: job.error } : {}),
 		}
 	}
@@ -860,23 +1090,35 @@ export class HostCommands {
 		return this.#describe(job)
 	}
 
-	list(run: HostCommandRunContext) {
+	list(
+		run: HostCommandRunContext,
+		options: { capabilities?: ReadonlySet<string> } = {},
+	) {
 		this.#sweep()
 		return {
-			commands: [...this.#jobs.values()]
-				.filter((job) => job.ownerUserId === run.requesterUserId)
+			commands: this.#ownJobs(run)
+				.filter(
+					(job) =>
+						!options.capabilities ||
+						(job.capability !== undefined &&
+							options.capabilities.has(job.capability)),
+				)
 				.map((job) => this.#describe(job)),
 		}
 	}
 
 	/** Commands were turned off (or the daemon stops): end every background job. */
 	killAll(reason: 'commands_off' | 'shutdown') {
+		const spared = (named: boolean) => named && reason === 'commands_off'
 		for (const [child, ended] of this.#foreground) {
+			if (spared(ended.named)) continue
 			ended.reason = reason === 'commands_off' ? 'commands_off' : 'cancelled'
 			killTree(child, 'SIGKILL')
 		}
 		for (const job of this.#jobs.values()) {
-			if (job.state !== 'running') continue
+			if (job.state !== 'running' || spared(job.capability !== undefined)) {
+				continue
+			}
 			nextState(hostCommandState, job.state, { type: 'KILL' })
 			job.state = 'killed'
 			job.error = reason === 'commands_off' ? 'commands_off' : null

@@ -1,14 +1,7 @@
 import * as Sentry from '@sentry/cloudflare'
 import {
 	pacedD1RetentionTierForDay,
-	pacedD1SealedDataKey,
-	pacedD1SealedDataPartKey,
-	pacedD1SealedIndexKey,
-	pacedD1SealedIndexPartKey,
 	pacedD1SealedManifestKey,
-	parsePacedD1NightManifest,
-	type PacedD1NightManifest,
-	type PacedD1TableManifest,
 } from '@kody-internal/shared/backup-d1-paced.ts'
 import {
 	applyPacedRestoreDrillSentryScope,
@@ -16,14 +9,8 @@ import {
 	type PacedRestoreDrillCheckpoint,
 	type PacedRestoreDrillFailureKind,
 } from '@kody-internal/shared/backup-d1-paced-drill-alert.ts'
-import {
-	hashPacedD1RowLine,
-	parsePacedD1DataLine,
-	sha256HexOfBytes,
-	sha256HexOfText,
-} from '@kody-internal/shared/backup-d1-paced-encode.ts'
+import { parsePacedD1DataLine } from '@kody-internal/shared/backup-d1-paced-encode.ts'
 import { isRecord } from '@kody-internal/shared/is-record.ts'
-import { sha256Hex } from '@kody-internal/shared/sha256.ts'
 import { quoteSqlIdentifier } from '@kody-internal/shared/sql-literals.ts'
 import {
 	createDrBackupS3Client,
@@ -39,7 +26,11 @@ import {
 	resolvePacedD1Binding,
 	type PacedD1SourceConfig,
 } from '#worker/dr/d1-paced-backup-sources.ts'
-import { parsePacedD1PartsPointer } from '#worker/dr/d1-paced-backup-seal.ts'
+import {
+	loadVerifiedPacedD1NightChain,
+	streamSealedPacedD1TableLines,
+	type SealedPacedD1Night,
+} from '@kody-internal/shared/backup-d1-paced-read.ts'
 import {
 	checkpointD1PacedRestoreDrillSource,
 	claimD1PacedRestoreDrillLease,
@@ -103,70 +94,6 @@ export function pacedD1RestoreDrillReportKey(day: string) {
 	return `staging/${day}/d1-paced/restore-drill-report.json`
 }
 
-async function loadSealedManifest(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	day: string
-}): Promise<{
-	manifest: PacedD1NightManifest
-	raw: string
-	key: string
-} | null> {
-	const tier = pacedD1RetentionTierForDay(input.day)
-	const key = pacedD1SealedManifestKey(tier, input.source.id, input.day)
-	const raw = await input.s3.getText(key)
-	if (!raw) return null
-	return {
-		manifest: parsePacedD1NightManifest(JSON.parse(raw.text)),
-		raw: raw.text,
-		key,
-	}
-}
-
-/**
- * Walk sealed nights backward until every table is covered by a `full` base
- * (or the chain ends). Returns oldest-first for apply.
- */
-async function loadSealedNightChain(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	day: string
-}): Promise<
-	Array<{ manifest: PacedD1NightManifest; raw: string; key: string }>
-> {
-	const chain: Array<{
-		manifest: PacedD1NightManifest
-		raw: string
-		key: string
-	}> = []
-	let cursor: string | null = input.day
-	const seen = new Set<string>()
-	while (cursor) {
-		if (seen.has(cursor)) {
-			throw new Error(`paced D1 restore drill cycle at ${cursor}`)
-		}
-		seen.add(cursor)
-		const night = await loadSealedManifest({
-			s3: input.s3,
-			source: input.source,
-			day: cursor,
-		})
-		if (!night) {
-			if (chain.length === 0) return []
-			throw new Error(
-				`paced D1 restore drill broken chain: missing sealed night ${cursor} for ${input.source.name}`,
-			)
-		}
-		chain.push(night)
-		const allFull = Object.values(night.manifest.tables).every(
-			(table) => table.mode === 'full',
-		)
-		if (allFull || night.manifest.prevDay === null) break
-		cursor = night.manifest.prevDay
-	}
-	return chain.reverse()
-}
-
 async function countLiveTable(
 	db: D1Database,
 	table: string,
@@ -183,187 +110,6 @@ async function countLiveTable(
 		return row ? Number(row.n) : null
 	} catch {
 		return null
-	}
-}
-
-type SealedNight = { manifest: PacedD1NightManifest; key: string }
-
-/** Load the chain oldest-first and verify every prevManifestSha256 link once. */
-async function loadVerifiedNightChain(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	day: string
-}): Promise<Array<SealedNight>> {
-	const chain = await loadSealedNightChain(input)
-	for (let index = 1; index < chain.length; index += 1) {
-		const expectedPrev = await sha256Hex(chain[index - 1]!.raw)
-		if (chain[index]!.manifest.prevManifestSha256 !== expectedPrev) {
-			throw new Error(
-				`CHAIN BROKEN: prevManifestSha256 mismatch at ${chain[index]!.manifest.day}`,
-			)
-		}
-	}
-	return chain.map(({ manifest, key }) => ({ manifest, key }))
-}
-
-/** Calls `onLine` for each complete line; returns the unterminated tail. */
-function forEachCompleteLine(text: string, onLine: (line: string) => void) {
-	let position = 0
-	for (;;) {
-		const newline = text.indexOf('\n', position)
-		if (newline < 0) break
-		if (newline > position) onLine(text.slice(position, newline))
-		position = newline + 1
-	}
-	return text.slice(position)
-}
-
-/**
- * Stream one night's sealed table data line by line, one part body at a time.
- * Lines are handed to `onLine` and never retained here.
- */
-async function streamSealedTableLines(input: {
-	s3: DrBackupS3Client
-	source: PacedD1SourceConfig
-	day: string
-	table: string
-	tableManifest: PacedD1TableManifest
-	onLine: (line: string) => void
-	onPart?: () => Promise<void>
-}): Promise<void> {
-	const tier = pacedD1RetentionTierForDay(input.day)
-	const dataKey = pacedD1SealedDataKey(
-		tier,
-		input.source.id,
-		input.day,
-		input.table,
-	)
-	const indexKey = pacedD1SealedIndexKey(
-		tier,
-		input.source.id,
-		input.day,
-		input.table,
-	)
-	const dataObj = await input.s3.getText(dataKey)
-	if (!dataObj) {
-		throw new Error(`paced D1 missing sealed data at ${dataKey}`)
-	}
-	const indexObj = await input.s3.getText(indexKey)
-	if (!indexObj) {
-		throw new Error(`paced D1 missing sealed index at ${indexKey}`)
-	}
-
-	const dataPointer = parsePacedD1PartsPointer(dataObj.text)
-	const indexPointer = parsePacedD1PartsPointer(indexObj.text)
-
-	if (!dataPointer) {
-		if (
-			(await sha256HexOfText(indexObj.text)) !== input.tableManifest.indexSha256
-		) {
-			throw new Error(
-				`paced D1 index digest mismatch for ${input.source.name}.${input.table}`,
-			)
-		}
-		if (
-			(await sha256HexOfText(dataObj.text)) !== input.tableManifest.dataSha256
-		) {
-			throw new Error(
-				`CORRUPT artifact ${input.table}: sha256 mismatch, refusing to restore`,
-			)
-		}
-		const lines: Array<string> = []
-		const tail = forEachCompleteLine(dataObj.text, (line) => lines.push(line))
-		if (tail.length > 0) lines.push(tail)
-		for (const line of lines) {
-			const parsed = parsePacedD1DataLine(line)
-			if (parsed.kind === 'U' && parsed.h !== '-') {
-				if ((await hashPacedD1RowLine(parsed.row)) !== parsed.h) {
-					throw new Error(`CORRUPT row in ${input.table}`)
-				}
-			}
-			input.onLine(line)
-		}
-		return
-	}
-
-	if (!indexPointer || indexPointer.partCount !== dataPointer.partCount) {
-		throw new Error(
-			`paced D1 parts pointer mismatch for ${input.source.name}.${input.table}`,
-		)
-	}
-	if (dataPointer.dataSha256 !== input.tableManifest.dataSha256) {
-		throw new Error(
-			`paced D1 parts data digest disagrees with manifest for ${input.source.name}.${input.table}`,
-		)
-	}
-	if (indexPointer.indexSha256 !== input.tableManifest.indexSha256) {
-		throw new Error(
-			`paced D1 parts index digest disagrees with manifest for ${input.source.name}.${input.table}`,
-		)
-	}
-
-	const digests: Array<string> = []
-	const indexDigests: Array<string> = []
-	let residual = ''
-	for (let partIndex = 0; partIndex < dataPointer.partCount; partIndex += 1) {
-		const partKey = pacedD1SealedDataPartKey(
-			tier,
-			input.source.id,
-			input.day,
-			input.table,
-			partIndex,
-		)
-		const indexPartKey = pacedD1SealedIndexPartKey(
-			tier,
-			input.source.id,
-			input.day,
-			input.table,
-			partIndex,
-		)
-		// Index part first so only one part body is alive at a time.
-		const indexBytes = await input.s3.getBytes(indexPartKey)
-		if (!indexBytes) {
-			throw new Error(
-				`paced D1 missing index part ${partIndex} at ${indexPartKey}`,
-			)
-		}
-		const indexDigest = await sha256HexOfBytes(indexBytes)
-		if (indexDigest !== indexPointer.indexPartDigests[partIndex]) {
-			throw new Error(
-				`paced D1 index part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
-			)
-		}
-		const dataBytes = await input.s3.getBytes(partKey)
-		if (!dataBytes) {
-			throw new Error(`paced D1 missing data part ${partIndex} at ${partKey}`)
-		}
-		const dataDigest = await sha256HexOfBytes(dataBytes)
-		if (dataDigest !== dataPointer.dataPartDigests[partIndex]) {
-			throw new Error(
-				`paced D1 data part ${partIndex} digest mismatch for ${input.source.name}.${input.table}`,
-			)
-		}
-		digests.push(dataDigest)
-		indexDigests.push(indexDigest)
-		residual = forEachCompleteLine(
-			residual + new TextDecoder().decode(dataBytes),
-			input.onLine,
-		)
-		await input.onPart?.()
-	}
-	if (residual.length > 0) input.onLine(residual)
-
-	const chainSha = await sha256HexOfText(`${digests.join('\n')}\n`)
-	if (chainSha !== input.tableManifest.dataSha256) {
-		throw new Error(
-			`paced D1 data parts chain digest mismatch for ${input.source.name}.${input.table}`,
-		)
-	}
-	const indexChainSha = await sha256HexOfText(`${indexDigests.join('\n')}\n`)
-	if (indexChainSha !== input.tableManifest.indexSha256) {
-		throw new Error(
-			`paced D1 index parts chain digest mismatch for ${input.source.name}.${input.table}`,
-		)
 	}
 }
 
@@ -399,7 +145,7 @@ async function drillOneTable(input: {
 	s3: DrBackupS3Client
 	source: PacedD1SourceConfig
 	db: D1Database
-	chain: Array<SealedNight>
+	chain: Array<SealedPacedD1Night>
 	table: string
 	onPhase: (phase: D1PacedRestoreDrillPhase) => Promise<void>
 	onPart?: () => Promise<void>
@@ -452,8 +198,8 @@ async function drillOneTable(input: {
 		const deltaStart = baseIndex >= 0 ? baseIndex + 1 : segmentStart
 		for (let index = deltaStart; index < input.chain.length; index += 1) {
 			const night = input.chain[index]!
-			await streamSealedTableLines({
-				s3: input.s3,
+			await streamSealedPacedD1TableLines({
+				reader: input.s3,
 				source: input.source,
 				day: night.manifest.day,
 				table: input.table,
@@ -471,25 +217,49 @@ async function drillOneTable(input: {
 		let restoredCount = 0
 		if (baseIndex >= 0) {
 			const base = input.chain[baseIndex]!
-			await streamSealedTableLines({
-				s3: input.s3,
-				source: input.source,
-				day: base.manifest.day,
-				table: input.table,
-				tableManifest: base.manifest.tables[input.table]!,
-				onLine: (line) => {
-					const { rowid, hash } = readCompactLine(line)
-					if (hash === null) {
-						throw new Error(
-							`paced D1 unexpected delete line in full base for ${input.source.name}.${input.table}`,
-						)
-					}
-					if (touched.has(rowid)) return
+			// A restore replays lines into a rowid map, so a rowid the base
+			// carries twice restores once with its last line. Bases are written
+			// in rowid order, so the first pass only notes rowids that arrive
+			// out of order; a base with any is streamed again to settle them.
+			const streamBase = async (repeated: ReadonlySet<number> | null) => {
+				const lastLine = new Map<number, bigint>()
+				const outOfOrder = new Set<number>()
+				let maxRowid = -Infinity
+				sum = 0n
+				restoredCount = 0
+				await streamSealedPacedD1TableLines({
+					reader: input.s3,
+					source: input.source,
+					day: base.manifest.day,
+					table: input.table,
+					tableManifest: base.manifest.tables[input.table]!,
+					onLine: (line) => {
+						const { rowid, hash } = readCompactLine(line)
+						if (hash === null) {
+							throw new Error(
+								`paced D1 unexpected delete line in full base for ${input.source.name}.${input.table}`,
+							)
+						}
+						if (rowid <= maxRowid) outOfOrder.add(rowid)
+						else maxRowid = rowid
+						if (touched.has(rowid)) return
+						if (repeated?.has(rowid)) {
+							lastLine.set(rowid, hash)
+							return
+						}
+						sum = (sum + hash) & checksumMask
+						restoredCount += 1
+					},
+					onPart,
+				})
+				for (const hash of lastLine.values()) {
 					sum = (sum + hash) & checksumMask
 					restoredCount += 1
-				},
-				onPart,
-			})
+				}
+				return outOfOrder
+			}
+			const outOfOrder = await streamBase(null)
+			if (outOfOrder.size > 0) await streamBase(outOfOrder)
 		}
 		for (const hash of touched.values()) {
 			if (hash === null) continue
@@ -645,10 +415,10 @@ async function drillSourceSlice(input: {
 	}
 
 	await setPhase(null, 'chain')
-	let chain: Array<SealedNight>
+	let chain: Array<SealedPacedD1Night>
 	try {
-		chain = await loadVerifiedNightChain({
-			s3: input.s3,
+		chain = await loadVerifiedPacedD1NightChain({
+			reader: input.s3,
 			source: input.source,
 			day: input.day,
 		})

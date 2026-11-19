@@ -372,6 +372,12 @@ export const accountUserDataTargets: ReadonlyArray<UserScopedDataTarget> = [
 		matchColumn: 'paused_by_user_id',
 		nullColumns: ['paused_by_user_id'],
 	},
+	// What a machine the person operates offers (machine access).
+	{
+		kind: 'user_columns',
+		table: 'machine_capabilities',
+		columns: ['operator_user_id'],
+	},
 	{ kind: 'user_id', table: 'execution_context_opt_ins' },
 	// Excess-access notices about a person (ADR 0096).
 	{
@@ -1370,6 +1376,9 @@ export const accountExportRedactedColumnsByTable: Readonly<
 		'user_code_hash',
 	],
 	email_verifications: ['token_hash'],
+	// Guest rows are not an export target today; listed so a future export
+	// target never leaks the claim lookup hash or sealed claim code.
+	guest_accounts: ['claim_code', 'claim_code_encrypted'],
 	org_invite_links: ['token_hash'],
 	mcp_event_subscriptions: ['secret_encrypted', 'previous_secret_encrypted'],
 	password_resets: ['token_hash'],

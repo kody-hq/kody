@@ -1,9 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import {
 	descriptionCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -27,9 +26,9 @@ export function ContactRoute() {
 			<p css={descriptionCss}>
 				For help with your account, billing, connections, packages, or anything
 				else on the hosted service, email{' '}
-				<SiteLink href="mailto:support@kody.codes" css={mutedLinkCss}>
+				<TextLink tone="muted" href="mailto:support@kody.codes">
 					support@kody.codes
-				</SiteLink>
+				</TextLink>
 				. A lot of what you experience as Kody is the agent you connected, if
 				something feels off, try the same request with a stronger model before
 				writing in; stronger models usually get more out of search, packages,
@@ -38,76 +37,79 @@ export function ContactRoute() {
 
 			<p css={descriptionCss}>
 				For teams and sales questions about plans beyond Free, email{' '}
-				<SiteLink href="mailto:kody@kody.codes" css={mutedLinkCss}>
+				<TextLink tone="muted" href="mailto:kody@kody.codes">
 					kody@kody.codes
-				</SiteLink>
+				</TextLink>
 				. Pricing details, including the $0 Free plan caps, are on{' '}
-				<SiteLink href="/pricing" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/pricing">
 					Pricing
-				</SiteLink>
+				</TextLink>
 				.
 			</p>
 
 			<p css={descriptionCss}>
 				Security reports for the hosted product go to{' '}
-				<SiteLink href="mailto:me@kentcdodds.com" css={mutedLinkCss}>
+				<TextLink tone="muted" href="mailto:me@kentcdodds.com">
 					me@kentcdodds.com
-				</SiteLink>{' '}
+				</TextLink>{' '}
 				or through{' '}
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href="https://github.com/kody-hq/kody/security/advisories/new"
-					css={mutedLinkCss}
+
 					target="_blank"
 					rel="noreferrer noopener"
 				>
 					GitHub private vulnerability reporting
-				</SiteLink>
+				</TextLink>
 				. The public policy is in{' '}
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href="https://github.com/kody-hq/kody/blob/main/SECURITY.md"
-					css={mutedLinkCss}
+
 					target="_blank"
 					rel="noreferrer noopener"
 				>
 					SECURITY.md
-				</SiteLink>
+				</TextLink>
 				, and{' '}
-				<SiteLink href="/.well-known/security.txt" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/.well-known/security.txt">
 					/.well-known/security.txt
-				</SiteLink>{' '}
+				</TextLink>{' '}
 				lists the same contacts.
 			</p>
 
 			<p css={descriptionCss}>
 				Community chat is on the official Discord (
-				<SiteLink href="/discord" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/discord">
 					join via /discord
-				</SiteLink>
+				</TextLink>
 				). Product source, issues, and pull requests live at{' '}
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href="https://github.com/kody-hq/kody"
-					css={mutedLinkCss}
+
 					target="_blank"
 					rel="noreferrer noopener"
 				>
 					github.com/kody-hq/kody
-				</SiteLink>
+				</TextLink>
 				. Site blocked by a DNS filter, or signup mail never arrives? See{' '}
-				<SiteLink href="/docs/cant-open-or-get-mail" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/docs/cant-open-or-get-mail">
 					If you can&apos;t open kody.codes or get mail from us
-				</SiteLink>
+				</TextLink>
 				. More product context is on{' '}
-				<SiteLink href="/about" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/about">
 					About
-				</SiteLink>
+				</TextLink>
 				,{' '}
-				<SiteLink href="/faq" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/faq">
 					FAQ
-				</SiteLink>
+				</TextLink>
 				, and{' '}
-				<SiteLink href="/support" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/support">
 					Support
-				</SiteLink>
+				</TextLink>
 				.
 			</p>
 		</section>

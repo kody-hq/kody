@@ -235,12 +235,15 @@ from `{username}.<package-app host>` (`buildPackageAppSubdomainOrigin` in
 `packages/shared/src/public-urls.ts`), so browser state (cookies, storage,
 `document` access) never crosses accounts. The username label in the hostname
 must be a valid single DNS label: lowercase letters, digits, and hyphens only,
-3–32 characters, alphanumeric edges (`dnsSafeUsernamePattern` in
-`packages/shared/src/public-urls.ts`). Every username satisfies this shape —
-underscores are rejected everywhere, and there is no lenient recognition tier
-(decision 0017). Wildcard DNS still routes invalid or nested labels to the
-Worker, so hostnames that are not exactly one valid username label fail closed
-with `404`.
+3–32 characters, alphanumeric edges, no two hyphens in a row
+(`dnsSafeUsernamePattern` in `packages/shared/src/public-urls.ts`). `--` is kept
+out of handles so a per-app host label `{leaf}--{handle}` splits in exactly one
+place; `packages/shared/src/package-app-host-label.ts` also reserves the package
+leaf `xn` and caps the combined label at 63 characters for packages with an app
+(publish and org transfer). Every username satisfies this shape — underscores
+are rejected everywhere, and there is no lenient recognition tier (decision
+0017). Wildcard DNS still routes invalid or nested labels to the Worker, so
+hostnames that are not exactly one valid username label fail closed with `404`.
 
 Usernames are also `{username}@<platform domain>` mail locals. The built-in
 reserved list in `packages/worker/src/identity/reserved-usernames.ts` blocks
@@ -650,9 +653,11 @@ guarded by a bearer secret comparison.
   for platform OAuth client secrets), so a ciphertext copied into another user's
   row fails to decrypt. Integration-owned OAuth tokens and user-lane client
   secrets live only as ciphertext on `user_integrations` / `user_oauth_apps`;
-  they are not stored in `secret_entries`. Row swaps already require write
-  access to the database, so AAD binding is defense-in-depth, not a standing
-  hole.
+  they are not stored in `secret_entries`. Guest claim codes use the same seal
+  (purpose `guest-claim-code`, context `guest:<personId>:claim-code`);
+  `guest_accounts.claim_code` stores only the SHA-256 lookup hash. Row swaps
+  already require write access to the database, so AAD binding is
+  defense-in-depth, not a standing hole.
 - `SECRET_STORE_KEY` is escrowed for disaster recovery as a passphrase-sealed
   blob in the DR backup bucket (solo operator; see
   [Disaster recovery](./disaster-recovery.md) and
@@ -827,9 +832,16 @@ change to these decisions here so future agents do not relitigate them.
   differs from the request URL's hostname (logged as
   `turnstile-hostname-mismatch`), so a token minted on a preview deployment or a
   third-party page embedding the same sitekey is not accepted on production.
-- **Sandbox `fetch` has no general SSRF denylist.** Secret-bearing requests are
-  constrained by per-secret host allowlists; non-secret requests rely on the
-  Cloudflare Workers platform egress model.
+- **Sandbox `fetch` refuses non-public hosts by literal, not by DNS.** Every
+  gateway hop (first request, login retry, followed redirect) refuses loopback
+  names and private, link-local, and reserved IP literals
+  (`isPublicFetchHostname` in `mcp/events/ssrf.ts`). Token endpoints get the
+  same check on save and before each request (`isPublicCredentialEndpoint`),
+  except loopback hosts, which stay allowed for local mocks. A public name that
+  resolves to a private address, and a redirect the Workers runtime follows
+  itself (`redirect: 'follow'` without a deferred body), rely on the platform
+  egress model (`global_fetch_strictly_public`). Secret-bearing requests are
+  also constrained by per-secret host allowlists.
 - **PBKDF2-SHA256 (100k iterations)** is used for password hashing rather than a
   memory-hard KDF. Workers' WebCrypto has no argon2/scrypt, and Cloudflare's
   production runtime rejects PBKDF2 above 100,000 iterations (deriveBits throws
@@ -860,8 +872,11 @@ change to these decisions here so future agents do not relitigate them.
   (`enabler_scopes_json`, `enabler_profile_id`), and scheduled, webhook,
   inbound-email, and subscription runs derive their request with them
   (`automation()` in `request-context.ts`). A package app visit ticket carries
-  the visitor credential's scopes and profile the same way. Enablements turned
-  on before this was recorded store none and do not narrow.
+  the visitor credential's scopes and profile the same way. Each snapshot is
+  stored independently. Only enablements that store neither
+  `enabler_scopes_json` nor `enabler_profile_id` leave scoped automation runs
+  unnarrowed. An enablement with scopes and no profile still narrows its run to
+  those scopes.
 - **Site-admin tools run from automation only for a site admin, and are
   audited.** Background package runs resolve the owner's roles with a short
   cache (`packages/worker/src/identity/background-mcp-user.ts`), so a triggered

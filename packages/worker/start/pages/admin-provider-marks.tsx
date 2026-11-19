@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
 import { publicAsset } from '../public-assets.ts'
 import type { ProviderMarkSaveInput } from '#universal/admin-provider-mutations.ts'
@@ -34,12 +36,10 @@ import type {
 import {
 	fieldCss,
 	fieldLabelCss,
-	getDangerPillCss,
-	getGhostButtonCss,
 	getLogoWellCss,
-	getPillButtonCss,
 	hoverMq,
 	nativeDisclosureCss,
+	getFieldControlCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -48,12 +48,13 @@ import {
 	typography,
 } from '#universal/styles/tokens.ts'
 import {
-	accountInputCss,
 	AccountManagementMessage,
 	AccountManagementShell,
 	AdminPageHeader,
 } from './account-management-components.tsx'
 import { RecordTableSearch } from './record-table.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type ActionState = 'idle' | 'saving' | 'deleting'
 
@@ -172,10 +173,6 @@ export function AdminProviderMarksRoute({
 			return next
 		})
 	}
-
-	const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-	const ghostButtonCss = getGhostButtonCss({ size: 'sm' })
-	const dangerButtonCss = getDangerPillCss({ size: 'sm' })
 
 	function resetFormState() {
 		setPendingLogoBase64(undefined)
@@ -341,40 +338,32 @@ export function AdminProviderMarksRoute({
 				<h2 css={{ margin: 0, fontSize: typography.fontSize.lg }}>
 					{editingMark ? `Edit ${editingMark.slug}` : 'New provider mark'}
 				</h2>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Slug</span>
-					<input
-						data-field-ring
+				<Field label="Slug">
+					<Input
 						name="slug"
 						required
 						disabled={isMutating || editingMark != null}
 						defaultValue={editingMark?.slug ?? ''}
 						placeholder="google"
-						css={accountInputCss}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Label</span>
-					<input
-						data-field-ring
+				</Field>
+				<Field label="Label">
+					<Input
 						name="label"
 						disabled={isMutating}
 						defaultValue={editingMark?.label ?? ''}
 						placeholder="Google"
-						css={accountInputCss}
 					/>
-				</label>
+				</Field>
 				<label css={fieldCss}>
 					<span css={fieldLabelCss}>
 						Aliases (provider keys and authorize hosts)
 					</span>
-					<input
-						data-field-ring
+					<Input
 						name="aliases"
 						disabled={isMutating}
 						defaultValue={editingMark?.aliases.join(', ') ?? ''}
 						placeholder="accounts.google.com, googleapis.com"
-						css={accountInputCss}
 					/>
 					<span
 						css={{
@@ -395,7 +384,7 @@ export function AdminProviderMarksRoute({
 						type="file"
 						accept="image/svg+xml,image/png,image/jpeg,image/webp"
 						disabled={isMutating}
-						css={accountInputCss}
+						css={getFieldControlCss()}
 						onChange={handleLogoFileChange}
 					/>
 				</label>
@@ -415,9 +404,8 @@ export function AdminProviderMarksRoute({
 							width={32}
 							height={32}
 						/>
-						<input
+						<Checkbox
 							name="removeLogo"
-							type="checkbox"
 							checked={removeLogoChecked}
 							disabled={isMutating}
 							onChange={(event) => {
@@ -436,13 +424,13 @@ export function AdminProviderMarksRoute({
 						flexWrap: 'wrap',
 					}}
 				>
-					<button type="submit" disabled={isMutating} css={primaryButtonCss}>
+					<Button type="submit" disabled={isMutating} variant="primary">
 						{actionState === 'saving' ? 'Saving…' : 'Save mark'}
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={isMutating}
-						css={ghostButtonCss}
+						variant="secondary"
 						onClick={() => {
 							setCreating(false)
 							setSelectedSlug(null)
@@ -450,12 +438,12 @@ export function AdminProviderMarksRoute({
 						}}
 					>
 						Cancel
-					</button>
+					</Button>
 					{editingMark ? (
-						<button
+						<Button
 							type="button"
 							disabled={isMutating}
-							css={dangerButtonCss}
+							variant="danger"
 							onBlur={() => setDeleteConfirmed(false)}
 							onClick={() => {
 								if (deleteConfirmed) handleDelete(editingMark)
@@ -467,7 +455,7 @@ export function AdminProviderMarksRoute({
 								: actionState === 'deleting'
 									? 'Deleting…'
 									: 'Delete'}
-						</button>
+						</Button>
 					) : null}
 				</div>
 			</form>

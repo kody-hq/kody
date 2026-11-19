@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { createUiFeedback, type UiFeedback } from '#client/ui-feedback.ts'
@@ -18,29 +21,23 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
-	getPillButtonCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 import type { CSSObject } from '@emotion/react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useState } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import {
 	type IntegrationUsageDraft,
-	dangerButtonCss,
 	integrationListId,
 } from './account-integrations-shared.ts'
-import {
-	AccountManagementMessage,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { AccountManagementMessage } from './account-management-components.tsx'
+import { Input } from '../components/input.tsx'
+import { Checkbox, Radio } from '../components/choice-controls.tsx'
 const addAccountLinkCss: CSSObject = {
-	...primaryLinkCss,
 	justifySelf: 'start',
 	width: 'fit-content',
 }
@@ -77,14 +74,14 @@ export function AddAccountForm(props: {
 	const name = editedName ?? suggested
 	if (!props.open) {
 		return (
-			<SiteLink
+			<TextLink
 				href={props.openHref}
 				data-testid="add-account-open"
 				resetScroll={false}
 				css={addAccountLinkCss}
 			>
 				Add another account
-			</SiteLink>
+			</TextLink>
 		)
 	}
 	return (
@@ -115,10 +112,9 @@ export function AddAccountForm(props: {
 		>
 			<label css={fieldCss}>
 				<span css={fieldLabelCss}>Connection name</span>
-				<input
+				<Input
 					type="text"
 					name="connectionName"
-					data-field-ring
 					required
 					value={name}
 					aria-invalid={nameError ? 'true' : undefined}
@@ -128,7 +124,6 @@ export function AddAccountForm(props: {
 						setEditedName(event.currentTarget.value)
 						setNameError(null)
 					}}
-					css={accountInputCss}
 				/>
 				{nameError ? (
 					<p
@@ -144,15 +139,9 @@ export function AddAccountForm(props: {
 					</p>
 				) : null}
 			</label>
-			<button
-				type="submit"
-				css={{
-					...getPillButtonCss({ size: 'sm' }),
-					display: 'inline-flex',
-				}}
-			>
+			<Button type="submit" variant="primary" css={{ display: 'inline-flex' }}>
 				Connect
-			</button>
+			</Button>
 		</form>
 	)
 }
@@ -189,8 +178,7 @@ export function ConnectionUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`usage-mode-${connection.name}`}
 					checked={draft.usageMode === 'any'}
 					disabled={saving}
@@ -212,8 +200,7 @@ export function ConnectionUsageForm(props: {
 					fontSize: typography.fontSize.sm,
 				}}
 			>
-				<input
-					type="radio"
+				<Radio
 					name={`usage-mode-${connection.name}`}
 					checked={draft.usageMode === 'packages'}
 					disabled={saving}
@@ -246,8 +233,7 @@ export function ConnectionUsageForm(props: {
 										fontSize: typography.fontSize.sm,
 									}}
 								>
-									<input
-										type="checkbox"
+									<Checkbox
 										checked={checked}
 										disabled={saving}
 										onChange={() =>
@@ -268,15 +254,15 @@ export function ConnectionUsageForm(props: {
 					</div>
 				)
 			) : null}
-			<button
+			<Button
 				type="button"
 				data-testid="save-integration-usage"
 				disabled={saving}
 				onClick={onSave}
-				css={getPillButtonCss({ size: 'sm' })}
+				variant="primary"
 			>
 				{saving ? 'Saving…' : 'Save usage'}
-			</button>
+			</Button>
 		</section>
 	)
 }
@@ -429,34 +415,28 @@ export function RotateCredentialsForm(props: {
 					marginTop: spacing.sm,
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Client ID (optional to keep current)</span>
-					<input
+				<Field label="Client ID (optional to keep current)">
+					<Input
 						type="text"
-						data-field-ring
 						name="oauthAppClientId"
 						value={clientId}
 						{...passwordManagerIgnoreProps}
 						onInput={(event) => {
 							setClientId(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>New client secret</span>
-					<input
+				</Field>
+				<Field label="New client secret">
+					<Input
 						type="password"
-						data-field-ring
 						name="oauthAppClientSecret"
 						value={clientSecret}
 						{...passwordManagerIgnoreProps}
 						onInput={(event) => {
 							setClientSecret(event.currentTarget.value)
 						}}
-						css={accountInputCss}
 					/>
-				</label>
+				</Field>
 				<label
 					css={{
 						display: 'flex',
@@ -466,8 +446,7 @@ export function RotateCredentialsForm(props: {
 						fontSize: typography.fontSize.sm,
 					}}
 				>
-					<input
-						type="checkbox"
+					<Checkbox
 						checked={confirmed}
 						onChange={(event) => {
 							setConfirmed(event.currentTarget.checked)
@@ -484,13 +463,13 @@ export function RotateCredentialsForm(props: {
 					</span>
 				</label>
 				<div>
-					<button
+					<Button
 						type="submit"
 						disabled={status === 'saving' || !confirmed}
-						css={dangerButtonCss}
+						variant="danger"
 					>
 						{status === 'saving' ? 'Rotating...' : 'Rotate credentials'}
-					</button>
+					</Button>
 				</div>
 			</form>
 		</>

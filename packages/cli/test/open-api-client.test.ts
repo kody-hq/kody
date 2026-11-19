@@ -570,6 +570,42 @@ test('openApiRequest keeps the status, error code, reason and request id of a se
 	)
 })
 
+test('openApiRequest keeps the run id and idempotency key of an execute whose answer failed', async () => {
+	const fetchFn = (async () =>
+		Response.json(
+			{
+				error: {
+					code: 'internal_error',
+					message: 'Execute had already started run run-7.',
+					details: {
+						reason: 'origin_resource_limit',
+						step: 'execute_run',
+						run_id: 'run-7',
+						idempotency_key: 'key-7',
+					},
+				},
+			},
+			{ status: 503, headers: { 'X-Kody-Request-Id': 'ray-7' } },
+		)) as typeof fetch
+	await assert.rejects(
+		() =>
+			openApiRequest({
+				token: 'tok',
+				apiUrl: 'https://api.kody.codes',
+				method: 'POST',
+				path: 'v1/execute',
+				body: { code: 'export default () => 1' },
+				fetchFn,
+			}),
+		(error: unknown) => {
+			assert.ok(error instanceof OpenApiError)
+			assert.equal(error.runId, 'run-7')
+			assert.equal(error.idempotencyKey, 'key-7')
+			return true
+		},
+	)
+})
+
 test('searchWithApiToken reports profile_grant without a mint-token hint', async () => {
 	const fetchFn = (async () =>
 		new Response(

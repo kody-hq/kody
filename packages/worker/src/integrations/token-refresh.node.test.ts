@@ -467,6 +467,55 @@ test('user-lane refresh resolves the ciphertext client secret and enforces requi
 	}
 })
 
+test('a stored token URL on a private address is refused before any provider call', async () => {
+	const { env } = createHarness()
+	const userId = ownerIdFromStored('user-private-token-url')
+	await upsertIntegration({
+		env,
+		userId,
+		config: {
+			name: 'legacy',
+			tokenUrl: 'https://169.254.169.254/token',
+			flow: 'confidential' as const,
+			clientId: 'legacy-client-id',
+			requiredHosts: ['169.254.169.254'],
+			authorization: {
+				authorizeUrl: 'https://auth.example.com/authorize',
+				scopes: ['openid'],
+				scopeSeparator: null,
+				extraAuthorizeParams: {},
+			},
+		},
+		audit: null,
+	})
+	await persistUserOauthAppClientSecret({
+		env,
+		userId,
+		slug: 'legacy',
+		value: 'legacy-client-secret',
+	})
+	await seedUserTokens(env, userId, 'legacy')
+
+	const fetchMock = stubTokenEndpoint({ access_token: 'should-not-mint' })
+	try {
+		await expect(
+			refreshIntegrationTokens({ env, userId, name: 'legacy' }),
+		).rejects.toSatisfy(
+			isCallerError(
+				'invalid_config',
+				'Integration "legacy" token URL must use https and a public host.',
+				integrationTokenRefreshCallerMarker,
+			),
+		)
+		expect(fetchMock).not.toHaveBeenCalled()
+		expect(failedEvents).toHaveBeenCalledWith(
+			expect.objectContaining({ reason: 'invalid_config' }),
+		)
+	} finally {
+		vi.unstubAllGlobals()
+	}
+})
+
 test('successful Google refresh persists userinfo email as account_label when missing', async () => {
 	const { env } = createHarness()
 	const userId = ownerIdFromStored('user-google-label')

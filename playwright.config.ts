@@ -11,7 +11,8 @@ export default defineConfig({
 	testDir: './e2e',
 	// Vitest node-unit helpers live beside Playwright specs as
 	// `*.node.test.ts`; do not treat them as Playwright tests.
-	testIgnore: ['**/*.node.test.ts'],
+	// `npm run ui:verify` owns e2e/ui-verify (playwright.ui-verify.config.ts).
+	testIgnore: ['**/*.node.test.ts', '**/ui-verify/**'],
 	fullyParallel: true,
 	shard: parseCiShard(process.env.E2E_SHARD),
 	forbidOnly: !!process.env.CI,

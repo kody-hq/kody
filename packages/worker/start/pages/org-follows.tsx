@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { nativeDisclosureCss } from '#universal/styles/style-primitives.ts'
+import { Badge } from '../components/badge.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	useIsMutating,
 	useMutation,
@@ -23,11 +26,7 @@ import {
 	type OrgFollowsLoaderData,
 } from '#universal/follows.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	getDangerPillCss,
-	getGhostButtonCss,
-	nativeDisclosureCss,
-} from '#universal/styles/style-primitives.ts'
+
 import {
 	colors,
 	radius,
@@ -236,12 +235,12 @@ function FollowRow({
 						) : (
 							<span css={rowNameCss}>{follow.name}</span>
 						)}
-						<span
+						<Badge
 							data-testid="org-follow-status"
-							css={follow.status === 'paused' ? pausedChipCss : activeChipCss}
+							tone={follow.status === 'paused' ? 'neutral' : 'accent'}
 						>
 							{follow.status === 'paused' ? 'Paused' : 'Active'}
-						</span>
+						</Badge>
 					</span>
 					<span css={rowDetailCss}>
 						{follow.kind === 'repo' ? 'Repository' : 'Package'} ·{' '}
@@ -269,22 +268,22 @@ function FollowRow({
 				</span>
 				<span css={rowActionsCss}>
 					{follow.status === 'paused' ? (
-						<button
+						<Button
 							type="button"
 							data-testid="org-follow-resume"
 							disabled={busy}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 							onClick={onResume}
 						>
 							{renderIcon('play', { size: '1.05rem' })}
 							Resume
-						</button>
+						</Button>
 					) : null}
-					<button
+					<Button
 						type="button"
 						data-testid="org-follow-unfollow"
 						disabled={busy}
-						css={getDangerPillCss({ size: 'sm' })}
+						variant="danger"
 						onBlur={() => setArmed(false)}
 						onClick={() => {
 							if (!armed) {
@@ -297,7 +296,7 @@ function FollowRow({
 					>
 						{renderIcon('close', { size: '1.05rem' })}
 						{armed ? 'Confirm unfollow' : 'Unfollow'}
-					</button>
+					</Button>
 				</span>
 			</div>
 			<details
@@ -427,28 +426,6 @@ const rowActionsCss = {
 	display: 'flex',
 	gap: spacing.sm,
 	flexWrap: 'wrap' as const,
-}
-
-const chipBaseCss = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	padding: '0.1rem 0.5rem',
-	borderRadius: radius.full,
-	fontSize: typography.fontSize.xs,
-	fontWeight: 650,
-	flexShrink: 0,
-}
-
-const activeChipCss = {
-	...chipBaseCss,
-	color: colors.primaryText,
-	border: `1px solid ${colors.primary}`,
-}
-
-const pausedChipCss = {
-	...chipBaseCss,
-	color: colors.textMuted,
-	border: `1px solid ${colors.border}`,
 }
 
 const iconCss = {

@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import {
 	addOrganizationDomain,
 	syncOrganizationDomain,
@@ -18,22 +21,15 @@ import { orgBillingPath } from '#universal/org-pages.ts'
 import {
 	AccountManagementPanel,
 	AccountManagementMessage,
-	accountFieldCss,
 	accountActionsCss,
-	accountFieldNoteCss,
-	accountFieldLabelCss,
-	accountInputCss,
 } from './account-management-components.tsx'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
+import { fieldDescriptionCss } from '#universal/styles/style-primitives.ts'
 import {
 	CustomDomainRecords,
 	CustomDomainStatusBadge,
 } from '../components/custom-domain-status.tsx'
 import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import { Input, Select } from '../components/input.tsx'
 
 /** The organization settings query owns domain state and refreshes after writes. */
 export function OrgSettingsCustomDomains({
@@ -94,14 +90,14 @@ export function OrgSettingsCustomDomains({
 	if (!domains) return null
 	return (
 		<AccountManagementPanel title="Custom domains">
-			<p css={accountFieldNoteCss}>
+			<p css={fieldDescriptionCss}>
 				Add a hostname you own (not under Kody&apos;s own domains), then publish
 				the DNS records shown for it at your DNS provider, set to DNS only. Kody
 				checks pending domains every few minutes and emails org owners when one
 				goes live. Sync checks right away.{' '}
-				<a css={primaryLinkCss} href="/docs/package-app-custom-domains">
+				<TextLink reloadDocument href="/docs/package-app-custom-domains">
 					Setup guide
-				</a>
+				</TextLink>
 			</p>
 			{domains.hostnames.length ? (
 				<ul data-testid="org-custom-hostnames" css={hostnameListCss}>
@@ -132,9 +128,9 @@ export function OrgSettingsCustomDomains({
 								</div>
 								{data.canManageDomains ? (
 									<div css={hostnameActionsCss}>
-										<button
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											disabled={isPending}
 											onClick={() =>
 												void submit(
@@ -150,10 +146,10 @@ export function OrgSettingsCustomDomains({
 											{sync.isPending && sync.variables.id === row.id
 												? 'Syncing…'
 												: 'Sync'}
-										</button>
-										<button
+										</Button>
+										<Button
 											type="button"
-											css={getGhostButtonCss({ size: 'sm' })}
+											variant="secondary"
 											disabled={isPending}
 											onClick={() =>
 												void submit(
@@ -169,7 +165,7 @@ export function OrgSettingsCustomDomains({
 											{remove.isPending && remove.variables.id === row.id
 												? 'Removing…'
 												: 'Remove'}
-										</button>
+										</Button>
 									</div>
 								) : null}
 							</li>
@@ -180,11 +176,11 @@ export function OrgSettingsCustomDomains({
 				<p css={mutedCopyCss}>No custom domains yet.</p>
 			)}
 			{data.canManageDomains && !domains.canAdd ? (
-				<p data-testid="org-custom-domains-paid-only" css={accountFieldNoteCss}>
+				<p data-testid="org-custom-domains-paid-only" css={fieldDescriptionCss}>
 					Custom domains need a paid plan.{' '}
-					<a css={primaryLinkCss} href={orgBillingPath(data.org.slug)}>
+					<TextLink reloadDocument href={orgBillingPath(data.org.slug)}>
 						See plans
-					</a>
+					</TextLink>
 				</p>
 			) : null}
 			{data.canManageDomains && domains.canAdd ? (
@@ -210,21 +206,16 @@ export function OrgSettingsCustomDomains({
 						)
 					}}
 				>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Hostname</span>
-						<input
-							data-field-ring
-							css={accountInputCss}
+					<Field label="Hostname">
+						<Input
 							required
 							value={hostname}
 							placeholder="apps.example.com"
 							onChange={(event) => setHostname(event.currentTarget.value)}
 						/>
-					</label>
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>Binding</span>
-						<select
-							css={accountInputCss}
+					</Field>
+					<Field label="Binding">
+						<Select
 							value={bindingKind}
 							onChange={(event) =>
 								setBindingKind(
@@ -236,24 +227,19 @@ export function OrgSettingsCustomDomains({
 							<option value="app">
 								App (one public internet-visible app at /)
 							</option>
-						</select>
-					</label>
+						</Select>
+					</Field>
 					{bindingKind === 'app' ? (
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>Package id</span>
-							<input
-								data-field-ring
-								css={accountInputCss}
+						<Field label="Package id">
+							<Input
 								required
 								value={packageId}
 								onChange={(event) => setPackageId(event.currentTarget.value)}
 							/>
-						</label>
+						</Field>
 					) : null}
-					<label css={accountFieldCss}>
-						<span css={accountFieldLabelCss}>SSL method</span>
-						<select
-							css={accountInputCss}
+					<Field label="SSL method">
+						<Select
 							value={sslMethod}
 							onChange={(event) =>
 								setSslMethod(
@@ -263,16 +249,12 @@ export function OrgSettingsCustomDomains({
 						>
 							<option value="txt">TXT (pre-validate)</option>
 							<option value="http">HTTP</option>
-						</select>
-					</label>
+						</Select>
+					</Field>
 					<div css={accountActionsCss}>
-						<button
-							type="submit"
-							css={getPillButtonCss({ size: 'sm' })}
-							disabled={isPending}
-						>
+						<Button type="submit" variant="primary" disabled={isPending}>
 							{add.isPending ? 'Adding…' : 'Add domain'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : null}

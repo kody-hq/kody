@@ -179,6 +179,11 @@ Wrangler `var` (public and non-secret; required in production, optional in
 confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
 `packages/worker/src/app/package-app-origin.ts`):
 
+- `PACKAGE_APP_HOST_MIGRATION_REMINDER_ENABLED`: `true` lets the one-time
+  package app host migration reminder (December 3, 2026) scan and send. Set in
+  production only, in `packages/worker/wrangler.jsonc`; anywhere else the
+  `package_app_host_migration_reminder` lane does nothing. See
+  [package codemods](./package-codemods.md).
 - `PACKAGE_APP_BASE_URL` — the **apex** origin of the package-app domain that
   hosted package apps are served from. Production sets `https://kody.run` in
   `packages/worker/wrangler.jsonc`, and the deploy publishes **zone routes** for
@@ -208,6 +213,17 @@ confirmed non-production runtimes; see `packages/worker/src/app-base-url.ts` and
   `packages/worker/.env` to exercise the two-origin flow locally. See
   [Hosted package app origin isolation](./security.md#hosted-package-app-origin-isolation).
 
+- `PACKAGE_APP_PATH_MOUNT_CUTOVER_AT` — ISO timestamp from which the path
+  address `https://{username}.<apex-host>/{leaf}/...` stops serving apps and
+  answers every method with a `308` to the app's own host
+  `https://{leaf}--{username}.<apex-host>/...` (same path and query). From the
+  same moment "Open app" and `hostedUrl` use the app's own host. Hosts owned by
+  a profile package and the reserved `/-/` paths are unaffected, and a pair with
+  no valid host label keeps being served on the path address. Production sets
+  `2026-12-17T20:45:00Z` in both `packages/worker/wrangler.jsonc` and
+  `packages/runtime-worker/wrangler.jsonc`, the date the owner notice promised;
+  unset or unparsable means no cutover. See
+  `packages/worker/src/package-runtime/package-app-path-mount-cutover.ts`.
 - `PACKAGE_APP_LEGACY_HOSTS` — optional comma-separated dual-served package-app
   apex hostnames alongside `PACKAGE_APP_BASE_URL`. Generated runtime zone routes
   replace the Worker's whole route set, so every dual-served package-app host
@@ -597,6 +613,10 @@ Non-secret vars:
   `ALLOWED_SOURCE_DATABASE_IDS`. Production `kody-jobs` UUID is the live D1
   named `kody-jobs`; deploy resolves it by name in
   `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
+- `D1_PACED_SOURCES`: JSON array of `{ id, name }` for the paced D1 sources
+  (same ids as the worker's `DR_D1_PACED_SOURCES`; must include
+  `SOURCE_DATABASE_ID`). The full seal requires each source's sealed paced night
+  and records it under `d1Paced`.
 - `BACKUP_MANIFEST_SIGNING_KEY_ID`,
   `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`,
   `TRUSTED_RESTORE_BASELINE_ID`, `TRUSTED_RESTORE_BASELINE_SHA256`.

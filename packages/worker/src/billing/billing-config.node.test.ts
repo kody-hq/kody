@@ -36,7 +36,7 @@ function subscription(input: {
 			data: (input.priceIds ?? []).map((id) => ({
 				id: undefined,
 				quantity: undefined,
-				price: { id },
+				price: { id, unit_amount: undefined, recurring: undefined },
 				current_period_end: undefined,
 			})),
 		},

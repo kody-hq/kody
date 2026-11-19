@@ -3,6 +3,7 @@ import { runInDurableObject } from 'cloudflare:test'
 import { expect, test } from 'vitest'
 import { utcDayKey } from '@kody-internal/shared/date-keys.ts'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
+import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { isEntitlementLimitError } from '#worker/entitlements/errors.ts'
 import { planLimits } from '#universal/plans.ts'
@@ -95,9 +96,8 @@ test('gateway fetches consume the daily outbound-fetch entitlement and deny over
 	expect(isEntitlementLimitError(denied)).toBe(true)
 
 	// Callers that carry no email (MCP provider requests, package
-	// runtime) still bind to the caller's real plan: the gateway
-	// reverse-resolves the account from the stable userId instead of
-	// failing open to the `max` quota.
+	// runtime) still bind to the org's real plan instead of failing open
+	// to the `max` quota.
 	const deniedWithoutEmail = await executeGatewayFetch({
 		env,
 		props: { ...props, email: null },
@@ -117,6 +117,56 @@ test('gateway fetches consume the daily outbound-fetch entitlement and deny over
 		waitUntil: drain.waitUntil,
 	})
 	expect(await contextless.text()).toBe('ok')
+	await drain.drain()
+}, 30_000)
+
+test('gateway fetches for a converted org bill the org plan, not the founder personal plan', async () => {
+	silenceIncidentalRuntimeWarnings()
+	await ensureEntitlementTestSchema(env.APP_DB)
+	const email = `founder-${crypto.randomUUID()}@example.com`
+	const orgId = testStableUserIdFromEmail(email)
+	const suffix = crypto.randomUUID().slice(0, 8)
+	await seedAccount({
+		db: env.APP_DB,
+		email,
+		username: `founder-${suffix}`,
+		plan: 'free',
+		stableUserId: orgId,
+	})
+	// Conversion keeps the founder person id as the org id and moves the
+	// founder onto a fresh Free personal org.
+	const newPersonalOrgId = testStableUserIdFromEmail(`personal-${email}`)
+	await ensurePersonalOrg(env.APP_DB, {
+		stableUserId: orgId,
+		orgId: newPersonalOrgId,
+		username: `personal-${suffix}`,
+		plan: 'free',
+	})
+	await env.APP_DB.batch([
+		env.APP_DB.prepare(
+			`UPDATE users SET personal_org_id = ? WHERE email = ?`,
+		).bind(newPersonalOrgId, email),
+		env.APP_DB.prepare(`UPDATE orgs SET plan = 'pro' WHERE id = ?`).bind(orgId),
+	])
+	await seedOutboundFetchCounter(
+		orgId,
+		planLimits.free.maxOutboundFetchesPerDay,
+	)
+	const drain = createWaitUntilDrain()
+	const response = await executeGatewayFetch({
+		env,
+		props: {
+			baseUrl: 'https://kody.example.com',
+			userId: ownerIdFromStored(orgId),
+			email: null,
+			request: null,
+			storageContext: null,
+		},
+		request: new Request('https://api.example.net/data'),
+		globalFetch: (async () => new Response('ok')) as unknown as typeof fetch,
+		waitUntil: drain.waitUntil,
+	})
+	expect(await response.text()).toBe('ok')
 	await drain.drain()
 }, 30_000)
 

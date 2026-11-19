@@ -23,6 +23,7 @@ import {
 } from './fill-placement.ts'
 import {
 	type FillPlacementOptIn,
+	type OptInFillPlacementPart,
 	optInFillPlacementParts,
 	noFillPlacementOptIn,
 	placementNeedsOptIn,
@@ -82,6 +83,24 @@ export type FillPlacementRefusalLinks = {
 }
 
 /** The run org's slug when the actor runs in `orgId`, for refusal links. */
+/**
+ * Requested parts the owner has not approved on this credential yet. A part
+ * counts as approved only when the stored placement lists it and the owner
+ * opted in, so a legacy (null) placement that fills a part because Kody once
+ * observed it there still needs the owner's explicit approval to record it.
+ */
+export function pendingPlacementApprovalParts<
+	Part extends OptInFillPlacementPart,
+>(
+	stored: CredentialFillPlacement | null,
+	optIn: FillPlacementOptIn,
+	parts: ReadonlyArray<Part>,
+): Array<Part> {
+	return parts.filter(
+		(part) => !(stored !== null && stored[part] === true && optIn[part]),
+	)
+}
+
 export function refusalLinkOrgSlug(input: {
 	actor: RequestContext | null
 	orgId: string

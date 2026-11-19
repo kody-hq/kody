@@ -650,7 +650,6 @@ async function resolvePackagePageForViewer(
 			const links = target.savedPackage.hasApp
 				? await resolvePackageAppLinks({
 						env: input.env,
-						requestUrl: input.request.url,
 						username: target.username,
 						kodyId: target.kodyId,
 						viewerMayRun: mayRun,

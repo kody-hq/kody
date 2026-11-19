@@ -1,6 +1,10 @@
 import { mcpReadSnapshotStorageKey } from './read-snapshot.ts'
 import { expect, test, vi } from 'vitest'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	openMcpOAuthStorageValue,
+	sealMcpOAuthStorageValue,
+} from './sealed-oauth-storage.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import {
 	mcpOAuthRefreshGrantOmittedStorageKey,
@@ -159,6 +163,8 @@ vi.mock('agents/mcp/client', () => ({
 
 		async onStart() {}
 
+		saveServerToStorage() {}
+
 		async waitForConnections() {}
 
 		listServers() {
@@ -303,6 +309,34 @@ const noRefreshTokenMessage =
 const autoClient = { versionNegotiation: { mode: 'auto' } }
 const legacyClient = { versionNegotiation: { mode: 'legacy' } }
 
+const testHubOwner = 'owner-test'
+const testHubEnv = {
+	SECRET_STORE_KEY: 'hub-oauth-test-secret-store-key-32-chars',
+}
+
+/** Reads a stored value the way the hub sees it (sealed OAuth keys opened). */
+function opened(values: Map<string, unknown>, key: string) {
+	return openMcpOAuthStorageValue({
+		env: testHubEnv,
+		ownerId: testHubOwner,
+		key,
+		value: values.get(key),
+	})
+}
+
+/** Seeds a stored value the way the hub writes it (OAuth secrets sealed). */
+async function seal(values: Map<string, unknown>, key: string, value: unknown) {
+	values.set(
+		key,
+		await sealMcpOAuthStorageValue({
+			env: testHubEnv,
+			ownerId: testHubOwner,
+			key,
+			value,
+		}),
+	)
+}
+
 function createHub() {
 	const values = new Map<string, unknown>()
 	const state = {
@@ -334,8 +368,9 @@ function createHub() {
 				}
 			}),
 		},
+		id: { name: testHubOwner },
 	} as unknown as DurableObjectState
-	const hub = new McpClientHub(state, {} as Env)
+	const hub = new McpClientHub(state, testHubEnv as Env)
 	const manager = mockModule.manager
 	if (!manager) throw new Error('Fake manager was not constructed.')
 	return { state, values, hub, manager }
@@ -460,11 +495,11 @@ test('reconnect repairs stale callbacks and always replaces pending OAuth state'
 		clientId: 'stale-client',
 		authUrl: 'https://auth.example/authorize?state=stale.server-1',
 	})
-	values.set('/Kody/server-1/stale-client/client_info/', {
+	await seal(values, '/Kody/server-1/stale-client/client_info/', {
 		client_id: 'stale-client',
 	})
-	values.set('/Kody/server-1/state/stale', { serverId: 'server-1' })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, '/Kody/server-1/state/stale', { serverId: 'server-1' })
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'old-rt',
 	})
 
@@ -486,8 +521,10 @@ test('reconnect repairs stale callbacks and always replaces pending OAuth state'
 	)
 	expect(values.has(mcpOAuthRefreshTokenStorageKey('server-1'))).toBe(false)
 
-	values.set('/Kody/server-1/client-1/client_info/', { client_id: 'client-1' })
-	values.set('/Kody/server-1/state/fresh-1', { serverId: 'server-1' })
+	await seal(values, '/Kody/server-1/client-1/client_info/', {
+		client_id: 'client-1',
+	})
+	await seal(values, '/Kody/server-1/state/fresh-1', { serverId: 'server-1' })
 	const restarted = await reconnect(hub)
 	expect(restarted.authUrl).toContain('state=fresh-2.server-1')
 	expect(restarted.authUrl).not.toBe(repaired.authUrl)
@@ -508,9 +545,9 @@ test('failed replacement registration restores the saved server and OAuth state'
 	const clientInfoKey = '/Kody/server-1/stale-client/client_info/'
 	const stateKey = '/Kody/server-1/state/stale'
 	const sidecarKey = mcpOAuthRefreshTokenStorageKey('server-1')
-	values.set(clientInfoKey, { client_id: 'stale-client' })
-	values.set(stateKey, { serverId: 'server-1' })
-	values.set(sidecarKey, { refresh_token: 'old-rt' })
+	await seal(values, clientInfoKey, { client_id: 'stale-client' })
+	await seal(values, stateKey, { serverId: 'server-1' })
+	await seal(values, sidecarKey, { refresh_token: 'old-rt' })
 	manager.registerFailuresRemaining = 1
 
 	await expect(reconnect(hub)).rejects.toThrow(
@@ -527,9 +564,11 @@ test('failed replacement registration restores the saved server and OAuth state'
 	expect(manager.mcpConnections['server-1']?.options.transport.headers).toEqual(
 		{ 'X-Test': 'preserved' },
 	)
-	expect(values.get(clientInfoKey)).toEqual({ client_id: 'stale-client' })
-	expect(values.get(stateKey)).toEqual({ serverId: 'server-1' })
-	expect(values.get(sidecarKey)).toEqual({ refresh_token: 'old-rt' })
+	expect(await opened(values, clientInfoKey)).toEqual({
+		client_id: 'stale-client',
+	})
+	expect(await opened(values, stateKey)).toEqual({ serverId: 'server-1' })
+	expect(await opened(values, sidecarKey)).toEqual({ refresh_token: 'old-rt' })
 })
 
 test('replayed unusable callbacks leave past-OAuth server credentials intact', async () => {
@@ -539,7 +578,7 @@ test('replayed unusable callbacks leave past-OAuth server credentials intact', a
 	})
 	manager.callbackMatches = false
 	manager.rows[0]!.auth_url = null
-	values.set(tokenKey, { access_token: 'still-valid' })
+	await seal(values, tokenKey, { access_token: 'still-valid' })
 	connection.connectionState = 'ready'
 
 	expect(await oauthCallback(hub, 'used')).toEqual({
@@ -552,7 +591,9 @@ test('replayed unusable callbacks leave past-OAuth server credentials intact', a
 	})
 	expect(manager.connectCount).toBe(0)
 	expect(manager.rows[0]?.client_id).toBe('client-1')
-	expect(values.get(tokenKey)).toEqual({ access_token: 'still-valid' })
+	expect(await opened(values, tokenKey)).toEqual({
+		access_token: 'still-valid',
+	})
 })
 
 test('used and missing callback states recover without exposing an internal state error', async () => {
@@ -638,7 +679,7 @@ test('first-time OAuth grant that stays authenticating does not emit disconnecte
 	expect(connection.connectionState).toBe('authenticating')
 	expect(await hub.peekConnectionEvents()).toEqual([])
 	expect(values.has(pendingEventsKey)).toBe(false)
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: false,
 		disconnectedEmitted: false,
 	})
@@ -659,7 +700,7 @@ test('peekServers returns cards without observing or reconnecting', async () => 
 	const peeked = await hub.peekServers()
 	expect(peeked.servers[0]?.state).toBe('disconnected')
 	expect(manager.connectCount).toBe(0)
-	expect(values.get(episodeKey)).toEqual(episodeBefore)
+	expect(await opened(values, episodeKey)).toEqual(episodeBefore)
 	expect(values.has(pendingEventsKey)).toBe(false)
 	expect(await hub.takeConnectionEvents()).toEqual([])
 })
@@ -676,7 +717,7 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 	const peeked = await hub.peekServers()
 	expect(peeked.servers[0]?.state).toBe('authenticating')
 	expect(peeked.servers[0]?.lastError?.phase).toBe('token exchange')
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: true,
 		disconnectedEmitted: true,
 	})
@@ -692,7 +733,9 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 	expect(second.servers[0]?.state).toBe('authenticating')
 	expect(second.servers[0]?.lastError?.phase).toBe('token exchange')
 	expect(second.servers[0]?.hasRefreshToken).toBe(true)
-	expect(values.get(recoveryKey)).toMatchObject({ phase: 'token exchange' })
+	expect(await opened(values, recoveryKey)).toMatchObject({
+		phase: 'token exchange',
+	})
 	expect(await hub.peekConnectionEvents()).toHaveLength(1)
 
 	const firstId = queued[0]?.eventId
@@ -703,7 +746,7 @@ test('peekServers queues a disconnected episode when a ready server parks on tok
 		topic: 'mcp.server.reconnected' as const,
 		state: 'ready' as const,
 	}
-	values.set(pendingEventsKey, [...queued, laterEvent])
+	await seal(values, pendingEventsKey, [...queued, laterEvent])
 	await hub.ackConnectionEvents([firstId!])
 	expect(await hub.peekConnectionEvents()).toEqual([laterEvent])
 	expect(await hub.takeConnectionEvents()).toHaveLength(1)
@@ -729,7 +772,7 @@ test('token-recovery park with no refresh token still emits disconnected when wa
 	expect(peeked.servers[0]?.lastError?.message).toContain(
 		'has no refresh token to renew',
 	)
-	expect(values.get(episodeKey)).toMatchObject({
+	expect(await opened(values, episodeKey)).toMatchObject({
 		wasReady: true,
 		disconnectedEmitted: true,
 		lastObservedState: 'authenticating',
@@ -773,7 +816,7 @@ test('snapshot retries a previously ready server before emitting disconnect', as
 
 	const readySnapshot = await hub.getSnapshot()
 	expect(readySnapshot.connectionEvents).toEqual([])
-	expect(values.get(episodeKey)).toEqual({
+	expect(await opened(values, episodeKey)).toEqual({
 		lastObservedState: 'ready',
 		wasReady: true,
 		episodeId: null,
@@ -858,8 +901,8 @@ test('remint for stuck authenticating without authUrl keeps leftover refresh tok
 		refresh_token: 'keep-rt',
 	}
 	setTokens(connection, { ...storedTokens })
-	values.set(tokenKey, { ...storedTokens })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, tokenKey, { ...storedTokens })
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'keep-rt',
 	})
 	// Refresh-first parks without an auth URL; remint must still preserve the
@@ -869,8 +912,10 @@ test('remint for stuck authenticating without authUrl keeps leftover refresh tok
 	expect(reminted.state).toBe('authenticating')
 	expect(reminted.authUrl).toBeTruthy()
 	expect(manager.registerCount).toBe(1)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
-	expect(values.get(mcpOAuthRefreshTokenStorageKey('server-1'))).toEqual({
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
+	expect(
+		await opened(values, mcpOAuthRefreshTokenStorageKey('server-1')),
+	).toEqual({
 		refresh_token: 'keep-rt',
 	})
 })
@@ -884,13 +929,13 @@ test('reconnect tries stored refresh before wiping tokens, and a parked authenti
 		refresh_token: 'rotating-rt',
 	}
 	setTokens(connection, { ...storedTokens })
-	values.set(tokenKey, { ...storedTokens })
+	await seal(values, tokenKey, { ...storedTokens })
 	manager.connectBehavior = 'ready'
 	const refreshed = await reconnect(hub)
 	expect(refreshed.state).toBe('ready')
 	expect(refreshed.lastError ?? null).toBeNull()
 	expect(refreshed.hasRefreshToken).toBe(true)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
 	expect(manager.registerCount).toBe(0)
 
 	manager.connectBehavior = 'oauth'
@@ -902,8 +947,10 @@ test('reconnect tries stored refresh before wiping tokens, and a parked authenti
 	expect(parked.lastError?.phase).toBe('token exchange')
 	expect(parked.lastError?.message).not.toContain('Authorization completed')
 	expect(parked.hasRefreshToken).toBe(false)
-	expect(values.get(tokenKey)).toEqual(storedTokens)
-	expect(values.get(recoveryKey)).toMatchObject({ phase: 'token exchange' })
+	expect(await opened(values, tokenKey)).toEqual(storedTokens)
+	expect(await opened(values, recoveryKey)).toMatchObject({
+		phase: 'token exchange',
+	})
 	expect(manager.registerCount).toBe(0)
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'mcp oauth token recovery parked authenticating',
@@ -931,10 +978,10 @@ test('ready grant without a refresh token warns when the authorization server ad
 	}
 	setTokens(connection, { access_token: 'at-only' })
 	connection.options.transport.authProvider.storedDiscovery = discovery
-	values.set('/Kody/server-1/oauth_discovery', discovery)
+	await seal(values, '/Kody/server-1/oauth_discovery', discovery)
 	// Stamp only when saveTokens recorded that this grant omitted RT — not
 	// whenever tokens() is empty while ready (e.g. after a refresh wipe).
-	values.set(mcpOAuthRefreshGrantOmittedStorageKey('server-1'), {
+	await seal(values, mcpOAuthRefreshGrantOmittedStorageKey('server-1'), {
 		omitted: true,
 		at: '2026-10-14T08:00:00.000Z',
 	})
@@ -966,7 +1013,7 @@ test('ready without a refresh token does not warn unless saveTokens marked the g
 	}
 	setTokens(connection, { access_token: 'at-only' })
 	connection.options.transport.authProvider.storedDiscovery = discovery
-	values.set('/Kody/server-1/oauth_discovery', discovery)
+	await seal(values, '/Kody/server-1/oauth_discovery', discovery)
 
 	const snapshot = await hub.getSnapshot()
 	expect(snapshot.servers[0]?.state).toBe('ready')
@@ -1062,7 +1109,7 @@ test('handleOAuthCallback reports a durable tool-discovery lastError when IdP su
 	acceptCallback(manager)
 	manager.connectBehavior = 'connected'
 	connection.connectionState = 'connected'
-	values.set('/Kody/server-1/oauth_discovery', {
+	await seal(values, '/Kody/server-1/oauth_discovery', {
 		resource: 'https://mcp.posthog.com/',
 		authorization_servers: ['https://auth.posthog.com/?client_secret=hidden'],
 	})
@@ -1109,8 +1156,8 @@ test('replayed unusable callback after incomplete settle reports lastError inste
 	manager.callbackMatches = false
 	manager.connectBehavior = 'connected'
 	manager.rows[0]!.auth_url = null
-	values.set(tokenKey, { access_token: 'still-valid' })
-	values.set('/Kody/server-1/oauth_discovery', {
+	await seal(values, tokenKey, { access_token: 'still-valid' })
+	await seal(values, '/Kody/server-1/oauth_discovery', {
 		resource: 'https://mcp.posthog.com/',
 		authorization_servers: ['https://auth.posthog.com/'],
 	})
@@ -1139,7 +1186,9 @@ test('replayed unusable callback after incomplete settle reports lastError inste
 
 	expect(manager.connectCount).toBe(1)
 	expect(manager.rows[0]?.client_id).toBe('client-1')
-	expect(values.get(tokenKey)).toEqual({ access_token: 'still-valid' })
+	expect(await opened(values, tokenKey)).toEqual({
+		access_token: 'still-valid',
+	})
 })
 
 test('add, reconnect, and refresh treat a discover timeout as a durable lastError', async () => {
@@ -1259,7 +1308,7 @@ test('healthy auto catalog stays on auto; modern-connect catalog timeout falls b
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 	const timeoutCall = consoleWarn.mock.calls.find(
 		(call) => call[0] === 'mcp discover timeout incomplete',
 	)
@@ -1298,7 +1347,7 @@ test('healthy auto catalog stays on auto; modern-connect catalog timeout falls b
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 })
 
 test('replacing a server forgets the catalog-timeout legacy mark and probes auto', async () => {
@@ -1307,7 +1356,7 @@ test('replacing a server forgets the catalog-timeout legacy mark and probes auto
 	manager.connectBehavior = 'connected'
 	manager.discoverSucceedsOn = 'legacy'
 	expect((await addServer(hub)).state).toBe('ready')
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 
 	manager.discoverSucceedsOn = 'always'
 	manager.registerCount = 0
@@ -1334,7 +1383,7 @@ test('legacy fallback that parks on OAuth remembers the mark and keeps it after 
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 
 	const connection = manager.mcpConnections['server-1']
 	if (!connection) throw new Error('Fake connection was not seeded.')
@@ -1347,7 +1396,7 @@ test('legacy fallback that parks on OAuth remembers the mark and keeps it after 
 	expect(manager.mcpConnections['server-1']?.options.client).toEqual(
 		legacyClient,
 	)
-	expect(values.get(legacyKey)).toBe('catalog-timeout')
+	expect(await opened(values, legacyKey)).toBe('catalog-timeout')
 })
 
 const preRegisteredClientKey = 'mcp-oauth-preregistered-client:server-1'
@@ -1371,8 +1420,11 @@ test('changing the OAuth client on a ready server parks for approval without a f
 	const { values, hub, manager } = createHub()
 	const connection = await seedReadyHomeServer(hub, manager)
 	setTokens(connection, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(tokenKey, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(mcpOAuthRefreshTokenStorageKey('server-1'), {
+	await seal(values, tokenKey, {
+		access_token: 'old-at',
+		refresh_token: 'old-rt',
+	})
+	await seal(values, mcpOAuthRefreshTokenStorageKey('server-1'), {
 		refresh_token: 'old-rt',
 	})
 
@@ -1382,7 +1434,9 @@ test('changing the OAuth client on a ready server parks for approval without a f
 		previousClientId: null,
 		connection: { state: 'authenticating', error: null, lastError: null },
 	})
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('gh-client'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('gh-client'),
+	)
 	expect(values.has(tokenKey)).toBe(false)
 	expect(values.has(mcpOAuthRefreshTokenStorageKey('server-1'))).toBe(false)
 	expect(values.has(recoveryKey)).toBe(false)
@@ -1402,7 +1456,10 @@ test('a failed restart after a client change keeps the new client and reports it
 	const { values, hub, manager } = createHub()
 	const connection = await seedReadyHomeServer(hub, manager)
 	setTokens(connection, { access_token: 'old-at', refresh_token: 'old-rt' })
-	values.set(tokenKey, { access_token: 'old-at', refresh_token: 'old-rt' })
+	await seal(values, tokenKey, {
+		access_token: 'old-at',
+		refresh_token: 'old-rt',
+	})
 	manager.registerFailuresRemaining = 1
 
 	const change = await setOAuthClient(hub, sealedClient('gh-client'))
@@ -1410,7 +1467,9 @@ test('a failed restart after a client change keeps the new client and reports it
 	expect(change.connection.lastError?.message).toContain(
 		'The OAuth client was saved, but Kody could not start authorization with it',
 	)
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('gh-client'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('gh-client'),
+	)
 	expect(values.has(tokenKey)).toBe(false)
 	expect(manager.rows).toEqual([
 		expect.objectContaining({ id: 'server-1', client_id: null }),
@@ -1437,7 +1496,9 @@ test('overlapping client changes run one at a time and the hub keeps the last on
 	])
 	expect(first.previousClientId).toBeNull()
 	expect(second.previousClientId).toBe('client-a')
-	expect(values.get(preRegisteredClientKey)).toEqual(sealedClient('client-b'))
+	expect(await opened(values, preRegisteredClientKey)).toEqual(
+		sealedClient('client-b'),
+	)
 	expect((await hub.getSnapshot()).servers[0]?.oauthClientId).toBe('client-b')
 
 	const removed = await setOAuthClient(hub, null)
@@ -1509,4 +1570,29 @@ test('operational snapshots persist sanitized cards and warm reads never recover
 		authorizationPending: false,
 	})
 	expect(cold.manager.connectCount).toBe(0)
+})
+
+test('callback whose RFC 9207 iss names another authorization server is refused before the SDK runs', async () => {
+	const { values, hub, manager } = createHub()
+	seedServer(manager, {
+		authUrl: 'https://auth.example/authorize?state=live.server-1',
+	})
+	await seal(values, '/Kody/server-1/oauth_discovery', {
+		authorizationServerUrl: 'https://auth.example',
+		authorizationServerMetadata: { issuer: 'https://auth.example' },
+	})
+	manager.callbackMatches = true
+	const handle = vi.spyOn(
+		manager as unknown as { handleCallbackRequest: () => Promise<unknown> },
+		'handleCallbackRequest',
+	)
+
+	const outcome = await hub.handleOAuthCallback({
+		url: `${callbackUrl}?code=abc&state=live.server-1&iss=${encodeURIComponent('https://attacker.example')}`,
+		callbackUrl,
+	})
+
+	expect(handle).not.toHaveBeenCalled()
+	expect(outcome).toMatchObject({ serverId: 'server-1', authSuccess: false })
+	expect(outcome.authError).toContain('does not match')
 })

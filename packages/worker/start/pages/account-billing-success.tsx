@@ -1,12 +1,10 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { kodyDiscordInviteUrl } from '#universal/community-links.ts'
 import type { AccountBillingSuccessLoaderData } from '#universal/loader-data.ts'
 import {
 	cardCss,
-	getGhostButtonCss,
-	getPrimaryButtonCss,
-	mutedLinkCss,
 	pageDescriptionCss,
 	pageHeaderCss,
 	pageTitleCss,
@@ -38,9 +36,14 @@ export function AccountBillingSuccessPage({
 				</header>
 				<div css={cardCss}>
 					<div css={ctaRowCss}>
-						<SiteLink href={billingPath} css={primaryCtaCss}>
+						<Button
+							href={billingPath}
+							variant="primary"
+							size="md"
+							css={primaryCtaCss}
+						>
 							View billing
-						</SiteLink>
+						</Button>
 					</div>
 				</div>
 			</section>
@@ -60,17 +63,27 @@ export function AccountBillingSuccessPage({
 					Thanks for paying for the volume you actually use.
 				</p>
 				<div css={ctaRowCss}>
-					<SiteLink href={kodyDiscordInviteUrl} css={primaryCtaCss}>
+					<Button
+						href={kodyDiscordInviteUrl}
+						variant="primary"
+						size="md"
+						css={primaryCtaCss}
+					>
 						Join the Kody Discord
-					</SiteLink>
+					</Button>
 					{data.needsOnboarding ? (
-						<SiteLink href={onboardingPath} css={secondaryCtaCss}>
+						<Button
+							href={onboardingPath}
+							variant="secondary"
+							size="lg"
+							css={secondaryCtaCss}
+						>
 							Connect your agent
-						</SiteLink>
+						</Button>
 					) : null}
-					<SiteLink href={billingPath} css={mutedLinkCss}>
+					<TextLink tone="muted" href={billingPath}>
 						Manage billing
-					</SiteLink>
+					</TextLink>
 				</div>
 			</div>
 		</section>
@@ -97,13 +110,11 @@ const ctaRowCss = {
 }
 
 const primaryCtaCss = {
-	...getPrimaryButtonCss({ size: 'lg', weight: 'semibold' }),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }
 
 const secondaryCtaCss = {
-	...getGhostButtonCss(),
 	display: 'inline-flex',
 	textDecoration: 'none',
 }

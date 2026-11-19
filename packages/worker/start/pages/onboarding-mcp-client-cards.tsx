@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import type { ReactNode } from 'react'
@@ -7,8 +9,6 @@ import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
 import {
 	getAccentCalloutCss,
-	getPillButtonCss,
-	mutedLinkCss,
 	nativeDisclosureCss,
 } from '#universal/styles/style-primitives.ts'
 import { renderHighlightedCode } from '../components/syntax-highlight.tsx'
@@ -140,13 +140,9 @@ export function AppIconCard(props: AppIconCardProps) {
 					height={256}
 					css={appIconImgCss}
 				/>
-				<SiteLink
-					href={props.src}
-					download={props.downloadName}
-					css={mutedLinkCss}
-				>
+				<TextLink tone="muted" href={props.src} download={props.downloadName}>
 					Download App Icon
-				</SiteLink>
+				</TextLink>
 				<p css={appIconHintCss}>
 					Right-click the icon and choose Save as (on a phone, long-press), then
 					upload it in ChatGPT. Icons over 10 KB are rejected.
@@ -169,26 +165,53 @@ export function ClientWarning(props: ClientWarningProps) {
 	)
 }
 
-type ChatGptDeveloperModeWarningProps = {
+type McpSetupNoteProps = {
+	availability: string
 	href: string
 	linkLabel: string
+	directoryListing: string
 }
 
 /**
- * Amber caution for ChatGPT's developer-mode alternative. Same quiet
- * callout language as {@link ClientWarning}, warning tone instead of danger.
+ * Amber caution under ChatGPT and Codex MCP steps: a setup note, plus a
+ * pointer away from the frozen directory listing. Same quiet callout
+ * language as {@link ClientWarning}, warning tone instead of danger.
  */
-export function ChatGptDeveloperModeWarning(
-	props: ChatGptDeveloperModeWarningProps,
-) {
+export function McpSetupNote(props: McpSetupNoteProps) {
 	return (
-		<p css={clientCautionCss} role="note">
-			ChatGPT developer mode is required. See{' '}
-			<SiteLink href={props.href} target="_blank" rel="noreferrer noopener">
-				{props.linkLabel}
-			</SiteLink>
-			.
-		</p>
+		<div
+			css={clientCautionCss}
+			role="note"
+			data-testid="onboarding-mcp-setup-note"
+		>
+			<p css={mcpSetupNoteParagraphCss}>
+				{props.availability} See{' '}
+				<SiteLink href={props.href} target="_blank" rel="noreferrer noopener">
+					{props.linkLabel}
+				</SiteLink>
+				.
+			</p>
+			<p css={mcpSetupNoteParagraphCss}>{props.directoryListing}</p>
+		</div>
+	)
+}
+
+/** Numbered host-side steps shown under a primary action. */
+export function McpSetupSteps(props: {
+	steps: ReadonlyArray<string>
+	/** Continues numbering when copy cards split one list. */
+	start?: number
+}) {
+	return (
+		<ol
+			data-testid="onboarding-mcp-setup-steps"
+			start={props.start}
+			css={mcpSetupStepsCss}
+		>
+			{props.steps.map((step) => (
+				<li key={step}>{step}</li>
+			))}
+		</ol>
 	)
 }
 
@@ -199,15 +222,16 @@ export function PrimaryActionLink(props: {
 }) {
 	return (
 		<div css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				target={props.external ? '_blank' : undefined}
 				rel={props.external ? 'noreferrer noopener' : undefined}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 		</div>
 	)
 }
@@ -218,13 +242,14 @@ export function InstallDeepLink(props: {
 }) {
 	return (
 		<div css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 			<small css={deepLinkNoteCss}>
 				Your client will still ask you to authorize access afterwards.
 			</small>
@@ -240,13 +265,14 @@ export function PluginPrimaryInstall(props: {
 }) {
 	return (
 		<div data-testid="onboarding-mcp-plugin-primary" css={deepLinkCss}>
-			<SiteLink
+			<Button
 				href={props.href}
 				data-onboarding-connect-action="true"
-				css={deepLinkButtonCss}
+				variant="primary"
+				size="lg"
 			>
 				{props.label}
-			</SiteLink>
+			</Button>
 			{props.alternativeValue ? (
 				<p
 					data-testid="onboarding-mcp-plugin-alternative"
@@ -274,8 +300,6 @@ const deepLinkCss: CSSObject = {
 	gap: '0.45rem',
 	justifyItems: 'start',
 }
-
-const deepLinkButtonCss = getPillButtonCss()
 
 const deepLinkNoteCss: CSSObject = {
 	color: colors.textMuted,
@@ -401,3 +425,20 @@ function getClientNoteCss(accentColor: string) {
 
 const clientDangerCss = getClientNoteCss(colors.danger)
 const clientCautionCss = getClientNoteCss(warningAccent)
+
+const mcpSetupNoteParagraphCss: CSSObject = {
+	margin: 0,
+	'& + &': {
+		marginTop: '0.4rem',
+	},
+}
+
+const mcpSetupStepsCss: CSSObject = {
+	margin: 0,
+	paddingLeft: '1.35rem',
+	display: 'grid',
+	gap: '0.35rem',
+	color: colors.text,
+	lineHeight: 1.5,
+	maxWidth: '72ch',
+}

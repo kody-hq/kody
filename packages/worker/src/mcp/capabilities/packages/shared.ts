@@ -365,6 +365,24 @@ export const packageDetailSchema =
 			.describe(
 				"Where the published version was built: Kody cloud, the publisher's CLI (--build local), or one of their execution contexts (--build context).",
 			),
+		provenance: z
+			.object({
+				commit: z.string(),
+				artifacts: z.array(
+					z.object({
+						kind: z.string(),
+						name: z.string().nullable(),
+						entry_point: z.string(),
+						built_in: z.enum(['cloud', 'cli', 'context']).nullable(),
+						context_name: z.string().nullable(),
+						bundle_sha256: z.string().nullable(),
+					}),
+				),
+			})
+			.optional()
+			.describe(
+				"Informational record of the stored artifacts of the published commit: where each was built (Kody cloud, the publisher's CLI, or one of their execution contexts) and a SHA-256 of its modules. Null fields mean the artifact was stored before this was recorded. Kody does not check that an uploaded build was compiled from the pushed source, and nothing uses this record to allow or refuse a publish or a listing.",
+			),
 		published_commit: z
 			.string()
 			.nullable()
@@ -393,5 +411,21 @@ export const packageDetailSchema =
 			})
 			.describe(
 				'Credential needs (ADR 0068): the published `kody.credentials` closure, including needs inherited from statically imported packages (`from`), each with how it resolves for you. Options list only credentials you can Use; never values.',
+			),
+		machine: z
+			.object({
+				needs: z.array(
+					z.object({
+						name: z.string().describe('The name the machine gives the entry.'),
+						kind: z.enum(['command', 'lan', 'fs']),
+						description: z.string(),
+						hosts: z.array(z.string()).optional(),
+						ports: z.array(z.number()).optional(),
+						mode: z.enum(['ro', 'rw']).optional(),
+					}),
+				),
+			})
+			.describe(
+				'Machine access the package declares in `kody.machine`: named commands, local network destinations and host folders its code uses on an execution context. Only its own declarations; a package it imports does not pass access on. Declaring grants nothing: the machine defines each entry and its operator approves the package.',
 			),
 	})

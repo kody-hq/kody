@@ -48,7 +48,7 @@ const mockModule = vi.hoisted(() => ({
 		published_commit: 'commit-mock-1',
 		files: {} as Record<string, string>,
 	})),
-	isLoopbackArtifactsRemote: vi.fn((..._args: Array<unknown>) => false),
+	isSnapshotOnlyArtifactsRemote: vi.fn((..._args: Array<unknown>) => false),
 	hasArtifactSourceSnapshotApi: vi.fn((..._args: Array<unknown>) => false),
 	resolveExistingArtifactSourceRepo: vi.fn(
 		async (
@@ -121,7 +121,7 @@ vi.mock('./artifacts.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof import('./artifacts.ts')>()
 	return {
 		...actual,
-		isLoopbackArtifactsRemote: mockModule.isLoopbackArtifactsRemote,
+		isSnapshotOnlyArtifactsRemote: mockModule.isSnapshotOnlyArtifactsRemote,
 		resolveExistingArtifactSourceRepo:
 			mockModule.resolveExistingArtifactSourceRepo,
 		hasArtifactsAccess: () => true,
@@ -251,7 +251,7 @@ function setupSync(
 		},
 		sourceFiles: {},
 	})
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(false)
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(false)
 	mockModule.hasArtifactSourceSnapshotApi.mockReturnValue(false)
 	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue(null)
 	mockModule.writeArtifactSourceSnapshot.mockResolvedValue({
@@ -338,7 +338,11 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 	await expect(
 		syncArtifactSourceSnapshot({
 			...syncInput,
-			files: { 'package.json': packageFiles['package.json'] },
+			files: {
+				'package.json': packageFiles['package.json'],
+				'public/icon.png': '\u0089PNG\r\n\u001a\n',
+			},
+			editPaths: ['package.json'],
 		}),
 	).resolves.toBe('commit-session-2')
 	expect(session.bootstrapSource).not.toHaveBeenCalled()
@@ -354,6 +358,14 @@ test('syncArtifactSourceSnapshot bootstraps new sources and uses repo sessions f
 			userId: ownerIdFromStored('user-1'),
 			dryRun: false,
 			rollbackOnError: true,
+			// Only `editPaths` are written; the PNG byte string is not.
+			edits: [
+				{
+					kind: 'write',
+					path: 'package.json',
+					content: packageFiles['package.json'],
+				},
+			],
 		}),
 	)
 	expect(session.runChecks).toHaveBeenCalledWith(
@@ -672,7 +684,7 @@ test('syncArtifactSourceSnapshot loopback first-publish runs package checks befo
 		remote: 'http://127.0.0.1:8787/git/default/package-1.git',
 	}
 	setupSync(sourceRow(packageSource))
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(true)
 	mockModule.runRepoChecks.mockResolvedValueOnce({
 		ok: false as const,
 		results: [
@@ -699,7 +711,7 @@ test('syncArtifactSourceSnapshot loopback first-publish runs package checks befo
 	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
 
 	setupSync(sourceRow(packageSource))
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(true)
 	await expect(
 		syncArtifactSourceSnapshot({
 			...syncInput,
@@ -721,7 +733,7 @@ test('syncArtifactSourceSnapshot updates a published loopback source through the
 		sourceRow({ ...packageSource, published_commit: 'commit-existing-1' }),
 	)
 	mockModule.hasArtifactSourceSnapshotApi.mockReturnValue(true)
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(true)
 	mockModule.resolveExistingArtifactSourceRepo.mockResolvedValue({
 		info: async () => ({
 			remote: 'http://127.0.0.1:8787/git/default/package-1.git',
@@ -746,7 +758,7 @@ test('syncArtifactSourceSnapshot never probes the remote without the local snaps
 	setupSync(
 		sourceRow({ ...packageSource, published_commit: 'commit-existing-1' }),
 	)
-	mockModule.isLoopbackArtifactsRemote.mockReturnValue(true)
+	mockModule.isSnapshotOnlyArtifactsRemote.mockReturnValue(true)
 	await syncArtifactSourceSnapshot({
 		...syncInput,
 		files: { 'package.json': packageJson },

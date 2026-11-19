@@ -1,8 +1,26 @@
+import {
+	runIsolatedModuleArtifactRebuild,
+	type IsolatedModuleArtifactRebuildOutcome,
+	type IsolatedModuleArtifactRebuildRequest,
+} from '#worker/package-invocations/module-artifacts.ts'
 import { repoSessionState } from './repo-session-state.ts'
 import { assertProfileCanPublishImports } from '#worker/profiles/publish-imports.ts'
-import { createIsolatedArtifactRebuildRunner } from '#worker/repo/isolated-artifact-rebuild.ts'
+import {
+	runIsolatedLocalExecutePackageGraphBuild,
+	type IsolatedLocalExecutePackageGraphOutcome,
+	type IsolatedLocalExecutePackageGraphRequest,
+} from '#worker/package-runtime/isolated-local-execute-package-graph.ts'
+import {
+	runIsolatedExecuteBundleBuild,
+	type IsolatedExecuteBundleOutcome,
+	type IsolatedExecuteBundleRequest,
+} from '#worker/package-runtime/isolated-execute-bundle.ts'
+import {
+	runIsolatedCredentialStampFleetPackage,
+	type IsolatedCredentialStampFleetPackageRequest,
+	type IsolatedCredentialStampFleetPackageResult,
+} from '#worker/credentials/credential-stamp-fleet.ts'
 import type { PersistUploadedPublishBuildResult } from '#worker/publish-offload/types.ts'
-import { hashWorkerLoaderModules } from '#worker/publish-offload/module-hashes.ts'
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
@@ -56,11 +74,13 @@ import {
 	publishedBundleArtifactForPackageTarget,
 	persistPublishedPackageArtifactTarget,
 	persistPublishedPackageArtifactTargets,
+	publishedPackageArtifactTargetsReusableForFiles,
 	type PublishedPackageArtifactBuildTarget,
 } from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type { PreparedKodyGraphCache } from '#worker/package-runtime/module-graph.ts'
 import {
 	buildPublishedPackageArtifactTargetBundle,
+	memoizePublishedPackageArtifactBuilders,
 	type PublishedPackageArtifactBuilders,
 } from '#worker/package-runtime/published-bundle-artifact-persist.ts'
 import {
@@ -71,6 +91,12 @@ import {
 import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.ts'
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
+// Keep serving reconciliation off the RepoSession startup graph.
+// oxlint-disable-next-line import/consistent-type-specifier-style
+import type {
+	PackageServingUpdate,
+	PackageServingUpdateQueue,
+} from './package-serving-update.ts'
 import {
 	resolveRepoWorkspacePath,
 	toExternalRepoPath,
@@ -81,14 +107,15 @@ import {
 	runPackageTypecheckLanguageService,
 	runRepoSourceWalkChecks,
 	validatePackageBundles,
-	findFetchBodySecretResolutionHits,
 } from './checks.ts'
-import { findSecretPlaceholderRequestPlacements } from '#worker/credentials/secret-placeholder-request-placement.ts'
 import { createRepoChecksError } from './repo-checks-failed-error.ts'
 import { confirmRemoteRefAtCommit } from './confirm-remote-ref.ts'
 import { readRemoteRefNotConfirmedError } from './remote-ref-not-confirmed-error.ts'
 import { runAuthoringPublishChecksOnFiles } from './authoring-publish-checks.ts'
-import { buildCredentialPatternCheck } from './credential-pattern-check.ts'
+import {
+	planCredentialTreeScan,
+	scanCredentialTreeChunk,
+} from './credential-pattern-check.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
 import { pausedSessionMovedMessage } from '#worker/credentials/credential-needs-approval.ts'
 import {
@@ -96,6 +123,8 @@ import {
 	isolatedArtifactRebuildStagingKeyForUser,
 	isolatedArtifactRebuildStagingTtlSeconds,
 	type IsolatedArtifactBuildCheckRequest,
+	type IsolatedArtifactReuseScanOutcome,
+	type IsolatedArtifactReuseScanRequest,
 	type IsolatedArtifactRebuildOutcome,
 	type IsolatedArtifactRebuildRequest,
 	type IsolatedArtifactRebuildTargetResult,
@@ -108,6 +137,7 @@ import {
 	type IsolatedCheckPhaseRequest,
 } from './isolated-check-phases.ts'
 import {
+	artifactBuildFailureMessage,
 	isRepoCheckStep,
 	type RepoCheckStep,
 } from './isolated-runner-limit-message.ts'
@@ -393,6 +423,15 @@ function buildGitCloneAuth(input: { remote: string; token: string }) {
 }
 
 class RepoSessionBase extends DurableObject<Env> {
+	private packageServingUpdateQueue?: PackageServingUpdateQueue
+
+	async updatePackageServing(update: PackageServingUpdate) {
+		const { PackageServingUpdateQueue } =
+			await import('./package-serving-update.ts')
+		this.packageServingUpdateQueue ??= new PackageServingUpdateQueue()
+		return await this.packageServingUpdateQueue.run(this.env, update)
+	}
+
 	readonly workspace = new Workspace({
 		sql: this.ctx.storage.sql,
 		name: () => buildRepoSessionWorkspaceName(this.ctx.id.toString()),
@@ -3117,32 +3156,24 @@ class RepoSessionBase extends DurableObject<Env> {
 				targets: input.typecheckTargets,
 			})
 		}
-		if (input.phase === 'credentials') {
-			const check = buildCredentialPatternCheck(
-				sourceFiles,
-				input.secretProviders ? { secretProviders: input.secretProviders } : {},
-			)
-			const changedFiles: Record<string, string> = {}
-			for (const [path, content] of Object.entries(check.sourceFiles)) {
-				if (sourceFiles[path] !== content) changedFiles[path] = content
-			}
-			// Same isolate as the stamp scan, so the checks run never parses
-			// the whole tree again for these.
+		if (input.phase === 'credentials-plan') {
 			return {
-				ok: check.ok,
-				message: check.message,
-				changedFiles,
-				stampKeys: check.stampKeys,
-				...(check.ok
-					? {
-							requestPlacementHits: findSecretPlaceholderRequestPlacements(
-								check.sourceFiles,
-							),
-							fetchBodyHits: findFetchBodySecretResolutionHits(
-								check.sourceFiles,
-							),
-						}
-					: {}),
+				ok: true,
+				message: '',
+				credentialPlan: await planCredentialTreeScan(
+					sourceFiles,
+					input.maxChunkAstNodes,
+				),
+			}
+		}
+		if (input.phase === 'credentials-chunk') {
+			return {
+				ok: true,
+				message: '',
+				credentialChunk: await scanCredentialTreeChunk(
+					sourceFiles,
+					input.chunk,
+				),
 			}
 		}
 		const exhaustive: never = input
@@ -3306,6 +3337,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		const { publishClone } = await this.cloneExternalRefForPublish({
 			source: request.source,
 			commit: request.commit,
+			...(request.branch ? { branch: request.branch } : {}),
 			expectedHead: request.expectedHead,
 			phaseTimings,
 		})
@@ -3600,7 +3632,10 @@ class RepoSessionBase extends DurableObject<Env> {
 				}
 				results.push({
 					ok: false,
-					message: getErrorMessage(outcome.error),
+					message: artifactBuildFailureMessage(
+						getErrorMessage(outcome.error),
+						'rebuild',
+					),
 					...(isUserCodeError(outcome.error) ? { callerFailure: true } : {}),
 					target: outcome.target,
 				})
@@ -3645,7 +3680,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		userId: OwnerId
 		publishedCommit: string
 		buildId: string
-		communityListed: boolean
 		baseUrl?: string
 	}): Promise<PersistUploadedPublishBuildResult> {
 		const source = await this.resolvePublishSource(input)
@@ -3684,7 +3718,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		return await persistUploadedPublishBuild({
 			env: this.env,
 			buildId: input.buildId,
-			communityListed: input.communityListed,
 			baseUrl,
 			userId: input.userId,
 			source: sourceAtCommit,
@@ -3692,59 +3725,6 @@ class RepoSessionBase extends DurableObject<Env> {
 			publishedCommit: input.publishedCommit,
 			sourceFiles,
 			targets,
-			rebuildSample: async (sampleTargets) => {
-				if (sampleTargets.length === 0) return []
-				const runner = createIsolatedArtifactRebuildRunner(this.env)
-				if (runner) {
-					const stagingKey = await runner.stage({
-						userId: input.userId,
-						sourceFiles,
-					})
-					try {
-						const outcome = await runner.buildCheck({
-							stagingKey,
-							userId: input.userId,
-							baseUrl,
-							rootPackageId: savedPackage.id,
-							targets: sampleTargets,
-							includeModuleHashes: true,
-							linkKodyPackageImports: true,
-						})
-						return sampleTargets.map((_, index) => {
-							const result = outcome.results[index]
-							return result?.ok && result.built
-								? result.built
-								: new Error(result?.message ?? outcome.message)
-						})
-					} finally {
-						await runner.discard(stagingKey).catch(() => {})
-					}
-				}
-				const builders = await this.publishedPackageArtifactBuilders({
-					userId: input.userId,
-					baseUrl,
-					sourceFiles,
-					rootPackageId: savedPackage.id,
-					prepareCache: new Map(),
-					linkKodyPackageImports: true,
-				})
-				const results = []
-				for (const target of sampleTargets) {
-					try {
-						const bundle = await buildPublishedPackageArtifactTargetBundle({
-							...builders,
-							target,
-						})
-						results.push({
-							mainModule: bundle.mainModule,
-							moduleHashes: await hashWorkerLoaderModules(bundle.modules),
-						})
-					} catch (error) {
-						results.push(new Error(getErrorMessage(error)))
-					}
-				}
-				return results
-			},
 		})
 	}
 
@@ -3882,7 +3862,6 @@ class RepoSessionBase extends DurableObject<Env> {
 		sourceFiles: Record<string, string>
 		rootPackageId?: string
 		prepareCache: PreparedKodyGraphCache
-		linkKodyPackageImports?: boolean
 	}): Promise<PublishedPackageArtifactBuilders> {
 		const {
 			buildKodyAppBundle,
@@ -3897,9 +3876,8 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: input.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: input.prepareCache,
-			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		}
-		return {
+		return memoizePublishedPackageArtifactBuilders({
 			buildAppBundle: async ({ entryPoint }) =>
 				await buildKodyAppBundle({ ...shared, entryPoint, cacheKey: null }),
 			buildAppClientBundle: async ({ entryPoint }) =>
@@ -3911,7 +3889,51 @@ class RepoSessionBase extends DurableObject<Env> {
 				await buildKodyModuleBundle({ ...shared, entryPoint }),
 			buildImportableModuleBundle: async ({ entryPoint }) =>
 				await buildKodyImportableModuleBundle({ ...shared, entryPoint }),
-		}
+		})
+	}
+
+	/**
+	 * `POST /v1/local-execute/package-graph` build in this throwaway isolate,
+	 * so a large package can exceed the isolate limits without resetting the
+	 * API isolate (`#worker/package-runtime/isolated-local-execute-package-graph.ts`).
+	 */
+	async buildIsolatedLocalExecutePackageGraph(
+		input: IsolatedLocalExecutePackageGraphRequest,
+	): Promise<IsolatedLocalExecutePackageGraphOutcome> {
+		return await runIsolatedLocalExecutePackageGraphBuild(this.env, input)
+	}
+
+	/**
+	 * An invocation's missing module artifact, rebuilt in this throwaway
+	 * isolate so a large package cannot reset the isolate that jobs, webhooks,
+	 * and requests share (`#worker/package-invocations/module-artifacts.ts`).
+	 */
+	async rebuildIsolatedModuleArtifact(
+		input: IsolatedModuleArtifactRebuildRequest,
+	): Promise<IsolatedModuleArtifactRebuildOutcome> {
+		return await runIsolatedModuleArtifactRebuild(this.env, input)
+	}
+
+	/**
+	 * One package of the credential stamp fleet scan in this throwaway
+	 * isolate, so a large package source cannot reset the caller's isolate
+	 * (`#worker/credentials/credential-stamp-fleet.ts`).
+	 */
+	async scanIsolatedCredentialStampFleetPackage(
+		input: IsolatedCredentialStampFleetPackageRequest,
+	): Promise<IsolatedCredentialStampFleetPackageResult> {
+		return await runIsolatedCredentialStampFleetPackage(this.env, input)
+	}
+
+	/**
+	 * Hosted execute's module bundle in this throwaway isolate, so a large
+	 * import can exceed the isolate limits without resetting the caller's
+	 * isolate (`#worker/package-runtime/isolated-execute-bundle.ts`).
+	 */
+	async buildIsolatedExecuteBundle(
+		input: IsolatedExecuteBundleRequest,
+	): Promise<IsolatedExecuteBundleOutcome> {
+		return await runIsolatedExecuteBundleBuild(this.env, input)
 	}
 
 	/**
@@ -3951,32 +3973,23 @@ class RepoSessionBase extends DurableObject<Env> {
 			sourceFiles: staged.sourceFiles,
 			...(input.rootPackageId ? { rootPackageId: input.rootPackageId } : {}),
 			prepareCache: new Map(),
-			...(input.linkKodyPackageImports ? { linkKodyPackageImports: true } : {}),
 		})
 		const results: Array<IsolatedArtifactRebuildTargetResult> = []
 		for (const target of input.targets) {
 			try {
-				const bundle = await buildPublishedPackageArtifactTargetBundle({
+				await buildPublishedPackageArtifactTargetBundle({
 					...builders,
 					target,
 				})
 				results.push({
 					ok: true,
 					message: 'Built.',
-					...(input.includeModuleHashes
-						? {
-								built: {
-									mainModule: bundle.mainModule,
-									moduleHashes: await hashWorkerLoaderModules(bundle.modules),
-								},
-							}
-						: {}),
 					target,
 				})
 			} catch (error) {
 				results.push({
 					ok: false,
-					message: getErrorMessage(error),
+					message: artifactBuildFailureMessage(getErrorMessage(error), 'check'),
 					...(isUserCodeError(error) ? { callerFailure: true } : {}),
 					target,
 				})
@@ -3990,6 +4003,51 @@ class RepoSessionBase extends DurableObject<Env> {
 					? 'Package artifacts built.'
 					: failed.map((result) => result.message).join('; '),
 			results,
+		}
+	}
+
+	/**
+	 * `packageCheck`'s unchanged-artifact scan for the staged files, in this
+	 * throwaway isolate: it holds every current artifact, the published
+	 * snapshot, and the parsed imports of both trees at once.
+	 */
+	async runIsolatedArtifactReuseScan(
+		input: IsolatedArtifactReuseScanRequest,
+	): Promise<IsolatedArtifactReuseScanOutcome> {
+		if (
+			!isolatedArtifactRebuildStagingKeyBelongsToUser({
+				stagingKey: input.stagingKey,
+				userId: input.userId,
+			})
+		) {
+			return {
+				ok: false,
+				message:
+					'Isolated artifact reuse scan staging key does not belong to the requesting user.',
+			}
+		}
+		const staged = await this.env.BUNDLE_ARTIFACTS_KV.get<{
+			sourceFiles?: Record<string, string>
+		}>(input.stagingKey, 'json')
+		if (!staged?.sourceFiles) {
+			return {
+				ok: false,
+				message:
+					'Isolated artifact reuse scan staging data expired or is missing; run the check again.',
+			}
+		}
+		const reusable = await publishedPackageArtifactTargetsReusableForFiles({
+			env: this.env,
+			userId: input.userId,
+			source: input.source,
+			targets: input.targets,
+			files: staged.sourceFiles,
+		})
+		return {
+			ok: true,
+			reusableIndexes: input.targets.flatMap((target, index) =>
+				reusable.has(target) ? [index] : [],
+			),
 		}
 	}
 
@@ -4688,6 +4746,7 @@ class RepoSessionBase extends DurableObject<Env> {
 	private async cloneExternalRefForPublish(input: {
 		source: EntitySourceRow
 		commit: string
+		branch?: string
 		expectedHead?: string | null
 		phaseTimings: PublishPhaseTimings
 	}) {
@@ -4698,7 +4757,8 @@ class RepoSessionBase extends DurableObject<Env> {
 			repo: sourceRepo,
 			scope: 'read',
 		})
-		const targetBranch = sourceInfo?.defaultBranch ?? defaultSessionBranch
+		const targetBranch =
+			input.branch ?? sourceInfo?.defaultBranch ?? defaultSessionBranch
 		let publishClone: Awaited<ReturnType<typeof cloneExternalPublishWorkspace>>
 		try {
 			// In-memory clone: publish verification does not need the session
@@ -4713,8 +4773,8 @@ class RepoSessionBase extends DurableObject<Env> {
 						checkoutCommit: input.commit,
 					})
 					// Race protection without a second Artifacts REST HEAD resolve:
-					// the single-branch clone tip is the remote default-branch HEAD
-					// at clone time. Compare it to the worker-resolved expectedHead
+					// the single-branch clone tip is the remote branch tip (default
+					// branch unless `branch` is set) at clone time. Compare it to the worker-resolved expectedHead
 					// before publish.
 					if (input.expectedHead) {
 						const clonedHead = cloned.headCommit
@@ -4901,6 +4961,8 @@ class RepoSessionBase extends DurableObject<Env> {
 		sourceId: string
 		userId: OwnerId
 		newCommit: string
+		/** Branch holding `newCommit` when it is not on the default branch. */
+		branch?: string
 		expectedHead?: string | null
 		allowForce?: boolean
 		destructiveOverwriteConfirmed?: boolean
@@ -4929,6 +4991,7 @@ class RepoSessionBase extends DurableObject<Env> {
 			userId: input.userId,
 			source,
 			commit: input.newCommit,
+			...(input.branch ? { branch: input.branch } : {}),
 			expectedHead: input.expectedHead,
 			previousCommit: source.published_commit,
 		})

@@ -54,11 +54,12 @@ Clicking the Dock icon brings back the same page without reloading, preserving
 navigation history, scroll position, and unfinished input. Quit stops the CLI
 and its workerd processes. On Windows, closing all windows quits unless
 background mode is on. On Linux, closing all windows quits. Pausing persists
-across launches. **Pause routing** in **This machine** is the server-side pause
-(`kody daemon pause`): chains skip this machine from anywhere until **Resume
-routing**, while the runner stays connected. Sleep and network reconnects use
-the CLI's reconnect behavior, a sleeping machine cannot run compute. A running
-process is not necessarily connected, the website shows the context's status.
+across launches. Turning off **Accept new executes** in **This machine** is the
+server-side pause (`kody daemon pause`): chains skip this machine from anywhere
+until it is turned back on, while the runner stays connected. Sleep and network
+reconnects use the CLI's reconnect behavior, a sleeping machine cannot run
+compute. A running process is not necessarily connected, the website shows the
+context's status.
 
 Keys, credentials, grants, and host-folder policy stay owned by the CLI. The
 shell saves the context ID, name, account, enabled state, and onboarding
@@ -112,12 +113,12 @@ permissioned capabilities.
 
 ## Host commands
 
-**This machine > Allow host commands** opens a native confirmation explaining
-that granted runs can execute any shell command as your user, without approval
-per command. It uses the CLI's `context commands on|off --context <ecid>`.
-Turning it off stops background commands too. The website and CLI can also turn
-it off, and the controls refresh while the machine panel is open. Commands are
-disabled before setup. See
+Turning on **This machine > Host commands** opens a native confirmation
+explaining that granted runs can execute any shell command as your user, without
+approval per command. It uses the CLI's
+`context commands on|off --context <ecid>`. Turning it off stops background
+commands too. The website and CLI can also turn it off, and the controls refresh
+while the machine panel is open. Commands are disabled before setup. See
 [Host commands](../../docs/use/execution-contexts.md#host-commands).
 
 ## Packaging and checks
@@ -227,17 +228,19 @@ runs that packaged Electron executable in Node mode to check its CLI and native
 keyring binding. The check does not read or write stored credentials.
 
 Download the artifacts from the workflow run. They contain macOS DMG and ZIP
-files, Windows NSIS installers, or Linux AppImages, with architecture-specific
-filenames, SHA-256 checksums, and build metadata identifying the source commit.
-On Linux, install your distribution's FUSE 2 compatibility library
-(`libfuse2t64` on Ubuntu 24.04), then make the downloaded AppImage executable
-before opening it. Artifacts expire after 30 days. This workflow uploads test
-artifacts only. The Desktop release workflow publishes production downloads and
-the update feed.
+files, Windows MSIX packages with App Installer files, or Linux AppImages and
+`.deb` packages, with architecture-specific filenames, SHA-256 checksums, and
+build metadata identifying the source commit. On Linux, install your
+distribution's FUSE 2 compatibility library (`libfuse2t64` on Ubuntu 24.04),
+then make the downloaded AppImage executable before opening it. Artifacts expire
+after 30 days. This workflow uploads test artifacts only. The Desktop release
+workflow publishes production downloads and the update feed.
 
-CI builds are unsigned, and macOS builds are not notarized. Production signing
-credentials belong in the release environment described below. Windows
-installers work on x64 and arm64, including the local execution runner.
+CI builds use no production credentials. macOS builds are unsigned and not
+notarized. Windows builds sign the MSIX with a disposable certificate so CI can
+install the real package and launch it on native x64 and arm64 runners, the same
+way a sideloading user does (`scripts/win-install-msix.ps1`). Production signing
+credentials belong in the release environment described below.
 
 To build the same native installers locally:
 
@@ -264,12 +267,83 @@ update feed separate from the website's daily releases. Users do not need a
 GitHub token. Every architecture has its own update manifest so parallel jobs
 cannot overwrite another architecture's feed.
 
-Production apps check on launch and every five minutes, download automatically,
-and install on Quit. **Updates > Restart to update** quits and relaunches with
-the downloaded version. Both paths stop the local runner before installing.
-Closing a Mac window continues to keep the app and runner open. Update failures
-retry without interrupting the app. Development builds never check for updates.
-Updates do not downgrade or install prereleases.
+On macOS and in the Linux AppImage, production apps check on launch and every
+five minutes, download automatically, and install on Quit. **Updates > Restart
+to update** quits and relaunches with the downloaded version. Both paths stop
+the local runner before installing. Closing a Mac window continues to keep the
+app and runner open. Update failures retry without interrupting the app.
+Development builds never check for updates. Updates do not downgrade or install
+prereleases.
+
+### Linux install and updates
+
+Linux ships for x64 and arm64 as an AppImage, which
+`https://kody.codes/download` picks for Linux visitors, and a `.deb` for Debian
+and Ubuntu. Linux builds are not code signed. Each release publishes:
+
+| Asset                                                  | Purpose                                               |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| `Kody-<version>-linux-<x86_64\|arm64>.AppImage`        | Portable app; electron-updater keeps it updated       |
+| `Kody-<version>-linux-<amd64\|arm64>.deb`              | Package for `sudo apt install ./Kody-*.deb`           |
+| `latest-x64-linux.yml`, `latest-arm64-linux-arm64.yml` | Update feed the AppImage reads                        |
+| `SHA256SUMS-linux-<arch>.txt`                          | Checksums of that architecture's installers           |
+| `build-info-linux-<arch>.json`                         | Version, source commit, and architecture of the build |
+
+The AppImage needs the FUSE 2 library (`libfuse2t64` on Ubuntu 24.04) and must
+be made executable before its first launch. It updates itself like the Mac app.
+A `.deb` install has one update path: download and install the new `.deb`.
+electron-builder marks those installs with `resources/package-type`, so the app
+skips electron-updater there and **Updates > Download the latest version…**
+opens `https://kody.codes/download`. The `.deb` installs the app as
+`kody-desktop` so it never shadows the `kody` CLI on `PATH`.
+
+Always-latest links need the version in the file name, so use
+`https://kody.codes/download` (or `?platform=linux&arch=arm64`) for a stable
+AppImage link, or the
+[latest release page](https://github.com/kody-hq/kody-desktop/releases/latest)
+for the `.deb`.
+
+### Windows install and updates
+
+Windows ships as an MSIX package for x64 and arm64 (Windows on Arm runs
+natively; only the bundled x64 workerd runs under emulation). Windows App
+Installer, not electron-updater, keeps it updated: the app skips
+electron-updater whenever it runs as a package (`process.windowsStore`). Each
+release publishes:
+
+| Asset                            | Purpose                                               |
+| -------------------------------- | ----------------------------------------------------- |
+| `Kody-win-<arch>.appinstaller`   | Install link; App Installer checks it on every launch |
+| `Kody-<version>-win-<arch>.msix` | The signed package the App Installer file points at   |
+| `Kody-win-signer.cer`            | Public certificate of the signer, for sideloading     |
+| `SHA256SUMS-win-<arch>.txt`      | Checksums of that architecture's assets               |
+| `build-info-win-<arch>.json`     | Version, source commit, and architecture of the build |
+
+Always-latest links, which `https://kody.codes/download` also redirects to on
+Windows:
+
+- x64:
+  `https://github.com/kody-hq/kody-desktop/releases/latest/download/Kody-win-x64.appinstaller`
+- arm64:
+  `https://github.com/kody-hq/kody-desktop/releases/latest/download/Kody-win-arm64.appinstaller`
+
+Each App Installer file names that stable link as its own `Uri`, so installs
+keep following the latest release. The direct package for a version is
+`https://github.com/kody-hq/kody-desktop/releases/download/v<version>/Kody-<version>-win-<arch>.msix`.
+
+Until the package is signed by a publicly trusted certificate, Windows only
+installs it after you trust the Kody sideloading certificate once. Download
+`Kody-win-signer.cer` from the same release, then in an administrator PowerShell
+in the download folder run:
+
+```powershell
+Import-Certificate -FilePath .\Kody-win-signer.cer -CertStoreLocation Cert:\LocalMachine\TrustedPeople
+```
+
+Then open the `.appinstaller` link for your architecture and choose **Install**.
+Later releases install automatically when Kody launches. Moving to a publicly
+trusted publisher changes the package identity, so sideloaded installs need one
+uninstall and a fresh install from the new release.
 
 **Desktop release** runs automatically when desktop, bundled CLI, shared code,
 dependency manifests, or the release workflow change on main. CI chooses the
@@ -290,27 +364,42 @@ starting over. Classifier and backoff live in
 
 The publish job still runs when a build fails. It uploads only assets the
 matching draft does not already have, then publishes as latest only when the
-matching draft has every expected installer and update feed, and those feeds
-match the uploaded files. Otherwise it leaves the draft. Re-run failed jobs, or
-dispatch the same source again, and complete targets are skipped. If a complete
-target's feed hash is wrong, fix that mismatch, remove the draft, and dispatch
-the source again so the assets rebuild.
+matching draft has every expected installer and update feed, those feeds match
+the uploaded files, and each App Installer file points at the uploaded MSIX of
+the same version and architecture. Otherwise it fails naming each missing target
+and its assets, and leaves the draft. Re-run failed jobs, or dispatch the same
+source again, and complete targets are skipped. If a complete target's feed hash
+is wrong, fix that mismatch, remove the draft, and dispatch the source again so
+the assets rebuild. After publishing, it deletes drafts below the published
+version, since those can never publish.
 
-The default `auto` scope preserves the platforms in the published feed, starting
-with Apple silicon and Intel Mac installers. Run the workflow manually on main
-with `all` to add Windows and Linux after configuring their signing credentials.
-Subsequent automatic releases keep those platforms in the update feed. macOS
-builds require Developer ID signing, Apple's notarization service, and a valid
-stapled ticket. Windows builds require valid signatures on the application and
-installer. The final job uploads all installers, blockmaps, manifests, and
-checksums to a draft, then publishes it. Published versions cannot be replaced.
-The normal Desktop binaries workflow still produces unsigned CI artifacts.
+When a build leg never gets a hosted runner (macOS arm64 capacity is the usual
+cause), the Desktop release runner watch workflow re-runs the failed jobs, up to
+four attempts with growing waits, until every target builds and the draft
+publishes. A leg that ran and failed is not re-run; the watch fails naming it,
+and also fails naming the starved targets when attempts run out. A newer main
+release run supersedes the watch, since it publishes the next version. The
+Desktop binaries runner watch does the same for Desktop binaries runs on pull
+requests and main, sooner (1, 5, then 15 minutes), so a starved leg does not
+leave a green change red. It leaves real failures and runs a newer push on the
+same branch replaced alone. `packages/desktop/scripts/release-runner-watch.cjs`
+holds that logic.
+
+Every release, automatic or dispatched, builds macOS, Windows, and Linux on both
+architectures; a release publishes only with all of them. macOS builds require
+Developer ID signing, Apple's notarization service, and a valid stapled ticket.
+Windows builds require valid signatures on the application and the MSIX, then
+install the package on the runner and smoke test that the app starts and its
+main window loads. Linux builds launch the AppImage and the installed `.deb`
+under Xvfb with the same smoke test (`scripts/linux-smoke.sh`). The final job
+uploads all installers, blockmaps, manifests, App Installer files, and checksums
+to a draft, then publishes it. Published versions cannot be replaced. The normal
+Desktop binaries workflow still produces unsigned CI artifacts.
 
 A repository admin must create the `desktop-release` GitHub environment in
 `kody-hq/kody` and restrict its deployment branches to main. The first Mac
-release needs the five Apple secrets and publishing token below. Windows
-certificate secrets and the Windows publisher variable are only required for
-`all` releases.
+release needs the five Apple secrets, the Windows signer, and the publishing
+token below.
 
 | Secret                                 | Value                                                                        |
 | -------------------------------------- | ---------------------------------------------------------------------------- |
@@ -323,9 +412,17 @@ certificate secrets and the Windows publisher variable are only required for
 | `DESKTOP_WINDOWS_CERTIFICATE_PASSWORD` | Password protecting that export                                              |
 | `DESKTOP_RELEASE_TOKEN`                | Fine-grained token with Contents write access only to `kody-hq/kody-desktop` |
 
-Set the environment variable `DESKTOP_WINDOWS_PUBLISHER` to the exact Windows
-certificate publisher name. Keep signing identities stable, existing installs
-verify replacement signatures.
+Set the environment variable `DESKTOP_WINDOWS_PUBLISHER` to the signing
+certificate's exact subject, for example `CN=Kody Desktop Sideload`. It becomes
+the MSIX manifest `Publisher`, and Windows only updates a package from the same
+publisher, so keep it stable.
+
+Until a publicly trusted signer is configured, the certificate secrets hold a
+self-signed code signing certificate whose public half each release publishes as
+`Kody-win-signer.cer`. To replace it, create a 3072-bit RSA certificate with the
+code signing extended key usage, export it as a password-protected `.pfx`, and
+update both certificate secrets. Keep the same subject so sideloaded installs
+keep updating once users trust the new `.cer`.
 
 For Azure Artifact Signing (formerly Trusted Signing), set
 `DESKTOP_WINDOWS_SIGNING_PROVIDER=azure` instead of supplying the Windows
@@ -334,8 +431,9 @@ certificate secrets. Set environment variables `DESKTOP_AZURE_ENDPOINT`,
 `DESKTOP_AZURE_TENANT_ID`, `DESKTOP_AZURE_CLIENT_ID`, and
 `DESKTOP_AZURE_CLIENT_SECRET`. The service principal needs the
 [Artifact Signing Certificate Profile Signer role](https://learn.microsoft.com/azure/artifact-signing/tutorial-assign-roles)
-on a Public Trust certificate profile. Publisher name must match the profile
-certificate. The default `certificate` provider uses the `.pfx` secrets above.
+on a Public Trust certificate profile. Set `DESKTOP_WINDOWS_PUBLISHER` to that
+profile certificate's subject. The default `certificate` provider uses the
+`.pfx` secrets above.
 
 Upload credentials through GitHub's environment secrets UI or use the CLI's
 interactive prompt, for example:
@@ -401,8 +499,8 @@ launches the default browser directly so the link does not return to the app.
 macOS only delivers links when the app was opened from another app (Mail,
 Messages, Notes, Slack) or from Safari on another site. Links clicked inside
 Chrome, Arc, Firefox, or a kody.codes page in Safari stay in the browser.
-Windows and Linux are not supported: Windows App Links need an MSIX or sparse
-package identity, and the NSIS installer has none.
+Windows and Linux are not supported yet. The MSIX package identity makes Windows
+App Links possible, but the package does not declare them.
 
 Associated Domains is a restricted entitlement, so a Developer ID build needs a
 matching provisioning profile or macOS kills it at launch. Release builds add

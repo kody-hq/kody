@@ -364,3 +364,195 @@ test('stored grants lose their credential mode and keep everything else', () => 
 		['ec_requester', { egress }, 3],
 	])
 })
+
+test('the machine capability migration keeps every grant and admits machine_capability', () => {
+	const migration = '0276-machine-capabilities.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = (id: string, resourceType: string) =>
+		sqlite.exec(`INSERT INTO grants (id, org_id, resource_type, resource_id, subject_type, subject_id, preset, created_by_user_id, created_at, updated_at, allow_unmappable_credential_changes)
+			VALUES ('${id}', 'org_acme', '${resourceType}', 'r1', 'profile', 'profile_1', 'use', 'user_test_1', 'now', 'now', 1)`)
+	insert('g-credential', 'credential')
+	insert('g-context', 'execution_context')
+	sqlite.exec(
+		`INSERT INTO grant_permissions (grant_id, permission) VALUES ('g-credential', 'secret:use')`,
+	)
+	expect(() => insert('g-early', 'machine_capability')).toThrow(
+		/CHECK constraint failed/,
+	)
+	const before = grantsSnapshot(sqlite)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(grantsSnapshot(sqlite)).toEqual(before)
+
+	insert('g-capability', 'machine_capability')
+	expect(() => insert('g-duplicate', 'machine_capability')).toThrow(
+		/UNIQUE constraint failed/,
+	)
+	const capability = (id: string, kind: string) =>
+		sqlite.exec(`INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, created_at, updated_at)
+			VALUES ('${id}', 'ec_1', 'org_acme', 'user_test_1', '${kind}', 'kdocker', 'now', 'now')`)
+	capability('mc_1', 'command')
+	expect(() => capability('mc_2', 'command')).toThrow(
+		/UNIQUE constraint failed/,
+	)
+	expect(() => capability('mc_3', 'docker')).toThrow(/CHECK constraint failed/)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT description, summary_json, allowed_packages_json, removed_at FROM machine_capabilities`,
+			)
+			.all(),
+	).toEqual([
+		{
+			description: '',
+			summary_json: '{}',
+			allowed_packages_json: '[]',
+			removed_at: null,
+		},
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT name FROM sqlite_master WHERE name IN ('grants_next', '__migration_assertions')`,
+			)
+			.all(),
+	).toEqual([])
+})
+
+test('every live context with host commands on gets a shell entry with no package limit', () => {
+	const migration = '0283-machine-shell-capabilities.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at, grant_json
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?, ?)`,
+	)
+	const on = JSON.stringify({ commands: { enabled: true } })
+	insert.run('ec_on', 'nas', 't1', null, on)
+	insert.run(
+		'ec_off',
+		'laptop',
+		't2',
+		null,
+		JSON.stringify({ commands: { enabled: false } }),
+	)
+	insert.run('ec_none', 'new', 't3', null, null)
+	insert.run('ec_gone', 'old', 't4', '2026-10-30', on)
+	applyMigrations(sqlite, (name) => name === migration)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT id, context_id, org_id, operator_user_id, kind, name, allowed_packages_json, removed_at
+				 FROM machine_capabilities`,
+			)
+			.all(),
+	).toEqual([
+		{
+			id: 'mcap_shell_ec_on',
+			context_id: 'ec_on',
+			org_id: 'org_acme',
+			operator_user_id: 'user_1',
+			kind: 'shell',
+			name: 'shell',
+			allowed_packages_json: '[]',
+			removed_at: null,
+		},
+	])
+})
+
+test('every live context with the local network on gets a whole network entry with no package limit', () => {
+	const migration = '0284-machine-network-capabilities.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at, grant_json
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?, ?)`,
+	)
+	const on = JSON.stringify({ egress: { mode: 'public-and-lan' } })
+	insert.run('ec_on', 'nas', 't1', null, on)
+	insert.run(
+		'ec_public',
+		'laptop',
+		't2',
+		null,
+		JSON.stringify({ egress: { mode: 'public' } }),
+	)
+	insert.run('ec_none', 'new', 't3', null, null)
+	insert.run('ec_gone', 'old', 't4', '2026-10-30', on)
+	applyMigrations(sqlite, (name) => name === migration)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT id, context_id, org_id, operator_user_id, kind, name, allowed_packages_json, removed_at
+				 FROM machine_capabilities`,
+			)
+			.all(),
+	).toEqual([
+		{
+			id: 'mcap_network_ec_on',
+			context_id: 'ec_on',
+			org_id: 'org_acme',
+			operator_user_id: 'user_1',
+			kind: 'lan',
+			name: '*',
+			allowed_packages_json: '[]',
+			removed_at: null,
+		},
+	])
+})
+
+test('the notices table keeps its rows and gains an open shell notice for every live context whose shell has no package list', () => {
+	const migration = '0286-execution-context-open-shell-notices.sql'
+	const sqlite = databaseBefore(migration)
+	const insert = sqlite.prepare(
+		`INSERT INTO execution_contexts (
+			id, org_id, operator_user_id, name, public_key_jwk, thumbprint, created_at, revoked_at, grant_json
+		) VALUES (?, 'org_acme', 'user_1', ?, '{}', ?, '2026-10-29', ?, ?)`,
+	)
+	const on = JSON.stringify({ commands: { enabled: true } })
+	insert.run('ec_open', 'nas', 't1', null, on)
+	insert.run('ec_limited', 'mini', 't2', null, on)
+	insert.run('ec_off', 'laptop', 't3', null, '{}')
+	insert.run('ec_gone', 'old', 't4', '2026-10-30', on)
+	sqlite.exec(`
+		INSERT INTO machine_capabilities (id, context_id, org_id, operator_user_id, kind, name, allowed_packages_json, created_at, updated_at)
+		VALUES ('m1', 'ec_open', 'org_acme', 'user_1', 'shell', 'shell', '[]', '2026-10-29', '2026-10-29'),
+		       ('m2', 'ec_limited', 'org_acme', 'user_1', 'shell', 'shell', '["pkg_a"]', '2026-10-29', '2026-10-29');
+		INSERT INTO execution_context_notices (context_id, org_id, kind, subject_user_id, fingerprint, detail_json, raised_at, updated_at, dismissed_fingerprint)
+		VALUES ('ec_off', 'org_acme', 'elevation', 'user_2', 'fp', '{"entries":[]}', '2026-10-29', '2026-10-29', 'fp');
+	`)
+	applyMigrations(sqlite, (name) => name === migration)
+	expect(
+		sqlite
+			.prepare(
+				`SELECT context_id, org_id, kind, subject_user_id, fingerprint, dismissed_fingerprint
+				 FROM execution_context_notices ORDER BY context_id`,
+			)
+			.all(),
+	).toEqual([
+		{
+			context_id: 'ec_off',
+			org_id: 'org_acme',
+			kind: 'elevation',
+			subject_user_id: 'user_2',
+			fingerprint: 'fp',
+			dismissed_fingerprint: 'fp',
+		},
+		{
+			context_id: 'ec_open',
+			org_id: 'org_acme',
+			kind: 'open_shell',
+			subject_user_id: 'user_1',
+			fingerprint: 'open-shell',
+			dismissed_fingerprint: null,
+		},
+	])
+	expect(
+		sqlite
+			.prepare(
+				`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'execution_context_notices_subject'`,
+			)
+			.all(),
+	).toHaveLength(1)
+})

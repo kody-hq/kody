@@ -11,22 +11,15 @@ export function anonymousRefusalResponse(message: string) {
 }
 
 /**
- * Anonymous visitors only run a publish whose commit matches the
- * owner-approved internet-visible commit (ADR 0069). A newer unapproved
- * publish returns 403.
+ * Anonymous visitors run only a commit the owner approved for them (ADR
+ * 0069); serve loads that commit, so the one refusal left is an app with no
+ * approved commit at all.
  */
 export function refuseUnapprovedAnonymousServe(input: {
 	visitor: RuntimePackageAppVisitor | null
 	approvedPublishedCommit: string | null | undefined
-	publishedCommit: string | null | undefined
 }) {
-	if (input.visitor) return null
-	if (
-		input.approvedPublishedCommit &&
-		input.approvedPublishedCommit === input.publishedCommit
-	) {
-		return null
-	}
+	if (input.visitor || input.approvedPublishedCommit) return null
 	return anonymousRefusalResponse(
 		'This version of the app is waiting for its owner to approve it for public visitors.',
 	)

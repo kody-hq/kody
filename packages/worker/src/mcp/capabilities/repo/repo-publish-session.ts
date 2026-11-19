@@ -21,7 +21,9 @@ import {
 } from './repo-shared.ts'
 import { rebuildPublishedPackageArtifactsViaRepoSession } from './package-artifact-rebuild.ts'
 import { settleFailedPublishRebuild } from './settle-failed-publish-rebuild.ts'
+import { assertPackagePublishCurrent } from './assert-package-publish-current.ts'
 import { reportCapabilityProgress } from '#mcp/progress.ts'
+import { buildHeldForApprovalPublishNotice } from '#mcp/capabilities/packages/held-for-approval-publish-notice.ts'
 import {
 	buildPackagePublishApprovalUrl,
 	createPackagePublishLockedMessage,
@@ -64,6 +66,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 	capabilityDomainNames.repo,
 	{
 		name: 'repoPublishSession',
+		walletGuard: 'publish',
 		contextRuns: 'deny',
 		orgPermission: 'package:write',
 		description:
@@ -136,7 +139,6 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								ownerUserId: owner.ownerUserId,
 								sourceId: sessionInfo.source_id,
 								failedCommit: result.publishedCommit,
-								sessionBaseCommit: sessionInfo.base_commit,
 								error,
 							}),
 						)
@@ -149,10 +151,23 @@ export const repoPublishSessionCapability = defineDomainCapability(
 								originCommit: args.absorbed_upstream_commit,
 							})
 						: null
+					const heldForApproval = await buildHeldForApprovalNoticeForSource({
+						env: ctx.env,
+						baseUrl: ctx.callerContext.baseUrl,
+						ownerUserId: owner.ownerUserId,
+						ownerScope: owner.ownerScope,
+						sourceId: sessionInfo.source_id,
+					})
 					await reportCapabilityProgress(ctx.reportProgress, {
 						progress: 3,
 						total: progressTotal,
-						message: 'Repo session published. Ship it.',
+						message: 'Confirming the published commit.',
+					})
+					await assertPackagePublishCurrent({
+						env: ctx.env,
+						sourceId: sessionInfo.source_id,
+						userId: owner.ownerUserId,
+						commit: result.publishedCommit,
 					})
 					return {
 						status: 'ok' as const,
@@ -160,6 +175,7 @@ export const repoPublishSessionCapability = defineDomainCapability(
 						published_commit: result.publishedCommit,
 						message: result.message,
 						...(absorbNotice ? { notice: absorbNotice } : {}),
+						...(heldForApproval ? { held_for_approval: heldForApproval } : {}),
 					}
 				}
 				const source = await getEntitySourceByIdForUser(ctx.env.APP_DB, {
@@ -295,18 +311,13 @@ export const repoPublishSessionCapability = defineDomainCapability(
 	},
 )
 
-/**
- * The session base is the commit that served before this publish (also when
- * resuming one an interrupted attempt already promoted), so a failed rebuild
- * restores it. Returns the error to throw, naming where the pointer landed.
- */
+/** Returns the rebuild error with the current rollback outcome. */
 async function settleFailedSessionRebuild(input: {
 	env: Env
 	baseUrl: string
 	ownerUserId: OwnerId
 	sourceId: string
 	failedCommit: string
-	sessionBaseCommit: string
 	error: unknown
 }) {
 	const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
@@ -323,7 +334,6 @@ async function settleFailedSessionRebuild(input: {
 			packageId: source.entity_id,
 			sourceId: input.sourceId,
 			failedCommit: input.failedCommit,
-			restoreCommit: input.sessionBaseCommit || null,
 			sentryScope: 'repoPublishSession.restore-after-rebuild-failure',
 		})
 	} catch {
@@ -331,9 +341,9 @@ async function settleFailedSessionRebuild(input: {
 		return input.error
 	}
 	const notice =
-		settled === 'restored'
-			? `This publish did not land: published_commit was rolled back to "${input.sessionBaseCommit}", which keeps serving. Commit "${input.failedCommit}" stays on the source branch; publish it again with packagePublishExternalPush.`
-			: settled === 'superseded'
+		settled.status === 'restored'
+			? `This publish did not land. published_commit points to the built commit "${settled.commit}". Commit "${input.failedCommit}" stays on the source branch. Publish it again with packagePublishExternalPush.`
+			: settled.status === 'superseded'
 				? 'This publish did not land; a newer publish already owns published_commit.'
 				: null
 	if (!notice) return input.error
@@ -377,5 +387,41 @@ async function absorbForkUpstreamAfterPublish(input: {
 			return null
 		}
 		return `Published, but the behind-upstream banner did not clear: ${getErrorMessage(error)}. Retry repoPublishSession with absorbed_upstream_commit.`
+	}
+}
+
+async function buildHeldForApprovalNoticeForSource(input: {
+	env: Env
+	baseUrl: string
+	ownerUserId: OwnerId
+	ownerScope: string
+	sourceId: string
+}) {
+	// Optional notice only: never fail a completed publish because a read rejected.
+	try {
+		const source = await getEntitySourceByIdForUser(input.env.APP_DB, {
+			id: input.sourceId,
+			userId: input.ownerUserId,
+		})
+		if (!source || source.entity_kind !== 'package') return null
+		const savedPackage = await getSavedPackageById(input.env.APP_DB, {
+			userId: input.ownerUserId,
+			packageId: source.entity_id,
+		})
+		if (!savedPackage) return null
+		return await buildHeldForApprovalPublishNotice({
+			env: input.env,
+			baseUrl: input.baseUrl,
+			ownerUserId: input.ownerUserId,
+			ownerScope: input.ownerScope,
+			packageId: savedPackage.id,
+			kodyId: savedPackage.kodyId,
+		})
+	} catch (error) {
+		console.warn(
+			`[heldForApproval] package lookup failed for source ${input.sourceId}:`,
+			error instanceof Error ? error.message : error,
+		)
+		return null
 	}
 }

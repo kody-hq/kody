@@ -1,4 +1,4 @@
-export const iconNames = [
+const iconNames = [
 	'home',
 	'clock',
 	'link',
@@ -16,6 +16,7 @@ export const iconNames = [
 	'key',
 	'plug',
 	'server',
+	'monitor',
 	'book',
 	'mail',
 	'users',

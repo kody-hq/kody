@@ -246,15 +246,13 @@ async function resolveRunsAs(
 
 /**
  * Record who published an app package, so it runs as them by default. A
- * publisher who is not an owner clears an explicit runs-as person other than
- * themselves: otherwise their new code would act with that person's
- * authority.
+ * publish never clears the runs-as person an owner chose: that choice stays
+ * until an owner changes it or the person can no longer act for the org.
  */
 export async function recordPackageAppPublisher(input: {
 	db: D1Database
 	scope: PackageAppAuthorityScope
 	personId: string
-	publisherIsOwner: boolean
 	now?: Date
 }) {
 	const personId = input.personId.trim()
@@ -268,12 +266,6 @@ export async function recordPackageAppPublisher(input: {
 				owner_id = excluded.owner_id,
 				published_by_person_id = excluded.published_by_person_id,
 				publisher_unknown = 0,
-				runs_as_person_id = CASE
-					WHEN ? = 1 THEN package_app_authority.runs_as_person_id
-					WHEN package_app_authority.runs_as_person_id = excluded.published_by_person_id
-						THEN package_app_authority.runs_as_person_id
-					ELSE NULL
-				END,
 				updated_at = excluded.updated_at`,
 		)
 		.bind(
@@ -281,16 +273,16 @@ export async function recordPackageAppPublisher(input: {
 			input.scope.orgId,
 			personId,
 			(input.now ?? new Date()).toISOString(),
-			input.publisherIsOwner ? 1 : 0,
 		)
 		.run()
 	forgetPackageAppRunsAs(input.scope)
 }
 
 /**
- * Someone published without a known person: forget the publisher and any
- * explicit runs-as person so the new code never runs as them. The app fails
- * closed until a known person publishes or an owner picks someone.
+ * Someone published without a known person: forget the publisher so the new
+ * code never runs as them. A runs-as person an owner chose stays. Without one
+ * the app fails closed until a known person publishes or an owner picks
+ * someone.
  */
 export async function recordPackageAppPublisherUnknown(input: {
 	db: D1Database
@@ -305,7 +297,6 @@ export async function recordPackageAppPublisherUnknown(input: {
 			 ON CONFLICT(package_id) DO UPDATE SET
 				owner_id = excluded.owner_id,
 				published_by_person_id = NULL,
-				runs_as_person_id = NULL,
 				publisher_unknown = 1,
 				updated_at = excluded.updated_at`,
 		)
@@ -319,29 +310,112 @@ export async function recordPackageAppPublisherUnknown(input: {
 }
 
 /**
+ * Note who asked to publish a commit that will finish in the durable
+ * workflow. Nothing about the live app changes: the person becomes the
+ * publisher only when that commit is published (`recordPackageAppPublish`).
+ * The first person to ask for a commit stays noted for it. Notes are kept
+ * for a week, so a finish step that is retried still finds its requester.
+ */
+export async function notePackageAppPublishRequester(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string
+	commit: string
+	now?: Date
+}) {
+	const now = input.now ?? new Date()
+	await input.db.batch([
+		input.db
+			.prepare(
+				`DELETE FROM package_app_publish_requests
+				 WHERE package_id = ? AND created_at < ?`,
+			)
+			.bind(
+				input.scope.packageId,
+				new Date(now.getTime() - publishRequestRetentionMs).toISOString(),
+			),
+		input.db
+			.prepare(
+				`INSERT INTO package_app_publish_requests
+				 (package_id, commit_sha, owner_id, person_id, created_at)
+				 VALUES (?, ?, ?, ?, ?)
+				 ON CONFLICT(package_id, commit_sha) DO NOTHING`,
+			)
+			.bind(
+				input.scope.packageId,
+				input.commit,
+				input.scope.orgId,
+				input.personId,
+				now.toISOString(),
+			),
+	])
+}
+
+const publishRequestRetentionMs = 7 * 24 * 60 * 60 * 1000
+
+async function loadPublishRequester(
+	db: D1Database,
+	scope: PackageAppAuthorityScope,
+	commit: string,
+) {
+	const row = await db
+		.prepare(
+			`SELECT person_id FROM package_app_publish_requests
+			 WHERE package_id = ? AND commit_sha = ? AND owner_id = ?`,
+		)
+		.bind(scope.packageId, commit, scope.orgId)
+		.first<{ person_id: string | null }>()
+	return row?.person_id?.trim() || null
+}
+
+/**
  * Record the person behind a publish (null: no known person). Call before the
- * new code serves, so it never runs as someone the publisher could not act as.
+ * new code serves.
+ *
+ * A publish that finishes in the durable workflow acts as the owning org,
+ * which is not a person. The publisher is then whoever asked for that commit
+ * (`notePackageAppPublishRequester`). Any other actor who is not a live member
+ * of the owning org counts as no known person, so new code never keeps
+ * running as the previous publisher.
  */
 export async function recordPackageAppPublish(input: {
 	db: D1Database
 	scope: PackageAppAuthorityScope
 	personId: string | null
+	commit?: string | null
 }) {
-	if (input.personId === null) {
-		await recordPackageAppPublisherUnknown({ db: input.db, scope: input.scope })
+	const personId = await resolvePublishingPerson(input)
+	if (personId === null) {
+		await recordPackageAppPublisherUnknown({
+			db: input.db,
+			scope: input.scope,
+		})
 		return
 	}
-	const binding = await loadOrgBindingForOrg(
-		input.db,
-		input.personId,
-		input.scope.orgId,
-	)
 	await recordPackageAppPublisher({
 		db: input.db,
 		scope: input.scope,
-		personId: input.personId,
-		publisherIsOwner: binding?.role === 'owner' || binding?.role === 'admin',
+		personId,
 	})
+}
+
+async function resolvePublishingPerson(input: {
+	db: D1Database
+	scope: PackageAppAuthorityScope
+	personId: string | null
+	commit?: string | null
+}) {
+	if (input.personId === null) return null
+	const isMember = async (personId: string) =>
+		(await loadOrgBindingForOrg(input.db, personId, input.scope.orgId)) !== null
+	if (await isMember(input.personId)) return input.personId
+	if (!input.commit) return null
+	const requester = await loadPublishRequester(
+		input.db,
+		input.scope,
+		input.commit,
+	)
+	return requester && (await isMember(requester)) ? requester : null
 }
 
 /** Choose who an app runs as; null goes back to the publisher. */

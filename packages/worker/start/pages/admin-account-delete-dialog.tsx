@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { CSSObject } from '@emotion/react'
@@ -10,23 +12,11 @@ import {
 } from '#start/server/admin-account-deletion'
 import { canConfirmAdminAccountDeletion } from '#universal/admin-account-deletion.ts'
 import { colors, spacing } from '#universal/styles/tokens.ts'
-import {
-	getAccentCalloutCss,
-	getDangerPillCss,
-	getGhostButtonCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
-import {
-	accountActionsCss,
-	accountFieldCss,
-	accountFieldLabelCss,
-	accountInputCss,
-} from './account-management-components.tsx'
+import { getAccentCalloutCss } from '#universal/styles/style-primitives.ts'
+import { accountActionsCss } from './account-management-components.tsx'
 import { AdminAccountDeletionSummaryList } from './admin-account-deletion-summary.tsx'
-
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
-const secondaryButtonCss = getGhostButtonCss({ size: 'sm' })
-const dangerButtonCss = getDangerPillCss({ size: 'sm' })
+import { Input } from '../components/input.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 export function AdminUserAccountModeration(props: {
 	stableUserId: string
@@ -112,54 +102,55 @@ export function AdminUserAccountModeration(props: {
 				}}
 			>
 				{props.suspendedAt ? (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						onClick={() => props.onSubmitModerationAction('unsuspend_user')}
-						css={primaryButtonCss}
+						variant="primary"
 					>
 						{props.parentMutating ? 'Working…' : 'Clear suspension'}
-					</button>
+					</Button>
 				) : (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						data-testid="admin-suspend-account"
 						onClick={() => props.onSubmitModerationAction('suspend_user')}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{props.parentMutating ? 'Working…' : 'Suspend account'}
-					</button>
+					</Button>
 				)}
-				<button
+				<Button
 					type="button"
 					disabled={pending}
 					data-testid="admin-delete-account"
 					onClick={openDialog}
-					css={dangerButtonCss}
+					variant="danger"
 				>
 					Delete account
-				</button>
+				</Button>
 				{props.emailOutboundPausedAt ? (
-					<button
+					<Button
 						type="button"
 						disabled={pending}
 						onClick={() =>
 							props.onSubmitModerationAction('resume_email_outbound')
 						}
-						css={secondaryButtonCss}
+						variant="secondary"
 					>
 						{props.parentMutating ? 'Working…' : 'Resume outbound email'}
-					</button>
+					</Button>
 				) : null}
 			</div>
 			{open && (
-				<ModalDialog
-					alert
+				<Dialog
+					open
+					role="alertdialog"
 					flush
-					label="Delete account"
-					width={640}
-					testId="admin-delete-account-dialog"
+					aria-label="Delete account"
+					size="lg"
+					data-testid="admin-delete-account-dialog"
 					onClose={closeDialog}
 				>
 					<form
@@ -193,8 +184,7 @@ export function AdminUserAccountModeration(props: {
 						) : null}
 						{summary?.acknowledgementRequired ? (
 							<label css={acknowledgeCss}>
-								<input
-									type="checkbox"
+								<Checkbox
 									data-testid="admin-delete-account-acknowledge"
 									checked={acknowledged}
 									onChange={(event) => {
@@ -204,26 +194,23 @@ export function AdminUserAccountModeration(props: {
 								<span>I acknowledge the consequences listed above.</span>
 							</label>
 						) : null}
-						<label css={accountFieldCss}>
-							<span css={accountFieldLabelCss}>
-								Type {summary?.handle ?? props.username} to confirm
-							</span>
-							<input
+						<Field
+							label={<>Type {summary?.handle ?? props.username}to confirm</>}
+						>
+							<Input
 								type="text"
 								name="handleConfirmation"
 								data-testid="admin-delete-account-handle"
-								data-field-ring
 								autoComplete="off"
 								spellCheck={false}
 								required
 								value={typedHandle}
-								css={accountInputCss}
 								onInput={(event: FormEvent<HTMLInputElement>) => {
 									if (!(event.currentTarget instanceof HTMLInputElement)) return
 									setTypedHandle(event.currentTarget.value)
 								}}
 							/>
-						</label>
+						</Field>
 						<div css={getAccentCalloutCss({ accentColor: colors.danger })}>
 							<p css={{ margin: 0 }}>
 								This cannot be undone. The handle can be registered again after
@@ -238,25 +225,25 @@ export function AdminUserAccountModeration(props: {
 							</p>
 						) : null}
 						<div css={accountActionsCss}>
-							<button
+							<Button
 								type="button"
 								disabled={deletion.isPending}
-								css={getGhostButtonCss({ size: 'sm' })}
+								variant="secondary"
 								onClick={closeDialog}
 							>
 								Cancel
-							</button>
-							<button
+							</Button>
+							<Button
 								type="submit"
 								disabled={!canDelete}
 								data-testid="admin-delete-account-confirm"
-								css={getDangerPillCss({ size: 'sm' })}
+								variant="danger"
 							>
 								{deletion.isPending ? 'Deleting…' : 'Delete account'}
-							</button>
+							</Button>
 						</div>
 					</form>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</>
 	)

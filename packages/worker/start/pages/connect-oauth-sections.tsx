@@ -1,4 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import type { FormEvent } from 'react'
@@ -19,15 +22,10 @@ import { colors, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardCss,
 	descriptionCss,
-	fieldCss,
-	fieldLabelCss,
 	getAccentCalloutCss,
-	getSecondaryButtonCss,
-	inputCss,
 	insetCardCss,
 	listCss,
 	pageDescriptionCss,
-	primaryLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	connectOauthChooserFilterMinOptions,
@@ -36,13 +34,12 @@ import {
 	filterConnectOauthChooserOptions,
 } from '#client/routes/connect-oauth-chooser-list.ts'
 import type { ConnectOauthConfig } from '#client/routes/connect-oauth-config.ts'
-import {
-	type ConnectOauthChooserOption,
-	type ConnectOauthStatusTone,
-	type ConnectOauthStep,
-	connectOauthPrimaryButtonCss,
-	connectOauthSecondaryButtonCss,
+import type {
+	ConnectOauthChooserOption,
+	ConnectOauthStatusTone,
+	ConnectOauthStep,
 } from './connect-oauth-shared.ts'
+import { Input } from '../components/input.tsx'
 
 /**
  * True when saving `next` would swap the OAuth app behind a live
@@ -144,32 +141,35 @@ export function renderLiveAppReplaceWarning(input: {
 						alignItems: 'center',
 					}}
 				>
-					<button
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onReplace}
 						data-testid="connect-live-replace-confirm"
 					>
 						Replace this app
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onChooseNewName}
 						data-testid="connect-live-replace-save-new"
 					>
 						Save as a new connection
-					</button>
-					<button
+					</Button>
+					<Button
 						type="button"
 						disabled={input.submitting}
-						css={connectOauthSecondaryButtonCss}
+						variant="secondary"
+						size="md"
 						onClick={input.onCancel}
 					>
 						Cancel
-					</button>
+					</Button>
 				</div>
 			) : (
 				<form
@@ -177,13 +177,11 @@ export function renderLiveAppReplaceWarning(input: {
 					onSubmit={input.onSaveAsNew}
 					data-testid="connect-live-replace-new-form"
 				>
-					<label css={fieldCss}>
-						<span css={fieldLabelCss}>New connection name</span>
-						<input
+					<Field label="New connection name">
+						<Input
 							name="newConnectionName"
 							required
 							value={state.newName}
-							css={inputCss}
 							aria-invalid={state.nameError ? true : undefined}
 							aria-describedby={
 								state.nameError ? 'connect-new-name-error' : undefined
@@ -192,7 +190,7 @@ export function renderLiveAppReplaceWarning(input: {
 								input.onNewNameInput(event.currentTarget.value)
 							}}
 						/>
-					</label>
+					</Field>
 					{state.nameError ? (
 						<p
 							id="connect-new-name-error"
@@ -213,22 +211,24 @@ export function renderLiveAppReplaceWarning(input: {
 							alignItems: 'center',
 						}}
 					>
-						<button
+						<Button
 							type="submit"
 							disabled={input.submitting}
-							css={connectOauthPrimaryButtonCss}
+							variant="primary"
+							size="md"
 							data-testid="connect-live-replace-new-submit"
 						>
 							Save as new connection
-						</button>
-						<button
+						</Button>
+						<Button
 							type="button"
 							disabled={input.submitting}
-							css={connectOauthSecondaryButtonCss}
+							variant="secondary"
+							size="md"
 							onClick={input.onCancel}
 						>
 							Cancel
-						</button>
+						</Button>
 					</div>
 				</form>
 			)}
@@ -282,17 +282,18 @@ export function renderReplaceConfirmation(input: {
 					alignItems: 'center',
 				}}
 			>
-				<button
+				<Button
 					type="button"
 					disabled={input.submitting}
-					css={getSecondaryButtonCss()}
+					variant="secondary"
+					size="md"
 					onClick={() => {
 						input.onConfirm()
 					}}
 					data-testid="connect-replace-confirm"
 				>
 					Replace {input.config.providerKey}
-				</button>
+				</Button>
 			</div>
 		</div>
 	)
@@ -327,7 +328,7 @@ export function renderChooser(input: {
 				Pick a service to connect. Saved integrations start from a name alone.
 			</p>
 			{showFilter ? (
-				<input
+				<Input
 					type="text"
 					role="searchbox"
 					inputMode="search"
@@ -335,7 +336,6 @@ export function renderChooser(input: {
 					placeholder="Filter services"
 					aria-label="Filter services"
 					data-testid="connect-oauth-chooser-filter"
-					css={inputCss}
 					value={input.chooserFilter}
 					onChange={(event) => input.onFilterChange(event.currentTarget.value)}
 				/>
@@ -393,10 +393,7 @@ export function renderChooser(input: {
 			)}
 			<p css={descriptionCss}>
 				Need a service that is not listed?{' '}
-				<SiteLink href={docHref('oauth')} css={primaryLinkCss}>
-					Bring your own OAuth app
-				</SiteLink>
-				.
+				<TextLink href={docHref('oauth')}>Bring your own OAuth app</TextLink>.
 			</p>
 		</section>
 	)
@@ -419,10 +416,7 @@ export function renderIncompleteConfig(provider: string) {
 			/>
 			<p css={descriptionCss}>
 				Or start from a known service on the{' '}
-				<SiteLink href="/connect/oauth" css={primaryLinkCss}>
-					connect page
-				</SiteLink>
-				.
+				<TextLink href="/connect/oauth">connect page</TextLink>.
 			</p>
 		</section>
 	)

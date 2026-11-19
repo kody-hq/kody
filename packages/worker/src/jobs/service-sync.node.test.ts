@@ -28,6 +28,7 @@ import {
 	withCallerUser,
 } from '#worker/test-support/jobs-service.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
+import { createD1JobsStore } from '@kody-internal/shared/jobs/store.ts'
 
 vi.mock('#worker/repo/source-service.ts', async () =>
 	(
@@ -199,7 +200,11 @@ test('package job sync reports scheduler changes for add, update, and remove onl
 		sourceId: 'source-1',
 	}
 	const sync = (jobs: Record<string, unknown>) =>
-		syncPackageJobsForPackage({ ...input, manifest: cloudflareManifest(jobs) })
+		syncPackageJobsForPackage({
+			...input,
+			publishedCommit: 'package-published-commit',
+			manifest: cloudflareManifest(jobs),
+		})
 	const listRows = () => listJobRowsByUserId(env.APP_DB, input.userId)
 	await seedPackageSource({
 		...input,
@@ -279,6 +284,7 @@ test('package job sync preserves runtime enabled and does not re-enable from the
 	const sync = (enabled: boolean) =>
 		syncPackageJobsForPackage({
 			...input,
+			publishedCommit: 'package-published-commit',
 			manifest: cloudflareManifest({
 				sweep: {
 					entry: './src/jobs/sweep.ts',
@@ -325,6 +331,60 @@ test('package job sync preserves runtime enabled and does not re-enable from the
 	expect(await sync(false)).toBe(false)
 	const preserved = await firstRow()
 	expect(preserved?.record.enabled).toBe(true)
+})
+
+test('package job sync resumes after a committed insert loses its reply', async () => {
+	const db = createDatabase()
+	const store = createD1JobsStore(db)
+	const insertJob = vi
+		.fn(store.insertJob)
+		.mockImplementationOnce(async (input) => {
+			await store.insertJob(input)
+			throw new Error('job insert reply lost')
+		})
+	const input = {
+		env: createJobServiceTestEnv({ APP_DB: db, JOBS: { ...store, insertJob } }),
+		userId: ownerIdFromStored('user-1'),
+		baseUrl: 'https://heykody.dev',
+		packageId: 'package-1',
+		sourceId: 'source-1',
+		publishedCommit: 'new-commit',
+	}
+	await seedPackageSource(input)
+	const definition = {
+		entry: './src/jobs/sweep.ts',
+		schedule: { type: 'interval', every: '1h' },
+		enabled: false,
+	}
+	const manifest = cloudflareManifest({
+		sweep: definition,
+		cleanup: definition,
+	})
+	const sync = () => syncPackageJobsForPackage({ ...input, manifest })
+	const rows = () => store.listJobsForUser({ userId: input.userId })
+
+	await expect(sync()).rejects.toThrow('job insert reply lost')
+	expect((await rows()).map((row) => row.name)).toEqual(['sweep'])
+	await expect(sync()).resolves.toBe(true)
+	await expect(sync()).resolves.toBe(false)
+	expect(insertJob.mock.calls.map(([{ job }]) => job.name)).toEqual([
+		'sweep',
+		'cleanup',
+	])
+	expect(await rows()).toEqual(
+		expect.arrayContaining([
+			expect.objectContaining({
+				name: 'sweep',
+				enabled: 0,
+				published_commit: 'new-commit',
+			}),
+			expect.objectContaining({
+				name: 'cleanup',
+				enabled: 0,
+				published_commit: 'new-commit',
+			}),
+		]),
+	)
 })
 
 test('package job sync preflights the full addition set without partial inserts', async () => {
@@ -375,6 +435,7 @@ test('package job sync preflights the full addition set without partial inserts'
 		env,
 		...target,
 		baseUrl: 'https://heykody.dev',
+		publishedCommit: 'new-package-commit',
 		manifest: packageManifest({
 			name: '@owner/new-package',
 			kodyId: 'new-package',
@@ -462,6 +523,7 @@ test('free and public Standard plans reject new or changed schedules faster than
 			env,
 			...mixed,
 			baseUrl: 'https://example.com',
+			publishedCommit: 'mixed-interval-commit',
 			manifest: packageManifest({
 				name: '@owner/mixed-interval-package',
 				kodyId: 'mixed-interval-package',

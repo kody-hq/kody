@@ -23,6 +23,8 @@ import {
 } from '#worker/feature-flags/service.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
 import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
+import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
+import { toUnheldSourceView } from '#worker/repo/serving-commit.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
 import { loadPublishedCredentialNeeds } from './credential-needs-closure.ts'
 import {
@@ -283,12 +285,18 @@ async function loadEnforcedPackage(input: {
 	if (!stamped && (await isAuthorsOwnPackage({ ...input, saved }))) {
 		return { kind: 'exempt' }
 	}
+	// Declarations of the commit the app runs, not one held for approval.
+	const source = memo(async () => {
+		const row = await getEntitySourceById(input.env.APP_DB, saved.sourceId)
+		return row ? toUnheldSourceView(row) : null
+	})
 	const declarations = (fresh: boolean) =>
-		memo(() =>
+		memo(async () =>
 			loadPublishedCredentialNeeds({
 				env: input.env,
 				userId: saved.userId,
 				sourceId: saved.sourceId,
+				source: await source(),
 				fresh,
 				request: input.request,
 			}),

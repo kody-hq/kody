@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { updateOrganizationMemberCreation } from '#start/server/org-settings-mutations'
 import {
 	useMutation,
@@ -10,9 +12,8 @@ import { useState } from 'react'
 import type { OrgSettingsLoaderData } from '#universal/loader-data.ts'
 import { orgGrantsPath } from '#universal/org-pages.ts'
 import {
-	getPillButtonCss,
-	primaryLinkCss,
 	visuallyHiddenCss,
+	fieldDescriptionCss,
 } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
@@ -20,7 +21,6 @@ import {
 	spacing,
 	typography,
 } from '#universal/styles/tokens.ts'
-import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon } from '../components/icon.tsx'
 import { orgSettingsMutationOptions } from '../org-settings-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
@@ -33,8 +33,8 @@ import {
 	AccountManagementMessage,
 	AccountManagementPanel,
 	accountActionsCss,
-	accountFieldNoteCss,
 } from './account-management-components.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 const memberCreationOptions: ReadonlyArray<{
 	key: keyof MemberCreation
@@ -133,8 +133,7 @@ export function OrgSettingsMemberCreation({
 								data-testid="org-settings-member-creation-option"
 								data-setting={option.key}
 							>
-								<input
-									type="checkbox"
+								<Checkbox
 									name={option.key}
 									checked={draft[option.key]}
 									css={checkboxCss}
@@ -148,18 +147,15 @@ export function OrgSettingsMemberCreation({
 								/>
 								<span css={checkTextCss}>
 									<span css={checkLabelCss}>{option.label}</span>
-									<span css={accountFieldNoteCss}>{option.description}</span>
+									<span css={fieldDescriptionCss}>{option.description}</span>
 								</span>
 							</label>
 						))}
 					</fieldset>
-					<p css={accountFieldNoteCss}>
+					<p css={fieldDescriptionCss}>
 						To let only some people or teams create, leave a setting off and add
 						create access on{' '}
-						<SiteLink css={primaryLinkCss} href={orgGrantsPath(data.org.slug)}>
-							Grants
-						</SiteLink>
-						.
+						<TextLink href={orgGrantsPath(data.org.slug)}>Grants</TextLink>.
 					</p>
 					{message ? (
 						<AccountManagementMessage tone={message.tone}>
@@ -167,15 +163,15 @@ export function OrgSettingsMemberCreation({
 						</AccountManagementMessage>
 					) : null}
 					<div css={accountActionsCss}>
-						<button
+						<Button
 							type="submit"
 							data-testid="org-settings-member-creation-save"
 							disabled={unchanged || mutation.isPending}
-							css={getPillButtonCss({ size: 'sm' })}
+							variant="primary"
 						>
 							{renderIcon('check', { size: '1.05rem' })}
 							{mutation.isPending ? 'Saving…' : 'Save member permissions'}
-						</button>
+						</Button>
 					</div>
 				</form>
 			) : (

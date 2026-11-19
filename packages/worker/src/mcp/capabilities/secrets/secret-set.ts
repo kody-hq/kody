@@ -1,4 +1,7 @@
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import { z } from 'zod'
 import { defineDomainCapability } from '#mcp/capabilities/define-domain-capability.ts'
 import { capabilityDomainNames } from '#mcp/capabilities/domain-metadata.ts'
@@ -129,7 +132,7 @@ export const secretSetCapability = defineDomainCapability(
 		inputSchema: secretSetInputSchema,
 		outputSchema: secretMetadataSchema,
 		async handler(parsed, ctx: CapabilityContext) {
-			const user = requireMcpUser(ctx.callerContext)
+			requireMcpUser(ctx.callerContext)
 			const { authorityPackageId, storageContext } =
 				resolveCallerSecretAuthority({
 					storageContext: ctx.callerContext.storageContext,
@@ -162,7 +165,10 @@ export const secretSetCapability = defineDomainCapability(
 					loginExchange: parsed.login_exchange,
 					description: parsed.description,
 					expiresAt: parsed.expires_at,
-					userEmail: user.email,
+					userEmail: entitlementEmailForOwner(
+						ctx.callerContext,
+						ownerIdFromCaller(ctx.callerContext),
+					),
 					storageContext,
 				})
 				return { ...toSecretCapabilityOutput(saved), ...report }
@@ -221,7 +227,10 @@ export const secretSetCapability = defineDomainCapability(
 					env: ctx.env,
 					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 					userId: ownerIdFromCaller(ctx.callerContext),
-					userEmail: user.email,
+					userEmail: entitlementEmailForOwner(
+						ctx.callerContext,
+						ownerIdFromCaller(ctx.callerContext),
+					),
 					packageId: authorityPackageId,
 					name: parsed.name,
 					value: parsed.value,
@@ -235,7 +244,10 @@ export const secretSetCapability = defineDomainCapability(
 							? orgAuditWriterFromCaller(ctx.env, ctx.callerContext)
 							: null,
 					userId: ownerIdFromCaller(ctx.callerContext),
-					userEmail: user.email,
+					userEmail: entitlementEmailForOwner(
+						ctx.callerContext,
+						ownerIdFromCaller(ctx.callerContext),
+					),
 					scope: parsed.scope,
 					name: parsed.name,
 					value: parsed.value,

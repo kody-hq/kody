@@ -1,5 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { SiteLink } from './site-link.tsx'
+import { pageDescriptionCss } from '#universal/styles/style-primitives.ts'
+import { Badge } from '../components/badge.tsx'
+import { Button } from './button.tsx'
 import type { CSSObject } from '@emotion/react'
 
 import { workspaceLandingItem } from '#client/routes/account-rail.ts'
@@ -7,17 +9,8 @@ import { buildAuthLink } from '#client/auth-links.ts'
 import { formatCommunityPublishedDate } from '#universal/community-display.ts'
 import type { ProfileShellLoaderData } from '#universal/loader-data.ts'
 import { routes } from '#universal/routes.ts'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
-import {
-	getGhostButtonCss,
-	getPillButtonCss,
-	pageDescriptionCss,
-} from '#universal/styles/style-primitives.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+
 import { UserAvatar } from './user-avatar.tsx'
 
 const profilePagePath = (username: string) => routes.profile.href({ username })
@@ -50,14 +43,14 @@ export function renderProfileIdentity(
 						{shell.displayName}
 					</h1>
 					{shell.isSelf && shell.visibility === 'private' ? (
-						<span css={badgeCss} data-testid="profile-private-badge">
+						<Badge tone="accent" data-testid="profile-private-badge">
 							Private
-						</span>
+						</Badge>
 					) : null}
 					{isOrg ? (
-						<span css={badgeCss} data-testid="profile-org-badge">
+						<Badge tone="accent" data-testid="profile-org-badge">
 							Organization
-						</span>
+						</Badge>
 					) : null}
 				</div>
 				<p css={usernameCss} data-testid="profile-username">
@@ -77,36 +70,33 @@ export function renderProfileIdentity(
 						<p css={guestCtaCopyCss}>
 							You're a member. Everyone sees this public page.
 						</p>
-						<SiteLink
+						<Button
 							href={orgHomeHref}
 							data-testid="profile-org-home"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Organization home
-						</SiteLink>
-						<SiteLink
+						</Button>
+						<Button
 							href={workspaceLandingItem(shell.username).href}
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Workspace
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 				{shell.isSelf ? (
 					<div css={actionsCss} data-testid="profile-actions">
-						<SiteLink
+						<Button
 							href={workspaceLandingItem(workspaceSlug).href}
 							data-testid="profile-workspace"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							Workspace
-						</SiteLink>
-						<SiteLink
-							href={routes.account.href()}
-							css={getGhostButtonCss({ size: 'sm' })}
-						>
+						</Button>
+						<Button href={routes.account.href()} variant="secondary">
 							Account settings
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 				{!shell.loggedIn
@@ -139,20 +129,20 @@ export function renderOrgIdentity(input: {
 			<div css={identityCopyCss}>
 				<div css={nameRowCss}>
 					<h1 css={displayNameCss}>{input.name}</h1>
-					<span css={badgeCss} data-testid="org-role">
+					<Badge tone="accent" data-testid="org-role">
 						{input.role}
-					</span>
+					</Badge>
 				</div>
 				<p css={usernameCss}>{input.handle}</p>
 				{input.publicPageHref ? (
 					<div css={actionsCss}>
-						<SiteLink
+						<Button
 							href={input.publicPageHref}
 							data-testid="org-public-page"
-							css={getGhostButtonCss({ size: 'sm' })}
+							variant="secondary"
 						>
 							View public page
-						</SiteLink>
+						</Button>
 					</div>
 				) : null}
 			</div>
@@ -165,18 +155,20 @@ function renderProfileLoggedOutCtas(returnTo: string) {
 		<div css={guestCtaCss} data-testid="profile-guest-cta">
 			<p css={guestCtaCopyCss}>Log in or sign up to fork these packages.</p>
 			<p css={guestCtaActionsCss}>
-				<SiteLink
+				<Button
 					href={buildAuthLink(routes.login.href(), returnTo)}
-					css={getGhostButtonCss()}
+					variant="secondary"
+					size="lg"
 				>
 					Log in
-				</SiteLink>
-				<SiteLink
+				</Button>
+				<Button
 					href={buildAuthLink(routes.signup.href(), returnTo)}
-					css={getPillButtonCss()}
+					variant="primary"
+					size="lg"
 				>
 					Sign up
-				</SiteLink>
+				</Button>
 			</p>
 		</div>
 	)
@@ -235,15 +227,6 @@ const joinedCss = {
 	margin: 0,
 	color: colors.textMuted,
 	fontSize: typography.fontSize.sm,
-} satisfies CSSObject
-
-const badgeCss = {
-	padding: `${spacing.xs} ${spacing.sm}`,
-	borderRadius: radius.full,
-	backgroundColor: colors.primarySoftest,
-	color: colors.primaryText,
-	fontSize: typography.fontSize.sm,
-	fontWeight: typography.fontWeight.medium,
 } satisfies CSSObject
 
 const actionsCss = {

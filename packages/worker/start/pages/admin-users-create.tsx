@@ -1,21 +1,17 @@
 /** @jsxImportSource @emotion/react */
+import { Field } from '../components/field.tsx'
+import { Button } from '../components/button.tsx'
 import { SiteLink } from '../components/site-link.tsx'
 import type { FormEvent } from 'react'
 import { formatNullableTimestamp } from '../components/local-timestamp.tsx'
 import { colors, mq, spacing } from '#universal/styles/tokens.ts'
-import {
-	fieldCss,
-	fieldLabelCss,
-	getPillButtonCss,
-} from '#universal/styles/style-primitives.ts'
 import type { AdminCreatedUserSetup } from '#universal/loader-data.ts'
 import {
 	AccountManagementPanel,
-	accountInputCss,
 	noticeCardCss,
 } from './account-management-components.tsx'
 import type { AdminUsersActionState } from './admin-users-detail.tsx'
-const primaryButtonCss = getPillButtonCss({ size: 'sm' })
+import { Input } from '../components/input.tsx'
 export function AdminCreateUserPanel(input: {
 	actionState: AdminUsersActionState
 	createdUser: AdminCreatedUserSetup | null
@@ -41,48 +37,36 @@ export function AdminCreateUserPanel(input: {
 					},
 				}}
 			>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>User email</span>
-					<input
-						data-field-ring
+				<Field label="User email">
+					<Input
 						name="email"
 						type="email"
 						required
 						placeholder="person@example.com"
 						disabled={input.isMutating}
-						css={accountInputCss}
 					/>
-				</label>
-				<label css={fieldCss}>
-					<span css={fieldLabelCss}>Username (optional)</span>
-					<input
-						data-field-ring
+				</Field>
+				<Field label="Username (optional)">
+					<Input
 						name="username"
 						type="text"
 						placeholder="Auto-generated from email"
 						disabled={input.isMutating}
-						css={accountInputCss}
 					/>
-				</label>
-				<button
-					type="submit"
-					disabled={input.isMutating}
-					css={primaryButtonCss}
-				>
+				</Field>
+				<Button type="submit" disabled={input.isMutating} variant="primary">
 					{input.actionState === 'creatingUser' ? 'Creating…' : 'Create user'}
-				</button>
+				</Button>
 			</div>
 			{input.createdUser ? (
 				<div css={noticeCardCss}>
 					<p css={{ margin: 0 }}>
 						Setup link for <strong>{input.createdUser.email}</strong>:
 					</p>
-					<input
-						data-field-ring
+					<Input
 						readOnly
 						aria-label="Password setup link"
 						value={input.createdUser.setupLink}
-						css={accountInputCss}
 					/>
 					<SiteLink
 						href={input.createdUser.setupLink}

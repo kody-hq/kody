@@ -1,11 +1,19 @@
 import { getErrorMessage } from '@kody-internal/shared/error-message.ts'
 import { listJsonSchemaSubsetProblems } from '@kody-internal/shared/json-schema-subset.ts'
 import {
+	getPackageAppHostLabelLengthError,
+	isPackageAppHostLabelReservedPackageLeaf,
+	packageAppHostLabelReservedPackageLeafMessage,
+} from '@kody-internal/shared/package-app-host-label.ts'
+import {
 	isPackageAppHostReservedPackageLeaf,
 	packageAppHostReservedPackageLeafMessage,
 } from '@kody-internal/shared/package-app-host-paths.ts'
 import { z } from 'zod'
-import { parseModuleSource, type ModuleAstNode } from '#worker/module-source.ts'
+import type {
+	ModuleAstNode,
+	ModuleSourceParser,
+} from '#worker/module-source.ts'
 import {
 	collectLocalValueDeclarations,
 	collectValueReferenceNames,
@@ -16,6 +24,7 @@ import {
 import {
 	authoredPackageJsonSchema,
 	packageCredentialsSchema,
+	packageMachineNeedsSchema,
 	packageAppVisitorNeedKeyPattern,
 	webhookDefaultRateLimitPerMinute,
 	type AuthoredPackageJson,
@@ -135,6 +144,7 @@ export function parseAuthoredPackageJson(input: {
 	}
 	const invalidCredentialSlots =
 		input.mode === 'published' ? splitPublishedCredentials(parsed) : null
+	if (input.mode === 'published') dropInvalidPublishedMachineNeeds(parsed)
 	const result = authoredPackageJsonSchema.safeParse(parsed)
 	if (!result.success) {
 		const formatted = z.prettifyError(result.error)
@@ -164,6 +174,23 @@ export function parseAuthoredPackageJson(input: {
 		throw new Error(
 			`Invalid ${input.manifestPath ?? packageManifestPath}:\n${packageAppHostReservedPackageLeafMessage(expectedKodyId)}`,
 		)
+	}
+	if ((input.mode ?? 'authoring') === 'authoring') {
+		const hostLabelError = isPackageAppHostLabelReservedPackageLeaf(
+			expectedKodyId,
+		)
+			? packageAppHostLabelReservedPackageLeafMessage(expectedKodyId)
+			: manifest.kody.app
+				? getPackageAppHostLabelLengthError({
+						leaf: expectedKodyId,
+						handle: getPackageNameScope(manifest.name) ?? '',
+					})
+				: null
+		if (hostLabelError) {
+			throw new Error(
+				`Invalid ${input.manifestPath ?? packageManifestPath}:\n${hostLabelError}`,
+			)
+		}
 	}
 	// Authoring/publish only: an older snapshot with such a key still loads,
 	// and consent rejects its need:<key> scope when a visitor is asked for it.
@@ -311,6 +338,16 @@ function splitPublishedCredentials(
 	}
 	kody.credentials = Object.fromEntries(valid)
 	return invalid.length > 0 ? Object.fromEntries(invalid) : null
+}
+
+// Publishes before `kody.machine` existed kept the key unvalidated and never
+// honored it, so a snapshot whose value is not valid loads as undeclared.
+function dropInvalidPublishedMachineNeeds(parsed: unknown) {
+	if (!isPlainRecord(parsed) || !isPlainRecord(parsed.kody)) return
+	if (!('machine' in parsed.kody)) return
+	if (!packageMachineNeedsSchema.safeParse(parsed.kody.machine).success) {
+		delete parsed.kody.machine
+	}
 }
 
 // Retired once schedules are inert at snapshot load; authoring still rejects them via packageJobScheduleSchema.
@@ -1415,6 +1452,7 @@ const maxValueImportHops = 4
  * relative imports and named re-exports across package files (bounded hops).
  */
 function createLocalValueResolver(input: {
+	parser: ModuleSourceParser
 	sourcePath: string | null
 	files?: Record<string, string>
 	body: Array<ModuleAstNode>
@@ -1440,7 +1478,7 @@ function createLocalValueResolver(input: {
 		let scope: ModuleValueScope | null = null
 		if (source != null) {
 			try {
-				const body = getProgramBody(parseModuleSource(source))
+				const body = getProgramBody(input.parser.parseModuleSource(source))
 				scope = {
 					values: collectLocalValueDeclarations(source, body, path),
 					imports: [
@@ -1481,6 +1519,7 @@ function createLocalValueResolver(input: {
 }
 
 function createImportedTypeMerger(input: {
+	parser: ModuleSourceParser
 	sourcePath: string | null
 	files?: Record<string, string>
 	body: Array<ModuleAstNode>
@@ -1509,7 +1548,9 @@ function createImportedTypeMerger(input: {
 				if (importedSource == null) continue
 				let importedBody: Array<ModuleAstNode>
 				try {
-					importedBody = getProgramBody(parseModuleSource(importedSource))
+					importedBody = getProgramBody(
+						input.parser.parseModuleSource(importedSource),
+					)
 				} catch {
 					continue
 				}
@@ -1587,14 +1628,15 @@ function projectDefaultExportIdentifier(input: {
 }
 
 function collectExportedFunctionsFromSource(input: {
+	parser: ModuleSourceParser
 	source: string
-	files?: Record<string, string>
-	sourcePath?: string | null
+	files: Record<string, string>
+	sourcePath: string | null
 }) {
 	const { source } = input
 	let body: Array<ModuleAstNode>
 	try {
-		body = getProgramBody(parseModuleSource(source))
+		body = getProgramBody(input.parser.parseModuleSource(source))
 	} catch {
 		return []
 	}
@@ -1607,6 +1649,7 @@ function collectExportedFunctionsFromSource(input: {
 	const localFunctions = collectLocalFunctionBindings(body)
 	const importedBindings = collectImportedBindingNames(body)
 	const mergeImportedTypes = createImportedTypeMerger({
+		parser: input.parser,
 		sourcePath: input.sourcePath ?? null,
 		files: input.files,
 		body,
@@ -1614,6 +1657,7 @@ function collectExportedFunctionsFromSource(input: {
 		localValues,
 	})
 	const resolveValue = createLocalValueResolver({
+		parser: input.parser,
 		sourcePath: input.sourcePath ?? null,
 		files: input.files,
 		body,
@@ -1739,20 +1783,27 @@ function collectExportedFunctionsFromSource(input: {
 	return functions
 }
 
+/** Package files plus a loaded parser, for projecting export signatures. */
+export type PackageProjectionSource = {
+	files: Record<string, string>
+	parser: ModuleSourceParser
+}
+
 function summarizePackageExport(input: {
 	exportName: string
 	target: PackageExportTarget
-	files?: Record<string, string>
+	packageSource?: PackageProjectionSource
 }): PackageExportProjection {
+	const files = input.packageSource?.files
 	const runtimeTarget = readTargetPath(input.target, 'runtime')
 	const typesPath = readTargetPath(input.target, 'types')
 	const runtimeSource = runtimeTarget
-		? (input.files?.[normalizePackageWorkspacePath(runtimeTarget)] ?? null)
+		? (files?.[normalizePackageWorkspacePath(runtimeTarget)] ?? null)
 		: null
 	const typesSource = typesPath
-		? (input.files?.[normalizePackageWorkspacePath(typesPath)] ?? null)
+		? (files?.[normalizePackageWorkspacePath(typesPath)] ?? null)
 		: null
-	const source = typesSource ?? runtimeSource ?? ''
+	const source = typesSource ?? runtimeSource
 	const sourcePath = typesSource
 		? typesPath
 			? normalizePackageWorkspacePath(typesPath)
@@ -1760,11 +1811,15 @@ function summarizePackageExport(input: {
 		: runtimeTarget
 			? normalizePackageWorkspacePath(runtimeTarget)
 			: null
-	const functions = collectExportedFunctionsFromSource({
-		source,
-		files: input.files,
-		sourcePath,
-	})
+	const functions =
+		source && input.packageSource
+			? collectExportedFunctionsFromSource({
+					parser: input.packageSource.parser,
+					source,
+					files: input.packageSource.files,
+					sourcePath,
+				})
+			: []
 	const [firstFunction] = functions
 	return {
 		subpath: normalizePackageExportKey(input.exportName),
@@ -1784,7 +1839,7 @@ function summarizePackageExport(input: {
 
 export function buildPackageSearchProjection(
 	manifest: AuthoredPackageJson,
-	files?: Record<string, string>,
+	packageSource?: PackageProjectionSource,
 ): PackageSearchProjection {
 	const appEntry = getPackageAppEntryPath(manifest)
 	return {
@@ -1798,7 +1853,7 @@ export function buildPackageSearchProjection(
 		appEntry,
 		exports: Object.entries(manifest.exports)
 			.map(([exportName, target]) =>
-				summarizePackageExport({ exportName, target, files }),
+				summarizePackageExport({ exportName, target, packageSource }),
 			)
 			.sort((left, right) => left.subpath.localeCompare(right.subpath)),
 		jobs: Object.entries(manifest.kody.jobs ?? {})

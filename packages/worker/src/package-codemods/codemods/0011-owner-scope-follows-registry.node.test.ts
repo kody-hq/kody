@@ -21,8 +21,11 @@ const movedFiles = {
 	'notes.txt': 'Nothing scoped here.\n',
 }
 
-test('0011 rewrites every @oldScope/ reference to the registry scope', () => {
-	const result = ownerScopeFollowsRegistryCodemod.transform(movedFiles, context)
+test('0011 rewrites every @oldScope/ reference to the registry scope', async () => {
+	const result = await ownerScopeFollowsRegistryCodemod.transform(
+		movedFiles,
+		context,
+	)
 	expect(result.changed).toBe(true)
 	expect(result.changedPaths).toEqual([
 		'package.json',
@@ -47,7 +50,7 @@ test('0011 rewrites every @oldScope/ reference to the registry scope', () => {
 	expect(result.files['notes.txt']).toBe(movedFiles['notes.txt'])
 	expect(result.needsManual).toEqual([])
 
-	const again = ownerScopeFollowsRegistryCodemod.transform(
+	const again = await ownerScopeFollowsRegistryCodemod.transform(
 		result.files,
 		context,
 	)
@@ -55,8 +58,10 @@ test('0011 rewrites every @oldScope/ reference to the registry scope', () => {
 	expect(again.changedPaths).toEqual([])
 })
 
-test('0011 detect reports each file holding the old scope', () => {
-	expect(ownerScopeFollowsRegistryCodemod.detect(movedFiles, context)).toEqual(
+test('0011 detect reports each file holding the old scope', async () => {
+	expect(
+		await ownerScopeFollowsRegistryCodemod.detect(movedFiles, context),
+	).toEqual(
 		['package.json', 'README.md', 'src/index.ts'].map((path) => ({
 			path,
 			message: expect.stringContaining('@personal/; rewrite to @team/'),
@@ -64,7 +69,7 @@ test('0011 detect reports each file holding the old scope', () => {
 	)
 })
 
-test('0011 leaves packages alone when the scope already matches or is unknown', () => {
+test('0011 leaves packages alone when the scope already matches or is unknown', async () => {
 	const cases: Array<Record<string, string>> = [
 		{
 			'package.json': manifest('@team/alpha'),
@@ -75,8 +80,13 @@ test('0011 leaves packages alone when the scope already matches or is unknown', 
 		{ 'a.ts': "import 'kody:@personal/b'" },
 	]
 	for (const files of cases) {
-		expect(ownerScopeFollowsRegistryCodemod.detect(files, context)).toEqual([])
-		const result = ownerScopeFollowsRegistryCodemod.transform(files, context)
+		expect(
+			await ownerScopeFollowsRegistryCodemod.detect(files, context),
+		).toEqual([])
+		const result = await ownerScopeFollowsRegistryCodemod.transform(
+			files,
+			context,
+		)
 		expect(result.changed).toBe(false)
 		expect(result.files).toEqual(files)
 	}

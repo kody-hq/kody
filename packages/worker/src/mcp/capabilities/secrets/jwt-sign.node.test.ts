@@ -563,6 +563,45 @@ test('secretJwtSign seals the JWT to the aud URL or send_to_host domain', async 
 	expect(byHost.warning).toBeUndefined()
 })
 
+test('secretJwtSign records the signing secret and its approved hosts on the sealed JWT', async () => {
+	lookupSecretsThroughResolveSecret()
+	const { privateKey } = createKeyPair()
+	vi.spyOn(secretService, 'resolveSecret').mockResolvedValue({
+		credentialId: 'cred-signing-key',
+		found: true,
+		value: privateKey,
+		scope: 'user',
+		allowedHosts: ['run.googleapis.com', 'sqladmin.googleapis.com'],
+		allowedPackages: [],
+		placement: null,
+	})
+	const seal = vi.spyOn(sealedToken, 'sealToken')
+	await jwtSignCapability.handler(
+		{
+			private_key_secret_name: 'gcpReadonlyServiceAccount',
+			algorithm: 'RS256',
+			claims: {
+				iss: 'sa@project.iam.gserviceaccount.com',
+				aud: 'https://oauth2.googleapis.com/token',
+				iat: 1,
+				exp: 3601,
+			},
+		},
+		ctx,
+	)
+	expect(seal.mock.calls.at(-1)?.[0].to).toMatchObject({
+		domains: ['oauth2.googleapis.com'],
+		source: 'jwt-sign',
+		mintedWith: [
+			{
+				secret: 'gcpReadonlyServiceAccount',
+				scope: 'user',
+				hosts: ['run.googleapis.com', 'sqladmin.googleapis.com'],
+			},
+		],
+	})
+})
+
 const anyHostInput = {
 	private_key_secret_name: 'serviceAccountKey',
 	algorithm: 'RS256',

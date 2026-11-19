@@ -19,7 +19,10 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import type { ExecuteResult } from '@cloudflare/codemode'
-import { withAccountWriteLease } from '#worker/account/deletion-state.ts'
+import {
+	AccountDeletionInProgressError,
+	withAccountWriteLease,
+} from '#worker/account/deletion-state.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import {
 	backgroundRunBilledActor,
@@ -100,7 +103,6 @@ import {
 import {
 	computeNextRunAt,
 	computeNextRunAtAfterOccurrence,
-	estimateScheduleMinIntervalMs,
 	formatJobError,
 	isJobExpired,
 	normalizeJobExpiresAt,
@@ -113,7 +115,6 @@ import type {
 	JobExecutionResult,
 	JobRepoCheckPolicy,
 	JobRecord,
-	JobSchedule,
 	JobUpdateInput,
 	PersistedJobCallerContext,
 } from './types.ts'
@@ -123,7 +124,6 @@ import {
 	isBudgetLimitError,
 	isComputeOverageLimitError,
 	isEntitlementLimitError,
-	JobIntervalFloorError,
 } from '#worker/entitlements/errors.ts'
 import { orgBudgetForJobExecution } from '#worker/entitlements/budget-gate.ts'
 import {
@@ -137,11 +137,9 @@ import {
 	type OrgRecord,
 } from '#worker/orgs/repo.ts'
 import {
-	resolvePlanLimits,
-	type CreditWalletState,
-	type EntitlementLadder,
-	type PlanName,
-} from '#universal/plans.ts'
+	assertJobScheduleIntervalFloor,
+	packageJobNeedsIntervalFloor,
+} from './package-job-interval-floor.ts'
 import { resolveBackgroundMcpUser } from '#worker/identity/background-mcp-user.ts'
 import { isAccountSuspendedError } from '#worker/account/account-suspension.ts'
 import {
@@ -158,7 +156,10 @@ import {
 	recordUsage,
 	usageErrorNameFromUnknown,
 } from '#worker/usage/record-usage.ts'
-import { ownerIdFromCaller } from '#worker/request-context/owner-id.ts'
+import {
+	entitlementEmailForOwner,
+	ownerIdFromCaller,
+} from '#worker/request-context/owner-id.ts'
 import {
 	getEntitySourceById,
 	getEntitySourceByIdForUser,
@@ -587,6 +588,48 @@ async function resolveJobRuntimeCallerContext(input: {
 	}
 }
 
+/**
+ * Sync a package's jobs to one commit's manifest: the commit about to serve
+ * (`commit`), or the serving commit. Jobs follow the code everyone runs, so a
+ * build still running or held for approval never adds, removes, or rewrites
+ * them.
+ */
+export async function syncPublishedPackageJobs(input: {
+	env: Env
+	userId: OwnerId
+	baseUrl: string
+	packageId: string
+	sourceId: string
+	commit?: string
+	actorUserId?: PersonId
+	actorCredential?: EnablerCredential | null
+}) {
+	const {
+		loadPackageManifestBySourceId,
+		loadServingPackageManifestBySourceId,
+	} = await import('#worker/package-registry/source.ts')
+	const loaded = input.commit
+		? await loadPackageManifestBySourceId({ ...input, commit: input.commit })
+		: await loadServingPackageManifestBySourceId(input)
+	const changed = await syncPackageJobsForPackage({
+		env: input.env,
+		userId: input.userId,
+		baseUrl: input.baseUrl,
+		packageId: input.packageId,
+		sourceId: input.sourceId,
+		manifest: loaded.manifest,
+		publishedCommit: loaded.source.published_commit,
+		actorUserId: input.actorUserId,
+		actorCredential: input.actorCredential ?? null,
+	})
+	// A prior attempt can write the rows and fail before syncing the alarm.
+	// Confirm the alarm even when those rows already match on retry.
+	if (changed || Object.keys(loaded.manifest.kody.jobs ?? {}).length > 0) {
+		await syncJobManagerAlarm({ env: input.env, userId: input.userId })
+	}
+	return changed
+}
+
 export async function syncPackageJobsForPackage(input: {
 	env: Env
 	userId: OwnerId
@@ -594,6 +637,8 @@ export async function syncPackageJobsForPackage(input: {
 	packageId: string
 	sourceId: string
 	manifest: Awaited<ReturnType<typeof parseAuthoredPackageJson>>
+	/** The commit `manifest` was read at; package jobs record it. */
+	publishedCommit: string | null
 	/** Publishing person when known; preferred enabler over earliest Owner. */
 	actorUserId?: PersonId
 	/** The publishing person's credential; their job runs stay within it. */
@@ -615,21 +660,15 @@ export async function syncPackageJobsForPackage(input: {
 			if (Object.keys(desiredJobs).length === 0 && packageRows.length === 0) {
 				return false
 			}
-			const [callerContext, source] = await Promise.all([
-				createPackageJobCallerContext({
-					env: input.env,
-					db: input.env.APP_DB,
-					baseUrl: input.baseUrl,
-					userId: input.userId,
-					packageId: input.packageId,
-				}),
-				getEntitySourceByIdForUser(input.env.APP_DB, {
-					id: input.sourceId,
-					userId: input.userId,
-				}),
-			])
+			const callerContext = await createPackageJobCallerContext({
+				env: input.env,
+				db: input.env.APP_DB,
+				baseUrl: input.baseUrl,
+				userId: input.userId,
+				packageId: input.packageId,
+			})
 			const callerContextJson = serializeCallerContext(callerContext)
-			const publishedCommit = source?.published_commit ?? null
+			const { publishedCommit } = input
 			const existingByName = new Map(
 				packageRows.map((row) => [row.name, row] as const),
 			)
@@ -644,7 +683,7 @@ export async function syncPackageJobsForPackage(input: {
 				await assertWithinEntitlement({
 					db: input.env.APP_DB,
 					userId: input.userId,
-					email: callerContext.user.email,
+					email: entitlementEmailForOwner(callerContext, input.userId),
 					resource: 'scheduled_jobs',
 					requested: jobsToCreate,
 					getCurrent: async () =>
@@ -658,7 +697,7 @@ export async function syncPackageJobsForPackage(input: {
 			}
 			const entitlement = await getCachedUserEntitlement(input.env.APP_DB, {
 				userId: input.userId,
-				email: callerContext.user.email,
+				email: entitlementEmailForOwner(callerContext, input.userId),
 			})
 			const plan = entitlement.plan
 			for (const [jobName, definition] of Object.entries(desiredJobs)) {
@@ -809,16 +848,15 @@ export async function syncPackageJobsForPackage(input: {
 						schedule,
 						timezone,
 					})
+					const jobId = buildPackageJobId(input.packageId, jobName)
 					const created: JobRecord = {
 						version: 1,
-						id: buildPackageJobId(input.packageId, jobName),
+						id: jobId,
 						userId: input.userId,
 						name: jobName,
 						sourceId: input.sourceId,
 						publishedCommit,
-						storageId: createJobStorageId(
-							buildPackageJobId(input.packageId, jobName),
-						),
+						storageId: createJobStorageId(jobId),
 						schedule,
 						timezone,
 						enabled,
@@ -834,6 +872,15 @@ export async function syncPackageJobsForPackage(input: {
 						successCount: 0,
 						errorCount: 0,
 					}
+					// Provision the enablement first. If the insert fails, retry
+					// reuses it. Once a disabled job row exists, republishing
+					// deliberately leaves its enablements alone.
+					await ensureOwnerEnablement({
+						id: created.id,
+						name: jobName,
+						enabled,
+						isCreate: true,
+					})
 					await jobsData(input.env).insertJob({
 						userId: input.userId,
 						job: created,
@@ -845,15 +892,6 @@ export async function syncPackageJobsForPackage(input: {
 						name: jobName,
 						action: jobAuditActions.created,
 						enabled,
-					})
-					// New jobs auto-enable for the creator/owner so the schedule runs
-					// without a separate ask-the-user enablementEnable step. Other
-					// package triggers still never auto-enable on publish.
-					await ensureOwnerEnablement({
-						id: created.id,
-						name: jobName,
-						enabled,
-						isCreate: true,
 					})
 					await stampFirstJob(
 						input.env.APP_DB,
@@ -889,43 +927,6 @@ export async function syncPackageJobsForPackage(input: {
 			}
 			return schedulerStateChanged
 		},
-	})
-}
-
-function packageJobNeedsIntervalFloor(input: {
-	existingSchedule?: JobSchedule
-	existingTimezone?: string | null
-	schedule: JobSchedule
-	timezone?: string | null
-}) {
-	if (input.existingSchedule === undefined) return true
-	return (
-		JSON.stringify(input.existingSchedule) !== JSON.stringify(input.schedule) ||
-		input.existingTimezone !== input.timezone
-	)
-}
-
-function assertJobScheduleIntervalFloor(input: {
-	plan: PlanName
-	ladder?: EntitlementLadder
-	creditWallet?: CreditWalletState
-	schedule: JobSchedule
-	timezone?: string | null
-}) {
-	const minIntervalMs = resolvePlanLimits(
-		input.plan,
-		input.ladder ?? 'public',
-		input.creditWallet ?? 'none',
-	).minJobIntervalMs
-	if (minIntervalMs <= 0) return
-	const intervalMs = estimateScheduleMinIntervalMs({
-		schedule: input.schedule,
-		timezone: input.timezone,
-	})
-	if (intervalMs == null || intervalMs >= minIntervalMs) return
-	throw new JobIntervalFloorError({
-		plan: input.plan,
-		minIntervalMs,
 	})
 }
 
@@ -991,8 +992,8 @@ export async function updateJob(input: {
 			if (scheduleChanged || timezoneChanged) {
 				assertJobScheduleIntervalFloor({
 					...(await getCachedUserEntitlement(input.env.APP_DB, {
-						userId: callerContext.user.userId,
-						email: callerContext.user.email,
+						userId: ownerId,
+						email: entitlementEmailForOwner(callerContext, ownerId),
 					})),
 					schedule: nextSchedule,
 					timezone: nextTimezone,
@@ -1193,7 +1194,10 @@ export async function executeJobOnce(input: {
 						db: input.env.APP_DB,
 						env: input.env,
 						userId: input.job.userId,
-						email: backgroundUser.email,
+						email: entitlementEmailForOwner(
+							{ user: backgroundUser },
+							input.job.userId,
+						),
 						resource: 'job_runs_per_day',
 						orgBudget: orgBudgetForJobExecution({
 							orgId: input.job.userId,
@@ -1395,10 +1399,10 @@ async function runRepoBackedJob(input: {
 		// package's fetch acts as that package (GHSA-5fv3-qv7j-rqf5). Without
 		// this, a scheduled job keeps running the stored bundle and an inlined
 		// dependency's fetch acts as the job's package.
-		!publishedArtifactNeedsPackageBindingRebuild({
+		!(await publishedArtifactNeedsPackageBindingRebuild({
 			artifact: loadedArtifact.artifact,
 			sourceFiles: resolved.files,
-		})
+		}))
 	) {
 		return await executeArtifact(loadedArtifact.artifact)
 	}
@@ -1931,6 +1935,25 @@ export async function runDueJobsForUser(input: {
 	> = []
 	try {
 		return await runDueJobsForUserUnderLease(input, autoDisabledNotices)
+	} catch (error) {
+		// Deletion fences user-owned writes, so there is nothing to run. Report
+		// a skip so the JobManager defers instead of Cloudflare retrying.
+		if (error instanceof AccountDeletionInProgressError) {
+			logJobSchedulerEvent({
+				event: 'run_due_jobs_skipped',
+				userId: input.userId,
+				dueJobCount: 0,
+				reason: 'account_deleted',
+			})
+			return {
+				dueJobCount: 0,
+				successCount: 0,
+				errorCount: 0,
+				jobOutcomes: [] satisfies Array<SchedulerJobOutcomeLog>,
+				skippedReason: 'account_deleted' as const,
+			}
+		}
+		throw error
 	} finally {
 		if (autoDisabledNotices.length > 0) {
 			const sending = Promise.all(

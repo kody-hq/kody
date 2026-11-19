@@ -2,7 +2,7 @@ import type {
 	EcpGrant,
 	EcpRunRequestBody,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
-import { egressPolicyFromGrant } from '../local-egress.js'
+import { egressPolicyFromGrant, type LocalLanRule } from '../local-egress.js'
 import type { EffectiveFs } from './fs-access.js'
 import type { HostCommands } from './host-commands.js'
 import type { LocalExecuteTiming } from '../local-execute.js'
@@ -22,6 +22,13 @@ export async function runContextRun(input: {
 	workerTracker?: LocalWorkerTracker
 	/** The context grant's egress; absent means the default (public only). */
 	egress?: EcpGrant['egress']
+	/** Local network destinations the machine defines by name (operator's runs only). */
+	lan?: ReadonlyArray<LocalLanRule>
+	lanStillCovers?: (lan: {
+		capability: string
+		host: string
+		port: number
+	}) => Promise<boolean>
 	hostFs?: () => EffectiveFs
 	hostCommands?: HostCommands
 	packageGraphCache?: PackageGraphCache
@@ -73,7 +80,11 @@ export async function runContextRun(input: {
 		fetchFn: input.fetchFn,
 		signal: input.signal,
 		...(input.workerTracker ? { workerTracker: input.workerTracker } : {}),
-		egress: egressPolicyFromGrant(input.egress ?? { mode: 'public' }),
+		egress: egressPolicyFromGrant(
+			input.egress ?? { mode: 'public' },
+			input.lan,
+		),
+		...(input.lanStillCovers ? { lanStillCovers: input.lanStillCovers } : {}),
 		...(input.hostFs ? { hostFs: input.hostFs } : {}),
 		...(hostCommands
 			? {
@@ -88,6 +99,7 @@ export async function runContextRun(input: {
 							// The run's signal: a cancel or deadline kills a foreground command.
 							signal: input.signal,
 							authorize: call.authorize,
+							...(input.request.sharedRun === true ? { namedOnly: true } : {}),
 						}),
 				}
 			: {}),

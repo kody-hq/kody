@@ -15,7 +15,8 @@ async function smoke() {
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
-import {DesktopExecutionProvider, DesktopMachinePanel} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopExecutionProvider} from './packages/worker/start/components/desktop-execution.tsx';
+import {DesktopMachinePanel} from './packages/worker/start/components/desktop-machine-panel.tsx';
 const client = new QueryClient({defaultOptions:{queries:{retry:false}}});
 window.refreshFixture = () => client.invalidateQueries();
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><DesktopExecutionProvider actorKey="jane" username="jane" orgSlug="jane" pathname="/@jane"><DesktopMachinePanel orgSlug={window.fixture.panelOrg ?? null}/></DesktopExecutionProvider></QueryClientProvider>);
@@ -57,12 +58,12 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 							args.path === '@tanstack/react-start'
 								? 'export const useServerFn = fn => fn;'
 								: args.path === '@tanstack/react-router'
-									? 'export const useRouter = () => ({invalidate: async()=>{}});'
+									? 'export const useRouter = () => ({invalidate: async()=>{}}); export const createLink = (Component) => Component; export const useRouterState = ({ select }) => select({ location: { pathname: "/@jane", search: "", hash: "" } });'
 									: args.path === 'onboarding'
 										? 'export const onboardingQuery = () => ({queryKey:["onboarding"],queryFn:async()=>({payload:{needsOnboarding:window.fixture.needsOnboarding}})});'
 										: args.path.endsWith('experiment-opt-in')
 											? 'export const setExperiment = async()=>{};'
-											: 'export const loadExecutionContextsPage = async(input)=>{window.fixture.loads.push(input.data.orgSlug); return {payload:window.fixture.setup}}; export const runExecutionContextDaemonAction = async()=>({ok:true,message:null,lines:null}); export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
+											: 'export const loadExecutionContextsPage = async(input)=>{window.fixture.loads.push(input.data.orgSlug); return {payload:window.fixture.setup}}; export const runExecutionContextDaemonAction = async(input)=>{window.fixture.daemonActions.push(input.data.action); return {ok:true,message:null,lines:input.data.action==="logs"?["runner ready"]:null}}; export const putDesktopExecutionFirst = async(input)=>{window.fixture.puts.push(input.data); if(window.fixture.failChain){window.fixture.failChain=false;throw new Error("Your chain changed. Try again.")}};',
 					}))
 				},
 			},
@@ -125,6 +126,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 						state,
 						puts: [],
 						loads: [],
+						daemonActions: [],
 						logins: 0,
 						registers: 0,
 						setup: {
@@ -271,7 +273,7 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			page.getByTestId('desktop-setup-stages').locator(`[data-stage="${id}"]`)
 		await mount(false)
 		await expect(
-			page.getByRole('heading', { name: 'This machine', exact: true }),
+			page.getByRole('region', { name: 'This machine' }),
 		).toHaveCount(0)
 		await mount(true, true)
 		await expect(
@@ -344,31 +346,50 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			{ orgSlug: 'jane', username: 'jane', contextId: 'ec_mac' },
 		])
 		await page.getByRole('button', { name: 'Done', exact: true }).click()
-		await page
-			.getByRole('button', { name: 'Allow host commands', exact: true })
-			.click()
-		await page
-			.getByRole('button', { name: 'Turn off host commands', exact: true })
+		const machinePanel = page.getByRole('region', { name: 'This machine' })
+		await expect(
+			machinePanel.getByRole('heading', { name: 'my-mac This machine' }),
+		).toBeVisible()
+		const hostCommands = machinePanel.getByRole('switch', {
+			name: 'Host commands',
+		})
+		await expect(machinePanel).toContainText(
+			'Let packages run commands directly on this Mac.',
+		)
+		await expect(hostCommands).toHaveAttribute('aria-checked', 'false')
+		await hostCommands.click()
+		await expect(hostCommands).toHaveAttribute('aria-checked', 'true')
+		await hostCommands.click()
+		await expect(hostCommands).toHaveAttribute('aria-checked', 'false')
+		await machinePanel
+			.getByRole('button', { name: 'Pause', exact: true })
 			.click()
 		await expect(
-			page.getByRole('button', { name: 'Allow host commands', exact: true }),
+			machinePanel.getByRole('button', { name: 'Resume', exact: true }),
 		).toBeVisible()
-		await page
-			.getByRole('button', { name: 'Pause execution', exact: true })
+		const moreActions = machinePanel.getByRole('button', {
+			name: 'More actions for this machine',
+		})
+		const forgetSetup = page.getByRole('menuitem', {
+			name: 'Forget this machine…',
+			exact: true,
+		})
+		const forgetDialog = page.getByRole('dialog', {
+			name: 'Forget desktop setup?',
+			exact: true,
+		})
+		await moreActions.click()
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
+			.getByRole('button', { name: 'Cancel', exact: true })
 			.click()
-		await expect(
-			page.getByRole('button', { name: 'Resume execution', exact: true }),
-		).toBeVisible()
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
-			.click()
-		await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+		await expect(forgetDialog).toHaveCount(0)
 		assert.equal(await page.evaluate(() => window.fixture.state.hasSetup), true)
-		await page
-			.getByRole('button', { name: 'Forget desktop setup', exact: true })
-			.click()
-		await page
-			.getByRole('dialog')
+		await moreActions.click()
+		await forgetSetup.click()
+		await expect(forgetDialog).toBeVisible()
+		await forgetDialog
 			.getByRole('button', { name: 'Forget desktop setup', exact: true })
 			.click()
 		await expect(
@@ -471,36 +492,145 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 			'ec_old',
 		)
 		await page.getByRole('button', { name: 'Done', exact: true }).click()
+		const servicePanel = page.getByRole('region', { name: 'This machine' })
+		const machineStatus = servicePanel.getByTestId('desktop-machine-status')
+		await expect(machineStatus).toHaveText('Running · shared with the kody CLI')
+		await expect(machineStatus).toHaveAttribute(
+			'title',
+			/CLI service \(launchd\), kody 3\.17\.0/,
+		)
 		await expect(
-			page.getByText('CLI service (launchd), kody 3.17.0'),
-		).toBeVisible()
-		await expect(page.getByText('One runner per machine')).toBeVisible()
-		await page
-			.getByRole('button', { name: 'Restart runner', exact: true })
+			servicePanel.getByTestId('desktop-machine-runner-note'),
+		).toHaveText(
+			"Runs as a background service installed by kody daemon install. This app controls it, so there's only one runner per machine.",
+		)
+		await servicePanel
+			.getByRole('button', { name: 'Restart', exact: true })
 			.click()
 		await expect
 			.poll(() => page.evaluate(() => window.fixture.restarts))
 			.toBe(1)
-		await expect(page.getByText('Automatic runner updates: On')).toBeVisible()
+		await expect(servicePanel).toContainText('Automatic runner updates are on.')
+		// The approved card: routing toggle, update link, and overflow menu appear
+		// once Kody reports this machine's registration.
+		await page.evaluate(async () => {
+			window.fixture.setup.contexts = [
+				{
+					id: 'ec_old',
+					name: 'old-laptop',
+					status: 'online',
+					paused: null,
+					canPause: true,
+					canResume: true,
+					canControlDaemon: true,
+					canReadDaemonLogs: true,
+					client: {
+						version: '3.17.0',
+						outdated: false,
+						latestVersion: '3.17.0',
+					},
+				},
+			]
+			window.fixture.state.commandsEnabled = true
+			await window.refreshFixture()
+		})
+		const acceptExecutes = servicePanel.getByRole('switch', {
+			name: 'Accept new executes',
+		})
+		await expect(acceptExecutes).toHaveAttribute('aria-checked', 'true')
+		await expect(servicePanel).toContainText(
+			'Turn off to stop routing work here without stopping the runner.',
+		)
+		await expect(servicePanel).toContainText('Runner is up to date.')
+		const serviceMore = servicePanel.getByRole('button', {
+			name: 'More actions for this machine',
+		})
+		await expect(
+			servicePanel.getByRole('switch', { name: 'Host commands' }),
+		).toHaveAttribute('aria-checked', 'true')
+		await expect(
+			servicePanel.getByRole('button', { name: 'Pause', exact: true }),
+		).toBeEnabled()
+		const settled = (locator) =>
+			locator.evaluate((element) =>
+				Promise.all(
+					element
+						.getAnimations({ subtree: true })
+						.map((animation) => animation.finished),
+				),
+			)
 		for (const colorScheme of ['light', 'dark']) {
 			await page.emulateMedia({ colorScheme })
+			await settled(servicePanel)
 			await page.screenshot({
 				path: resolve(
 					root,
-					`artifacts/desktop-machine-adopted-service-${colorScheme}.png`,
+					`artifacts/desktop-machine-card-closed-${colorScheme}.png`,
 				),
 			})
+			await serviceMore.click()
+			await expect(page.getByRole('menu')).toBeVisible()
+			await settled(page.getByRole('menu'))
+			await page.screenshot({
+				path: resolve(
+					root,
+					`artifacts/desktop-machine-card-menu-${colorScheme}.png`,
+				),
+			})
+			await page.keyboard.press('Escape')
+			await expect(page.getByRole('menu')).toHaveCount(0)
 		}
-		await page
-			.getByRole('button', { name: 'Turn off automatic updates', exact: true })
-			.click()
-		await expect(page.getByText('Automatic runner updates: Off')).toBeVisible()
 		await page.emulateMedia({ colorScheme: 'light' })
+		await serviceMore.click()
+		await expect(page.getByRole('menuitem').last()).toBeVisible()
+		assert.deepEqual(await page.getByRole('menuitem').allTextContents(), [
+			'Show runner log',
+			'Update runner now',
+			'Manage setup',
+			'Forget this machine…',
+		])
+		await page.getByRole('menuitem', { name: 'Show runner log' }).click()
+		await expect(servicePanel.getByTestId('desktop-machine-log')).toHaveText(
+			'runner ready',
+		)
+		await servicePanel.getByRole('button', { name: 'Update now' }).click()
+		await acceptExecutes.click()
+		await expect
+			.poll(() => page.evaluate(() => window.fixture.daemonActions))
+			.toEqual(['logs', 'update', 'pause'])
+		await expect(
+			servicePanel.getByRole('button', { name: 'Pause', exact: true }),
+		).toBeVisible()
+		// A failed npm lookup leaves latestVersion null: never claim up to date.
+		await page.evaluate(async () => {
+			const [context] = window.fixture.setup.contexts
+			window.fixture.setup.contexts = [
+				{ ...context, client: { ...context.client, latestVersion: null } },
+			]
+			await window.refreshFixture()
+		})
+		await expect(servicePanel).toContainText("Couldn't check for updates.")
+		await expect(servicePanel).not.toContainText('Runner is up to date.')
+		await page.evaluate(async () => {
+			window.fixture.setup.contexts = []
+			await window.refreshFixture()
+		})
+		const autoUpdates = servicePanel.getByRole('switch', {
+			name: 'Automatic updates',
+		})
+		await autoUpdates.click()
+		await expect(autoUpdates).toHaveAttribute('aria-checked', 'false')
+		await expect(servicePanel).toContainText(
+			'Automatic runner updates are off.',
+		)
 		// Manage setup on a team org page attaches the personal registration
 		// there and leaves this app's personal setup as it is.
 		await mount(true, false, false, false, 'acme')
 		await page
-			.getByRole('button', { name: 'Manage setup', exact: true })
+			.getByRole('button', { name: 'More actions for this machine' })
+			.click()
+		await page
+			.getByRole('menuitem', { name: 'Manage setup', exact: true })
 			.click()
 		await expect(stage('sign-in')).toHaveAttribute('data-status', 'complete')
 		await expect(stage('register')).toHaveAttribute('data-status', 'complete')
@@ -622,7 +752,10 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		})
 		await page.evaluate(() => window.refreshFixture())
 		await page
-			.getByRole('button', { name: 'Manage setup', exact: true })
+			.getByRole('button', { name: 'More actions for this machine' })
+			.click()
+		await page
+			.getByRole('menuitem', { name: 'Manage setup', exact: true })
 			.click()
 		await page
 			.getByRole('dialog')
@@ -667,7 +800,10 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		})
 		await page.evaluate(() => window.refreshFixture())
 		await page
-			.getByRole('button', { name: 'Manage setup', exact: true })
+			.getByRole('button', { name: 'More actions for this machine' })
+			.click()
+		await page
+			.getByRole('menuitem', { name: 'Manage setup', exact: true })
 			.click()
 		await page
 			.getByRole('dialog')
@@ -703,7 +839,10 @@ createRoot(document.getElementById('root')).render(<QueryClientProvider client={
 		})
 		await page.evaluate(() => window.refreshFixture())
 		await page
-			.getByRole('button', { name: 'Manage setup', exact: true })
+			.getByRole('button', { name: 'More actions for this machine' })
+			.click()
+		await page
+			.getByRole('menuitem', { name: 'Manage setup', exact: true })
 			.click()
 		await page
 			.getByRole('dialog')

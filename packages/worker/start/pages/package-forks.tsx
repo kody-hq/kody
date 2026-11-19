@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { Badge } from '../components/badge.tsx'
 import type { CSSObject } from '@emotion/react'
 import { SiteLink } from '../components/site-link.tsx'
 import { AccountManagementPanel } from './account-management-components.tsx'
@@ -120,10 +121,13 @@ function renderFork(fork: PackageForkView) {
 						{fork.name}
 					</SiteLink>
 					{fork.isPrivate ? (
-						<span css={privateBadgeCss} data-testid="package-fork-private">
+						<Badge
+							css={{ marginInlineStart: '0.5rem' }}
+							data-testid="package-fork-private"
+						>
 							{renderIcon('lock', { size: '0.85em' })}
 							Private
-						</span>
+						</Badge>
 					) : null}
 				</span>
 				{fork.description ? (
@@ -146,19 +150,4 @@ const forkNameLinkCss: CSSObject = {
 		textDecoration: 'underline',
 		textUnderlineOffset: '0.18em',
 	},
-}
-
-const privateBadgeCss: CSSObject = {
-	display: 'inline-flex',
-	alignItems: 'center',
-	gap: '0.3rem',
-	marginInlineStart: '0.5rem',
-	padding: '0.1rem 0.5rem',
-	borderRadius: '999px',
-	fontSize: '0.75rem',
-	fontWeight: 600,
-	verticalAlign: 'middle',
-	backgroundColor: colors.surface,
-	border: `1px solid ${colors.border}`,
-	color: colors.textMuted,
 }

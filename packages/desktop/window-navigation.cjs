@@ -68,6 +68,6 @@ function attachWindowNavigation(
 			trustedUrl(event.senderFrame.url)
 		)
 	}
-	return { accepts, command }
+	return { accepts, command, snapshot }
 }
 module.exports = { attachWindowNavigation }

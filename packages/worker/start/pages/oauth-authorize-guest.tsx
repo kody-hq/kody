@@ -1,8 +1,7 @@
 /** @jsxImportSource @emotion/react */
+import { Button } from '../components/button.tsx'
 import {
 	descriptionCss,
-	getPrimaryButtonCss,
-	getSecondaryButtonCss,
 	pageEyebrowCss,
 	pageTitleCss,
 } from '#universal/styles/style-primitives.ts'
@@ -76,33 +75,39 @@ export function OAuthAuthorizeSignedOutChoices(props: {
 }) {
 	return (
 		<section css={choicesCss} data-testid="oauth-authorize-choices">
-			<SiteLink
+			<Button
 				href={props.loginHref}
-				css={primaryLinkCss}
+				variant="primary"
+				size="md"
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-login"
 			>
 				Log in
-			</SiteLink>
-			<SiteLink
+			</Button>
+			<Button
 				href={props.signupHref}
-				css={secondaryLinkCss}
+				variant="secondary"
+				size="md"
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-signup"
 			>
 				Sign up
-			</SiteLink>
+			</Button>
 			<div role="separator" css={dividerCss}>
 				<span>or</span>
 			</div>
 			<div css={tryBoxCss}>
-				<button
+				<Button
 					type="button"
 					data-testid="oauth-authorize-try-it-out"
 					disabled={props.disabled}
 					onClick={props.onTryItOut}
+					variant="secondary"
+					size="md"
 					css={tryButtonCss}
 				>
 					{props.tryingOut ? 'Setting up...' : 'Try it out'}
-				</button>
+				</Button>
 				<p css={tryLineCss}>
 					No account needed. Full access for 24 hours, then claim it to keep
 					everything.
@@ -130,13 +135,16 @@ export function OAuthAuthorizeGuestConnected(props: {
 				{renderIcon('check', { size: '1.6rem' })}
 			</span>
 			<h1 css={titleCss}>You're connected</h1>
-			<a
+			<Button
 				href={props.connection.redirectTo}
-				css={primaryLinkCss}
+				variant="primary"
+				size="md"
+				reloadDocument
+				css={fullWidthLinkCss}
 				data-testid="oauth-authorize-guest-return"
 			>
 				Return to {props.clientLabel}
-			</a>
+			</Button>
 			<div css={claimBoxCss}>
 				<span css={claimLabelCss}>Your claim link</span>
 				<div css={claimRowCss}>
@@ -221,20 +229,7 @@ const kodyIconCss = {
 const linkGlyphCss = { display: 'inline-flex', color: colors.textMuted }
 const titleCss = { ...pageTitleCss, textAlign: 'center' as const }
 const choicesCss = { display: 'grid', gap: spacing.sm }
-const primaryButtonCss = getPrimaryButtonCss({ size: 'lg', weight: 'semibold' })
-const secondaryButtonCss = getSecondaryButtonCss({
-	size: 'lg',
-	weight: 'semibold',
-})
-const fullWidthLinkCss = {
-	width: '100%',
-	justifyContent: 'center',
-	textAlign: 'center' as const,
-	textDecoration: 'none',
-	'&:hover': { textDecoration: 'none' },
-}
-const primaryLinkCss = { ...primaryButtonCss, ...fullWidthLinkCss }
-const secondaryLinkCss = { ...secondaryButtonCss, ...fullWidthLinkCss }
+const fullWidthLinkCss = { width: '100%' }
 const dividerCss = {
 	display: 'flex',
 	alignItems: 'center',
@@ -255,7 +250,7 @@ const tryBoxCss = {
 	border: `1px solid ${colors.primarySoft}`,
 	backgroundColor: colors.primarySoftest,
 }
-const tryButtonCss = { ...secondaryButtonCss, width: '100%' }
+const tryButtonCss = { width: '100%' }
 const tryLineCss = {
 	margin: 0,
 	color: colors.text,

@@ -462,7 +462,7 @@ export function assertActorScopeAllowsCredential(
 					name: input.name,
 				})
 			: missingCredentialResource(input.orgId, input.name),
-		message: `This credential is not scoped for ${permission}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "short", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime short --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`,
+		message: `This credential is not scoped for ${permission}. Mint a token that adds it: from Kody MCP, call cliCredentialBootstrap({ lifetime: "long", scopes: [${mintScopes.map((scope) => JSON.stringify(scope)).join(', ')}] }) and run the returned cli_command; or after \`kody login\`, run \`npx @kodycodes/cli auth bootstrap --lifetime long --scopes ${mintScopes.join(',')}\`. Use those scopes with tokenCreate only for CI/headless.`,
 		mintScopes,
 	})
 }

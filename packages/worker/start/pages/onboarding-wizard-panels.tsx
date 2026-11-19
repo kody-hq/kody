@@ -1,10 +1,12 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { landingArtAttrs, publicAsset } from '../public-assets.ts'
 import type { CSSObject } from '@emotion/react'
 import type { CSSProperties, RefCallback } from 'react'
-import { SiteLink } from '../components/site-link.tsx'
 import type { HighlightedCode } from '#universal/highlighted-code.ts'
 import { routes } from '#universal/routes.ts'
+import type { SecondAgentStandardGiftState } from '#universal/second-agent-standard-gift.ts'
 import {
 	onboardingAccessLede,
 	onboardingAccessSelectedLede,
@@ -29,6 +31,7 @@ import {
 import {
 	onboardingSecondAgentGreyedPresentation,
 	onboardingStep3EcosystemGroups,
+	onboardingSameEcosystemNote,
 } from '#universal/onboarding-agent-ecosystems.ts'
 import { buildAuthLink } from '#client/auth-links.ts'
 import {
@@ -50,10 +53,6 @@ import {
 	connectStatusCss,
 } from './onboarding-wizard-chrome.tsx'
 import { colors, radius, typography } from '#universal/styles/tokens.ts'
-import {
-	getPillButtonCss,
-	primaryLinkCss,
-} from '#universal/styles/style-primitives.ts'
 
 type StepNavigationProps = {
 	activeStep: OnboardingWizardStepNumber
@@ -216,7 +215,7 @@ export function renderSecondAgentPanel(
 		entrance: RefCallback<HTMLElement>
 		loggedIn: boolean
 		hasSecondMcpClient: boolean
-		secondAgentGiftActive?: boolean
+		secondAgentGift?: Pick<SecondAgentStandardGiftState, 'active' | 'status'>
 		connectedAgents?: ReadonlyArray<OnboardingConnectedAgentListItem>
 		firstAgent: McpClientKind | null
 		selectedAgent: McpClientKind | null
@@ -234,6 +233,9 @@ export function renderSecondAgentPanel(
 	const selectedAgentLabel = selectedAgent ? props.selectedAgentLabel : null
 	const connectedAgents = props.connectedAgents ?? []
 	const greyed = onboardingSecondAgentGreyedPresentation(connectedAgents)
+	const sameEcosystemNote = props.hasSecondMcpClient
+		? null
+		: onboardingSameEcosystemNote(selectedAgent, connectedAgents)
 	const accessWinMade = onboardingAccessWinMadeLine({
 		memorySubject: props.accessWinMemorySubject,
 		packageName: props.persistedPackageName,
@@ -268,6 +270,11 @@ export function renderSecondAgentPanel(
 					{onboardingSecondAgentLede}
 				</p>
 			) : null}
+			{sameEcosystemNote ? (
+				<p css={panelLedeCss} data-testid="onboarding-same-ecosystem-note">
+					{sameEcosystemNote}
+				</p>
+			) : null}
 			{renderConnectAgentStatus({
 				loggedIn: props.loggedIn,
 				hasMcpClient: props.hasSecondMcpClient,
@@ -278,7 +285,7 @@ export function renderSecondAgentPanel(
 				search: props.search,
 				loginHref: onboardingSecondAgentHref(selectedAgent, props.search ?? ''),
 				connectedLabel: onboardingSecondAgentConnectedStatusLabel(
-					props.secondAgentGiftActive === true,
+					props.secondAgentGift,
 				),
 			})}
 			{renderConnectedAgentsLine(
@@ -314,9 +321,9 @@ export function renderSecondAgentPanel(
 						data-testid="onboarding-portability-guide-pointer"
 					>
 						Depth lives in the{' '}
-						<SiteLink href={portabilityGuideHref} css={guideLinkCss}>
+						<TextLink href={portabilityGuideHref} css={guideLinkCss}>
 							portability guide
-						</SiteLink>
+						</TextLink>
 						. The prompt tells your agent to retrieve it.
 					</p>
 				</div>
@@ -376,14 +383,14 @@ function renderAgentPanelHead(props: {
 				>
 					<div css={changeSelectionSlotCss}>
 						{props.selectedAgent ? (
-							<SiteLink
+							<TextLink
 								href={props.changeHref}
 								data-testid="onboarding-agent-change"
 								resetScroll={false}
 								css={changeSelectionCss}
 							>
 								Change selection
-							</SiteLink>
+							</TextLink>
 						) : null}
 					</div>
 				</div>
@@ -560,15 +567,16 @@ function renderConnectAgentStatus(props: {
 			props.loginHref ??
 			onboardingAgentHref(props.selectedAgent, props.search ?? '')
 		return (
-			<SiteLink
+			<Button
 				href={buildAuthLink(routes.login.href(), resumeHref)}
 				data-testid="onboarding-agent-login"
+				variant="primary"
 				css={agentLoginCss}
 			>
 				{props.selectedAgentLabel
 					? `Log in to connect ${props.selectedAgentLabel}`
 					: 'Log in to connect'}
-			</SiteLink>
+			</Button>
 		)
 	}
 	return null
@@ -636,13 +644,11 @@ const changeSelectionSlotCss: CSSObject = {
 }
 
 const changeSelectionCss: CSSObject = {
-	...primaryLinkCss,
 	display: 'inline-block',
 	fontSize: typography.fontSize.sm,
 }
 
 const agentLoginCss: CSSObject = {
-	...getPillButtonCss({ size: 'sm' }),
 	width: 'fit-content',
 }
 
@@ -695,7 +701,6 @@ const guidePointerCss: CSSObject = {
 }
 
 const guideLinkCss: CSSObject = {
-	...primaryLinkCss,
 	fontWeight: 600,
 }
 

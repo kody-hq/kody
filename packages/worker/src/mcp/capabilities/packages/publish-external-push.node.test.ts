@@ -7,7 +7,31 @@ import { createMcpCallerContext } from '#mcp/context.ts'
 import { consoleInfo, consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as PublishedRuntimeArtifactsModule from '#worker/package-runtime/published-runtime-artifacts.ts'
 
+import type { advanceServingCommit } from '#worker/package-capabilities/serving-commit-advance.ts'
+
+// These fixtures have no owner or package rows, so no profile package exists.
+vi.mock('#worker/package-app-profile-host.ts', () => ({
+	hasProfilePackageApp: async () => false,
+}))
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', async () => {
+	const { advanceEntitySourceServingCommit } =
+		await import('#worker/repo/entity-sources.ts')
+	return {
+		advanceServingCommit: (input: Parameters<typeof advanceServingCommit>[0]) =>
+			advanceEntitySourceServingCommit(input.env.APP_DB, {
+				id: input.sourceId,
+				userId: input.userId,
+				commit: input.commit,
+			}),
+	}
+})
+
 const mockModule = vi.hoisted(() => ({
+	notePackageAppPublishRequester: vi.fn(async (_input: unknown) => {}),
+	loadHeldForApproval: vi.fn(
+		async (..._args: Array<unknown>): Promise<unknown> => null,
+	),
 	getSavedPackageById: vi.fn(),
 	resolveSavedPackageRef: vi.fn(),
 	getEntitySourceByIdForUser: vi.fn(),
@@ -15,6 +39,7 @@ const mockModule = vi.hoisted(() => ({
 	publishFromExternalRef: vi.fn(),
 	takeLastCheckStep: vi.fn(async (): Promise<unknown> => null),
 	listPublishedPackageArtifactTargets: vi.fn(),
+	persistUploadedPublishBuild: vi.fn(),
 	rebuildPublishedPackageArtifact: vi.fn(),
 	isPublishedPackageArtifactBuiltForCommit: vi.fn(),
 	getStaticPackageDependentsSummary: vi.fn(),
@@ -25,7 +50,7 @@ const mockModule = vi.hoisted(() => ({
 		async (..._args: Array<unknown>) => {},
 	),
 	revertEntitySourcePublishedCommit: vi.fn(
-		async (..._args: Array<unknown>) => true,
+		async (..._args: Array<unknown>): Promise<string | null> => 'commit-old',
 	),
 	refreshSavedPackageProjection: vi.fn(async (..._args: Array<unknown>) => {}),
 }))
@@ -43,6 +68,11 @@ vi.mock(
 			mockModule.clearPublishedPublishChecksVersion(...args),
 	}),
 )
+
+vi.mock('#worker/package-capabilities/held-for-approval.ts', () => ({
+	loadHeldForApproval: (...args: Array<unknown>) =>
+		mockModule.loadHeldForApproval(...args),
+}))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
 	getSavedPackageById: (...args: Array<unknown>) =>
@@ -71,10 +101,19 @@ vi.mock('#worker/repo/artifacts.ts', () => ({
 
 vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 	repoSessionRpc: () => ({
-		publishFromExternalRef: (...args: Array<unknown>) =>
-			mockModule.publishFromExternalRef(...args),
+		publishFromExternalRef: async (...args: Array<unknown>) => {
+			const result = await mockModule.publishFromExternalRef(...args)
+			if (result?.status === 'published' && result.published_commit) {
+				mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+					sourceRow(result.published_commit),
+				)
+			}
+			return result
+		},
 		listPublishedPackageArtifactTargets: (...args: Array<unknown>) =>
 			mockModule.listPublishedPackageArtifactTargets(...args),
+		persistUploadedPublishBuild: (...args: Array<unknown>) =>
+			mockModule.persistUploadedPublishBuild(...args),
 		rebuildPublishedPackageArtifact: (...args: Array<unknown>) =>
 			mockModule.rebuildPublishedPackageArtifact(...args),
 		takeLastCheckStep: () => mockModule.takeLastCheckStep(),
@@ -108,6 +147,11 @@ vi.mock('#worker/repo/published-source.ts', () => ({
 	},
 }))
 
+vi.mock('#worker/package-runtime/package-app-authority.ts', () => ({
+	notePackageAppPublishRequester: (input: unknown) =>
+		mockModule.notePackageAppPublishRequester(input),
+}))
+
 vi.mock('#mcp/capabilities/durable-escalation.ts', () => ({
 	defaultDurableEscalationBudgetMs: 35_000,
 	buildCallerScopedIdempotencyKey: (input: {
@@ -123,7 +167,7 @@ const { publishExternalPushCapability } =
 
 const defaultPublishIdempotencyParts = [
 	'packagePublishExternalPush',
-	'v2',
+	'v3',
 	'{"allowForce":false,"destructiveOverwriteConfirmed":false,"newCommit":"commit-new","ownerUserId":"user-1","packageId":"package-1"}',
 ]
 const moduleTarget = {
@@ -152,6 +196,8 @@ function sourceRow(publishedCommit = 'commit-old') {
 		entity_id: 'package-1',
 		repo_id: 'package-package-1',
 		published_commit: publishedCommit,
+		serving_commit: publishedCommit,
+		held_commit: null,
 		indexed_commit: null,
 		manifest_path: 'package.json',
 		source_root: '/',
@@ -195,6 +241,7 @@ function setupDefaultMocks({
 	targets?: Array<unknown>
 } = {}) {
 	for (const mock of Object.values(mockModule)) mock.mockReset()
+	mockModule.loadHeldForApproval.mockResolvedValue(null)
 	mockModule.listPublisherEnablementGaps.mockResolvedValue([])
 	mockModule.getSavedPackageById.mockResolvedValue({
 		id: 'package-1',
@@ -266,6 +313,7 @@ function publish(
 		allow_force?: boolean
 		confirm_destructive_overwrite?: boolean
 		baseline_published_commit?: string | null
+		expected_head?: string
 	} = {},
 	executionOrigin?: 'interactive' | 'background' | 'omit',
 ) {
@@ -381,6 +429,36 @@ test('publishExternalPush includes listing hint when the public catalog pin lags
 		updateHint: expect.stringContaining('automatically'),
 		updateUrl:
 			'https://kody.test/@user/demo-package/settings#update-public-listing',
+	})
+})
+
+test('publishExternalPush tells agents when everyone stays on the previous version', async () => {
+	setupDefaultMocks({ hasApp: true, publish: publishedResult() })
+	const servingCommit = 'approved0deadbeef'
+	const heldCommit = 'heldnew1cafebabe'
+	mockModule.loadHeldForApproval.mockResolvedValue({
+		servingCommit,
+		heldCommit,
+	})
+
+	const published = await publish()
+	if (published.status !== 'published') throw new Error('expected published')
+	const notice = published.held_for_approval
+	expect(notice).toMatchObject({
+		serving_commit: servingCommit,
+		held_commit: heldCommit,
+	})
+	if (!notice) throw new Error('expected held_for_approval')
+	const approval = new URL(notice.approval_url)
+	expect(approval.origin).toBe('https://kody.test')
+	expect(approval.pathname).toBe('/@user/demo-package/approve-capabilities')
+	expect(notice.message).toContain(servingCommit.slice(0, 7))
+	expect(notice.message).toContain(heldCommit.slice(0, 7))
+	expect(notice.message).toContain(notice.approval_url)
+	expect(mockModule.loadHeldForApproval).toHaveBeenCalledWith({
+		env: expect.anything(),
+		packageId: 'package-1',
+		ownerUserId: ownerIdFromStored('user-1'),
 	})
 })
 
@@ -528,7 +606,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -552,7 +629,6 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		expect.objectContaining({
 			id: 'source-1',
 			failedCommit: 'commit-new',
-			restoreCommit: 'commit-old',
 		}),
 	)
 	expect(mockModule.refreshSavedPackageProjection).toHaveBeenCalledWith(
@@ -564,6 +640,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 		publish: alreadyPublishedOld,
 		targets: [moduleTarget],
 	})
+	mockModule.revertEntitySourcePublishedCommit.mockResolvedValueOnce(null)
 	mockModule.rebuildPublishedPackageArtifact.mockRejectedValueOnce(
 		new Error('No matching default export for import "default"'),
 	)
@@ -581,8 +658,7 @@ test('publishExternalPush handles already_published branches, stale dependents, 
 	expect(mockModule.clearPublishedPublishChecksVersion).toHaveBeenCalledWith(
 		expect.objectContaining({ publishedCommit: 'commit-old' }),
 	)
-	// A true no-op retry did not move the tip, so there is nothing to restore.
-	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
+	// The already serving commit stayed in place.
 	expect(mockModule.refreshSavedPackageProjection).not.toHaveBeenCalled()
 })
 
@@ -676,6 +752,43 @@ test('budget exhaustion returns a dispatched handle', async () => {
 			}),
 		}),
 	)
+	// The durable run finishes as the org, so the person who asked is noted.
+	expect(mockModule.notePackageAppPublishRequester).toHaveBeenCalledWith(
+		expect.objectContaining({
+			scope: { orgId: ownerIdFromStored('user-1'), packageId: 'package-1' },
+			personId: personIdFromStored('user-1'),
+			commit: expect.any(String),
+		}),
+	)
+})
+
+test('durable re-entry rejects a Git HEAD different from the enqueued commit', async () => {
+	setupDefaultMocks({ head: 'commit-newer' })
+
+	await expect(
+		publish(
+			{ baseline_published_commit: 'commit-old', expected_head: 'commit-new' },
+			'background',
+		),
+	).rejects.toThrow(/Artifacts HEAD moved from "commit-new" to "commit-newer"/)
+	expect(mockModule.publishFromExternalRef).not.toHaveBeenCalled()
+})
+
+test('an external publish superseded during artifact rebuild cannot report success', async () => {
+	setupDefaultMocks({ publish: publishedResult(), targets: [moduleTarget] })
+	mockModule.rebuildPublishedPackageArtifact.mockImplementationOnce(
+		async () => {
+			mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+				sourceRow('commit-newer'),
+			)
+			return { ok: true, target: moduleTarget, kvKey: 'bundle-key' }
+		},
+	)
+
+	await expect(publish()).rejects.toThrow(
+		/published commit moved while this publish was running/,
+	)
+	expect(mockModule.revertEntitySourcePublishedCommit).not.toHaveBeenCalled()
 })
 
 test('durable re-entry remaps RepoSession already_published to published when tip moved vs baseline', async () => {
@@ -751,6 +864,71 @@ test('durable re-entry remaps RepoSession already_published to published when ti
 			artifacts_rebuilt: false,
 		}),
 	)
+})
+
+test('durable re-entry finalizes an uploaded build without the upload bucket binding', async () => {
+	setupDefaultMocks({
+		publish: { status: 'already_published', published_commit: 'commit-new' },
+	})
+	mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+		sourceRow('commit-new'),
+	)
+	mockModule.persistUploadedPublishBuild.mockResolvedValue({
+		ok: true,
+		targetCount: 2,
+	})
+
+	const ctx = createContext('background')
+	const prepare = ctx.env.APP_DB.prepare
+	vi.spyOn(ctx.env.APP_DB, 'prepare').mockImplementation((sql) => {
+		let row: unknown
+		if (sql.includes('FROM publish_builds')) {
+			row = {
+				id: 'pb_demo',
+				package_id: 'package-1',
+				source_id: 'source-1',
+				requester_user_id: 'user-1',
+				commit_sha: 'commit-new',
+				status: 'sealed',
+				document_sha256: 'a'.repeat(64),
+				origin: 'cli',
+				context_name: null,
+			}
+		} else if (sql.includes('SELECT id FROM users')) {
+			row = { id: 1 }
+		} else if (sql.includes('FROM feature_flag_user_overrides')) {
+			row = { enabled: 1 }
+		} else {
+			return prepare(sql)
+		}
+		return {
+			bind: () => ({ first: async () => row }),
+		} as D1PreparedStatement
+	})
+
+	const result = await publishExternalPushCapability.handler(
+		{
+			package_id: 'package-1',
+			baseline_published_commit: 'commit-old',
+			publish_build_id: 'pb_demo',
+		},
+		ctx,
+	)
+
+	expect(result).toMatchObject({
+		status: 'published',
+		previous_commit: 'commit-old',
+		published_commit: 'commit-new',
+		build_origin: { origin: 'cli' },
+	})
+	expect(mockModule.persistUploadedPublishBuild).toHaveBeenCalledWith({
+		sourceId: 'source-1',
+		userId: 'user-1',
+		publishedCommit: 'commit-new',
+		buildId: 'pb_demo',
+		baseUrl: 'https://kody.test',
+	})
+	expect(mockModule.rebuildPublishedPackageArtifact).not.toHaveBeenCalled()
 })
 
 test('durable escalation keys team-org publishes to the owning org, not the actor personal org', async () => {
@@ -848,9 +1026,14 @@ test('publishExternalPush recovers from transient Durable Object resets', async 
 		.mockRejectedValueOnce(
 			new Error('Durable Object reset because its code was updated.'),
 		)
-		.mockResolvedValueOnce({
-			status: 'already_published',
-			published_commit: 'commit-new',
+		.mockImplementationOnce(async () => {
+			mockModule.getEntitySourceByIdForUser.mockResolvedValue(
+				sourceRow('commit-new'),
+			)
+			return {
+				status: 'already_published',
+				published_commit: 'commit-new',
+			}
 		})
 	// Tip advanced during the failed attempt; remap to published vs pre-request tip.
 	expect(await publish()).toEqual({

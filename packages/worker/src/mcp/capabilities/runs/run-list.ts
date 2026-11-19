@@ -140,6 +140,7 @@ export const runListCapability = defineDomainCapability(
 	capabilityDomainNames.runs,
 	{
 		name: 'runList',
+		walletGuard: 'run_read',
 		contextRuns: 'allow',
 		orgPermission: 'job:read',
 		description:

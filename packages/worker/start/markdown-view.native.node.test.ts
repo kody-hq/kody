@@ -313,6 +313,28 @@ test('first-party watch blocks render a lite youtube player; untrusted markdown 
 	expect(untrusted).toContain('<blockquote>')
 })
 
+test('first-party vertical watch blocks render a 9:16 lite player', async () => {
+	const html = await renderToString(
+		jsx('div', {
+			children: renderMarkdownNodes(
+				[
+					'> [!WATCH-VERTICAL] https://www.youtube.com/watch?v=_EJTrJFLa3g',
+					'> Watch: A phone-shot video',
+				].join('\n'),
+				{
+					linkPolicy: 'first-party',
+					headingOffset: 0,
+					linkRel: 'noopener noreferrer',
+				},
+			),
+		}),
+	)
+	expect(html).toContain('data-doc-youtube-vertical')
+	expect(html).toContain('/youtube-thumb/_EJTrJFLa3g')
+	expect(html).toContain('Play A phone-shot video')
+	expect(html).not.toContain('[!WATCH-VERTICAL]')
+})
+
 test('first-party diagram blocks render a registered figure with the quote as its caption', async () => {
 	const markdown = [
 		'> [!DIAGRAM] placeholder-fill',
@@ -363,7 +385,7 @@ test('markdown preserves tables, tight task lists, entities, and reference links
 	expect(html).toContain('<strong>Key</strong>')
 	expect(html).toContain('<code>42</code>')
 	expect(html).toContain('text-align:right')
-	expect(html).toContain('type="checkbox" disabled="" checked=""')
+	expect(html).toMatch(/<input type="checkbox" disabled=""[^>]*checked=""/)
 	expect(html).not.toContain('<li><p>')
 	expect(html).toContain('Fish &amp; chips')
 	expect(html).not.toContain('&amp;amp;')

@@ -50,6 +50,11 @@ export type RunDueJobsResult = {
 	successCount: number
 	errorCount: number
 	jobOutcomes: Array<SchedulerJobOutcomeLog>
+	/**
+	 * The owner account is fenced for deletion (in progress or soft-deleted), so
+	 * no job ran. The JobManager defers its alarm instead of retrying.
+	 */
+	skippedReason?: 'account_deleted'
 }
 
 export type RunJobNowResult = {

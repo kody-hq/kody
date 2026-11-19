@@ -1,4 +1,6 @@
 /** @jsxImportSource @emotion/react */
+import { TextLink } from '../components/text-link.tsx'
+import { Button } from '../components/button.tsx'
 import { useRef, useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
@@ -21,10 +23,7 @@ import {
 } from '#universal/styles/tokens.ts'
 import {
 	descriptionCss,
-	getGhostButtonCss,
-	getPillButtonCss,
 	layoutMaxWidths,
-	mutedLinkCss,
 } from '#universal/styles/style-primitives.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -35,6 +34,7 @@ import {
 	AccountPageHeader,
 	MetadataGrid,
 } from './account-management-components.tsx'
+import { Checkbox } from '../components/choice-controls.tsx'
 
 type Interval = 'month' | 'year'
 
@@ -124,9 +124,9 @@ export function AccountBillingMovePlanPage({
 				</>
 			) : null}
 			<p css={descriptionCss}>
-				<SiteLink href={orgBillingPath(payload.source.slug)} css={mutedLinkCss}>
+				<TextLink tone="muted" href={orgBillingPath(payload.source.slug)}>
 					Back to billing
-				</SiteLink>
+				</TextLink>
 			</p>
 		</AccountManagementShell>
 	)
@@ -143,9 +143,9 @@ function TargetPicker({
 				title="Choose where the plan goes"
 				description="You can only move a plan to another organization you own. Create one, or ask an owner of an existing organization to make you an owner."
 			>
-				<SiteLink href="/account/organizations" css={mutedLinkCss}>
+				<TextLink tone="muted" href="/account/organizations">
 					Manage organizations
-				</SiteLink>
+				</TextLink>
 			</AccountManagementPanel>
 		)
 	}
@@ -336,8 +336,7 @@ function PreviewPanel({
 				/>
 			</section>
 			<label css={checkboxRowCss}>
-				<input
-					type="checkbox"
+				<Checkbox
 					checked={acknowledged}
 					onChange={(event) => setAcknowledged(event.currentTarget.checked)}
 				/>
@@ -352,18 +351,18 @@ function PreviewPanel({
 				</AccountManagementMessage>
 			) : null}
 			<div>
-				<button
+				<Button
 					type="button"
 					disabled={!acknowledged || pending}
 					onClick={() => void confirm()}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 				>
 					{pending
 						? 'Moving plan…'
 						: target.mode === 'checkout'
 							? `Continue to checkout for @${target.slug}`
 							: `Move Pro to @${target.slug}`}
-				</button>
+				</Button>
 			</div>
 		</AccountManagementPanel>
 	)
@@ -381,12 +380,12 @@ function IntervalSwitch({
 	const other: Interval = current === 'year' ? 'month' : 'year'
 	return (
 		<p css={paragraphCss}>
-			<SiteLink
+			<TextLink
+				tone="muted"
 				href={movePlanHref(sourceSlug, { to: targetSlug, interval: other })}
-				css={mutedLinkCss}
 			>
 				Bill @{targetSlug} {intervalLabel(other)} instead
-			</SiteLink>
+			</TextLink>
 		</p>
 	)
 }
@@ -445,12 +444,12 @@ function TransferStatusPanel({
 						? ` ${credit} of unused value was credited to ${target}.`
 						: ''}
 				</p>
-				<SiteLink
+				<TextLink
+					tone="muted"
 					href={orgBillingPath(transfer.targetSlug ?? sourceSlug)}
-					css={mutedLinkCss}
 				>
 					Open billing for {target}
-				</SiteLink>
+				</TextLink>
 			</AccountManagementPanel>
 		)
 	}
@@ -484,23 +483,23 @@ function TransferStatusPanel({
 				</AccountManagementMessage>
 			) : null}
 			<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
-				<button
+				<Button
 					type="button"
 					disabled={retry.isPending}
 					onClick={() => void run(retry)}
-					css={getPillButtonCss({ size: 'sm' })}
+					variant="primary"
 				>
 					{retry.isPending ? 'Retrying…' : 'Retry now'}
-				</button>
+				</Button>
 				{transfer.cancelable ? (
-					<button
+					<Button
 						type="button"
 						disabled={cancel.isPending}
 						onClick={() => void run(cancel)}
-						css={getGhostButtonCss({ size: 'sm' })}
+						variant="secondary"
 					>
 						Cancel move
-					</button>
+					</Button>
 				) : null}
 			</div>
 		</AccountManagementPanel>

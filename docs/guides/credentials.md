@@ -149,11 +149,17 @@ that build headers in a variable and header spreads — the scanner cannot see
 are still skipped. The warning does not fail the check or block publish.
 
 Publish fails when a fetch puts a credential placeholder in the request body,
-URL path, URL query, or whole URL. The error lists each file, line, and
-credential name (never a value) and says to send the credential in a request
-header instead. Community installs and platform codemods only warn, so existing
-published packages keep running and republishing; the next authoring publish has
-to move the credential. The switch is
+URL path, or URL query and the publishing org's credential of that name does not
+allow that part in its effective fill placement (the same placement the fetch
+gateway enforces, described below). A whole-URL placeholder always fails. The
+error lists each file, line, and credential name (never a value), says to send
+the credential in a request header instead, and links the owner approval page
+for each credential (`/connect/secrets?name=<key>&placement=<part>` for a
+secret, the credential page for an integration token). When the owner approves
+the part, publish again. When the credential already allows the part, including
+an older Key with no stored placement that Kody already fills there, publish
+passes with a warning. Community installs and platform codemods only warn, so
+existing published packages keep running and republishing. The switch is
 `secretPlaceholderRequestPlacementPublishMode` in the publish check.
 
 Each credential also stores an allowed **fill placement** (headers, optionally
@@ -178,8 +184,11 @@ host in the same click). The owner sees the credential, the requested part, and
 the "host may store this" warning, then approves or declines. Agents can build
 the same link with `credentialPlacementApprovalLink` (MCP `api`, or
 `kody api credentialPlacementApprovalLink --params '{"name":"plaidSecret","parts":["body"],"hosts":["production.plaid.com"]}'`),
-which never changes placement itself. Other refusals link to the credential's
-fill placement setting (`/@<org>/-/credentials/<credential>#fill-placement`).
+which never changes placement itself. An older credential with no placement set
+still asks for approval of a part it already fills, so the owner's approval is
+saved on the credential and `secretList` shows it. Other refusals link to the
+credential's fill placement setting
+(`/@<org>/-/credentials/<credential>#fill-placement`).
 
 Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
@@ -388,7 +397,9 @@ one-time setup on the credential's page on the website, or with the MCP `api`
 tool (`credentialUpdate`). Changing inject or widening placement is refused from
 `execute` (hosted or `--local`), package, and app code, with a link to the
 credential's page; narrowing placement and setting the provider still work
-there. `credentialList` returns each credential's `id`:
+there. `credentialUpdate` also renames a Key in place with `name`; see
+[Renaming a secret](./secrets.md#renaming-a-secret). `credentialList` returns
+each credential's `id`:
 
 ```json
 {

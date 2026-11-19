@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { useEffect, useRef } from 'react'
-import { Menu } from '@base-ui/react/menu'
+import { Menu, MenuTrigger, type MenuActions } from './menu.tsx'
 import { useLocation } from '@tanstack/react-router'
 import { workspaceSwitchHref } from '#client/routes/account-rail.ts'
 import {
@@ -61,7 +61,7 @@ function triggerTestId(placement: WorkspaceSwitcherPlacement) {
  * keeps the current page when the target org can open it, otherwise opens
  * that org's workspace home.
  */
-export function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
+function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 	const viewer = { displayName: data.displayName, avatarUrl: data.avatarUrl }
 	const listed = data.organizations.some((org) => org.slug === data.currentSlug)
 	// Stale session lists can omit the URL org on `/@slug/-/…`. Show a
@@ -146,7 +146,7 @@ export function workspaceSwitcherRows(data: WorkspaceSwitcherData) {
 export function WorkspaceSwitcher(
 	props: WorkspaceSwitcherData & { placement: WorkspaceSwitcherPlacement },
 ) {
-	const menuActions = useRef<Menu.Root.Actions>(null)
+	const menuActions = useRef<MenuActions>(null)
 	const href = useLocation({ select: (location) => location.href })
 	const trigger = useRef<HTMLButtonElement>(null)
 	useEffect(() => menuActions.current?.close(), [href, props.placement])
@@ -170,8 +170,8 @@ export function WorkspaceSwitcher(
 	const label = identity?.handle ?? `@${props.currentSlug}`
 	return (
 		<div data-account-nav-heading css={headingCss}>
-			<Menu.Root modal={false} actionsRef={menuActions}>
-				<Menu.Trigger
+			<Menu actionsRef={menuActions}>
+				<MenuTrigger
 					id={triggerTestId(placement)}
 					ref={trigger}
 					aria-label={`${label}: switch organization`}
@@ -191,7 +191,7 @@ export function WorkspaceSwitcher(
 					<span data-rail-label aria-hidden="true" css={chevronCss}>
 						{renderIcon('chevron-down', { size: '1rem' })}
 					</span>
-				</Menu.Trigger>
+				</MenuTrigger>
 				<SwitcherPopup
 					testId={`${triggerTestId(placement)}-panel`}
 					label="Switch organization"
@@ -208,7 +208,7 @@ export function WorkspaceSwitcher(
 						</div>
 					) : null}
 				</SwitcherPopup>
-			</Menu.Root>
+			</Menu>
 		</div>
 	)
 }

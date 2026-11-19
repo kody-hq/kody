@@ -1,3 +1,8 @@
+import {
+	pacedD1BackupSchemaVersion,
+	pacedD1RetentionTierForDay,
+	pacedD1SealedManifestKey,
+} from '@kody-internal/shared/backup-d1-paced.ts'
 import { createHash, generateKeyPairSync, sign as signBytes } from 'node:crypto'
 import {
 	backupManifestSchemaVersion,
@@ -201,7 +206,11 @@ export class MemoryBucket {
 			...metadata,
 			body: new Response(bytes as unknown as BodyInit).body!,
 			bodyUsed: false,
-			arrayBuffer: async () => bytes.buffer.slice(0),
+			arrayBuffer: async () =>
+				bytes.buffer.slice(
+					bytes.byteOffset,
+					bytes.byteOffset + bytes.byteLength,
+				),
 			bytes: async () => bytes.slice(),
 			text: async () => new TextDecoder().decode(bytes),
 			json: async <T>() => JSON.parse(new TextDecoder().decode(bytes)) as T,
@@ -286,12 +295,16 @@ export function environment(bucket = new MemoryBucket()): BackupEnvironment {
 		BACKUP_WORKFLOW: {} as Workflow,
 		RESTORE_WORKFLOW: {} as Workflow,
 		SEAL_WORKFLOW: {} as Workflow,
+		PACED_DRILL_WORKFLOW: {} as Workflow,
 		CLOUDFLARE_API_TOKEN: 'not-logged-secret',
 		SOURCE_ACCOUNT_ID: ACCOUNT_ID,
 		SOURCE_DATABASE_ID: DATABASE_ID,
 		SOURCE_DATABASE_NAME: 'production-db',
 		ALLOWED_SOURCE_ACCOUNT_IDS: ACCOUNT_ID,
 		ALLOWED_SOURCE_DATABASE_IDS: DATABASE_ID,
+		D1_PACED_SOURCES: JSON.stringify([
+			{ id: DATABASE_ID, name: 'production-db' },
+		]),
 		ENABLE_PRODUCTION_D1_BACKUPS: 'true',
 		BACKUP_BENCHMARK_APPROVED: 'true',
 		BUILD_COMMIT: 'abc123',
@@ -723,5 +736,55 @@ export function signedManifest(payload: BackupManifestPayload): BackupManifest {
 				),
 			),
 		},
+	}
+}
+
+export async function putPacedSeal(
+	bucket: MemoryBucket,
+	source: { id: string; name: string },
+	day: string,
+) {
+	const manifestKey = pacedD1SealedManifestKey(
+		pacedD1RetentionTierForDay(day),
+		source.id,
+		day,
+	)
+	const body = JSON.stringify({
+		schemaVersion: pacedD1BackupSchemaVersion,
+		databaseName: source.name,
+		databaseId: source.id,
+		day,
+		retentionTier: pacedD1RetentionTierForDay(day),
+		startedAt: `${day}T00:30:00.000Z`,
+		finishedAt: `${day}T01:30:00.000Z`,
+		prevDay: null,
+		prevManifestSha256: null,
+		schemaHash: 'a'.repeat(64),
+		schemaStableDuringWalk: true,
+		timeTravelBookmark: null,
+		extras: [],
+		sqliteSequence: [],
+		tables: {},
+		stats: {},
+		shadow: true,
+	})
+	await bucket.put(manifestKey, body)
+	return {
+		manifestKey,
+		manifestSha256: createHash('sha256').update(body).digest('hex'),
+	}
+}
+
+/** A minimal sealed paced night for every `D1_PACED_SOURCES` entry on `day`. */
+export async function putPacedSealsForDay(
+	bucket: MemoryBucket,
+	env: BackupEnvironment,
+	day: string,
+) {
+	for (const source of JSON.parse(env.D1_PACED_SOURCES ?? '[]') as Array<{
+		id: string
+		name: string
+	}>) {
+		await putPacedSeal(bucket, source, day)
 	}
 }

@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	detectPackageAppVisitorAuthorityCodemod,
-	packageAppVisitorAuthorityPatternFromMessage,
+	packageAppVisitorAuthorityPatterns,
 } from './0017-detect-package-app-visitor-authority.ts'
 
 const packageContext = { packageName: '@acme/demo' }
@@ -14,30 +14,33 @@ function manifest(kody: Record<string, unknown>) {
 	})
 }
 
-function patterns(kody: Record<string, unknown>, source: string) {
-	return detectPackageAppVisitorAuthorityCodemod
-		.detect(
+async function patterns(kody: Record<string, unknown>, source: string) {
+	return (
+		await detectPackageAppVisitorAuthorityCodemod.detect(
 			{ 'package.json': manifest(kody), 'index.ts': source },
 			packageContext,
 		)
-		.map((finding) => ({
-			path: finding.path,
-			pattern: packageAppVisitorAuthorityPatternFromMessage(finding.message),
-		}))
+	).map((finding) => ({
+		path: finding.path,
+		pattern:
+			[...packageAppVisitorAuthorityPatterns]
+				.sort((left, right) => right.length - left.length)
+				.find((pattern) => finding.message.startsWith(`${pattern}:`)) ?? null,
+	}))
 }
 
 const app = { entry: './index.ts' }
 
-test('0017 ignores packages that are not apps', () => {
+test('0017 ignores packages that are not apps', async () => {
 	expect(
-		patterns(
+		await patterns(
 			{},
 			"import { kody } from 'kody:runtime'\nexport default async () => kody.secretList({})",
 		),
 	).toEqual([])
 })
 
-test('0017 flags capabilities missing from kody.app.capabilities', () => {
+test('0017 flags capabilities missing from kody.app.capabilities', async () => {
 	const source = [
 		"import { kody as k } from 'kody:runtime'",
 		'export default async function fetch(request, name) {',
@@ -49,13 +52,13 @@ test('0017 flags capabilities missing from kody.app.capabilities', () => {
 		'\treturn await k[name]({})',
 		'}',
 	].join('\n')
-	expect(patterns({ app }, source)).toEqual([
+	expect(await patterns({ app }, source)).toEqual([
 		{ path: 'index.ts', pattern: 'undeclared capability' },
 		{ path: 'index.ts', pattern: 'computed capability' },
 		{ path: 'index.ts', pattern: 'kody.mcp' },
 	])
 	expect(
-		patterns(
+		await patterns(
 			{ app: { ...app, capabilities: ['secretList', 'jobList'] } },
 			source
 				.replace('\tawait k.mcp.github.listIssues({})\n', '')
@@ -67,7 +70,7 @@ test('0017 flags capabilities missing from kody.app.capabilities', () => {
 	).toEqual([])
 })
 
-test('0017 flags apps whose signed-in visitors now get the publisher’s credentials', () => {
+test('0017 flags apps whose signed-in visitors now get the publisher’s credentials', async () => {
 	const source = [
 		"import { credential } from 'kody:runtime'",
 		'export default async function fetch() {',
@@ -76,11 +79,11 @@ test('0017 flags apps whose signed-in visitors now get the publisher’s credent
 		'}',
 	].join('\n')
 	const credentials = { github: { kind: 'oauth', description: 'GitHub' } }
-	expect(patterns({ app, credentials }, source)).toEqual([
+	expect(await patterns({ app, credentials }, source)).toEqual([
 		{ path: 'index.ts', pattern: 'visitor credential' },
 	])
 	expect(
-		patterns(
+		await patterns(
 			{
 				app,
 				credentials: {
@@ -91,7 +94,7 @@ test('0017 flags apps whose signed-in visitors now get the publisher’s credent
 		),
 	).toEqual([{ path: 'index.ts', pattern: 'visitor credential' }])
 	expect(
-		patterns(
+		await patterns(
 			{
 				app: {
 					...app,
@@ -105,16 +108,16 @@ test('0017 flags apps whose signed-in visitors now get the publisher’s credent
 		),
 	).toEqual([])
 	expect(
-		patterns(
+		await patterns(
 			{ app },
 			"export default async () => fetch('https://x.test', { headers: { a: '{{secret:token}}' } })",
 		),
 	).toEqual([{ path: 'index.ts', pattern: 'visitor credential' }])
 })
 
-test('0017 flags apps that read the visitor’s email', () => {
+test('0017 flags apps that read the visitor’s email', async () => {
 	expect(
-		patterns(
+		await patterns(
 			{ app },
 			[
 				"import { kody } from 'kody:runtime'",
@@ -126,15 +129,15 @@ test('0017 flags apps that read the visitor’s email', () => {
 		),
 	).toEqual([{ path: 'index.ts', pattern: 'identity email' }])
 	expect(
-		patterns(
+		await patterns(
 			{ app },
 			"import { kody } from 'kody:runtime'\nexport default async () => (await kody.metaGetCurrentUser({})).username",
 		),
 	).toEqual([])
 })
 
-test('0017 findings never carry names from the package', () => {
-	const findings = detectPackageAppVisitorAuthorityCodemod.detect(
+test('0017 findings never carry names from the package', async () => {
+	const findings = await detectPackageAppVisitorAuthorityCodemod.detect(
 		{
 			'package.json': manifest({ app }),
 			'index.ts':
@@ -145,9 +148,11 @@ test('0017 findings never carry names from the package', () => {
 	expect(findings).toHaveLength(1)
 	expect(JSON.stringify(findings)).not.toContain('superSecretCapability')
 	expect(
-		detectPackageAppVisitorAuthorityCodemod.transform(
-			{ 'package.json': manifest({ app }) },
-			packageContext,
+		(
+			await detectPackageAppVisitorAuthorityCodemod.transform(
+				{ 'package.json': manifest({ app }) },
+				packageContext,
+			)
 		).changed,
 	).toBe(false)
 })

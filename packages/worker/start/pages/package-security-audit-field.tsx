@@ -1,16 +1,14 @@
 /** @jsxImportSource @emotion/react */
-import { ModalDialog } from '../components/modal-dialog.tsx'
+import { Button } from '../components/button.tsx'
+import { Dialog } from '../components/dialog.tsx'
 import { useEffect, useState, useId } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import type { AccountPackageSecurityAudit } from '#universal/loader-data.ts'
 import { packageSecurityAuditAnchor } from '#universal/package-security-audit-prompt.ts'
-import { communityStatusPillBoxCss } from '#universal/community-status-pill.ts'
-import {
-	getGhostButtonCss,
-	hoverMq,
-} from '#universal/styles/style-primitives.ts'
+import { Badge } from '../components/badge.tsx'
+import { hoverMq } from '#universal/styles/style-primitives.ts'
 import {
 	colors,
 	radius,
@@ -82,12 +80,12 @@ export function PackageSecurityAuditField({
 				</button>
 			) : (
 				<p css={auditedRowCss}>
-					<span
+					<Badge
 						data-testid="package-security-audit-verdict"
-						css={audit.verdict === 'pass' ? passPillCss : concernsPillCss}
+						tone={audit.verdict === 'pass' ? 'accent' : 'warning'}
 					>
 						{audit.verdict === 'pass' ? 'Pass' : 'Concerns'}
-					</span>
+					</Badge>
 					<a
 						href={`#${packageSecurityAuditAnchor}`}
 						data-testid="package-security-audit-open"
@@ -114,16 +112,17 @@ export function PackageSecurityAuditField({
 					: 'Informational only. Have your agent review this version before you approve. It never approves anything for you.'}
 			</p>
 			{open && audit.status !== 'unpublished' && (
-				<ModalDialog
-					label={
+				<Dialog
+					open
+					aria-label={
 						audit.status === 'not_audited'
 							? 'Ask your agent for a security audit'
 							: 'Security audit summary'
 					}
-					testId="package-security-audit-dialog"
-					width={640}
+					data-testid="package-security-audit-dialog"
+					size="lg"
 					flush
-					dismissOnOutside
+					dismissOnOutsideClick
 					onClose={closeDialog}
 				>
 					<div css={dialogBodyCss}>
@@ -151,14 +150,14 @@ export function PackageSecurityAuditField({
 										variant="pill"
 										size="sm"
 									/>
-									<button
+									<Button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={closeDialog}
 									>
 										Close
-									</button>
+									</Button>
 								</div>
 							</>
 						) : (
@@ -181,19 +180,19 @@ export function PackageSecurityAuditField({
 									{audit.summary}
 								</p>
 								<div css={dialogActionsCss}>
-									<button
+									<Button
 										type="button"
 										data-testid="package-security-audit-close"
-										css={getGhostButtonCss({ size: 'sm' })}
+										variant="secondary"
 										onClick={closeDialog}
 									>
 										Close
-									</button>
+									</Button>
 								</div>
 							</>
 						)}
 					</div>
-				</ModalDialog>
+				</Dialog>
 			)}
 		</section>
 	)
@@ -261,18 +260,6 @@ const auditedRowCss: CSSObject = {
 	alignItems: 'center',
 	gap: spacing.sm,
 	minWidth: 0,
-}
-
-const passPillCss: CSSObject = {
-	...communityStatusPillBoxCss,
-	color: colors.primaryText,
-	backgroundColor: colors.primarySoft,
-}
-
-const concernsPillCss: CSSObject = {
-	...communityStatusPillBoxCss,
-	color: colors.warningText,
-	backgroundColor: 'color-mix(in srgb, var(--color-warning) 18%, transparent)',
 }
 
 const dialogBodyCss: CSSObject = {

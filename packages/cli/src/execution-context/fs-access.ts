@@ -17,11 +17,19 @@ import {
 	win32,
 } from 'node:path'
 import { homedir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { normalizeServiceEnv } from './service-env-keys.js'
+import {
+	parseMachineCapabilities,
+	type MachineCapabilitiesPolicy,
+	type MachineCommandDefinition,
+	type MachineLanDefinition,
+} from './machine-capabilities.js'
 import { cliConfigDir } from '../store.js'
 
 export type FsMode = 'ro' | 'rw'
-export type FsRule = { path: string; mode: FsMode }
+/** `name` is what Kody knows the folder by, kept once `policy allow` assigns it. */
+export type FsRule = { path: string; mode: FsMode; name?: string }
 type FsLayer = 'server_grant' | 'local_policy' | 'credential_denylist'
 /** Host commands opt-in on this machine (ADR 0093). Absent means off. */
 type LocalCommandsPolicy = { enabled: boolean; changedAt?: string }
@@ -33,8 +41,11 @@ export type LocalFsPolicy = {
 	autoUpdate?: LocalCommandsPolicy
 	/** Extra environment for the daemon service (`kody daemon env`). */
 	serviceEnv?: Record<string, string>
+	/** Named commands and local network destinations this machine offers. */
+	capabilities?: MachineCapabilitiesPolicy
 }
-type FsMount = { path: string; mode: FsMode }
+/** `name` is the allowed folder's name in Kody (see `folderCapabilityNames`). */
+export type FsMount = { path: string; mode: FsMode; name: string }
 type FsRefusal = { path: string; layer: FsLayer; reason: string }
 /**
  * Host folders one run may touch: the server grant intersected with this
@@ -46,6 +57,8 @@ export type EffectiveFs = {
 	grantRoots: Array<string>
 	/** Credential paths runs never touch, even inside a mount. */
 	denied: Array<string>
+	/** Asks Kody before a run's call uses a mount; a throw refuses the call. */
+	authorize?: (mount: FsMount) => Promise<void>
 }
 
 export const emptyEffectiveFs: EffectiveFs = {
@@ -251,7 +264,9 @@ export async function readLocalPolicy(
 			(rule) =>
 				typeof rule?.path === 'string' &&
 				isAbsolute(rule.path) &&
-				isFsMode(rule.mode),
+				isFsMode(rule.mode) &&
+				(rule.name === undefined ||
+					(typeof rule.name === 'string' && folderNamePattern.test(rule.name))),
 		)
 	) {
 		throw new Error(
@@ -282,6 +297,18 @@ export async function readLocalPolicy(
 			`${path} has an invalid "serviceEnv" entry. Use \`kody daemon env set|unset\` to fix it.`,
 		)
 	}
+	let capabilities: MachineCapabilitiesPolicy
+	try {
+		capabilities = parseMachineCapabilities(
+			(parsed as { capabilities?: unknown }).capabilities,
+		)
+	} catch (error) {
+		throw new Error(
+			`${path} has an invalid "capabilities" entry: ${error instanceof Error ? error.message : String(error)}`,
+		)
+	}
+	const hasCapabilities =
+		capabilities.commands.length > 0 || capabilities.lan.length > 0
 	const toggle = (value: { enabled?: unknown; changedAt?: unknown }) => ({
 		enabled: value.enabled as boolean,
 		...(typeof value.changedAt === 'string'
@@ -290,10 +317,15 @@ export async function readLocalPolicy(
 	})
 	return {
 		version: 1,
-		fs: (fs as Array<FsRule>).map(({ path, mode }) => ({ path, mode })),
+		fs: (fs as Array<FsRule>).map(({ path, mode, name }) => ({
+			path,
+			mode,
+			...(name ? { name } : {}),
+		})),
 		...(commands ? { commands: toggle(commands) } : {}),
 		...(autoUpdate ? { autoUpdate: toggle(autoUpdate) } : {}),
 		...(serviceEnv ? { serviceEnv } : {}),
+		...(hasCapabilities ? { capabilities } : {}),
 	}
 }
 
@@ -332,6 +364,56 @@ export async function setLocalCommandsEnabled(input: {
 	return next
 }
 
+type CapabilityKind = 'command' | 'lan'
+
+/** Adds or replaces one named command or local network definition. */
+export async function setLocalCapability(input: {
+	kind: CapabilityKind
+	definition: MachineCommandDefinition | MachineLanDefinition
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const key = input.kind === 'command' ? 'commands' : 'lan'
+	const capabilities = current.capabilities ?? { commands: [], lan: [] }
+	const others = capabilities[key].filter(
+		(entry) => entry.name !== input.definition.name,
+	)
+	const replaced = others.length !== capabilities[key].length
+	const next: LocalFsPolicy = {
+		...current,
+		// Parsed as a whole, so a set the next read would refuse is never written.
+		capabilities: parseMachineCapabilities({
+			...capabilities,
+			[key]: [...others, input.definition].sort((a, b) =>
+				a.name.localeCompare(b.name),
+			),
+		}),
+	}
+	assertReportFits(next)
+	await writeLocalPolicy(policyPath, next)
+	return { policy: next, replaced }
+}
+
+export async function removeLocalCapability(input: {
+	kind: CapabilityKind
+	name: string
+	policyPath?: string
+}) {
+	const policyPath = input.policyPath ?? localPolicyPath()
+	const current = await readLocalPolicy(policyPath)
+	const key = input.kind === 'command' ? 'commands' : 'lan'
+	const capabilities = current.capabilities ?? { commands: [], lan: [] }
+	const kept = capabilities[key].filter((entry) => entry.name !== input.name)
+	const removed = kept.length !== capabilities[key].length
+	const next: LocalFsPolicy = {
+		...current,
+		capabilities: { ...capabilities, [key]: kept },
+	}
+	if (removed) await writeLocalPolicy(policyPath, next)
+	return { policy: next, removed }
+}
+
 export async function writeLocalPolicy(path: string, policy: LocalFsPolicy) {
 	await mkdir(dirname(path), { recursive: true, mode: 0o700 })
 	const temp = `${path}.${process.pid}.tmp`
@@ -360,17 +442,29 @@ export async function allowLocalPath(input: {
 	const policyPath = input.policyPath ?? localPolicyPath()
 	const canonical = await canonicalHostPath(input.path)
 	const policy = await readLocalPolicy(policyPath)
-	const fs = policy.fs.filter((rule) => !samePath(rule.path, canonical))
-	fs.push({ path: canonical, mode: input.mode })
-	fs.sort((a, b) => a.path.localeCompare(b.path))
-	const next: LocalFsPolicy = {
-		version: 1,
-		fs,
-		...(policy.commands ? { commands: policy.commands } : {}),
-		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
+	// Names are saved before the new folder joins, so it cannot change them.
+	const names = folderCapabilityNames(policy.fs)
+	const named = policy.fs.map((rule, index) => ({
+		...rule,
+		name: names[index] as string,
+	}))
+	const previous = named.find((rule) => samePath(rule.path, canonical))
+	const kept = named.filter((rule) => rule !== previous)
+	const added = {
+		path: canonical,
+		mode: input.mode,
+		name:
+			previous?.name ??
+			(folderCapabilityNames([
+				...kept,
+				{ path: canonical, mode: input.mode },
+			]).at(-1) as string),
 	}
+	const fs = [...kept, added].sort((a, b) => a.path.localeCompare(b.path))
+	const next: LocalFsPolicy = { ...policy, fs }
+	assertReportFits(next)
 	await writeLocalPolicy(policyPath, next)
-	return { policy: next, added: { path: canonical, mode: input.mode } }
+	return { policy: next, added }
 }
 
 export async function removeLocalPath(input: {
@@ -385,14 +479,80 @@ export async function removeLocalPath(input: {
 			!samePath(rule.path, canonical) && !samePath(rule.path, input.path),
 	)
 	const removed = fs.length !== policy.fs.length
-	const next: LocalFsPolicy = {
-		version: 1,
-		fs,
-		...(policy.commands ? { commands: policy.commands } : {}),
-		...(policy.autoUpdate ? { autoUpdate: policy.autoUpdate } : {}),
-	}
+	const next: LocalFsPolicy = { ...policy, fs }
 	if (removed) await writeLocalPolicy(policyPath, next)
 	return { policy: next, removed }
+}
+
+const folderNamePattern = /^[a-z0-9][a-z0-9_-]{0,62}$/
+
+function folderSlug(path: string) {
+	const slug = basename(plainPath(path))
+		.toLowerCase()
+		.replace(/[^a-z0-9_-]+/g, '-')
+		.replace(/^[-_]+/, '')
+		.slice(0, 50)
+		.replace(/-+$/, '')
+	return slug || 'folder'
+}
+
+/**
+ * The name Kody knows each allowed folder by: the one saved with the rule,
+ * else the folder's own name in lowercase, with a hash of the path added when
+ * another folder has that name. It never depends on the order of the rules,
+ * and `policy allow` saves every name, so a later folder cannot take one over.
+ */
+export function folderCapabilityNames(
+	policy: ReadonlyArray<FsRule>,
+): Array<string> {
+	const names = policy.map((rule, index) =>
+		rule.name && policy.findIndex((other) => other.name === rule.name) === index
+			? rule.name
+			: null,
+	)
+	const taken = new Set(names.filter((name) => name !== null))
+	const slugs = policy.map((rule) => folderSlug(rule.path))
+	const unnamed = policy
+		.map((_, index) => index)
+		.filter((index) => names[index] === null)
+		.sort((a, b) =>
+			(policy[a] as FsRule).path < (policy[b] as FsRule).path ? -1 : 1,
+		)
+	for (const index of unnamed) {
+		const slug = slugs[index] as string
+		const shared = unnamed.some(
+			(other) => other !== index && slugs[other] === slug,
+		)
+		let name = slug
+		// A hashed name can equal another folder's own name, so hash again.
+		for (let attempt = 0; shared || taken.has(name); attempt += 1) {
+			name = `${slug}-${createHash('sha256')
+				.update(
+					`${(policy[index] as FsRule).path}${attempt ? `\0${attempt}` : ''}`,
+				)
+				.digest('hex')
+				.slice(0, 8)}`
+			if (!taken.has(name)) break
+		}
+		taken.add(name)
+		names[index] = name
+	}
+	return names as Array<string>
+}
+
+// Kody refuses a report of more entries than this (folders count too).
+const maxReportedEntries = 100
+
+function assertReportFits(policy: LocalFsPolicy) {
+	const count =
+		policy.fs.length +
+		(policy.capabilities?.commands.length ?? 0) +
+		(policy.capabilities?.lan.length ?? 0)
+	if (count > maxReportedEntries) {
+		throw new Error(
+			`A machine can have at most ${maxReportedEntries} host folders, named commands and local network destinations together. Remove one first.`,
+		)
+	}
 }
 
 /**
@@ -406,10 +566,12 @@ export async function effectiveFs(
 	denylist: ReadonlyArray<string> = credentialDenylist(),
 ): Promise<EffectiveFs> {
 	const denied = await deniedRoots(denylist)
-	const rules: Array<FsRule> = []
-	for (const rule of policy) {
+	const names = folderCapabilityNames(policy)
+	const rules: Array<FsMount> = []
+	for (const [index, rule] of policy.entries()) {
 		const path = await canonicalize(rule.path).catch(() => null)
-		if (path) rules.push({ path, mode: rule.mode })
+		if (path)
+			rules.push({ path, mode: rule.mode, name: names[index] as string })
 	}
 	const mounts = new Map<string, FsMode>()
 	const refused: Array<FsRefusal> = []
@@ -468,7 +630,14 @@ export async function effectiveFs(
 	}
 	return {
 		mounts: [...mounts]
-			.map(([path, mode]) => ({ path, mode }))
+			.map(([path, mode]) => ({
+				path,
+				mode,
+				// The deepest allowed folder the mount sits in.
+				name: rules
+					.filter((rule) => isWithin(path, rule.path))
+					.sort((a, b) => b.path.length - a.path.length)[0]?.name as string,
+			}))
 			.sort((a, b) => a.path.localeCompare(b.path)),
 		refused,
 		grantRoots: [...grantRoots].sort(),
@@ -549,6 +718,15 @@ export async function resolveHostPath(
 				? `${path} is in this execution context's server grant, but this machine's local policy does not allow it. The machine owner can allow it with \`kody context policy allow <folder> --mode ro|rw\`.`
 				: `${path} is outside this execution context's server grant (grant.fs). Someone with Contribute or Manage on the context can add the folder with \`kody context grant allow <folder> --mode ro|rw\` (or executionContextUpdate grant.fs); the machine's local policy must also allow it.`,
 		)
+	}
+	await effective.authorize?.(mount)
+	if (access === 'write') {
+		// Moving or removing a folder also takes every allowed folder inside it.
+		for (const inner of effective.mounts) {
+			if (inner !== mount && isWithin(inner.path, real)) {
+				await effective.authorize?.(inner)
+			}
+		}
 	}
 	if (access === 'write' && mount.mode === 'ro') {
 		throw new FsAccessError(
