@@ -94,18 +94,16 @@ export type RunCredentialCallMap = {
 	checked?: boolean
 }
 
-/** A call map as plain JSON, for storing on an execution-context lease. */
+/** A call map for execution-context leases and gateway RPC props. */
 export type CredentialCallMapJson = Record<string, Array<CredentialPick>>
 
 export function credentialCallMapToJson(
 	map: CredentialCallMap | null,
 ): CredentialCallMapJson | null {
 	if (!map || map.size === 0) return null
-	const json: CredentialCallMapJson = Object.create(null)
-	for (const [key, picks] of map) {
-		json[key] = picks.map(copyPick)
-	}
-	return json
+	return Object.fromEntries(
+		Array.from(map, ([key, picks]) => [key, picks.map(copyPick)]),
+	)
 }
 
 export function credentialCallMapFromJson(
