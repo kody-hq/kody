@@ -7,6 +7,7 @@
  */
 import {
 	type CredentialPlacement,
+	isLoginExchangeBodyPlacement,
 	type PackageCredentialScan,
 	scanPackageCredentials,
 } from './credential-inventory-scan.ts'
@@ -32,6 +33,8 @@ export type SecretPlaceholderRequestPlacementHit = {
 	part: SecretPlaceholderRequestPart
 	/** The owner's page that allows this part, when the credential does not. */
 	approvalUrl?: string
+	/** A password or token in a sign-in body, which a login credential sends. */
+	loginExchange?: true
 }
 
 const maxListedHits = 10
@@ -84,12 +87,15 @@ export function secretPlaceholderRequestPlacementsOf(
 	for (const reference of scan.references) {
 		const part = requestPartOfPlacement(reference.placement)
 		if (!part || !reference.site) continue
-		const hit = {
+		const hit: SecretPlaceholderRequestPlacementHit = {
 			path: reference.site.path,
 			line: reference.site.line,
 			nameKind: reference.nameKind,
 			name: reference.name,
 			part,
+			...(isLoginExchangeBodyPlacement(reference.placement, reference.name)
+				? { loginExchange: true as const }
+				: {}),
 		}
 		const key = `${hit.path}:${hit.line}:${hit.nameKind}:${hit.name}:${part}`
 		if (seen.has(key)) continue
@@ -144,6 +150,11 @@ export function formatSecretPlaceholderRequestPlacementNotice(input: {
 				...listHits(input.hits),
 				"The fetch gateway fills a credential there only when the credential's owner allowed that part in its fill placement; otherwise Kody refuses the request (credential_placement_refused) and the run fails.",
 				"Fix: move the credential into a request header the API reads (for example headers: { Authorization: 'Bearer {{secret:name}}' }). A value that is not a credential, such as an account id, can be a constant in the package source instead.",
+				...(input.hits.some((hit) => hit.loginExchange)
+					? [
+							'A password or token in a sign-in request body cannot move to a header: declare a login credential ("kind": "login" in kody.credentials), call credential(key).fetch(...) for the API, and the owner saves the login fields with a login_exchange for the sign-in request. Kody runs the sign-in on the host and adds only the session token.',
+						]
+					: []),
 				fail
 					? "If the API only reads it from that part, the credential's owner can allow the part from the owner approval link, then publish again. A whole URL can only move. This blocks publish."
 					: "If the API only reads it from that part, the credential's owner can allow the part on the credential page. This does not block publish.",
