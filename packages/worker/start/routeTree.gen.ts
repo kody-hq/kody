@@ -183,6 +183,7 @@ import { Route as IntegrationsLogosIntegrationSlugRouteImport } from './routes/i
 import { Route as IntegrationsProviderMarksSlugRouteImport } from './routes/integrations_.provider-marks_.$slug'
 import { Route as OauthPackageAppAuthorizeRouteImport } from './routes/oauth.package-app.authorize'
 import { Route as OauthPackageAppDeviceRouteImport } from './routes/oauth.package-app.device'
+import { Route as OauthPackageAppRunAsMeRouteImport } from './routes/oauth.package-app.run-as-me'
 import { Route as OfficePreviewOrgSlugKindRouteImport } from './routes/office-preview_.$orgSlug.$kind'
 import { Route as OnboardingStep1AgentRouteImport } from './routes/onboarding.step-1_.$agent'
 import { Route as OnboardingStep2ServiceRouteImport } from './routes/onboarding.step-2_.$service'
@@ -1213,6 +1214,11 @@ const OauthPackageAppDeviceRoute = OauthPackageAppDeviceRouteImport.update({
   path: '/oauth/package-app/device',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OauthPackageAppRunAsMeRoute = OauthPackageAppRunAsMeRouteImport.update({
+  id: '/oauth/package-app/run-as-me',
+  path: '/oauth/package-app/run-as-me',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OfficePreviewOrgSlugKindRoute =
   OfficePreviewOrgSlugKindRouteImport.update({
     id: '/office-preview_/$orgSlug/$kind',
@@ -2168,6 +2174,7 @@ export interface FileRoutesByFullPath {
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
@@ -2473,6 +2480,7 @@ export interface FileRoutesByTo {
   '/integrations/provider-marks/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2/$service': typeof OnboardingStep2ServiceRoute
@@ -2781,6 +2789,7 @@ export interface FileRoutesById {
   '/integrations_/provider-marks_/$slug': typeof IntegrationsProviderMarksSlugRoute
   '/oauth/package-app/authorize': typeof OauthPackageAppAuthorizeRoute
   '/oauth/package-app/device': typeof OauthPackageAppDeviceRoute
+  '/oauth/package-app/run-as-me': typeof OauthPackageAppRunAsMeRoute
   '/office-preview_/$orgSlug/$kind': typeof OfficePreviewOrgSlugKindRoute
   '/onboarding/step-1_/$agent': typeof OnboardingStep1AgentRoute
   '/onboarding/step-2_/$service': typeof OnboardingStep2ServiceRoute
@@ -3089,6 +3098,7 @@ export interface FileRouteTypes {
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
@@ -3394,6 +3404,7 @@ export interface FileRouteTypes {
     | '/integrations/provider-marks/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview/$orgSlug/$kind'
     | '/onboarding/step-1/$agent'
     | '/onboarding/step-2/$service'
@@ -3701,6 +3712,7 @@ export interface FileRouteTypes {
     | '/integrations_/provider-marks_/$slug'
     | '/oauth/package-app/authorize'
     | '/oauth/package-app/device'
+    | '/oauth/package-app/run-as-me'
     | '/office-preview_/$orgSlug/$kind'
     | '/onboarding/step-1_/$agent'
     | '/onboarding/step-2_/$service'
@@ -3962,6 +3974,7 @@ export interface RootRouteChildren {
   IntegrationsProviderMarksSlugRoute: typeof IntegrationsProviderMarksSlugRoute
   OauthPackageAppAuthorizeRoute: typeof OauthPackageAppAuthorizeRoute
   OauthPackageAppDeviceRoute: typeof OauthPackageAppDeviceRoute
+  OauthPackageAppRunAsMeRoute: typeof OauthPackageAppRunAsMeRoute
   OfficePreviewOrgSlugKindRoute: typeof OfficePreviewOrgSlugKindRoute
   ProfilesUsernameOgDotpngRoute: typeof ProfilesUsernameOgDotpngRoute
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute: typeof DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute
@@ -5202,6 +5215,13 @@ declare module '@tanstack/react-router' {
       path: '/oauth/package-app/device'
       fullPath: '/oauth/package-app/device'
       preLoaderRoute: typeof OauthPackageAppDeviceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/oauth/package-app/run-as-me': {
+      id: '/oauth/package-app/run-as-me'
+      path: '/oauth/package-app/run-as-me'
+      fullPath: '/oauth/package-app/run-as-me'
+      preLoaderRoute: typeof OauthPackageAppRunAsMeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/office-preview_/$orgSlug/$kind': {
@@ -6685,6 +6705,7 @@ const rootRouteChildren: RootRouteChildren = {
   IntegrationsProviderMarksSlugRoute: IntegrationsProviderMarksSlugRoute,
   OauthPackageAppAuthorizeRoute: OauthPackageAppAuthorizeRoute,
   OauthPackageAppDeviceRoute: OauthPackageAppDeviceRoute,
+  OauthPackageAppRunAsMeRoute: OauthPackageAppRunAsMeRoute,
   OfficePreviewOrgSlugKindRoute: OfficePreviewOrgSlugKindRoute,
   ProfilesUsernameOgDotpngRoute: ProfilesUsernameOgDotpngRoute,
   DotwellKnownAgentSkillsSkillIdSKILLDotmdRoute:

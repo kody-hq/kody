@@ -102,6 +102,7 @@ export interface LogRecord {
 		| 'full-backup-already-sealed'
 		| 'full-backup-seal-skipped'
 		| 'full-backup-seal-failure'
+		| 'full-backup-seal-scan-stopped'
 		| 'restore-drill-started'
 		| 'paced-restore-drill-source-passed'
 		| 'paced-restore-drill-source-failed'
@@ -134,6 +135,7 @@ export interface LogRecord {
 	sourceBytes?: number
 	maxSourceBytes?: number
 	blobsVerified?: number
+	r2Calls?: number
 	maxStatementBytes?: number
 	oversizedStatementCount?: number
 	attempt?: number

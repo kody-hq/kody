@@ -807,6 +807,7 @@ async function stagedPublishSizeHints(input: {
  */
 export function createIsolatedPublishWorkRunner(
 	env: Env | undefined,
+	offloadedBuild = false,
 ): PublishWorkRunner | null {
 	const namespace = (
 		env as (Env & { REPO_SESSION?: DurableObjectNamespace }) | undefined
@@ -867,9 +868,12 @@ export function createIsolatedPublishWorkRunner(
 						typeof request.op
 					>
 				}
-				throw new Error(publishComputeLimitMessage(step, sizeHints), {
-					cause: error,
-				})
+				throw new Error(
+					publishComputeLimitMessage(step, sizeHints, offloadedBuild),
+					{
+						cause: error,
+					},
+				)
 			}
 		},
 		async cloneExternalRef(request) {
@@ -878,7 +882,10 @@ export function createIsolatedPublishWorkRunner(
 				return await stub.runIsolatedExternalRefClone(request)
 			} catch (error) {
 				if (!isResourceLimitReset(error)) throw error
-				throw new Error(publishComputeLimitMessage('clone'), { cause: error })
+				throw new Error(
+					publishComputeLimitMessage('clone', null, offloadedBuild),
+					{ cause: error },
+				)
 			}
 		},
 		async discard(stagingKey) {

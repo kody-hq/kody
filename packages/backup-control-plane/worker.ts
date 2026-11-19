@@ -32,6 +32,7 @@ async function scheduled(
 	const scheduledAt = new Date(controller.scheduledTime)
 	switch (controller.cron) {
 		case SEAL_CRON:
+			// Raw bucket: the seal scan budgets its own calls and retries.
 			await sealRecentCompleteDays(env, scheduledAt)
 			return
 		default:
@@ -51,7 +52,7 @@ const handler = {
 		env: BackupEnvironment,
 	): Promise<void> {
 		try {
-			await scheduled(controller, withRetryingBackupBucket(env))
+			await scheduled(controller, env)
 		} catch (error) {
 			safeLog({
 				event: 'backup-failure',

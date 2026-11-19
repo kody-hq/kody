@@ -496,6 +496,7 @@ test(
 			linkedImports,
 		})
 		const artifactCache: LinkedDependencyArtifactCache = new Map()
+		const measured: Array<{ path: string; bytes: number }> = []
 		const link = (cache?: LinkedDependencyArtifactCache) =>
 			linkUploadedPackageImports({
 				env,
@@ -505,6 +506,9 @@ test(
 				linkedImports,
 				referenced: referencedLinkedImports,
 				...(cache ? { artifactCache: cache } : {}),
+				onArtifact: async (artifact) => {
+					measured.push(artifact)
+				},
 			})
 		const first = await link(artifactCache)
 		const linkedSources = Object.values(first.modules)
@@ -517,6 +521,10 @@ test(
 		const second = await link(artifactCache)
 		expect(artifactCache.size).toBe(1)
 		expect(second).toEqual(first)
+		expect(measured).toEqual([
+			{ path: 'kody:@kentcdodds/notes/note-list', bytes: expect.any(Number) },
+		])
+		expect(measured[0]!.bytes).toBeGreaterThan(0)
 		expect(await link()).toEqual(first)
 	},
 )

@@ -50,7 +50,8 @@ extended by `0065-experiments-opt-in.sql`:
 
 Removing a flag from the registry breaks the build at every remaining gate site;
 leftover DB rows for removed keys surface as **stale** in the admin UI
-(delete-only — `deleteStaleFeatureFlag` refuses keys still in the registry).
+(delete-only via the admin UI or `adminFeatureFlagDeleteStale`;
+`deleteStaleFeatureFlag` refuses keys still in the registry).
 
 ## Evaluation precedence
 
@@ -140,8 +141,12 @@ Audience values: `everyone` (default) | `experiments_opt_in`.
   (by org handle) next to User overrides.
 - **MCP capabilities**: `adminFeatureFlagList`, `adminFeatureFlagSet`,
   `adminFeatureFlagOverride`, `adminFeatureFlagOrgOverride` (`{ key, orgId }` or
-  `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`)
-  (admin role required, audited, `contextRuns: 'deny'`).
+  `{ key, orgSlug }` with `enabled` and an optional `note`, or `clear: true`),
+  `adminFeatureFlagDeleteStale({ key, dryRun? })` (deletes a stale key's global
+  row and every user, org, and repo override through the same
+  `deleteStaleFeatureFlagWithAudit` path as the admin UI Delete button; returns
+  per-table counts plus the pre-delete flag) (admin role required, audited,
+  `contextRuns: 'deny'`).
 - **Client**: evaluated per-request in `loadSessionInfo` (cached per request in
   `request-feature-flags-cache.ts`) and shipped as `session.featureFlags`; gate
   UI with `isFeatureFlagEnabled(session, key)` from

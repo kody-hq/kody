@@ -13,6 +13,7 @@ import {
 } from '#mcp/capabilities/meta/require-user.ts'
 import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
+import { authorize } from '#worker/authorization/authorize.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
 import {
@@ -394,6 +395,15 @@ export const packageAppFetchCapability = defineDomainCapability(
 					`Saved package "${savedPackage.kodyId}" has no declared app (package.json#kody.app). Use a static kody:@ import from execute for export smoke tests, or ${packageAppFetchCapabilityName} after declaring kody.app.`,
 				)
 			}
+
+			// The surface check passes on a grant for any app in the org; this
+			// one is on the app being run, like the hosted app path.
+			await authorize({ env: ctx.env, request: callerRequest }, 'app:execute', {
+				type: 'app',
+				id: savedPackage.id,
+				orgId: owner.ownerUserId,
+				label: `app "${savedPackage.kodyId}"`,
+			})
 
 			const packageAppOrigin = getPackageAppBaseUrl({ env: ctx.env })
 			const hostedUrl = resolveHostedPackageAppUrl({

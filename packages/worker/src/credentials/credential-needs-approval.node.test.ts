@@ -15,6 +15,8 @@ const mocks = vi.hoisted(() => ({
 	computeError: null as Error | null,
 	source: null as EntitySourceRow | null,
 	publishFromExternalRef: vi.fn(),
+	persistUploadedPublishBuild: vi.fn(),
+	advanceServingCommit: vi.fn(),
 	publishSession: vi.fn(),
 	liveSessionIds: new Set<string>(),
 	loadCapabilityApprovalSummary: vi.fn(),
@@ -49,8 +51,15 @@ vi.mock('#worker/repo/repo-session-rpc.ts', () => ({
 	repoSessionRpc: () => ({
 		publishFromExternalRef: (...args: Array<unknown>) =>
 			mocks.publishFromExternalRef(...args),
+		persistUploadedPublishBuild: (...args: Array<unknown>) =>
+			mocks.persistUploadedPublishBuild(...args),
 		publishSession: (...args: Array<unknown>) => mocks.publishSession(...args),
 	}),
+}))
+
+vi.mock('#worker/package-capabilities/serving-commit-advance.ts', () => ({
+	advanceServingCommit: (...args: Array<unknown>) =>
+		mocks.advanceServingCommit(...args),
 }))
 
 vi.mock('#worker/package-capabilities/capability-approval-service.ts', () => ({
@@ -147,6 +156,8 @@ beforeEach(() => {
 	mocks.after = []
 	mocks.computeError = null
 	mocks.publishFromExternalRef.mockReset()
+	mocks.persistUploadedPublishBuild.mockReset()
+	mocks.advanceServingCommit.mockReset()
 	mocks.publishSession.mockReset()
 	mocks.liveSessionIds.clear()
 	mocks.loadCapabilityApprovalSummary.mockReset()
@@ -630,6 +641,77 @@ test('approving publishes the paused commit past the pause; a moved base superse
 			allowForce: true,
 			destructiveOverwriteConfirmed: true,
 		}),
+	)
+})
+
+test('approval resumes the sealed upload for a paused commit instead of rebuilding on Kody', async () => {
+	const t = await setup()
+	mocks.after = [need('NEW')]
+	const pauseInput = {
+		env: t.env,
+		source: t.source,
+		pendingCommit: 'commit-paused',
+		files: { 'package.json': manifestContent },
+		requestedByUserId: 'person-publisher',
+	}
+	const cloudPause = await requireCredentialNeedsApproval(pauseInput)
+	const offloadPause = await requireCredentialNeedsApproval({
+		...pauseInput,
+		pausedExternalPublish: {
+			allowForce: false,
+			destructiveOverwriteConfirmed: false,
+			uploadedBuildId: 'pb_local',
+		},
+	})
+	expect(offloadPause?.requestId).toBe(cloudPause?.requestId)
+	mocks.publishFromExternalRef
+		.mockResolvedValueOnce({
+			status: 'published',
+			published_commit: 'commit-paused',
+		})
+		.mockResolvedValueOnce({
+			status: 'already_published',
+			published_commit: 'commit-paused',
+		})
+	mocks.persistUploadedPublishBuild
+		.mockRejectedValueOnce(new Error('artifact storage unavailable'))
+		.mockResolvedValueOnce({ ok: true, targetCount: 1 })
+	const approve = () =>
+		approveCredentialNeedsRequest({
+			env: t.env,
+			request: new Request('https://kody.test/approve'),
+			savedPackage: {
+				id: t.packageId,
+				sourceId: t.source.id,
+				isInternetVisible: true,
+			} as SavedPackageRecord,
+			ownerUserId: ownerId,
+			actorUserId: 'person-approver',
+			requestId: offloadPause!.requestId,
+		})
+	await expect(approve()).rejects.toThrow('artifact storage unavailable')
+	expect(mocks.approvePackageCapabilitySet).not.toHaveBeenCalled()
+	expect(mocks.advanceServingCommit).not.toHaveBeenCalled()
+	mocks.source = { ...t.source, published_commit: 'commit-paused' }
+
+	await expect(approve()).resolves.toEqual({ ok: true })
+	expect(mocks.publishFromExternalRef).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			rebuildPackageArtifacts: false,
+			uploadedBuildId: 'pb_local',
+			expectedHead: 'commit-paused',
+			requestedByUserId: 'person-publisher',
+		}),
+	)
+	expect(mocks.persistUploadedPublishBuild).toHaveBeenLastCalledWith(
+		expect.objectContaining({
+			buildId: 'pb_local',
+			publishedCommit: 'commit-paused',
+			sourceId: t.source.id,
+		}),
+	)
+	expect(mocks.advanceServingCommit).toHaveBeenCalledWith(
+		expect.objectContaining({ commit: 'commit-paused' }),
 	)
 })
 

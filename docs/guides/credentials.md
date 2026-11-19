@@ -501,6 +501,34 @@ of the credential's hosts), `bodyFormat` (`json` or `form`), a `body` template
 where `{field}` is replaced by a login field, and `tokenPath`, the dot path to
 the token in the JSON response.
 
+For example, a Bluesky login holds the handle and an app password, and Kody
+signs in with `com.atproto.server.createSession`:
+
+```ts
+await kody.secretSet({
+	name: 'bluesky',
+	scope: 'user',
+	kind: 'login',
+	hosts: ['bsky.social'],
+	value: JSON.stringify({ identifier: '<handle>', password: '<app password>' }),
+	login_exchange: {
+		url: 'https://bsky.social/xrpc/com.atproto.server.createSession',
+		bodyFormat: 'json',
+		body: { identifier: '{identifier}', password: '{password}' },
+		tokenPath: 'accessJwt',
+		ttlSeconds: 3600,
+	},
+})
+```
+
+The package then calls
+`(await credential('bluesky')).fetch('https://bsky.social/xrpc/app.bsky.feed.searchPosts?q=kody')`.
+
+A fetch that sends a password or token in a sign-in body itself (a
+`{{secret:name}}` placeholder in the body of a request to a login, session, or
+token path) fails the publish check, and the check names a login credential as
+the fix, because that value cannot move to a header.
+
 A login also keeps a refresh token. The value holds the token as a field, and
 the exchange is the token request:
 

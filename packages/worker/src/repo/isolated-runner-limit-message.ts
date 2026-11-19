@@ -45,7 +45,7 @@ export function publishOutsideCloudAdvice() {
 		`${publishOutsideCloudAdviceLead} Build it on your machine with ` +
 		`\`${publishLocalBuildCommand}\`, or on an execution context with ` +
 		'`--context <name>`. Kody serves that build as is and ' +
-		'does not build it again, so these limits do not apply to it. Both of ' +
+		'does not build it again. Finalization still runs on Kody under its own compute limits. Both of ' +
 		'those publish commands need the Execution contexts experiment: turn it ' +
 		`on at ${executionContextsExperimentUrl} ` +
 		`(docs: ${executionContextPublishDocsUrl}). ` +
@@ -226,7 +226,17 @@ export const resourceLimitVarianceNote =
 	'the checks read is what makes every run pass.'
 
 /** What the author can do when `step` hits the isolate memory/CPU limit. */
-export function repoCheckStepResourceLimitAdvice(step: RepoCheckStep | null) {
+const offloadedPublishComputeAdvice =
+	'This step still runs on Kody for local and execution context builds. ' +
+	'Building outside Kody does not move this step.'
+
+export function repoCheckStepResourceLimitAdvice(
+	step: RepoCheckStep | null,
+	offloadedBuild = false,
+) {
+	if (offloadedBuild) {
+		return `${offloadedPublishComputeAdvice} ${sourceTreeAdvice}`
+	}
 	return `${repoCheckStepShrinkAdvice(step)} ${publishOutsideCloudAdvice()}`
 }
 
@@ -265,6 +275,7 @@ function repoCheckStepShrinkAdvice(step: RepoCheckStep | null) {
  */
 export function externalPublishResourceLimitMessage(
 	step: RepoCheckStep | null = null,
+	offloadedBuild = false,
 ) {
 	const where = step
 		? `during ${repoCheckStepLabel(step)}`
@@ -273,9 +284,10 @@ export function externalPublishResourceLimitMessage(
 		'packagePublishExternalPush hit the Durable Object isolate memory or ' +
 		`CPU limit ${where}, so the publish stopped instead of retrying the ` +
 		`same limit. ${resourceLimitVarianceNote} ` +
-		`${repoCheckStepResourceLimitAdvice(step)} \`kody dev check\` runs the ` +
-		'same checks under the same limits, so use it to confirm a fix before ' +
-		'publishing again.'
+		`${repoCheckStepResourceLimitAdvice(step, offloadedBuild)}` +
+		(offloadedBuild
+			? ''
+			: ' `kody dev check` runs the same checks under the same limits, so use it to confirm a fix before publishing again.')
 	)
 }
 
@@ -287,16 +299,24 @@ export function externalPublishResourceLimitMessage(
 const uploadedBuildPersistLimitPhrase =
 	'Kody ran out of CPU time or memory while storing this uploaded build'
 
-export function uploadedBuildPersistLimitMessage() {
-	return (
-		`${uploadedBuildPersistLimitPhrase}, ` +
-		'so the publish stopped. Your build was not rebuilt, and building it ' +
-		'again locally or on an execution context will not change this. The ' +
-		'step verifies the upload and links the `kody:@` packages it imports, ' +
-		'so importing fewer `kody:@` exports from one entry point may get it ' +
-		'through. This is a Kody limit, not a problem with your package: ' +
-		'report it with `feedbackSubmit` and include this message.'
-	)
+export type LinkedPublishArtifactSizes = {
+	count: number
+	largest: Array<LargePathHint>
+}
+
+export function uploadedBuildPersistLimitMessage(
+	sizes?: LinkedPublishArtifactSizes | null,
+) {
+	const remaining = sizes ? sizes.count - sizes.largest.length : 0
+	return [
+		`${uploadedBuildPersistLimitPhrase}, so the publish stopped.`,
+		'Your build was not rebuilt. Finalization still runs on Kody for local and execution context builds.',
+		'Kody verifies the upload, links the published exports it imports, and stores the results.',
+		sizes?.largest.length
+			? `Linked dependency artifacts measured before the failure (module data): ${formatHintList(sizes.largest)}${remaining > 0 ? `, and ${remaining} more` : ''}.`
+			: 'No linked dependency artifact sizes were recorded before the failure.',
+		'Use fewer or smaller `kody:@` exports. If this keeps happening, report it with `feedbackSubmit` and include this message.',
+	].join(' ')
 }
 
 const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
@@ -310,16 +330,18 @@ const publishComputeLimitPhrase = 'exceeded a Kody compute limit'
 export function publishComputeLimitMessage(
 	step: RepoCheckStep | null = null,
 	sizeHints: PublishSizeHints | null = null,
+	offloadedBuild = false,
 ) {
 	const where = step ? ` during ${repoCheckStepLabel(step)}` : ''
 	return [
 		`This publish ${publishComputeLimitPhrase} (Durable Object CPU time or ` +
 			`memory)${where}, so it stopped before it finished. This is not a ` +
 			`storage outage. ${resourceLimitVarianceNote}`,
-		repoCheckStepResourceLimitAdvice(step),
+		repoCheckStepResourceLimitAdvice(step, offloadedBuild),
 		formatPublishSizeHints(sizeHints, step),
-		'`kody dev check` runs the same checks under the same limits, so use ' +
-			'it to confirm a fix before publishing again.',
+		!offloadedBuild &&
+			'`kody dev check` runs the same checks under the same limits, so use ' +
+				'it to confirm a fix before publishing again.',
 	]
 		.filter(Boolean)
 		.join(' ')

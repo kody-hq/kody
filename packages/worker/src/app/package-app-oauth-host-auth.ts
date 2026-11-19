@@ -7,6 +7,7 @@ import {
 	parsePackageAppRequestHost,
 } from '#worker/app-base-url.ts'
 import { consumePackageAppOauthCode } from '#app/package-app-oauth-codes.ts'
+import { needsPackageAppRunConsentForPerson } from '#app/package-app-run-consent.ts'
 import { formatPackageAppOauthClientId } from '#app/package-app-oauth-client-id.ts'
 import { resolvePackageAppOauthClient } from '#app/package-app-oauth-client-resolve.ts'
 import {
@@ -425,6 +426,36 @@ async function handleCallback(input: { request: Request; env: Env; url: URL }) {
 		record.kodyId !== pkce.kodyId
 	) {
 		return badRequest('Authorization code was issued for a different app.', 403)
+	}
+
+	const app = await resolvePackageAppOauthClient({
+		env: input.env,
+		username: record.orgUsername,
+		kodyId: record.kodyId,
+	})
+	if (!app) return badRequest('This app is no longer available.', 403)
+	const personId = personIdFromStored(record.personId)
+	if (
+		(await needsPackageAppRunConsentForPerson({
+			db: input.env.APP_DB,
+			ownerId: app.org.userId,
+			packageId: app.savedPackage.id,
+			personId,
+		})) &&
+		(await viewerCanExecutePackageApp({
+			env: input.env,
+			viewer: { userId: personId, username: record.username },
+			ownerId: app.org.userId,
+			appId: app.savedPackage.id,
+		}))
+	) {
+		// Approval can be removed between code issuance and exchange. Start a
+		// fresh authorization for the same app without creating a session.
+		const login = new URL(packageAppOauthPaths.login, input.url)
+		login.searchParams.set('app', pkce.kodyId)
+		login.searchParams.set('return_to', pkce.returnTo)
+		login.searchParams.set('scope', pkce.scopes.join(' '))
+		return redirectResponse(login.toString(), [clearPkce])
 	}
 
 	const sessionCookies = await createPackageAppSessionCookie({

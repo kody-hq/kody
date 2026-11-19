@@ -101,6 +101,29 @@ test('login hints require an exchange endpoint and an exact credential field', a
 	)
 	expect(exchange.ok).toBe(false)
 	expect(hintLines(exchange.message)).toEqual([hintsHeading, loginHint])
+
+	const createSession = await check(
+		"export const login = () => fetch('https://bsky.social/xrpc/com.atproto.server.createSession', { method: 'POST', body: JSON.stringify({ identifier: 'me.example.com', password: '{{secret:blueskyAppPassword}}' }) })",
+		{
+			credentials: {
+				blueskyAppPassword: {
+					kind: 'secret',
+					description: 'Bluesky app password.',
+				},
+			},
+		},
+	)
+	expect(hintLines(createSession.message)).toEqual([])
+	const undeclared = await check(
+		"export const login = () => fetch('https://bsky.social/xrpc/com.atproto.server.createSession', { method: 'POST', body: JSON.stringify({ identifier: 'me.example.com', password: '{{secret:blueskyAppPassword}}' }) })",
+	)
+	expect(undeclared.ok).toBe(false)
+	expect(hintLines(undeclared.message)).toEqual([hintsHeading, loginHint])
+
+	const notASession = await check(
+		"export const send = () => fetch('https://bsky.social/xrpc/app.bsky.feed.createSessionLog', { method: 'POST', body: JSON.stringify({ password: '{{secret:PASSWORD}}' }) })",
+	)
+	expect(hintLines(notASession.message)).toEqual([])
 })
 
 test('hints skip placeholders a declared slot of the same kind already covers', async () => {

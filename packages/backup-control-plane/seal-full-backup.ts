@@ -42,7 +42,15 @@ import {
 	verifyBackupFullManifestSignature,
 } from './full-manifest-signing.ts'
 import { isBucketLockPolicyPutError } from './immutable-storage.ts'
-import { captureFullSealBlocked } from './sentry.ts'
+import {
+	createR2CallBudget,
+	isWorkerSubrequestLimitError,
+} from './r2-call-budget.ts'
+import { retryingR2Bucket } from './r2-retry.ts'
+import {
+	captureFullSealBlocked,
+	captureSealScanSubrequestLimit,
+} from './sentry.ts'
 
 const sha256Pattern = /^[0-9a-f]{64}$/
 
@@ -431,7 +439,9 @@ async function mapPool<T, R>(
 	let nextIndex = 0
 	let firstError: unknown
 	async function worker() {
-		while (nextIndex < items.length) {
+		// Stop dispatching after a failure: past a Workers subrequest limit
+		// every remaining call fails too.
+		while (firstError === undefined && nextIndex < items.length) {
 			const index = nextIndex
 			nextIndex += 1
 			const item = items[index]
@@ -769,18 +779,35 @@ export async function sealFullBackupDay(
  */
 const sealRecentCompleteDayCount = 16
 
+/**
+ * R2 calls one hourly scan may spend. A first-time seal of one production
+ * day is under 10,000 calls (2026-11-18: 5,548 blob HEADs plus the dump
+ * copies), so this fits at least one full day, and stays well under the
+ * worker's `limits.subrequests`, which the freshness lane in the same
+ * invocation shares. Sealing is resumable (copied objects are skipped by a
+ * size HEAD), so a scan that runs out stops and the next hour continues.
+ */
+const sealScanR2CallBudget = 20_000
+
+/**
+ * Seals unsealed days in the lookback, newest first. Pass the raw bucket:
+ * the budget counts every binding call, including R2 retries.
+ */
 export async function sealRecentCompleteDays(
 	env: BackupEnvironment,
 	scheduledAt: Date,
 	dayCount = sealRecentCompleteDayCount,
+	r2CallBudget = sealScanR2CallBudget,
 ): Promise<void> {
+	const budget = createR2CallBudget(env.BACKUP_BUCKET, r2CallBudget)
+	const scanEnv = { ...env, BACKUP_BUCKET: retryingR2Bucket(budget.bucket) }
 	const errors: Array<unknown> = []
 	for (let offset = 0; offset < dayCount; offset += 1) {
 		const date = new Date(scheduledAt)
 		date.setUTCDate(date.getUTCDate() - offset)
 		const day = utcDay(date)
 		try {
-			const result = await sealFullBackupDay(env, day, scheduledAt)
+			const result = await sealFullBackupDay(scanEnv, day, scheduledAt)
 			switch (result.kind) {
 				case 'sealed':
 					break
@@ -808,6 +835,31 @@ export async function sealRecentCompleteDays(
 				}
 			}
 		} catch (error) {
+			if (errorCode(error) === 'r2-call-budget-exhausted') {
+				safeLog({
+					event: 'full-backup-seal-scan-stopped',
+					status: 'success',
+					day,
+					errorCode: 'r2-call-budget-exhausted',
+					r2Calls: budget.used(),
+				})
+				if (offset === 1) {
+					captureFullSealBlocked({ day, reason: 'r2-call-budget-exhausted' })
+				}
+				break
+			}
+			if (isWorkerSubrequestLimitError(error)) {
+				// Every later binding call in this invocation fails the same way.
+				safeLog({
+					event: 'full-backup-seal-scan-stopped',
+					status: 'failure',
+					day,
+					errorCode: 'worker-subrequest-limit',
+					r2Calls: budget.used(),
+				})
+				captureSealScanSubrequestLimit({ day, r2Calls: budget.used() })
+				break
+			}
 			safeLog({
 				event: 'full-backup-seal-failure',
 				status: 'failure',

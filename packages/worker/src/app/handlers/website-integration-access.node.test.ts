@@ -530,6 +530,18 @@ test('a stored client secret only resolves for its own client id and token URL',
 		githubApp.clientSecret,
 	)
 	expect(await resolve({ clientSecret: 'inline-secret' })).toBe('inline-secret')
+	// The app was saved with no device authorization endpoint, so its secret
+	// never goes to one.
+	expect(
+		await resolveTokenEndpointClientSecret({
+			env,
+			userId: teamId,
+			provider: 'github',
+			clientId: githubApp.clientId,
+			tokenUrl: githubApp.tokenUrl,
+			deviceAuthorizationUrl: 'https://elsewhere.example/device',
+		}),
+	).toBe(null)
 })
 
 const otherTokenUrl = 'https://elsewhere.example/token'
@@ -652,4 +664,28 @@ test('rotating an app client id keeps only a secret entered with it', async () =
 	expect(await secretFor(githubApp.tokenUrl, 'next-github-client')).toBe(
 		'next-github-secret',
 	)
+})
+
+test('a saved client secret only backs the authorization_code exchange', async () => {
+	const { env, teamOwner } = await setup()
+	await saveAccountOAuthApp({ env, user: teamOwner, fields: githubApp })
+	const { exchangeAccountOAuthToken } = await import('./account-secrets.ts')
+	const result = await exchangeAccountOAuthToken({
+		env,
+		user: teamOwner,
+		fields: {
+			provider: 'github',
+			tokenUrl: githubApp.tokenUrl,
+			flow: 'confidential',
+			params: new URLSearchParams({
+				grant_type: 'client_credentials',
+				client_id: githubApp.clientId,
+			}).toString(),
+		} as never,
+	})
+	expect(result.status).toBe(400)
+	expect(result.data).toMatchObject({
+		ok: false,
+		error: 'Only the authorization_code grant is allowed.',
+	})
 })

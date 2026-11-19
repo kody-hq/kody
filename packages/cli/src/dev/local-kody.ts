@@ -10,6 +10,7 @@ import { createWriteStream, existsSync } from 'node:fs'
 import { createServer, request as httpRequest } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { windowsFileLaunch } from '../execution-context/windows-command.js'
@@ -35,8 +36,20 @@ import {
 	packageAppHostEntryQueryParam,
 } from '@kody-internal/shared/public-urls.ts'
 import { localUsernameFor } from './dev-app-origin.js'
+import { devWorkDirPrefix, startProcessReaper } from './process-reaper.js'
 
 const devRuntimePackageName = '@kodycodes/dev-runtime'
+
+export function localKodyStateDir(
+	root: string,
+	env: NodeJS.ProcessEnv = process.env,
+): string {
+	return join(
+		userCacheDir(env),
+		'dev-state',
+		createHash('sha256').update(root).digest('hex').slice(0, 16),
+	)
+}
 
 /** Structural type of `@kodycodes/dev-runtime` so the CLI never imports it statically. */
 export type DevRuntimeModule = {
@@ -50,6 +63,8 @@ export type DevRuntimeModule = {
 			coldIsolates?: boolean
 			clockOffsetMs?: number
 		}
+		onSpawn?: (pid: number) => void
+		onExit?: (pid: number) => void
 		onLog?: (line: {
 			source: string
 			stream: 'stdout' | 'stderr'
@@ -241,11 +256,7 @@ export async function startLocalKody(input: {
 	})
 	const runtime = (await import(pathToFileURL(entry).href)) as DevRuntimeModule
 	// Outside the package root so local state never lands in the saved tree.
-	const stateDir = join(
-		userCacheDir(input.env ?? process.env),
-		'dev-state',
-		createHash('sha256').update(input.manifest.root).digest('hex').slice(0, 16),
-	)
+	const stateDir = localKodyStateDir(input.manifest.root, input.env)
 	await mkdir(stateDir, { recursive: true })
 	const log = createWriteStream(join(stateDir, 'runtime.log'), { flags: 'a' })
 	input.onStatus?.(
@@ -257,8 +268,16 @@ export async function startLocalKody(input: {
 		passthroughHosts: input.passthroughHosts,
 		allowPrivateNetwork: input.allowPrivateNetwork,
 	})
-	const outbound = gateway ? await startOutboundGateway(gateway) : null
+	// Kills the wrangler groups if this process dies before close() runs.
+	const reaper =
+		process.platform === 'win32'
+			? null
+			: await startProcessReaper({
+					workDir: await mkdtemp(join(tmpdir(), devWorkDirPrefix)),
+				})
+	let outbound: Awaited<ReturnType<typeof startOutboundGateway>> | null = null
 	try {
+		outbound = gateway ? await startOutboundGateway(gateway) : null
 		const kody = await runtime.startDevRuntime({
 			stateDir,
 			username: localUsernameFor(input.manifest),
@@ -266,15 +285,19 @@ export async function startLocalKody(input: {
 			...(input.simulation ? { simulation: input.simulation } : {}),
 			...(outbound ? { outboundUrl: outbound.url } : {}),
 			onLog: (line) => log.write(`[${line.source}] ${line.line}\n`),
+			onSpawn: (pid) => reaper?.trackGroup(pid),
+			onExit: (pid) => reaper?.untrackGroup(pid),
 		})
 		return {
 			...kody,
 			close: async () => {
 				await kody.close()
+				reaper?.close()
 				await outbound?.close()
 			},
 		}
 	} catch (error) {
+		reaper?.close()
 		await outbound?.close()
 		throw error
 	}
