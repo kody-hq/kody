@@ -160,6 +160,7 @@ export function matchUploadedTargets(input: {
 const platformVirtualPathPattern = /(^|\/)\.__kody_virtual__\//
 const linkedPathPattern = /(^|\/)\.__kody_linked__\//
 const kodyModuleMarkerPattern = /__kody_(?:virtual|linked)__/i
+const platformModuleMarkerPattern = /__kody_virtual__/i
 const boundCreatorPrefix = '__kodyCreatePackageBound'
 const preBindingRepairNames = [
 	'__kodyPreBindingBoundFetch',
@@ -206,13 +207,21 @@ function readPlainLiteral(node: unknown) {
 	return null
 }
 
-function namesKodyModule(specifier: string) {
-	if (kodyModuleMarkerPattern.test(specifier)) return true
+function matchesMarker(pattern: RegExp, specifier: string) {
+	if (pattern.test(specifier)) return true
 	try {
-		return kodyModuleMarkerPattern.test(decodeURIComponent(specifier))
+		return pattern.test(decodeURIComponent(specifier))
 	} catch {
 		return true
 	}
+}
+
+function namesKodyModule(specifier: string) {
+	return matchesMarker(kodyModuleMarkerPattern, specifier)
+}
+
+function namesPlatformModule(specifier: string) {
+	return matchesMarker(platformModuleMarkerPattern, specifier)
 }
 
 /**
@@ -264,7 +273,7 @@ async function inspectUploadedModule(input: { source: string; label: string }) {
 
 	function checkImportDeclaration(node: AstNode) {
 		const specifier = readSpecifier(node.source, 'imports')
-		const platform = namesKodyModule(specifier)
+		const platform = namesPlatformModule(specifier)
 		for (const entry of (node.specifiers as Array<AstNode>) ?? []) {
 			const local = (entry.local as AstNode | undefined)?.name
 			if (entry.type === 'ImportNamespaceSpecifier') {
@@ -323,14 +332,14 @@ async function inspectUploadedModule(input: { source: string; label: string }) {
 			case 'ExportNamedDeclaration':
 				if (node.source != null) {
 					const specifier = readSpecifier(node.source, 'exports')
-					if (namesKodyModule(specifier)) {
+					if (namesPlatformModule(specifier)) {
 						fail(`${label} re-exports a Kody platform module.`)
 					}
 				}
 				break
 			case 'ImportExpression': {
 				const specifier = readSpecifier(node.source, 'imports')
-				if (namesKodyModule(specifier)) {
+				if (namesPlatformModule(specifier)) {
 					fail(`${label} imports a Kody platform module dynamically.`)
 				}
 				break
@@ -345,7 +354,7 @@ async function inspectUploadedModule(input: { source: string; label: string }) {
 						(node.arguments as Array<unknown>)[0],
 						callee.type === 'Import' ? 'imports' : 'requires',
 					)
-					if (namesKodyModule(specifier)) {
+					if (namesPlatformModule(specifier)) {
 						fail(`${label} imports a Kody platform module dynamically.`)
 					}
 				}

@@ -428,6 +428,23 @@ test('an upload may import the linked placeholders the source imports', async ()
 	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
 })
 
+test('an upload may use linked placeholders as namespaces, re-exports and dynamic imports', async () => {
+	const source = [
+		'import * as notes from "./.__kody_linked__/@them__notes/list.js";',
+		'export * from "./.__kody_linked__/@them__notes/list.js";',
+		'export const keys = () => Object.keys(notes);',
+		'export const load = () => import("./.__kody_linked__/@them__notes/list.js");',
+	].join('\n')
+	const uploaded = await uploadedTarget({ 'index.js': source })
+	const result = await verifyUploadedTargetModules({
+		uploaded,
+		modules: { 'index.js': source },
+		ownPackageId: 'pkg-1',
+		linkedImports,
+	})
+	expect([...result.referencedLinkedImports]).toEqual([linkedNotes])
+})
+
 for (const [label, modules, message] of [
 	[
 		'inlined dependency code (another package bound by id)',
