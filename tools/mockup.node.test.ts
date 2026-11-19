@@ -1,4 +1,11 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import {
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { expect, test } from 'vitest'
@@ -52,10 +59,9 @@ test('variants are 1440 desktop and 390 touch mobile at 2x', () => {
 	).toEqual([2, 2])
 })
 
-test('resolves names and reads the shell', () => {
+test('resolves names', () => {
 	expect(resolveMockupTarget('examples/workspace-settings')).toEqual({
 		name: 'examples/workspace-settings',
-		shell: 'workspace',
 	})
 	expect(() => resolveMockupTarget('examples/missing')).toThrow(
 		/No mockup file/,
@@ -68,11 +74,26 @@ test('copies outside files into local/', () => {
 	const copy = path.join(mockupsDir, 'local', 'zz-test-copy.mockup.tsx')
 	writeFileSync(file, "export default { title: 'x', states: {} }\n")
 	try {
-		expect(resolveMockupTarget(file)).toEqual({
-			name: 'local/zz-test-copy',
-			shell: 'bare',
-		})
+		expect(resolveMockupTarget(file)).toEqual({ name: 'local/zz-test-copy' })
 		expect(existsSync(copy)).toBe(true)
+		expect(resolveMockupTarget(file)).toEqual({ name: 'local/zz-test-copy' })
+	} finally {
+		rmSync(dir, { recursive: true, force: true })
+		rmSync(copy, { force: true })
+	}
+})
+
+test('keeps a different local mockup with the same file name', () => {
+	const dir = mkdtempSync(path.join(tmpdir(), 'mockup-'))
+	const file = path.join(dir, 'zz-test-clash.mockup.tsx')
+	const copy = path.join(mockupsDir, 'local', 'zz-test-clash.mockup.tsx')
+	const local = "export default { title: 'local', states: {} }\n"
+	mkdirSync(path.dirname(copy), { recursive: true })
+	writeFileSync(copy, local)
+	writeFileSync(file, "export default { title: 'outside', states: {} }\n")
+	try {
+		expect(() => resolveMockupTarget(file)).toThrow(/already exists/)
+		expect(readFileSync(copy, 'utf8')).toBe(local)
 	} finally {
 		rmSync(dir, { recursive: true, force: true })
 		rmSync(copy, { force: true })

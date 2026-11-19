@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { chromium, type Browser, type Page } from 'playwright'
 import { defaultCookieFile, readSessionFile } from './control-kody.ts'
@@ -108,11 +108,8 @@ export function resolveMockupTarget(target: string, cwd = process.cwd()) {
 	if (target.endsWith('.tsx')) {
 		file = path.resolve(cwd, target)
 		if (!file.startsWith(mockupsDir + path.sep)) {
-			const copy = path.join(mockupsDir, 'local', path.basename(file))
 			if (!existsSync(file)) throw new Error(`No mockup file at ${file}`)
-			mkdirSync(path.dirname(copy), { recursive: true })
-			copyFileSync(file, copy)
-			file = copy
+			file = copyIntoLocal(file)
 		}
 	} else {
 		file = path.join(mockupsDir, `${target}.mockup.tsx`)
@@ -123,9 +120,21 @@ export function resolveMockupTarget(target: string, cwd = process.cwd()) {
 		.split(path.sep)
 		.join('/')
 		.replace(/\.mockup\.tsx$/, '')
-	const shell =
-		readFileSync(file, 'utf8').match(/\bshell:\s*['"](\w+)['"]/)?.[1] ?? 'bare'
-	return { name, shell }
+	return { name }
+}
+
+function copyIntoLocal(file: string) {
+	const copy = path.join(mockupsDir, 'local', path.basename(file))
+	const source = readFileSync(file)
+	if (existsSync(copy)) {
+		if (readFileSync(copy).equals(source)) return copy
+		throw new Error(
+			`${path.relative(process.cwd(), copy)} already exists with different content. Rename ${path.basename(file)} or remove the local copy.`,
+		)
+	}
+	mkdirSync(path.dirname(copy), { recursive: true })
+	writeFileSync(copy, source, { flag: 'wx' })
+	return copy
 }
 
 function sessionCookieHeader(origin: string) {
@@ -169,6 +178,10 @@ async function settle(page: Page, keepFocus: boolean) {
 	})
 	await page.evaluate(async () => {
 		await document.fonts.ready
+		// Lazy images below the fold never load in a page that does not scroll.
+		for (const image of document.images) {
+			if (image.loading === 'lazy') image.loading = 'eager'
+		}
 		await Promise.all(
 			[...document.images]
 				.filter((image) => !image.complete)
@@ -275,37 +288,33 @@ async function capture(
 }
 
 export async function renderMockup(args: MockupArgs) {
-	const { name, shell } = resolveMockupTarget(args.target)
+	const { name } = resolveMockupTarget(args.target)
 	const { origin } = await ensureDev(createDefaultEnsureDevDeps())
-	const cookieHeader =
-		args.signedIn || shell === 'workspace' ? sessionCookieHeader(origin) : null
-	const basePath =
-		shell === 'workspace'
-			? `/@${await personalOrgSlug(origin, cookieHeader!)}/-/dev-mockups/${name}`
-			: `/dev/mockups/${name}`
 	const errors: Array<string> = []
 	const browser = await chromium.launch()
 	try {
+		let cookieHeader = args.signedIn ? sessionCookieHeader(origin) : null
 		const probe = await capture(browser, {
-			url: `${origin}${basePath}`,
+			url: `${origin}/dev/mockups/${name}`,
 			variant: mockupVariants[0],
 			cookieHeader,
 			origin,
 			errors,
 		})
-		await probe.page.waitForSelector('[data-mockup-ready]', {
-			state: 'attached',
-			timeout: 120_000,
-		})
-		const statesAttr = await probe.page.getAttribute(
-			'[data-mockup-states]',
-			'data-mockup-states',
-		)
+		const ready = probe.page.locator('[data-mockup-ready]').first()
+		await ready.waitFor({ state: 'attached', timeout: 120_000 })
+		const statesAttr = await ready.getAttribute('data-mockup-states')
+		const shell = (await ready.getAttribute('data-mockup-shell')) ?? 'bare'
 		if (!statesAttr) {
-			const text = await probe.page.locator('pre').first().textContent()
+			const text = await ready.textContent()
 			throw new Error(`Mockup failed to render: ${text || 'unknown error'}`)
 		}
 		await probe.context.close()
+		if (shell === 'workspace') cookieHeader ??= sessionCookieHeader(origin)
+		const basePath =
+			shell === 'workspace'
+				? `/@${await personalOrgSlug(origin, cookieHeader!)}/-/dev-mockups/${name}`
+				: `/dev/mockups/${name}`
 		const allStates = statesAttr.split(',')
 		const states = args.states ?? allStates
 		const unknown = states.filter((state) => !allStates.includes(state))

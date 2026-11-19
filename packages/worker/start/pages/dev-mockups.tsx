@@ -155,10 +155,23 @@ export function DevMockupPage({
 				{`Unknown state "${stateName}". States: ${states.join(', ')}`}
 			</pre>
 		)
+	const shell = entry.mockup.shell ?? 'bare'
+	if (shell === 'workspace' && !onRail)
+		return (
+			<pre
+				css={errorCss}
+				data-mockup-ready=""
+				data-mockup-shell={shell}
+				data-mockup-states={states.join(',')}
+			>
+				{`This mockup uses the workspace shell. Open it from /dev/mockups or at /@<org>/-/dev-mockups/${name}.`}
+			</pre>
+		)
 	return (
-		<MockupShellFrame shell={entry.mockup.shell ?? 'bare'}>
+		<MockupShellFrame shell={shell}>
 			<div
 				data-mockup-ready=""
+				data-mockup-shell={shell}
 				data-mockup-states={states.join(',')}
 				css={{ display: 'contents' }}
 			>
