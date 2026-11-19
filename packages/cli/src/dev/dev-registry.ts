@@ -204,7 +204,11 @@ function isPrivateRegistration(
 ): boolean {
 	if (process.platform === 'win32') {
 		// Windows user cache directories inherit per-user ACLs, not POSIX modes.
-		const within = relative(resolve(userCacheDir()), resolve(path))
+		const defaultCache = resolve(
+			userCacheDir({ ...process.env, KODY_CACHE_DIR: undefined }),
+		)
+		if (resolve(userCacheDir()) !== defaultCache) return false
+		const within = relative(defaultCache, resolve(path))
 		return (
 			within !== '..' && !within.startsWith(`..${sep}`) && !isAbsolute(within)
 		)

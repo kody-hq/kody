@@ -30,8 +30,11 @@ test('Windows registration credentials stay within the user cache without getuid
 	const platform = Object.getOwnPropertyDescriptor(process, 'platform')!
 	const getuid = Object.getOwnPropertyDescriptor(process, 'getuid')
 	const previousCache = process.env.KODY_CACHE_DIR
+	const previousLocalAppData = process.env.LOCALAPPDATA
 	try {
-		process.env.KODY_CACHE_DIR = cache
+		process.env.LOCALAPPDATA = cache
+		const defaultCache = join(cache, 'kody', 'cache')
+		process.env.KODY_CACHE_DIR = defaultCache
 		Object.defineProperty(process, 'platform', {
 			value: 'win32',
 			configurable: true,
@@ -62,12 +65,36 @@ test('Windows registration credentials stay within the user cache without getuid
 			JSON.parse(await readFile(external, 'utf8')).localKody,
 			undefined,
 		)
+		process.env.KODY_CACHE_DIR = outside
+		const overridden = await writeDevRegistration(registration)
+		assert.equal(
+			JSON.parse(await readFile(overridden, 'utf8')).localKody,
+			undefined,
+		)
+		await writeFile(overridden, JSON.stringify(registration))
+		const shared = await findRunningDevServer({
+			root: cache,
+			target: 'mock',
+			fetchFn: async () =>
+				Response.json({ package: { root: cache }, target: 'mock' }),
+		})
+		assert.equal(shared?.registration.localKody, undefined)
+		const original = await findRunningDevServer({
+			root: cache,
+			target: 'mock',
+			cacheDir: defaultCache,
+			fetchFn: async () =>
+				Response.json({ package: { root: cache }, target: 'mock' }),
+		})
+		assert.equal(original?.registration.localKody, undefined)
 	} finally {
 		Object.defineProperty(process, 'platform', platform)
 		if (getuid) Object.defineProperty(process, 'getuid', getuid)
 		else delete (process as { getuid?: unknown }).getuid
 		if (previousCache === undefined) delete process.env.KODY_CACHE_DIR
 		else process.env.KODY_CACHE_DIR = previousCache
+		if (previousLocalAppData === undefined) delete process.env.LOCALAPPDATA
+		else process.env.LOCALAPPDATA = previousLocalAppData
 		await rm(cache, { recursive: true, force: true })
 		await rm(outside, { recursive: true, force: true })
 	}

@@ -75,7 +75,7 @@ export async function executeLocalPackageExport(input: {
 	try {
 		if (!session.api) {
 			throw new Error(
-				'Restart kody dev to register a private local Kody API session.',
+				'Restart kody dev to register a private local Kody API session. On Windows, use the default per-user cache under LOCALAPPDATA, without a KODY_CACHE_DIR override pointing elsewhere.',
 			)
 		}
 		await session.sync()
