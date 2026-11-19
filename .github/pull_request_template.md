@@ -65,11 +65,10 @@ closing keyword.
 
 ### New tests
 
-<!--
-For each new long-lived test: what behavior or intent it protects, and why an
-existing higher-level test does not already cover it. Otherwise write
-"no new tests". See docs/contributing/testing-principles.md#before-you-write-a-test.
--->
+No new tests needed.
+
+<!-- Or, for each new long-lived test: the behavior it protects and why existing
+     tests do not cover it. See docs/contributing/writing-tests.md. -->
 
 ## System changes
 
