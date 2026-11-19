@@ -87,6 +87,15 @@ test('shared-host logout clears only the requesting app session', async () => {
 	)
 	expect(logout.status).toBe(302)
 	expect(logout.headers.get('Location')).toBe('/packages/notes')
+	for (const returnTo of [
+		`${ownerPackageAppOrigin}//elsewhere.example`,
+		'/\t/elsewhere.example',
+	]) {
+		const offSite = await workerFetch(
+			`${ownerPackageAppOrigin}${packageAppOauthPaths.logout}?app=notes&return_to=${encodeURIComponent(returnTo)}`,
+		)
+		expect(offSite.headers.get('Location')).toBe('/')
+	}
 	const cleared = logout.headers.getSetCookie()
 	const clearedNames = new Set(
 		cleared.map((header) => header.split('=')[0]?.trim()).filter(Boolean),
