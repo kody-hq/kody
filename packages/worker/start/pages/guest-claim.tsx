@@ -236,7 +236,11 @@ function GuestClaimForms(props: {
 							<form method="post" action={action} css={formCss} noValidate>
 								<input type="hidden" name="action" value="email_start" />
 								<input type="hidden" name="mode" value="new" />
-								<UsernameChoiceField value={username} onChange={setUsername} />
+								<UsernameChoiceField
+									inputId="guest-claim-username"
+									value={username}
+									onChange={setUsername}
+								/>
 								<label css={labelCss}>
 									<span>Email</span>
 									<Input
