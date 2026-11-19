@@ -122,7 +122,17 @@ export function SecretEditor(props: SecretEditorProps) {
 					},
 				}}
 			>
-				<Field label="Name">
+				<Field
+					label="Name"
+					description={
+						selectedSecret &&
+						!isCreating &&
+						editorState.name.trim() !== selectedSecret.name &&
+						editorState.scope === selectedSecret.scope
+							? `Renaming keeps this secret's id, value, grants, package credential mappings, and history. References by name do not follow: update {{secret:${selectedSecret.name}}} placeholders and code that names "${selectedSecret.name}" to the new name.`
+							: undefined
+					}
+				>
 					<Input
 						type="text"
 						required

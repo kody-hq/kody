@@ -21,6 +21,11 @@ import { requireMcpRequest } from '#mcp/capabilities/meta/require-user.ts'
 import type { CapabilityContext } from '#mcp/capabilities/types.ts'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { resolveCallerSecretAuthority } from '#mcp/secrets/secret-authority.ts'
+import {
+	listKnownSecretNameReferences,
+	secretRenameNameReferencesNote,
+} from '#mcp/secrets/secret-name-references.ts'
+import { renameSecret } from '#mcp/secrets/service.ts'
 import { assertCredentialSecurityEditAllowed } from './credential-security-edit.ts'
 
 const inputSchema = z
@@ -30,6 +35,14 @@ const inputSchema = z
 			.min(1)
 			.describe(
 				'Credential id from secretList, the integrations list, or packageGet credential options.',
+			),
+		name: z
+			.string()
+			.trim()
+			.min(1)
+			.optional()
+			.describe(
+				'New name for a user-scope secret (letters, numbers, dots, underscores, hyphens; unique in the account). Renames in place: the credential id, value, grants, package credential mappings, and history stay attached. {{secret:<old name>}} placeholders and code that names the secret do not follow; the response lists the known ones. Send it on its own, not with provider, inject, or placement.',
 			),
 		provider: credentialProviderSchema
 			.nullable()
@@ -51,11 +64,23 @@ const inputSchema = z
 	})
 	.refine(
 		(value) =>
+			value.name !== undefined ||
 			value.provider !== undefined ||
 			value.inject ||
 			value.placement !== undefined,
 		{
-			message: 'Provide provider, inject, and/or placement.',
+			message: 'Provide name, provider, inject, and/or placement.',
+		},
+	)
+	.refine(
+		(value) =>
+			value.name === undefined ||
+			(value.provider === undefined &&
+				!value.inject &&
+				value.placement === undefined),
+		{
+			message:
+				'Rename on its own call; send provider, inject, or placement in a separate credentialUpdate.',
 		},
 	)
 
@@ -66,6 +91,23 @@ const outputSchema = z.object({
 	provider: z.string().nullable(),
 	inject: credentialInjectSchema,
 	placement: credentialFillPlacementSchema.nullable(),
+	rename: z
+		.object({
+			previous_name: z.string(),
+			known_references: z.array(
+				z.object({
+					kind: z.enum(['webhook-verification', 'secret-provider-door']),
+					id: z.string(),
+					package_id: z.string(),
+					label: z.string(),
+				}),
+			),
+			note: z.string(),
+		})
+		.optional()
+		.describe(
+			'Present when the call renamed a secret: stored settings that still use the previous name, and what else to update.',
+		),
 })
 
 export const credentialUpdateCapability = defineDomainCapability(
@@ -75,7 +117,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 		contextRuns: 'deny',
 		orgPermission: 'none',
 		description:
-			"Set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body). The gateway enforces placement; query, path, and body fill only after the owner opts in on the credential page, because the host may store the value (parts a credential filled before enforcement stay opted in). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Never takes or returns a value. Widening placement or changing inject is website-only from execute (hosted or --local), package, and app code; those calls are refused with the credential's page URL.",
+			"Rename a user-scope secret in place, or set a credential's provider, inject, and/or fill placement: which package credential needs it can satisfy, where a scoped `credential(key)` client puts its value, and which request parts placeholders may fill (headers, query, path, body). The gateway enforces placement; query, path, and body fill only after the owner opts in on the credential page, because the host may store the value (parts a credential filled before enforcement stay opted in). Works for user-scope secrets, OAuth connections, MCP servers (provider/inject only), and vault bindings (placement only) by credential id; needs Write on that credential and is audited. Renames keep the credential id and value; name-based references ({{secret:<name>}} placeholders, code that names the secret) do not follow, and the response lists the known ones. Never takes or returns a value. Widening placement or changing inject is website-only from execute (hosted or --local), package, and app code; those calls are refused with the credential's page URL.",
 		keywords: [
 			'credential',
 			'provider',
@@ -83,6 +125,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 			'header',
 			'placement',
 			'client',
+			'rename',
 		],
 		readOnly: false,
 		idempotent: true,
@@ -96,7 +139,7 @@ export const credentialUpdateCapability = defineDomainCapability(
 			})
 			if (authorityPackageId) {
 				throw new McpCallerError(
-					'Package runtimes cannot change a credential’s provider, inject, or placement.',
+					'Package runtimes cannot rename a credential or change its provider, inject, or placement.',
 				)
 			}
 			const orgId = ownerIdFromCaller(ctx.callerContext)
@@ -118,6 +161,46 @@ export const credentialUpdateCapability = defineDomainCapability(
 				`${credentialPermissionFamily(credential.kind)}:write`,
 				credentialResource(request.org.id, credential),
 			)
+			if (parsed.name !== undefined) {
+				if (credential.kind !== 'secret') {
+					throw new McpCallerError(
+						'Only secrets can be renamed. Integrations, MCP servers, and vault bindings keep the name they were connected with.',
+					)
+				}
+				const previousName = credential.name
+				const renamed = await renameSecret({
+					env: ctx.env,
+					userId: orgId,
+					scope: 'user',
+					fromName: previousName,
+					toName: parsed.name,
+					audit: orgAuditWriterFromRequest(ctx.env, request),
+				})
+				const fields = await readCredentialFields({
+					db: ctx.env.APP_DB,
+					credential: { ...credential, name: renamed.name },
+				})
+				return {
+					credential_id: credential.id,
+					credential_kind: credential.kind,
+					name: renamed.name,
+					provider: fields.provider,
+					inject: fields.inject,
+					placement: fields.placement,
+					rename: {
+						previous_name: previousName,
+						known_references:
+							previousName === renamed.name
+								? []
+								: await listKnownSecretNameReferences({
+										db: ctx.env.APP_DB,
+										orgId,
+										name: previousName,
+									}),
+						note: secretRenameNameReferencesNote,
+					},
+				}
+			}
 			if (parsed.inject || parsed.placement !== undefined) {
 				const before = await readCredentialFields({
 					db: ctx.env.APP_DB,
