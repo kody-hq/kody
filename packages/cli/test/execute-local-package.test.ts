@@ -376,6 +376,7 @@ test('local export files match the runtime import target before default', async 
 			JSON.stringify({
 				name: '@seed/conditions',
 				exports: {
+					'./earlier': { import: './default.ts' },
 					'./seed': { default: './default.ts', import: './import.ts' },
 					'./fallback': { default: './default.ts' },
 					'./require': { require: './require.ts' },
@@ -392,7 +393,7 @@ test('local export files match the runtime import target before default', async 
 		assert.equal(
 			(await findLocalPackageExport({ cwd: root, modulePath: './default.ts' }))
 				?.key,
-			'./fallback',
+			'./earlier',
 		)
 		assert.equal(
 			await findLocalPackageExport({ cwd: root, modulePath: './require.ts' }),
@@ -407,6 +408,14 @@ test('local export files match the runtime import target before default', async 
 				})
 			)?.key,
 			'./seed',
+		)
+		assert.equal(
+			await findLocalPackageExport({
+				cwd: root,
+				modulePath: './default.ts',
+				exportKey: './missing',
+			}),
+			null,
 		)
 	} finally {
 		await rm(root, { recursive: true, force: true })

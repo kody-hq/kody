@@ -34,8 +34,10 @@ export async function findLocalPackageExport(input: {
 				? target
 				: (conditional?.import ?? conditional?.default)
 		if (typeof path !== 'string') continue
-		if (exportKey !== undefined && key.replace(/^\.\//, '') === exportKey)
-			return { manifest, key }
+		if (exportKey !== undefined) {
+			if (key.replace(/^\.\//, '') === exportKey) return { manifest, key }
+			continue
+		}
 		const exportedPath = await realpath(resolve(manifest.root, path)).catch(
 			() => null,
 		)
