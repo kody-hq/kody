@@ -836,8 +836,10 @@ change to these decisions here so future agents do not relitigate them.
   gateway hop (first request, login retry, followed redirect) refuses loopback
   names and private, link-local, and reserved IP literals
   (`isPublicFetchHostname` in `mcp/events/ssrf.ts`). Token endpoints get the
-  same check on save and before each request (`isPublicCredentialEndpoint`). A
-  public name that resolves to a private address relies on the Workers platform
+  same check on save and before each request (`isPublicCredentialEndpoint`),
+  except loopback hosts, which stay allowed for local mocks. A public name that
+  resolves to a private address, and a redirect the Workers runtime follows
+  itself (`redirect: 'follow'` without a deferred body), rely on the platform
   egress model (`global_fetch_strictly_public`). Secret-bearing requests are
   also constrained by per-secret host allowlists.
 - **PBKDF2-SHA256 (100k iterations)** is used for password hashing rather than a
