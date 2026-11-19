@@ -69,6 +69,7 @@ const gatewayFetchForwardHeaderNames = [
 	'X-Kody-Gateway-Method',
 	'X-Kody-Gateway-Package-Id',
 	'X-Kody-Gateway-Headers',
+	'X-Kody-Gateway-Credentials',
 	'x-kody-secret-resolution',
 	'Content-Length',
 	'Transfer-Encoding',
@@ -82,6 +83,7 @@ const corsAllowHeaders = [
 	'X-Kody-Gateway-Method',
 	'X-Kody-Gateway-Package-Id',
 	'X-Kody-Gateway-Headers',
+	'X-Kody-Gateway-Credentials',
 	'x-kody-secret-resolution',
 ].join(', ')
 

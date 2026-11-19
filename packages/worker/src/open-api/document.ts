@@ -398,6 +398,11 @@ function buildGatewayFetchStreamOperation(
 				'JSON object of outbound header name → string value. Invalid JSON or non-string values are `400 invalid_request`.',
 			),
 			header(
+				'X-Kody-Gateway-Credentials',
+				false,
+				'JSON map from need keys to arrays of pinned credential ID picks. Context runs use the picks in their lease.',
+			),
+			header(
 				'x-kody-secret-resolution',
 				false,
 				'`on` (default), `headers-only`, or `off`. Origin strips this header before the request leaves.',

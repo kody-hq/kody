@@ -5,6 +5,7 @@ import { ApiError } from './errors.ts'
 import { nativeApiOperationDefinitions } from './native-operations.ts'
 import {
 	assertGatewayFetchContentLength,
+	gatewayFetchCredentialsHeaderName,
 	gatewayFetchHeadersHeaderName,
 	gatewayFetchMethodHeaderName,
 	gatewayFetchPackageIdHeaderName,
@@ -42,6 +43,14 @@ test('parseCapabilityProxyGatewayFetchStreamHeaders reads metadata and rejects b
 		url: 'https://example.com/upload',
 		method: 'GET',
 	})
+	expect(() =>
+		parseCapabilityProxyGatewayFetchStreamHeaders(
+			streamHeaders({
+				[gatewayFetchCredentialsHeaderName]:
+					'{"demoToken":[{"name":"old-label"}]}',
+			}),
+		),
+	).toThrow('pinned credential ID arrays')
 	expect(
 		parseCapabilityProxyGatewayFetchStreamHeaders(
 			streamHeaders({
@@ -141,6 +150,8 @@ test('runCapabilityProxyGatewayFetchStream forwards the body stream and returns 
 				[gatewayFetchUrlHeaderName]: 'https://example.com/upload',
 				[gatewayFetchMethodHeaderName]: 'POST',
 				[gatewayFetchPackageIdHeaderName]: 'pkg-owned',
+				[gatewayFetchCredentialsHeaderName]:
+					'{"demoToken":[{"id":"pinned-id"}],"skip":[]}',
 				[gatewayFetchHeadersHeaderName]: JSON.stringify({
 					authorization: 'Bearer {{secret:demoToken|scope=user}}',
 				}),
@@ -178,10 +189,18 @@ test('runCapabilityProxyGatewayFetchStream forwards the body stream and returns 
 		request: Request
 		props: {
 			claimedPackageId?: string | null
+			legacyCredentialPicks?: unknown
 			storageContext: { packageId: string | null }
 		}
 	}
 	expect(gatewayArg.props.claimedPackageId).toBe('pkg-owned')
+	expect(gatewayArg.props.legacyCredentialPicks).toEqual({
+		demoToken: [{ id: 'pinned-id' }],
+		skip: [],
+	})
+	expect(
+		gatewayArg.request.headers.has(gatewayFetchCredentialsHeaderName),
+	).toBe(false)
 	expect(gatewayArg.props.storageContext.packageId).toBeNull()
 	expect(gatewayArg.request.url).toBe('https://example.com/upload')
 	expect(gatewayArg.request.method).toBe('POST')
@@ -234,6 +253,7 @@ function contextRunStream(
 	runtime: { mode: 'all' } | { mode: 'list'; paths: Array<string> } = {
 		mode: 'all',
 	},
+	credentials?: string,
 ) {
 	return runCapabilityProxyGatewayFetchStream({
 		ctx: {
@@ -246,6 +266,7 @@ function contextRunStream(
 				scopes: null,
 				runtime,
 				byOperator,
+				callMap: new Map([['demoToken', [{ id: 'lease-id' }]]]),
 			},
 			callerContext: {
 				baseUrl: 'https://heykody.dev',
@@ -262,6 +283,9 @@ function contextRunStream(
 				method: 'POST',
 				headers: {
 					[gatewayFetchUrlHeaderName]: 'https://example.com/upload',
+					...(credentials
+						? { [gatewayFetchCredentialsHeaderName]: credentials }
+						: {}),
 					[gatewayFetchHeadersHeaderName]: JSON.stringify({
 						authorization: 'Bearer {{secret:demoToken}}',
 					}),
@@ -280,6 +304,20 @@ test('runCapabilityProxyGatewayFetchStream lets every context run use its own cr
 		expect(await response.text()).toBe('ok')
 	}
 	expect(executeGatewayFetch).toHaveBeenCalledTimes(2)
+	expect(executeGatewayFetch).toHaveBeenCalledWith(
+		expect.objectContaining({
+			props: expect.objectContaining({
+				legacyCredentialPicks: { demoToken: [{ id: 'lease-id' }] },
+			}),
+		}),
+	)
+	await expect(
+		contextRunStream(
+			false,
+			{ mode: 'all' },
+			'{"demoToken":[{"id":"untrusted"}]}',
+		),
+	).rejects.toThrow('Execution context runs cannot send')
 })
 
 test('runCapabilityProxyGatewayFetchStream honors the context runtime allowlist', async () => {

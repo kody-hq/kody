@@ -61,6 +61,7 @@ export const gatewayFetchUrlHeaderName = 'X-Kody-Gateway-Url'
 export const gatewayFetchMethodHeaderName = 'X-Kody-Gateway-Method'
 export const gatewayFetchPackageIdHeaderName = 'X-Kody-Gateway-Package-Id'
 export const gatewayFetchHeadersHeaderName = 'X-Kody-Gateway-Headers'
+const gatewayFetchCredentialsHeaderName = 'X-Kody-Gateway-Credentials'
 /** Marks Kody's (or the bridge's) own gateway-fetch error; value is the code. */
 export const gatewayFetchErrorHeaderName = 'X-Kody-Gateway-Error'
 export const secretResolutionHeaderName = 'x-kody-secret-resolution'
@@ -488,6 +489,7 @@ export type CapabilityProxyGatewayFetchStreamHeaders = {
 	packageId?: string
 	/** Outbound header name → string (may include secret placeholders). */
 	headers?: Record<string, string>
+	credentials?: CredentialCallMapInput
 	/** Outbound `Content-Type` (set on the Open API request). */
 	contentType?: string | null
 	/** `on` | `headers-only` | `off`. */
@@ -631,6 +633,11 @@ function gatewayFetchRequestHeaders(
 	if (input.gateway.headers && Object.keys(input.gateway.headers).length > 0) {
 		headers[gatewayFetchHeadersHeaderName] = JSON.stringify(
 			input.gateway.headers,
+		)
+	}
+	if (input.gateway.credentials) {
+		headers[gatewayFetchCredentialsHeaderName] = JSON.stringify(
+			input.gateway.credentials,
 		)
 	}
 	if (input.gateway.secretResolution) {
