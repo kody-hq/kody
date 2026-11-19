@@ -96,7 +96,10 @@ import {
 	type WorkflowSourceRevisionPolicy,
 } from '#worker/run-records/workflow-projection.ts'
 import { runRecordMaxPageSize } from '#worker/run-records/types.ts'
-import { isTransientDurableObjectResetError } from '#worker/durable-object-reset-retry.ts'
+import {
+	getDurableObjectIsolateResourceLimitResetMessage,
+	isTransientDurableObjectResetError,
+} from '#worker/durable-object-reset-retry.ts'
 import { UserCodeError } from '#worker/user-code-error.ts'
 import { inlineWorkflowNameFallback } from '#universal/workflow-display.ts'
 import {
@@ -2512,7 +2515,7 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					)
 				}
 				// This is Kody's own publish wrapper, not user-authored code.
-				if (durablePublish) throw new Error(message)
+				if (durablePublish) throw new Error(message, { cause: result.error })
 				throw new UserCodeError(message)
 			}
 			let value = toJsonSafeValue(result.result) as JsonValue
@@ -2555,9 +2558,18 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					sourceId: payload.packageContext?.sourceId,
 					commit: payload.enqueuedCommit,
 				})
-				const message = `Publish workflow: ${state} ${getErrorMessage(error)}`
+				const errorMessage = getErrorMessage(error)
+				const resetMessage =
+					getDurableObjectIsolateResourceLimitResetMessage(error)
+				const reason =
+					resetMessage && !errorMessage.includes(resetMessage)
+						? `${errorMessage} Caused by: ${resetMessage}`
+						: errorMessage
+				const message = `Publish workflow: ${state} ${reason}`
 				error =
-					isNonRetryableError(error) || isPublishComputeLimitMessage(message)
+					isNonRetryableError(error) ||
+					resetMessage ||
+					isPublishComputeLimitMessage(message)
 						? terminalWorkflowStepError(message)
 						: new Error(message, { cause: error })
 			}
