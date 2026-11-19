@@ -104,6 +104,8 @@ before(async () => {
 					gatewayUrl: request.headers['x-kody-gateway-url'] ?? null,
 					gatewayMethod: request.headers['x-kody-gateway-method'] ?? null,
 					gatewayHeaders: request.headers['x-kody-gateway-headers'] ?? null,
+					gatewayCredentials:
+						request.headers['x-kody-gateway-credentials'] ?? null,
 					contentType: request.headers['content-type'] ?? null,
 					rawBody: raw,
 				}
@@ -151,6 +153,9 @@ before(async () => {
 						value: {
 							warnings: [],
 							checked: credentials ?? null,
+							...(credentials?.demoToken === 'old-label'
+								? { credentials: { demoToken: [{ id: 'pinned-id' }] } }
+								: {}),
 							strict:
 								(args[0] as { strict?: boolean } | undefined)?.strict === true,
 						},
@@ -779,6 +784,7 @@ export default async function main() {
 			code,
 			token: goodToken,
 			apiUrl,
+			credentials: { demoToken: 'old-label' },
 		})
 		assert.equal(result.isError, false, JSON.stringify(result))
 		const structured = result.structuredContent as {
@@ -801,6 +807,7 @@ export default async function main() {
 		assert.deepEqual(hop?.body, {
 			gatewayUrl: 'https://api.example.com/upload',
 			gatewayMethod: 'POST',
+			gatewayCredentials: '{"demoToken":[{"id":"pinned-id"}]}',
 			gatewayHeaders: JSON.stringify({
 				authorization: 'Bearer {{secret:demoToken|scope=user}}',
 			}),

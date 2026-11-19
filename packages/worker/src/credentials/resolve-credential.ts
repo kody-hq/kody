@@ -169,7 +169,10 @@ async function resolveWith<U extends CredentialUse>(
 	}
 	const subject = resolver.auditSubject(credential)
 	const audit = (outcome: CredentialResolutionOutcome) => {
-		const subjects = auditSubjectFor(subject, credential)
+		const subjects = [
+			...auditSubjectFor(subject, credential),
+			...(subject.companions ?? []),
+		]
 		for (const row of subjects) {
 			scheduleCredentialResolutionAudit({
 				env: input.env,
@@ -317,7 +320,7 @@ function fetchAuditCacheKey(input: {
 function fetchCredentialIdentity(credential: CredentialTarget): string | null {
 	switch (credential.use) {
 		case 'secret':
-			return `secret\0${credential.requestHost ?? ''}\0${credential.scope ?? ''}\0${credential.name}`
+			return `secret\0${credential.requestHost ?? ''}\0${credential.scope ?? ''}\0${credential.name}\0${credential.credentialId ?? ''}`
 		case 'integration-token':
 			return `integration-token\0${credential.requestHost ?? ''}\0${credential.name}\0${credential.packageKodyId ?? ''}`
 		case 'provider-secret':

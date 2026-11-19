@@ -346,7 +346,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 			'Run a module on Kody cloud, an execution context, or this machine',
 		usage: [
 			'kody execute [--org <slug>] [--invoke <ref> | --code <esm> | --file <path>] [--params <json>] [--conversation-id <id>] [--json]',
-			'             [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]',
+			'             [--credential <key=id:credential-id>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]',
 		],
 		flags: [
 			orgFlag,
@@ -359,7 +359,7 @@ export const commandHelpTree: Array<CommandHelpNode> = [
 			['--params <json>', 'Params passed to the module'],
 			['--conversation-id <id>', 'Conversation to attach the run to'],
 			[
-				'--credential <key=name>',
+				'--credential <key=id:credential-id>',
 				'Pick the credential for credential(key) calls (repeatable)',
 			],
 			['--context <id|name>', 'Run on one execution context'],

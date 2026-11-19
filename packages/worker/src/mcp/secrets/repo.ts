@@ -35,7 +35,7 @@ const newCredentialPlacementJson = serializeCredentialFillPlacement(
 const listPackageScopeSecretFixedBindings = 2
 
 const secretEntryColumns =
-	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at, placement_json, placement_origin'
+	'id, bucket_id, name, description, encrypted_value, allowed_hosts, allowed_packages, expires_at, created_at, updated_at, placement_json, placement_origin, inject_json'
 
 type SecretMetadataRow = {
 	id: string
@@ -56,7 +56,9 @@ type SecretMetadataRow = {
 }
 
 type SecretEntryLookup = SecretEntryRow & {
+	config_json: string | null
 	kind: StoredCredentialKind
+	inject_json: string
 	/** Null means anywhere. */
 	placement_json: string | null
 	placement_origin: CredentialPlacementOrigin | null
@@ -210,11 +212,27 @@ async function loadSecretEntry(input: {
 }): Promise<SecretEntryLookup | null> {
 	const row = await input.db
 		.prepare(
-			`SELECT ${secretEntryColumns}, kind FROM secret_entries
+			`SELECT ${secretEntryColumns}, kind, config_json FROM secret_entries
 			WHERE bucket_id = ? AND name = ?
 			${andLiveDeletedAtSql()} LIMIT 1`,
 		)
 		.bind(input.bucketId, input.name)
+		.first<Record<string, unknown>>()
+	return mapSecretEntryLookup(row)
+}
+
+export async function getSecretEntryById(input: {
+	db: D1Database
+	bucketId: string
+	credentialId: string
+}): Promise<SecretEntryLookup | null> {
+	const row = await input.db
+		.prepare(
+			`SELECT ${secretEntryColumns}, kind, config_json FROM secret_entries
+			WHERE bucket_id = ? AND id = ?
+			${andLiveDeletedAtSql()} LIMIT 1`,
+		)
+		.bind(input.bucketId, input.credentialId)
 		.first<Record<string, unknown>>()
 	return mapSecretEntryLookup(row)
 }
@@ -226,6 +244,9 @@ function mapSecretEntryLookup(
 	return {
 		...mapSecretEntryRow(row),
 		kind: readStoredCredentialKind(row['kind']),
+		config_json:
+			typeof row['config_json'] === 'string' ? row['config_json'] : null,
+		inject_json: String(row['inject_json'] ?? ''),
 		placement_json:
 			row['placement_json'] == null ? null : String(row['placement_json']),
 		placement_origin: readPlacementOrigin(row['placement_origin']),
@@ -293,7 +314,7 @@ async function loadSecretEntriesByNames(input: {
 		const placeholders = names.map(() => '?').join(', ')
 		const { results } = await input.db
 			.prepare(
-				`SELECT ${secretEntryColumns}, kind FROM secret_entries
+				`SELECT ${secretEntryColumns}, kind, config_json FROM secret_entries
 				WHERE bucket_id = ? AND name IN (${placeholders})
 				${andLiveDeletedAtSql()}`,
 			)
@@ -315,6 +336,7 @@ export function readStoredCredentialKind(value: unknown): StoredCredentialKind {
 
 export type StoredCredentialRow = {
 	id: string
+	package_id: string | null
 	name: string
 	kind: StoredCredentialKind
 	encrypted_value: string
@@ -341,6 +363,7 @@ export async function getStoredCredentialEntry(input: {
 	const row = await input.db
 		.prepare(
 			`SELECT e.id AS id, e.name AS name, e.kind AS kind,
+				CASE WHEN b.scope = 'package' THEN b.binding_key END AS package_id,
 				e.encrypted_value AS encrypted_value, e.allowed_hosts AS allowed_hosts,
 				e.inject_json AS inject_json, e.config_json AS config_json,
 				e.placement_json AS placement_json
@@ -361,6 +384,7 @@ export async function getStoredCredentialEntry(input: {
 	if (!row) return null
 	return {
 		id: String(row['id']),
+		package_id: row['package_id'] == null ? null : String(row['package_id']),
 		name: String(row['name']),
 		kind: readStoredCredentialKind(row['kind']),
 		encrypted_value: String(row['encrypted_value']),
@@ -440,6 +464,7 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 		updated_at: string
 	}
 	credential: SecretEntryCredentialColumns
+	createOnly?: boolean
 }): D1PreparedStatement {
 	return input.db
 		.prepare(
@@ -448,7 +473,10 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 				expires_at, created_at, updated_at, kind, config_json, provider, inject_json,
 				placement_json, placement_origin
 			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(bucket_id, name)
+			${
+				input.createOnly
+					? ''
+					: `ON CONFLICT(bucket_id, name)
 			DO UPDATE SET
 				description = excluded.description,
 				encrypted_value = excluded.encrypted_value,
@@ -461,7 +489,8 @@ export function prepareUpsertCredentialSecretEntryStatement(input: {
 				provider = excluded.provider,
 				inject_json = excluded.inject_json,
 				placement_json = excluded.placement_json,
-				placement_origin = excluded.placement_origin`,
+				placement_origin = excluded.placement_origin`
+			}`,
 		)
 		.bind(
 			input.credential.id,

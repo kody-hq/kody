@@ -84,7 +84,7 @@ test('scanCredentialStamp fails non-literal credential(), createAuthenticatedFet
 		true,
 	)
 	expect(credentialVar.failures[0]?.message).toMatch(
-		/literal keys \(credential\("SLOT"\)/,
+		/call credential\("SLOT"\).*with its literal key/,
 	)
 	expect(credentialVar.failures[0]?.message).toMatch(/credentials call map/)
 

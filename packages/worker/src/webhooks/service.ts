@@ -557,6 +557,7 @@ export async function mintWebhookUrlForUser(input: {
 					userId: input.userId,
 					endpointId: stored.id,
 					hmacSecretName: declaredSecretName,
+					hmacCredentialId: resolved.credentialId,
 					hmacVerificationSecretEncrypted: snapshot,
 				})
 			}

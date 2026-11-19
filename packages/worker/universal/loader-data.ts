@@ -1893,6 +1893,7 @@ type PackageWebhookVerification =
 			encoding: 'hex' | 'base64'
 			prefix?: string
 			signedPayload?: 'body' | 'timestamp.body'
+			profile?: 'standard-webhooks'
 	  }
 	| { type: 'url-secret' }
 	| null
@@ -2743,6 +2744,7 @@ export type AccountSecretDetail = AccountSecretListItem & {
 }
 
 type AccountSecretProviderBindingItem = {
+	id: string
 	provider: string
 	packageId: string
 	kodyId: string
@@ -2778,7 +2780,7 @@ export type AccountSecretProvidersLoaderData = {
 		kodyId: string
 		name: string
 	}>
-	doorSecrets: Array<string>
+	doorSecrets: Array<{ id: string; name: string }>
 	approval: AccountSecretProviderApproval | null
 }
 

@@ -57,7 +57,8 @@ smoke-test path is unclear.
 4. Wait for the user to confirm the secret is saved.
    - Do not treat the connect URL alone as completion.
 5. Run one cheap authenticated smoke test in `execute`.
-   - Use the same secret names and request shape the final package will use.
+   - Use the same credential placement and request shape the final package will
+     use. In ad hoc code, use the provider slug as the credential key.
    - Prefer a small read-only endpoint such as account info, profile info, or a
      single-item list endpoint.
 6. If the smoke test is blocked on host approval, stop.
@@ -106,44 +107,27 @@ Use descriptive names that reflect the real auth contract:
 If the auth contract has multiple fields, save only the truly sensitive fields
 as secrets. Keep readable identifiers and defaults out of the secret store.
 
-## Using a saved secret in `fetch`
+## Using a saved Key with scoped fetch
 
-Saved secrets are referenced by **placeholder**, never by plaintext. Inside
-`execute` (and package code), put `{{secret:name}}` — or
-`{{secret:name|scope=user}}` to pin a scope — anywhere in an outbound `fetch`: a
-header, the URL path or query, or a JSON, form-encoded, or text body. Kody fills
-the placeholder for **approved** hosts over HTTPS only, and refuses the request
-otherwise. An API that takes a credential in the body (a login password, a
-form-encoded token exchange) works the same way. For the usual header case:
+Set the Key's provider and approved host on its credential page. Use
+`credential(key).fetch`; the credential decides where its value goes and the
+package never reads it. The default Key placement is bearer authorization:
 
 ```ts
-const response = await fetch('https://api.example.com/v1/me', {
-	headers: {
-		Authorization: 'Bearer {{secret:providerAccessToken}}',
-	},
-})
+import { credential } from 'kody:runtime'
+
+const provider = await credential('example')
+const response = await provider.fetch('https://api.example.com/v1/me')
 ```
 
-Rules:
+Use `credentialList` to find metadata and IDs. If several Keys match, pick one
+by ID in the execute map. For a saved package, declare a need and have the owner
+map it on the package's Credentials tab.
 
-- `kody.secretList({})` returns metadata only (names, allowed hosts, and
-  `package_id` for package-scoped secrets) — use it to find the right secret
-  name, then reference that name in a placeholder. Search does not return or
-  rank package-scoped secret references; using them still requires package
-  context.
-- Placeholders only resolve in secret-aware `fetch` paths; they are not general
-  string interpolation.
-- Never echo a resolvable literal placeholder into chat, logs, issue bodies, or
-  any content that may later be sent over `fetch`. To mention the syntax in
-  prose, use the inert `{{secret:<name>}}` form — angle brackets are outside the
-  name charset, so it never resolves. To deliberately deliver a resolvable
-  placeholder to a third party, set the `x-kody-secret-resolution: off` header
-  on that `fetch` (the gateway strips it and skips resolution for that request).
-  For a body that only quotes the syntax next to a real header credential, use
-  `x-kody-secret-resolution: headers-only`, which fills headers and sends the
-  URL and body as written.
-- For Basic Auth derived from two secrets, use `secretHeaders.basic(...)` from
-  `kody:runtime` (see the secrets usage docs).
+For login or token exchange, use a Login credential. For two protected Basic
+auth fields or a secret used as JSON data, use owner-approved request
+placements. See [Credentials](./credentials.md#each-kind-through-credential) for
+supported kinds and placement rules.
 
 ## When `/connect/secret-set` is enough
 
@@ -152,7 +136,7 @@ In the common case, `/connect/secret-set` is the whole setup surface.
 Use it when:
 
 - the provider gives the user one or more static secret values
-- the final request can use those secrets directly in `fetch(...)`
+- the final request can use a scoped credential client
 - the only extra work after saving the secret is host approval and a smoke test
 
 This should be the default assumption for non-OAuth integrations.

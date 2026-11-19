@@ -175,6 +175,9 @@ export type CredentialInjectView =
 	| { kind: 'header'; name: string; format: string }
 	| { kind: 'basic'; valueAs: 'username' | 'password'; other: string }
 	| { kind: 'query'; param: string }
+	| { kind: 'body' }
+	| { kind: 'path' }
+	| { kind: 'composition' }
 
 export type CredentialListItemStatus =
 	| 'ok'

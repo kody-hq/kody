@@ -138,6 +138,7 @@ export async function ensureSecretBucketsTestSchema(db: D1Database) {
 				provider_id TEXT NOT NULL,
 				package_id TEXT NOT NULL,
 				door_secret_name TEXT NOT NULL,
+				door_credential_id TEXT,
 				config_json TEXT NOT NULL DEFAULT '{}',
 				deleted_at TEXT,
 				created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),

@@ -19,6 +19,14 @@ import {
 
 const bodyLikeParts = ['query', 'path', 'body'] as const
 
+function isRequestProfile(inject: CredentialInject) {
+	return (
+		inject.kind === 'body' ||
+		inject.kind === 'path' ||
+		inject.kind === 'composition'
+	)
+}
+
 /** True when `after` lets the credential fill a request part `before` did not. */
 export function fillPlacementWidens(
 	before: CredentialFillPlacement | null,
@@ -127,6 +135,15 @@ export function assertCredentialSecurityEditAllowed(
 	},
 ) {
 	const caller = codeRunningCredentialEditor(ctx)
+	if (
+		input.after.inject !== undefined &&
+		(isRequestProfile(input.before.inject) ||
+			isRequestProfile(input.after.inject))
+	) {
+		throw new McpCallerError(
+			`Only an organization owner can change a typed request placement on the credential's page: ${credentialPageUrl(ctx, input.credential)}.`,
+		)
+	}
 	if (!caller) return
 	const widens =
 		input.after.placement !== undefined &&

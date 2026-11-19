@@ -170,11 +170,30 @@ test('a vault binding created or rebound after 0111 records its vault as its sou
 		),
 	)
 	const db = createD1FromSqlite(sqlite)
+	sqlite.exec(
+		readFileSync(
+			new URL('0117-credential-kinds.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
+	sqlite.exec(
+		readFileSync(
+			new URL('0127-webhook-hmac-rotation-grace.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
+	sqlite.exec(
+		readFileSync(
+			new URL('0292-stable-settings-credential-ids.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
 	const binding = {
 		userId: 'org-a',
 		providerId: 'bitwarden',
 		packageId: 'pkg-bw',
 		doorSecretName: 'BW_DOOR',
+		doorCredentialId: 'test-door-id',
 		configJson: '{}',
 	}
 	await upsertSecretProviderBinding(db, binding)
@@ -183,4 +202,59 @@ test('a vault binding created or rebound after 0111 records its vault as its sou
 		{ provider: null, inject: bearerInject, source: { vault: '1password' } },
 		{ provider: null, inject: bearerInject, source: { vault: 'bitwarden' } },
 	])
+})
+
+test('stable settings IDs preserve the live legacy scope lookup', () => {
+	const migration = '0292-stable-settings-credential-ids.sql'
+	using sqlite = new DatabaseSync(':memory:', {
+		enableForeignKeyConstraints: false,
+	})
+	for (const name of readdirSync(migrationsDirectory)
+		.filter((name) => name.endsWith('.sql') && name < migration)
+		.sort()) {
+		sqlite.exec(readFileSync(new URL(name, migrationsDirectory), 'utf8'))
+	}
+	sqlite.exec(`
+		INSERT INTO secret_buckets (id, user_id, scope, binding_key, expires_at)
+		VALUES
+			('user-bucket', 'owner', 'user', '', NULL),
+			('live-bucket', 'owner', 'package', 'live-pkg', NULL),
+			('expired-bucket', 'owner', 'package', 'expired-pkg', '2000-01-01T00:00:00.000Z');
+		INSERT INTO secret_entries (id, bucket_id, name, encrypted_value, kind, expires_at)
+		VALUES
+			('org-live', 'user-bucket', 'live', 'ct', 'secret', NULL),
+			('org-shadow', 'user-bucket', 'shadow', 'ct', 'secret', NULL),
+			('org-expired', 'user-bucket', 'expired', 'ct', 'secret', NULL),
+			('expired-door', 'user-bucket', 'door', 'ct', 'secret', '2000-01-01T00:00:00.000Z'),
+			('pkg-live', 'live-bucket', 'live', 'ct', 'secret', NULL),
+			('pkg-login', 'live-bucket', 'shadow', 'ct', 'login', NULL),
+			('pkg-expired-entry', 'live-bucket', 'expired', 'ct', 'secret', '2000-01-01T00:00:00.000Z'),
+			('pkg-expired-bucket', 'expired-bucket', 'expired', 'ct', 'secret', NULL);
+		INSERT INTO webhook_endpoints (id, user_id, package_id, webhook_name,
+			url_secret_hash, hmac_secret_name, previous_hmac_secret_name, created_at, rotated_at)
+		VALUES
+			('1-live', 'owner', 'live-pkg', 'live', 'hash', 'live', 'live', 'now', 'now'),
+			('2-shadow', 'owner', 'live-pkg', 'shadow', 'hash', 'shadow', NULL, 'now', 'now'),
+			('3-expired-entry', 'owner', 'live-pkg', 'expired', 'hash', 'expired', NULL, 'now', 'now'),
+			('4-expired-bucket', 'owner', 'expired-pkg', 'expired', 'hash', 'expired', NULL, 'now', 'now');
+		INSERT INTO secret_provider_bindings (user_id, provider_id, package_id, door_secret_name)
+		VALUES ('owner', 'provider', 'live-pkg', 'door');
+	`)
+	sqlite.exec(readFileSync(new URL(migration, migrationsDirectory), 'utf8'))
+	expect(
+		sqlite
+			.prepare(`SELECT hmac_credential_id, previous_hmac_credential_id
+			FROM webhook_endpoints ORDER BY id`)
+			.all(),
+	).toEqual([
+		{ hmac_credential_id: 'pkg-live', previous_hmac_credential_id: 'pkg-live' },
+		{ hmac_credential_id: null, previous_hmac_credential_id: null },
+		{ hmac_credential_id: 'org-expired', previous_hmac_credential_id: null },
+		{ hmac_credential_id: 'org-expired', previous_hmac_credential_id: null },
+	])
+	expect(
+		sqlite
+			.prepare('SELECT door_credential_id FROM secret_provider_bindings')
+			.get(),
+	).toEqual({ door_credential_id: null })
 })

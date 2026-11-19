@@ -3,12 +3,11 @@
  * credential needs, by need key.
  *
  * ```
- * credentials: { github: 'work', google: ['work', 'personal'], x: { name: 'work', scope: 'org' } }
+ * credentials: { github: { id: 'credential-id' }, google: [] }
  * ```
  *
- * A string is a credential name; an object adds a scope; an array picks
- * several for a `credentials(key)` call, and `[]` picks none on purpose. A
- * pick grants nothing: it only chooses among credentials the actor can Use.
+ * An array picks several for a `credentials(key)` call, and `[]` picks none
+ * on purpose. A pick only chooses among credentials the actor can Use.
  */
 import { z } from 'zod'
 
@@ -33,6 +32,9 @@ const credentialCallMapKey = z
 	)
 
 const credentialPickSchema = z.union([
+	z.strictObject({
+		id: text.describe('Stable credential id returned by credentialList.'),
+	}),
 	text,
 	z
 		.object({
@@ -62,15 +64,17 @@ export const credentialCallMapSchema = z
 		`A credentials map takes at most ${credentialCallMapLimits.maxKeys} keys.`,
 	)
 	.describe(
-		'Optional credential picks by need key, for `credential(key)` / `credentials(key)` in this run: `{ github: "work", google: ["work", "personal"], x: { name: "work", scope: "org" } }`. A string is a credential name; add `scope` when an org and a personal credential share the name; an array picks several for `credentials(key)`, and `[]` picks none. Picks choose only among credentials you can Use.',
+		'Optional credential picks by need key for `credential(key)` / `credentials(key)`. Use `{ github: { id: "…" } }` with an id from credentialList to survive renames. An array picks several, and `[]` explicitly picks none. Legacy name picks can include a scope. Picks choose only among credentials you can Use.',
 	)
 
 export type CredentialCallMapInput = z.infer<typeof credentialCallMapSchema>
 
-export type CredentialPick = {
+export type NamedCredentialPick = {
 	name: string
 	scope: 'org' | 'personal' | null
 }
+
+export type CredentialPick = { id: string } | NamedCredentialPick
 
 export type CredentialCallMap = ReadonlyMap<
 	string,
@@ -90,18 +94,16 @@ export type RunCredentialCallMap = {
 	checked?: boolean
 }
 
-/** A call map as plain JSON, for storing on an execution-context lease. */
+/** A call map for execution-context leases and gateway RPC props. */
 export type CredentialCallMapJson = Record<string, Array<CredentialPick>>
 
 export function credentialCallMapToJson(
 	map: CredentialCallMap | null,
 ): CredentialCallMapJson | null {
 	if (!map || map.size === 0) return null
-	const json: CredentialCallMapJson = {}
-	for (const [key, picks] of map) {
-		json[key] = picks.map((pick) => ({ name: pick.name, scope: pick.scope }))
-	}
-	return json
+	return Object.fromEntries(
+		Array.from(map, ([key, picks]) => [key, picks.map(copyPick)]),
+	)
 }
 
 export function credentialCallMapFromJson(
@@ -110,10 +112,7 @@ export function credentialCallMapFromJson(
 	if (!json) return null
 	const map = new Map<string, ReadonlyArray<CredentialPick>>()
 	for (const [key, picks] of Object.entries(json)) {
-		map.set(
-			key,
-			picks.map((pick) => ({ name: pick.name, scope: pick.scope ?? null })),
-		)
+		map.set(key, picks.map(copyPick))
 	}
 	return map.size > 0 ? map : null
 }
@@ -125,11 +124,17 @@ export function normalizeCredentialCallMap(
 	const map = new Map<string, ReadonlyArray<CredentialPick>>()
 	for (const [key, value] of Object.entries(input)) {
 		const picks = (Array.isArray(value) ? value : [value]).map((pick) =>
-			typeof pick === 'string'
-				? { name: pick, scope: null }
-				: { name: pick.name, scope: pick.scope ?? null },
+			typeof pick === 'string' ? { name: pick, scope: null } : copyPick(pick),
 		)
 		map.set(key, picks)
 	}
 	return map.size > 0 ? map : null
+}
+
+function copyPick(
+	pick: { id: string } | { name: string; scope?: NamedCredentialPick['scope'] },
+): CredentialPick {
+	return 'id' in pick
+		? { id: pick.id }
+		: { name: pick.name, scope: pick.scope ?? null }
 }

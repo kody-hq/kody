@@ -570,37 +570,23 @@ from ad hoc execute (hosted, `--local`, or Open API with a run), not from
 package code; a package that holds a refresh token uses a
 [login credential](../guides/credentials.md#login).
 
-See [Secrets and host approval](./secrets-and-values.md) for placeholders, host
-approval, and **`kody.secretList`** / **`secretSet`**.
-
-`fetch` fills `{{secret:name}}` in the body as well as in headers. A body that
-forwards text you did not write (a user message, an issue body) can then fail
-with `Secret "name" was not found`, or send a saved secret to a host that
-credential allows. Set `x-kody-secret-resolution: headers-only` on that fetch.
-Headers still resolve; the URL and body are sent as written. `off` skips
-resolution entirely, including headers.
+For new calls, open a scoped client with `credential(key)`. Use a declared need
+from an imported package, or declare a
+[run-scoped need and pick its credential by ID](../guides/credentials.md). The
+credential controls where its value is sent, independently of any user-supplied
+text in the request.
 
 ```ts
-await fetch('https://api.github.com/repos/acme/widgets/issues', {
+const github = await credential('github')
+await github.fetch('https://api.github.com/repos/acme/widgets/issues', {
 	method: 'POST',
-	headers: {
-		Authorization: 'Bearer {{secret:github}}',
-		'content-type': 'application/json',
-		'x-kody-secret-resolution': 'headers-only',
-	},
+	headers: { 'content-type': 'application/json' },
 	body: JSON.stringify({ title: 'Widget broke', body: userReport }),
 })
 ```
 
-To mention the syntax in prose, write the inert form `{{secret:<name>}}`. Treat
-a resolvable `{{secret:name}}` as wiring, not as text you show to users or send
-onward. `kody dev check` and publish warn for clear cases only: a literal fetch
-init with a non-literal body when `x-kody-secret-resolution` is omitted or set
-to the literal `on`. Helpers that build headers in a variable and header spreads
-still warn (the scanner cannot see `headers-only` there). Variable whole-`init`
-values (`fetch(url, init)`) are skipped. Use `headers-only` or `off` to opt out.
-Each credential also has a fill placement that intersects with that header; see
-[Credentials](../guides/credentials.md#keys-and-placeholders).
+For existing placeholder calls, see
+[legacy fetch compatibility](./secrets-and-values.md#placeholders-in-fetch).
 
 ## Named state
 

@@ -210,10 +210,12 @@ async function ensureSchema(db: D1Database) {
 				url_secret_encrypted TEXT,
 				hmac_secret_encrypted TEXT,
 				hmac_secret_name TEXT,
+				hmac_credential_id TEXT,
 				hmac_verification_secret_encrypted TEXT,
 				previous_url_secret_hash TEXT,
 				previous_url_secret_expires_at TEXT,
 				previous_hmac_secret_name TEXT,
+				previous_hmac_credential_id TEXT,
 				previous_hmac_secret_encrypted TEXT,
 				previous_hmac_secret_expires_at TEXT,
 				deleted_at TEXT,
@@ -1475,6 +1477,67 @@ test('a webhook with no enablement on answers 409 instead of running', async () 
 		'enablement_not_on',
 		'enablement_not_on',
 	])
+})
+
+test('Standard Webhooks admits a signed delivery and deduplicates by its authenticated ID', async () => {
+	await setupOwnerWithWebhooks(['standard'])
+	await useNamedSecret('standard')
+	const rawKey = new Uint8Array(32).fill(191)
+	mockSecretValue(`whsec_${btoa(String.fromCharCode(...rawKey))}`)
+	declareWebhook({
+		name: 'standard',
+		responseMode: 'sync',
+		verification: {
+			type: 'hmac-sha256',
+			header: 'webhook-signature',
+			secretName: 'incomingWebhookKey',
+			encoding: 'base64',
+			profile: 'standard-webhooks',
+		},
+		replay: {
+			deliveryIdHeader: 'webhook-id',
+			timestampHeader: 'webhook-timestamp',
+			timestampFormat: 'unix-seconds',
+		},
+	})
+	const body = '{ "event": "received" }'
+	const deliveryId = 'msg_sample'
+	const nowSeconds = Math.floor(Date.now() / 1000)
+	const headers = async (timestamp: number) => ({
+		'webhook-id': deliveryId,
+		'webhook-timestamp': String(timestamp),
+		'webhook-signature': await computeWebhookHmacSignature({
+			algorithm: 'hmac-sha256',
+			secret: rawKey,
+			body: encodeBody(`${deliveryId}.${timestamp}.${body}`),
+			encoding: 'base64',
+			prefix: 'v1,',
+		}),
+	})
+	const current = await headers(nowSeconds)
+	const exportMock = createHashedIdempotencyExportMock()
+	expect(await statusOf('standard', { body, headers: current })).toBe(200)
+	expect(
+		await statusOf('standard', {
+			body,
+			headers: { ...current, 'idempotency-key': 'caller-override' },
+		}),
+	).toBe(200)
+	expect(exportMock.exportInvocations).toBe(1)
+	expect(invoked(0).idempotencyKey).toBe(invoked(1).idempotencyKey)
+	expect(
+		await statusOf('standard', {
+			body,
+			headers: { ...current, 'webhook-id': 'msg_other' },
+		}),
+	).toBe(401)
+	expect(
+		await statusOf('standard', {
+			body,
+			headers: await headers(nowSeconds - 301),
+		}),
+	).toBe(401)
+	expect(mocks.invokePackageExport).toHaveBeenCalledTimes(2)
 })
 
 test('opt-in webhook replay protection rejects stale timestamps and dedupes delivery ids', async () => {

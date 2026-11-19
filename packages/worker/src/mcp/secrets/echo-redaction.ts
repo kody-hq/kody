@@ -256,3 +256,16 @@ export function withLanding(
 		clone: { value: () => withLanding(clone(), landing) },
 	})
 }
+
+export function withResponseHeaders(response: Response, headers: Headers) {
+	return withLanding(
+		new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers,
+			webSocket: response.webSocket,
+			cf: response.cf,
+		}),
+		{ url: response.url, redirected: response.redirected },
+	)
+}

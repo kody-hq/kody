@@ -273,24 +273,26 @@ export async function runLocalExecute(
 	}
 	// Skip the session preflight on the hot path (package-graph authenticates).
 	// `--credential` still opens a session for feature detection + call-map check.
-	const credentials = input.credentials
+	let credentials = input.credentials
+	let pinnedCredentials: CredentialCallMapInput | undefined
 	if (credentials) {
 		const preflight = await untilAborted(
 			(async () => {
 				const session = await openCapabilityProxySession(client)
 				assertCredentialCallMapSupported(session, input)
 				input.onStatus?.('Checking --credential picks against CapabilityProxy…')
-				const { warnings } = await checkCredentialCallMap({
+				return await checkCredentialCallMap({
 					...client,
-					credentials,
+					credentials: input.credentials!,
 					conversationId: input.conversationId,
 				})
-				return warnings
 			})(),
 			input.signal,
 		)
 		if (preflight === setupCancelled) return cancelledDuringSetup()
-		for (const warning of preflight) {
+		credentials = preflight.credentials ?? credentials
+		pinnedCredentials = preflight.credentials
+		for (const warning of preflight.warnings) {
 			input.onStatus?.(warning)
 		}
 	}
@@ -471,9 +473,7 @@ export async function runLocalExecute(
 					...client,
 					...call,
 					conversationId: input.conversationId,
-					...(input.credentials !== undefined
-						? { credentials: input.credentials }
-						: {}),
+					...(credentials !== undefined ? { credentials } : {}),
 					signal,
 				})
 			},
@@ -518,6 +518,7 @@ export async function runLocalExecute(
 					response,
 					signal,
 					client,
+					...(pinnedCredentials ? { pinnedCredentials } : {}),
 					...(mockFetchGateway ? { mockFetchGateway } : {}),
 				})
 			},

@@ -4,6 +4,7 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { CredentialCallMapInput } from './credential-call-map.js'
 import {
 	callCapabilityProxyGatewayFetchStream,
 	gatewayFetchErrorHeaderName,
@@ -31,6 +32,7 @@ export async function forwardLocalGatewayFetchStream(input: {
 	response: ServerResponse
 	signal: AbortSignal
 	client: CapabilityProxyClientInput
+	pinnedCredentials?: CredentialCallMapInput
 	mockFetchGateway?: MockFetchGateway
 }): Promise<void> {
 	const url = headerValue(
@@ -218,6 +220,9 @@ export async function forwardLocalGatewayFetchStream(input: {
 			...(method ? { method } : {}),
 			...(packageId ? { packageId } : {}),
 			...(outboundHeaders ? { headers: outboundHeaders } : {}),
+			...(input.pinnedCredentials
+				? { credentials: input.pinnedCredentials }
+				: {}),
 			...(contentType ? { contentType } : {}),
 			...(secretResolution ? { secretResolution } : {}),
 		},
