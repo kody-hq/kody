@@ -6,6 +6,7 @@ import {
 	MemoryBucket,
 	backupError,
 } from './backup-control-plane-test-support.ts'
+import { BackupError } from './backup-policy.ts'
 import { retryingR2Bucket } from './r2-retry.ts'
 
 const internalError = () =>
@@ -65,6 +66,12 @@ test('non-retryable R2 and logical errors are not retried', async () => {
 	for (const failure of [
 		() => new Error('put: The object is locked by the bucket policy. (10069)'),
 		() => new Error('simulated logical failure'),
+		() =>
+			new Error(
+				'Too many API requests by single Worker invocation. To configure this limit, refer to https://developers.cloudflare.com/workers/wrangler/configuration/#limits',
+			),
+		() =>
+			new BackupError('r2-call-budget-exhausted', 'R2 call budget is spent'),
 	]) {
 		const flaky = flakyBucket([failure])
 		await assert.rejects(flaky.bucket.put('daily/full/k', 'body'), (error) => {
