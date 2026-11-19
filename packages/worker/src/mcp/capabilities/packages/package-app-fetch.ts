@@ -13,7 +13,6 @@ import {
 } from '#mcp/capabilities/meta/require-user.ts'
 import { requireInteractiveMcpCaller } from '#mcp/capabilities/meta/require-interactive-caller.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
-import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { authorize } from '#worker/authorization/authorize.ts'
 import { resolveDisplayName } from '#worker/identity/username.ts'
 import { resolveSavedPackageWithFreshnessCache } from '#worker/package-invocations/invoke-contract-cache.ts'
@@ -402,7 +401,7 @@ export const packageAppFetchCapability = defineDomainCapability(
 			await authorize({ env: ctx.env, request: callerRequest }, 'app:execute', {
 				type: 'app',
 				id: savedPackage.id,
-				orgId: ownerIdFromStored(owner.ownerUserId),
+				orgId: owner.ownerUserId,
 				label: `app "${savedPackage.kodyId}"`,
 			})
 
