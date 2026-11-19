@@ -9,7 +9,7 @@ import type { Plugin } from 'vite'
 const thirdPartySourcemapWarningPattern =
 	/^Sourcemap for ".*\/node_modules\/.*" points to missing source files$/
 
-export function isThirdPartySourcemapWarning(message: string): boolean {
+function isThirdPartySourcemapWarning(message: string): boolean {
 	return thirdPartySourcemapWarningPattern.test(message)
 }
 

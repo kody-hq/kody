@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises'
 import { transform } from 'esbuild'
 import type { Plugin } from 'vite'
 
-export async function minifyInlineCss(source: string) {
+async function minifyInlineCss(source: string) {
 	// CSS input preprocessing treats CRLF as one newline, including after escapes.
 	const { code } = await transform(source.replace(/\r\n?|\f/g, '\n'), {
 		loader: 'css',

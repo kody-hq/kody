@@ -32,7 +32,7 @@ function staticImportClosures(bundle: ChunkGraph) {
 }
 
 /** A view of the bundle whose chunks report their whole closure as `imports`. */
-export function withFlattenedImports<Bundle extends ChunkGraph>(
+function withFlattenedImports<Bundle extends ChunkGraph>(
 	bundle: Bundle,
 ): Bundle {
 	const closures = staticImportClosures(bundle)

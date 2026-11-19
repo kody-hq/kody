@@ -61,7 +61,7 @@ type ModuleGraphNode = Pick<
  * one self-accepting root every chain ends at and does not count; a component
  * module always has importers.
  */
-export function touchesComponentBoundary(
+function touchesComponentBoundary(
 	modules: ReadonlyArray<ModuleGraphNode>,
 ): boolean {
 	const seen = new Set<ModuleGraphNode>()
