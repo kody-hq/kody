@@ -309,6 +309,7 @@ const modernListEvent = {
 	clientName: '',
 	clientVersion: '',
 	packageIdentityParam: '' as const,
+	eventsSupport: '' as const,
 } as const
 
 test('recordMcpProtocolEvent writes a data point, no-ops without binding, and swallows sink errors', () => {
