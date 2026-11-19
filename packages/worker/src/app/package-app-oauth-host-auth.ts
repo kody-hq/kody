@@ -95,7 +95,7 @@ function normalizeReturnTo(raw: string | null, origin: string): string {
 		// Resolve the way a browser would, then keep only a same-origin path.
 		const url = new URL(raw, origin)
 		if (url.origin !== origin || url.pathname.startsWith('//')) return '/'
-		return `${url.pathname}${url.search}`
+		return `${url.pathname}${url.search}${url.hash}`
 	} catch {
 		return '/'
 	}
