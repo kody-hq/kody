@@ -660,10 +660,6 @@
 					"dataset": "kody_onboarding_funnel_events",
 				},
 				{
-					"binding": "PACKAGE_APP_LEGACY_EVENTS",
-					"dataset": "kody_package_app_legacy_events",
-				},
-				{
 					"binding": "JWT_SIGN_ANY_HOST_EVENTS",
 					"dataset": "kody_jwt_sign_any_host_events",
 				},
@@ -1187,10 +1183,6 @@
 				{
 					"binding": "ONBOARDING_FUNNEL_EVENTS",
 					"dataset": "kody_onboarding_funnel_events_preview",
-				},
-				{
-					"binding": "PACKAGE_APP_LEGACY_EVENTS",
-					"dataset": "kody_package_app_legacy_events_preview",
 				},
 				{
 					"binding": "JWT_SIGN_ANY_HOST_EVENTS",
