@@ -49,8 +49,6 @@ export interface ScheduledBackupPayload {
 	retentionTier: RetentionTier
 }
 
-export type BackupPayload = ScheduledBackupPayload
-
 export interface ExportReady {
 	kind: Extract<BackupExportPhase, 'complete'>
 	bookmark: string
