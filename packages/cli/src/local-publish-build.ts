@@ -7,6 +7,9 @@ import { promisify } from 'node:util'
 
 const execFileAsync = promisify(execFile)
 
+export const gitMissingMessage =
+	'Publish builds need git, and this machine has none on PATH. Install git, or publish on Kody cloud with `--context cloud`.'
+
 /** Matches the worker's `publishOffloadLimits.uploadChunkBytes`. */
 const publishBuildChunkBytes = 4 * 1024 * 1024
 
@@ -201,13 +204,20 @@ async function git(
 	args: Array<string>,
 	env?: Record<string, string>,
 ) {
-	const { stdout } = await execFileAsync('git', args, {
-		cwd,
-		...(env ? { env: { ...process.env, ...env } } : {}),
-		maxBuffer: 256 * 1024 * 1024,
-		encoding: 'buffer',
-	})
-	return stdout as Buffer
+	try {
+		const { stdout } = await execFileAsync('git', args, {
+			cwd,
+			...(env ? { env: { ...process.env, ...env } } : {}),
+			maxBuffer: 256 * 1024 * 1024,
+			encoding: 'buffer',
+		})
+		return stdout as Buffer
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new Error(gitMissingMessage, { cause: error })
+		}
+		throw error
+	}
 }
 
 /**

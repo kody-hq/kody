@@ -12,10 +12,12 @@
  *    org, base URL, and worker version into a content-addressed cache key.
  * 2. A cached unsigned graph is signed for the caller and returned. A new
  *    commit on any imported package changes the key, so it misses.
- * 3. On a miss the build runs in a throwaway `REPO_SESSION` Durable Object,
- *    which stores the unsigned graph under the key. A build that exceeds
- *    the isolate's memory or CPU limits fails only its own request, with an
- *    error that names the packages.
+ * 3. On a miss the build runs in a throwaway `REPO_SESSION` Durable Object.
+ *    A build that exceeds the isolate's memory or CPU limits fails only its
+ *    own request, with an error that names the packages.
+ * 4. The API isolate stores the unsigned graph under the key. KV caches a
+ *    missing key where it was read, so a write from the Durable Object's
+ *    location stayed invisible to the next reads here for up to a minute.
  */
 import { errorCauseChainIncludes } from '@kody-internal/shared/error-message.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -68,8 +70,6 @@ export type IsolatedLocalExecutePackageGraphRequest = {
 	code: string
 	/** Caller identity; the isolate recomputes its permissions from it. */
 	request: RequestContext | null
-	/** Store the graph here when it only depends on the keyed packages. */
-	cache: { key: string; packageIds: Array<string> } | null
 }
 
 export type IsolatedLocalExecutePackageGraphOutcome =
@@ -149,8 +149,8 @@ export async function serveLocalExecutePackageGraph(input: {
 		baseUrl: input.baseUrl,
 		code: input.code,
 		request: input.request,
-		cache,
 	})
+	if (cache) await cachePackageGraph(env, cache, graph)
 	return await signLocalExecutePackageGraph({ env, graph, subject })
 }
 
@@ -306,8 +306,7 @@ export function packageGraphResourceLimitMessage(
 
 /**
  * The isolate side of {@link serveLocalExecutePackageGraph}: build the
- * unsigned graph under the caller's permissions and cache it when it only
- * depends on the keyed packages. Runs in `RepoSession`.
+ * unsigned graph under the caller's permissions. Runs in `RepoSession`.
  */
 export async function runIsolatedLocalExecutePackageGraphBuild(
 	env: Env,
@@ -350,7 +349,6 @@ export async function runIsolatedLocalExecutePackageGraphBuild(
 		}
 		throw error
 	}
-	if (request.cache) await cachePackageGraph(env, request.cache, graph)
 	return { ok: true, graph }
 }
 

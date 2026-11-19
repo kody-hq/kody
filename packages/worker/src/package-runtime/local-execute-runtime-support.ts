@@ -1283,6 +1283,28 @@ if (!globalThis[__kodyLocalExecuteFetchPatchedSymbol]) {
 	globalThis[__kodyLocalExecuteFetchPatchedSymbol] = true;
 }
 
+// Same contract as the hosted creator: a package's modules read its own id,
+// with the run's context only when the run belongs to this package.
+export function __kodyCreatePackageBoundPackageContext(packageId) {
+	const own = Object.freeze({ packageId });
+	const current = () =>
+		packageContext != null && packageContext.packageId === packageId
+			? packageContext
+			: own;
+	return new Proxy({}, {
+		get: (_target, property) => current()[property],
+		has: (_target, property) => property in current(),
+		ownKeys: () => Reflect.ownKeys(current()),
+		getOwnPropertyDescriptor(_target, property) {
+			const descriptor = Reflect.getOwnPropertyDescriptor(current(), property);
+			return descriptor === undefined ? undefined : { ...descriptor, configurable: true };
+		},
+		set: () => false,
+		defineProperty: () => false,
+		deleteProperty: () => false,
+	});
+}
+
 export function __kodyCreatePackageBoundSecrets(packageId) {
 	const binding = __kodyPackageBinding(packageId);
 	const call = async (method, alias) => {

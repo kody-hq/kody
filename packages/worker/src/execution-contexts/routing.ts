@@ -7,6 +7,7 @@ import {
 	sha256Base64Url,
 	ecpHostOperatorOnlyFeature,
 	ecpTypeScriptSourceFeature,
+	ecpPublishBuildFeature,
 } from '@kody-internal/shared/execution-context-protocol/index.ts'
 import {
 	credentialCallMapToJson,
@@ -346,6 +347,15 @@ export async function typeScriptSourceRefusal(
 	}
 }
 
+/**
+ * A publish build clones with `git`. A daemon advertises
+ * {@link ecpPublishBuildFeature} only when it found it (older daemons never
+ * do), so a machine without git is skipped instead of failing the publish.
+ */
+export function publishBuildSupported(capabilities: EcpCapabilities) {
+	return (capabilities.features ?? []).includes(ecpPublishBuildFeature)
+}
+
 /** Why a context cannot take this run, or null when it can. */
 export function grantRefusal(input: {
 	grant: EcpGrant
@@ -576,6 +586,10 @@ export async function routeExecute(input: {
 		}
 		if (input.publishBuild && sharedRun) {
 			skip('not_operator')
+			continue
+		}
+		if (input.publishBuild && !publishBuildSupported(parseCapabilities(row))) {
+			skip('publish_build_unsupported')
 			continue
 		}
 		if (!input.code && !input.publishBuild) {
@@ -821,6 +835,8 @@ const contextReasonText: Record<string, string> = {
 		'typescript_daemon_outdated: this code is TypeScript and its daemon is too old to run TypeScript; please update it with `kody daemon update`',
 	operator_left:
 		'operator_left: the person who runs this machine is no longer a member of this org',
+	publish_build_unsupported:
+		'publish_build_unsupported: publish builds need git, and its daemon did not report it (git missing, or a daemon too old to say); install git there and run `kody daemon update`, or publish with `--context cloud`',
 }
 
 export function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {

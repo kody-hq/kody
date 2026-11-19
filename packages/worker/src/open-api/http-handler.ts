@@ -1,4 +1,9 @@
 import {
+	formatServerTimingHeader,
+	pushServerTiming,
+	type ServerTimingEntry,
+} from '#worker/server-timing.ts'
+import {
 	guestClaimCapabilityName,
 	guestClaimFinishCapabilityName,
 	guestPhase,
@@ -302,16 +307,21 @@ async function handleOperation(input: {
 		)
 	}
 
+	// Phases on the response, so a slow call shows where its time went.
+	const serverTiming: Array<ServerTimingEntry> = []
 	let ctx
 	try {
-		ctx = await authenticateApiRequest({
-			...input,
-			// CLI `kody login` OAuth is accepted on local-execute routes (older
-			// CLIs) and on POST /v1/tokens/device (mint a device kody_at_).
-			// Other Open API ops stay `kody_at_`-only (ADR 0053/0055).
-			allowMcpOauth: operationAllowsCliOauth(matchedOperation),
-			allowExecutionContextLease: isCapabilityProxyOperation(matchedOperation),
-		})
+		ctx = await pushServerTiming(serverTiming, 'auth', () =>
+			authenticateApiRequest({
+				...input,
+				// CLI `kody login` OAuth is accepted on local-execute routes (older
+				// CLIs) and on POST /v1/tokens/device (mint a device kody_at_).
+				// Other Open API ops stay `kody_at_`-only (ADR 0053/0055).
+				allowMcpOauth: operationAllowsCliOauth(matchedOperation),
+				allowExecutionContextLease:
+					isCapabilityProxyOperation(matchedOperation),
+			}),
+		)
 	} catch (error) {
 		const apiError = toApiError(error)
 		if (apiError instanceof ApiError && apiError.meteringUserId) {
@@ -333,9 +343,11 @@ async function handleOperation(input: {
 	// preflight failures meter here (one event); invoke still meters the hop
 	// after params are accepted.
 	try {
-		await authorizeSurface(
-			{ env: ctx.env, request: ctx.callerContext.request },
-			resolved.permission,
+		await pushServerTiming(serverTiming, 'authorize', () =>
+			authorizeSurface(
+				{ env: ctx.env, request: ctx.callerContext.request },
+				resolved.permission,
+			),
 		)
 	} catch (error) {
 		const apiError = toApiError(error)
@@ -385,26 +397,36 @@ async function handleOperation(input: {
 	})
 	const userId = personalOrgIdForPerson(ctx.callerContext.user)
 	const run = () =>
-		invokeApiOperation({
-			operationId: matchedOperation.operationId,
-			params,
-			ctx,
+		pushServerTiming(serverTiming, 'operation', () =>
+			invokeApiOperation({
+				operationId: matchedOperation.operationId,
+				params,
+				ctx,
+			}),
+		)
+	const respond = (result: unknown) =>
+		json(result, {
+			headers: {
+				...deprecatedForwardHeaders(matchedOperation),
+				'Server-Timing': formatServerTimingHeader(serverTiming),
+			},
 		})
-	const deprecationHeaders = deprecatedForwardHeaders(matchedOperation)
-	const responseInit = deprecationHeaders ? { headers: deprecationHeaders } : {}
 	const writes = operationNeedsAccountWriteLease(resolved)
 	if (!writes) {
-		await assertAccountWritableDb(input.env.APP_DB, userId)
-		return json(await run(), responseInit)
+		await pushServerTiming(serverTiming, 'accountState', () =>
+			assertAccountWritableDb(input.env.APP_DB, userId),
+		)
+		return respond(await run())
 	}
-	const result = await withAccountWriteLease({
-		db: input.env.APP_DB,
-		stableUserId: userId,
-		holder: `api:${matchedOperation.operationId}`,
-		env: input.env,
-		write: run,
-	})
-	return json(result, responseInit)
+	return respond(
+		await withAccountWriteLease({
+			db: input.env.APP_DB,
+			stableUserId: userId,
+			holder: `api:${matchedOperation.operationId}`,
+			env: input.env,
+			write: run,
+		}),
+	)
 }
 
 async function handleCapabilityProxyGatewayFetchStream(input: {
