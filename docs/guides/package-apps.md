@@ -138,6 +138,12 @@ the hosted origin without a session. Prefer the OAuth helper below for in-app
 Sign in / Sign out. A direct visit to `*.kody.run` or a custom domain does not
 see the kody.codes session cookie.
 
+Visitors with shared access from outside the owning organization confirm **Run
+as me** before the app first runs on their Kody account. **Not now** ends the
+visit before the app receives the request. Kody remembers approval per app and
+account. Visitors can remove an approval in **Account > Connected apps** to be
+asked again on their next visit.
+
 ### Auth with Kody (OAuth)
 
 Watch:

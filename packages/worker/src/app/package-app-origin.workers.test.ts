@@ -1,3 +1,4 @@
+import { applyD1Migrations, type D1Migration } from 'cloudflare:test'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import { ensurePackageAppCustomHostnamesTestSchema } from '#worker/test-support/package-app-custom-hostnames-test-schema.ts'
@@ -8,6 +9,12 @@ import {
 	handlePackageAppRequest,
 } from '#app/handlers/package-app.ts'
 import { packageAppHandoffQueryParam } from '#app/package-app-handoff.ts'
+import {
+	approvePackageAppRun,
+	listPackageAppRunApprovals,
+	removePackageAppRunApproval,
+} from '#app/package-app-run-consent.ts'
+import { personIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
 import { buildUnmatchedPackageAppOriginPathMessage } from '#worker/package-runtime/package-app-synthetic.ts'
 import {
@@ -722,6 +729,82 @@ test('team org private apps hand off and open for owners and execute-granted mem
 			`${appOrigin}/@${teamOrgSlug}/demo`,
 		)
 	}
+})
+
+test('shared app confirmation gates handoff and blocks a previously established session after removal', async () => {
+	configureOrigins({
+		packageAppBaseUrl: packageAppOrigin,
+		runtime: 'production',
+	})
+	await seedPackageAppAccessFixture()
+	const { TEST_MIGRATIONS } = env as Env & {
+		TEST_MIGRATIONS: Array<D1Migration>
+	}
+	await applyD1Migrations(
+		env.APP_DB,
+		TEST_MIGRATIONS.filter(({ name }) =>
+			name.endsWith('-package-app-run-consents.sql'),
+		),
+	)
+	const { privateApp, orgSlug, people } = accessFixture
+	const personId = personIdFromStored(
+		testStableUserIdFromEmail(people.collaborator.email),
+	)
+	const cookie = await sessionCookieFor(people.collaborator.email)
+	const entry = `${appOrigin}/@${orgSlug}/packages/${privateApp.slug}/open/report?tab=1`
+	const navigate = () =>
+		workerFetch(entry, { headers: { Cookie: cookie, Accept: 'text/html' } })
+	const ask = await navigate()
+	expect(ask.status).toBe(302)
+	expect(ask.headers.getSetCookie()).toEqual([])
+	const consent = new URL(ask.headers.get('Location') ?? '')
+	expect(consent.origin).toBe(appOrigin)
+	expect(consent.pathname).toBe('/oauth/package-app/run-as-me')
+	expect(consent.searchParams.get('returnTo')).toBe(
+		new URL(entry).pathname + '?tab=1',
+	)
+	await expect(
+		listPackageAppRunApprovals(env.APP_DB, personId),
+	).resolves.toEqual([])
+
+	await approvePackageAppRun(env.APP_DB, personId, privateApp.id)
+	await approvePackageAppRun(env.APP_DB, personId, privateApp.id)
+	await expect(
+		listPackageAppRunApprovals(env.APP_DB, personId),
+	).resolves.toEqual([
+		expect.objectContaining({ packageId: privateApp.id, publisher: orgSlug }),
+	])
+	const handoff = new URL((await navigate()).headers.get('Location') ?? '')
+	expect(handoff.origin).toBe(accessFixtureOrigin)
+	expect(handoff.pathname).toBe(`/${privateApp.slug}/report`)
+	expect(handoff.searchParams.get(packageAppHandoffQueryParam)).toBeTruthy()
+	const exchange = await workerFetch(handoff)
+	expect(exchange.status).toBe(302)
+	expect(
+		exchange.headers
+			.getSetCookie()
+			.some((value) => value.startsWith('__Host-kody_pkg_session_')),
+	).toBe(true)
+	const hostedUrl = exchange.headers.get('Location') ?? ''
+	const session = exchange.headers.getSetCookie()[0]?.split(';')[0] ?? ''
+
+	// An in-flight handoff must not mint another session after approval is removed.
+	const pendingHandoff = (await navigate()).headers.get('Location') ?? ''
+	await removePackageAppRunApproval(env.APP_DB, personId, privateApp.id)
+	const blockedExchange = await workerFetch(pendingHandoff, {
+		headers: { Accept: 'text/html' },
+	})
+	expect(blockedExchange.headers.get('Location')).toBe(consent.toString())
+	expect(blockedExchange.headers.getSetCookie()).toEqual([])
+	expect((await navigate()).headers.get('Location')).toBe(consent.toString())
+	const blockedRequest = await workerFetch(hostedUrl, {
+		headers: { Cookie: session, Accept: 'application/json' },
+	})
+	expect(blockedRequest.status).toBe(403)
+	expect(blockedRequest.headers.getSetCookie()).toEqual([])
+	await expect(blockedRequest.json()).resolves.toMatchObject({
+		error: 'app_run_confirmation_required',
+	})
 })
 
 test('denied handoff for a real private package still redirects to the package page (no-access HTML is covered by package-page + e2e)', async () => {

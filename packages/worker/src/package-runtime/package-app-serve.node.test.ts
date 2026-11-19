@@ -412,6 +412,7 @@ async function serveHelloWorld(input?: {
 	init?: RequestInit
 	dispatch?: { synthetic: true }
 	mount?: 'username-path' | 'user-subdomain'
+	externalVisitor?: { db: D1Database }
 	/** Serve as an internet-visible outsider instead of the owner. */
 	outsider?: {
 		identity?: {
@@ -438,7 +439,7 @@ async function serveHelloWorld(input?: {
 	return await servePackageAppRequest({
 		request: new Request(`${requestOrigin}${requestPath}`, input?.init),
 		env: {
-			APP_DB: {},
+			APP_DB: input?.externalVisitor?.db ?? {},
 			BUNDLE_ARTIFACTS_KV: {},
 		} as Env,
 		owner: {
@@ -449,11 +450,17 @@ async function serveHelloWorld(input?: {
 		},
 		visitor: input?.outsider
 			? null
-			: {
-					userId: personIdFromStored('user-1'),
-					username: 'demo-user',
-					role: 'owner',
-				},
+			: input?.externalVisitor
+				? {
+						userId: personIdFromStored('outside-visitor'),
+						username: 'visitor',
+						role: null,
+					}
+				: {
+						userId: personIdFromStored('user-1'),
+						username: 'demo-user',
+						role: 'owner',
+					},
 		...(input?.outsider
 			? {
 					identity: input.outsider.identity ?? null,
@@ -470,6 +477,55 @@ async function serveHelloWorld(input?: {
 		dispatch: input?.dispatch,
 	})
 }
+
+test('an unconfirmed outside visitor cannot start an app request or realtime session', async () => {
+	const fixture = seedFixture()
+	const prepare = vi.fn(() => ({
+		bind: vi.fn(() => ({ first: async () => null })),
+	}))
+	const db = { prepare } as unknown as D1Database
+	const externalVisitor = { db }
+	mockModule.buildPackageAppWorker.mockClear()
+	mockModule.beginRunRecord.mockClear()
+	mockModule.packageRealtimeConnect.mockClear()
+
+	const browser = await serveHelloWorld({
+		externalVisitor,
+		init: { headers: { 'Sec-Fetch-Mode': 'navigate', Accept: 'text/html' } },
+	})
+	expect(browser.status).toBe(302)
+	expect(browser.headers.get('Set-Cookie')).toBeNull()
+	const consent = new URL(browser.headers.get('Location') ?? '')
+	expect(consent.pathname).toBe('/oauth/package-app/run-as-me')
+	expect(consent.searchParams.get('returnTo')).toBe(
+		`/@demo-user/packages/${fixture.savedPackage.kodyId}/open`,
+	)
+
+	const post = await serveHelloWorld({
+		externalVisitor,
+		init: { method: 'POST', body: 'payload' },
+	})
+	expect(post.status).toBe(403)
+	await expect(post.json()).resolves.toMatchObject({
+		error: 'app_run_confirmation_required',
+	})
+	const realtime = await serveHelloWorld({
+		externalVisitor,
+		restPath: '/-/realtime',
+		init: { headers: { Upgrade: 'websocket' } },
+	})
+	expect(realtime.status).toBe(403)
+
+	prepare.mockImplementationOnce(() => {
+		throw new Error('consent database unavailable')
+	})
+	await expect(serveHelloWorld({ externalVisitor })).rejects.toThrow(
+		'consent database unavailable',
+	)
+	expect(mockModule.buildPackageAppWorker).not.toHaveBeenCalled()
+	expect(mockModule.beginRunRecord).not.toHaveBeenCalled()
+	expect(mockModule.packageRealtimeConnect).not.toHaveBeenCalled()
+})
 
 function optionalOnlyExecutorNeeds() {
 	seedFixture()
