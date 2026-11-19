@@ -5,8 +5,8 @@
  * are ignored.
  */
 
-import { createHash } from 'node:crypto'
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
+import { createHash, randomUUID } from 'node:crypto'
+import { lstat, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { KodyTarget } from '../target.js'
 import { userCacheDir } from '../workerd-binary.js'
@@ -27,6 +27,7 @@ export type DevRegistration = {
 	basePath: string
 	target: KodyTarget
 	root: string
+	localKody?: { origin: string; apiToken: string }
 }
 
 export type DevServerStatus = {
@@ -79,7 +80,24 @@ export async function writeDevRegistration(
 ): Promise<string> {
 	const path = devRegistryPath(registration.root, registration.target, cacheDir)
 	await mkdir(join(path, '..'), { recursive: true })
-	await writeFile(path, `${JSON.stringify(registration, null, 2)}\n`)
+	const temporary = `${path}.${randomUUID()}.tmp`
+	try {
+		const { localKody, ...publicRegistration } = registration
+		await writeFile(
+			temporary,
+			`${JSON.stringify(publicRegistration, null, 2)}\n`,
+			{
+				mode: 0o600,
+				flag: 'wx',
+			},
+		)
+		if (localKody && isPrivateRegistration(await lstat(temporary))) {
+			await writeFile(temporary, `${JSON.stringify(registration, null, 2)}\n`)
+		}
+		await rename(temporary, path)
+	} finally {
+		await rm(temporary, { force: true })
+	}
 	return path
 }
 
@@ -145,6 +163,8 @@ export async function findRunningDevServer(input: {
 
 async function readRegistration(path: string): Promise<DevRegistration | null> {
 	try {
+		const file = await lstat(path)
+		if (!file.isFile()) return null
 		const parsed = JSON.parse(
 			await readFile(path, 'utf8'),
 		) as Partial<DevRegistration>
@@ -166,8 +186,18 @@ async function readRegistration(path: string): Promise<DevRegistration | null> {
 			basePath: typeof parsed.basePath === 'string' ? parsed.basePath : '',
 			target: parsed.target,
 			root: parsed.root,
+			...(parsed.localKody &&
+			typeof parsed.localKody.origin === 'string' &&
+			typeof parsed.localKody.apiToken === 'string' &&
+			isPrivateRegistration(file)
+				? { localKody: parsed.localKody }
+				: {}),
 		}
 	} catch {
 		return null
 	}
+}
+
+function isPrivateRegistration(file: { mode: number; uid: number }): boolean {
+	return (file.mode & 0o777) === 0o600 && file.uid === process.getuid?.()
 }

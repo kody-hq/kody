@@ -591,18 +591,28 @@ Durable Objects, the local account and its API token) lives under
 `<kody cache>/dev-state/<hash of the package root>`, outside the package, and
 survives restarts. Delete that directory to start over.
 
-`--target prod` and `execute --local` use a lighter working-tree bridge instead.
-It runs the bundle in a local workerd and sends `kody.*` calls to Kody (mock or
-prod) through the CapabilityProxy. `--target prod` does **not** give the working
-tree hosted `packageStorage` or `packageSecrets`, by design; see
+`--target prod` and mock execute code outside package exports use a lighter
+working-tree bridge instead. It runs the bundle in a local workerd and sends
+`kody.*` calls to Kody (mock or prod) through the CapabilityProxy.
+`--target prod` does **not** give the working tree hosted `packageStorage` or
+`packageSecrets`, by design; see
 [Won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod).
 
-| Command + target           | `packageStorage`                                                                         | `packageSecrets`                                                                         | Outbound network                                  |
-| -------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| `kody dev` **mock**        | Real StorageRunner Durable Object, local state                                           | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
-| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
-| `execute --local` **mock** | Scratch SQLite on the CLI mock                                                           | Throws (light bridge)                                                                    | `.kody/mocks.ts` (fail closed), else public hosts |
-| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| Command + target           | `packageStorage`                                                                                                   | `packageSecrets`                                                                         | Outbound network                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| `kody dev` **mock**        | Real StorageRunner Durable Object, local state shared with mock execute package exports                            | Placeholders only, never a real secret                                                   | `.kody/mocks.ts` (fail closed), else public hosts |
+| `kody dev` **prod**        | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod))                           | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+| `execute --local` **mock** | Package exports use the same local StorageRunner store as `kody dev`; other entry code cannot access package state | Local Kody placeholders for package exports; otherwise throws (light bridge)             | `.kody/mocks.ts` (fail closed), else public hosts |
+| `execute --local` **prod** | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod))                           | Throws ([won't do](#wont-do-storage-secrets-email-events-and-packages-on---target-prod)) | Real network                                      |
+
+To seed local package state, run
+`kody execute --local --target mock --invoke <export>` from the package
+directory, with the seed module declared in `package.json#exports`.
+`--file <path>` also works when the file is a declared package export. Execute
+attaches to a running `kody dev --target mock` for that package, or starts
+one-shot local Kody using the same persistent dev-state store. Inline code and
+non-export files cannot directly access local package state; put storage
+operations in a package export and invoke it instead.
 
 ### Boundary mocks in `kody dev`
 
