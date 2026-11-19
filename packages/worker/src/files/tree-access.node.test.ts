@@ -153,7 +153,7 @@ test('denials carry the authorizer error for missing permissions, token scopes, 
 			fileTreeAccess(profiled.access, profiled.files, 'file:write', 'leaf'),
 		),
 	).toBe(
-		'Profile "file-reviewer" was not granted file:write on file "root". The person it acts for can grant it under Agent profiles (/account/profiles) or with accessGrant (resource_type "file", subject_type "profile", subject_id the profile id).',
+		'Profile "file-reviewer" was not granted file:write on file "root". The person it acts for can grant it with accessGrant (resource_type "file", subject_type "profile", subject_id the profile id).',
 	)
 })
 

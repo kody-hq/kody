@@ -82,6 +82,10 @@ accessGrant({
   needed.
 - The profile must be active and act for you. A caller signed in as a profile
   can grant only to its own sub-profiles.
+- The page offers org, package, and credential grants. Use `accessGrant` for the
+  other resource types, such as a file or run access on an execution context
+  (`execution_context:command`). A single command on a machine goes through
+  `executionContextShareSet` with `profile_id`.
 - A new grant replaces the profile's live grant on that resource. Profile grants
   take no `expires_at`; shorten the profile expiry instead.
 - `accessList({ subject_type: 'profile' })` lists the grants on your profiles

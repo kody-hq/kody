@@ -558,7 +558,12 @@ function profileDenialMessage(
 			? `Profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so it cannot use ${permission}${target}.`
 			: `Parent profile "${layer.name}" is ${layer.reason ?? 'revoked'}, so the profiles below it cannot use ${permission}${target}.`
 	}
-	const grantHint = `The person it acts for can grant it under Agent profiles (/account/profiles) or with accessGrant (resource_type "${resource?.type ?? 'org'}", subject_type "profile", subject_id the profile id).`
+	const resourceType = resource?.type ?? 'org'
+	// The Agent profiles page offers org, package, and credential grants.
+	const onPage = ['org', 'package', 'credential'].includes(resourceType)
+		? 'under Agent profiles (/account/profiles) or '
+		: ''
+	const grantHint = `The person it acts for can grant it ${onPage}with accessGrant (resource_type "${resourceType}", subject_type "profile", subject_id the profile id).`
 	const message = layer.self
 		? `Profile "${layer.name}" was not granted ${permission}${target}. ${grantHint}`
 		: `Parent profile "${layer.name}" does not hold ${permission}${target}, so the profiles below it cannot use it.`
