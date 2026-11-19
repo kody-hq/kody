@@ -709,7 +709,6 @@ function localContext(person: Person): ApiInvocationContext {
 			'demo-indicator': false,
 			'files-workspace': false,
 			profiles: false,
-			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
 			'package-credential-suppliers': false,
 			'repo-push-queue': false,

@@ -10,11 +10,6 @@ audience: agents
 
 # Ship Agent Skills in a package
 
-> [!NOTE] Serving skills over MCP is behind the `mcp-skills-extension` feature
-> flag because host support is partial and the shape may change. Signed-in users
-> can turn it on from this page. Authoring and publishing skills works with the
-> flag off.
-
 A package skill is an [Agent Skill](https://agentskills.io/specification) that
 lives inside a Kody package. The package stays the source of truth; Kody
 validates it at publish and, for hosts that ask, serves it over MCP.
@@ -107,17 +102,15 @@ collaborators can browse and compare versions but cannot restore. History
 includes versions whose skill indexes and source snapshots are still available.
 It does not reconstruct versions from before skills were indexed.
 
-Browsing does not require the Skills-over-MCP feature flag or a connected agent.
-Package read permissions still apply.
+Browsing does not require Skills over MCP or a connected agent. Package read
+permissions still apply.
 
 ## Over MCP
 
-When all of these are true, a connection serves the package's skills:
-
-1. The `mcp-skills-extension` flag is on for the signed-in user.
-2. The client connects on the 2026-07-28 MCP lane and declares the
-   `io.modelcontextprotocol/skills` extension in that request's `_meta` client
-   capabilities (the lane is stateless — there is no initialize handshake).
+A connection serves the package's skills when the client connects on the
+2026-07-28 MCP lane and declares the `io.modelcontextprotocol/skills` extension
+in that request's `_meta` client capabilities (the lane is stateless — there is
+no initialize handshake). Clients that do not declare it see no change.
 
 Then the connection answers:
 
@@ -150,12 +143,6 @@ Discover it, then open the file:
 ```text
 search({ entity: 'package:@you/my-package#skills/hello-skill/SKILL.md' })
 ```
-
-## Turn it on
-
-Signed-in users can opt in from the callout at the top of this page.
-Experimenters get the flag when an admin enables `mcp-skills-extension` for the
-`experiments_opt_in` audience. Default is off.
 
 ## Skill registries
 

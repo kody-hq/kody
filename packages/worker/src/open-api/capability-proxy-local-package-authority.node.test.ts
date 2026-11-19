@@ -160,7 +160,6 @@ function createContext(db: D1Database): ApiInvocationContext {
 			'files-workspace': false,
 			'demo-indicator': false,
 			profiles: false,
-			'mcp-skills-extension': false,
 			'mcp-events-extension': false,
 			'package-credential-suppliers': false,
 			'repo-push-queue': false,

@@ -69,7 +69,7 @@ export async function handleStatelessMcpRequest(input: {
 			await registerTools(
 				createStatelessRegistrationAgent({ server, env, ctx, callerContext }),
 			)
-			await registerPackageSkillsExtensionWhenEnabled({
+			registerPackageSkillsExtensionWhenEnabled({
 				server,
 				env,
 				callerContext,
