@@ -41,10 +41,10 @@ export async function loadPackageAppRunConsentView(request: Request, env: Env) {
 	const user = await readAuthenticatedAppUser(request, env)
 	if (!user) return redirectToLoginWhenUnauthenticated(request, env)
 	const returnTo = normalizeRedirectTo(url.searchParams.get('returnTo'))
-	const entry = returnTo && new URL(returnTo, url.origin)
-	const target = entry && parsePackageAppPath(entry.pathname)
-	if (!entry || !target?.openHandoff)
-		return new Response(null, { status: 404, headers })
+	if (!returnTo) return new Response(null, { status: 404, headers })
+	const entry = new URL(returnTo, url.origin)
+	const target = parsePackageAppPath(entry.pathname)
+	if (!target?.openHandoff) return new Response(null, { status: 404, headers })
 	entry.searchParams.delete(packageAppHandoffQueryParam)
 
 	const org = await resolvePackageAppOrgOwnerByHandle({
@@ -95,7 +95,8 @@ export async function loadPackageAppRunConsentView(request: Request, env: Env) {
 		}
 		const client = parsePackageAppOauthClientId(clientId)
 		if (
-			client?.username !== target.username ||
+			!client ||
+			client.username !== target.username ||
 			client.kodyId !== target.kodyId
 		) {
 			return new Response(null, { status: 404, headers })
