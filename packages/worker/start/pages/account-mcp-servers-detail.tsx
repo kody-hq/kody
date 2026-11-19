@@ -157,8 +157,59 @@ function McpServerUsageForm(props: {
 	)
 }
 
+type McpServerPackageApproval = {
+	packageId: string
+	packageName: string
+	alreadyGranted: boolean
+}
+
+function McpServerPackageApprovalCard(props: {
+	server: McpServerListItem
+	approval: McpServerPackageApproval
+	saving: boolean
+	onApprove: () => void
+}) {
+	const { server, approval, saving, onApprove } = props
+	return (
+		<section
+			data-testid="mcp-server-approval-card"
+			css={{
+				display: 'grid',
+				gap: spacing.sm,
+				padding: spacing.md,
+				borderRadius: radius.md,
+				border: `1px solid ${colors.primary}`,
+				backgroundColor: colors.primarySoftest,
+			}}
+		>
+			<p css={{ ...fieldLabelCss, margin: 0 }}>Approve MCP server access</p>
+			<p css={{ ...descriptionCss, margin: 0 }}>
+				{approval.alreadyGranted ? 'Package ' : 'Allow package '}
+				<strong css={{ color: colors.text }}>{approval.packageName}</strong>
+				{approval.alreadyGranted ? ' can already call ' : ' to call '}
+				<code>kody.mcp[&quot;{server.name}&quot;]</code>.
+			</p>
+			{approval.alreadyGranted ? null : (
+				<div>
+					<Button
+						type="button"
+						data-testid="approve-mcp-server-package"
+						disabled={saving}
+						onClick={onApprove}
+						variant="primary"
+					>
+						{saving ? 'Approving…' : 'Approve'}
+					</Button>
+				</div>
+			)}
+		</section>
+	)
+}
+
 export type McpServerDetailProps = {
 	server: McpServerListItem
+	packageApproval: McpServerPackageApproval | null
+	onPackageApprove: () => void
 	savedPackages: ReadonlyArray<{ id: string; kodyId: string }>
 	usageDraft: McpServerUsageDraft
 	usageSaving: boolean
@@ -179,6 +230,8 @@ export type McpServerDetailProps = {
 export function renderMcpServerDetail(props: McpServerDetailProps) {
 	const {
 		server,
+		packageApproval,
+		onPackageApprove,
 		savedPackages,
 		usageDraft,
 		usageSaving,
@@ -307,6 +360,15 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 						</Button>
 					</div>
 				</div>
+			) : null}
+
+			{packageApproval ? (
+				<McpServerPackageApprovalCard
+					server={server}
+					approval={packageApproval}
+					saving={usageSaving}
+					onApprove={onPackageApprove}
+				/>
 			) : null}
 
 			<McpServerUsageForm

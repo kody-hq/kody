@@ -69917,7 +69917,7 @@ export const capabilityManifest = {
 				{
 					"name": "resourceLock",
 					"domain": "secrets",
-					"description": "Narrow a credential-like resource to a saved package; unlock or removal is website-only, and this capability can never loosen usage. For kind secret, requires secret:use and returns only an approval_url that the owner must click; never treat it as a grant. The secret page is /@<slug>/-/secrets/approve. For kind secret_provider, requires secret:use and likewise returns only an owner-clicked approval_url; ad hoc execute does not need provider grants, but saved packages do. For kind integration, requires integration:use and immediately switches to packages mode and adds the package id; unlock at /account/integrations/:name, and integrationSave cannot change usageMode. For kind mcp_server, requires integration:use and immediately switches to packages mode and adds the package id; unlock at /account/mcp-servers/:serverId. secretSet cannot change allowed_packages.",
+					"description": "Narrow a credential-like resource to a saved package; unlock or removal is website-only, and this capability can never widen usage. Every kind returns status (locked, already_granted, or approval_required) and an approval_url. approval_required means nothing changed: send the owner the approval_url and wait; never treat it as a grant. Kinds secret and secret_provider require secret:use and always need owner approval (secret page /@<slug>/-/secrets/approve); ad hoc execute does not need provider grants, but saved packages do. Kinds integration and mcp_server require integration:use: locking a connection any context can use to its first package applies immediately (status locked), and adding a package to an already locked connection needs owner approval. Unlock at /account/integrations/:name or /account/mcp-servers/:serverId. integrationSave cannot change usageMode, and secretSet cannot change allowed_packages.",
 					"keywords": [
 						"secret",
 						"lock",
@@ -70010,7 +70010,7 @@ export const capabilityManifest = {
 									"kind": {
 										"type": "string",
 										"const": "integration",
-										"description": "Saved OAuth integration (applies a package lock immediately)."
+										"description": "Saved OAuth integration (locks an unlocked connection; adding a package to a locked one returns an approval URL)."
 									},
 									"name": {
 										"type": "string",
@@ -70036,7 +70036,7 @@ export const capabilityManifest = {
 									"kind": {
 										"type": "string",
 										"const": "mcp_server",
-										"description": "Saved MCP server (applies a package lock immediately)."
+										"description": "Saved MCP server (locks an unlocked server; adding a package to a locked one returns an approval URL)."
 									},
 									"server": {
 										"type": "string",
@@ -70087,8 +70087,9 @@ export const capabilityManifest = {
 									"status": {
 										"type": "string",
 										"enum": [
-											"approval_required",
-											"already_granted"
+											"locked",
+											"already_granted",
+											"approval_required"
 										]
 									},
 									"approval_url": {
@@ -70132,8 +70133,9 @@ export const capabilityManifest = {
 									"status": {
 										"type": "string",
 										"enum": [
-											"approval_required",
-											"already_granted"
+											"locked",
+											"already_granted",
+											"approval_required"
 										]
 									},
 									"approval_url": {
@@ -70177,6 +70179,20 @@ export const capabilityManifest = {
 									},
 									"usage_url": {
 										"type": "string"
+									},
+									"status": {
+										"type": "string",
+										"enum": [
+											"locked",
+											"already_granted",
+											"approval_required"
+										]
+									},
+									"approval_url": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
 									}
 								},
 								"required": [
@@ -70184,7 +70200,10 @@ export const capabilityManifest = {
 									"name",
 									"usage_mode",
 									"allowed_package_ids",
-									"usage_url"
+									"usage_url",
+									"status",
+									"approval_url",
+									"message"
 								],
 								"additionalProperties": false
 							},
@@ -70213,6 +70232,20 @@ export const capabilityManifest = {
 									},
 									"usage_url": {
 										"type": "string"
+									},
+									"status": {
+										"type": "string",
+										"enum": [
+											"locked",
+											"already_granted",
+											"approval_required"
+										]
+									},
+									"approval_url": {
+										"type": "string"
+									},
+									"message": {
+										"type": "string"
 									}
 								},
 								"required": [
@@ -70221,14 +70254,17 @@ export const capabilityManifest = {
 									"name",
 									"usage_mode",
 									"allowed_package_ids",
-									"usage_url"
+									"usage_url",
+									"status",
+									"approval_url",
+									"message"
 								],
 								"additionalProperties": false
 							}
 						]
 					},
-					"inputTypeDefinition": "type ResourceLockInput = {\n\t/** User-scoped secret (returns an approval URL; does not grant). */\n\tkind: \"secret\"\n\t/** User-scoped secret name to grant. */\n\tname: string\n\t/** Saved package id that may use this secret. */\n\tpackage_id: string\n} | {\n\t/** External secret-provider ref (returns an approval URL; does not grant). */\n\tkind: \"secret_provider\"\n\t/** Provider id, for example 1password. */\n\tprovider: string\n\t/** Canonical i/<item-id>/<field> ref (UUID or 1Password Connect 26-char id), or an op:// synonym that already contains that item id. */\n\tref: string\n\t/** Saved package id that may use this provider ref. */\n\tpackage_id: string\n} | {\n\t/** Saved OAuth integration (applies a package lock immediately). */\n\tkind: \"integration\"\n\t/** Saved integration connection name (provider key). */\n\tname: string\n\t/** Saved package id that may use this integration. */\n\tpackage_id: string\n} | {\n\t/** Saved MCP server (applies a package lock immediately). */\n\tkind: \"mcp_server\"\n\t/** The saved MCP server id or name. */\n\tserver: string\n\t/** Saved package id that may call this MCP server. */\n\tpackage_id: string\n}",
-					"outputTypeDefinition": "type ResourceLockOutput = {\n\tkind: \"secret\"\n\tname: string\n\tscope: \"user\"\n\tallowed_packages: Array<string>\n\tusage_url: string\n\tstatus: \"approval_required\" | \"already_granted\"\n\tapproval_url: string\n\tmessage: string\n} | {\n\tkind: \"secret_provider\"\n\tprovider: string\n\tcanonical_ref: string\n\tpackage_id: string\n\tusage_url: string\n\tstatus: \"approval_required\" | \"already_granted\"\n\tapproval_url: string\n\tmessage: string\n} | {\n\tkind: \"integration\"\n\tname: string\n\tusage_mode: \"packages\"\n\tallowed_package_ids: Array<string>\n\tusage_url: string\n} | {\n\tkind: \"mcp_server\"\n\tid: string\n\tname: string\n\tusage_mode: \"packages\"\n\tallowed_package_ids: Array<string>\n\tusage_url: string\n}"
+					"inputTypeDefinition": "type ResourceLockInput = {\n\t/** User-scoped secret (returns an approval URL; does not grant). */\n\tkind: \"secret\"\n\t/** User-scoped secret name to grant. */\n\tname: string\n\t/** Saved package id that may use this secret. */\n\tpackage_id: string\n} | {\n\t/** External secret-provider ref (returns an approval URL; does not grant). */\n\tkind: \"secret_provider\"\n\t/** Provider id, for example 1password. */\n\tprovider: string\n\t/** Canonical i/<item-id>/<field> ref (UUID or 1Password Connect 26-char id), or an op:// synonym that already contains that item id. */\n\tref: string\n\t/** Saved package id that may use this provider ref. */\n\tpackage_id: string\n} | {\n\t/** Saved OAuth integration (locks an unlocked connection; adding a package to a locked one returns an approval URL). */\n\tkind: \"integration\"\n\t/** Saved integration connection name (provider key). */\n\tname: string\n\t/** Saved package id that may use this integration. */\n\tpackage_id: string\n} | {\n\t/** Saved MCP server (locks an unlocked server; adding a package to a locked one returns an approval URL). */\n\tkind: \"mcp_server\"\n\t/** The saved MCP server id or name. */\n\tserver: string\n\t/** Saved package id that may call this MCP server. */\n\tpackage_id: string\n}",
+					"outputTypeDefinition": "type ResourceLockOutput = {\n\tkind: \"secret\"\n\tname: string\n\tscope: \"user\"\n\tallowed_packages: Array<string>\n\tusage_url: string\n\tstatus: \"locked\" | \"already_granted\" | \"approval_required\"\n\tapproval_url: string\n\tmessage: string\n} | {\n\tkind: \"secret_provider\"\n\tprovider: string\n\tcanonical_ref: string\n\tpackage_id: string\n\tusage_url: string\n\tstatus: \"locked\" | \"already_granted\" | \"approval_required\"\n\tapproval_url: string\n\tmessage: string\n} | {\n\tkind: \"integration\"\n\tname: string\n\tusage_mode: \"packages\"\n\tallowed_package_ids: Array<string>\n\tusage_url: string\n\tstatus: \"locked\" | \"already_granted\" | \"approval_required\"\n\tapproval_url: string\n\tmessage: string\n} | {\n\tkind: \"mcp_server\"\n\tid: string\n\tname: string\n\tusage_mode: \"packages\"\n\tallowed_package_ids: Array<string>\n\tusage_url: string\n\tstatus: \"locked\" | \"already_granted\" | \"approval_required\"\n\tapproval_url: string\n\tmessage: string\n}"
 				},
 				{
 					"name": "secretProviderList",

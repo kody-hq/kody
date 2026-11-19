@@ -23,7 +23,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { mcpServerMutationOptions } from './account-mcp-server-mutation.ts'
-import { textSearch } from '../filter-search.ts'
+import { searchText, textSearch } from '../filter-search.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import {
 	AccountManagementMessage,
@@ -328,6 +328,9 @@ export function AccountMcpServersPage({
 
 	const isMutating = actionState !== 'idle'
 	const filters = textSearch(pageLocation.search)
+	const approvalSearch: Record<string, unknown> = pageLocation.search
+	const approvalPackageId =
+		searchText(approvalSearch.package_id)?.trim() || null
 	const search = filters.q?.trim() ?? ''
 	const filteredServers = filterServers(servers, search)
 	const server =
@@ -483,6 +486,39 @@ export function AccountMcpServersPage({
 						) : server ? (
 							renderMcpServerDetail({
 								server,
+								packageApproval: approvalPackageId
+									? {
+											packageId: approvalPackageId,
+											packageName:
+												savedPackages.find(
+													(item) => item.id === approvalPackageId,
+												)?.kodyId ??
+												searchText(approvalSearch.package) ??
+												approvalPackageId,
+											alreadyGranted:
+												server.usageMode !== 'packages' ||
+												(server.allowedPackageIds ?? []).includes(
+													approvalPackageId,
+												),
+										}
+									: null,
+								onPackageApprove: () => {
+									if (!approvalPackageId) return
+									void postAction({
+										write: () =>
+											usageMutation.mutateAsync({
+												orgSlug: orgSlug ?? undefined,
+												id: server.id,
+												usageMode: 'packages',
+												allowedPackageIds: [
+													...(server.allowedPackageIds ?? []),
+													approvalPackageId,
+												],
+											}),
+										successMessage: () => 'Approved package for this server.',
+										failureMessage: 'Unable to approve this package.',
+									})
+								},
 								savedPackages,
 								usageDraft: getUsageDraft(server),
 								usageSaving:
