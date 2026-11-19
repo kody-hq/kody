@@ -1,8 +1,7 @@
 import { expect, test } from 'vitest'
 import {
 	maxApiRequestBodyBytes,
-	maxPackageCheckRequestBodyBytes,
-	maxRequestBodyBytesForOperation,
+	maxPackageCheckUploadBytes,
 } from './api-body-limits.ts'
 import { readJsonBody } from './request-params.ts'
 import { repoChecksSourceMaxTotalBytes } from '#worker/repo/checks.ts'
@@ -16,21 +15,16 @@ function jsonRequest(bytes: number) {
 	})
 }
 
-test('packageCheck accepts a tree as large as the publish checks accept (#5308)', async () => {
-	expect(maxRequestBodyBytesForOperation('memoryCreate')).toBe(
-		maxApiRequestBodyBytes,
-	)
-	const cap = maxRequestBodyBytesForOperation('packageCheck')
-	expect(cap).toBe(maxPackageCheckRequestBodyBytes)
+test('a package check upload can carry a tree as large as the publish checks accept (#5308)', () => {
 	// Binaries travel as base64 (4 bytes per 3).
-	expect(cap).toBeGreaterThan(
+	expect(maxPackageCheckUploadBytes).toBeGreaterThan(
 		Math.ceil((repoChecksSourceMaxTotalBytes * 4) / 3),
 	)
+})
 
-	const overGeneralCap = maxApiRequestBodyBytes + 1024
-	expect((await readJsonBody(jsonRequest(overGeneralCap))).kind).toBe(
-		'too_large',
-	)
-	expect((await readJsonBody(jsonRequest(overGeneralCap), cap)).kind).toBe('ok')
-	expect((await readJsonBody(jsonRequest(cap + 1), cap)).kind).toBe('too_large')
+test('origin refuses a JSON body over the general cap', async () => {
+	expect(
+		(await readJsonBody(jsonRequest(maxApiRequestBodyBytes + 1024))).kind,
+	).toBe('too_large')
+	expect((await readJsonBody(jsonRequest(1024))).kind).toBe('ok')
 })

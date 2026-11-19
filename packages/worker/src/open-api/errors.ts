@@ -1,3 +1,4 @@
+import { UpgradeRequiredError } from '#mcp/upgrade-required-error.ts'
 import { GuestRestrictionError } from '#worker/guest/guest-errors.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
@@ -128,6 +129,7 @@ const platformApiErrorCodes = [
 	'unsupported_dynamic_package_import',
 	'package_graph_resource_limit',
 	'publish_not_applied',
+	'upgrade_required',
 	'internal_error',
 ] as const
 
@@ -357,6 +359,20 @@ export function toApiError(
 			details: walletGuardError.details,
 			headers: {
 				'Retry-After': String(walletGuardError.details.retryAfterSeconds),
+			},
+			cause: error,
+		})
+	}
+	const upgradeRequired = getErrorCauseChain(error).find(
+		(entry) => entry instanceof UpgradeRequiredError,
+	)
+	if (upgradeRequired) {
+		return new ApiError({
+			status: 426,
+			code: 'upgrade_required',
+			message: upgradeRequired.message,
+			details: {
+				minimum_cli_version: upgradeRequired.minimumCliVersion,
 			},
 			cause: error,
 		})

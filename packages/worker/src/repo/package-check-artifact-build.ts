@@ -31,7 +31,10 @@ function describeFailedTarget(
  */
 export async function runPackageCheckArtifactBuild(input: {
 	runner: IsolatedArtifactRebuildRunner
-	files: Record<string, string>
+	/** Key the tree was staged under with `runner.stage`; the caller discards it. */
+	stagingKey: string
+	/** The tree's `package.json`. */
+	manifestContent: string
 	userId: OwnerId
 	baseUrl: string
 	expectedPackageScope?: string
@@ -45,9 +48,11 @@ export async function runPackageCheckArtifactBuild(input: {
 	reuseSource?: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
 	/** Called once the reuse scan settles, before any build starts. */
 	onReuseScanDone?: () => Promise<void>
+	/** Called as build chunks (one throwaway isolate each) settle. */
+	onChunkDone?: (progress: { done: number; total: number }) => Promise<void>
 }): Promise<RepoCheckResult> {
 	const manifest = parseAuthoredPackageJson({
-		content: input.files['package.json'] ?? '',
+		content: input.manifestContent,
 		manifestPath: 'package.json',
 		...(input.expectedPackageScope !== undefined
 			? { expectedPackageScope: input.expectedPackageScope }
@@ -62,15 +67,7 @@ export async function runPackageCheckArtifactBuild(input: {
 				'No runtime artifacts to build: the package has no entry points.',
 		}
 	}
-	const stagingKey = await input.runner.stage({
-		userId: input.userId,
-		sourceFiles: input.files,
-	})
-	try {
-		return await buildStagedTargets({ ...input, allTargets, stagingKey })
-	} finally {
-		await input.runner.discard(stagingKey)
-	}
+	return await buildStagedTargets({ ...input, allTargets })
 }
 
 async function buildStagedTargets(input: {
@@ -80,6 +77,7 @@ async function buildStagedTargets(input: {
 	rootPackageId?: string
 	reuseSource?: Pick<EntitySourceRow, 'id' | 'manifest_path' | 'source_root'>
 	onReuseScanDone?: () => Promise<void>
+	onChunkDone?: (progress: { done: number; total: number }) => Promise<void>
 	allTargets: Array<PublishedPackageArtifactBuildTarget>
 	stagingKey: string
 }): Promise<RepoCheckResult> {
@@ -118,6 +116,9 @@ async function buildStagedTargets(input: {
 	const failures: Array<string> = []
 	let platformError: unknown = null
 	let built = 0
+	const totalChunks = chunkArtifactTargetsPerIsolate(targets).length
+	let doneChunks = 0
+	await input.onChunkDone?.({ done: 0, total: totalChunks })
 	await runIsolatedArtifactRebuildWaves({
 		targets,
 		runChunk: (chunk) =>
@@ -130,6 +131,11 @@ async function buildStagedTargets(input: {
 			}),
 		beforeNextWave: () => input.runner.touch(stagingKey),
 		recordChunk: (chunk, result) => {
+			doneChunks += 1
+			// Progress is best effort and must not hold up or fail the build.
+			void input
+				.onChunkDone?.({ done: doneChunks, total: totalChunks })
+				.catch(() => {})
 			if (result.status === 'rejected') {
 				platformError ??= result.reason
 				return true
@@ -159,7 +165,7 @@ async function buildStagedTargets(input: {
 			message: `The published artifact rebuild would fail, so the publish would too. ${failures.join('; ')}`,
 		}
 	}
-	const isolates = chunkArtifactTargetsPerIsolate(targets).length
+	const isolates = totalChunks
 	return {
 		kind: 'bundle',
 		ok: true,
