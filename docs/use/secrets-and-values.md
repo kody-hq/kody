@@ -34,17 +34,11 @@ read a secret locked only to A — including by passing A's id to
 carries that authority. Access rules are covered in
 [Package approval](#package-approval).
 
-`packageSecrets.get(alias)` (and `kody.packageSecretGet`) return an **opaque
-`{{secret:…}}` placeholder** after mount and grant checks succeed — never
-decrypted plaintext. Put that string anywhere in a secret-aware `fetch` request
-(see [Placeholders in `fetch`](#placeholders-in-fetch)), or pass it to
-`secretHeaders.basic` / `kody.secretJwtSign` (both accept saved secret names
-**or** opaque refs). Only platform use sites resolve it. Package and execute
-JavaScript never receive plaintext from `get`. A secret-aware `fetch` may send
-the value to an **approved** host. If that host echoes the value back, the
-gateway redacts it from the response (see
-[Placeholders in `fetch`](#placeholders-in-fetch)); treat response bodies as
-untrusted all the same.
+Declare a need in `kody.credentials` and map it to a credential ID. Use
+`(await credential('need-key')).fetch(url, init)` so Kody places the value at
+the network boundary. Existing mounts still work during migration and return an
+opaque reference, not a value. Keep the mount until all callers use its
+replacement.
 
 **`kody.secretSet(...)`** persists a value that is already available inside
 execution (for example an API key the package just minted). It does not return
@@ -164,126 +158,20 @@ as you on that provider. Kody does not control or supervise what your agent does
 with the access you grant; scope connections deliberately and revoke unused
 ones. See the [Terms](/terms).
 
+## Requests with credentials
+
+Use the need's scoped `fetch` client for HTTP requests. Kody enforces the Key's
+approved hosts and placement, always sends credentials over HTTPS, and redacts
+direct echoes before your code reads the response. For a webhook URL that is
+itself a secret, use a URL credential. For a token exchange, choose a Login
+credential. See [Credentials](../guides/credentials.md) for setup and examples.
+
 ## Placeholders in `fetch`
 
-Outbound **`fetch`** can include placeholders such as **`{{secret:tokenName}}`**
-or **`{{secret:tokenName|scope=user}}`** anywhere in the request: a header, the
-URL path, the query string, a text body (JSON, form-encoded, or plain text), or
-a literal `{{…}}` in a `multipart/*` part. The gateway fills them only when both
-hold:
-
-- the request is **HTTPS**;
-- the request host is one the credential allows: a saved secret's approved
-  hosts, an integration's `requiredHosts` and `apiBaseUrl` host, or a vault
-  item's websites.
-
-Otherwise the request is refused before any credential resolves, with an error
-that names the credential and the host; the gateway never sends a placeholder it
-would fill unfilled. A fill into a part the credential does not allow is also
-refused, naming the credential, the refused part, and the allowed parts. A
-placeholder in the URL host or user info is always refused, so filling one can
-never change where a request goes. In a JSON body each value is JSON-escaped; in
-a form-encoded body or query string each value is form-encoded, and the other
-keys and values keep their bytes as written. In the URL path each value is
-encoded as segment data, so a `/`, `?`, or `#` in it cannot change the route.
-Prefer a literal path prefix plus a one-segment secret for webhook-style URLs
-(Slack, Discord, and similar): put the stable path in code and only the token
-segment in the credential.
-
-```ts
-// Literal prefix + one-segment secret. The gateway fills the token as one
-// path segment. Do not store the whole `/services/T…/B…/…` path in one secret
-// and place it in the path — `/` becomes `%2F` and the remote typically 404s.
-await fetch('https://hooks.example.com/services/{{secret:webhookToken}}', {
-	method: 'POST',
-	body,
-})
-```
-
-When a credential filled into the path did contain `/`, `?`, or `#` and the
-remote returns 4xx, the gateway adds an `x-kody-path-segment-warning` response
-header (and a matching run-log line) that names the credential — never its value
-— and points at this pattern. A placeholder encoded with `encodeURIComponent` in
-the URL path or query, or in a form-urlencoded component the gateway already
-fills, is found too. Literal `{{…}}` placeholders in `multipart/*` parts are
-filled the same way. Streamed bodies are filled chunk by chunk. A
-percent-encoded or base64-encoded placeholder form the gateway will not fill is
-refused, with an error that names the form.
-
-The `x-kody-secret-resolution` header changes this per request, and Kody strips
-it before the request leaves:
-
-- `headers-only` fills header placeholders and sends the URL and body as
-  written, for a body that quotes the syntax on purpose (an issue or chat
-  message that documents it) on a host the credential allows. Without it, that
-  text would be filled with the secret.
-- `off` resolves nothing and checks nothing: every placeholder, in the URL,
-  headers, or body, is sent as written.
-
-See
-[Mentioning placeholders without resolving them](#mentioning-placeholders-without-resolving-them).
-Local execute sends a request through the cloud gateway when its URL, headers,
-or body hold a placeholder — including streamed and multipart bodies — so fill
-matches hosted. Small buffered bodies use the JSON CapabilityProxy hop. Streamed
-bodies, multipart bodies, and bodies that would exceed 4 MiB use the
-[streaming hop](../contributing/contracts/cli-streaming-gateway-fetch.md).
-
-If the remote echoes a substituted value back, in a response header, status
-text, the final URL after redirects, or anywhere in the body, the gateway
-replaces it with `[REDACTED SECRET]` before your code reads the response, the
-same way run output is redacted. The value is also redacted in its URL-encoded,
-form-encoded, and JSON-escaped forms, and from the message of a fetch that
-fails. A Basic Auth header is redacted whole and as its encoded credential.
-Because the body can change length, `content-length` is dropped from those
-responses. Range responses (`206` or `content-range`) are masked with `*` byte
-for byte instead, so their offsets stay true. A WebSocket upgrade keeps its
-socket and redacted headers, but messages on the socket are not redacted.
-
-External providers use **`{{secret/<provider>:<ref>}}`** (first `:` after
-`secret/`). Canonical 1Password form is
-**`{{secret/1password:i/<item-id>/password}}`** where `<item-id>` is a UUID or a
-1Password Connect 26-char id. `op://…` is a writable synonym that must
-canonicalize to the same grant/cache key. Angle-bracket markers in a token
-(`<provider>`, `<item-id>`, `<field>`, and so on) and the grammar metavariable
-form `{{secret/provider:ref}}` mark documentation examples: the gateway does not
-fill them. Concrete example refs in package `status()` / help display fields are
-not credential uses for the publish stamp (only request and credential-mapped
-sites count). The item's websites are the host allowlist; empty websites refuse
-the fetch. Ad hoc execute does not need a package grant; saved packages do
-(`resourceLock` with kind `secret_provider` returns the Allow URL). Bind and
-revoke on `/@<slug>/-/secret-providers`. Shared packages use the owner's
-provider binding. Search does not crawl vaults. See
-[Custom secret providers](../guides/secret-providers.md).
-
-When an API requires Basic Auth derived from two saved secrets, import
-**`secretHeaders`** from **`kody:runtime`** and put the opaque helper result in
-the outbound fetch header. `usernameSecret` / `passwordSecret` accept a saved
-secret name **or** an opaque `{{secret:…}}` ref from `packageSecrets.get`. This
-example uses a placeholder API host and generic client credential secret names:
-
-```ts
-import { secretHeaders } from 'kody:runtime'
-
-await fetch('https://api.example.com/oauth/token', {
-	method: 'POST',
-	headers: {
-		Authorization: secretHeaders.basic({
-			usernameSecret: 'exampleClientId',
-			passwordSecret: 'exampleClientSecret',
-			scope: 'user',
-		}),
-		'Content-Type': 'application/x-www-form-urlencoded',
-	},
-	body: new URLSearchParams({ grant_type: 'client_credentials' }),
-})
-```
-
-Kody resolves both secrets and sends only the derived `Basic ...` header to the
-approved host. The target host must be approved separately for both saved
-secrets.
-
-Placeholders are **not** general-purpose string interpolation. They only work in
-secret-aware **`fetch`** paths.
+Legacy references remain supported during migration. The gateway resolves a
+compatible mapped ID first; it uses legacy name lookup only when there is no
+applicable mapping. Runtime and publish diagnostics identify legacy use. New
+code should declare needs and use scoped clients.
 
 ## Signing JWTs with saved secrets
 

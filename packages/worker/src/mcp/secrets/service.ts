@@ -47,6 +47,7 @@ import {
 	deleteSecretEntry,
 	getSecretBucket,
 	getSecretEntry,
+	getSecretEntryById,
 	getStoredCredentialEntry,
 	listPackageScopeSecretMetadata,
 	listSecretBucketsByScope,
@@ -87,6 +88,7 @@ import {
 	sealedTokenValueRefusal,
 } from '#worker/credentials/sealed-token.ts'
 import { isDisconnectedSecretEncryptedValue } from '#mcp/secrets/disconnected.ts'
+import { readVaultItemConfig } from '#mcp/secrets/vault-item-config.ts'
 import { prepareUpdateSecretEntryPlacementStatement } from '#mcp/secrets/update-secret-placement.ts'
 import {
 	credentialAuditActions,
@@ -128,6 +130,7 @@ type SaveSecretInput = SecretOwnerContext &
 		userEmail?: string | null
 		waitUntil?: (promise: Promise<unknown>) => void
 		credential?: SaveSecretCredential
+		createOnly?: boolean
 		/**
 		 * Placement written only when inserting a new `(bucket, name)` row.
 		 * Omitted → headers-only default. Explicit `null` preserves anywhere when
@@ -179,6 +182,8 @@ type ListSecretsInput = SecretOwnerContext & {
 type ResolveSecretInput = SecretOwnerContext & {
 	env: Pick<Env, 'APP_DB' | 'SECRET_STORE_KEY'>
 	name: string
+	/** Set by a host-owned credential selector, never an untrusted package reference. */
+	credentialId?: string
 	scope?: SecretScope | null
 	includeExpired?: boolean
 }
@@ -371,6 +376,16 @@ export async function saveSecret(
 		bucketId: bucket.id,
 		name,
 	})
+	if (input.createOnly && existingEntry) {
+		throw new McpCallerError(
+			'A credential already uses this name. Choose a new name.',
+		)
+	}
+	if (existingEntry && readVaultItemConfig(existingEntry.config_json)) {
+		throw new McpCallerError(
+			'This Key is backed by a vault item. Create a new Key to use another item.',
+		)
+	}
 	// With credential fields, the caller validated the value for its new kind.
 	if (!credential) assertValueFitsStoredKind(existingEntry, value)
 	if (existingEntry == null) {
@@ -471,6 +486,7 @@ export async function saveSecret(
 				prepareUpsertCredentialSecretEntryStatement({
 					db: input.env.APP_DB,
 					row,
+					createOnly: input.createOnly,
 					credential: {
 						id: credentialId,
 						kind: credential.kind,
@@ -648,6 +664,7 @@ export async function saveSecret(
 			env: input.env,
 			userId: input.userId,
 			secretName: name,
+			credentialId: existingEntry?.id,
 			previousPlaintext,
 			nextPlaintext: value,
 			now,
@@ -1041,6 +1058,7 @@ export async function updateUserSecretsForPackageAtomically(input: {
 			env: input.env,
 			userId: input.userId,
 			secretName: entry.name,
+			credentialId: entry.existingEntry.id,
 			previousPlaintext,
 			nextPlaintext: nextValue.trim(),
 			now,
@@ -1366,6 +1384,7 @@ async function saveSecretsAtomically(input: {
 				env: input.env,
 				userId: input.userId,
 				secretName: entry.name,
+				credentialId: entry.existingEntry?.id,
 				previousPlaintext,
 				nextPlaintext: trimmedNext,
 				now,
@@ -1456,7 +1475,8 @@ export async function listSecrets(
 export type FoundSecret = Omit<ResolvedSecret, 'value'>
 
 async function findSecretEntry(input: ResolveSecretInput) {
-	assertSecretNameAllowed(input.name)
+	const { credentialId } = input
+	if (!credentialId) assertSecretNameAllowed(input.name)
 	const scopes = input.scope
 		? [input.scope]
 		: resolveSecretScopeOrder(input.storageContext ?? null)
@@ -1469,12 +1489,12 @@ async function findSecretEntry(input: ResolveSecretInput) {
 				storageContext: input.storageContext ?? null,
 			})
 			if (!bucket) return null
-			const entry = await getSecretEntry({
-				db: input.env.APP_DB,
-				bucketId: bucket.id,
-				name: input.name,
-			})
+			const lookup = { db: input.env.APP_DB, bucketId: bucket.id }
+			const entry = credentialId
+				? await getSecretEntryById({ ...lookup, credentialId })
+				: await getSecretEntry({ ...lookup, name: input.name })
 			if (!entry) return null
+			if (credentialId && isReservedSecretName(entry.name)) return null
 			if (!input.includeExpired && isSecretExpired(entry.expires_at)) {
 				return null
 			}
@@ -1530,12 +1550,15 @@ export async function findSecret(
  */
 export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 	found: FoundSecret
+	storedName?: string
+	injectJson?: string
 	readValue: () => Promise<ResolvedSecret>
 }> {
 	const found = await findSecretEntry(input)
 	if (
 		!found ||
 		found.entry.kind !== 'secret' ||
+		readVaultItemConfig(found.entry.config_json) ||
 		isDisconnectedSecretEncryptedValue(found.entry.encrypted_value)
 	) {
 		const missing: ResolvedSecret = {
@@ -1562,6 +1585,8 @@ export async function findSecretForUse(input: ResolveSecretInput): Promise<{
 	}
 	return {
 		found: metadata,
+		storedName: found.entry.name,
+		injectJson: found.entry.inject_json,
 		readValue: async () => ({
 			...metadata,
 			value: await decryptSecretValue(
@@ -1658,12 +1683,18 @@ export async function findStoredCredentialForUse(input: {
 			revision: await storedCredentialRevision(revisionFields),
 			revisionFields,
 		},
-		readValue: () =>
-			decryptSecretValue(
+		readValue: () => {
+			if (readVaultItemConfig(row.config_json)) {
+				throw new McpCallerError(
+					'A vault-backed Key is available only to scoped fetch.',
+				)
+			}
+			return decryptSecretValue(
 				input.env,
 				row.encrypted_value,
 				userSecretContext(input.ownerId),
-			),
+			)
+		},
 	}
 }
 
@@ -1673,6 +1704,7 @@ export async function resolveSecret(
 	const found = await findSecretEntry(input)
 	if (
 		!found ||
+		readVaultItemConfig(found.entry.config_json) ||
 		isDisconnectedSecretEncryptedValue(found.entry.encrypted_value)
 	) {
 		return {
@@ -2035,6 +2067,7 @@ export async function updateSecret(
 			env: input.env,
 			userId: input.userId,
 			secretName: name,
+			credentialId: existingEntry.id,
 			previousPlaintext,
 			nextPlaintext: nextValue!,
 			now,

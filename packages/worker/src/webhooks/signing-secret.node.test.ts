@@ -136,6 +136,7 @@ async function trackedDeclaredEndpoint(
 	const declared = 'legacy-secret-store-value'
 	return endpoint({
 		hmacSecretName: stripeVerification.secretName,
+		hmacCredentialId: 'cred-legacy-webhook-secret',
 		hmacVerificationSecretEncrypted: await storedCiphertext(declared),
 		...overrides,
 	})
@@ -167,7 +168,10 @@ test('inbound verification tries a declared secretName before the stored generat
 		{ value: 'kody-generated-at-migration', source: 'stored' },
 	])
 	expect(resolveSecret).toHaveBeenCalledWith(
-		expect.objectContaining({ name: 'stripeWebhookSecretCancelFarewell' }),
+		expect.objectContaining({
+			name: 'stripeWebhookSecretCancelFarewell',
+			credentialId: 'cred-legacy-webhook-secret',
+		}),
 	)
 })
 

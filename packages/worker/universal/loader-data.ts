@@ -2743,6 +2743,7 @@ export type AccountSecretDetail = AccountSecretListItem & {
 }
 
 type AccountSecretProviderBindingItem = {
+	id: string
 	provider: string
 	packageId: string
 	kodyId: string
@@ -2778,7 +2779,7 @@ export type AccountSecretProvidersLoaderData = {
 		kodyId: string
 		name: string
 	}>
-	doorSecrets: Array<string>
+	doorSecrets: Array<{ id: string; name: string }>
 	approval: AccountSecretProviderApproval | null
 }
 

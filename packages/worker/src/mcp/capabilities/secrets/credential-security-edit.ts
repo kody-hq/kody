@@ -127,6 +127,16 @@ export function assertCredentialSecurityEditAllowed(
 	},
 ) {
 	const caller = codeRunningCredentialEditor(ctx)
+	if (
+		(input.after.inject?.kind === 'body' ||
+			input.after.inject?.kind === 'path' ||
+			input.after.inject?.kind === 'composition') &&
+		ctx.callerContext.request?.membership?.role !== 'owner'
+	) {
+		throw new McpCallerError(
+			'Only an organization owner can approve a typed request placement.',
+		)
+	}
 	if (!caller) return
 	const widens =
 		input.after.placement !== undefined &&

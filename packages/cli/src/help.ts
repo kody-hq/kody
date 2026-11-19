@@ -90,7 +90,7 @@ Usage:
   kody daemon uninstall [--context <ec id>] [--unregister | --no-unregister]
   kody daemon auto-update [on | off | status] [--json]
   kody update
-               [--credential <key=name>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
+               [--credential <key=id:credential-id>]… [--context <id|name>] [--fallback chain] [--requires fs,lan] [--chain <a,b,cloud>] [--target prod|mock] [--token <token>] [--api-url <url>] [--local] [--allow-private-network]
   kody dev [serve] [--org <slug>] [--target prod|mock] [--reset-storage] [--host <addr>] [--expose-prod] [--port <n>] [--app-base-path <path>] [--allow-private-network] [--no-live-reload] [--run-jobs] [--simulate-latency] [--cold] [--clock <iso|ms>] [--cpu-limit-ms <n>] [--json] [--ready-file <path>]
   kody dev fetch <path> [--method <verb>] [--body <file>] [--target prod|mock] [--json] [--no-attach]
   kody dev job <name> [--target prod|mock] [--dry-run] [--json]
@@ -320,11 +320,10 @@ ${orgBlock}
              Automations set theirs with
              \`kody api automationExecutionSet --params '{"kind":"job","jobId":"…","execution":{"context":"laptop"}}'\`
              (read with \`automationExecutionGet\`).
-  --credential <key=name>
-             ADR 0068 call map: pick which credential each \`credential(key)\`
+  --credential <key=id:credential-id>
+             Pick which credential each \`credential(key)\`
              / \`credentials(key)\` call gets. Repeatable.
-             \`--credential github=work\`, \`--credential x=org:work\`
-             (or \`personal:name\`), \`--credential github=\` for none on
+             Use an id from \`credentialList\`, or \`--credential github=\` for none on
              purpose. With \`--local\`, sent as CapabilityProxy top-level
              \`credentials\` (code never sets the map) after a
              \`credentialClientCheck\` preflight. With a \`kody login\` MCP

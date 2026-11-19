@@ -702,7 +702,7 @@ async function unparsedServerModuleFailure(
  * package source.
  */
 export const credentialStampConversionFixGuidance =
-	'Fix: declare every credential this package can use as a fixed kody.credentials slot with a real description, and call only literal keys (credential("SLOT"), createAuthenticatedFetch("SLOT"), secretJwtSign names, or {{secret:SLOT}} / {{integration-token:SLOT}}). Prefer credential("SLOT") / credentials("SLOT") so callers can pick which saved credential fills each slot with the execute credentials call map ({ "SLOT": "credential-name" }, or CLI --credential SLOT=name) or a stored/trigger mapping. Placeholders and createAuthenticatedFetch resolve the literal slot name as a saved credential name — keep a matching saved name, or migrate those call sites to credential("SLOT"). Never choose the credential name at runtime inside package code. credential.named() is only for ad hoc runs and unshared personal-org packages, which are not stamped.'
+	'Fix: declare every need with a real description in kody.credentials and call credential("SLOT") or credentials("SLOT") with its literal key. Callers can select a stable ID in the execute credentials call map ({ "SLOT": { "id": "credential-id" } }), with CLI --credential SLOT=id:credential-id, or with a stored mapping.'
 
 function nonLiteralFixMessage(kind: string) {
 	return `${kind} Publish cannot stamp a credential whose name is only known at run time. ${credentialStampConversionFixGuidance}`

@@ -152,7 +152,12 @@ export async function loadAccountCredentialsData(input: {
 	}
 	return {
 		ok: true,
-		selected,
+		selected:
+			selected &&
+			selectedItem?.scope === 'org' &&
+			input.user.request.membership?.role === 'owner'
+				? { ...selected, canApproveRequestProfile: true }
+				: selected,
 		selectedLocalReads,
 		selectedLocalReadsUnavailableFor,
 		selectedRawSigning,

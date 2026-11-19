@@ -170,11 +170,30 @@ test('a vault binding created or rebound after 0111 records its vault as its sou
 		),
 	)
 	const db = createD1FromSqlite(sqlite)
+	sqlite.exec(
+		readFileSync(
+			new URL('0117-credential-kinds.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
+	sqlite.exec(
+		readFileSync(
+			new URL('0127-webhook-hmac-rotation-grace.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
+	sqlite.exec(
+		readFileSync(
+			new URL('0292-stable-settings-credential-ids.sql', migrationsDirectory),
+			'utf8',
+		),
+	)
 	const binding = {
 		userId: 'org-a',
 		providerId: 'bitwarden',
 		packageId: 'pkg-bw',
 		doorSecretName: 'BW_DOOR',
+		doorCredentialId: 'test-door-id',
 		configJson: '{}',
 	}
 	await upsertSecretProviderBinding(db, binding)

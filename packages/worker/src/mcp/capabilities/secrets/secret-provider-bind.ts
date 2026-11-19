@@ -32,12 +32,18 @@ export const secretProviderBindCapability = defineDomainCapability(
 				.describe(
 					'Saved package id that declares kody.secretProvider.id for this provider.',
 				),
+			door_credential_id: z
+				.string()
+				.min(1)
+				.optional()
+				.describe(
+					'Stable ID of the workspace Key holding the provider door key.',
+				),
 			door_secret_name: z
 				.string()
 				.min(1)
-				.describe(
-					'User-scoped Kody secret that holds the provider door key (service account token).',
-				),
+				.optional()
+				.describe('Legacy name input. Use door_credential_id instead.'),
 			config: z
 				.record(z.string(), z.string())
 				.optional()
@@ -50,6 +56,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 			package_id: z.string(),
 			kody_id: z.string(),
 			door_secret_name: z.string(),
+			door_credential_id: z.string(),
 			config: z.record(z.string(), z.string()),
 		}),
 		async handler(args, ctx: CapabilityContext) {
@@ -63,6 +70,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 					providerId: args.provider,
 					packageId: args.package_id,
 					doorSecretName: args.door_secret_name,
+					doorCredentialId: args.door_credential_id,
 					config: args.config,
 					audit: orgAuditWriterFromCaller(ctx.env, ctx.callerContext),
 				})
@@ -71,6 +79,7 @@ export const secretProviderBindCapability = defineDomainCapability(
 					package_id: bound.packageId,
 					kody_id: bound.kodyId,
 					door_secret_name: bound.doorSecretName,
+					door_credential_id: bound.doorCredentialId,
 					config: bound.config,
 				}
 			} catch (error) {

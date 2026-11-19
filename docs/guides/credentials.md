@@ -3,12 +3,11 @@ id: credentials
 title: Credentials
 summary:
   What a Kody credential is and every kind it comes in (Key, OAuth, MCP server,
-  URL, login, signing), how `{{secret:name}}` placeholders and scoped
-  `credential(key)` clients place a value at the network boundary, how packages
-  declare needs in `kody.credentials` (including publisher and executor
-  credential needs that app visitors fill with `credential.visitor(key)`), how
-  callers pick between credentials with names and call maps, the
-  `credential_ambiguous` / `credential_unbound` errors, and webhook
+  URL, login, signing), how scoped `credential(key)` clients place a value at
+  the network boundary, how packages declare needs in `kody.credentials`
+  (including publisher and executor credential needs that app visitors fill with
+  `credential.visitor(key)`), how callers pick between credential IDs with call
+  maps, the `credential_ambiguous` / `credential_unbound` errors, and webhook
   verification. Load this when someone asks how credentials work, which kind to
   use, or why a credential did not resolve.
 category: platform
@@ -33,14 +32,14 @@ derived from the key, never the key. Treat it like any other bearer token.
 
 ## The kinds
 
-| Kind       | What it holds                                                | How code uses it                                           |
-| ---------- | ------------------------------------------------------------ | ---------------------------------------------------------- |
-| Key        | An API key, personal access token, or webhook signing secret | `{{secret:name}}` placeholders, or `credential(key).fetch` |
-| OAuth      | A connection you signed in to (GitHub, Google, Slack, …)     | `credential(key).fetch`, or `{{integration-token:name}}`   |
-| MCP server | A remote MCP server connection                               | `credential(key).callTool`                                 |
-| URL        | A whole secret URL (a chat webhook, a `/bot<token>` base)    | `credential(key).fetch` with a relative path               |
-| Login      | Login fields Kody exchanges for a session token              | `credential(key).fetch`                                    |
-| Signing    | A signing secret or private key                              | `credential(key).sign`                                     |
+| Kind       | What it holds                                                | How code uses it                             |
+| ---------- | ------------------------------------------------------------ | -------------------------------------------- |
+| Key        | An API key, personal access token, or webhook signing secret | `credential(key).fetch`                      |
+| OAuth      | A connection you signed in to (GitHub, Google, Slack, …)     | `credential(key).fetch`                      |
+| MCP server | A remote MCP server connection                               | `credential(key).callTool`                   |
+| URL        | A whole secret URL (a chat webhook, a `/bot<token>` base)    | `credential(key).fetch` with a relative path |
+| Login      | Login fields Kody exchanges for a session token              | `credential(key).fetch`                      |
+| Signing    | A signing secret or private key                              | `credential(key).sign`                       |
 
 Secrets (the Key kind) and integrations (the OAuth kind) are both credentials.
 The kind names in manifests and APIs are `secret`, `oauth`, `mcp`, `url`,
@@ -55,8 +54,9 @@ No saved credential ever fills that need.
 
 Every credential has:
 
-- **name**: yours to choose, such as `work` or `personal`. Callers pick a
-  credential by name.
+- **name**: a label, such as `work` or `personal`.
+- **ID**: the stable identity used in picks and mappings. Renaming a credential
+  does not change its ID.
 - **scope**: who owns it, seen from the run's org. `org` means the run's org
   owns it: every Key, login, OAuth connection, or MCP server stored in that org
   reads `org`, including a credential saved with `secretSet({ scope: 'user' })`
@@ -72,36 +72,17 @@ Every credential has:
   Basic auth, or a query parameter. The default is
   `Authorization: Bearer {value}`.
 
-## Keys and placeholders
+## Requests with credentials
 
-A Key is a saved secret. Write `{{secret:name}}` anywhere in a `fetch` request:
-a header, the URL path or query, or a text body. When the request leaves Kody,
-the gateway checks it and fills in the value.
+Declare a credential need for each service the package uses. The owner maps the
+need to a credential ID, then Kody supplies the value only at the network
+boundary. Use a Key for header, Basic auth, or query placement; a URL credential
+for a webhook URL or fixed secret URL prefix; and a Login credential for a token
+exchange.
 
-> [!DIAGRAM] placeholder-fill Your code sends `{{secret:github}}`. The Kody
-> gateway checks that the request is HTTPS and goes to a host the credential
-> allows, swaps in the value, and redacts the value if the response echoes it
-> back.
-
-```ts
-const response = await fetch('https://api.github.com/user/repos', {
-	headers: { Authorization: 'Bearer {{secret:github}}' },
-})
-```
-
-For a webhook URL (Slack, Discord, and similar), keep the path prefix literal
-and put only the one-segment token in the secret:
-
-```ts
-await fetch('https://hooks.example.com/services/{{secret:webhookToken}}', {
-	method: 'POST',
-	body,
-})
-```
-
-A path placeholder is filled as one encoded segment, so a `/` inside the secret
-becomes `%2F` and cannot change the route. The MCP reference has the full rule:
-[Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch).
+Existing packages that use legacy credential references can keep running during
+migration. Publish and runtime warn on legacy use. Do not introduce new legacy
+references.
 
 - The request must be HTTPS and its host must be one you approved for that
   secret. Otherwise it is refused with an error naming the secret and host; a
@@ -196,10 +177,9 @@ mention form):
 
 ## Scoped clients: `credential(key)`
 
-With a placeholder, the code decides where the value goes. With a scoped client,
-the **credential** decides: its hosts and inject rule say where the value is
-placed, and it is never placed in a request body. Code gets a client that holds
-an opaque handle, not a value.
+The **credential** decides where its value goes. Code gets an opaque client
+handle, not a value. The credential's hosts and placement determine where Kody
+sends the value.
 
 ```ts
 import { credential } from 'kody:runtime'
@@ -272,7 +252,7 @@ export default async function checkPortal() {
 ```
 
 To require one specific credential, declare the need with a `provider` and
-`kind`, and let the caller map it by `{ name, scope }` (see
+`kind`, and let the caller map it by `{ id }` (see
 [Picking a credential](#picking-a-credential)) instead of checking `scope` in
 code.
 
@@ -432,8 +412,34 @@ const response = await anthropic.fetch(
 The inject options are `{ kind: 'header', name, format }` (the format holds
 `{value}` once), `{ kind: 'basic', valueAs: 'password', other: 'api' }` (the
 value is the password and `other` is a literal username, or the reverse), and
-`{ kind: 'query', param }`. The same Key keeps filling `{{secret:name}}`
-placeholders; inject and provider only affect clients.
+`{ kind: 'query', param }`. An owner can also approve typed JSON body fields for
+an exact package, HTTPS endpoint, and method. Leave the protected fields out of
+the request body. Kody rejects any caller-supplied value at those paths and does
+not follow redirects. A GraphQL rule also binds the document and operation, with
+selectors to constrain the target resource. An owner can choose sealed-box
+output to encrypt the value to the approved recipient key.
+
+In the credential detail page, **Approve an exact request** accepts a typed JSON
+profile. A body profile names `kind: "body"`, `packageId`, `endpoint`, `method`,
+`mediaType: "application/json"`, and protected `fields`, as arrays of field
+names or array indexes. Use `selectors` to bind public resource identifiers. A
+path profile uses an approved origin and route, with one credential segment and
+optional slug, integer, or UUID parameters.
+
+A composition profile pins multiple IDs and their exact locations to one
+package, HTTPS endpoint, and method. Save the same profile on every
+participating Key. Map the package need to the entry Key and call its scoped
+fetch. Omit approved headers, query parameters, and body fields from the
+request. An owner can include two Keys for Basic auth, several values in one
+header, or an approved OAuth or Login connection with another Key in the JSON
+body. Keep secret values out of profiles and review **Fill placement** for each
+Key.
+
+To create a vault-backed Key, choose a provider binding, item ID, and field in
+**Secret providers**. Map the resulting Key by ID like any other. The package
+needs its provider item grant, and the destination must match both the approved
+hosts and the item's website allowlist. The package receives neither the vault
+reference nor the value.
 
 ### OAuth
 
@@ -728,25 +734,20 @@ Pass a map on `execute` next to its `code`:
 {
 	"code": "import action from 'kody:@you/pr-digest/summarize'\nexport default (params) => action(params)",
 	"credentials": {
-		"github": "work",
-		"slack": { "name": "work", "scope": "org" }
+		"github": { "id": "github-credential-id" },
+		"slack": { "id": "slack-credential-id" }
 	}
 }
 ```
 
-A string picks by name, and an object adds `scope` when an org and a personal
-credential share a name. Package-bound Keys also read `org` scope, so when a
-`user`-scope Key and a package Key share a name, a `{ name, scope }` pick always
-gets the `user`-scope Key. Give them distinct names, or map a need that must use
-the package Key in the package's credential settings. For a `multiple` need, an
-array picks several for `credentials(key)` (`"google": ["work", "personal"]`),
-and `[]` picks none on purpose. On `execute`, a key that no package in the run
-declares gets a warning, not a failure. The CLI takes the same picks (`--invoke`
-writes the passthrough for you):
+Get IDs from the Credentials page or `credentialList`. For a `multiple` need,
+provide an array of ID picks; `[]` picks none on purpose. On `execute`, a key
+that no package in the run declares gets a warning, not a failure. The CLI takes
+the same picks:
 
 ```bash
 npx @kodycodes/cli execute --invoke kody:@you/pr-digest/summarize \
-  --credential github=work --credential slack=org:work
+  --credential github=id:github-credential-id --credential slack=id:slack-credential-id
 ```
 
 A pick grants nothing. It chooses only among credentials you can already Use.

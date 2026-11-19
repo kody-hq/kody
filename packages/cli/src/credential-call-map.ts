@@ -2,6 +2,7 @@
  * CLI `--credential` picks for ADR 0068 call maps.
  *
  * Flag shapes (repeatable):
+ * - `--credential github=id:credential-id`
  * - `--credential github=work`
  * - `--credential x=org:work` / `--credential x=personal:work`
  * - `--credential github=` → none on purpose (`[]`)
@@ -25,6 +26,7 @@ const keyPattern = new RegExp(
 
 export type CredentialPickInput =
 	| string
+	| { id: string }
 	| { name: string; scope?: 'org' | 'personal' }
 
 /** JSON shape accepted by CapabilityProxy / MCP execute `credentials`. */
@@ -50,7 +52,7 @@ export function parseCredentialFlag(raw: string): {
 	const eq = raw.indexOf('=')
 	if (eq <= 0) {
 		throw new Error(
-			`Invalid --credential ${JSON.stringify(raw)}. Use --credential key=name, --credential key=org:name, or --credential key= for none.`,
+			`Invalid --credential ${JSON.stringify(raw)}. Use --credential key=id:credential-id, key=name, or key= for none.`,
 		)
 	}
 	const key = raw.slice(0, eq)
@@ -115,6 +117,11 @@ function parseCredentialPick(value: string): CredentialPickInput {
 	const colon = trimmed.indexOf(':')
 	if (colon > 0) {
 		const prefix = trimmed.slice(0, colon)
+		if (prefix === 'id') {
+			const id = trimmed.slice(colon + 1).trim()
+			assertCredentialText(id, 'credential id')
+			return { id }
+		}
 		if (prefix === 'org' || prefix === 'personal') {
 			const name = trimmed.slice(colon + 1).trim()
 			assertCredentialText(name, 'credential name')
@@ -167,7 +174,10 @@ export function formatCredentialFlagSuggestion(
 			.join('\n')
 	}
 	if (pick && typeof pick === 'object') {
-		const record = pick as { name?: unknown; scope?: unknown }
+		const record = pick as { id?: unknown; name?: unknown; scope?: unknown }
+		if (typeof record.id === 'string' && record.id) {
+			return `--credential ${key}=id:${record.id}`
+		}
 		if (typeof record.name !== 'string' || !record.name) return null
 		if (record.scope === 'org' || record.scope === 'personal') {
 			return `--credential ${key}=${record.scope}:${record.name}`

@@ -722,7 +722,7 @@ export async function checkCredentialCallMap(
 		strict?: boolean
 		packageId?: string
 	},
-): Promise<{ warnings: Array<string> }> {
+): Promise<{ warnings: Array<string>; credentials?: CredentialCallMapInput }> {
 	const args: Record<string, unknown> = {}
 	if (input.strict === true) args.strict = true
 	if (input.packageId !== undefined) args.packageId = input.packageId
@@ -756,6 +756,17 @@ export async function checkCredentialCallMap(
 				(warning): warning is string => typeof warning === 'string',
 			)
 		: []
+	const pinned = value?.credentials
+	if (
+		isRecord(pinned) &&
+		Object.values(pinned).every(
+			(picks) =>
+				Array.isArray(picks) &&
+				picks.every((pick) => isRecord(pick) && typeof pick.id === 'string'),
+		)
+	) {
+		return { warnings, credentials: pinned as CredentialCallMapInput }
+	}
 	return { warnings }
 }
 

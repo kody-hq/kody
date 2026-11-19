@@ -31,10 +31,12 @@ type WebhookEndpointRow = {
 	url_secret_encrypted?: string | null
 	hmac_secret_encrypted?: string | null
 	hmac_secret_name?: string | null
+	hmac_credential_id?: string | null
 	hmac_verification_secret_encrypted?: string | null
 	previous_url_secret_hash?: string | null
 	previous_url_secret_expires_at?: string | null
 	previous_hmac_secret_name?: string | null
+	previous_hmac_credential_id?: string | null
 	previous_hmac_secret_encrypted?: string | null
 	previous_hmac_secret_expires_at?: string | null
 	created_at: string
@@ -52,11 +54,13 @@ function mapEndpointRow(row: WebhookEndpointRow): WebhookEndpointRecord {
 		urlSecretEncrypted: row.url_secret_encrypted ?? null,
 		hmacSecretEncrypted: row.hmac_secret_encrypted ?? null,
 		hmacSecretName: row.hmac_secret_name ?? null,
+		hmacCredentialId: row.hmac_credential_id ?? null,
 		hmacVerificationSecretEncrypted:
 			row.hmac_verification_secret_encrypted ?? null,
 		previousUrlSecretHash: row.previous_url_secret_hash ?? null,
 		previousUrlSecretExpiresAt: row.previous_url_secret_expires_at ?? null,
 		previousHmacSecretName: row.previous_hmac_secret_name ?? null,
+		previousHmacCredentialId: row.previous_hmac_credential_id ?? null,
 		previousHmacSecretEncrypted: row.previous_hmac_secret_encrypted ?? null,
 		previousHmacSecretExpiresAt: row.previous_hmac_secret_expires_at ?? null,
 		createdAt: row.created_at,
@@ -233,6 +237,7 @@ export async function setWebhookEndpointHmacSecret(input: {
 					`UPDATE webhook_endpoints
 					SET hmac_secret_encrypted = ?,
 						previous_hmac_secret_name = NULL,
+						previous_hmac_credential_id = NULL,
 						previous_hmac_secret_encrypted = ?,
 						previous_hmac_secret_expires_at = ?
 					WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
@@ -263,8 +268,10 @@ export async function setWebhookEndpointHmacVerificationState(input: {
 	userId: string
 	endpointId: string
 	hmacSecretName: string | null
+	hmacCredentialId?: string | null
 	hmacVerificationSecretEncrypted: string | null
 	previousHmacSecretName?: string | null
+	previousHmacCredentialId?: string | null
 	previousHmacSecretEncrypted?: string | null
 	previousHmacSecretExpiresAt?: string | null
 }): Promise<WebhookEndpointRecord | null> {
@@ -274,16 +281,20 @@ export async function setWebhookEndpointHmacVerificationState(input: {
 				.prepare(
 					`UPDATE webhook_endpoints
 					SET hmac_secret_name = ?,
+						hmac_credential_id = ?,
 						hmac_verification_secret_encrypted = ?,
 						previous_hmac_secret_name = ?,
+						previous_hmac_credential_id = ?,
 						previous_hmac_secret_encrypted = ?,
 						previous_hmac_secret_expires_at = ?
 					WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
 				)
 				.bind(
 					input.hmacSecretName,
+					input.hmacCredentialId ?? null,
 					input.hmacVerificationSecretEncrypted,
 					input.previousHmacSecretName ?? null,
+					input.previousHmacCredentialId ?? null,
 					input.previousHmacSecretEncrypted ?? null,
 					input.previousHmacSecretExpiresAt ?? null,
 					input.userId,
@@ -294,11 +305,13 @@ export async function setWebhookEndpointHmacVerificationState(input: {
 				.prepare(
 					`UPDATE webhook_endpoints
 					SET hmac_secret_name = ?,
+						hmac_credential_id = ?,
 						hmac_verification_secret_encrypted = ?
 					WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
 				)
 				.bind(
 					input.hmacSecretName,
+					input.hmacCredentialId ?? null,
 					input.hmacVerificationSecretEncrypted,
 					input.userId,
 					input.endpointId,
@@ -330,6 +343,7 @@ export async function clearWebhookEndpointPreviousHmacSecret(input: {
 			.prepare(
 				`UPDATE webhook_endpoints
 				SET previous_hmac_secret_name = NULL,
+					previous_hmac_credential_id = NULL,
 					previous_hmac_secret_encrypted = NULL,
 					previous_hmac_secret_expires_at = NULL
 				WHERE user_id = ? AND id = ? AND previous_hmac_secret_encrypted = ?
@@ -343,6 +357,7 @@ export async function clearWebhookEndpointPreviousHmacSecret(input: {
 		.prepare(
 			`UPDATE webhook_endpoints
 			SET previous_hmac_secret_name = NULL,
+				previous_hmac_credential_id = NULL,
 				previous_hmac_secret_encrypted = NULL,
 				previous_hmac_secret_expires_at = NULL
 			WHERE user_id = ? AND id = ?${andLiveDeletedAtSql()}`,
@@ -356,18 +371,24 @@ export async function listWebhookEndpointsByHmacSecretName(input: {
 	db: D1Database
 	userId: string
 	hmacSecretName: string
+	hmacCredentialId?: string
 	/** When set, only endpoints for this package (package-scoped secrets). */
 	packageId?: string
 }): Promise<Array<WebhookEndpointRecord>> {
 	const packageFilter = input.packageId ? ' AND package_id = ?' : ''
-	const bindings = input.packageId
-		? [input.userId, input.hmacSecretName, input.packageId]
-		: [input.userId, input.hmacSecretName]
+	const bindings = [
+		input.userId,
+		input.hmacCredentialId ?? null,
+		input.hmacSecretName,
+		...(input.packageId ? [input.packageId] : []),
+	]
 	const result = await input.db
 		.prepare(
 			`SELECT *
 			FROM webhook_endpoints
-			WHERE user_id = ? AND hmac_secret_name = ?${packageFilter}${andLiveDeletedAtSql()}`,
+			WHERE user_id = ?
+				AND (hmac_credential_id = ? OR (hmac_credential_id IS NULL AND hmac_secret_name = ?))
+				${packageFilter}${andLiveDeletedAtSql()}`,
 		)
 		.bind(...bindings)
 		.all<WebhookEndpointRow>()

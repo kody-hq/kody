@@ -76,9 +76,10 @@ import {
 } from '#mcp/runtime-helper-manifest.ts'
 import { newRunCredentialClientBinding } from '#worker/credentials/credential-client-handle.ts'
 import { resolveCallerCredentialPackageId } from '#mcp/credential-client-tools.ts'
-import type {
-	CredentialCallMap,
-	RunCredentialCallMap,
+import {
+	credentialCallMapToJson,
+	type CredentialCallMap,
+	type RunCredentialCallMap,
 } from '#worker/credentials/credential-call-map.ts'
 import {
 	loadRunCredentialNeedEntries,
@@ -1523,6 +1524,7 @@ export async function runBundledModuleWithRegistry(
 			),
 		})
 		const callMap = options?.credentialCallMap ?? null
+		let pinnedCallMap = callMap?.map ?? null
 		const credentialEntryPackageIds = credentialNeedsEntryPackageIds({
 			packageContext: options?.packageContext ?? null,
 			computedImportCalleePackageId:
@@ -1531,7 +1533,7 @@ export async function runBundledModuleWithRegistry(
 			dynamicDependencyPackageIds,
 		})
 		if (callMap && !callMap.checked) {
-			const { warnings } = await validateCredentialCallMap({
+			const { warnings, map } = await validateCredentialCallMap({
 				env,
 				request: callerContext.request ?? null,
 				map: callMap.map,
@@ -1540,6 +1542,7 @@ export async function runBundledModuleWithRegistry(
 				baseUrl: callerContext.baseUrl,
 			})
 			if (warnings.length > 0) callMap.onWarnings?.(warnings)
+			pinnedCallMap = map
 		}
 		const credentialClientBinding = newRunCredentialClientBinding()
 		const credentialClientTools = createRunCredentialClientToolOptions({
@@ -1548,7 +1551,7 @@ export async function runBundledModuleWithRegistry(
 			binding: credentialClientBinding,
 			runPackageId: options?.packageContext?.packageId ?? null,
 			entryPackageIds: credentialEntryPackageIds,
-			callMap: callMap?.map ?? null,
+			callMap: pinnedCallMap,
 			waitUntil: options?.waitUntil,
 		})
 		const packageSecretRefKey = createPackageSecretRefKey()
@@ -1559,6 +1562,7 @@ export async function runBundledModuleWithRegistry(
 			signal: options?.signal,
 			gatewayProps: {
 				baseUrl: callerContext.baseUrl,
+				legacyCredentialPicks: credentialCallMapToJson(pinnedCallMap),
 				userId: ownerIdFromCaller(callerContext) || null,
 				email: entitlementEmailForOwner(
 					callerContext,
@@ -1642,7 +1646,7 @@ export async function runBundledModuleWithRegistry(
 						executorTimeoutMs: options?.executorTimeoutMs,
 						computedImportDepth: options?.computedImportDepth ?? 0,
 						conversationId: options?.conversationId ?? null,
-						credentialCallMap: callMap?.map ?? null,
+						credentialCallMap: pinnedCallMap,
 					})
 				: undefined)
 		// Register the package_storage_* tools whenever the run has a user, even

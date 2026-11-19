@@ -17,6 +17,9 @@ const injectSchema = z.discriminatedUnion('kind', [
 		other: z.string(),
 	}),
 	z.object({ kind: z.literal('query'), param: z.string() }),
+	z.object({ kind: z.literal('body') }),
+	z.object({ kind: z.literal('path') }),
+	z.object({ kind: z.literal('composition') }),
 ])
 
 const credentialListItemSchema = z.object({

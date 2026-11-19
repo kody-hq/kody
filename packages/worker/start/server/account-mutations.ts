@@ -445,7 +445,7 @@ export const bindSecretProvider = createServerFn({ method: 'POST' })
 				.optional(),
 			provider: z.string(),
 			packageId: z.string(),
-			doorSecretName: z.string(),
+			doorCredentialId: z.string().min(1),
 			config: z.record(z.string(), z.string()).default({}),
 		}),
 	)
@@ -527,6 +527,56 @@ export const unbindSecretProvider = createServerFn({ method: 'POST' })
 									error instanceof Error
 										? error.message
 										: 'Unable to update secret providers.',
+							},
+							400,
+						),
+					)
+				}
+			},
+		)
+	})
+
+export const saveVaultItemCredential = createServerFn({ method: 'POST' })
+	.validator(
+		z.object({
+			orgSlug: z
+				.string()
+				.regex(/^[a-zA-Z0-9_-]+$/)
+				.optional(),
+			bindingId: z.string().min(1).max(100),
+			itemId: z.string().min(1).max(100),
+			field: z.string().min(1).max(400),
+			name: z.string().min(1).max(100),
+			hosts: z.array(z.string()).min(1).max(30),
+			provider: z.string().optional(),
+		}),
+	)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteMutation },
+			{ createAccountVaultItemCredential },
+			{ requireOperationResult, operationResult },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/handlers/account-secret-providers.ts'),
+			import('../../src/app/operation-result.ts'),
+		])
+		return withWebsiteMutation(
+			{ scope: data.orgSlug ? { orgSlug: data.orgSlug } : undefined },
+			async (context) => {
+				try {
+					return requireOperationResult(
+						await createAccountVaultItemCredential({ ...context, ...data }),
+					)
+				} catch (error) {
+					return requireOperationResult(
+						operationResult(
+							{
+								ok: false,
+								error:
+									error instanceof Error
+										? error.message
+										: 'Unable to create the vault Key.',
 							},
 							400,
 						),

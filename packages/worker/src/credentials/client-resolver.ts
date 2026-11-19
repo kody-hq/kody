@@ -24,6 +24,17 @@ import {
 	type CredentialInject,
 } from './credential-fields.ts'
 import {
+	prepareBodyPlacement,
+	type PrepareBodyPlacement,
+} from './body-placement.ts'
+import { preparePathPlacement } from './path-placement.ts'
+import { prepareVaultItemRead } from './vault-item-credential.ts'
+import { loginCredentialResolver } from './login-resolver.ts'
+import {
+	compositionFillSites,
+	prepareCredentialComposition,
+} from './credential-composition.ts'
+import {
 	assertHttpsUrl,
 	credentialHostsAllow,
 	CredentialNotFoundError,
@@ -44,10 +55,14 @@ import {
 	enforceFillPlacement,
 	resolveEffectiveFillPlacement,
 } from './fill-placement-enforcement.ts'
-import { fillSiteFromCredentialInject } from './fill-placement.ts'
+import {
+	fillSiteFromCredentialInject,
+	type CredentialFillSite,
+} from './fill-placement.ts'
 import {
 	authorizeStoredCredential,
 	findStoredCredential,
+	type StoredCredentialLookup,
 } from './stored-credential.ts'
 
 /** The inject shape with no value: `header Authorization Bearer`. */
@@ -63,6 +78,12 @@ export function describeInjectShape(inject: CredentialInject) {
 			return `basic (value as ${inject.valueAs})`
 		case 'query':
 			return `query ${inject.param}`
+		case 'body':
+			return 'JSON body'
+		case 'path':
+			return 'URL path'
+		case 'composition':
+			return 'approved credential composition'
 		default: {
 			const exhaustive: never = inject
 			throw new Error(`Unhandled inject: ${String(exhaustive)}`)
@@ -71,7 +92,7 @@ export function describeInjectShape(inject: CredentialInject) {
 }
 
 export function placeByInject(
-	inject: CredentialInject,
+	inject: Exclude<CredentialInject, { kind: 'body' | 'path' | 'composition' }>,
 	value: string,
 ): ResolvedClientPlacement {
 	const shape = describeInjectShape(inject)
@@ -146,6 +167,47 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 		const { credential } = call
 		const lookup = await findStoredCredential(call, credential.credentialId)
 		let inject: CredentialInject | null = null
+		let placeBody: PrepareBodyPlacement | null = null
+		let placePath: ReturnType<typeof preparePathPlacement> | null = null
+		let compose: Awaited<
+			ReturnType<typeof prepareCredentialComposition>
+		> | null = null
+		let readValue: (() => Promise<string>) | null = null
+		const members = new Map<string, () => Promise<string>>()
+		const connections = new Map<
+			string,
+			() => Promise<ResolvedClientPlacement>
+		>()
+		async function assertFill(
+			found: NonNullable<StoredCredentialLookup>['found'],
+			sites: ReadonlyArray<CredentialFillSite>,
+			approved: boolean,
+		) {
+			const placement = await resolveEffectiveFillPlacement({
+				db: call.input.env.APP_DB,
+				credentialId: found.credentialId,
+				stored: found.placement,
+			})
+			try {
+				enforceFillPlacement({
+					env: call.input.env,
+					credentialName: found.name,
+					credentialId: found.credentialId,
+					slot: null,
+					placement,
+					sites,
+					surface: 'credential-client',
+				})
+			} catch (error) {
+				if (!(error instanceof SecretPlacementError)) throw error
+				throw new CredentialRequestRefusedError(
+					'invalid_request',
+					approved
+						? 'The credential owner must approve this request placement.'
+						: error.message,
+				)
+			}
+		}
 		return {
 			async authorize() {
 				const found = await authorizeStoredCredential(
@@ -159,6 +221,7 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 					credential.requestUrl,
 					'This credential',
 				)
+				readValue = await prepareVaultItemRead(call, found, lookup!.readValue)
 				inject = readCredentialInject(found.injectJson)
 				if (!inject) {
 					throw new CredentialRequestRefusedError(
@@ -166,32 +229,193 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 						"This credential's inject is not set up correctly. Its manager can fix it with credentialUpdate.",
 					)
 				}
-				const placement = await resolveEffectiveFillPlacement({
-					db: call.input.env.APP_DB,
-					credentialId: credential.credentialId,
-					stored: found.placement,
-				})
-				try {
-					enforceFillPlacement({
-						env: call.input.env,
-						credentialName: found.name,
-						credentialId: credential.credentialId,
-						slot: null,
-						placement,
-						sites: [fillSiteFromCredentialInject(inject)],
-						surface: 'credential-client',
-					})
-				} catch (error) {
-					if (!(error instanceof SecretPlacementError)) throw error
-					throw new CredentialRequestRefusedError(
-						'invalid_request',
-						error.message,
+				const approved =
+					inject.kind === 'body' ||
+					inject.kind === 'path' ||
+					inject.kind === 'composition'
+				if (
+					inject.kind === 'body' ||
+					inject.kind === 'path' ||
+					inject.kind === 'composition'
+				) {
+					// Request placements are tracked by category, not by credential label,
+					// field, resource, or destination.
+					call.subject.name = inject.kind
+					call.subject.details = { placement: inject.kind }
+					if (
+						!credential.outboundRequest ||
+						credential.attestedPackageId !== inject.packageId
+					) {
+						throw new CredentialRequestRefusedError(
+							'invalid_request',
+							'This credential placement requires its approved package.',
+						)
+					}
+				}
+				if (inject.kind === 'composition') {
+					if (inject.entryCredentialId !== credential.credentialId) {
+						throw new CredentialRequestRefusedError(
+							'invalid_request',
+							'Use the need mapped to the entry credential.',
+						)
+					}
+					compose = await prepareCredentialComposition(
+						inject,
+						credential.outboundRequest!,
 					)
+					for (const site of inject.sites) {
+						if (site.kind !== 'connection') continue
+						const subject = {
+							...call.subject,
+							name: 'composition',
+							credentialId: null,
+							companions: undefined,
+							resourceType:
+								site.connection === 'oauth'
+									? ('integration' as const)
+									: ('secret' as const),
+						}
+						;(call.subject.companions ??= []).push(subject)
+						const requestUrl = credential.requestUrl
+						const refuse = () =>
+							new CredentialRequestRefusedError(
+								'invalid_request',
+								'An approved connection is unavailable.',
+							)
+						if (site.connection === 'oauth') {
+							const target = {
+								...call,
+								subject,
+								credential: {
+									use: 'client-oauth' as const,
+									requestUrl,
+									credentialId: site.credentialId,
+								},
+							}
+							const connection = await findOauthConnection(
+								target,
+								site.credentialId,
+							)
+							if (connection?.owner !== found.ownerId) throw refuse()
+							const handle = oauthHandle(target, connection)
+							await handle.authorize()
+							subject.name = 'composition'
+							connections.set(site.credentialId, handle.apply)
+						} else {
+							const login = await findStoredCredential(call, site.credentialId)
+							if (login?.found.ownerId !== found.ownerId) throw refuse()
+							const handle = await loginCredentialResolver.resolve({
+								...call,
+								subject,
+								credential: {
+									use: 'login',
+									requestUrl,
+									credentialId: site.credentialId,
+									expectedInject: site.inject,
+								},
+							})
+							await handle.authorize()
+							subject.name = 'composition'
+							connections.set(site.credentialId, async () => ({
+								...(await handle.apply()),
+								shape: 'approved login session',
+							}))
+						}
+					}
+					for (const [id, sites] of compositionFillSites(inject)) {
+						if (id === credential.credentialId) {
+							await assertFill(found, sites, true)
+							members.set(id, readValue)
+							continue
+						}
+						const memberSubject = {
+							...call.subject,
+							name: 'composition',
+							credentialId: null,
+							companions: undefined,
+						}
+						;(call.subject.companions ??= []).push(memberSubject)
+						const other = await findStoredCredential(call, id)
+						const member = await authorizeStoredCredential(
+							{ ...call, subject: memberSubject },
+							id,
+							other,
+							'secret',
+						)
+						memberSubject.name = 'composition'
+						if (
+							member.ownerId !== found.ownerId ||
+							JSON.stringify(readCredentialInject(member.injectJson)) !==
+								JSON.stringify(inject)
+						) {
+							throw new CredentialRequestRefusedError(
+								'invalid_request',
+								'Every credential must approve this same request composition.',
+							)
+						}
+						assertRequestOnHosts(
+							member.allowedHosts,
+							credential.requestUrl,
+							'An approved credential',
+						)
+						await assertFill(member, sites, true)
+						members.set(
+							id,
+							await prepareVaultItemRead(call, member, other!.readValue),
+						)
+					}
+					return
+				}
+				await assertFill(
+					found,
+					[fillSiteFromCredentialInject(inject)],
+					approved,
+				)
+				if (inject.kind === 'body') {
+					placeBody = await prepareBodyPlacement(
+						inject,
+						credential.outboundRequest!,
+					)
+				} else if (inject.kind === 'path') {
+					placePath = preparePathPlacement(inject, credential.outboundRequest!)
 				}
 			},
 			async apply() {
-				// `authorize` returned, so the lookup and inject are set.
-				return placeByInject(inject!, await lookup!.readValue())
+				if (compose) {
+					const values = new Map<string, string>()
+					for (const [id, read] of members) values.set(id, await read())
+					const redactions: Array<string> = []
+					for (const [id, read] of connections) {
+						const { placement, substitutedValues } = await read()
+						if (placement.kind !== 'header' && placement.kind !== 'query') {
+							throw new CredentialRequestRefusedError(
+								'invalid_request',
+								'The approved connection placement changed.',
+							)
+						}
+						values.set(id, placement.value)
+						redactions.push(...substitutedValues)
+					}
+					return compose(values, redactions)
+				}
+				const value = await readValue!()
+				if (inject!.kind === 'composition')
+					throw new Error('Composition was not prepared.')
+				if (inject!.kind === 'path') {
+					const { url, substitutedValues } = placePath!(value)
+					return {
+						placement: { kind: 'path', url },
+						substitutedValues,
+						shape: 'URL path',
+					}
+				}
+				if (inject!.kind !== 'body') return placeByInject(inject!, value)
+				const { body, sealed, substitutedValues } = placeBody!(value)
+				return {
+					placement: { kind: 'body', body, sealed },
+					substitutedValues,
+					shape: 'JSON body',
+				}
 			},
 		}
 	},
@@ -280,6 +504,39 @@ async function assertConnectionUnchanged(
 	}
 }
 
+function oauthHandle(
+	call: ResolverCall<CredentialTargetFor<'client-oauth'>>,
+	found: OauthConnection | null,
+) {
+	return {
+		async authorize() {
+			await authorizeOauthConnection(call, found)
+			assertRequestOnHosts(
+				found!.connection.hosts,
+				call.credential.requestUrl,
+				'This connection',
+			)
+		},
+		async apply() {
+			const resolved = await resolveIntegrationAccessToken({
+				env: call.input.env,
+				userId: found!.owner,
+				name: found!.connection.name,
+			})
+			await assertConnectionUnchanged(call, found!)
+			if (!resolved?.accessToken) {
+				throw new Error(
+					createMissingIntegrationAccessTokenMessage(found!.connection.name),
+				)
+			}
+			return placeByInject(
+				{ kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
+				resolved.accessToken,
+			)
+		},
+	}
+}
+
 export const clientOauthResolver: CredentialResolver<'client-oauth'> = {
 	auditSubject: (credential) => ({
 		use: credential.use,
@@ -289,34 +546,10 @@ export const clientOauthResolver: CredentialResolver<'client-oauth'> = {
 		details: { host: credential.requestUrl.hostname },
 	}),
 	async resolve(call) {
-		const found = await findOauthConnection(call, call.credential.credentialId)
-		return {
-			async authorize() {
-				await authorizeOauthConnection(call, found)
-				assertRequestOnHosts(
-					found!.connection.hosts,
-					call.credential.requestUrl,
-					'This connection',
-				)
-			},
-			async apply() {
-				const resolved = await resolveIntegrationAccessToken({
-					env: call.input.env,
-					userId: found!.owner,
-					name: found!.connection.name,
-				})
-				await assertConnectionUnchanged(call, found!)
-				if (!resolved?.accessToken) {
-					throw new Error(
-						createMissingIntegrationAccessTokenMessage(found!.connection.name),
-					)
-				}
-				return placeByInject(
-					{ kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
-					resolved.accessToken,
-				)
-			},
-		}
+		return oauthHandle(
+			call,
+			await findOauthConnection(call, call.credential.credentialId),
+		)
 	},
 	isFound: () => true,
 }

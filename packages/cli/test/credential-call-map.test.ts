@@ -12,6 +12,10 @@ const parseTable: Array<{
 	flags: Array<string>
 	expected: Record<string, unknown>
 }> = [
+	{
+		flags: ['github=id:credential-123'],
+		expected: { github: { id: 'credential-123' } },
+	},
 	{ flags: ['github=work'], expected: { github: 'work' } },
 	{
 		flags: ['x=org:work'],

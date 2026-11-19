@@ -39,6 +39,7 @@ export type CredentialAuditSubject = {
 	name: string
 	credentialId: string | null
 	details?: Record<string, string | null>
+	companions?: Array<CredentialAuditSubject>
 }
 
 export type CredentialResolutionOutcome =

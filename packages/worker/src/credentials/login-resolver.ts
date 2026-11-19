@@ -412,6 +412,15 @@ export const loginCredentialResolver: CredentialResolver<'login'> = {
 			}
 			exchange = readExchange(found.configJson, found.allowedHosts)
 			inject = readInject(found.injectJson)
+			if (
+				credential.expectedInject &&
+				JSON.stringify(inject) !== JSON.stringify(credential.expectedInject)
+			) {
+				throw new CredentialRequestRefusedError(
+					'invalid_request',
+					'The approved login placement changed.',
+				)
+			}
 		}
 		const applyOnce = async (): Promise<ResolvedLoginSession> => {
 			// `authorize` returned, so the lookup, exchange, and inject are set.

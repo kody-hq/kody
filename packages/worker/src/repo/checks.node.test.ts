@@ -1440,9 +1440,9 @@ test('runRepoChecks can keep credential stamp findings informational', async () 
 	expect(check?.ok).toBe(true)
 	expect(check?.message).toMatch(/informational|enforceCredentialStamp=false/)
 	expect(check?.message).not.toMatch(/Publish failed/)
-	// Soft-fail must keep the conversion-ready guidance, not strip the whole
+	// Soft-fail must keep the migration guidance, not strip the whole
 	// first line when replacing the Publish failed prefix.
-	expect(check?.message).toMatch(/conversion-ready/)
+	expect(check?.message).toMatch(/pick stable credential ids/)
 	expect(check?.message).toMatch(/secretMounts|computed integration/)
 })
 
@@ -1466,7 +1466,7 @@ test('runRepoChecks hard-fails unstampable credential patterns (issue #3836 phas
 	expect(check?.ok).toBe(false)
 	expect(check?.message).toMatch(/Credential stamp publish gate/)
 	expect(check?.message).toMatch(/secretMounts|computed integration/)
-	expect(check?.message).toMatch(/conversion-ready/)
+	expect(check?.message).toMatch(/pick stable credential ids/)
 	expect(check?.message).toMatch(/credentials call map/)
 	expect(credentialPatternFindingsNotice(result.results)).toBe(check!.message)
 
@@ -1825,9 +1825,7 @@ test('runRepoChecks offers optional credential types only for placements one fit
 		/Credential stamp keys \(sorted\): HOOK_PATH, LOGIN_SECRET, github/,
 	)
 	// Declared slots of the matching kind are omitted from optional type hints.
-	expect(message).not.toContain(
-		'Optional, if you want a scoped credential type for these (ADR 0068):',
-	)
+	expect(message).not.toContain('Credential migration options (ADR 0068):')
 
 	const { result: signing } = await runChecks(
 		packageFiles(
@@ -1862,7 +1860,7 @@ test('runRepoChecks offers optional credential types only for placements one fit
 	const unfitMessage = findCheck(unfit, 'credentials')?.message ?? ''
 	expect(findCheck(unfit, 'credentials')?.ok).toBe(true)
 	expect(unfitMessage).toMatch(/Credential stamp keys \(sorted\): SDK_KEY/)
-	expect(unfitMessage).not.toContain('Optional, if you want')
+	expect(unfitMessage).not.toContain('Credential migration options (ADR 0068):')
 })
 
 test('credentialPatternNoticeForFiles reads repo paths under the source root', async () => {

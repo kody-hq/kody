@@ -841,7 +841,7 @@ export function describeAttempts(attempts: ReadonlyArray<RoutingAttempt>) {
 function credentialPicks(map: CredentialCallMap | null) {
 	const picks: Record<string, Array<string>> = {}
 	for (const [key, values] of map ?? []) {
-		picks[key] = values.map((pick) => pick.name)
+		picks[key] = values.map((pick) => ('id' in pick ? pick.id : pick.name))
 	}
 	return picks
 }
