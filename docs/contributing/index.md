@@ -27,6 +27,8 @@ style, tests, MCP capabilities, and runtime architecture.
   `@kentcdodds/verification-skill-maintain`)
 - [UI verify](./ui-verify.md) (`npm run ui:verify`: gallery and key pages, axe,
   keyboard focus, visual baselines; run before calling UI work done)
+- [UI mockups](../../packages/worker/start/mockups/README.md) (`/dev/mockups`:
+  proposed UI from real components, light and dark, local dev only)
 - [UI components](./ui-components.md) (shared Button, Field, form controls; lint
   rules that keep raw controls out)
 - [Optional Cloudflare offerings](./cloudflare-offerings.md)

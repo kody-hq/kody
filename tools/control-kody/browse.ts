@@ -80,7 +80,7 @@ function colorSchemeScreenshotPath(
  * Playwright `addCookies` entries for the session origin — same shape E2E
  * uses after parsing Set-Cookie.
  */
-function playwrightCookiesFromHeader(
+export function playwrightCookiesFromHeader(
 	cookieHeader: string,
 	origin: string,
 ): Array<BrowsePlaywrightCookie> {
