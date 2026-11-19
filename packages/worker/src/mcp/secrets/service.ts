@@ -1622,6 +1622,7 @@ export async function storedCredentialRevision(
 
 export type StoredCredential = {
 	credentialId: string
+	packageId: string | null
 	/** The org that owns the row (the personal org for a personal credential). */
 	ownerId: OwnerId
 	name: string
@@ -1673,6 +1674,7 @@ export async function findStoredCredentialForUse(input: {
 	return {
 		found: {
 			credentialId: row.id,
+			packageId: row.package_id,
 			ownerId: input.ownerId,
 			name: row.name,
 			kind: row.kind,

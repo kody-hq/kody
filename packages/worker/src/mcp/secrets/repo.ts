@@ -336,6 +336,7 @@ export function readStoredCredentialKind(value: unknown): StoredCredentialKind {
 
 export type StoredCredentialRow = {
 	id: string
+	package_id: string | null
 	name: string
 	kind: StoredCredentialKind
 	encrypted_value: string
@@ -362,6 +363,7 @@ export async function getStoredCredentialEntry(input: {
 	const row = await input.db
 		.prepare(
 			`SELECT e.id AS id, e.name AS name, e.kind AS kind,
+				CASE WHEN b.scope = 'package' THEN b.binding_key END AS package_id,
 				e.encrypted_value AS encrypted_value, e.allowed_hosts AS allowed_hosts,
 				e.inject_json AS inject_json, e.config_json AS config_json,
 				e.placement_json AS placement_json
@@ -382,6 +384,7 @@ export async function getStoredCredentialEntry(input: {
 	if (!row) return null
 	return {
 		id: String(row['id']),
+		package_id: row['package_id'] == null ? null : String(row['package_id']),
 		name: String(row['name']),
 		kind: readStoredCredentialKind(row['kind']),
 		encrypted_value: String(row['encrypted_value']),

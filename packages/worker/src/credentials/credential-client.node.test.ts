@@ -643,6 +643,21 @@ test('the gateway sends only the exact composition every credential approved by 
 	expect(await result.text()).not.toContain('companion-value')
 	expect(forward).toHaveBeenCalledTimes(1)
 	await expect(send({ redirect: true })).rejects.toMatchObject(refusal)
+
+	const otherBucket = 'other-package-bucket'
+	await t.db
+		.prepare(
+			`INSERT INTO secret_buckets (id, user_id, scope, binding_key, created_at, updated_at)
+			VALUES (?, ?, 'package', 'other-package', ?, ?)`,
+		)
+		.bind(otherBucket, t.acmeId, now, now)
+		.run()
+	await t.db
+		.prepare('UPDATE secret_entries SET bucket_id = ? WHERE id = ?')
+		.bind(otherBucket, companionId)
+		.run()
+	await expect(send()).rejects.toMatchObject(refusal)
+	expect(forward).toHaveBeenCalledTimes(1)
 })
 
 test('the placed header drops the code value before placeholders expand, so a placeholder there never resolves', async () => {

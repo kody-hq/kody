@@ -244,7 +244,8 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 					call.subject.details = { placement: inject.kind }
 					if (
 						!credential.outboundRequest ||
-						credential.attestedPackageId !== inject.packageId
+						credential.attestedPackageId !== inject.packageId ||
+						(found.packageId !== null && found.packageId !== inject.packageId)
 					) {
 						throw new CredentialRequestRefusedError(
 							'invalid_request',
@@ -303,7 +304,12 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 							connections.set(site.credentialId, handle.apply)
 						} else {
 							const login = await findStoredCredential(call, site.credentialId)
-							if (login?.found.ownerId !== found.ownerId) throw refuse()
+							if (
+								login?.found.ownerId !== found.ownerId ||
+								(login.found.packageId !== null &&
+									login.found.packageId !== inject.packageId)
+							)
+								throw refuse()
 							const handle = await loginCredentialResolver.resolve({
 								...call,
 								subject,
@@ -345,6 +351,8 @@ export const clientKeyResolver: CredentialResolver<'client-key'> = {
 						memberSubject.name = 'composition'
 						if (
 							member.ownerId !== found.ownerId ||
+							(member.packageId !== null &&
+								member.packageId !== inject.packageId) ||
 							JSON.stringify(readCredentialInject(member.injectJson)) !==
 								JSON.stringify(inject)
 						) {
