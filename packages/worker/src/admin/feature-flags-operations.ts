@@ -16,11 +16,11 @@ import { isFeatureFlagKey } from '#universal/feature-flags/registry.ts'
 import {
 	clearFeatureFlagOrgOverride,
 	clearFeatureFlagUserOverride,
-	deleteStaleFeatureFlag,
 	setFeatureFlagOrgOverride,
 	setFeatureFlagGlobalState,
 	setFeatureFlagUserOverride,
 } from '#worker/feature-flags/service.ts'
+import { deleteStaleFeatureFlagWithAudit } from '#worker/feature-flags/delete-stale.ts'
 import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 
@@ -357,7 +357,13 @@ export async function deleteAdminStaleFeatureFlag(input: {
 	}
 
 	try {
-		const deleted = await deleteStaleFeatureFlag(input.env.APP_DB, key)
+		const deleted = await deleteStaleFeatureFlagWithAudit({
+			env: input.env,
+			key,
+			actorEmail: actor.email,
+			ip: getRequestIp(input.request) ?? undefined,
+			path: '/admin/feature-flags',
+		})
 		if (!deleted) {
 			return adminOperationResult(
 				{ ok: false, error: 'Stale feature flag not found.' },
@@ -376,18 +382,6 @@ export async function deleteAdminStaleFeatureFlag(input: {
 			400,
 		)
 	}
-
-	const requestIp = getRequestIp(input.request) ?? undefined
-	void logAuditEvent({
-		db: auditDatabaseFromEnv(input.env),
-		category: 'admin',
-		action: 'feature_flag_delete_stale',
-		result: 'success',
-		email: actor.email,
-		ip: requestIp,
-		path: '/admin/feature-flags',
-		reason: `key=${key}`,
-	})
 
 	return adminOperationResult({ ok: true as const })
 }
