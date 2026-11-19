@@ -9,6 +9,8 @@ SET door_credential_id = (
 		AND bucket.scope = 'user' AND bucket.binding_key = ''
 		AND entry.name = binding.door_secret_name
 		AND entry.kind = 'secret'
+		AND (bucket.expires_at IS NULL OR bucket.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+		AND (entry.expires_at IS NULL OR entry.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 		AND bucket.deleted_at IS NULL AND entry.deleted_at IS NULL
 )
 WHERE deleted_at IS NULL;
@@ -18,14 +20,15 @@ ALTER TABLE webhook_endpoints ADD COLUMN previous_hmac_credential_id TEXT;
 
 UPDATE webhook_endpoints AS endpoint
 SET hmac_credential_id = (
-	SELECT entry.id
+	SELECT CASE WHEN entry.kind = 'secret' THEN entry.id END
 	FROM secret_buckets AS bucket
 	JOIN secret_entries AS entry ON entry.bucket_id = bucket.id
 	WHERE bucket.user_id = endpoint.user_id
 		AND ((bucket.scope = 'package' AND bucket.binding_key = endpoint.package_id)
 			OR (bucket.scope = 'user' AND bucket.binding_key = ''))
 		AND entry.name = endpoint.hmac_secret_name
-		AND entry.kind = 'secret'
+		AND (bucket.expires_at IS NULL OR bucket.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+		AND (entry.expires_at IS NULL OR entry.expires_at > strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 		AND bucket.deleted_at IS NULL AND entry.deleted_at IS NULL
 	ORDER BY CASE bucket.scope WHEN 'package' THEN 0 ELSE 1 END
 	LIMIT 1
