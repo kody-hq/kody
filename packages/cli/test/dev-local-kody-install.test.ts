@@ -12,13 +12,19 @@ import { startLocalKody } from '../src/dev/local-kody.js'
 import { readPackageVersion } from '../src/package-info.js'
 import { StructuredCliError } from '../src/structured-error.js'
 
-for (const scenario of [
-	'404',
-	'version missing',
-	'published',
-	'offline',
-	'server error',
-] as const) {
+const npmStderr = {
+	'404':
+		'npm error code E404\nnpm error 404 Not Found - GET https://registry.example/@kodycodes%2fdev-runtime',
+	'version missing':
+		'npm error code ETARGET\nnpm error notarget No matching version found for @kodycodes/dev-runtime@9.9.9.',
+	offline:
+		'npm error code ENOTFOUND\nnpm error network request to https://registry.example failed',
+	'install error': 'npm error code EACCES\nnpm error permission denied',
+} as const
+
+for (const scenario of Object.keys(npmStderr) as Array<
+	keyof typeof npmStderr
+>) {
 	test(`runtime install failure diagnoses npm: ${scenario}`, async (t) => {
 		const cache = await mkdtemp(join(tmpdir(), 'kody-install-'))
 		const existsSync = fs.existsSync
@@ -30,27 +36,15 @@ for (const scenario of [
 		)
 		t.mock.method(childProcess, 'spawn', () => {
 			const child = new EventEmitter()
-			Object.assign(child, { stderr: new PassThrough() })
-			queueMicrotask(() => child.emit('close', 1))
+			const stderr = new PassThrough()
+			Object.assign(child, { stderr })
+			queueMicrotask(() => {
+				stderr.emit('data', Buffer.from(npmStderr[scenario]))
+				child.emit('close', 1)
+			})
 			return child
 		})
 		syncBuiltinESMExports()
-		t.mock.method(
-			globalThis,
-			'fetch',
-			async (url: URL, options: RequestInit) => {
-				assert.equal(url.hostname, 'registry.npmjs.org')
-				assert.ok(options.signal)
-				if (scenario === 'offline') throw new Error('offline')
-				if (scenario === '404') return new Response(null, { status: 404 })
-				if (scenario === 'server error')
-					return new Response(null, { status: 503 })
-				return Response.json({
-					versions:
-						scenario === 'published' ? { [readPackageVersion()]: {} } : {},
-				})
-			},
-		)
 		try {
 			await assert.rejects(
 				startLocalKody({

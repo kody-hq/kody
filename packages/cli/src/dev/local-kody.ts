@@ -129,27 +129,16 @@ async function ensureDevRuntime(
 		await rename(staging, root)
 	} catch (error) {
 		await rm(staging, { recursive: true, force: true }).catch(() => {})
-		let registry: 'missing' | 'available' | 'unreachable' | 'error' =
-			'unreachable'
-		try {
-			const url = new URL(
-				`https://registry.npmjs.org/${encodeURIComponent(devRuntimePackageName)}`,
-			)
-			url.searchParams.set('_', String(Date.now()))
-			const response = await fetch(url, {
-				headers: { 'cache-control': 'no-cache, no-store', pragma: 'no-cache' },
-				signal: AbortSignal.timeout(10_000),
-			})
-			if (response.status === 404) registry = 'missing'
-			else if (response.ok) {
-				const metadata = (await response.json()) as {
-					versions?: Record<string, unknown>
-				}
-				registry = metadata.versions?.[version] ? 'available' : 'missing'
-			} else registry = 'error'
-		} catch {
-			registry = 'unreachable'
-		}
+		const npmOutput = String((error as { npmOutput?: unknown }).npmOutput ?? '')
+		const registry = /\b(ETARGET|E404)\b|No matching version found/.test(
+			npmOutput,
+		)
+			? 'missing'
+			: /\b(ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EAI_AGAIN)\b/.test(
+						npmOutput,
+				  )
+				? 'unreachable'
+				: 'error'
 		throw new StructuredCliError({
 			code: 'bundle_failed',
 			message:
@@ -219,7 +208,10 @@ async function npmInstall(
 			if (code === 0) done()
 			else
 				fail(
-					new Error(stderr.trim().split('\n').at(-1) ?? `npm exited ${code}`),
+					Object.assign(
+						new Error(stderr.trim().split('\n').at(-1) ?? `npm exited ${code}`),
+						{ npmOutput: stderr },
+					),
 				)
 		})
 	})
