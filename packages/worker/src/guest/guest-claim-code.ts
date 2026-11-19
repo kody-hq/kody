@@ -105,6 +105,7 @@ type ClaimCodeRow = {
 	code_hash: string
 	attempts: number
 	expires_at: string
+	created_at: string
 }
 
 async function hashClaimCode(code: string) {
@@ -438,29 +439,49 @@ export async function finishGuestClaim(input: {
 			'code_missing',
 			'No claim is in progress. Start again to get a new code.',
 		)
-	if (row.mode === 'merge') {
-		const target = await findClaimTargetByEmail(db, row.email)
-		if (!target) {
-			throw new GuestClaimError(
-				'no_account',
-				'No Kody account uses that email anymore.',
-			)
+	try {
+		if (row.mode === 'merge') {
+			const target = await findClaimTargetByEmail(db, row.email)
+			if (!target) {
+				throw new GuestClaimError(
+					'no_account',
+					'No Kody account uses that email anymore.',
+				)
+			}
+			return await mergeGuestIntoAccount({
+				env,
+				guest,
+				target,
+				baseUrl: input.baseUrl,
+				now,
+				method: input.method ?? 'agent',
+			})
 		}
-		return mergeGuestIntoAccount({
+		return await convertGuestInPlace({
 			env,
 			guest,
-			target,
-			baseUrl: input.baseUrl,
+			email: row.email,
+			username: row.username ?? '',
 			now,
 			method: input.method ?? 'agent',
 		})
+	} catch (error) {
+		await db
+			.prepare(
+				`INSERT INTO guest_claim_codes (person_id, email, username, mode, code_hash, attempts, expires_at, created_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(person_id) DO NOTHING`,
+			)
+			.bind(
+				guest.personId,
+				row.email,
+				row.username,
+				row.mode,
+				row.code_hash,
+				row.attempts,
+				row.expires_at,
+				row.created_at,
+			)
+			.run()
+		throw error
 	}
-	return convertGuestInPlace({
-		env,
-		guest,
-		email: row.email,
-		username: row.username ?? '',
-		now,
-		method: input.method ?? 'agent',
-	})
 }

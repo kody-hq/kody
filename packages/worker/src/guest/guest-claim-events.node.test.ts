@@ -11,6 +11,7 @@ import {
 	testCookieSecret,
 } from '#worker/test-support/auth-provider-harness.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
+import { consoleError } from '#worker/test-support/console-spies.ts'
 import {
 	createGuestAccount,
 	readGuestAccountByPerson,
@@ -23,6 +24,7 @@ const mocks = vi.hoisted(() => ({
 	dispatch: vi.fn((_input: { event: unknown }) => new Promise<never>(() => {})),
 	readAuthenticatedAppUser: vi.fn(),
 	deleteUserAccount: vi.fn(async () => {}),
+	exportRunHistoryPage: vi.fn(async () => ({ runs: [], nextAfterId: null })),
 }))
 vi.mock('#app/founder-welcome-email.ts', () => ({
 	scheduleFounderWelcomeEmail: mocks.scheduleFounderWelcomeEmail,
@@ -72,7 +74,7 @@ vi.mock('#worker/jobs/inspect.ts', () => ({
 vi.mock('#worker/run-records/service.ts', () => ({
 	runLogRpc: () => ({
 		countRunHistory: async () => 3,
-		exportRunHistoryPage: async () => ({ runs: [], nextAfterId: null }),
+		exportRunHistoryPage: mocks.exportRunHistoryPage,
 		importRunHistory: async () => ({ imported: 0 }),
 	}),
 }))
@@ -340,6 +342,46 @@ test('the claim page email code (merge) emits one user.guest_claimed with counts
 	expect(JSON.stringify(event)).not.toContain(devCode!)
 	// Merging into an existing account never re-sends the founder welcome.
 	expect(mocks.scheduleFounderWelcomeEmail).not.toHaveBeenCalled()
+})
+
+test('a correct code can be retried after a transfer failure', async () => {
+	const { sqlite, guest } = await setup()
+	await seedTarget(sqlite)
+	const started = await claimPost(guest.claimCode, {
+		action: 'email_start',
+		email: 'owner@example.test',
+		mode: 'merge',
+	})
+	const code = new URL(
+		started.headers.get('Location')!,
+		baseUrl,
+	).searchParams.get('dev_code')!
+	const before = sqlite.prepare('SELECT * FROM guest_claim_codes').get()!
+	mocks.exportRunHistoryPage.mockRejectedValueOnce(
+		new Error('Run history unavailable'),
+	)
+	consoleError.mockImplementation(() => {})
+	const failed = await claimPost(guest.claimCode, {
+		action: 'email_finish',
+		code,
+	})
+	expect(failed.headers.get('Location')).toContain('error=merge_blocked')
+	expect(consoleError).toHaveBeenCalledWith(
+		'guest-claim-run-history-move-failed',
+		expect.any(Error),
+	)
+	expect(sqlite.prepare('SELECT * FROM guest_claim_codes').get()).toEqual({
+		...before,
+		attempts: 1,
+	})
+	const retried = await claimPost(guest.claimCode, {
+		action: 'email_finish',
+		code,
+	})
+	expect(retried.headers.get('Location')).toContain('result=claimed')
+	expect(
+		sqlite.prepare('SELECT * FROM guest_claim_codes').get(),
+	).toBeUndefined()
 })
 
 test('signed-in merge on the claim page emits one user.guest_claimed and no user.deleted', async () => {
