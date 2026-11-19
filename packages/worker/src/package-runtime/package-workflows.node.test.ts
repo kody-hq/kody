@@ -153,7 +153,7 @@ function createWorkflowEnv(
 		APP_BASE_URL: 'https://app.example.com',
 		RUN_LOG: {} as DurableObjectNamespace,
 		REPO_SESSION_BLOBS: { put: vi.fn() },
-	} as Env
+	} as unknown as Env
 }
 
 function createInlineStep(attempt = 1) {
