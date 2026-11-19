@@ -129,12 +129,41 @@ async function ensureDevRuntime(
 		await rename(staging, root)
 	} catch (error) {
 		await rm(staging, { recursive: true, force: true }).catch(() => {})
+		let registry: 'missing' | 'available' | 'unreachable' | 'error' =
+			'unreachable'
+		try {
+			const url = new URL(
+				`https://registry.npmjs.org/${encodeURIComponent(devRuntimePackageName)}`,
+			)
+			url.searchParams.set('_', String(Date.now()))
+			const response = await fetch(url, {
+				headers: { 'cache-control': 'no-cache, no-store', pragma: 'no-cache' },
+				signal: AbortSignal.timeout(10_000),
+			})
+			if (response.status === 404) registry = 'missing'
+			else if (response.ok) {
+				const metadata = (await response.json()) as {
+					versions?: Record<string, unknown>
+				}
+				registry = metadata.versions?.[version] ? 'available' : 'missing'
+			} else registry = 'error'
+		} catch {
+			registry = 'unreachable'
+		}
 		throw new StructuredCliError({
 			code: 'bundle_failed',
-			message: `Could not install ${spec} for kody dev (${error instanceof Error ? error.message : String(error)}).`,
+			message:
+				registry === 'missing'
+					? `${spec} is not on npm yet (release still propagating).`
+					: `Could not install ${spec} for kody dev (${error instanceof Error ? error.message : String(error)}).`,
 			target: 'mock',
 			where: root,
-			fix: `Connect to the network and retry so the CLI can install ${spec} into the Kody cache (${dirname(root)}).`,
+			fix:
+				registry === 'missing'
+					? 'Retry in a few minutes or pin the previous CLI version.'
+					: registry === 'unreachable'
+						? `Connect to the network and retry so the CLI can install ${spec} into the Kody cache (${dirname(root)}).`
+						: `Check the npm install error above and retry installing ${spec} into the Kody cache (${dirname(root)}).`,
 			details: { package: spec, cacheDir: root },
 		})
 	}
