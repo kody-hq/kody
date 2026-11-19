@@ -34,6 +34,7 @@ import type { Capability, CapabilitySpec } from './types.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
 import {
 	classifyRetryableD1Error,
+	isRetryableD1StorageUnavailabilityError,
 	readD1RetryAttempts,
 	runD1WithRetry,
 	transientDatabaseUnavailableMessage,
@@ -252,21 +253,21 @@ export async function callerFeatureFlagEvaluationFailure(
 }
 
 /**
- * The error execute refuses with when the flag read failed. A transient D1
- * cause reports as a `d1_transient` infra hiccup and uses the shared
- * "briefly unavailable" message, which Sentry drops as a retryable D1 remap.
- * Anything else stays a generic, Sentry-visible evaluation failure.
+ * The error execute refuses with when the flag read failed. A D1 storage
+ * unavailability cause (lock, export, network, overload, internal) reports
+ * as a `d1_transient` infra hiccup and uses the shared "briefly unavailable"
+ * message, which Sentry drops as a retryable D1 remap. Anything else,
+ * including Durable Object resets, stays a generic, Sentry-visible failure.
  */
 export function callerFeatureFlagEvaluationError(cause: unknown): Error {
-	const d1ErrorClass = classifyRetryableD1Error(cause)
-	if (d1ErrorClass === null) {
+	if (!isRetryableD1StorageUnavailabilityError(cause)) {
 		return new Error('Feature flag evaluation failed', { cause })
 	}
 	void reportInfraHiccup({
 		kind: 'd1_transient',
 		operation: 'mcp_execute_feature_flags',
 		attempts: readD1RetryAttempts(cause),
-		errorClass: d1ErrorClass,
+		errorClass: classifyRetryableD1Error(cause) ?? 'unknown',
 	})
 	return new Error(transientDatabaseUnavailableMessage, { cause })
 }

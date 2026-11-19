@@ -622,6 +622,19 @@ test('non-transient flag failures are not retried and stay a generic error', asy
 	expect(flagMocks.reportInfraHiccup).not.toHaveBeenCalled()
 })
 
+test('an exhausted Durable Object reset stays a generic, Sentry-visible error', () => {
+	flagMocks.reportInfraHiccup.mockClear()
+	const reset = new Error(
+		'D1_ERROR: Durable Object reset because its code was updated.',
+	)
+
+	const error = callerFeatureFlagEvaluationError(reset)
+
+	expect(error.message).toBe('Feature flag evaluation failed')
+	expect(error.cause).toBe(reset)
+	expect(flagMocks.reportInfraHiccup).not.toHaveBeenCalled()
+})
+
 test('an unresolved flag user is not cached across requests', async () => {
 	const stableUserId = testStableUserIdFromEmail('flag-unresolved@example.com')
 	let numericUserId: number | null = null
