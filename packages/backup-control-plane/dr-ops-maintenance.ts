@@ -11,7 +11,10 @@ import {
 } from './seal-day-run.ts'
 import { enqueueWorkflow } from './workflow-trigger.ts'
 
-import { readPacedDrillProgress } from './paced-restore-drill.ts'
+import {
+	dayFromPacedDrillRunId,
+	readPacedDrillProgress,
+} from './paced-restore-drill.ts'
 
 const drSealPath = '/__maintenance/dr-seal'
 const drSealStatusPath = '/__maintenance/seal-status'
@@ -165,6 +168,51 @@ async function handleDrSealStatusGet(
  * `DR_OPS_SECRET` only — not `DR_RESTORE_SECRET` — so ops credentials cannot
  * reach production restore, purge, or delete paths.
  */
+async function handlePacedDrillStatusGet(url: URL, env: BackupEnvironment) {
+	const id = url.searchParams.get('id')?.trim() ?? ''
+	if (dayFromPacedDrillRunId(id) === null) {
+		return Response.json(
+			{ ok: false, error: 'Expected id=paced-drill-YYYY-MM-DD-<ms>.' },
+			{ status: 400 },
+		)
+	}
+	let progress: Awaited<ReturnType<typeof readPacedDrillProgress>>
+	try {
+		progress = await readPacedDrillProgress(env, id)
+	} catch (error) {
+		console.error(
+			'dr_ops_paced_drill_status_read_failed',
+			JSON.stringify({
+				id,
+				error: error instanceof Error ? error.message : String(error),
+			}),
+		)
+		return Response.json(
+			{ ok: false, error: 'Unable to read paced drill progress.' },
+			{ status: 503 },
+		)
+	}
+	if (progress) return Response.json(progress)
+	let workflowStatus: string | null = null
+	try {
+		workflowStatus = (await (await env.PACED_DRILL_WORKFLOW.get(id)).status())
+			.status
+	} catch {
+		workflowStatus = null
+	}
+	return Response.json(
+		{
+			ok: false,
+			error:
+				workflowStatus === null
+					? 'Paced drill run not found.'
+					: 'No paced drill progress recorded yet.',
+			workflowStatus,
+		},
+		{ status: 404 },
+	)
+}
+
 export async function handleDrOpsMaintenanceRequest(
 	request: Request,
 	env: BackupEnvironment,
@@ -188,13 +236,7 @@ export async function handleDrOpsMaintenanceRequest(
 		return new Response('Method Not Allowed', { status: 405 })
 	}
 	if (url.pathname === pacedDrillStatusPath) {
-		const progress = await readPacedDrillProgress(
-			env,
-			url.searchParams.get('id')?.trim() ?? '',
-		)
-		return progress
-			? Response.json(progress)
-			: Response.json({ error: 'paced drill run not found' }, { status: 404 })
+		return handlePacedDrillStatusGet(url, env)
 	}
 	return handleDrSealStatusGet(request, env)
 }

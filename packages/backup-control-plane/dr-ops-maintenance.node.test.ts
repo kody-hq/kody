@@ -170,7 +170,7 @@ test('DR ops seal-status returns 404 for missing instance and 503 for status rea
 	)
 })
 
-test('DR ops paced-drill-status returns the run progress as JSON, 404 for unknown runs, 401 without the bearer', async () => {
+test('DR ops paced-drill-status returns progress JSON, 404 with workflow status when no progress exists, 400, 503 and 401', async () => {
 	const env = environment()
 	const runId = 'paced-drill-2026-11-19-1795086936505'
 	const progress = {
@@ -200,6 +200,53 @@ test('DR ops paced-drill-status returns the run progress as JSON, 404 for unknow
 		env,
 	)
 	assert.equal(missing.status, 404)
+	assert.equal(
+		((await missing.json()) as { error: string }).error,
+		'Paced drill run not found.',
+	)
+
+	env.PACED_DRILL_WORKFLOW = {
+		async get() {
+			return {
+				async status() {
+					return { status: 'queued' as const }
+				},
+			}
+		},
+	} as unknown as Workflow
+	const queued = await handleControlPlaneFetch(
+		drOpsRequest(
+			'/__maintenance/paced-drill-status?id=paced-drill-2026-11-19-2',
+			{ method: 'GET' },
+		),
+		env,
+	)
+	assert.equal(queued.status, 404)
+	assert.deepEqual(await queued.json(), {
+		ok: false,
+		error: 'No paced drill progress recorded yet.',
+		workflowStatus: 'queued',
+	})
+
+	const malformed = await handleControlPlaneFetch(
+		drOpsRequest('/__maintenance/paced-drill-status?id=nope', {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(malformed.status, 400)
+
+	vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	env.BACKUP_BUCKET.get = async () => {
+		throw new Error('bucket unavailable')
+	}
+	const unreadable = await handleControlPlaneFetch(
+		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
+			method: 'GET',
+		}),
+		env,
+	)
+	assert.equal(unreadable.status, 503)
 
 	const unauthorized = await handleControlPlaneFetch(
 		drOpsRequest(`/__maintenance/paced-drill-status?id=${runId}`, {
