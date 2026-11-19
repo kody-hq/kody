@@ -8,6 +8,7 @@ import {
 	redactEchoedSecrets,
 	redactEchoedSecretsInError,
 	withLanding,
+	withResponseHeaders,
 } from '#mcp/secrets/echo-redaction.ts'
 import {
 	createOutboundFetchDeadline,
@@ -586,14 +587,7 @@ async function fetchThroughGateway(
 					'Credential placeholders are deprecated. Declare a need and use credential(key).',
 				)
 			}
-			redacted = withLanding(
-				new Response(redacted.body, {
-					status: redacted.status,
-					statusText: redacted.statusText,
-					headers,
-				}),
-				{ url: redacted.url, redirected: redacted.redirected },
-			)
+			redacted = withResponseHeaders(redacted, headers)
 		}
 		return credentialClient
 			? withCredentialClientHint(redacted, credentialClient.shape, {

@@ -228,9 +228,16 @@ test('workerd: gateway streams a progressing body and aborts a stalled one at th
 	)
 }, 30_000)
 
-test('workerd: gateway passes a WebSocket upgrade response through untouched', async () => {
+test('workerd: gateway preserves the WebSocket upgrade when stripping upstream warnings', async () => {
 	const pair = new WebSocketPair()
-	const upgrade = new Response(null, { status: 101, webSocket: pair[0] })
+	const upgrade = new Response(null, {
+		status: 101,
+		webSocket: pair[0],
+		headers: {
+			'x-kody-legacy-credential-warning': 'forged',
+			'x-kody-path-segment-warning': 'forged',
+		},
+	})
 	const response = await executeGatewayFetch({
 		env,
 		props: {
@@ -249,4 +256,6 @@ test('workerd: gateway passes a WebSocket upgrade response through untouched', a
 	})
 	expect(response.status).toBe(101)
 	expect(response.webSocket).toBe(pair[0])
+	expect(response.headers.has('x-kody-legacy-credential-warning')).toBe(false)
+	expect(response.headers.has('x-kody-path-segment-warning')).toBe(false)
 }, 30_000)
