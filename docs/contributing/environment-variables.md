@@ -605,13 +605,13 @@ Non-secret vars:
   exactly `"true"` or schedules stay inert.
 - `SOURCE_ACCOUNT_ID` / `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` plus
   `SOURCE_DATABASES` (JSON array of `{ id, name }` objects: the D1 databases
-  graduated restore targets, including legacy REST-era days) and `ALLOWED_SOURCE_ACCOUNT_IDS` /
-  `ALLOWED_SOURCE_DATABASE_IDS`. `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME`
-  are the primary APP_DB (`kody`) identity and the single-database fallback when
-  `SOURCE_DATABASES` is unset. Every listed id must appear in
-  `ALLOWED_SOURCE_DATABASE_IDS`. Production `kody-jobs` UUID is the live D1
-  named `kody-jobs`; deploy resolves it by name in
-  `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
+  graduated restore targets, including legacy REST-era days) and
+  `ALLOWED_SOURCE_ACCOUNT_IDS` / `ALLOWED_SOURCE_DATABASE_IDS`.
+  `SOURCE_DATABASE_ID` / `SOURCE_DATABASE_NAME` are the primary APP_DB (`kody`)
+  identity and the single-database fallback when `SOURCE_DATABASES` is unset.
+  Every listed id must appear in `ALLOWED_SOURCE_DATABASE_IDS`. Production
+  `kody-jobs` UUID is the live D1 named `kody-jobs`; deploy resolves it by name
+  in `tools/ci/jobs-worker-resources.ts` (`jobs_d1_database_id`).
 - `D1_PACED_SOURCES`: JSON array of `{ id, name }` for the paced D1 sources
   (same ids as the worker's `DR_D1_PACED_SOURCES`; must include
   `SOURCE_DATABASE_ID`). The full seal requires each source's sealed paced night
@@ -619,7 +619,6 @@ Non-secret vars:
 - `BACKUP_MANIFEST_SIGNING_KEY_ID`,
   `BACKUP_MANIFEST_VERIFYING_PUBLIC_KEY_SPKI_BASE64`,
   `TRUSTED_RESTORE_BASELINE_ID`, `TRUSTED_RESTORE_BASELINE_SHA256`.
-- `BACKUP_MAX_AGE_HOURS` (default 26), `BACKUP_MAX_SOURCE_BYTES` (≤ 4.5e9).
 - `ACCESS_TEAM_DOMAIN`, `ACCESS_APP_AUD`, `ACCESS_ALLOWED_EMAIL` — Zero Trust
   Access JWT verification (policy pinned to the solo operator email).
 - `DRILL_ACCOUNT_ID` — isolated account for UI restore drills (must differ from

@@ -40,9 +40,7 @@
 		},
 	],
 	"vars": {
-		// Both must be exactly "true" for any schedule to run. The blocking
-		// export benchmark passed 2026-07-23: a clean production export
-		// completed in ~6s and produced a ~101 MB SQL object.
+		// Both must be exactly "true" for the seal schedule to run.
 		"ENABLE_PRODUCTION_D1_BACKUPS": "true",
 		"BACKUP_BENCHMARK_APPROVED": "true",
 		// Production Kody Cloudflare account and D1 database.
@@ -68,8 +66,6 @@
 		// docs/contributing/disaster-recovery.md).
 		"TRUSTED_RESTORE_BASELINE_ID": "kody-migration-set-2026-07",
 		"TRUSTED_RESTORE_BASELINE_SHA256": "63d10bfc5a672b33a610287ebd3ee5036ee5e719ee8271c1a32f4a44a524a2d7",
-		// D1 GET file_size must remain strictly below this single-object ceiling.
-		"BACKUP_MAX_SOURCE_BYTES": "4500000000",
 		"ACCESS_TEAM_DOMAIN": "kentcdodds.cloudflareaccess.com",
 		"ACCESS_APP_AUD": "769c70e393e2652f5878af99333322184a35cc3aef53376344f8753805e42a76",
 		"ACCESS_ALLOWED_EMAIL": "me@kentcdodds.com",
