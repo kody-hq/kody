@@ -5,6 +5,7 @@
  * is never mistaken for a team org OwnerId (personal orgs reuse stable_user_id).
  */
 
+import { traced } from '#worker/scheduled/retention/telemetry.ts'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import * as Sentry from '@sentry/cloudflare'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
@@ -265,7 +266,7 @@ export type MarkAccountDeletingResult = {
 	deletingAt: string
 }
 
-export async function markAccountDeleting(input: {
+async function markAccountDeletingImpl(input: {
 	db: D1Database
 	dbUserId: number
 	now?: Date
@@ -337,7 +338,7 @@ export async function markAccountDeleting(input: {
  * tombstone. Pass `expectedDeletingAt` so a concurrent/retry fence is left
  * alone. A later write may still fail closed if the DO clear is delayed.
  */
-export async function abortAccountDeleting(input: {
+async function abortAccountDeletingImpl(input: {
 	db: D1Database
 	dbUserId: number
 	now?: Date
@@ -460,7 +461,7 @@ export type MarkOrgDeletingResult = {
  * non-writable even when a live personal-user row shares the same id, so
  * leftover-tombstone heal cannot clear this fence while the org is fenced.
  */
-export async function markOrgDeleting(input: {
+async function markOrgDeletingImpl(input: {
 	db: D1Database
 	orgId: OwnerId
 	now?: Date
@@ -947,4 +948,28 @@ export async function repairAccountWriteLease(input: {
 		throw new Error('Active account write lease did not match repair request.')
 	}
 	throw new Error('Active account write lease did not match repair request.')
+}
+
+export function markAccountDeleting(
+	input: Parameters<typeof markAccountDeletingImpl>[0],
+): ReturnType<typeof markAccountDeletingImpl> {
+	return traced('retention.helper.markAccountDeleting', {}, () =>
+		markAccountDeletingImpl(input),
+	)
+}
+
+export function abortAccountDeleting(
+	input: Parameters<typeof abortAccountDeletingImpl>[0],
+): ReturnType<typeof abortAccountDeletingImpl> {
+	return traced('retention.helper.abortAccountDeleting', {}, () =>
+		abortAccountDeletingImpl(input),
+	)
+}
+
+export function markOrgDeleting(
+	input: Parameters<typeof markOrgDeletingImpl>[0],
+): ReturnType<typeof markOrgDeletingImpl> {
+	return traced('retention.helper.markOrgDeleting', {}, () =>
+		markOrgDeletingImpl(input),
+	)
 }

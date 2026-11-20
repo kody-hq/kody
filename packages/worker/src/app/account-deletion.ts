@@ -1,3 +1,4 @@
+import { traced } from '#worker/scheduled/retention/telemetry.ts'
 import { fileStoreRpc } from '#worker/files/client.ts'
 /**
  * soft-delete-read-filter: opt-out
@@ -1682,7 +1683,7 @@ export async function purgeOwnerOutOfBandSurfaces(input: {
  *      TTL-owned omission and does not participate in this gate.
  *   5. Atomically delete user-scoped D1 rows and the user row in one batch.
  */
-export async function deleteUserAccount(input: {
+async function deleteUserAccountImpl(input: {
 	env: AccountDeletionEnv
 	dbUserId: number
 	/**
@@ -2149,4 +2150,12 @@ export async function deleteUserAccount(input: {
 	}
 
 	return result
+}
+
+export function deleteUserAccount(
+	input: Parameters<typeof deleteUserAccountImpl>[0],
+): ReturnType<typeof deleteUserAccountImpl> {
+	return traced('retention.helper.deleteUserAccount', {}, () =>
+		deleteUserAccountImpl(input),
+	)
 }
