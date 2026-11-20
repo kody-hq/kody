@@ -4,6 +4,16 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import * as Sentry from '@sentry/cloudflare'
+import {
+	transientD1Error,
+	withD1Faults,
+} from '#worker/test-support/d1-faults.ts'
+import {
+	createManualClock,
+	runOnClock,
+} from '#worker/test-support/manual-clock.ts'
+import type { RetentionError } from '#worker/scheduled/retention/failures.ts'
 
 const hardPurgeOrg = vi.fn(async (input: { env: Env; orgId: string }) => {
 	await input.env.APP_DB.prepare(`DELETE FROM orgs WHERE id = ?`)
@@ -443,4 +453,107 @@ test('a failed failure-audit write does not abort the rest of the purge batch', 
 	expect(JSON.stringify(consoleWarn.mock.calls)).toContain(
 		'soft_delete_purge_failure_audit_failed',
 	)
+})
+
+/** Fails `DELETE FROM users` for a db user id the given number of times. */
+function failUserDeletes(db: D1Database, failures: Map<number, number>) {
+	return withD1Faults(db, (sql, params) => {
+		if (!sql.startsWith('DELETE FROM users')) return null
+		const id = params[0] as number
+		const left = failures.get(id) ?? 0
+		if (left <= 0) return null
+		failures.set(id, left - 1)
+		return transientD1Error()
+	})
+}
+
+test('a candidate that spends its retry budget is audited, reported, keeps its claim, and the next candidate gets its own budget', async () => {
+	const { env, db } = await createEnv(false)
+	await seedUser(db, {
+		id: 61,
+		stableUserId: 'retry-budget-a',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	await seedUser(db, {
+		id: 62,
+		stableUserId: 'retry-budget-b',
+		deletingAt: '2026-08-21T00:00:00.000Z',
+		deletedAt: null,
+	})
+	env.APP_DB = failUserDeletes(
+		db,
+		new Map([
+			[61, Number.POSITIVE_INFINITY],
+			[62, 2],
+		]),
+	)
+	// A best-effort step swallows its failure, as account deletion cleanup does.
+	finishLegacyUserDeletion.mockImplementationOnce(async (input) => {
+		const remove = () =>
+			input.env.APP_DB.prepare(`DELETE FROM users WHERE id = ?`)
+				.bind(input.dbUserId)
+				.run()
+		await remove().catch(() => {})
+		await remove()
+		return { alreadyGone: false }
+	})
+	const captureException = vi.spyOn(Sentry, 'captureException')
+	consoleWarn.mockImplementation(() => {})
+	const clock = createManualClock(now)
+	const result = await runOnClock(clock, pruneSoftDeleted({ env, now, clock }))
+	expect(result).toMatchObject({ scanned: 2, purged: 1, failed: 1 })
+	expect(result.outcomes).toEqual([
+		expect.objectContaining({
+			id: 'retry-budget-a',
+			outcome: 'failed',
+			error:
+				'd1.run stopped retrying: 1000ms of the 1000ms transient D1 retry budget was spent',
+		}),
+		expect.objectContaining({ id: 'retry-budget-b', outcome: 'purged' }),
+	])
+	expect((await userRow(db, 61))?.deleting_at).toBe(now.toISOString())
+	expect(await userRow(db, 62)).toBeNull()
+	const audit = await env.AUDIT_DB.prepare(
+		`SELECT action FROM org_audit_events WHERE org_id = ?`,
+	)
+		.bind('retry-budget-a')
+		.first<{ action: string }>()
+	expect(audit?.action).toBe('purge.retry_budget_exhausted')
+	expect(captureException).toHaveBeenCalledTimes(1)
+	expect(
+		(captureException.mock.calls[0]![0] as RetentionError).failure.kind,
+	).toBe('transient_retry_budget_exhausted')
+	captureException.mockRestore()
+})
+
+test('transient retry backoff counts toward the pass time budget', async () => {
+	const { env, db } = await createEnv(false)
+	await seedUser(db, {
+		id: 71,
+		stableUserId: 'retry-pass-a',
+		deletingAt: '2026-08-20T00:00:00.000Z',
+		deletedAt: null,
+	})
+	await seedUser(db, {
+		id: 72,
+		stableUserId: 'retry-pass-b',
+		deletingAt: '2026-08-21T00:00:00.000Z',
+		deletedAt: null,
+	})
+	env.APP_DB = failUserDeletes(db, new Map([[71, 4]]))
+	consoleWarn.mockImplementation(() => {})
+	const clock = createManualClock(now)
+	const result = await runOnClock(
+		clock,
+		pruneSoftDeleted({ env, now, clock, timeBudgetMs: 500 }),
+	)
+	// 700 ms of backoff on the first candidate exceeds the 500 ms pass budget.
+	expect(result).toMatchObject({
+		scanned: 2,
+		purged: 0,
+		failed: 1,
+		timeBudgetExhausted: true,
+	})
+	expect(await userRow(db, 72)).not.toBeNull()
 })

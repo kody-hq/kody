@@ -7,6 +7,7 @@ import {
 } from '#worker/d1-retry.ts'
 import type { Clock } from './clock.ts'
 import { RetentionError } from './failures.ts'
+import { transientRetriesSpent } from './item-retry.ts'
 import { d1ChangesMetaSchema, formatIssues } from './rows.ts'
 import { retry, type RetryPolicy } from './retry.ts'
 import { traced } from './telemetry.ts'
@@ -25,7 +26,10 @@ function isTimeout(error: unknown) {
 	return error instanceof RetentionError && error.failure.kind === 'timed_out'
 }
 
-/** Same backoff schedule and lock classification as `runD1WithRetry`. */
+/**
+ * Same backoff schedule and lock classification as `runD1WithRetry`. An
+ * error an item retry scope already retried (`item-retry.ts`) is final.
+ */
 function d1Policy(retryOnTimeout: boolean): RetryPolicy {
 	return {
 		maxAttempts: d1LockRetryMaxAttempts,
@@ -33,7 +37,8 @@ function d1Policy(retryOnTimeout: boolean): RetryPolicy {
 		jitter: (error) =>
 			classifyRetryableD1Error(error) === 'overloaded' ? 'half' : 'none',
 		isRetryable: (error) =>
-			isRetryableD1LockError(error) || (retryOnTimeout && isTimeout(error)),
+			!transientRetriesSpent(error) &&
+			(isRetryableD1LockError(error) || (retryOnTimeout && isTimeout(error))),
 	}
 }
 

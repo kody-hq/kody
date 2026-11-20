@@ -519,9 +519,11 @@ test('scheduled purge of a personal org and its person in one pass still cancels
 		expect(result.outcomes).toEqual([
 			expect.objectContaining({ kind: 'user', id: personId }),
 		])
-		expect(listSubscriptions).toHaveBeenCalledWith(env, 'cus_person')
-		expect(cancelSubscription).toHaveBeenCalledWith(env, 'sub_person')
-		expect(deleteCustomer).toHaveBeenCalledWith(env, 'cus_person')
+		// APP_DB is the purge item's transient-retry wrapper over appDb.
+		const itemEnv = { ...env, APP_DB: expect.anything() }
+		expect(listSubscriptions).toHaveBeenCalledWith(itemEnv, 'cus_person')
+		expect(cancelSubscription).toHaveBeenCalledWith(itemEnv, 'sub_person')
+		expect(deleteCustomer).toHaveBeenCalledWith(itemEnv, 'cus_person')
 		expect(
 			await countRows(
 				appDb,

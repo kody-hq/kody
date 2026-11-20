@@ -39,7 +39,15 @@ import {
 	d1Run,
 	type RetentionContext,
 } from '#worker/scheduled/retention/d1.ts'
-import { assertNever } from '#worker/scheduled/retention/failures.ts'
+import {
+	assertNever,
+	describeRetentionFailure,
+	type TransientRetryBudgetExhausted,
+} from '#worker/scheduled/retention/failures.ts'
+import {
+	reportRetryBudgetExhausted,
+	startItemRetry,
+} from '#worker/scheduled/retention/item-retry.ts'
 import {
 	dbIdColumn,
 	ownerIdColumn,
@@ -346,18 +354,24 @@ async function hardPurgeCandidate(
 
 /**
  * Records a failed purge. The failure audit is best-effort: an audit write
- * that fails is logged and the pass moves on to the next candidate.
+ * that fails is logged and the pass moves on to the next candidate. A spent
+ * transient retry budget is audited and reported to Sentry as its own kind.
  */
 async function recordCandidateFailure(input: {
 	env: Env
 	candidate: SoftDeletePurgeCandidate
 	error: unknown
+	retryBudgetExhausted: TransientRetryBudgetExhausted | null
 	nowIso: string
 }): Promise<string> {
-	const { candidate } = input
-	const message = redactPurgeFailureDetail(
-		input.error instanceof Error ? input.error.message : String(input.error),
-	)
+	const { candidate, retryBudgetExhausted } = input
+	const message = retryBudgetExhausted
+		? describeRetentionFailure(retryBudgetExhausted)
+		: redactPurgeFailureDetail(
+				input.error instanceof Error
+					? input.error.message
+					: String(input.error),
+			)
 	const cleanupErrors = purgeFailureDetails(input.error)
 	const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
 	console.warn(
@@ -367,14 +381,27 @@ async function recordCandidateFailure(input: {
 			lane,
 			error: message,
 			cleanupErrors,
+			...(retryBudgetExhausted
+				? { failureKind: retryBudgetExhausted.kind }
+				: {}),
 		}),
 	)
+	if (retryBudgetExhausted) {
+		reportRetryBudgetExhausted({
+			lane: 'soft_delete_purge',
+			ownerId: candidate.id,
+			failure: retryBudgetExhausted,
+		})
+	}
 	try {
 		await logOrgAuditEvent({
 			env: input.env,
 			orgId: candidate.id,
-			action:
-				candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
+			action: retryBudgetExhausted
+				? 'purge.retry_budget_exhausted'
+				: candidate.kind === 'org'
+					? 'org.purge_failed'
+					: 'user.purge_failed',
 			result: 'failure',
 			detailsJson: JSON.stringify({
 				error: message,
@@ -406,6 +433,12 @@ function purgeOneCandidate(input: {
 }): Promise<SoftDeletePurgeOutcome> {
 	const { candidate } = input
 	const lane = laneOf(candidate)
+	const itemRetry = startItemRetry({
+		clock: input.ctx.clock,
+		signal: input.ctx.signal,
+	})
+	const ctx = { ...input.ctx, db: itemRetry.wrap(input.ctx.db) }
+	const env = { ...input.env, APP_DB: ctx.db }
 	return traced(
 		'retention.soft_delete_purge.candidate',
 		{ 'retention.lane': lane, 'retention.age_days': candidate.ageDays },
@@ -418,6 +451,7 @@ function purgeOneCandidate(input: {
 			}
 			const failed = async (error: unknown) => {
 				span.setAttribute('retention.outcome', 'failed')
+				span.setAttribute('retention.retry_backoff_ms', itemRetry.spentMs())
 				return {
 					...base,
 					outcome: 'failed' as const,
@@ -425,6 +459,7 @@ function purgeOneCandidate(input: {
 						env: input.env,
 						candidate,
 						error,
+						retryBudgetExhausted: itemRetry.exhausted(),
 						nowIso: input.stamp.nowIso,
 					}),
 				}
@@ -433,10 +468,10 @@ function purgeOneCandidate(input: {
 			try {
 				outcome = await runClaimed({
 					acquire: async () =>
-						(await claimCandidate(input.ctx, lane, candidate.id, input.stamp))
+						(await claimCandidate(ctx, lane, candidate.id, input.stamp))
 							? candidate
 							: null,
-					body: () => hardPurgeCandidate(input.env, lane, candidate),
+					body: () => hardPurgeCandidate(env, lane, candidate),
 					// The restamped `deleting_at` is the 6 hour retry fence.
 					onFailure: () => 'keep',
 					release: async () => {},
