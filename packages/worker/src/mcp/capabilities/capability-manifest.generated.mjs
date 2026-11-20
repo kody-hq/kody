@@ -42321,17 +42321,49 @@ export const capabilityManifest = {
 							},
 							"writes_enabled": {
 								"type": "boolean"
+							},
+							"storage": {
+								"type": "object",
+								"properties": {
+									"includedBytes": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"usedBytes": {
+										"anyOf": [
+											{
+												"type": "integer",
+												"minimum": 0,
+												"maximum": 9007199254740991
+											},
+											{
+												"type": "null"
+											}
+										]
+									},
+									"external": {
+										"type": "boolean"
+									}
+								},
+								"required": [
+									"includedBytes",
+									"usedBytes",
+									"external"
+								],
+								"additionalProperties": false
 							}
 						},
 						"required": [
 							"files",
 							"can_create",
-							"writes_enabled"
+							"writes_enabled",
+							"storage"
 						],
 						"additionalProperties": false
 					},
 					"inputTypeDefinition": "type FileListInput = {\n\tinclude_trash?: boolean\n}",
-					"outputTypeDefinition": "type FileListOutput = {\n\tfiles: Array<{\n\tid: string\n\tname: string\n\tmediaType: string\n\tencoding?: \"utf8\" | \"base64\"\n\tparentId?: string\n\tmetadataVersion?: number\n\tcollaboration?: boolean\n\t/** Live collaboration version. Use this as base_revision_id when present. revisionId and revisions identify immutable checkpoints. */\n\theadVersion?: string\n\theadBytes?: number\n\taccessMode?: \"inherit\" | \"restricted\"\n\ttrashedAt?: string\n\trevisionId: string | null\n\tcreatedAt: string\n\tupdatedAt: string\n\trevisions: Array<{\n\tstorageId?: string\n\tcollaborationBytes?: number\n\tcollaborationSha256?: string\n\tid: string\n\tbytes: number\n\tsha256: string\n\tcreatedAt: string\n\tauthor: string\n}>\n\thistoryCursor?: string | null\n\trevisionCount?: number\n\taccess: {\n\tcomment?: boolean\n\twrite: boolean\n\tdelete: boolean\n\tmanage_access: boolean\n}\n}>\n\tcan_create: boolean\n\twrites_enabled: boolean\n}"
+					"outputTypeDefinition": "type FileListOutput = {\n\tfiles: Array<{\n\tid: string\n\tname: string\n\tmediaType: string\n\tencoding?: \"utf8\" | \"base64\"\n\tparentId?: string\n\tmetadataVersion?: number\n\tcollaboration?: boolean\n\t/** Live collaboration version. Use this as base_revision_id when present. revisionId and revisions identify immutable checkpoints. */\n\theadVersion?: string\n\theadBytes?: number\n\taccessMode?: \"inherit\" | \"restricted\"\n\ttrashedAt?: string\n\trevisionId: string | null\n\tcreatedAt: string\n\tupdatedAt: string\n\trevisions: Array<{\n\tstorageId?: string\n\tcollaborationBytes?: number\n\tcollaborationSha256?: string\n\tid: string\n\tbytes: number\n\tsha256: string\n\tcreatedAt: string\n\tauthor: string\n}>\n\thistoryCursor?: string | null\n\trevisionCount?: number\n\taccess: {\n\tcomment?: boolean\n\twrite: boolean\n\tdelete: boolean\n\tmanage_access: boolean\n}\n}>\n\tcan_create: boolean\n\twrites_enabled: boolean\n\tstorage: {\n\tincludedBytes: number\n\tusedBytes: number | null\n\texternal: boolean\n}\n}"
 				},
 				{
 					"name": "fileGet",

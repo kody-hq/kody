@@ -23,6 +23,22 @@ export const readFileStorage = createServerFn({ method: 'GET' })
 			),
 		)
 	})
+export const readFileStorageCredentials = createServerFn({ method: 'GET' })
+	.validator(scope)
+	.handler(async ({ data }) => {
+		const [
+			{ withWebsiteRead },
+			{ websiteCapabilityContext },
+			{ listFileStorageCredentialNames },
+		] = await Promise.all([
+			import('./mutation-context.ts'),
+			import('../../src/app/website-capability.ts'),
+			import('../../src/files/storage-settings.ts'),
+		])
+		return withWebsiteRead({ scope: { orgSlug: data.orgSlug } }, (context) =>
+			listFileStorageCredentialNames(websiteCapabilityContext(context)),
+		)
+	})
 export const setFileStorage = createServerFn({ method: 'POST' })
 	.validator(
 		scope.extend({ configuration: fileStorageConfigSchema.nullable() }),

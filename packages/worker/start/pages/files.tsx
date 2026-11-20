@@ -34,6 +34,7 @@ import {
 } from './workspace-packages.tsx'
 import { Combobox } from '../components/combobox.tsx'
 import { WorkspaceCreateMenu } from '../components/workspace-create-menu.tsx'
+import { useHydrated } from '../components/use-hydrated.ts'
 import { useWorkspaceUploads } from '../components/workspace-uploads.tsx'
 import { WorkspaceExplorerLayout } from '../components/workspace-explorer-layout.tsx'
 import { LoadingIndicator } from '../components/loading-indicator.tsx'
@@ -54,7 +55,7 @@ import { loadWorkspaceRepoFiles } from '#start/server/package-files'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-	type loadFilesPage,
+	loadFilesPage,
 	saveFile,
 	manageWorkspaceFile,
 	readFileRevision,
@@ -85,11 +86,13 @@ import {
 	type ContextAction,
 } from '../components/context-menu-surface.tsx'
 import { FileActionDialog } from './file-action-dialog.tsx'
+const FileStorageSettings = lazy(() => import('./file-storage-settings.tsx'))
 const FilePermissionsPanel = lazy(() => import('./file-permissions-panel.tsx'))
 import { HtmlPreview } from './file-viewers/html-file-viewer.tsx'
 import { CsvPreview } from './file-viewers/csv-file-viewer.tsx'
 import { FileViewer } from './file-viewers/file-viewer.tsx'
 import { fileAssetUrl } from '#universal/file-assets.ts'
+import { fileStorageQuotaError } from '#universal/file-storage.ts'
 const CollaborativeFileView = lazy(
 	() => import('./collaborative-file-view.tsx'),
 )
@@ -253,6 +256,7 @@ export function FilesPage({
 	onToggleBranch: (id: string) => void
 }) {
 	const uploads = useWorkspaceUploads()
+	const hydrated = useHydrated()
 	const columnFocusHandoff = useRef<string | null>(null)
 	const finderHover = useState(true)
 	const fileSurface = useRef<HTMLElement>(null)
@@ -262,6 +266,32 @@ export function FilesPage({
 	const [dropTarget, setDropTarget] = useState<string | null>(null)
 	const dragDepth = useRef(0)
 	const [explorerVisible, setExplorerVisible] = useState(true)
+	const [storageOpen, setStorageOpen] = useState(false)
+	const queryClient = useQueryClient()
+	const storageUsage = useQuery({
+		queryKey: ['file-storage-usage', data.orgSlug],
+		queryFn: async () =>
+			(await loadFilesPage({ data: { orgSlug: data.orgSlug } })).storage,
+		initialData: data.storage,
+		enabled: false,
+	})
+	useEffect(() => {
+		queryClient.setQueryData(['file-storage-usage', data.orgSlug], data.storage)
+	}, [queryClient, data.orgSlug, data.storage])
+	const { includedBytes, usedBytes, external } = storageUsage.data
+	const storageFull =
+		!external &&
+		includedBytes > 0 &&
+		usedBytes !== null &&
+		usedBytes >= includedBytes
+	const formatStorage = (bytes: number) => {
+		const mebibytes = bytes / (1024 * 1024)
+		return mebibytes > 0 && mebibytes < 0.01
+			? '<0.01'
+			: new Intl.NumberFormat('en', { maximumFractionDigits: 2 }).format(
+					mebibytes,
+				)
+	}
 	const selected = data.selected
 	const canCreateIn = (id?: string) =>
 		id
@@ -288,7 +318,6 @@ export function FilesPage({
 	}, [selected?.file.id, selected?.file.parentId, selected?.file.name])
 	const binary = selected?.file.encoding === 'base64'
 	const router = useRouter()
-	const queryClient = useQueryClient()
 	const [name, setName] = useState(
 		initialPage || initialDirectory ? '' : 'Untitled.md',
 	)
@@ -326,6 +355,18 @@ export function FilesPage({
 	const uploadInput = useRef<HTMLInputElement>(null)
 	const replacementInput = useRef<HTMLInputElement>(null)
 	const [message, setMessage] = useState('')
+	const quotaError = message.includes(fileStorageQuotaError)
+	const storageBlocked =
+		quotaError ||
+		(!external && (storageFull || !data.writes_enabled)) ||
+		uploads.jobs.some(
+			(job) =>
+				job.org === data.orgSlug &&
+				job.status === 'failed' &&
+				job.error?.includes(fileStorageQuotaError),
+		)
+	const showStorageRecovery =
+		data.canManageStorage && (embedded ? quotaError : storageBlocked)
 	const [preview, setPreview] = useState(
 		fileViewerKind(
 			selected?.file.name ?? '',
@@ -1217,10 +1258,58 @@ export function FilesPage({
 					}}
 				/>
 				{message && !selected && !creating && <p role="status">{message}</p>}
-				{!data.writes_enabled && (
-					<p role="status">
-						File storage is not enabled for this workspace yet.
-					</p>
+				{!showPackages && (!embedded || showStorageRecovery) && (
+					<div
+						css={{
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: 8,
+							alignItems: 'center',
+							padding: '8px 16px',
+							fontSize: 13,
+							color: colors.textMuted,
+						}}
+					>
+						{!embedded && (
+							<>
+								{usedBytes !== null && (
+									<span role="status">
+										{formatStorage(usedBytes)} of {formatStorage(includedBytes)}{' '}
+										MiB included storage used
+									</span>
+								)}
+								{external && <span>· New revisions use your bucket</span>}
+								{storageFull && (
+									<span role="status">Included storage is full.</span>
+								)}
+								{!data.writes_enabled && (
+									<span role="status">File storage is unavailable.</span>
+								)}
+							</>
+						)}
+						{showStorageRecovery && (
+							<Button
+								variant="secondary"
+								size="sm"
+								type="button"
+
+								disabled={!hydrated}
+								onClick={() => setStorageOpen(true)}
+							>
+								Connect a bucket
+							</Button>
+						)}
+					</div>
+				)}
+				{storageOpen && (
+					<Suspense
+						fallback={<LoadingIndicator label="Opening storage settings" />}
+					>
+						<FileStorageSettings
+							orgSlug={data.orgSlug}
+							onClose={() => setStorageOpen(false)}
+						/>
+					</Suspense>
 				)}
 				<WorkspaceExplorerLayout
 					browsing={
@@ -2270,13 +2359,10 @@ export function FilesPage({
 												toolbarRef={collaborationToolbar}
 												canManageStorage={data.canManageStorage}
 												revisionId={selected.file.revisionId!}
-												onVersionChange={
-													binary
-														? () => {
-																void refresh()
-															}
-														: undefined
-												}
+												onVersionChange={() => {
+													if (binary) void refresh()
+													else void storageUsage.refetch()
+												}}
 												title={documentTitle}
 												pageChildren={data.files
 													.filter(
@@ -3551,6 +3637,11 @@ function WorkspaceDocumentPanel({
 		],
 		queryFn: () =>
 			readFilePreview({ data: { orgSlug: data.orgSlug, fileId: metadata.id } }),
+		placeholderData: (previous, previousQuery) =>
+			previousQuery?.queryKey[1] === data.orgSlug &&
+			previousQuery.queryKey[2] === metadata.id
+				? previous
+				: undefined,
 		retry: false,
 	})
 	if (query.isPending) return <LoadingIndicator label="Loading file" />

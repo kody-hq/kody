@@ -1,8 +1,20 @@
-import { env, runInDurableObject } from 'cloudflare:test'
-import { expect, test } from 'vitest'
+import {
+	env,
+	runInDurableObject,
+	applyD1Migrations,
+	type D1Migration,
+} from 'cloudflare:test'
+import { beforeAll, expect, test } from 'vitest'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { fileStoreRpc, fileStoreName } from './client.ts'
 import type { FileStore } from './store.ts'
+
+beforeAll(async () => {
+	await applyD1Migrations(
+		env.APP_DB,
+		(env as Env & { TEST_MIGRATIONS: D1Migration[] }).TEST_MIGRATIONS,
+	)
+})
 
 async function expectWriteError(
 	input: Parameters<FileStore['write']>[0],
@@ -539,4 +551,68 @@ test('legacy revision arrays migrate without losing older history or quota accou
 		},
 		'included file storage limit',
 	)
+})
+
+test('live storage quotas apply to new writes and preserve an admitted checkpoint', async () => {
+	const { store, input, ownerId } = workspace()
+	const other = workspace()
+	await env.APP_DB.prepare(
+		'INSERT INTO orgs (id, slug, created_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)',
+	)
+		.bind(ownerId, ownerId)
+		.run()
+	await env.APP_DB.prepare(
+		'INSERT INTO file_storage_default_quota (id, included_bytes) VALUES (1, 4)',
+	).run()
+	try {
+		await expectWriteError(input, 'included file storage limit')
+		await expectWriteError(other.input, 'included file storage limit')
+
+		await env.APP_DB.prepare(
+			'INSERT INTO file_storage_quota_overrides (org_id, included_bytes) VALUES (?, 20)',
+		)
+			.bind(ownerId)
+			.run()
+		expect(await store.write(input)).toMatchObject({ ok: true })
+		await expectWriteError(other.input, 'included file storage limit')
+		await store.reserveCollaboration({
+			ownerId,
+			fileId: input.fileId,
+			bytes: 6,
+			maxBytes: input.maxBytes,
+		})
+
+		await env.APP_DB.prepare(
+			'DELETE FROM file_storage_quota_overrides WHERE org_id = ?',
+		)
+			.bind(ownerId)
+			.run()
+		expect(await store.storageUsage(ownerId)).toMatchObject({
+			includedBytes: 4,
+			usedBytes: 5,
+		})
+		expect(
+			await store.write({
+				...input,
+				create: undefined,
+				writeId: crypto.randomUUID(),
+				baseRevisionId: input.writeId,
+				content: 'Hello',
+				collaborationState: new Uint8Array([1]),
+			}),
+		).toMatchObject({ ok: true })
+		await expectWriteError(
+			{
+				...input,
+				fileId: crypto.randomUUID(),
+				writeId: crypto.randomUUID(),
+			},
+			'included file storage limit',
+		)
+	} finally {
+		await env.APP_DB.prepare('DELETE FROM file_storage_default_quota').run()
+		await env.APP_DB.prepare('DELETE FROM orgs WHERE id = ?')
+			.bind(ownerId)
+			.run()
+	}
 })
