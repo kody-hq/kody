@@ -30,19 +30,11 @@ async function dispatchParsedMessage(
 	env: Env,
 	parsed: ParsedCommunityListingDispatchQueueMessage,
 ) {
-	switch (parsed.kind) {
-		case 'published':
-			await dispatchCommunityListingPublishedSubscriptionEvent({
-				env,
-				eventId: parsed.eventId,
-				listingId: parsed.listingId,
-			})
-			return
-		default: {
-			const exhaustive: never = parsed
-			return exhaustive
-		}
-	}
+	await dispatchCommunityListingPublishedSubscriptionEvent({
+		env,
+		eventId: parsed.eventId,
+		listingId: parsed.listingId,
+	})
 }
 
 export async function handleCommunityListingPublishedDispatchQueue(
