@@ -252,6 +252,7 @@ function Root() {
 
 function LoadedAppLayout() {
 	const { shellLocation, appShell } = Route.useLoaderData()
+	const pathname = shellLocation.pathname
 	const { session, youtubeWatch } = useShellData()
 	const router = useRouter()
 	const { queryClient, actorKey, pageNavigation, pageLocation } =

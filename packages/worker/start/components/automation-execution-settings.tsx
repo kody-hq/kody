@@ -135,10 +135,8 @@ export function AutomationExecutionSettings(props: {
 			})
 			return
 		}
-		queryClient.setQueryData<Loaded | null>(queryKey, {
-			...loaded!,
-			setting: result.setting,
-		})
+		const saved: Loaded = { ...loaded!, setting: result.setting }
+		queryClient.setQueryData(queryKey, saved)
 		setDraft(null)
 		setStatus({ tone: 'info', text: 'Saved.' })
 	}
