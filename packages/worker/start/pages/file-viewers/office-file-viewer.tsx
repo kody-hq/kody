@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import { colors } from '#universal/styles/tokens.ts'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import scripts from 'virtual:kody-office-viewers'
 function OfficeViewer({
 	kind,
@@ -35,10 +35,12 @@ function OfficeViewer({
 			)
 		}
 	}
-	useEffect(() => {
+	const frameRef = useCallback((node: HTMLIFrameElement | null) => {
+		frame.current = node
+		if (!node) return
 		const handle = (event: MessageEvent) => {
 			if (
-				event.source === frame.current?.contentWindow &&
+				event.source === node.contentWindow &&
 				event.origin === 'null' &&
 				event.data?.type === 'kody-office-preview-status'
 			) {
@@ -50,11 +52,11 @@ function OfficeViewer({
 			}
 		}
 		window.addEventListener('message', handle)
-		frame.current?.contentWindow?.postMessage(
-			{ type: 'kody-office-preview-probe' },
-			'*',
-		)
-		return () => window.removeEventListener('message', handle)
+		node.contentWindow?.postMessage({ type: 'kody-office-preview-probe' }, '*')
+		return () => {
+			frame.current = null
+			window.removeEventListener('message', handle)
+		}
 	}, [])
 	useEffect(() => {
 		const controller = new AbortController()
@@ -85,7 +87,7 @@ function OfficeViewer({
 		)
 	return (
 		<iframe
-			ref={frame}
+			ref={frameRef}
 			title={name}
 			src={href}
 			sandbox="allow-scripts"
