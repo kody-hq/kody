@@ -20,6 +20,7 @@ import { captureFirstTouchAttributionFromLocation } from '#client/first-touch-at
 import { persistReferralCookieFromLocation } from '#client/referral-cookie.ts'
 import { scheduleConsumeAccountCreatedFathomSignal } from '#client/fathom-events.ts'
 import { locationWithoutHomeOgParam } from '#universal/home-og-variants.ts'
+import { createScarfPageTracker } from '#client/scarf-analytics.ts'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 
 initSentryClient(document)
@@ -61,6 +62,39 @@ function startBrowserLocationEffects(router: AnyRouter) {
 	}
 	sync()
 	router.subscribe('onResolved', sync)
+	const trackScarfPage = createScarfPageTracker()
+	let scarfHref: string | undefined
+	const trackPage = () => {
+		const href = router.state.resolvedLocation?.href
+		if (
+			!href ||
+			href === scarfHref ||
+			router.state.matches.some((match) => match.error)
+		)
+			return
+		scarfHref = href
+		trackScarfPage()
+	}
+	trackPage()
+	router.subscribe('onResolved', trackPage)
+	let focusFrame = 0
+	router.subscribe('onResolved', ({ pathChanged }) => {
+		if (!pathChanged) return
+		cancelAnimationFrame(focusFrame)
+		const fileColumnNavigation =
+			router.state.resolvedLocation?.state.fileColumnNavigation
+		focusFrame = requestAnimationFrame(() => {
+			if (
+				fileColumnNavigation &&
+				document.activeElement?.closest('[data-file-column-browser]')
+			)
+				return
+			const target =
+				document.querySelector<HTMLElement>('[data-docs-heading]') ??
+				document.getElementById('main')
+			target?.focus({ preventScroll: true })
+		})
+	})
 }
 
 hydrateStart()
