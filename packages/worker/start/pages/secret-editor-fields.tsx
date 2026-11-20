@@ -6,7 +6,7 @@ import {
 	toDatetimeLocalValue,
 } from '@kody-internal/shared/secret-expires-at.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useRef, useId } from 'react'
+import { useCallback, useRef, useId } from 'react'
 import { passwordManagerIgnoreProps } from '#client/password-manager-ignore.ts'
 import { colors, mq, spacing, typography } from '#universal/styles/tokens.ts'
 import { accountDisclosureCss } from './account-management-components.tsx'
@@ -47,10 +47,13 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 	const valueId = useId()
 	const valueField = useRef<HTMLDivElement>(null)
 	const autoFocusKey = props.autoFocusKey ?? ''
-	useEffect(() => {
-		if (autoFocusKey && valueField.current)
-			focusSecretValueInput(valueField.current)
-	}, [autoFocusKey])
+	const valueFieldRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			valueField.current = node
+			if (node && autoFocusKey) focusSecretValueInput(node)
+		},
+		[autoFocusKey],
+	)
 
 	return (
 		<>
@@ -97,7 +100,7 @@ export function SecretEditorFields(props: SecretEditorFieldsProps) {
 					Secret value
 				</label>
 				<div
-					ref={valueField}
+					ref={valueFieldRef}
 					css={{
 						position: 'relative',
 						display: 'flex',
