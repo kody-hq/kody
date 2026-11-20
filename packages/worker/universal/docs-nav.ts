@@ -214,6 +214,7 @@ export const unadvertisedDocSlugs: ReadonlyArray<string> = []
  * Old slugs that no longer exist as their own page. The legacy `/guides/*`
  * redirect and the `/docs/:slug` handler send them to the doc (and heading)
  * that absorbed the content.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const legacyDocSlugAliases: Readonly<
 	Record<string, { slug: string; fragment?: string }>

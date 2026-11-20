@@ -61,6 +61,7 @@
  * client-support readout (`feature-flags/mcp-events-client-support-readout.ts`)
  * uses it to split "client does not advertise events" from "advertises but
  * does not subscribe".
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 
 import type * as McpServerModule from '@modelcontextprotocol/server'
@@ -175,6 +176,7 @@ export function classifyMcpPackageIdentityParam(
 /**
  * Whether client capabilities (modern `_meta` client capabilities or the
  * legacy `initialize` capabilities) declare MCP Events support.
+ * Remove when: MCP protocol metrics show no 2025-era lane traffic.
  */
 export function classifyMcpEventsClientSupport(
 	capabilities: unknown,
@@ -242,6 +244,7 @@ export async function classifyMcpProtocolRequest(
 		} catch {
 			// Empty or invalid JSON classifies legacy; the lane handler owns
 			// the error response.
+			// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 		}
 	}
 	const legacy = hasParsedBody
@@ -271,6 +274,7 @@ export async function classifyMcpProtocolRequest(
 	// Modern requests carry the revision in the `_meta` envelope; legacy
 	// requests send the negotiated `mcp-protocol-version` header (or name the
 	// offered revision in the `initialize` params).
+	// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 	const protocolVersion =
 		(isRecord(meta) ? readString(meta[PROTOCOL_VERSION_META_KEY]) : '') ||
 		readString(request.headers.get('mcp-protocol-version')) ||
@@ -342,6 +346,7 @@ export function recordMcpProtocolEvent(
 				input.userId ?? '',
 				// blob7: request host, so domain migrations can measure which
 				// users still connect through a legacy hostname.
+				// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 				input.requestHost ?? '',
 				// blob8: package identity param on tools/call (kody_id vs
 				// package_id vs scoped name) for the public MCP param gate.

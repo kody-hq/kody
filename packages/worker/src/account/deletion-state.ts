@@ -581,6 +581,7 @@ export async function assertAccountWritableDb(
 	// equal-id shape) a person id. Resolve the person by stable_user_id or
 	// personal_org_id, and the org by id (or the person's personal_org_id).
 	// Pre-Teams test DBs may lack `orgs`; treat that as no org row.
+	// Permanent: stored data or clients from before this change still exist.
 	const userStatement = db
 		.prepare(
 			`SELECT deleting_at, stable_user_id, personal_org_id

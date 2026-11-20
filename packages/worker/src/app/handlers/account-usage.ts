@@ -6,6 +6,7 @@ import { getOrgById } from '#worker/orgs/repo.ts'
  * Legacy `/account/usage` → personal-org `/@slug/-/usage`, keeping the query
  * so Stripe top-up returns (`?topup=success&session_id=…`) and notice codes
  * still resolve on the org usage page. The browser re-applies `#credits`.
+ * Remove when: legacy `/account/usage` and `/account/credits` links get no traffic.
  */
 export async function personalUsageSlug(env: Env, user: AuthenticatedAppUser) {
 	const signupOrg = await getOrgById(

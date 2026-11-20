@@ -36,6 +36,7 @@ export type PublicPackageAppLocation = {
 	 * Origin-relative mount. Empty on an app-level custom hostname (the app
 	 * owns `/`). On a subdomain this is `/{kodyId}` (legacy `/packages/{kodyId}`
 	 * is still served but is not the public shape).
+	 * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	 */
 	appBasePath: string
 }

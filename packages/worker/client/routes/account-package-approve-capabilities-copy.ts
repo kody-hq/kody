@@ -50,6 +50,7 @@ export function credentialSummary(entry: CapabilityEntry) {
  * Set when a need still declares the deprecated
  * `ownerCredentialForVisitors` flag, a legacy alias for supplier
  * `publisher`: apps already use the publisher's credentials for every visitor.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function credentialVisitorsNote(entry: CapabilityEntry) {
 	if (!entry.ownerCredentialForVisitors) return null

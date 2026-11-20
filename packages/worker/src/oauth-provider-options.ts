@@ -67,6 +67,7 @@ export function createSharedOAuthProviderOptions(
 		// Requires the global_fetch_strictly_public compatibility flag (set in
 		// wrangler.jsonc) so metadata fetches are SSRF-safe; the provider only
 		// advertises CIMD support when both are on.
+		// Permanent: stored data or clients from before this change still exist.
 		clientIdMetadataDocumentEnabled: true,
 		// Kody patch of the provider (patches/@cloudflare+workers-oauth-provider+*).
 		// Codex's documents are pinned (never fetched) because chatgpt.com

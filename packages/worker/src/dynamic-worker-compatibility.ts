@@ -5,6 +5,7 @@
  * `enable_request_signal` is the exception: it makes `request.signal` abort
  * when the caller disconnects, which the package app entrypoint needs to
  * report a disconnected request instead of being cancelled silently.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const dynamicWorkerCompatibilityDate = '2026-04-16'
 

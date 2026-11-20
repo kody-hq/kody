@@ -173,7 +173,10 @@ export type CredentialStampScan = {
 	oauthKeys: Array<string>
 	/** The credential inventory of the scanned modules, with sites. */
 	scan: PackageCredentialScan
-	/** Every 0010 legacy-pattern finding of the scanned modules. */
+	/**
+	 * Every 0010 legacy-pattern finding of the scanned modules.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+	 */
 	legacyFindings: Array<PackageCodemodFinding>
 }
 
@@ -209,6 +212,7 @@ const packageManifestPath = 'package.json'
  * packageSecrets.get, and plain http still fail closed. Manifest-only
  * `kody.secretMounts` is a compat finding: publish may keep it for stale
  * static dependents, and it does not fail this gate.
+ * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
  */
 const unstampableLegacyPatterns = new Set<LegacyCredentialPattern>([
 	'computed secret',
@@ -1854,6 +1858,7 @@ export function mergeCredentialStampPasses(
 /**
  * Scan package source for stampable literal credential keys and publish-time
  * gate failures (non-literal uses, unstampable legacy patterns, server eval).
+ * Remove when: #1909 phase 4 drops `package_kody_id_redirects`.
  */
 export async function scanCredentialStamp(
 	files: Record<string, string>,

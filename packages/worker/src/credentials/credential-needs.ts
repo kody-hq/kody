@@ -31,6 +31,7 @@ export const credentialNeedSchema = z.object({
 	/**
 	 * Deprecated legacy alias for `supplier: 'publisher'`, set only by the
 	 * package that declares the need.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
 	 */
 	ownerCredentialForVisitors: z.literal(true).optional(),
 	supplier: z.enum(['publisher', 'executor']).optional(),

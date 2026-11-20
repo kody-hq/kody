@@ -25,7 +25,6 @@ const loaderData: AccountPackageApprovePublishLoaderData = {
 	filesHref: '/@kodykoala/gmail-drafts/tree/main',
 	packageHref: '/@kodykoala/gmail-drafts',
 	listing: null,
-	listingWillLagAfterPromote: false,
 	secretMountCompatNotice: null,
 	allowedPackagesPublishNotice: null,
 	diff: {

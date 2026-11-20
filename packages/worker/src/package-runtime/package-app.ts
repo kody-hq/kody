@@ -304,6 +304,7 @@ function createPackageAppWorkerSource(input: {
 	/**
 	 * Package-app apex hostnames (canonical + legacy). Used to strip Set-Cookie
 	 * Domain attributes that would cover the shared apex or another tenant.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	packageAppApexHostnames: Array<string>
 	packageAppCookiePrefix: string
@@ -3601,6 +3602,7 @@ type PackageAppWorkerOptions = Parameters<Env['APP_LOADER']['load']>[0]
  * The loopback bindings themselves (`KODY_RUNTIME` and the `KodyFetchGateway`
  * globalOutbound) are request-bound I/O objects, so they are minted per
  * request by `materializePackageAppWorkerOptions` instead of being cached.
+ * Permanent: stored data or clients from before this change still exist.
  */
 type PackageAppWorkerTemplate = {
 	options: Omit<PackageAppWorkerOptions, 'env' | 'globalOutbound'> & {

@@ -176,6 +176,7 @@ export function shouldMutateBudgetMtdForMonth(
  * Map a background run (job, webhook, subscription) to its org budget gate
  * context. Enablement runs and inherited runs bill their person; legacy
  * Automation bills the org's automation budget.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function orgBudgetForJobExecution(input: {
 	orgId: OwnerId

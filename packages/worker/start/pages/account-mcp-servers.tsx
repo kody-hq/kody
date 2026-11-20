@@ -420,8 +420,8 @@ export function AccountMcpServersPage({
 						{ key: 'name', label: 'Server', primary: true },
 						{ key: 'state', label: 'State' },
 						{ key: 'enabled', label: 'Enabled' },
-						{ key: 'url', label: 'URL', drop: 1 },
-						{ key: 'tools', label: 'Tools', align: 'end', drop: 2 },
+						{ key: 'url', label: 'URL' },
+						{ key: 'tools', label: 'Tools', align: 'end' },
 					]}
 					createRow={
 						selection.isCreating

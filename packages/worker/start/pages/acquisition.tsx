@@ -31,6 +31,7 @@ export function AcquisitionPage({
 // Emotion's nested-selector compatibility pass prefixes :where(&) with the
 // parent class. Emit these base rules globally with a zero-specificity scope
 // so the page's links cannot override a pill button's own text color.
+// Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
 const acquisitionResetStyles: Record<string, CSSObject> = {
 	automation: {
 		':where([data-acquisition-page="automation"]) a': {

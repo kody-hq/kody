@@ -51,6 +51,7 @@ export function workspaceLayoutNavigation(
 		if (org) return { ...navigation, orgSlug: username }
 		// A legacy rename can leave the username apart from the personal org
 		// slug; the rail then falls back to the personal org.
+		// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 		return session.username === username
 			? { ...navigation, orgSlug: null }
 			: null

@@ -33,6 +33,7 @@ export type DynamicWorkerIdOptions = {
  * always mint the same id. A module value that cannot be hashed (a function,
  * symbol, or compiled `WebAssembly.Module`) throws instead of minting a
  * one-off id that would bill and count as a new worker on every call.
+ * Permanent: a platform compatibility setting, not a legacy path.
  */
 export async function createStableDynamicWorkerId(input: {
 	userId: string | null
@@ -70,6 +71,7 @@ export const dynamicWorkerBillingKeyVersion = 1
  * those still loads a fresh isolate under a new LOADER id
  * ({@link createStableDynamicWorkerId}), but it does not start a new billable
  * worker for unchanged user code on the same UTC day.
+ * Permanent: a platform compatibility setting, not a legacy path.
  */
 export async function createDynamicWorkerBillingId(input: {
 	userId: string | null

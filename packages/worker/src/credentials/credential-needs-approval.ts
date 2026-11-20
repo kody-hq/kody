@@ -107,7 +107,10 @@ function supplierChanged(prior: CredentialNeed, next: CredentialNeed) {
 	return before !== after && !(before === 'publisher' && after === null)
 }
 
-/** Who fills the need: publisher (or its older alias), executor, or legacy. */
+/**
+ * Who fills the need: publisher (or its older alias), executor, or legacy.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
+ */
 function needSupplier(
 	need: Pick<CredentialNeed, 'supplier' | 'ownerCredentialForVisitors'>,
 ) {

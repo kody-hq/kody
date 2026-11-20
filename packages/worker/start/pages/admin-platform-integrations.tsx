@@ -467,16 +467,15 @@ export function AdminPlatformIntegrationsPage(props: {
 					columns={[
 						{ key: 'slug', label: 'Slug', primary: true },
 						{ key: 'provider', label: 'Provider' },
-						{ key: 'label', label: 'Label', drop: 1 },
+						{ key: 'label', label: 'Label' },
 						{ key: 'enabled', label: 'Enabled' },
 						{ key: 'visibility', label: 'Visibility' },
 						{
 							key: 'connections',
 							label: 'Connections',
 							align: 'end',
-							drop: 2,
 						},
-						{ key: 'updated', label: 'Updated', drop: 3 },
+						{ key: 'updated', label: 'Updated' },
 					]}
 					rows={filteredApps.map((app) => ({
 						id: app.slug,

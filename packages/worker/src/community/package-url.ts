@@ -278,6 +278,7 @@ export async function resolvePackagePageUrl(input: {
 // and delete still clear leftover `package_kody_id_redirects` rows so a claimed
 // slug cannot keep redirecting through the legacy read fallback. Reads try the
 // slug table first; the legacy table drops in phase 4 (Kent gate).
+// Remove when: #1909 phase 4 drops `package_kody_id_redirects`.
 const packageSlugRedirectWriteTable = {
 	table: 'package_slug_redirects',
 	slugColumn: 'old_slug',
@@ -327,6 +328,7 @@ export async function retirePackageSlug(input: {
 	await input.db.batch([
 		// Drop any leftover legacy row for the new live slug so it cannot
 		// shadow the package through the read fallback.
+		// Permanent: a renamed account keeps its immutable org slug.
 		...packageSlugRedirectCleanupTables.map(
 			({ table: cleanupTable, slugColumn: cleanupColumn }) =>
 				input.db

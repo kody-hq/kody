@@ -85,12 +85,14 @@ type SyncArtifactSourceInput = {
 	 * trees without README/AGENTS stay migratable. Omit (default true) for
 	 * packageSave and other authoring lanes — same default as
 	 * `publishFromExternalRef`.
+	 * Remove when: a codemod rescan finds no published package that still uses these patterns.
 	 */
 	requirePackageDocs?: boolean
 	/**
 	 * Forwarded to `runRepoChecks`. Platform codemods pass `false` so legacy
 	 * credential patterns stay migratable until phase 2/3 of #3836. Omit
 	 * (default true) for authoring publish.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 	 */
 	enforceCredentialStamp?: boolean
 	/**

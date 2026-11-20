@@ -21,6 +21,7 @@ import { personalOrgIdSql } from '#worker/orgs/personal-org-sql.ts'
 /**
  * Resolve the personal org id for a gift caller that may pass either the
  * person id or the personal org id (legacy equal-id and distinct signup).
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 async function resolvePersonalOrgIdForGift(
 	db: D1Database,

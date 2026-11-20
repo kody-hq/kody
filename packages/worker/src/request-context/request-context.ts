@@ -364,6 +364,7 @@ export function deriveRequestContext(input: {
  * The starter's role carries over only within the org it was held in. Legacy
  * lineage without `membership` keeps the run identity's role only when the
  * starter is that identity (a personal org's owner); anyone else gets no role.
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 function inheritedMembership(
 	lineage: RequestLineage,
@@ -375,6 +376,7 @@ function inheritedMembership(
 		// Distinct personal orgs always persist membership on lineage
 		// (requestLineage); do not infer Owner from credential.orgId alone
 		// (that would promote team Members).
+		// Remove when: no org has `entitlement_ladder = 'legacy'`.
 		const personalOwner =
 			String(lineage.actor.userId) === String(binding.org.id)
 		return personalOwner && binding.role ? { role: binding.role } : null

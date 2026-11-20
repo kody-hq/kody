@@ -697,6 +697,7 @@ async function ensurePreviewResources(options: CliOptions) {
 		// the origin never needs the full `index.ts` bootstrap. The full entry
 		// is only the fallback for a legacy preview script that still owns
 		// transferred classes (see planOriginPreviewDeploy).
+		// Permanent: stored data or clients from before this change still exist.
 		...(deployPlan.originEntry === 'slim'
 			? { mainEntryPath: defaultProductionEntryPath }
 			: {}),

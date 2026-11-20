@@ -60,6 +60,7 @@ export type CapabilityApiOperation = ApiOperationBase & {
 	 * the document stays unique while legacy path callers keep working.
 	 * Prefer putting the body-friendly path on `path` when identity inputs are
 	 * XOR (e.g. `repo_id` | `name`).
+	 * Remove when: request logs show no caller on the legacy path alias.
 	 */
 	aliasPaths?: ReadonlyArray<string>
 	/**
@@ -398,6 +399,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				// path stays as an HTTP alias (and a distinct OpenAPI
 				// operationId) so existing `/v1/packages/{package_id}/git-remote`
 				// callers keep working. Same pattern as repoGetGitRemote.
+				// Remove when: request logs show no caller on the legacy path alias.
 				aliasPaths: ['/v1/packages/{package_id}/git-remote'],
 			},
 		],
@@ -414,6 +416,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				// Preferred body-only path so CLI/OpenAPI can pass `name` or
 				// `package_id` without a path param. Legacy path stays as an
 				// HTTP alias.
+				// Remove when: request logs show no caller on the legacy path alias.
 				aliasPaths: ['/v1/packages/{package_id}/external-push'],
 			},
 		],
@@ -451,6 +454,7 @@ export const apiOperations: ReadonlyArray<ApiOperation> = [
 				// alias (and a distinct OpenAPI operationId) so existing
 				// `/v1/repos/{repo_id}/git-remote` callers keep working;
 				// `{repo_id}` also accepts a repo name (see resolveOwnedUserRepo).
+				// Remove when: request logs show no caller on the legacy path alias.
 				aliasPaths: ['/v1/repos/{repo_id}/git-remote'],
 			},
 		],

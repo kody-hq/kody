@@ -96,7 +96,10 @@ export type CredentialFillPlacementObservationView = {
 export type AccountCredentialDetail = {
 	id: string
 	canApproveRequestProfile?: boolean
-	/** The legacy placeholder that fills this value on its hosts, if any. */
+	/**
+	 * The legacy placeholder that fills this value on its hosts, if any.
+	 * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+	 */
 	placeholder: string | null
 	/** Team orgs a personal credential is granted to. */
 	grants: Array<{ orgSlug: string; orgName: string; grantedAt: string }>

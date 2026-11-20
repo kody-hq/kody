@@ -646,6 +646,7 @@ type MailboxCoreRpc = {
 	/**
 	 * Fence an already-missing USER message before compatibility R2/D1 cleanup.
 	 * Refuses to tombstone when Mailbox metadata became present concurrently.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	tombstoneMissingMessage: (input: {
 		ownerId: OwnerId

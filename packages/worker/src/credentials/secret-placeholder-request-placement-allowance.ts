@@ -4,6 +4,7 @@
  * effective fill placement the fetch gateway enforces, so a legacy Key with no
  * stored placement and an observed opt-in counts as allowed. Each hit the
  * credential does not allow carries the owner's approval link.
+ * Permanent: usernames created before the DNS-label rule keep working.
  */
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { readStoredCredentialPlacement } from '#worker/credentials/credential-fields.ts'

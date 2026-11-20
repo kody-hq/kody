@@ -239,11 +239,13 @@ export const EnvSchema = object({
 	// the canonical `APP_BASE_URL` host during a domain migration. The deploy
 	// attaches these as custom domains so flipping APP_BASE_URL never detaches
 	// the old origin or deletes its DNS.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	APP_LEGACY_HOSTS: optionalNonEmptyStringSchema,
 	// Exact string 'true' enables 308 redirects from legacy hosts to the
 	// canonical origin for safe browser GET/HEAD requests. Protocol surfaces
 	// (/mcp, OAuth, well-known, webhooks, email) are never redirected. Leave
 	// unset to dual-serve legacy hosts without redirecting browser navigation.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	APP_LEGACY_REDIRECT: optionalNonEmptyStringSchema,
 	// Optional in env schema so local/preview/test can omit them. Production
 	// boot (getEnv) and request-time public-form-protection refuse when either

@@ -256,6 +256,7 @@ const maxEmailLocalPartLength = 64
  * on an accepted user email domain. Legacy domains map to the canonical
  * domain. Returns null for anything the sender does not own: another
  * handle, another domain, an empty or malformed tag.
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export function resolveOwnedSenderAddress(input: {
 	address: string

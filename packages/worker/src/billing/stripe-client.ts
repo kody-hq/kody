@@ -1272,6 +1272,7 @@ export async function createProratedRefundCreditNote(
  * the supplied keys; other metadata on the object is left alone. Used when
  * Checkout created the object without org keys (legacy sessions) or when an
  * operator backfills attribution.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export async function mergeStripeObjectMetadata(
 	env: StripeEnv,

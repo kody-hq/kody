@@ -8,6 +8,7 @@ export type ProvisionPersonalOrgInput = {
 	 * Org row id. Signup callers pass a freshly minted id (phase 2 #3053).
 	 * Seeds and `ensurePersonalOrg` may omit it to keep `orgs.id = stableUserId`
 	 * for fixtures that still model the legacy equal-id shape.
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	orgId?: string
 	username: string

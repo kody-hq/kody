@@ -455,6 +455,7 @@ export async function runSavedPackageModuleOnce(
 				// the registry must not begin/finish a second one for this run.
 				// Still pass the observed surface so UWD is not inferred as
 				// package_export for subscription / webhook keyed runs.
+				// Permanent: stored data or clients from before this change still exist.
 				runRecord: externalHandle ? null : runRecord,
 				runSurface:
 					runRecord?.surface ??

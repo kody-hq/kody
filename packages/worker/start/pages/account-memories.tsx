@@ -354,9 +354,9 @@ export function AccountMemoriesPage({
 						columns={[
 							{ key: 'subject', label: 'Subject', primary: true },
 							{ key: 'status', label: 'Status' },
-							{ key: 'category', label: 'Category', drop: 2 },
-							{ key: 'tags', label: 'Tags', drop: 1 },
-							{ key: 'summary', label: 'Summary', drop: 3 },
+							{ key: 'category', label: 'Category' },
+							{ key: 'tags', label: 'Tags' },
+							{ key: 'summary', label: 'Summary' },
 						]}
 						rows={filteredMemories.map((item) => ({
 							id: item.id,

@@ -249,6 +249,7 @@ function subscriptionRanNoHandler(response: { status: number; body: unknown }) {
  * Walks all forks of the listing, once each, including when the forker's
  * follow is paused or missing. Payload shape matches the historical fork
  * dispatcher. A 429 stays inside the alias helper and does not throw.
+ * Remove when: no package subscription listens for the fork upstream-updated alias.
  */
 export async function deliverListingForkAliases(input: {
 	env: Env

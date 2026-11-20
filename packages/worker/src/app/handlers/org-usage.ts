@@ -163,7 +163,10 @@ export async function loadOrgUsagePageResult(input: {
 	return { kind: 'data' as const, payload }
 }
 
-/** Personal-org usage URL for legacy `/account/usage` and `/account/credits`. */
+/**
+ * Personal-org usage URL for legacy `/account/usage` and `/account/credits`.
+ * Remove when: legacy `/account/usage` and `/account/credits` links get no traffic.
+ */
 export function personalOrgUsageRedirectUrl(input: {
 	requestUrl: string
 	slug: string

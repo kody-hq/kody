@@ -20,7 +20,10 @@ import {
 	type RequestSource,
 } from '#worker/request-context/request-context.ts'
 
-/** Legacy agent props persist in Durable Object storage, so they stay wire-shaped. */
+/**
+ * Legacy agent props persist in Durable Object storage, so they stay wire-shaped.
+ * Permanent: stored data or clients from before this change still exist.
+ */
 export type McpServerProps = McpCallerContextWire
 
 type McpCallerContextWireInput = {

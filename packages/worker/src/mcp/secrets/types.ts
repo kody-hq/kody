@@ -63,6 +63,7 @@ export type SecretMetadata = {
 	/**
 	 * How fill placement was chosen. Null/omitted on legacy rows. See
 	 * `CredentialPlacementOrigin`.
+	 * Remove when: no published package declares `ownerCredentialForVisitors`.
 	 */
 	placementOrigin?: CredentialPlacementOrigin | null
 	/**

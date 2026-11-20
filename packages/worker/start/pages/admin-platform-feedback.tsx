@@ -205,9 +205,9 @@ export function AdminPlatformFeedbackPage({
 					}
 					columns={[
 						{ key: 'category', label: 'Category', primary: true },
-						{ key: 'summary', label: 'Summary', drop: 1 },
+						{ key: 'summary', label: 'Summary' },
 						{ key: 'status', label: 'Status' },
-						{ key: 'id', label: 'Feedback id', drop: 3 },
+						{ key: 'id', label: 'Feedback id' },
 						{ key: 'created', label: 'Created' },
 					]}
 					rows={data.feedback.map((feedback) => ({

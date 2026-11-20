@@ -1088,6 +1088,7 @@ export function resolveUserScopedTargetTable(
  * Distinct personal orgs (#3053) store some rows under the person id and some
  * under the org id; matching both cleans both without moving legacy equal-id
  * rows.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 function storageAndPersonIds(input: {
 	mcpUserId: string
@@ -1121,6 +1122,7 @@ export function buildUserScopedTargetMatch(input: {
 	 * Person id when it may differ from {@link mcpUserId} (storage / personal
 	 * org). Omitted or equal keeps single-id matching for legacy equal-id
 	 * accounts and team-org purge.
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	personUserId?: string
 }): UserScopedTargetMatch {

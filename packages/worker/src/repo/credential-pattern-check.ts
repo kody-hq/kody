@@ -60,6 +60,7 @@ const credentialPatternLabelsDoc =
 
 /**
  * Notes for legacy references whose requests need a change to work as written.
+ * Permanent: stored data or clients from before this change still exist.
  */
 const credentialPatternNotes: Partial<Record<LegacyCredentialPattern, string>> =
 	{

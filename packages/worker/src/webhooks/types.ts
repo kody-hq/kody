@@ -26,6 +26,7 @@ export type WebhookVerificationConfig = {
 	/**
 	 * Optional legacy / provider-issued secret-store name. Omit for
 	 * package-owned HMAC minted onto the webhook endpoint record.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	secretName?: string
 	encoding: WebhookSignatureEncoding

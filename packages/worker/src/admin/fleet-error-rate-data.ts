@@ -164,6 +164,7 @@ FORMAT JSON
  * use this under a per-account filter: one person may have both a legacy
  * person id and a personal org id in `blob1`, which would inflate the count
  * to 2 — callers clamp filtered rows to 0/1 instead.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function buildAdminFleetErrorRateDailyUsersQuery(input: {
 	dataset: string

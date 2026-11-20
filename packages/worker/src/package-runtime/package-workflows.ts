@@ -382,6 +382,7 @@ async function workflowRequestSource(
 	const orgId = String(payload.userId)
 	// Legacy equal-id personal orgs are owned by the person themself, and a
 	// lineage from another org carries no role here (inheritedMembership).
+	// Remove when: every secret credential row has a stored placement (null placements backfilled).
 	if (
 		!actorId ||
 		actorId === orgId ||

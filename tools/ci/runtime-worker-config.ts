@@ -287,6 +287,7 @@ function addPackageAppRoute(runtimeEnv: JsonRecord, envName: string) {
 	// Catch-all only on the canonical SaaS zone. Legacy dual-served hosts may
 	// sit in a shared zone (e.g. legacy-apps.example.org → example.org); a
 	// `*/*` there would steal unrelated hostnames without more-specific routes.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const canonicalHostname = hostnames[0]
 	if (!canonicalHostname) return
 	const canonicalZoneName = readPackageAppZoneName(canonicalHostname)

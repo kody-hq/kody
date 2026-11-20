@@ -288,6 +288,7 @@ export async function mintCliCredentialBootstrap(input: {
 	 * Defaults to `user` so new CLI credentials cover every org the person
 	 * can access (selected per request with `?org=`). Pass `org` only when
 	 * deliberately minting a legacy org-bound token.
+	 * Permanent: org-bound and legacy-scoped tokens stay valid until they expire or are revoked.
 	 */
 	orgBinding?: ApiTokenOrgBinding
 	name?: string
