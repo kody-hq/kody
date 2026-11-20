@@ -82,7 +82,10 @@ export function WorkspaceUploads({ children }: { children: ReactNode }) {
 	const jobs = useSyncExternalStore(queue.subscribe, queue.read, queue.read)
 	const setJobs = queue.update
 	const patch = queue.patch
-	useResourceLifetime(() => queue.abortAll, [queue])
+	useResourceLifetime(() => {
+		queue.resume()
+		return queue.stop
+	}, [queue])
 	const running = jobs.filter((job) => activeStatus(job.status)).length
 	const failed = jobs.filter((job) => job.status === 'failed').length
 	const complete = jobs.filter((job) => job.status === 'complete').length
@@ -357,7 +360,7 @@ function createUploadQueue(onUploaded: () => void) {
 	const warn = (event: BeforeUnloadEvent) => event.preventDefault()
 	function set(next: UploadJob[]) {
 		jobs = next
-		const running = jobs.some((job) => activeStatus(job.status))
+		const running = !stopped && jobs.some((job) => activeStatus(job.status))
 		if (running !== warning) {
 			warning = running
 			if (running) window.addEventListener('beforeunload', warn)
@@ -460,9 +463,14 @@ function createUploadQueue(onUploaded: () => void) {
 		update: (change: (items: UploadJob[]) => UploadJob[]) => set(change(jobs)),
 		patch,
 		abort: (id: string) => active.get(id)?.abort(),
-		abortAll: () => {
+		resume: () => {
+			stopped = false
+			set(jobs)
+		},
+		stop: () => {
 			stopped = true
 			for (const controller of active.values()) controller.abort()
+			set(jobs)
 		},
 	}
 }
