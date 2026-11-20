@@ -78,6 +78,20 @@ reports on the current test file.
 deeper) exceeds the search body budget: `maxChars` minus the `guide:{id}` entity
 header and mode line. Helpers live in `guide-section-budget.js`.
 
+`kody-custom/no-test-hooks-in-production` keeps production files identical under
+tests: no `*ForTests` / `*ForTesting` declarations and no test-runner checks
+(`process.env.VITEST`, `NODE_ENV === 'test'`). Test files, test-support modules,
+fixtures, and `e2e/` are exempt. Per-isolate caches use `isolateState` /
+`isolateCollection` from `@kody-internal/shared/isolate-state.ts`, and tests
+reset them with `resetIsolateState()` from `isolate-state-test-support.ts`.
+`tools/oxlint/no-test-hooks-in-production.node.test.ts` runs the linter on a
+fixture.
+
+`react/exhaustive-deps` runs at error. Read values an effect should not react to
+through `useEffectEvent`. Unused disable directives are errors
+(`reportUnusedDisableDirectives` in `.oxlintrc.json`), so a directive goes away
+with the problem it silenced.
+
 Repo-wide syntactic bans that do not need a custom visitor live in the same
 config as built-in rules: `typescript/no-explicit-any` and
 `eslint/no-warning-comments` for `TODO` / `FIXME` / `HACK`. File-size allowlists

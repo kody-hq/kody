@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { beforeEach, expect, test, vi } from 'vitest'
@@ -5,10 +6,7 @@ import {
 	assignUserRole,
 	removeUserRole,
 } from '#worker/identity/permissions-db.ts'
-import {
-	clearMcpAuthCacheForTests,
-	mcpAuthCacheSizeForTests,
-} from '#worker/mcp-auth-cache.ts'
+import { readMcpAuthCache } from '#worker/mcp-auth-cache.ts'
 import { buildMcpAuthContextCached } from '#worker/mcp-auth-user-context.ts'
 import {
 	addOrgMember,
@@ -54,7 +52,7 @@ vi.mock('#worker/jobs/manager-client.ts', () => ({
 }))
 
 beforeEach(() => {
-	clearMcpAuthCacheForTests()
+	resetIsolateState()
 })
 
 async function setup() {
@@ -140,7 +138,7 @@ test('a warm entry skips the roles and binding reads but a just-demoted owner is
 	})
 	expect(first?.orgBinding?.role).toBe('owner')
 	expect(first?.orgBinding?.org.id).toBe(org.id)
-	expect(mcpAuthCacheSizeForTests()).toBe(1)
+	expect(readMcpAuthCache(token)).not.toBeNull()
 	const missStatements = statements.length
 	expect(statements.some((sql) => /FROM org_memberships/i.test(sql))).toBe(true)
 	expect(statements.some((sql) => /FROM user_roles/i.test(sql))).toBe(true)
@@ -265,7 +263,7 @@ test('suspension and deletion flags are read fresh on every request and evict th
 		accessToken: token,
 	})
 	expect(deleting).toBeNull()
-	expect(mcpAuthCacheSizeForTests()).toBe(0)
+	expect(readMcpAuthCache(token)).toBeNull()
 })
 
 test('entries are keyed by token, so another token for the same user is derived on its own', async () => {
@@ -276,7 +274,8 @@ test('entries are keyed by token, so another token for the same user is derived 
 	statements.length = 0
 	await buildMcpAuthContextCached(env, { grantProps, accessToken: 'b' })
 	expect(statements.some((sql) => /FROM org_memberships/i.test(sql))).toBe(true)
-	expect(mcpAuthCacheSizeForTests()).toBe(2)
+	expect(readMcpAuthCache('a')).not.toBeNull()
+	expect(readMcpAuthCache('b')).not.toBeNull()
 })
 
 test('an invite-link join shows up on the very next request and leaving removes the binding immediately', async () => {
@@ -287,7 +286,7 @@ test('an invite-link join shows up on the very next request and leaving removes 
 
 	// Warm a "not a member" decision for the joiner's token first.
 	expect(await loadBinding(env, grantProps, token)).toBeNull()
-	expect(mcpAuthCacheSizeForTests()).toBe(1)
+	expect(readMcpAuthCache(token)).not.toBeNull()
 
 	const tokenHash = 'invite-link-token-hash'
 	await createOrgInviteLink({

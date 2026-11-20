@@ -1,9 +1,9 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env, exports } from 'cloudflare:workers'
 import { beforeEach, expect, test } from 'vitest'
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 import { packageAppOauthPaths } from '#universal/package-app-oauth-paths.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
@@ -53,7 +53,7 @@ function remainingCookiesAfterLogout(
 }
 
 test('shared-host logout clears only the requesting app session', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	configureOrigins()
 
 	const expiresAt = Date.now() + 60 * 60 * 1000
@@ -131,7 +131,7 @@ test('shared-host logout clears only the requesting app session', async () => {
 })
 
 test('shared-host logout prefers Referer leaf over a sibling ?app=', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	configureOrigins()
 	const expiresAt = Date.now() + 60 * 60 * 1000
 	const session = { stableUserId, username: ownerUsername }
@@ -186,7 +186,7 @@ test('shared-host logout prefers Referer leaf over a sibling ?app=', async () =>
 })
 
 test('shared-host logout without Referer does not guess a per-app cookie', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	configureOrigins()
 	const expiresAt = Date.now() + 60 * 60 * 1000
 	const cookies = await createPackageAppSessionCookie({

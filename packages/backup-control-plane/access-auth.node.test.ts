@@ -1,12 +1,9 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import assert from 'node:assert/strict'
 
 import { test } from 'vitest'
 
-import {
-	assertSameOriginMutation,
-	resetAccessJwksCacheForTests,
-	verifyAccessJwt,
-} from './access-auth.ts'
+import { assertSameOriginMutation, verifyAccessJwt } from './access-auth.ts'
 import { BackupError } from './backup-policy.ts'
 import type { BackupEnvironment } from './backup-types.ts'
 import {
@@ -31,7 +28,7 @@ function verify(
 }
 
 test('verifyAccessJwt accepts self-signed RS256 Access assertions, including service tokens with common_name', async () => {
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const { fetcher, sign } = accessSigner()
 	const env = environment()
 	const identity = await verify(env, sign(accessClaims(env)), fetcher)
@@ -50,7 +47,7 @@ test('verifyAccessJwt accepts self-signed RS256 Access assertions, including ser
 })
 
 test('verifyAccessJwt rejects wrong aud, email, iss, expiry, signature, and missing header', async () => {
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const { fetcher, sign } = accessSigner()
 	const env = environment()
 
@@ -81,7 +78,7 @@ test('verifyAccessJwt rejects wrong aud, email, iss, expiry, signature, and miss
 })
 
 test('unknown kid refreshes once and JWKS fetch failures use structured errors', async () => {
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const env = environment()
 	const { jwks, sign } = accessSigner()
 	const unknownKidJwt = sign(accessClaims(env), 'missing-kid')
@@ -102,7 +99,7 @@ test('unknown kid refreshes once and JWKS fetch failures use structured errors',
 	)
 	assert.equal(fetches, 2) // cooldown: no additional JWKS fetch
 
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	await assert.rejects(
 		verify(env, sign(accessClaims(env)), async () => {
 			throw new DOMException('The operation was aborted', 'AbortError')

@@ -1,8 +1,8 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:workers'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { ensureUserStorageBucketsTestSchema } from '#worker/storage-buckets/test-schema.ts'
-import { clearStorageBucketRegistrationDedupeForTests } from '#worker/storage-buckets/service.ts'
 import {
 	storageRunnerRpc,
 	storageRunnerTransferStub,
@@ -19,7 +19,7 @@ async function seedSource() {
 	silenceIncidentalRuntimeWarnings()
 	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 	const fromUserId = ownerIdFromStored(`org-from-${crypto.randomUUID()}`)
 	const toUserId = ownerIdFromStored(`org-to-${crypto.randomUUID()}`)
 	const storageId = `package:${crypto.randomUUID()}`

@@ -80,11 +80,11 @@ function SharedFile() {
 }
 
 function PublicEmbed({ id, depth }: { id: string; depth: number }) {
-	const params = Route.useParams(),
+	const { orgSlug, rootId, token } = Route.useParams(),
 		[result, setResult] = useState<Result | null>(null)
 	useEffect(() => {
 		let active = true
-		void loadPublicFile({ data: { ...params, itemId: id } }).then(
+		void loadPublicFile({ data: { orgSlug, rootId, token, itemId: id } }).then(
 			(value) => {
 				if (active) setResult(value)
 			},
@@ -95,7 +95,7 @@ function PublicEmbed({ id, depth }: { id: string; depth: number }) {
 		return () => {
 			active = false
 		}
-	}, [params.orgSlug, params.rootId, params.token, id])
+	}, [orgSlug, rootId, token, id])
 	if (!result) return <LoadingIndicator label="Loading file" />
 	if (!result.ok) return <span>File unavailable</span>
 	return (

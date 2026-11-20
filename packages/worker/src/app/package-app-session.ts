@@ -1,3 +1,7 @@
+import {
+	isolateCollection,
+	isolateState,
+} from '@kody-internal/shared/isolate-state.ts'
 import { createCookie } from 'remix/cookie'
 import { isSecureRequest } from '#app/auth-session.ts'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
@@ -71,23 +75,25 @@ export function remainingCookieMaxAgeSeconds(
 	return remaining > 0 ? remaining : null
 }
 
-let cachedSecret: {
-	sourceSecret: string
-	derivedSecret: string
-} | null = null
+const cachedSecret = isolateState(
+	(): { sourceSecret: string; derivedSecret: string } | null => null,
+)
 
-const cookieCache = new Map<string, ReturnType<typeof createCookie>>()
+const cookieCache = isolateCollection(
+	new Map<string, ReturnType<typeof createCookie>>(),
+)
 
 async function getDerivedSecret(env: Env) {
 	const secret = env.COOKIE_SECRET?.trim()
 	if (!secret) {
 		throw new Error('Missing COOKIE_SECRET for package app session signing.')
 	}
-	if (cachedSecret?.sourceSecret === secret) return cachedSecret.derivedSecret
+	if (cachedSecret.current?.sourceSecret === secret)
+		return cachedSecret.current.derivedSecret
 	const derivedSecret = await sha256Base64Url(
 		`${packageAppSessionSecretPurpose}:${secret}`,
 	)
-	cachedSecret = { sourceSecret: secret, derivedSecret }
+	cachedSecret.current = { sourceSecret: secret, derivedSecret }
 	cookieCache.clear()
 	return derivedSecret
 }
@@ -128,12 +134,6 @@ async function getPackageAppSessionCookie(
 		await packageAppSessionCookieName(slug, secure),
 		secure,
 	)
-}
-
-/** Clears the derived cookie cache so tests can swap secrets. */
-export function resetPackageAppSessionCookieForTests() {
-	cachedSecret = null
-	cookieCache.clear()
 }
 
 function isStoredPackageAppSession(

@@ -1,5 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+	useEffectEvent,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type ReactNode,
+} from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 
 /** Window rows while retaining the focused item, including across resize. */
@@ -63,7 +69,7 @@ export function VirtualCollection({
 		virtual.measure()
 	}, [rowHeight, virtual])
 
-	useLayoutEffect(() => {
+	const revealActiveKey = useEffectEvent(() => {
 		if (activeKey && keys.includes(activeKey)) {
 			focusTarget.current = activeKey
 			setFocused(activeKey)
@@ -75,6 +81,9 @@ export function VirtualCollection({
 			if (index >= 0)
 				virtual.scrollToIndex(Math.floor(index / columns), { align: 'auto' })
 		}
+	})
+	useLayoutEffect(() => {
+		revealActiveKey()
 	}, [activeKey, columns])
 
 	function focusIndex(index: number) {
@@ -102,6 +111,7 @@ export function VirtualCollection({
 			element.focus({ preventScroll: true })
 		}
 	})
+	const focusIndexFromKeyboard = useEffectEvent(focusIndex)
 	useLayoutEffect(() => {
 		const parent = root.current?.parentElement
 		if (parent?.tagName !== 'NAV') return
@@ -121,7 +131,7 @@ export function VirtualCollection({
 			event.stopPropagation()
 			const index =
 				event.key === 'End' || event.key === 'ArrowUp' ? keys.length - 1 : 0
-			focusIndex(index)
+			focusIndexFromKeyboard(index)
 		}
 		parent.addEventListener('keydown', handle, true)
 		return () => parent.removeEventListener('keydown', handle, true)

@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -9,7 +10,6 @@ import type * as PackageAppAuthority from './package-app-authority.ts'
 import {
 	createPackageAppRequestVisit,
 	mintPackageAppVisitTicket,
-	resetPackageAppVisitNoncesForTests,
 } from './package-app-visit-ticket.ts'
 
 const seenBindings: Array<string> = []
@@ -51,7 +51,7 @@ vi.mock('./package-app-authority.ts', async (importOriginal) => {
 })
 
 test('credential client binding comes from the visit ticket so open and sign share it across RPC instances', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	seenBindings.length = 0
 	const sharedBinding = 'run:shared-across-rpc-instances'
 	const visitAudience = {
@@ -174,7 +174,7 @@ test('plain credential(key) on an executor need is refused before any credential
 })
 
 test('an executor-only ticket answers identity only and acts as no visitor elsewhere', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const visitAudience = {
 		host: 'https://example.com',
 		packageId: 'package-1',
@@ -252,7 +252,7 @@ test('an executor-only ticket answers identity only and acts as no visitor elsew
 })
 
 test('an anonymous request carries its own binding across RPC instances and stays anonymous', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	seenBindings.length = 0
 	const visitAudience = {
 		host: 'https://example.com',

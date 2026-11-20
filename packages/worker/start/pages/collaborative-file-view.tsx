@@ -3,6 +3,7 @@ import {
 	lazy,
 	Suspense,
 	useEffect,
+	useEffectEvent,
 	useLayoutEffect,
 	type RefObject,
 	useRef,
@@ -125,18 +126,19 @@ function CollaborationView({
 		client.getSnapshot,
 	)
 	const refreshedVersion = useRef(props.revisionId)
+	const snapshotRevisionId = state.snapshot?.revisionId
+	const { revisionId: propsRevisionId, onVersionChange } = props
 	useEffect(() => {
-		const revision = state.snapshot?.revisionId
 		if (
-			revision &&
-			revision !== props.revisionId &&
-			revision !== refreshedVersion.current &&
-			props.onVersionChange
+			snapshotRevisionId &&
+			snapshotRevisionId !== propsRevisionId &&
+			snapshotRevisionId !== refreshedVersion.current &&
+			onVersionChange
 		) {
-			refreshedVersion.current = revision
-			props.onVersionChange()
+			refreshedVersion.current = snapshotRevisionId
+			onVersionChange()
 		}
-	}, [state.snapshot?.revisionId, props.revisionId, props.onVersionChange])
+	}, [snapshotRevisionId, propsRevisionId, onVersionChange])
 	const { data: threads = [] } = useLiveQuery({
 		query: (q) => q.from({ thread: client.threads.options }),
 	})
@@ -504,7 +506,7 @@ function CollaborationView({
 					?.scrollIntoView({ block: 'center', behavior: 'smooth' })
 		}
 	}
-	useLayoutEffect(() => {
+	const scrollToActiveAnchor = useEffectEvent(() => {
 		if (!open || !active) return
 		const thread = commentThreads.find((item) => item.id === active)
 		if (
@@ -516,6 +518,9 @@ function CollaborationView({
 		documentRoot.current
 			?.querySelector(`[data-file-anchor-thread~="${CSS.escape(active)}"]`)
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+	})
+	useLayoutEffect(() => {
+		scrollToActiveAnchor()
 	}, [active, open])
 
 	const syncStatusLabel = {

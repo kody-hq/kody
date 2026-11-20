@@ -7,6 +7,7 @@
  * on a request to one of the credential's hosts by the credential's `inject`.
  * Neither the fields, the login response, nor the session ever reach code.
  */
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import { z } from 'zod'
 import { readBoundedBody } from '#mcp/capabilities/integrations/read-bounded-body.ts'
 import { isPublicFetchHostname } from '#mcp/events/ssrf.ts'
@@ -175,13 +176,10 @@ type ExchangeResult = {
  * starts a new session. The durable copy is in `login_credential_sessions`;
  * `authorize` still runs on every resolution before a session is used.
  */
-const sessions = new Map<string, Session>()
-const pendingSessions = new Map<string, Promise<ObtainedLoginSession>>()
-
-export function clearLoginSessionsForTests() {
-	sessions.clear()
-	pendingSessions.clear()
-}
+const sessions = isolateCollection(new Map<string, Session>())
+const pendingSessions = isolateCollection(
+	new Map<string, Promise<ObtainedLoginSession>>(),
+)
 
 function misconfigured(): never {
 	throw new CredentialRequestRefusedError(

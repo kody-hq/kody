@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { listRepoSessionDueOwnersPage } from '#worker/repo/repo-session-due-owners.ts'
 import { repoSessionIndexRpc } from '#worker/repo/repo-session-index-client.ts'
@@ -72,9 +73,11 @@ export const storageBucketEstimateRefreshMinIntervalMs = 15_000
 
 /** Bound in-isolate dedupe so a long-lived isolate cannot grow without limit. */
 const maxRegisteredBucketKeys = 4_096
-const registeredBucketKeys = new Set<string>()
-const estimateRefreshAttemptsAtMs = new Map<string, number>()
-const pendingRegistrations = new Set<Promise<unknown>>()
+const registeredBucketKeys = isolateCollection(new Set<string>())
+const estimateRefreshAttemptsAtMs = isolateCollection(new Map<string, number>())
+const pendingRegistrations = isolateCollection(new Set<Promise<unknown>>(), {
+	pending: (tasks) => tasks,
+})
 
 function registrationDedupeKey(userId: OwnerId, storageId: string) {
 	return `${userId}\u0000${storageId}`
@@ -643,18 +646,4 @@ function normalizeInventoriedStorageBucketKind(
 		default:
 			return 'unknown'
 	}
-}
-
-/**
- * Test helper: await fire-and-forget registration and estimate writes
- * scheduled in this isolate.
- */
-export async function flushStorageBucketRegistrationsForTests(): Promise<void> {
-	await Promise.all(pendingRegistrations)
-}
-
-/** Test helper: clear the in-isolate registration dedupe and refresh throttle. */
-export function clearStorageBucketRegistrationDedupeForTests(): void {
-	registeredBucketKeys.clear()
-	estimateRefreshAttemptsAtMs.clear()
 }

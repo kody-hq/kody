@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:workers'
 import { expect, test } from 'vitest'
 import {
@@ -7,7 +8,6 @@ import {
 import { repoSessionRpc } from '#worker/repo/repo-session-rpc.ts'
 import { backfillStorageBucketEstimates } from './estimate-backfill.ts'
 import {
-	clearStorageBucketRegistrationDedupeForTests,
 	listUserStorageBucketEstimates,
 	registerStorageBucket,
 } from './service.ts'
@@ -24,7 +24,7 @@ test(
 	{ timeout: testTimeout },
 	async () => {
 		await ensureUserStorageBucketsTestSchema(env.APP_DB)
-		clearStorageBucketRegistrationDedupeForTests()
+		resetIsolateState()
 		const userId = `usb-backfill-${crypto.randomUUID()}`
 		const bucketA = `exec:${crypto.randomUUID()}`
 		const bucketB = `package:${crypto.randomUUID()}`

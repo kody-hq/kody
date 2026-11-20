@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import { signJwt } from '#worker/mcp/capabilities/secrets/jwt-signing.ts'
 
 type RsaPublicJwk = {
@@ -6,10 +7,12 @@ type RsaPublicJwk = {
 	e: string
 }
 
-let cachedPrivateKey: CryptoKey | null = null
-let cachedPrivateKeyPem: string | null = null
-let cachedPublicJwk: (RsaPublicJwk & { kid: string }) | null = null
-let cachedPublicJwkKid: string | null = null
+const signingKeyCache = isolateState(() => ({
+	privateKey: null as CryptoKey | null,
+	privateKeyPem: null as string | null,
+	publicJwk: null as (RsaPublicJwk & { kid: string }) | null,
+	publicJwkKid: null as string | null,
+}))
 
 function pemToArrayBuffer(pem: string) {
 	const base64 = pem
@@ -28,8 +31,11 @@ function pemToArrayBuffer(pem: string) {
 }
 
 async function importOidcSigningPrivateKey(privateKeyPem: string) {
-	if (cachedPrivateKey && cachedPrivateKeyPem === privateKeyPem) {
-		return cachedPrivateKey
+	if (
+		signingKeyCache.current.privateKey &&
+		signingKeyCache.current.privateKeyPem === privateKeyPem
+	) {
+		return signingKeyCache.current.privateKey
 	}
 	try {
 		const key = await crypto.subtle.importKey(
@@ -39,10 +45,10 @@ async function importOidcSigningPrivateKey(privateKeyPem: string) {
 			true,
 			['sign'],
 		)
-		cachedPrivateKey = key
-		cachedPrivateKeyPem = privateKeyPem
-		cachedPublicJwk = null
-		cachedPublicJwkKid = null
+		signingKeyCache.current.privateKey = key
+		signingKeyCache.current.privateKeyPem = privateKeyPem
+		signingKeyCache.current.publicJwk = null
+		signingKeyCache.current.publicJwkKid = null
 		return key
 	} catch {
 		throw new Error(
@@ -78,8 +84,11 @@ export function getOidcSigningPrivateKeyPem(env: Env) {
 
 export async function getOidcSigningPublicJwk(env: Env) {
 	const kid = getOidcSigningKeyId(env)
-	if (cachedPublicJwk && cachedPublicJwkKid === kid) {
-		return cachedPublicJwk
+	if (
+		signingKeyCache.current.publicJwk &&
+		signingKeyCache.current.publicJwkKid === kid
+	) {
+		return signingKeyCache.current.publicJwk
 	}
 	const privateKeyPem = getOidcSigningPrivateKeyPem(env)
 	const privateKey = await importOidcSigningPrivateKey(privateKeyPem)
@@ -90,14 +99,14 @@ export async function getOidcSigningPublicJwk(env: Env) {
 	if (exported.kty !== 'RSA' || !exported.n || !exported.e) {
 		throw new Error('OIDC signing key must be an RSA key.')
 	}
-	cachedPublicJwk = {
+	signingKeyCache.current.publicJwk = {
 		kty: 'RSA',
 		n: exported.n,
 		e: exported.e,
 		kid,
 	}
-	cachedPublicJwkKid = kid
-	return cachedPublicJwk
+	signingKeyCache.current.publicJwkKid = kid
+	return signingKeyCache.current.publicJwk
 }
 
 export async function getOidcJwksDocument(env: Env) {
@@ -190,11 +199,4 @@ function base64UrlToBytes(value: string) {
 		bytes[index] = binary.charCodeAt(index)
 	}
 	return bytes.buffer
-}
-
-export function resetOidcSigningKeyCacheForTests() {
-	cachedPrivateKey = null
-	cachedPrivateKeyPem = null
-	cachedPublicJwk = null
-	cachedPublicJwkKid = null
 }

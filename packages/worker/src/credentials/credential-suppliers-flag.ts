@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import { memoizeForFeatureFlagExecution } from '#worker/feature-flags/execution-scope.ts'
 import {
 	evaluateFeatureFlagBatched,
@@ -63,11 +64,7 @@ function createEnabledByOrgCache() {
 	})
 }
 
-let enabledByOrg = createEnabledByOrgCache()
-
-export function resetPackageCredentialSuppliersFlagCacheForTests() {
-	enabledByOrg = createEnabledByOrgCache()
-}
+const enabledByOrg = isolateState(createEnabledByOrgCache)
 
 /**
  * Reused across requests per `orgId` for {@link packageCredentialSuppliersFlagTtlMs}
@@ -82,7 +79,7 @@ export async function isPackageCredentialSuppliersEnabled(input: {
 	request?: object | null
 }): Promise<boolean> {
 	const evaluate = () =>
-		enabledByOrg.getOrCreate({
+		enabledByOrg.current.getOrCreate({
 			cacheKey: input.orgId,
 			create: () => evaluateForOrg(input),
 		})

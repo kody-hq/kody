@@ -6,6 +6,7 @@
  * + target URL.
  */
 
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import {
 	deploySkewBuildMetaName,
 	deploySkewReloadAttemptKey,
@@ -22,24 +23,9 @@ export const deploySkewReloadFlag = 'kody:deploy-skew-reload'
 export const deploySkewRecoveryErrorName = 'DeploySkewRecovery'
 
 /** Cached at first successful resolve so SPA head updates cannot hide skew. */
-let cachedClientBuildId: string | null | undefined
-
-/** Test-only override for the Vite define (undefined = use real define). */
-let bakedClientBuildIdForTests: string | null | undefined
-
-/** Test helper: drop the boot-time build cache between cases. */
-export function resetDeploySkewClientBuildCache(): void {
-	cachedClientBuildId = undefined
-	bakedClientBuildIdForTests = undefined
-}
-
-/** Test helper: stub the Vite-baked commit without relying on globals. */
-export function setBakedClientBuildIdForTests(
-	value: string | null | undefined,
-): void {
-	bakedClientBuildIdForTests = value
-	cachedClientBuildId = undefined
-}
+const cachedClientBuildId = isolateState(
+	(): string | null | undefined => undefined,
+)
 
 /**
  * Vite-baked commit SHA (production/preview builds). Empty string locally /
@@ -47,10 +33,6 @@ export function setBakedClientBuildIdForTests(
  * would false-positive against a full `X-Kody-Build` header.
  */
 export function readBakedClientBuildId(): string | null {
-	if (bakedClientBuildIdForTests !== undefined) {
-		const trimmed = bakedClientBuildIdForTests?.trim().toLowerCase() ?? ''
-		return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
-	}
 	try {
 		const trimmed = __KODY_APP_COMMIT_SHA__.trim().toLowerCase()
 		return /^[a-f0-9]{40}$/.test(trimmed) ? trimmed : null
@@ -72,10 +54,11 @@ export function readClientBuildId(
 		? null
 		: document,
 ): string | null {
-	if (cachedClientBuildId !== undefined) return cachedClientBuildId
+	if (cachedClientBuildId.current !== undefined)
+		return cachedClientBuildId.current
 	const baked = readBakedClientBuildId()
 	if (baked) {
-		cachedClientBuildId = baked
+		cachedClientBuildId.current = baked
 		return baked
 	}
 	if (!doc) return null
@@ -85,7 +68,7 @@ export function readClientBuildId(
 			?.getAttribute('content'),
 	)
 	if (content) {
-		cachedClientBuildId = content
+		cachedClientBuildId.current = content
 		return content
 	}
 	return null

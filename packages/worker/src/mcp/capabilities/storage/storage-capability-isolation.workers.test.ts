@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	personIdFromStored,
 	ownerIdFromStored,
@@ -7,7 +8,6 @@ import { expect, test } from 'vitest'
 import { McpCallerError } from '#mcp/caller-error.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
-import { clearStorageBucketRegistrationDedupeForTests } from '#worker/storage-buckets/service.ts'
 import { ensureUserStorageBucketsTestSchema } from '#worker/storage-buckets/test-schema.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import { ensurePackageSubscriptionTestSchema } from '#worker/test-support/workers-seed.ts'
@@ -42,7 +42,7 @@ test('storage capabilities keep a package out of another package bucket', async 
 	await ensureUserStorageBucketsTestSchema(env.APP_DB)
 	await ensureUsageRollupsTestSchema(env.APP_DB)
 	await ensurePackageSubscriptionTestSchema(env.APP_DB)
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 
 	const userId = `user-${crypto.randomUUID()}`
 	const victimPackageId = crypto.randomUUID()

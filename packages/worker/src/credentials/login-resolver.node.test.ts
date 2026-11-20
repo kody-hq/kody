@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -24,7 +25,6 @@ import {
 	CredentialLoginRetryLaterError,
 	CredentialNotFoundError,
 } from './credential-request.ts'
-import { clearLoginSessionsForTests } from './login-resolver.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
 vi.mock(
@@ -230,7 +230,7 @@ async function setup() {
 	}
 	valueReads.count = 0
 	scheduledAudits.length = 0
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	return {
 		env,
 		db,
@@ -568,7 +568,7 @@ test('a session persists encrypted across isolates and is reused until the crede
 	expect(JSON.stringify(stored)).not.toContain(password)
 
 	// A fresh isolate has an empty front cache and reuses the stored session.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const again = await t.signIn({ actor, credentialId: id })
 	expect(again.placement.value).toBe('Bearer session-1')
 	expect(exchanges).toHaveLength(1)
@@ -585,7 +585,7 @@ test('a session persists encrypted across isolates and is reused until the crede
 			.bind(JSON.stringify(value), id)
 			.run()
 	await setColumn('allowed_hosts', ['api.example.com', 'auth.example.com'])
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	expect((await t.signIn({ actor, credentialId: id })).placement.value).toBe(
 		'Bearer session-2',
 	)
@@ -643,7 +643,7 @@ test('deleting a login credential deletes its stored session', async () => {
 		audit: null,
 	})
 	expect(await count()).toEqual({ n: 0 })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	await expect(
 		t.signIn({ actor: t.requestAs('bea', 'owner'), credentialId: id }),
 	).rejects.toBeInstanceOf(CredentialNotFoundError)
