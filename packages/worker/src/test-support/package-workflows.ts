@@ -170,25 +170,6 @@ export const packageWorkflowsRunRecordMocks = (() => {
 			): Promise<Array<string>> => [],
 		),
 		upsertWorkflowProjection,
-		releaseWorkflowProjectionIdempotencyKey: vi.fn(
-			async (input: { env: Env; userId: string; id: string }) => {
-				const store = userStore(input.userId)
-				const existing = store.get(input.id)
-				if (!existing) {
-					return { released: false, previousKey: null }
-				}
-				if (existing.idempotencyKey.startsWith('released:')) {
-					return { released: false, previousKey: existing.idempotencyKey }
-				}
-				const previousKey = existing.idempotencyKey
-				store.set(input.id, {
-					...existing,
-					idempotencyKey: `released:${input.id}`,
-					updatedAt: new Date().toISOString(),
-				})
-				return { released: true, previousKey }
-			},
-		),
 		getWorkflowProjection: vi.fn(
 			async (input: { env: Env; userId: string; id: string }) =>
 				userStore(input.userId).get(input.id) ?? null,
@@ -209,7 +190,7 @@ export const packageWorkflowsRunRecordMocks = (() => {
 								? row.bindingName === input.bindingName
 								: true),
 					)
-					.sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+					.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 				return matches[0] ?? null
 			},
 		),

@@ -82,25 +82,6 @@ const runRecordMocks = vi.hoisted(() => {
 				return { ok: true as const }
 			},
 		),
-		releaseWorkflowProjectionIdempotencyKey: vi.fn(
-			async (input: { userId: string; id: string }) => {
-				const store = userStore(input.userId)
-				const existing = store.get(input.id)
-				if (!existing) {
-					return { released: false, previousKey: null }
-				}
-				if (existing.idempotencyKey.startsWith('released:')) {
-					return { released: false, previousKey: existing.idempotencyKey }
-				}
-				const previousKey = existing.idempotencyKey
-				store.set(input.id, {
-					...existing,
-					idempotencyKey: `released:${input.id}`,
-					updatedAt: new Date().toISOString(),
-				})
-				return { released: true, previousKey }
-			},
-		),
 		findWorkflowProjectionByIdempotencyKey: vi.fn(
 			async (input: {
 				userId: string
@@ -117,7 +98,7 @@ const runRecordMocks = vi.hoisted(() => {
 								: true),
 					)
 					.sort((left, right) =>
-						left.createdAt.localeCompare(right.createdAt),
+						right.createdAt.localeCompare(left.createdAt),
 					)[0] ?? null,
 		),
 		findWorkflowProjectionByBindingIdempotencyKey: vi.fn(
@@ -133,7 +114,7 @@ const runRecordMocks = vi.hoisted(() => {
 							row.idempotencyKey === input.idempotencyKey,
 					)
 					.sort((left, right) =>
-						left.createdAt.localeCompare(right.createdAt),
+						right.createdAt.localeCompare(left.createdAt),
 					)[0] ?? null,
 		),
 	}
@@ -152,8 +133,6 @@ vi.mock('#worker/run-records/service.ts', async (importOriginal) => ({
 	...(await importOriginal<typeof RunRecordsServiceModule>()),
 	upsertWorkflowProjection: (input: never) =>
 		runRecordMocks.upsertWorkflowProjection(input),
-	releaseWorkflowProjectionIdempotencyKey: (input: never) =>
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey(input),
 	findWorkflowProjectionByIdempotencyKey: (input: never) =>
 		runRecordMocks.findWorkflowProjectionByIdempotencyKey(input),
 	findWorkflowProjectionByBindingIdempotencyKey: (input: never) =>
@@ -209,9 +188,11 @@ function seedProjection(
 	id: string,
 	idempotencyKey: string,
 	status: string,
+	createdAt?: string,
 ) {
 	runRecordMocks.seed(userId, {
 		id,
+		createdAt,
 		bindingName: projectionBindingName,
 		sourceType: 'inline',
 		workflowName,
@@ -420,35 +401,55 @@ test('dispatchDurableRun never throws and reports why it could not dispatch', as
 	expect(isEntitlementLimitError(entitlementOutcome.error)).toBe(true)
 })
 
-test('a dead terminal key is released and re-dispatched once; a complete run is kept', async () => {
+test('an errored run is re-dispatched once as a fresh run; running and complete runs dedupe', async () => {
 	runRecordMocks.resetProjections()
+	mockModule.createDynamicCallableWorkflow.mockReset()
 	const expectedKey = keyFor('user-1')
-	seedProjection('user-1', 'dynwf-cancelled-1', expectedKey, 'cancelled')
+	seedProjection('user-1', 'dynwf-errored-1', expectedKey, 'errored')
 	mockModule.createDynamicCallableWorkflow
-		.mockResolvedValueOnce(created('dynwf-cancelled-1', 'cancelled'))
-		.mockResolvedValueOnce(created('dynwf-retry-1', 'queued'))
-	const cancelledOutcome = await escalate()
-	expect(cancelledOutcome).toEqual({
+		.mockResolvedValueOnce(created('dynwf-errored-1', 'errored'))
+		.mockResolvedValueOnce(created('dynwf-retry-1', 'running'))
+	await expect(escalate()).resolves.toEqual({
 		kind: 'dispatched',
 		handle: expect.objectContaining({
 			status: 'dispatched',
 			workflow_id: 'dynwf-retry-1',
-			run_status: 'queued',
+			run_status: 'running',
 			idempotency_key: expectedKey,
 		}),
 	})
 	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenCalledTimes(2)
-	expect(
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey,
-	).toHaveBeenCalledWith(
+	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenNthCalledWith(
+		1,
+		expect.not.objectContaining({ rerunOf: expect.anything() }),
+	)
+	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenNthCalledWith(
+		2,
 		expect.objectContaining({
 			userId: ownerIdFromStored('user-1'),
-			id: 'dynwf-cancelled-1',
+			rerunOf: 'dynwf-errored-1',
+			body: expect.objectContaining({ idempotencyKey: expectedKey }),
 		}),
 	)
 
+	// The rerun is now the latest run for the key, so it dedupes.
 	mockModule.createDynamicCallableWorkflow.mockClear()
-	runRecordMocks.releaseWorkflowProjectionIdempotencyKey.mockClear()
+	seedProjection(
+		'user-1',
+		'dynwf-retry-1',
+		expectedKey,
+		'running',
+		'2099-01-01T00:00:00.000Z',
+	)
+	await expect(escalate()).resolves.toEqual({
+		kind: 'dispatched',
+		handle: expect.objectContaining({
+			workflow_id: 'dynwf-retry-1',
+			run_status: 'running',
+		}),
+	})
+	expect(mockModule.createDynamicCallableWorkflow).not.toHaveBeenCalled()
+
 	mockModule.createDynamicCallableWorkflow.mockResolvedValueOnce(
 		created('dynwf-complete-1', 'complete'),
 	)
@@ -462,15 +463,28 @@ test('a dead terminal key is released and re-dispatched once; a complete run is 
 			idempotency_key: keyFor('user-1', completeParts),
 		}),
 	})
-	expect(
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey,
-	).not.toHaveBeenCalled()
+	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenCalledTimes(1)
+})
+
+test('a re-dispatched run that also ended dead surfaces both runs in the error', async () => {
+	runRecordMocks.resetProjections()
+	mockModule.createDynamicCallableWorkflow.mockReset()
+	mockModule.createDynamicCallableWorkflow
+		.mockResolvedValueOnce(created('dynwf-errored-1', 'errored'))
+		.mockResolvedValueOnce(created('dynwf-errored-2', 'terminated'))
+	const outcome = await escalate()
+	if (outcome.kind !== 'failed') {
+		throw new Error('expected failed')
+	}
+	expect(getErrorMessage(outcome.error)).toBe(
+		'A previous durable run "dynwf-errored-1" for this operation ended with status "errored", and its re-dispatched run "dynwf-errored-2" ended with status "terminated".',
+	)
+	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenCalledTimes(2)
 })
 
 test('rerunComplete starts a new run when the same operation already completed', async () => {
 	runRecordMocks.resetProjections()
 	mockModule.createDynamicCallableWorkflow.mockReset()
-	runRecordMocks.releaseWorkflowProjectionIdempotencyKey.mockClear()
 	const parts = ['packageCheck', 'v1', 'etag-1', 'pcu_1']
 	seedProjection('user-1', 'dynwf-check-1', keyFor('user-1', parts), 'complete')
 	mockModule.createDynamicCallableWorkflow
@@ -486,7 +500,8 @@ test('rerunComplete starts a new run when the same operation already completed',
 			run_status: 'queued',
 		}),
 	})
-	expect(
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey,
-	).toHaveBeenCalledWith(expect.objectContaining({ id: 'dynwf-check-1' }))
+	expect(mockModule.createDynamicCallableWorkflow).toHaveBeenNthCalledWith(
+		2,
+		expect.objectContaining({ rerunOf: 'dynwf-check-1' }),
+	)
 })

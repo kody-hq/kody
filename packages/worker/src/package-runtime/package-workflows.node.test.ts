@@ -87,10 +87,6 @@ vi.mock('#worker/run-records/service.ts', () => ({
 				},
 			]),
 		),
-	releaseWorkflowProjectionIdempotencyKey: (...args: Array<unknown>) =>
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey(
-			...(args as [{ env: Env; userId: string; id: string }]),
-		),
 	getWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.getWorkflowProjection(
 			...(args as [{ env: Env; userId: string; id: string }]),
