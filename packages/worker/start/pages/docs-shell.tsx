@@ -1,9 +1,12 @@
 /** @jsxImportSource @emotion/react */
-import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import {
+	closeDetails,
+	useCloseOnNavigation,
+} from '../components/close-on-navigation.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import type { CSSObject } from '@emotion/react'
 import { mergeCss } from '../components/merge-css.ts'
-import { type ReactNode, type CSSProperties, useEffect, useRef } from 'react'
+import type { ReactNode, CSSProperties } from 'react'
 import type { DocSummaryLoaderData } from '#universal/loader-data.ts'
 import {
 	docHref,
@@ -44,11 +47,7 @@ function DocsShell(input: {
 	children: ReactNode
 	isAdmin?: boolean
 }) {
-	const menuRef = useRef<HTMLDetailsElement>(null)
-	const href = useMatchedPageScope().pageLocation.href
-	useEffect(() => {
-		if (menuRef.current) menuRef.current.open = false
-	}, [href])
+	const closeOnNavigation = useCloseOnNavigation(closeDetails)
 	const { current, children } = input
 	const isAdmin = input.isAdmin === true
 	const currentSection = resolveDocsNavSection(current)
@@ -59,7 +58,7 @@ function DocsShell(input: {
 					{renderDocsNavSections(current, currentSection, isAdmin)}
 				</nav>
 			</aside>
-			<details css={docsMobileMenuCss} ref={menuRef}>
+			<details css={docsMobileMenuCss} ref={closeOnNavigation}>
 				<summary>
 					{renderIcon('menu', { size: '1.05em' })}
 					<span>Docs</span>
