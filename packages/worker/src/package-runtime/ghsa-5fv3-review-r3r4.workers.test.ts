@@ -4,8 +4,6 @@ import {
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { env } from 'cloudflare:workers'
 import { afterEach, expect, test, vi } from 'vitest'
-import { createMcpCallerContext } from '#mcp/context.ts'
-import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { saveSecret, setSecretAllowedHosts } from '#mcp/secrets/service.ts'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
@@ -13,10 +11,7 @@ import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
-import {
-	buildKodyImportableModuleBundle,
-	buildKodyModuleBundle,
-} from './module-graph.ts'
+import { buildKodyImportableModuleBundle } from './module-graph.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
@@ -29,6 +24,18 @@ import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
 import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
+import {
+	type PublishedPackage,
+	manifest,
+	DUMMY_SECRET,
+	B_SECRET,
+	installFakeUpstream,
+	fetchingWake,
+	issuingWake,
+	pathsCarrying,
+	foreignA,
+	runAttack,
+} from './package-credential-boundary.test-support.ts'
 
 /**
  * GHSA-5fv3 review R3/R4 checks. Each test asserts the safe outcome.
@@ -158,8 +165,6 @@ async function insertSavedPackage(input: {
 	}
 }
 
-type PublishedPackage = { packageId: string; sourceId: string; kodyId: string }
-
 async function publishForkedPackage(input: {
 	userId: string
 	name: string
@@ -222,10 +227,6 @@ async function publishForkedPackage(input: {
 	return { packageId, sourceId, kodyId: input.kodyId }
 }
 
-function manifest(name: string, kody: Record<string, unknown>, extra = {}) {
-	return JSON.stringify({ name, ...extra, kody })
-}
-
 async function publishGrokBotWake(userId: string, wakeSource: string) {
 	return await publishForkedPackage({
 		userId,
@@ -258,139 +259,14 @@ async function provisionTestUser(userId: string, username: string) {
 	await ensurePersonalOrg(env.APP_DB, { stableUserId: userId, username })
 }
 
-function createCallerContext(userId: string) {
-	return createMcpCallerContext({
-		source: { kind: 'mcp-oauth' },
-		baseUrl: 'https://kody.dev',
-		user: {
-			userId: personIdFromStored(userId),
-			username: 'worker-test',
-			email: 'worker@example.com',
-			displayName: 'Worker Test',
-		},
-	})
-}
-
-async function buildModule(
-	userId: string,
-	sourceFiles: Record<string, string>,
-	entryPoint = 'entry.ts',
-	rootPackageId?: string,
-) {
-	return await buildKodyModuleBundle({
-		env,
-		baseUrl: 'https://kody.dev',
-		userId,
-		sourceFiles,
-		entryPoint,
-		...(rootPackageId ? { rootPackageId } : {}),
-	})
-}
-
-async function runModule(
-	userId: string,
-	sourceFiles: Record<string, string>,
-	options: { entryPoint?: string; asPackage?: PublishedPackage } = {},
-) {
-	const { asPackage } = options
-	return await runBundledModuleWithRegistry(
-		env,
-		createCallerContext(userId),
-		await buildModule(
-			userId,
-			sourceFiles,
-			options.entryPoint,
-			asPackage?.packageId,
-		),
-		undefined,
-		{
-			skipCapabilityRegistry: true,
-			...(asPackage
-				? {
-						packageContext: {
-							packageId: asPackage.packageId,
-							kodyId: asPackage.kodyId,
-							sourceId: asPackage.sourceId,
-						},
-					}
-				: {}),
-		},
-	)
-}
-
-const DUMMY_SECRET = 'dummy-A-only-secret-0000'
-const B_SECRET = 'dummy-B-only-secret-2222'
-
-type Seen = {
-	method: string
-	url: string
-	authorization: string | null
-	body: string
-}
-
-function installFakeUpstream() {
-	const seen: Array<Seen> = []
-	const realFetch = globalThis.fetch
-	vi.stubGlobal(
-		'fetch',
-		async (input: RequestInfo | URL, init?: RequestInit) => {
-			const request = new Request(input as RequestInfo, init)
-			const url = new URL(request.url)
-			if (url.hostname !== 'upstream.example.com')
-				return realFetch(input as RequestInfo, init)
-			const body = await request.text()
-			seen.push({
-				method: request.method,
-				url: request.url,
-				authorization: request.headers.get('authorization'),
-				body,
-			})
-			return Response.json({ ok: true, path: url.pathname })
-		},
-	)
-	return seen
-}
-
 afterEach(() => {
 	vi.unstubAllGlobals()
 })
-
-const fetchingWake = `import { packageSecrets } from 'kody:runtime'
-export default async function wake() {
-	const token = await packageSecrets.get('wakeToken')
-	const res = await fetch('https://upstream.example.com/a-only/wake', {
-		method: 'POST',
-		headers: { Authorization: 'Bearer ' + token },
-	})
-	return { status: res.status }
-}`
-
-const issuingWake = `import { packageSecrets } from 'kody:runtime'
-export default async function wake() {
-	const token = await packageSecrets.get('wakeToken')
-	const res = await fetch('https://upstream.example.com/a-only/wake', {
-		method: 'POST',
-		headers: { Authorization: 'Bearer ' + token },
-	})
-	return { status: res.status, token }
-}`
 
 // Unused fixtures from the review harness, kept verbatim. Referenced here
 // only so noUnusedLocals (TS6133) passes; no test behavior depends on them.
 void B_SECRET
 void issuingWake
-
-function pathsCarrying(seen: Array<Seen>, secret: string) {
-	return seen
-		.filter((s) => s.authorization?.includes(secret) || s.body.includes(secret))
-		.map((s) => `${s.method} ${new URL(s.url).pathname}`)
-}
-
-function foreignA(seen: Array<Seen>) {
-	return pathsCarrying(seen, DUMMY_SECRET).filter(
-		(path) => !path.endsWith('/a-only/wake'),
-	)
-}
 
 async function setupA(wakeSource: string) {
 	silenceIncidentalRuntimeWarnings()
@@ -423,20 +299,6 @@ async function setupA(wakeSource: string) {
 		audit: null,
 	})
 	return { userId, wake }
-}
-
-function entry(body: string) {
-	return `import wake from 'kody:@kentcdodds/grok-bot/wake'
-const REF = '{{secret:wakeToken|scope=package}}'
-export default async function main() {
-${body}
-}`
-}
-
-async function runAttack(userId: string, body: string) {
-	const seen = installFakeUpstream()
-	const run = await runModule(userId, { 'entry.ts': entry(body) })
-	return { seen, run }
 }
 
 /*

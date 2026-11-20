@@ -19,12 +19,8 @@ import { buildCredentialStamp } from '#worker/credentials/credential-stamp.ts'
 import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
-import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import {
-	buildKodyImportableModuleBundle,
-	buildKodyModuleBundle,
-} from './module-graph.ts'
+import { buildKodyImportableModuleBundle } from './module-graph.ts'
 import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import {
 	persistPublishedSourceSnapshot,
@@ -34,12 +30,17 @@ import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
-
-async function runSql(sql: string, ...values: Array<unknown>) {
-	await env.APP_DB.prepare(sql)
-		.bind(...values)
-		.run()
-}
+import {
+	runSql,
+	insertSavedPackage,
+	type PublishedPackage,
+	wakeMount,
+	manifest,
+	provisionTestUser,
+	createCallerContext,
+	buildModule,
+	secretAuthorityForgeryExecuteEntry,
+} from './package-credential-boundary.test-support.ts'
 
 async function ensureSecretAuthorityTestSchema() {
 	await ensureEntitlementTestSchema(env.APP_DB)
@@ -100,61 +101,6 @@ async function ensureSecretAuthorityTestSchema() {
 	await runSql(communityForksTableSql)
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
-
-async function insertSavedPackage(input: {
-	userId: string
-	packageId: string
-	kodyId: string
-	name: string
-	sourceId: string
-	publishedCommit: string
-}) {
-	const now = new Date().toISOString()
-	await runSql(
-		`INSERT INTO saved_packages (
-			id, user_id, name, kody_id, description, tags_json, search_text,
-			source_id, has_app, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, '[]', NULL, ?, 0, ?, ?)`,
-		input.packageId,
-		input.userId,
-		input.name,
-		input.kodyId,
-		`${input.name} package`,
-		input.sourceId,
-		now,
-		now,
-	)
-	await runSql(
-		`INSERT INTO entity_sources (
-			id, user_id, entity_kind, entity_id, repo_id, published_commit,
-			indexed_commit, manifest_path, source_root, created_at, updated_at
-		) VALUES (?, ?, 'package', ?, ?, ?, NULL, 'package.json', '/', ?, ?)`,
-		input.sourceId,
-		input.userId,
-		input.packageId,
-		`repo-${input.sourceId}`,
-		input.publishedCommit,
-		now,
-		now,
-	)
-	return {
-		id: input.sourceId,
-		user_id: ownerIdFromStored(input.userId),
-		entity_kind: 'package' as const,
-		entity_id: input.packageId,
-		repo_id: `repo-${input.sourceId}`,
-		published_commit: input.publishedCommit,
-		indexed_commit: null,
-		manifest_path: 'package.json',
-		source_root: '/',
-		last_external_check_at: null,
-		external_check_until: null,
-		created_at: now,
-		updated_at: now,
-	}
-}
-
-type PublishedPackage = { packageId: string; sourceId: string; kodyId: string }
 
 /** Publishes importable-module artifacts and records the package as an unadopted community fork. */
 async function publishForkedPackage(input: {
@@ -219,14 +165,6 @@ async function publishForkedPackage(input: {
 	return { packageId, sourceId, kodyId: input.kodyId }
 }
 
-const wakeMount = (scope: 'user' | 'package' = 'user') => ({
-	wakeToken: { name: 'wakeToken', scope },
-})
-
-function manifest(name: string, kody: Record<string, unknown>, extra = {}) {
-	return JSON.stringify({ name, ...extra, kody })
-}
-
 async function publishGrokBotWake(
 	userId: string,
 	wakeSource: string,
@@ -288,10 +226,6 @@ async function publishDependent(
 	})
 }
 
-async function provisionTestUser(userId: string, username: string) {
-	await ensurePersonalOrg(env.APP_DB, { stableUserId: userId, username })
-}
-
 async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 	await saveSecret({
 		env,
@@ -307,35 +241,6 @@ async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 		name: 'wakeToken',
 		packageId,
 		audit: null,
-	})
-}
-
-function createCallerContext(userId: string) {
-	return createMcpCallerContext({
-		source: { kind: 'mcp-oauth' },
-		baseUrl: 'https://kody.dev',
-		user: {
-			userId: personIdFromStored(userId),
-			username: 'worker-test',
-			email: 'worker@example.com',
-			displayName: 'Worker Test',
-		},
-	})
-}
-
-async function buildModule(
-	userId: string,
-	sourceFiles: Record<string, string>,
-	entryPoint = 'entry.ts',
-	rootPackageId?: string,
-) {
-	return await buildKodyModuleBundle({
-		env,
-		baseUrl: 'https://kody.dev',
-		userId,
-		sourceFiles,
-		entryPoint,
-		...(rootPackageId ? { rootPackageId } : {}),
 	})
 }
 
@@ -405,14 +310,6 @@ export default async function main() {
 type ForgeryExecuteResult = {
 	importedWake: string
 	attack: Record<string, unknown>
-}
-
-function secretAuthorityForgeryExecuteEntry(attackSpecifier: string) {
-	return `import attack from '${attackSpecifier}'
-import wake from 'kody:@kentcdodds/grok-bot/wake'
-export default async function main() {
-	return { importedWake: typeof wake, attack: await attack() }
-}`
 }
 
 const victimWakeModuleSource = `import { packageSecrets } from 'kody:runtime'
