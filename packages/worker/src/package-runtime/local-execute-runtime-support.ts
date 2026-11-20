@@ -1220,6 +1220,18 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 	};
 }
 
+// Local execute cannot prove which package produced an event (the caller
+// controls the code), so it cannot emit. Run the export on Kody instead.
+export function __kodyCreatePackageBoundEvents() {
+	return {
+		dispatch: async () => {
+			throw new Error(
+				"events.dispatch is not available in local execute: Kody cannot verify that package code produced the event. Run the package's export on Kody (hosted execute, a job, or a webhook) to emit.",
+			);
+		},
+	};
+}
+
 // Same exports as the hosted per-package facade, so artifacts bundled against
 // it run locally. Package-scoped calls carry this package's binding (any
 // packageId the caller passes is replaced); every other call goes to the

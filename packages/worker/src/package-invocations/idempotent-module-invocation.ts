@@ -30,7 +30,6 @@ import {
 	resolveInvocationRuntimeSurface,
 	type PackageInvocationActor,
 	type PackageModuleSelector,
-	type PackageRuntimeToolFactories,
 } from './common.ts'
 import {
 	createRequestHash,
@@ -175,7 +174,6 @@ export async function invokeSavedPackageModule(input: {
 	topic: string | null
 	notFoundCode: 'export_not_found' | 'subscription_not_found'
 	runtimeInvokeDepth?: number
-	toolFactories: PackageRuntimeToolFactories
 	waitUntil?: (promise: Promise<unknown>) => void
 	/**
 	 * Artifact already prepared by a host invoke check phase moments
@@ -531,7 +529,6 @@ export async function invokeSavedPackageModule(input: {
 		topic: input.topic,
 		notFoundCode: input.notFoundCode,
 		runtimeInvokeDepth: input.runtimeInvokeDepth,
-		toolFactories: input.toolFactories,
 		waitUntil: input.waitUntil,
 		preloadedModuleArtifact: input.preloadedModuleArtifact,
 		executorTimeoutMs: input.executorTimeoutMs,

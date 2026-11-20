@@ -1,9 +1,7 @@
 import { normalizePackageInvocationExportName } from '@kody-internal/shared/public-urls.ts'
-import type { PackageEventTools } from '#mcp/run-kody-registry.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import type { createMcpCallerContext } from '#mcp/context.ts'
 import type { RequestSource } from '#worker/request-context/request-context.ts'
-import type { RunRecordContext, RunSurface } from '#worker/run-records/types.ts'
+import type { RunSurface } from '#worker/run-records/types.ts'
 import {
 	packageWorkflowInvocationSource,
 	sealedSecretProviderInvocationSource,
@@ -101,30 +99,8 @@ export type LoadedPackageEventSubscription = {
 	subscription: ReturnType<typeof listPackageSubscriptions>[number]
 }
 
-export type PackageRuntimeToolFactoryInput = {
-	env: Env
-	baseUrl: string
-	callerContext: ReturnType<typeof createMcpCallerContext>
-	packageContext: PackageRuntimeContext | null
-	parentRunRecord?: RunRecordContext | null
-	packageInvokeDepth?: number
-	/** Coarse telemetry attribution for package-app bridge calls. */
-	runtimeSurface?: 'app'
-	/**
-	 * When set, nested package/export/subscription run-record finishes are
-	 * scheduled on this callback instead of being awaited.
-	 */
-	waitUntil?: (promise: Promise<unknown>) => void
-}
-
 export function waitUntilFromExecutionContext(ctx?: ExecutionContext) {
 	return ctx ? (promise: Promise<unknown>) => ctx.waitUntil(promise) : undefined
-}
-
-export type PackageRuntimeToolFactories = {
-	createPackageEventTools(
-		input: PackageRuntimeToolFactoryInput,
-	): PackageEventTools
 }
 
 export const internalEmailSubscriptionTokenId = 'internal:email-subscriptions'

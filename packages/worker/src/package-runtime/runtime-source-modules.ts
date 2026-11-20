@@ -693,6 +693,32 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 	};
 }
 
+// Factory for the per-package virtual runtime modules: events.dispatch from a
+// package's modules emits as that package wherever the module runs (its own
+// run, ad hoc execute, another package's run). With a trusted binding in
+// scope the host-bound dispatcher stamps the package; without one only the
+// run's own package may use the run's events helper.
+export function __kodyCreatePackageBoundEvents(packageId) {
+	return {
+		dispatch: async (input) => {
+			const binding = __kodyPackageBindingFor(packageId);
+			if (binding != null && typeof binding.packageEventDispatch === 'function') {
+				return await __kodyReflectApply(binding.packageEventDispatch, binding, [
+					input ?? {},
+				]);
+			}
+			__kodyAssertUnboundIsRunPackage(packageId, 'events.dispatch');
+			const runEvents = __kodyGetRuntimeStore()?.events;
+			if (runEvents == null || typeof runEvents.dispatch !== 'function') {
+				throw new __kodyErrorCtor(
+					'events.dispatch is not available in this execution context.',
+				);
+			}
+			return await runEvents.dispatch(input ?? {});
+		},
+	};
+}
+
 function __kodyResolvePackageSecrets(packageId) {
 	const currentRuntime = __kodyGetRuntimeStore();
 	const factory = currentRuntime?.__kodyPackageSecrets;

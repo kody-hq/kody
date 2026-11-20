@@ -356,13 +356,8 @@ test('package events deliver with filters, idempotent replay, and retryable fail
 			_callerContext: unknown,
 			_bundle: unknown,
 			params: Record<string, unknown> | undefined,
-			options: { packageEventTools?: { dispatch?: unknown } },
 		) => ({
-			result: {
-				received: params,
-				hasEventDispatch:
-					typeof options.packageEventTools?.dispatch === 'function',
-			},
+			result: { received: params },
 			logs: [],
 		}),
 	)

@@ -4,7 +4,6 @@ import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import type { RequestSource } from '#worker/request-context/request-context.ts'
 import { sealedSecretProviderInvocationSource } from '#worker/package-runtime/package-invocation-sources.ts'
 import { runSavedPackageModuleOnce } from '#worker/package-invocations/module-execution.ts'
-import { createPackageEventTools } from '#worker/package-invocations/service.ts'
 import {
 	secretProviderCanonicalizeTimeoutMs,
 	secretProviderResolveTimeoutMs,
@@ -18,10 +17,6 @@ import type {
 	SealedProviderResolveResult,
 } from './types.ts'
 import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
-
-const toolFactories = {
-	createPackageEventTools,
-}
 
 export async function invokeSealedSecretProvider(
 	input: SecretProviderInvokeInput & {
@@ -64,7 +59,6 @@ export async function invokeSealedSecretProvider(
 		source: sealedSecretProviderInvocationSource,
 		topic: null,
 		notFoundCode: 'export_not_found',
-		toolFactories,
 		executorTimeoutMs: timeoutMs,
 		signal: AbortSignal.timeout(timeoutMs),
 	})

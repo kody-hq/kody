@@ -27,7 +27,10 @@ import type {
 	PackageStaticCallMeterTools,
 } from '#worker/usage/package-static-call-usage.ts'
 import { staticCallMeterRuntimeBridgeProviderName } from '#mcp/evaluation-side-effects.ts'
-import { takeSecretAuthorityFromCapabilityArgs } from '#mcp/secrets/secret-authority.ts'
+import {
+	getSecretAuthorityScope,
+	takeSecretAuthorityFromCapabilityArgs,
+} from '#mcp/secrets/secret-authority.ts'
 import { kodyCallDispatcherName } from '#worker/kody-evaluate-bindings.ts'
 import type { CredentialCallMap } from '#worker/credentials/credential-call-map.ts'
 import type { SavedCredentialNeed } from '#worker/credentials/credential-needs.ts'
@@ -169,6 +172,17 @@ export type PackageEventTools = {
 	dispatch: (input: PackageEventDispatchInput) => Promise<unknown>
 }
 
+export type RunPackageEventTools = {
+	/**
+	 * Emit as `emittingPackageId` (the package whose bound runtime made the
+	 * call), or as the run's own package when it is null.
+	 */
+	dispatch: (
+		input: PackageEventDispatchInput,
+		emittingPackageId: string | null,
+	) => Promise<unknown>
+}
+
 export type PackageWorkflowTools = {
 	create: (input: PackageWorkflowCreateInput) => Promise<unknown>
 }
@@ -191,7 +205,7 @@ export type RuntimeHelperManifestContext = {
 	credentialClientTools?: CredentialClientToolOptions | undefined
 	emailTools?: EmailToolOptions | undefined
 	workflowTools?: PackageWorkflowTools | undefined
-	packageEventTools?: PackageEventTools | undefined
+	packageEventTools?: RunPackageEventTools | undefined
 	computedPackageImportTools?: ComputedPackageImportTools | undefined
 	staticCallMeterTools?: PackageStaticCallMeterTools | undefined
 }
@@ -321,7 +335,6 @@ const workflows = {
 	`.trim()
 }
 
-const packageEventRuntimeBridgeProviderName = '__kodyPackageEventRuntimeBridge'
 const computedPackageImportRuntimeBridgeProviderName =
 	'__kodyComputedPackageImportRuntimeBridge'
 
@@ -342,7 +355,7 @@ const __kodyComputedPackageImport = {
 function createEventsHelperPrelude() {
 	return `
 const events = {
-  dispatch: async (input) => await ${packageEventRuntimeBridgeProviderName}.dispatch(input ?? {}),
+  dispatch: async (input) => await ${kodyCallDispatcherName}('packageEventDispatch', input ?? {}),
 };
 	`.trim()
 }
@@ -459,21 +472,19 @@ function createWorkflowKodyTools(
 	}
 }
 
-function createPackageEventRuntimeBridgeProvider(
-	packageEventTools: PackageEventTools,
-): ResolvedProvider {
-	const provider: ToolProvider = {
-		name: packageEventRuntimeBridgeProviderName,
-		tools: {
-			dispatch: {
-				execute: async (args: unknown) =>
-					await packageEventTools.dispatch(
-						(args ?? {}) as PackageEventDispatchInput,
-					),
-			},
-		},
+// One host tool for every events.dispatch caller in a run. A package-bound
+// dispatcher (GHSA-5fv3) emits as its package; the run's shared dispatcher
+// emits as the run's package.
+function createPackageEventKodyTools(
+	packageEventTools: RunPackageEventTools,
+): AdditionalKodyTools {
+	return {
+		packageEventDispatch: async (args: unknown) =>
+			await packageEventTools.dispatch(
+				(args ?? {}) as PackageEventDispatchInput,
+				getSecretAuthorityScope()?.currentPackageId?.trim() || null,
+			),
 	}
-	return resolveProvider(provider)
 }
 
 function createStaticCallMeterRuntimeBridgeProvider(
@@ -672,10 +683,10 @@ const runtimeHelperManifest: Array<RuntimeHelperManifestEntry> = [
 		unboundNames: ['events'],
 		isBound: (context) => Boolean(context.packageEventTools),
 		createPrelude: () => createEventsHelperPrelude(),
-		extraProviders: (context) =>
+		createKodyTools: (context) =>
 			context.packageEventTools
-				? [createPackageEventRuntimeBridgeProvider(context.packageEventTools)]
-				: [],
+				? createPackageEventKodyTools(context.packageEventTools)
+				: {},
 	},
 	{
 		runtimeName: 'staticCallMeter',

@@ -135,9 +135,6 @@ test('subscription execution exposes the owner account identity to metaGetCurren
 		source: 'email',
 		topic: 'email.message.received',
 		notFoundCode: 'subscription_not_found',
-		toolFactories: {
-			createPackageEventTools: vi.fn(() => ({}) as never),
-		},
 	})
 
 	expect(outcome).toMatchObject({
