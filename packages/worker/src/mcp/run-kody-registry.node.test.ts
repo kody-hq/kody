@@ -3,7 +3,7 @@ import {
 	personIdFromStored,
 	personalOrgId,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import * as registryModule from '#mcp/capabilities/registry.ts'
 import { buildCapabilityRegistry } from '#mcp/capabilities/build-capability-registry.ts'
@@ -27,6 +27,9 @@ import { addInProcessExecuteBundleIsolates } from '#worker/test-support/execute-
 import { durableObjectIsolateMemoryResetMessage } from '#worker/sentry-options.ts'
 import * as runRecords from '#worker/run-records/service.ts'
 import * as mcpExecutor from '#mcp/executor.ts'
+import * as packageRepo from '#worker/package-registry/repo.ts'
+import type { SavedPackageRecord } from '#worker/package-registry/types.ts'
+import * as packageAppProfileHost from '#worker/package-app-profile-host.ts'
 import * as executeInterpretable from '#mcp/execute-interpretable.ts'
 import { createStableDynamicWorkerId } from '#mcp/dynamic-worker-id.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
@@ -144,6 +147,12 @@ const meCaller = () =>
 		},
 		storageContext: null,
 	})
+
+// Runs resolve each run package's app location; these fixtures have no saved
+// package rows unless a test says so.
+beforeEach(() => {
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+})
 
 function mockExecutor(
 	respond: (providers: Providers) => unknown | Promise<unknown> = async () => ({
@@ -895,6 +904,58 @@ export default async function main() { return await whatShipped({}) }`
 	])
 })
 
+test('runModuleWithRegistry passes each run package its hosted app URL', async () => {
+	silenceIncidentalRuntimeWarnings()
+	const env = { PACKAGE_APP_BASE_URL: 'https://kody.run' } as unknown as Env
+	vi.spyOn(registryModule, 'getCapabilityRegistryForContext').mockResolvedValue(
+		emptyRegistry,
+	)
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockImplementation(
+		async (_db, packageId) =>
+			({
+				id: packageId,
+				name: packageId === 'pkg-rooms' ? '@kody/rooms' : '@kody/lib',
+				hasApp: packageId === 'pkg-rooms',
+			}) as SavedPackageRecord,
+	)
+	vi.spyOn(packageAppProfileHost, 'hasProfilePackageApp').mockResolvedValue(
+		false,
+	)
+	const executor = mockExecutor()
+	vi.mocked(moduleGraph.buildKodyModuleBundle).mockImplementation(async () => ({
+		mainModule: 'entry.js',
+		modules: { 'entry.js': 'export default async function main() {}' },
+		dependencies: [
+			{
+				sourceId: 'source-lib',
+				publishedCommit: 'c1',
+				kodyId: 'lib',
+				packageId: 'pkg-lib',
+			},
+		],
+	}))
+	await runModuleWithRegistry(
+		env,
+		meCaller(),
+		`import { kody } from 'kody:runtime'
+export default async function main() { return null }`,
+		undefined,
+		{ packageContext: { packageId: 'pkg-rooms', kodyId: 'rooms' } },
+	)
+	const call = executor.calls.at(-1)!
+	expect(call.invocation).toMatchObject({
+		packageContext: { packageId: 'pkg-rooms', kodyId: 'rooms' },
+		packageApps: {
+			'pkg-rooms': {
+				hostedUrl: 'https://kody.kody.run/rooms',
+				appBasePath: '/rooms',
+			},
+			'pkg-lib': { hostedUrl: null, appBasePath: null },
+		},
+	})
+	expect(call.source).toContain('snapshot.hostedUrl = app.hostedUrl')
+})
+
 test('runModuleWithRegistry keeps WorkerCode stable across params and packageContext', async () => {
 	silenceIncidentalRuntimeWarnings()
 	const env = {} as Env
@@ -959,9 +1020,15 @@ export default async function main(params) { return { other: true, ...params } }
 		expect(JSON.stringify(wrapped)).not.toContain(leaked)
 	}
 	expect(executor.calls.slice(0, 3).map((call) => call.invocation)).toEqual([
-		{ params: firstParams, packageContext: null },
-		{ params: secondParams, packageContext: null },
-		{ params: firstParams, packageContext },
+		{ params: firstParams, packageContext: null, packageApps: {} },
+		{ params: secondParams, packageContext: null, packageApps: {} },
+		{
+			params: firstParams,
+			packageContext,
+			packageApps: {
+				[packageContext.packageId]: { hostedUrl: null, appBasePath: null },
+			},
+		},
 	])
 
 	const mintFromRun = async (call: (typeof executor.calls)[number]) =>

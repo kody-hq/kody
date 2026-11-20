@@ -166,18 +166,14 @@ import type {
 import {
 	buildPackageAppPath,
 	buildPackageAppSubdomainPath,
-	resolveHostedPackageAppUrl,
 	type PackageAppMount,
 } from '@kody-internal/shared/public-urls.ts'
-import {
-	getPackageAppBaseUrl,
-	listPackageAppOrigins,
-} from '#worker/app-base-url.ts'
+import { listPackageAppOrigins } from '#worker/app-base-url.ts'
 import { createPackageAppSetCookieScrubHostSource } from '#worker/package-runtime/package-app-set-cookie.ts'
 import { packageAppCookiePrefix } from '#worker/package-runtime/package-app-cookie-prefix.ts'
 import { checkPackageAppRateLimit } from '#worker/package-runtime/package-app-rate-limit.ts'
 import { packageAppSpendGet } from '#worker/package-runtime/package-app-spend.ts'
-import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.ts'
+import { resolveCanonicalPackageAppLocation } from '#worker/package-app-public-url.ts'
 import { getPackageNameLeaf } from '#worker/package-registry/package-name.ts'
 import {
 	packageAppSyntheticHeaderName,
@@ -3856,26 +3852,14 @@ async function buildPackageAppPublicContext(input: {
 			cookiePrefix,
 		}
 	}
-	// Background/synthetic callers get the canonical hosted URL: a verified
-	// app-level custom hostname, otherwise the per-user subdomain, otherwise
-	// the inline path-based mount.
-	const canonical = await resolvePublicPackageAppLocation({
+	// Background/synthetic callers get the canonical hosted URL, the same one
+	// non-app runs read in packageContext.
+	const canonical = await resolveCanonicalPackageAppLocation({
 		env: input.env,
-		username,
-		kodyId: urlSlug,
+		baseUrl: input.baseUrl,
+		packageName: input.savedPackage.name,
 	})
-	if (canonical) return { ...canonical, cookiePrefix }
-	const hostedUrl = resolveHostedPackageAppUrl({
-		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
-		appBaseUrl: input.baseUrl,
-		username,
-		kodyId: urlSlug,
-	})
-	return {
-		appBasePath: new URL(hostedUrl).pathname,
-		hostedUrl,
-		cookiePrefix,
-	}
+	return { ...canonical, cookiePrefix }
 }
 
 function resolvePackageAppManifest(input: {

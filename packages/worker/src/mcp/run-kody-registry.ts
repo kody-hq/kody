@@ -1,4 +1,5 @@
 import { executeModuleEntryFile } from '@kody-internal/shared/execute-module.ts'
+import { resolvePackageAppRunLocations } from '#worker/package-app-public-url.ts'
 import {
 	createPackageSecretRefKey,
 	issuePackageSecretRef,
@@ -1504,6 +1505,11 @@ export async function runBundledModuleWithRegistry(
 			dependencies: bundle.dependencies ?? [],
 			dynamicDependencyPackageIds,
 		})
+		const packageApps = await resolvePackageAppRunLocations({
+			env,
+			baseUrl: callerContext.baseUrl,
+			packageIds: grantedPackageStorageIds,
+		})
 		// Static package export calls report through a sandbox bridge with a
 		// bundler-stamped callee package id; accept direct *and* transitive
 		// static dependency ids recorded at build time so a re-export chain
@@ -1717,6 +1723,19 @@ export async function runBundledModuleWithRegistry(
 			createRuntimeHelperRuntimePropertySource()
 		const bundleRuntimeModulePath = findKodyRuntimeModulePath(hydratedModules)
 		const wrapped = `async (__invocation = {}) => {
+  const __kodyPackageApps = (() => {
+    const incoming = __invocation.packageApps;
+    const apps = Object.create(null);
+    if (incoming == null || typeof incoming !== 'object') return Object.freeze(apps);
+    for (const [packageId, app] of Object.entries(incoming)) {
+      if (app == null || typeof app !== 'object') continue;
+      apps[packageId] = Object.freeze({
+        hostedUrl: typeof app.hostedUrl === 'string' ? app.hostedUrl : null,
+        appBasePath: typeof app.appBasePath === 'string' ? app.appBasePath : null,
+      });
+    }
+    return Object.freeze(apps);
+  })();
   const __kodyTrustedPackageContext = (() => {
     const incoming = __invocation.packageContext;
     if (incoming == null || typeof incoming !== 'object') return null;
@@ -1725,6 +1744,11 @@ export async function runBundledModuleWithRegistry(
       kodyId: incoming.kodyId,
     };
     if ('sourceId' in incoming) snapshot.sourceId = incoming.sourceId;
+    const app = __kodyPackageApps[incoming.packageId];
+    if (app) {
+      snapshot.hostedUrl = app.hostedUrl;
+      snapshot.appBasePath = app.appBasePath;
+    }
     return Object.freeze(snapshot);
   })();
   const __kodyTrustedPackageId =
@@ -1744,6 +1768,7 @@ ${runtimeHelperPreludeSource}
     kody: ${kodyProviderEvaluateBindingName},
 ${runtimeHelperRuntimePropertySource}
     packageContext: __kodyTrustedPackageContext,
+    packageApps: __kodyPackageApps,
   };
   try {
     // Seal dispatcher-backed store members and evaluate the shared runtime
@@ -1808,6 +1833,7 @@ ${runtimeHelperRuntimePropertySource}
 						executor.execute(wrapped, providers, {
 							params,
 							packageContext: options?.packageContext ?? null,
+							packageApps,
 						}),
 					retryableResultError: (executeResult) => executeResult.error ?? null,
 					shouldRetry: ({ result: executeResult }) =>
