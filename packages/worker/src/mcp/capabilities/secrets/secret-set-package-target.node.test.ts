@@ -45,7 +45,7 @@ async function setup(role: OrgRole = 'owner') {
 	})
 	const org = ownerIdFromStored(ownerId)
 	for (const [id, userId, name] of [
-		['pkg-rooms', org, '@owneruser/rooms'],
+		['pkg-rooms', String(org), '@owneruser/rooms'],
 		['pkg-elsewhere', 'other-org', '@other/rooms'],
 	]) {
 		sqlite
