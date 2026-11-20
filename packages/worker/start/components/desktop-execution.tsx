@@ -204,7 +204,7 @@ export function DesktopExecutionProvider({
 			: null
 	const name = editedName || existingName || machine.data?.name || ''
 	const autoOpen = [bridge, username, pathname, onboarding.data, machine.data]
-	const [autoOpenSeen, setAutoOpenSeen] = useState<unknown[]>([])
+	const [autoOpenSeen, setAutoOpenSeen] = useState<Array<unknown>>([])
 	if (autoOpen.some((value, index) => value !== autoOpenSeen[index])) {
 		setAutoOpenSeen(autoOpen)
 		if (
@@ -767,7 +767,14 @@ export function useDesktopMachine() {
 	return useContext(DesktopMachineContext)
 }
 
-const subscribeToBridge = () => () => {}
-const readDesktopBridge = (): DesktopExecutionBridge | null =>
-	window.kodyDesktop?.execution ?? null
-const readNoBridge = () => null
+function subscribeToBridge() {
+	return () => {}
+}
+
+function readDesktopBridge(): DesktopExecutionBridge | null {
+	return window.kodyDesktop?.execution ?? null
+}
+
+function readNoBridge() {
+	return null
+}

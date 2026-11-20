@@ -94,8 +94,9 @@ export function useRecordTableModel(
 		(chosen?.key === storageKey ? chosen.value : null) ??
 		saved ??
 		defaultVisibility
-	const setVisibility = (value: ColumnVisibilityState) =>
+	function setVisibility(value: ColumnVisibilityState) {
 		setChosen({ key: storageKey, value })
+	}
 	const enabled = Boolean(options)
 	const defs = useMemo<
 		Array<ColumnDef<typeof recordTableFeatures, RecordTableRow>>
