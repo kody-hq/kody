@@ -2,13 +2,12 @@
 import { VirtualCollection } from '../components/virtual-collection.tsx'
 import {
 	useCallback,
-	useEffect,
-	useLayoutEffect,
 	useRef,
 	useState,
 	type ReactNode,
 	type RefObject,
 } from 'react'
+import { useExternalInstanceSync, useLayoutMeasure } from '../lib/primitives.ts'
 import { useRouter } from '@tanstack/react-router'
 import { SiteLink } from '../components/site-link.tsx'
 import { colors } from '#universal/styles/tokens.ts'
@@ -89,7 +88,7 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 			: `/@${orgSlug}/-/files?file=${id}`)
 	const [selection, setSelection] = useState<string[] | null>(null)
 	const requested = useRef(selectionKey)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		if (requested.current !== selectionKey) setSelection(null)
 		requested.current = selectionKey
 	}, [selectionKey])
@@ -165,7 +164,7 @@ export function WorkspaceFileBrowser<T extends BrowserEntry>({
 					files.some((child) => child.parentId === file.id)),
 		),
 	]
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		onDestinationChange?.(
 			selected && isWorkspaceContainer(selected.mediaType)
 				? selected.id

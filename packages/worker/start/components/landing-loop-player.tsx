@@ -1,13 +1,13 @@
 /** @jsxImportSource @emotion/react */
 import { useQueryClient } from '@tanstack/react-query'
 import {
-	useEffect,
 	useCallback,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import {
 	isElementNearViewport,
 	observeNearViewport,
@@ -80,8 +80,8 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 		},
 		[reducedMotion],
 	)
-	useEffect(() => {
-		if (!loadRequested) return
+	useResourceLifetime(() => {
+		if (!loadRequested) return () => {}
 		const controller = new AbortController()
 		void Promise.all([
 			import('#client/routes/how-kody-works-transcript.ts'),
@@ -148,8 +148,8 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 		},
 		[player],
 	)
-	useEffect(() => {
-		if (!content || reducedMotion) return
+	useResourceLifetime(() => {
+		if (!content || reducedMotion) return () => {}
 		const controller = new AbortController()
 		void (async () => {
 			while (!controller.signal.aborted) {
@@ -167,10 +167,11 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 		})()
 		return () => controller.abort()
 	}, [content, player, reducedMotion])
-	useEffect(() => {
-		if (!content || userDriven.current) return
+	useResourceLifetime(() => {
+		if (!content || userDriven.current) return () => {}
 		const frame = requestAnimationFrame(() => scrollTo())
 		return () => cancelAnimationFrame(frame)
+		// oxlint-disable-next-line react/exhaustive-deps -- each new snapshot scrolls the chat
 	}, [snapshot, content, scrollTo])
 	const chatRef = useCallback(
 		(node: HTMLDivElement | null) => {
