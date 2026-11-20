@@ -1,22 +1,22 @@
 import { Context, Effect, Layer, Schedule } from 'effect'
-import { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
+import type { auditDatabaseFromEnv, logAuditEvent } from '#worker/audit-log.ts'
 import { getAppBaseUrl } from '#worker/app-base-url.ts'
-import { checkPublicFormProtection } from '#app/public-form-protection.ts'
-import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
-import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
+import type { checkPublicFormProtection } from '#app/public-form-protection.ts'
+import type { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
+import type { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
+import type { RateLimitConfig } from '#worker/rate-limit.ts'
 import { dispatchAdminPackageSubscriptionEvent } from '#worker/package-invocations/admin-package-subscriptions.ts'
-import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
 import {
-	ConfirmationSendFailed,
+	type ConfirmationSendFailed,
 	DatabaseError,
-	EmailUnconfigured,
+	type EmailUnconfigured,
 	QueueSendFailed,
 	SubscriberDispatchFailed,
-	VerificationFailed,
-	VerificationUnavailable,
+	type VerificationFailed,
+	type VerificationUnavailable,
 } from './errors.ts'
 
-type WaitUntil = (promise: Promise<unknown>) => void
+export type WaitUntil = (promise: Promise<unknown>) => void
 
 type AuditEvent = Parameters<typeof logAuditEvent>[0]
 
@@ -28,9 +28,6 @@ export type NewsletterEnv = Parameters<
 	Parameters<typeof checkPublicFormProtection>[0]['env'] &
 	Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'> &
 	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
-
-/** Human verification has 10s; a hung siteverify fails closed. */
-export const humanVerificationTimeout = '10 seconds'
 
 export class NewsletterDb extends Context.Service<
 	NewsletterDb,
@@ -162,102 +159,18 @@ function d1(db: D1Database) {
 }
 
 /**
- * Every Cloudflare binding this slice touches, as Layers. Built per request
- * because bindings arrive with the request (Start context or the queue
- * handler), so there is no process-wide ManagedRuntime.
+ * Bindings the consent outbox needs. Built per request because bindings
+ * arrive with the request (Start context or the queue handler), so there is
+ * no process-wide ManagedRuntime. Kept apart from the sign-up layer: the
+ * runtime Worker reaches this module and must not pull in Turnstile or mail.
  */
-export function newsletterLayer(
+export function outboxLayer(
 	env: NewsletterEnv,
 	options: { waitUntil?: WaitUntil } = {},
-): Layer.Layer<NewsletterServices> {
+): Layer.Layer<NewsletterDb | ConsentQueue | AdminSubscribers> {
 	const { waitUntil } = options
 	return Layer.mergeAll(
 		Layer.succeed(NewsletterDb, d1(env.APP_DB)),
-		Layer.succeed(
-			RateLimiter,
-			RateLimiter.of({
-				allow: (key, config) =>
-					Effect.tryPromise({
-						try: () => checkRateLimit(env.APP_DB, key, config),
-						catch: (cause) =>
-							new DatabaseError({ operation: 'rate-limit', cause }),
-					}).pipe(Effect.map((result) => result.allowed)),
-			}),
-		),
-		Layer.succeed(
-			HumanVerification,
-			HumanVerification.of({
-				verify: ({ request, form }) =>
-					Effect.promise(() =>
-						checkPublicFormProtection({ env, request, body: form }),
-					).pipe(
-						Effect.timeoutOrElse({
-							duration: humanVerificationTimeout,
-							orElse: () =>
-								Effect.succeed({ ok: false, timedOut: true } as const),
-						}),
-						Effect.flatMap(
-							(
-								result,
-							): Effect.Effect<
-								void,
-								VerificationFailed | VerificationUnavailable
-							> =>
-								result.ok
-									? Effect.void
-									: 'status' in result && result.status === 503
-										? Effect.fail(new VerificationUnavailable())
-										: Effect.fail(
-												new VerificationFailed({
-													reason: 'timedOut' in result ? 'timeout' : 'rejected',
-												}),
-											),
-						),
-					),
-			}),
-		),
-		Layer.succeed(
-			ConfirmationMailer,
-			ConfirmationMailer.of({
-				appBaseUrl: (request) => {
-					const config = resolveTransactionalEmailConfig({
-						env,
-						requestUrl:
-							env.WRANGLER_IS_LOCAL_DEV === 'true' ? request.url : undefined,
-					})
-					return config
-						? Effect.succeed(config.appBaseUrl)
-						: Effect.fail(new EmailUnconfigured({ email: '' }))
-				},
-				send: (message) =>
-					Effect.tryPromise({
-						try: async () => {
-							await sendNewsletterConfirmationEmail({
-								env,
-								...message,
-								waitUntil,
-							})
-						},
-						catch: (cause) => new ConfirmationSendFailed({ cause }),
-					}).pipe(Effect.asVoid),
-			}),
-		),
-		Layer.succeed(
-			AuditLog,
-			AuditLog.of({
-				// Registered with waitUntil when there is one, so the write is not
-				// cut off once the response has gone out.
-				record: (event) =>
-					Effect.sync(() => {
-						const write = logAuditEvent({
-							...event,
-							db: auditDatabaseFromEnv(env),
-						} as AuditEvent)
-						if (waitUntil) waitUntil(write)
-						else void write
-					}),
-			}),
-		),
 		Layer.succeed(
 			ConsentQueue,
 			ConsentQueue.of({

@@ -9,7 +9,7 @@ import {
 	AdminSubscribers,
 	ConsentQueue,
 	NewsletterDb,
-	newsletterLayer,
+	outboxLayer,
 	whatsNewConsentFirstPartyOrgIds,
 	type NewsletterEnv,
 } from './services.ts'
@@ -328,7 +328,7 @@ export function recordWhatsNewConsentChange(
 	input: ConsentChange & { env: NewsletterEnv },
 ): Promise<void> {
 	return recordConsentChange(input).pipe(
-		Effect.provide(newsletterLayer(input.env)),
+		Effect.provide(outboxLayer(input.env)),
 		Effect.runPromise,
 	)
 }
@@ -339,7 +339,7 @@ export function recordWhatsNewVerifiedAccount(input: {
 	now?: Date
 }): Promise<void> {
 	return recordVerifiedAccount(input).pipe(
-		Effect.provide(newsletterLayer(input.env)),
+		Effect.provide(outboxLayer(input.env)),
 		Effect.runPromise,
 	)
 }
@@ -351,7 +351,7 @@ export function deliverWhatsNewConsentOutboxRow(input: {
 	waitUntil?: WaitUntil
 }): Promise<{ delivered: number }> {
 	return deliverConsentOutboxRow(input.outboxId).pipe(
-		Effect.provide(newsletterLayer(input.env, { waitUntil: input.waitUntil })),
+		Effect.provide(outboxLayer(input.env, { waitUntil: input.waitUntil })),
 		Effect.runPromise,
 	)
 }

@@ -24,9 +24,9 @@ import {
 	HumanVerification,
 	NewsletterDb,
 	RateLimiter,
-	newsletterLayer,
 	type NewsletterEnv,
 } from './services.ts'
+import { signupLayer } from './signup-layer.ts'
 
 /** Sign-up requests per IP address. */
 export const newsletterSignupIpRateLimit: RateLimitConfig = {
@@ -381,7 +381,7 @@ export function requestNewsletterSignup(input: {
 			VerificationUnavailable: () => fail('unavailable'),
 			EmailUnconfigured: () => fail('unavailable'),
 		}),
-		Effect.provide(newsletterLayer(input.env, { waitUntil: input.waitUntil })),
+		Effect.provide(signupLayer(input.env, { waitUntil: input.waitUntil })),
 		Effect.runPromise,
 	)
 }
@@ -409,7 +409,7 @@ export function confirmNewsletterSignup(input: {
 				error: 'invalid_link',
 			}),
 		),
-		Effect.provide(newsletterLayer(input.env, { waitUntil: input.waitUntil })),
+		Effect.provide(signupLayer(input.env, { waitUntil: input.waitUntil })),
 		Effect.runPromise,
 	)
 }
