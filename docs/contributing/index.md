@@ -47,8 +47,8 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Friction log](./friction-log.md) (when/where/how-to-fix policy; filing at
   [@kody/kody-factory](https://kody.codes/@kody/kody-factory), daily sweep at
   [@kentcdodds/friction-log](https://kody.codes/@kentcdodds/friction-log))
-- [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md ratchet,
-  Validate unit-job timing, ship-pr review-bot sort)
+- [Repo health](./repo-health.md) (CI + in-repo budgets: AGENTS.md cap, Validate
+  unit-job timing, ship-pr review-bot sort)
 - Local CLI execute (when, command, failure):
   [guide:local_execute](../guides/local-execute.md) and
   [prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
