@@ -175,7 +175,7 @@ Common commands:
 
 For MCP capability work, prefer `*.node.test.ts` or `*.workers.test.ts` beside
 the implementation (see the
-[test flavor decision matrix](./testing-principles.md#test-flavor-decision-matrix))
+[test flavor decision matrix](./test-runners.md#test-flavor-decision-matrix))
 and keep `npm run test:mcp` limited to a couple of high-signal smoke journeys.
 
 If `packages/worker/.env` is missing, the E2E server startup path copies

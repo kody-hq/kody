@@ -5,9 +5,6 @@ style, tests, MCP capabilities, and runtime architecture.
 
 ## Setup and workflow
 
-- [Explicit state machines](./state-machines.md) (lifecycle graphs and SQL
-  guards)
-
 - [Engineering principles](../principles/index.md) (including
   [error prompt for agents](../principles/error-prompt-for-agents.md))
 - [Getting started](./getting-started.md), [project intent](./project-intent.md)
@@ -57,7 +54,6 @@ style, tests, MCP capabilities, and runtime architecture.
   [Changing the CLI](./cloud-agents.md#changing-the-cli)
 - PR system recaps (visual plan/recap blocks in PR descriptions):
   [visual-recap skill](../../.agents/skills/visual-recap/SKILL.md)
-
 - [Desktop Electron shell](../../packages/desktop/README.md) — production
   downloads:
   [kody-hq/kody-desktop releases](https://github.com/kody-hq/kody-desktop/releases/latest)
@@ -68,10 +64,12 @@ style, tests, MCP capabilities, and runtime architecture.
 - [Code style](./code-style.md), [TypeScript setup](./typescript-setup.md)
 - [Import boundaries](./import-boundaries.md) (enforced app / MCP / worker /
   universal layering)
-- [Oxlint JS plugins](./oxlint-js-plugins.md),
-  [dependency overrides](./dependency-overrides.md)
-  (`typescript/no-explicit-any`, `TODO`/`FIXME`/`HACK`, file-size ratchet,
-  vanished-copy `kody-custom/no-tautological-absence`, knip)
+- [Oxlint JS plugins](./oxlint-js-plugins.md) (custom lint rules, file-size
+  ratchet, knip)
+- [Dependency overrides](./dependency-overrides.md) (why each root `overrides`
+  entry exists)
+- [Explicit state machines](./state-machines.md) (lifecycle graphs and SQL
+  guards)
 - [Web app rendering and server state](./tanstack-start.md)
   ([flows](./tanstack-start-flows.md),
   [HTTP contracts](./tanstack-start-http-contracts.md))
@@ -82,17 +80,14 @@ style, tests, MCP capabilities, and runtime architecture.
   ready)
 - [Cloudflare Agents SDK usage](./cloudflare-agents-sdk.md)
 
-- [Files collaboration spike](./architecture/file-collaboration-spike.md)
-
 ## Testing
 
-- [Testing principles](./testing-principles.md)
-- [Writing tests](./writing-tests.md)
+- [Writing tests](./writing-tests.md) (whether and where to add a test)
+- [Test runners](./test-runners.md) (flavor matrix, running one file, harness)
 - [End-to-end testing](./end-to-end-testing.md)
-- [Weekly site performance](./weekly-site-perf.md)
-- [Markdown and highlighting migration measurements](./performance/markdown-migration-2026-10-28.md)
-- [Hosted execute `kody:@` import baseline](./performance/prebuilt-imports-baseline-2026-11-16.md)
-- [MCP latency bench](./latency-bench.md)
+- [Weekly site performance](./weekly-site-perf.md),
+  [MCP latency bench](./latency-bench.md), dated
+  [performance snapshots](./performance/)
 - [Mock API servers](./mock-api-servers.md)
 - [Package discovery routing evaluation](./package-discovery-evaluation.md)
 
@@ -136,6 +131,8 @@ style, tests, MCP capabilities, and runtime architecture.
 
 - [Architecture](./architecture/index.md) — production worker fleet, request
   lifecycle, [authorization](./architecture/authorization.md) (RBAC)
+- [Files collaboration spike](./architecture/file-collaboration-spike.md) (local
+  spike, not wired to production)
 - [CLI streaming gateway-fetch contract](./contracts/cli-streaming-gateway-fetch.md)
   — native Open API hop for local `kody.gatewayFetchStream`
 - [CLI local credential runtime](./contracts/cli-local-credential-runtime.md) —
