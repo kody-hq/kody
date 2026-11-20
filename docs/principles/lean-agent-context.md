@@ -5,9 +5,9 @@ in focused docs, and do not restate the same policy across files.
 
 ## Rules
 
-- Root `AGENTS.md` is a small index (map), not an encyclopedia. The `agents-md`
-  file-size ratchet (`npm run slop-ratchet:check`) enforces the line budget;
-  raise `maxLines` only on purpose.
+- Root `AGENTS.md` is a small index (map), not an encyclopedia. A hard line cap
+  in CI enforces it ([repo health](../contributing/repo-health.md)); trim or
+  move detail instead of asking for more lines.
 - Detail lives in focused pages under `docs/` (principles, contributing, guides)
   or in task skills under `.agents/skills/`.
 - Progressive disclosure: agents open the index, then only the page the task
@@ -23,5 +23,5 @@ in focused docs, and do not restate the same policy across files.
   repeated advice into checkers
 - [Documentation principles](../contributing/documentation.md): how we write and
   garden docs
-- [Repo health](../contributing/repo-health.md): CI budgets including
-  `agents-md`
+- [Repo health](../contributing/repo-health.md): CI budgets including the
+  `AGENTS.md` cap
