@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { recordSkillPageRead } from '#start/server/skills'
 
 export function SkillReadAcknowledgement({
@@ -23,29 +23,25 @@ function Acknowledge({
 	receipt: string
 }) {
 	const [eventId] = useState(() => crypto.randomUUID())
-	const [error, setError] = useState(false)
 	const [retry, setRetry] = useState(0)
 	const client = useQueryClient()
-	useEffect(() => {
-		let active = true
-		void recordSkillPageRead({ data: { orgSlug, receipt, eventId } })
-			.then(() => {
-				if (active) setError(false)
-				void client.invalidateQueries({
-					predicate: (query) =>
-						query.queryKey[2] === 'loadSkillsPage' ||
-						query.queryKey[2] === 'loadOrgOverview',
-					refetchType: 'none',
-				})
+	const read = useQuery({
+		queryKey: ['skill-page-read', orgSlug, receipt, eventId, retry],
+		queryFn: async () => {
+			await recordSkillPageRead({ data: { orgSlug, receipt, eventId } })
+			void client.invalidateQueries({
+				predicate: (query) =>
+					query.queryKey[2] === 'loadSkillsPage' ||
+					query.queryKey[2] === 'loadOrgOverview',
+				refetchType: 'none',
 			})
-			.catch(() => {
-				if (active) setError(true)
-			})
-		return () => {
-			active = false
-		}
-	}, [receipt, orgSlug, eventId, retry, client])
-	return error ? (
+			return true
+		},
+		staleTime: Infinity,
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	return read.isError ? (
 		<p role="status">
 			This read couldn't be recorded.{' '}
 			<button type="button" onClick={() => setRetry((n) => n + 1)}>
