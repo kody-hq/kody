@@ -156,11 +156,9 @@ already-allowed package.
   keyed by the package id, and can be used only with package context.
   `secretList` and `packageGet` expose their metadata with `package_id` even
   outside an active package run. Search does not return or rank those
-  references. **Creating or updating package-scoped secrets from
-  `kody execute --local` is unavailable** — local CapabilityProxy does not
-  attach package secret authority (and must not trust a client-supplied package
-  id). Prefer hosted package execute, `/connect/secret-set`, or Open API
-  `secretSet` outside local execute. Details:
+  references. To create or update one from execute, the Open API, or
+  `kody execute --local`, pass `package_id` to `secretSet` (a saved package in
+  this org); Kody applies the same permission check as the website. Details:
   [Local CLI execute](./local-execute.md#failure).
 
 A Use collaborator running your package in **your** org uses **your** org's

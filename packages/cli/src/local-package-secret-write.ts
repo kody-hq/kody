@@ -11,7 +11,10 @@
  */
 
 export const localPackageScopedSecretWriteUnavailableMessage =
-	'Package-scoped secret writes in local execution need an explicit package: pass `package_id` (a saved package in this org) to `secretSet`. The local CapabilityProxy bridge does not attach package secret authority, so a write without `package_id` has no package to land in.'
+	'Package-scoped secretSet in local execution needs an explicit package: pass `package_id` (a saved package in this org). The local CapabilityProxy bridge does not attach package secret authority, so a write without `package_id` has no package to land in.'
+
+export const localPackageScopedSecretMutationUnavailableMessage =
+	'Package-scoped secretSetMany, secretDelete, and secretDisconnect are not available in local execution: the local CapabilityProxy bridge does not attach package secret authority. Run them via hosted package execute, or use the account UI.'
 
 const packageSecretMutations = new Set([
 	'secretSet',
@@ -63,16 +66,17 @@ export function localPackageScopedSecretWriteBlockReason(
 			return isPackageScope((entry as { scope?: unknown }).scope)
 		})
 		return touchesPackage
-			? localPackageScopedSecretWriteUnavailableMessage
+			? localPackageScopedSecretMutationUnavailableMessage
 			: null
 	}
 
 	// Kody resolves and authorizes `package_id` against the caller's org.
 	if (name === 'secretSet' && hasPackageTarget(record.package_id)) return null
 
-	return isPackageScope(record.scope)
+	if (!isPackageScope(record.scope)) return null
+	return name === 'secretSet'
 		? localPackageScopedSecretWriteUnavailableMessage
-		: null
+		: localPackageScopedSecretMutationUnavailableMessage
 }
 
 export function assertLocalPackageScopedSecretWriteAllowed(

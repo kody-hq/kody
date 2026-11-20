@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
 	assertLocalPackageScopedSecretWriteAllowed,
 	localPackageScopedSecretWriteBlockReason,
+	localPackageScopedSecretMutationUnavailableMessage,
 	localPackageScopedSecretWriteUnavailableMessage,
 } from '../src/local-package-secret-write.js'
 
@@ -39,7 +40,7 @@ test('blocks secretSetMany when any entry is package-scoped', () => {
 				},
 			],
 		),
-		localPackageScopedSecretWriteUnavailableMessage,
+		localPackageScopedSecretMutationUnavailableMessage,
 	)
 })
 
@@ -49,7 +50,7 @@ test('blocks secretDelete with scope package', () => {
 			['kody', 'secretDelete'],
 			[{ name: 'token', scope: 'package' }],
 		),
-		localPackageScopedSecretWriteUnavailableMessage,
+		localPackageScopedSecretMutationUnavailableMessage,
 	)
 })
 
@@ -59,7 +60,7 @@ test('blocks secretDisconnect with scope package', () => {
 			['kody', 'secretDisconnect'],
 			[{ name: 'token', scope: 'package' }],
 		),
-		localPackageScopedSecretWriteUnavailableMessage,
+		localPackageScopedSecretMutationUnavailableMessage,
 	)
 })
 
@@ -76,7 +77,7 @@ test('forwards secretSet with a package_id target to Kody', () => {
 			['kody', 'secretDelete'],
 			[{ name: 'token', scope: 'package', package_id: 'pkg-1' }],
 		),
-		localPackageScopedSecretWriteUnavailableMessage,
+		localPackageScopedSecretMutationUnavailableMessage,
 	)
 })
 
