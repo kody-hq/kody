@@ -169,7 +169,10 @@ For new Key integrations that need a JSON body field, a URL path segment, or
 several credentials in one request, use an approved request profile and
 `credential(key).fetch()`. A profile describes the package, destination, method,
 and credential locations. It is separate from the Key's allowed hosts and **Fill
-placement** settings.
+placement** settings. The
+[credential client](../../packages/worker/src/credentials/client-resolver.ts)
+refuses a body or path profile request until the owner also allows the matching
+part under **Fill placement**.
 
 An org Owner with credential Write access saves or removes the JSON profile
 under **Approve an exact request** on the Key's page
