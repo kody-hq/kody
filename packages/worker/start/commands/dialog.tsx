@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { orgSlugFromPathname } from '#universal/org-pages.ts'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useHotkeys, formatForDisplay } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -446,11 +446,14 @@ export function CommandDialog({
 		if (confirmation) confirmationHeading.current?.focus()
 		else if (!help) input.current?.focus()
 	}, [actions, confirmation, help])
-	useEffect(() => {
+	const dialogRef = useCallback((node: HTMLDialogElement | null) => {
+		dialog.current = node
+		if (!node) return
 		const previous = document.activeElement
-		dialog.current?.showModal()
+		node.showModal()
 		input.current?.focus()
 		return () => {
+			dialog.current = null
 			clearTimeout(debounceTimer.current)
 			if (previous instanceof HTMLElement && previous.isConnected)
 				previous.focus()
@@ -464,7 +467,7 @@ export function CommandDialog({
 	return (
 		// oxlint-disable-next-line kody-custom/no-raw-dialog -- command palette owns its own combobox focus model.
 		<dialog
-			ref={dialog}
+			ref={dialogRef}
 			aria-label="Search and commands"
 			css={dialogCss}
 			onCancel={(event) => {
