@@ -440,7 +440,6 @@ export function CommandDialog({
 		],
 		{ target: dialog, ignoreInputs: false, preventDefault: true },
 	)
-	// Focus follows the view: the heading while confirming, else the search input.
 	const confirmationHeadingRef = useCallback(
 		(node: HTMLHeadingElement | null) => {
 			confirmationHeading.current = node
