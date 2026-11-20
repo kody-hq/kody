@@ -4,6 +4,7 @@ import {
 	pushHeadForPublish,
 	runLocalPublishBuild,
 	type PublishBuilder,
+	type PublishPushRemote,
 } from './local-publish-build.js'
 import { executionContextPublishDocsUrl } from './publish-limit-advice.js'
 
@@ -15,6 +16,17 @@ type Call = (
 	operationId: string,
 	params: Record<string, unknown>,
 ) => Promise<unknown>
+
+/** Long enough for a large push; the token is minted per publish. */
+const publishPushRemoteTtlSeconds = 900
+
+function packageRef(target: Record<string, unknown>) {
+	return Object.fromEntries(
+		['package_id', 'name', 'kody_id'].flatMap((key) =>
+			target[key] === undefined ? [] : [[key, target[key]]],
+		),
+	)
+}
 
 export function isResourceLimitRefusal(result: unknown) {
 	const text = JSON.stringify(result ?? null)
@@ -58,7 +70,18 @@ async function buildThenPublish(input: {
 	const log = (line: string) => input.writeErr(`${line}\n`)
 	// 8B: never build a commit Kody cannot see.
 	const pushed =
-		input.origin === 'cli' ? await pushHeadForPublish(input.cwd, log) : null
+		input.origin === 'cli'
+			? await pushHeadForPublish(
+					input.cwd,
+					async () =>
+						(await input.call('packageGetGitRemote', {
+							...packageRef(input.target),
+							scope: 'write',
+							ttl_seconds: publishPushRemoteTtlSeconds,
+						})) as PublishPushRemote,
+					log,
+				)
+			: null
 	const created = (await input.call('packagePublishBuildCreate', {
 		...input.target,
 		origin: input.origin,
