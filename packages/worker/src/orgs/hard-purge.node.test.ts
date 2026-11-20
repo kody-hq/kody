@@ -1,10 +1,12 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
+import * as Sentry from '@sentry/cloudflare'
 import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import { purgePersistedMcpAgentSession } from '#mcp/session-registry.ts'
 import * as stripeClient from '#worker/billing/stripe-client.ts'
 import {
@@ -1121,5 +1123,329 @@ test('finishLegacyUserDeletion finishes when an MCP agent session DO was already
 			.bind(personId)
 			.first<{ n: number }>()
 		expect({ table, n: row?.n }).toEqual({ table, n: 0 })
+	}
+})
+
+const purgeWebhookUrl = 'https://hooks.example.test/kody-purge'
+
+type PurgeWebhookBody = { kind: 'org' | 'user'; id: string; purgedAt: string }
+
+function stubPurgeWebhook(
+	respond: (
+		body: PurgeWebhookBody,
+		init: RequestInit,
+	) => Response | Promise<Response>,
+) {
+	const bodies: Array<PurgeWebhookBody> = []
+	const fetch = vi
+		.spyOn(globalThis, 'fetch')
+		.mockImplementation(async (input, init = {}) => {
+			expect(String(input)).toBe(purgeWebhookUrl)
+			expect(init.method).toBe('POST')
+			expect(init.headers).toEqual({ 'content-type': 'application/json' })
+			expect(init.signal).toBeInstanceOf(AbortSignal)
+			const body = JSON.parse(String(init.body)) as PurgeWebhookBody
+			bodies.push(body)
+			return respond(body, init)
+		})
+	return { fetch, bodies }
+}
+
+/** A team org and a soft-deleted person with a personal org, both purgeable. */
+async function createPurgeWebhookPass(env: { [Key in keyof Env]?: unknown }) {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const appDb = createD1FromSqlite(sqlite)
+	const auditDb = createAuditDb()
+	const teamOrgId = ownerIdFromStored('org-hard-purge')
+	await seedTeamOrgGraph({
+		appDb,
+		orgId: teamOrgId,
+		ts: '2026-01-01T00:00:00.000Z',
+	})
+	const { personId, kv } = await seedSoftDeletedPersonWithPersonalOrg({
+		appDb,
+		stripeCustomerId: null,
+	})
+	const passEnv = createSuccessfulDeletionEnv(appDb, {
+		AUDIT_DB: auditDb,
+		BUNDLE_ARTIFACTS_KV: kv,
+		SOFT_DELETE_PURGE_ENABLED: 'true',
+		...env,
+	})
+	const remaining = async () => ({
+		teamOrg: await countRows(
+			appDb,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			teamOrgId,
+		),
+		personalOrg: await countRows(
+			appDb,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			personId,
+		),
+		user: await countRows(
+			appDb,
+			`SELECT COUNT(*) AS n FROM users WHERE stable_user_id = ?`,
+			personId,
+		),
+	})
+	const webhookFailures = async () =>
+		(
+			await auditDb
+				.prepare(
+					`SELECT org_id, result, details_json FROM org_audit_events
+					 WHERE action = 'purge.webhook_failed' ORDER BY rowid`,
+				)
+				.all<{ org_id: string; result: string; details_json: string }>()
+		).results.map((row) => ({
+			orgId: row.org_id,
+			result: row.result,
+			details: JSON.parse(row.details_json) as unknown,
+		}))
+	const pass = (now: string) =>
+		pruneSoftDeleted({ env: passEnv, now: new Date(now), dryRun: false })
+	return { teamOrgId, personId, remaining, webhookFailures, pass }
+}
+
+test('soft delete purge skips the purge webhook when PURGE_WEBHOOK_URL is unset or empty', async () => {
+	const fetch = vi.spyOn(globalThis, 'fetch')
+	try {
+		for (const env of [{}, { PURGE_WEBHOOK_URL: '' }]) {
+			const purge = await createPurgeWebhookPass(env)
+			const result = await purge.pass('2026-03-01T00:00:00.000Z')
+			expect(result.failed, JSON.stringify(result.outcomes)).toBe(0)
+			expect(result.purged).toBe(2)
+			expect(await purge.remaining()).toEqual({
+				teamOrg: 0,
+				personalOrg: 0,
+				user: 0,
+			})
+			expect(await purge.webhookFailures()).toEqual([])
+		}
+		expect(fetch).not.toHaveBeenCalled()
+	} finally {
+		fetch.mockRestore()
+	}
+})
+
+test('soft delete purge POSTs each org and user to the purge webhook before deleting rows', async () => {
+	const purge = await createPurgeWebhookPass({
+		PURGE_WEBHOOK_URL: purgeWebhookUrl,
+	})
+	const counts: Array<Awaited<ReturnType<typeof purge.remaining>>> = []
+	const webhook = stubPurgeWebhook(async () => {
+		counts.push(await purge.remaining())
+		return new Response(null, { status: 204 })
+	})
+	try {
+		const result = await purge.pass('2026-03-01T00:00:00.000Z')
+
+		expect(result.failed, JSON.stringify(result.outcomes)).toBe(0)
+		expect(result.purged).toBe(2)
+		const purgedAt = expect.stringMatching(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/)
+		expect(webhook.bodies).toEqual(
+			expect.arrayContaining([
+				{ kind: 'org', id: purge.teamOrgId, purgedAt },
+				{ kind: 'user', id: purge.personId, purgedAt },
+				{ kind: 'org', id: purge.personId, purgedAt },
+			]),
+		)
+		expect(webhook.bodies).toHaveLength(3)
+		// Every POST lands while its item's rows still exist.
+		const teamIndex = webhook.bodies.findIndex(
+			(body) => body.id === purge.teamOrgId,
+		)
+		expect(counts[teamIndex]?.teamOrg).toBe(1)
+		for (const [index, body] of webhook.bodies.entries()) {
+			if (body.id !== purge.personId) continue
+			expect(counts[index]).toMatchObject({ personalOrg: 1, user: 1 })
+		}
+		expect(await purge.remaining()).toEqual({
+			teamOrg: 0,
+			personalOrg: 0,
+			user: 0,
+		})
+		expect(await purge.webhookFailures()).toEqual([])
+	} finally {
+		webhook.fetch.mockRestore()
+	}
+})
+
+test('a non-2xx purge webhook keeps the org rows and claim, audits, reports, and lets the pass continue', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const captureException = vi.spyOn(Sentry, 'captureException')
+	const purge = await createPurgeWebhookPass({
+		PURGE_WEBHOOK_URL: purgeWebhookUrl,
+	})
+	let teamOrgStatus = 503
+	const webhook = stubPurgeWebhook(
+		(body) =>
+			new Response(null, {
+				status: body.id === purge.teamOrgId ? teamOrgStatus : 200,
+			}),
+	)
+	try {
+		const result = await purge.pass('2026-03-01T00:00:00.000Z')
+
+		expect(result.purged).toBe(1)
+		expect(result.outcomes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					kind: 'org',
+					id: purge.teamOrgId,
+					outcome: 'failed',
+					error: 'Purge webhook failed with HTTP 503.',
+				}),
+				expect.objectContaining({
+					kind: 'user',
+					id: purge.personId,
+					outcome: 'purged',
+				}),
+			]),
+		)
+		expect(await purge.remaining()).toEqual({
+			teamOrg: 1,
+			personalOrg: 0,
+			user: 0,
+		})
+		expect(await purge.webhookFailures()).toEqual([
+			{
+				orgId: purge.teamOrgId,
+				result: 'failure',
+				details: { kind: 'org', id: purge.teamOrgId, status: 503 },
+			},
+		])
+		expect(consoleWarn).toHaveBeenCalledWith(
+			expect.stringContaining('"message":"soft_delete_purge_webhook_failed"'),
+		)
+		expect(captureException).toHaveBeenCalledTimes(1)
+		expect(captureException.mock.calls[0]?.[0]).toMatchObject({
+			_tag: 'PurgeWebhookFailed',
+			kind: 'org',
+			id: purge.teamOrgId,
+			status: 503,
+		})
+
+		// The kept claim holds the org until the backoff passes, then it retries.
+		const fenced = await purge.pass('2026-03-01T01:00:00.000Z')
+		expect(fenced.outcomes).toEqual([])
+		teamOrgStatus = 200
+		const retried = await purge.pass('2026-03-01T07:00:00.000Z')
+		expect(retried.outcomes).toEqual([
+			expect.objectContaining({ id: purge.teamOrgId, outcome: 'purged' }),
+		])
+		expect((await purge.remaining()).teamOrg).toBe(0)
+	} finally {
+		webhook.fetch.mockRestore()
+		captureException.mockRestore()
+	}
+})
+
+test('a purge webhook timeout aborts the POST and keeps the item rows', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const captureException = vi.spyOn(Sentry, 'captureException')
+	const purge = await createPurgeWebhookPass({
+		PURGE_WEBHOOK_URL: purgeWebhookUrl,
+	})
+	const aborted: Array<string> = []
+	const webhook = stubPurgeWebhook(
+		(body, init) =>
+			new Promise<Response>((_resolve, reject) => {
+				init.signal?.addEventListener('abort', () => {
+					aborted.push(body.id)
+					reject(init.signal?.reason)
+				})
+			}),
+	)
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+	try {
+		const result = purge.pass('2026-03-01T00:00:00.000Z')
+		await vi.advanceTimersByTimeAsync(2 * 31_000)
+		const settled = await result
+
+		expect(settled.purged).toBe(0)
+		expect(settled.failed).toBe(2)
+		expect(settled.outcomes).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: purge.teamOrgId,
+					outcome: 'failed',
+					error: 'purge_webhook.post timed out after 30s.',
+				}),
+			]),
+		)
+		// The pair stops at the user's POST; the personal org is never sent.
+		expect(aborted.toSorted()).toEqual(
+			[purge.teamOrgId, purge.personId].toSorted(),
+		)
+		expect(await purge.remaining()).toEqual({
+			teamOrg: 1,
+			personalOrg: 1,
+			user: 1,
+		})
+		expect(await purge.webhookFailures()).toEqual(
+			expect.arrayContaining([
+				{
+					orgId: purge.teamOrgId,
+					result: 'failure',
+					details: { kind: 'org', id: purge.teamOrgId, status: null },
+				},
+				{
+					orgId: purge.personId,
+					result: 'failure',
+					details: { kind: 'user', id: purge.personId, status: null },
+				},
+			]),
+		)
+		expect(captureException).toHaveBeenCalledTimes(2)
+	} finally {
+		vi.useRealTimers()
+		webhook.fetch.mockRestore()
+		captureException.mockRestore()
+	}
+})
+
+test('a purge webhook failure for either half of a person and personal org keeps both halves', async () => {
+	consoleWarn.mockImplementation(() => {})
+	for (const failingKind of ['user', 'org'] as const) {
+		const purge = await createPurgeWebhookPass({
+			PURGE_WEBHOOK_URL: purgeWebhookUrl,
+		})
+		const webhook = stubPurgeWebhook(
+			(body) =>
+				new Response('nope', {
+					status:
+						body.id === purge.personId && body.kind === failingKind ? 500 : 200,
+				}),
+		)
+		try {
+			const result = await purge.pass('2026-03-01T00:00:00.000Z')
+
+			expect(result.outcomes).toEqual(
+				expect.arrayContaining([
+					expect.objectContaining({ id: purge.teamOrgId, outcome: 'purged' }),
+					expect.objectContaining({
+						kind: 'user',
+						id: purge.personId,
+						outcome: 'failed',
+					}),
+				]),
+			)
+			expect(await purge.remaining()).toEqual({
+				teamOrg: 0,
+				personalOrg: 1,
+				user: 1,
+			})
+			expect(await purge.webhookFailures()).toEqual([
+				{
+					orgId: purge.personId,
+					result: 'failure',
+					details: { kind: failingKind, id: purge.personId, status: 500 },
+				},
+			])
+		} finally {
+			webhook.fetch.mockRestore()
+		}
 	}
 })

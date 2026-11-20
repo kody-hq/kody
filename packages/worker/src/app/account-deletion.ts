@@ -62,6 +62,7 @@ import {
 	getAccountD1UserColumnCoverage,
 } from '#worker/account/data-targets.ts'
 import { hardPurgeDataTargets } from '#worker/orgs/data-targets.ts'
+import type { PurgeWebhookFailed } from '#worker/orgs/purge-webhook.ts'
 import {
 	accountUserOwnedVectorizeSurfaces,
 	getAccountDeletionDurableObjectResultKeys,
@@ -264,6 +265,7 @@ export type DeleteUserAccountError =
 	| UserMeterFailure
 	| DatabaseError
 	| OutboundCallError
+	| PurgeWebhookFailed
 
 type UserSourceSnapshot = {
 	sourceId: string
@@ -1803,7 +1805,8 @@ const purgeClaimFence = Effect.fn('AccountDeletion.purgeClaimFence')(function* (
  *   4. Idempotent cleanup of out-of-band stores and OAuth grants.
  *   5. Abort while preserving D1 inventory and the user row if any critical
  *      cleanup failed.
- *   6. Atomically delete user-scoped D1 rows and the user row in one batch.
+ *   6. Run the caller's `beforeRowDeletes` step (purge lane webhook).
+ *   7. Atomically delete user-scoped D1 rows and the user row in one batch.
  */
 export const deleteUserAccountEffect = Effect.fn(
 	'AccountDeletion.deleteUserAccount',
@@ -1824,6 +1827,15 @@ export const deleteUserAccountEffect = Effect.fn(
 	readonly purgeSoftDeleted?: boolean
 	/** Guest merge: the claiming person inherits this account's OAuth grants. */
 	readonly keepOAuthGrants?: boolean
+	/**
+	 * Purge lane: runs after billing and out-of-band cleanup, right before the
+	 * D1 batch. A failure keeps every row.
+	 */
+	readonly beforeRowDeletes?: Effect.Effect<
+		void,
+		PurgeWebhookFailed,
+		SliceServices
+	>
 }): Effect.fn.Return<
 	AccountDeletionResult,
 	DeleteUserAccountError,
@@ -1896,6 +1908,7 @@ export const deleteUserAccountEffect = Effect.fn(
 			warnings,
 		)
 	}
+	if (input.beforeRowDeletes) yield* input.beforeRowDeletes
 
 	const d1Cleanup = yield* deleteUserScopedRowsAndUser({
 		mcpUserId: input.mcpUserId,
