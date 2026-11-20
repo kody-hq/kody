@@ -42,9 +42,9 @@ target host is not already approved for that secret, the correct behavior is:
 
 The same stop-and-surface rule applies to package secret access denies. When
 several secrets or hosts need approval together, prefer the bulk host approval
-URL (`/connect/secrets?names=...&hosts=...`) or the bulk package approval URL
-(`/@<slug>/-/secrets/approve?package_id=...&names=...`) over one link per
-secret. Agents must never auto-approve host or package access.
+URL (`/connect/secrets?org=...&names=...&hosts=...`) or the bulk package
+approval URL (`/@<slug>/-/secrets/approve?package_id=...&names=...`) over one
+link per secret. Agents must never auto-approve host or package access.
 
 ## Placement in the same approval
 
@@ -57,6 +57,12 @@ one step:
 `hosts` is optional when only placement is requested. The page shows the
 credential, the requested parts, the hosts, and the "host may store this"
 warning; one click approves both, and nothing changes on decline.
+
+Every generated `/connect/secrets` link starts from `buildConnectSecretsUrl` in
+`packages/worker/src/mcp/secrets/host-approval.ts`, which sets `org` to the org
+that owns the credential. The page only reads that org (absent means the
+personal org) and never searches other orgs, so a link without `org` for an org
+Key reports that none of the listed secrets were found.
 
 Agents build the link (`credentialPlacementApprovalLink`, or the link a
 `credential_placement_refused` error already carries) and hand it to the owner.

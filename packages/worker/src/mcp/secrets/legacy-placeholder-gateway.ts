@@ -507,6 +507,7 @@ export async function expandSecretPlaceholders(input: {
 					sealedTokenMinterBucket(minter.scope, storageContext)
 						? buildSecretHostApprovalUrl({
 								baseUrl: batchProps.baseUrl,
+								orgSlug: secretPageOrgSlugFromCaller(batchProps),
 								name: minter.secret,
 								scope: minter.scope,
 								requestedHost: requestHost,
@@ -1128,6 +1129,7 @@ function readSettledSecretResults(input: {
 				scope: denial.scope,
 				approvalUrl: buildSecretHostApprovalUrl({
 					baseUrl: input.props.baseUrl,
+					orgSlug: secretPageOrgSlugFromCaller(input.props),
 					name: denial.secretName,
 					scope: denial.scope,
 					requestedHost: input.requestedHost,
@@ -1152,6 +1154,7 @@ function createHostApprovalBatchError(input: {
 	const bulkApprovalUrl = bulkScope
 		? buildSecretHostBulkApprovalUrlIfNeeded({
 				baseUrl: input.props.baseUrl,
+				orgSlug: secretPageOrgSlugFromCaller(input.props),
 				names: missingApprovals.map((entry) => entry.secretName),
 				hosts: missingApprovals.map((entry) => entry.host),
 				scope: bulkScope.scope,

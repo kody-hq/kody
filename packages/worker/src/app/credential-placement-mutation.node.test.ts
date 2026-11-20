@@ -237,7 +237,7 @@ test('an owner approval link widens a headers-only Key to the body in one click'
 		placement: { headers: true },
 	})
 	expect(link.approval_url).toBe(
-		`https://heykody.dev/connect/secrets?name=plaidSecret&hosts=production.plaid.com&placement=body&org=owneruser&credential=${(await t.entry('plaidSecret'))!.id}`,
+		`https://heykody.dev/connect/secrets?org=owneruser&name=plaidSecret&hosts=production.plaid.com&placement=body&credential=${(await t.entry('plaidSecret'))!.id}`,
 	)
 	// Building the link changes nothing.
 	expect(JSON.parse((await t.entry('plaidSecret'))!.placement_json!)).toEqual({
