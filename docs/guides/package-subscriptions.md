@@ -215,9 +215,9 @@ search/detail projections so subscribers can discover payload shapes.
 
 Any package code can emit its package's events, wherever it runs: package jobs,
 exports, subscription handlers, webhook handlers, package apps, and `execute`
-calls that import a package export. The event always carries the package that
-declares the emitting module, with the same `kody.emits` checks and limits on
-every surface:
+calls that import a package export. Kody uses the emitting package's identity
+and `kody.emits` declaration, including when another package calls its code
+([package identity and topic checks](../../packages/worker/src/package-runtime/package-events-surfaces.workers.test.ts)):
 
 ```ts
 import { events } from 'kody:runtime'
@@ -236,9 +236,9 @@ Rules:
   against `payloadSchema` when declared.
 - Payloads are capped at 64 KiB (canonical JSON). Store large data with
   `packageStorage()` and emit a reference instead.
-- Code that is not part of a saved package (an ad hoc `execute` snippet) cannot
-  emit: it has no package identity, so `events.dispatch` fails and says why. Put
-  the emit in a package export and call that export instead:
+- An ad hoc snippet has no package identity, so
+  [calling `events.dispatch` directly fails](../../packages/worker/src/package-runtime/package-events-surfaces.workers.test.ts).
+  Put the emit in a saved package export and call that export instead:
 
   ```ts
   // In @kentcdodds/rooms, src/post-message.ts (declares the topic in kody.emits)
@@ -264,19 +264,19 @@ Rules:
   	await postMessage({ roomId: 'office', messageId: 'm-1' })
   ```
 
-- Package code imported into another package's run still emits as its own
-  package and must declare the topic in its own `kody.emits`.
-- Emitting needs a hosted run. `execute --local` runs code on your machine,
-  where Kody cannot verify that package code produced the event, so
-  `events.dispatch` fails there. Run the export on Kody instead.
+- Emit from a hosted run. The
+  [local runtime rejects `events.dispatch`](../../packages/worker/src/package-runtime/local-execute-runtime-support.ts);
+  run the export on Kody instead.
 
 ### Delivery semantics
 
-Dispatch is asynchronous and durable: `events.dispatch` validates the event,
-enqueues it on the `kody-package-events-dispatch` Queue (with DLQ), and returns
-`{ topic, source, idempotencyKey, status: "enqueued" }` immediately. Emitters
-never observe subscriber results or latency; check each subscriber's run records
-for handler outcomes.
+`events.dispatch` validates the event, enqueues it on the
+`kody-package-events-dispatch` Queue (with DLQ), and returns
+`{ topic, source, idempotencyKey, status: "enqueued" }`. If the queue is
+unavailable or enqueueing fails,
+[dispatch falls back to inline delivery](../../packages/worker/src/package-invocations/subscription-dispatch.ts)
+and reports `status: "delivered_inline"`. Check subscriber run records for
+handler outcomes.
 
 The Queue consumer resolves the emitting user's subscribed packages at delivery
 time and invokes each `subscription:@scope/topic` handler with:

@@ -354,6 +354,11 @@ assistant features:
   reads `orgId` and fails closed without it. `personId` names the person the
   grant acts as; credential resolution still uses the grant subject `userId`.
   There is no feature flag.
+- [Org binding lookup](../../../packages/worker/src/orgs/repo.ts) resolves a
+  normalized slug to an active org where the person has a live membership or
+  qualifying grant. Callers resolving multiple slugs use
+  `loadOrgBindingsForSlugs`, which batches lookups within D1's parameter limit
+  and omits slugs with no binding.
 - **MCP requests**: `handleMcpRequest` in `packages/worker/src/mcp-auth.ts` is
   the single chokepoint for `/mcp`. After token validation it checks
   `users.email_verified_at` (via `isAccountEmailVerified`) and rejects

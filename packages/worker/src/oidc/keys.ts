@@ -82,6 +82,7 @@ export function getOidcSigningPrivateKeyPem(env: Env) {
 	return pem
 }
 
+/** Cache the configured public key by kid; rotate the kid with the PEM. */
 export async function getOidcSigningPublicJwk(env: Env) {
 	const kid = getOidcSigningKeyId(env)
 	if (

@@ -147,8 +147,9 @@ function shouldSendBody(method: string) {
 
 /**
  * Streaming CapabilityProxy hop: the Open API request body is the outbound
- * fetch body. Metadata lives in allowlisted headers. Returns the upstream
- * Response directly (not `{ status, headers, bodyBase64 }`).
+ * fetch body. Metadata lives in allowlisted headers; credential picks come
+ * from the header or the context run lease. Returns the gateway's Response,
+ * not a JSON envelope.
  */
 export async function runCapabilityProxyGatewayFetchStream(input: {
 	ctx: ApiInvocationContext

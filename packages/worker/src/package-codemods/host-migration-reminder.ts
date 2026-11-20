@@ -5,12 +5,8 @@ import { runPackageCodemodStep } from './engine.ts'
 import { runPackageAppHostMigrationNotice } from './host-migration-owner-notice.ts'
 
 /**
- * The one reminder the host migration owner notice promised: December 3,
- * 2026, two weeks before the path-mount cutover. A fresh fleet scan starts at
- * 00:00 UTC that day and the mail goes out once it has finished, not before
- * 15:00 UTC, and the lane gives up a week later so a stuck run cannot mail
- * late. Owners whose apps the fresh scan finds clean get nothing, and the
- * notice's once-per-recipient claim means a retried tick never mails twice.
+ * Notice settings for the one-time reminder based on a fresh fleet scan.
+ * See “Scheduled host migration reminder” in `docs/contributing/package-codemods.md`.
  */
 export const packageAppHostMigrationReminder = {
 	sendFrom: '2026-12-03T15:00:00Z',

@@ -26,9 +26,8 @@ export type PackageInvocationRequest = {
 	exportName: string
 	params?: Record<string, unknown>
 	/**
-	 * `null` selects the key-less (lean/ephemeral) path for runtime callers:
-	 * no idempotency ledger row, no account write lease, run records on
-	 * failure only. External webhook invocations still require a key.
+	 * Required for keyed export invocations. Internal callers must opt into
+	 * ephemeral execution explicitly; `null` does not select that path.
 	 */
 	idempotencyKey: string | null
 	/**

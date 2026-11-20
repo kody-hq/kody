@@ -1309,11 +1309,17 @@ script owns no Durable Object classes.
   [Usage metering](./usage-metering.md))
 - `EMAIL_EVENTS` (Analytics Engine dataset, production/preview only; indexed by
   stable user id and read only through role-gated platform aggregates)
-- `MCP_PROTOCOL_EVENTS` (Analytics Engine dataset, production/preview only; one
+- `MCP_PROTOCOL_EVENTS` (Analytics Engine dataset, production/preview only): one
   point per authenticated `/mcp` request recording which protocol lane served it
   (sessionful Durable Object vs stateless SDK) and, on `tools/call`, blob8
   package-identity param class (`kody_id` / `package_id` / `name` / `both` /
-  `none`); see `packages/worker/src/mcp/protocol-metrics.ts`)
+  `none`). In
+  [protocol metrics](../../../packages/worker/src/mcp/protocol-metrics.ts),
+  blob9 is `declared` when that request advertises MCP Events in its client
+  capabilities, otherwise empty. The
+  [client-support readout](../../../packages/worker/src/feature-flags/mcp-events-client-support-readout.ts)
+  also uses Events RPCs and subscriptions; an empty blob alone does not mean the
+  client lacks support.
 - `EXECUTE_INTERPRETABLE_EVENTS` (Analytics Engine dataset, production/preview
   only; one point per MCP execute-tool module classifying whether it is
   interpretable pure glue for fleet `q`; see
