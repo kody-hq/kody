@@ -209,8 +209,8 @@ export type HardPurgeOrgMode = 'team' | 'personal'
 /**
  * One hard-purge inventory. `person` is the account-deletion list.
  * `org` is the org-owned subset of that list plus org-graph deletes.
- * The scheduled purge lane still dry-runs while `SOFT_DELETE_PURGE_ENABLED`
- * is false; this function only names the rows.
+ * The scheduled purge lane only lists candidates while
+ * `SOFT_DELETE_PURGE_ENABLED` is not `true`; this function only names the rows.
  *
  * Prefer {@link hardPurgeOrgDataTargets} when choosing personal vs team org
  * behavior: personal mode leaves owner-scoped rows only when a soft-deleted
