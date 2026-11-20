@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useState, type ReactNode } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, type ReactNode } from 'react'
 import { SiteHeader } from '../components/site-header.tsx'
 import { SiteFooter } from '../components/site-footer.tsx'
 import { TextLink } from '../components/text-link.tsx'
@@ -16,33 +17,29 @@ import { colors, spacing, typography } from '#universal/styles/tokens.ts'
 type LoadedMockup = { name: string; mockup: Mockup }
 
 function useMockups(names?: ReadonlyArray<string>) {
-	const [loaded, setLoaded] = useState<Array<LoadedMockup> | null>(null)
-	const [error, setError] = useState<string | null>(null)
 	const key = names?.join('\n') ?? '*'
-	useEffect(() => {
-		let cancelled = false
-		const wanted = key === '*' ? null : key.split('\n')
-		const modules = Object.entries(loadMockupModules()).filter(
-			([path]) => !wanted || wanted.includes(mockupName(path)),
-		)
-		Promise.all(
-			modules.map(async ([path, load]) => ({
-				name: mockupName(path),
-				mockup: (await load()).default,
-			})),
-		).then(
-			(next) => {
-				if (!cancelled)
-					setLoaded(next.sort((a, b) => a.name.localeCompare(b.name)))
-			},
-			(reason: unknown) => {
-				if (!cancelled) setError(String((reason as Error)?.stack ?? reason))
-			},
-		)
-		return () => {
-			cancelled = true
-		}
-	}, [key])
+	const query = useQuery({
+		queryKey: ['dev-mockups', key],
+		queryFn: async () => {
+			const wanted = key === '*' ? null : key.split('\n')
+			const modules = Object.entries(loadMockupModules()).filter(
+				([path]) => !wanted || wanted.includes(mockupName(path)),
+			)
+			const next = await Promise.all(
+				modules.map(async ([path, load]) => ({
+					name: mockupName(path),
+					mockup: (await load()).default,
+				})),
+			)
+			return next.sort((a, b) => a.name.localeCompare(b.name))
+		},
+		staleTime: Infinity,
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	const loaded: Array<LoadedMockup> | null = query.data ?? null
+	const reason: unknown = query.error
+	const error = reason ? String((reason as Error)?.stack ?? reason) : null
 	return { loaded, error }
 }
 
