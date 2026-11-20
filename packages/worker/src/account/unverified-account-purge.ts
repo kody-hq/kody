@@ -1,8 +1,9 @@
 /**
  * soft-delete-read-filter: opt-out
  *
- * Purge scans and claims unverified person accounts, including rows already
- * soft-deleted or mid-deletion.
+ * Purge scans and claims live unverified person accounts, including rows
+ * mid-deletion (`deleting_at` set), and its platform-account exemption reads
+ * `orgs` rows whether or not they are soft-deleted.
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { invalidatePackageAppOwnerCacheForDbUserId } from '#app/package-app-owner.ts'
@@ -48,6 +49,9 @@ export const unverifiedAccountPurgeFailureReasonMaxLength = 200
 const millisecondsPerDay = 24 * 60 * 60 * 1000
 
 const unverifiedPersonEligibilitySql = [
+	// Soft-deleted accounts keep their restore window; the soft-delete purge
+	// lane (orgs/purge.ts) owns hard-deleting them once it ends.
+	'users.deleted_at IS NULL',
 	'email_verified_at IS NULL',
 	// Leftover platform accounts are ordinary orgs whose creator is null.
 	// They never complete email login, so this unverified sweep would delete

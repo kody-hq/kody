@@ -2077,9 +2077,11 @@ Current retention policies:
 - Unverified person accounts: password signups that stay unverified
   (`users.email_verified_at` is null) for seven days and have no
   `oauth_connections` row are deleted by the hourly `unverified_account_purge`
-  lane. Each run selects a bounded batch of never-attempted rows first, then
-  oldest `created_at`, skipping rows whose `deleting_at` is inside a retry
-  backoff. Before deletion it claims the row atomically (restamping
+  lane. Soft-deleted rows (`deleted_at` set) are out of scope for both its scan
+  and its claim: they keep the restore window and the soft-delete purge lane
+  hard-deletes them. Each run selects a bounded batch of never-attempted rows
+  first, then oldest `created_at`, skipping rows whose `deleting_at` is inside a
+  retry backoff. Before deletion it claims the row atomically (restamping
   `deleting_at` only while eligibility still holds). Once claimed, verify-email
   and social-login reclaim refuse the fenced account. A claim-created fence is
   released only on pre-cleanup failures; a partial-cleanup failure leaves the

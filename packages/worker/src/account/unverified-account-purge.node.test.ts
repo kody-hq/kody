@@ -20,6 +20,7 @@ import {
 	listUnverifiedAccountPurgeCandidates,
 	pruneUnverifiedAccounts,
 } from './unverified-account-purge.ts'
+import { listSoftDeletePurgeCandidates } from '#worker/orgs/purge.ts'
 import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.ts'
 
 const now = new Date('2026-09-02T12:00:00.000Z')
@@ -138,6 +139,7 @@ function createHarness() {
 				email?: string
 				emailVerifiedAt?: string
 				deletingAt?: string
+				deletedAt?: string
 				oauthProvider?: string
 				/** Set to insert this user's org. `null` is a creator-less org. */
 				orgCreatedByUserId?: string | null
@@ -150,8 +152,8 @@ function createHarness() {
 				.prepare(
 					`INSERT INTO users (
 						username, email, password_hash, stable_user_id,
-						email_verified_at, deleting_at, created_at
-					) VALUES (?, ?, 'hash', ?, ?, ?, ?)`,
+						email_verified_at, deleting_at, deleted_at, created_at
+					) VALUES (?, ?, 'hash', ?, ?, ?, ?, ?)`,
 				)
 				.run(
 					username,
@@ -159,6 +161,7 @@ function createHarness() {
 					stableUserId,
 					input.emailVerifiedAt ?? null,
 					input.deletingAt ?? null,
+					input.deletedAt ?? null,
 					createdAt,
 				)
 			if (input.orgCreatedByUserId !== undefined) {
@@ -270,6 +273,51 @@ test('purge deletes only aged unverified person accounts through full account de
 			email_hash: emailHash(eligible.email),
 			reason: 'unverified_for_8_days',
 		},
+	])
+})
+
+test('soft-deleted unverified accounts are left to the soft-delete purge and never claimed or failed', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	const h = createHarness()
+	const softDeleted = await h.seed('soft-deleted-unverified', 60, {
+		deletedAt: daysAgo(40),
+	})
+	const staleFence = await h.seed('soft-deleted-stale-fence', 60, {
+		deletedAt: daysAgo(40),
+		deletingAt: daysAgo(1),
+	})
+	const live = await h.seed('live-unverified', 8)
+
+	expect(
+		await listUnverifiedAccountPurgeCandidates({ env: h.env, now }),
+	).toEqual({
+		scanned: 1,
+		candidates: [{ stableUserId: live.stableUserId, ageDays: 8 }],
+	})
+	expect(await h.run()).toEqual(
+		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(live, 8)]),
+	)
+	expect(purgedStableIds(deleteUserAccount)).toEqual([live.stableUserId])
+	expect(h.usernames()).toEqual([
+		'soft-deleted-stale-fence',
+		'soft-deleted-unverified',
+	])
+	expect(h.deletingAt('soft-deleted-unverified')).toBeNull()
+	expect(h.deletingAt('soft-deleted-stale-fence')).toBe(daysAgo(1))
+	expect(h.auditRows()).toEqual([purgedAudit(live)])
+
+	const softDeletePurge = await listSoftDeletePurgeCandidates({
+		env: h.env,
+		now,
+	})
+	expect(
+		softDeletePurge.candidates.map((candidate) => ({
+			id: candidate.id,
+			legacy: candidate.legacy,
+		})),
+	).toEqual([
+		{ id: softDeleted.stableUserId, legacy: undefined },
+		{ id: staleFence.stableUserId, legacy: undefined },
 	])
 })
 
