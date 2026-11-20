@@ -1137,8 +1137,9 @@ export const underlineLinkTabsCss: CSSObject = {
 	boxShadow: `inset 0 -1px 0 ${colors.border}`,
 	overflowX: 'auto',
 	overscrollBehaviorX: 'contain',
-	scrollbarWidth: 'none',
-	'&::-webkit-scrollbar': { display: 'none' },
+	// A visible thin bar, so a mouse without a sideways wheel can reach
+	// overflowed tabs.
+	scrollbarWidth: 'thin',
 }
 
 /** One underline link tab; `aria-current="page"` marks the current tab. */
