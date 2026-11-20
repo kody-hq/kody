@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
 import { Dialog } from '../components/dialog.tsx'
-import { useEffect, useState, useId } from 'react'
+import { useCallback, useState, useId } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
@@ -42,16 +42,14 @@ export function PackageSecurityAuditField({
 	function openDialog() {
 		setOpen(true)
 	}
+	// The audited link mounts once the audit lands, so a deep link opens it then.
+	const openFromHash = useCallback((node: HTMLAnchorElement | null) => {
+		if (node && window.location.hash === `#${packageSecurityAuditAnchor}`)
+			setOpen(true)
+	}, [])
 	function closeDialog() {
 		setOpen(false)
 	}
-	useEffect(() => {
-		if (
-			audit.status === 'audited' &&
-			window.location.hash === `#${packageSecurityAuditAnchor}`
-		)
-			openDialog()
-	}, [audit.status])
 
 	return (
 		<section
@@ -87,6 +85,7 @@ export function PackageSecurityAuditField({
 						{audit.verdict === 'pass' ? 'Pass' : 'Concerns'}
 					</Badge>
 					<a
+						ref={openFromHash}
 						href={`#${packageSecurityAuditAnchor}`}
 						data-testid="package-security-audit-open"
 						aria-haspopup="dialog"
