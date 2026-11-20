@@ -99,6 +99,10 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 	return new Date(now.getTime() - millisecondsAgo).toISOString()
 }
 
+/**
+ * Personal orgs of soft-deleted or deletion-fenced people are left out: the
+ * person purge removes its personal org after reading its billing identity.
+ */
 async function listOrgCandidates(input: {
 	db: D1Database
 	ageCutoff: string
@@ -113,6 +117,14 @@ async function listOrgCandidates(input: {
 				 WHERE deleted_at IS NOT NULL
 				   AND datetime(deleted_at) < datetime(?)
 				   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+				   AND NOT EXISTS (
+				     SELECT 1 FROM users u
+				     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
+				       AND (
+				         (NULLIF(TRIM(u.personal_org_id), '') = orgs.id)
+				         OR (NULLIF(TRIM(u.personal_org_id), '') IS NULL AND u.stable_user_id = orgs.id)
+				       )
+				   )
 				 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 				 LIMIT ?`,
 			)

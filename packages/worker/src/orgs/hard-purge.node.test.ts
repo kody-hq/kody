@@ -6,6 +6,11 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
 import { purgePersistedMcpAgentSession } from '#mcp/session-registry.ts'
+import * as stripeClient from '#worker/billing/stripe-client.ts'
+import {
+	spyOnStripeRefundClient,
+	stripeSubscription,
+} from '#worker/test-support/account-deletion-billing.ts'
 
 vi.mock('#worker/jobs/manager-client.ts', () => ({
 	purgeJobManagerForUser: vi.fn(async () => ({
@@ -36,7 +41,10 @@ const {
 	hardPurgeOrg,
 	LegacyUserDeletionNotPendingError,
 	PersonalOrgHardPurgeBlockedForLiveUserError,
+	PersonalOrgPurgesWithPersonError,
 } = await import('./hard-purge.ts')
+const { listSoftDeletePurgeCandidates, pruneSoftDeleted } =
+	await import('./purge.ts')
 
 function createAuditDb() {
 	const auditSqlite = new DatabaseSync(':memory:')
@@ -378,11 +386,11 @@ test('hardPurgeOrg removes team-org published_bundle_artifacts and their KV keys
 	expect(store.has('bundle-artifact:v1:other-org')).toBe(true)
 })
 
-test('hardPurgeOrg leaves personal-org owner inventory for the following user purge', async () => {
-	const sqlite = new DatabaseSync(':memory:')
-	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
-	const appDb = createD1FromSqlite(sqlite)
-	const auditDb = createAuditDb()
+async function seedSoftDeletedPersonWithPersonalOrg(input: {
+	appDb: D1Database
+	stripeCustomerId: string | null
+}) {
+	const { appDb } = input
 	const personId = ownerIdFromStored('person-hard-purge')
 	const ts = '2026-01-01T00:00:00.000Z'
 	await appDb
@@ -398,10 +406,10 @@ test('hardPurgeOrg leaves personal-org owner inventory for the following user pu
 		.prepare(
 			`INSERT INTO orgs (
 				id, slug, display_name, plan, entitlement_ladder, deleted_at,
-				created_at, updated_at
-			) VALUES (?, 'person-purge', 'Person', 'free', 'public', ?, ?, ?)`,
+				stripe_customer_id, created_at, updated_at
+			) VALUES (?, 'person-purge', 'Person', 'free', 'public', ?, ?, ?, ?)`,
 		)
-		.bind(personId, ts, ts, ts)
+		.bind(personId, ts, input.stripeCustomerId, ts, ts)
 		.run()
 	await appDb
 		.prepare(
@@ -440,44 +448,124 @@ test('hardPurgeOrg leaves personal-org owner inventory for the following user pu
 		.run()
 	const { store, kv } = createKv()
 	await kv.put(kvKey, 'person-artifact')
+	return { personId, kvKey, store, kv }
+}
 
+async function countRows(db: D1Database, sql: string, id: string) {
+	const row = await db.prepare(sql).bind(id).first<{ n: number }>()
+	return row?.n
+}
+
+test('hardPurgeOrg leaves a soft-deleted person personal org for the person purge', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const appDb = createD1FromSqlite(sqlite)
+	const { personId, kvKey, store, kv } =
+		await seedSoftDeletedPersonWithPersonalOrg({
+			appDb,
+			stripeCustomerId: 'cus_person',
+		})
 	const env = createSuccessfulDeletionEnv(appDb, {
-		AUDIT_DB: auditDb,
+		AUDIT_DB: createAuditDb(),
 		BUNDLE_ARTIFACTS_KV: kv,
 	})
-	await hardPurgeOrg({ env, orgId: personId })
 
-	const orgGone = await appDb
-		.prepare(`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`)
+	await expect(hardPurgeOrg({ env, orgId: personId })).rejects.toBeInstanceOf(
+		PersonalOrgPurgesWithPersonError,
+	)
+
+	const org = await appDb
+		.prepare(`SELECT stripe_customer_id FROM orgs WHERE id = ?`)
 		.bind(personId)
-		.first<{ n: number }>()
-	expect(orgGone?.n).toBe(0)
-	const handleGone = await appDb
-		.prepare(`SELECT COUNT(*) AS n FROM handles WHERE org_id = ?`)
-		.bind(personId)
-		.first<{ n: number }>()
-	expect(handleGone?.n).toBe(0)
-	const membershipGone = await appDb
-		.prepare(`SELECT COUNT(*) AS n FROM org_memberships WHERE org_id = ?`)
-		.bind(personId)
-		.first<{ n: number }>()
-	expect(membershipGone?.n).toBe(0)
-	const artifactRemains = await appDb
-		.prepare(`SELECT kv_key FROM published_bundle_artifacts WHERE user_id = ?`)
-		.bind(personId)
-		.first<{ kv_key: string }>()
-	expect(artifactRemains?.kv_key).toBe(kvKey)
+		.first<{ stripe_customer_id: string | null }>()
+	expect(org?.stripe_customer_id).toBe('cus_person')
 	expect(store.has(kvKey)).toBe(true)
-	const bucketRemains = await appDb
-		.prepare(`SELECT COUNT(*) AS n FROM secret_buckets WHERE user_id = ?`)
-		.bind(personId)
-		.first<{ n: number }>()
-	expect(bucketRemains?.n).toBe(1)
-	const audit = await auditDb
-		.prepare(`SELECT action FROM org_audit_events WHERE org_id = ?`)
-		.bind(personId)
-		.first<{ action: string }>()
-	expect(audit?.action).toBe('org.purged')
+})
+
+test('scheduled purge of a personal org and its person in one pass still cancels Stripe billing and deletes the customer', async () => {
+	const listSubscriptions = vi
+		.spyOn(stripeClient, 'listSubscriptions')
+		.mockResolvedValue([stripeSubscription('sub_person', 'active')])
+	const cancelSubscription = vi
+		.spyOn(stripeClient, 'cancelSubscription')
+		.mockResolvedValue(undefined)
+	const deleteCustomer = vi
+		.spyOn(stripeClient, 'deleteCustomer')
+		.mockResolvedValue(undefined)
+	const refund = spyOnStripeRefundClient()
+	try {
+		const sqlite = new DatabaseSync(':memory:')
+		applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+		const appDb = createD1FromSqlite(sqlite)
+		const auditDb = createAuditDb()
+		const { personId, kvKey, store, kv } =
+			await seedSoftDeletedPersonWithPersonalOrg({
+				appDb,
+				stripeCustomerId: 'cus_person',
+			})
+		const env = createSuccessfulDeletionEnv(appDb, {
+			AUDIT_DB: auditDb,
+			BUNDLE_ARTIFACTS_KV: kv,
+			SOFT_DELETE_PURGE_ENABLED: 'true',
+		})
+
+		const result = await pruneSoftDeleted({
+			env,
+			now: new Date('2026-03-01T00:00:00.000Z'),
+			dryRun: false,
+		})
+
+		expect(result.failed, JSON.stringify(result.outcomes)).toBe(0)
+		expect(result.outcomes).toEqual([
+			expect.objectContaining({ kind: 'user', id: personId }),
+		])
+		expect(listSubscriptions).toHaveBeenCalledWith(env, 'cus_person')
+		expect(cancelSubscription).toHaveBeenCalledWith(env, 'sub_person')
+		expect(deleteCustomer).toHaveBeenCalledWith(env, 'cus_person')
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+				personId,
+			),
+		).toBe(0)
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM users WHERE stable_user_id = ?`,
+				personId,
+			),
+		).toBe(0)
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM handles WHERE org_id = ?`,
+				personId,
+			),
+		).toBe(0)
+		expect(
+			await countRows(
+				appDb,
+				`SELECT COUNT(*) AS n FROM published_bundle_artifacts WHERE user_id = ?`,
+				personId,
+			),
+		).toBe(0)
+		expect(store.has(kvKey)).toBe(false)
+		const audit = await auditDb
+			.prepare(
+				`SELECT action FROM org_audit_events WHERE org_id = ? ORDER BY rowid`,
+			)
+			.bind(personId)
+			.all<{ action: string }>()
+		expect(audit.results.map((row) => row.action)).toEqual(
+			expect.arrayContaining(['org.purged', 'user.purged']),
+		)
+	} finally {
+		listSubscriptions.mockRestore()
+		cancelSubscription.mockRestore()
+		deleteCustomer.mockRestore()
+		refund.restore()
+	}
 })
 
 test('hardPurgeOrg blocks when the personal-org person is still live', async () => {
@@ -742,6 +830,56 @@ test('finishLegacyUserDeletion finishes a fenced pre-soft-delete deletion and to
 		stableUserId: personId,
 	})
 	expect(second.alreadyGone).toBe(true)
+})
+
+test('finishLegacyUserDeletion leaves a failed personal org purge to the org lane', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const realDb = createD1FromSqlite(sqlite)
+	let failOrgDelete = true
+	const appDb = new Proxy(realDb, {
+		get(target, prop, receiver) {
+			if (prop === 'prepare') {
+				return (sql: string) => {
+					if (failOrgDelete && sql.startsWith('DELETE FROM orgs WHERE id')) {
+						throw new Error('org_delete_unavailable')
+					}
+					return target.prepare(sql)
+				}
+			}
+			return Reflect.get(target, prop, receiver)
+		},
+	})
+	const personId = ownerIdFromStored('person-legacy-org-retry')
+	const ts = '2026-08-20T00:00:00.000Z'
+	await seedLegacyFencedPerson({ appDb, personId, ts, deletingAt: ts })
+	const env = createSuccessfulDeletionEnv(appDb, {
+		AUDIT_DB: createAuditDb(),
+	}) as unknown as Env
+
+	await expect(
+		finishLegacyUserDeletion({ env, dbUserId: 7, stableUserId: personId }),
+	).rejects.toThrow('org_delete_unavailable')
+
+	expect(
+		await countRows(appDb, `SELECT COUNT(*) AS n FROM users WHERE id = ?`, '7'),
+	).toBe(0)
+	const preview = await listSoftDeletePurgeCandidates({
+		env,
+		now: new Date('2026-11-01T00:00:00.000Z'),
+	})
+	expect(
+		preview.candidates.filter((candidate) => candidate.kind === 'org'),
+	).toEqual([expect.objectContaining({ id: personId })])
+	failOrgDelete = false
+	await hardPurgeOrg({ env, orgId: personId })
+	expect(
+		await countRows(
+			appDb,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			personId,
+		),
+	).toBe(0)
 })
 
 test('finishLegacyUserDeletion refuses live and soft-deleted rows', async () => {

@@ -212,13 +212,15 @@ person hard purge share that inventory through `hardPurgeDataTargets` in
 purge collects the same out-of-band keys account deletion collects for the owner
 id (`purgeOwnerOutOfBandSurfaces`), deletes those objects, then deletes D1 rows
 including owner-scoped inventory without `deleted_at` (for example
-`published_bundle_artifacts`). Personal org hard purge (org id == person id) is
-org-graph only so the following user purge can still inventory those keys.
-Production sets `SOFT_DELETE_PURGE_ENABLED` to `true`, so the hourly purge lane
-hard-deletes soft-deleted rows past the 30-day restore window. Preview and test
-keep it `false`, where the lane only lists those candidates. Legacy account
-deletions (`deleting_at` set, `deleted_at` null) are finished by the same lane
-regardless of that flag; see [authentication](./authentication.md). Fleet scans
+`published_bundle_artifacts`). A soft-deleted person's personal org is never
+purged on its own: the person purge runs account deletion first (which reads the
+Stripe customer from the personal org row, cancels subscriptions, and deletes
+the customer), then deletes the personal org graph. Production sets
+`SOFT_DELETE_PURGE_ENABLED` to `true`, so the hourly purge lane hard-deletes
+soft-deleted rows past the 30-day restore window. Preview and test keep it
+`false`, where the lane only lists those candidates. Legacy account deletions
+(`deleting_at` set, `deleted_at` null) are finished by the same lane regardless
+of that flag; see [authentication](./authentication.md). Fleet scans
 (published-commit ref repair and package codemods) skip packages whose owner is
 mid-deletion or deleted (`account/owner-deletion-state.ts`). Out-of-band
 surfaces (Durable Objects, KV schemes, R2, Vectorize, Artifacts) are declared in
