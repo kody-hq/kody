@@ -38,7 +38,12 @@ import {
 } from '#worker/package-invocations/admin-package-subscriptions.ts'
 import { invokePackageExport } from '#worker/package-invocations/service.ts'
 import { sourceRevisionChangedErrorCode } from '#worker/package-invocations/common.ts'
-import { getEntitySourceByIdForUser } from '#worker/repo/entity-sources.ts'
+import {
+	getEntitySourceByIdForUser,
+	markEntitySourcePendingExternalReconcile,
+} from '#worker/repo/entity-sources.ts'
+import { isPublishConcurrencyCallerMessage } from '#worker/repo/publish-concurrency-caller-error.ts'
+import { McpCallerError } from '#mcp/caller-error.ts'
 import { packageWorkflowInvocationSource } from './package-invocation-sources.ts'
 import { resolveSavedPackageRef } from '#worker/package-registry/repo.ts'
 import { buildSentryOptions } from '#worker/sentry-options.ts'
@@ -518,8 +523,10 @@ function isNonRetryableError(error: unknown) {
  * use `instanceof`. Passing a custom `name` to `NonRetryableError` silently
  * makes the step retryable, so this always keeps the default name.
  */
-function terminalWorkflowStepError(message: string) {
-	return new NonRetryableError(message)
+function terminalWorkflowStepError(message: string, cause?: unknown) {
+	const error = new NonRetryableError(message)
+	if (cause !== undefined) error.cause = cause
+	return error
 }
 
 function normalizeNonEmptyString(value: string, fieldName: string) {
@@ -2238,6 +2245,30 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 		)
 	}
 
+	/**
+	 * A publish clears the source's reconcile horizon, so a newer push that is
+	 * not followed by its own publish would wait for the daily backstop. Reopen
+	 * the horizon so the next reconcile tick publishes the newest HEAD.
+	 */
+	private async markPublishSourcePendingReconcile(
+		payload: DynamicCallableWorkflowPayload,
+	) {
+		const sourceId = payload.packageContext?.sourceId
+		if (!sourceId) return
+		try {
+			await markEntitySourcePendingExternalReconcile(this.env.APP_DB, {
+				id: sourceId,
+				userId: payload.userId,
+				tokenExpiresAt: new Date().toISOString(),
+			})
+		} catch (error) {
+			console.warn('durable publish reconcile mark failed', {
+				sourceId,
+				error: getErrorMessage(error),
+			})
+		}
+	}
+
 	private async markRetryableWorkflowRunIgnored(input: {
 		userId: OwnerId
 		runId: string | undefined
@@ -2567,12 +2598,23 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 						? `${errorMessage} Caused by: ${resetMessage}`
 						: errorMessage
 				const message = `Publish workflow: ${state} ${reason}`
-				error =
-					isNonRetryableError(error) ||
-					resetMessage ||
-					isPublishComputeLimitMessage(message)
-						? terminalWorkflowStepError(message)
-						: new Error(message, { cause: error })
+				if (isPublishConcurrencyCallerMessage(errorMessage)) {
+					// A newer push or publish won the race. Retrying the pinned
+					// commit cannot succeed, so fail now as a caller error (off
+					// Sentry, KODY-DZ) and let reconcile publish the newest HEAD.
+					await this.markPublishSourcePendingReconcile(payload)
+					error = terminalWorkflowStepError(
+						message,
+						new McpCallerError(errorMessage, { cause: error }),
+					)
+				} else {
+					error =
+						isNonRetryableError(error) ||
+						resetMessage ||
+						isPublishComputeLimitMessage(message)
+							? terminalWorkflowStepError(message)
+							: new Error(message, { cause: error })
+				}
 			}
 			const willRetry = attemptWillRetry(error, stepCtx)
 			await finishRunRecord({
