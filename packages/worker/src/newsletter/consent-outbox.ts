@@ -81,7 +81,8 @@ type ConsentEvent = {
 	readonly params: Record<string, unknown>
 }
 
-type ConsentDispatchEnv = Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>
+export type ConsentOutboxEnv = Omit<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'> &
+	Partial<Pick<Env, 'PACKAGE_EVENTS_DISPATCH_QUEUE'>>
 
 type DispatchResponses = Awaited<
 	ReturnType<typeof dispatchAdminPackageSubscriptionEvent>
@@ -96,7 +97,7 @@ export class ConsentDispatch extends Context.Service<
 		) => Effect.Effect<DispatchResponses, ConsentDispatchError>
 	}
 >()('kody/newsletter/ConsentDispatch') {
-	static layer(env: ConsentDispatchEnv) {
+	static layer(env: ConsentOutboxEnv) {
 		return Layer.effect(
 			ConsentDispatch,
 			Effect.gen(function* () {
@@ -188,6 +189,16 @@ export class ConsentOutboxQueue extends Context.Service<
 			})
 		}),
 	)
+}
+
+/** The queue producer, or inline delivery where no Queue is bound. */
+export function consentOutboxProducerLayer(env: ConsentOutboxEnv) {
+	const queue = env.PACKAGE_EVENTS_DISPATCH_QUEUE
+	return queue
+		? ConsentOutboxQueue.queueLayer(queue)
+		: ConsentOutboxQueue.inlineLayer.pipe(
+				Layer.provide(ConsentDispatch.layer(env)),
+			)
 }
 
 /**

@@ -1,9 +1,23 @@
-import { Effect, Option } from 'effect'
+import { Effect, Layer, Option } from 'effect'
+import { Background } from '#worker/effect/background.ts'
+import { D1 } from '#worker/effect/d1.ts'
+import { WorkerObservability } from '#worker/effect/observability.ts'
 import {
+	ConsentDispatch,
 	decodeWhatsNewConsentOutboxMessage,
 	deliverWhatsNewConsentOutboxRow,
 } from './consent-outbox.ts'
-import { consentOutboxConsumerLayer } from './entrypoints.ts'
+
+/** Only what delivery reads: `APP_DB` plus package dispatch's bindings. */
+function consentOutboxConsumerLayer(
+	env: Env,
+	waitUntil: (promise: Promise<unknown>) => void,
+) {
+	return Layer.mergeAll(D1.layer(env.APP_DB), ConsentDispatch.layer(env)).pipe(
+		Layer.provide(Background.layer(waitUntil)),
+		Layer.provideMerge(WorkerObservability),
+	)
+}
 
 /**
  * `PACKAGE_EVENTS_DISPATCH_QUEUE` consumer for consent outbox messages, one at
