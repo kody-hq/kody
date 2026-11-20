@@ -2,13 +2,14 @@ import {
 	ownerIdFromStored,
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
-import { expect, test, vi } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import * as registryModule from '#mcp/capabilities/registry.ts'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import * as moduleGraph from '#worker/package-runtime/module-graph.ts'
 import { runBundledModuleWithRegistry } from './run-kody-registry.ts'
 import * as mcpExecutor from '#mcp/executor.ts'
+import * as packageRepo from '#worker/package-registry/repo.ts'
 import { createFakeRunLogNamespace } from '#worker/test-support/run-kody-registry.ts'
 import * as usageModule from '#worker/usage/record-usage.ts'
 import * as runRecords from '#worker/run-records/service.ts'
@@ -18,6 +19,12 @@ import {
 } from '#worker/caller-disconnect.ts'
 import { createStorageEstimateReadError } from '#worker/storage-estimate-error.ts'
 import { d1NetworkConnectionLostMessage } from '#worker/d1-retry.ts'
+
+// Runs resolve each run package's app location; these fixtures have no saved
+// package rows.
+beforeEach(() => {
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+})
 
 vi.mock('#worker/package-runtime/module-graph.ts', async () => {
 	const actual = await vi.importActual<typeof moduleGraph>(
