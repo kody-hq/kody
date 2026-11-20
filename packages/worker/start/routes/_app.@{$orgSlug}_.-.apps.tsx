@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
-import { useEffect } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { createFileRoute, stripSearchParams } from '@tanstack/react-router'
 import { createPageQuery, loadPageQuery, usePageQuery } from '../page-query.ts'
 import { loadOrgApps } from '#start/server/org-management'
@@ -74,7 +74,7 @@ function Page() {
 	const { q, visibility, sort, view: urlView } = Route.useSearch()
 	const navigate = Route.useNavigate()
 	const view = urlView ?? 'cards'
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (urlView) return
 		let preferred: 'icons' | 'cards' | 'list' = 'cards'
 		try {
