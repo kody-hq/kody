@@ -29,7 +29,16 @@ import {
 } from '#app/account-deletion.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
 import { startPassBudget } from '#worker/effect/budget.ts'
-import { scopedClaim } from '#worker/effect/claim.ts'
+import {
+	makePurgeLease,
+	type PurgeLease,
+	purgeClaimableSql,
+	purgeLeaseUntil,
+	scopedClaim,
+	settlePurgeLease,
+	startPurgeLeaseClock,
+	withPurgeLease,
+} from '#worker/effect/claim.ts'
 import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
 import { ErrorReporter } from '#worker/effect/error-reporter.ts'
 import { outbound } from '#worker/effect/outbound.ts'
@@ -47,9 +56,9 @@ export const unverifiedAccountPurgeBatchSize = 5
  */
 export const unverifiedAccountPurgeRunTimeBudgetMs = 20_000
 /**
- * Skip rows whose `deleting_at` is newer than this window. Each claim restamps
- * `deleting_at`, so a failed deletion retries after this backoff instead of
- * every hourly tick or never.
+ * Skip rows whose `deleting_at` is newer than this window while no purge lease
+ * owns the row (an account deletion in flight). Leased rows follow
+ * `purge_lease_until`: a 15 minute lease, or a 24 hour fence after a failure.
  */
 export const unverifiedAccountPurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 /**
@@ -99,6 +108,7 @@ type UnverifiedAccountRow = typeof UnverifiedAccountRow.Type
 type UnverifiedAccountClaim = {
 	readonly created: boolean
 	readonly deletingAt: string
+	readonly lease: PurgeLease
 }
 
 export type UnverifiedAccountPurgeOutcomeKind =
@@ -139,6 +149,7 @@ function purgeCutoffs(now: Date) {
 	return {
 		ageCutoff: cutoffIso(now, unverifiedAccountPurgeDays * millisecondsPerDay),
 		retryBackoffCutoff: cutoffIso(now, unverifiedAccountPurgeRetryBackoffMs),
+		nowIso: now.toISOString(),
 	}
 }
 
@@ -229,13 +240,14 @@ const listUnverifiedAccountsPage = Effect.fn('UnverifiedAccountPurge.listPage')(
 	function* (input: {
 		readonly ageCutoff: string
 		readonly retryBackoffCutoff: string
+		readonly nowIso: string
 		readonly batchSize: number
 	}) {
 		const db = yield* D1
 		const conditions = [
 			...unverifiedPersonEligibilitySql,
 			'datetime(created_at) < datetime(?)',
-			'(deleting_at IS NULL OR datetime(deleting_at) < datetime(?))',
+			purgeClaimableSql,
 		].join('\n			AND ')
 		return yield* retryTransientD1(
 			db.all(
@@ -249,6 +261,7 @@ const listUnverifiedAccountsPage = Effect.fn('UnverifiedAccountPurge.listPage')(
 					LIMIT ?`,
 					input.ageCutoff,
 					input.retryBackoffCutoff,
+					input.nowIso,
 					input.batchSize,
 				),
 			),
@@ -257,18 +270,25 @@ const listUnverifiedAccountsPage = Effect.fn('UnverifiedAccountPurge.listPage')(
 )
 
 /**
- * Claim an eligible account by stamping `deleting_at` (or restamping a fence
- * older than the backoff), then drop the package-app owner cache.
+ * Claim an eligible account by stamping `deleting_at` and a 15 minute lease
+ * (or restamping a row whose lease or fence has expired), then drop the
+ * package-app owner cache.
  */
 const claimUnverifiedAccount = Effect.fn('UnverifiedAccountPurge.claim')(
 	function* (input: {
 		readonly dbUserId: number
 		readonly now: Date
 		readonly retryBackoffCutoff: string
+		readonly clock: Effect.Effect<Date>
 	}) {
 		const env = yield* WorkerEnv
 		const db = yield* D1
 		const deletingAt = utcSqliteTimestamp(input.now)
+		const leaseUntil = yield* purgeLeaseUntil(input.clock)
+		const lease = makePurgeLease(
+			{ table: 'users', key: 'id', id: input.dbUserId, clock: input.clock },
+			leaseUntil,
+		)
 		const eligibility = unverifiedPersonEligibilitySql.join('\n					AND ')
 		const invalidate = outbound('package_app_owner.invalidate', () =>
 			invalidatePackageAppOwnerCacheForDbUserId(env.APP_DB, input.dbUserId),
@@ -278,67 +298,150 @@ const claimUnverifiedAccount = Effect.fn('UnverifiedAccountPurge.claim')(
 				'unverified_account_purge.claim',
 				sql(
 					`UPDATE users
-					SET deleting_at = ?, updated_at = ?
+					SET deleting_at = ?, purge_lease_until = ?, updated_at = ?
 					WHERE id = ?
 						AND ${eligibility}
-						AND deleting_at IS NULL`,
+						AND deleting_at IS NULL
+						AND ${purgeClaimableSql}`,
 					deletingAt,
+					leaseUntil,
 					deletingAt,
 					input.dbUserId,
+					input.retryBackoffCutoff,
+					deletingAt,
 				),
 			),
 		)
 		if (created.changes === 1) {
 			yield* invalidate
-			return Option.some<UnverifiedAccountClaim>({ created: true, deletingAt })
+			return Option.some<UnverifiedAccountClaim>({
+				created: true,
+				deletingAt,
+				lease: yield* lease,
+			})
 		}
 		const restamped = yield* retryTransientD1(
 			db.run(
 				'unverified_account_purge.restamp',
 				sql(
 					`UPDATE users
-					SET deleting_at = ?, updated_at = ?
+					SET deleting_at = ?, purge_lease_until = ?, updated_at = ?
 					WHERE id = ?
 						AND ${eligibility}
-						AND datetime(deleting_at) < datetime(?)`,
+						AND ${purgeClaimableSql}`,
 					deletingAt,
+					leaseUntil,
 					deletingAt,
 					input.dbUserId,
 					input.retryBackoffCutoff,
+					deletingAt,
 				),
 			),
 		)
 		if (restamped.changes === 1) {
 			yield* invalidate
-			return Option.some<UnverifiedAccountClaim>({ created: false, deletingAt })
+			return Option.some<UnverifiedAccountClaim>({
+				created: false,
+				deletingAt,
+				lease: yield* lease,
+			})
 		}
 		return Option.none<UnverifiedAccountClaim>()
 	},
 )
 
 /**
- * The claim is released only when this pass created it and deletion stopped
- * before anything destructive ran. A failed release leaves the fence in
- * place; the retry backoff restamps it later, so it must not stop the batch.
+ * The failed attempt that blocks an account: one `purge.blocked` audit event
+ * and one Sentry report, each skipped, not fatal, when its sink is down.
+ */
+const reportBlocked =
+	(account: UnverifiedAccountRow) =>
+	(attempts: number, cause: Cause.Cause<unknown>) =>
+		Effect.gen(function* () {
+			const audit = yield* AuditLog
+			const reporter = yield* ErrorReporter
+			const failure = Cause.squash(cause)
+			const lastFailure = unverifiedAccountPurgeFailureReason(
+				failure,
+				deletionFailureWarnings(failure),
+			)
+			yield* Effect.logError('unverified_account_purge_blocked', {
+				userId: account.stable_user_id,
+				attempts,
+				error: lastFailure,
+			})
+			yield* audit
+				.record({
+					category: 'account',
+					action: 'purge.blocked',
+					result: 'failure',
+					email: account.email,
+					reason: JSON.stringify({
+						kind: 'user',
+						id: account.stable_user_id,
+						attempts,
+						lastFailure,
+					}),
+				})
+				.pipe(
+					Effect.catchTag('OutboundCallError', (error) =>
+						Effect.logWarning('unverified_account_purge_blocked_audit_failed', {
+							userId: account.stable_user_id,
+							error: error.cause,
+						}),
+					),
+				)
+			yield* reporter.message('purge.blocked', {
+				requireDsn: true,
+				tags: {
+					'scheduled.lane': 'unverified_account_purge',
+					'purge.kind': 'user',
+				},
+				contexts: {
+					purge_blocked: {
+						kind: 'user',
+						id: account.stable_user_id,
+						attempts,
+						lastFailure,
+					},
+				},
+				fingerprint: ['purge.blocked', 'unverified_account_purge'],
+			})
+		})
+
+/**
+ * The `deleting_at` stamp is released only when this pass created it and
+ * deletion stopped before anything destructive ran. A failed release leaves
+ * the stamp in place, so it must not stop the batch. The lease itself is
+ * settled by `settlePurgeLease`: a failure fences it for 24 hours and counts
+ * the attempt.
  */
 const settleClaim =
-	(dbUserId: number, stableUserId: string) =>
+	(account: UnverifiedAccountRow) =>
 	(claim: UnverifiedAccountClaim, exit: Exit.Exit<unknown, unknown>) => {
 		const error = Option.getOrUndefined(Exit.findErrorOption(exit))
 		const tag = Predicate.hasProperty(error, '_tag') ? String(error._tag) : null
+		const settleLease = settlePurgeLease(
+			'unverified_account_purge',
+			reportBlocked(account),
+		)(claim.lease, exit)
 		if (!claim.created || tag === null || !preCleanupFailures.has(tag)) {
-			return Effect.logDebug('unverified account claim kept')
+			return Effect.andThen(
+				Effect.logDebug('unverified account claim kept'),
+				settleLease,
+			)
 		}
 		return abortAccountDeleting({
-			dbUserId,
+			dbUserId: account.id,
 			expectedDeletingAt: claim.deletingAt,
 		}).pipe(
 			Effect.catch((releaseError) =>
 				Effect.logWarning('unverified_account_purge_release_failed', {
-					userId: stableUserId,
+					userId: account.stable_user_id,
 					error: releaseError,
 				}),
 			),
+			Effect.andThen(settleLease),
 		)
 	}
 
@@ -424,6 +527,7 @@ const processAccount = Effect.fn('UnverifiedAccountPurge.processAccount')(
 		account: UnverifiedAccountRow,
 		now: Date,
 		retryBackoffCutoff: string,
+		clock: Effect.Effect<Date>,
 	) {
 		const audit = yield* AuditLog
 		const accountAgeDays = ageDays(account.created_at, now)
@@ -435,15 +539,16 @@ const processAccount = Effect.fn('UnverifiedAccountPurge.processAccount')(
 						dbUserId: account.id,
 						now,
 						retryBackoffCutoff,
+						clock,
 					}),
-					settleClaim(account.id, account.stable_user_id),
+					settleClaim(account),
 				)
 				if (Option.isNone(claim)) return false
 				yield* deleteUserAccountEffect({
 					dbUserId: account.id,
 					mcpUserId: personalOrgIdFromUserRow(account),
 					personUserId: account.stable_user_id,
-				})
+				}).pipe(withPurgeLease('unverified_account_purge', claim.value.lease))
 				return true
 			}),
 		).pipe(
@@ -500,10 +605,12 @@ export const pruneUnverifiedAccountsEffect = Effect.fn(
 	const budget = yield* startPassBudget(
 		input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs,
 	)
-	const { ageCutoff, retryBackoffCutoff } = purgeCutoffs(now)
+	const { ageCutoff, retryBackoffCutoff, nowIso } = purgeCutoffs(now)
+	const clock = yield* startPurgeLeaseClock(now)
 	const page = yield* listUnverifiedAccountsPage({
 		ageCutoff,
 		retryBackoffCutoff,
+		nowIso,
 		batchSize: input.batchSize ?? unverifiedAccountPurgeBatchSize,
 	})
 	const outcomes: Array<UnverifiedAccountPurgeOutcome> = []
@@ -513,7 +620,9 @@ export const pruneUnverifiedAccountsEffect = Effect.fn(
 			timeBudgetExhausted = true
 			break
 		}
-		outcomes.push(yield* processAccount(account, now, retryBackoffCutoff))
+		outcomes.push(
+			yield* processAccount(account, now, retryBackoffCutoff, clock),
+		)
 	}
 	const result: UnverifiedAccountPurgeResult = {
 		scanned: page.length,

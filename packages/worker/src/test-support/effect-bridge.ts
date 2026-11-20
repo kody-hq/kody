@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import { renewPurgeLease } from '#worker/effect/claim.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
 /**
@@ -20,4 +21,21 @@ export function promiseDouble<I extends object, A>(
 				catch: (error) => error,
 			})
 		})
+}
+
+/**
+ * Like `promiseDouble`, for a purge step double: `step` runs, the purge lease
+ * is renewed as the real steps do, then `double` runs.
+ */
+export function leaseRenewingDouble<I extends object, A>(
+	step: (input: I & { env: Env }) => Promise<unknown>,
+	double: (input: I & { env: Env }) => Promise<A>,
+) {
+	const first = promiseDouble(step)
+	const rest = promiseDouble(double)
+	return (input: Omit<I, 'env'>) =>
+		first(input).pipe(
+			Effect.andThen(renewPurgeLease),
+			Effect.andThen(rest(input)),
+		)
 }

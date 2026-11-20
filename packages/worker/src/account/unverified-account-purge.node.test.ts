@@ -7,7 +7,10 @@ import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	consoleError,
+	consoleWarn,
+} from '#worker/test-support/console-spies.ts'
 import * as AuditLog from '#worker/audit-log.ts'
 import * as AccountDeletion from '#app/account-deletion.ts'
 import * as DeletionFence from '#worker/account/deletion-fence.ts'
@@ -29,6 +32,10 @@ const millisecondsPerDay = 24 * 60 * 60 * 1000
 
 function daysAgo(days: number) {
 	return new Date(now.getTime() - days * millisecondsPerDay).toISOString()
+}
+
+function hoursLater(hours: number) {
+	return new Date(now.getTime() + hours * 60 * 60 * 1000)
 }
 
 function minutesAgo(minutes: number) {
@@ -130,7 +137,7 @@ function createHarness() {
 		db,
 		env,
 		envFor,
-		run(input: { batchSize?: number; timeBudgetMs?: number } = {}) {
+		run(input: { batchSize?: number; timeBudgetMs?: number; now?: Date } = {}) {
 			return pruneUnverifiedAccounts({ env, now, ...input })
 		},
 		async seed(
@@ -426,9 +433,11 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 	])
 	expect(h.deletingAt('failing')).toBeNull()
 
+	// The failed claim keeps a 24 hour fence; the next pass after it retries.
 	deleteUserAccount.mockClear()
-	expect(await h.run()).toEqual(
-		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 12)]),
+	expect(await h.run()).toMatchObject({ scanned: 0 })
+	expect(await h.run({ now: hoursLater(25) })).toEqual(
+		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 13)]),
 	)
 	expect(h.usernames()).toEqual([])
 })
@@ -492,7 +501,11 @@ test('a Stripe cancellation failure is a pre-cleanup failure: fence released, ac
 	expect(h.deletingAt('billing-failure')).toBeNull()
 
 	deleteUserAccount.mockClear()
-	expect(await h.run()).toMatchObject({ scanned: 1, purged: 1, failed: 0 })
+	expect(await h.run({ now: hoursLater(25) })).toMatchObject({
+		scanned: 1,
+		purged: 1,
+		failed: 0,
+	})
 	expect(h.usernames()).toEqual([])
 })
 
@@ -748,4 +761,45 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+test('the 5th failed deletion blocks the account: one purge.blocked audit, then no lane claims it', async () => {
+	const deleteUserAccount = spyOnDeleteUserAccount()
+	consoleWarn.mockImplementation(() => {})
+	consoleError.mockImplementation(() => {})
+	const h = createHarness()
+	const broken = await h.seed('broken', 12)
+	const inventoryError = 'AccountDeletionInventoryError: simulated inventory'
+	deleteUserAccount.mockImplementation(async () => {
+		throw AccountDeletionInventoryError.fromWarnings(['simulated inventory'])
+	})
+
+	for (let attempt = 1; attempt <= 5; attempt++) {
+		expect(await h.run({ now: hoursLater(25 * (attempt - 1)) })).toMatchObject({
+			scanned: 1,
+			failed: 1,
+		})
+	}
+	const blocked = h.auditRows().filter((row) => row.action === 'purge.blocked')
+	expect(blocked).toEqual([
+		expect.objectContaining({
+			category: 'account',
+			result: 'failure',
+			email_hash: emailHash(broken.email),
+		}),
+	])
+	expect(JSON.parse(blocked[0]!.reason!)).toEqual({
+		kind: 'user',
+		id: broken.stableUserId,
+		attempts: 5,
+		lastFailure: inventoryError,
+	})
+
+	const later = hoursLater(25 * 10)
+	expect(await h.run({ now: later })).toMatchObject({ scanned: 0 })
+	expect(
+		(await listSoftDeletePurgeCandidates({ env: h.env, now: later })).scanned,
+	).toBe(0)
+	expect(deleteUserAccount).toHaveBeenCalledTimes(5)
+	expect(h.usernames()).toEqual(['broken'])
 })

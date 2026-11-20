@@ -8,8 +8,8 @@
  * null). Those owners asked for a hard deletion and were never offered a
  * restore window, so they skip the 30-day window and the
  * `SOFT_DELETE_PURGE_ENABLED` gate (which guards purging restorable
- * soft-deleted accounts). They keep the same claim, retry backoff, and failure
- * audit as soft-delete candidates. Only an explicit `dryRun: true` previews
+ * soft-deleted accounts). They keep the same claim lease, failure fence, and
+ * failure audit as soft-delete candidates. Only an explicit `dryRun: true` previews
  * them.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
@@ -29,8 +29,18 @@ import {
 } from '#worker/orgs/purge-failure-details.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
 import { startPassBudget } from '#worker/effect/budget.ts'
-import { keepClaim, scopedClaim } from '#worker/effect/claim.ts'
+import {
+	makePurgeLease,
+	type PurgeLease,
+	purgeClaimableSql,
+	purgeLeaseUntil,
+	scopedClaim,
+	settlePurgeLease,
+	startPurgeLeaseClock,
+	withPurgeLease,
+} from '#worker/effect/claim.ts'
 import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import { ErrorReporter } from '#worker/effect/error-reporter.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
@@ -38,6 +48,10 @@ export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
 export const softDeletePurgeBatchSize = 5
 export const softDeletePurgeRunTimeBudgetMs = 20_000
+/**
+ * Fence for a `deleting_at` no purge lease owns (an account deletion in
+ * flight): leased rows follow `purge_lease_until` instead.
+ */
 export const softDeletePurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 
 export function softDeletePurgeWritesEnabled(env: Env): boolean {
@@ -132,6 +146,7 @@ const passTime = (now: Date | undefined) =>
 type CandidateQuery = {
 	readonly ageCutoff: string
 	readonly retryBackoffCutoff: string
+	readonly nowIso: string
 	readonly batchSize: number
 }
 
@@ -152,7 +167,7 @@ const listOrgCandidates = Effect.fn('SoftDeletePurge.listOrgCandidates')(
 					 FROM orgs
 					 WHERE deleted_at IS NOT NULL
 					   AND datetime(deleted_at) < datetime(?)
-					   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+					   AND ${purgeClaimableSql}
 					   AND NOT EXISTS (
 					     SELECT 1 FROM users u
 					     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
@@ -165,6 +180,7 @@ const listOrgCandidates = Effect.fn('SoftDeletePurge.listOrgCandidates')(
 					 LIMIT ?`,
 					query.ageCutoff,
 					query.retryBackoffCutoff,
+					query.nowIso,
 					query.batchSize,
 				),
 			),
@@ -184,11 +200,12 @@ const listUserCandidates = Effect.fn('SoftDeletePurge.listUserCandidates')(
 					 FROM users
 					 WHERE deleted_at IS NOT NULL
 					   AND datetime(deleted_at) < datetime(?)
-					   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+					   AND ${purgeClaimableSql}
 					 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 					 LIMIT ?`,
 					query.ageCutoff,
 					query.retryBackoffCutoff,
+					query.nowIso,
 					query.batchSize,
 				),
 			),
@@ -197,8 +214,9 @@ const listUserCandidates = Effect.fn('SoftDeletePurge.listUserCandidates')(
 )
 
 /**
- * The backoff on `deleting_at` also keeps this lane off deletions that are in
- * flight right now (account deletion stamps the fence when it starts).
+ * The `deleting_at` fence of a row no lease owns also keeps this lane off
+ * deletions that are in flight right now (account deletion stamps the fence
+ * when it starts).
  */
 const listLegacyUserCandidates = Effect.fn(
 	'SoftDeletePurge.listLegacyUserCandidates',
@@ -213,10 +231,11 @@ const listLegacyUserCandidates = Effect.fn(
 				 FROM users
 				 WHERE deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)
+				   AND ${purgeClaimableSql}
 				 ORDER BY datetime(deleting_at) ASC, id ASC
 				 LIMIT ?`,
 				query.retryBackoffCutoff,
+				query.nowIso,
 				query.batchSize,
 			),
 		),
@@ -234,6 +253,7 @@ export const listSoftDeletePurgeCandidatesEffect = Effect.fn(
 	const query = {
 		ageCutoff: softDeletePurgeCutoffIso(now),
 		retryBackoffCutoff: cutoffIso(now, softDeletePurgeRetryBackoffMs),
+		nowIso: now.toISOString(),
 		batchSize: input.batchSize ?? softDeletePurgeBatchSize,
 	}
 	const orgs = yield* listOrgCandidates(query)
@@ -273,11 +293,12 @@ export const listSoftDeletePurgeCandidatesEffect = Effect.fn(
 type Claim = {
 	readonly nowIso: string
 	readonly retryBackoffCutoff: string
+	readonly clock: Effect.Effect<Date>
 }
 
 /**
- * Claim a soft-deleted row by stamping `deleting_at`: first an unclaimed
- * row, else one whose earlier claim is older than the 6 hour backoff.
+ * Claim a soft-deleted row by stamping `deleting_at` and a 15 minute lease:
+ * first an unclaimed row, else one whose lease or failure fence has expired.
  */
 const claimTombstone = Effect.fn('SoftDeletePurge.claimTombstone')(function* (
 	table: 'orgs' | 'users',
@@ -286,45 +307,57 @@ const claimTombstone = Effect.fn('SoftDeletePurge.claimTombstone')(function* (
 	claim: Claim,
 ) {
 	const db = yield* D1
+	const leaseUntil = yield* purgeLeaseUntil(claim.clock)
 	const created = yield* retryTransientD1(
 		db.run(
 			`soft_delete_purge.claim_${table}`,
 			sql(
 				`UPDATE ${table}
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, purge_lease_until = ?, updated_at = ?
 				 WHERE ${key} = ?
 				   AND deleted_at IS NOT NULL
-				   AND deleting_at IS NULL`,
+				   AND deleting_at IS NULL
+				   AND ${purgeClaimableSql}`,
 				claim.nowIso,
-				claim.nowIso,
-				id,
-			),
-		),
-	)
-	if (created.changes === 1) return true
-	const restamped = yield* retryTransientD1(
-		db.run(
-			`soft_delete_purge.restamp_${table}`,
-			sql(
-				`UPDATE ${table}
-				 SET deleting_at = ?, updated_at = ?
-				 WHERE ${key} = ?
-				   AND deleted_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
-				claim.nowIso,
+				leaseUntil,
 				claim.nowIso,
 				id,
 				claim.retryBackoffCutoff,
+				claim.nowIso,
 			),
 		),
 	)
-	return restamped.changes === 1
+	if (created.changes !== 1) {
+		const restamped = yield* retryTransientD1(
+			db.run(
+				`soft_delete_purge.restamp_${table}`,
+				sql(
+					`UPDATE ${table}
+					 SET deleting_at = ?, purge_lease_until = ?, updated_at = ?
+					 WHERE ${key} = ?
+					   AND deleted_at IS NOT NULL
+					   AND ${purgeClaimableSql}`,
+					claim.nowIso,
+					leaseUntil,
+					claim.nowIso,
+					id,
+					claim.retryBackoffCutoff,
+					claim.nowIso,
+				),
+			),
+		)
+		if (restamped.changes !== 1) return Option.none<PurgeLease>()
+	}
+	return Option.some(
+		yield* makePurgeLease({ table, key, id, clock: claim.clock }, leaseUntil),
+	)
 })
 
 /**
- * Claim a legacy deletion by restamping its `deleting_at` fence. Only rows
- * still fenced, still without `deleted_at`, and past the retry backoff are
- * claimed, so concurrent passes and in-flight deletions are left alone.
+ * Claim a legacy deletion by restamping its `deleting_at` fence with a lease.
+ * Only rows still fenced, still without `deleted_at`, and past their lease or
+ * fence are claimed, so concurrent passes and in-flight deletions are left
+ * alone.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 const claimLegacyUser = Effect.fn('SoftDeletePurge.claimLegacyUser')(function* (
@@ -332,35 +365,41 @@ const claimLegacyUser = Effect.fn('SoftDeletePurge.claimLegacyUser')(function* (
 	claim: Claim,
 ) {
 	const db = yield* D1
+	const leaseUntil = yield* purgeLeaseUntil(claim.clock)
 	const claimed = yield* retryTransientD1(
 		db.run(
 			'soft_delete_purge.claim_legacy_user',
 			sql(
 				`UPDATE users
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, purge_lease_until = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
-				   AND datetime(deleting_at) < datetime(?)`,
+				   AND ${purgeClaimableSql}`,
 				claim.nowIso,
+				leaseUntil,
 				claim.nowIso,
 				userId,
 				claim.retryBackoffCutoff,
+				claim.nowIso,
 			),
 		),
 	)
-	return claimed.changes === 1
+	if (claimed.changes !== 1) return Option.none<PurgeLease>()
+	return Option.some(
+		yield* makePurgeLease(
+			{ table: 'users', key: 'stable_user_id', id: userId, clock: claim.clock },
+			leaseUntil,
+		),
+	)
 })
 
 const claimCandidate = (candidate: SoftDeletePurgeCandidate, claim: Claim) =>
-	(candidate.kind === 'org'
+	candidate.kind === 'org'
 		? claimTombstone('orgs', 'id', candidate.id, claim)
 		: candidate.legacy
 			? claimLegacyUser(candidate.id, claim)
 			: claimTombstone('users', 'stable_user_id', candidate.id, claim)
-	).pipe(
-		Effect.map((claimed) => (claimed ? Option.some(candidate) : Option.none())),
-	)
 
 const requireDbUserId = (candidate: SoftDeletePurgeCandidate) =>
 	candidate.dbUserId == null
@@ -389,8 +428,64 @@ const purgeCandidate = (candidate: SoftDeletePurgeCandidate) =>
 			)
 
 /**
- * One candidate: claim (kept on every exit so the backoff owns retries),
- * purge, and on any failure record a redacted `*.purge_failed` audit event.
+ * The failed attempt that blocks a candidate: one `purge.blocked` audit event
+ * and one Sentry report. A failed audit write is logged, not fatal.
+ */
+const reportBlocked =
+	(candidate: SoftDeletePurgeCandidate, claim: Claim) =>
+	(attempts: number, cause: Cause.Cause<unknown>) =>
+		Effect.gen(function* () {
+			const audit = yield* AuditLog
+			const reporter = yield* ErrorReporter
+			const error = Cause.squash(cause)
+			const blocked = {
+				kind: candidate.kind,
+				id: candidate.id,
+				attempts,
+				lastFailure: redactPurgeFailureDetail(
+					error instanceof Error ? error.message : String(error),
+				),
+				...(candidate.legacy ? { lane: 'legacy_deletion_finish' } : {}),
+			}
+			yield* Effect.logError(
+				JSON.stringify({
+					message: 'soft_delete_purge_candidate_blocked',
+					kind: candidate.kind,
+					attempts,
+					error: blocked.lastFailure,
+				}),
+			)
+			yield* audit
+				.recordOrg({
+					orgId: candidate.id,
+					action: 'purge.blocked',
+					result: 'failure',
+					detailsJson: JSON.stringify(blocked),
+					createdAt: claim.nowIso,
+				})
+				.pipe(
+					Effect.catchTag('OutboundCallError', (auditError) =>
+						Effect.logWarning('soft_delete_purge_blocked_audit_failed', {
+							kind: candidate.kind,
+							error: auditError.cause,
+						}),
+					),
+				)
+			yield* reporter.message('purge.blocked', {
+				requireDsn: true,
+				tags: {
+					'scheduled.lane': 'soft_delete_purge',
+					'purge.kind': candidate.kind,
+				},
+				contexts: { purge_blocked: blocked },
+				fingerprint: ['purge.blocked', 'soft_delete_purge', candidate.kind],
+			})
+		})
+
+/**
+ * One candidate: claim a lease, purge (renewing the lease after each step),
+ * and on any failure keep the claim behind a 24 hour fence, count the attempt,
+ * and record a redacted `*.purge_failed` audit event.
  */
 const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 	function* (candidate: SoftDeletePurgeCandidate, claim: Claim) {
@@ -407,17 +502,27 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 		}
 		return yield* Effect.scoped(
 			Effect.gen(function* () {
-				const claimed = yield* scopedClaim(
+				const lease = yield* scopedClaim(
 					claimCandidate(candidate, claim),
-					keepClaim('soft_delete_purge'),
+					settlePurgeLease(
+						'soft_delete_purge',
+						reportBlocked(candidate, claim),
+					),
 				)
-				if (Option.isNone(claimed)) {
+				if (Option.isNone(lease)) {
 					return {
 						...base,
 						outcome: 'skipped_claim',
 					} satisfies SoftDeletePurgeOutcome
 				}
-				yield* purgeCandidate(candidate)
+				yield* withPurgeLease(
+					'soft_delete_purge',
+					lease.value,
+				)(
+					Effect.gen(function* () {
+						yield* purgeCandidate(candidate)
+					}),
+				)
 				return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
 			}),
 		).pipe(
@@ -495,6 +600,7 @@ export const pruneSoftDeletedEffect = Effect.fn('SoftDeletePurge.prune')(
 		const claim: Claim = {
 			nowIso: now.toISOString(),
 			retryBackoffCutoff: cutoffIso(now, softDeletePurgeRetryBackoffMs),
+			clock: yield* startPurgeLeaseClock(now),
 		}
 		const outcomes: Array<SoftDeletePurgeOutcome> = []
 		let timeBudgetExhausted = false
