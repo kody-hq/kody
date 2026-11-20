@@ -3,7 +3,11 @@ import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
 import { useRef, useState, type KeyboardEvent } from 'react'
-import { useLayoutMeasure, useResourceLifetime } from '../lib/primitives.ts'
+import {
+	useExternalInstanceSync,
+	useLayoutMeasure,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import { setExecutionChain } from '#start/server/execution-contexts'
 import {
 	type ExecutionChain,
@@ -124,11 +128,11 @@ export function ExecutionChainPanel(props: {
 	const [syncedChain, setSyncedChain] = useState(props.chain)
 	if (props.chain !== syncedChain) {
 		setSyncedChain(props.chain)
-		if (!timer.current) {
-			committed.current = props.chain
-			setChain(props.chain)
-		}
+		if (!timer.current) setChain(props.chain)
 	}
+	useExternalInstanceSync(() => {
+		if (!timer.current) committed.current = props.chain
+	}, [props.chain])
 	useResourceLifetime(
 		() => () => {
 			if (timer.current) clearTimeout(timer.current)
