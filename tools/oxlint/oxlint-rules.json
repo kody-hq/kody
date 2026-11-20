@@ -55,7 +55,12 @@
 		"kody-custom/require-exit-condition-comment": "error",
 		"kody-custom/prefer-loader-data-types": "error",
 		"typescript/no-explicit-any": "error",
-		"react/exhaustive-deps": "error",
+		"react/exhaustive-deps": [
+			"error",
+			{
+				"additionalHooks": "^(useExternalInstanceSync|useResourceLifetime)$"
+			}
+		],
 		"vitest/require-mock-type-parameters": "off",
 		"vitest/no-conditional-expect": "off",
 		"epic-web/prefer-dispose-in-tests": "off",
