@@ -13,13 +13,7 @@ import {
 	useQueryClient,
 } from '@tanstack/react-query'
 import { useRouteContext, useRouter } from '@tanstack/react-router'
-import {
-	type FormEvent,
-	useEffect,
-	useEffectEvent,
-	useRef,
-	useState,
-} from 'react'
+import { type FormEvent, useCallback, useEffectEvent, useState } from 'react'
 import { adminUsersFilters, adminUsersSearch } from '../admin-users-input.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -78,7 +72,6 @@ export function AdminUsersPage(props: {
 	const { pageLocation } = useMatchedPageScope()
 	const client = useQueryClient()
 	const captureScope = useSubmitterScope()
-	const sentinelRef = useRef<HTMLDivElement | null>(null)
 	const availableRoles = props.payload.availableRoles
 	const selectedUserFallback = props.payload.selectedUser
 	const [loadAdditionalPages, setLoadAdditionalPages] = useState(false)
@@ -425,23 +418,26 @@ export function AdminUsersPage(props: {
 		}
 	}
 	const loadMoreFromIntersection = useEffectEvent(loadMoreUsers)
-	useEffect(() => {
-		const node = sentinelRef.current
-		if (!node) return
-		const observer = new IntersectionObserver(
-			(entries) => {
-				if (entries.some((entry) => entry.isIntersecting))
-					void loadMoreFromIntersection()
-			},
-			{ rootMargin: '400px' },
-		)
-		observer.observe(node)
-		return () => observer.disconnect()
-	}, [
-		usersSnapshot.items.length,
-		usersSnapshot.hasMore,
-		usersSnapshot.isLoadingMore,
-	])
+	const sentinelRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (!node) return
+			const observer = new IntersectionObserver(
+				(entries) => {
+					if (entries.some((entry) => entry.isIntersecting))
+						void loadMoreFromIntersection()
+				},
+				{ rootMargin: '400px' },
+			)
+			observer.observe(node)
+			return () => observer.disconnect()
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- reobserve after each page so a visible sentinel loads again
+		[
+			usersSnapshot.items.length,
+			usersSnapshot.hasMore,
+			usersSnapshot.isLoadingMore,
+		],
+	)
 	const currentHref = props.currentHref
 	const pending = false
 
