@@ -1,5 +1,4 @@
 /** @jsxImportSource @emotion/react */
-import { useQuery } from '@tanstack/react-query'
 import { WorkspaceEmptyFolder } from '../workspace-empty-folder.tsx'
 import { WorkspaceFileStatus } from '../workspace-file-status.tsx'
 import { colors } from '#universal/styles/tokens.ts'
@@ -9,7 +8,7 @@ import {
 } from '#universal/styles/style-primitives.ts'
 import { renderIcon } from '../../components/icon.tsx'
 import { LoadingIndicator } from '../../components/loading-indicator.tsx'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { zipDirectory } from '#universal/zip-directory.ts'
 
 const control = {
@@ -40,25 +39,27 @@ export default function ZipFileViewer({
 	src: string
 	download: string
 }) {
+	const [entries, setEntries] = useState<Entry[] | null>(null)
+	const [error, setError] = useState('')
 	const [folder, setFolder] = useState('')
-	const archive = useQuery({
-		queryKey: ['zip-file-viewer', src],
-		queryFn: async ({ signal }): Promise<Entry[]> => {
-			const response = await fetch(src, { signal })
-			if (!response.ok) throw new Error('Could not load this archive.')
-			return zipDirectory(await response.arrayBuffer())
-		},
-		staleTime: Infinity,
-		gcTime: 0,
-		retry: false,
-		refetchOnWindowFocus: false,
-	})
-	const entries = archive.data ?? null
-	const error = archive.error
-		? archive.error instanceof Error
-			? archive.error.message
-			: 'Could not read this archive.'
-		: ''
+	useEffect(() => {
+		const controller = new AbortController()
+		void fetch(src, { signal: controller.signal })
+			.then(async (response) => {
+				if (!response.ok) throw new Error('Could not load this archive.')
+				const files = zipDirectory(await response.arrayBuffer())
+				if (!controller.signal.aborted) setEntries(files)
+			})
+			.catch((cause: unknown) => {
+				if (!controller.signal.aborted)
+					setError(
+						cause instanceof Error
+							? cause.message
+							: 'Could not read this archive.',
+					)
+			})
+		return () => controller.abort()
+	}, [src])
 	if (error)
 		return (
 			<WorkspaceFileStatus
