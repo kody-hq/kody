@@ -55,7 +55,7 @@ import { loadWorkspaceRepoFiles } from '#start/server/package-files'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-	type loadFilesPage,
+	loadFilesPage,
 	saveFile,
 	manageWorkspaceFile,
 	readFileRevision,
@@ -267,7 +267,18 @@ export function FilesPage({
 	const dragDepth = useRef(0)
 	const [explorerVisible, setExplorerVisible] = useState(true)
 	const [storageOpen, setStorageOpen] = useState(false)
-	const { includedBytes, usedBytes, external } = data.storage
+	const queryClient = useQueryClient()
+	const storageUsage = useQuery({
+		queryKey: ['file-storage-usage', data.orgSlug],
+		queryFn: async () =>
+			(await loadFilesPage({ data: { orgSlug: data.orgSlug } })).storage,
+		initialData: data.storage,
+		enabled: false,
+	})
+	useEffect(() => {
+		queryClient.setQueryData(['file-storage-usage', data.orgSlug], data.storage)
+	}, [queryClient, data.orgSlug, data.storage])
+	const { includedBytes, usedBytes, external } = storageUsage.data
 	const storageFull =
 		!external &&
 		includedBytes > 0 &&
@@ -307,7 +318,6 @@ export function FilesPage({
 	}, [selected?.file.id, selected?.file.parentId, selected?.file.name])
 	const binary = selected?.file.encoding === 'base64'
 	const router = useRouter()
-	const queryClient = useQueryClient()
 	const [name, setName] = useState(
 		initialPage || initialDirectory ? '' : 'Untitled.md',
 	)
@@ -2348,7 +2358,8 @@ export function FilesPage({
 												canManageStorage={data.canManageStorage}
 												revisionId={selected.file.revisionId!}
 												onVersionChange={() => {
-													void refresh()
+													if (binary) void refresh()
+													else void storageUsage.refetch()
 												}}
 												title={documentTitle}
 												pageChildren={data.files
