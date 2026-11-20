@@ -76,23 +76,25 @@ export function AccountPackageDeleteDialog(props: {
 	const busyRef = useRef(false),
 		mounted = useRef(false)
 	const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+	const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 	useEffect(() => {
 		mounted.current = true
 		return () => {
 			mounted.current = false
+			clearTimeout(copyFeedbackTimer.current)
 		}
 	}, [])
-	useEffect(() => {
-		if (!copyFeedback) return
-		const timer = setTimeout(() => setCopyFeedback(null), 2000)
-		return () => clearTimeout(timer)
-	}, [copyFeedback])
+	function showCopyFeedback(message: string) {
+		setCopyFeedback(message)
+		clearTimeout(copyFeedbackTimer.current)
+		copyFeedbackTimer.current = setTimeout(() => setCopyFeedback(null), 2000)
+	}
 	async function copyName() {
 		try {
 			await writeClipboardText(props.packageDetail.name)
-			if (mounted.current) setCopyFeedback('Copied')
+			if (mounted.current) showCopyFeedback('Copied')
 		} catch {
-			if (mounted.current) setCopyFeedback('Copy failed')
+			if (mounted.current) showCopyFeedback('Copy failed')
 		}
 	}
 
