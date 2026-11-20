@@ -42,6 +42,7 @@ import { detectFileMediaType, fileViewerKind } from '#universal/file-viewers.ts'
 import {
 	lazy,
 	Suspense,
+	useCallback,
 	useEffect,
 	useEffectEvent,
 	useLayoutEffect,
