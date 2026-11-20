@@ -10,8 +10,6 @@ selects. Verify rendering with [ui:verify](./docs/contributing/ui-verify.md).
 
 Open the page that owns the task:
 
-- Comments explain why; swallowed errors log and say what the user loses
-  ([code style](./docs/contributing/code-style.md#comments))
 - Docs map: [contributing](./docs/contributing/index.md) ·
   [principles](./docs/principles/index.md) · [skills](./.agents/skills/) ·
   [blog posts](./docs/contributing/blog.md) (category, series, video roundups)
