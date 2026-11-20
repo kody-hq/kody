@@ -16,6 +16,7 @@ type PendingGrantRevocation = {
 	grantKey: string
 	tokenPrefix: string
 	tokenCursor?: string
+	tokenPage?: PendingTokenPage
 }
 
 type PendingGrantPage = {
@@ -75,7 +76,10 @@ function isPendingGrantRevocation(
 		typeof value.tokenPrefix === 'string' &&
 		(!('tokenCursor' in value) ||
 			value.tokenCursor === undefined ||
-			typeof value.tokenCursor === 'string')
+			typeof value.tokenCursor === 'string') &&
+		(!('tokenPage' in value) ||
+			value.tokenPage === undefined ||
+			parsePendingTokenPage(value.tokenPage) !== undefined)
 	)
 }
 
@@ -326,21 +330,31 @@ async function revokeNextPendingGrant(
 	}
 	if (!budget.hasTime()) return { grantsPurged: 0, tokensPurged: 0 }
 
-	const tokenPage = await listOAuthPurgePage(kv, {
-		prefix: pending.tokenPrefix,
-		cursor: pending.tokenCursor,
-	})
-	const tokenKeys = tokenPage.keys.map((key) => key.name)
-	const deleted = await processKeysWithinBudget(tokenKeys, budget, (key) =>
-		kv.delete(key),
+	let tokenPage = pending.tokenPage
+	if (!tokenPage) {
+		const listed = await listOAuthPurgePage(kv, {
+			prefix: pending.tokenPrefix,
+			cursor: pending.tokenCursor,
+		})
+		tokenPage = {
+			complete: listed.list_complete,
+			nextCursor: listed.list_complete ? undefined : listed.cursor,
+			unscannedKeys: listed.keys.map((key) => key.name),
+		}
+		pending.tokenPage = tokenPage
+	}
+	const deleted = await processKeysWithinBudget(
+		tokenPage.unscannedKeys,
+		budget,
+		(key) => kv.delete(key),
 	)
-	// Re-listing the same cursor after a partial page only returns the tokens
-	// that are still present, so the cursor advances once the page is done.
-	if (deleted.length < tokenKeys.length) {
+	tokenPage.unscannedKeys = tokenPage.unscannedKeys.slice(deleted.length)
+	if (tokenPage.unscannedKeys.length > 0) {
 		return { grantsPurged: 0, tokensPurged: deleted.length }
 	}
-	if (!tokenPage.list_complete) {
-		pending.tokenCursor = tokenPage.cursor
+	if (!tokenPage.complete) {
+		pending.tokenCursor = tokenPage.nextCursor
+		pending.tokenPage = undefined
 		return { grantsPurged: 0, tokensPurged: deleted.length }
 	}
 	if (!budget.hasTime()) {

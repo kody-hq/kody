@@ -79,12 +79,16 @@ function createPurgeCoordinator(initialKv: Record<string, string>) {
 	return { coordinator, kv, store, continuation }
 }
 
-function stallKvCalls(kv: KVNamespace, method: 'get' | 'delete') {
+function stallKvCalls(
+	kv: KVNamespace,
+	method: 'get' | 'delete' | 'list',
+	ms = stallMs,
+) {
 	const original = kv[method].bind(kv) as (...args: Array<unknown>) => unknown
 	const spy = vi.spyOn(kv, method).mockImplementation(((
 		...args: Array<unknown>
 	) => {
-		vi.setSystemTime(Date.now() + stallMs)
+		vi.setSystemTime(Date.now() + ms)
 		return original(...args)
 	}) as never)
 	return () => spy.mockRestore()
@@ -168,7 +172,11 @@ test('a stalled grant revocation keeps its token cursor and finishes on a later 
 		restoreDelete()
 		expect(tokenKeys.filter((key) => store.has(key))).toHaveLength(12)
 		expect(continuation().pendingGrantPage?.revocations).toEqual([
-			{ grantKey: 'grant:user:orphan', tokenPrefix: 'token:user:orphan:' },
+			{
+				grantKey: 'grant:user:orphan',
+				tokenPrefix: 'token:user:orphan:',
+				tokenPage: { complete: true, unscannedKeys: tokenKeys.slice(8) },
+			},
 		])
 
 		await coordinator.run({ scheduledAt })
@@ -177,6 +185,51 @@ test('a stalled grant revocation keeps its token cursor and finishes on a later 
 			grantsPurged: 1,
 			tokensPurged: 12,
 		})
+		expect(tokenKeys.some((key) => store.has(key))).toBe(false)
+		expect(store.has('grant:user:orphan')).toBe(false)
+	} finally {
+		vi.useRealTimers()
+	}
+})
+
+test('a slow token listing saves the listed tokens so a later run deletes them without listing again', async () => {
+	vi.useFakeTimers({ toFake: ['Date'] })
+	try {
+		const tokenKeys = ['a', 'b', 'c'].map(
+			(suffix) => `token:user:orphan:${suffix}`,
+		)
+		const { coordinator, kv, store, continuation } = createPurgeCoordinator({
+			'grant:user:orphan': grantJson('missing-client'),
+			...Object.fromEntries(
+				tokenKeys.map((key) => [
+					key,
+					JSON.stringify({ userId: 'user', grantId: 'orphan' }),
+				]),
+			),
+		})
+		const scheduledAt = Date.parse('2026-11-20T18:05:00.000Z')
+
+		const restoreList = stallKvCalls(kv, 'list', 6_000)
+		await expect(coordinator.run({ scheduledAt })).resolves.toMatchObject({
+			phase: 'grants',
+			grantsPurged: 0,
+			tokensPurged: 0,
+			budgetExhausted: true,
+		})
+		restoreList()
+		expect(continuation().pendingGrantPage?.revocations[0]?.tokenPage).toEqual({
+			complete: true,
+			unscannedKeys: tokenKeys,
+		})
+
+		await coordinator.run({ scheduledAt })
+		const listSpy = vi.spyOn(kv, 'list')
+		await expect(coordinator.run({ scheduledAt })).resolves.toMatchObject({
+			phase: 'grants',
+			grantsPurged: 1,
+			tokensPurged: 3,
+		})
+		expect(listSpy).not.toHaveBeenCalled()
 		expect(tokenKeys.some((key) => store.has(key))).toBe(false)
 		expect(store.has('grant:user:orphan')).toBe(false)
 	} finally {
