@@ -184,18 +184,13 @@ async function purgePersonAndPersonalOrg(input: {
 	return result
 }
 
-async function existingOrgId(
+async function softDeletedOrgId(
 	db: D1Database,
 	orgId: OwnerId,
-	options: { softDeletedOnly: boolean },
 ): Promise<OwnerId | null> {
 	const row = await runD1WithRetry(() =>
 		db
-			.prepare(
-				options.softDeletedOnly
-					? `SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`
-					: `SELECT id FROM orgs WHERE id = ?`,
-			)
+			.prepare(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`)
 			.bind(orgId)
 			.first<{ id: string }>(),
 	)
@@ -225,9 +220,7 @@ export async function hardPurgeSoftDeletedUser(input: {
 		stableUserId: input.stableUserId,
 		storageOwnerId,
 		personUserId,
-		personalOrgId: await existingOrgId(input.env.APP_DB, storageOwnerId, {
-			softDeletedOnly: true,
-		}),
+		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
 		purgeSoftDeleted: true,
 	})
 	await logOrgAuditEvent({
@@ -302,15 +295,23 @@ export async function finishLegacyUserDeletion(input: {
 	}
 	const storageOwnerId = personalOrgIdFromUserRow(row)
 	const personUserId = row.stable_user_id.trim() || input.stableUserId
+	// Tombstone a still-live personal org first: if this attempt removes the
+	// person and then fails on the org, the org lane can still purge it.
+	const deletingAt = row.deleting_at
+	await runD1WithRetry(() =>
+		input.env.APP_DB.prepare(
+			`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+		)
+			.bind(deletingAt, storageOwnerId)
+			.run(),
+	)
 	const result = await purgePersonAndPersonalOrg({
 		env: input.env,
 		dbUserId: input.dbUserId,
 		stableUserId: input.stableUserId,
 		storageOwnerId,
 		personUserId,
-		personalOrgId: await existingOrgId(input.env.APP_DB, storageOwnerId, {
-			softDeletedOnly: false,
-		}),
+		personalOrgId: await softDeletedOrgId(input.env.APP_DB, storageOwnerId),
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
 		const stillThere = await runD1WithRetry(() =>

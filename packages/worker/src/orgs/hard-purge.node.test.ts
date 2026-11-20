@@ -43,7 +43,8 @@ const {
 	PersonalOrgHardPurgeBlockedForLiveUserError,
 	PersonalOrgPurgesWithPersonError,
 } = await import('./hard-purge.ts')
-const { pruneSoftDeleted } = await import('./purge.ts')
+const { listSoftDeletePurgeCandidates, pruneSoftDeleted } =
+	await import('./purge.ts')
 
 function createAuditDb() {
 	const auditSqlite = new DatabaseSync(':memory:')
@@ -829,6 +830,56 @@ test('finishLegacyUserDeletion finishes a fenced pre-soft-delete deletion and to
 		stableUserId: personId,
 	})
 	expect(second.alreadyGone).toBe(true)
+})
+
+test('finishLegacyUserDeletion leaves a failed personal org purge to the org lane', async () => {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const realDb = createD1FromSqlite(sqlite)
+	let failOrgDelete = true
+	const appDb = new Proxy(realDb, {
+		get(target, prop, receiver) {
+			if (prop === 'prepare') {
+				return (sql: string) => {
+					if (failOrgDelete && sql.startsWith('DELETE FROM orgs WHERE id')) {
+						throw new Error('org_delete_unavailable')
+					}
+					return target.prepare(sql)
+				}
+			}
+			return Reflect.get(target, prop, receiver)
+		},
+	})
+	const personId = ownerIdFromStored('person-legacy-org-retry')
+	const ts = '2026-08-20T00:00:00.000Z'
+	await seedLegacyFencedPerson({ appDb, personId, ts, deletingAt: ts })
+	const env = createSuccessfulDeletionEnv(appDb, {
+		AUDIT_DB: createAuditDb(),
+	}) as unknown as Env
+
+	await expect(
+		finishLegacyUserDeletion({ env, dbUserId: 7, stableUserId: personId }),
+	).rejects.toThrow('org_delete_unavailable')
+
+	expect(
+		await countRows(appDb, `SELECT COUNT(*) AS n FROM users WHERE id = ?`, '7'),
+	).toBe(0)
+	const preview = await listSoftDeletePurgeCandidates({
+		env,
+		now: new Date('2026-11-01T00:00:00.000Z'),
+	})
+	expect(
+		preview.candidates.filter((candidate) => candidate.kind === 'org'),
+	).toEqual([expect.objectContaining({ id: personId })])
+	failOrgDelete = false
+	await hardPurgeOrg({ env, orgId: personId })
+	expect(
+		await countRows(
+			appDb,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			personId,
+		),
+	).toBe(0)
 })
 
 test('finishLegacyUserDeletion refuses live and soft-deleted rows', async () => {
