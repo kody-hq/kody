@@ -336,7 +336,7 @@ test('createDynamicCallableWorkflow dedupes queued runs by user and idempotency 
 	expect(erroredReplay.status).toBe('errored')
 	expect(binding.create).toHaveBeenCalledTimes(2)
 
-	// More reruns than the old 16-generation successor walk allowed.
+	// Every rerun of a dead run gets a fresh engine id, however long the chain.
 	const seen = new Set([erroredFirst.id])
 	let replaced = erroredFirst
 	vi.useFakeTimers()
