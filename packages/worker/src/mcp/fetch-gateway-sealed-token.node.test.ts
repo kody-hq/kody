@@ -384,7 +384,7 @@ test('a token exchanged for a secretJwtSign JWT fills on the signing secret appr
 		}),
 	)
 	await expect(refused).rejects.toThrow(
-		/not monitoring\.googleapis\.com\..* It was minted with secret "gcpReadonlyServiceAccount", approved for run\.googleapis\.com, sqladmin\.googleapis\.com, logging\.googleapis\.com\. None of those approves monitoring\.googleapis\.com; to send it there, approve monitoring\.googleapis\.com on "gcpReadonlyServiceAccount" \(https:\/\/example\.com\/connect\/secrets\?name=gcpReadonlyServiceAccount&hosts=monitoring\.googleapis\.com\)\./,
+		/not monitoring\.googleapis\.com\..* It was minted with secret "gcpReadonlyServiceAccount", approved for run\.googleapis\.com, sqladmin\.googleapis\.com, logging\.googleapis\.com\. None of those approves monitoring\.googleapis\.com; to send it there, approve monitoring\.googleapis\.com on "gcpReadonlyServiceAccount" \(https:\/\/example\.com\/connect\/secrets\?org=ada&name=gcpReadonlyServiceAccount&hosts=monitoring\.googleapis\.com\)\./,
 	)
 	await expect(refused).rejects.not.toThrow(/credential that minted it/)
 	expect(seen).toHaveLength(4)
