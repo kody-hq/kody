@@ -1,4 +1,5 @@
 import { createIntrinsicChangeDetectorSource } from '#worker/package-runtime/intrinsic-change-detector-source.ts'
+import type { PackageAppRunLocation } from '#worker/package-app-public-url.ts'
 import { createGatewayResponseUnwrapSource } from '#mcp/sandbox-rpc-outcome.ts'
 import {
 	sanitizeToolName,
@@ -305,6 +306,8 @@ export type DynamicWorkerEvaluatePackageContext = {
 export type DynamicWorkerEvaluateInvocation = {
 	params?: unknown
 	packageContext?: DynamicWorkerEvaluatePackageContext
+	/** App location per package id the run may act as (see `packageContext`). */
+	packageApps?: Record<string, PackageAppRunLocation>
 	mcpServers?: Array<KodyRemoteProxyEvaluateMetadata>
 }
 
@@ -353,6 +356,7 @@ function resolveEvaluateInvocation(
 		params: cloneEvaluateJsonValue(invocation?.params),
 		packageContext:
 			packageContext == null ? null : Object.freeze({ ...packageContext }),
+		packageApps: cloneEvaluateJsonValue(invocation?.packageApps ?? {}),
 		mcpServers: projectKodyRemoteProxyMetadata(
 			invocation?.mcpServers ?? kodyProvider?.kodyMcpServers ?? [],
 		),

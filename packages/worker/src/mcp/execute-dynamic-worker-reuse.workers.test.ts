@@ -3,11 +3,18 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { env } from 'cloudflare:workers'
-import { expect, test } from 'vitest'
+import { beforeEach, expect, test, vi } from 'vitest'
 import { createMcpCallerContext } from '#mcp/context.ts'
 import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
+import * as packageRepo from '#worker/package-registry/repo.ts'
 import { buildKodyModuleBundle } from '#worker/package-runtime/module-graph.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
+
+// Runs resolve each run package's app location; this D1 has no saved
+// package rows.
+beforeEach(() => {
+	vi.spyOn(packageRepo, 'getSavedPackageByIdInAnyOrg').mockResolvedValue(null)
+})
 
 /**
  * Regression coverage for the production "RPC stub used after being

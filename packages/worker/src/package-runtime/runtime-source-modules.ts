@@ -635,12 +635,27 @@ function __kodyCreateRuntimeRecordExport(exportName) {
 
 // A package's own modules read its own id even when an export runs inside
 // another run (ad hoc execute, another package): the run's context when the
-// run belongs to this package, else just \`{ packageId }\`.
+// run belongs to this package, else \`{ packageId }\` plus the package's own
+// \`hostedUrl\` / \`appBasePath\` from the run's host-set \`packageApps\`.
 export function __kodyCreatePackageBoundPackageContext(packageId) {
 	const own = Object.freeze({ packageId });
+	let ownAppSource = null;
+	let ownApp = own;
 	return __kodyCreateRecordProxy('packageContext', () => {
-		const run = __kodyGetRuntimeStore()?.packageContext ?? null;
-		return run != null && run.packageId === packageId ? run : own;
+		const store = __kodyGetRuntimeStore();
+		const run = store?.packageContext ?? null;
+		if (run != null && run.packageId === packageId) return run;
+		const app = store?.packageApps?.[packageId] ?? null;
+		if (app == null) return own;
+		if (app !== ownAppSource) {
+			ownAppSource = app;
+			ownApp = Object.freeze({
+				packageId,
+				hostedUrl: app.hostedUrl,
+				appBasePath: app.appBasePath,
+			});
+		}
+		return ownApp;
 	});
 }
 

@@ -4,11 +4,17 @@ import {
 	buildPackageAppSubdomainPath,
 	isProfilePackage,
 	buildPackageAppSubdomainUrl,
+	resolveHostedPackageAppUrl,
 } from '@kody-internal/shared/public-urls.ts'
 import { isPackageAppPathMountCutOver } from '#worker/package-runtime/package-app-path-mount-cutover.ts'
 import { hasProfilePackageApp } from '#worker/package-app-profile-host.ts'
 import { getPackageAppBaseUrl } from '#worker/app-base-url.ts'
 import { lookupVerifiedAppCustomHostnameForPackage } from '#worker/package-app-custom-hostnames/lookup.ts'
+import {
+	getPackageNameLeaf,
+	getPackageNameScope,
+} from '#worker/package-registry/package-name.ts'
+import { getSavedPackageByIdInAnyOrg } from '#worker/package-registry/repo.ts'
 
 /**
  * Where a browser should open a hosted package app when it does not need a
@@ -104,4 +110,90 @@ async function verifiedAppCustomOrigin(input: {
 		// is still the public origin.
 		return null
 	}
+}
+
+/**
+ * The app URL a package's code reads in `packageContext` when no request is
+ * serving it (execute imports, jobs, webhooks, package invocations): the same
+ * canonical location a browser opens, otherwise the inline mount on the app
+ * origin. Both fields are null when the package has no app.
+ */
+export type PackageAppRunLocation = {
+	hostedUrl: string | null
+	appBasePath: string | null
+}
+
+export const noPackageAppRunLocation: PackageAppRunLocation = Object.freeze({
+	hostedUrl: null,
+	appBasePath: null,
+})
+
+export async function resolveCanonicalPackageAppLocation(input: {
+	env: Env
+	baseUrl: string
+	packageName: string
+}): Promise<PublicPackageAppLocation> {
+	const username = getPackageNameScope(input.packageName)
+	if (!username) {
+		throw new Error(
+			`Saved package name "${input.packageName}" must include a username scope.`,
+		)
+	}
+	// Public URLs use the name leaf; kodyId stays identity only.
+	const kodyId = getPackageNameLeaf(input.packageName)
+	const canonical = await resolvePublicPackageAppLocation({
+		env: input.env,
+		username,
+		kodyId,
+	})
+	if (canonical) return canonical
+	const hostedUrl = resolveHostedPackageAppUrl({
+		packageAppBaseUrl: getPackageAppBaseUrl({ env: input.env }),
+		appBaseUrl: input.baseUrl,
+		username,
+		kodyId,
+	})
+	return { hostedUrl, appBasePath: new URL(hostedUrl).pathname }
+}
+
+export async function resolvePackageAppRunLocation(input: {
+	env: Env
+	baseUrl: string
+	savedPackage: { name: string; hasApp: boolean }
+}): Promise<PackageAppRunLocation> {
+	if (!input.savedPackage.hasApp) return noPackageAppRunLocation
+	return await resolveCanonicalPackageAppLocation({
+		env: input.env,
+		baseUrl: input.baseUrl,
+		packageName: input.savedPackage.name,
+	})
+}
+
+/**
+ * App locations for every package a run may act as (its own package plus the
+ * saved packages it imports), keyed by package id, so each package's code
+ * reads its own `packageContext.hostedUrl` the same way on every surface.
+ */
+export async function resolvePackageAppRunLocations(input: {
+	env: Env
+	baseUrl: string
+	packageIds: Iterable<string>
+}): Promise<Record<string, PackageAppRunLocation>> {
+	const entries = await Promise.all(
+		[...new Set(input.packageIds)].map(async (packageId) => {
+			const savedPackage = await getSavedPackageByIdInAnyOrg(
+				input.env.APP_DB,
+				packageId,
+			)
+			const location = savedPackage
+				? await resolvePackageAppRunLocation({
+						env: input.env,
+						baseUrl: input.baseUrl,
+						savedPackage,
+					})
+				: noPackageAppRunLocation
+			return [packageId, location] as const
+		}),
+	)
+	return Object.fromEntries(entries)
 }

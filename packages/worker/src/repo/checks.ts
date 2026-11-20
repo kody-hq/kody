@@ -640,8 +640,8 @@ declare module "kody:runtime" {
   export const packageContext: {
     packageId: string;
     kodyId: string;
-    appBasePath?: string;
-    hostedUrl?: string;
+    appBasePath?: string | null;
+    hostedUrl?: string | null;
     cookiePrefix?: string;
     assetBasePath?: string;
     clientModuleUrl?: string | null;

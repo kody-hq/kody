@@ -7,6 +7,7 @@ import { expect, test, vi } from 'vitest'
 import { buildSecretPlaceholder } from '#mcp/secrets/placeholders.ts'
 import { secretAuthorityArgName } from '#mcp/secrets/secret-authority.ts'
 import { createDynamicWorkerCompatibilityOptions } from '#worker/dynamic-worker-compatibility.ts'
+import * as packageAppPublicUrl from '#worker/package-app-public-url.ts'
 import { buildPackageStorageId } from '#worker/storage-ids.ts'
 import {
 	createPackageStorageAccessDeniedMessage,
@@ -596,7 +597,7 @@ test('package app createCredentialRuntime exposes callable credential().sign via
 		${createCredentialClientRuntimeSource()}
 		${extractGeneratedSource(
 			'function createCredentialRuntime(runtimeBridge, call) {',
-			'\nfunction createRuntime(runtimeBridge, packageContext, mcpServerNamesOrLoader, identity = null) {',
+			'\nfunction createRuntime(runtimeBridge, packageContext, packageApps, mcpServerNamesOrLoader, identity = null) {',
 		)}
 		return createCredentialRuntime(runtimeBridge, call);`,
 	) as (
@@ -742,6 +743,33 @@ test('buildPackageAppWorker claims the unique Dynamic Worker day with its surfac
 		await Promise.all(waitUntilTasks)
 	} finally {
 		recordSpy.mockRestore()
+	}
+})
+
+test('package app worker gets the app location of each package it can act as', async () => {
+	const { env, loader } = createPackageAppTestEnv()
+	packageAppRuntimeMock.loadPublishedBundleArtifactByIdentity.mockResolvedValue(
+		makeArtifact(),
+	)
+	const packageApps = {
+		'package-run-apps': {
+			hostedUrl: 'https://kody.kody.run/rooms',
+			appBasePath: '/rooms',
+		},
+	}
+	const resolveSpy = vi
+		.spyOn(packageAppPublicUrl, 'resolvePackageAppRunLocations')
+		.mockResolvedValue(packageApps)
+	try {
+		await buildPackageAppWorker(makeBuildInput(env, 'run-apps'))
+		expect(resolveSpy).toHaveBeenCalledWith(
+			expect.objectContaining({ packageIds: ['package-run-apps'] }),
+		)
+		expect(loaderWorkerOptions(loader)?.env['__kodyPackageApps']).toEqual(
+			packageApps,
+		)
+	} finally {
+		resolveSpy.mockRestore()
 	}
 })
 
