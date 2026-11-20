@@ -350,6 +350,7 @@ export function WorkspaceUploads({ children }: { children: ReactNode }) {
 function createUploadQueue(onUploaded: () => void) {
 	let jobs: UploadJob[] = []
 	let scheduled = false
+	let stopped = false
 	const listeners = new Set<() => void>()
 	const active = new Map<string, AbortController>()
 	let warning = false
@@ -374,6 +375,7 @@ function createUploadQueue(onUploaded: () => void) {
 		set(jobs.map((job) => (job.id === id ? { ...job, ...changes } : job)))
 	}
 	function pump() {
+		if (stopped) return
 		for (const job of jobs) {
 			if (active.size >= 2) break
 			if (job.status !== 'queued' || active.has(job.id)) continue
@@ -459,6 +461,7 @@ function createUploadQueue(onUploaded: () => void) {
 		patch,
 		abort: (id: string) => active.get(id)?.abort(),
 		abortAll: () => {
+			stopped = true
 			for (const controller of active.values()) controller.abort()
 		},
 	}
