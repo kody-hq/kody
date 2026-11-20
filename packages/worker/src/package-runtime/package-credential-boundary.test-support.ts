@@ -148,6 +148,7 @@ export type PublishedPackage = {
 	kodyId: string
 }
 
+/** Publishes importable-module artifacts and records the package as an unadopted community fork. */
 export async function publishForkedPackage(input: {
 	userId: string
 	name: string
@@ -312,6 +313,7 @@ export async function publishDependent(
 	})
 }
 
+/** Runs as execute when `asPackage` is omitted; otherwise enters as that package's root. */
 export async function runModule(
 	userId: string,
 	sourceFiles: Record<string, string>,

@@ -102,8 +102,6 @@ async function ensureSecretAuthorityTestSchema() {
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 
-/** Publishes importable-module artifacts and records the package as an unadopted community fork. */
-
 async function publishGrokBotWake(
 	userId: string,
 	wakeSource: string,
@@ -146,8 +144,6 @@ async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 		audit: null,
 	})
 }
-
-/** Runs as execute when `asPackage` is omitted; otherwise enters as that package's root. */
 
 const wakeRef = '{{secret:wakeToken|scope=user}}'
 const notAllowed = expect.stringMatching(/not allowed for package/i)

@@ -73,10 +73,6 @@ async function ensureSecretAuthorityTestSchema() {
 	await ensureSoftDeleteTestColumns(env.APP_DB)
 }
 
-/** Publishes importable-module artifacts and records the package as an unadopted community fork. */
-
-/** Runs as execute when `asPackage` is omitted; otherwise enters as that package's root. */
-
 function installFakeUpstream() {
 	const seen: Array<Seen> = []
 	const realFetch = globalThis.fetch
