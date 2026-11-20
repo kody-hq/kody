@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
+import { createServer } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -202,6 +204,12 @@ function fakePublishCall(input: {
 		[]
 	const call = async (operationId: string, params: Record<string, unknown>) => {
 		calls.push({ operationId, params })
+		if (operationId === 'packageGetGitRemote') {
+			return {
+				remote: input.remote,
+				git_extra_header: 'Authorization: Bearer minted-for-this-publish',
+			}
+		}
 		if (operationId === 'packagePublishBuildCreate') {
 			const expected = String(params.expected_commit)
 			// Kody resolves the commit from its own copy of the repo.
@@ -276,9 +284,18 @@ test('--build local pushes an unpushed HEAD, has Kody confirm it, then builds it
 	assert.equal(git(remote, 'rev-parse', 'refs/heads/main'), head)
 	assert.deepEqual(
 		kody.calls.map((entry) => entry.operationId),
-		['packagePublishBuildCreate', 'packagePublishExternalPush'],
+		[
+			'packageGetGitRemote',
+			'packagePublishBuildCreate',
+			'packagePublishExternalPush',
+		],
 	)
-	assert.equal(kody.calls[0]!.params.expected_commit, head)
+	assert.deepEqual(kody.calls[0]!.params, {
+		kody_id: '@me/pkg',
+		scope: 'write',
+		ttl_seconds: 900,
+	})
+	assert.equal(kody.calls[1]!.params.expected_commit, head)
 	assert.equal((server.sealed() as { commit: string }).commit, head)
 })
 
@@ -332,8 +349,50 @@ test('--build local never builds or uploads a commit Kody does not confirm', asy
 	assert.equal(server.sealed(), null)
 	assert.deepEqual(
 		kody.calls.map((entry) => entry.operationId),
-		['packagePublishBuildCreate'],
+		['packageGetGitRemote', 'packagePublishBuildCreate'],
 	)
+})
+
+test('--build local pushes with a remote Kody mints, not the expired credential the clone stored', async () => {
+	const { dir, remote } = repoWithKodyRemote({
+		'package.json': '{}',
+		'index.ts': 'export default 1',
+	})
+	// The clone's remote answers 403 the way an Artifacts remote does once
+	// the token the checkout stored has expired.
+	const expired = createServer((_request, response) => {
+		response.writeHead(403).end('token expired')
+	})
+	await new Promise<void>((resolve) => expired.listen(0, '127.0.0.1', resolve))
+	try {
+		const { port } = expired.address() as AddressInfo
+		git(
+			dir,
+			'remote',
+			'set-url',
+			'kody',
+			`http://x:expired-token@127.0.0.1:${port}/package.git`,
+		)
+		writeFileSync(join(dir, 'index.ts'), 'export default 2')
+		git(dir, 'commit', '--quiet', '-am', 'local change')
+		const head = git(dir, 'rev-parse', 'HEAD')
+		const kody = fakePublishCall({ remote })
+		const result = await runPublishWithBuild({
+			build: 'local',
+			target: { kody_id: '@me/pkg' },
+			call: kody.call,
+			apiUrl: 'https://kody.test',
+			cwd: dir,
+			interactive: false,
+			writeErr: () => {},
+			fetchFn: fakeServer().fetchFn,
+			loadBuilder: fakeBuilder,
+		})
+		assert.deepEqual(result, { status: 'published' })
+		assert.equal(git(remote, 'rev-parse', 'refs/heads/main'), head)
+	} finally {
+		await new Promise((resolve) => expired.close(resolve))
+	}
 })
 
 test('a cloud resource-limit refusal prints the offload commands and docs link for agents', async () => {

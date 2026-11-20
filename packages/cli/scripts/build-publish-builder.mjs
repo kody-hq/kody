@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from 'node:fs'
+import { copyFileSync, mkdirSync, readdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -27,6 +27,47 @@ const workerGeneratedModulesBuildsNeverLoad = new Set([
 	'oauth-provider',
 	'postal-mime',
 ])
+
+// The bundler's typecheck downloads TypeScript's lib .d.ts files from the npm
+// registry on every run. Inside the CLI's workerd that made every local and
+// context build fail with workerd's opaque `internal error; reference = …`
+// on any machine that cannot reach registry.npmjs.org. The builder embeds
+// the exact lib files the bundler pins instead, read from the
+// `publish-builder-typescript-libs` dev dependency.
+const typescriptLibsPackage = 'publish-builder-typescript-libs'
+const typescriptLibMapPattern =
+	/async function createDefaultTypeScriptLibMap\(\) \{\n[\s\S]*?version: "([^"]+)",[\s\S]*?\n\treturn result;\n\}/
+
+function embeddedTypescriptLibMapSource(bundlerSource) {
+	const match = typescriptLibMapPattern.exec(bundlerSource)
+	if (!match) {
+		throw new Error(
+			'@cloudflare/worker-bundler no longer defines createDefaultTypeScriptLibMap the way packages/cli/scripts/build-publish-builder.mjs expects. Update the publish builder so it still embeds the TypeScript lib files instead of downloading them.',
+		)
+	}
+	const require = createRequire(path.join(workerDir, 'index.js'))
+	const libsPackageJson = require.resolve(
+		`${typescriptLibsPackage}/package.json`,
+	)
+	const { version } = JSON.parse(readFileSync(libsPackageJson, 'utf8'))
+	if (version !== match[1]) {
+		throw new Error(
+			`@cloudflare/worker-bundler typechecks with TypeScript ${match[1]} lib files, but ${typescriptLibsPackage} is ${version}. Set packages/cli devDependency ${typescriptLibsPackage} to npm:typescript@${match[1]}.`,
+		)
+	}
+	const libDir = path.join(path.dirname(libsPackageJson), 'lib')
+	const files = Object.fromEntries(
+		readdirSync(libDir)
+			.filter((name) => name.startsWith('lib.') && name.endsWith('.d.ts'))
+			.sort()
+			.map((name) => [name, readFileSync(path.join(libDir, name), 'utf8')]),
+	)
+	return bundlerSource.replace(
+		typescriptLibMapPattern,
+		() =>
+			`async function createDefaultTypeScriptLibMap() {\n\treturn new Map(Object.entries(${JSON.stringify(files)}));\n}`,
+	)
+}
 
 /**
  * Writes `publish-builder.js` and `publish-builder-wasm/` into `outDir`.
@@ -62,6 +103,23 @@ export async function buildPublishBuilder({ outDir }) {
 						copyFileSync(file, path.join(builderWasmDir, name))
 						return { path: `./${name}`, external: true }
 					})
+				},
+			},
+			{
+				name: 'embedded-typescript-libs',
+				setup(pluginBuild) {
+					pluginBuild.onLoad(
+						{
+							filter:
+								/@cloudflare[\\/]worker-bundler[\\/]dist[\\/]typescript\.js$/,
+						},
+						(args) => ({
+							contents: embeddedTypescriptLibMapSource(
+								readFileSync(args.path, 'utf8'),
+							),
+							loader: 'js',
+						}),
+					)
 				},
 			},
 			{

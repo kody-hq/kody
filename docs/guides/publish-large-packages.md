@@ -146,7 +146,10 @@ kody package publish @you/big-package --build local
 ```
 
 The CLI pushes to the branch's upstream. A detached HEAD or a branch without an
-upstream is refused; set one with `git push -u <kody remote> HEAD`.
+upstream is refused; set one with `git push -u <kody remote> HEAD`. The push
+uses a write remote Kody mints for that publish with your CLI login, not the
+checkout's remote URL or a stored git credential, so a clone whose remote token
+has expired still publishes.
 
 Uploads resume: rerunning the same command skips chunks Kody already has.
 
