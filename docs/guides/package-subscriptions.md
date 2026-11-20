@@ -213,10 +213,10 @@ search/detail projections so subscribers can discover payload shapes.
 
 ### Emitting
 
-Any package code can emit its package's events, wherever it runs: package jobs,
-exports, subscription handlers, webhook handlers, package apps, and `execute`
-calls that import a package export. Kody uses the emitting package's identity
-and `kody.emits` declaration, including when another package calls its code
+Hosted package code can emit its package's events from jobs, exports,
+subscription handlers, webhook handlers, package apps, and `execute` calls that
+import a package export. Kody uses the emitting package's identity and
+`kody.emits` declaration, including when another package calls its code
 ([package identity and topic checks](../../packages/worker/src/package-runtime/package-events-surfaces.workers.test.ts)):
 
 ```ts
@@ -275,10 +275,10 @@ Rules:
 `{ topic, source, idempotencyKey, status: "enqueued" }`. If the queue is
 unavailable or enqueueing fails,
 [dispatch falls back to inline delivery](../../packages/worker/src/package-invocations/subscription-dispatch.ts)
-and reports `status: "delivered_inline"`. Check subscriber run records for
-handler outcomes.
+and reports `status: "delivered_inline"`. This status describes the delivery
+path, not whether handlers succeeded. Check subscriber run records for outcomes.
 
-The Queue consumer resolves the emitting user's subscribed packages at delivery
+The Queue consumer resolves the emitting org's subscribed packages at delivery
 time and invokes each `subscription:@scope/topic` handler with:
 
 ```ts
