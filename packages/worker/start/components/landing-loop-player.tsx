@@ -80,17 +80,6 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 		},
 		[reducedMotion],
 	)
-	useEffect(
-		() => () => {
-			if (autoScrollTimer.current) clearTimeout(autoScrollTimer.current)
-		},
-		[],
-	)
-	useEffect(() => {
-		const node = loop.current
-		if (!node) return
-		return observeNearViewport(node, () => setLoadRequested(true))
-	}, [])
 	useEffect(() => {
 		if (!loadRequested) return
 		const controller = new AbortController()
@@ -131,27 +120,34 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 			})
 		return () => controller.abort()
 	}, [loadRequested, hosts, queryClient])
-	useEffect(() => {
-		const node = loop.current
-		if (!node) return
-		const sync = () => {
-			if (isElementNearViewport(node)) setLoadRequested(true)
-			player.setOffscreen(!isElementNearViewport(node, '0px'))
-		}
-		const observer =
-			typeof IntersectionObserver === 'undefined'
-				? null
-				: new IntersectionObserver(sync)
-		observer?.observe(node)
-		window.addEventListener('scroll', sync, { passive: true })
-		window.addEventListener('resize', sync, { passive: true })
-		sync()
-		return () => {
-			observer?.disconnect()
-			window.removeEventListener('scroll', sync)
-			window.removeEventListener('resize', sync)
-		}
-	}, [player])
+	const loopRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			loop.current = node
+			if (!node) return
+			const stopNearViewport = observeNearViewport(node, () =>
+				setLoadRequested(true),
+			)
+			const sync = () => {
+				if (isElementNearViewport(node)) setLoadRequested(true)
+				player.setOffscreen(!isElementNearViewport(node, '0px'))
+			}
+			const observer =
+				typeof IntersectionObserver === 'undefined'
+					? null
+					: new IntersectionObserver(sync)
+			observer?.observe(node)
+			window.addEventListener('scroll', sync, { passive: true })
+			window.addEventListener('resize', sync, { passive: true })
+			sync()
+			return () => {
+				stopNearViewport()
+				observer?.disconnect()
+				window.removeEventListener('scroll', sync)
+				window.removeEventListener('resize', sync)
+			}
+		},
+		[player],
+	)
 	useEffect(() => {
 		if (!content || reducedMotion) return
 		const controller = new AbortController()
@@ -176,23 +172,26 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 		const frame = requestAnimationFrame(() => scrollTo())
 		return () => cancelAnimationFrame(frame)
 	}, [snapshot, content, scrollTo])
-	useEffect(() => {
-		const node = chat.current
-		if (!node) return
-		const explore = (event: Event) => {
-			if (event.target instanceof HTMLDetailsElement && event.target.open)
-				player.setExplore(true)
-		}
-		const scrollEnd = () => {
-			autoScrolling.current = false
-		}
-		node.addEventListener('toggle', explore, true)
-		node.addEventListener('scrollend', scrollEnd)
-		return () => {
-			node.removeEventListener('toggle', explore, true)
-			node.removeEventListener('scrollend', scrollEnd)
-		}
-	}, [player])
+	const chatRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			chat.current = node
+			if (!node) return
+			const explore = (event: Event) => {
+				if (event.target instanceof HTMLDetailsElement && event.target.open)
+					player.setExplore(true)
+			}
+			const scrollEnd = () => {
+				autoScrolling.current = false
+			}
+			node.addEventListener('toggle', explore, true)
+			node.addEventListener('scrollend', scrollEnd)
+			return () => {
+				node.removeEventListener('toggle', explore, true)
+				node.removeEventListener('scrollend', scrollEnd)
+			}
+		},
+		[player],
+	)
 	const visibleBeats = content?.beats.slice(0, player.revealedCount)
 	const groups = visibleBeats ? groupLandingLoopScenes(visibleBeats) : []
 	const ended = !!content && player.isEnded() && !reducedMotion
@@ -203,7 +202,7 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 	const label = landingLoopToggleLabel({ reducedMotion, ended, paused })
 	return (
 		<div
-			ref={loop}
+			ref={loopRef}
 			className="landing-loop"
 			data-paused={paused ? 'true' : undefined}
 			data-playing={playing ? 'true' : undefined}
@@ -266,7 +265,7 @@ export function LandingLoopPlayer({ hosts }: { hosts?: WalkthroughHostPick }) {
 				</span>
 			</div>
 			<div
-				ref={chat}
+				ref={chatRef}
 				className="landing-loop-chat"
 				onPointerDown={() => {
 					userDriven.current = true
