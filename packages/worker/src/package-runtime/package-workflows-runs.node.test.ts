@@ -81,10 +81,6 @@ vi.mock('#worker/run-records/service.ts', () => ({
 	}) => {
 		reportedRunProgress.push({ id: input.id, progress: input.progress })
 	},
-	releaseWorkflowProjectionIdempotencyKey: (...args: Array<unknown>) =>
-		runRecordMocks.releaseWorkflowProjectionIdempotencyKey(
-			...(args as [{ env: Env; userId: string; id: string }]),
-		),
 	getWorkflowProjection: (...args: Array<unknown>) =>
 		runRecordMocks.getWorkflowProjection(
 			...(args as [{ env: Env; userId: string; id: string }]),
@@ -283,11 +279,16 @@ test('createDynamicCallableWorkflow dedupes queued runs by user and idempotency 
 	runRecordMocks.resetProjections()
 	const binding = createStatefulWorkflowBinding()
 	const env = createWorkflowEnv(binding)
-	const packageRun = (runAt: string, idempotencyKey = 'idempotency-repro') =>
+	const packageRun = (
+		runAt: string,
+		idempotencyKey = 'idempotency-repro',
+		rerunOf?: string,
+	) =>
 		createDynamicCallableWorkflow({
 			env,
 			userId: ownerIdFromStored('user-1'),
 			lineage: sessionRequestLineage('user-1'),
+			rerunOf,
 			body: {
 				...packageBody,
 				runAt,
@@ -316,8 +317,9 @@ test('createDynamicCallableWorkflow dedupes queued runs by user and idempotency 
 		}),
 	])
 
-	// Terminal (errored) projections still satisfy same-key replay until the
-	// key is released (durable escalation releases after a dead terminal).
+	// A terminal (errored) run still satisfies same-key replay until a caller
+	// names it in rerunOf; each rerun then gets a fresh engine id and becomes
+	// the run the key resolves to.
 	runRecordMocks.resetProjections()
 	const erroredFirst = await packageRun(
 		'2026-05-08T19:30:00.000Z',
@@ -334,41 +336,39 @@ test('createDynamicCallableWorkflow dedupes queued runs by user and idempotency 
 	expect(erroredReplay.status).toBe('errored')
 	expect(binding.create).toHaveBeenCalledTimes(2)
 
-	await runRecordMocks.releaseWorkflowProjectionIdempotencyKey({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		id: erroredFirst.id,
-	})
-	const afterRelease = await packageRun(
-		'2026-05-08T19:32:00.000Z',
-		'terminal-key',
-	)
-	expect(afterRelease.id).not.toBe(erroredFirst.id)
-	expect(afterRelease.status).toBe('queued')
-	expect(binding.create).toHaveBeenCalledTimes(3)
-	expect(findRun(erroredFirst.id)?.idempotencyKey).toBe(
-		`released:${erroredFirst.id}`,
-	)
-	expect(findRun(afterRelease.id)?.idempotencyKey).toBe('terminal-key')
-
-	// A second terminal failure must walk the successor chain (not reuse B).
-	const secondStored = findRun(afterRelease.id)
-	if (!secondStored) throw new Error('Expected second workflow projection.')
-	secondStored.status = 'errored'
-	await runRecordMocks.releaseWorkflowProjectionIdempotencyKey({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		id: afterRelease.id,
-	})
-	const afterSecondRelease = await packageRun(
-		'2026-05-08T19:33:00.000Z',
-		'terminal-key',
-	)
-	expect(afterSecondRelease.id).not.toBe(erroredFirst.id)
-	expect(afterSecondRelease.id).not.toBe(afterRelease.id)
-	expect(afterSecondRelease.status).toBe('queued')
-	expect(binding.create).toHaveBeenCalledTimes(4)
-	expect(findRun(afterSecondRelease.id)?.idempotencyKey).toBe('terminal-key')
+	// Every rerun of a dead run gets a fresh engine id, however long the chain.
+	const seen = new Set([erroredFirst.id])
+	let replaced = erroredFirst
+	vi.useFakeTimers()
+	try {
+		for (let attempt = 1; attempt <= 20; attempt += 1) {
+			vi.setSystemTime(new Date(Date.UTC(2030, 0, 1, 0, attempt)))
+			const rerun = await packageRun(
+				`2026-05-08T20:${String(attempt).padStart(2, '0')}:00.000Z`,
+				'terminal-key',
+				replaced.id,
+			)
+			expect(seen.has(rerun.id)).toBe(false)
+			expect(rerun.status).toBe('queued')
+			expect(findRun(rerun.id)?.idempotencyKey).toBe('terminal-key')
+			expect(findRun(replaced.id)?.idempotencyKey).toBe('terminal-key')
+			await expect(
+				packageRun('2026-05-08T21:00:00.000Z', 'terminal-key'),
+			).resolves.toMatchObject({ id: rerun.id, status: 'queued' })
+			// A racing rerun of the same dead run converges on the same successor.
+			await expect(
+				packageRun('2026-05-08T21:00:00.000Z', 'terminal-key', replaced.id),
+			).resolves.toMatchObject({ id: rerun.id })
+			seen.add(rerun.id)
+			const stored = findRun(rerun.id)
+			if (!stored) throw new Error('Expected rerun workflow projection.')
+			stored.status = 'errored'
+			replaced = rerun
+		}
+	} finally {
+		vi.useRealTimers()
+	}
+	expect(binding.create).toHaveBeenCalledTimes(22)
 
 	// The key is scoped per user.
 	runRecordMocks.resetProjections()
@@ -1090,30 +1090,6 @@ test('package-launched inline runs record package and commit provenance at enque
 	expect(byPackage.map((row) => row.id)).toEqual([created.id])
 	expect(byPackage[0]).toMatchObject({
 		packageId: syntheticPublishContext.packageId,
-		enqueuedCommit: syntheticPublishCommit,
-	})
-})
-
-test('package and commit provenance survive an idempotency key release', async () => {
-	runRecordMocks.resetProjections()
-	const env = createWorkflowEnv()
-	const created = await createPublishRun(env, 'user-1:publish-released')
-	await runRecordMocks.releaseWorkflowProjectionIdempotencyKey({
-		env,
-		userId: 'user-1',
-		id: created.id,
-	})
-
-	const [row] = await listWorkflowRunsForUser({
-		env,
-		userId: ownerIdFromStored('user-1'),
-		filter: { packageId: syntheticPublishContext.packageId },
-	})
-	expect(row).toMatchObject({
-		id: created.id,
-		idempotencyKey: `released:${created.id}`,
-		packageId: syntheticPublishContext.packageId,
-		sourceId: syntheticPublishContext.sourceId,
 		enqueuedCommit: syntheticPublishCommit,
 	})
 })

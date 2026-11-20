@@ -11,7 +11,7 @@ import {
 	useRef,
 	type FormEvent,
 	type ChangeEvent,
-	useEffect,
+	useCallback,
 } from 'react'
 import { mergeCss } from '../components/merge-css.ts'
 
@@ -77,7 +77,8 @@ export function AccountPackageDeleteDialog(props: {
 		mounted = useRef(false)
 	const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
 	const copyFeedbackTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLDivElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -155,6 +156,7 @@ export function AccountPackageDeleteDialog(props: {
 	return (
 		<>
 			<div
+				ref={trackMounted}
 				css={{ display: 'grid', gap: spacing.sm }}
 				data-testid="package-delete-controls"
 			>

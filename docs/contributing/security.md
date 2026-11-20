@@ -709,6 +709,11 @@ guarded by a bearer secret comparison.
   stripped before the request leaves, on both the gateway and local native fetch
   paths. Policy writes (allowed hosts/capabilities/ packages) are only reachable
   through the authenticated account UI.
+- The hosted fetch gateway checks the hostname before each fetch it issues
+  directly, including redirects it follows itself. See the
+  [initial request and redirect tests](../../packages/worker/src/mcp/fetch-gateway-redirect.node.test.ts).
+  This hostname check does not inspect DNS results or redirects followed inside
+  the underlying fetch.
 - User code runs in a Cloudflare Worker Loader isolate without the parent `env`;
   capabilities are RPC'd back to handlers that enforce the caller's `userId`.
 - The DR control-plane Admin UI is protected by Cloudflare Access plus in-worker

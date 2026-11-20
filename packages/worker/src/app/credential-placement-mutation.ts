@@ -30,6 +30,7 @@ export type SetCredentialPlacementResponse = {
 	changed: boolean
 }
 
+/** Approves a typed request profile on a Key, or restores its default inject. */
 export async function setCredentialRequestProfile(input: {
 	env: Env
 	user: AuthenticatedAppUser

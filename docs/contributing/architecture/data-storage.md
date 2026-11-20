@@ -214,15 +214,16 @@ id (`purgeOwnerOutOfBandSurfaces`), deletes those objects, then deletes D1 rows
 including owner-scoped inventory without `deleted_at` (for example
 `published_bundle_artifacts`). Personal org hard purge (org id == person id) is
 org-graph only so the following user purge can still inventory those keys.
-`SOFT_DELETE_PURGE_ENABLED` stays `false`, so the purge lane dry-runs for
-soft-deleted rows. Legacy account deletions (`deleting_at` set, `deleted_at`
-null) are finished by the same lane regardless of that flag; see
-[authentication](./authentication.md). Fleet scans (published-commit ref repair
-and package codemods) skip packages whose owner is mid-deletion or deleted
-(`account/owner-deletion-state.ts`). Out-of-band surfaces (Durable Objects, KV
-schemes, R2, Vectorize, Artifacts) are declared in `user-owned-surfaces.ts` and
-consumed by both deletion and export. Growth-table retention dispositions are
-linked in `account-retention-dispositions.ts`.
+Production sets `SOFT_DELETE_PURGE_ENABLED` to `true`, so the hourly purge lane
+hard-deletes soft-deleted rows past the 30-day restore window. Preview and test
+keep it `false`, where the lane only lists those candidates. Legacy account
+deletions (`deleting_at` set, `deleted_at` null) are finished by the same lane
+regardless of that flag; see [authentication](./authentication.md). Fleet scans
+(published-commit ref repair and package codemods) skip packages whose owner is
+mid-deletion or deleted (`account/owner-deletion-state.ts`). Out-of-band
+surfaces (Durable Objects, KV schemes, R2, Vectorize, Artifacts) are declared in
+`user-owned-surfaces.ts` and consumed by both deletion and export. Growth-table
+retention dispositions are linked in `account-retention-dispositions.ts`.
 `packages/worker/src/account/export.node.test.ts` applies the live migrations to
 SQLite and fails if a `user_id` / `*_user_id` column is not covered by the
 export list. The hard invariant is the same as every storage path: callers pass
@@ -1309,11 +1310,17 @@ script owns no Durable Object classes.
   [Usage metering](./usage-metering.md))
 - `EMAIL_EVENTS` (Analytics Engine dataset, production/preview only; indexed by
   stable user id and read only through role-gated platform aggregates)
-- `MCP_PROTOCOL_EVENTS` (Analytics Engine dataset, production/preview only; one
+- `MCP_PROTOCOL_EVENTS` (Analytics Engine dataset, production/preview only): one
   point per authenticated `/mcp` request recording which protocol lane served it
   (sessionful Durable Object vs stateless SDK) and, on `tools/call`, blob8
   package-identity param class (`kody_id` / `package_id` / `name` / `both` /
-  `none`); see `packages/worker/src/mcp/protocol-metrics.ts`)
+  `none`). In
+  [protocol metrics](../../../packages/worker/src/mcp/protocol-metrics.ts),
+  blob9 is `declared` when that request advertises MCP Events in its client
+  capabilities, otherwise empty. The
+  [client-support readout](../../../packages/worker/src/feature-flags/mcp-events-client-support-readout.ts)
+  also uses Events RPCs and subscriptions; an empty blob alone does not mean the
+  client lacks support.
 - `EXECUTE_INTERPRETABLE_EVENTS` (Analytics Engine dataset, production/preview
   only; one point per MCP execute-tool module classifying whether it is
   interpretable pure glue for fleet `q`; see

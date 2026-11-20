@@ -29,8 +29,8 @@ export const terminalWorkflowStatusValues = [
 /**
  * Terminal statuses that mean the durable work did not succeed. `complete` is
  * excluded so a finished run can still satisfy same-key replay. Callers that
- * release an idempotency key after failure use this set so cancelled stays
- * aligned with the cancel projection.
+ * re-dispatch a failed run use this set so cancelled stays aligned with the
+ * cancel projection.
  */
 /**
  * Inline workflow code throws an error whose message starts with this prefix
@@ -50,13 +50,4 @@ export function isDeadTerminalWorkflowStatus(
 		status != null &&
 		(deadTerminalWorkflowStatusValues as ReadonlyArray<string>).includes(status)
 	)
-}
-
-/** Rewrite a projection's key so same-key lookups miss this dead run. */
-export function releasedWorkflowProjectionIdempotencyKey(workflowId: string) {
-	const id = workflowId.trim()
-	if (!id) {
-		throw new Error('releasedWorkflowProjectionIdempotencyKey requires an id.')
-	}
-	return `released:${id}`
 }

@@ -95,8 +95,8 @@ export async function countLiveSeats(
 /**
  * Admin seat comp (`orgs.comped_seats`). A manual paid plan grant with a
  * whole-number cap covers that many live seats; NULL covers every seat. The
- * cap binds only while the org has no paid Stripe plan, because a paid
- * subscription bills every live seat through seat sync.
+ * cap binds only while the manual grant is paid and there is no paid Stripe
+ * plan. Stripe billing follows the subscription's own terms.
  */
 export class CompedSeatLimitError extends Error {
 	override name = 'CompedSeatLimitError'

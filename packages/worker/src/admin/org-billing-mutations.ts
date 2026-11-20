@@ -467,11 +467,7 @@ export async function setAdminOrgCreditEligibility(input: {
 	return { orgId: org.id, previous, next, changed: true }
 }
 
-/**
- * Set or clear the admin seat comp (`orgs.comped_seats`). Null means every
- * live seat is covered. Compare-and-set on the previous value, so a repeat
- * call is a no-op and only the cap column changes.
- */
+/** Sets the manual plan's seat cap; null means uncapped. */
 export async function setAdminOrgCompedSeats(input: {
 	env: Env
 	audit: OrgAuditWriter

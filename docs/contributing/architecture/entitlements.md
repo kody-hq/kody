@@ -551,16 +551,15 @@ observes:
   cannot be reached the call is admitted, because the guard is a cost ceiling
   and not an access check.
 
-- **Outbound fetches** are consumed at the top of `executeGatewayFetch`
-  (`packages/worker/src/mcp/fetch-gateway.ts`), which every sandbox fetch passes
-  through, before secret expansion. `FetchGatewayProps.email` carries the acting
-  user's account email for plan lookup; when a caller cannot carry one (OpenAPI
-  provider requests, package runtime), the gateway reverse-resolves the account
-  via `findUserAccountByStableUserId` so the caller's real plan binds. Genuinely
-  accountless synthetic contexts resolve to `free` so missing identity plumbing
-  cannot grant elevated quotas. Server-side fetches of a user-supplied URL go
-  through `executeGatewayFetch` (`packages/worker/src/mcp/fetch-gateway.ts`)
-  rather than global `fetch`.
+- **Outbound fetches** sent through
+  [`executeGatewayFetch`](../../../packages/worker/src/mcp/fetch-gateway.ts)
+  consume quota before secret expansion. The gateway charges the billed org,
+  which can be the visiting org for an internal package app. Team and converted
+  org plans are looked up by org ID without a member's email. An email, when
+  supplied, must match the personal account for the supplied ID. A supplied ID
+  with no matching entitlement row uses Free limits; no billed ID skips the
+  charge. See the
+  [entitlement lookup](../../../packages/worker/src/entitlements/service.ts).
 - **Job runs** are consumed at the top of `executeJobOnce`
   (`packages/worker/src/jobs/service.ts`) after caller-context resolution and
   before sandbox work, so over-limit ticks fail cheaply. This is separate from
@@ -988,18 +987,18 @@ grandfathered terms), so there is no second billing path for overage seats. The
 Plan panel marks a cap that is not binding.
 
 While the cap binds and live seats (Owners, Admins, and Members, the same
-`countLiveSeats` count seat sync bills) have reached it, `addOrgMember` and a
-Billing-to-seat role change in `updateOrgMemberRole` refuse the new seat inside
-the same SQL statement, so concurrent joins cannot overshoot. Seat invites and
-membership or team invite links are refused at creation, and accepting one is
-refused before the invite is claimed. The error (`CompedSeatLimitError`) tells
-org admins to free a seat or ask support for more; invite link redemption
-returns block reason `seat_limit`. Members already in the org keep their seats
-when a cap lands below the live count, and re-adding a live member or moving a
-seat to Billing is never blocked. The write is compare-and-set, so repeating the
-same value is a no-op, and it changes only `comped_seats` (plan, credits, and
-Stripe are untouched). It writes `admin_comped_seats_set` org and platform audit
-events.
+`countLiveSeats` count seat sync bills) have reached it, the
+[`compedSeatCapFullSql` predicate](../../../packages/worker/src/orgs/billing.ts)
+guards new seats in the
+[membership write itself](../../../packages/worker/src/orgs/access-writes.ts),
+including changes from Billing to a seat role. Seat invites and membership or
+team invite links are refused at creation, and accepting one is refused before
+the invite is claimed. The error (`CompedSeatLimitError`) tells org admins to
+free a seat or ask support for more; invite link redemption returns block reason
+`seat_limit`. Members already in the org keep their seats when a cap lands below
+the live count, and re-adding a live member or moving a seat to Billing is never
+blocked. For write and audit behavior, see the
+[comped-seat mutation tests](../../../packages/worker/src/admin/org-billing-mutations.node.test.ts).
 
 Leftover `POST /admin/users.json` `update_plan` and `adminUserUpdate` still
 forward to the personal org (`updateAdminUserPlan` in

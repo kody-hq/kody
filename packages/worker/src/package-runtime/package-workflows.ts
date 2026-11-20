@@ -1071,7 +1071,7 @@ function buildWorkflowProjectionUpsert(input: {
 /**
  * Package a run belongs to: the package export itself, or the package context
  * an inline run was launched under (for example a durable publish), so
- * `package_id` filters find both after the idempotency key is released.
+ * `package_id` filters find both without parsing the idempotency key.
  */
 function workflowPayloadProvenance(payload: WorkflowPayloadFields) {
 	if (payload.sourceType === 'package') {
@@ -1404,6 +1404,13 @@ export async function createDynamicCallableWorkflow(input: {
 	 * their own published commit.
 	 */
 	enqueuedCommit?: string | null
+	/**
+	 * Id of the latest run for `body.idempotencyKey` that this create replaces
+	 * (a dead terminal run, or a complete one the caller must not replay). The
+	 * new run's id derives from it, so concurrent replacements of one run
+	 * converge on a single successor.
+	 */
+	rerunOf?: string | null
 }): Promise<PackageWorkflowCreateResult> {
 	const env = input.env as Env
 	const workflowBinding = resolveWorkflowEngineBinding(
@@ -1415,6 +1422,10 @@ export async function createDynamicCallableWorkflow(input: {
 		typeof input.body.idempotencyKey === 'string'
 			? input.body.idempotencyKey.trim()
 			: ''
+	const rerunOf = input.rerunOf?.trim() || null
+	if (rerunOf && !idempotencyKeyInput) {
+		throw new Error('rerunOf requires an idempotency key.')
+	}
 	if (idempotencyKeyInput) {
 		const existingRun = await findWorkflowRunByIdempotencyKey({
 			env,
@@ -1422,53 +1433,24 @@ export async function createDynamicCallableWorkflow(input: {
 			idempotencyKey: idempotencyKeyInput,
 			bindingName: dynamicCallableWorkflowsBindingName,
 		})
-		if (existingRun) {
+		if (existingRun && existingRun.id !== rerunOf) {
 			return createWorkflowCreateResultFromRow(existingRun)
 		}
 	}
 	const payload = await resolveWorkflowPayload(input)
-	// An explicit idempotency key must single-flight even before the
-	// RunLog projection row is written. After a key release the deterministic
-	// engine id (and any later successors) stay occupied, so walk the
-	// `:after:<occupiedId>` chain until an unused id is free or a projection
-	// still holds the semantic key.
-	const maxSuccessorGenerations = 16
-	let id = await createDynamicCallableWorkflowInstanceId(payload, {
-		includeRunAt: !idempotencyKeyInput,
-	})
-	let existing = await getExistingWorkflowInstance(workflowBinding, id)
-	if (idempotencyKeyInput) {
-		for (
-			let generation = 0;
-			generation < maxSuccessorGenerations;
-			generation += 1
-		) {
-			const projectionForId = await getWorkflowProjection({
-				env,
-				userId: input.userId,
-				id,
-			})
-			if (projectionForId?.idempotencyKey === idempotencyKeyInput) {
-				break
-			}
-			if (!projectionForId && !existing) {
-				break
-			}
-			if (!projectionForId && existing) {
-				// Engine instance without a projection — reclaim below.
-				break
-			}
-			const occupiedId = existing?.id ?? projectionForId!.id
-			id = await createDynamicCallableWorkflowInstanceId(
-				{
+	// An explicit idempotency key must single-flight even before the RunLog
+	// projection row is written, so its engine id is deterministic: the base
+	// id for a first run, or one derived from the run it replaces.
+	const id = await createDynamicCallableWorkflowInstanceId(
+		rerunOf
+			? {
 					...payload,
-					idempotencyKey: `${idempotencyKeyInput}:after:${occupiedId}`,
-				},
-				{ includeRunAt: false },
-			)
-			existing = await getExistingWorkflowInstance(workflowBinding, id)
-		}
-	}
+					idempotencyKey: `${idempotencyKeyInput}:rerun-of:${rerunOf}`,
+				}
+			: payload,
+		{ includeRunAt: !idempotencyKeyInput },
+	)
+	const existing = await getExistingWorkflowInstance(workflowBinding, id)
 	if (existing) {
 		await projectWorkflowRun({
 			env,

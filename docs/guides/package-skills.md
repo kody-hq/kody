@@ -110,7 +110,9 @@ permissions still apply.
 A connection serves the package's skills when the client connects on the
 2026-07-28 MCP lane and declares the `io.modelcontextprotocol/skills` extension
 in that request's `_meta` client capabilities (the lane is stateless — there is
-no initialize handshake). Clients that do not declare it see no change.
+no initialize handshake). The
+[client declaration controls registration](../../packages/worker/src/mcp/skills/register-package-skills.node.test.ts);
+there is no feature flag.
 
 Then the connection answers:
 
@@ -122,8 +124,6 @@ resources/read           -> skill://you/my-package/hello-skill/references/checkl
 
 Results are scoped to packages that connection can already use (your own, plus
 shared or imported ones). The tool surface stays `search`, `execute`, and `api`.
-With the flag off, or a client that does not advertise the extension, the MCP
-surface stays those three tools.
 
 ## Which hosts support it
 

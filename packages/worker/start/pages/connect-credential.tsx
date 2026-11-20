@@ -9,7 +9,7 @@ import { SiteLink } from '../components/site-link.tsx'
 import {
 	type ReactNode,
 	type FormEvent,
-	useEffect,
+	useCallback,
 	useRef,
 	useState,
 } from 'react'
@@ -155,9 +155,13 @@ export function ConnectCredentialRoute({
 	const [message, setMessage] = useState<string | null>(null)
 	const [manual, setManual] = useState(false)
 	const manualFormRef = useRef<HTMLElement>(null)
-	useEffect(() => {
-		if (manual) manualFormRef.current?.focus({ preventScroll: true })
-	}, [manual])
+	const manualFormFocusRef = useCallback(
+		(node: HTMLElement | null) => {
+			manualFormRef.current = node
+			if (node && manual) node.focus({ preventScroll: true })
+		},
+		[manual],
+	)
 	const capture = useSubmitterScope()
 	const mutation = useCredentialMutation(
 		{ orgSlug: data.orgSlug },
@@ -683,7 +687,7 @@ export function ConnectCredentialRoute({
 				) : (
 					<>
 						<section
-							ref={manualFormRef}
+							ref={manualFormFocusRef}
 							tabIndex={-1}
 							aria-label="Credential kind"
 							css={{ display: 'grid', gap: spacing.sm, outline: 'none' }}

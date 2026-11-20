@@ -1,8 +1,9 @@
 /**
- * Compile effective permissions for one (org, actor) from memberships, team
- * memberships, and grants (Teams spec §4.3). The normalized tables are the
- * source of truth; access_cache is a derived write-through cache keyed by
- * access_epoch.
+ * Compile effective org permissions for a person from roles and grants.
+ *
+ * Use `compileAccessForRequest` for one request or
+ * `compileAccessForRequests` to batch reads across orgs. Grant-based compiles
+ * use the derived access_cache keyed by access_epoch.
  */
 import {
 	chunkArray,

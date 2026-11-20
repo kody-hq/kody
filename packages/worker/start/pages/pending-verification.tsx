@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useActor } from '@xstate/react'
 import {
 	emailVerificationState,
@@ -63,53 +63,58 @@ export function PendingVerificationPage({
 	const resendMessage = 'message' in verification ? verification.message : null
 	const resendTone =
 		verification.status === 'error' ? ('error' as const) : ('info' as const)
-	useEffect(() => {
-		let disposed = false
-		let timer: ReturnType<typeof setTimeout>
-		const poll = async () => {
-			let finished = false
-			try {
-				if (document.visibilityState === 'visible') {
-					const result = await deliveryPoll.read(fetchSessionInfo)
-					if (disposed || !result.current || result.value === undefined) return
-					const session = result.value
-					if (!session) {
-						finished = true
-						await router.navigate({
-							href: buildAuthLink(
-								'/login',
-								buildPendingVerificationPath(redirectTo),
-							),
-						})
-						return
+	const pollDelivery = useCallback(
+		(node: HTMLElement | null) => {
+			if (!node) return
+			let disposed = false
+			let timer: ReturnType<typeof setTimeout>
+			const poll = async () => {
+				let finished = false
+				try {
+					if (document.visibilityState === 'visible') {
+						const result = await deliveryPoll.read(fetchSessionInfo)
+						if (disposed || !result.current || result.value === undefined)
+							return
+						const session = result.value
+						if (!session) {
+							finished = true
+							await router.navigate({
+								href: buildAuthLink(
+									'/login',
+									buildPendingVerificationPath(redirectTo),
+								),
+							})
+							return
+						}
+						if (session.emailVerified) {
+							finished = true
+							await router.navigate({
+								href: resolvePostVerificationRedirect(redirectTo),
+							})
+							return
+						}
+						setDelivery(session.emailVerificationDelivery ?? null)
 					}
-					if (session.emailVerified) {
-						finished = true
-						await router.navigate({
-							href: resolvePostVerificationRedirect(redirectTo),
-						})
-						return
-					}
-					setDelivery(session.emailVerificationDelivery ?? null)
+				} catch {
+					/* The next poll retries a transient delivery status failure. */
+				} finally {
+					if (!disposed && !finished)
+						timer = setTimeout(() => {
+							void poll()
+						}, 15_000)
 				}
-			} catch {
-				/* The next poll retries a transient delivery status failure. */
-			} finally {
-				if (!disposed && !finished)
-					timer = setTimeout(() => {
-						void poll()
-					}, 15_000)
 			}
-		}
-		timer = setTimeout(() => {
-			void poll()
-		}, 15_000)
-		return () => {
-			disposed = true
-			deliveryPoll.invalidate()
-			clearTimeout(timer)
-		}
-	}, [redirectTo, router, fetchSessionInfo, deliveryPoll])
+			timer = setTimeout(() => {
+				void poll()
+			}, 15_000)
+			return () => {
+				disposed = true
+				deliveryPoll.invalidate()
+				clearTimeout(timer)
+			}
+		},
+		[redirectTo, router, fetchSessionInfo, deliveryPoll],
+	)
 	async function resend() {
 		if (
 			!transition({
@@ -191,7 +196,11 @@ export function PendingVerificationPage({
 		}
 	}
 	return (
-		<AccountManagementShell layout="form" maxWidth={layoutMaxWidths.content}>
+		<AccountManagementShell
+			ref={pollDelivery}
+			layout="form"
+			maxWidth={layoutMaxWidths.content}
+		>
 			<div
 				data-testid="pending-verification-page"
 				css={pendingVerificationLayoutCss}

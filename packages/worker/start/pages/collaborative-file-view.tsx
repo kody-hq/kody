@@ -2,6 +2,7 @@
 import {
 	lazy,
 	Suspense,
+	useCallback,
 	useEffect,
 	useEffectEvent,
 	useLayoutEffect,
@@ -11,6 +12,8 @@ import {
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
+import { useNow } from '../lib/use-now.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import * as Y from 'yjs'
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
@@ -98,13 +101,7 @@ export default function CollaborativeFileView(props: {
 	pageChildren?: ReactNode
 	renderPreview?: (content: string) => ReactNode
 }) {
-	const [client, setClient] = useState<FileRoomClient | null>(null)
-	useEffect(() => {
-		const room = new FileRoomClient(props.orgSlug, props.fileId, props.personId)
-		setClient(room)
-		void room.start()
-		return () => room.dispose()
-	}, [props.orgSlug, props.fileId, props.personId])
+	const client = useFileRoom(props.orgSlug, props.fileId, props.personId)
 	if (!client) return <LoadingIndicator label="Connecting to file" />
 	return (
 		<DbProvider client={client.db}>
@@ -243,12 +240,8 @@ function CollaborationView({
 			client.doc.off('update', update)
 		}
 	}, [client, props.mediaType])
-	const [tick, setTick] = useState(0)
-	useEffect(() => {
-		const timer = setInterval(() => setTick((n) => n + 1), 5_000)
-		return () => clearInterval(timer)
-	}, [])
-	void tick
+	// Re-render so presence ages stay current.
+	useNow(5_000)
 	const access = state.snapshot?.access
 	const live = new Map(
 		[...participants]
@@ -518,9 +511,7 @@ function CollaborationView({
 			?.querySelector(`[data-file-anchor-thread~="${CSS.escape(active)}"]`)
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 	})
-	useLayoutEffect(() => {
-		scrollToActiveAnchor()
-	}, [active, open])
+	useLayoutMeasure(scrollToActiveAnchor, [active, open])
 
 	const syncStatusLabel = {
 		saved: 'Saved',
@@ -991,5 +982,36 @@ function CollaborationView({
 				)}
 			</div>
 		</>
+	)
+}
+
+const fileRooms = new Map<string, { room: FileRoomClient; holders: number }>()
+
+/** One started room per file and person, disposed when its last view unmounts. */
+function useFileRoom(orgSlug: string, fileId: string, personId: string) {
+	const key = JSON.stringify([orgSlug, fileId, personId])
+	const subscribe = useCallback(() => {
+		let entry = fileRooms.get(key)
+		if (!entry) {
+			entry = {
+				room: new FileRoomClient(orgSlug, fileId, personId),
+				holders: 0,
+			}
+			fileRooms.set(key, entry)
+			void entry.room.start()
+		}
+		entry.holders += 1
+		const held = entry
+		return () => {
+			held.holders -= 1
+			if (held.holders > 0) return
+			fileRooms.delete(key)
+			held.room.dispose()
+		}
+	}, [key, orgSlug, fileId, personId])
+	return useSyncExternalStore(
+		subscribe,
+		() => fileRooms.get(key)?.room ?? null,
+		() => null,
 	)
 }

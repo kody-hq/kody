@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
 import { Dialog } from '../components/dialog.tsx'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { readWebsiteSessionInfo } from '#start/server/session-info'
 import {
@@ -107,9 +107,12 @@ export function PublicShareActions({
 		retry: false,
 		staleTime: 0,
 	})
-	useEffect(() => {
+	const triggerRef = useCallback((node: HTMLButtonElement | null) => {
+		trigger.current = node
+		if (!node) return
 		active.current = true
 		return () => {
+			trigger.current = null
 			active.current = false
 		}
 	}, [])
@@ -171,7 +174,7 @@ export function PublicShareActions({
 				</a>
 			)}
 			<Button
-				ref={trigger}
+				ref={triggerRef}
 				disabled={!hydrated}
 				variant="primary"
 				size="lg"
