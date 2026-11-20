@@ -169,12 +169,15 @@
     "tw-fade": "0.10.0",
     "typescript": "^6.0.3",
     "vite": "^8.3.4",
-    "vitest": "^5.1.1",
+    "vitest": "^4.1.12",
     "wrangler": "^4.147.0",
     "yjs": "^13.6.33",
     "zod": "4.6.6"
   },
   "overrides": {
+    "@effect/vitest": {
+      "vitest": "$vitest"
+    },
     "@modelcontextprotocol/client": "2.3.1",
     "@modelcontextprotocol/sdk": "1.32.1",
     "@modelcontextprotocol/server": "2.3.1",
