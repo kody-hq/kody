@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import {
 	useEffect,
-	useLayoutEffect,
+	useCallback,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -126,8 +126,7 @@ export function WorkspaceExplorerLayout({
 	const [flyout, setFlyout] = useState(false),
 		[available, setAvailable] = useState(800),
 		[dragWidth, setDragWidth] = useState<number | null>(null)
-	const root = useRef<HTMLDivElement>(null),
-		panel = useRef<HTMLElement>(null),
+	const panel = useRef<HTMLElement>(null),
 		trigger = useRef<HTMLButtonElement>(null)
 	const opening = useRef<ReturnType<typeof setTimeout> | undefined>(undefined),
 		closing = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
@@ -140,25 +139,21 @@ export function WorkspaceExplorerLayout({
 	const maximum = Math.max(180, Math.min(360, Math.floor(available * 0.45)))
 	const width = Math.max(180, Math.min(maximum, dragWidth ?? preferences.width))
 	const visible = !browsing && (!hidden || flyout)
-	useLayoutEffect(() => {
-		const element = root.current
+	const root = useCallback((element: HTMLDivElement | null) => {
 		if (!element) return
 		const observer = new ResizeObserver(() =>
 			setAvailable(element.getBoundingClientRect().width),
 		)
 		observer.observe(element)
-		return () => observer.disconnect()
+		return () => {
+			observer.disconnect()
+			clearTimeout(opening.current)
+			clearTimeout(closing.current)
+		}
 	}, [])
 	useEffect(() => {
 		onVisibilityChange?.(visible)
 	}, [visible, onVisibilityChange])
-	useEffect(
-		() => () => {
-			clearTimeout(opening.current)
-			clearTimeout(closing.current)
-		},
-		[],
-	)
 	function reveal(intent = false) {
 		clearTimeout(closing.current)
 		clearTimeout(opening.current)
