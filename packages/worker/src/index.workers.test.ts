@@ -101,11 +101,11 @@ vi.mock('#worker/email/reconcile-inbound-deliveries.ts', () => ({
 }))
 
 vi.mock('#app/retention.ts', async () => {
-	const { promiseDouble } =
-		await import('#worker/test-support/effect-bridge.ts')
+	const { Effect } = await import('effect')
 	return {
 		pruneRetention: mocks.pruneRetention,
-		pruneRetentionEffect: promiseDouble(mocks.pruneRetention),
+		pruneRetentionEffect: (input: { now: Date }) =>
+			Effect.promise(() => mocks.pruneRetention(input)),
 	}
 })
 
