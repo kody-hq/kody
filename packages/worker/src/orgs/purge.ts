@@ -127,9 +127,7 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 
 /** The pass's reference time: the scheduled time, else `Clock`. */
 const passTime = (now: Date | undefined) =>
-	now
-		? Effect.succeed(now)
-		: Effect.map(DateTime.now, DateTime.toDateUtc)
+	now ? Effect.succeed(now) : Effect.map(DateTime.now, DateTime.toDateUtc)
 
 type CandidateQuery = {
 	readonly ageCutoff: string
@@ -225,7 +223,10 @@ const listLegacyUserCandidates = Effect.fn(
 	)
 })
 
-/** Orgs, then soft-deleted users, then legacy deletions, each in claim order. */
+/**
+ * Orgs, then soft-deleted users, then legacy deletions, each in claim order.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
+ */
 export const listSoftDeletePurgeCandidatesEffect = Effect.fn(
 	'SoftDeletePurge.listCandidates',
 )(function* (input: { readonly now?: Date; readonly batchSize?: number }) {
@@ -357,7 +358,9 @@ const claimCandidate = (candidate: SoftDeletePurgeCandidate, claim: Claim) =>
 		: candidate.legacy
 			? claimLegacyUser(candidate.id, claim)
 			: claimTombstone('users', 'stable_user_id', candidate.id, claim)
-	).pipe(Effect.map((claimed) => (claimed ? Option.some(candidate) : Option.none())))
+	).pipe(
+		Effect.map((claimed) => (claimed ? Option.some(candidate) : Option.none())),
+	)
 
 const requireDbUserId = (candidate: SoftDeletePurgeCandidate) =>
 	candidate.dbUserId == null
@@ -389,72 +392,78 @@ const purgeCandidate = (candidate: SoftDeletePurgeCandidate) =>
  * One candidate: claim (kept on every exit so the backoff owns retries),
  * purge, and on any failure record a redacted `*.purge_failed` audit event.
  */
-const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(function* (
-	candidate: SoftDeletePurgeCandidate,
-	claim: Claim,
-) {
-	const audit = yield* AuditLog
-	yield* Effect.annotateCurrentSpan({
-		'kody.purge_kind': candidate.kind,
-		'kody.purge_legacy': candidate.legacy === true,
-	})
-	const base = {
-		kind: candidate.kind,
-		id: candidate.id,
-		ageDays: candidate.ageDays,
-		...(candidate.legacy ? { legacy: true as const } : {}),
-	}
-	return yield* Effect.scoped(
-		Effect.gen(function* () {
-			const claimed = yield* scopedClaim(
-				claimCandidate(candidate, claim),
-				keepClaim('soft_delete_purge'),
-			)
-			if (Option.isNone(claimed)) {
-				return { ...base, outcome: 'skipped_claim' } satisfies SoftDeletePurgeOutcome
-			}
-			yield* purgeCandidate(candidate)
-			return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
-		}),
-	).pipe(
-		Effect.catchCause((cause) =>
+const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
+	function* (candidate: SoftDeletePurgeCandidate, claim: Claim) {
+		const audit = yield* AuditLog
+		yield* Effect.annotateCurrentSpan({
+			'kody.purge_kind': candidate.kind,
+			'kody.purge_legacy': candidate.legacy === true,
+		})
+		const base = {
+			kind: candidate.kind,
+			id: candidate.id,
+			ageDays: candidate.ageDays,
+			...(candidate.legacy ? { legacy: true as const } : {}),
+		}
+		return yield* Effect.scoped(
 			Effect.gen(function* () {
-				const error = Cause.squash(cause)
-				const message = redactPurgeFailureDetail(
-					error instanceof Error ? error.message : String(error),
+				const claimed = yield* scopedClaim(
+					claimCandidate(candidate, claim),
+					keepClaim('soft_delete_purge'),
 				)
-				const cleanupErrors = purgeFailureDetails(error)
-				const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
-				yield* Effect.logWarning(
-					JSON.stringify({
-						message: 'soft_delete_purge_candidate_failed',
-						kind: candidate.kind,
-						lane,
-						error: message,
-						cleanupErrors,
-					}),
-				)
-				yield* audit.recordOrg({
-					orgId: candidate.id,
-					action:
-						candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
-					result: 'failure',
-					detailsJson: JSON.stringify({
-						error: message,
-						...(candidate.legacy ? { lane } : {}),
-						...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
-					}),
-					createdAt: claim.nowIso,
-				})
-				return {
-					...base,
-					outcome: 'failed',
-					error: message,
-				} satisfies SoftDeletePurgeOutcome
+				if (Option.isNone(claimed)) {
+					return {
+						...base,
+						outcome: 'skipped_claim',
+					} satisfies SoftDeletePurgeOutcome
+				}
+				yield* purgeCandidate(candidate)
+				return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
 			}),
-		),
-	)
-})
+		).pipe(
+			Effect.catchCause((cause) =>
+				Effect.gen(function* () {
+					const error = Cause.squash(cause)
+					const message = redactPurgeFailureDetail(
+						error instanceof Error ? error.message : String(error),
+					)
+					const cleanupErrors = purgeFailureDetails(error)
+					const lane = candidate.legacy
+						? 'legacy_deletion_finish'
+						: 'soft_delete'
+					yield* Effect.logWarning(
+						JSON.stringify({
+							message: 'soft_delete_purge_candidate_failed',
+							kind: candidate.kind,
+							lane,
+							error: message,
+							cleanupErrors,
+						}),
+					)
+					yield* audit.recordOrg({
+						orgId: candidate.id,
+						action:
+							candidate.kind === 'org'
+								? 'org.purge_failed'
+								: 'user.purge_failed',
+						result: 'failure',
+						detailsJson: JSON.stringify({
+							error: message,
+							...(candidate.legacy ? { lane } : {}),
+							...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+						}),
+						createdAt: claim.nowIso,
+					})
+					return {
+						...base,
+						outcome: 'failed',
+						error: message,
+					} satisfies SoftDeletePurgeOutcome
+				}),
+			),
+		)
+	},
+)
 
 export const pruneSoftDeletedEffect = Effect.fn('SoftDeletePurge.prune')(
 	function* (input: {

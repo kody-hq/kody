@@ -222,7 +222,9 @@ export class Stripe extends Context.Service<
 		listSubscriptions(
 			customerId: string,
 		): Effect.Effect<Array<StripeSubscription>, StripeFailure>
-		cancelSubscription(subscriptionId: string): Effect.Effect<void, StripeFailure>
+		cancelSubscription(
+			subscriptionId: string,
+		): Effect.Effect<void, StripeFailure>
 		listPaidInvoicesForSubscription(
 			subscriptionId: string,
 		): Effect.Effect<Array<StripePaidInvoice>, StripeFailure>
@@ -259,7 +261,6 @@ export class Stripe extends Context.Service<
 
 /** The live Stripe service: abortable fetch, 10 second deadline, schema-decoded bodies. */
 export function makeStripeLive(env: StripeEnv): Stripe['Service'] {
-
 	const request = Effect.fn('Stripe.request')(function* <A>(
 		input: StripeRequest,
 		schema: Schema.Decoder<A>,
@@ -308,8 +309,7 @@ export function makeStripeLive(env: StripeEnv): Stripe['Service'] {
 			{ timeout: '10 seconds' },
 		).pipe(
 			Effect.mapError(
-				(error) =>
-					new StripeUnavailableError({ message: error.message, path }),
+				(error) => new StripeUnavailableError({ message: error.message, path }),
 			),
 		)
 		const body = yield* Effect.try({
@@ -467,48 +467,45 @@ export function makeStripeLive(env: StripeEnv): Stripe['Service'] {
 	})
 
 	return Stripe.of({
-		listSubscriptions: Effect.fn('Stripe.listSubscriptions')(function* (
-			customerId,
-		) {
-			const customer = yield* requiredId('Customer id', customerId)
-			const listed = yield* request(
-				{
-					method: 'GET',
-					path: '/v1/subscriptions',
-					query: { customer, status: 'all', limit: '100' },
-				},
-				SubscriptionList,
-				'Unexpected Stripe subscriptions list shape.',
-			)
-			return listed.data
-		}),
-		cancelSubscription: Effect.fn('Stripe.cancelSubscription')(function* (
-			subscriptionId,
-		) {
-			const id = yield* requiredId('Subscription id', subscriptionId)
-			yield* request(
-				{
-					method: 'DELETE',
-					path: `/v1/subscriptions/${encodeURIComponent(id)}`,
-				},
-				CanceledSubscription,
-				'Unexpected Stripe canceled subscription shape.',
-			).pipe(
-				Effect.catchIf(
-					(error) =>
-						error._tag === 'StripeApiError' &&
-						error.code === 'resource_missing',
-					() => Effect.void,
-				),
-			)
-		}),
+		listSubscriptions: Effect.fn('Stripe.listSubscriptions')(
+			function* (customerId) {
+				const customer = yield* requiredId('Customer id', customerId)
+				const listed = yield* request(
+					{
+						method: 'GET',
+						path: '/v1/subscriptions',
+						query: { customer, status: 'all', limit: '100' },
+					},
+					SubscriptionList,
+					'Unexpected Stripe subscriptions list shape.',
+				)
+				return listed.data
+			},
+		),
+		cancelSubscription: Effect.fn('Stripe.cancelSubscription')(
+			function* (subscriptionId) {
+				const id = yield* requiredId('Subscription id', subscriptionId)
+				yield* request(
+					{
+						method: 'DELETE',
+						path: `/v1/subscriptions/${encodeURIComponent(id)}`,
+					},
+					CanceledSubscription,
+					'Unexpected Stripe canceled subscription shape.',
+				).pipe(
+					Effect.catchIf(
+						(error) =>
+							error._tag === 'StripeApiError' &&
+							error.code === 'resource_missing',
+						() => Effect.void,
+					),
+				)
+			},
+		),
 		listPaidInvoicesForSubscription: Effect.fn(
 			'Stripe.listPaidInvoicesForSubscription',
 		)(function* (subscriptionId) {
-			const subscription = yield* requiredId(
-				'Subscription id',
-				subscriptionId,
-			)
+			const subscription = yield* requiredId('Subscription id', subscriptionId)
 			const listed = yield* request(
 				{
 					method: 'GET',
@@ -526,12 +523,12 @@ export function makeStripeLive(env: StripeEnv): Stripe['Service'] {
 				return yield* listCreditNotes({ invoice })
 			},
 		),
-		listCreditNotesForCustomer: Effect.fn(
-			'Stripe.listCreditNotesForCustomer',
-		)(function* (customerId) {
-			const customer = yield* requiredId('Customer id', customerId)
-			return yield* listCreditNotes({ customer })
-		}),
+		listCreditNotesForCustomer: Effect.fn('Stripe.listCreditNotesForCustomer')(
+			function* (customerId) {
+				const customer = yield* requiredId('Customer id', customerId)
+				return yield* listCreditNotes({ customer })
+			},
+		),
 		createProratedRefundCreditNote: Effect.fn(
 			'Stripe.createProratedRefundCreditNote',
 		)(function* (input) {
@@ -583,9 +580,7 @@ export function makeStripeLive(env: StripeEnv): Stripe['Service'] {
 				currency: created.currency,
 			} as const
 		}),
-		deleteCustomer: Effect.fn('Stripe.deleteCustomer')(function* (
-			customerId,
-		) {
+		deleteCustomer: Effect.fn('Stripe.deleteCustomer')(function* (customerId) {
 			const id = yield* requiredId('Customer id', customerId)
 			yield* request(
 				{ method: 'DELETE', path: `/v1/customers/${encodeURIComponent(id)}` },

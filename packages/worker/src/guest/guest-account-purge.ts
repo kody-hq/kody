@@ -44,20 +44,28 @@ const purgeGuest = Effect.fn('GuestPurge.purgeGuest')(function* (
 	yield* Effect.sync(() =>
 		scheduleUserDeletedEvent({
 			env,
-			user: { id: row.stable_user_id, username: row.username, email: row.email },
+			user: {
+				id: row.stable_user_id,
+				username: row.username,
+				email: row.email,
+			},
 			createdAt: row.guest_created_at,
 		}),
 	)
-	yield* audit.record({
-		category: 'account',
-		action: 'guest_account_purged',
-		result: 'success',
-		reason: 'guest_hold_ended',
-	}).pipe(
-		Effect.catchTag('OutboundCallError', (error) =>
-			Effect.logWarning('guest_account_purge_audit_failed', { error: error.cause }),
-		),
-	)
+	yield* audit
+		.record({
+			category: 'account',
+			action: 'guest_account_purged',
+			result: 'success',
+			reason: 'guest_hold_ended',
+		})
+		.pipe(
+			Effect.catchTag('OutboundCallError', (error) =>
+				Effect.logWarning('guest_account_purge_audit_failed', {
+					error: error.cause,
+				}),
+			),
+		)
 })
 
 /**
@@ -89,7 +97,11 @@ export const pruneExpiredGuestAccountsEffect = Effect.fn('GuestPurge.prune')(
 				input.batchSize ?? guestPurgeBatchSize,
 			),
 		)
-		const result: GuestPurgeResult = { scanned: rows.length, purged: 0, failed: 0 }
+		const result: GuestPurgeResult = {
+			scanned: rows.length,
+			purged: 0,
+			failed: 0,
+		}
 		for (const row of rows) {
 			yield* purgeGuest(row).pipe(
 				Effect.matchCauseEffect({

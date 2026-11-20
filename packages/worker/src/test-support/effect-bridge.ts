@@ -9,11 +9,11 @@ import { WorkerEnv } from '#worker/effect/worker-env.ts'
 export function promiseDouble<I extends object, A>(
 	double: (input: I & { env: Env }) => Promise<A>,
 ) {
-	return (input: I) =>
+	return (input: Omit<I, 'env'>) =>
 		Effect.gen(function* () {
 			const env = yield* WorkerEnv
 			return yield* Effect.tryPromise({
-				try: () => double({ ...input, env }),
+				try: () => double({ ...input, env } as I & { env: Env }),
 				catch: (error) => error,
 			})
 		})

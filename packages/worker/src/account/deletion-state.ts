@@ -26,19 +26,18 @@ import {
 } from './write-lease-timing.ts'
 import { runWithTransientDurableObjectResetRetry } from '#worker/durable-object-reset-retry.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
-import {
-	type DeletionFence,
-	deletionFenceEdges,
-} from './deletion-fence.ts'
+import { type DeletionFence, deletionFenceEdges } from './deletion-fence.ts'
 
 type Edges = typeof deletionFenceEdges
 
 // Read through the object at call time: deletion-fence.ts sits in an import
 // cycle with this module, so the edges are not defined yet at evaluation.
-const markAccountDeleting = (input: Parameters<Edges['markAccountDeleting']>[0]) =>
-	deletionFenceEdges.markAccountDeleting(input)
-const abortAccountDeleting = (input: Parameters<Edges['abortAccountDeleting']>[0]) =>
-	deletionFenceEdges.abortAccountDeleting(input)
+const markAccountDeleting = (
+	input: Parameters<Edges['markAccountDeleting']>[0],
+) => deletionFenceEdges.markAccountDeleting(input)
+const abortAccountDeleting = (
+	input: Parameters<Edges['abortAccountDeleting']>[0],
+) => deletionFenceEdges.abortAccountDeleting(input)
 const clearUserMeterDeletionTombstone = (
 	input: Parameters<Edges['clearUserMeterDeletionTombstone']>[0],
 ) => deletionFenceEdges.clearUserMeterDeletionTombstone(input)

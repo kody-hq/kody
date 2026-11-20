@@ -20,5 +20,6 @@ export const scopedClaim = <A, E, R, R2>(
 	)
 
 /** Claims the purge lanes keep on every exit: the 6 hour backoff owns retries. */
-export const keepClaim = (lane: string) => (_claim: unknown, exit: Exit.Exit<unknown, unknown>) =>
-	Effect.logDebug('purge claim kept', { lane, exit: exit._tag })
+export const keepClaim =
+	(lane: string) => (_claim: unknown, exit: Exit.Exit<unknown, unknown>) =>
+		Effect.logDebug('purge claim kept', { lane, exit: exit._tag })

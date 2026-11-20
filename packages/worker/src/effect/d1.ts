@@ -79,7 +79,11 @@ export class D1 extends Context.Service<
 		): Effect.Effect<ReadonlyArray<RunResult>, DatabaseError>
 	}
 >()('kody/effect/D1') {
-	static readonly layer = (db: D1Database) => Layer.succeed(D1, makeD1(() => db))
+	static readonly layer = (db: D1Database) =>
+		Layer.succeed(
+			D1,
+			makeD1(() => db),
+		)
 
 	/** `APP_DB`, read on every query so a swapped binding is never stale. */
 	static readonly fromWorkerEnv = Layer.effect(
@@ -172,15 +176,16 @@ export function makeD1(database: () => D1Database): D1['Service'] {
 export const d1RetrySchedule = Schedule.exponential(
 	Duration.millis(d1LockRetryBaseDelayMs),
 ).pipe(
-	Schedule.modifyDelay(({ input, duration }: Schedule.Metadata<unknown, DatabaseError>) =>
-		classifyRetryableD1Error(input.cause) === 'overloaded'
-			? Effect.map(Random.next, (random) =>
-					Duration.millis(
-						Duration.toMillis(duration) / 2 +
-							random * (Duration.toMillis(duration) / 2),
-					),
-				)
-			: Effect.succeed(duration),
+	Schedule.modifyDelay(
+		({ input, duration }: Schedule.Metadata<unknown, DatabaseError>) =>
+			classifyRetryableD1Error(input.cause) === 'overloaded'
+				? Effect.map(Random.next, (random) =>
+						Duration.millis(
+							Duration.toMillis(duration) / 2 +
+								random * (Duration.toMillis(duration) / 2),
+						),
+					)
+				: Effect.succeed(duration),
 	),
 )
 

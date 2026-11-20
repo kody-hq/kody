@@ -51,10 +51,11 @@ export function bridgeStripeClientSpies() {
 					vi.isMockFunction(stripeClient[name])
 						? Effect.tryPromise({
 								try: () =>
-									(stripeClient[name] as (...a: Array<unknown>) => Promise<unknown>)(
-										env,
-										...args,
-									),
+									(
+										stripeClient[name] as (
+											...a: Array<unknown>
+										) => Promise<unknown>
+									)(env, ...args),
 								catch: toTaggedStripeError,
 							})
 						: (live[name] as (...a: Array<unknown>) => unknown)(...args)

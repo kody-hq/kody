@@ -8,7 +8,15 @@
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
 import { utcSqliteTimestamp } from '@kody-internal/shared/date-keys.ts'
-import { Cause, DateTime, Effect, Exit, Option, Predicate, Schema } from 'effect'
+import {
+	Cause,
+	DateTime,
+	Effect,
+	Exit,
+	Option,
+	Predicate,
+	Schema,
+} from 'effect'
 import { invalidatePackageAppOwnerCacheForDbUserId } from '#app/package-app-owner.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { abortAccountDeleting } from '#worker/account/deletion-fence.ts'
@@ -348,18 +356,20 @@ export const listUnverifiedAccountPurgeCandidatesEffect = Effect.fn(
 	})
 	return {
 		scanned: page.length,
-		candidates: page.map(
-			(account): UnverifiedAccountPurgeCandidate => ({
-				stableUserId: account.stable_user_id as OwnerId,
-				ageDays: ageDays(account.created_at, now),
-			}),
-		),
+		candidates: page.map((account): UnverifiedAccountPurgeCandidate => ({
+			stableUserId: account.stable_user_id as OwnerId,
+			ageDays: ageDays(account.created_at, now),
+		})),
 	}
 })
 
 /** Records a failed deletion: outcome, warn log, audit row, Sentry event. */
 const recordFailure = Effect.fn('UnverifiedAccountPurge.recordFailure')(
-	function* (account: UnverifiedAccountRow, accountAgeDays: number, failure: unknown) {
+	function* (
+		account: UnverifiedAccountRow,
+		accountAgeDays: number,
+		failure: unknown,
+	) {
 		const audit = yield* AuditLog
 		const reporter = yield* ErrorReporter
 		const warnings = deletionFailureWarnings(failure)
@@ -372,20 +382,22 @@ const recordFailure = Effect.fn('UnverifiedAccountPurge.recordFailure')(
 		// Workers Logs sampling drops most of the warn above; the audit row
 		// and Sentry event are the best-effort durable record of why the
 		// purge failed (each is skipped, not fatal, when its sink is down).
-		yield* audit.record({
-			category: 'account',
-			action: 'unverified_account_purge_failed',
-			result: 'failure',
-			email: account.email,
-			reason,
-		}).pipe(
-			Effect.catchTag('OutboundCallError', (error) =>
-				Effect.logWarning('unverified_account_purge_audit_failed', {
-					userId: account.stable_user_id,
-					error: error.cause,
-				}),
-			),
-		)
+		yield* audit
+			.record({
+				category: 'account',
+				action: 'unverified_account_purge_failed',
+				result: 'failure',
+				email: account.email,
+				reason,
+			})
+			.pipe(
+				Effect.catchTag('OutboundCallError', (error) =>
+					Effect.logWarning('unverified_account_purge_audit_failed', {
+						userId: account.stable_user_id,
+						error: error.cause,
+					}),
+				),
+			)
 		yield* reporter.capture(redactedErrorForReporting(failure), {
 			requireDsn: true,
 			tags: { 'scheduled.lane': 'unverified_account_purge' },
@@ -453,20 +465,22 @@ const processAccount = Effect.fn('UnverifiedAccountPurge.processAccount')(
 				outcome: 'skipped_claim',
 			} satisfies UnverifiedAccountPurgeOutcome
 		}
-		yield* audit.record({
-			category: 'account',
-			action: 'unverified_account_purged',
-			result: 'success',
-			email: account.email,
-			reason: `unverified_for_${accountAgeDays}_days`,
-		}).pipe(
-			Effect.catchTag('OutboundCallError', (error) =>
-				Effect.logWarning('unverified_account_purge_audit_failed', {
-					userId: account.stable_user_id,
-					error: error.cause,
-				}),
-			),
-		)
+		yield* audit
+			.record({
+				category: 'account',
+				action: 'unverified_account_purged',
+				result: 'success',
+				email: account.email,
+				reason: `unverified_for_${accountAgeDays}_days`,
+			})
+			.pipe(
+				Effect.catchTag('OutboundCallError', (error) =>
+					Effect.logWarning('unverified_account_purge_audit_failed', {
+						userId: account.stable_user_id,
+						error: error.cause,
+					}),
+				),
+			)
 		return {
 			stableUserId,
 			ageDays: accountAgeDays,

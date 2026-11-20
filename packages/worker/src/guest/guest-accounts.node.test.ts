@@ -31,7 +31,8 @@ import {
 
 const deleteUserAccount = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('#app/account-deletion.ts', async (importOriginal) => {
-	const { promiseDouble } = await import('#worker/test-support/effect-bridge.ts')
+	const { promiseDouble } =
+		await import('#worker/test-support/effect-bridge.ts')
 	return {
 		...(await importOriginal<object>()),
 		deleteUserAccount,

@@ -18,24 +18,27 @@ export function isRetentionLane(lane: string): lane is RetentionLane {
 }
 
 /** The lanes the hourly retention tick registers, as one Effect. */
-export const runRetentionLaneEffect = Effect.fn('RetentionLanes.run')(function* (
-	lane: RetentionLane,
-	scheduledAt: Date,
-) {
-	yield* Effect.annotateCurrentSpan('scheduled.lane', lane)
-	yield* Effect.logDebug('retention lane started', { lane })
-	switch (lane) {
-		case 'retention':
-			return yield* pruneRetentionEffect({ now: scheduledAt })
-		case 'unverified_account_purge': {
-			const unverified = yield* pruneUnverifiedAccountsEffect({ now: scheduledAt })
-			const guests = yield* pruneExpiredGuestAccountsEffect({ now: scheduledAt })
-			return { ...unverified, guests }
+export const runRetentionLaneEffect = Effect.fn('RetentionLanes.run')(
+	function* (lane: RetentionLane, scheduledAt: Date) {
+		yield* Effect.annotateCurrentSpan('scheduled.lane', lane)
+		yield* Effect.logDebug('retention lane started', { lane })
+		switch (lane) {
+			case 'retention':
+				return yield* pruneRetentionEffect({ now: scheduledAt })
+			case 'unverified_account_purge': {
+				const unverified = yield* pruneUnverifiedAccountsEffect({
+					now: scheduledAt,
+				})
+				const guests = yield* pruneExpiredGuestAccountsEffect({
+					now: scheduledAt,
+				})
+				return { ...unverified, guests }
+			}
+			case 'soft_delete_purge':
+				return yield* pruneSoftDeletedEffect({ now: scheduledAt })
 		}
-		case 'soft_delete_purge':
-			return yield* pruneSoftDeletedEffect({ now: scheduledAt })
-	}
-})
+	},
+)
 
 type LaneFailure = Effect.Error<ReturnType<typeof runRetentionLaneEffect>>
 

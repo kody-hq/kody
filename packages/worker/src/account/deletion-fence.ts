@@ -34,7 +34,9 @@ const StableUserRow = Schema.Struct({
 })
 const StableUserIdRow = Schema.Struct({ stable_user_id: Schema.String })
 const UserIdRow = Schema.Struct({ id: Schema.Number })
-const DeletingAtRow = Schema.Struct({ deleting_at: Schema.NullOr(Schema.String) })
+const DeletingAtRow = Schema.Struct({
+	deleting_at: Schema.NullOr(Schema.String),
+})
 
 const sqliteNow = (now: Date | undefined) =>
 	now
@@ -52,124 +54,128 @@ const invalidateOwnerCache = (stableUserId: string) =>
  * back when the tombstone cannot be set, so a concurrent or retrying delete
  * never loses another attempt's fence.
  */
-export const markAccountDeleting = Effect.fn('DeletionFence.markAccountDeleting')(
-	function* (input: { readonly dbUserId: number; readonly now?: Date }) {
-		const db = yield* D1
-		const meter = yield* UserMeter
-		const now = yield* sqliteNow(input.now)
-		yield* Effect.annotateCurrentSpan('kody.db_user_id', input.dbUserId)
-		const { changes } = yield* db.run(
-			'deletion_fence.mark_account',
-			sql(
-				`UPDATE users
+export const markAccountDeleting = Effect.fn(
+	'DeletionFence.markAccountDeleting',
+)(function* (input: { readonly dbUserId: number; readonly now?: Date }) {
+	const db = yield* D1
+	const meter = yield* UserMeter
+	const now = yield* sqliteNow(input.now)
+	yield* Effect.annotateCurrentSpan('kody.db_user_id', input.dbUserId)
+	const { changes } = yield* db.run(
+		'deletion_fence.mark_account',
+		sql(
+			`UPDATE users
 				SET deleting_at = ?, updated_at = ?
 				WHERE id = ? AND deleting_at IS NULL${andLiveDeletedAtSql()}`,
-				now,
-				now,
-				input.dbUserId,
-			),
-		)
-		const created = changes === 1
-		const row = yield* db.first(
-			'deletion_fence.read_account',
-			StableUserRow,
-			sql(
-				`SELECT stable_user_id, deleting_at
+			now,
+			now,
+			input.dbUserId,
+		),
+	)
+	const created = changes === 1
+	const row = yield* db.first(
+		'deletion_fence.read_account',
+		StableUserRow,
+		sql(
+			`SELECT stable_user_id, deleting_at
 				FROM users
 				WHERE id = ?${andLiveDeletedAtSql()}`,
-				input.dbUserId,
-			),
-		)
-		if (Option.isNone(row) || !row.value.stable_user_id || !row.value.deleting_at) {
-			return yield* new DeletionFenceError({
-				message: 'Account could not be marked for deletion.',
-			})
-		}
-		const stableUserId = row.value.stable_user_id as OwnerId
-		const deletingAt = row.value.deleting_at
-		yield* invalidateOwnerCache(stableUserId)
-		const marked = yield* meter.markDeleting(stableUserId, deletingAt).pipe(
-			Effect.tapError(() =>
-				created
-					? db
-							.run(
-								'deletion_fence.rollback_account',
-								sql(
-									`UPDATE users
+			input.dbUserId,
+		),
+	)
+	if (
+		Option.isNone(row) ||
+		!row.value.stable_user_id ||
+		!row.value.deleting_at
+	) {
+		return yield* new DeletionFenceError({
+			message: 'Account could not be marked for deletion.',
+		})
+	}
+	const stableUserId = row.value.stable_user_id as OwnerId
+	const deletingAt = row.value.deleting_at
+	yield* invalidateOwnerCache(stableUserId)
+	const marked = yield* meter.markDeleting(stableUserId, deletingAt).pipe(
+		Effect.tapError(() =>
+			created
+				? db
+						.run(
+							'deletion_fence.rollback_account',
+							sql(
+								`UPDATE users
 									SET deleting_at = NULL, updated_at = ?
 									WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-									now,
-									input.dbUserId,
-									now,
-								),
-							)
-							.pipe(Effect.andThen(invalidateOwnerCache(stableUserId)))
-					: Effect.void,
-			),
-		)
-		yield* Effect.logInfo('account deletion fence set', { created, deletingAt })
-		return {
-			leaseCount: marked.leaseCount,
-			blockingLeases: marked.blockingLeases ?? [],
-			created,
-			deletingAt,
-		} satisfies DeletionFence
-	},
-)
+								now,
+								input.dbUserId,
+								now,
+							),
+						)
+						.pipe(Effect.andThen(invalidateOwnerCache(stableUserId)))
+				: Effect.void,
+		),
+	)
+	yield* Effect.logInfo('account deletion fence set', { created, deletingAt })
+	return {
+		leaseCount: marked.leaseCount,
+		blockingLeases: marked.blockingLeases ?? [],
+		created,
+		deletingAt,
+	} satisfies DeletionFence
+})
 
 /**
  * Undo {@link markAccountDeleting} when deletion aborts before cleanup. With
  * `expectedDeletingAt` only that exact fence is cleared.
  */
-export const abortAccountDeleting = Effect.fn('DeletionFence.abortAccountDeleting')(
-	function* (input: {
-		readonly dbUserId: number
-		readonly now?: Date
-		readonly expectedDeletingAt?: string
-	}) {
-		const db = yield* D1
-		const meter = yield* UserMeter
-		const row = yield* db.first(
-			'deletion_fence.read_account_owner',
-			StableUserIdRow,
-			sql(
-				`SELECT stable_user_id
+export const abortAccountDeleting = Effect.fn(
+	'DeletionFence.abortAccountDeleting',
+)(function* (input: {
+	readonly dbUserId: number
+	readonly now?: Date
+	readonly expectedDeletingAt?: string
+}) {
+	const db = yield* D1
+	const meter = yield* UserMeter
+	const row = yield* db.first(
+		'deletion_fence.read_account_owner',
+		StableUserIdRow,
+		sql(
+			`SELECT stable_user_id
 				FROM users
 				WHERE id = ?${andLiveDeletedAtSql()}`,
-				input.dbUserId,
-			),
-		)
-		const now = yield* sqliteNow(input.now)
-		const { changes } = yield* db.run(
-			'deletion_fence.clear_account',
-			input.expectedDeletingAt
-				? sql(
-						`UPDATE users
+			input.dbUserId,
+		),
+	)
+	const now = yield* sqliteNow(input.now)
+	const { changes } = yield* db.run(
+		'deletion_fence.clear_account',
+		input.expectedDeletingAt
+			? sql(
+					`UPDATE users
 						SET deleting_at = NULL, updated_at = ?
 						WHERE id = ? AND deleting_at = ?${andLiveDeletedAtSql()}`,
-						now,
-						input.dbUserId,
-						input.expectedDeletingAt,
-					)
-				: sql(
-						`UPDATE users
+					now,
+					input.dbUserId,
+					input.expectedDeletingAt,
+				)
+			: sql(
+					`UPDATE users
 						SET deleting_at = NULL, updated_at = ?
 						WHERE id = ?${andLiveDeletedAtSql()}`,
-						now,
-						input.dbUserId,
-					),
-		)
-		if ((!input.expectedDeletingAt && changes !== 1) || Option.isNone(row)) {
-			return yield* new DeletionFenceError({
-				message: 'Account deletion fence could not be cleared.',
-			})
-		}
-		const stableUserId = row.value.stable_user_id as OwnerId
-		yield* meter.clearDeleting(stableUserId, input.expectedDeletingAt)
-		yield* invalidateOwnerCache(stableUserId)
-		yield* Effect.logInfo('account deletion fence cleared')
-	},
-)
+					now,
+					input.dbUserId,
+				),
+	)
+	if ((!input.expectedDeletingAt && changes !== 1) || Option.isNone(row)) {
+		return yield* new DeletionFenceError({
+			message: 'Account deletion fence could not be cleared.',
+		})
+	}
+	const stableUserId = row.value.stable_user_id as OwnerId
+	yield* meter.clearDeleting(stableUserId, input.expectedDeletingAt)
+	yield* invalidateOwnerCache(stableUserId)
+	yield* Effect.logInfo('account deletion fence cleared')
+})
 
 /** Operator entry: resolves `users.id` from `stable_user_id`. */
 export const abortAccountDeletingByStableUserId = Effect.fn(
@@ -322,7 +328,12 @@ const runFence = <A, E>(
 ) =>
 	runSlicePromise(
 		input.env as Env,
-		effect.pipe(Effect.provideService(D1, makeD1(() => input.db))),
+		effect.pipe(
+			Effect.provideService(
+				D1,
+				makeD1(() => input.db),
+			),
+		),
 	)
 
 type FenceInput<T> = T & { db: D1Database; env: FenceEnv }
@@ -340,15 +351,13 @@ export const deletionFenceEdges = {
 	): Promise<void> => runFence(input, abortAccountDeleting(input)),
 	abortAccountDeletingByStableUserId: (
 		input: FenceInput<{ stableUserId: OwnerId; now?: Date }>,
-	): Promise<void> => runFence(input, abortAccountDeletingByStableUserId(input)),
+	): Promise<void> =>
+		runFence(input, abortAccountDeletingByStableUserId(input)),
 	clearUserMeterDeletionTombstone: (input: {
 		env: UserMeterEnv
 		stableUserId: OwnerId
 	}): Promise<{ cleared: boolean }> =>
-		runSlicePromise(
-			input.env as Env,
-			clearUserMeterDeletionTombstone(input),
-		),
+		runSlicePromise(input.env as Env, clearUserMeterDeletionTombstone(input)),
 	markOrgDeleting: (
 		input: FenceInput<{ orgId: OwnerId; now?: Date }>,
 	): Promise<DeletionFence> => runFence(input, markOrgDeleting(input)),

@@ -5,7 +5,15 @@
  * including tombstones. Live product paths keep deleted_at filters elsewhere.
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
-import { Clock, Effect, Exit, Option, Predicate, Schema, type Scope } from 'effect'
+import {
+	Clock,
+	Effect,
+	Exit,
+	Option,
+	Predicate,
+	Schema,
+	type Scope,
+} from 'effect'
 import { fileStoreRpc } from '#worker/files/client.ts'
 import { linkedArtifactSourceKvPrefix } from '#worker/package-runtime/linked-artifact-store.ts'
 import { invalidatePackageAppOwnerCache } from '#app/package-app-owner.ts'
@@ -137,7 +145,8 @@ const AccountDeletionStripeRefund = Schema.Struct({
 	invoiceId: Schema.String,
 	creditNoteId: Schema.String,
 })
-export type AccountDeletionStripeRefund = typeof AccountDeletionStripeRefund.Type
+export type AccountDeletionStripeRefund =
+	typeof AccountDeletionStripeRefund.Type
 
 export type AccountDeletionResult = {
 	deletedRowCounts: Record<string, number>
@@ -157,7 +166,6 @@ export type AccountDeletionResult = {
 const AccountDeletionResultValue = Schema.declare(
 	(input: unknown): input is AccountDeletionResult => Predicate.isObject(input),
 )
-
 
 export function getAccountDeletionD1UserColumnCoverage() {
 	return getAccountD1UserColumnCoverage()
@@ -328,7 +336,9 @@ const SavedPackageRow = Schema.Struct({
 	has_app: Schema.Union([Schema.Number, Schema.String, Schema.Boolean]),
 })
 const KvKeyRow = Schema.Struct({ kv_key: Schema.String })
-const TombstoneRow = Schema.Struct({ deleting_at: Schema.NullOr(Schema.String) })
+const TombstoneRow = Schema.Struct({
+	deleting_at: Schema.NullOr(Schema.String),
+})
 const DiscordConnectionRow = Schema.Struct({ provider_id: Schema.String })
 
 function uniqueStrings(values: Iterable<string | null | undefined>) {
@@ -417,28 +427,28 @@ const listUserVectorIds = Effect.fn('AccountDeletion.listUserVectorIds')(
 	},
 )
 
-const getUserBillingIdentity = Effect.fn('AccountDeletion.getUserBillingIdentity')(
-	function* (dbUserId: number) {
-		const db = yield* D1
-		// Look up by primary key during deletion/purge; do not require a live row.
-		const row = yield* db.first(
-			'account_deletion.billing_identity',
-			BillingIdentityRow,
-			sql(
-				`SELECT o.stripe_customer_id, u.email
+const getUserBillingIdentity = Effect.fn(
+	'AccountDeletion.getUserBillingIdentity',
+)(function* (dbUserId: number) {
+	const db = yield* D1
+	// Look up by primary key during deletion/purge; do not require a live row.
+	const row = yield* db.first(
+		'account_deletion.billing_identity',
+		BillingIdentityRow,
+		sql(
+			`SELECT o.stripe_customer_id, u.email
 				 FROM users u
 				 LEFT JOIN orgs o ON o.id = COALESCE(NULLIF(TRIM(u.personal_org_id), ''), u.stable_user_id)
 				 WHERE u.id = ?`,
-				dbUserId,
-			),
-		)
-		return {
-			stripeCustomerId:
-				Option.getOrUndefined(row)?.stripe_customer_id?.trim() || null,
-			email: Option.getOrUndefined(row)?.email?.trim() || null,
-		}
-	},
-)
+			dbUserId,
+		),
+	)
+	return {
+		stripeCustomerId:
+			Option.getOrUndefined(row)?.stripe_customer_id?.trim() || null,
+		email: Option.getOrUndefined(row)?.email?.trim() || null,
+	}
+})
 
 const listUserSourceSnapshots = Effect.fn(
 	'AccountDeletion.listUserSourceSnapshots',
@@ -454,38 +464,34 @@ const listUserSourceSnapshots = Effect.fn(
 			userId,
 		),
 	)
-	return rows.map(
-		(row): UserSourceSnapshot => ({
-			sourceId: row.id,
-			publishedCommit: row.published_commit,
-			repoId: row.repo_id,
-		}),
-	)
+	return rows.map((row): UserSourceSnapshot => ({
+		sourceId: row.id,
+		publishedCommit: row.published_commit,
+		repoId: row.repo_id,
+	}))
 })
 
-const listUserSavedPackages = Effect.fn('AccountDeletion.listUserSavedPackages')(
-	function* (userId: OwnerId) {
-		const db = yield* D1
-		const rows = yield* db.all(
-			'account_deletion.saved_packages',
-			SavedPackageRow,
-			sql(
-				`SELECT id, kody_id, source_id, has_app
+const listUserSavedPackages = Effect.fn(
+	'AccountDeletion.listUserSavedPackages',
+)(function* (userId: OwnerId) {
+	const db = yield* D1
+	const rows = yield* db.all(
+		'account_deletion.saved_packages',
+		SavedPackageRow,
+		sql(
+			`SELECT id, kody_id, source_id, has_app
 				FROM saved_packages
 				WHERE user_id = ?`,
-				userId,
-			),
-		)
-		return rows.map(
-			(row): UserSavedPackageSnapshot => ({
-				id: row.id,
-				kodyId: row.kody_id,
-				sourceId: row.source_id,
-				hasApp: row.has_app === 1 || row.has_app === '1' || row.has_app === true,
-			}),
-		)
-	},
-)
+			userId,
+		),
+	)
+	return rows.map((row): UserSavedPackageSnapshot => ({
+		id: row.id,
+		kodyId: row.kody_id,
+		sourceId: row.source_id,
+		hasApp: row.has_app === 1 || row.has_app === '1' || row.has_app === true,
+	}))
+})
 
 const listUserRepoSessions = Effect.fn('AccountDeletion.listUserRepoSessions')(
 	function* (userId: OwnerId) {
@@ -897,7 +903,10 @@ const earlierAccountDeletionRefunds = Effect.fn(
  */
 const cancelActiveStripeSubscriptions = Effect.fn(
 	'AccountDeletion.cancelActiveStripeSubscriptions',
-)(function* (input: { readonly customerId: string; readonly email: string | null }) {
+)(function* (input: {
+	readonly customerId: string
+	readonly email: string | null
+}) {
 	const env = yield* WorkerEnv
 	const stripe = yield* Stripe
 	const audit = yield* AuditLog
@@ -906,13 +915,16 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 			subscription.status,
 		) && isKodySubscription(env, subscription)
 
-	const subscriptions = yield* stripe.listSubscriptions(input.customerId).pipe(
-		Effect.mapError((error) =>
-			new AccountDeletionBillingError([
-				`Stripe subscriptions could not be listed: ${error.message}`,
-			]),
-		),
-	)
+	const subscriptions = yield* stripe
+		.listSubscriptions(input.customerId)
+		.pipe(
+			Effect.mapError(
+				(error) =>
+					new AccountDeletionBillingError([
+						`Stripe subscriptions could not be listed: ${error.message}`,
+					]),
+			),
+		)
 	// Shared Stripe account: only cancel Kody subscriptions. Never touch
 	// other products on the same customer (for example GratiText Premium).
 	const billable = subscriptions.filter(billableKody)
@@ -921,17 +933,22 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 	const failures: Array<string> = []
 	let canceled = 0
 	for (const subscription of billable) {
-		if (stripeSubscriptionStatusesRefundedOnAccountDeletion.has(subscription.status)) {
+		if (
+			stripeSubscriptionStatusesRefundedOnAccountDeletion.has(
+				subscription.status,
+			)
+		) {
 			const refunded = yield* refundUnusedSubscriptionTime({
 				subscriptionId: subscription.id,
 				email: input.email,
 				nowSeconds,
 			}).pipe(
-				Effect.mapError((error) =>
-					new AccountDeletionBillingError([
-						...failures,
-						`Stripe subscription ${subscription.id} unused time could not be refunded: ${error.message}`,
-					]),
+				Effect.mapError(
+					(error) =>
+						new AccountDeletionBillingError([
+							...failures,
+							`Stripe subscription ${subscription.id} unused time could not be refunded: ${error.message}`,
+						]),
 				),
 			)
 			if (Option.isSome(refunded)) {
@@ -961,22 +978,27 @@ const cancelActiveStripeSubscriptions = Effect.fn(
 	}
 
 	if (failures.length > 0) {
-		const stillBillable = yield* stripe.listSubscriptions(input.customerId).pipe(
-			Effect.map((listed) => listed.filter(billableKody)),
-			Effect.mapError((error) =>
-				new AccountDeletionBillingError([
-					...failures,
-					`Stripe subscriptions could not be re-verified: ${error.message}`,
-				]),
-			),
-		)
+		const stillBillable = yield* stripe
+			.listSubscriptions(input.customerId)
+			.pipe(
+				Effect.map((listed) => listed.filter(billableKody)),
+				Effect.mapError(
+					(error) =>
+						new AccountDeletionBillingError([
+							...failures,
+							`Stripe subscriptions could not be re-verified: ${error.message}`,
+						]),
+				),
+			)
 		if (stillBillable.length > 0) {
 			return yield* new AccountDeletionBillingError(failures)
 		}
 		canceled = billable.length
 	}
 
-	refunds.push(...(yield* earlierAccountDeletionRefunds(input.customerId, refunds)))
+	refunds.push(
+		...(yield* earlierAccountDeletionRefunds(input.customerId, refunds)),
+	)
 	yield* Effect.logInfo('account deletion billing settled', {
 		canceled,
 		refunds: refunds.length,
@@ -1018,13 +1040,16 @@ const clearEach = <T, E extends { readonly message: string }>(
 	clear: (item: T) => Effect.Effect<unknown, E>,
 	describe: (item: T, message: string) => string,
 ) =>
-	Effect.reduce(items, () => 0, (cleared, item) =>
-		clear(item).pipe(
-			Effect.as(cleared + 1),
-			Effect.catch((error: E) =>
-				warnings.add(describe(item, error.message)).pipe(Effect.as(cleared)),
+	Effect.reduce(
+		items,
+		() => 0,
+		(cleared, item) =>
+			clear(item).pipe(
+				Effect.as(cleared + 1),
+				Effect.catch((error: E) =>
+					warnings.add(describe(item, error.message)).pipe(Effect.as(cleared)),
+				),
 			),
-		),
 	)
 
 const deleteVectorsByIds = Effect.fn('AccountDeletion.deleteVectorsByIds')(
@@ -1043,15 +1068,20 @@ const deleteVectorsByIds = Effect.fn('AccountDeletion.deleteVectorsByIds')(
 		for (let offset = 0; offset < ids.length; offset += batchSize) {
 			batches.push(ids.slice(offset, offset + batchSize))
 		}
-		return yield* Effect.reduce(batches, () => 0, (deleted, batch) =>
-			outbound('vectorize.deleteByIds', () => index.deleteByIds([...batch])).pipe(
-				Effect.as(deleted + batch.length),
-				Effect.catch((error) =>
-					warnings
-						.add(`Vectorize deleteByIds batch failed: ${error.message}`)
-						.pipe(Effect.as(deleted)),
+		return yield* Effect.reduce(
+			batches,
+			() => 0,
+			(deleted, batch) =>
+				outbound('vectorize.deleteByIds', () =>
+					index.deleteByIds([...batch]),
+				).pipe(
+					Effect.as(deleted + batch.length),
+					Effect.catch((error) =>
+						warnings
+							.add(`Vectorize deleteByIds batch failed: ${error.message}`)
+							.pipe(Effect.as(deleted)),
+					),
 				),
-			),
 		)
 	},
 )
@@ -1125,7 +1155,10 @@ const cleanupAccountEmailBlobs = Effect.fn(
 		return { deletedEmailBlobs: 0, emailCleanupComplete: false }
 	}
 	const prefixes = yield* outbound('r2.deleteAccountEmailBlobPrefixes', () =>
-		deleteAccountEmailBlobPrefixes({ bucket: emailBlobs, stableUserId: userId }),
+		deleteAccountEmailBlobPrefixes({
+			bucket: emailBlobs,
+			stableUserId: userId,
+		}),
 	).pipe(
 		Effect.map((deleted) => ({ deleted, complete: true })),
 		Effect.catch((error) =>
@@ -1550,40 +1583,40 @@ export const purgeOwnerOutOfBandSurfacesEffect = Effect.fn(
 })
 
 /** Removes the person's Discord guild roles when the account had a Discord connection. */
-const removeDiscordGuildRoles = Effect.fn('AccountDeletion.removeDiscordGuildRoles')(
-	function* (dbUserId: number, warnings: Warnings) {
-		const env = yield* WorkerEnv
-		const db = yield* D1
-		const connection = yield* db
-			.first(
-				'account_deletion.discord_connection',
-				DiscordConnectionRow,
-				sql(
-					`SELECT provider_id FROM oauth_connections
+const removeDiscordGuildRoles = Effect.fn(
+	'AccountDeletion.removeDiscordGuildRoles',
+)(function* (dbUserId: number, warnings: Warnings) {
+	const env = yield* WorkerEnv
+	const db = yield* D1
+	const connection = yield* db
+		.first(
+			'account_deletion.discord_connection',
+			DiscordConnectionRow,
+			sql(
+				`SELECT provider_id FROM oauth_connections
 					 WHERE user_id = ? AND provider_name = 'discord'`,
-					dbUserId,
-				),
-			)
-			.pipe(
-				Effect.catch((error) =>
-					warnings
-						.add(`Discord connection lookup failed: ${error.message}`)
-						.pipe(Effect.as(Option.none())),
-				),
-			)
-		const discordUserId = Option.getOrUndefined(connection)?.provider_id
-		if (!discordUserId) return
-		const cleanup = yield* outbound('discord.removeGuildRoles', () =>
-			maybeRemoveDiscordGuildRoles({ env, discordUserId }),
+				dbUserId,
+			),
 		)
-		const summary = summarizeDiscordGuildRoleSync(cleanup)
-		if (summary.status === 'error') {
-			yield* warnings.add(`Discord role cleanup failed: ${summary.message}`)
-		} else if (summary.status === 'forbidden') {
-			yield* warnings.add('Discord role cleanup was forbidden.')
-		}
-	},
-)
+		.pipe(
+			Effect.catch((error) =>
+				warnings
+					.add(`Discord connection lookup failed: ${error.message}`)
+					.pipe(Effect.as(Option.none())),
+			),
+		)
+	const discordUserId = Option.getOrUndefined(connection)?.provider_id
+	if (!discordUserId) return
+	const cleanup = yield* outbound('discord.removeGuildRoles', () =>
+		maybeRemoveDiscordGuildRoles({ env, discordUserId }),
+	)
+	const summary = summarizeDiscordGuildRoleSync(cleanup)
+	if (summary.status === 'error') {
+		yield* warnings.add(`Discord role cleanup failed: ${summary.message}`)
+	} else if (summary.status === 'forbidden') {
+		yield* warnings.add('Discord role cleanup was forbidden.')
+	}
+})
 
 /**
  * Removes the person's MCP OAuth clients and, unless the guest merge keeps
@@ -1717,8 +1750,7 @@ const liveDeletionFence = (dbUserId: number) =>
 	Effect.acquireRelease(markAccountDeleting({ dbUserId }), (fence, exit) => {
 		const error = Option.getOrUndefined(Exit.findErrorOption(exit))
 		const tag = Predicate.hasProperty(error, '_tag') ? String(error._tag) : null
-		const release =
-			fence.created && tag !== null && preCleanupFailures.has(tag)
+		const release = fence.created && tag !== null && preCleanupFailures.has(tag)
 		return release
 			? abortAccountDeleting({
 					dbUserId,
@@ -1776,150 +1808,149 @@ const purgeClaimFence = Effect.fn('AccountDeletion.purgeClaimFence')(function* (
  *      cleanup failed.
  *   6. Atomically delete user-scoped D1 rows and the user row in one batch.
  */
-export const deleteUserAccountEffect = Effect.fn('AccountDeletion.deleteUserAccount')(
-	function* (input: {
-		readonly dbUserId: number
-		/**
-		 * Storage / personal org OwnerId. Out-of-band surfaces and org-keyed
-		 * D1 rows use this id.
-		 */
-		readonly mcpUserId: OwnerId
-		/** Person id when it may differ from {@link mcpUserId}. */
-		readonly personUserId?: string
-		/**
-		 * Purge lane: the account is already soft-deleted and claimed via
-		 * `deleting_at`. Skip the live deletion fence and remove the
-		 * tombstoned users row.
-		 */
-		readonly purgeSoftDeleted?: boolean
-		/** Guest merge: the claiming person inherits this account's OAuth grants. */
-		readonly keepOAuthGrants?: boolean
-	}): Effect.fn.Return<
-		AccountDeletionResult,
-		DeleteUserAccountError,
-		SliceServices | Scope.Scope
-	> {
-		yield* Effect.annotateCurrentSpan({
-			'kody.owner_id': input.mcpUserId,
-			'kody.purge_soft_deleted': input.purgeSoftDeleted === true,
+export const deleteUserAccountEffect = Effect.fn(
+	'AccountDeletion.deleteUserAccount',
+)(function* (input: {
+	readonly dbUserId: number
+	/**
+	 * Storage / personal org OwnerId. Out-of-band surfaces and org-keyed
+	 * D1 rows use this id.
+	 */
+	readonly mcpUserId: OwnerId
+	/** Person id when it may differ from {@link mcpUserId}. */
+	readonly personUserId?: string
+	/**
+	 * Purge lane: the account is already soft-deleted and claimed via
+	 * `deleting_at`. Skip the live deletion fence and remove the
+	 * tombstoned users row.
+	 */
+	readonly purgeSoftDeleted?: boolean
+	/** Guest merge: the claiming person inherits this account's OAuth grants. */
+	readonly keepOAuthGrants?: boolean
+}): Effect.fn.Return<
+	AccountDeletionResult,
+	DeleteUserAccountError,
+	SliceServices | Scope.Scope
+> {
+	yield* Effect.annotateCurrentSpan({
+		'kody.owner_id': input.mcpUserId,
+		'kody.purge_soft_deleted': input.purgeSoftDeleted === true,
+	})
+	const purgeSoftDeleted = input.purgeSoftDeleted === true
+	const fence: DeletionFence = purgeSoftDeleted
+		? yield* purgeClaimFence(input.dbUserId, input.mcpUserId)
+		: yield* liveDeletionFence(input.dbUserId)
+	if (fence.leaseCount > 0) {
+		return yield* new AccountDeletionWritersActive({
+			leaseCount: fence.leaseCount,
+			blockingLeases: fence.blockingLeases,
 		})
-		const purgeSoftDeleted = input.purgeSoftDeleted === true
-		const fence: DeletionFence = purgeSoftDeleted
-			? yield* purgeClaimFence(input.dbUserId, input.mcpUserId)
-			: yield* liveDeletionFence(input.dbUserId)
-		if (fence.leaseCount > 0) {
-			return yield* new AccountDeletionWritersActive({
-				leaseCount: fence.leaseCount,
-				blockingLeases: fence.blockingLeases,
-			})
-		}
-		const warnings = new Warnings()
-		const result = emptyAccountDeletionResult(warnings.list)
-		const inventory = yield* collectUserDeletionInventory({
-			userId: input.mcpUserId,
-			dbUserId: input.dbUserId,
-			warnings,
-		})
+	}
+	const warnings = new Warnings()
+	const result = emptyAccountDeletionResult(warnings.list)
+	const inventory = yield* collectUserDeletionInventory({
+		userId: input.mcpUserId,
+		dbUserId: input.dbUserId,
+		warnings,
+	})
 
-		// Billing is a precondition of deletion, checked before anything
-		// destructive.
-		if (inventory.stripeCustomerId) {
-			const billing = yield* cancelActiveStripeSubscriptions({
-				customerId: inventory.stripeCustomerId,
-				email: inventory.email,
-			}).pipe(
-				Effect.tapErrorTag('AccountDeletionBillingError', (error) =>
-					Effect.logError('account_deletion_billing_cancel_failed', {
-						userId: input.mcpUserId,
-						billingErrors: error.billingErrors,
-					}),
-				),
-			)
-			result.stripeRefunds = billing.refunds
-		}
-
-		const email = yield* purgeOutOfBandStores({
-			ownerId: input.mcpUserId,
-			inventory,
-			result,
-			warnings,
-		})
-		yield* removeDiscordGuildRoles(input.dbUserId, warnings)
-		yield* revokeOAuthAccess({
-			dbUserId: input.dbUserId,
-			ownerId: input.mcpUserId,
-			keepOAuthGrants: input.keepOAuthGrants === true,
-			result,
-			warnings,
-		})
-		yield* purgeMailboxAndJobs({
-			ownerId: input.mcpUserId,
-			emailCleanupComplete: email.emailCleanupComplete,
-			result,
-			warnings,
-		})
-
-		if (inventory.stripeCustomerId) {
-			yield* deleteStripeCustomer(
-				inventory.stripeCustomerId,
-				input.mcpUserId,
-				warnings,
-			)
-		}
-
-		const d1Cleanup = yield* deleteUserScopedRowsAndUser({
-			mcpUserId: input.mcpUserId,
-			dbUserId: input.dbUserId,
-			personUserId: input.personUserId ?? input.mcpUserId,
-			allowSoftDeletedUser: purgeSoftDeleted,
+	// Billing is a precondition of deletion, checked before anything
+	// destructive.
+	if (inventory.stripeCustomerId) {
+		const billing = yield* cancelActiveStripeSubscriptions({
+			customerId: inventory.stripeCustomerId,
+			email: inventory.email,
 		}).pipe(
-			Effect.flatMap((cleanup) =>
-				purgeSoftDeleted && (cleanup.deletedRowCounts.users ?? 0) === 0
-					? Effect.fail({
-							message: `Soft-deleted user row was not removed for ${input.mcpUserId}.`,
-						})
-					: Effect.succeed(cleanup),
-			),
-			Effect.catch((error: { readonly message: string }) =>
-				warnings
-					.add(`Atomic D1 account deletion failed: ${error.message}`)
-					.pipe(
-						Effect.andThen(() =>
-							Effect.fail(AccountDeletionCleanupError.fromResult(result)),
-						),
-					),
-			),
-		)
-		result.deletedRowCounts = {
-			...result.deletedRowCounts,
-			...d1Cleanup.deletedRowCounts,
-		}
-		result.updatedRowCounts = d1Cleanup.updatedRowCounts
-
-		// The D1 user row is gone. Drop the UserMeter tombstone `purge()`
-		// restored so the purged object keeps no state for this stable id.
-		yield* clearUserMeterDeletionTombstone({
-			stableUserId: input.mcpUserId,
-		}).pipe(
-			Effect.catch((error) =>
-				Effect.logError('account_deletion_user_meter_tombstone_clear_failed', {
+			Effect.tapErrorTag('AccountDeletionBillingError', (error) =>
+				Effect.logError('account_deletion_billing_cancel_failed', {
 					userId: input.mcpUserId,
-					error: error.message,
+					billingErrors: error.billingErrors,
 				}),
 			),
 		)
-		yield* Effect.logInfo('account deleted', {
-			deletedRows: Object.values(result.deletedRowCounts).reduce(
-				(sum, count) => sum + count,
-				0,
-			),
-			deletedKvKeys: result.deletedKvKeys,
-			stripeRefunds: result.stripeRefunds.length,
-		})
-		return result
-	},
-	Effect.scoped,
-)
+		result.stripeRefunds = billing.refunds
+	}
+
+	const email = yield* purgeOutOfBandStores({
+		ownerId: input.mcpUserId,
+		inventory,
+		result,
+		warnings,
+	})
+	yield* removeDiscordGuildRoles(input.dbUserId, warnings)
+	yield* revokeOAuthAccess({
+		dbUserId: input.dbUserId,
+		ownerId: input.mcpUserId,
+		keepOAuthGrants: input.keepOAuthGrants === true,
+		result,
+		warnings,
+	})
+	yield* purgeMailboxAndJobs({
+		ownerId: input.mcpUserId,
+		emailCleanupComplete: email.emailCleanupComplete,
+		result,
+		warnings,
+	})
+
+	if (inventory.stripeCustomerId) {
+		yield* deleteStripeCustomer(
+			inventory.stripeCustomerId,
+			input.mcpUserId,
+			warnings,
+		)
+	}
+
+	const d1Cleanup = yield* deleteUserScopedRowsAndUser({
+		mcpUserId: input.mcpUserId,
+		dbUserId: input.dbUserId,
+		personUserId: input.personUserId ?? input.mcpUserId,
+		allowSoftDeletedUser: purgeSoftDeleted,
+	}).pipe(
+		Effect.flatMap((cleanup) =>
+			purgeSoftDeleted && (cleanup.deletedRowCounts.users ?? 0) === 0
+				? Effect.fail({
+						message: `Soft-deleted user row was not removed for ${input.mcpUserId}.`,
+					})
+				: Effect.succeed(cleanup),
+		),
+		Effect.catch((error: { readonly message: string }) =>
+			warnings
+				.add(`Atomic D1 account deletion failed: ${error.message}`)
+				.pipe(
+					Effect.andThen(() =>
+						Effect.fail(AccountDeletionCleanupError.fromResult(result)),
+					),
+				),
+		),
+	)
+	result.deletedRowCounts = {
+		...result.deletedRowCounts,
+		...d1Cleanup.deletedRowCounts,
+	}
+	result.updatedRowCounts = d1Cleanup.updatedRowCounts
+
+	// The D1 user row is gone. Drop the UserMeter tombstone `purge()`
+	// restored so the purged object keeps no state for this stable id.
+	yield* clearUserMeterDeletionTombstone({
+		stableUserId: input.mcpUserId,
+	}).pipe(
+		Effect.catch((error) =>
+			Effect.logError('account_deletion_user_meter_tombstone_clear_failed', {
+				userId: input.mcpUserId,
+				error: error.message,
+			}),
+		),
+	)
+	yield* Effect.logInfo('account deleted', {
+		deletedRows: Object.values(result.deletedRowCounts).reduce(
+			(sum, count) => sum + count,
+			0,
+		),
+		deletedKvKeys: result.deletedKvKeys,
+		stripeRefunds: result.stripeRefunds.length,
+	})
+	return result
+}, Effect.scoped)
 
 /**
  * Promise callers outside the retention lanes (account settings, admin
@@ -1954,4 +1985,3 @@ export function purgeOwnerOutOfBandSurfaces(input: {
 	const { env, ...rest } = input
 	return runSlicePromise(env, purgeOwnerOutOfBandSurfacesEffect(rest))
 }
-

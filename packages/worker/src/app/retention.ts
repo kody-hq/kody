@@ -263,7 +263,11 @@ const deleteByIds = Effect.fn('Retention.deleteByIds')(function* (
 	ids: ReadonlyArray<IdValue>,
 ) {
 	let deleted = 0
-	for (let index = 0; index < ids.length; index += retentionDeleteIdsMaxParameters) {
+	for (
+		let index = 0;
+		index < ids.length;
+		index += retentionDeleteIdsMaxParameters
+	) {
 		const chunk = ids.slice(index, index + retentionDeleteIdsMaxParameters)
 		const result = yield* retryTransientD1(
 			db.run(
@@ -370,7 +374,8 @@ const StaleArtifactRow = Schema.Struct({
 })
 const AnyRow = Schema.Record(Schema.String, Schema.Unknown)
 
-type ArtifactEnv = Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> & RepoSessionIndexEnv
+type ArtifactEnv = Pick<Env, 'APP_DB' | 'BUNDLE_ARTIFACTS_KV'> &
+	RepoSessionIndexEnv
 
 /** Deletes the row only if it is still stale and no repo session holds its source. */
 const deletePublishedBundleArtifactRowIfStillStale = Effect.fn(
@@ -425,8 +430,12 @@ const deletePublishedBundleArtifactRowIfStillStale = Effect.fn(
 export const prunePublishedBundleArtifactsForRetentionEffect = Effect.fn(
 	'Retention.prunePublishedBundleArtifacts',
 )(function* (env: ArtifactEnv, db: D1Service, options: BatchOptions) {
-	const cutoff = cutoffIso(today(options.now), publishedBundleArtifactRetentionDays)
-	const batchSize = options.batchSize ?? publishedBundleArtifactRetentionBatchSize
+	const cutoff = cutoffIso(
+		today(options.now),
+		publishedBundleArtifactRetentionDays,
+	)
+	const batchSize =
+		options.batchSize ?? publishedBundleArtifactRetentionBatchSize
 	const kv = env.BUNDLE_ARTIFACTS_KV
 	const rows = yield* retryTransientD1(
 		db.all(
@@ -601,7 +610,10 @@ export const pruneFeatureFlagExposuresForRetentionEffect = rowidPolicy(
 	'feature_flag_exposure_rollups',
 	'day',
 	(now) =>
-		cutoffIso(now, featureFlagExposureRetentionDays).slice(0, 'YYYY-MM-DD'.length),
+		cutoffIso(now, featureFlagExposureRetentionDays).slice(
+			0,
+			'YYYY-MM-DD'.length,
+		),
 )
 
 export const pruneAgentPackageConversationUsesForRetentionEffect = rowidPolicy(
@@ -683,151 +695,163 @@ function emptyRetentionResult(): RetentionPruneResult {
  * always completes so each table makes progress every run; later passes stop
  * once the time budget is exhausted.
  */
-export const pruneRetentionEffect = Effect.fn('Retention.prune')(function* (input: {
-	readonly now?: Date
-	readonly timeBudgetMs?: number
-}) {
-	const env = yield* WorkerEnv
-	const db = yield* D1
-	const auditDb = makeD1(() => env.AUDIT_DB)
-	const now = today(input.now)
-	const budget = yield* startPassBudget(
-		input.timeBudgetMs ?? retentionRunTimeBudgetMs,
-	)
-	const result = emptyRetentionResult()
-	type Counted = Effect.Effect<
-		{ selected: number; deleted: number },
-		DatabaseError | OutboundCallError
-	>
-	const counted = (
-		table: string,
-		prune: Counted,
-		assign: (deleted: number) => void,
-	): RetentionTask => ({
-		table,
-		run: Effect.map(prune, (batch) => {
-			assign(batch.deleted)
-			// hasMore keys off the selected count so a full batch that deleted
-			// fewer rows (racing writers) does not mark the table drained early.
-			return batch.selected >= retentionDefaultBatchSize
-		}),
-	})
-	const deletedOnly = (operation: string, prune: () => Promise<number>): Counted =>
-		Effect.map(outbound(operation, prune), (deleted) => ({
-			selected: deleted,
-			deleted,
-		}))
-	const tasks: ReadonlyArray<RetentionTask> = [
-		counted(
-			'mcp_memory_conversation_suppressions',
-			pruneMemorySuppressionsForRetentionEffect(db, { now }),
-			(count) => (result.memorySuppressions += count),
-		),
-		counted(
-			'platform_feedback',
-			prunePlatformFeedbackForRetentionEffect(db, { now }),
-			(count) => (result.platformFeedback += count),
-		),
-		{
-			table: 'published_bundle_artifacts',
-			run: Effect.map(
-				prunePublishedBundleArtifactsForRetentionEffect(env, db, { now }),
-				(batch) => {
-					const totals = result.publishedBundleArtifacts
-					totals.deletedRows += batch.deletedRows
-					totals.deletedKvKeys += batch.deletedKvKeys
-					totals.deletedSnapshotKvKeys += batch.deletedSnapshotKvKeys
-					totals.kvDeleteErrors += batch.kvDeleteErrors
-					return batch.hasMore
-				},
+export const pruneRetentionEffect = Effect.fn('Retention.prune')(
+	function* (input: { readonly now?: Date; readonly timeBudgetMs?: number }) {
+		const env = yield* WorkerEnv
+		const db = yield* D1
+		const auditDb = makeD1(() => env.AUDIT_DB)
+		const now = today(input.now)
+		const budget = yield* startPassBudget(
+			input.timeBudgetMs ?? retentionRunTimeBudgetMs,
+		)
+		const result = emptyRetentionResult()
+		type Counted = Effect.Effect<
+			{ selected: number; deleted: number },
+			DatabaseError | OutboundCallError
+		>
+		const counted = (
+			table: string,
+			prune: Counted,
+			assign: (deleted: number) => void,
+		): RetentionTask => ({
+			table,
+			run: Effect.map(prune, (batch) => {
+				assign(batch.deleted)
+				// hasMore keys off the selected count so a full batch that deleted
+				// fewer rows (racing writers) does not mark the table drained early.
+				return batch.selected >= retentionDefaultBatchSize
+			}),
+		})
+		const deletedOnly = (
+			operation: string,
+			prune: () => Promise<number>,
+		): Counted =>
+			Effect.map(outbound(operation, prune), (deleted) => ({
+				selected: deleted,
+				deleted,
+			}))
+		const tasks: ReadonlyArray<RetentionTask> = [
+			counted(
+				'mcp_memory_conversation_suppressions',
+				pruneMemorySuppressionsForRetentionEffect(db, { now }),
+				(count) => (result.memorySuppressions += count),
 			),
-		},
-		counted(
-			'usage_rollups',
-			pruneUsageRollupsForRetentionEffect(db, { now }),
-			(count) => (result.usageRollups += count),
-		),
-		counted(
-			'feature_flag_exposure_rollups',
-			pruneFeatureFlagExposuresForRetentionEffect(db, { now }),
-			(count) => (result.featureFlagExposureRollups += count),
-		),
-		counted(
-			'credential_local_read_events',
-			deletedOnly('credentials.pruneLocalReadEvents', () =>
-				pruneLocalReadEvents({
-					db: env.APP_DB,
-					now,
-					batchSize: retentionDefaultBatchSize,
-				}),
+			counted(
+				'platform_feedback',
+				prunePlatformFeedbackForRetentionEffect(db, { now }),
+				(count) => (result.platformFeedback += count),
 			),
-			(count) => (result.credentialLocalReadEvents += count),
-		),
-		counted(
-			'credential_raw_signing_events',
-			deletedOnly('credentials.pruneRawSigningEvents', () =>
-				pruneRawSigningEvents({
-					db: env.APP_DB,
-					now,
-					batchSize: retentionDefaultBatchSize,
-				}),
+			{
+				table: 'published_bundle_artifacts',
+				run: Effect.map(
+					prunePublishedBundleArtifactsForRetentionEffect(env, db, { now }),
+					(batch) => {
+						const totals = result.publishedBundleArtifacts
+						totals.deletedRows += batch.deletedRows
+						totals.deletedKvKeys += batch.deletedKvKeys
+						totals.deletedSnapshotKvKeys += batch.deletedSnapshotKvKeys
+						totals.kvDeleteErrors += batch.kvDeleteErrors
+						return batch.hasMore
+					},
+				),
+			},
+			counted(
+				'usage_rollups',
+				pruneUsageRollupsForRetentionEffect(db, { now }),
+				(count) => (result.usageRollups += count),
 			),
-			(count) => (result.credentialRawSigningEvents += count),
-		),
-		counted(
-			'audit_events',
-			pruneAuditEventsForRetentionEffect(auditDb, { now }),
-			(count) => (result.auditEvents += count),
-		),
-		counted(
-			'stripe_webhook_events',
-			pruneStripeWebhookEventsForRetentionEffect(db, { now }),
-			(count) => (result.stripeWebhookEvents += count),
-		),
-		counted(
-			'agent_package_conversation_uses',
-			pruneAgentPackageConversationUsesForRetentionEffect(db, { now }),
-			(count) => (result.agentPackageConversationUses += count),
-		),
-		{
-			table: 'profiles',
-			run: Effect.map(
-				outbound('profiles.purge', () => purgeProfiles(env.APP_DB, { now })),
-				(purged) => {
-					result.profiles += purged.profiles
-					return false
-				},
+			counted(
+				'feature_flag_exposure_rollups',
+				pruneFeatureFlagExposuresForRetentionEffect(db, { now }),
+				(count) => (result.featureFlagExposureRollups += count),
 			),
-		},
-	]
-	const pending = new Set(tasks)
-	let pass = 0
-	while (pending.size > 0) {
-		if (pass > 0 && (yield* budget.reached)) {
-			result.timeBudgetExhausted = true
-			break
+			counted(
+				'credential_local_read_events',
+				deletedOnly('credentials.pruneLocalReadEvents', () =>
+					pruneLocalReadEvents({
+						db: env.APP_DB,
+						now,
+						batchSize: retentionDefaultBatchSize,
+					}),
+				),
+				(count) => (result.credentialLocalReadEvents += count),
+			),
+			counted(
+				'credential_raw_signing_events',
+				deletedOnly('credentials.pruneRawSigningEvents', () =>
+					pruneRawSigningEvents({
+						db: env.APP_DB,
+						now,
+						batchSize: retentionDefaultBatchSize,
+					}),
+				),
+				(count) => (result.credentialRawSigningEvents += count),
+			),
+			counted(
+				'audit_events',
+				pruneAuditEventsForRetentionEffect(auditDb, { now }),
+				(count) => (result.auditEvents += count),
+			),
+			counted(
+				'stripe_webhook_events',
+				pruneStripeWebhookEventsForRetentionEffect(db, { now }),
+				(count) => (result.stripeWebhookEvents += count),
+			),
+			counted(
+				'agent_package_conversation_uses',
+				pruneAgentPackageConversationUsesForRetentionEffect(db, { now }),
+				(count) => (result.agentPackageConversationUses += count),
+			),
+			{
+				table: 'profiles',
+				run: Effect.map(
+					outbound('profiles.purge', () => purgeProfiles(env.APP_DB, { now })),
+					(purged) => {
+						result.profiles += purged.profiles
+						return false
+					},
+				),
+			},
+		]
+		const pending = new Set(tasks)
+		let pass = 0
+		while (pending.size > 0) {
+			if (pass > 0 && (yield* budget.reached)) {
+				result.timeBudgetExhausted = true
+				break
+			}
+			for (const task of tasks) {
+				if (!pending.has(task)) continue
+				if (pass > 0 && (yield* budget.reached)) break
+				const hasMore = yield* task.run.pipe(
+					Effect.withSpan('Retention.batch', {
+						attributes: { table: task.table },
+					}),
+				)
+				result.batchesPerTable[task.table] =
+					(result.batchesPerTable[task.table] ?? 0) + 1
+				if (!hasMore) pending.delete(task)
+			}
+			pass += 1
 		}
-		for (const task of tasks) {
-			if (!pending.has(task)) continue
-			if (pass > 0 && (yield* budget.reached)) break
-			const hasMore = yield* task.run.pipe(
-				Effect.withSpan('Retention.batch', { attributes: { table: task.table } }),
-			)
-			result.batchesPerTable[task.table] =
-				(result.batchesPerTable[task.table] ?? 0) + 1
-			if (!hasMore) pending.delete(task)
-		}
-		pass += 1
-	}
-	yield* Effect.logInfo('retention-prune', JSON.stringify(result))
-	return result
-})
+		yield* Effect.logInfo('retention-prune', JSON.stringify(result))
+		return result
+	},
+)
 
-export function pruneMemorySuppressionsForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => pruneMemorySuppressionsForRetentionEffect(db, input))
+export function pruneMemorySuppressionsForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneMemorySuppressionsForRetentionEffect(db, input),
+	)
 }
-export function prunePlatformFeedbackForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => prunePlatformFeedbackForRetentionEffect(db, input))
+export function prunePlatformFeedbackForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		prunePlatformFeedbackForRetentionEffect(db, input),
+	)
 }
 export function prunePublishedBundleArtifactsForRetention(
 	input: { env: ArtifactEnv } & BatchOptions,
@@ -836,17 +860,33 @@ export function prunePublishedBundleArtifactsForRetention(
 		prunePublishedBundleArtifactsForRetentionEffect(input.env, db, input),
 	)
 }
-export function pruneUsageRollupsForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => pruneUsageRollupsForRetentionEffect(db, input))
+export function pruneUsageRollupsForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneUsageRollupsForRetentionEffect(db, input),
+	)
 }
-export function pruneFeatureFlagExposuresForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => pruneFeatureFlagExposuresForRetentionEffect(db, input))
+export function pruneFeatureFlagExposuresForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneFeatureFlagExposuresForRetentionEffect(db, input),
+	)
 }
-export function pruneAuditEventsForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => pruneAuditEventsForRetentionEffect(db, input))
+export function pruneAuditEventsForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneAuditEventsForRetentionEffect(db, input),
+	)
 }
-export function pruneStripeWebhookEventsForRetention(input: { db: D1Database } & BatchOptions) {
-	return runD1Promise(input.db, (db) => pruneStripeWebhookEventsForRetentionEffect(db, input))
+export function pruneStripeWebhookEventsForRetention(
+	input: { db: D1Database } & BatchOptions,
+) {
+	return runD1Promise(input.db, (db) =>
+		pruneStripeWebhookEventsForRetentionEffect(db, input),
+	)
 }
 export function pruneAgentPackageConversationUsesForRetention(
 	input: { db: D1Database } & BatchOptions,

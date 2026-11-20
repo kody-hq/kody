@@ -85,31 +85,29 @@ export class UserMeter extends Context.Service<
 					: Effect.fail(unavailable)
 			return UserMeter.of({
 				configured,
-				markDeleting: Effect.fn('UserMeter.markDeleting')(function* (
-					ownerId,
-					deletingAt,
-				) {
-					return yield* call(
-						'UserMeter.markDeleting',
-						ownerId,
-						MarkDeletingResponse,
-						(meter) => meter.markDeleting({ deletingAt }),
-					)
-				}),
-				clearDeleting: Effect.fn('UserMeter.clearDeleting')(function* (
-					ownerId,
-					expectedDeletingAt,
-				) {
-					return yield* call(
-						'UserMeter.clearDeleting',
-						ownerId,
-						ClearDeletingResponse,
-						(meter) =>
-							meter.clearDeleting(
-								expectedDeletingAt ? { expectedDeletingAt } : undefined,
-							),
-					)
-				}),
+				markDeleting: Effect.fn('UserMeter.markDeleting')(
+					function* (ownerId, deletingAt) {
+						return yield* call(
+							'UserMeter.markDeleting',
+							ownerId,
+							MarkDeletingResponse,
+							(meter) => meter.markDeleting({ deletingAt }),
+						)
+					},
+				),
+				clearDeleting: Effect.fn('UserMeter.clearDeleting')(
+					function* (ownerId, expectedDeletingAt) {
+						return yield* call(
+							'UserMeter.clearDeleting',
+							ownerId,
+							ClearDeletingResponse,
+							(meter) =>
+								meter.clearDeleting(
+									expectedDeletingAt ? { expectedDeletingAt } : undefined,
+								),
+						)
+					},
+				),
 				purge: Effect.fn('UserMeter.purge')(function* (ownerId) {
 					yield* call('UserMeter.purge', ownerId, Schema.Unknown, (meter) =>
 						meter.purge(),

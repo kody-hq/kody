@@ -24,7 +24,8 @@ const finishLegacyUserDeletion = vi.fn(
 const hardPurgeSoftDeletedUser = vi.fn()
 
 vi.mock('./hard-purge.ts', async (importOriginal) => {
-	const { promiseDouble } = await import('#worker/test-support/effect-bridge.ts')
+	const { promiseDouble } =
+		await import('#worker/test-support/effect-bridge.ts')
 	const purgeOrg = promiseDouble((input: { env: Env; orgId: string }) =>
 		hardPurgeOrg(input),
 	)

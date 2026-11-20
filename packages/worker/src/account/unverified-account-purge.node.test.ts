@@ -247,8 +247,17 @@ function spyOnDeleteUserAccount() {
 
 function spyOnAbortAccountDeleting() {
 	const double = vi.fn(
-		(input: Parameters<typeof DeletionFence.abortAccountDeleting>[0]) =>
-			DeletionFence.deletionFenceEdges.abortAccountDeleting(input),
+		({
+			env,
+			...input
+		}: Parameters<typeof DeletionFence.abortAccountDeleting>[0] & {
+			env: Env
+		}) =>
+			DeletionFence.deletionFenceEdges.abortAccountDeleting({
+				...input,
+				env,
+				db: env.APP_DB,
+			}),
 	)
 	vi.spyOn(DeletionFence, 'abortAccountDeleting').mockImplementation(
 		promiseDouble(double) as never,

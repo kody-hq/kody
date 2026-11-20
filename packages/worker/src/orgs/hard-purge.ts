@@ -63,7 +63,9 @@ export class LegacyUserDeletionNotPendingError extends Schema.TaggedError<Legacy
 	{ message: Schema.String },
 ) {
 	constructor(stableUserId: OwnerId, reason: string) {
-		super({ message: `legacy_user_deletion_not_pending:${reason}:${stableUserId}` })
+		super({
+			message: `legacy_user_deletion_not_pending:${reason}:${stableUserId}`,
+		})
 	}
 }
 
@@ -125,18 +127,18 @@ const personalOrgHardPurgeRelation = Effect.fn('HardPurge.personalOrgRelation')(
  * them. Wipe and revoke them while the app and its client secret exist; the
  * inventory deletes any the wipe cannot see (tombstoned rows).
  */
-const wipeOrgPinnedConnections = Effect.fn('HardPurge.wipeOrgPinnedConnections')(
-	function* (orgId: OwnerId) {
-		const env = yield* WorkerEnv
-		yield* outbound('pinned_connections.wipeForOrg', () =>
-			wipePinnedConnectionsForOrg({
-				env,
-				orgId,
-				audit: optionalOrgAuditWriter(env, null),
-			}),
-		)
-	},
-)
+const wipeOrgPinnedConnections = Effect.fn(
+	'HardPurge.wipeOrgPinnedConnections',
+)(function* (orgId: OwnerId) {
+	const env = yield* WorkerEnv
+	yield* outbound('pinned_connections.wipeForOrg', () =>
+		wipePinnedConnectionsForOrg({
+			env,
+			orgId,
+			audit: optionalOrgAuditWriter(env, null),
+		}),
+	)
+})
 
 const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
 	orgId: OwnerId,
@@ -159,7 +161,10 @@ const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
 		)
 	}
 	const { changes } = yield* retryTransientD1(
-		db.run('hard_purge.delete_org', sql(`DELETE FROM orgs WHERE id = ?`, orgId)),
+		db.run(
+			'hard_purge.delete_org',
+			sql(`DELETE FROM orgs WHERE id = ?`, orgId),
+		),
 	)
 	if (changes === 0) {
 		return yield* new HardPurgeRowError({
@@ -181,22 +186,22 @@ const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
  * person), wipe pinned connections, delete the owner's out-of-band surfaces,
  * then the owner-scoped D1 rows.
  */
-export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(function* (
-	orgId: OwnerId,
-) {
-	yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
-	const relation = yield* personalOrgHardPurgeRelation(orgId)
-	if (relation === 'live_person') {
-		return yield* new PersonalOrgHardPurgeBlockedForLiveUserError(orgId)
-	}
-	if (relation === 'soft_deleted_person') {
-		return yield* new PersonalOrgPurgesWithPersonError(orgId)
-	}
-	yield* wipeOrgPinnedConnections(orgId)
-	yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
-	yield* deleteOrgRows(orgId, 'team')
-	yield* Effect.logInfo('org hard purged')
-})
+export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(
+	function* (orgId: OwnerId) {
+		yield* Effect.annotateCurrentSpan('kody.org_id', orgId)
+		const relation = yield* personalOrgHardPurgeRelation(orgId)
+		if (relation === 'live_person') {
+			return yield* new PersonalOrgHardPurgeBlockedForLiveUserError(orgId)
+		}
+		if (relation === 'soft_deleted_person') {
+			return yield* new PersonalOrgPurgesWithPersonError(orgId)
+		}
+		yield* wipeOrgPinnedConnections(orgId)
+		yield* purgeOwnerOutOfBandSurfacesEffect({ ownerId: orgId })
+		yield* deleteOrgRows(orgId, 'team')
+		yield* Effect.logInfo('org hard purged')
+	},
+)
 
 /**
  * Hard-delete a person account and then its personal org. Account deletion
@@ -204,34 +209,34 @@ export const hardPurgeOrgEffect = Effect.fn('HardPurge.hardPurgeOrg')(function* 
  * exist while it cancels subscriptions and deletes the customer. Pinned
  * connections are wiped first, while the owner's OAuth apps still exist.
  */
-const purgePersonAndPersonalOrg = Effect.fn('HardPurge.purgePersonAndPersonalOrg')(
-	function* (input: {
-		readonly dbUserId: number
-		readonly stableUserId: OwnerId
-		readonly storageOwnerId: OwnerId
-		readonly personUserId: string
-		readonly personalOrgId: Option.Option<OwnerId>
-		readonly purgeSoftDeleted?: boolean
-	}) {
-		const env = yield* WorkerEnv
-		if (Option.isSome(input.personalOrgId)) {
-			yield* wipeOrgPinnedConnections(input.personalOrgId.value)
-		}
-		yield* outbound('org_audit.redactActorIdsForDeletedUser', () =>
-			redactOrgAuditActorIdsForDeletedUser({ env, userId: input.stableUserId }),
-		)
-		const result = yield* deleteUserAccountEffect({
-			dbUserId: input.dbUserId,
-			mcpUserId: input.storageOwnerId,
-			personUserId: input.personUserId,
-			purgeSoftDeleted: input.purgeSoftDeleted,
-		})
-		if (Option.isSome(input.personalOrgId)) {
-			yield* deleteOrgRows(input.personalOrgId.value, 'personal')
-		}
-		return result
-	},
-)
+const purgePersonAndPersonalOrg = Effect.fn(
+	'HardPurge.purgePersonAndPersonalOrg',
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+	readonly storageOwnerId: OwnerId
+	readonly personUserId: string
+	readonly personalOrgId: Option.Option<OwnerId>
+	readonly purgeSoftDeleted?: boolean
+}) {
+	const env = yield* WorkerEnv
+	if (Option.isSome(input.personalOrgId)) {
+		yield* wipeOrgPinnedConnections(input.personalOrgId.value)
+	}
+	yield* outbound('org_audit.redactActorIdsForDeletedUser', () =>
+		redactOrgAuditActorIdsForDeletedUser({ env, userId: input.stableUserId }),
+	)
+	const result = yield* deleteUserAccountEffect({
+		dbUserId: input.dbUserId,
+		mcpUserId: input.storageOwnerId,
+		personUserId: input.personUserId,
+		purgeSoftDeleted: input.purgeSoftDeleted,
+	})
+	if (Option.isSome(input.personalOrgId)) {
+		yield* deleteOrgRows(input.personalOrgId.value, 'personal')
+	}
+	return result
+})
 
 const softDeletedOrgId = Effect.fn('HardPurge.softDeletedOrgId')(function* (
 	orgId: OwnerId,
@@ -250,7 +255,10 @@ const softDeletedOrgId = Effect.fn('HardPurge.softDeletedOrgId')(function* (
 /** Hard-delete a soft-deleted person and, in the same pass, their personal org. */
 export const hardPurgeSoftDeletedUserEffect = Effect.fn(
 	'HardPurge.hardPurgeSoftDeletedUser',
-)(function* (input: { readonly dbUserId: number; readonly stableUserId: OwnerId }) {
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+}) {
 	const db = yield* D1
 	const audit = yield* AuditLog
 	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
@@ -308,7 +316,10 @@ export const hardPurgeSoftDeletedUserEffect = Effect.fn(
  */
 export const finishLegacyUserDeletionEffect = Effect.fn(
 	'HardPurge.finishLegacyUserDeletion',
-)(function* (input: { readonly dbUserId: number; readonly stableUserId: OwnerId }) {
+)(function* (input: {
+	readonly dbUserId: number
+	readonly stableUserId: OwnerId
+}) {
 	const db = yield* D1
 	const audit = yield* AuditLog
 	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
@@ -392,7 +403,10 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 	return { alreadyGone: false }
 })
 
-export function hardPurgeOrg(input: { env: Env; orgId: OwnerId }): Promise<void> {
+export function hardPurgeOrg(input: {
+	env: Env
+	orgId: OwnerId
+}): Promise<void> {
 	return runSlicePromise(input.env, hardPurgeOrgEffect(input.orgId))
 }
 
