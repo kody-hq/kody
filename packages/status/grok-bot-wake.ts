@@ -8,7 +8,7 @@ import { statusComponents, type StatusComponentId } from './status-types.ts'
  * every woken incident resolves.
  */
 
-export const grokBotWakeTimeoutMs = 5000
+const grokBotWakeTimeoutMs = 5000
 export const defaultGrokBotWakeDailyLimit = 12
 
 export type WakeIncident = {
