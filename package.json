@@ -247,5 +247,8 @@
     "sharp": true,
     "unrs-resolver": true,
     "workerd": true
+  },
+  "dependencies": {
+    "effect": "4.1.4"
   }
 }

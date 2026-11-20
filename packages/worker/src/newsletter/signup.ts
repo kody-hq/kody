@@ -1,20 +1,32 @@
+import { Effect } from 'effect'
 import { toHex } from '@kody-internal/shared/hex.ts'
-import {
-	auditDatabaseFromEnv,
-	getRequestIp,
-	logAuditEvent,
-} from '#worker/audit-log.ts'
+import { getRequestIp } from '#worker/audit-log.ts'
 import { renderTransactionalEmail } from '#app/email/template.ts'
-import { resolveTransactionalEmailConfig } from '#app/email/sender-config.ts'
-import { sendNewsletterConfirmationEmail } from '#worker/email/system-outbound.ts'
 import { sqlSourcesOf } from '@kody-internal/shared/state-machine.ts'
-import { checkPublicFormProtection } from '#app/public-form-protection.ts'
 import { normalizeAddrSpec } from '#worker/email/address.ts'
-import { recordWhatsNewConsentChange } from '#worker/newsletter/consent-outbox.ts'
+import { recordConsentChange } from '#worker/newsletter/consent-outbox.ts'
 import { newsletterSignupState } from '#worker/newsletter/signup-state.ts'
 import { normalizeEmail } from '#worker/identity/normalize-email.ts'
-import { checkRateLimit, type RateLimitConfig } from '#worker/rate-limit.ts'
+import type { RateLimitConfig } from '#worker/rate-limit.ts'
 import { honeypotFieldName } from '#universal/public-form-protection.ts'
+import {
+	type DatabaseError,
+	EmailUnconfigured,
+	InvalidEmail,
+	InvalidLink,
+	IpRateLimited,
+	type VerificationFailed,
+	type VerificationUnavailable,
+} from './errors.ts'
+import {
+	AuditLog,
+	ConfirmationMailer,
+	HumanVerification,
+	NewsletterDb,
+	RateLimiter,
+	newsletterLayer,
+	type NewsletterEnv,
+} from './services.ts'
 
 /** Sign-up requests per IP address. */
 export const newsletterSignupIpRateLimit: RateLimitConfig = {
@@ -45,22 +57,19 @@ export type NewsletterSignupResult =
 				| 'verification_failed'
 	  }
 
-type SignupEnv = Parameters<typeof sendNewsletterConfirmationEmail>[0]['env'] &
-	Parameters<typeof resolveTransactionalEmailConfig>[0]['env'] &
-	Parameters<typeof auditDatabaseFromEnv>[0] &
-	Parameters<typeof checkPublicFormProtection>[0]['env']
+export type NewsletterConfirmResult =
+	| { ok: true }
+	| { ok: false; error: 'invalid_link' }
 
-function randomHex(bytes: number) {
-	return toHex(crypto.getRandomValues(new Uint8Array(bytes)))
-}
+type WaitUntil = (promise: Promise<unknown>) => void
 
-async function hashToken(token: string) {
-	const digest = await crypto.subtle.digest(
-		'SHA-256',
-		new TextEncoder().encode(token),
-	)
-	return toHex(new Uint8Array(digest))
-}
+const randomHex = (bytes: number) =>
+	Effect.sync(() => toHex(crypto.getRandomValues(new Uint8Array(bytes))))
+
+const hashToken = (token: string) =>
+	Effect.promise(() =>
+		crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)),
+	).pipe(Effect.map((digest) => toHex(new Uint8Array(digest))))
 
 export function buildNewsletterConfirmEmail(input: {
 	appBaseUrl: string
@@ -82,125 +91,138 @@ export function buildNewsletterConfirmEmail(input: {
 	})
 }
 
+/** Every way a sign-up request ends without a typed failure. */
+type SignupAccepted =
+	| { reason: 'honeypot' }
+	| { reason: 'already_subscribed'; email: string }
+	| { reason: 'email_rate_limited'; email: string }
+	| { reason: 'send_failed'; email: string }
+	| { reason: 'confirmation_sent'; email: string }
+
+type SignupRejected =
+	| InvalidEmail
+	| IpRateLimited
+	| VerificationFailed
+	| VerificationUnavailable
+	| EmailUnconfigured
+
+function signupAuditEntry(
+	outcome: SignupAccepted | SignupRejected,
+): [
+	result: 'success' | 'failure' | 'rate_limited',
+	reason: string,
+	email?: string,
+] {
+	if ('_tag' in outcome) {
+		switch (outcome._tag) {
+			case 'InvalidEmail':
+				return ['failure', 'invalid_email']
+			case 'IpRateLimited':
+				return ['rate_limited', 'ip']
+			case 'VerificationFailed':
+				return ['failure', 'turnstile']
+			case 'VerificationUnavailable':
+				return ['failure', 'turnstile_unconfigured']
+			case 'EmailUnconfigured':
+				return ['failure', 'email_unconfigured', outcome.email]
+		}
+	}
+	switch (outcome.reason) {
+		case 'honeypot':
+			return ['failure', 'honeypot']
+		case 'email_rate_limited':
+			return ['rate_limited', 'email', outcome.email]
+		case 'send_failed':
+			return ['failure', 'send_failed', outcome.email]
+		case 'already_subscribed':
+		case 'confirmation_sent':
+			return ['success', outcome.reason, outcome.email]
+	}
+}
+
 /**
  * Handle a public sign-up request. Nothing joins the newsletter list here: the
  * address only gets a confirmation link. The result is the same whether the
  * address is new, pending, already subscribed, or throttled per address, so the
  * form cannot be used to learn who is subscribed.
  */
-export async function requestNewsletterSignup(input: {
-	env: SignupEnv
-	request: Request
-	form: Record<string, unknown>
-	now?: Date
-	waitUntil?: (promise: Promise<unknown>) => void
-}): Promise<NewsletterSignupResult> {
-	const { env, request } = input
-	const db = env.APP_DB
-	const ip = getRequestIp(request) ?? undefined
-	const audit = (
-		result: 'success' | 'failure' | 'rate_limited',
-		reason: string,
-		email?: string,
-	) =>
-		void logAuditEvent({
-			db: auditDatabaseFromEnv(env),
-			category: 'account',
-			action: 'newsletter_signup_request',
-			result,
-			ip,
-			path: '/newsletter',
-			reason,
-			email,
-		})
+export const newsletterSignup = Effect.fn('newsletterSignup')(
+	function* (input: {
+		request: Request
+		form: Record<string, unknown>
+		now: Date
+	}): Effect.fn.Return<
+		SignupAccepted,
+		SignupRejected | DatabaseError,
+		| NewsletterDb
+		| RateLimiter
+		| HumanVerification
+		| ConfirmationMailer
+		| AuditLog
+	> {
+		const db = yield* NewsletterDb
+		const limiter = yield* RateLimiter
+		const ip = getRequestIp(input.request) ?? 'unknown'
 
-	// Bots that fill every field get the normal success page and no email.
-	const trap = input.form[honeypotFieldName]
-	if (typeof trap === 'string' && trap.trim()) {
-		audit('failure', 'honeypot')
-		return { ok: true }
-	}
+		// Bots that fill every field get the normal success page and no email.
+		const trap = input.form[honeypotFieldName]
+		if (typeof trap === 'string' && trap.trim()) return { reason: 'honeypot' }
 
-	const ipLimit = await checkRateLimit(
-		db,
-		`newsletter-signup:ip:${ip ?? 'unknown'}`,
-		newsletterSignupIpRateLimit,
-	)
-	if (!ipLimit.allowed) {
-		audit('rate_limited', 'ip')
-		return { ok: false, error: 'rate_limited' }
-	}
-
-	// Human verification comes before any row or email exists, so a failed
-	// or missing Turnstile token never produces a confirmation email.
-	const protection = await checkPublicFormProtection({
-		env,
-		request,
-		body: input.form,
-	})
-	if (!protection.ok) {
-		const unavailable = protection.status === 503
-		audit('failure', unavailable ? 'turnstile_unconfigured' : 'turnstile')
-		return {
-			ok: false,
-			error: unavailable ? 'unavailable' : 'verification_failed',
+		if (
+			!(yield* limiter.allow(
+				`newsletter-signup:ip:${ip}`,
+				newsletterSignupIpRateLimit,
+			))
+		) {
+			return yield* new IpRateLimited()
 		}
-	}
 
-	const rawEmail = input.form.email
-	const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : ''
-	// The sender's own address check has the last word: an address it would
-	// refuse must fail here, not report a link that is never sent.
-	if (
-		!email ||
-		email.length > 254 ||
-		!emailPattern.test(email) ||
-		!normalizeAddrSpec(email)
-	) {
-		audit('failure', 'invalid_email')
-		return { ok: false, error: 'invalid_email' }
-	}
+		// Human verification comes before any row or email exists, so a failed
+		// or missing Turnstile token never produces a confirmation email.
+		yield* (yield* HumanVerification).verify(input)
 
-	const subscribed = await db
-		.prepare(
+		const rawEmail = input.form.email
+		const email = typeof rawEmail === 'string' ? normalizeEmail(rawEmail) : ''
+		// The sender's own address check has the last word: an address it would
+		// refuse must fail here, not report a link that is never sent.
+		if (
+			!email ||
+			email.length > 254 ||
+			!emailPattern.test(email) ||
+			!normalizeAddrSpec(email)
+		) {
+			return yield* new InvalidEmail()
+		}
+
+		const subscribed = yield* db.first<{ found: number }>(
 			`SELECT 1 AS found FROM newsletter_signups WHERE email = ? AND status = 'confirmed'
 			 UNION ALL
 			 SELECT 1 AS found FROM users
 			 WHERE email = ? AND deleted_at IS NULL AND deleting_at IS NULL
 				AND email_verified_at IS NOT NULL AND whats_new_email_opt_in = 1
 			 LIMIT 1`,
+			email,
+			email,
 		)
-		.bind(email, email)
-		.first<{ found: number }>()
-	if (subscribed) {
-		audit('success', 'already_subscribed', email)
-		return { ok: true }
-	}
+		if (subscribed) return { reason: 'already_subscribed', email }
 
-	const emailLimit = await checkRateLimit(
-		db,
-		`newsletter-signup:email:${await hashToken(email)}`,
-		newsletterSignupEmailRateLimit,
-	)
-	if (!emailLimit.allowed) {
-		audit('rate_limited', 'email', email)
-		return { ok: true }
-	}
+		if (
+			!(yield* limiter.allow(
+				`newsletter-signup:email:${yield* hashToken(email)}`,
+				newsletterSignupEmailRateLimit,
+			))
+		) {
+			return { reason: 'email_rate_limited', email }
+		}
 
-	const config = resolveTransactionalEmailConfig({
-		env,
-		requestUrl: env.WRANGLER_IS_LOCAL_DEV === 'true' ? request.url : undefined,
-	})
-	if (!config) {
-		audit('failure', 'email_unconfigured', email)
-		return { ok: false, error: 'unavailable' }
-	}
+		const mailer = yield* ConfirmationMailer
+		const appBaseUrl = yield* mailer
+			.appBaseUrl(input.request)
+			.pipe(Effect.mapError(() => new EmailUnconfigured({ email })))
 
-	const now = input.now ?? new Date()
-	const token = randomHex(32)
-	const nowIso = now.toISOString()
-	await db
-		.prepare(
+		const token = yield* randomHex(32)
+		const nowIso = input.now.toISOString()
+		yield* db.run(
 			`INSERT INTO newsletter_signups (stable_id, email, token_hash, token_expires_at, requested_at, updated_at)
 			 VALUES (?, ?, ?, ?, ?, ?)
 			 ON CONFLICT(email) DO UPDATE SET
@@ -208,82 +230,99 @@ export async function requestNewsletterSignup(input: {
 				token_expires_at = excluded.token_expires_at,
 				requested_at = excluded.requested_at,
 				updated_at = excluded.updated_at`,
-		)
-		.bind(
-			randomHex(32),
+			yield* randomHex(32),
 			email,
-			await hashToken(token),
-			now.getTime() + newsletterConfirmTokenExpiryMs,
+			yield* hashToken(token),
+			input.now.getTime() + newsletterConfirmTokenExpiryMs,
 			nowIso,
 			nowIso,
 		)
-		.run()
 
-	const confirmUrl = new URL('/newsletter/confirm', config.appBaseUrl)
-	confirmUrl.searchParams.set('token', token)
-	const message = buildNewsletterConfirmEmail({
-		appBaseUrl: config.appBaseUrl,
-		confirmUrl: confirmUrl.toString(),
-	})
-	try {
-		await sendNewsletterConfirmationEmail({
-			env,
-			to: email,
-			subject: message.subject,
-			html: message.html,
-			text: message.text,
-			now,
-			waitUntil: input.waitUntil,
+		const confirmUrl = new URL('/newsletter/confirm', appBaseUrl)
+		confirmUrl.searchParams.set('token', token)
+		const message = buildNewsletterConfirmEmail({
+			appBaseUrl,
+			confirmUrl: confirmUrl.toString(),
 		})
-	} catch (error) {
-		// A suppressed or rejected recipient looks like any other request, so
-		// the form does not reveal delivery state. Outages are reported.
-		console.warn(
-			'newsletter-signup-confirm-email-failed',
-			error instanceof Error ? error.message.replaceAll(email, '[email]') : '',
-		)
-		audit('failure', 'send_failed', email)
-		return { ok: true }
-	}
-	audit('success', 'confirmation_sent', email)
-	return { ok: true }
-}
-
-export type NewsletterConfirmResult =
-	| { ok: true }
-	| { ok: false; error: 'invalid_link' }
+		return yield* mailer
+			.send({
+				to: email,
+				subject: message.subject,
+				html: message.html,
+				text: message.text,
+				now: input.now,
+			})
+			.pipe(
+				Effect.as<SignupAccepted>({ reason: 'confirmation_sent', email }),
+				// A suppressed or rejected recipient looks like any other request,
+				// so the form does not reveal delivery state. Outages are reported.
+				Effect.catchTag('ConfirmationSendFailed', (failure) =>
+					Effect.sync((): SignupAccepted => {
+						console.warn(
+							'newsletter-signup-confirm-email-failed',
+							failure.cause instanceof Error
+								? failure.cause.message.replaceAll(email, '[email]')
+								: '',
+						)
+						return { reason: 'send_failed', email }
+					}),
+				),
+			)
+	},
+	// One audit row per request, whichever way it ended. Database errors are
+	// not audited; they reach the caller as failures.
+	(effect, input) =>
+		Effect.gen(function* () {
+			const audit = yield* AuditLog
+			const record = (outcome: SignupAccepted | SignupRejected) => {
+				const [result, reason, email] = signupAuditEntry(outcome)
+				return audit.record({
+					category: 'account',
+					action: 'newsletter_signup_request',
+					result,
+					ip: getRequestIp(input.request) ?? undefined,
+					path: '/newsletter',
+					reason,
+					email,
+				})
+			}
+			return yield* effect.pipe(
+				Effect.tap(record),
+				Effect.tapError((error) =>
+					error._tag === 'DatabaseError' ? Effect.void : record(error),
+				),
+			)
+		}),
+)
 
 /**
  * Confirm a sign-up from its emailed link. This is the only step that adds an
  * address to the newsletter list. Tokens are single use.
  */
-export async function confirmNewsletterSignup(input: {
-	env: Pick<SignupEnv, 'APP_DB'> &
-		Parameters<typeof auditDatabaseFromEnv>[0] &
-		Parameters<typeof recordWhatsNewConsentChange>[0]['env']
+export const confirmSignup = Effect.fn('confirmSignup')(function* (input: {
 	request: Request
 	token: string | null
-	now?: Date
-}): Promise<NewsletterConfirmResult> {
-	const db = input.env.APP_DB
-	const now = input.now ?? new Date()
-	const nowIso = now.toISOString()
+	now: Date
+}) {
+	const db = yield* NewsletterDb
+	const audit = yield* AuditLog
+	const nowIso = input.now.toISOString()
 	const ip = getRequestIp(input.request) ?? undefined
 	const token = input.token?.trim() ?? ''
 	const row = /^[a-f0-9]{64}$/.test(token)
-		? await db
-				.prepare(
-					`UPDATE newsletter_signups
-					 SET status = 'confirmed', source = 'newsletter_page', confirmed_at = ?, updated_at = ?, token_hash = NULL, token_expires_at = NULL
-					 WHERE token_hash = ? AND token_expires_at > ? AND status IN ${confirmGuard}
-					 RETURNING email, stable_id`,
-				)
-				.bind(nowIso, nowIso, await hashToken(token), now.getTime())
-				.first<{ email: string; stable_id: string }>()
+		? yield* db.first<{ email: string; stable_id: string }>(
+				`UPDATE newsletter_signups
+				 SET status = 'confirmed', source = 'newsletter_page', confirmed_at = ?, updated_at = ?, token_hash = NULL, token_expires_at = NULL
+				 WHERE token_hash = ? AND token_expires_at > ? AND status IN ${confirmGuard}
+				 RETURNING email, stable_id`,
+				nowIso,
+				nowIso,
+				yield* hashToken(token),
+				input.now.getTime(),
+			)
 		: null
 	if (!row) {
-		void logAuditEvent({
-			db: auditDatabaseFromEnv(input.env),
+		yield* audit.record({
 			category: 'account',
 			action: 'newsletter_signup_confirm',
 			result: 'failure',
@@ -291,29 +330,27 @@ export async function confirmNewsletterSignup(input: {
 			path: '/newsletter/confirm',
 			reason: 'invalid_link',
 		})
-		return { ok: false, error: 'invalid_link' }
+		return yield* new InvalidLink()
 	}
 	// An address that already has a verified account keeps its consent on the
 	// account, which is what account settings and exports read.
-	const account = await db
-		.prepare(
-			`UPDATE users SET whats_new_email_opt_in = 1, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = 'email_link'
-			 WHERE email = ? AND deleted_at IS NULL AND deleting_at IS NULL AND email_verified_at IS NOT NULL
-			 RETURNING stable_user_id`,
-		)
-		.bind(nowIso, row.email)
-		.first<{ stable_user_id: string }>()
+	const account = yield* db.first<{ stable_user_id: string }>(
+		`UPDATE users SET whats_new_email_opt_in = 1, whats_new_email_opt_in_updated_at = ?, whats_new_email_opt_in_source = 'email_link'
+		 WHERE email = ? AND deleted_at IS NULL AND deleting_at IS NULL AND email_verified_at IS NOT NULL
+		 RETURNING stable_user_id`,
+		nowIso,
+		row.email,
+	)
 	// The page already confirmed; telling subscribers never fails the confirm.
-	await recordWhatsNewConsentChange({
-		env: input.env,
+	// The type says so: recordConsentChange has `never` in its error channel.
+	yield* recordConsentChange({
 		stableUserId: account?.stable_user_id ?? row.stable_id,
 		optedIn: true,
 		source: 'newsletter_page',
 		occurredAt: nowIso,
-		now,
+		now: input.now,
 	})
-	void logAuditEvent({
-		db: auditDatabaseFromEnv(input.env),
+	yield* audit.record({
 		category: 'account',
 		action: 'newsletter_signup_confirm',
 		result: 'success',
@@ -321,5 +358,58 @@ export async function confirmNewsletterSignup(input: {
 		path: '/newsletter/confirm',
 		email: row.email,
 	})
-	return { ok: true }
+})
+
+/** Promise boundary for the Start route handler and tests. */
+export function requestNewsletterSignup(input: {
+	env: NewsletterEnv
+	request: Request
+	form: Record<string, unknown>
+	now?: Date
+	waitUntil?: WaitUntil
+}): Promise<NewsletterSignupResult> {
+	return newsletterSignup({
+		request: input.request,
+		form: input.form,
+		now: input.now ?? new Date(),
+	}).pipe(
+		Effect.as<NewsletterSignupResult>({ ok: true }),
+		Effect.catchTags({
+			InvalidEmail: () => fail('invalid_email'),
+			IpRateLimited: () => fail('rate_limited'),
+			VerificationFailed: () => fail('verification_failed'),
+			VerificationUnavailable: () => fail('unavailable'),
+			EmailUnconfigured: () => fail('unavailable'),
+		}),
+		Effect.provide(newsletterLayer(input.env, { waitUntil: input.waitUntil })),
+		Effect.runPromise,
+	)
+}
+
+const fail = (error: Extract<NewsletterSignupResult, { ok: false }>['error']) =>
+	Effect.succeed<NewsletterSignupResult>({ ok: false, error })
+
+/** Promise boundary for the Start route handler and tests. */
+export function confirmNewsletterSignup(input: {
+	env: NewsletterEnv
+	request: Request
+	token: string | null
+	now?: Date
+	waitUntil?: WaitUntil
+}): Promise<NewsletterConfirmResult> {
+	return confirmSignup({
+		request: input.request,
+		token: input.token,
+		now: input.now ?? new Date(),
+	}).pipe(
+		Effect.as<NewsletterConfirmResult>({ ok: true }),
+		Effect.catchTag('InvalidLink', () =>
+			Effect.succeed<NewsletterConfirmResult>({
+				ok: false,
+				error: 'invalid_link',
+			}),
+		),
+		Effect.provide(newsletterLayer(input.env, { waitUntil: input.waitUntil })),
+		Effect.runPromise,
+	)
 }
