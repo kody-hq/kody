@@ -6,7 +6,7 @@ import {
 	showPopoverPanel,
 } from '#client/popover-open.ts'
 import type { CSSObject } from '@emotion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useCloseOnNavigation } from './close-on-navigation.ts'
 import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
@@ -95,7 +95,14 @@ export function FeaturesMenu(props: Props) {
 			}
 		}, 180)
 	}
-	useEffect(() => () => clearTimeout(closeTimer.current), [])
+	const triggerRef = useCallback((node: HTMLButtonElement | null) => {
+		trigger.current = node
+		if (!node) return
+		return () => {
+			trigger.current = null
+			clearTimeout(closeTimer.current)
+		}
+	}, [])
 	const mobile = useRef<HTMLDetailsElement>(null)
 	const closeMenus = useCallback(() => {
 		clearTimeout(closeTimer.current)
@@ -181,7 +188,7 @@ export function FeaturesMenu(props: Props) {
 			}}
 		>
 			<button
-				ref={trigger}
+				ref={triggerRef}
 				onPointerDown={(event) => {
 					lastPointerType.current = event.pointerType
 				}}
