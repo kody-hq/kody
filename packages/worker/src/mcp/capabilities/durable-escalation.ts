@@ -10,10 +10,7 @@ import {
 	isDeadTerminalWorkflowStatus,
 	terminalWorkflowStatusValues,
 } from '#worker/package-runtime/workflow-statuses.ts'
-import {
-	findWorkflowProjectionByBindingIdempotencyKey,
-	releaseWorkflowProjectionIdempotencyKey,
-} from '#worker/run-records/service.ts'
+import { findWorkflowProjectionByBindingIdempotencyKey } from '#worker/run-records/service.ts'
 import { creatingWorkflowProjectionStatus } from '#worker/run-records/workflow-projection.ts'
 
 export type DurableEscalationHandle = {
@@ -156,7 +153,7 @@ export async function findAlreadyDispatchedWorkflowRunByIdempotencyKey(input: {
  * same `userId` used for RunLog projection lookup/create, so keys cannot
  * silently disagree with projection ownership. An active run for the key is
  * returned instead of a second one. A dead terminal run (errored, terminated,
- * cancelled) releases the key so the same operation can run again; set
+ * cancelled) is replaced by a fresh run derived from its id; set
  * `rerunComplete` when a complete run must not be replayed either (its result
  * depends on server state that may have changed since).
  */
@@ -236,14 +233,7 @@ export async function dispatchDurableRun(input: {
 			lineage: input.lineage,
 		})
 		if (mustRerun(workflow.status)) {
-			// Terminal failure (for example Durable Object reset mid-run) must
-			// not keep the semantic key. Release it and create once more so the
-			// same operation can re-dispatch; running and complete still dedupe.
-			await releaseWorkflowProjectionIdempotencyKey({
-				env: input.env as Env,
-				userId: input.userId,
-				id: workflow.id,
-			})
+			const replaced = workflow
 			workflow = await createDynamicCallableWorkflow({
 				env: input.env,
 				userId: input.userId,
@@ -252,12 +242,13 @@ export async function dispatchDurableRun(input: {
 				enqueuedCommit: input.enqueuedCommit ?? null,
 				body: createBody,
 				lineage: input.lineage,
+				rerunOf: replaced.id,
 			})
 			if (mustRerun(workflow.status)) {
 				return {
 					kind: 'failed',
 					error: new Error(
-						`A previous durable run "${workflow.id}" for this operation ended with status "${workflow.status}" and could not be re-dispatched after releasing its idempotency key.`,
+						`A previous durable run "${replaced.id}" for this operation ended with status "${replaced.status}", and its re-dispatched run "${workflow.id}" ended with status "${workflow.status}".`,
 					),
 				}
 			}
