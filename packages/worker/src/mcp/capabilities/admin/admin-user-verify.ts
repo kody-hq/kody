@@ -1,4 +1,4 @@
-import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewVerifiedAccount } from '#worker/newsletter/consent-outbox-edge.ts'
 import { z } from 'zod'
 import {
 	AdminEmailVerificationError,

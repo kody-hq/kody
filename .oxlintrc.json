@@ -17,6 +17,15 @@
 			}
 		},
 		{
+			"files": ["**/*.test.ts"],
+			"rules": {
+				"vitest/no-standalone-expect": [
+					"warn",
+					{ "additionalTestBlockFunctions": ["it.effect", "it.live"] }
+				]
+			}
+		},
+		{
 			"files": ["packages/dev-runtime/test/**"],
 			"rules": {
 				"vitest/no-import-node-test": "off"

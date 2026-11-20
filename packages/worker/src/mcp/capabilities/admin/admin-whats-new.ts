@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { recordWhatsNewConsentChange } from '#worker/newsletter/consent-outbox.ts'
+import { recordWhatsNewConsentChange } from '#worker/newsletter/consent-outbox-edge.ts'
 import {
 	listWhatsNewDeliveryEvents,
 	listWhatsNewRecipients,

@@ -5,11 +5,7 @@ import {
 	isInboundDeliveryEffectsQueueBody,
 	parseInboundDeliveryEffectsQueueMessage,
 } from '#worker/email/inbound-effects-queue.ts'
-import {
-	deliverWhatsNewConsentOutboxRow,
-	isWhatsNewConsentOutboxQueueBody,
-	parseWhatsNewConsentOutboxQueueMessage,
-} from '#worker/newsletter/consent-outbox.ts'
+import { isWhatsNewConsentOutboxQueueBody } from '#worker/newsletter/consent-outbox-edge.ts'
 import {
 	claimPackageEventSlot,
 	releasePackageEventSlot,
@@ -20,7 +16,7 @@ import {
 	type PackageEventsDispatchQueueMessage,
 } from './dispatch-queue-producer.ts'
 
-const packageEventsDispatchRetryDelaySeconds = 30
+export const packageEventsDispatchRetryDelaySeconds = 30
 /** Matches this consumer's `max_retries` in wrangler.jsonc. */
 const packageEventsDispatchMaxRetries = 3
 
@@ -69,40 +65,17 @@ export async function handlePackageEventsDispatchQueue(
 	])
 }
 
-// One at a time and in order: two changes for one recipient must reach the
-// subscriber in the order they happened.
+// The consent consumer is the Effect slice; load it only for batches that
+// carry its messages so the Effect runtime stays off Worker startup.
 async function handleWhatsNewConsentOutboxQueueMessages(
 	messages: Array<Message<unknown>>,
 	env: Env,
 	ctx: ExecutionContext,
 ) {
-	for (const queueMessage of messages) {
-		const message = parseWhatsNewConsentOutboxQueueMessage(queueMessage.body)
-		if (!message) {
-			console.error('whats-new-consent-outbox-message-invalid', {
-				queueMessageId: queueMessage.id,
-			})
-			queueMessage.ack()
-			continue
-		}
-		try {
-			await deliverWhatsNewConsentOutboxRow({
-				env,
-				outboxId: message.outboxId,
-				waitUntil: (promise) => ctx.waitUntil(promise),
-			})
-			queueMessage.ack()
-		} catch (error) {
-			console.error('whats-new-consent-outbox-queue-processing-failed', {
-				queueMessageId: queueMessage.id,
-				outboxId: message.outboxId,
-				error,
-			})
-			queueMessage.retry({
-				delaySeconds: packageEventsDispatchRetryDelaySeconds,
-			})
-		}
-	}
+	if (messages.length === 0) return
+	const { handleWhatsNewConsentOutboxQueueMessages: handle } =
+		await import('#worker/newsletter/queue-consumer.ts')
+	await handle(messages, env, ctx, packageEventsDispatchRetryDelaySeconds)
 }
 
 async function handleInboundDeliveryEffectsQueueMessage(

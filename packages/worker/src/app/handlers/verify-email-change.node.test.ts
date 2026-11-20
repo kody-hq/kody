@@ -36,7 +36,7 @@ async function flushDeferredWork() {
 	await Promise.all(deferredWork.splice(0))
 }
 
-vi.mock('#worker/newsletter/consent-outbox.ts', () => ({
+vi.mock('#worker/newsletter/consent-outbox-edge.ts', () => ({
 	recordWhatsNewVerifiedAccount: mockRecordWhatsNewVerifiedAccount,
 }))
 
