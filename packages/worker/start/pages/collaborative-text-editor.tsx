@@ -1,11 +1,6 @@
 /** @jsxImportSource @emotion/react */
-import {
-	useCallback,
-	useEffect,
-	useLayoutEffect,
-	useRef,
-	useState,
-} from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as Y from 'yjs'
 import type {
 	CommentAnchor,
@@ -94,7 +89,7 @@ export function CollaborativeTextEditor({
 	const anchorKey = JSON.stringify(
 		threadAnchors.map(({ thread, offset }) => [thread.id, offset]),
 	)
-	useLayoutEffect(() => {
+	useLayoutMeasure(() => {
 		const surface = mirror.current
 		if (!surface) return
 		const anchors: [string, number][] = JSON.parse(anchorKey)

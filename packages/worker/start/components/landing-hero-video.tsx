@@ -1,12 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import {
-	useCallback,
-	useEffect,
-	useRef,
-	useState,
-	type CSSProperties,
-} from 'react'
+import { useCallback, useRef, useState, type CSSProperties } from 'react'
 import { YouTubeLightPlayer } from './youtube-light-player.tsx'
 import {
 	landingHeroChooserLabel,
@@ -109,22 +103,15 @@ export function LandingHeroVideo({
 		},
 		[videoCount],
 	)
-	useEffect(() => {
-		const node = scroller.current,
-			option = document.getElementById(id + '-video-' + activeIndex)
-		if (node && option)
-			node.scrollTo({
-				left: option.offsetLeft - (node.clientWidth - option.offsetWidth) / 2,
-				behavior: prefersReducedMotion() ? 'auto' : 'smooth',
-			})
-	}, [activeIndex, id])
-	useEffect(() => {
-		if (chosen)
-			document
-				.getElementById(playerId)
-				?.querySelector<HTMLIFrameElement>('iframe')
-				?.focus({ preventScroll: true })
-	}, [selectedIndex, chosen, playerId])
+	const playerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node && chosen && selectedIndex >= 0)
+				node
+					.querySelector<HTMLIFrameElement>('iframe')
+					?.focus({ preventScroll: true })
+		},
+		[selectedIndex, chosen],
+	)
 	function choose(index: number) {
 		if (index < 0 || index >= videos.length) return
 		setSelection({ index, chosen: true })
@@ -136,6 +123,7 @@ export function LandingHeroVideo({
 	return (
 		<div className="landing-hero-media">
 			<div
+				ref={playerRef}
 				id={playerId}
 				data-rise
 				style={{ '--rise': '1' } as CSSProperties}
@@ -179,6 +167,7 @@ export function LandingHeroVideo({
 					{videos.map((video, index) => (
 						<div
 							key={video.videoId}
+							ref={index === activeIndex ? centerInChooser : undefined}
 							id={optionId(index)}
 							role="option"
 							tabIndex={-1}
@@ -204,4 +193,13 @@ export function LandingHeroVideo({
 			) : null}
 		</div>
 	)
+}
+
+function centerInChooser(option: HTMLElement | null) {
+	const chooser = option?.parentElement
+	if (option && chooser)
+		chooser.scrollTo({
+			left: option.offsetLeft - (chooser.clientWidth - option.offsetWidth) / 2,
+			behavior: prefersReducedMotion() ? 'auto' : 'smooth',
+		})
 }

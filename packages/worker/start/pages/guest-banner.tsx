@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { useEffect, useState } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
 import { colors } from '#universal/styles/tokens.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 
@@ -33,12 +33,22 @@ export function formatGuestDate(iso: string) {
 }
 
 function useNow(intervalMs = 30_000) {
-	const [now, setNow] = useState(() => Date.now())
-	useEffect(() => {
-		const id = setInterval(() => setNow(Date.now()), intervalMs)
-		return () => clearInterval(id)
-	}, [intervalMs])
-	return now
+	const clock = useMemo(() => createClock(intervalMs), [intervalMs])
+	return useSyncExternalStore(clock.subscribe, clock.read, clock.read)
+}
+
+function createClock(intervalMs: number) {
+	let now = Date.now()
+	return {
+		read: () => now,
+		subscribe(notify: () => void) {
+			const id = setInterval(() => {
+				now = Date.now()
+				notify()
+			}, intervalMs)
+			return () => clearInterval(id)
+		},
+	}
 }
 
 function claimPath(claimUrl: string) {

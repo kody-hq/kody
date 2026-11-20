@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import {
 	createContext,
 	lazy,
@@ -414,10 +415,10 @@ export function WorkspacePageEditor({
 			window.removeEventListener('resize', update)
 		}
 	}, [editor, onComment, collaboration])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		editor?.setEditable(editable)
 	}, [editor, editable])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (
 			!collaboration &&
 			editor &&
