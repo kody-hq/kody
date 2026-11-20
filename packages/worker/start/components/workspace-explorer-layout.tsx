@@ -44,9 +44,10 @@ function read() {
 }
 function subscribe(listener: () => void) {
 	listeners.add(listener)
+	saveSidebarPreferences({ explorer: read() })
 	const storage = (event: StorageEvent) => {
 		if (event.key === key) {
-			read()
+			saveSidebarPreferences({ explorer: read() })
 			listener()
 		}
 	}
@@ -116,10 +117,6 @@ export function WorkspaceExplorerLayout({
 		subscribe,
 		read,
 		() => initial.explorer,
-	)
-	useEffect(
-		() => saveSidebarPreferences({ explorer: preferences }),
-		[preferences],
 	)
 	const responsive = useResponsiveSidebar(
 		preferences.hidden,

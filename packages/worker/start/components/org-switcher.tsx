@@ -14,8 +14,9 @@ import {
 	switcherRowTextCss,
 	type SwitcherRow,
 } from './switcher-menu.tsx'
-import { useEffect, useRef } from 'react'
-import { useLoaderData, useLocation } from '@tanstack/react-router'
+import { useCallback, useRef } from 'react'
+import { useLoaderData } from '@tanstack/react-router'
+import { useCloseOnNavigation } from './close-on-navigation.ts'
 import { workspaceHomeHref } from '#client/routes/account-rail.ts'
 import type { IconName } from './icon.tsx'
 import { UserAvatar } from './user-avatar.tsx'
@@ -306,11 +307,12 @@ export function AccountMenu(props: {
 }) {
 	const desktop = useDesktopMachine()
 	const menuActions = useRef<MenuActions>(null)
-	const href = useLocation({ select: (location) => location.href })
 	const {
 		shellLocation: { pathname },
 	} = useLoaderData({ from: '__root__' })
-	useEffect(() => menuActions.current?.close(), [href])
+	const closeOnNavigation = useCloseOnNavigation(
+		useCallback(() => menuActions.current?.close(), []),
+	)
 	const organizations = organizationsWithSignupFallback({
 		organizations: props.organizations ?? [],
 		username: props.username,
@@ -321,7 +323,7 @@ export function AccountMenu(props: {
 	})
 	const name = props.displayName.trim() || props.username
 	return (
-		<div css={orgSwitcherCss}>
+		<div ref={closeOnNavigation} css={orgSwitcherCss}>
 			<Menu actionsRef={menuActions}>
 				<MenuTrigger
 					id={`account-menu-${props.placement ?? 'header'}`}

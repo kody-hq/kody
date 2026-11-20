@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useParams } from '@tanstack/react-router'
 import { settleConnectionResources } from '../connection-resource-settlement.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
@@ -44,25 +44,28 @@ export function OrgAppMemberConnections(props: {
 	const appSlug = props.app.slug
 	const queryClient = useQueryClient()
 	const { actorKey } = useMatchedPageScope()
-	const [data, setData] = useState<OrgAppMemberConnectionsData | null>(null)
-	const [message, setMessage] = useState<string | null>(null)
+	const connections = useQuery({
+		queryKey: ['org-app-member-connections', orgSlug, appSlug],
+		queryFn: () =>
+			loadOrgAppMemberConnectionsFn({ data: { orgSlug: orgSlug!, appSlug } }),
+		enabled: Boolean(orgSlug),
+		retry: false,
+		refetchOnWindowFocus: false,
+	})
+	const data: OrgAppMemberConnectionsData | null = connections.data ?? null
+	const [actionMessage, setMessage] = useState<string | null>(null)
+	const message =
+		actionMessage ??
+		(connections.error
+			? connections.error instanceof Error
+				? connections.error.message
+				: 'Unable to load connections.'
+			: null)
 	const [armed, setArmed] = useState<string | null>(null)
 	const [revoking, setRevoking] = useState<string | null>(null)
-	const reload = useCallback(async () => {
-		if (!orgSlug) return
-		try {
-			setData(
-				await loadOrgAppMemberConnectionsFn({ data: { orgSlug, appSlug } }),
-			)
-		} catch (error) {
-			setMessage(
-				error instanceof Error ? error.message : 'Unable to load connections.',
-			)
-		}
-	}, [orgSlug, appSlug])
-	useEffect(() => {
-		void reload()
-	}, [reload])
+	async function reload() {
+		await connections.refetch()
+	}
 	if (!orgSlug || !data?.teamOrg) return null
 	if (!data.canConnectOwn && !data.own && !data.canManage) return null
 	const title = oauthAppTitle(props.app)

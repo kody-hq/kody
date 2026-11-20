@@ -163,18 +163,17 @@ function CollaborationView({
 	const video = useRef<HTMLMediaElement>(null)
 	const documentRoot = useRef<HTMLDivElement>(null)
 	const returnFocus = useRef<HTMLElement | null>(null)
-	useEffect(() => {
-		if (!closingComments) return
-		const timeout = window.setTimeout(
-			() => setClosingComments(false),
-			commentsSlideMs,
-		)
-		return () => window.clearTimeout(timeout)
-	}, [closingComments, open])
+	const closingTimer = useRef<number | undefined>(undefined)
 	function closeComments() {
-		setClosingComments(
-			!window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-		)
+		const animate = !window.matchMedia('(prefers-reduced-motion: reduce)')
+			.matches
+		setClosingComments(animate)
+		window.clearTimeout(closingTimer.current)
+		if (animate)
+			closingTimer.current = window.setTimeout(
+				() => setClosingComments(false),
+				commentsSlideMs,
+			)
 		setOpen(false)
 		setComposing(false)
 		setActive(null)

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Menu, MenuTrigger, type MenuActions } from './menu.tsx'
-import { useLocation } from '@tanstack/react-router'
+import { useCloseOnNavigation } from './close-on-navigation.ts'
 import { workspaceSwitchHref } from '#client/routes/account-rail.ts'
 import {
 	SwitcherPopup,
@@ -147,9 +147,10 @@ export function WorkspaceSwitcher(
 	props: WorkspaceSwitcherData & { placement: WorkspaceSwitcherPlacement },
 ) {
 	const menuActions = useRef<MenuActions>(null)
-	const href = useLocation({ select: (location) => location.href })
 	const trigger = useRef<HTMLButtonElement>(null)
-	useEffect(() => menuActions.current?.close(), [href, props.placement])
+	const closeOnNavigation = useCloseOnNavigation(
+		useCallback(() => menuActions.current?.close(), []),
+	)
 	useEffect(() => {
 		const drawer = trigger.current?.closest('details')
 		if (!drawer) return
@@ -169,8 +170,8 @@ export function WorkspaceSwitcher(
 		: null
 	const label = identity?.handle ?? `@${props.currentSlug}`
 	return (
-		<div data-account-nav-heading css={headingCss}>
-			<Menu actionsRef={menuActions}>
+		<div ref={closeOnNavigation} data-account-nav-heading css={headingCss}>
+			<Menu key={props.placement} actionsRef={menuActions}>
 				<MenuTrigger
 					id={triggerTestId(placement)}
 					ref={trigger}

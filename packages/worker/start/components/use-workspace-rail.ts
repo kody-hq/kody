@@ -42,8 +42,12 @@ function read() {
 }
 function subscribe(listener: () => void) {
 	listeners.add(listener)
+	saveSidebarPreferences({ mode: read() })
 	const storage = (event: StorageEvent) => {
-		if (event.key === key) listener()
+		if (event.key === key) {
+			saveSidebarPreferences({ mode: read() })
+			listener()
+		}
 	}
 	window.addEventListener('storage', storage)
 	return () => {
@@ -54,7 +58,6 @@ function subscribe(listener: () => void) {
 export function useWorkspaceRail() {
 	const initial = useSidebarPreferences()
 	const mode = useSyncExternalStore(subscribe, read, () => initial.mode)
-	useEffect(() => saveSidebarPreferences({ mode }), [mode])
 	const responsive = useResponsiveSidebar(
 		mode === 'compact',
 		mode === 'show' ? '(max-width: 599px)' : '(max-width: 1200px)',

@@ -1,7 +1,10 @@
 /** @jsxImportSource @emotion/react */
-import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import {
+	closeDetails,
+	useCloseOnNavigation,
+} from '../components/close-on-navigation.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { SiteLink } from '../components/site-link.tsx'
 import { renderIcon, type IconName } from '../components/icon.tsx'
 import { colors, transitions } from '#universal/styles/tokens.ts'
@@ -243,12 +246,7 @@ function renderAccountNavLinks(
 }
 
 export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
-	const mobileMenu = useRef<HTMLDetailsElement>(null)
-
-	const href = useMatchedPageScope().pageLocation.href
-	useEffect(() => {
-		if (mobileMenu.current) mobileMenu.current.open = false
-	}, [href])
+	const closeOnNavigation = useCloseOnNavigation(closeDetails)
 	{
 		const current = props.groups
 			.flatMap((group) => group.items)
@@ -299,7 +297,7 @@ export function AccountManagementLinkNav(props: AccountManagementLinkNavProps) {
 						{renderRailGroups(props.groups, accountNavLinkCss)}
 					</div>
 				</nav>
-				<details css={accountMobileMenuCss} ref={mobileMenu}>
+				<details css={accountMobileMenuCss} ref={closeOnNavigation}>
 					<summary>
 						{renderIcon('menu', { size: '1.05em' })}
 						<span>

@@ -1,7 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Dialog } from '../components/dialog.tsx'
 import { Tab, TabList, TabPanel, Tabs } from '../components/tabs.tsx'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { colors } from '#universal/styles/tokens.ts'
 import {
@@ -210,7 +210,6 @@ export default function FilePermissionsPanel({
 	const [copied, setCopied] = useState('')
 	const [tab, setTab] = useState<'sharing' | 'details'>('sharing')
 	const [confirmRotate, setConfirmRotate] = useState(false)
-	useEffect(() => {}, [])
 	async function mutate(work: () => Promise<unknown>) {
 		if (lock.current) return
 		lock.current = true

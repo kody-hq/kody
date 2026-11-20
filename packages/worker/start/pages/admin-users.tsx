@@ -4,6 +4,7 @@ import { LoadingIndicator } from '../components/loading-indicator.tsx'
 import { useActorRef } from '@xstate/react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
+import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { isAdminUserVerificationFilter } from '#universal/email-verification-delivery.ts'
 import {
 	useInfiniteQuery,
@@ -76,14 +77,7 @@ export function AdminUsersPage(props: {
 	const router = useRouter()
 	const { pageLocation } = useMatchedPageScope()
 	const client = useQueryClient()
-	const activeScope = useRef<object | null>(null)
-	useEffect(() => {
-		const scope = {}
-		activeScope.current = scope
-		return () => {
-			if (activeScope.current === scope) activeScope.current = null
-		}
-	}, [actorKey, props.currentHref])
+	const captureScope = useSubmitterScope()
 	const sentinelRef = useRef<HTMLDivElement | null>(null)
 	const availableRoles = props.payload.availableRoles
 	const selectedUserFallback = props.payload.selectedUser
@@ -245,7 +239,7 @@ export function AdminUsersPage(props: {
 		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
 			return await (async () => {
-				const submittedScope = activeScope.current
+				const isSubmissionCurrent = captureScope()
 				const selectedUser = resolveSelectedUser()
 				if (!selectedUser || actionState !== 'idle') return
 
@@ -264,14 +258,14 @@ export function AdminUsersPage(props: {
 							}),
 						action === 'assign_role' ? 'assigning' : 'removing',
 					)
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setMessage(
 						action === 'assign_role'
 							? `Assigned ${selectedRoleToAssign} role.`
 							: `Removed ${selectedRoleToAssign} role.`,
 					)
 				} catch (error) {
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 
 					setMessage(
 						error instanceof Error
@@ -291,7 +285,7 @@ export function AdminUsersPage(props: {
 		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
 			return await (async () => {
-				const submittedScope = activeScope.current
+				const isSubmissionCurrent = captureScope()
 				const selectedUser = resolveSelectedUser()
 				if (!selectedUser || actionState !== 'idle') return
 
@@ -307,7 +301,7 @@ export function AdminUsersPage(props: {
 							}),
 						'verifying',
 					)
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					if (
 						action === 'mint_verify_url' &&
 						'verifyUrl' in payload &&
@@ -325,7 +319,7 @@ export function AdminUsersPage(props: {
 						setMessage('Marked email verified.')
 					}
 				} catch (error) {
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 
 					setMessage(
 						error instanceof Error
@@ -345,7 +339,7 @@ export function AdminUsersPage(props: {
 		runExclusiveActor.send({ type: 'SUBMIT' })
 		try {
 			return await (async () => {
-				const submittedScope = activeScope.current
+				const isSubmissionCurrent = captureScope()
 				const selectedUser = resolveSelectedUser()
 				if (!selectedUser || actionState !== 'idle') return
 
@@ -363,7 +357,7 @@ export function AdminUsersPage(props: {
 							}),
 						'moderating',
 					)
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setMessage(
 						action === 'suspend_user'
 							? 'Account suspended.'
@@ -372,7 +366,7 @@ export function AdminUsersPage(props: {
 								: 'Outbound email resumed.',
 					)
 				} catch (error) {
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 
 					setMessage(
 						error instanceof Error
@@ -395,7 +389,7 @@ export function AdminUsersPage(props: {
 				if (actionState !== 'idle') return
 				const form = event.currentTarget
 				const formData = new FormData(form)
-				const submittedScope = activeScope.current
+				const isSubmissionCurrent = captureScope()
 
 				setCreatedUser(null)
 				setMessage(null)
@@ -411,7 +405,7 @@ export function AdminUsersPage(props: {
 							}),
 						'creatingUser',
 					)
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 					setCreatedUser(
 						'createdUser' in payload ? payload.createdUser : createdUser,
 					)
@@ -419,7 +413,7 @@ export function AdminUsersPage(props: {
 
 					if ('createdUser' in payload && payload.createdUser) form.reset()
 				} catch (error) {
-					if (activeScope.current !== submittedScope) return
+					if (!isSubmissionCurrent()) return
 
 					setMessage(
 						error instanceof Error ? error.message : 'Unable to create user.',
