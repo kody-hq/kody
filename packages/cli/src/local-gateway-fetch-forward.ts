@@ -32,9 +32,24 @@ export async function forwardLocalGatewayFetchStream(input: {
 	response: ServerResponse
 	signal: AbortSignal
 	client: CapabilityProxyClientInput
+	credentialSelections?: CredentialCallMapInput
 	pinnedCredentials?: CredentialCallMapInput
 	mockFetchGateway?: MockFetchGateway
 }): Promise<void> {
+	const unresolved = Object.entries(input.credentialSelections ?? {}).filter(
+		([key, selection]) => {
+			const pinned = input.pinnedCredentials?.[key]
+			return (
+				!Array.isArray(pinned) ||
+				pinned.length !== (Array.isArray(selection) ? selection.length : 1)
+			)
+		},
+	)
+	if (unresolved.length) {
+		throw new Error(
+			`Cannot stream with unresolved --credential selections: ${unresolved.map(([key]) => key).join(', ')}. Check your credential selections and try again.`,
+		)
+	}
 	const url = headerValue(
 		input.request.headers,
 		gatewayFetchUrlHeaderName,

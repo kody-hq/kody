@@ -1021,7 +1021,7 @@ export default async function main() {
 )
 
 test(
-	'local streaming fetch keeps selected credentials when preflight returns no pinned map',
+	'local streaming fetch rejects unresolved credential selections before the gateway hop',
 	{ timeout: 180_000 },
 	async () => {
 		const code = `import { kody } from 'kody:runtime'
@@ -1029,7 +1029,7 @@ export default async function main() {
 	const response = await kody.gatewayFetchStream({
 		request: { url: 'https://api.example.com/upload', method: 'POST', body: 'test' },
 	})
-	return await response.text()
+	return { status: response.status, text: await response.text() }
 }`
 		const dir = mkdtempSync(join(tmpdir(), 'kody-stream-credential-'))
 		const file = join(dir, 'entry.ts')
@@ -1056,15 +1056,14 @@ export default async function main() {
 								hostedUrl: 'http://127.0.0.1:0',
 							}),
 						})
-			assert.equal(result.isError, false, JSON.stringify(result))
+			assert.equal(result.isError, true, JSON.stringify(result))
 			const hop = proxyRequests.find(
 				(entry) => entry.url === '/v1/capability-proxy/gateway-fetch',
 			)
-			assert.ok(hop, mode)
-			assert.equal(
-				(hop.body as { gatewayCredentials: string }).gatewayCredentials,
-				JSON.stringify(credentials),
-				mode,
+			assert.equal(hop, undefined, mode)
+			assert.match(
+				(result.structuredContent as { error: string }).error,
+				/unresolved --credential selections: demoToken/,
 			)
 		}
 	},
