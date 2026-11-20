@@ -6,6 +6,7 @@
  */
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { loadPersonalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
+import { loadOrgSlug } from '#worker/orgs/owner-emails.ts'
 import {
 	assertPackageCanAccessResolvedSecret,
 	loadPackageSecretMounts,
@@ -216,6 +217,15 @@ export const secretResolver: CredentialResolver<'secret'> = {
 						secretName: storedName,
 						host: credential.requestHost,
 						scope: found.scope ?? credential.scope ?? 'user',
+						// A granted personal Key is approved in its owner's personal org.
+						orgSlug:
+							lookup.owner === 'org'
+								? credential.orgSlug?.trim() ||
+									refusalLinkOrgSlug({
+										actor: call.input.actor,
+										orgId: call.input.orgId,
+									})
+								: await loadOrgSlug(call.input.env.APP_DB, lookup.ownerId),
 					})
 				}
 				const placement = await resolveEffectiveFillPlacement({

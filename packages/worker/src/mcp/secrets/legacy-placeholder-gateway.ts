@@ -1090,7 +1090,10 @@ function resolveRequestUrlForFetchGateway(url: string, baseUrl: string) {
 	}
 }
 
-type MissingHostApproval = HostApprovalEntry & { scope: SecretScope }
+type MissingHostApproval = HostApprovalEntry & {
+	scope: SecretScope
+	orgSlug: string | null
+}
 
 type ResolvedSecretResult = {
 	referenced: ReferencedSecret
@@ -1127,9 +1130,10 @@ function readSettledSecretResults(input: {
 				secretName: denial.secretName,
 				host: input.requestedHost,
 				scope: denial.scope,
+				orgSlug: denial.orgSlug,
 				approvalUrl: buildSecretHostApprovalUrl({
 					baseUrl: input.props.baseUrl,
-					orgSlug: secretPageOrgSlugFromCaller(input.props),
+					orgSlug: denial.orgSlug,
 					name: denial.secretName,
 					scope: denial.scope,
 					requestedHost: input.requestedHost,
@@ -1151,16 +1155,21 @@ function createHostApprovalBatchError(input: {
 		scopes: missingApprovals.map((entry) => entry.scope),
 		storageContext: input.storageContext,
 	})
-	const bulkApprovalUrl = bulkScope
-		? buildSecretHostBulkApprovalUrlIfNeeded({
-				baseUrl: input.props.baseUrl,
-				orgSlug: secretPageOrgSlugFromCaller(input.props),
-				names: missingApprovals.map((entry) => entry.secretName),
-				hosts: missingApprovals.map((entry) => entry.host),
-				scope: bulkScope.scope,
-				storageContext: bulkScope.storageContext,
-			})
-		: null
+	// One link opens one org's page, so a bulk link needs a single owning org.
+	const orgSlugs = new Set(missingApprovals.map((entry) => entry.orgSlug))
+	const bulkOrgSlug =
+		orgSlugs.size === 1 ? (orgSlugs.values().next().value ?? null) : undefined
+	const bulkApprovalUrl =
+		bulkScope && bulkOrgSlug !== undefined
+			? buildSecretHostBulkApprovalUrlIfNeeded({
+					baseUrl: input.props.baseUrl,
+					orgSlug: bulkOrgSlug,
+					names: missingApprovals.map((entry) => entry.secretName),
+					hosts: missingApprovals.map((entry) => entry.host),
+					scope: bulkScope.scope,
+					storageContext: bulkScope.storageContext,
+				})
+			: null
 	return new SecretPlacementError(
 		createHostSecretAccessDeniedBatchMessage(
 			missingApprovals.map(({ secretName, host, approvalUrl }) => ({
