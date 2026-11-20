@@ -6,6 +6,7 @@ import {
 } from './account-mcp-servers-oauth-client.tsx'
 import { ProviderMark } from '../components/provider-icons.tsx'
 import {
+	accountActionsCss,
 	AccountManagementMessage,
 	MetadataGrid,
 	TimestampValue,
@@ -15,6 +16,8 @@ import {
 	type McpServerListItem,
 	type McpServerUsageDraft,
 	hostFromUrl,
+	mcpCodeCss,
+	mcpDetailSectionCss,
 	stateColor,
 	stateLabel,
 } from './account-mcp-servers-shared.tsx'
@@ -29,6 +32,8 @@ import {
 	descriptionCss,
 	fieldCss,
 	fieldLabelCss,
+	getAccentCalloutCss,
+	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
 import { Checkbox, Radio } from '../components/choice-controls.tsx'
 
@@ -41,87 +46,84 @@ function McpServerUsageForm(props: {
 	onSave: () => void
 }) {
 	const { server, savedPackages, draft, saving, onDraftChange, onSave } = props
+	const choiceCss = {
+		display: 'flex',
+		gap: spacing.xs,
+		alignItems: 'flex-start',
+		minWidth: 0,
+		color: colors.text,
+		fontSize: typography.fontSize.sm,
+		overflowWrap: 'anywhere',
+	} as const
+	const headingId = `mcp-server-usage-heading-${server.id}`
 	return (
 		<section
 			data-testid="mcp-server-usage"
-			css={{ display: 'grid', gap: spacing.xs }}
+			aria-labelledby={headingId}
+			css={mcpDetailSectionCss}
 		>
-			<p
-				css={{
-					...fieldLabelCss,
-					margin: 0,
-				}}
-			>
+			<h3 id={headingId} css={sectionTitleCss}>
 				Usage
+			</h3>
+			<p css={{ ...descriptionCss, fontSize: typography.fontSize.sm }}>
+				Choose who can call{' '}
+				<code css={mcpCodeCss}>kody.mcp[&quot;{server.name}&quot;]</code>.
+				Limiting it to packages keeps execute and other packages out.
 			</p>
-			<p css={{ ...descriptionCss, margin: 0 }}>
-				Limit this server so only listed packages can call{' '}
-				<code>kody.mcp[&quot;{server.name}&quot;]</code>. Execute and other
-				packages are denied.
-			</p>
-			<label
-				css={{
-					display: 'flex',
-					gap: spacing.xs,
-					alignItems: 'flex-start',
-					color: colors.text,
-					fontSize: typography.fontSize.sm,
-				}}
+			<div
+				role="radiogroup"
+				aria-labelledby={headingId}
+				css={{ display: 'grid', gap: spacing.xs }}
 			>
-				<Radio
-					name={`mcp-usage-mode-${server.id}`}
-					checked={draft.usageMode === 'any'}
-					disabled={saving}
-					onChange={() =>
-						onDraftChange({
-							usageMode: 'any',
-							allowedPackageIds: [],
-						})
-					}
-				/>
-				<span>Any context (execute and every package)</span>
-			</label>
-			<label
-				css={{
-					display: 'flex',
-					gap: spacing.xs,
-					alignItems: 'flex-start',
-					color: colors.text,
-					fontSize: typography.fontSize.sm,
-				}}
-			>
-				<Radio
-					name={`mcp-usage-mode-${server.id}`}
-					checked={draft.usageMode === 'packages'}
-					disabled={saving}
-					onChange={() =>
-						onDraftChange({
-							usageMode: 'packages',
-							allowedPackageIds: draft.allowedPackageIds,
-						})
-					}
-				/>
-				<span>Specific packages only</span>
-			</label>
+				<label css={choiceCss}>
+					<Radio
+						name={`mcp-usage-mode-${server.id}`}
+						checked={draft.usageMode === 'any'}
+						disabled={saving}
+						onChange={() =>
+							onDraftChange({
+								usageMode: 'any',
+								allowedPackageIds: [],
+							})
+						}
+					/>
+					<span>Any context (execute and every package)</span>
+				</label>
+				<label css={choiceCss}>
+					<Radio
+						name={`mcp-usage-mode-${server.id}`}
+						checked={draft.usageMode === 'packages'}
+						disabled={saving}
+						onChange={() =>
+							onDraftChange({
+								usageMode: 'packages',
+								allowedPackageIds: draft.allowedPackageIds,
+							})
+						}
+					/>
+					<span>Specific packages only</span>
+				</label>
+			</div>
 			{draft.usageMode === 'packages' ? (
 				savedPackages.length === 0 ? (
-					<p css={{ ...descriptionCss, margin: 0 }}>
+					<p css={{ ...descriptionCss, fontSize: typography.fontSize.sm }}>
 						Save a package first, then approve it here. Execute cannot use this
 						server while it is limited to specific packages.
 					</p>
 				) : (
-					<div css={{ display: 'grid', gap: spacing.xs }}>
+					<div
+						css={{
+							display: 'grid',
+							gap: spacing.xs,
+							paddingLeft: spacing.lg,
+						}}
+					>
 						{savedPackages.map((savedPackage) => {
 							const checked = draft.allowedPackageIds.includes(savedPackage.id)
 							return (
 								<label
 									key={savedPackage.id}
-									css={{
-										display: 'flex',
-										gap: spacing.xs,
-										alignItems: 'center',
-										fontSize: typography.fontSize.sm,
-									}}
+									css={{ ...choiceCss, alignItems: 'center' }}
 								>
 									<Checkbox
 										checked={checked}
@@ -144,15 +146,18 @@ function McpServerUsageForm(props: {
 					</div>
 				)
 			) : null}
-			<Button
-				type="button"
-				data-testid="save-mcp-server-usage"
-				disabled={saving}
-				onClick={onSave}
-				variant="primary"
-			>
-				{saving ? 'Saving…' : 'Save usage'}
-			</Button>
+			<div>
+				<Button
+					type="button"
+					data-testid="save-mcp-server-usage"
+					disabled={saving}
+					onClick={onSave}
+					variant="primary"
+					mobileFullWidth
+				>
+					{saving ? 'Saving…' : 'Save usage'}
+				</Button>
+			</div>
 		</section>
 	)
 }
@@ -173,21 +178,14 @@ function McpServerPackageApprovalCard(props: {
 	return (
 		<section
 			data-testid="mcp-server-approval-card"
-			css={{
-				display: 'grid',
-				gap: spacing.sm,
-				padding: spacing.md,
-				borderRadius: radius.md,
-				border: `1px solid ${colors.primary}`,
-				backgroundColor: colors.primarySoftest,
-			}}
+			css={{ ...getAccentCalloutCss(), gap: spacing.sm }}
 		>
-			<p css={{ ...fieldLabelCss, margin: 0 }}>Approve MCP server access</p>
-			<p css={{ ...descriptionCss, margin: 0 }}>
+			<p css={{ ...sectionTitleCss, margin: 0 }}>Approve MCP server access</p>
+			<p css={{ margin: 0, color: colors.text, overflowWrap: 'anywhere' }}>
 				{approval.alreadyGranted ? 'Package ' : 'Allow package '}
 				<strong css={{ color: colors.text }}>{approval.packageName}</strong>
 				{approval.alreadyGranted ? ' can already call ' : ' to call '}
-				<code>kody.mcp[&quot;{server.name}&quot;]</code>.
+				<code css={mcpCodeCss}>kody.mcp[&quot;{server.name}&quot;]</code>.
 			</p>
 			{approval.alreadyGranted ? null : (
 				<div>
@@ -197,6 +195,7 @@ function McpServerPackageApprovalCard(props: {
 						disabled={saving}
 						onClick={onApprove}
 						variant="primary"
+						mobileFullWidth
 					>
 						{saving ? 'Approving…' : 'Approve'}
 					</Button>
@@ -248,13 +247,15 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 		onOAuthClientSave,
 		onOAuthClientRemove,
 	} = props
+	const host = hostFromUrl(server.url)
 	return (
-		<section css={recordBodyCss}>
-			<div
+		<section aria-label={`${server.name} details`} css={recordBodyCss}>
+			<header
 				css={{
 					display: 'flex',
-					alignItems: 'flex-start',
+					alignItems: 'center',
 					gap: spacing.md,
+					minWidth: 0,
 				}}
 			>
 				<ProviderMark
@@ -262,99 +263,75 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					label={server.name}
 					autoLogoPath={server.autoLogoPath}
 					catalogLogoPath={server.catalogLogoPath}
-					host={hostFromUrl(server.url)}
+					host={host}
 				/>
-				<div css={{ display: 'grid', gap: spacing.xs }}>
-					<h2 css={cardTitleCss}>{server.name}</h2>
-					<p css={descriptionCss}>
-						Saved MCP server connection. Kody keeps OAuth tokens and connection
-						state isolated to your account.
+				<div css={{ display: 'grid', gap: '0.2rem', minWidth: 0 }}>
+					<h2 css={{ ...cardTitleCss, overflowWrap: 'anywhere' }}>
+						{server.name}
+					</h2>
+					<p css={{ ...descriptionCss, overflowWrap: 'anywhere' }}>
+						{host ?? 'MCP server'}
 					</p>
 				</div>
-			</div>
+			</header>
 
 			<MetadataGrid
 				items={[
 					{
 						label: 'Status',
 						value: (
-							<div
-								css={{
-									display: 'grid',
-									gap: spacing.xs,
-									color: stateColor(server),
-								}}
+							<span
+								data-testid="mcp-server-status"
+								css={{ color: stateColor(server), fontWeight: 600 }}
 							>
-								<span>{stateLabel(server)}</span>
-								{server.error ? (
-									<AccountManagementMessage tone="error">
-										{server.error}
-									</AccountManagementMessage>
-								) : null}
-							</div>
+								{stateLabel(server)}
+							</span>
 						),
 					},
 					{
 						label: 'Tools',
-						value: server.connected ? `${server.toolCount} discovered` : '—',
-					},
-					{
-						label: 'Added',
-						value: <TimestampValue value={server.createdAt} />,
-					},
-					{
-						label: 'Updated',
-						value: <TimestampValue value={server.updatedAt} />,
+						value: server.connected
+							? `${server.toolCount} discovered`
+							: 'Available once connected',
 					},
 				]}
 			/>
 
-			<div css={fieldCss}>
-				<span css={fieldLabelCss}>Server URL</span>
-				<code
+			{server.error ? (
+				<div
 					css={{
-						padding: spacing.sm,
-						borderRadius: radius.md,
-						border: `1px solid ${colors.border}`,
-						backgroundColor: colors.background,
-						color: colors.text,
-						fontFamily: 'monospace',
-						fontSize: typography.fontSize.sm,
-						overflowWrap: 'anywhere',
+						...getAccentCalloutCss({ accentColor: colors.error }),
+						backgroundColor: `color-mix(in srgb, ${colors.error} 6%, transparent)`,
 					}}
 				>
-					{server.url}
-				</code>
-			</div>
+					<AccountManagementMessage tone="error">
+						<span css={{ overflowWrap: 'anywhere' }}>{server.error}</span>
+					</AccountManagementMessage>
+				</div>
+			) : null}
 
 			{server.state === 'authenticating' && !server.authUrl ? (
-				<AccountManagementMessage tone="info">
-					Authorization needed. Click Reconnect to create a new authorization
-					link. You may need to approve access once more.
-				</AccountManagementMessage>
+				<div css={getAccentCalloutCss()}>
+					<AccountManagementMessage tone="info">
+						Authorization needed. Click Reconnect to create a new authorization
+						link. You may need to approve access once more.
+					</AccountManagementMessage>
+				</div>
 			) : null}
 
 			{server.authUrl && server.state === 'authenticating' ? (
-				<div
-					css={{
-						display: 'grid',
-						gap: spacing.sm,
-						padding: spacing.md,
-						borderRadius: radius.md,
-						border: `1px solid ${colors.primary}`,
-						backgroundColor: colors.primarySoftest,
-					}}
-				>
-					<span css={{ color: colors.text }}>
+				<div css={{ ...getAccentCalloutCss(), gap: spacing.sm }}>
+					<p css={{ margin: 0, color: colors.text }}>
 						Authorization needed. Approve access before this server&apos;s tools
 						become available.
-					</span>
+					</p>
 					<div>
 						<Button
 							href={server.authUrl}
 							rel="noopener noreferrer"
 							variant="primary"
-							css={{ display: 'inline-block', textDecoration: 'none' }}
+							mobileFullWidth
+							css={{ textDecoration: 'none' }}
 						>
 							Authorize {server.name}
 						</Button>
@@ -369,6 +346,77 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					saving={usageSaving}
 					onApprove={onPackageApprove}
 				/>
+			) : null}
+
+			<div css={fieldCss}>
+				<span css={fieldLabelCss}>Server URL</span>
+				<code
+					css={{
+						...mcpCodeCss,
+						padding: `${spacing.xs} ${spacing.sm}`,
+						borderRadius: radius.md,
+						border: `1px solid ${colors.borderSubtle}`,
+						backgroundColor: colors.background,
+					}}
+				>
+					{server.url}
+				</code>
+				<p
+					css={{
+						...descriptionCss,
+						display: 'flex',
+						flexWrap: 'wrap',
+						columnGap: spacing.md,
+						rowGap: '0.2rem',
+						fontSize: typography.fontSize.sm,
+					}}
+				>
+					<span>
+						Added <TimestampValue value={server.createdAt} />
+					</span>
+					<span>
+						Updated <TimestampValue value={server.updatedAt} />
+					</span>
+				</p>
+			</div>
+
+			{server.connected && server.tools.length > 0 ? (
+				<section
+					aria-labelledby={`mcp-server-tools-${server.id}`}
+					css={mcpDetailSectionCss}
+				>
+					<h3 id={`mcp-server-tools-${server.id}`} css={sectionTitleCss}>
+						Discovered tools
+					</h3>
+					<ul
+						css={{
+							margin: 0,
+							padding: 0,
+							listStyle: 'none',
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: spacing.xs,
+							minWidth: 0,
+						}}
+					>
+						{server.tools.map((tool) => (
+							<li key={tool} css={{ minWidth: 0, maxWidth: '100%' }}>
+								<code
+									css={{
+										...mcpCodeCss,
+										display: 'block',
+										padding: '0.2rem 0.5rem',
+										borderRadius: radius.sm,
+										border: `1px solid ${colors.borderSubtle}`,
+										backgroundColor: colors.background,
+									}}
+								>
+									{tool}
+								</code>
+							</li>
+						))}
+					</ul>
+				</section>
 			) : null}
 
 			<McpServerUsageForm
@@ -388,46 +436,13 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 				onRemove={onOAuthClientRemove}
 			/>
 
-			{server.connected && server.tools.length > 0 ? (
-				<div css={fieldCss}>
-					<span css={fieldLabelCss}>Discovered tools</span>
-					<ul
-						css={{
-							margin: 0,
-							paddingLeft: spacing.lg,
-							color: colors.text,
-							display: 'grid',
-							gap: spacing.xs,
-						}}
-					>
-						{server.tools.map((tool) => (
-							<li key={tool}>
-								<code
-									css={{
-										fontFamily: 'monospace',
-										fontSize: typography.fontSize.sm,
-									}}
-								>
-									{tool}
-								</code>
-							</li>
-						))}
-					</ul>
-				</div>
-			) : null}
-
-			<div
-				css={{
-					display: 'flex',
-					gap: spacing.sm,
-					flexWrap: 'wrap',
-				}}
-			>
+			<div css={{ ...mcpDetailSectionCss, ...accountActionsCss }}>
 				<Button
 					type="button"
 					disabled={isMutating}
 					onClick={onReconnect}
 					variant="primary"
+					mobileFullWidth
 				>
 					Reconnect
 				</Button>
@@ -436,6 +451,7 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					disabled={isMutating}
 					onClick={onRefresh}
 					variant="secondary"
+					mobileFullWidth
 				>
 					Refresh tools
 				</Button>
@@ -444,6 +460,7 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					disabled={isMutating}
 					onClick={onToggleEnabled}
 					variant="secondary"
+					mobileFullWidth
 				>
 					{server.enabled ? 'Disable' : 'Enable'}
 				</Button>
@@ -451,6 +468,7 @@ export function renderMcpServerDetail(props: McpServerDetailProps) {
 					type="button"
 					disabled={isMutating}
 					variant="danger"
+					mobileFullWidth
 					onBlur={onDeleteReset}
 					onClick={() => {
 						if (deleteArmed) onDelete()

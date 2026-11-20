@@ -2,18 +2,27 @@
 import { Button } from '../components/button.tsx'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
 import { recordBodyCss } from './record-table.tsx'
-import {
-	colors,
-	radius,
-	spacing,
-	typography,
-} from '#universal/styles/tokens.ts'
+import { accountActionsCss } from './account-management-components.tsx'
+import { mcpCodeCss } from './account-mcp-servers-shared.tsx'
+import { colors, radius, spacing } from '#universal/styles/tokens.ts'
 import {
 	cardTitleCss,
 	descriptionCss,
 	fieldCss,
+	fieldDescriptionCss,
 	fieldLabelCss,
+	insetCardCss,
+	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
+
+const callbackValueCss = {
+	...mcpCodeCss,
+	display: 'block',
+	padding: `${spacing.xs} ${spacing.sm}`,
+	borderRadius: radius.md,
+	border: `1px solid ${colors.borderSubtle}`,
+	backgroundColor: colors.surface,
+} as const
 import { Input } from '../components/input.tsx'
 
 export type OauthCallbackSectionProps = {
@@ -26,20 +35,16 @@ export function renderOauthCallbackSection(props: OauthCallbackSectionProps) {
 	const { oauthClientOrigin, oauthCallbackUrl, oauthClientMetadataUrl } = props
 	return (
 		<section
-			css={{
-				display: 'grid',
-				gap: spacing.sm,
-				padding: spacing.md,
-				borderRadius: radius.md,
-				border: `1px solid ${colors.border}`,
-				backgroundColor: colors.background,
-			}}
+			aria-labelledby="mcp-oauth-redirect-heading"
+			css={{ ...insetCardCss, gap: spacing.sm, minWidth: 0 }}
 		>
 			<div css={{ display: 'grid', gap: spacing.xs }}>
-				<span css={fieldLabelCss}>OAuth redirect URI</span>
-				<p css={{ ...descriptionCss, margin: 0 }}>
-					If a remote MCP server&apos;s identity provider allowlists client
-					origins or redirect URIs (for example FusionAuth), add
+				<h2 id="mcp-oauth-redirect-heading" css={sectionTitleCss}>
+					OAuth redirect URI
+				</h2>
+				<p css={fieldDescriptionCss}>
+					If a server&apos;s identity provider allowlists client origins or
+					redirect URIs (for example FusionAuth), add
 					{oauthClientOrigin ? ` ${oauthClientOrigin} and` : ''} this exact
 					callback before authorizing.
 					{oauthClientMetadataUrl
@@ -47,55 +52,29 @@ export function renderOauthCallbackSection(props: OauthCallbackSectionProps) {
 						: ''}
 				</p>
 			</div>
-			<code
-				css={{
-					padding: spacing.sm,
-					borderRadius: radius.md,
-					border: `1px solid ${colors.border}`,
-					backgroundColor: colors.background,
-					color: colors.text,
-					fontFamily: 'monospace',
-					fontSize: typography.fontSize.sm,
-					overflowWrap: 'anywhere',
-				}}
-			>
-				{oauthCallbackUrl}
-			</code>
-			<div>
+			<code css={callbackValueCss}>{oauthCallbackUrl}</code>
+			{oauthClientMetadataUrl ? (
+				<div css={fieldCss}>
+					<span css={fieldLabelCss}>OAuth client metadata URL</span>
+					<code css={callbackValueCss}>{oauthClientMetadataUrl}</code>
+				</div>
+			) : null}
+			<div css={accountActionsCss}>
 				<CopyTextButton
 					value={oauthCallbackUrl}
 					idleLabel="Copy redirect URI"
 					variant="secondary"
 					size="sm"
 				/>
+				{oauthClientMetadataUrl ? (
+					<CopyTextButton
+						value={oauthClientMetadataUrl}
+						idleLabel="Copy CIMD URL"
+						variant="secondary"
+						size="sm"
+					/>
+				) : null}
 			</div>
-			{oauthClientMetadataUrl ? (
-				<>
-					<span css={fieldLabelCss}>OAuth client metadata URL</span>
-					<code
-						css={{
-							padding: spacing.sm,
-							borderRadius: radius.md,
-							border: `1px solid ${colors.border}`,
-							backgroundColor: colors.background,
-							color: colors.text,
-							fontFamily: 'monospace',
-							fontSize: typography.fontSize.sm,
-							overflowWrap: 'anywhere',
-						}}
-					>
-						{oauthClientMetadataUrl}
-					</code>
-					<div>
-						<CopyTextButton
-							value={oauthClientMetadataUrl}
-							idleLabel="Copy CIMD URL"
-							variant="secondary"
-							size="sm"
-						/>
-					</div>
-				</>
-			) : null}
 		</section>
 	)
 }
@@ -139,10 +118,8 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 			<div css={{ display: 'grid', gap: spacing.xs }}>
 				<h2 css={cardTitleCss}>Add MCP server</h2>
 				<p css={descriptionCss}>
-					Provide a short name and the server URL. Remote servers must use
-					https; Kody connects as an MCP client and discovers the server&apos;s
-					tools. For servers that use a static bearer token instead of OAuth,
-					paste it below.
+					Name the server and paste its MCP endpoint. Remote servers use https,
+					and Kody discovers their tools as soon as it connects.
 				</p>
 			</div>
 
@@ -160,7 +137,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 						onNameInput(event.currentTarget.value)
 					}}
 				/>
-				<span css={descriptionCss}>
+				<span css={fieldDescriptionCss}>
 					Lowercase letters, numbers, and dashes. Used as the
 					kody.mcp[&quot;name&quot;] namespace.
 				</span>
@@ -180,7 +157,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 						onUrlInput(event.currentTarget.value)
 					}}
 				/>
-				<span css={descriptionCss}>
+				<span css={fieldDescriptionCss}>
 					Use the MCP endpoint path, not the vendor&apos;s marketing site.
 					PostHog is https://mcp.posthog.com/mcp.
 				</span>
@@ -201,7 +178,7 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 						onBearerTokenInput(event.currentTarget.value)
 					}}
 				/>
-				<span css={descriptionCss}>
+				<span css={fieldDescriptionCss}>
 					Sent as Authorization: Bearer &lt;token&gt; on every request. You can
 					paste a bare token, a scheme-prefixed value (Bearer, token, etc.), or
 					a full Authorization header line. Leave blank for OAuth or
@@ -211,7 +188,12 @@ export function renderAddMcpServerForm(props: AddMcpServerFormProps) {
 			</label>
 
 			<div>
-				<Button type="submit" disabled={isMutating} variant="primary">
+				<Button
+					type="submit"
+					disabled={isMutating}
+					variant="primary"
+					mobileFullWidth
+				>
 					{isBusy ? 'Adding...' : 'Add server'}
 				</Button>
 			</div>

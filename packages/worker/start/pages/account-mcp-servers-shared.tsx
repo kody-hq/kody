@@ -2,9 +2,27 @@
 import { ProviderMark } from '../components/provider-icons.tsx'
 import { recordCellClamp } from './record-table.tsx'
 import { matchesSearchQuery } from '#client/search-filter.ts'
-import { colors, spacing } from '#universal/styles/tokens.ts'
+import { colors, spacing, typography } from '#universal/styles/tokens.ts'
+import type { CSSObject } from '@emotion/react'
 
 const clampedCellCss = recordCellClamp(26)
+
+/** One titled band of the server detail, ruled off from the band above. */
+export const mcpDetailSectionCss: CSSObject = {
+	display: 'grid',
+	gap: spacing.sm,
+	minWidth: 0,
+	paddingTop: spacing.lg,
+	borderTop: `1px solid ${colors.borderSubtle}`,
+}
+
+/** Server URLs, tool names, and client ids: monospace that wraps anywhere. */
+export const mcpCodeCss: CSSObject = {
+	fontFamily: 'monospace',
+	fontSize: typography.fontSize.sm,
+	overflowWrap: 'anywhere',
+	color: colors.text,
+}
 
 export function hostFromUrl(url: string | null | undefined) {
 	if (!url) return null
