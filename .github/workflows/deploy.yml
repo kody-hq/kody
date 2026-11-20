@@ -1802,6 +1802,27 @@ jobs:
           printf '%s' "$STATUS_INCIDENT_EVENT_SECRET" | npx wrangler secret put \
             STATUS_INCIDENT_EVENT_SECRET --config packages/status/wrangler.jsonc
 
+      - name: 🔐 Sync status worker Grok Bot wake secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          STATUS_GROK_BOT_WAKE_URL: ${{ secrets.STATUS_GROK_BOT_WAKE_URL }}
+          STATUS_GROK_BOT_WAKE_TOKEN: ${{ secrets.STATUS_GROK_BOT_WAKE_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The status worker wakes the Grok Bot directly (never through
+          # kody.codes). Missing GitHub secrets skip the sync; the worker then
+          # logs one skip warning per wake batch.
+          for name in STATUS_GROK_BOT_WAKE_URL STATUS_GROK_BOT_WAKE_TOKEN; do
+            value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::warning::$name GitHub secret unset; skipping status worker sync."
+              continue
+            fi
+            printf '%s' "$value" | npx wrangler secret put "$name" \
+              --config packages/status/wrangler.jsonc
+          done
+
       - name: 🩺 Healthcheck (status worker)
         shell: bash
         env:
