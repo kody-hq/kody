@@ -5,6 +5,12 @@ import { expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import {
+	captureSentryExceptions,
+	onFakeClock,
+	withD1Failures,
+} from '#worker/test-support/transient-d1.ts'
 import { purgePersistedMcpAgentSession } from '#mcp/session-registry.ts'
 import * as stripeClient from '#worker/billing/stripe-client.ts'
 import {
@@ -1122,4 +1128,176 @@ test('finishLegacyUserDeletion finishes when an MCP agent session DO was already
 			.first<{ n: number }>()
 		expect({ table, n: row?.n }).toEqual({ table, n: 0 })
 	}
+})
+
+const purgeNow = new Date('2026-03-01T00:00:00.000Z')
+const orgOrUserRowDelete = (query: string) =>
+	query.startsWith('DELETE FROM orgs WHERE id = ?') ||
+	query.startsWith('DELETE FROM users WHERE id = ?')
+
+async function seedSoftDeletedTeamOrg(appDb: D1Database, orgId: string) {
+	const ts = '2026-01-01T00:00:00.000Z'
+	await appDb
+		.prepare(
+			`INSERT INTO orgs (id, slug, display_name, plan, entitlement_ladder, deleted_at, created_at, updated_at)
+			VALUES (?, ?, ?, 'free', 'public', ?, ?, ?)`,
+		)
+		.bind(orgId, orgId, orgId, '2025-12-01T00:00:00.000Z', ts, ts)
+		.run()
+}
+
+/** A soft-deleted team org, then a soft-deleted person with a personal org. */
+async function createTransientPurgeHarness(
+	messages: Array<string | undefined>,
+) {
+	const sqlite = new DatabaseSync(':memory:')
+	applyAllMigrations(sqlite, new URL('../../migrations/', import.meta.url))
+	const appDb = createD1FromSqlite(sqlite)
+	const auditDb = createAuditDb()
+	const teamOrgId = ownerIdFromStored('team-transient')
+	await seedSoftDeletedTeamOrg(appDb, teamOrgId)
+	const { personId, kv } = await seedSoftDeletedPersonWithPersonalOrg({
+		appDb,
+		stripeCustomerId: null,
+	})
+	const failing = withD1Failures(appDb, orgOrUserRowDelete, messages)
+	const env = createSuccessfulDeletionEnv(failing.db, {
+		AUDIT_DB: auditDb,
+		BUNDLE_ARTIFACTS_KV: kv,
+		SOFT_DELETE_PURGE_ENABLED: 'true',
+	})
+	return {
+		appDb,
+		teamOrgId,
+		personId,
+		attempts: failing.attempts,
+		run: (input: { timeBudgetMs?: number } = {}) =>
+			onFakeClock(purgeNow, () =>
+				pruneSoftDeleted({ env, now: purgeNow, dryRun: false, ...input }),
+			),
+		auditActions: async (orgId: string) =>
+			(
+				await auditDb
+					.prepare(
+						`SELECT action FROM org_audit_events WHERE org_id = ? ORDER BY rowid`,
+					)
+					.bind(orgId)
+					.all<{ action: string }>()
+			).results.map((row) => row.action),
+	}
+}
+
+const outcomeKinds = (result: { outcomes: Array<{ outcome: string }> }) =>
+	result.outcomes.map((outcome) => outcome.outcome)
+
+test('soft delete purge retries a transient D1 error after 100 ms and purges the item', async () => {
+	const h = await createTransientPurgeHarness([
+		'D1_ERROR: Network connection lost.',
+	])
+
+	const { result, elapsedMs } = await h.run()
+
+	expect(outcomeKinds(result)).toEqual(['purged', 'purged'])
+	expect(elapsedMs).toBe(100)
+	expect(
+		await countRows(
+			h.appDb,
+			`SELECT COUNT(*) AS n FROM orgs WHERE id = ?`,
+			h.teamOrgId,
+		),
+	).toBe(0)
+})
+
+test('soft delete purge does not retry a permanent D1 error', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const h = await createTransientPurgeHarness([
+		'D1_ERROR: FOREIGN KEY constraint failed: SQLITE_CONSTRAINT',
+	])
+
+	const { result, elapsedMs } = await h.run()
+
+	expect(outcomeKinds(result)).toEqual(['failed', 'purged'])
+	expect(elapsedMs).toBe(0)
+	expect(await h.auditActions(h.teamOrgId)).toEqual(['org.purge_failed'])
+})
+
+test('a personal org and person that would cross their shared 1 s backoff budget fail as retry_budget_exhausted and keep the claim', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const captureException = captureSentryExceptions()
+	const transient = 'D1_ERROR: storage operation exceeded timeout'
+	// The team org purges cleanly; the person pair then spends 700 ms on its
+	// first row delete and 100 + 200 ms on its second, so the 400 ms retry
+	// would reach 1,400 ms.
+	const h = await createTransientPurgeHarness([
+		undefined,
+		transient,
+		transient,
+		transient,
+		undefined,
+		transient,
+		transient,
+		transient,
+	])
+
+	const { result, elapsedMs } = await h.run()
+
+	expect(result.outcomes).toEqual([
+		expect.objectContaining({ id: h.teamOrgId, outcome: 'purged' }),
+		expect.objectContaining({
+			kind: 'user',
+			id: h.personId,
+			outcome: 'failed',
+			error: expect.stringMatching(
+				/^D1 hard_purge\.delete_org stopped retrying after 1000 ms of transient backoff for this item\.$/,
+			),
+		}),
+	])
+	expect(elapsedMs).toBe(1_000)
+	expect(await h.auditActions(h.personId)).toEqual([
+		'purge.retry_budget_exhausted',
+	])
+	expect(captureException).toHaveBeenCalledTimes(1)
+	expect(captureException.mock.calls[0]?.[0]).toMatchObject({
+		name: 'TransientRetryBudgetExhausted',
+	})
+	const person = await h.appDb
+		.prepare(`SELECT deleting_at FROM users WHERE id = 1`)
+		.first<{ deleting_at: string | null }>()
+	expect(person?.deleting_at).not.toBeNull()
+})
+
+test('the soft delete purge backoff budget is per item, not per pass', async () => {
+	const transient = 'D1_ERROR: internal error; reference = abc123'
+	// 700 ms for the team org and 700 ms for the person pair.
+	const h = await createTransientPurgeHarness([
+		transient,
+		transient,
+		transient,
+		undefined,
+		transient,
+		transient,
+		transient,
+	])
+
+	const { result, elapsedMs } = await h.run()
+
+	expect(outcomeKinds(result)).toEqual(['purged', 'purged'])
+	expect(elapsedMs).toBe(1_400)
+})
+
+test('soft delete purge backoff counts toward the pass time budget', async () => {
+	const reset = 'Durable Object reset because its code was updated.'
+	const h = await createTransientPurgeHarness([reset, reset])
+
+	const { result, elapsedMs } = await h.run({ timeBudgetMs: 299 })
+
+	expect(result).toMatchObject({
+		purged: 1,
+		failed: 0,
+		timeBudgetExhausted: true,
+	})
+	expect(result.outcomes).toEqual([
+		expect.objectContaining({ id: h.teamOrgId, outcome: 'purged' }),
+	])
+	expect(elapsedMs).toBe(300)
 })

@@ -6,6 +6,7 @@ import {
 	isRetryableD1LockError,
 } from '#worker/d1-retry.ts'
 import {
+	Cause,
 	Context,
 	Duration,
 	Effect,
@@ -198,3 +199,99 @@ export const retryTransientD1 = <A, R>(
 		times: d1LockRetryMaxAttempts - 1,
 		while: (error: DatabaseError) => error.retryable,
 	})
+
+/**
+ * D1 failures the purge lanes retry: a dropped binding connection, a storage
+ * timeout, a Durable Object reset by a deploy, and D1's opaque internal error.
+ * Every other failure is permanent.
+ */
+export const transientD1ErrorMessages = [
+	'Network connection lost',
+	'storage operation exceeded timeout',
+	'reset because its code was updated',
+	'D1_ERROR: internal error',
+] as const
+
+export const isTransientD1Error = (error: DatabaseError) =>
+	error.reason === 'query' &&
+	transientD1ErrorMessages.some((marker) => error.message.includes(marker))
+
+/** Backoff before each retry of one transient D1 statement or batch. */
+export const transientD1RetryDelaysMs = [100, 200, 400] as const
+/** Total backoff one purge item may spend across all of its statements. */
+export const transientD1RetryBudgetMs = 1_000
+
+/** A purge item would have crossed its transient D1 backoff budget. */
+export class TransientRetryBudgetExhausted extends Schema.TaggedError<TransientRetryBudgetExhausted>()(
+	'TransientRetryBudgetExhausted',
+	{
+		operation: Schema.String,
+		spentMs: Schema.Number,
+		message: Schema.String,
+		cause: Schema.Defect(),
+	},
+) {}
+
+/**
+ * Runs one purge item (an org, a user, or a person with their personal org)
+ * against a `D1` that retries each transient statement or batch after
+ * {@link transientD1RetryDelaysMs}. Backoff is shared by every statement of
+ * the item; the retry that would cross {@link transientD1RetryBudgetMs} is not
+ * taken and the item fails with `TransientRetryBudgetExhausted`, even when a
+ * helper wrapped the D1 failure in its own error first. Backoff sleeps on
+ * `Clock`, so it counts toward the pass budget.
+ */
+export const withTransientRetryBudget = Effect.fnUntraced(function* <A, E, R>(
+	effect: Effect.Effect<A, E, R>,
+): Effect.fn.Return<A, E | TransientRetryBudgetExhausted, R | D1> {
+	const db = yield* D1
+	let spentMs = 0
+	let exhausted: TransientRetryBudgetExhausted | undefined
+	const retrying = <B>(
+		operation: string,
+		attempt: Effect.Effect<B, DatabaseError>,
+		retry = 0,
+	): Effect.Effect<B, DatabaseError> =>
+		Effect.catch(attempt, (error) => {
+			const delayMs = transientD1RetryDelaysMs[retry]
+			if (delayMs === undefined || exhausted || !isTransientD1Error(error)) {
+				return Effect.fail(error)
+			}
+			if (spentMs + delayMs > transientD1RetryBudgetMs) {
+				exhausted = new TransientRetryBudgetExhausted({
+					operation,
+					spentMs,
+					message: `D1 ${operation} stopped retrying after ${spentMs} ms of transient backoff for this item.`,
+					cause: error,
+				})
+				return Effect.fail(error)
+			}
+			spentMs += delayMs
+			return Effect.logDebug('transient d1 retry', {
+				operation,
+				delayMs,
+			}).pipe(
+				Effect.andThen(Effect.sleep(Duration.millis(delayMs))),
+				Effect.andThen(retrying(operation, attempt, retry + 1)),
+			)
+		})
+	const budgeted = D1.of({
+		first: (operation, schema, statement) =>
+			retrying(operation, db.first(operation, schema, statement)),
+		all: (operation, schema, statement) =>
+			retrying(operation, db.all(operation, schema, statement)),
+		run: (operation, statement) =>
+			retrying(operation, db.run(operation, statement)),
+		batch: (operation, statements) =>
+			retrying(operation, db.batch(operation, statements)),
+	})
+	return yield* effect.pipe(
+		Effect.provideService(D1, budgeted),
+		Effect.catchCause(
+			(cause): Effect.Effect<never, E | TransientRetryBudgetExhausted> =>
+				exhausted && Cause.hasFails(cause)
+					? Effect.fail(exhausted)
+					: Effect.failCause(cause),
+		),
+	)
+})

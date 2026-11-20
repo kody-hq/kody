@@ -30,7 +30,14 @@ import {
 import { AuditLog } from '#worker/effect/audit.ts'
 import { startPassBudget } from '#worker/effect/budget.ts'
 import { keepClaim, scopedClaim } from '#worker/effect/claim.ts'
-import { D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import {
+	D1,
+	retryTransientD1,
+	sql,
+	TransientRetryBudgetExhausted,
+	withTransientRetryBudget,
+} from '#worker/effect/d1.ts'
+import { ErrorReporter } from '#worker/effect/error-reporter.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
 
@@ -286,36 +293,32 @@ const claimTombstone = Effect.fn('SoftDeletePurge.claimTombstone')(function* (
 	claim: Claim,
 ) {
 	const db = yield* D1
-	const created = yield* retryTransientD1(
-		db.run(
-			`soft_delete_purge.claim_${table}`,
-			sql(
-				`UPDATE ${table}
+	const created = yield* db.run(
+		`soft_delete_purge.claim_${table}`,
+		sql(
+			`UPDATE ${table}
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE ${key} = ?
 				   AND deleted_at IS NOT NULL
 				   AND deleting_at IS NULL`,
-				claim.nowIso,
-				claim.nowIso,
-				id,
-			),
+			claim.nowIso,
+			claim.nowIso,
+			id,
 		),
 	)
 	if (created.changes === 1) return true
-	const restamped = yield* retryTransientD1(
-		db.run(
-			`soft_delete_purge.restamp_${table}`,
-			sql(
-				`UPDATE ${table}
+	const restamped = yield* db.run(
+		`soft_delete_purge.restamp_${table}`,
+		sql(
+			`UPDATE ${table}
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE ${key} = ?
 				   AND deleted_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-				claim.nowIso,
-				claim.nowIso,
-				id,
-				claim.retryBackoffCutoff,
-			),
+			claim.nowIso,
+			claim.nowIso,
+			id,
+			claim.retryBackoffCutoff,
 		),
 	)
 	return restamped.changes === 1
@@ -332,21 +335,19 @@ const claimLegacyUser = Effect.fn('SoftDeletePurge.claimLegacyUser')(function* (
 	claim: Claim,
 ) {
 	const db = yield* D1
-	const claimed = yield* retryTransientD1(
-		db.run(
-			'soft_delete_purge.claim_legacy_user',
-			sql(
-				`UPDATE users
+	const claimed = yield* db.run(
+		'soft_delete_purge.claim_legacy_user',
+		sql(
+			`UPDATE users
 				 SET deleting_at = ?, updated_at = ?
 				 WHERE stable_user_id = ?
 				   AND deleted_at IS NULL
 				   AND deleting_at IS NOT NULL
 				   AND datetime(deleting_at) < datetime(?)`,
-				claim.nowIso,
-				claim.nowIso,
-				userId,
-				claim.retryBackoffCutoff,
-			),
+			claim.nowIso,
+			claim.nowIso,
+			userId,
+			claim.retryBackoffCutoff,
 		),
 	)
 	return claimed.changes === 1
@@ -390,11 +391,14 @@ const purgeCandidate = (candidate: SoftDeletePurgeCandidate) =>
 
 /**
  * One candidate: claim (kept on every exit so the backoff owns retries),
- * purge, and on any failure record a redacted `*.purge_failed` audit event.
+ * purge, and on any failure record a redacted `*.purge_failed` audit event,
+ * or `purge.retry_budget_exhausted` (also sent to Sentry) when transient D1
+ * backoff ran out.
  */
 const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 	function* (candidate: SoftDeletePurgeCandidate, claim: Claim) {
 		const audit = yield* AuditLog
+		const reporter = yield* ErrorReporter
 		yield* Effect.annotateCurrentSpan({
 			'kody.purge_kind': candidate.kind,
 			'kody.purge_legacy': candidate.legacy === true,
@@ -406,20 +410,25 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 			...(candidate.legacy ? { legacy: true as const } : {}),
 		}
 		return yield* Effect.scoped(
-			Effect.gen(function* () {
-				const claimed = yield* scopedClaim(
-					claimCandidate(candidate, claim),
-					keepClaim('soft_delete_purge'),
-				)
-				if (Option.isNone(claimed)) {
+			withTransientRetryBudget(
+				Effect.gen(function* () {
+					const claimed = yield* scopedClaim(
+						claimCandidate(candidate, claim),
+						keepClaim('soft_delete_purge'),
+					)
+					if (Option.isNone(claimed)) {
+						return {
+							...base,
+							outcome: 'skipped_claim',
+						} satisfies SoftDeletePurgeOutcome
+					}
+					yield* purgeCandidate(candidate)
 					return {
 						...base,
-						outcome: 'skipped_claim',
+						outcome: 'purged',
 					} satisfies SoftDeletePurgeOutcome
-				}
-				yield* purgeCandidate(candidate)
-				return { ...base, outcome: 'purged' } satisfies SoftDeletePurgeOutcome
-			}),
+				}),
+			),
 		).pipe(
 			Effect.catchCause((cause) =>
 				Effect.gen(function* () {
@@ -431,6 +440,8 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 					const lane = candidate.legacy
 						? 'legacy_deletion_finish'
 						: 'soft_delete'
+					const retryBudgetExhausted =
+						error instanceof TransientRetryBudgetExhausted
 					yield* Effect.logWarning(
 						JSON.stringify({
 							message: 'soft_delete_purge_candidate_failed',
@@ -442,8 +453,9 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 					)
 					yield* audit.recordOrg({
 						orgId: candidate.id,
-						action:
-							candidate.kind === 'org'
+						action: retryBudgetExhausted
+							? 'purge.retry_budget_exhausted'
+							: candidate.kind === 'org'
 								? 'org.purge_failed'
 								: 'user.purge_failed',
 						result: 'failure',
@@ -454,6 +466,20 @@ const processCandidate = Effect.fn('SoftDeletePurge.processCandidate')(
 						}),
 						createdAt: claim.nowIso,
 					})
+					if (retryBudgetExhausted) {
+						yield* reporter.capture(error, {
+							requireDsn: true,
+							tags: { 'scheduled.lane': 'soft_delete_purge' },
+							contexts: {
+								soft_delete_purge: {
+									kind: candidate.kind,
+									id: candidate.id,
+									operation: error.operation,
+									spentMs: error.spentMs,
+								},
+							},
+						})
+					}
 					return {
 						...base,
 						outcome: 'failed',

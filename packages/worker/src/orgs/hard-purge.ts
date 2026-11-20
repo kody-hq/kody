@@ -12,7 +12,12 @@ import {
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
 import { AuditLog } from '#worker/effect/audit.ts'
-import { type Bound, D1, retryTransientD1, sql } from '#worker/effect/d1.ts'
+import {
+	type Bound,
+	D1,
+	sql,
+	withTransientRetryBudget,
+} from '#worker/effect/d1.ts'
 import { outbound } from '#worker/effect/outbound.ts'
 import { runSlicePromise } from '#worker/effect/slice.ts'
 import { WorkerEnv } from '#worker/effect/worker-env.ts'
@@ -99,20 +104,18 @@ const PresentRow = Schema.Struct({ present: Schema.Number })
 const personalOrgHardPurgeRelation = Effect.fn('HardPurge.personalOrgRelation')(
 	function* (orgId: OwnerId) {
 		const db = yield* D1
-		const row = yield* retryTransientD1(
-			db.first(
-				'hard_purge.personal_org_relation',
-				RelationRow,
-				sql(
-					`SELECT deleted_at, deleting_at FROM users
+		const row = yield* db.first(
+			'hard_purge.personal_org_relation',
+			RelationRow,
+			sql(
+				`SELECT deleted_at, deleting_at FROM users
 					 WHERE (
 					 	(personal_org_id IS NOT NULL AND TRIM(personal_org_id) != '' AND personal_org_id = ?)
 					 	OR ((personal_org_id IS NULL OR TRIM(personal_org_id) = '') AND stable_user_id = ?)
 					 )
 					 LIMIT 1`,
-					orgId,
-					orgId,
-				),
+				orgId,
+				orgId,
 			),
 		)
 		const relation: PersonalOrgHardPurgeRelation = Option.match(row, {
@@ -157,18 +160,14 @@ const deleteOrgRows = Effect.fn('HardPurge.deleteOrgRows')(function* (
 			dbUserId: -1,
 		})
 		const statement = buildUserScopedDeleteOrUpdateSql(match)
-		yield* retryTransientD1(
-			db.run(
-				`hard_purge.delete.${match.table}`,
-				sql(statement.sql, ...(statement.params as Array<Bound>)),
-			),
+		yield* db.run(
+			`hard_purge.delete.${match.table}`,
+			sql(statement.sql, ...(statement.params as Array<Bound>)),
 		)
 	}
-	const { changes } = yield* retryTransientD1(
-		db.run(
-			'hard_purge.delete_org',
-			sql(`DELETE FROM orgs WHERE id = ?`, orgId),
-		),
+	const { changes } = yield* db.run(
+		'hard_purge.delete_org',
+		sql(`DELETE FROM orgs WHERE id = ?`, orgId),
 	)
 	if (changes === 0) {
 		return yield* new HardPurgeRowError({
@@ -246,12 +245,10 @@ const softDeletedOrgId = Effect.fn('HardPurge.softDeletedOrgId')(function* (
 	orgId: OwnerId,
 ) {
 	const db = yield* D1
-	const row = yield* retryTransientD1(
-		db.first(
-			'hard_purge.soft_deleted_org',
-			IdRow,
-			sql(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`, orgId),
-		),
+	const row = yield* db.first(
+		'hard_purge.soft_deleted_org',
+		IdRow,
+		sql(`SELECT id FROM orgs WHERE id = ? AND deleted_at IS NOT NULL`, orgId),
 	)
 	return Option.as(row, orgId)
 })
@@ -266,14 +263,12 @@ export const hardPurgeSoftDeletedUserEffect = Effect.fn(
 	const db = yield* D1
 	const audit = yield* AuditLog
 	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
-	const personalOrgRow = yield* retryTransientD1(
-		db.first(
-			'hard_purge.user_personal_org',
-			PersonalOrgRow,
-			sql(
-				`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
-				input.dbUserId,
-			),
+	const personalOrgRow = yield* db.first(
+		'hard_purge.user_personal_org',
+		PersonalOrgRow,
+		sql(
+			`SELECT personal_org_id, stable_user_id FROM users WHERE id = ?`,
+			input.dbUserId,
 		),
 	)
 	const storageOwnerId = Option.match(personalOrgRow, {
@@ -327,15 +322,13 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 	const db = yield* D1
 	const audit = yield* AuditLog
 	yield* Effect.annotateCurrentSpan('kody.user_id', input.stableUserId)
-	const found = yield* retryTransientD1(
-		db.first(
-			'hard_purge.legacy_user',
-			LegacyUserRow,
-			sql(
-				`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
+	const found = yield* db.first(
+		'hard_purge.legacy_user',
+		LegacyUserRow,
+		sql(
+			`SELECT personal_org_id, stable_user_id, deleted_at, deleting_at
 				 FROM users WHERE id = ?`,
-				input.dbUserId,
-			),
+			input.dbUserId,
 		),
 	)
 	if (Option.isNone(found)) return { alreadyGone: true }
@@ -363,14 +356,12 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 	const personUserId = row.stable_user_id.trim() || input.stableUserId
 	// Tombstone a still-live personal org first: if this attempt removes the
 	// person and then fails on the org, the org lane can still purge it.
-	yield* retryTransientD1(
-		db.run(
-			'hard_purge.tombstone_personal_org',
-			sql(
-				`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
-				row.deleting_at,
-				storageOwnerId,
-			),
+	yield* db.run(
+		'hard_purge.tombstone_personal_org',
+		sql(
+			`UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
+			row.deleting_at,
+			storageOwnerId,
 		),
 	)
 	const result = yield* purgePersonAndPersonalOrg({
@@ -381,12 +372,10 @@ export const finishLegacyUserDeletionEffect = Effect.fn(
 		personalOrgId: yield* softDeletedOrgId(storageOwnerId),
 	})
 	if ((result.deletedRowCounts.users ?? 0) === 0) {
-		const stillThere = yield* retryTransientD1(
-			db.first(
-				'hard_purge.legacy_user_present',
-				PresentRow,
-				sql(`SELECT 1 AS present FROM users WHERE id = ?`, input.dbUserId),
-			),
+		const stillThere = yield* db.first(
+			'hard_purge.legacy_user_present',
+			PresentRow,
+			sql(`SELECT 1 AS present FROM users WHERE id = ?`, input.dbUserId),
 		)
 		if (Option.isSome(stillThere)) {
 			return yield* new HardPurgeRowError({
@@ -411,7 +400,10 @@ export function hardPurgeOrg(input: {
 	env: Env
 	orgId: OwnerId
 }): Promise<void> {
-	return runSlicePromise(input.env, hardPurgeOrgEffect(input.orgId))
+	return runSlicePromise(
+		input.env,
+		withTransientRetryBudget(hardPurgeOrgEffect(input.orgId)),
+	)
 }
 
 export function hardPurgeSoftDeletedUser(input: {
@@ -420,7 +412,10 @@ export function hardPurgeSoftDeletedUser(input: {
 	stableUserId: OwnerId
 }): Promise<void> {
 	const { env, ...rest } = input
-	return runSlicePromise(env, hardPurgeSoftDeletedUserEffect(rest))
+	return runSlicePromise(
+		env,
+		withTransientRetryBudget(hardPurgeSoftDeletedUserEffect(rest)),
+	)
 }
 
 export function finishLegacyUserDeletion(input: {
@@ -429,5 +424,8 @@ export function finishLegacyUserDeletion(input: {
 	stableUserId: OwnerId
 }): Promise<{ alreadyGone: boolean }> {
 	const { env, ...rest } = input
-	return runSlicePromise(env, finishLegacyUserDeletionEffect(rest))
+	return runSlicePromise(
+		env,
+		withTransientRetryBudget(finishLegacyUserDeletionEffect(rest)),
+	)
 }
