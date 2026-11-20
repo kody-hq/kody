@@ -13,7 +13,7 @@ import {
 	useQueryClient,
 } from '@tanstack/react-query'
 import { useRouteContext, useRouter } from '@tanstack/react-router'
-import { type FormEvent, useCallback, useEffectEvent, useState } from 'react'
+import { type FormEvent, useCallback, useState } from 'react'
 import { adminUsersFilters, adminUsersSearch } from '../admin-users-input.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import {
@@ -221,12 +221,14 @@ export function AdminUsersPage(props: {
 	function buildUserDetailHref(stableUserId: string) {
 		return buildUserDetailHrefFrom(getCurrentHref(), stableUserId)
 	}
-	async function loadMoreUsers() {
-		if (additional.isFetching || !usersSnapshot.hasMore) return false
+	const hasMoreUsers = usersSnapshot.hasMore
+	const { isFetching: fetchingMore, fetchNextPage } = additional
+	const loadMoreUsers = useCallback(async () => {
+		if (fetchingMore || !hasMoreUsers) return false
 		if (!loadAdditionalPages) setLoadAdditionalPages(true)
-		else await additional.fetchNextPage()
+		else await fetchNextPage()
 		return true
-	}
+	}, [fetchingMore, hasMoreUsers, loadAdditionalPages, fetchNextPage])
 	async function submitRoleAction(action: 'assign_role' | 'remove_role') {
 		if (!runExclusiveActor.getSnapshot().can({ type: 'SUBMIT' })) return
 		runExclusiveActor.send({ type: 'SUBMIT' })
@@ -417,14 +419,13 @@ export function AdminUsersPage(props: {
 			runExclusiveActor.send({ type: 'SETTLED' })
 		}
 	}
-	const loadMoreFromIntersection = useEffectEvent(loadMoreUsers)
 	const sentinelRef = useCallback(
 		(node: HTMLDivElement | null) => {
 			if (!node) return
 			const observer = new IntersectionObserver(
 				(entries) => {
 					if (entries.some((entry) => entry.isIntersecting))
-						void loadMoreFromIntersection()
+						void loadMoreUsers()
 				},
 				{ rootMargin: '400px' },
 			)
@@ -432,11 +433,7 @@ export function AdminUsersPage(props: {
 			return () => observer.disconnect()
 		},
 		// oxlint-disable-next-line react/exhaustive-deps -- reobserve after each page so a visible sentinel loads again
-		[
-			usersSnapshot.items.length,
-			usersSnapshot.hasMore,
-			usersSnapshot.isLoadingMore,
-		],
+		[loadMoreUsers, usersSnapshot.items.length, usersSnapshot.isLoadingMore],
 	)
 	const currentHref = props.currentHref
 	const pending = false
