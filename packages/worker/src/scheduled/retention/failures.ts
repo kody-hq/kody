@@ -18,6 +18,21 @@ export type RetentionFailure =
 	| { kind: 'timed_out'; operation: string; timeoutMs: number }
 	| { kind: 'aborted'; operation: string; cause: unknown }
 	| { kind: 'unexpected'; operation: string; cause: unknown }
+	| {
+			kind: 'purge_webhook_failed'
+			operation: string
+			ownerKind: 'org' | 'user'
+			ownerId: string
+			/** HTTP status of a non-2xx response; null for network errors and timeouts. */
+			status: number | null
+			cause?: unknown
+	  }
+
+/** The `PURGE_WEBHOOK_URL` call for one purge item did not succeed. */
+export type PurgeWebhookFailed = Extract<
+	RetentionFailure,
+	{ kind: 'purge_webhook_failed' }
+>
 
 export type RetentionFailureKind = RetentionFailure['kind']
 
@@ -36,6 +51,10 @@ export function describeRetentionFailure(failure: RetentionFailure): string {
 			return `${failure.operation} returned an invalid row: ${failure.issues}`
 		case 'timed_out':
 			return `${failure.operation} timed out after ${failure.timeoutMs}ms`
+		case 'purge_webhook_failed':
+			return failure.status === null
+				? `${failure.operation} failed: ${getErrorMessage(failure.cause)}`
+				: `${failure.operation} returned HTTP ${failure.status}`
 		default:
 			return assertNever(failure)
 	}
@@ -81,6 +100,7 @@ export function reportableCause(failure: RetentionFailure): unknown {
 			return failure.cause
 		case 'row_validation_failed':
 		case 'timed_out':
+		case 'purge_webhook_failed':
 			return new RetentionError(failure)
 		default:
 			return assertNever(failure)

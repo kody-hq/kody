@@ -11,6 +11,7 @@ import {
 import { z } from 'zod'
 import { wipePinnedConnectionsForOrg } from '#worker/integrations/pinned-connections.ts'
 import { personalOrgIdFromUserRow } from '#worker/orgs/personal-org-id.ts'
+import { postPurgeWebhook } from '#worker/orgs/purge-webhook.ts'
 import {
 	type HardPurgeOrgMode,
 	hardPurgeOrgDataTargets,
@@ -32,7 +33,12 @@ import {
 } from '#worker/scheduled/retention/rows.ts'
 import { traced } from '#worker/scheduled/retention/telemetry.ts'
 
-type HardPurgeOptions = { clock?: Clock; signal?: AbortSignal }
+type HardPurgeOptions = {
+	clock?: Clock
+	signal?: AbortSignal
+	/** Soft-delete purge lane: POST to `PURGE_WEBHOOK_URL` before row deletes. */
+	notifyPurgeWebhook?: boolean
+}
 
 function purgeContext(env: Env, options: HardPurgeOptions): RetentionContext {
 	return {
@@ -134,6 +140,12 @@ export function hardPurgeOrg(
 					}),
 				ctx.clock,
 			)
+			if (input.notifyPurgeWebhook) {
+				await postPurgeWebhook(ctx, {
+					env: input.env,
+					item: { kind: 'org', id: input.orgId },
+				})
+			}
 			await deleteOrgRows(ctx, {
 				env: input.env,
 				orgId: input.orgId,
@@ -225,6 +237,7 @@ async function purgePersonAndPersonalOrg(
 		personUserId: string
 		personalOrgId: OwnerId | null
 		purgeSoftDeleted?: boolean
+		notifyPurgeWebhook?: boolean
 	},
 ) {
 	if (input.personalOrgId) {
@@ -250,6 +263,21 @@ async function purgePersonAndPersonalOrg(
 				mcpUserId: input.storageOwnerId,
 				personUserId: input.personUserId,
 				purgeSoftDeleted: input.purgeSoftDeleted,
+				// Both halves are announced before either loses rows, so a failed
+				// call for either keeps the pair intact for the next pass.
+				beforeD1Delete: async () => {
+					if (!input.notifyPurgeWebhook) return
+					await postPurgeWebhook(ctx, {
+						env: input.env,
+						item: { kind: 'user', id: input.stableUserId },
+					})
+					if (input.personalOrgId) {
+						await postPurgeWebhook(ctx, {
+							env: input.env,
+							item: { kind: 'org', id: input.personalOrgId },
+						})
+					}
+				},
 			}),
 		ctx.clock,
 	)
@@ -306,6 +334,7 @@ export function hardPurgeSoftDeletedUser(
 				personUserId,
 				personalOrgId: await softDeletedOrgId(ctx, storageOwnerId),
 				purgeSoftDeleted: true,
+				notifyPurgeWebhook: input.notifyPurgeWebhook,
 			})
 			await logOrgAuditEvent({
 				env: input.env,
@@ -399,6 +428,7 @@ export function finishLegacyUserDeletion(
 				storageOwnerId,
 				personUserId,
 				personalOrgId: await softDeletedOrgId(ctx, storageOwnerId),
+				notifyPurgeWebhook: input.notifyPurgeWebhook,
 			})
 			if ((result.deletedRowCounts.users ?? 0) === 0) {
 				const stillThere = await d1First(ctx, {
