@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { uiState, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
-	useEffect,
 	useId,
 	useRef,
 	useState,
@@ -122,20 +121,24 @@ export function LoginPage({
 	const { providers: authProviders, turnstileSiteKey } = authConfig
 	const searchParams = new URL(currentHref, 'https://kody.local').searchParams
 	const redirectTo = normalizeRedirectTo(searchParams.get('redirectTo'))
-	useEffect(() => {
-		const controller = new AbortController()
-		lifecycle.current = controller
-		if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
-		if (mode === 'signup' && !signupStartedTracked.current) {
-			signupStartedTracked.current = trackFathomEvent(
-				fathomEventNames.signupStarted,
-			)
-		}
-		return () => {
-			controller.abort()
-			WebAuthnAbortService.cancelCeremony()
-		}
-	}, [mode, currentHref, turnstileSiteKey])
+	const trackLifecycle = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (!node || !currentHref) return
+			const controller = new AbortController()
+			lifecycle.current = controller
+			if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
+			if (mode === 'signup' && !signupStartedTracked.current) {
+				signupStartedTracked.current = trackFathomEvent(
+					fathomEventNames.signupStarted,
+				)
+			}
+			return () => {
+				controller.abort()
+				WebAuthnAbortService.cancelCeremony()
+			}
+		},
+		[mode, currentHref, turnstileSiteKey],
+	)
 	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
 		if (lifecycle.current?.signal.aborted) return false
 		const accepted = transition(event)
@@ -419,7 +422,7 @@ export function LoginPage({
 	const showSocial = authProviders.length > 0
 
 	return (
-		<AuthLayout title={title} description={description}>
+		<AuthLayout ref={trackLifecycle} title={title} description={description}>
 			{oauthErrorMessage ? (
 				<>
 					<p aria-live="polite" data-tone="error" css={formMessageCss}>

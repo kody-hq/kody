@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import type { ReactNode, CSSProperties } from 'react'
+import type { ReactNode, CSSProperties, Ref } from 'react'
 import type { CSSObject } from '@emotion/react'
 import { colors } from '#universal/styles/tokens.ts'
 import {
@@ -11,13 +11,15 @@ export function AuthLayout({
 	title,
 	description,
 	children,
+	ref,
 }: {
 	title: string
 	description?: string
 	children: ReactNode
+	ref?: Ref<HTMLDivElement>
 }) {
 	return (
-		<div css={authLayoutCss}>
+		<div ref={ref} css={authLayoutCss}>
 			{renderLoginVisualPanel()}
 			<div css={authPanelCss}>
 				{renderMobileBrand()}
