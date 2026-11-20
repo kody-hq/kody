@@ -86,7 +86,7 @@ function getSessionMaxAgeSeconds(session: Pick<AuthSession, 'rememberMe'>) {
  * timestamp to grant a bounded grace window, so a missing `issuedAt`
  * (legacy v2 cookies from before the field was stamped on every write)
  * is treated as already expired.
- * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function getAuthSessionExpiresAtMs(input: {
 	rememberMe: boolean

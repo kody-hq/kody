@@ -100,7 +100,7 @@ export function describeSecondAgentStandardGift(input: {
  * legacy-ladder subscribers keep their own tables; it never lowers paid or
  * manual grants. Overlay Pro is not credits-eligible: it uses the retired
  * Pro ceilings, not the purchasable-Pro credits table.
- * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export function resolveEffectivePlanWithSecondAgentGift(
 	manualPlan: PlanName,

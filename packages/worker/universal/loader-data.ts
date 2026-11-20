@@ -2976,7 +2976,7 @@ export type AccountActivityRunListItem = {
 	/**
 	 * Who started the run. Null for legacy rows (UI shows Unknown) or when
 	 * begin had no request context.
-	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
 	 */
 	startedBy: {
 		userId: string | null
@@ -3095,7 +3095,7 @@ export type AccountMemoriesLoaderData = {
 	/**
 	 * Team-org legacy list: read-only until cleanup. Personal org is writable.
 	 * Memory is personal-only (ADR 0072).
-	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
+	 * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
 	 */
 	legacyReadOnly: boolean
 }

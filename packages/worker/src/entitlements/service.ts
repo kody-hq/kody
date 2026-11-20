@@ -1457,7 +1457,7 @@ export async function readStorageBytesFromUserMeter(input: {
  * Authoritative current usage for any entitlement resource: daily counters
  * via UserMeter, concurrent workflows via RunLog workflow projections, and
  * everything else via the legacy D1 helpers.
- * Remove when: no org has `entitlement_ladder = 'legacy'`.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export async function readCurrentEntitlementResourceUsage(input: {
 	db: D1Database

@@ -77,7 +77,7 @@ type CredentialPlacementApprovalItem = {
 	name: string
 	/**
 	 * The stored placement before approval. Null means not set (legacy).
-	 * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
 	 */
 	placement: CredentialFillPlacementView | null
 	/** Requested parts the credential cannot fill yet. */

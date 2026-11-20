@@ -171,7 +171,7 @@ export async function ensureUsersTestSchema(input: {
 	} catch {
 		// Index already exists, or a partial legacy index remains from an
 		// earlier suite sharing this database.
-		// Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
+		// Permanent: stored data or clients from before this change still exist.
 	}
 	try {
 		// Ignore blank defaults from fixture inserts that omit the column.

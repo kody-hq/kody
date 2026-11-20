@@ -193,7 +193,7 @@ export type ApiTokenRecord = Omit<ApiTokenRow, 'scopes_json'> & {
 	/**
 	 * `org`: fixed to `org_id` (legacy / explicit). `user`: person-owned; each
 	 * request picks an org via `?org=` (default personal).
-	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
+	 * Permanent: org-bound and legacy-scoped tokens stay valid until they expire or are revoked.
 	 */
 	org_binding: ApiTokenOrgBinding
 }

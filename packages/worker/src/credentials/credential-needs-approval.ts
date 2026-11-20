@@ -109,7 +109,7 @@ function supplierChanged(prior: CredentialNeed, next: CredentialNeed) {
 
 /**
  * Who fills the need: publisher (or its older alias), executor, or legacy.
- * Remove when: every secret credential row has a stored placement (null placements backfilled).
+ * Remove when: no published package declares `ownerCredentialForVisitors`.
  */
 function needSupplier(
 	need: Pick<CredentialNeed, 'supplier' | 'ownerCredentialForVisitors'>,

@@ -217,7 +217,7 @@ export type ResolvedSecret = {
 	placement: CredentialFillPlacement | null
 	/**
 	 * How fill placement was chosen; null/omitted on legacy rows or when not found.
-	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
 	 */
 	placementOrigin?: CredentialPlacementOrigin | null
 }

@@ -98,7 +98,7 @@ export type AccountCredentialDetail = {
 	canApproveRequestProfile?: boolean
 	/**
 	 * The legacy placeholder that fills this value on its hosts, if any.
-	 * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	placeholder: string | null
 	/** Team orgs a personal credential is granted to. */

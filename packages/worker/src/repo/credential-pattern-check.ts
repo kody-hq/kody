@@ -60,7 +60,7 @@ const credentialPatternLabelsDoc =
 
 /**
  * Notes for legacy references whose requests need a change to work as written.
- * Permanent: stored data or clients from before this change still exist.
+ * Remove when: a codemod rescan finds no published package that still uses these patterns.
  */
 const credentialPatternNotes: Partial<Record<LegacyCredentialPattern, string>> =
 	{

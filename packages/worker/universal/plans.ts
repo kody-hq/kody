@@ -321,7 +321,7 @@ export type PlanLimits = {
 	 * Free/Standard/Pro set a weekly total so a 1–2 day burst cannot spend
 	 * a full week of daily headroom. `max` and legacy Standard/Pro leave
 	 * this unset so their daily-only behavior stays unchanged.
-	 * Permanent: rows written before this field existed keep null; there is no backfill.
+	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
 	 */
 	maxExecuteUniqueWorkersPerWeek: number | null
 	/**
@@ -335,7 +335,7 @@ export type PlanLimits = {
 	 * Maximum sandbox outbound fetches per UTC week (Monday–Sunday).
 	 * `null` means no weekly window. Same public-vs-legacy/`max` rule as
 	 * {@link PlanLimits.maxExecuteUniqueWorkersPerWeek}.
-	 * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
+	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
 	 */
 	maxOutboundFetchesPerWeek: number | null
 	/**

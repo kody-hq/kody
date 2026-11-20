@@ -60,7 +60,7 @@ export type CredentialTriggerRef = {
 	/**
 	 * Webhook only: the minted endpoint to Approve. Omit for legacy links
 	 * (oldest URL under the name) and for cron / subscription triggers.
-	 * Permanent: old public links and addresses keep resolving.
+	 * Permanent: stored data or clients from before this change still exist.
 	 */
 	endpointId?: string
 }
@@ -191,7 +191,7 @@ export type CredentialListItemStatus =
 /**
  * How fill placement was chosen for a secret credential. Null on legacy rows
  * or non-secret kinds. See worker `CredentialPlacementOrigin`.
- * Permanent: stored data or clients from before this change still exist.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 export type CredentialPlacementOriginView =
 	| 'manifest'
@@ -215,7 +215,7 @@ export type CredentialListItem = {
 	 * How fill placement was chosen. Null on legacy rows and non-secret kinds.
 	 * `default_unread` means the package declaration could not be read at
 	 * insert; a later secretSet may repair an untouched headers-only default.
-	 * Permanent: org-bound and legacy-scoped tokens stay valid until they expire or are revoked.
+	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
 	 */
 	placementOrigin: CredentialPlacementOriginView | null
 	packageId: string | null
@@ -601,7 +601,7 @@ export function parseCredentialCreateQuery(
 	const scope = trimmed(search.get('scope'))
 	const packageId = trimmed(search.get('packageId'))
 	// A bare `packageId` means a package Key, as on the legacy intake page.
-	// Remove when: issue #3836 phase 3 enforces credential stamps on every package.
+	// Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
 	const packageScope = scope === 'package' || (scope === null && !!packageId)
 	return {
 		kind,

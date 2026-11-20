@@ -205,7 +205,7 @@ export function parsePackageAppPath(pathname: string): PackageAppPath | null {
  * first segments (`-`, `.well-known`, ...) are Kody-owned and never parse as a
  * package, and a bare `/packages` has no leaf. The caller must already have
  * validated the subdomain's username label.
- * Remove when: every secret credential row has a stored placement (null placements backfilled).
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function parsePackageAppSubdomainPath(input: {
 	pathname: string

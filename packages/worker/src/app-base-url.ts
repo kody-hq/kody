@@ -83,7 +83,7 @@ export function getRegistrableDomain(url: URL) {
  * including legacy dual-serve hosts. This is the single list both the
  * custom-hostname runtime guard and custom-hostname registration read, so the
  * two can never disagree about which parent domains belong to Kody.
- * Remove when: legacy `/account/usage` and `/account/credits` links get no traffic.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function listKodyRegistrableDomains(env: AppBaseUrlEnv): Array<string> {
 	const domains: Array<string> = []
@@ -110,7 +110,7 @@ export function listKodyRegistrableDomains(env: AppBaseUrlEnv): Array<string> {
  * app or package-app origin (including legacy dual-serve hosts). Custom
  * hostnames must stay cross-site from those origins so author code cannot
  * ride `SameSite=Lax` first-party cookies.
- * Remove when: every secret credential row has a stored placement (null placements backfilled).
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function hostnameSharesKodyRegistrableDomain(input: {
 	env: AppBaseUrlEnv
@@ -176,7 +176,7 @@ export type PackageAppOrigin = {
  * Legacy hosts are assumed `https` (production package-app traffic is always
  * TLS); they classify dual-served package-app zones the same way as the
  * canonical origin.
- * Remove when: no published package declares `ownerCredentialForVisitors`.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function listPackageAppOrigins(input: { env: PackageAppBaseUrlEnv }) {
 	const origins: Array<PackageAppOrigin> = []
@@ -243,7 +243,7 @@ function classifyAgainstPackageAppOrigin(input: {
 	}
 	// Strict DNS-label check: legacy underscore usernames cannot own a
 	// subdomain, and nested labels never match.
-	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+	// Permanent: usernames created before the DNS-label rule keep working.
 	if (label.includes('.') || !isDnsSafeUsername(label)) {
 		return { kind: 'unrecognized-subdomain', role: input.role }
 	}

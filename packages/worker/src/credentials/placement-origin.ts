@@ -10,7 +10,7 @@
  *   placement on that need.
  * - `owner`: set from the credential page editor.
  * - `explicit`: set via secretSet / credentialUpdate placement input.
- * Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 export const credentialPlacementOrigins = [
 	'manifest',

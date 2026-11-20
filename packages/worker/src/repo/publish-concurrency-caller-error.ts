@@ -15,7 +15,7 @@ export const artifactsHeadMovedWhilePublishingPhrase =
 
 /**
  * Legacy wording still matched for in-flight DO builds / stored errors.
- * Permanent: a renamed account keeps its immutable org slug.
+ * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
  */
 export const artifactsHeadChangedBeforePublishLegacyPhrase =
 	'Artifacts HEAD changed from "'
@@ -44,7 +44,7 @@ export function buildPublishedCommitMovedDuringPublishMessage() {
 /**
  * Match current and legacy Artifacts HEAD race phrases. Both forms keep the
  * expected and actual SHAs between double quotes.
- * Remove when: every secret credential row has a stored placement (null placements backfilled).
+ * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
  */
 export function isArtifactsHeadChangedBeforePublishMessage(message: string) {
 	return (

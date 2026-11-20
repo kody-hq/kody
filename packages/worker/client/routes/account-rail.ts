@@ -641,7 +641,7 @@ export function workspaceRailGroups(input: {
 	 * The person's username on their personal org. A legacy rename can leave
 	 * it different from the immutable org slug, and the profile lives at the
 	 * username.
-	 * Remove when: every secret credential row has a stored placement (null placements backfilled).
+	 * Permanent: a renamed account keeps its immutable org slug.
 	 */
 	profileUsername?: string | null
 	/** The `execution-contexts` flag is on for the viewer. */
