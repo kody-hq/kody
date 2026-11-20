@@ -311,12 +311,15 @@ export function FilesPage({
 		data.orgSlug,
 		!embedded && ((packagesExpanded && explorerVisible) || showPackages),
 	)
-	const explorer = useRef<HTMLElement>(null)
-	useLayoutEffect(() => {
-		explorer.current
-			?.querySelector<HTMLElement>('[aria-current="page"]')
-			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-	}, [selected?.file.id, selected?.file.parentId, selected?.file.name])
+	const explorer = useCallback(
+		(node: HTMLElement | null) => {
+			node
+				?.querySelector<HTMLElement>('[aria-current="page"]')
+				?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- a new selection scrolls its explorer row into view
+		[selected?.file.id, selected?.file.parentId, selected?.file.name],
+	)
 	const binary = selected?.file.encoding === 'base64'
 	const router = useRouter()
 	const [name, setName] = useState(
