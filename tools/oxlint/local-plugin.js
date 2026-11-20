@@ -1016,7 +1016,11 @@ const requireExitConditionCommentRule = {
 						.replaceAll(/\s*\n[\s*]*/g, ' ')
 					if (/oxlint-disable|eslint-disable/.test(text)) continue
 					if (!EXIT_CONDITION_TOPIC_PATTERN.test(text)) continue
-					if (EXIT_CONDITION_MARKER_PATTERN.test(text)) continue
+					const raw = group
+						.map((comment) => comment.value)
+						.join('\n')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
+					if (EXIT_CONDITION_MARKER_PATTERN.test(raw)) continue
 					context.report({
 						loc: {
 							start: context.sourceCode.getLocFromIndex(group[0].range[0]),
