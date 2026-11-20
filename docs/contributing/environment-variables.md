@@ -467,6 +467,12 @@ Worker secrets:
   routes return 503; packages can reconcile open/resolve from public
   `/status.json`. Synced from the GitHub Actions secret of the same name on
   production deploy.
+- **`STATUS_GROK_BOT_WAKE_URL`** / **`STATUS_GROK_BOT_WAKE_TOKEN`**: optional
+  status worker secrets. The status worker POSTs `{ id, name, prompt }` to the
+  Grok Bot webhook URL with `Authorization: Bearer <token>` on incident open and
+  all-clear, never through `kody.codes`. When either is unset the wake is
+  skipped with a warning. Synced from the GitHub Actions secrets of the same
+  names on production deploy when present.
 
 ## Cloudflare API (Worker + Email)
 

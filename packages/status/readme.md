@@ -61,6 +61,32 @@ subscriptions. The notify is fire-and-forget with a short timeout so a down or
 missing secret cannot stall probes or email. When the secret is unset, packages
 can reconcile from `GET /status.json`.
 
+That event rides the main origin, so it cannot fire when `kody.codes` itself is
+down (the 2026-11-20 Western Europe outage timed out all five event POSTs). For
+that case the worker also wakes a Grok Bot directly, never through the main
+origin:
+
+- After each probe tick, every incident that opened in that tick goes out as one
+  wake: component names, probe detail, `startedAt`, and the status page link.
+  When every woken incident has resolved and nothing is open, one all-clear wake
+  follows.
+- Sent wakes are recorded in `StatusStore` (`bot_wakes` and
+  `bot_wake_incidents`) before the POST, so retries and flaps never resend for
+  the same incident ids. A daily cap (`STATUS_GROK_BOT_WAKE_DAILY_LIMIT`,
+  default 12) bounds wakes during a flapping day.
+- The POST body is `{ id, name, prompt }` (`STATUS_GROK_BOT_ID` and
+  `STATUS_GROK_BOT_NAME` vars, currently `cole`) to the Worker secret
+  `STATUS_GROK_BOT_WAKE_URL` (full HTTPS webhook URL) with
+  `Authorization: Bearer $STATUS_GROK_BOT_WAKE_TOKEN`. Every `{` that starts a
+  `{{` sequence is serialized as `\u007b`, so the body never carries a raw
+  placeholder opener.
+- The wake is fire-and-forget in `waitUntil` with a 5 second timeout, so it
+  never stalls probes or alert email. When either secret is unset the wake is
+  skipped with one `status-grok-bot-wake-skipped` warning per batch.
+
+The deploy workflow syncs both Worker secrets from the GitHub Actions secrets of
+the same names when they are present and skips them when they are absent.
+
 Resolved incidents may also carry an optional operator retrospective (what
 happened, impact, timeline, cause, what we did, what we will change). Probes
 remain the source of truth for open vs resolved. The writeup is attached

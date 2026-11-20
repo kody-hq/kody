@@ -441,6 +441,12 @@ origin / `APP_DB` being down cannot block them. When the GitHub secret is unset,
 emit stays skipped and both incident maintenance routes return 503; packages can
 reconcile incident open/resolve from the public `/status.json` snapshot.
 
+Because that emit rides the main origin, the status worker also wakes a Grok Bot
+directly when the optional Worker secrets `STATUS_GROK_BOT_WAKE_URL` and
+`STATUS_GROK_BOT_WAKE_TOKEN` are set (synced from the same-named GitHub Actions
+secrets when present). See `packages/status/readme.md` for the batching, dedupe,
+and daily cap.
+
 ## Optional Cloudflare offerings
 
 The default footprint stays intentionally small. If you want to add additional
