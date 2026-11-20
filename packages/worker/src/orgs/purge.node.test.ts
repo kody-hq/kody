@@ -4,8 +4,31 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { createManualClock } from '#worker/test-support/manual-clock.ts'
+import {
+	PurgeBlockedError,
+	purgeClaimLeaseMs,
+	purgeFailureFenceMs,
+} from '#worker/scheduled/retention/purge-lease.ts'
 
-const hardPurgeOrg = vi.fn(async (input: { env: Env; orgId: string }) => {
+const sentryMock = vi.hoisted(() => ({ captureException: vi.fn() }))
+
+vi.mock('@sentry/cloudflare', async (importOriginal) => ({
+	...(await importOriginal<Record<string, unknown>>()),
+	isInitialized: () => true,
+	getClient: () => ({
+		getOptions: () => ({ dsn: 'https://purge@example.com/1' }),
+	}),
+	captureException: sentryMock.captureException,
+}))
+
+type HardPurgeOrgInput = {
+	env: Env
+	orgId: string
+	onStepComplete?: () => Promise<void>
+}
+
+const hardPurgeOrg = vi.fn(async (input: HardPurgeOrgInput) => {
 	await input.env.APP_DB.prepare(`DELETE FROM orgs WHERE id = ?`)
 		.bind(input.orgId)
 		.run()
@@ -24,7 +47,7 @@ const finishLegacyUserDeletion = vi.fn(
 const hardPurgeSoftDeletedUser = vi.fn()
 
 vi.mock('./hard-purge.ts', () => ({
-	hardPurgeOrg: (input: { env: Env; orgId: string }) => hardPurgeOrg(input),
+	hardPurgeOrg: (input: HardPurgeOrgInput) => hardPurgeOrg(input),
 	hardPurgeSoftDeletedUser: (input: unknown) => hardPurgeSoftDeletedUser(input),
 	finishLegacyUserDeletion: (input: {
 		env: Env
@@ -117,7 +140,24 @@ async function userRow(db: D1Database, id: number) {
 		.first<{ deleting_at: string | null; deleted_at: string | null }>()
 }
 
+async function orgPurgeState(db: D1Database, id: string) {
+	return await db
+		.prepare(
+			`SELECT deleting_at, purge_lease_expires_at, purge_failed_attempts
+			FROM orgs WHERE id = ?`,
+		)
+		.bind(id)
+		.first()
+}
+
+function failOrgPurgeOnce() {
+	hardPurgeOrg.mockImplementationOnce(async () => {
+		throw new Error('org purge failed: upstream 500')
+	})
+}
+
 beforeEach(() => {
+	sentryMock.captureException.mockClear()
 	hardPurgeOrg.mockClear()
 	hardPurgeSoftDeletedUser.mockClear()
 	finishLegacyUserDeletion.mockClear()
@@ -312,6 +352,7 @@ test('explicit dryRun previews legacy deletions without claiming', async () => {
 
 test('failed legacy deletion is audited, backs off, and retries later', async () => {
 	const { env, db } = await createEnv(false)
+	const clock = createManualClock(now)
 	await seedUser(db, {
 		id: 41,
 		stableUserId: 'legacy-retry',
@@ -322,7 +363,7 @@ test('failed legacy deletion is audited, backs off, and retries later', async ()
 		throw new Error('Artifact repo cleanup failed: upstream 500')
 	})
 	consoleWarn.mockImplementation(() => {})
-	const failed = await pruneSoftDeleted({ env, now })
+	const failed = await pruneSoftDeleted({ env, clock })
 	expect(failed.failed).toBe(1)
 	expect(failed.outcomes[0]).toEqual(
 		expect.objectContaining({
@@ -344,14 +385,14 @@ test('failed legacy deletion is audited, backs off, and retries later', async ()
 	expect(audit?.action).toBe('user.purge_failed')
 	expect(audit?.details_json).toContain('legacy_deletion_finish')
 
-	// Inside the six-hour backoff: not picked up again.
-	const soon = new Date(now.getTime() + 60 * 60 * 1000)
-	const skipped = await pruneSoftDeleted({ env, now: soon })
+	// Inside the 24 hour failure fence: not picked up again.
+	await clock.advance(purgeFailureFenceMs - 60_000)
+	const skipped = await pruneSoftDeleted({ env, clock })
 	expect(skipped.scanned).toBe(0)
 
-	// After the backoff the next pass retries and finishes.
-	const later = new Date(now.getTime() + 7 * 60 * 60 * 1000)
-	const retried = await pruneSoftDeleted({ env, now: later })
+	// After the fence the next pass retries and finishes.
+	await clock.advance(2 * 60_000)
+	const retried = await pruneSoftDeleted({ env, clock })
 	expect(retried.purged).toBe(1)
 	expect(await userRow(db, 41)).toBeNull()
 })
@@ -442,5 +483,143 @@ test('a failed failure-audit write does not abort the rest of the purge batch', 
 	expect(await userRow(db, 52)).toBeNull()
 	expect(JSON.stringify(consoleWarn.mock.calls)).toContain(
 		'soft_delete_purge_failure_audit_failed',
+	)
+})
+
+test('an expired claim lease lets another pass claim the item', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-lease-expired')
+	const clock = createManualClock(now)
+	consoleWarn.mockImplementation(() => {})
+	let takeover: Awaited<ReturnType<typeof pruneSoftDeleted>> | undefined
+	hardPurgeOrg.mockImplementationOnce(async (input) => {
+		await clock.advance(purgeClaimLeaseMs + 1)
+		takeover = await pruneSoftDeleted({ env, clock })
+		await input.onStepComplete?.()
+		return { orgId: input.orgId, deletedTables: { orgs: 0 } }
+	})
+
+	const stalled = await pruneSoftDeleted({ env, clock })
+	expect(takeover?.outcomes).toEqual([
+		expect.objectContaining({ id: 'org-lease-expired', outcome: 'purged' }),
+	])
+	// The stalled pass cannot renew a lease it lost, so it stops.
+	expect(stalled.outcomes).toEqual([
+		expect.objectContaining({
+			id: 'org-lease-expired',
+			outcome: 'failed',
+			error: 'purge_lease_lost:orgs',
+		}),
+	])
+	expect(hardPurgeOrg).toHaveBeenCalledTimes(2)
+	expect(await orgPurgeState(db, 'org-lease-expired')).toBeNull()
+})
+
+test('renewing the lease after a completed step prevents takeover', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-lease-renewed')
+	const clock = createManualClock(now)
+	let contender: Awaited<ReturnType<typeof pruneSoftDeleted>> | undefined
+	hardPurgeOrg.mockImplementationOnce(async (input) => {
+		await clock.advance(purgeClaimLeaseMs - 60_000)
+		await input.onStepComplete?.()
+		await clock.advance(purgeClaimLeaseMs - 60_000)
+		contender = await pruneSoftDeleted({ env, clock })
+		await input.env.APP_DB.prepare(`DELETE FROM orgs WHERE id = ?`)
+			.bind(input.orgId)
+			.run()
+		return { orgId: input.orgId, deletedTables: { orgs: 1 } }
+	})
+
+	const owner = await pruneSoftDeleted({ env, clock })
+	expect(contender?.scanned).toBe(0)
+	expect(owner.outcomes).toEqual([
+		expect.objectContaining({ id: 'org-lease-renewed', outcome: 'purged' }),
+	])
+	expect(hardPurgeOrg).toHaveBeenCalledTimes(1)
+})
+
+test('a failed purge keeps the claim behind a 24 hour fence and counts the attempt', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-fenced')
+	const clock = createManualClock(now)
+	consoleWarn.mockImplementation(() => {})
+	failOrgPurgeOnce()
+
+	expect((await pruneSoftDeleted({ env, clock })).failed).toBe(1)
+	expect(await orgPurgeState(db, 'org-fenced')).toEqual({
+		deleting_at: now.toISOString(),
+		purge_lease_expires_at: new Date(
+			now.getTime() + purgeFailureFenceMs,
+		).toISOString(),
+		purge_failed_attempts: 1,
+	})
+
+	await clock.advance(purgeFailureFenceMs - 60_000)
+	expect((await pruneSoftDeleted({ env, clock })).scanned).toBe(0)
+
+	await clock.advance(2 * 60_000)
+	failOrgPurgeOnce()
+	expect((await pruneSoftDeleted({ env, clock })).failed).toBe(1)
+	expect(await orgPurgeState(db, 'org-fenced')).toMatchObject({
+		purge_failed_attempts: 2,
+	})
+	expect(hardPurgeOrg).toHaveBeenCalledTimes(2)
+})
+
+test('the 5th failed attempt blocks the item, audits and reports it once, and later passes skip it', async () => {
+	const { env, db } = await createEnv(true)
+	await seedSoftDeletedOrg(db, 'org-blocked')
+	const clock = createManualClock(now)
+	consoleWarn.mockImplementation(() => {})
+	const outcomes = []
+	for (let attempt = 1; attempt <= 5; attempt++) {
+		failOrgPurgeOnce()
+		const result = await pruneSoftDeleted({ env, clock })
+		outcomes.push(result.outcomes[0])
+		await clock.advance(purgeFailureFenceMs + 1)
+	}
+	expect(outcomes.map((outcome) => outcome?.blocked)).toEqual([
+		undefined,
+		undefined,
+		undefined,
+		undefined,
+		true,
+	])
+
+	await clock.advance(30 * 24 * 60 * 60 * 1000)
+	expect((await pruneSoftDeleted({ env, clock })).scanned).toBe(0)
+	expect(
+		(await listSoftDeletePurgeCandidates({ env, clock })).candidates,
+	).toEqual([])
+	expect(hardPurgeOrg).toHaveBeenCalledTimes(5)
+	expect(await orgPurgeState(db, 'org-blocked')).toMatchObject({
+		purge_failed_attempts: 5,
+	})
+
+	const blockedAudits = await env.AUDIT_DB.prepare(
+		`SELECT org_id, result, details_json FROM org_audit_events
+		WHERE action = 'purge.blocked'`,
+	).all<{ org_id: string; result: string; details_json: string }>()
+	expect(
+		blockedAudits.results.map((row) => ({
+			...row,
+			details_json: JSON.parse(row.details_json),
+		})),
+	).toEqual([
+		{
+			org_id: 'org-blocked',
+			result: 'failure',
+			details_json: {
+				kind: 'org',
+				id: 'org-blocked',
+				attempts: 5,
+				lastFailure: outcomes[4]?.error,
+			},
+		},
+	])
+	expect(sentryMock.captureException).toHaveBeenCalledTimes(1)
+	expect(sentryMock.captureException).toHaveBeenCalledWith(
+		expect.any(PurgeBlockedError),
 	)
 })

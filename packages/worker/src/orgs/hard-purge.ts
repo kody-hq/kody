@@ -32,7 +32,15 @@ import {
 } from '#worker/scheduled/retention/rows.ts'
 import { traced } from '#worker/scheduled/retention/telemetry.ts'
 
-type HardPurgeOptions = { clock?: Clock; signal?: AbortSignal }
+type HardPurgeOptions = {
+	clock?: Clock
+	signal?: AbortSignal
+	/**
+	 * Runs after each completed step that leaves the purged row in place (the
+	 * purge lane renews its claim lease here). A throw stops the purge.
+	 */
+	onStepComplete?: () => Promise<void>
+}
 
 function purgeContext(env: Env, options: HardPurgeOptions): RetentionContext {
 	return {
@@ -121,6 +129,7 @@ export function hardPurgeOrg(
 				throw new PersonalOrgPurgesWithPersonError(input.orgId)
 			}
 			await wipeOrgPinnedConnections(ctx, input.env, input.orgId)
+			await input.onStepComplete?.()
 			// Team org: collect the same out-of-band keys account deletion
 			// collects for this owner id, delete those objects, then delete D1
 			// rows (including owner-scoped inventory without deleted_at).
@@ -134,6 +143,7 @@ export function hardPurgeOrg(
 					}),
 				ctx.clock,
 			)
+			await input.onStepComplete?.()
 			await deleteOrgRows(ctx, {
 				env: input.env,
 				orgId: input.orgId,
@@ -225,10 +235,12 @@ async function purgePersonAndPersonalOrg(
 		personUserId: string
 		personalOrgId: OwnerId | null
 		purgeSoftDeleted?: boolean
+		onStepComplete?: () => Promise<void>
 	},
 ) {
 	if (input.personalOrgId) {
 		await wipeOrgPinnedConnections(ctx, input.env, input.personalOrgId)
+		await input.onStepComplete?.()
 	}
 	await traced(
 		'retention.hard_purge.redact_audit_actor',
@@ -240,6 +252,7 @@ async function purgePersonAndPersonalOrg(
 			}),
 		ctx.clock,
 	)
+	await input.onStepComplete?.()
 	const result = await traced(
 		'retention.hard_purge.delete_user_account',
 		{ 'retention.purge_soft_deleted': input.purgeSoftDeleted === true },
@@ -306,6 +319,7 @@ export function hardPurgeSoftDeletedUser(
 				personUserId,
 				personalOrgId: await softDeletedOrgId(ctx, storageOwnerId),
 				purgeSoftDeleted: true,
+				onStepComplete: input.onStepComplete,
 			})
 			await logOrgAuditEvent({
 				env: input.env,
@@ -392,6 +406,7 @@ export function finishLegacyUserDeletion(
 				sql: `UPDATE orgs SET deleted_at = ? WHERE id = ? AND deleted_at IS NULL`,
 				bindings: [row.deleting_at, storageOwnerId],
 			})
+			await input.onStepComplete?.()
 			const result = await purgePersonAndPersonalOrg(ctx, {
 				env: input.env,
 				dbUserId: input.dbUserId,
@@ -399,6 +414,7 @@ export function finishLegacyUserDeletion(
 				storageOwnerId,
 				personUserId,
 				personalOrgId: await softDeletedOrgId(ctx, storageOwnerId),
+				onStepComplete: input.onStepComplete,
 			})
 			if ((result.deletedRowCounts.users ?? 0) === 0) {
 				const stillThere = await d1First(ctx, {

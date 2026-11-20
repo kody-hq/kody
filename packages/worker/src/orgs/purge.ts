@@ -8,8 +8,8 @@
  * null). Those owners asked for a hard deletion and were never offered a
  * restore window, so they skip the 30-day window and the
  * `SOFT_DELETE_PURGE_ENABLED` gate (which guards purging restorable
- * soft-deleted accounts). They keep the same claim, retry backoff, and failure
- * audit as soft-delete candidates. Only an explicit `dryRun: true` previews
+ * soft-deleted accounts). They keep the same claim lease, failure fence, and
+ * failure audit as soft-delete candidates. Only an explicit `dryRun: true` previews
  * them.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
@@ -45,12 +45,25 @@ import {
 	ownerIdColumn,
 	timestampColumn,
 } from '#worker/scheduled/retention/rows.ts'
+import {
+	type BlockedPurgeItem,
+	holdPurgeLease,
+	type PurgeLease,
+	purgeClaimableSql,
+	purgeLeaseExpiresAt,
+	recordFailedPurgeAttempt,
+} from '#worker/scheduled/retention/purge-lease.ts'
 import { traced } from '#worker/scheduled/retention/telemetry.ts'
 
 export { shouldRunRetentionCron as shouldRunSoftDeletePurgeCron }
 
 export const softDeletePurgeBatchSize = 5
 export const softDeletePurgeRunTimeBudgetMs = 20_000
+/**
+ * How long a `deleting_at` no purge claim wrote (an account deletion in
+ * flight, a claim from before leases) keeps candidates off this lane. Purge
+ * claims use the lease and failure fence in `purge-lease.ts` instead.
+ */
 export const softDeletePurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 
 const dayMs = 24 * 60 * 60 * 1000
@@ -92,6 +105,8 @@ export type SoftDeletePurgeOutcome = {
 	outcome: SoftDeletePurgeOutcomeKind
 	legacy?: true
 	error?: string
+	/** This failure was the last allowed attempt; no lane claims it again. */
+	blocked?: true
 }
 
 export type SoftDeletePurgeResult = {
@@ -144,6 +159,7 @@ const legacyUserCandidateRow = z.object({
 
 type CandidateWindow = {
 	ageCutoff: string
+	leaseNow: string
 	retryBackoffCutoff: string
 	batchSize: number
 }
@@ -160,7 +176,7 @@ function listOrgCandidates(ctx: RetentionContext, window: CandidateWindow) {
 			 FROM orgs
 			 WHERE deleted_at IS NOT NULL
 			   AND datetime(deleted_at) < datetime(?)
-			   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+			   AND ${purgeClaimableSql}
 			   AND NOT EXISTS (
 			     SELECT 1 FROM users u
 			     WHERE (u.deleted_at IS NOT NULL OR u.deleting_at IS NOT NULL)
@@ -171,7 +187,12 @@ function listOrgCandidates(ctx: RetentionContext, window: CandidateWindow) {
 			   )
 			 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 			 LIMIT ?`,
-		bindings: [window.ageCutoff, window.retryBackoffCutoff, window.batchSize],
+		bindings: [
+			window.ageCutoff,
+			window.leaseNow,
+			window.retryBackoffCutoff,
+			window.batchSize,
+		],
 		row: orgCandidateRow,
 	})
 }
@@ -183,17 +204,23 @@ function listUserCandidates(ctx: RetentionContext, window: CandidateWindow) {
 			 FROM users
 			 WHERE deleted_at IS NOT NULL
 			   AND datetime(deleted_at) < datetime(?)
-			   AND (deleting_at IS NULL OR datetime(deleting_at) < datetime(?))
+			   AND ${purgeClaimableSql}
 			 ORDER BY (deleting_at IS NULL) DESC, datetime(deleted_at) ASC, id ASC
 			 LIMIT ?`,
-		bindings: [window.ageCutoff, window.retryBackoffCutoff, window.batchSize],
+		bindings: [
+			window.ageCutoff,
+			window.leaseNow,
+			window.retryBackoffCutoff,
+			window.batchSize,
+		],
 		row: userCandidateRow,
 	})
 }
 
 /**
- * The backoff on `deleting_at` also keeps this lane off deletions that are
- * in flight right now (account deletion stamps the fence when it starts).
+ * The unleased-fence backoff on `deleting_at` also keeps this lane off
+ * deletions that are in flight right now (account deletion stamps the fence
+ * when it starts).
  */
 function listLegacyUserCandidates(
 	ctx: RetentionContext,
@@ -205,10 +232,10 @@ function listLegacyUserCandidates(
 			 FROM users
 			 WHERE deleted_at IS NULL
 			   AND deleting_at IS NOT NULL
-			   AND datetime(deleting_at) < datetime(?)
+			   AND ${purgeClaimableSql}
 			 ORDER BY datetime(deleting_at) ASC, id ASC
 			 LIMIT ?`,
-		bindings: [window.retryBackoffCutoff, window.batchSize],
+		bindings: [window.leaseNow, window.retryBackoffCutoff, window.batchSize],
 		row: legacyUserCandidateRow,
 	})
 }
@@ -233,6 +260,7 @@ export function listSoftDeletePurgeCandidates(input: {
 			const now = input.now ?? clock.now()
 			const window: CandidateWindow = {
 				ageCutoff: softDeletePurgeCutoffIso(now),
+				leaseNow: clock.now().toISOString(),
 				retryBackoffCutoff: cutoffIso(now, softDeletePurgeRetryBackoffMs),
 				batchSize,
 			}
@@ -272,11 +300,10 @@ export function listSoftDeletePurgeCandidates(input: {
 type ClaimStamp = { nowIso: string; retryBackoffCutoff: string }
 
 /**
- * Claims a candidate by stamping `deleting_at`. Soft-deleted rows are
- * claimed when never fenced, or restamped when the fence is older than the
- * 6 hour retry backoff. Legacy deletions are always fenced already, so only
- * the stale-fence restamp applies. The stamp doubles as the retry fence: a
- * failed purge keeps it and the row is retried after the backoff.
+ * Claims a candidate by stamping `deleting_at` and a 15 minute lease.
+ * Soft-deleted rows are claimed when never fenced, or restamped once the
+ * fence is claimable (`purgeClaimableSql`). Legacy deletions are always
+ * fenced already, so only the restamp applies.
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 async function claimCandidate(
@@ -284,34 +311,39 @@ async function claimCandidate(
 	lane: PurgeLane,
 	id: OwnerId,
 	stamp: ClaimStamp,
-): Promise<boolean> {
+): Promise<PurgeLease | null> {
 	const table = lane === 'org' ? 'orgs' : 'users'
 	const idColumn = lane === 'org' ? 'id' : 'stable_user_id'
+	const leaseNow = ctx.clock.now().toISOString()
+	const leaseExpiresAt = purgeLeaseExpiresAt(ctx.clock)
 	const deletedFilter =
 		lane === 'legacy_user'
 			? 'deleted_at IS NULL AND deleting_at IS NOT NULL'
 			: 'deleted_at IS NOT NULL'
-	const claim = (fenceFilter: string, bindings: Array<unknown>) =>
+	const claim = (fenceFilter: string) =>
 		d1Run(ctx, {
 			operation: `soft_delete_purge.claim_${lane}`,
 			sql: `UPDATE ${table}
-				 SET deleting_at = ?, updated_at = ?
+				 SET deleting_at = ?, purge_lease_expires_at = ?, updated_at = ?
 				 WHERE ${idColumn} = ?
 				   AND ${deletedFilter}
-				   AND ${fenceFilter}`,
-			bindings: [stamp.nowIso, stamp.nowIso, id, ...bindings],
+				   AND ${fenceFilter}
+				   AND ${purgeClaimableSql}`,
+			bindings: [
+				stamp.nowIso,
+				leaseExpiresAt,
+				stamp.nowIso,
+				id,
+				leaseNow,
+				stamp.retryBackoffCutoff,
+			],
 		})
-	if (
-		lane !== 'legacy_user' &&
-		(await claim('deleting_at IS NULL', [])) === 1
-	) {
-		return true
-	}
-	return (
-		(await claim('datetime(deleting_at) < datetime(?)', [
-			stamp.retryBackoffCutoff,
-		])) === 1
-	)
+	const claimed =
+		(lane !== 'legacy_user' && (await claim('deleting_at IS NULL')) === 1) ||
+		(await claim('deleting_at IS NOT NULL')) === 1
+	return claimed
+		? holdPurgeLease(ctx, { table, idColumn, id }, leaseExpiresAt)
+		: null
 }
 
 class MissingDbUserIdError extends Error {
@@ -325,13 +357,20 @@ async function hardPurgeCandidate(
 	env: Env,
 	lane: PurgeLane,
 	candidate: SoftDeletePurgeCandidate,
+	lease: PurgeLease,
 ) {
+	const onStepComplete = () => lease.renew()
 	if (lane === 'org') {
-		await hardPurgeOrg({ env, orgId: candidate.id })
+		await hardPurgeOrg({ env, orgId: candidate.id, onStepComplete })
 		return
 	}
 	if (candidate.dbUserId == null) throw new MissingDbUserIdError(candidate.id)
-	const user = { env, dbUserId: candidate.dbUserId, stableUserId: candidate.id }
+	const user = {
+		env,
+		dbUserId: candidate.dbUserId,
+		stableUserId: candidate.id,
+		onStepComplete,
+	}
 	switch (lane) {
 		case 'user':
 			await hardPurgeSoftDeletedUser(user)
@@ -398,6 +437,26 @@ async function recordCandidateFailure(input: {
 	return message
 }
 
+function writePurgeBlockedAudit(
+	env: Env,
+	item: BlockedPurgeItem,
+	nowIso: string,
+) {
+	return logOrgAuditEvent({
+		env,
+		orgId: item.id,
+		action: 'purge.blocked',
+		result: 'failure',
+		detailsJson: JSON.stringify({
+			kind: item.kind,
+			id: item.id,
+			attempts: item.attempts,
+			lastFailure: item.lastFailure,
+		}),
+		createdAt: nowIso,
+	})
+}
+
 function purgeOneCandidate(input: {
 	env: Env
 	ctx: RetentionContext
@@ -416,28 +475,52 @@ function purgeOneCandidate(input: {
 				ageDays: candidate.ageDays,
 				...(candidate.legacy ? { legacy: true as const } : {}),
 			}
+			const held: { lease: PurgeLease | null } = { lease: null }
 			const failed = async (error: unknown) => {
 				span.setAttribute('retention.outcome', 'failed')
+				const message = await recordCandidateFailure({
+					env: input.env,
+					candidate,
+					error,
+					nowIso: input.stamp.nowIso,
+				})
+				const { blocked } = held.lease
+					? await recordFailedPurgeAttempt({
+							lease: held.lease,
+							item: {
+								lane: 'soft_delete_purge',
+								kind: candidate.kind,
+								id: candidate.id,
+								lastFailure: message,
+							},
+							writeBlockedAudit: (item) =>
+								writePurgeBlockedAudit(input.env, item, input.stamp.nowIso),
+						})
+					: { blocked: false }
+				span.setAttribute('retention.blocked', blocked)
 				return {
 					...base,
 					outcome: 'failed' as const,
-					error: await recordCandidateFailure({
-						env: input.env,
-						candidate,
-						error,
-						nowIso: input.stamp.nowIso,
-					}),
+					error: message,
+					...(blocked ? { blocked: true as const } : {}),
 				}
 			}
 			let outcome: ClaimOutcome<void>
 			try {
 				outcome = await runClaimed({
-					acquire: async () =>
-						(await claimCandidate(input.ctx, lane, candidate.id, input.stamp))
-							? candidate
-							: null,
-					body: () => hardPurgeCandidate(input.env, lane, candidate),
-					// The restamped `deleting_at` is the 6 hour retry fence.
+					acquire: async () => {
+						held.lease = await claimCandidate(
+							input.ctx,
+							lane,
+							candidate.id,
+							input.stamp,
+						)
+						return held.lease
+					},
+					body: (lease) =>
+						hardPurgeCandidate(input.env, lane, candidate, lease),
+					// The claim stays as the 24 hour failure fence, written by
+					// `recordFailedPurgeAttempt`.
 					onFailure: () => 'keep',
 					release: async () => {},
 				})
