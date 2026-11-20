@@ -506,6 +506,17 @@ Production Workers (`kody-production`, `kody-platform`, `kody-runtime`,
 (`versions list`, `versions view`, `deployments status`) are fine. The rollback
 commands above are an incident-only exception for a human operator.
 
+After the origin healthcheck, the `🌍 Multi-region healthcheck (production)`
+step (`tools/ci/regional-health-check.ts`) GETs `/health` from Globalping probes
+in Paris, London, Amsterdam, Frankfurt, Madrid, Chicago, and Ashburn for about
+150 seconds. It fails the job when two or more probes get a Cloudflare 503 or
+`error code: 1105`, or any probe still serves another commit; a Globalping
+outage or rate limit only warns. The job does not remediate on its own. Re-run
+the failed deploy job: the new run attempt gets a new split deploy tag, so it
+uploads and deploys a fresh version of the same build, which is what cleared the
+2026-11-20 Western Europe 1105 outage. If the fresh version fails the same way,
+decide between Path A and Path B above.
+
 Why: an upload that never gets deployed leaves the Worker's newest version
 undeployed. Classic `wrangler secret bulk` then fails with Cloudflare 10215 on
 every later deploy until something promotes a newer version.
