@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useSyncExternalStore } from 'react'
 import {
 	parseSidebarPreferences,
 	type SidebarPreferences,
@@ -45,9 +45,12 @@ function read(): Preferences {
 }
 function subscribe(listener: () => void) {
 	listeners.add(listener)
+	saveSidebarPreferences({ files: read() })
 	const storage = (event: StorageEvent) => {
-		if (event.key === null || event.key === viewKey || event.key === sizeKey)
+		if (event.key === null || event.key === viewKey || event.key === sizeKey) {
+			saveSidebarPreferences({ files: read() })
 			listener()
+		}
 	}
 	window.addEventListener('storage', storage)
 	return () => {
@@ -75,9 +78,6 @@ export function useFileBrowserPreferences() {
 		read,
 		() => initial.files ?? null,
 	)
-	useEffect(() => {
-		if (preferences) saveSidebarPreferences({ files: preferences })
-	}, [preferences])
 	return {
 		ready: preferences !== null,
 		view: preferences?.view ?? defaults.view,
