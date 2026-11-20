@@ -20,8 +20,6 @@ import { getEntitySourceById } from '#worker/repo/entity-sources.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { buildKodyImportableModuleBundle } from './module-graph.ts'
-import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import {
 	persistPublishedSourceSnapshot,
 	writePublishedCredentialStamp,
@@ -32,13 +30,15 @@ import { communityForksTableSql } from '#worker/community/community-forks-test-s
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import {
 	runSql,
-	insertSavedPackage,
 	type PublishedPackage,
+	publishForkedPackage,
 	wakeMount,
 	manifest,
 	provisionTestUser,
 	createCallerContext,
 	buildModule,
+	publishDependent,
+	runModule,
 	secretAuthorityForgeryExecuteEntry,
 } from './package-credential-boundary.test-support.ts'
 
@@ -103,67 +103,6 @@ async function ensureSecretAuthorityTestSchema() {
 }
 
 /** Publishes importable-module artifacts and records the package as an unadopted community fork. */
-async function publishForkedPackage(input: {
-	userId: string
-	name: string
-	kodyId: string
-	sourceFiles: Record<string, string>
-	exports: Array<{ artifactName: string; entryPoint: string }>
-}): Promise<PublishedPackage> {
-	const unique = crypto.randomUUID()
-	const packageId = `pkg-${unique}`
-	const sourceId = `source-${unique}`
-	const source = await insertSavedPackage({
-		userId: input.userId,
-		packageId,
-		kodyId: input.kodyId,
-		name: input.name,
-		sourceId,
-		publishedCommit: `commit-${unique}`,
-	})
-	await persistPublishedSourceSnapshot({
-		env,
-		userId: input.userId,
-		source,
-		snapshot: { files: input.sourceFiles },
-	})
-	for (const target of input.exports) {
-		const artifactBundle = await buildKodyImportableModuleBundle({
-			env,
-			baseUrl: 'https://kody.dev',
-			userId: input.userId,
-			sourceFiles: input.sourceFiles,
-			entryPoint: target.entryPoint,
-			rootPackageId: packageId,
-		})
-		await persistPublishedBundleArtifact({
-			env,
-			userId: input.userId,
-			source,
-			kind: 'importable-module',
-			artifactName: target.artifactName,
-			entryPoint: target.entryPoint,
-			mainModule: artifactBundle.mainModule,
-			modules: artifactBundle.modules,
-			dependencies: artifactBundle.dependencies,
-			packageContext: { packageId, kodyId: input.kodyId, sourceId },
-		})
-	}
-	await runSql(
-		`INSERT INTO community_forks (
-			id, listing_id, forker_user_id, origin_commit, forked_package_id,
-			forked_source_id, target_kody_id, created_at
-		) VALUES (?, ?, ?, 'origin', ?, ?, ?, ?)`,
-		`fork-${packageId}`,
-		`listing-${packageId}`,
-		input.userId,
-		packageId,
-		sourceId,
-		input.kodyId,
-		new Date().toISOString(),
-	)
-	return { packageId, sourceId, kodyId: input.kodyId }
-}
 
 async function publishGrokBotWake(
 	userId: string,
@@ -190,42 +129,6 @@ async function publishGrokBotWake(
 	})
 }
 
-async function publishDependent(
-	userId: string,
-	files: Record<string, string>,
-	kody: Record<string, unknown> = {},
-) {
-	const exportEntries = Object.keys(files)
-		.filter((path) => path.startsWith('src/'))
-		.map((path) => [`./${path.slice(4, -3)}`, path] as const)
-	return await publishForkedPackage({
-		userId,
-		name: '@kentcdodds/dependent',
-		kodyId: 'dependent',
-		sourceFiles: {
-			'package.json': manifest(
-				'@kentcdodds/dependent',
-				{
-					id: 'dependent',
-					description: 'Dependent',
-					dependencies: { '@kentcdodds/grok-bot': '*' },
-					...kody,
-				},
-				{
-					exports: Object.fromEntries(
-						exportEntries.map(([name, path]) => [name, `./${path}`]),
-					),
-				},
-			),
-			...files,
-		},
-		exports: exportEntries.map(([artifactName, entryPoint]) => ({
-			artifactName,
-			entryPoint,
-		})),
-	})
-}
-
 async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 	await saveSecret({
 		env,
@@ -245,36 +148,6 @@ async function saveWakeTokenLockedTo(userId: string, packageId: string) {
 }
 
 /** Runs as execute when `asPackage` is omitted; otherwise enters as that package's root. */
-async function runModule(
-	userId: string,
-	sourceFiles: Record<string, string>,
-	options: { entryPoint?: string; asPackage?: PublishedPackage } = {},
-) {
-	const { asPackage } = options
-	return await runBundledModuleWithRegistry(
-		env,
-		createCallerContext(userId),
-		await buildModule(
-			userId,
-			sourceFiles,
-			options.entryPoint,
-			asPackage?.packageId,
-		),
-		undefined,
-		{
-			skipCapabilityRegistry: true,
-			...(asPackage
-				? {
-						packageContext: {
-							packageId: asPackage.packageId,
-							kodyId: asPackage.kodyId,
-							sourceId: asPackage.sourceId,
-						},
-					}
-				: {}),
-		},
-	)
-}
 
 const wakeRef = '{{secret:wakeToken|scope=user}}'
 const notAllowed = expect.stringMatching(/not allowed for package/i)

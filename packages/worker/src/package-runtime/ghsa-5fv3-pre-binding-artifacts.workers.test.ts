@@ -1,14 +1,10 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { env } from 'cloudflare:workers'
 import { afterEach, expect, test, vi } from 'vitest'
-import { runBundledModuleWithRegistry } from '#mcp/run-kody-registry.ts'
 import { saveSecret, setSecretAllowedHosts } from '#mcp/secrets/service.ts'
 import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
 import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { buildKodyImportableModuleBundle } from './module-graph.ts'
-import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
-import { persistPublishedSourceSnapshot } from './published-runtime-artifacts.ts'
 import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
 import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
@@ -16,12 +12,10 @@ import { communityForksTableSql } from '#worker/community/community-forks-test-s
 import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import {
 	runSql,
-	insertSavedPackage,
-	type PublishedPackage,
+	publishForkedPackage,
 	manifest,
 	provisionTestUser,
-	createCallerContext,
-	buildModule,
+	runModule,
 	DUMMY_SECRET,
 	NEW_TOKEN,
 	type Seen,
@@ -80,99 +74,8 @@ async function ensureSecretAuthorityTestSchema() {
 }
 
 /** Publishes importable-module artifacts and records the package as an unadopted community fork. */
-async function publishForkedPackage(input: {
-	userId: string
-	name: string
-	kodyId: string
-	sourceFiles: Record<string, string>
-	exports: Array<{ artifactName: string; entryPoint: string }>
-}): Promise<PublishedPackage> {
-	const unique = crypto.randomUUID()
-	const packageId = `pkg-${unique}`
-	const sourceId = `source-${unique}`
-	const source = await insertSavedPackage({
-		userId: input.userId,
-		packageId,
-		kodyId: input.kodyId,
-		name: input.name,
-		sourceId,
-		publishedCommit: `commit-${unique}`,
-	})
-	await persistPublishedSourceSnapshot({
-		env,
-		userId: input.userId,
-		source,
-		snapshot: { files: input.sourceFiles },
-	})
-	for (const target of input.exports) {
-		const artifactBundle = await buildKodyImportableModuleBundle({
-			env,
-			baseUrl: 'https://kody.dev',
-			userId: input.userId,
-			sourceFiles: input.sourceFiles,
-			entryPoint: target.entryPoint,
-			rootPackageId: packageId,
-		})
-		await persistPublishedBundleArtifact({
-			env,
-			userId: input.userId,
-			source,
-			kind: 'importable-module',
-			artifactName: target.artifactName,
-			entryPoint: target.entryPoint,
-			mainModule: artifactBundle.mainModule,
-			modules: artifactBundle.modules,
-			dependencies: artifactBundle.dependencies,
-			packageContext: { packageId, kodyId: input.kodyId, sourceId },
-		})
-	}
-	await runSql(
-		`INSERT INTO community_forks (
-			id, listing_id, forker_user_id, origin_commit, forked_package_id,
-			forked_source_id, target_kody_id, created_at
-		) VALUES (?, ?, ?, 'origin', ?, ?, ?, ?)`,
-		`fork-${packageId}`,
-		`listing-${packageId}`,
-		input.userId,
-		packageId,
-		sourceId,
-		input.kodyId,
-		new Date().toISOString(),
-	)
-	return { packageId, sourceId, kodyId: input.kodyId }
-}
 
 /** Runs as execute when `asPackage` is omitted; otherwise enters as that package's root. */
-async function runModule(
-	userId: string,
-	sourceFiles: Record<string, string>,
-	options: { entryPoint?: string; asPackage?: PublishedPackage } = {},
-) {
-	const { asPackage } = options
-	return await runBundledModuleWithRegistry(
-		env,
-		createCallerContext(userId),
-		await buildModule(
-			userId,
-			sourceFiles,
-			options.entryPoint,
-			asPackage?.packageId,
-		),
-		undefined,
-		{
-			skipCapabilityRegistry: true,
-			...(asPackage
-				? {
-						packageContext: {
-							packageId: asPackage.packageId,
-							kodyId: asPackage.kodyId,
-							sourceId: asPackage.sourceId,
-						},
-					}
-				: {}),
-		},
-	)
-}
 
 function installFakeUpstream() {
 	const seen: Array<Seen> = []

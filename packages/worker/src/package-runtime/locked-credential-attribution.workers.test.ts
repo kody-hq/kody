@@ -10,32 +10,27 @@ import {
 	setSecretAllowedPackages,
 } from '#mcp/secrets/service.ts'
 import { ensureCreditWalletTestSchema } from '#worker/billing/test-schema.ts'
-import { ensureEntitlementTestSchema } from '#worker/entitlements/test-schema.ts'
-import { ensureOrgsTestSchema } from '#worker/orgs/orgs-test-schema.ts'
 import { ensurePersonalOrg } from '#worker/orgs/provision.ts'
 import { executeJobOnce } from '#worker/jobs/service.ts'
 import type { JobRecord } from '#worker/jobs/types.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
-import { ensureUsageRollupsTestSchema } from '#worker/usage/test-schema.ts'
-import { buildKodyImportableModuleBundle } from './module-graph.ts'
 import {
 	buildPackageAppWorker,
 	createPackageAppCallerContext,
 } from './package-app.ts'
 import { withPackageAppVisitTicket } from './package-app-visit-ticket.ts'
-import { persistPublishedBundleArtifact } from './published-bundle-artifacts.ts'
 import {
 	buildPackageAppWorkerTemplateKvKey,
 	persistPublishedSourceSnapshot,
 } from './published-runtime-artifacts.ts'
-import { ensureSecretBucketsTestSchema } from '#worker/secrets-test-schema.ts'
-import { ensureSoftDeleteTestColumns } from '#worker/soft-delete/test-schema.ts'
 import { ensureUsersTestSchema } from '#worker/users-test-schema.ts'
-import { communityForksTableSql } from '#worker/community/community-forks-test-schema.ts'
-import { entitySourcesTableSql } from '#worker/repo/entity-sources-test-schema.ts'
 import {
-	type PublishedPackage,
+	runSql,
+	ensureSecretAuthorityTestSchema,
+	insertSavedPackage,
+	publishForkedPackage,
 	manifest,
+	publishGrokBotWake,
 	createCallerContext,
 	runModule,
 	DUMMY_SECRET,
@@ -50,210 +45,6 @@ import {
  * any caller; a request made by other code in the same run is refused.
  * Dummy secrets and a stubbed upstream only.
  */
-
-async function runSql(sql: string, ...values: Array<unknown>) {
-	await env.APP_DB.prepare(sql)
-		.bind(...values)
-		.run()
-}
-
-async function ensureSecretAuthorityTestSchema() {
-	await ensureEntitlementTestSchema(env.APP_DB)
-	await ensureOrgsTestSchema(env.APP_DB)
-	await ensureUsageRollupsTestSchema(env.APP_DB)
-	await runSql(entitySourcesTableSql)
-	await runSql(`CREATE TABLE IF NOT EXISTS saved_packages (
-		id TEXT PRIMARY KEY NOT NULL,
-		user_id TEXT NOT NULL,
-		name TEXT NOT NULL,
-		kody_id TEXT NOT NULL,
-		description TEXT NOT NULL,
-		tags_json TEXT NOT NULL DEFAULT '[]',
-		search_text TEXT,
-		source_id TEXT NOT NULL,
-		has_app INTEGER NOT NULL DEFAULT 0 CHECK (has_app IN (0, 1)),
-		has_skills INTEGER NOT NULL DEFAULT 0 CHECK (has_skills IN (0, 1)),
-		hidden INTEGER NOT NULL DEFAULT 0 CHECK (hidden IN (0, 1)),
-		is_private INTEGER NOT NULL DEFAULT 1 CHECK (is_private IN (0, 1)),
-		is_internet_visible INTEGER NOT NULL DEFAULT 0,
-		locked_at TEXT,
-		created_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-		updated_at TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP)
-	)`)
-	await runSql(`CREATE TABLE IF NOT EXISTS package_app_oauth_grants (
-		id TEXT PRIMARY KEY,
-		person_id TEXT NOT NULL,
-		org_username TEXT NOT NULL,
-		kody_id TEXT NOT NULL,
-		scopes TEXT NOT NULL,
-		created_at TEXT NOT NULL,
-		revoked_at TEXT,
-		last_used_at TEXT,
-		UNIQUE (person_id, org_username, kody_id)
-	)`)
-	try {
-		await runSql(
-			`ALTER TABLE saved_packages ADD COLUMN is_internet_visible INTEGER NOT NULL DEFAULT 0`,
-		)
-	} catch {
-		// Column already present on newer schemas.
-	}
-	await runSql(`CREATE TABLE IF NOT EXISTS published_bundle_artifacts (
-		id TEXT PRIMARY KEY,
-		user_id TEXT NOT NULL,
-		source_id TEXT NOT NULL,
-		published_commit TEXT NOT NULL,
-		artifact_kind TEXT NOT NULL,
-		artifact_name TEXT,
-		entry_point TEXT NOT NULL,
-		kv_key TEXT NOT NULL,
-		dependencies_json TEXT NOT NULL DEFAULT '[]',
-		built_in TEXT,
-		built_context_name TEXT,
-		bundle_sha256 TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL
-	)`)
-	await ensureSecretBucketsTestSchema(env.APP_DB)
-	await runSql(communityForksTableSql)
-	await ensureSoftDeleteTestColumns(env.APP_DB)
-}
-
-async function insertSavedPackage(input: {
-	userId: string
-	packageId: string
-	kodyId: string
-	name: string
-	sourceId: string
-	publishedCommit: string
-}) {
-	const now = new Date().toISOString()
-	await runSql(
-		`INSERT INTO saved_packages (
-			id, user_id, name, kody_id, description, tags_json, search_text,
-			source_id, has_app, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, '[]', NULL, ?, 0, ?, ?)`,
-		input.packageId,
-		input.userId,
-		input.name,
-		input.kodyId,
-		`${input.name} package`,
-		input.sourceId,
-		now,
-		now,
-	)
-	await runSql(
-		`INSERT INTO entity_sources (
-			id, user_id, entity_kind, entity_id, repo_id, published_commit,
-			indexed_commit, manifest_path, source_root, created_at, updated_at
-		) VALUES (?, ?, 'package', ?, ?, ?, NULL, 'package.json', '/', ?, ?)`,
-		input.sourceId,
-		input.userId,
-		input.packageId,
-		`repo-${input.sourceId}`,
-		input.publishedCommit,
-		now,
-		now,
-	)
-	return {
-		id: input.sourceId,
-		user_id: ownerIdFromStored(input.userId),
-		entity_kind: 'package' as const,
-		entity_id: input.packageId,
-		repo_id: `repo-${input.sourceId}`,
-		published_commit: input.publishedCommit,
-		indexed_commit: null,
-		manifest_path: 'package.json',
-		source_root: '/',
-		last_external_check_at: null,
-		external_check_until: null,
-		created_at: now,
-		updated_at: now,
-	}
-}
-
-async function publishForkedPackage(input: {
-	userId: string
-	name: string
-	kodyId: string
-	sourceFiles: Record<string, string>
-	exports: Array<{ artifactName: string; entryPoint: string }>
-}): Promise<PublishedPackage> {
-	const unique = crypto.randomUUID()
-	const packageId = `pkg-${unique}`
-	const sourceId = `source-${unique}`
-	const source = await insertSavedPackage({
-		userId: input.userId,
-		packageId,
-		kodyId: input.kodyId,
-		name: input.name,
-		sourceId,
-		publishedCommit: `commit-${unique}`,
-	})
-	await persistPublishedSourceSnapshot({
-		env,
-		userId: input.userId,
-		source,
-		snapshot: { files: input.sourceFiles },
-	})
-	for (const target of input.exports) {
-		const artifactBundle = await buildKodyImportableModuleBundle({
-			env,
-			baseUrl: 'https://kody.dev',
-			userId: input.userId,
-			sourceFiles: input.sourceFiles,
-			entryPoint: target.entryPoint,
-			rootPackageId: packageId,
-		})
-		await persistPublishedBundleArtifact({
-			env,
-			userId: input.userId,
-			source,
-			kind: 'importable-module',
-			artifactName: target.artifactName,
-			entryPoint: target.entryPoint,
-			mainModule: artifactBundle.mainModule,
-			modules: artifactBundle.modules,
-			dependencies: artifactBundle.dependencies,
-			packageContext: { packageId, kodyId: input.kodyId, sourceId },
-		})
-	}
-	await runSql(
-		`INSERT INTO community_forks (
-			id, listing_id, forker_user_id, origin_commit, forked_package_id,
-			forked_source_id, target_kody_id, created_at
-		) VALUES (?, ?, ?, 'origin', ?, ?, ?, ?)`,
-		`fork-${packageId}`,
-		`listing-${packageId}`,
-		input.userId,
-		packageId,
-		sourceId,
-		input.kodyId,
-		new Date().toISOString(),
-	)
-	return { packageId, sourceId, kodyId: input.kodyId }
-}
-
-async function publishGrokBotWake(userId: string, wakeSource: string) {
-	return await publishForkedPackage({
-		userId,
-		name: '@kentcdodds/grok-bot',
-		kodyId: 'grok-bot',
-		sourceFiles: {
-			'package.json': manifest(
-				'@kentcdodds/grok-bot',
-				{
-					id: 'grok-bot',
-					description: 'Wake helper',
-					secretMounts: { wakeToken: { name: 'wakeToken', scope: 'package' } },
-				},
-				{ exports: { './wake': './src/wake.ts' } },
-			),
-			'src/wake.ts': wakeSource,
-		},
-		exports: [{ artifactName: './wake', entryPoint: 'src/wake.ts' }],
-	})
-}
 
 async function provisionTestUser(userId: string, username: string) {
 	await ensureUsersTestSchema({ db: env.APP_DB })
