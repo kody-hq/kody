@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { orgSlugFromPathname } from '#universal/org-pages.ts'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { useCallback, useId, useRef, useState } from 'react'
 import { useHotkeys, formatForDisplay } from '@tanstack/react-hotkeys'
 import { useRouter } from '@tanstack/react-router'
 import { useQueries, useQueryClient } from '@tanstack/react-query'
@@ -250,9 +250,7 @@ export function CommandDialog({
 		? rows.find((command) => command.id === selectionId)
 		: rows[Math.min(index, Math.max(0, rows.length - 1))]
 	const activeId = active?.id
-	useEffect(() => {
-		if (selectionId === null && activeId) setSelectionId(activeId)
-	}, [selectionId, activeId])
+	if (selectionId === null && activeId) setSelectionId(activeId)
 	function selectIndex(next: number) {
 		setIndex(next)
 		setSelectionId(rows[next]?.id ?? null)
@@ -442,10 +440,21 @@ export function CommandDialog({
 		],
 		{ target: dialog, ignoreInputs: false, preventDefault: true },
 	)
-	useEffect(() => {
-		if (confirmation) confirmationHeading.current?.focus()
-		else if (!help) input.current?.focus()
-	}, [actions, confirmation, help])
+	// Focus follows the view: the heading while confirming, else the search input.
+	const confirmationHeadingRef = useCallback(
+		(node: HTMLHeadingElement | null) => {
+			confirmationHeading.current = node
+			if (node && actions) node.focus()
+		},
+		[actions],
+	)
+	const inputRef = useCallback(
+		(node: HTMLInputElement | null) => {
+			input.current = node
+			if (node && actions) node.focus()
+		},
+		[actions],
+	)
 	const dialogRef = useCallback((node: HTMLDialogElement | null) => {
 		dialog.current = node
 		if (!node) return
@@ -476,7 +485,7 @@ export function CommandDialog({
 			{confirmation ? (
 				<div css={{ padding: 24 }}>
 					<h2
-						ref={confirmationHeading}
+						ref={confirmationHeadingRef}
 						tabIndex={-1}
 						css={{ fontSize: 18, marginTop: 0 }}
 					>
@@ -524,7 +533,7 @@ export function CommandDialog({
 					>
 						{renderIcon('search', { size: '20px' })}
 						<Input
-							ref={input}
+							ref={inputRef}
 							value={query}
 							onChange={(event) => updateQuery(event.target.value)}
 							placeholder={
