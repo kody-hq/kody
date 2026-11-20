@@ -46,10 +46,11 @@ sequenceDiagram
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,
   `X-Kody-Gateway-Method`, `X-Kody-Gateway-Package-Id`,
-  `X-Kody-Gateway-Headers`, `x-kody-secret-resolution`) and does not apply the 5
-  MiB buffered-body cap; it still respects the Cloudflare Worker upload limit
-  (~100 MiB Free/Pro) and returns JSON `413 payload_too_large` when
-  `Content-Length` exceeds that limit (see the
+  `X-Kody-Gateway-Headers`, `X-Kody-Gateway-Credentials`, and
+  `x-kody-secret-resolution`) and does not apply the 5 MiB buffered-body cap; it
+  still respects the Cloudflare Worker upload limit (~100 MiB Free/Pro) and
+  returns JSON `413 payload_too_large` when `Content-Length` exceeds that limit
+  (see the
   [CLI streaming gateway-fetch contract](../contracts/cli-streaming-gateway-fetch.md)).
   `POST /v1/packages/check-uploads` carries a whole package tree (up to 24 MiB,
   `Content-Length` required) and never reaches origin: the edge asks origin for
@@ -218,6 +219,12 @@ module and does not silently hop to `kody.execute`. See
   unbound runtime path. Token-auth / `--local` package composition uses
   package-graph download + local workerd embedding — not whole-module
   `kody.execute`.
+- On the JSON hop, local runs supply credential picks in top-level
+  `credentials`, including for `kody.gatewayFetch`.
+  [Context runs use lease picks](../../../packages/worker/src/open-api/native-operation-helpers.ts)
+  instead; the proxy rejects a non-null `credentials` field on those runs. See
+  the [streaming fetch contract](../contracts/cli-streaming-gateway-fetch.md)
+  for the equivalent header.
 - Package-graph uses the same static-import scanner and resolution policy as
   cloud ad hoc execute (imports resolve only in the caller's org). Prefer
   published `importable-module` artifacts; unpublished or missing artifacts
@@ -256,14 +263,16 @@ module and does not silently hop to `kody.execute`. See
   strips `Cookie` and non-allowlisted `X-Kody-*` before origin sees the request.
   The streaming hop is the exception: allowlisted `X-Kody-Gateway-*` /
   `x-kody-secret-resolution` headers carry outbound URL, method, package stamp,
-  and headers; the body is the outbound fetch body. Other `X-Kody-*` headers are
-  still stripped.
+  credential picks, and headers; the body is the outbound fetch body. The
+  [edge allowlist](../../../packages/api-worker/src/edge.ts) strips other
+  `X-Kody-*` headers.
 - Order of checks: bearer credential (401), then — for `kody_at_` tokens only —
   `org:execute` via `authorize` (403 `insufficient_scope`). CLI MCP OAuth skips
   the token-scope check (full MCP grant on these routes).
-- Auth: `kody_at_…` with `org:execute`, or a valid `kody login` MCP OAuth access
+- Auth: `kody_at_…` with `org:execute`, a valid `kody login` MCP OAuth access
   token for this origin
-  ([ADR 0055](../decisions/0055-cli-mcp-oauth-local-execute-http.md)).
+  ([ADR 0055](../decisions/0055-cli-mcp-oauth-local-execute-http.md)), or an
+  [execution-context run lease token](../../../packages/worker/src/open-api/native-operation-helpers.ts).
 - Authenticated outbound fetch: `path: ['kody','authenticatedFetch']` with
   `{ providerName, request: { url, method?, headers?, body? } }`. Origin runs
   the same placeholder + fetch-gateway model as cloud execute (and host-side

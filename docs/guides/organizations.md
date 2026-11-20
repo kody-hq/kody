@@ -228,9 +228,12 @@ An invite waits on the person it is for and shows on the page that sent it:
   Waiting page (`/@<org>/-/waiting`) and a row in the Invites panel on your
   Organizations page (`/account/organizations`), each with **Accept** and
   **Decline**. That covers invites addressed to your email or username and
-  invite links you opened. An invite sent to your email needs a verified email
-  before you can answer it on the web. Declining ends the invite (recorded as
-  `invite.declined`).
+  invite links you opened. The
+  [pending invite list](../../packages/worker/src/orgs/repo.node.test.ts) leaves
+  out email-addressed invites until you verify your email. The
+  [answer endpoint](../../packages/worker/src/app/handlers/account-invites.ts)
+  also requires verification for those invites. Declining ends the invite
+  (recorded as `invite.declined`).
 - **Sent by you.** The page you sent it from lists it until it is answered or
   lapses: **Members** shows invites addressed to people as Pending, with
   **Revoke** on membership invites, plus active Members links; **Teams** lists
