@@ -459,11 +459,6 @@ export function CommandDialog({
 				previous.focus()
 		}
 	}, [])
-	useEffect(() => {
-		list.current
-			?.querySelector('[aria-selected="true"]')
-			?.scrollIntoView({ block: 'nearest' })
-	}, [index, selectionId])
 	return (
 		// oxlint-disable-next-line kody-custom/no-raw-dialog -- command palette owns its own combobox focus model.
 		<dialog
@@ -657,6 +652,7 @@ export function CommandDialog({
 								role="option"
 								tabIndex={-1}
 								aria-selected={active?.id === command.id}
+								ref={active?.id === command.id ? scrollIntoNearest : undefined}
 								css={rowCss}
 								onMouseMove={() => selectIndex(i)}
 								onClick={() => void execute(command)}
@@ -787,4 +783,8 @@ export function CommandDialog({
 			) : null}
 		</dialog>
 	)
+}
+
+function scrollIntoNearest(node: HTMLElement | null) {
+	node?.scrollIntoView({ block: 'nearest' })
 }
