@@ -669,11 +669,12 @@ shared host does not clear sibling apps.
 - max age is the **remaining** lifetime of the `kody_session` that minted the
   handoff (7 days, or 30 days with remember-me), snapshotted into the token as
   `sessExp` and into the cookie as `expiresAt`. Browser `Max-Age` and a
-  server-side `expiresAt` check in `readPackageAppSession` both use that
-  instant, so the package-app cookie cannot outlive the parent session.
-  Remember-me renewal on the app origin does not extend an already-issued
-  package-app cookie; a later handoff mints a new snapshot. Tokens without
-  `sessExp` use a 12 hour lifetime from mint when the cookie is written.
+  [server-side `expiresAt` check](../../../packages/worker/src/app/package-app-session.ts)
+  both use that snapshot, not a live lookup of the parent session. Remember-me
+  renewal on the app origin does not extend an already-issued package-app
+  cookie; a later handoff mints a new snapshot. Tokens without `sessExp` use a
+  12-hour lifetime from
+  [handoff exchange](../../../packages/worker/src/app/package-app-handoff.ts).
 - signed with a **derived** secret,
   `sha256Base64Url('kody-package-app-session:v2:' + COOKIE_SECRET)`, so a value
   signed for this cookie can never verify as a `kody_session`

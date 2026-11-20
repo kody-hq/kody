@@ -1,7 +1,7 @@
 /**
- * Website adapter for the Agent profiles page (ADR 0092). Every read and
- * write goes through the existing profile capabilities and token
- * operations, so the page has exactly the authority MCP and the API have.
+ * Website adapter for the Agent profiles page (ADR 0092). Mutations use the
+ * profile and access capabilities or token operations; the loader also reads
+ * data for the page's grant picker and display.
  */
 import type { readAuthenticatedAppUser } from '#app/authenticated-user.ts'
 import {

@@ -57,8 +57,20 @@ A saved package may declare it can serve a provider id:
 
 Declaring metadata does **not** bind the provider. The account owner pins one
 saved package identity to that provider id on `/@<slug>/-/secret-providers` (or
-`secretProviderBind`), plus the **Kody user secret** that holds the door key and
-optional non-secret config (for example a Connect base URL).
+`secretProviderBind`), plus the **Kody Key** that holds the door key and
+optional non-secret config (for example a Connect base URL). Use the door
+credential ID (`door_credential_id` in the capability); the
+[binding service](../../packages/worker/src/mcp/secrets/secret-providers/service.ts)
+also accepts a legacy door secret name.
+
+## Vault-backed Keys
+
+A vault-backed Key maps one field in a provider binding to an ordinary Key need.
+[Creation](../../packages/worker/src/credentials/vault-item-credential.ts)
+stores an encrypted item reference; resolution checks the current binding, the
+actor's use of the binding, the package's item grant, and the provider's item
+hosts. The Key has its own host settings as well. This is distinct from the
+`secret-provider` slot used for legacy provider placeholders below.
 
 ## Sealed resolve
 
