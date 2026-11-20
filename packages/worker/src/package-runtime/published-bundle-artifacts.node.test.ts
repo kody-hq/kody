@@ -883,6 +883,47 @@ test('sequential reuse checks without a shared dependency cache see a dependency
 	expect(mockModule.listEntitySourcesByIds).toHaveBeenCalledTimes(2)
 })
 
+test('reuse refuses a prior artifact whose dependency source another owner now holds', async () => {
+	const depArtifact = priorModuleArtifact({
+		artifactName: '.',
+		entryPoint: 'src/a.ts',
+		publishedCommit: 'commit-old',
+	})
+	depArtifact.artifact.dependencies = [
+		{ sourceId: 'source-dep-a', publishedCommit: 'dep-1', kodyId: 'dep-a' },
+	]
+	mockModule.getPublishedBundleArtifactByIdentity.mockResolvedValue(
+		depArtifact.row,
+	)
+	mockModule.readPublishedBundleArtifact.mockResolvedValue(depArtifact.artifact)
+	stubSnapshots({ 'commit-old': {}, 'commit-reuse': {} })
+	mockModule.writePublishedBundleArtifact.mockResolvedValue('kv:reused')
+	mockModule.updatePublishedBundleArtifactRow.mockResolvedValue(true)
+	mockModule.listEntitySourcesByIds.mockResolvedValue([
+		{
+			id: 'source-dep-a',
+			user_id: ownerIdFromStored('user-2'),
+			published_commit: 'dep-1',
+		},
+	])
+
+	expect(
+		await reusePublishedPackageArtifactIfUnchanged({
+			env: kvEnv,
+			userId: ownerIdFromStored('user-1'),
+			sourceId: 'source-1',
+			publishedCommit: 'commit-reuse',
+			target: {
+				kind: 'module',
+				artifactName: '.',
+				entryPoint: 'src/a.ts',
+				bundleKind: 'module',
+			},
+		}),
+	).toBe(false)
+	expect(mockModule.writePublishedBundleArtifact).not.toHaveBeenCalled()
+})
+
 /**
  * A subpath importable bundle stored before lexical package identity that
  * inlines another package: free `fetch`, no binding marker, and a dependency
