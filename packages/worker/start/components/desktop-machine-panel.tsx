@@ -42,12 +42,19 @@ export function DesktopMachinePanel({
 	const contextId = machine?.state?.contextId
 	const commands = useRef(machine?.commands)
 	commands.current = machine?.commands
-	useEffect(() => {
-		if (!contextId) return
-		void commands.current?.('status')
-		const interval = setInterval(() => void commands.current?.('status'), 15000)
-		return () => clearInterval(interval)
-	}, [contextId])
+	useQuery({
+		queryKey: ['desktop-machine-status-poll', contextId],
+		queryFn: async () => {
+			await commands.current?.('status')
+			return true
+		},
+		enabled: Boolean(contextId),
+		refetchInterval: 15000,
+		refetchIntervalInBackground: true,
+		refetchOnWindowFocus: false,
+		retry: false,
+		gcTime: 0,
+	})
 	const orgSlug = machine?.orgSlug ?? null
 	const loadPage = useServerFn(loadExecutionContextsPage)
 	const daemonAction = useServerFn(runExecutionContextDaemonAction)
