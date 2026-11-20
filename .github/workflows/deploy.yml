@@ -1550,6 +1550,8 @@ jobs:
           # probes in Europe and the US catch a colo that cannot load the new
           # Worker version (Cloudflare error 1105, 2026-11-20). Older deploy
           # SHAs lack the script and skip.
+          # Remove when: every deployable main SHA includes
+          # tools/ci/regional-health-check.ts (drop the -f guard below).
           if [ ! -f tools/ci/regional-health-check.ts ]; then exit 0; fi
           if [ -z "${DEPLOY_URL:-}" ]; then
             echo "::warning::Missing deploy URL output; skipping multi-region healthcheck."

@@ -142,8 +142,13 @@ export function evaluateMeasurement(
 		)
 	}
 	const unhealthy = probes.filter((probe) => probe.kind === 'unhealthy')
-	if (unhealthy.length >= outageProbeThreshold) {
-		reasons.push(`${unhealthy.length} probes got a non-200 response`)
+	if (
+		outages.length < outageProbeThreshold &&
+		outages.length + unhealthy.length >= outageProbeThreshold
+	) {
+		reasons.push(
+			`${outages.length + unhealthy.length} probes got a non-200 response`,
+		)
 	}
 	const stale = probes.filter((probe) => probe.kind === 'stale')
 	if (stale.length > 0) {
@@ -212,7 +217,12 @@ async function runGlobalpingMeasurement(input: {
 	if (!created.ok) {
 		return { ok: false, reason: `create returned HTTP ${created.status}` }
 	}
-	const { id } = (await created.json()) as { id?: string }
+	let id: string | undefined
+	try {
+		;({ id } = (await created.json()) as { id?: string })
+	} catch {
+		return { ok: false, reason: 'create returned malformed JSON' }
+	}
 	if (!id) return { ok: false, reason: 'create returned no measurement id' }
 	const pollAttempts = input.pollAttempts ?? 30
 	for (let attempt = 0; attempt < pollAttempts; attempt++) {
@@ -228,9 +238,11 @@ async function runGlobalpingMeasurement(input: {
 		if (!polled.ok) {
 			return { ok: false, reason: `poll returned HTTP ${polled.status}` }
 		}
-		const measurement = (await polled.json()) as {
-			status?: string
-			results?: Array<GlobalpingResult>
+		let measurement: { status?: string; results?: Array<GlobalpingResult> }
+		try {
+			measurement = (await polled.json()) as typeof measurement
+		} catch {
+			return { ok: false, reason: 'poll returned malformed JSON' }
 		}
 		if (measurement.status !== 'in-progress') {
 			return { ok: true, results: measurement.results ?? [] }

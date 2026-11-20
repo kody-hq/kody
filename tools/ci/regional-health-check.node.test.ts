@@ -78,6 +78,13 @@ test('two or more outage probes or any stale commit fail; one outage passes', ()
 	expect(
 		evaluateMeasurement([healthy('London', 'LHR', oldSha)], sha).kind,
 	).toBe('fail')
+	const serverError = {
+		probe: { city: 'London' },
+		result: { status: 'finished', statusCode: 500, rawBody: 'boom' },
+	}
+	expect(
+		evaluateMeasurement([error1105('Paris', 'CDG'), serverError], sha).kind,
+	).toBe('fail')
 	expect(
 		evaluateMeasurement([{ result: { status: 'offline' } }], sha).kind,
 	).toBe('inconclusive')
@@ -180,4 +187,14 @@ test('an unavailable or rate-limited Globalping API warns without failing', asyn
 		...clock(),
 	})
 	expect(offline.exitCode).toBe(0)
+
+	const malformed = await runRegionalHealthCheck({
+		url: 'https://kody.codes/health',
+		expectedCommitSha: sha,
+		windowMs: 30_000,
+		fetchImpl: (async () => new Response('not json')) as typeof fetch,
+		...clock(),
+	})
+	expect(malformed.exitCode).toBe(0)
+	expect(malformed.lines.at(-1)).toContain('malformed JSON')
 })
