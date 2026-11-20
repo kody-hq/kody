@@ -450,10 +450,13 @@ export function WorkspaceLayout() {
 											viewBox="0 0 24 24"
 											fill="none"
 											stroke="currentColor"
-											strokeWidth="1.5"
+											strokeWidth="1.8"
+											strokeLinecap="round"
+											strokeLinejoin="round"
 										>
-											<rect x="3" y="3" width="18" height="14" rx="3" />
-											<path d="M9 3v18m8-13-4 4 4 4" />
+											<rect x="3" y="4" width="18" height="16" rx="2" />
+											<path d="M9 4v16" />
+											<path d="M15.5 9.5 13 12l2.5 2.5" />
 										</svg>
 										<span data-rail-label>Hide</span>
 									</button>
@@ -472,13 +475,12 @@ export function WorkspaceLayout() {
 											fill="none"
 											stroke="currentColor"
 											strokeWidth="1.8"
+											strokeLinecap="round"
+											strokeLinejoin="round"
 										>
-											<rect x="3" y="3" width="18" height="18" rx="3" />
-											<path
-												d="M8 3v18m3-5 3-8 3 8m-5-3h4"
-												strokeLinecap="round"
-												strokeLinejoin="round"
-											/>
+											<rect x="3" y="4" width="18" height="16" rx="2" />
+											<path d="M9 4v16" />
+											<path d="M12.5 12h6M14 10.5 12.5 12l1.5 1.5M17 10.5l1.5 1.5-1.5 1.5" />
 										</svg>
 										Auto
 									</button>
