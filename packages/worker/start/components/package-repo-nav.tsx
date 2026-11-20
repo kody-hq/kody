@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 /** @jsxRuntime automatic */
+import { revealCurrentTab } from './reveal-current-tab.ts'
 import type { CSSProperties, ReactNode } from 'react'
 import { PackageCommands } from '../commands/package-commands.tsx'
 import { packageCollaboratorsHref } from '#universal/package-collaborators.ts'
@@ -265,17 +266,6 @@ export function renderPackageRepoChrome(input: {
 			</div>
 		</div>
 	)
-}
-
-/**
- * Keeps the current tab in view when the tab row scrolls sideways on narrow
- * screens. Only the row scrolls; the page never jumps.
- */
-function revealCurrentTab(nav: HTMLElement | null) {
-	const current = nav?.querySelector<HTMLElement>('[aria-current="page"]')
-	if (!nav || !current) return
-	const overflow = current.offsetLeft + current.offsetWidth - nav.clientWidth
-	if (overflow > 0) nav.scrollLeft = overflow + current.offsetWidth / 2
 }
 
 const backLinkCss = {

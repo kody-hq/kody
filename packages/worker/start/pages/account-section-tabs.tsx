@@ -1,4 +1,5 @@
 /** @jsxImportSource @emotion/react */
+import { revealCurrentTab } from '../components/reveal-current-tab.ts'
 import { SiteLink } from '../components/site-link.tsx'
 import {
 	underlineLinkTabCss,
@@ -19,6 +20,7 @@ export function AccountSectionTabs(props: {
 		<nav
 			aria-label={`${props.label} pages`}
 			data-testid="account-section-tabs"
+			ref={revealCurrentTab}
 			css={underlineLinkTabsCss}
 		>
 			{props.tabs.map((tab) => (
