@@ -1121,3 +1121,51 @@ export function getLogoWellCss(
 		overflow: 'hidden' as const,
 	}
 }
+
+/**
+ * Row of underline link tabs (page sections, package tabs). Draws the
+ * baseline and scrolls sideways instead of wrapping when the tabs outgrow
+ * the column, so the row keeps one height at every width.
+ */
+export const underlineLinkTabsCss: CSSObject = {
+	position: 'relative',
+	display: 'flex',
+	alignItems: 'stretch',
+	gap: spacing.md,
+	// Inset shadow, not a border: the scroll box would clip a tab underline
+	// pulled down over a border, but paints it over its own shadow.
+	boxShadow: `inset 0 -1px 0 ${colors.border}`,
+	overflowX: 'auto',
+	overscrollBehaviorX: 'contain',
+	scrollbarWidth: 'none',
+	'&::-webkit-scrollbar': { display: 'none' },
+}
+
+/** One underline link tab; `aria-current="page"` marks the current tab. */
+export const underlineLinkTabCss: CSSObject = {
+	display: 'inline-flex',
+	alignItems: 'center',
+	flexShrink: 0,
+	minHeight: '44px',
+	boxSizing: 'border-box',
+	padding: '0 0.15rem',
+	borderBottom: '2px solid transparent',
+	color: colors.textMuted,
+	fontSize: '0.95rem',
+	fontWeight: 550,
+	whiteSpace: 'nowrap',
+	textDecoration: 'none',
+	transition: `color ${transitions.fast}, border-color ${transitions.fast}`,
+	'&:hover': {
+		color: colors.text,
+	},
+	'&:focus-visible': {
+		outline: `2px solid ${colors.primary}`,
+		outlineOffset: '-2px',
+		borderRadius: radius.sm,
+	},
+	'&[aria-current="page"]': {
+		color: colors.text,
+		borderBottomColor: colors.primary,
+	},
+}

@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { Table } from '../components/table.tsx'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
+import { AccountManagementPanel } from './account-management-components.tsx'
 
 import type { ReactNode } from 'react'
 import {
@@ -29,8 +30,6 @@ import {
 	sortNeedsByAttention,
 } from '#universal/package-credentials-page.ts'
 import {
-	cardCss,
-	cardTitleCss,
 	insetCardCss,
 	sectionTitleCss,
 } from '#universal/styles/style-primitives.ts'
@@ -155,9 +154,9 @@ function renderRefs(orgSlug: string, refs: ReadonlyArray<CredentialRef>) {
 		<span css={{ display: 'inline-flex', flexWrap: 'wrap', gap: spacing.xs }}>
 			{refs.map((ref, index) => (
 				<span key={ref.id}>
-					<SiteLink href={credentialRefHref(orgSlug, ref)}>
+					<TextLink tone="prose" href={credentialRefHref(orgSlug, ref)}>
 						{credentialRefLabel(ref)}
-					</SiteLink>
+					</TextLink>
 					{index < refs.length - 1 ? ',' : ''}
 				</span>
 			))}
@@ -200,7 +199,7 @@ export function renderEffective(
 						{pickHref ? (
 							<>
 								{' '}
-								<SiteLink href={pickHref}>Link it in Mappings</SiteLink>
+								<TextLink href={pickHref}>Link it in Mappings</TextLink>
 							</>
 						) : pickHref === null ? (
 							<span css={mutedCss}> A package manager can link it.</span>
@@ -276,21 +275,17 @@ export function renderIncomplete(
 	)
 	if (actionableItems.length === 0) return null
 	return (
-		<section
-			aria-labelledby="package-credentials-incomplete"
-			data-testid="package-credentials-incomplete"
-			css={{
-				...cardCss,
-				borderColor: colors.warning,
-				borderLeft: `4px solid ${colors.warning}`,
-			}}
-		>
-			<h2 id="package-credentials-incomplete" css={cardTitleCss}>
-				{actionableItems.length === 1
+		<AccountManagementPanel
+			tone="attention"
+			headingId="package-credentials-incomplete"
+			testId="package-credentials-incomplete"
+			title={
+				actionableItems.length === 1
 					? '1 mapping needs attention'
-					: `${actionableItems.length} mappings need attention`}
-			</h2>
-			<ul css={listCss}>
+					: `${actionableItems.length} mappings need attention`
+			}
+		>
+			<ul css={attentionListCss}>
 				{actionableItems.map((item) => {
 					const need = needs.get(item.needKey)
 					const tab = incompleteMappingTab(item, need?.supplier)
@@ -298,16 +293,16 @@ export function renderIncomplete(
 					const canLink = canLinkNeed(view, need)
 					const key = `${item.needKey}:${item.where.type === 'trigger' ? `${item.where.trigger.kind}:${item.where.trigger.name}` : 'default'}`
 					return (
-						<li key={key} css={{ display: 'grid', gap: spacing.xs }}>
-							<span>
+						<li key={key} css={attentionItemCss}>
+							<span css={{ minWidth: 0 }}>
 								{describeIncompleteMapping(item, {
 									canLink,
 									supplier: need?.supplier,
 								})}
 							</span>
-							<span css={rowCss}>
+							<span css={attentionActionsCss}>
 								{tab === currentTab ? null : (
-									<SiteLink
+									<TextLink
 										href={packageCredentialsTabHref({
 											username: context.username,
 											kodyId: context.kodyId,
@@ -315,19 +310,19 @@ export function renderIncomplete(
 										})}
 									>
 										Open {packageCredentialsTabLabel(tab)}
-									</SiteLink>
+									</TextLink>
 								)}
 								{item.status === 'unbound' &&
 								createUrl &&
 								(!canLink || (item.possibleMatches?.length ?? 0) === 0) ? (
-									<SiteLink href={createUrl}>Add a credential</SiteLink>
+									<TextLink href={createUrl}>Add a credential</TextLink>
 								) : null}
 							</span>
 						</li>
 					)
 				})}
 			</ul>
-		</section>
+		</AccountManagementPanel>
 	)
 }
 /** Needs table (shared `Table`), incomplete mappings, and locked keys. */
@@ -337,14 +332,11 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 	return (
 		<>
 			{renderIncomplete(context, 'credentials')}
-			<section
-				aria-labelledby="package-credentials-used"
-				css={cardCss}
-				data-testid="package-credentials-used"
+			<AccountManagementPanel
+				headingId="package-credentials-used"
+				testId="package-credentials-used"
+				title="Used by this package"
 			>
-				<h2 id="package-credentials-used" css={cardTitleCss}>
-					Used by this package
-				</h2>
 				{needs.length === 0 ? (
 					<p css={mutedCss}>
 						This package declares no credentials. A package lists what it needs
@@ -411,7 +403,8 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 				{view.triggers.length > 0 ? (
 					<p css={mutedCss}>
 						Triggers can map their own credentials. See{' '}
-						<SiteLink
+						<TextLink
+							tone="prose"
 							href={packageCredentialsTabHref({
 								username: context.username,
 								kodyId: context.kodyId,
@@ -419,19 +412,16 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 							})}
 						>
 							Triggers
-						</SiteLink>
+						</TextLink>
 						.
 					</p>
 				) : null}
-			</section>
-			<section
-				aria-labelledby="package-credentials-locked"
-				css={cardCss}
-				data-testid="package-credentials-locked"
+			</AccountManagementPanel>
+			<AccountManagementPanel
+				headingId="package-credentials-locked"
+				testId="package-credentials-locked"
+				title="Locked to this package"
 			>
-				<h2 id="package-credentials-locked" css={cardTitleCss}>
-					Locked to this package
-				</h2>
 				{view.locked.length === 0 ? (
 					<p css={mutedCss}>
 						No credential is locked to this package. Locking one from its detail
@@ -441,7 +431,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 					<ul css={listCss}>
 						{view.locked.map((credential) => (
 							<li key={credential.id} css={rowCss}>
-								<SiteLink
+								<TextLink
 									href={credentialRefHref(orgSlug, {
 										id: credential.id,
 										name: credential.name,
@@ -450,7 +440,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 									})}
 								>
 									{credential.name}
-								</SiteLink>
+								</TextLink>
 								<span css={mutedCss}>
 									{credentialKindLabel(credential.kind)}
 									{credential.packageId ? ' · package Key' : ''}
@@ -463,7 +453,7 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 					</ul>
 				)}
 				{view.package.canManage ? (
-					<SiteLink
+					<TextLink
 						data-testid="package-credentials-add-key"
 						href={buildCredentialCreateHref({
 							orgSlug,
@@ -473,9 +463,9 @@ export function renderCredentialsTab(context: PackageTabContext): ReactNode {
 						})}
 					>
 						Add a key only this package can read
-					</SiteLink>
+					</TextLink>
 				) : null}
-			</section>
+			</AccountManagementPanel>
 		</>
 	)
 }
@@ -483,36 +473,40 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 	const { view, orgSlug } = context
 	if (view.needs.length === 0) {
 		return (
-			<section css={cardCss}>
+			<AccountManagementPanel>
 				<p css={mutedCss}>
 					This package declares no credentials, so it has no default mappings.
 				</p>
-			</section>
+			</AccountManagementPanel>
 		)
 	}
 	return (
 		<>
 			{renderIncomplete(context, 'mappings')}
-			<p css={mutedCss}>
+			<p css={tabLedeCss}>
 				Default mappings pick the credential each need uses when you run the
 				package yourself. Your default wins over the org default; with neither,
 				Kody uses the only credential that matches.
 			</p>
 			{view.needs.map((need) => (
-				<section
+				<AccountManagementPanel
 					key={need.key}
-					aria-labelledby={`package-mapping-${need.key}`}
-					data-testid={`package-mapping-${need.key}`}
-					css={cardCss}
+					headingId={`package-mapping-${need.key}`}
+					testId={`package-mapping-${need.key}`}
+					title={need.key}
+					description={
+						<>
+							{needSummary(need)}
+							{need.description ? (
+								<>
+									<br />
+									{need.description}
+								</>
+							) : null}
+						</>
+					}
 				>
-					<div css={{ display: 'grid', gap: spacing.xs }}>
-						<h2 id={`package-mapping-${need.key}`} css={cardTitleCss}>
-							{need.key}
-						</h2>
-						<p css={mutedCss}>{needSummary(need)}</p>
-						{need.description ? <p css={mutedCss}>{need.description}</p> : null}
-					</div>
-					<dl css={{ margin: 0, display: 'grid', gap: spacing.sm }}>
+					<dl css={mappingLayersCss}>
 						<div css={insetCardCss}>
 							<dt css={sectionTitleCss}>Org default</dt>
 							<dd css={{ margin: 0 }}>
@@ -555,12 +549,48 @@ export function renderMappingsTab(context: PackageTabContext): ReactNode {
 						</div>
 					</dl>
 					{hasPossibleMatch(need.effective) ? null : (
-						<SiteLink href={need.createUrl}>
+						<TextLink href={need.createUrl} css={{ justifySelf: 'start' }}>
 							Add a credential for {need.key}
-						</SiteLink>
+						</TextLink>
 					)}
-				</section>
+				</AccountManagementPanel>
 			))}
 		</>
 	)
+}
+
+/** Muted intro above a tab's sections, on the account lede measure. */
+export const tabLedeCss = {
+	margin: 0,
+	color: colors.textMuted,
+	maxWidth: '68ch',
+}
+const attentionListCss = {
+	margin: 0,
+	padding: 0,
+	listStyle: 'none',
+	display: 'grid',
+}
+const attentionItemCss = {
+	display: 'flex',
+	flexWrap: 'wrap' as const,
+	alignItems: 'baseline',
+	justifyContent: 'space-between',
+	gap: `${spacing.xs} ${spacing.md}`,
+	paddingBlock: spacing.sm,
+	borderTop: `1px solid ${colors.borderSubtle}`,
+	'&:first-of-type': { borderTop: 'none', paddingTop: 0 },
+	'&:last-of-type': { paddingBottom: 0 },
+}
+const attentionActionsCss = {
+	display: 'inline-flex',
+	flexWrap: 'wrap' as const,
+	gap: spacing.md,
+	whiteSpace: 'nowrap' as const,
+}
+const mappingLayersCss = {
+	margin: 0,
+	display: 'grid',
+	gap: spacing.sm,
+	gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 14rem), 1fr))',
 }

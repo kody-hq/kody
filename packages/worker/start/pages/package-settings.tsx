@@ -4,7 +4,6 @@ import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { resolvePackageListIconUrl } from '#universal/identity-icon-urls.ts'
 import { useState } from 'react'
-import { colors } from '#universal/styles/tokens.ts'
 import type { CommunityDetailApiPayload } from '../community-types.ts'
 import { renderPackageRepoActions } from '../components/package-title-actions.tsx'
 import {
@@ -13,13 +12,13 @@ import {
 } from '../components/package-repo-nav.tsx'
 import {
 	detailArticleCss,
-	detailSectionCss,
 	renderMissingListing,
 } from '../components/community-detail-sections.tsx'
 import {
 	getPackageTreeHref,
 	fallbackDefaultBranchName,
 } from '#universal/package-files.ts'
+import { AccountManagementMessage } from './account-management-components.tsx'
 import { AccountPackageOwnerDetails } from './account-package-owner-details.tsx'
 import { PackageCreditAttributionPanel } from './account-usage-where-it-went.tsx'
 import { PackageWebhookSettings } from './package-webhook-settings.tsx'
@@ -102,48 +101,39 @@ export function PackageSettingsRoute({
 				iconName: kodyId,
 			})}
 			<PackageRepoTabPanel>
-				<section
-					aria-labelledby="package-owner-details-title"
-					css={detailSectionCss}
-				>
-					<h2 id="package-owner-details-title">Package details</h2>
-					{message ? (
-						<p
-							role="alert"
-							css={{
-								margin: '0.8rem 0 0',
-								color: colors.error,
-								fontSize: '0.95rem',
-							}}
-						>
-							{message}
-						</p>
-					) : null}
-					{ownerPackage.creditAttribution ? (
-						<PackageCreditAttributionPanel
-							row={ownerPackage.creditAttribution}
+				{message ? (
+					<AccountManagementMessage tone="error">
+						{message}
+					</AccountManagementMessage>
+				) : null}
+				<AccountPackageOwnerDetails
+					ownerUsername={username}
+					packageAppHref={data.repoActions?.packageAppHref ?? null}
+					viewerCanPublish={data.viewerCanPublish === true}
+					viewerCanDelete={data.viewerCanDelete === true}
+					viewerCanAdoptCommunityFork={
+						data.viewerCanAdoptCommunityFork === true
+					}
+					packageDetail={{
+						...ownerPackage,
+						lockedAt: optimisticLockedAt ?? null,
+					}}
+					lockInFlight={lockBusy}
+					onToggleLock={() => void toggleLock()}
+					usage={
+						ownerPackage.creditAttribution ? (
+							<PackageCreditAttributionPanel
+								row={ownerPackage.creditAttribution}
+							/>
+						) : null
+					}
+					webhooks={
+						<PackageWebhookSettings
+							key={`${username}/${kodyId}`}
+							username={username}
+							kodyId={kodyId}
 						/>
-					) : null}
-					<AccountPackageOwnerDetails
-						ownerUsername={username}
-						packageAppHref={data.repoActions?.packageAppHref ?? null}
-						viewerCanPublish={data.viewerCanPublish === true}
-						viewerCanDelete={data.viewerCanDelete === true}
-						viewerCanAdoptCommunityFork={
-							data.viewerCanAdoptCommunityFork === true
-						}
-						packageDetail={{
-							...ownerPackage,
-							lockedAt: optimisticLockedAt ?? null,
-						}}
-						lockInFlight={lockBusy}
-						onToggleLock={() => void toggleLock()}
-					/>
-				</section>
-				<PackageWebhookSettings
-					key={`${username}/${kodyId}`}
-					username={username}
-					kodyId={kodyId}
+					}
 				/>
 			</PackageRepoTabPanel>
 		</article>

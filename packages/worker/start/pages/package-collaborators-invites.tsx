@@ -4,7 +4,7 @@ import { Button } from '../components/button.tsx'
 import { useState, type FormEvent } from 'react'
 import { parkInviteHandoff, useInviteHandoff } from '../use-invite-handoff.ts'
 import { CopyTextButton } from '../components/copy-text-button.tsx'
-import { SiteLink } from '../components/site-link.tsx'
+import { TextLink } from '../components/text-link.tsx'
 import { DetailParts } from '../components/detail-parts.tsx'
 import { formatTimestampDate } from '../components/local-timestamp.tsx'
 import {
@@ -240,9 +240,9 @@ export function PackageCollaboratorInvites({
 								{renderIcon('plus', { size: '1.05rem' })}Create a team
 								organization
 							</Button>
-							<SiteLink href={routes.docDetail.href({ slug: 'organizations' })}>
+							<TextLink href={routes.docDetail.href({ slug: 'organizations' })}>
 								Learn more
-							</SiteLink>
+							</TextLink>
 						</div>
 					</div>
 				</aside>
