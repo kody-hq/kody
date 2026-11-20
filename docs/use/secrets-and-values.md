@@ -30,12 +30,22 @@ The `scope` in `secretList` and `secretSet` is a storage scope (`user`,
 in the run's org reads `org` there. See
 [Scope in code](../guides/credentials.md#scope-in-code).
 
-Package-scoped secrets belong to one saved package. **`packageGet`** includes
-their metadata as an FYI when you are inspecting that package. User-scoped
-secrets follow the bundler stamp: code that originates from package A authorizes
-as A, including when B statically imports A's export. B's own code still cannot
-read a secret locked only to A — including by passing A's id to
-`kody.packageSecretGet` / `Has`. Only A's stamped `packageSecrets` binding
+Package-scoped secrets belong to one saved package. To create or update one from
+**execute**, the Open API, or `kody execute --local`, pass the package:
+`await kody.secretSet({ name, value, scope: 'package', package_id })`, where
+`package_id` is a saved package of the run's org (from `packageList` or
+`search`). The secret is stored in that package's scope, so only that package
+can use it; there is no org Key to lock by hand. The caller needs the same
+permission as setting it on the website (`secret:create`, or `secret:write` to
+update an existing one), and a package id from another org is refused. Package
+code may only name its own package; inside a package run, omitting `package_id`
+writes to the running package.
+
+**`packageGet`** includes their metadata as an FYI when you are inspecting that
+package. User-scoped secrets follow the bundler stamp: code that originates from
+package A authorizes as A, including when B statically imports A's export. B's
+own code still cannot read a secret locked only to A — including by passing A's
+id to `kody.packageSecretGet` / `Has`. Only A's stamped `packageSecrets` binding
 carries that authority. Access rules are covered in
 [Package approval](#package-approval).
 

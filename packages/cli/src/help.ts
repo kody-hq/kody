@@ -303,10 +303,10 @@ ${orgBlock}
              whole-module cloud kody.execute defer). Fails clearly when that
              package-graph API is unavailable. Cloud token execute (no
              --local) uses CapabilityProxy → kody.execute for every module.
-             Package-scoped \`secretSet\` / \`secretSetMany\` / \`secretDelete\`
-             are unavailable locally (no package secret authority; do not
-             trust a client package id) — use hosted package execute or
-             \`/connect/secret-set\` / Open API with a user scope.
+             Package-scoped \`secretSet\` needs \`package_id\` locally (Kody
+             checks the package is in your org and that you may create
+             secrets there). \`secretSetMany\` / \`secretDelete\` with scope
+             package stay unavailable locally (no package secret authority).
 
   --context <id|name>
              Run on one execution context (no fallback unless
