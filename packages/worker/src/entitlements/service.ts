@@ -1454,10 +1454,8 @@ export async function readStorageBytesFromUserMeter(input: {
 }
 
 /**
- * Authoritative current usage for any entitlement resource: daily counters
- * via UserMeter, concurrent workflows via RunLog workflow projections, and
- * everything else via the legacy D1 helpers.
- * Permanent: stored data or clients from before this change still exist.
+ * Reads current usage from the resource's authoritative store. Per-operation
+ * limits such as `email_message_bytes` need a usage value from the caller.
  */
 export async function readCurrentEntitlementResourceUsage(input: {
 	db: D1Database

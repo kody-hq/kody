@@ -85,8 +85,8 @@ non-library caller to find which of our modules imported it.
    async. The registry itself comes from `capability-manifest.generated.mjs`, an
    allowlisted additional module, so search and listings evaluate no domain
    module and dispatch evaluates only the called domain. Direct Wrangler/esbuild
-   worker builds keep that code in the same bundle and wrap those modules so
-   they evaluate on the first request that needs the registry. Origin Vite
+   worker builds keep domain code in the same bundle and wrap those modules so
+   each evaluates on its first dispatch, not on registry load. Origin Vite
    builds emit those `import()` targets as hashed SSR chunks under `dist/ssr`.
    Never import a `*/domain.ts` or a capability definition module statically
    from anything on the startup path; one static edge makes the Wrangler/esbuild

@@ -60,11 +60,12 @@ sequenceDiagram
   throwaway isolate. A body on `POST /v1/packages/check` larger than an
   `{ upload_id }` request is the old synchronous shape: the edge answers
   `426 upgrade_required` with `details.minimum_cli_version` without forwarding
-  it. Objects under `package-runs/` (uploads and stored run results) are deleted
-  when their run ends and by a one-day bucket lifecycle rule. `Cookie` and other
-  `X-Kody-*` headers never reach origin, and origin `Set-Cookie` never reaches
-  the client. CORS allows any origin because auth is bearer-only. It never
-  serves HTML.
+  it. The
+  [check workflow](../../../packages/worker/src/package-runtime/package-check-run.ts)
+  deletes its upload on cleanup. A one-day bucket lifecycle rule expires
+  abandoned uploads and stored run results. `Cookie` and other `X-Kody-*`
+  headers never reach origin, and origin `Set-Cookie` never reaches the client.
+  CORS allows any origin because auth is bearer-only. It never serves HTML.
 - `kody-api-docs` (`packages/api-docs-worker/`) is the interactive docs host on
   `api-docs.kody.codes`. It serves a Scalar shell at `/`, proxies
   `/openapi.json` from the live API, and answers `/health`. DNS and the

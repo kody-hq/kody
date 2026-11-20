@@ -40,8 +40,8 @@ export type DurableDispatchOutcome =
  * createDynamicCallableWorkflow: active Cloudflare statuses plus any
  * transitional RunLog projection status written before the instance is queued
  * (today that transitional value is `creating`). New pre-active statuses are
- * covered automatically; only terminal runs (complete/errored/terminated/
- * cancelled) allow another dispatch.
+ * covered automatically. This lookup excludes terminal runs; dispatch can
+ * still replay a completed run unless `rerunComplete` is set.
  */
 export const alreadyDispatchedWorkflowStatusExclusion =
 	terminalWorkflowStatusValues
@@ -238,7 +238,8 @@ export async function dispatchDurableRun(input: {
 		if (mustRerun(workflow.status)) {
 			// Terminal failure (for example Durable Object reset mid-run) must
 			// not keep the semantic key. Release it and create once more so the
-			// same operation can re-dispatch; running and complete still dedupe.
+			// same operation can re-dispatch. Completed runs release the key only
+			// when the caller asked for a fresh result.
 			await releaseWorkflowProjectionIdempotencyKey({
 				env: input.env as Env,
 				userId: input.userId,
