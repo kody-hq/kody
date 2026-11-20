@@ -83,8 +83,19 @@ curl -fsS -X POST \
 GitHub Actions. When it is unset, the route returns 503. Open incidents return
 409; unknown ids return 404. There is no public unauthenticated write.
 
+The secret lives only in GitHub Actions, so the usual way to publish is the
+`📝 Status Incident Retrospective` workflow
+(`status-incident-retrospective.yml`) from main with `incident_ids`
+(comma-separated, for example `12,13,14,15,16`), `retrospective_file` (a
+committed file under `packages/status/retrospectives/`), and
+`confirm: publish status retrospective <incident_ids>`. Agents dispatch it
+through `@kentcdodds/github` as kody-bot.
+
 The 2026-09-02 Jobs incident payload lives at
 `packages/status/retrospectives/jobs-2026-09-02.json` (status incident id 10).
+The 2026-11-20 Western Europe outage payload lives at
+`packages/status/retrospectives/app-2026-11-20.json` (status incident ids 12 to
+16).
 
 A resolved incident that turned out to be health-check-only can be deleted with
 a bearer `DELETE` on the same host:
