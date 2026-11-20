@@ -42,6 +42,7 @@ export function CommandDialog({
 	const input = useRef<HTMLInputElement>(null)
 	const confirmationHeading = useRef<HTMLHeadingElement>(null)
 	const list = useRef<HTMLDivElement>(null)
+	const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined)
 	const id = useId()
 	const [query, setQuery] = useState('')
 	const [debounced, setDebounced] = useState('')
@@ -262,6 +263,8 @@ export function CommandDialog({
 	}
 	function updateQuery(value: string) {
 		setQuery(value)
+		clearTimeout(debounceTimer.current)
+		debounceTimer.current = setTimeout(() => setDebounced(value), 180)
 		resetSelection()
 		setActions(null)
 		setError(null)
@@ -444,14 +447,11 @@ export function CommandDialog({
 		else if (!help) input.current?.focus()
 	}, [actions, confirmation, help])
 	useEffect(() => {
-		const timeout = setTimeout(() => setDebounced(query), 180)
-		return () => clearTimeout(timeout)
-	}, [query])
-	useEffect(() => {
 		const previous = document.activeElement
 		dialog.current?.showModal()
 		input.current?.focus()
 		return () => {
+			clearTimeout(debounceTimer.current)
 			if (previous instanceof HTMLElement && previous.isConnected)
 				previous.focus()
 		}
