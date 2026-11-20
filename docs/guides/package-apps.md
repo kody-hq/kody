@@ -1855,6 +1855,11 @@ Billing follows who is visiting
 - Nothing changes in app code, and there is still no platform per-visitor limit;
   use `kody.appRateLimit` below for that.
 
+Package-app hosts do not run Cloudflare Browser Integrity Check, so scripts and
+agents using a library default User-Agent (Python `urllib`, `requests`, Go,
+Node) can call an internet-visible app. Put per-caller abuse limits in the app
+with `kody.appRateLimit`.
+
 ### App-owned limits and spend
 
 `kody.appRateLimit`, `kody.appSpendGet`, and `kody.appPublisherGet` are host

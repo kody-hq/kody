@@ -204,6 +204,16 @@ This project uses the following resources:
     those zones (in addition to Workers deploy permissions). Forks must create
     the zone and either run `ensure` or add the records manually before the
     first per-user-subdomain deploy.
+  - **Browser Integrity Check is off on package-app zones.** Package apps are
+    public APIs as well as pages, and Browser Integrity Check answers a library
+    default User-Agent (for example Python's `Python-urllib/3.x`) with
+    Cloudflare `error code: 1010` before the request reaches the Worker.
+    Production `kody.run` has the zone setting `browser_check` set to `off`
+    (changed by API on 2026-11-20; the deploy does not manage zone security
+    settings). It was never a rate limit: abuse limits for package apps stay in
+    the Worker (`kody.appRateLimit`, the billed org's usage breaker). The
+    app-origin zone (`kody.codes`) keeps Browser Integrity Check on. Forks that
+    serve package apps should turn it off in their package-app zone.
   - **Zone routes.** `tools/ci/runtime-worker-config.ts` publishes
     `{ pattern: "kody.run/*", zone_name: "kody.run" }`,
     `{ pattern: "*.kody.run/*", zone_name: "kody.run" }`, and
