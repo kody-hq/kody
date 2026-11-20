@@ -1,12 +1,12 @@
 /** @jsxImportSource @emotion/react */
 import {
-	useEffect,
 	useCallback,
 	useRef,
 	useState,
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useResponsiveSidebar } from './use-responsive-sidebar.ts'
 import { parseSidebarPreferences } from '#universal/sidebar-preferences.ts'
 import {
@@ -151,7 +151,7 @@ export function WorkspaceExplorerLayout({
 			clearTimeout(closing.current)
 		}
 	}, [])
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		onVisibilityChange?.(visible)
 	}, [visible, onVisibilityChange])
 	function reveal(intent = false) {

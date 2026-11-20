@@ -11,7 +11,8 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 } from './menu.tsx'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { useExternalInstanceSync } from '../lib/primitives.ts'
 import { useQuery } from '@tanstack/react-query'
 import { useServerFn } from '@tanstack/react-start'
 import {
@@ -102,7 +103,7 @@ export function DesktopMachinePanel({
 	const serverReady = server.isFetched
 	const daemonRef = useRef(daemon)
 	daemonRef.current = daemon
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		if (!menuCommand || !serverReady) return
 		clearMenuCommand?.()
 		void daemonRef.current(menuCommand)
