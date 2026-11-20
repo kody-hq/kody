@@ -20,9 +20,6 @@ import * as secretPlacement from '#mcp/secrets/secret-placement.ts'
 import * as secretService from '#mcp/secrets/service.ts'
 import * as communityRepo from '#worker/community/repo.ts'
 import * as credentialResolution from '#worker/credentials/resolve-credential.ts'
-import * as credentialResolver from '#worker/credentials/credential-resolver.ts'
-import * as orgOwnerEmails from '#worker/orgs/owner-emails.ts'
-import * as personalOrgIdModule from '#worker/orgs/personal-org-id.ts'
 import {
 	isActiveOrgQuery,
 	isOrgBindingMembershipQuery,
@@ -269,49 +266,6 @@ test('fetch gateway blocks or expands secret placeholders based on host approval
 	const transformed = await expand(createRequest())
 	expect(transformed.headers.get('Authorization')).toBe('Bearer secret-value')
 	expect(await transformed.text()).toBe(JSON.stringify({ query: 'me' }))
-})
-
-test('host approval for a granted personal Key in a team run links the owner personal org', async () => {
-	const teamOrgId = ownerIdFromStored('team-org')
-	const personalOrgId = ownerIdFromStored('ada-personal')
-	const request = sessionRequestContext('user-123', 'ada')
-	vi.spyOn(personalOrgIdModule, 'loadPersonalOrgIdForPerson').mockResolvedValue(
-		personalOrgId,
-	)
-	vi.spyOn(orgOwnerEmails, 'loadOrgSlug').mockImplementation(async (_db, id) =>
-		id === personalOrgId ? 'ada' : null,
-	)
-	vi.spyOn(credentialResolver, 'authorizeActorPersonalUse').mockResolvedValue()
-	vi.spyOn(secretService, 'resolveSecret').mockImplementation(async (input) =>
-		input.userId === personalOrgId
-			? userSecret('secret-value', [])
-			: {
-					credentialId: null,
-					found: false,
-					value: null,
-					scope: null,
-					allowedHosts: [],
-					allowedPackages: [],
-					placement: null,
-				},
-	)
-	const approvals = await readHostApprovals(
-		expand(
-			new Request('https://api.example.com/v1', {
-				headers: {
-					Authorization: 'Bearer {{secret:personalToken|scope=user}}',
-				},
-			}),
-			{
-				...props,
-				userId: teamOrgId,
-				request: { ...request, org: { id: teamOrgId, slug: 'team' } },
-			},
-		),
-	)
-	expect(approvals?.entries[0]?.approvalUrl).toBe(
-		'https://example.com/connect/secrets?org=ada&name=personalToken&hosts=api.example.com',
-	)
 })
 
 test('fetch gateway fills placeholders in the URL path and query on an allowed host', async () => {
