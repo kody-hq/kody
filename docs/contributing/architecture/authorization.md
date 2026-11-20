@@ -376,6 +376,21 @@ discovery, platform feedback, your own tokens, and site-admin tools, which
 capability declares an org permission, and `operations.node.test.ts` fails when
 an operation publishes no valid permission.
 
+### Agents narrow, owners widen
+
+A capability's declared permission says who may call it, not how far a call may
+change access. Use on a resource (`secret:use`, `integration:use`) lets an agent
+narrow who can reach it, never widen it. Adding a package to a grant list,
+unlocking, or binding a new consumer is an owner action on the website: the
+agent surface returns `approval_required` with an `approval_url` and writes
+nothing. `resourceLock` applies this to every kind through `planPackageLock`
+([`allowed-packages.ts`](../../../packages/worker/src/mcp/secrets/allowed-packages.ts));
+the contract test in
+[`resource-lock.node.test.ts`](../../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)
+holds one row per kind. A new capability that changes who can use a resource
+states which direction it moves and follows the same rule. See
+[security invariant 16](../security.md#invariants-for-future-agents-do-not-regress).
+
 ### Capabilities that need a live person
 
 Some capabilities never run unattended, whatever the enabler's role. A

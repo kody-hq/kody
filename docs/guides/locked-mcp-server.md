@@ -23,7 +23,7 @@ Agent notes — for AI agents explaining or recreating this loop:
 - Agents can lock a server that is still any context to its first package.
   Agents cannot add a package to a locked server, unlock, or remove a grant.
   resourceLock with another package returns status approval_required and an
-  approval_url for the owner. Unlock is website-only: switch Usage back to any
+  approval_url for the owner ([enforced by this test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)). Unlock is website-only: switch Usage back to any
   context.
 - After lock, search and execute hide kody.mcp["server-name"] unless the
   caller is an approved package. mcpServerList still shows the server.

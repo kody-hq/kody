@@ -18,6 +18,8 @@ import { applyAllMigrations as applyRepositoryMigrations } from '#worker/test-su
 import { createAuditTestDb } from '#worker/test-support/create-audit-db.ts'
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createInMemoryUserMeterEnv } from '#worker/test-support/user-meter.ts'
+import type { PackageLockOutcome } from '#mcp/secrets/allowed-packages.ts'
+import { inspectSecretProviderPackageGrant } from '#mcp/secrets/secret-providers/service.ts'
 import { resourceLockCapability } from './resource-lock.ts'
 
 const migrationsDirectory = new URL('../../../../migrations/', import.meta.url)
@@ -316,7 +318,10 @@ test('resourceLock requires the permission mapped to each kind before side effec
 	expect(lockMcpServerSpy).not.toHaveBeenCalled()
 })
 
-function scopedLockHarness(slug: string) {
+function scopedLockHarness(
+	slug: string,
+	scopes: Array<'secret:use' | 'integration:use'>,
+) {
 	const { sqlite, env } = createHarness()
 	env.AUDIT_DB = createAuditTestDb()
 	const ownerId = ownerIdFromStored(`user-${slug}`)
@@ -332,7 +337,7 @@ function scopedLockHarness(slug: string) {
 		env,
 		callerContext: createMcpCallerContext({
 			source: { kind: 'mcp-oauth' },
-			scopes: ['integration:use'],
+			scopes,
 			baseUrl: 'https://kody.codes',
 			user: {
 				userId: personIdFromStored(`user-${slug}`),
@@ -345,111 +350,193 @@ function scopedLockHarness(slug: string) {
 	return { sqlite, env, ownerId, ctx }
 }
 
-test('resourceLock with only integration:use cannot widen a locked integration', async () => {
-	const { env, ownerId, ctx } = scopedLockHarness('ivy')
-	await integrationService.upsertIntegration({
-		env,
-		userId: ownerId,
-		config: {
-			name: 'google',
-			tokenUrl: 'https://oauth2.googleapis.com/token',
-			apiBaseUrl: 'https://www.googleapis.com',
-			flow: 'confidential',
-			clientId: 'google-client-id',
-			requiredHosts: ['www.googleapis.com'],
+type LockRow = {
+	permission: 'secret:use' | 'integration:use'
+	/** A first lock only applies when it narrows access to the resource. */
+	firstLock: PackageLockOutcome
+	setup: (h: ReturnType<typeof scopedLockHarness>) => Promise<{
+		args: (
+			packageId: string,
+		) => Parameters<typeof resourceLockCapability.handler>[0]
+		allowed: () => Promise<Array<string>>
+	}>
+}
+
+const providerRef = 'i/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/password'
+
+/**
+ * One row per resourceLock kind. Agents may narrow access; only the owner
+ * widens it. A kind added to the input schema without a row fails below.
+ */
+const lockContract: Record<string, LockRow> = {
+	secret: {
+		permission: 'secret:use',
+		firstLock: 'approval_required',
+		async setup({ env, ownerId }) {
+			await saveSecret({
+				env,
+				userId: ownerId,
+				scope: 'user',
+				name: 'openai-api-key',
+				value: 'sk-test',
+				audit: null,
+			})
+			return {
+				args: (packageId) => ({
+					kind: 'secret',
+					name: 'openai-api-key',
+					package_id: packageId,
+				}),
+				allowed: () => allowedPackagesFor(env, ownerId, 'openai-api-key'),
+			}
 		},
-		audit: null,
-	})
-	const usage = async () =>
-		(
-			await integrationService.getJoinedIntegration({
+	},
+	secret_provider: {
+		permission: 'secret:use',
+		firstLock: 'approval_required',
+		async setup({ sqlite, env, ownerId }) {
+			seedPackage(sqlite, { id: 'pkg-op', userId: ownerId, kodyId: 'op' })
+			sqlite
+				.prepare(
+					`INSERT INTO secret_provider_bindings (
+						user_id, provider_id, package_id, door_secret_name, config_json
+					) VALUES (?, '1password', 'pkg-op', 'doorKey', '{}')`,
+				)
+				.run(ownerId)
+			const granted = async (packageId: string) =>
+				(
+					await inspectSecretProviderPackageGrant({
+						env,
+						userId: ownerId,
+						providerId: '1password',
+						ref: providerRef,
+						packageId,
+					})
+				).alreadyGranted
+			return {
+				args: (packageId) => ({
+					kind: 'secret_provider',
+					provider: '1password',
+					ref: providerRef,
+					package_id: packageId,
+				}),
+				allowed: async () =>
+					(
+						await Promise.all(
+							['pkg-drafts', 'pkg-sender'].map(async (id) =>
+								(await granted(id)) ? [id] : [],
+							),
+						)
+					).flat(),
+			}
+		},
+	},
+	integration: {
+		permission: 'integration:use',
+		firstLock: 'locked',
+		async setup({ env, ownerId }) {
+			await integrationService.upsertIntegration({
 				env,
 				userId: ownerId,
-				name: 'google',
+				config: {
+					name: 'google',
+					tokenUrl: 'https://oauth2.googleapis.com/token',
+					apiBaseUrl: 'https://www.googleapis.com',
+					flow: 'confidential',
+					clientId: 'google-client-id',
+					requiredHosts: ['www.googleapis.com'],
+				},
+				audit: null,
 			})
-		)?.connection.allowedPackageIds
+			return {
+				args: (packageId) => ({
+					kind: 'integration',
+					name: 'google',
+					package_id: packageId,
+				}),
+				allowed: async () =>
+					(
+						await integrationService.getJoinedIntegration({
+							env,
+							userId: ownerId,
+							name: 'google',
+						})
+					)?.connection.allowedPackageIds ?? [],
+			}
+		},
+	},
+	mcp_server: {
+		permission: 'integration:use',
+		firstLock: 'locked',
+		async setup({ sqlite, env, ownerId }) {
+			sqlite
+				.prepare(
+					`INSERT INTO mcp_server_settings (id, user_id, name, url, enabled)
+					 VALUES ('mcp-exa', ?, 'exa', 'https://mcp.example.com/mcp', 1)`,
+				)
+				.run(ownerId)
+			return {
+				args: (packageId) => ({
+					kind: 'mcp_server',
+					server: 'exa',
+					package_id: packageId,
+				}),
+				allowed: async () =>
+					(
+						await mcpServerService.getMcpServerSettingById({
+							env,
+							userId: ownerId,
+							id: 'mcp-exa',
+						})
+					)?.allowedPackageIds ?? [],
+			}
+		},
+	},
+}
 
-	const firstLock = await resourceLockCapability.handler(
-		{ kind: 'integration', name: 'google', package_id: 'pkg-drafts' },
-		ctx,
-	)
-	expect(await usage()).toEqual(['pkg-drafts'])
-	expect(firstLock).toMatchObject({
-		kind: 'integration',
-		usage_mode: 'packages',
-		allowed_package_ids: ['pkg-drafts'],
-	})
+function resourceLockKinds() {
+	const kinds = new Set<string>()
+	const visit = (node: unknown) => {
+		if (!node || typeof node !== 'object') return
+		const kind = (node as { properties?: { kind?: { const?: unknown } } })
+			.properties?.kind?.const
+		if (typeof kind === 'string') kinds.add(kind)
+		for (const value of Object.values(node)) visit(value)
+	}
+	visit(resourceLockCapability.inputSchema)
+	return [...kinds].sort()
+}
 
-	const widen = await resourceLockCapability.handler(
-		{ kind: 'integration', name: 'google', package_id: 'pkg-sender' },
-		ctx,
-	)
-	expect(await usage()).toEqual(['pkg-drafts'])
-	expect(firstLock).toMatchObject({ status: 'locked' })
-	expect(widen).toMatchObject({
-		kind: 'integration',
-		status: 'approval_required',
-		allowed_package_ids: ['pkg-drafts'],
-	})
-	if (widen.kind !== 'integration') throw new Error('Expected integration.')
-	const approval = new URL(widen.approval_url)
-	expect(approval.pathname).toBe('/@ivy/-/integrations/approve')
-	expect(approval.searchParams.get('name')).toBe('google')
-	expect(approval.searchParams.get('package_id')).toBe('pkg-sender')
-	expect(widen.message).toContain(widen.approval_url)
-	expect(await usage()).toEqual(['pkg-drafts'])
-
-	const again = await resourceLockCapability.handler(
-		{ kind: 'integration', name: 'google', package_id: 'pkg-drafts' },
-		ctx,
-	)
-	expect(again).toMatchObject({ status: 'already_granted' })
-	expect(await usage()).toEqual(['pkg-drafts'])
+test('every resourceLock kind has a narrow-only contract row', () => {
+	expect(resourceLockKinds().length).toBeGreaterThan(0)
+	expect(Object.keys(lockContract).sort()).toEqual(resourceLockKinds())
 })
 
-test('resourceLock with only integration:use cannot widen a locked MCP server', async () => {
-	const { sqlite, env, ownerId, ctx } = scopedLockHarness('max')
-	sqlite
-		.prepare(
-			`INSERT INTO mcp_server_settings (id, user_id, name, url, enabled)
-			 VALUES ('mcp-exa', ?, 'exa', 'https://mcp.example.com/mcp', 1)`,
+test.each(Object.entries(lockContract))(
+	'resourceLock %s: a use-only caller cannot widen access',
+	async (kind, row) => {
+		const harness = scopedLockHarness(`lock-${kind.replace('_', '-')}`, [
+			row.permission,
+		])
+		const { args, allowed } = await row.setup(harness)
+
+		const first = await resourceLockCapability.handler(
+			args('pkg-drafts'),
+			harness.ctx,
 		)
-		.run(ownerId)
-	const usage = async () =>
-		(
-			await mcpServerService.getMcpServerSettingById({
-				env,
-				userId: ownerId,
-				id: 'mcp-exa',
-			})
-		)?.allowedPackageIds
+		expect(first.status).toBe(row.firstLock)
+		const afterFirst = row.firstLock === 'locked' ? ['pkg-drafts'] : []
+		expect(await allowed()).toEqual(afterFirst)
 
-	const firstLock = await resourceLockCapability.handler(
-		{ kind: 'mcp_server', server: 'exa', package_id: 'pkg-drafts' },
-		ctx,
-	)
-	expect(await usage()).toEqual(['pkg-drafts'])
-	expect(firstLock).toMatchObject({
-		kind: 'mcp_server',
-		usage_mode: 'packages',
-		allowed_package_ids: ['pkg-drafts'],
-	})
-
-	const widen = await resourceLockCapability.handler(
-		{ kind: 'mcp_server', server: 'exa', package_id: 'pkg-sender' },
-		ctx,
-	)
-	expect(await usage()).toEqual(['pkg-drafts'])
-	expect(firstLock).toMatchObject({ status: 'locked' })
-	expect(widen).toMatchObject({
-		kind: 'mcp_server',
-		status: 'approval_required',
-		allowed_package_ids: ['pkg-drafts'],
-	})
-	if (widen.kind !== 'mcp_server') throw new Error('Expected mcp_server.')
-	const approval = new URL(widen.approval_url)
-	expect(approval.pathname).toBe('/@max/-/mcp-servers/mcp-exa')
-	expect(approval.searchParams.get('package_id')).toBe('pkg-sender')
-	expect(widen.message).toContain(widen.approval_url)
-	expect(await usage()).toEqual(['pkg-drafts'])
-})
+		const widen = await resourceLockCapability.handler(
+			args('pkg-sender'),
+			harness.ctx,
+		)
+		expect(widen.status).toBe('approval_required')
+		expect(new URL(widen.approval_url).searchParams.get('package_id')).toBe(
+			'pkg-sender',
+		)
+		expect(widen.message).toContain(widen.approval_url)
+		expect(await allowed()).toEqual(afterFirst)
+	},
+)

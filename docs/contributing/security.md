@@ -151,6 +151,32 @@ package-app surfaces:
     apps, jobs, webhooks, and other package runtimes cannot adopt or grant
     themselves secrets.
 
+16. **Agents may narrow access; only owners widen it.** An agent or package
+    runtime holding only Use on a resource (`secret:use`, `integration:use`) may
+    lock a resource that any context can use to its first package, since that
+    only removes access. Adding a package to an existing grant list returns
+    `approval_required` with an owner `approval_url` and writes nothing. Every
+    `resourceLock` kind decides through `planPackageLock`
+    ([`allowed-packages.ts`](../../packages/worker/src/mcp/secrets/allowed-packages.ts)),
+    and a table-driven contract test with one row per kind
+    ([`resource-lock.node.test.ts`](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts))
+    fails when a kind widens or a new kind has no row.
+
+## Variant check
+
+A security fix covers the pattern, not only the reported line. Before shipping,
+look for the same pattern in:
+
+- **Sibling kinds** of the same operation (for example every `resourceLock`
+  kind, every grant-list mutator, every surface that reaches the same service).
+- **The other repo.** kody-hq/kody and kody-hq/kody-celld implement many of the
+  same flows; check the matching code in the one you are not fixing.
+- **Docs** that describe the behavior, including guides that promise a security
+  property. Fix any claim the code does not back, and link the claim to its test
+  (see [Documentation](./documentation.md)).
+
+Record what you checked under **Variants checked** in the PR body.
+
 ## First-party HTTP security headers
 
 `render()` attaches the header set in
