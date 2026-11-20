@@ -20,29 +20,14 @@ an optional **May break packages** heading). Describe the system as it works
 today (“Kody stores…”, “The manifest rejects…”) instead of narrating a rollout
 (“Kody now stores…”, “We no longer accept…”).
 
-`npm run docs:check` runs the docs group (temporal language, decision-record
-numbers, markdown file refs, no hosted-execute fallback, and mermaid syntax) and
-reports each failing member by name. Temporal language checks durable
-documentation and docs-like MCP instructions for common rollout phrases.
-Decision-record numbers reject duplicates. File refs fail when markdown points
-at a repo file that is not in the tree (generated `wrangler-*.generated.json`
-files and local `.env` files are ignored). No hosted-execute rejects guidance
-that sends agents to the hosted execute tool when local CLI or Open API can run;
-the rule lives in [Local CLI execute](../guides/local-execute.md) and
-[prefer-local-cli-execute](../../.agents/skills/prefer-local-cli-execute/SKILL.md).
-Negations stay allowed. Mermaid parses fenced diagrams in docs and agent skills
-(and `--stdin` recap blocks) so GitHub's "Unable to render rich display"
-failures fail locally. `npm run deps:check` runs the dependency group (lockfile
-peer drift, dependency overrides, skills-lock hash, and the npm floor),
-including a `ship-pr` edit that did not refresh `computedHash`.
-`npm run slop-ratchet:check` holds the client-route and node-test file-size
-allowlists (line budgets counted after `oxfmt`) and rejects decorative
-`========` / `----------` comment banners. `kody-custom/no-tautological-absence`
-rejects vanished-copy `not.toContain` leftovers in tests during `npm run lint`.
-`npm run knip` fails on unused files, exports, and types against the configured
-entrypoints. `kody-custom/no-oversized-guide-section` rejects official guide
-headings that exceed the search response budget. These run as part of
-`npm run validate`.
+Run `npm run docs:check` before pushing a docs change. It runs the docs checkers
+(temporal language, decision-record numbers, markdown file refs, hosted-execute
+guidance, agent text, and mermaid syntax) and names each failing member. Lint
+covers docs too: `kody-custom/no-oversized-guide-section` keeps official guide
+sections inside the search response budget. `npm run validate` runs all of
+these; [Repo health](./repo-health.md) and
+[Oxlint JS plugins](./oxlint-js-plugins.md) describe the other checkers and
+budgets.
 
 Docs-like product copy follows the same rule: MCP server instructions, tool and
 schema descriptions, and user-visible UI strings should not read like release
@@ -63,6 +48,11 @@ same change as the code when possible. Remove duplication between pages by
 linking out instead of copying paragraphs. When a contributing guide grows past
 a single topic, turn it into a directory with a short `index.md` and one file
 per topic so agents load only what they need (see [`setup/`](./setup/index.md)).
+
+**Write guidance in the positive direction.** Agent and contributing guidance
+states what to do, in a few short lines, rather than a long list of things to
+avoid. Keep entry pages short and link to detail (progressive disclosure) so a
+reader loads only what the task needs.
 
 **Prefer a checker over a should-list.** Constraints that lint, TypeScript, or
 `npm run validate` can reject belong in those tools. Contributing docs describe

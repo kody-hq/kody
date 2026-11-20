@@ -279,8 +279,7 @@ A command started in `packages/worker` exits with
 `Projects definition references a non-existing file or a directory` and a path
 ending in `vitest.node.config.ts` under that package. The configs live at the
 repo root, and the Nx targets run from there. Filename suffixes, `mcp-e2e`, and
-the full error are in
-[Running one file](./testing-principles.md#running-one-file).
+the full error are in [Running one file](./test-runners.md#running-one-file).
 
 ## Quick commands
 
