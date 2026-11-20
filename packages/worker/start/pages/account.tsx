@@ -26,12 +26,12 @@ import {
 } from '@tanstack/react-query'
 import { useRouteContext } from '@tanstack/react-router'
 import {
-	useEffect,
 	useEffectEvent,
 	useRef,
 	useState,
 	type FormEvent,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import { usePendingProfile } from './account-profile-query.ts'
@@ -73,13 +73,14 @@ export function AccountPage({
 	const queryClient = useQueryClient()
 	const { actorKey } = useRouteContext({ from: '__root__' })
 	const captureAccountSubmitter = useSubmitterScope()
-	useEffect(() => {
+	useResourceLifetime(() => {
 		setAvatarPreview(undefined)
 		setAvatarStatus('idle')
 		setEditorFile(null)
 		return () => {
 			releaseOptimisticAvatar()
 		}
+		// oxlint-disable-next-line react/exhaustive-deps -- a new actor or page clears the avatar draft
 	}, [actorKey, currentHref])
 	const invalidatePages = usePageInvalidation(mutationResources, {
 		refreshShell: true,
@@ -151,7 +152,7 @@ export function AccountPage({
 	}
 
 	const onDroppedFile = useEffectEvent((file: File) => openAvatarEditor(file))
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const controller = new AbortController()
 		listenForAvatarFileDrop({
 			signal: controller.signal,
