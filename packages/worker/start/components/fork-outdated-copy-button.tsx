@@ -4,7 +4,7 @@ import { mergeCss } from './merge-css.ts'
 import { SiteLink } from './site-link.tsx'
 /** @jsxRuntime automatic */
 import type { CSSObject } from '@emotion/react'
-import { useState, useRef, useEffect } from 'react'
+import { useCallback, useState, useRef } from 'react'
 import { writeClipboardText } from '#client/clipboard.ts'
 import { getBadgeCss } from './badge.tsx'
 import { hoverMq } from '#universal/styles/style-primitives.ts'
@@ -48,7 +48,8 @@ function CopyPromptPill(input: CopyPromptPillInput) {
 	const [feedback, setFeedback] = useState<string | null>(null)
 	const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const mounted = useRef(true)
-	useEffect(() => {
+	const trackMounted = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		mounted.current = true
 		return () => {
 			mounted.current = false
@@ -101,13 +102,25 @@ function CopyPromptPill(input: CopyPromptPillInput) {
 	)
 	if (input.href) {
 		return (
-			<SiteLink href={input.href} {...copyAttrs} css={copyMix} onClick={copy}>
+			<SiteLink
+				ref={trackMounted}
+				href={input.href}
+				{...copyAttrs}
+				css={copyMix}
+				onClick={copy}
+			>
 				{children}
 			</SiteLink>
 		)
 	}
 	return (
-		<button type="button" {...copyAttrs} css={copyMix} onClick={copy}>
+		<button
+			ref={trackMounted}
+			type="button"
+			{...copyAttrs}
+			css={copyMix}
+			onClick={copy}
+		>
 			{children}
 		</button>
 	)

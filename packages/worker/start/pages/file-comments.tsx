@@ -1,6 +1,7 @@
 /** @jsxImportSource @emotion/react */
 import { commentAnchorLabel } from '#universal/comment-anchor-label.ts'
 import {
+	useCallback,
 	useEffect,
 	useId,
 	useLayoutEffect,
@@ -271,9 +272,13 @@ function CommentComposer({
 			}
 		}
 	}, [value])
-	useEffect(() => {
-		if (focus) input.current?.focus({ preventScroll: true })
-	}, [focus])
+	const inputRef = useCallback(
+		(node: HTMLTextAreaElement | null) => {
+			input.current = node
+			if (node && focus) node.focus({ preventScroll: true })
+		},
+		[focus],
+	)
 	useHotkey('Mod+Enter', () => void submit(), {
 		target: input,
 		ignoreInputs: false,
@@ -339,7 +344,7 @@ function CommentComposer({
 				<Avatar actor={actor} />
 				{/* oxlint-disable-next-line kody-custom/no-raw-form-control -- borderless composer inside its own frame */}
 				<textarea
-					ref={input}
+					ref={inputRef}
 					role="combobox"
 					aria-autocomplete="list"
 					aria-haspopup="listbox"

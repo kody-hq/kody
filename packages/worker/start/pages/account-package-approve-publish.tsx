@@ -10,7 +10,7 @@ import { buildHumanApprovalErrorAgentPrompt } from '#universal/error-agent-promp
 import { usePackageMutation } from '../package-mutation.ts'
 import { useSubmitterScope } from '../use-submitter-scope.ts'
 import type { CSSObject } from '@emotion/react'
-import { useState, useRef, useEffect, type ReactNode } from 'react'
+import { useState, useRef, type ReactNode } from 'react'
 import { shortCommunityCommit } from '#universal/community-display.ts'
 import { useRouter } from '@tanstack/react-router'
 
@@ -101,14 +101,7 @@ export function AccountPackageApprovePublishRoute({
 		[message, setMessage] = useState<string | null>(null)
 	const [promotedListing, setPromotedListing] =
 		useState<AccountPackageListingBehindHint | null>(null)
-	const busyRef = useRef(false),
-		mounted = useRef(false)
-	useEffect(() => {
-		mounted.current = true
-		return () => {
-			mounted.current = false
-		}
-	}, [])
+	const busyRef = useRef(false)
 	async function promoteCommit() {
 		if (!payload.pendingCommit || busyRef.current) return
 		await submit(
@@ -143,7 +136,7 @@ export function AccountPackageApprovePublishRoute({
 				)
 		} finally {
 			busyRef.current = false
-			if (mounted.current) setBusy(false)
+			setBusy(false)
 		}
 	}
 	const nothingToPublish =

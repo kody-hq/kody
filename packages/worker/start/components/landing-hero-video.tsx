@@ -1,6 +1,12 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import {
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+	type CSSProperties,
+} from 'react'
 import { YouTubeLightPlayer } from './youtube-light-player.tsx'
 import {
 	landingHeroChooserLabel,
@@ -83,21 +89,26 @@ export function LandingHeroVideo({
 	const selectedIndex = selection.index < videos.length ? selection.index : 0
 	const activeIndex = active < videos.length ? active : 0
 	const chosen = selection.chosen
-	useEffect(() => {
-		const node = scroller.current
-		if (!node) return
-		function sync() {
-			if (node) setHorizontalOverflow(chooserHasHorizontalOverflow(node))
-		}
-		const observer = new ResizeObserver(sync)
-		observer.observe(node)
-		node.addEventListener('scroll', sync, { passive: true })
-		sync()
-		return () => {
-			observer.disconnect()
-			node.removeEventListener('scroll', sync)
-		}
-	}, [videos.length])
+	const videoCount = videos.length
+	const scrollerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			scroller.current = node
+			if (!node || !videoCount) return
+			function sync() {
+				if (node) setHorizontalOverflow(chooserHasHorizontalOverflow(node))
+			}
+			const observer = new ResizeObserver(sync)
+			observer.observe(node)
+			node.addEventListener('scroll', sync, { passive: true })
+			sync()
+			return () => {
+				scroller.current = null
+				observer.disconnect()
+				node.removeEventListener('scroll', sync)
+			}
+		},
+		[videoCount],
+	)
 	useEffect(() => {
 		const node = scroller.current,
 			option = document.getElementById(id + '-video-' + activeIndex)
@@ -151,7 +162,7 @@ export function LandingHeroVideo({
 							: 'landing-hero-chooser fade-none-x'
 					}
 					data-testid="landing-hero-chooser"
-					ref={scroller}
+					ref={scrollerRef}
 					onKeyDown={(event) => {
 						const next = nextChooserIndex(activeIndex, event.key, videos.length)
 						if (next !== null) {

@@ -1,5 +1,5 @@
 import { publicAsset } from '../public-assets.ts'
-import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { SiteLink } from './site-link.tsx'
 import {
 	resolveWithAgentOrder,
@@ -29,17 +29,9 @@ export function LandingAgentMarquee({
 	order?: ReadonlyArray<string> | null
 }) {
 	const [initialOrder] = useState(() => resolveWithAgentOrder(order))
-	const stage = useRef<HTMLElement>(null)
-	useEffect(() => {
-		const node = stage.current
-		if (!node) return
-		const controller = new AbortController()
-		attachAgentMarqueeMotion(node, controller.signal)
-		return () => controller.abort()
-	}, [])
 	return (
 		<nav
-			ref={stage}
+			ref={attachMarqueeMotion}
 			className="landing-agents fade-x fade-always-x"
 			style={{ '--agent-count': String(initialOrder.length) } as CSSProperties}
 			aria-label="Agents that work with Kody"
@@ -511,4 +503,11 @@ function attachAgentMarqueeMotion(node: HTMLElement, signal: AbortSignal) {
 			item.classList.remove('is-nearest')
 		}
 	})
+}
+
+function attachMarqueeMotion(node: HTMLElement | null) {
+	if (!node) return
+	const controller = new AbortController()
+	attachAgentMarqueeMotion(node, controller.signal)
+	return () => controller.abort()
 }

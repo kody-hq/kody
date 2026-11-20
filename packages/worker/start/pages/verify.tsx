@@ -36,7 +36,10 @@ import {
 	HumanCheckHelp,
 } from '../components/device-sign-in-option.tsx'
 import { Honeypot } from '../components/honeypot-field.tsx'
-import { usePublicAuthProtection } from '../components/public-auth-protection.ts'
+import {
+	usePublicAuthProtection,
+	useTurnstileRef,
+} from '../components/public-auth-protection.ts'
 import { useMatchedPageScope } from '../use-matched-page-scope.ts'
 import { Input } from '../components/input.tsx'
 function buildLoginHref(redirectTo: string | null) {
@@ -62,6 +65,7 @@ export function VerifyRoute() {
 	const message = 'message' in flow ? flow.message : null
 	const [formErrorDismissed, setFormErrorDismissed] = useState(false)
 	const turnstileSiteKey = usePublicAuthProtection()
+	const turnstileRef = useTurnstileRef(turnstileSiteKey)
 	const search = useMatchedPageScope().pageLocation.searchStr
 	const deviceSignInTarget = packageAppDeviceSignInTarget(
 		normalizeRedirectTo(new URLSearchParams(search).get('redirectTo')),
@@ -185,6 +189,7 @@ export function VerifyRoute() {
 				</Field>
 				{turnstileSiteKey ? (
 					<div
+						ref={turnstileRef}
 						className={turnstileWidgetClassName}
 						data-sitekey={turnstileSiteKey}
 					></div>

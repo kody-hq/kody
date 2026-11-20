@@ -1,5 +1,11 @@
 /** @jsxImportSource @emotion/react */
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import {
+	useCallback,
+	useLayoutEffect,
+	useRef,
+	useState,
+	type ReactNode,
+} from 'react'
 import { defaultRangeExtractor, useVirtualizer } from '@tanstack/react-virtual'
 import type { FileMetadata } from '#universal/files.ts'
 import { workspaceDirectoryMediaType } from '#universal/workspace-page.ts'
@@ -60,14 +66,18 @@ export function WorkspaceGallery({
 		if (selectedIndex >= 0)
 			virtual.scrollToIndex(selectedIndex, { align: 'auto' })
 	}, [selectedIndex, virtual])
-	useLayoutEffect(() => {
-		if (!strip.current || selectedIndex < 0) return
-		const observer = new ResizeObserver(() =>
-			virtual.scrollToIndex(selectedIndex, { align: 'auto' }),
-		)
-		observer.observe(strip.current)
-		return () => observer.disconnect()
-	}, [selectedIndex, virtual])
+	const stripRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			strip.current = node
+			if (!node || selectedIndex < 0) return
+			const observer = new ResizeObserver(() =>
+				virtual.scrollToIndex(selectedIndex, { align: 'auto' }),
+			)
+			observer.observe(node)
+			return () => observer.disconnect()
+		},
+		[selectedIndex, virtual],
+	)
 
 	useLayoutEffect(() => {
 		if (!pendingFocus.current) return
@@ -139,7 +149,7 @@ export function WorkspaceGallery({
 					))}
 			</div>
 			<div
-				ref={strip}
+				ref={stripRef}
 				role="group"
 				aria-label="Gallery filmstrip"
 				css={{

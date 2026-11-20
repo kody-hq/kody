@@ -3,7 +3,6 @@ import { Button } from '../components/button.tsx'
 import { uiState, uiContext, sendUiEvent } from '#client/ui-actor.ts'
 import {
 	useCallback,
-	useEffect,
 	useId,
 	useRef,
 	useState,
@@ -51,7 +50,8 @@ export function SignupChooseUsernamePage(props: {
 	const hydrated = useHydrated()
 	const handleId = useId()
 	const lifecycle = useRef<AbortController | null>(null)
-	useEffect(() => {
+	const trackLifecycle = useCallback((node: HTMLDivElement | null) => {
+		if (!node) return
 		const controller = new AbortController()
 		lifecycle.current = controller
 		return () => controller.abort()
@@ -201,7 +201,7 @@ export function SignupChooseUsernamePage(props: {
 	}
 
 	return (
-		<div css={authLayoutCss}>
+		<div ref={trackLifecycle} css={authLayoutCss}>
 			{renderLoginVisualPanel()}
 			<div css={authPanelCss}>
 				{renderMobileBrand()}

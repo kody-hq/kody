@@ -401,9 +401,13 @@ export function OAuthAuthorizeRoute({
 			window.removeEventListener('pageshow', pageshow)
 		}
 	}, [getInteraction, transition])
-	useEffect(() => {
-		if (turnstileSiteKey) void renderTurnstileWidgets(turnstileSiteKey)
-	}, [turnstileSiteKey, session?.email, info?.requireCredentials])
+	const renderTurnstile = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node && turnstileSiteKey)
+				void renderTurnstileWidgets(turnstileSiteKey)
+		},
+		[turnstileSiteKey],
+	)
 	function protection() {
 		const form = formRef.current
 		return form
@@ -1100,7 +1104,10 @@ export function OAuthAuthorizeRoute({
 						</>
 					) : null}
 					{!isLoggedIn && turnstileSiteKey ? (
-						<div className={turnstileWidgetClassName}></div>
+						<div
+							ref={renderTurnstile}
+							className={turnstileWidgetClassName}
+						></div>
 					) : null}
 					<div css={{ display: 'flex', gap: spacing.sm, flexWrap: 'wrap' }}>
 						<Button

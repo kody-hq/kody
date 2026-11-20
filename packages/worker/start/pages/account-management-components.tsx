@@ -4,7 +4,7 @@ import { useMatches, useRouteContext } from '@tanstack/react-router'
 import type { MatchedPageNavigation } from '../page-navigation.ts'
 import { appShellForMatches } from '../app-shell.ts'
 import type { CSSObject } from '@emotion/react'
-import { useContext, type ReactNode, type FormEvent } from 'react'
+import { useContext, type ReactNode, type FormEvent, type Ref } from 'react'
 import { surfaceCardCss } from '#universal/styles/surface.ts'
 import { WorkspaceSwitcher } from '../components/workspace-switcher.tsx'
 import { WorkspaceLayoutContext } from '../workspace-layout-context.ts'
@@ -156,6 +156,7 @@ type AccountManagementShellProps = {
 	 * loading copy.
 	 */
 	busy?: boolean
+	ref?: Ref<HTMLElement>
 	children: AccountManagementSlot
 }
 
@@ -170,6 +171,7 @@ export function AccountManagementShell(props: AccountManagementShellProps) {
 	)
 	return (
 		<section
+			ref={props.ref}
 			data-account-shell
 			data-workspace-page-layout={
 				sharedLayout ? (props.layout ?? 'detail') : undefined

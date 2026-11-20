@@ -42,6 +42,7 @@ import { detectFileMediaType, fileViewerKind } from '#universal/file-viewers.ts'
 import {
 	lazy,
 	Suspense,
+	useCallback,
 	useEffect,
 	useEffectEvent,
 	useLayoutEffect,
@@ -3683,10 +3684,9 @@ function FileEmbed({
 	href: string
 	chrome?: boolean
 }) {
-	const element = useRef<HTMLElement>(null)
 	const [active, setActive] = useState(false)
-	useEffect(() => {
-		if (!element.current) return
+	const element = useCallback((node: HTMLElement | null) => {
+		if (!node) return
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (entries.some((entry) => entry.isIntersecting)) {
@@ -3696,7 +3696,7 @@ function FileEmbed({
 			},
 			{ rootMargin: '240px' },
 		)
-		observer.observe(element.current)
+		observer.observe(node)
 		return () => observer.disconnect()
 	}, [])
 

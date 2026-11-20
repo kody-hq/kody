@@ -29,7 +29,7 @@ import {
 	stackedPageCss,
 } from '#universal/styles/style-primitives.ts'
 import { useActor } from '@xstate/react'
-import { useEffect, type FormEvent } from 'react'
+import { useCallback, useEffect, type FormEvent } from 'react'
 import { submissionGateState } from '#client/routes/submission-gate-state.ts'
 import { sendUiEvent } from '#client/ui-actor.ts'
 import { Button } from '../components/button.tsx'
@@ -144,16 +144,19 @@ function SignupForm(props: {
 }) {
 	const { pending, onSubmit } = useNativeSubmitGate()
 	const { turnstileSiteKey } = props
-	useEffect(() => {
-		if (!turnstileSiteKey) return
-		void renderTurnstileWidgets(turnstileSiteKey)
-		// A page restored from the back/forward cache holds a spent token.
-		function pageshow(event: PageTransitionEvent) {
-			if (event.persisted) resetTurnstileWidgets()
-		}
-		window.addEventListener('pageshow', pageshow)
-		return () => window.removeEventListener('pageshow', pageshow)
-	}, [turnstileSiteKey])
+	const renderTurnstile = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (!node || !turnstileSiteKey) return
+			void renderTurnstileWidgets(turnstileSiteKey)
+			// A page restored from the back/forward cache holds a spent token.
+			function pageshow(event: PageTransitionEvent) {
+				if (event.persisted) resetTurnstileWidgets()
+			}
+			window.addEventListener('pageshow', pageshow)
+			return () => window.removeEventListener('pageshow', pageshow)
+		},
+		[turnstileSiteKey],
+	)
 	const errorId = 'newsletter-signup-error'
 	const emailInvalid = props.error === 'invalid_email'
 	return (
@@ -227,7 +230,10 @@ function SignupForm(props: {
 				</Field>
 				{turnstileSiteKey ? (
 					<>
-						<div className={turnstileWidgetClassName}></div>
+						<div
+							ref={renderTurnstile}
+							className={turnstileWidgetClassName}
+						></div>
 						<input type="hidden" name={turnstileResponseFieldName} />
 					</>
 				) : null}
