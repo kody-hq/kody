@@ -1,4 +1,8 @@
-import { createContext, useContext, useEffect, useId, useRef } from 'react'
+import { createContext, useContext, useId, useRef } from 'react'
+import {
+	useExternalInstanceSync,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import type { Command } from './model.ts'
 
 export const CommandContext = createContext<{
@@ -11,14 +15,14 @@ export function usePageCommands(commands: Command[]) {
 	const context = useContext(CommandContext)
 	const id = useId()
 	const latest = useRef(commands)
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		latest.current = commands
-	})
+	}, [commands])
 	const signature = JSON.stringify(
 		commands.map(({ run: _run, ...command }) => command),
 	)
-	useEffect(() => {
-		if (!context) return
+	useResourceLifetime(() => {
+		if (!context) return () => {}
 		return context.register(
 			id,
 			latest.current.map((command) => ({
@@ -29,6 +33,7 @@ export function usePageCommands(commands: Command[]) {
 					: undefined,
 			})),
 		)
+		// oxlint-disable-next-line react/exhaustive-deps -- re-register when command metadata changes
 	}, [context, id, signature])
 }
 
