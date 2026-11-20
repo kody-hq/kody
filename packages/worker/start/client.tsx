@@ -21,6 +21,7 @@ import { persistReferralCookieFromLocation } from '#client/referral-cookie.ts'
 import { scheduleConsumeAccountCreatedFathomSignal } from '#client/fathom-events.ts'
 import { locationWithoutHomeOgParam } from '#universal/home-og-variants.ts'
 import { createScarfPageTracker } from '#client/scarf-analytics.ts'
+import { syncSidebarViewportWithRouter } from './components/sidebar-preferences.tsx'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 
 initSentryClient(document)
@@ -101,6 +102,7 @@ hydrateStart()
 	.then((router) => {
 		clearReloadFlagsAfterSuccessfulHydration(router)
 		startBrowserLocationEffects(router)
+		syncSidebarViewportWithRouter(router)
 		// Arm only while a route load is in flight. Chunk import rejection and
 		// the route error boundary both run before `onResolved`.
 		router.subscribe('onBeforeLoad', () => {
