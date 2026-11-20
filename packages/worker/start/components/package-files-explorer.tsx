@@ -154,13 +154,15 @@ function PackageFilesExplorerContent({
 	const fullView = canOpen && fullPath === data.selectedPath
 	const wasFullView = useRef(false)
 
-	const fileViewRef = useCallback(
-		(node: HTMLElement | null) => {
-			fileView.current = node
+	// The explorer stays mounted while the preview comes and goes, so it owns
+	// focus handoff between the file view and the columns.
+	const explorerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			explorer.current = node
 			if (!node || wasFullView.current === fullView) return
 			wasFullView.current = fullView
 			if (fullView) {
-				node.focus({ preventScroll: true })
+				fileView.current?.focus({ preventScroll: true })
 				return
 			}
 			const frame = requestAnimationFrame(() => {
@@ -263,7 +265,7 @@ function PackageFilesExplorerContent({
 		<section
 			css={fullView || hideExplorer ? contentCss : { minWidth: 0 }}
 			aria-label="Selected file"
-			ref={fileViewRef}
+			ref={fileView}
 			tabIndex={fullView ? -1 : undefined}
 			data-file-column-browser={fullView ? true : undefined}
 		>
@@ -357,7 +359,7 @@ function PackageFilesExplorerContent({
 			<Panel>
 				{installStrip}
 				<div
-					ref={explorer}
+					ref={explorerRef}
 					css={[
 						layoutCss,
 						embedded && { marginTop: 0 },
