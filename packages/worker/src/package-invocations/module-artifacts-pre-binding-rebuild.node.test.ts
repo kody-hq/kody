@@ -56,7 +56,6 @@ vi.mock('#worker/worker-bundler-modules.ts', async () =>
 	).workerBundlerModulesMock(),
 )
 
-// eslint-disable-next-line epic-web/prefer-dispose-in-tests -- restores the shared job-service mocks between tests.
 afterEach(() => {
 	resetJobServiceMocks()
 })

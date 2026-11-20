@@ -48,6 +48,12 @@ extended by `0065-experiments-opt-in.sql`:
   rebuild cannot cascade away rollout state; overrides for deleted sources are
   inert.
 
+Every registry entry declares how it ends: `removeWhen` (the issue or metric
+that retires the flag) and/or `reviewBy` (a `YYYY-MM-DD` date). The type
+requires at least one, and `registry.node.test.ts` fails once a `reviewBy` date
+passes, so a lingering flag gets an explicit decision: remove it, or set a new
+date with an updated `removeWhen`.
+
 Removing a flag from the registry breaks the build at every remaining gate site;
 leftover DB rows for removed keys surface as **stale** in the admin UI
 (delete-only via the admin UI or `adminFeatureFlagDeleteStale`;

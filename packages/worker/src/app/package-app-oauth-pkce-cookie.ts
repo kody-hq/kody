@@ -1,3 +1,4 @@
+import { isolateState } from '@kody-internal/shared/isolate-state.ts'
 import { createCookie } from 'remix/cookie'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
 import { bytesToBase64Url } from '@kody-internal/shared/base64.ts'
@@ -21,18 +22,20 @@ export type PackageAppOauthPkceState = {
 	clientId: string
 }
 
-let cached: {
-	sourceSecret: string
-	secure: ReturnType<typeof createCookie>
-	insecure: ReturnType<typeof createCookie>
-} | null = null
+const cookies = isolateState(
+	(): {
+		sourceSecret: string
+		secure: ReturnType<typeof createCookie>
+		insecure: ReturnType<typeof createCookie>
+	} | null => null,
+)
 
 async function getCookies(env: Env) {
 	const secret = env.COOKIE_SECRET?.trim()
 	if (!secret) {
 		throw new Error('Missing COOKIE_SECRET for package app OAuth PKCE.')
 	}
-	if (cached?.sourceSecret === secret) return cached
+	if (cookies.current?.sourceSecret === secret) return cookies.current
 	const derived = await sha256Base64Url(`${pkceSecretPurpose}:${secret}`)
 	const shared = {
 		httpOnly: true,
@@ -41,7 +44,7 @@ async function getCookies(env: Env) {
 		maxAge: pkceMaxAgeSeconds,
 		secrets: [derived],
 	}
-	cached = {
+	cookies.current = {
 		sourceSecret: secret,
 		secure: createCookie(packageAppOauthPkceCookieName, {
 			...shared,
@@ -51,11 +54,7 @@ async function getCookies(env: Env) {
 			...shared,
 		}),
 	}
-	return cached
-}
-
-export function resetPackageAppOauthPkceCookieForTests() {
-	cached = null
+	return cookies.current
 }
 
 export function createPackageAppOauthCodeVerifier() {

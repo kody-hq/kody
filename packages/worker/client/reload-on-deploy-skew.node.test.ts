@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 import {
 	clearDeploySkewReloadFlag,
@@ -6,8 +7,6 @@ import {
 	isDeploySkewRecoveryError,
 	readClientBuildId,
 	reloadOnDeploySkew,
-	resetDeploySkewClientBuildCache,
-	setBakedClientBuildIdForTests,
 } from './reload-on-deploy-skew.ts'
 
 const oldSha = 'a'.repeat(40)
@@ -33,7 +32,8 @@ function restoreGlobals() {
 	} else {
 		Reflect.deleteProperty(globalThis, 'document')
 	}
-	resetDeploySkewClientBuildCache()
+	vi.unstubAllGlobals()
+	resetIsolateState()
 }
 
 afterEach(() => {
@@ -111,7 +111,7 @@ test('reloadOnDeploySkew ignores same-release and missing builds', () => {
 	expect(reloadOnDeploySkew({ serverBuild: sameSha, href: '/blog' })).toBe(
 		false,
 	)
-	resetDeploySkewClientBuildCache()
+	resetIsolateState()
 	installBuildMeta(null)
 	expect(reloadOnDeploySkew({ serverBuild: newSha, href: '/blog' })).toBe(false)
 	expect(assign).not.toHaveBeenCalled()
@@ -137,7 +137,7 @@ test('readClientBuildId caches a resolved meta so SPA head updates cannot hide s
 	expect(readClientBuildId()).toBe(oldSha)
 	installBuildMeta(newSha)
 	expect(readClientBuildId()).toBe(oldSha)
-	resetDeploySkewClientBuildCache()
+	resetIsolateState()
 	expect(readClientBuildId()).toBe(newSha)
 })
 
@@ -149,19 +149,19 @@ test('readClientBuildId does not permanently cache a missing meta', () => {
 })
 
 test('readClientBuildId prefers the baked build ID over meta', () => {
-	setBakedClientBuildIdForTests(oldSha)
+	vi.stubGlobal('__KODY_APP_COMMIT_SHA__', oldSha)
 	installBuildMeta(newSha)
 	expect(readClientBuildId()).toBe(oldSha)
 })
 
 test('readClientBuildId uses the baked build ID when meta is missing', () => {
-	setBakedClientBuildIdForTests(oldSha)
+	vi.stubGlobal('__KODY_APP_COMMIT_SHA__', oldSha)
 	installBuildMeta(null)
 	expect(readClientBuildId()).toBe(oldSha)
 })
 
 test('readClientBuildId ignores a short baked SHA that cannot match X-Kody-Build', () => {
-	setBakedClientBuildIdForTests('abcdef1')
+	vi.stubGlobal('__KODY_APP_COMMIT_SHA__', 'abcdef1')
 	installBuildMeta(null)
 	expect(readClientBuildId()).toBeNull()
 })

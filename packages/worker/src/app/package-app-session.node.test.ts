@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { createCookie } from 'remix/cookie'
 import { expect, test } from 'vitest'
 import { sha256Base64Url } from '@kody-internal/shared/sha256.ts'
@@ -6,7 +7,6 @@ import {
 	createPackageAppSessionCookie,
 	destroyPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 
 const cookieSecret = 'package-app-session-node-test-secret'
@@ -29,7 +29,7 @@ test('ignores unrelated cookies without requiring the package-app cookie secret'
 })
 
 test('per-app sessions on one host: logout of A leaves B signed in', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const expiresAt = now + 60 * 60 * 1000
@@ -122,7 +122,7 @@ test('per-app sessions on one host: logout of A leaves B signed in', async () =>
 })
 
 test('host-wide pre-per-app cookie names are ignored', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const legacyCookie = createCookie('__Host-kody_pkg_session', {
@@ -172,7 +172,7 @@ test('host-wide pre-per-app cookie names are ignored', async () => {
 })
 
 test('secure requests ignore unprefixed session cookie names a sibling subdomain could toss', async () => {
-	resetPackageAppSessionCookieForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const now = 1_700_000_000_000
 	const expiresAt = now + 60 * 60 * 1000

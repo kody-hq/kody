@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { env } from 'cloudflare:test'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { utcMonthKey } from '@kody-internal/shared/date-keys.ts'
@@ -11,7 +12,6 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import {
 	gatePackageAppUsage,
 	packageAppUsageBreakerCooldownMs,
-	resetPackageAppUsageBreakerForTests,
 } from './package-app-usage-breaker.ts'
 
 /**
@@ -72,7 +72,7 @@ function usageCheck(input: {
 }
 
 test('the usage check leaves the critical path: 0 blocking D1 statements while closed or open', async () => {
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	const within = await seedProOwner('usage-gate-within', 10)
 	const counting = createCountingD1(env.APP_DB)
 	const check = usageCheck({ db: counting.db, ...within })
@@ -86,7 +86,7 @@ test('the usage check leaves the critical path: 0 blocking D1 statements while c
 	expect(coldStatements).toBeGreaterThan(0)
 
 	// After, closed: the request resolves before the check runs.
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	counting.reset()
 	const deferred: Array<Promise<unknown>> = []
 	await gatePackageAppUsage({
@@ -114,7 +114,7 @@ test('the usage check leaves the critical path: 0 blocking D1 statements while c
 })
 
 test('past the include: the first request is served, then the breaker refuses from KV with no D1', async () => {
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	vi.spyOn(console, 'info').mockImplementation(() => {})
 	const past = await seedProOwner('usage-gate-past', 351)
 	const counting = createCountingD1(env.APP_DB)
@@ -135,7 +135,7 @@ test('past the include: the first request is served, then the breaker refuses fr
 	await Promise.all(deferred.splice(0))
 
 	// A fresh isolate sees the KV deny entry.
-	resetPackageAppUsageBreakerForTests()
+	resetIsolateState()
 	counting.reset()
 	const refused = await gate(start + 1_000).catch((error: unknown) => error)
 	expect(isComputeOverageLimitError(refused)).toBe(true)

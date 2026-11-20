@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import {
 	BudgetLimitError,
@@ -66,23 +67,14 @@ type BreakerEnv = Pick<
 	'BUNDLE_ARTIFACTS_KV' | 'PACKAGE_APP_USAGE_BREAKER_LIMIT_PERCENT'
 >
 
-const isolateState = new Map<
-	string,
-	{ entry: BreakerEntry | null; expiresAt: number }
->()
-const probesInFlight = new Set<string>()
-const lastAsyncCheckAt = new Map<string, number>()
+const isolateState = isolateCollection(
+	new Map<string, { entry: BreakerEntry | null; expiresAt: number }>(),
+)
+const probesInFlight = isolateCollection(new Set<string>())
+const lastAsyncCheckAt = isolateCollection(new Map<string, number>())
 // Bumped on every local open or close, so a KV read that started earlier
 // cannot overwrite the newer state when it resolves.
-const scopeGeneration = new Map<string, number>()
-
-/** Clears per-isolate breaker state between tests. */
-export function resetPackageAppUsageBreakerForTests() {
-	isolateState.clear()
-	probesInFlight.clear()
-	lastAsyncCheckAt.clear()
-	scopeGeneration.clear()
-}
+const scopeGeneration = isolateCollection(new Map<string, number>())
 
 function breakerScope(ownerId: OwnerId, actorId: string | null) {
 	return `${ownerId}:${actorId ?? '-'}`

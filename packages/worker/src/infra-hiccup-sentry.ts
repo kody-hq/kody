@@ -1,3 +1,7 @@
+import {
+	isolateCollection,
+	isolateState,
+} from '@kody-internal/shared/isolate-state.ts'
 import * as Sentry from '@sentry/cloudflare'
 
 /**
@@ -24,9 +28,8 @@ export const infraHiccupPerFingerprintIntervalMs = 60_000
 export const infraHiccupGlobalWindowMs = 60_000
 export const infraHiccupGlobalMaxPerWindow = 10
 
-const lastSentAtByFingerprint = new Map<string, number>()
-let globalWindowStartedAt = 0
-let globalWindowCount = 0
+const lastSentAtByFingerprint = isolateCollection(new Map<string, number>())
+const globalWindow = isolateState(() => ({ startedAt: 0, count: 0 }))
 
 function allowInfraHiccupEvent(fingerprintKey: string, now: number) {
 	const lastSentAt = lastSentAtByFingerprint.get(fingerprintKey)
@@ -36,12 +39,12 @@ function allowInfraHiccupEvent(fingerprintKey: string, now: number) {
 	) {
 		return false
 	}
-	if (now - globalWindowStartedAt >= infraHiccupGlobalWindowMs) {
-		globalWindowStartedAt = now
-		globalWindowCount = 0
+	if (now - globalWindow.current.startedAt >= infraHiccupGlobalWindowMs) {
+		globalWindow.current.startedAt = now
+		globalWindow.current.count = 0
 	}
-	if (globalWindowCount >= infraHiccupGlobalMaxPerWindow) return false
-	globalWindowCount += 1
+	if (globalWindow.current.count >= infraHiccupGlobalMaxPerWindow) return false
+	globalWindow.current.count += 1
 	lastSentAtByFingerprint.set(fingerprintKey, now)
 	if (lastSentAtByFingerprint.size > 256) {
 		const oldest = lastSentAtByFingerprint.keys().next().value
@@ -99,10 +102,4 @@ export async function reportInfraHiccup(report: InfraHiccupReport) {
 	} catch (error) {
 		console.warn('infra-hiccup-report-failed', error)
 	}
-}
-
-export function resetInfraHiccupRateLimitForTests() {
-	lastSentAtByFingerprint.clear()
-	globalWindowStartedAt = 0
-	globalWindowCount = 0
 }

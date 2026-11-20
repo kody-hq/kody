@@ -93,7 +93,6 @@ vi.mock('#worker/worker-bundler-modules.ts', async () =>
 	).workerBundlerModulesMock(),
 )
 
-// eslint-disable-next-line epic-web/prefer-dispose-in-tests -- this legacy suite restores global spies across many integration-style tests.
 afterEach(() => {
 	resetJobServiceMocks()
 })

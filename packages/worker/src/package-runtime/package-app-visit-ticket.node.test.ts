@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -8,7 +9,6 @@ import {
 	createPackageAppRequestVisit,
 	endPackageAppVisit,
 	endPackageAppVisitWithResponse,
-	forgetPackageAppVisitLiveForTests,
 	mintPackageAppAnonymousVisitTicket,
 	mintPackageAppVisitTicket,
 	packageAppAnonymousVisitTicketPrefix,
@@ -16,7 +16,6 @@ import {
 	packageAppVisitTicketTtlMs,
 	PackageAppVisitTicketError,
 	requestContextFromVisitClaims,
-	resetPackageAppVisitNoncesForTests,
 	verifyPackageAppVisitTicket,
 	verifyPackageAppVisitTicketFromRequest,
 	withPackageAppVisitTicket,
@@ -68,7 +67,7 @@ function mintFor(
 }
 
 test('a visit ticket names only its visitor and refuses another visitor, app, commit, or host', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const a = await mintFor(visitorA)
 	const b = await mintFor(visitorB)
 	const claimsA = await verifyPackageAppVisitTicket({
@@ -112,7 +111,7 @@ test('a visit ticket names only its visitor and refuses another visitor, app, co
 })
 
 test('a package app visit ticket binds the live consent grant scopes', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const minted = await mintFor(visitorA, {
 		grantId: 'grant-live',
 		scopes: ['profile', 'email', 'need:calendar'],
@@ -129,7 +128,7 @@ test('a package app visit ticket binds the live consent grant scopes', async () 
 })
 
 test('a replayed, expired, or forged visit ticket is refused', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const now = 1_700_000_000_000
 	const minted = await mintFor(visitorA, { now })
 	await verifyPackageAppVisitTicket({
@@ -149,9 +148,9 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 		}),
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const otherIsolate = await mintFor(visitorA, { now })
-	forgetPackageAppVisitLiveForTests(otherIsolate.nonce)
+	resetIsolateState()
 	await verifyPackageAppVisitTicket({
 		env: secretEnv,
 		ticket: otherIsolate.ticket,
@@ -167,7 +166,7 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 		}),
 	).rejects.toBeInstanceOf(PackageAppVisitTicketError)
 
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const live = await mintFor(visitorA, { now })
 	await expect(
 		verifyPackageAppVisitTicket({
@@ -211,7 +210,7 @@ test('a replayed, expired, or forged visit ticket is refused', async () => {
 })
 
 test('the visit ticket header is platform-set and verify reads only that header', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const minted = await mintFor(visitorA)
 	const request = withPackageAppVisitTicket(
 		new Request('https://apps.example/app', {
@@ -235,7 +234,7 @@ test('the visit ticket header is platform-set and verify reads only that header'
 })
 
 test('createPackageAppRequestVisit mints a ticket only when the visitor is the actor', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const request = {
 		org: { id: owner.userId, slug: owner.orgSlug },
 		actor: { userId: visitorA.userId, username: visitorA.username },
@@ -298,7 +297,7 @@ test('createPackageAppRequestVisit mints a ticket only when the visitor is the a
 })
 
 test('an anonymous ticket names nobody, binds one request, and follows the ticket rules', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const first = await createPackageAppRequestVisit({
 		env: secretEnv,
 		visitor: null,
@@ -365,7 +364,7 @@ test('an anonymous ticket names nobody, binds one request, and follows the ticke
 })
 
 test('a visit ticket is never minted without a credential client binding', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	await expect(
 		mintPackageAppAnonymousVisitTicket({
 			env: secretEnv,
@@ -379,7 +378,7 @@ test('a visit ticket is never minted without a credential client binding', async
 })
 
 test('endPackageAppVisitWithResponse keeps the ticket live until the body ends', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const minted = await mintFor(visitorA)
 	const { readable, writable } = new TransformStream()
 	const response = endPackageAppVisitWithResponse(
@@ -407,7 +406,7 @@ test('endPackageAppVisitWithResponse keeps the ticket live until the body ends',
 })
 
 test('endPackageAppVisitWithResponse burns the nonce when the client cancels', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const minted = await mintFor(visitorA)
 	const { readable } = new TransformStream()
 	const response = endPackageAppVisitWithResponse(
@@ -432,7 +431,7 @@ test('endPackageAppVisitWithResponse burns the nonce when the client cancels', a
 })
 
 test('an outside-org visitor gets an executor-only ticket that names them without a role', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const outsider = await createPackageAppRequestVisit({
 		env: secretEnv,
 		visitor: null,
@@ -470,7 +469,7 @@ test('an outside-org visitor gets an executor-only ticket that names them withou
 })
 
 test('a narrowed visitor credential stays narrowed through the visit ticket', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const request = {
 		org: { id: owner.userId, slug: owner.orgSlug },
 		actor: { userId: visitorB.userId, username: visitorB.username },
@@ -519,7 +518,7 @@ test('a narrowed visitor credential stays narrowed through the visit ticket', as
 })
 
 test('a profile visitor keeps its profile and chain through the visit ticket', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const visit = await createPackageAppRequestVisit({
 		env: secretEnv,
 		visitor: visitorB,
@@ -553,7 +552,7 @@ test('a profile visitor keeps its profile and chain through the visit ticket', a
 })
 
 test('a visit ticket carries the billed org of a cross-org visit into the rebuilt request', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const outsider: RuntimePackageAppVisitor = {
 		userId: personIdFromStored('person-outside'),
 		username: 'outside',

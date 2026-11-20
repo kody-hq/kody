@@ -1,3 +1,4 @@
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import type { JobsStore } from '@kody-internal/shared/jobs/store.ts'
 import type { UserMeterEnv } from './user-meter-client.ts'
@@ -33,7 +34,10 @@ import {
  */
 export const d1StorageReconciliationBatchSize = 8
 
-const inFlightOwnerReconciles = new Map<OwnerId, Promise<unknown>>()
+const inFlightOwnerReconciles = isolateCollection(
+	new Map<OwnerId, Promise<unknown>>(),
+	{ pending: (tasks) => tasks.values() },
+)
 
 /**
  * Lazy per-owner cold physical bootstrap. Dedupes in-flight work for the same
@@ -88,16 +92,6 @@ export function enqueueOwnerD1StorageReconcile(input: {
 	inFlightOwnerReconciles.set(input.userId, task)
 	input.waitUntil?.(task)
 	return task
-}
-
-/** Test helper: await fire-and-forget per-owner reconciles in this isolate. */
-export async function flushOwnerD1StorageReconcilesForTests(): Promise<void> {
-	await Promise.all(inFlightOwnerReconciles.values())
-}
-
-/** Test helper: drop in-flight dedupe so a later enqueue runs fresh. */
-export function clearOwnerD1StorageReconcileDedupeForTests(): void {
-	inFlightOwnerReconciles.clear()
 }
 
 export async function reconcileD1StorageBytes(input: {

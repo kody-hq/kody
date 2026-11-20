@@ -5,6 +5,7 @@
  * with real accounts and personal orgs, real visit tickets, and the real
  * runtime bridge; the capability handlers themselves are stubbed.
  */
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -18,10 +19,7 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { PackageAppRuntimeBridge } from './package-app.ts'
 import type * as PackageAppAuthority from './package-app-authority.ts'
 import type * as PackageAppAuthorityRejections from './package-app-authority-rejections.ts'
-import {
-	mintPackageAppVisitTicket,
-	resetPackageAppVisitNoncesForTests,
-} from './package-app-visit-ticket.ts'
+import { mintPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 
 const logged = vi.hoisted(() => ({
 	rejections: [] as Array<{ callName: string; kind: string }>,
@@ -70,7 +68,7 @@ const baseUrl = 'https://kody.example'
 beforeEach(() => {
 	logged.rejections.length = 0
 	readConfig.mockReset()
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 })
 
 async function setup() {

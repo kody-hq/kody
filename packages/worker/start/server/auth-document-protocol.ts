@@ -9,7 +9,6 @@ import { getStartRequestEnv } from './request-env.ts'
 
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { AuthFormError } from '../../universal/auth-form-errors.ts'
 
 export function isSameOriginFormPost(request: Request) {

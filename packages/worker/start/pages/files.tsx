@@ -567,10 +567,14 @@ export function FilesPage({
 		return () => window.clearTimeout(timer)
 	}, [autoSave, dirty, draft, name, busy, message, base])
 
-	useEffect(() => {
-		if (!pendingTitle || busy || !selected) return
+	const renameToPendingTitle = useEffectEvent((title: string) => {
+		if (!selected) return
 		setPendingTitle(null)
-		void manage(selected.file, 'rename', { name: pendingTitle })
+		void manage(selected.file, 'rename', { name: title })
+	})
+	useEffect(() => {
+		if (!pendingTitle || busy) return
+		renameToPendingTitle(pendingTitle)
 	}, [pendingTitle, busy])
 
 	async function manage(
@@ -702,7 +706,7 @@ export function FilesPage({
 			if (replacementInput.current) replacementInput.current.value = ''
 		}
 	}
-	useEffect(() => {
+	const embedCompletedUploads = useEffectEvent(() => {
 		if (!selected || !isPage || !editable || historical) return
 		const completed = uploads.jobs.filter(
 			(job) =>
@@ -733,6 +737,9 @@ export function FilesPage({
 			])
 		})
 		uploads.consumeEmbeds(completed.map((job) => job.id))
+	})
+	useEffect(() => {
+		embedCompletedUploads()
 	}, [
 		uploads.jobs,
 		data.files,

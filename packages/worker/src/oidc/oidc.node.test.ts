@@ -1,9 +1,9 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test } from 'vitest'
 import { buildOpenIdConfiguration } from '#worker/oidc/discovery.ts'
 import {
 	getOidcJwksDocument,
-	resetOidcSigningKeyCacheForTests,
 	verifyOidcJwtSignature,
 } from '#worker/oidc/keys.ts'
 import { mintIdToken } from '#worker/oidc/id-token.ts'
@@ -30,7 +30,7 @@ test('openid-configuration advertises authorization code OIDC only', () => {
 })
 
 test('jwks accepts PEM secrets stored with literal \\n escapes', async () => {
-	resetOidcSigningKeyCacheForTests()
+	resetIsolateState()
 	const env = {
 		OIDC_SIGNING_KEY_ID: TEST_OIDC_SIGNING_KEY_ID,
 		OIDC_SIGNING_PRIVATE_KEY_PEM: TEST_OIDC_SIGNING_PRIVATE_KEY_PEM.replace(
@@ -40,7 +40,7 @@ test('jwks accepts PEM secrets stored with literal \\n escapes', async () => {
 	} as unknown as Env
 	const jwks = await getOidcJwksDocument(env)
 	expect(jwks.keys[0]?.kid).toBe(TEST_OIDC_SIGNING_KEY_ID)
-	resetOidcSigningKeyCacheForTests()
+	resetIsolateState()
 })
 
 test('minted id_token includes expected claims and verifies with JWKS key', async () => {

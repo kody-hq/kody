@@ -14,6 +14,7 @@
  * Identity, verification, suspension, password-change and deletion flags are
  * never cached: they come from the fresh user row on every request.
  */
+import { isolateCollection } from '@kody-internal/shared/isolate-state.ts'
 import type { McpUserContext } from '@kody-internal/shared/chat.ts'
 import type { OrgBinding } from '#worker/orgs/repo.ts'
 import { andLiveDeletedAtSql } from '#worker/soft-delete/live-sql.ts'
@@ -37,7 +38,7 @@ export type OrgEpochRow = {
 }
 
 const maxEntries = 2000
-const entries = new Map<string, McpAuthCacheEntry>()
+const entries = isolateCollection(new Map<string, McpAuthCacheEntry>())
 
 export function readMcpAuthCache(token: string): McpAuthCacheEntry | null {
 	return entries.get(token) ?? null
@@ -54,14 +55,6 @@ export function writeMcpAuthCache(token: string, entry: McpAuthCacheEntry) {
 
 export function evictMcpAuthCache(token: string | null | undefined) {
 	if (token) entries.delete(token)
-}
-
-export function mcpAuthCacheSizeForTests() {
-	return entries.size
-}
-
-export function clearMcpAuthCacheForTests() {
-	entries.clear()
 }
 
 export function orgEpochStatement(db: D1Database, orgId: string) {

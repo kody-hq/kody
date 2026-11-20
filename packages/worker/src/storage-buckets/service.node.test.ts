@@ -1,3 +1,7 @@
+import {
+	resetIsolateState,
+	settleIsolateState,
+} from '@kody-internal/shared/isolate-state-test-support.ts'
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { DatabaseSync } from 'node:sqlite'
 import { expect, test } from 'vitest'
@@ -9,8 +13,6 @@ import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.t
 import { createInMemoryRepoSessionIndexEnv } from '#worker/test-support/repo-session-index.ts'
 import { readRepoSessionStorageBucketCursor } from './repo-session-storage-bucket-cursor.ts'
 import {
-	clearStorageBucketRegistrationDedupeForTests,
-	flushStorageBucketRegistrationsForTests,
 	listPlatformStorageBuckets,
 	listUserStorageBucketEstimates,
 	listUserStorageBucketIds,
@@ -100,7 +102,7 @@ test('storage bucket registration soft-fails, dedupes, and lists by user', async
 	).toEqual(['job', 'execute', 'package', 'unknown'])
 
 	consoleWarn.mockImplementation(() => {})
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 	expect(() =>
 		registerStorageBucket({
 			env: {} as Env,
@@ -117,13 +119,13 @@ test('storage bucket registration soft-fails, dedupes, and lists by user', async
 			kind: 'execute',
 		}),
 	).not.toThrow()
-	await flushStorageBucketRegistrationsForTests()
+	await settleIsolateState()
 	expect(consoleWarn).toHaveBeenCalledWith(
 		'storage-bucket-register-failed',
 		expect.any(Error),
 	)
 
-	clearStorageBucketRegistrationDedupeForTests()
+	resetIsolateState()
 	const counting = createCountingDb()
 	const pending: Array<Promise<unknown>> = []
 	const waitUntil = (promise: Promise<unknown>) => {

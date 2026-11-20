@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { afterEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
@@ -22,13 +23,12 @@ const {
 	infraHiccupGlobalMaxPerWindow,
 	infraHiccupPerFingerprintIntervalMs,
 	reportInfraHiccup,
-	resetInfraHiccupRateLimitForTests,
 } = await import('./infra-hiccup-sentry.ts')
 
 afterEach(() => {
 	vi.useRealTimers()
 	vi.clearAllMocks()
-	resetInfraHiccupRateLimitForTests()
+	resetIsolateState()
 })
 
 function sentTags() {

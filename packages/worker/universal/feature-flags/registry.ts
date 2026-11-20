@@ -53,7 +53,20 @@ export type FeatureFlagExposureRecording =
 	| 'mcp-events-clients'
 	| 'repo-push-owners'
 
-export type FeatureFlagDefinition = {
+/** Calendar date in `YYYY-MM-DD` form. */
+export type FeatureFlagReviewDate = `${number}-${number}-${number}`
+
+/**
+ * How the flag ends. `removeWhen` names the issue or metric that retires the
+ * flag and its gate sites; `reviewBy` is the date someone decides again.
+ * Every flag declares at least one, and `registry.node.test.ts` fails once a
+ * `reviewBy` date has passed.
+ */
+export type FeatureFlagLifecycle =
+	| { removeWhen: string; reviewBy?: FeatureFlagReviewDate }
+	| { removeWhen?: string; reviewBy: FeatureFlagReviewDate }
+
+export type FeatureFlagDefinition = FeatureFlagLifecycle & {
 	key: string
 	description: string
 	defaultEnabled: boolean
@@ -74,6 +87,9 @@ export type FeatureFlagDefinition = {
 export const featureFlagDefinitions = [
 	{
 		key: 'files-workspace',
+		removeWhen:
+			'Workspace Files is on for everyone; delete the flag and gate sites.',
+		reviewBy: '2027-02-15',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
@@ -88,6 +104,7 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'demo-indicator',
+		reviewBy: '2027-05-19',
 		defaultEnabled: false,
 		description:
 			'Reserved for exercising the feature flag system end-to-end. When enabled it shows a small demo indicator in the app UI. Safe to toggle.',
@@ -97,6 +114,8 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'profiles',
+		removeWhen: 'Profiles graduate (ADR 0092); delete the flag and gate sites.',
+		reviewBy: '2027-02-01',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
@@ -111,6 +130,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'mcp-events-extension',
+		removeWhen:
+			'The MCP Events experiment ends; delete the flag and gate sites.',
+		reviewBy: '2027-01-15',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
@@ -126,6 +148,8 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'package-credential-suppliers',
+		removeWhen: 'The follow-up removes supplier aliases and legacy paths.',
+		reviewBy: '2027-01-15',
 		defaultEnabled: false,
 		description:
 			'Gate publisher- and executor-supplied package credentials, including visitor grant mappings. Off by default. Delete this flag after the follow-up removes supplier aliases and legacy paths.',
@@ -134,6 +158,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'repo-push-queue',
+		removeWhen:
+			'Two clean weeks on the queue by git_push error_rate; remove the isolate-local proxy with this flag.',
+		reviewBy: '2026-12-15',
 		defaultEnabled: true,
 		description:
 			'Per-repo Durable Object write queue for plain-repo git pushes (git-receive-pack): pushes land in the kody-push-queue Worker (RepoPushQueueV1) and reach Artifacts one at a time in FIFO order, with a 90s per-push budget and a clean 503 + Retry-After instead of a raw busy error. Evaluated per repo: repo allowlist (adminFeatureFlagRepoOverride), then the repo owner override, then the global switch with percentage rollout bucketed by repo, then the audience gate on the repo owner. On for everyone; off repos keep the isolate-local wait-and-retry proxy, which is removed (with this flag) after two clean weeks on the queue. Every push records an observe-only git_push usage event (path, outcome, Durable Object wall time, wait, queue depth, attempts) and an exposure for the repo owner; read queue cost with adminRepoPushQueueCost.',
@@ -148,6 +175,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'execution-contexts',
+		removeWhen:
+			'Execution contexts ship to everyone; delete the flag and gate sites.',
+		reviewBy: '2027-02-01',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
@@ -162,6 +192,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'publish-offload',
+		removeWhen:
+			'Publish offload ships to everyone; delete the flag and gate sites.',
+		reviewBy: '2027-02-01',
 		defaultEnabled: false,
 		defaultAudience: 'experiments_opt_in',
 		description:
@@ -169,6 +202,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'credential-need-enforcement',
+		removeWhen:
+			'Enforcement is on for everyone with no new credential_need_undeclared regressions; delete the flag and gate sites.',
+		reviewBy: '2027-01-15',
 		defaultEnabled: false,
 		description:
 			'Global switch (audience and rollout are ignored) for packages that have no credential stamp. When on, a package run by anyone but its author (a team-org package, a Use collaborator, an unadopted community fork, or any internet-visible package) may fill {{secret:…}}, {{integration-token:…}}, and vault placeholders and call credential(key) only for credentials its kody.credentials closure declares; anything else fails with credential_need_undeclared. Packages that stored a credential stamp are limited to those slots whether or not this flag is on (issue #3836). Do not flip this flag to enforce stamped packages: it would also change unstamped packages. Self-publish auto-approval also waits for this flag.',
@@ -177,6 +213,9 @@ export const featureFlagDefinitions = [
 	},
 	{
 		key: 'credential-allowed-packages-safety-window',
+		removeWhen:
+			'The issue #4129 30-day safety window has closed; delete the flag and gate sites.',
+		reviewBy: '2026-12-01',
 		defaultEnabled: true,
 		description:
 			"Global switch (audience and rollout are ignored) for the issue #4129 30-day safety window before allowed-packages enforcement cutover. While on and inside the window, nothing is refused for a self-authored or adopted package that a user credential's non-empty allowed-packages list leaves out. The use is allowed with a log line (credential_allowed_packages_safety_window_allow) and keeps its would-block marker; the allowed-packages list is never written, so an owner's removal sticks. The owner is never notified. From cutover the rule is strict whether or not this flag is on. Delete the flag and gate sites once the window has closed.",

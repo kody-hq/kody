@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import {
 	ownerIdFromStored,
@@ -21,11 +22,7 @@ import { saveSecret } from '#mcp/secrets/service.ts'
 import { executeGatewayFetch } from '#mcp/fetch-gateway.ts'
 import { credentialClientHeaderName } from './credential-client-header.ts'
 import { signCredentialClientHandle } from './credential-client-handle.ts'
-import {
-	clearLoginSessionsForTests,
-	loginExchangeSchema,
-	readRetryAfterSeconds,
-} from './login-resolver.ts'
+import { loginExchangeSchema, readRetryAfterSeconds } from './login-resolver.ts'
 import { listCredentialsForViewer } from './credential-list.ts'
 import { resolveCredential } from './resolve-credential.ts'
 
@@ -234,7 +231,7 @@ async function setup() {
 	}
 	valueReads.count = 0
 	scheduledAudits.length = 0
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	return {
 		env,
 		db,
@@ -533,7 +530,7 @@ test('a rotated refresh token replaces the login value with its session, audited
 	expect(after!.encrypted_value).not.toContain('dummy-refresh')
 
 	// Another isolate reuses the session stored under the new revision.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = await t.signIn({ actor, credentialId: id })
 	expect(second.placement).toMatchObject({ value: 'Bearer dummy-access-1' })
 	expect(sent).toHaveLength(1)
@@ -619,7 +616,7 @@ test('a rejected session is dropped once: a second caller with the same rejectio
 		rejectedSessionId: first.sessionId,
 	})
 	expect(retried.placement).toMatchObject({ value: 'Bearer session-2' })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const again = await t.signIn({
 		actor,
 		credentialId: id,
@@ -705,7 +702,7 @@ test('a caller that read the value before another isolate rotated it reuses the 
 	const first = t.signIn({ actor, credentialId: id })
 	await exchangeStarted
 	// A second isolate reads the pre-rotation value while the first holds the lease.
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = t.signIn({ actor, credentialId: id })
 	await new Promise((resolve) => setTimeout(resolve, 50))
 	release()
@@ -750,7 +747,7 @@ test('invalid_grant from the token endpoint needs reconnecting and stops the exc
 		exchange: rotatingExchange,
 	})
 	for (let i = 0; i < 3; i++) {
-		clearLoginSessionsForTests()
+		resetIsolateState()
 		const error = loginErrorBody(
 			await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 		)
@@ -783,7 +780,7 @@ test("a 429 waits for the provider's Retry-After before the next exchange", asyn
 		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 	)
 	expect(first).toMatchObject({ code: 'login_failed', retryAfterSeconds: 120 })
-	clearLoginSessionsForTests()
+	resetIsolateState()
 	const second = loginErrorBody(
 		await t.signIn({ actor, credentialId: id }).catch((e: unknown) => e),
 	)

@@ -92,7 +92,6 @@ import { planRepoSessionContentEdits } from './plan-repo-session-content-edits.t
 import { searchRepoWorkspace } from './repo-session-search.ts'
 import { repoSessionRpc as createRepoSessionRpc } from './repo-session-rpc.ts'
 // Keep serving reconciliation off the RepoSession startup graph.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type {
 	PackageServingUpdate,
 	PackageServingUpdateQueue,

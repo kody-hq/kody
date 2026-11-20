@@ -1,8 +1,8 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { expect, test } from 'vitest'
 import {
 	createAuthCookie,
 	readParsedAuthSession,
-	resetAuthSessionSecretForTests,
 	setAuthSessionSecret,
 } from '#app/auth-session.ts'
 import {
@@ -12,7 +12,6 @@ import {
 import {
 	createPackageAppSessionCookie,
 	readPackageAppSession,
-	resetPackageAppSessionCookieForTests,
 } from '#app/package-app-session.ts'
 import {
 	consoleWarn,
@@ -155,8 +154,7 @@ test('handoff tokens are single use, short lived, and bound to one user and pack
 })
 
 test('the package-app session cookie is not interchangeable with the app session cookie', async () => {
-	resetPackageAppSessionCookieForTests()
-	resetAuthSessionSecretForTests()
+	resetIsolateState()
 	const env = createTestEnv()
 	const ownerSession = {
 		session: { stableUserId: ownerStableUserId, username: 'owner' },

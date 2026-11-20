@@ -4,7 +4,6 @@ import { Button } from '../components/button.tsx'
 import { Checkbox } from '../components/choice-controls.tsx'
 // Top-level `import type` is erased; an inline `{ type X }` would keep a
 // side-effect import that drags worker code into the client build.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type { AccountDeviceSignInView } from '#start/server/account-device'
 import { accountDeviceSignInPath } from '#universal/oauth-paths.ts'
 import {

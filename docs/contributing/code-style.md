@@ -95,6 +95,26 @@ file style first, then run the formatter.
   auto-dismiss; `toast.error` stays until dismissed. Pass `duration: null` (or
   `Infinity`) to persist any tone, or `action: { label, onClick }` for a button.
 
+## Comments
+
+- Write a comment when the code cannot say why: a platform limit, an invariant,
+  a security boundary, or a link to an ADR, issue, or Sentry id.
+- Describe the code as it is now. Git and the PR hold the history, so skip "no
+  longer", "used to", and "previously".
+- Skip comments that repeat the name or the next line.
+- A compatibility, legacy, or fallback path states its exit: add a
+  `Remove when:` line naming the issue or metric that retires it.
+
+## Swallowed errors
+
+- A `catch` that keeps going ("best effort", "non-blocking") logs the failure
+  with a stable event name and states what the user loses when it fails.
+- Shape production code for production. Inject a dependency or use a
+  test-support module instead of a branch for tests; per-isolate caches use
+  `isolateState` or `isolateCollection` from
+  `@kody-internal/shared/isolate-state.ts`, and tests call
+  `resetIsolateState()`.
+
 ## Absence values
 
 - Use `null` for explicit "no value" in local state or API responses.

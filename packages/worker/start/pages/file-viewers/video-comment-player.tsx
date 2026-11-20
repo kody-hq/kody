@@ -92,7 +92,6 @@ export function VideoCommentPlayer({
 				background: colors.surface,
 			}}
 		>
-			{/* oxlint-disable-next-line jsx-a11y/media-has-caption -- Uploaded video may not include captions. */}
 			<Media
 				ref={(element) => {
 					video.current = element

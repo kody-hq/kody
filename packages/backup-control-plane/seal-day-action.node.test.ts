@@ -1,8 +1,8 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import assert from 'node:assert/strict'
 
 import { test, vi } from 'vitest'
 
-import { resetAccessJwksCacheForTests } from './access-auth.ts'
 import {
 	accessClaims,
 	accessSigner,
@@ -55,7 +55,7 @@ function sealWorkflowDouble() {
 }
 
 test('seal day enqueues a workflow and status reports progress, already sealed, and incomplete', async () => {
-	resetAccessJwksCacheForTests()
+	resetIsolateState()
 	const consoleLog = vi.spyOn(console, 'log').mockImplementation(() => {})
 	const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 	const sealSpy = vi.spyOn(sealFullBackup, 'sealFullBackupDay')

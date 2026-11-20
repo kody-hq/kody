@@ -39,7 +39,6 @@ import type {
 import type { PackageServingUpdate } from './package-serving-update.ts'
 // Type-only: an inline `type` specifier keeps a runtime import of
 // publish-work.ts and creates an import cycle through checks.ts.
-// oxlint-disable-next-line import/consistent-type-specifier-style
 import type {
 	ExternalRefCloneRequest,
 	ExternalRefCloneResult,

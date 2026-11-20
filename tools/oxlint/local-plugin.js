@@ -875,6 +875,94 @@ const noRawButtonStyleRule = {
 	},
 }
 
+const NON_PRODUCTION_PATH_PATTERN =
+	/(?:^|\/)(?:test|tests|__tests__|test-support|e2e|fixtures|mock-servers)\/|(?:\.|-)(?:test|spec|fixture)\.[^/]+$|-test-support\.[^/]+$|(?:^|\/)vitest[^/]*\.[^/]+$|(?:^|\/)tools\/vitest-[^/]+$/
+const TEST_HOOK_NAME_PATTERN = /[a-z0-9](?:ForTests?|ForTesting)$/
+const TEST_RUNNER_ENV_NAMES = new Set(['VITEST', 'vitest', 'JEST_WORKER_ID'])
+const TEST_MODE_ENV_NAMES = new Set(['NODE_ENV', 'MODE'])
+
+function memberPropertyName(node) {
+	if (node?.type !== 'MemberExpression') return null
+	if (!node.computed && node.property.type === 'Identifier') {
+		return node.property.name
+	}
+	if (node.computed && node.property.type === 'Literal') {
+		return typeof node.property.value === 'string' ? node.property.value : null
+	}
+	return null
+}
+
+function isTestModeComparison(node) {
+	if (!['==', '===', '!=', '!=='].includes(node.operator)) return false
+	const pairs = [
+		[node.left, node.right],
+		[node.right, node.left],
+	]
+	return pairs.some(
+		([member, literal]) =>
+			TEST_MODE_ENV_NAMES.has(memberPropertyName(member) ?? '') &&
+			literal.type === 'Literal' &&
+			literal.value === 'test',
+	)
+}
+
+const noTestHooksInProductionRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Keep production code identical under tests: no *ForTests helpers and no test-runner checks.',
+		},
+		schema: [],
+		messages: {
+			testHookName:
+				'Keep `{{name}}` out of production code. Hold per-isolate caches in `isolateState`/`isolateCollection` from `@kody-internal/shared/isolate-state.ts` (tests call `resetIsolateState()`), inject the dependency, or move the helper to a test-support module.',
+			testRunnerCheck:
+				'Production code runs the same under tests. Inject the dependency (an option or env binding) or mock it from a test-support setup file instead of checking the test runner.',
+		},
+	},
+	createOnce(context) {
+		let skip = false
+		function reportName(id) {
+			if (skip || id?.type !== 'Identifier') return
+			if (!TEST_HOOK_NAME_PATTERN.test(id.name)) return
+			context.report({
+				node: id,
+				messageId: 'testHookName',
+				data: { name: id.name },
+			})
+		}
+		return {
+			before() {
+				skip = NON_PRODUCTION_PATH_PATTERN.test(
+					repoRelativePath(context.filename),
+				)
+			},
+			FunctionDeclaration(node) {
+				reportName(node.id)
+			},
+			VariableDeclarator(node) {
+				reportName(node.id)
+			},
+			MethodDefinition(node) {
+				reportName(node.key)
+			},
+			PropertyDefinition(node) {
+				reportName(node.key)
+			},
+			MemberExpression(node) {
+				if (skip) return
+				if (!TEST_RUNNER_ENV_NAMES.has(memberPropertyName(node) ?? '')) return
+				context.report({ node, messageId: 'testRunnerCheck' })
+			},
+			BinaryExpression(node) {
+				if (skip || !isTestModeComparison(node)) return
+				context.report({ node, messageId: 'testRunnerCheck' })
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
@@ -890,6 +978,7 @@ const plugin = {
 		'no-raw-table': noRawTableRule,
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
+		'no-test-hooks-in-production': noTestHooksInProductionRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},

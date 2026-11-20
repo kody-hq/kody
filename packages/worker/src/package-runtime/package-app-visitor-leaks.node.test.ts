@@ -4,6 +4,7 @@
  * context, the real runtime bridge and capability registry, and the real
  * `orgMemberUpdate` handler. The app's server code is the bridge call itself.
  */
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import { DatabaseSync } from 'node:sqlite'
 import type { McpCallerContext } from '@kody-internal/shared/chat.ts'
 import {
@@ -29,10 +30,7 @@ import {
 	createPackageAppCallerContext,
 	PackageAppRuntimeBridge,
 } from './package-app.ts'
-import {
-	mintPackageAppVisitTicket,
-	resetPackageAppVisitNoncesForTests,
-} from './package-app-visit-ticket.ts'
+import { mintPackageAppVisitTicket } from './package-app-visit-ticket.ts'
 
 const now = '2026-10-11T00:00:00.000Z'
 const baseUrl = 'https://kody.example'
@@ -229,7 +227,7 @@ test('an anonymous visitor of an internet-visible app still cannot change roles'
 })
 
 test('metaGetCurrentUser never answers with the owner email; email consent returns the visitor’s address', async () => {
-	resetPackageAppVisitNoncesForTests()
+	resetIsolateState()
 	const t = await setup()
 	const minted = await mintPackageAppVisitTicket({
 		env: t.env,

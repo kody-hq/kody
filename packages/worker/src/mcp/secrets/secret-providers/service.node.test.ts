@@ -1,3 +1,4 @@
+import { resetIsolateState } from '@kody-internal/shared/isolate-state-test-support.ts'
 import {
 	ownerIdFromStored,
 	personIdFromStored,
@@ -18,7 +19,6 @@ import { testStableUserIdFromEmail } from '#worker/test-support/stable-user-id.t
 import { invokeSealedSecretProvider } from './sealed-invoke.ts'
 import { readDeclaredSecretProviderId } from './declared-provider.ts'
 import { getSecretProviderBinding } from './repo.ts'
-import { clearProviderSecretCacheForTests } from './cache.ts'
 import {
 	createBrokenProviderRefMessage,
 	createMissingProviderBindingMessage,
@@ -89,7 +89,7 @@ function seedPackage(
  * consumer package, the door secret, and a provider binding.
  */
 async function createHarness(input: { bound?: boolean; userId?: string } = {}) {
-	clearProviderSecretCacheForTests()
+	resetIsolateState()
 	const userId = input.userId ?? ownerId
 	const sqlite = new DatabaseSync(':memory:')
 	applyRepositoryMigrations(sqlite, migrationsDirectory)
@@ -296,12 +296,12 @@ test('provider resolve grants, hosts, cache, owner execute, share owner binding,
 
 	await h.grant()
 	expect(await h.isGranted(opRef)).toBe(true)
-	clearProviderSecretCacheForTests()
+	resetIsolateState()
 	const packageUse = await h.resolve({ authorityPackageId: 'pkg-consumer' })
 	expect(packageUse.value).toBe('item-password')
 	expect(h.invokeProvider).toHaveBeenCalledTimes(2)
 
-	clearProviderSecretCacheForTests()
+	resetIsolateState()
 	await expect(
 		h.resolve({ invokeProvider: async () => ({ value: 'x', hosts: [] }) }),
 	).rejects.toThrow(createProviderNoWebsitesMessage(providerId))
@@ -315,7 +315,7 @@ test('provider resolve grants, hosts, cache, owner execute, share owner binding,
 	h.sqlite
 		.prepare(`DELETE FROM secret_entries WHERE name = ?`)
 		.run(doorSecretName)
-	clearProviderSecretCacheForTests()
+	resetIsolateState()
 	await expect(h.resolve()).rejects.toThrow(
 		createMissingProviderDoorSecretMessage({ providerId, doorSecretName }),
 	)
