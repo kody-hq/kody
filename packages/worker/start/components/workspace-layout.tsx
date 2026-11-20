@@ -20,6 +20,7 @@ import { SiteLink } from './site-link.tsx'
 import { renderIcon } from './icon.tsx'
 import { workspaceTextureCss } from '#universal/styles/style-primitives.ts'
 import { colors, typography } from '#universal/styles/tokens.ts'
+import { syncSidebarViewport } from './sidebar-preferences.tsx'
 
 export function WorkspaceLayout() {
 	const rail = useWorkspaceRail()
@@ -108,6 +109,7 @@ export function WorkspaceLayout() {
 		<WorkspaceUploads>
 			<WorkspaceLayoutContext value={true}>
 				<div
+					ref={syncSidebarViewport}
 					data-workspace-layout
 					data-workspace-files={fullPanel || undefined}
 					css={{

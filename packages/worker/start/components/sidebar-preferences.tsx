@@ -1,5 +1,5 @@
 /** @jsxImportSource @emotion/react */
-import { createContext, useContext, useEffect, type ReactNode } from 'react'
+import { createContext, useContext, type ReactNode } from 'react'
 
 import {
 	parseSidebarPreferences,
@@ -7,6 +7,15 @@ import {
 	cookieName,
 	type SidebarPreferences,
 } from '#universal/sidebar-preferences.ts'
+/** Attach to the workspace layout root to keep the cookie's viewport fields current. */
+export function syncSidebarViewport(node: HTMLElement | null) {
+	if (!node) return
+	const save = () => saveSidebarPreferences({})
+	save()
+	window.addEventListener('resize', save)
+	return () => window.removeEventListener('resize', save)
+}
+
 export function saveSidebarPreferences(patch: Partial<SidebarPreferences>) {
 	try {
 		const value = {
@@ -28,11 +37,5 @@ export function SidebarPreferencesProvider({
 	value: SidebarPreferences
 	children: ReactNode
 }) {
-	useEffect(() => {
-		const save = () => saveSidebarPreferences({})
-		save()
-		window.addEventListener('resize', save)
-		return () => window.removeEventListener('resize', save)
-	}, [])
 	return <SidebarContext value={value}>{children}</SidebarContext>
 }
