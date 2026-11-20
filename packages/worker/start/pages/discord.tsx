@@ -5,7 +5,7 @@ import { ErrorAgentPromptButton } from '../components/error-agent-prompt-button.
 import { buildErrorAgentPrompt } from '#universal/error-agent-prompt.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
 import type { CSSObject } from '@emotion/react'
-import { useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useSocialSignIn } from '../social-sign-in.ts'
 import { syncDiscordMemberRole } from '#start/server/account-mutations'
 import {
@@ -106,10 +106,12 @@ export function DiscordPage({
 		null,
 	)
 	const turnstileSiteKey = page.turnstileSiteKey
-	useEffect(() => {
-		if (!page.signedIn && turnstileSiteKey)
-			renderTurnstileWidgets(turnstileSiteKey)
-	}, [page.signedIn, turnstileSiteKey])
+	const renderTurnstile = useCallback(
+		(node: HTMLDivElement | null) => {
+			if (node) void renderTurnstileWidgets(turnstileSiteKey)
+		},
+		[turnstileSiteKey],
+	)
 
 	async function handleConnectDiscord() {
 		setBusy(true)
@@ -288,7 +290,10 @@ export function DiscordPage({
 							}}
 						/>
 						{turnstileSiteKey ? (
-							<div className={turnstileWidgetClassName}></div>
+							<div
+								ref={renderTurnstile}
+								className={turnstileWidgetClassName}
+							></div>
 						) : null}
 						<Button
 							type="submit"
