@@ -27,6 +27,14 @@ import { type Clock, systemClock } from '#worker/scheduled/retention/clock.ts'
 import { startPassBudget } from '#worker/scheduled/retention/budget.ts'
 import { runClaimed } from '#worker/scheduled/retention/claim.ts'
 import {
+	type BlockedPurgeItem,
+	holdPurgeLease,
+	type PurgeLease,
+	purgeClaimableSql,
+	purgeLeaseExpiresAt,
+	recordFailedPurgeAttempt,
+} from '#worker/scheduled/retention/purge-lease.ts'
+import {
 	d1All,
 	d1Run,
 	type RetentionContext,
@@ -50,9 +58,9 @@ export const unverifiedAccountPurgeBatchSize = 5
  */
 export const unverifiedAccountPurgeRunTimeBudgetMs = 20_000
 /**
- * Skip rows whose `deleting_at` is newer than this window. Each claim restamps
- * `deleting_at`, so a failed deletion retries after this backoff instead of
- * every hourly tick or never.
+ * Skip rows whose `deleting_at` is newer than this window when no purge claim
+ * wrote it (an account deletion in flight, a claim from before leases). Purge
+ * claims use the lease and failure fence in `purge-lease.ts` instead.
  */
 export const unverifiedAccountPurgeRetryBackoffMs = 6 * 60 * 60 * 1000
 /**
@@ -101,7 +109,11 @@ const unverifiedAccountRow = z.object({
 type UnverifiedAccountRow = z.output<typeof unverifiedAccountRow>
 
 /** `created` is true when this pass set the fence (vs. restamping a stale one). */
-type UnverifiedAccountClaim = { created: boolean; deletingAt: string }
+type UnverifiedAccountClaim = {
+	created: boolean
+	deletingAt: string
+	lease: PurgeLease
+}
 
 export type UnverifiedAccountPurgeOutcomeKind =
 	| 'purged'
@@ -118,6 +130,8 @@ export type UnverifiedAccountPurgeOutcome = {
 	outcome: UnverifiedAccountPurgeOutcomeKind
 	error?: string
 	warnings?: Array<string>
+	/** This failure was the last allowed attempt; no lane claims it again. */
+	blocked?: true
 }
 
 export type UnverifiedAccountPurgeResult = {
@@ -137,9 +151,10 @@ function cutoffIso(now: Date, millisecondsAgo: number) {
 	return new Date(now.getTime() - millisecondsAgo).toISOString()
 }
 
-function purgeCutoffs(now: Date) {
+function purgeCutoffs(now: Date, clock: Clock) {
 	return {
 		ageCutoff: cutoffIso(now, unverifiedAccountPurgeDays * millisecondsPerDay),
+		leaseNow: clock.now().toISOString(),
 		retryBackoffCutoff: cutoffIso(now, unverifiedAccountPurgeRetryBackoffMs),
 	}
 }
@@ -148,7 +163,7 @@ function unverifiedAccountSqlConditions() {
 	return [
 		...unverifiedPersonEligibilitySql,
 		'datetime(created_at) < datetime(?)',
-		'(deleting_at IS NULL OR datetime(deleting_at) < datetime(?))',
+		purgeClaimableSql,
 	] as const
 }
 
@@ -262,7 +277,12 @@ function ageDays(createdAt: string, now: Date) {
 
 function listUnverifiedAccountsPage(
 	ctx: RetentionContext,
-	input: { ageCutoff: string; retryBackoffCutoff: string; batchSize: number },
+	input: {
+		ageCutoff: string
+		leaseNow: string
+		retryBackoffCutoff: string
+		batchSize: number
+	},
 ) {
 	const conditions = unverifiedAccountSqlConditions().join('\n			AND ')
 	return d1All(ctx, {
@@ -272,42 +292,59 @@ function listUnverifiedAccountsPage(
 			WHERE ${conditions}
 			ORDER BY (deleting_at IS NULL) DESC, datetime(created_at) ASC, id ASC
 			LIMIT ?`,
-		bindings: [input.ageCutoff, input.retryBackoffCutoff, input.batchSize],
+		bindings: [
+			input.ageCutoff,
+			input.leaseNow,
+			input.retryBackoffCutoff,
+			input.batchSize,
+		],
 		row: unverifiedAccountRow,
 	})
 }
 
 /**
- * Claims by stamping `deleting_at`: a never-fenced row first, else a fence
- * older than the 6 hour retry backoff. The eligibility predicate is repeated
- * so a row that was verified or soft-deleted since the scan is not claimed.
+ * Claims by stamping `deleting_at` and a 15 minute lease: a never-fenced row
+ * first, else a claimable fence (`purgeClaimableSql`). The eligibility
+ * predicate is repeated so a row that was verified or soft-deleted since the
+ * scan is not claimed.
  */
 async function claimUnverifiedAccountForPurge(
 	ctx: RetentionContext,
 	input: { dbUserId: number; now: Date; retryBackoffCutoff: string },
 ): Promise<UnverifiedAccountClaim | null> {
 	const deletingAt = utcSqliteTimestamp(input.now)
+	const leaseExpiresAt = purgeLeaseExpiresAt(ctx.clock)
 	const eligibility = unverifiedPersonEligibilitySql.join('\n				AND ')
-	const claim = (fenceFilter: string, bindings: Array<unknown>) =>
+	const claim = (fenceFilter: string) =>
 		d1Run(ctx, {
 			operation: 'unverified_account_purge.claim',
 			sql: `UPDATE users
-				SET deleting_at = ?, updated_at = ?
+				SET deleting_at = ?, purge_lease_expires_at = ?, updated_at = ?
 				WHERE id = ?
 					AND ${eligibility}
-					AND ${fenceFilter}`,
-			bindings: [deletingAt, deletingAt, input.dbUserId, ...bindings],
+					AND ${fenceFilter}
+					AND ${purgeClaimableSql}`,
+			bindings: [
+				deletingAt,
+				leaseExpiresAt,
+				deletingAt,
+				input.dbUserId,
+				ctx.clock.now().toISOString(),
+				input.retryBackoffCutoff,
+			],
 		})
 	let created = true
-	if ((await claim('deleting_at IS NULL', [])) !== 1) {
+	if ((await claim('deleting_at IS NULL')) !== 1) {
 		created = false
-		const restamped = await claim('datetime(deleting_at) < datetime(?)', [
-			input.retryBackoffCutoff,
-		])
-		if (restamped !== 1) return null
+		if ((await claim('deleting_at IS NOT NULL')) !== 1) return null
 	}
 	await invalidatePackageAppOwnerCacheForDbUserId(ctx.db, input.dbUserId)
-	return { created, deletingAt }
+	const lease = holdPurgeLease(
+		ctx,
+		{ table: 'users', idColumn: 'id', id: input.dbUserId },
+		leaseExpiresAt,
+	)
+	return { created, deletingAt, lease }
 }
 
 /**
@@ -333,7 +370,7 @@ export function listUnverifiedAccountPurgeCandidates(input: {
 			const page = await listUnverifiedAccountsPage(
 				{ db: input.env.APP_DB, clock, signal: input.signal },
 				{
-					...purgeCutoffs(now),
+					...purgeCutoffs(now, clock),
 					batchSize: input.batchSize ?? unverifiedAccountPurgeBatchSize,
 				},
 			)
@@ -374,11 +411,32 @@ async function writePurgeAudit(input: {
 	}
 }
 
+function writePurgeBlockedAudit(
+	env: Env,
+	account: UnverifiedAccountRow,
+	item: BlockedPurgeItem,
+) {
+	return logAuditEvent({
+		db: auditDatabaseFromEnv(env),
+		category: 'account',
+		action: 'purge.blocked',
+		result: 'failure',
+		email: account.email,
+		reason: JSON.stringify({
+			kind: item.kind,
+			id: item.id,
+			attempts: item.attempts,
+			lastFailure: item.lastFailure,
+		}),
+	})
+}
+
 async function recordPurgeFailure(input: {
 	env: Env
 	account: UnverifiedAccountRow
 	ageDays: number
 	error: unknown
+	lease: PurgeLease | null
 }): Promise<UnverifiedAccountPurgeOutcome> {
 	const warnings = deletionFailureWarnings(input.error)
 	const reason = unverifiedAccountPurgeFailureReason(input.error, warnings)
@@ -401,12 +459,26 @@ async function recordPurgeFailure(input: {
 		userId: input.account.stable_user_id,
 		warnings,
 	})
+	const { blocked } = input.lease
+		? await recordFailedPurgeAttempt({
+				lease: input.lease,
+				item: {
+					lane: 'unverified_account_purge',
+					kind: 'user',
+					id: input.account.stable_user_id,
+					lastFailure: reason,
+				},
+				writeBlockedAudit: (item) =>
+					writePurgeBlockedAudit(input.env, input.account, item),
+			})
+		: { blocked: false }
 	return {
 		stableUserId: input.account.stable_user_id,
 		ageDays: input.ageDays,
 		outcome: 'failed',
 		error: reason,
 		warnings: [...warnings],
+		...(blocked ? { blocked: true as const } : {}),
 	}
 }
 
@@ -423,13 +495,17 @@ function purgeOneAccount(input: {
 		'retention.unverified_account_purge.account',
 		{ 'retention.age_days': accountAgeDays },
 		async (span) => {
+			const held: { lease: PurgeLease | null } = { lease: null }
 			const outcome = await runClaimed({
-				acquire: () =>
-					claimUnverifiedAccountForPurge(input.ctx, {
+				acquire: async () => {
+					const claim = await claimUnverifiedAccountForPurge(input.ctx, {
 						dbUserId: account.id,
 						now: input.now,
 						retryBackoffCutoff: input.retryBackoffCutoff,
-					}),
+					})
+					held.lease = claim?.lease ?? null
+					return claim
+				},
 				body: () =>
 					deleteUserAccount({
 						env,
@@ -441,8 +517,8 @@ function purgeOneAccount(input: {
 						personUserId: account.stable_user_id,
 					}),
 				// Only a fence this pass created, for a failure before any data was
-				// removed, is released (retry next tick). Every other failure keeps
-				// the fence so the 6 hour backoff paces the retry.
+				// removed, releases `deleting_at`. Every failure keeps the claim's
+				// 24 hour failure fence, written by `recordFailedPurgeAttempt`.
 				onFailure: (claim, error) =>
 					claim.created && isPreCleanupDeletionFailure(error)
 						? 'release'
@@ -478,7 +554,7 @@ function purgeOneAccount(input: {
 				case 'failed':
 					span.setAttribute('retention.claim', outcome.disposition)
 					if (outcome.disposition === 'release_failed') {
-						// The fence stays; the retry backoff restamps it later.
+						// `deleting_at` stays; the failure fence paces the retry.
 						console.warn('unverified_account_purge_release_failed', {
 							userId: account.stable_user_id,
 							error: outcome.releaseError,
@@ -489,6 +565,7 @@ function purgeOneAccount(input: {
 						account,
 						ageDays: accountAgeDays,
 						error: outcome.error,
+						lease: held.lease,
 					})
 				default:
 					return assertNever(outcome)
@@ -517,7 +594,10 @@ export function pruneUnverifiedAccounts(input: {
 				input.timeBudgetMs ?? unverifiedAccountPurgeRunTimeBudgetMs,
 			)
 			const batchSize = input.batchSize ?? unverifiedAccountPurgeBatchSize
-			const { ageCutoff, retryBackoffCutoff } = purgeCutoffs(now)
+			const { ageCutoff, leaseNow, retryBackoffCutoff } = purgeCutoffs(
+				now,
+				clock,
+			)
 			const ctx = { db: input.env.APP_DB, clock, signal: input.signal }
 			const result: UnverifiedAccountPurgeResult = {
 				scanned: 0,
@@ -528,6 +608,7 @@ export function pruneUnverifiedAccounts(input: {
 			}
 			const page = await listUnverifiedAccountsPage(ctx, {
 				ageCutoff,
+				leaseNow,
 				retryBackoffCutoff,
 				batchSize,
 			})

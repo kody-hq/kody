@@ -8,6 +8,8 @@ import { applyAllMigrations } from '#worker/test-support/apply-all-migrations.ts
 import { createD1FromSqlite } from '#worker/test-support/create-d1-from-sqlite.ts'
 import { createSuccessfulDeletionEnv } from '#worker/test-support/account-deletion.ts'
 import { consoleWarn } from '#worker/test-support/console-spies.ts'
+import { createManualClock } from '#worker/test-support/manual-clock.ts'
+import { purgeFailureFenceMs } from '#worker/scheduled/retention/purge-lease.ts'
 import * as AuditLog from '#worker/audit-log.ts'
 import * as AccountDeletion from '#app/account-deletion.ts'
 import * as DeletionState from '#worker/account/deletion-state.ts'
@@ -124,13 +126,15 @@ function createHarness() {
 			AUDIT_DB: createD1FromSqlite(auditSqlite),
 		}) as Env
 	const env = envFor(db)
+	const clock = createManualClock(now)
 	return {
 		sqlite,
 		db,
 		env,
 		envFor,
+		clock,
 		run(input: { batchSize?: number; timeBudgetMs?: number } = {}) {
-			return pruneUnverifiedAccounts({ env, now, ...input })
+			return pruneUnverifiedAccounts({ env, now, clock, ...input })
 		},
 		async seed(
 			username: string,
@@ -397,6 +401,8 @@ test('a failed deletion is audited with a bounded reason, reported per account, 
 	expect(h.deletingAt('failing')).toBeNull()
 
 	deleteUserAccount.mockClear()
+	expect((await h.run()).scanned).toBe(0)
+	await h.clock.advance(purgeFailureFenceMs)
 	expect(await h.run()).toEqual(
 		runResult({ scanned: 1, purged: 1, failed: 0 }, [purged(failing, 12)]),
 	)
@@ -440,7 +446,7 @@ test('failure details redact email addresses before they reach outcomes, audit r
 	expect(JSON.stringify(consoleWarn.mock.calls)).not.toContain('@example.com')
 })
 
-test('a Stripe cancellation failure is a pre-cleanup failure: fence released, account retained, retried next run', async () => {
+test('a Stripe cancellation failure is a pre-cleanup failure: fence released, account retained, retried after the failure fence', async () => {
 	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
 	consoleWarn.mockImplementation(() => {})
 	const h = createHarness()
@@ -462,6 +468,7 @@ test('a Stripe cancellation failure is a pre-cleanup failure: fence released, ac
 	expect(h.deletingAt('billing-failure')).toBeNull()
 
 	deleteUserAccount.mockClear()
+	await h.clock.advance(purgeFailureFenceMs)
 	expect(await h.run()).toMatchObject({ scanned: 1, purged: 1, failed: 0 })
 	expect(h.usernames()).toEqual([])
 })
@@ -718,4 +725,40 @@ test('listUnverifiedAccountPurgeCandidates previews the claim page without claim
 		scanned: 1,
 		candidates: [{ stableUserId: fresh.stableUserId, ageDays: 9 }],
 	})
+})
+
+test('the 5th failed deletion blocks the account: purge.blocked is audited once and later runs skip it', async () => {
+	const deleteUserAccount = vi.spyOn(AccountDeletion, 'deleteUserAccount')
+	consoleWarn.mockImplementation(() => {})
+	const h = createHarness()
+	const user = await h.seed('always-fails', 12)
+	const message = 'Error: simulated deletion failure'
+	for (let attempt = 1; attempt <= 5; attempt++) {
+		deleteUserAccount.mockImplementationOnce(async () => {
+			throw new Error('simulated deletion failure')
+		})
+		const [outcome] = (await h.run()).outcomes
+		expect(outcome?.blocked).toBe(attempt === 5 ? true : undefined)
+		await h.clock.advance(purgeFailureFenceMs)
+	}
+
+	expect(await h.run()).toMatchObject({ scanned: 0, failed: 0 })
+	expect(deleteUserAccount).toHaveBeenCalledTimes(5)
+	expect(h.usernames()).toEqual(['always-fails'])
+	expect(h.auditRows().filter((row) => row.action === 'purge.blocked')).toEqual(
+		[
+			{
+				category: 'account',
+				action: 'purge.blocked',
+				result: 'failure',
+				email_hash: emailHash(user.email),
+				reason: JSON.stringify({
+					kind: 'user',
+					id: user.stableUserId,
+					attempts: 5,
+					lastFailure: message,
+				}),
+			},
+		],
+	)
 })

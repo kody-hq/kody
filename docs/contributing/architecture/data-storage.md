@@ -452,7 +452,11 @@ The schema is defined by migrations in `packages/worker/migrations/`:
   account cannot become eligible again. A claim-created fence is released only
   on pre-cleanup failures (active writers or inventory); a partial-cleanup
   failure leaves the fence for retry. Never-attempted rows are processed before
-  retries, and in-backoff fences are skipped.
+  retries, and in-backoff fences are skipped. Purge claims (this lane and
+  soft-delete purge) hold a 15 minute `purge_lease_expires_at` lease, renewed
+  after each completed step; a failure sets a 24 hour fence and increments
+  `purge_failed_attempts`, and the 5th failure blocks the row from every purge
+  lane with one `purge.blocked` audit and Sentry event.
 - `orgs` (`0086-teams-orgs-tables.sql`, `0087-teams-soft-delete-columns.sql`,
   `0088-teams-actor-columns.sql`, `0089-teams-orgs-backfill.sql`): one row per
   org. Personal orgs reuse `users.stable_user_id` as `orgs.id`. Billing,
