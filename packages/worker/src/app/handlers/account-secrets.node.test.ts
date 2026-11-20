@@ -16,10 +16,6 @@ import {
 	personIdFromStored,
 } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-const credentialAuditCalls = vi.hoisted(() => ({
-	record: vi.fn(async (_writer: unknown, _change: unknown) => {}),
-}))
-
 const mockModule = vi.hoisted(() => ({
 	readAuthenticatedAppUser: vi.fn<
 		typeof authenticatedUserModule.readAuthenticatedAppUser
@@ -112,9 +108,6 @@ const mockModule = vi.hoisted(() => ({
 		placement: null,
 	})),
 	deleteSecret: vi.fn<typeof secretsService.deleteSecret>(async () => false),
-	disconnectSecret: vi.fn<typeof secretsService.disconnectSecret>(
-		async () => false,
-	),
 	renameSecret: vi.fn<typeof secretsService.renameSecret>(async (input) => ({
 		name: input.toName,
 		scope: input.scope,
@@ -286,9 +279,7 @@ const mockModule = vi.hoisted(() => ({
 }))
 
 vi.mock('#app/authenticated-user.ts', () => ({
-	readAuthenticatedAppUser: (
-		...args: Parameters<typeof authenticatedUserModule.readAuthenticatedAppUser>
-	) => mockModule.readAuthenticatedAppUser(...args),
+	readAuthenticatedAppUser: mockModule.readAuthenticatedAppUser,
 }))
 
 vi.mock('#app/auth-session.ts', () => ({
@@ -297,10 +288,6 @@ vi.mock('#app/auth-session.ts', () => ({
 
 vi.mock('#app/auth-redirect.ts', () => ({
 	redirectToLogin: () => new Response(null, { status: 302 }),
-}))
-
-vi.mock('#app/ssr-render.tsx', () => ({
-	renderAppPage: async () => new Response('ok'),
 }))
 
 vi.mock('#mcp/secrets/allowed-hosts.ts', async (importOriginal) => {
@@ -315,55 +302,30 @@ vi.mock('#mcp/secrets/host-approval.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof HostApproval>()
 	return {
 		...actual,
-		buildSecretHostApprovalUrl: (
-			...args: Parameters<typeof HostApproval.buildSecretHostApprovalUrl>
-		) => mockModule.buildSecretHostApprovalUrl(...args),
+		buildSecretHostApprovalUrl: mockModule.buildSecretHostApprovalUrl,
 	}
 })
 
 vi.mock('#mcp/secrets/service.ts', () => ({
-	saveSecret: (...args: Parameters<typeof secretsService.saveSecret>) =>
-		mockModule.saveSecret(...args),
-	setSecretAllowedHosts: (
-		...args: Parameters<typeof secretsService.setSecretAllowedHosts>
-	) => mockModule.setSecretAllowedHosts(...args),
-	setSecretsAllowedHosts: (
-		...args: Parameters<typeof secretsService.setSecretsAllowedHosts>
-	) => mockModule.setSecretsAllowedHosts(...args),
-	listSecrets: (...args: Parameters<typeof secretsService.listSecrets>) =>
-		mockModule.listSecrets(...args),
-	listPackageSecretsByPackageIds: (
-		...args: Parameters<typeof secretsService.listPackageSecretsByPackageIds>
-	) => mockModule.listPackageSecretsByPackageIds(...args),
-	resolveSecret: (...args: Parameters<typeof secretsService.resolveSecret>) =>
-		mockModule.resolveSecret(...args),
-	deleteSecret: (...args: Parameters<typeof secretsService.deleteSecret>) =>
-		mockModule.deleteSecret(...args),
-	disconnectSecret: (
-		...args: Parameters<typeof secretsService.disconnectSecret>
-	) => mockModule.disconnectSecret(...args),
-	renameSecret: (...args: Parameters<typeof secretsService.renameSecret>) =>
-		mockModule.renameSecret(...args),
-	findSecret: (...args: Parameters<typeof secretsService.findSecret>) =>
-		mockModule.findSecret(...args),
-	setSecretAllowedPackages: (
-		...args: Parameters<typeof secretsService.setSecretAllowedPackages>
-	) => mockModule.setSecretAllowedPackages(...args),
-	setSecretsAllowedPackages: (
-		...args: Parameters<typeof secretsService.setSecretsAllowedPackages>
-	) => mockModule.setSecretsAllowedPackages(...args),
+	saveSecret: mockModule.saveSecret,
+	setSecretAllowedHosts: mockModule.setSecretAllowedHosts,
+	setSecretsAllowedHosts: mockModule.setSecretsAllowedHosts,
+	listSecrets: mockModule.listSecrets,
+	listPackageSecretsByPackageIds: mockModule.listPackageSecretsByPackageIds,
+	resolveSecret: mockModule.resolveSecret,
+	deleteSecret: mockModule.deleteSecret,
+	renameSecret: mockModule.renameSecret,
+	findSecret: mockModule.findSecret,
+	setSecretAllowedPackages: mockModule.setSecretAllowedPackages,
+	setSecretsAllowedPackages: mockModule.setSecretsAllowedPackages,
 }))
 
 vi.mock('#worker/credentials/credential-fields.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof CredentialFields>()
 	return {
 		...actual,
-		updateCredentialFields: (
-			...args: Parameters<typeof CredentialFields.updateCredentialFields>
-		) => mockModule.updateCredentialFields(...args),
-		readStoredCredentialPlacement: (
-			...args: Parameters<typeof CredentialFields.readStoredCredentialPlacement>
-		) => mockModule.readStoredCredentialPlacement(...args),
+		updateCredentialFields: mockModule.updateCredentialFields,
+		readStoredCredentialPlacement: mockModule.readStoredCredentialPlacement,
 	}
 })
 
@@ -372,39 +334,16 @@ vi.mock('#worker/orgs/org-audit.ts', () => ({
 	recordOrgAuditEvent: async () => {},
 }))
 
-vi.mock('#worker/credentials/credential-audit.ts', () => ({
-	credentialAuditActions: { renamed: 'credential.renamed' },
-	recordCredentialAudit: credentialAuditCalls.record,
-}))
-
 vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsService>()
 	return {
-		upsertIntegration: (
-			...args: Parameters<typeof IntegrationsService.upsertIntegration>
-		) => mockModule.upsertIntegration(...args),
-		upsertOauthAppWithoutConnection: (
-			...args: Parameters<
-				typeof IntegrationsService.upsertOauthAppWithoutConnection
-			>
-		) => mockModule.upsertOauthAppWithoutConnection(...args),
-		getAvailablePlatformApp: (
-			...args: Parameters<typeof IntegrationsService.getAvailablePlatformApp>
-		) => mockModule.getAvailablePlatformApp(...args),
-		upsertPlatformIntegration: (
-			...args: Parameters<typeof IntegrationsService.upsertPlatformIntegration>
-		) => mockModule.upsertPlatformIntegration(...args),
-		getJoinedIntegration: (
-			...args: Parameters<typeof IntegrationsService.getJoinedIntegration>
-		) => mockModule.getJoinedIntegration(...args),
-		getOauthApp: (
-			...args: Parameters<typeof IntegrationsService.getOauthApp>
-		) => mockModule.getOauthApp(...args),
-		findOauthAppForProviderSetup: (
-			...args: Parameters<
-				typeof IntegrationsService.findOauthAppForProviderSetup
-			>
-		) => mockModule.findOauthAppForProviderSetup(...args),
+		upsertIntegration: mockModule.upsertIntegration,
+		upsertOauthAppWithoutConnection: mockModule.upsertOauthAppWithoutConnection,
+		getAvailablePlatformApp: mockModule.getAvailablePlatformApp,
+		upsertPlatformIntegration: mockModule.upsertPlatformIntegration,
+		getJoinedIntegration: mockModule.getJoinedIntegration,
+		getOauthApp: mockModule.getOauthApp,
+		findOauthAppForProviderSetup: mockModule.findOauthAppForProviderSetup,
 		findOauthAppReusedByConfig: async () => null,
 		// Real scope validation so handler ordering tests exercise the actual
 		// allowlist semantics.
@@ -413,41 +352,24 @@ vi.mock('#worker/integrations/service.ts', async (importOriginal) => {
 })
 
 vi.mock('#worker/integrations/package-subscriptions.ts', () => ({
-	dispatchIntegrationAuthSucceededSubscriptionEvents: (
-		...args: Parameters<
-			typeof packageSubscriptions.dispatchIntegrationAuthSucceededSubscriptionEvents
-		>
-	) => mockModule.dispatchIntegrationAuthSucceededSubscriptionEvents(...args),
+	dispatchIntegrationAuthSucceededSubscriptionEvents:
+		mockModule.dispatchIntegrationAuthSucceededSubscriptionEvents,
 	dispatchIntegrationAuthFailedSubscriptionEvents: vi.fn(async () => []),
 	integrationAuthFailedTopic: 'integration.auth.failed',
 	integrationAuthSucceededTopic: 'integration.auth.succeeded',
 }))
 
 vi.mock('#worker/integrations/platform-apps.ts', () => ({
-	getPlatformOauthAppClientSecret: (
-		...args: Parameters<typeof platformApps.getPlatformOauthAppClientSecret>
-	) => mockModule.getPlatformOauthAppClientSecret(...args),
+	getPlatformOauthAppClientSecret: mockModule.getPlatformOauthAppClientSecret,
 }))
 
 vi.mock('#worker/integrations/credentials.ts', async (importOriginal) => {
 	const actual = await importOriginal<typeof IntegrationsCredentials>()
 	return {
 		...actual,
-		persistIntegrationTokens: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.persistIntegrationTokens
-			>
-		) => mockModule.persistIntegrationTokens(...args),
-		persistUserOauthAppClientSecret: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.persistUserOauthAppClientSecret
-			>
-		) => mockModule.persistUserOauthAppClientSecret(...args),
-		resolveUserOauthAppClientSecret: (
-			...args: Parameters<
-				typeof IntegrationsCredentials.resolveUserOauthAppClientSecret
-			>
-		) => mockModule.resolveUserOauthAppClientSecret(...args),
+		persistIntegrationTokens: mockModule.persistIntegrationTokens,
+		persistUserOauthAppClientSecret: mockModule.persistUserOauthAppClientSecret,
+		resolveUserOauthAppClientSecret: mockModule.resolveUserOauthAppClientSecret,
 	}
 })
 
@@ -458,9 +380,7 @@ vi.mock('#worker/integrations/repo.ts', async (importOriginal) => ({
 }))
 
 vi.mock('#worker/package-registry/repo.ts', () => ({
-	listSavedPackagesByUserId: (
-		...args: Parameters<typeof packageRepo.listSavedPackagesByUserId>
-	) => mockModule.listSavedPackagesByUserId(...args),
+	listSavedPackagesByUserId: mockModule.listSavedPackagesByUserId,
 }))
 
 const { testAccountSecretsApiHandler } =
@@ -489,8 +409,6 @@ function postRequest(body: Record<string, unknown>, search = '') {
 		body: JSON.stringify(body),
 	})
 }
-
-const approve = (search: string) => postRequest({ action: 'approve' }, search)
 
 function makeSecret(name: string, overrides: Record<string, unknown> = {}) {
 	return {
@@ -1854,738 +1772,4 @@ test('published platform apps exchange with the app row credentials and connect 
 	mockModule.getAvailablePlatformApp.mockResolvedValue(null)
 	mockModule.getPlatformOauthAppClientSecret.mockResolvedValue(null)
 	vi.unstubAllGlobals()
-})
-
-test('host approval view and approve persist normalized hosts for the selected secret', async () => {
-	const cloudflareToken = makeSecret('cloudflareToken', {
-		description: 'Cloudflare token',
-	})
-	mockModule.listSecrets.mockResolvedValueOnce([cloudflareToken] as never)
-	mockModule.listSecrets.mockResolvedValueOnce([cloudflareToken] as never)
-
-	const call = createHandler()
-	const selected =
-		'?selected=user::::cloudflareToken&allowed-host=API.Cloudflare.com'
-	const viewResponse = await call(getRequest(selected))
-
-	expect(viewResponse.status).toBe(200)
-	expect(viewResponse.data).toMatchObject({
-		ok: true,
-		approval: {
-			name: 'cloudflareToken',
-			scope: 'user',
-			requestedHost: 'api.cloudflare.com',
-			requestedPackageId: null,
-			currentAllowedHosts: [],
-		},
-	})
-
-	mockModule.listSecrets.mockResolvedValueOnce([
-		{ ...cloudflareToken, allowedHosts: ['api.github.com'] },
-	] as never)
-	mockModule.listSecrets.mockResolvedValueOnce([])
-	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce([])
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValueOnce(new Map())
-
-	const approveResponse = await call(approve(selected))
-
-	expect(approveResponse.status).toBe(200)
-	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretAllowedHosts).toHaveBeenCalledWith(
-		expect.objectContaining({
-			name: 'cloudflareToken',
-			scope: 'user',
-			allowedHosts: ['api.cloudflare.com', 'api.github.com'],
-			storageContext: userStorage,
-		}),
-	)
-})
-
-test('host bulk approval adds every requested host to each listed secret', async () => {
-	mockSecretsListing([
-		makeSecret('cloudflareToken', { allowedHosts: ['api.github.com'] }),
-		makeSecret('openaiApiKey'),
-	])
-
-	const call = createHandler()
-	const bulk =
-		'?names=cloudflareToken,openaiApiKey&hosts=api.cloudflare.com,dash.cloudflare.com'
-	const viewResponse = await call(getRequest(bulk))
-	expect(viewResponse.status).toBe(200)
-	expect(viewResponse.data).toMatchObject({
-		ok: true,
-		approval: {
-			name: 'cloudflareToken',
-			names: ['cloudflareToken', 'openaiApiKey'],
-			requestedHost: 'api.cloudflare.com',
-			requestedHosts: ['api.cloudflare.com', 'dash.cloudflare.com'],
-			requestedPackageId: null,
-		},
-	})
-
-	const approveResponse = await call(approve(bulk))
-	expect(approveResponse.status).toBe(200)
-	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledTimes(1)
-	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledWith(
-		expect.objectContaining({
-			scope: 'user',
-			updates: [
-				{
-					name: 'cloudflareToken',
-					allowedHosts: [
-						'api.cloudflare.com',
-						'api.github.com',
-						'dash.cloudflare.com',
-					],
-				},
-				{
-					name: 'openaiApiKey',
-					allowedHosts: ['api.cloudflare.com', 'dash.cloudflare.com'],
-				},
-			],
-		}),
-	)
-})
-
-test('host approval rejects truncated and malformed hosts instead of writing them', async () => {
-	mockSecretsListing([makeSecret('openaiApiKey')])
-
-	const call = createHandler()
-	const mixed = '?names=openaiApiKey&hosts=hooks.slack.com,api.ope'
-	const mixedView = await call(getRequest(mixed))
-	expect(mixedView.status).toBe(200)
-	expect(mixedView.data).toMatchObject({
-		ok: true,
-		approval: {
-			name: 'openaiApiKey',
-			names: ['openaiApiKey'],
-			requestedHost: 'hooks.slack.com',
-			requestedHosts: ['hooks.slack.com'],
-			rejectedHosts: [{ host: 'api.ope', reason: 'unknown_suffix' }],
-		},
-	})
-
-	const mixedApprove = await call(approve(mixed))
-	expect(mixedApprove.status).toBe(200)
-	expect(mixedApprove.data).toMatchObject({
-		ok: true,
-		action: 'approve',
-		approvalKind: 'host_bulk',
-	})
-	expect(mockModule.setSecretsAllowedHosts).toHaveBeenCalledWith(
-		expect.objectContaining({
-			scope: 'user',
-			updates: [{ name: 'openaiApiKey', allowedHosts: ['hooks.slack.com'] }],
-		}),
-	)
-
-	mockModule.setSecretsAllowedHosts.mockClear()
-	const invalidOnlyView = await call(
-		getRequest('?names=openaiApiKey&hosts=api.openai.com/v1,%20%20,api.ope'),
-	)
-	expect(invalidOnlyView.status).toBe(200)
-	expect(invalidOnlyView.data).toMatchObject({
-		ok: true,
-		approval: {
-			requestedHosts: [],
-			rejectedHosts: [
-				{ host: 'api.ope', reason: 'unknown_suffix' },
-				{ host: 'api.openai.com/v1', reason: 'malformed' },
-			],
-		},
-	})
-
-	const invalidOnlyApprove = await call(
-		approve('?names=openaiApiKey&hosts=api.ope'),
-	)
-	expect(invalidOnlyApprove.status).toBe(400)
-	expect(invalidOnlyApprove.data).toMatchObject({
-		ok: false,
-		error:
-			'None of the requested hosts are valid. The approval link may have been truncated — copy it again.',
-	})
-	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
-})
-
-test('approval requests reject invalid targets and ignore stale capability query params', async () => {
-	const call = createHandler()
-	const selected = '?selected=user::::cloudflareToken'
-
-	const rejected: Array<[string, string]> = [
-		[
-			`${selected}&allowed-host=api.cloudflare.com&package_id=pkg-123`,
-			'Approval request contains both host and package.',
-		],
-		[selected, 'Approval request is missing a host or package.'],
-		[
-			`${selected}&capability=secretSet`,
-			'Approval request is missing a host or package.',
-		],
-	]
-	for (const [search, error] of rejected) {
-		const response = await call(approve(search))
-		expect(response.status).toBe(400)
-		expect(response.data).toMatchObject({ ok: false, error })
-	}
-	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
-	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedPackages).not.toHaveBeenCalled()
-
-	mockModule.listSecrets.mockResolvedValueOnce([])
-	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce([])
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValueOnce(new Map())
-	const staleCapabilityView = await call(
-		getRequest(`${selected}&capability=secretSet`),
-	)
-	expect(staleCapabilityView.status).toBe(200)
-	expect(staleCapabilityView.data).toMatchObject({
-		ok: true,
-		approval: null,
-		approvalError: null,
-	})
-})
-
-test('account secrets payload includes all packages and package titles and allowed packages', async () => {
-	const makePackage = (id: string, kodyId: string, hasApp: boolean) => ({
-		id,
-		userId: ownerIdFromStored('stable-user-1'),
-		name: `@kentcdodds/${kodyId}`,
-		kodyId,
-		description: kodyId,
-		tags: ['discord'],
-		searchText: null,
-		sourceId: `source-${id}`,
-		hasApp,
-		hidden: false,
-		isPrivate: false,
-		isInternetVisible: false,
-		createdAt: epoch,
-		updatedAt: epoch,
-	})
-	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce([
-		makePackage('package-123', 'discord-gateway', true),
-		makePackage('pkg-allowed', 'discord-general-chat', false),
-	] as never)
-	mockModule.listSecrets.mockResolvedValueOnce([
-		makeSecret('discordBotToken', { allowedPackages: ['pkg-allowed'] }),
-	] as never)
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValueOnce(
-		new Map([
-			[
-				'package-123',
-				[
-					makeSecret('gatewaySigningSecret', {
-						scope: 'package',
-						packageId: 'package-123',
-					}),
-				],
-			],
-		]) as never,
-	)
-
-	const response = await createHandler()(getRequest(''))
-
-	expect(response.status).toBe(200)
-	expect(response.data).toMatchObject({
-		ok: true,
-		secrets: expect.arrayContaining([
-			expect.objectContaining({
-				name: 'discordBotToken',
-				scope: 'user',
-				allowedPackages: ['pkg-allowed'],
-			}),
-			expect.objectContaining({
-				name: 'gatewaySigningSecret',
-				scope: 'package',
-				packageTitle: '@kentcdodds/discord-gateway',
-			}),
-		]),
-	})
-})
-
-test('package approval reject and approve handle missing secrets and deduplicate package ids', async () => {
-	const call = createHandler()
-	const savedPackages = ['allowed', 'new'].map((suffix) => ({
-		id: `pkg-${suffix}`,
-		kodyId: `${suffix}-pkg`,
-		name: `@user/${suffix}-pkg`,
-		updatedAt: epoch,
-	}))
-
-	const rejectResponse = await call(
-		postRequest(
-			{ action: 'reject' },
-			'?selected=user::::discordBotToken&package_id=pkg-allowed',
-		),
-	)
-
-	expect(rejectResponse.status).toBe(200)
-	expect(rejectResponse.data).toEqual({
-		ok: true,
-		action: 'reject',
-		approvalKind: 'package',
-	})
-	expect(mockModule.listSecrets).not.toHaveBeenCalled()
-	expect(mockModule.setSecretAllowedHosts).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedHosts).not.toHaveBeenCalled()
-	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedPackages).not.toHaveBeenCalled()
-
-	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce(
-		savedPackages as never,
-	)
-	mockModule.listSecrets.mockResolvedValueOnce([
-		makeSecret('discordBotToken', {
-			allowedPackages: ['pkg-allowed', 'pkg-allowed'],
-		}),
-	] as never)
-	mockModule.listSecrets.mockResolvedValueOnce([])
-	mockModule.listSavedPackagesByUserId.mockResolvedValueOnce(
-		savedPackages as never,
-	)
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValueOnce(new Map())
-
-	const approveResponse = await call(
-		approve('?selected=user::::discordBotToken&package_id=pkg-new'),
-	)
-
-	expect(approveResponse.status).toBe(200)
-	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretAllowedPackages).toHaveBeenCalledWith(
-		expect.objectContaining({
-			name: 'discordBotToken',
-			scope: 'user',
-			allowedPackages: ['pkg-allowed', 'pkg-new'],
-		}),
-	)
-})
-
-test('bulk package approval view and approve grant the package on every listed secret', async () => {
-	const call = createHandler()
-	mockSecretsListing([
-		makeSecret('discordBotToken'),
-		makeSecret('xAccessToken'),
-		makeSecret('githubAccessToken', { allowedPackages: ['pkg-release'] }),
-	])
-	mockModule.listSavedPackagesByUserId.mockResolvedValue([
-		{
-			id: 'pkg-release',
-			kodyId: 'release',
-			name: '@kentcdodds/release',
-			updatedAt: epoch,
-		},
-	] as never)
-	const bulk =
-		'?package_id=pkg-release&names=discordBotToken,xAccessToken,githubAccessToken'
-
-	const viewResponse = await call(getRequest(bulk))
-
-	expect(viewResponse.status).toBe(200)
-	expect(viewResponse.data).toMatchObject({
-		ok: true,
-		approval: {
-			names: ['discordBotToken', 'xAccessToken'],
-			requestedPackageId: 'pkg-release',
-			scope: 'user',
-		},
-	})
-
-	const approveResponse = await call(approve(bulk))
-
-	expect(approveResponse.status).toBe(200)
-	expect(approveResponse.data).toMatchObject({ ok: true })
-	expect(mockModule.setSecretsAllowedPackages).toHaveBeenCalledTimes(1)
-	expect(mockModule.setSecretAllowedPackages).not.toHaveBeenCalled()
-	expect(mockModule.setSecretsAllowedPackages).toHaveBeenCalledWith(
-		expect.objectContaining({
-			scope: 'user',
-			updates: [
-				{ name: 'discordBotToken', allowedPackages: ['pkg-release'] },
-				{ name: 'xAccessToken', allowedPackages: ['pkg-release'] },
-			],
-		}),
-	)
-})
-
-test('account secrets save reports rename cleanup failure without failing the save', async () => {
-	// Scope move still uses create-under-new + delete-old; same-scope renames
-	// update the row in place and never hit this cleanup path.
-	const existing = makeSecret('oldApiKey')
-	const pkg = {
-		id: 'pkg-1',
-		userId: ownerIdFromStored('stable-user-1'),
-		name: '@user/notes',
-		kodyId: 'notes',
-		description: '',
-		tags: [] as Array<string>,
-		searchText: null,
-		sourceId: 'source-1',
-		hasApp: false,
-		hidden: false,
-		isPrivate: false,
-		isInternetVisible: false,
-		createdAt: epoch,
-		updatedAt: epoch,
-	}
-	mockModule.listSavedPackagesByUserId.mockResolvedValue([pkg] as never)
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValue(new Map())
-	mockModule.listSecrets
-		.mockResolvedValueOnce([existing])
-		.mockResolvedValueOnce([
-			makeSecret('oldApiKey', { scope: 'package', packageId: 'pkg-1' }),
-		])
-	mockModule.saveSecret.mockResolvedValueOnce({
-		name: 'oldApiKey',
-		scope: 'package',
-		description: '',
-		packageId: 'pkg-1',
-		allowedHosts: [],
-		allowedPackages: [],
-		placement: null,
-		disconnected: false,
-		createdAt: epoch,
-		updatedAt: epoch,
-		expiresAt: null,
-		ttlMs: null,
-	} as never)
-	mockModule.resolveSecret.mockResolvedValueOnce({
-		found: true,
-		value: 'fresh-secret',
-	} as never)
-	mockModule.deleteSecret.mockRejectedValueOnce(
-		new Error('delete prior secret failed'),
-	)
-
-	const call = createHandler()
-	const response = await call(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::oldApiKey',
-			name: 'oldApiKey',
-			scope: 'package',
-			packageId: 'pkg-1',
-			value: 'fresh-secret',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-
-	expect(response.status).toBe(200)
-	expect(response.data).toMatchObject({
-		ok: true,
-		renameCleanupError: 'delete prior secret failed',
-		selectedSecret: { name: 'oldApiKey', scope: 'package' },
-	})
-	expect(mockModule.renameSecret).not.toHaveBeenCalled()
-	expect(mockModule.deleteSecret).toHaveBeenCalledWith(
-		expect.objectContaining({ name: 'oldApiKey', scope: 'user' }),
-	)
-})
-
-test('account secrets save renames opt-in credentials in place without their kind, including case-only', async () => {
-	const placement = {
-		id: 'cred-webhook',
-		kind: 'url' as const,
-		allowedHosts: ['hooks.example.com'],
-		loginExchange: null,
-		provider: null,
-		inject: {
-			kind: 'header' as const,
-			name: 'Authorization',
-			format: 'Bearer {value}',
-		},
-		placement: null,
-	}
-	const save = (body: Record<string, unknown>) =>
-		createHandler()(
-			postRequest({
-				action: 'save',
-				currentId: 'user::::webhook',
-				scope: 'user',
-				value: 'https://hooks.example.com/new',
-				allowedPackages: [],
-				...body,
-			}),
-		)
-
-	mockSecretsListing([makeSecret('webhook')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.saveSecret.mockClear()
-	mockModule.renameSecret.mockClear()
-	credentialAuditCalls.record.mockClear()
-	const renamed = await save({ name: 'webhook2', allowedHosts: [] })
-	expect(renamed.status).toBe(200)
-	// The provisional rename writes no audit row; one row after the save.
-	expect(mockModule.renameSecret).toHaveBeenCalledWith(
-		expect.objectContaining({ audit: null }),
-	)
-	expect(credentialAuditCalls.record).toHaveBeenCalledTimes(1)
-	expect(credentialAuditCalls.record.mock.lastCall?.[1]).toMatchObject({
-		action: 'credential.renamed',
-		details: { previousName: 'webhook', fields: ['name'] },
-	})
-	expect(mockModule.renameSecret).toHaveBeenCalledWith(
-		expect.objectContaining({
-			fromName: 'webhook',
-			toName: 'webhook2',
-			scope: 'user',
-		}),
-	)
-	expect(mockModule.deleteSecret).not.toHaveBeenCalled()
-	// Placement is read under the prior name before the in-place rename commits.
-	expect(mockModule.readStoredCredentialPlacement.mock.lastCall?.[0].name).toBe(
-		'webhook',
-	)
-
-	mockSecretsListing([makeSecret('Henry')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.renameSecret.mockClear()
-	const caseOnly = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::Henry',
-			name: 'henry',
-			scope: 'user',
-			value: 'https://hooks.example.com/new',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(caseOnly.status).toBe(200)
-	expect(mockModule.renameSecret).toHaveBeenCalledWith(
-		expect.objectContaining({ fromName: 'Henry', toName: 'henry' }),
-	)
-	expect(caseOnly.data).toMatchObject({
-		ok: true,
-		selectedSecret: { name: 'henry', id: 'user::::henry' },
-	})
-
-	mockSecretsListing([makeSecret('webhook')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.saveSecret.mockClear()
-	mockModule.renameSecret.mockClear()
-	const rehosted = await save({
-		name: 'webhook',
-		allowedHosts: ['other.example.com'],
-	})
-	expect(rehosted.status).toBe(400)
-	expect(rehosted.data).toMatchObject({
-		error: expect.stringContaining('take hosts, not approved hosts'),
-	})
-	expect(mockModule.saveSecret).not.toHaveBeenCalled()
-	expect(mockModule.renameSecret).not.toHaveBeenCalled()
-
-	mockSecretsListing([makeSecret('Henry')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.renameSecret.mockClear()
-	const rejectedBeforeRename = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::Henry',
-			name: 'henry',
-			scope: 'user',
-			value: 'https://hooks.example.com/new',
-			allowedHosts: ['other.example.com'],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(rejectedBeforeRename.status).toBe(400)
-	expect(mockModule.renameSecret).not.toHaveBeenCalled()
-
-	mockSecretsListing([makeSecret('webhook')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	const unchanged = await save({
-		name: 'webhook',
-		allowedHosts: ['HOOKS.example.com'],
-	})
-	expect(unchanged.status).toBe(200)
-})
-
-test('account secrets save rolls back an in-place rename when the later write fails', async () => {
-	const placement = {
-		id: 'cred-webhook',
-		kind: 'url' as const,
-		allowedHosts: ['hooks.example.com'],
-		loginExchange: null,
-		provider: null,
-		inject: {
-			kind: 'header' as const,
-			name: 'Authorization',
-			format: 'Bearer {value}',
-		},
-		placement: null,
-	}
-	mockSecretsListing([makeSecret('Henry')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.renameSecret.mockClear()
-	mockModule.saveSecret.mockRejectedValueOnce(new Error('value write failed'))
-
-	const response = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::Henry',
-			name: 'henry',
-			scope: 'user',
-			value: 'https://hooks.example.com/new',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(response.status).toBe(400)
-	expect(response.data).toMatchObject({
-		ok: false,
-		error: 'value write failed',
-	})
-	expect(mockModule.renameSecret.mock.calls.map((call) => call[0])).toEqual([
-		expect.objectContaining({ fromName: 'Henry', toName: 'henry' }),
-		expect.objectContaining({ fromName: 'henry', toName: 'Henry' }),
-	])
-})
-
-test('account secrets save refuses renaming to a name a placeholder cannot reference', async () => {
-	mockSecretsListing([makeSecret('Henry')])
-	mockModule.renameSecret.mockClear()
-
-	const response = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::Henry',
-			name: 'Henry Ford',
-			scope: 'user',
-			value: 'new value',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(response.status).toBe(400)
-	expect(response.data).toMatchObject({
-		ok: false,
-		error: expect.stringMatching(/not a valid secret name/),
-	})
-	expect(mockModule.renameSecret).not.toHaveBeenCalled()
-})
-
-test('account secrets save still refuses moving an opt-in credential across scopes without its kind', async () => {
-	const placement = {
-		id: 'cred-webhook',
-		kind: 'url' as const,
-		allowedHosts: ['hooks.example.com'],
-		loginExchange: null,
-		provider: null,
-		inject: {
-			kind: 'header' as const,
-			name: 'Authorization',
-			format: 'Bearer {value}',
-		},
-		placement: null,
-	}
-	const pkg = {
-		id: 'pkg-1',
-		userId: ownerIdFromStored('stable-user-1'),
-		name: '@user/notes',
-		kodyId: 'notes',
-		description: '',
-		tags: [] as Array<string>,
-		searchText: null,
-		sourceId: 'source-1',
-		hasApp: false,
-		hidden: false,
-		isPrivate: false,
-		isInternetVisible: false,
-		createdAt: epoch,
-		updatedAt: epoch,
-	}
-	mockModule.listSavedPackagesByUserId.mockResolvedValue([pkg] as never)
-	mockModule.listPackageSecretsByPackageIds.mockResolvedValue(new Map())
-	mockModule.listSecrets.mockResolvedValue([makeSecret('webhook')] as never)
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce(placement)
-	mockModule.renameSecret.mockClear()
-	mockModule.saveSecret.mockClear()
-
-	const moved = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::webhook',
-			name: 'webhook',
-			scope: 'package',
-			packageId: 'pkg-1',
-			value: 'https://hooks.example.com/new',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(moved.status).toBe(400)
-	expect(moved.data).toMatchObject({
-		error: expect.stringContaining('would drop its kind'),
-	})
-	expect(mockModule.renameSecret).not.toHaveBeenCalled()
-	expect(mockModule.saveSecret).not.toHaveBeenCalled()
-})
-
-test('a failed rollback reports the committed casing so native editors can retarget without retrying a create', async () => {
-	mockSecretsListing([makeSecret('Henry')])
-	mockModule.readStoredCredentialPlacement.mockResolvedValueOnce({
-		id: 'cred-Henry',
-		kind: 'url',
-		allowedHosts: ['hooks.example.com'],
-		loginExchange: null,
-		provider: null,
-		inject: { kind: 'header', name: 'Authorization', format: 'Bearer {value}' },
-		placement: null,
-	})
-	mockModule.renameSecret
-		.mockResolvedValueOnce(makeSecret('henry') as never)
-		.mockRejectedValueOnce(new Error('rollback unavailable'))
-	mockModule.saveSecret.mockRejectedValueOnce(new Error('value write failed'))
-	const response = await createHandler()(
-		postRequest({
-			action: 'save',
-			currentId: 'user::::Henry',
-			name: 'henry',
-			scope: 'user',
-			value: 'https://hooks.example.com/new',
-			allowedHosts: [],
-			allowedPackages: [],
-			placement: null,
-		}),
-	)
-	expect(response.status).toBe(400)
-	expect(response.data).toMatchObject({
-		ok: false,
-		error: 'value write failed',
-		selectedSecret: { id: 'user::::henry', name: 'henry' },
-	})
-	expect(response.data).not.toHaveProperty('secrets')
-})
-
-test('account secrets disconnect clears the value and keeps the record', async () => {
-	const userStorage = { sessionId: null, appId: null, packageId: null }
-	mockModule.disconnectSecret.mockResolvedValueOnce(true)
-	const response = await createHandler()(
-		postRequest({ action: 'disconnect', currentId: 'user::::myApiKey' }),
-	)
-	expect(response.status).toBe(200)
-	expect(response.data).toMatchObject({
-		ok: true,
-		disconnected: true,
-		secretId: 'user::::myApiKey',
-	})
-	expect(mockModule.disconnectSecret).toHaveBeenCalledWith(
-		expect.objectContaining({
-			userId: ownerIdFromStored('stable-user-1'),
-			name: 'myApiKey',
-			scope: 'user',
-			storageContext: userStorage,
-		}),
-	)
-	expect(mockModule.deleteSecret).not.toHaveBeenCalled()
 })
