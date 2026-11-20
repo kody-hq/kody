@@ -1,7 +1,8 @@
 import { ownerIdFromStored } from '@kody-internal/shared/owner-person-ids.ts'
 import { expect, test, vi } from 'vitest'
-import type { Workspace } from '@cloudflare/shell'
+import { createWorkspaceStateBackend, type Workspace } from '@cloudflare/shell'
 import type git from 'isomorphic-git'
+import { consoleWarn } from '#worker/test-support/console-spies.ts'
 import type * as CloudflareWorkers from 'cloudflare:workers'
 import type * as Artifacts from './artifacts.ts'
 import type * as Checks from './checks.ts'
@@ -9,21 +10,22 @@ import type * as EntitySources from './entity-sources.ts'
 import type * as ExternalPublishClone from './external-publish-clone.ts'
 import type * as RepoSessions from './repo-sessions.ts'
 import type * as PublishedRuntimeArtifacts from '#worker/package-runtime/published-runtime-artifacts.ts'
+import type { PublishedSourceSnapshot } from '#worker/package-runtime/published-runtime-artifacts.ts'
 import type * as PublishedBundleArtifactsModule from '#worker/package-runtime/published-bundle-artifacts.ts'
 import type * as SavedPackageRepo from '#worker/package-registry/repo.ts'
-import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import type * as CredentialNeedsApproval from '#worker/credentials/credential-needs-approval.ts'
+import { recordPackageAppPublisherUnknown } from '#worker/package-runtime/package-app-authority.ts'
+import type * as StorageBuckets from '#worker/storage-buckets/service.ts'
 import {
 	repoSessionMockModule as mockModule,
 	publishedBundleArtifactsRepoSessionMocks,
+	restoreRepoSessionMockBaseline,
 	checkedPublishState,
 	createDurableObjectState,
 	createEnv,
 	sessionRow,
 	setCommonSessionFixtures,
 } from '#worker/test-support/repo-session-do.ts'
-import { consoleWarn } from '#worker/test-support/console-spies.ts'
-import { recordPackageAppPublisherUnknown } from '#worker/package-runtime/package-app-authority.ts'
 
 vi.mock('cloudflare:workers', async (importOriginal) => {
 	const actual = await importOriginal<typeof CloudflareWorkers>()
@@ -124,6 +126,12 @@ vi.mock('./isomorphic-git-lazy.ts', () => ({
 			commit: (...args: Parameters<typeof git.commit>) =>
 				mockModule.rawCommit(...args),
 			readBlob: mockModule.readBlob,
+			pull: (...args: Parameters<typeof git.pull>) =>
+				mockModule.rawPull(...args),
+			resolveRef: (...args: Parameters<typeof git.resolveRef>) =>
+				mockModule.rawResolveRef(...args),
+			writeRef: (...args: Parameters<typeof git.writeRef>) =>
+				mockModule.rawWriteRef(...args),
 		},
 		http: {},
 		createGit: () => mockModule.git,
@@ -223,12 +231,15 @@ vi.mock('./external-publish-clone.ts', () => ({
 	) => mockModule.cloneExternalPublishWorkspace(...args),
 }))
 
+const skillSnapshot = vi.hoisted(() => vi.fn())
+
 vi.mock('#worker/package-runtime/published-runtime-artifacts.ts', async () => {
 	const actual = await vi.importActual<typeof PublishedRuntimeArtifacts>(
 		'#worker/package-runtime/published-runtime-artifacts.ts',
 	)
 	return {
 		...actual,
+		readPublishedSourceSnapshot: skillSnapshot,
 		writePublishedSourceSnapshot: (
 			...args: Parameters<
 				typeof PublishedRuntimeArtifacts.writePublishedSourceSnapshot
@@ -264,10 +275,24 @@ vi.mock('#worker/package-registry/repo.ts', () => ({
 }))
 
 vi.mock('#worker/package-runtime/package-app-authority.ts')
-
 vi.mock('#worker/package-registry/service.ts', () => ({
 	refreshSavedPackageProjection: vi.fn(async () => undefined),
 }))
+
+const needsGate = vi.hoisted(() => ({
+	requireCredentialNeedsApproval: vi.fn(
+		async (): Promise<CredentialNeedsApproval.CredentialNeedsApprovalRequired | null> =>
+			null,
+	),
+}))
+
+vi.mock(
+	'#worker/credentials/credential-needs-approval.ts',
+	async (importOriginal) => ({
+		...(await importOriginal<typeof CredentialNeedsApproval>()),
+		requireCredentialNeedsApproval: needsGate.requireCredentialNeedsApproval,
+	}),
+)
 
 vi.mock('#worker/repo/identity-icon.ts', () => ({
 	refreshIdentityIconForSource: vi.fn(async () => undefined),
@@ -294,25 +319,15 @@ vi.mock('#worker/storage-buckets/service.ts', () => ({
 		`repo-session:${sessionId}`,
 }))
 
-const needsGate = vi.hoisted(() => ({
-	requireCredentialNeedsApproval: vi.fn(
-		async (): Promise<CredentialNeedsApproval.CredentialNeedsApprovalRequired | null> =>
-			null,
-	),
-}))
-
-vi.mock(
-	'#worker/credentials/credential-needs-approval.ts',
-	async (importOriginal) => ({
-		...(await importOriginal<typeof CredentialNeedsApproval>()),
-		requireCredentialNeedsApproval: needsGate.requireCredentialNeedsApproval,
-	}),
-)
-
 const { RepoSession } = await import('./repo-session-do.ts')
 
+const session = { sessionId: 'session-1', userId: ownerIdFromStored('user-1') }
+const demoPackageJson =
+	'{"name":"@kody/demo","exports":{".":"./index.ts"},"kody":{"id":"demo","description":"Demo"}}'
 const userPackageJson =
 	'{"name":"@user/demo","exports":{".":"./src/index.ts"},"kody":{"id":"demo","description":"Demo"}}'
+const artifactsRemote = (repo: string) =>
+	`https://acct.artifacts.cloudflare.net/git/default/${repo}.git`
 
 function repoSession(
 	env: Env = createEnv(),
@@ -321,7 +336,47 @@ function repoSession(
 	return new RepoSession(state, env)
 }
 
-const session = { sessionId: 'session-1', userId: ownerIdFromStored('user-1') }
+function kvEnv(kv: unknown = {}) {
+	return { APP_DB: {}, BUNDLE_ARTIFACTS_KV: kv } as unknown as Env
+}
+
+function sourceRow(overrides: Record<string, unknown> = {}) {
+	return {
+		id: 'source-1',
+		user_id: ownerIdFromStored('user-1'),
+		entity_kind: 'package',
+		entity_id: 'package-1',
+		repo_id: 'package-package-1',
+		published_commit: 'commit-1',
+		indexed_commit: null,
+		manifest_path: 'package.json',
+		source_root: '/',
+		last_external_check_at: null,
+		external_check_until: null,
+		created_at: '2026-04-18T00:00:00.000Z',
+		updated_at: '2026-04-18T00:00:00.000Z',
+		...overrides,
+	}
+}
+
+function publishedSnapshot(
+	files: Record<string, string>,
+	overrides: Partial<PublishedSourceSnapshot> = {},
+): PublishedSourceSnapshot {
+	return {
+		version: 1,
+		sourceId: 'source-1',
+		repoId: 'package-package-1',
+		entityKind: 'package',
+		entityId: 'package-1',
+		publishedCommit: 'commit-1',
+		manifestPath: 'package.json',
+		sourceRoot: '/',
+		files,
+		createdAt: '2026-08-17T20:00:00.000Z',
+		...overrides,
+	}
+}
 
 /** Seeds `/session/<path>` workspace reads (and optionally glob/exists). */
 function seedWorkspace(
@@ -350,6 +405,509 @@ function seedWorkspace(
 		relative(path) in files ? files[relative(path)]! : fallback,
 	)
 }
+
+function lastWorkspaceBackend() {
+	return vi.mocked(createWorkspaceStateBackend).mock.results.at(-1)?.value as {
+		applyEditPlan: ReturnType<typeof vi.fn>
+	}
+}
+
+test('bootstrapSource first-publishes from dest HEAD without replacing the forked tree', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const unpublishedSource = sourceRow({
+		published_commit: null,
+		manifest_path: 'package.json',
+	})
+	const bootstrap = (sessionId: string, existingHeadCommit?: string) =>
+		repoSession().bootstrapSource({
+			sessionId,
+			sourceId: 'source-1',
+			userId: ownerIdFromStored('user-1'),
+			...(existingHeadCommit ? { existingHeadCommit } : {}),
+			bootstrapAccess: {
+				defaultBranch: 'main',
+				remote: artifactsRemote('package-package-1'),
+				token: 'art_v1_bootstrap?expires=1760000000',
+				expiresAt: '2025-10-09T08:53:20.000Z',
+			},
+			edits: [
+				{ kind: 'write', path: 'package.json', content: userPackageJson },
+			],
+		})
+	const destWorkspaceFiles = {
+		'package.json': userPackageJson,
+		'src/index.ts': 'export const ready = true\n',
+		'README.md': 'forked dest tree',
+	}
+
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedSource)
+	seedWorkspace(destWorkspaceFiles, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-dest-head'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	const cloned = await bootstrap('session-bootstrap-fork', 'commit-dest-head')
+	expect(cloned.publishedCommit).toBe('commit-dest-head')
+	expect(cloned.files).toEqual(destWorkspaceFiles)
+	expect(mockModule.git.clone).toHaveBeenCalledWith(
+		expect.objectContaining({ branch: 'main', singleBranch: true }),
+	)
+	expect(mockModule.git.init).not.toHaveBeenCalled()
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			id: 'source-1',
+			publishedCommit: 'commit-dest-head',
+		}),
+	)
+
+	restoreRepoSessionMockBaseline()
+	mockModule.gitState.headCommit = 'commit-other'
+	await expect(
+		bootstrap('session-bootstrap-mismatch', 'commit-dest-head'),
+	).rejects.toThrow(/does not match expected "commit-dest-head"/)
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+
+	restoreRepoSessionMockBaseline()
+	mockModule.workspaceReadFile.mockResolvedValue(userPackageJson)
+	mockModule.gitState.headCommit = 'commit-empty-bootstrap'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	await bootstrap('session-bootstrap-empty')
+	expect(mockModule.git.init).toHaveBeenCalled()
+	expect(mockModule.git.clone).not.toHaveBeenCalled()
+})
+
+test('bootstrapSource runs publish repo checks before advancing a package published_commit', async () => {
+	consoleWarn.mockImplementation(() => {})
+	const unpublishedPackage = sourceRow({
+		published_commit: null,
+		manifest_path: 'package.json',
+	})
+	const files = {
+		'package.json': userPackageJson,
+		'src/index.ts': 'export const ready = true\n',
+		'README.md': '# Demo\n',
+		'AGENTS.md': '# Agents\n',
+	}
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedPackage)
+	seedWorkspace(files, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-bootstrap-pkg'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	mockModule.runRepoChecks.mockResolvedValueOnce({
+		ok: false,
+		results: [
+			{ kind: 'typecheck', ok: false, message: 'src/index.ts type error' },
+		],
+		manifest: null,
+		sourceFiles: files,
+	})
+
+	await expect(
+		repoSession().bootstrapSource({
+			sessionId: 'session-bootstrap-checks',
+			sourceId: 'source-1',
+			userId: ownerIdFromStored('user-1'),
+			bootstrapAccess: {
+				defaultBranch: 'main',
+				remote: artifactsRemote('package-package-1'),
+				token: 'art_v1_bootstrap?expires=1760000000',
+				expiresAt: '2025-10-09T08:53:20.000Z',
+			},
+			edits: [
+				{ kind: 'write', path: 'package.json', content: userPackageJson },
+				{ kind: 'write', path: 'src/index.ts', content: files['src/index.ts'] },
+			],
+		}),
+	).rejects.toSatisfy(
+		(error: unknown) =>
+			error instanceof Error &&
+			error.name === 'RepoChecksFailedError' &&
+			error.message === 'src/index.ts type error',
+	)
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.git.push).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).not.toHaveBeenCalled()
+	expect(mockModule.writePublishedSourceSnapshot).not.toHaveBeenCalled()
+
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedPackage)
+	seedWorkspace(files, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-bootstrap-pkg-ok'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	const ok = await repoSession().bootstrapSource({
+		sessionId: 'session-bootstrap-checks-ok',
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		bootstrapAccess: {
+			defaultBranch: 'main',
+			remote: artifactsRemote('package-package-1'),
+			token: 'art_v1_bootstrap?expires=1760000000',
+			expiresAt: '2025-10-09T08:53:20.000Z',
+		},
+		edits: [
+			{ kind: 'write', path: 'package.json', content: userPackageJson },
+			{ kind: 'write', path: 'src/index.ts', content: files['src/index.ts'] },
+		],
+	})
+	expect(ok.publishedCommit).toBe('commit-bootstrap-pkg-ok')
+	expect(mockModule.runRepoChecks).toHaveBeenCalled()
+	expect(mockModule.runRepoChecks.mock.calls.at(-1)?.[0]).not.toHaveProperty(
+		'requirePackageDocs',
+	)
+	expect(mockModule.git.push).toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			publishedCommit: 'commit-bootstrap-pkg-ok',
+		}),
+	)
+
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedPackage)
+	seedWorkspace(files, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-bootstrap-docs-exempt'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	await repoSession().bootstrapSource({
+		sessionId: 'session-bootstrap-docs-exempt',
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		requirePackageDocs: false,
+		bootstrapAccess: {
+			defaultBranch: 'main',
+			remote: artifactsRemote('package-package-1'),
+			token: 'art_v1_bootstrap?expires=1760000000',
+			expiresAt: '2025-10-09T08:53:20.000Z',
+		},
+		edits: [
+			{ kind: 'write', path: 'package.json', content: userPackageJson },
+			{ kind: 'write', path: 'src/index.ts', content: files['src/index.ts'] },
+		],
+	})
+	expect(mockModule.runRepoChecks).toHaveBeenCalledWith(
+		expect.objectContaining({ requirePackageDocs: false }),
+	)
+
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedPackage)
+	seedWorkspace(files, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-bootstrap-scope'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	await repoSession().bootstrapSource({
+		sessionId: 'session-bootstrap-scope',
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		expectedPackageScope: 'renamed-user',
+		bootstrapAccess: {
+			defaultBranch: 'main',
+			remote: artifactsRemote('package-package-1'),
+			token: 'art_v1_bootstrap?expires=1760000000',
+			expiresAt: '2025-10-09T08:53:20.000Z',
+		},
+		edits: [
+			{ kind: 'write', path: 'package.json', content: userPackageJson },
+			{ kind: 'write', path: 'src/index.ts', content: files['src/index.ts'] },
+		],
+	})
+	expect(mockModule.runRepoChecks).toHaveBeenCalledWith(
+		expect.objectContaining({ expectedPackageScope: 'renamed-user' }),
+	)
+
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(unpublishedPackage)
+	seedWorkspace(files, { fallback: null })
+	mockModule.gitState.headCommit = 'commit-bootstrap-skip-checks'
+	mockModule.gitState.statusEntries = [{ status: 'modified' }]
+	mockModule.runRepoChecks.mockClear()
+	await repoSession().bootstrapSource({
+		sessionId: 'session-bootstrap-skip-checks',
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		runPublishChecks: false,
+		bootstrapAccess: {
+			defaultBranch: 'main',
+			remote: artifactsRemote('package-package-1'),
+			token: 'art_v1_bootstrap?expires=1760000000',
+			expiresAt: '2025-10-09T08:53:20.000Z',
+		},
+		edits: [
+			{ kind: 'write', path: 'package.json', content: userPackageJson },
+			{ kind: 'write', path: 'src/index.ts', content: files['src/index.ts'] },
+		],
+	})
+	expect(mockModule.runRepoChecks).not.toHaveBeenCalled()
+	expect(mockModule.updateEntitySource).toHaveBeenCalledWith(
+		expect.anything(),
+		expect.objectContaining({
+			publishedCommit: 'commit-bootstrap-skip-checks',
+		}),
+	)
+})
+
+test('applyEdits rejects write, replace, and writeJson targets that are directories', async () => {
+	setCommonSessionFixtures()
+	mockModule.workspaceStat.mockImplementation(async (path: string) =>
+		path === '/session/src'
+			? {
+					path: '/session/src',
+					name: 'src',
+					type: 'directory' as const,
+					mimeType: 'inode/directory',
+					size: 0,
+					createdAt: 0,
+					updatedAt: 0,
+				}
+			: null,
+	)
+	const repo = repoSession()
+	const directoryMessage =
+		/repo session (write|replace|writeJson) edit target "src" is a directory\. Pass a file path/
+
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [{ kind: 'write', path: 'src', content: 'export {}\n' }],
+		}),
+	).rejects.toThrow(directoryMessage)
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'replace',
+					path: 'src',
+					search: 'a',
+					replacement: 'b',
+				},
+			],
+		}),
+	).rejects.toThrow(directoryMessage)
+	await expect(
+		repo.applyEdits({
+			...session,
+			edits: [{ kind: 'writeJson', path: 'src', value: { ok: true } }],
+		}),
+	).rejects.toThrow(directoryMessage)
+	expect(lastWorkspaceBackend().applyEditPlan).not.toHaveBeenCalled()
+})
+
+test('applyEdits remaps raw Cloudflare shell EISDIR from applyEditPlan', async () => {
+	setCommonSessionFixtures()
+	vi.mocked(createWorkspaceStateBackend).mockImplementationOnce(
+		() =>
+			({
+				planEdits: vi.fn(),
+				applyEditPlan: vi.fn(async () => {
+					throw new Error('EISDIR: /session/src is a directory')
+				}),
+				walkTree: vi.fn(),
+			}) as unknown as ReturnType<typeof createWorkspaceStateBackend>,
+	)
+
+	// Preflight passes (stat is null); the shell still throws EISDIR — remap
+	// so callers never see the raw filesystem error. KODY-A6.
+	await expect(
+		repoSession().applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'write',
+					path: 'src/index.ts',
+					content: 'export {}\n',
+				},
+			],
+		}),
+	).rejects.toThrow(
+		'repo session write edit target "src" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	)
+})
+
+test('applyEdits EISDIR remap uses the failing path kind in a multi-edit plan', async () => {
+	setCommonSessionFixtures()
+	vi.mocked(createWorkspaceStateBackend).mockImplementationOnce(
+		() =>
+			({
+				planEdits: vi.fn(),
+				applyEditPlan: vi.fn(async () => {
+					throw new Error('EISDIR: /session/src/my file.ts is a directory')
+				}),
+				walkTree: vi.fn(),
+			}) as unknown as ReturnType<typeof createWorkspaceStateBackend>,
+	)
+
+	await expect(
+		repoSession().applyEdits({
+			...session,
+			edits: [
+				{
+					kind: 'write',
+					path: 'readme.md',
+					content: '# hi\n',
+				},
+				{
+					kind: 'replace',
+					path: 'src/my file.ts',
+					search: 'a',
+					replacement: 'b',
+				},
+			],
+		}),
+	).rejects.toThrow(
+		'repo session replace edit target "src/my file.ts" is a directory. Pass a file path (for example src/index.ts), not a folder.',
+	)
+})
+
+test('readFile remaps raw Cloudflare shell EISDIR for a folder path (KODY-CA)', async () => {
+	setCommonSessionFixtures()
+	const fallbackReadFile = mockModule.workspaceReadFile.getMockImplementation()
+	mockModule.workspaceReadFile.mockImplementation(async (path: string) => {
+		if (path === '/session/src') {
+			throw new Error('EISDIR: /session/src is a directory')
+		}
+		return fallbackReadFile ? fallbackReadFile(path) : null
+	})
+	const repo = repoSession()
+
+	await expect(repo.readFile({ ...session, path: 'src' })).rejects.toThrow(
+		'repo session read target "src" is a directory. Pass a file path (for example src/index.ts), or use repoTree to list the folder.',
+	)
+	await expect(repo.readFile({ ...session, path: 'src' })).rejects.not.toThrow(
+		/EISDIR/,
+	)
+})
+
+test('readFile keeps non-EISDIR workspace failures unchanged', async () => {
+	setCommonSessionFixtures()
+	mockModule.workspaceReadFile.mockImplementation(async () => {
+		throw new Error('SQLITE_BUSY: database is locked')
+	})
+
+	await expect(
+		repoSession().readFile({ ...session, path: 'src/index.ts' }),
+	).rejects.toThrow('SQLITE_BUSY: database is locked')
+})
+
+test('published artifact rebuild rejects when a concurrent publish moves the commit between check and persist', async () => {
+	const commitA = 'commit-a'
+	const commitB = 'commit-b'
+	const filesA = {
+		'package.json': demoPackageJson,
+		'index.ts': 'export const fromA = true\n',
+	}
+	const filesB = {
+		'package.json': demoPackageJson,
+		'index.ts': 'export const fromB = true\n',
+	}
+	const target = {
+		kind: 'module' as const,
+		artifactName: '.',
+		entryPoint: 'index.ts',
+		bundleKind: 'module' as const,
+	}
+
+	// Staging for A while the source already points at B must fail — never
+	// stage B's snapshot under an A rebuild request.
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById.mockResolvedValue(
+		sourceRow({ published_commit: commitB }),
+	)
+	mockModule.loadPublishedSourceSnapshot.mockImplementation(
+		async (input: { source: { published_commit: string | null } }) => {
+			if (input.source.published_commit === commitA) {
+				return publishedSnapshot(filesA, { publishedCommit: commitA })
+			}
+			if (input.source.published_commit === commitB) {
+				return publishedSnapshot(filesB, { publishedCommit: commitB })
+			}
+			return null
+		},
+	)
+	await expect(
+		repoSession(
+			kvEnv({ put: vi.fn(async () => undefined) }),
+		).stagePublishedPackageArtifactRebuild({
+			sourceId: 'source-1',
+			userId: ownerIdFromStored('user-1'),
+			publishedCommit: commitA,
+		}),
+	).rejects.toThrow(/Published commit changed from "commit-a" to "commit-b"/)
+	expect(
+		mockModule.persistPublishedPackageArtifactTarget,
+	).not.toHaveBeenCalled()
+
+	// Stage succeeds at A, then a concurrent publish moves the source to B
+	// before persist — isolated rebuild must fail and must not write.
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById
+		.mockResolvedValueOnce(sourceRow({ published_commit: commitA }))
+		.mockResolvedValue(sourceRow({ published_commit: commitB }))
+	mockModule.loadPublishedSourceSnapshot.mockResolvedValue(
+		publishedSnapshot(filesA, { publishedCommit: commitA }),
+	)
+	const put = vi.fn(
+		async (_key: string, _body: string, _options: unknown) => undefined,
+	)
+	const staged = await repoSession(
+		kvEnv({ put }),
+	).stagePublishedPackageArtifactRebuild({
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		publishedCommit: commitA,
+	})
+	const stagedBody = put.mock.calls[0]?.[1]
+	expect(typeof stagedBody).toBe('string')
+	const stagedPayload = JSON.parse(stagedBody as string) as {
+		sourceFiles: Record<string, string>
+		publishedCommit: string
+	}
+	expect(stagedPayload).toEqual({
+		sourceFiles: filesA,
+		publishedCommit: commitA,
+	})
+
+	const rebuildKv = {
+		get: vi.fn(async () => stagedPayload),
+		put: vi.fn(async () => undefined),
+	}
+	const outcome = await repoSession(
+		kvEnv(rebuildKv),
+	).runIsolatedArtifactRebuild({
+		stagingKey: staged.stagingKey,
+		sourceId: 'source-1',
+		userId: ownerIdFromStored('user-1'),
+		publishedCommit: commitA,
+		targets: [target],
+		baseUrl: 'https://kody.test',
+	})
+	expect(outcome.ok).toBe(false)
+	expect(outcome.message).toMatch(
+		/Published commit changed from "commit-a" to "commit-b"/,
+	)
+	expect(
+		mockModule.persistPublishedPackageArtifactTarget,
+	).not.toHaveBeenCalled()
+
+	// Non-isolated rebuild path: collection sees A, then persist re-check sees B.
+	restoreRepoSessionMockBaseline()
+	mockModule.getEntitySourceById
+		.mockResolvedValueOnce(sourceRow({ published_commit: commitA }))
+		.mockResolvedValue(sourceRow({ published_commit: commitB }))
+	mockModule.loadPublishedSourceSnapshot.mockResolvedValue(
+		publishedSnapshot(filesA, { publishedCommit: commitA }),
+	)
+	await expect(
+		repoSession(kvEnv()).rebuildPublishedPackageArtifact({
+			sourceId: 'source-1',
+			userId: ownerIdFromStored('user-1'),
+			publishedCommit: commitA,
+			target,
+			baseUrl: 'https://kody.test',
+		}),
+	).rejects.toThrow(/Published commit changed from "commit-a" to "commit-b"/)
+	expect(
+		mockModule.persistPublishedPackageArtifactTarget,
+	).not.toHaveBeenCalled()
+})
 
 test('a publish paused for credential needs keeps the source branch and records the session for approval', async () => {
 	setCommonSessionFixtures()
