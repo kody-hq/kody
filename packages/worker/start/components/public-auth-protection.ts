@@ -8,7 +8,6 @@ export function usePublicAuthProtection() {
 	const config = useQuery({
 		queryKey: ['public-auth-config'],
 		queryFn: ({ signal }) => fetchPublicAuthConfig(signal),
-		staleTime: Infinity,
 		retry: false,
 	})
 	const siteKey = config.data?.turnstileSiteKey ?? null

@@ -93,7 +93,6 @@ function PublicEmbed({ id, depth }: { id: string; depth: number }) {
 				return { ok: false }
 			}
 		},
-		staleTime: Infinity,
 		retry: false,
 		refetchOnWindowFocus: false,
 	})

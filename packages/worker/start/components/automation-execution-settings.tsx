@@ -91,7 +91,6 @@ export function AutomationExecutionSettings(props: {
 					return null
 				}
 			},
-			staleTime: Infinity,
 			retry: false,
 			refetchOnWindowFocus: false,
 		}).data ?? null
