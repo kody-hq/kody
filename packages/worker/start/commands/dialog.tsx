@@ -444,15 +444,17 @@ export function CommandDialog({
 	const confirmationHeadingRef = useCallback(
 		(node: HTMLHeadingElement | null) => {
 			confirmationHeading.current = node
-			if (node && actions) node.focus()
+			if (node) node.focus()
 		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus when the action list changes
 		[actions],
 	)
 	const inputRef = useCallback(
 		(node: HTMLInputElement | null) => {
 			input.current = node
-			if (node && actions) node.focus()
+			if (node) node.focus()
 		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus when the action list changes
 		[actions],
 	)
 	const dialogRef = useCallback((node: HTMLDialogElement | null) => {

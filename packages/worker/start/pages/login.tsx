@@ -123,7 +123,7 @@ export function LoginPage({
 	const redirectTo = normalizeRedirectTo(searchParams.get('redirectTo'))
 	const trackLifecycle = useCallback(
 		(node: HTMLDivElement | null) => {
-			if (!node || !currentHref) return
+			if (!node) return
 			const controller = new AbortController()
 			lifecycle.current = controller
 			if (turnstileSiteKey) renderTurnstileWidgets(turnstileSiteKey)
@@ -137,6 +137,7 @@ export function LoginPage({
 				WebAuthnAbortService.cancelCeremony()
 			}
 		},
+		// oxlint-disable-next-line react/exhaustive-deps -- restart the lifecycle on each auth navigation
 		[mode, currentHref, turnstileSiteKey],
 	)
 	function sendFormEvent(event: Parameters<typeof flowActor.send>[0]) {
