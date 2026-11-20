@@ -73,6 +73,15 @@ and stop — do not add a noisy half-rule. See
 [harness engineering](./harness-engineering.md) (promote into enforcement) and
 [oxlint JS plugins](./oxlint-js-plugins.md).
 
+**Security claims cite their proof.** A sentence that promises a security
+property (an agent "cannot" do something, a lock "keeps" something from
+happening, only the owner can approve) links the test or code that enforces it,
+for example the
+[`resourceLock` contract test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts).
+Keep the claim exactly as strong as that test. When a change touches a guide
+with such a claim, check the claim against the code in the same change; the
+daily docs-freshness pass checks changed security claims the same way.
+
 **MCP instructions and tool descriptions stay tight.** Server-level instructions
 and per-tool descriptions should give the model what it needs **before**
 choosing or invoking a tool: workflows, constraints, and **copy-pasteable

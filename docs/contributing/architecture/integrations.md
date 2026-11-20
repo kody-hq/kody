@@ -428,16 +428,16 @@ disconnect their connections instead.
 Domain: `integrations`
 (`packages/worker/src/mcp/capabilities/integrations/domain.ts`).
 
-| Capability                                       | Role                                                                               |
-| ------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                        |
-| `resourceLock`                                   | Integration package lock (`kind: integration`); tighten-only; website unlock       |
-| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                           |
-| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                  |
-| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                  |
-| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list         |
-| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                 |
-| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out |
+| Capability                                       | Role                                                                                                |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------- |
+| `integrationSave` / `_get` / `_list` / `_delete` | Connection CRUD with flat `clientId` output                                                         |
+| `resourceLock`                                   | Integration package lock (`kind: integration`); narrow-only (security invariant 16); website unlock |
+| `integrationOauthAppList`                        | Apps with connection counts and sibling connection names                                            |
+| `integrationOauthAppDelete`                      | Delete a user-lane app and every connection on it                                                   |
+| `integrationOauthAppRotateCredentials`           | Rotate shared app `clientId` / client-secret name                                                   |
+| `integrationPlatformAppList`                     | Discoverable (enabled + published) built-ins; operators use the admin list                          |
+| `integrationTokenRefresh`                        | Host-side OAuth refresh; returns metadata only, never token values                                  |
+| `integrationDeviceConnectStart` / `_Poll`        | RFC 8628 device grant; credentials persist server-side; no token/`device_code` out                  |
 
 ## Account deletion order
 

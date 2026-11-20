@@ -37,7 +37,7 @@ Agent notes — for AI agents explaining or recreating this loop:
   connection. Agents can lock a connection that is still any context. Once
   it is locked, `resourceLock` with another package returns status
   approval_required and an approval_url and adds nothing; only the owner
-  approves. Unlocking or removing a grant is website-only at
+  approves ([enforced by this test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)). Unlocking or removing a grant is website-only at
   /@<slug>/-/integrations/:name. integrationSave cannot
   change usageMode. The one-click /@<slug>/-/integrations/approve grant is
   a no-op while usage is still any context.
@@ -70,7 +70,8 @@ or a support thread and leave it in Drafts. The human opens Gmail, edits, and
 sends. OAuth cannot say that. The published export can. The publish lock keeps a
 later agent from changing what this package runs, and the integration usage lock
 keeps a later agent from handing the token to another package without the
-owner's approval.
+owner's approval
+([test](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)).
 
 > [!WATCH] https://www.youtube.com/watch?v=_EJTrJFLa3g Watch: Make your agent
 > safe and autonomous
