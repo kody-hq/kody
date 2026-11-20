@@ -383,7 +383,8 @@ change access. Use on a resource (`secret:use`, `integration:use`) lets an agent
 narrow who can reach it, never widen it. Adding a package to a grant list,
 unlocking, or binding a new consumer is an owner action on the website: the
 agent surface returns `approval_required` with an `approval_url` and writes
-nothing. `resourceLock` applies this to every kind through `planPackageLock`
+nothing. `resourceLock` integration and MCP server locks decide through
+`planPackageLock`, and the secret kinds always return the owner link
 ([`allowed-packages.ts`](../../../packages/worker/src/mcp/secrets/allowed-packages.ts));
 the contract test in
 [`resource-lock.node.test.ts`](../../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts)

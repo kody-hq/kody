@@ -155,8 +155,8 @@ package-app surfaces:
     runtime holding only Use on a resource (`secret:use`, `integration:use`) may
     lock a resource that any context can use to its first package, since that
     only removes access. Adding a package to an existing grant list returns
-    `approval_required` with an owner `approval_url` and writes nothing. Every
-    `resourceLock` kind decides through `planPackageLock`
+    `approval_required` with an owner `approval_url` and writes nothing.
+    Integration and MCP server locks decide through `planPackageLock`
     ([`allowed-packages.ts`](../../packages/worker/src/mcp/secrets/allowed-packages.ts)),
     and a table-driven contract test with one row per kind
     ([`resource-lock.node.test.ts`](../../packages/worker/src/mcp/capabilities/secrets/resource-lock.node.test.ts))
