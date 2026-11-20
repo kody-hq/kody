@@ -725,6 +725,54 @@ const noRawDialogRule = {
 	},
 }
 
+const noBareEffectRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Keep useEffect and useLayoutEffect inside start/lib/primitives.ts so effects stay rare and named.',
+		},
+		schema: [],
+		messages: {
+			useAlternative:
+				'Use a route loader or useQuery for data, useSyncExternalStore for subscriptions, a ref callback with cleanup for DOM work, a key reset or render-time derivation for derived state, or an event handler for user actions. For true external sync, use a hook from start/lib/primitives.ts.',
+		},
+	},
+	createOnce(context) {
+		const effectNames = new Set(['useEffect', 'useLayoutEffect'])
+		function allowed() {
+			const filename = context.filename
+			return (
+				/\/start\/lib\/primitives\.ts$/.test(filename) ||
+				/\.test\.tsx?$/.test(filename)
+			)
+		}
+		return {
+			ImportDeclaration(node) {
+				if (node.source.value !== 'react' || allowed()) return
+				for (const specifier of node.specifiers) {
+					if (
+						specifier.type === 'ImportSpecifier' &&
+						effectNames.has(specifier.imported.name)
+					)
+						context.report({ node: specifier, messageId: 'useAlternative' })
+				}
+			},
+			MemberExpression(node) {
+				if (
+					node.property.type !== 'Identifier' ||
+					!effectNames.has(node.property.name) ||
+					node.object.type !== 'Identifier' ||
+					node.object.name !== 'React' ||
+					allowed()
+				)
+					return
+				context.report({ node, messageId: 'useAlternative' })
+			},
+		}
+	},
+}
+
 const noRawTableRule = {
 	meta: {
 		type: 'problem',
@@ -1044,6 +1092,7 @@ const plugin = {
 		'no-nonretryable-error-name': noNonRetryableErrorNameRule,
 		'no-oversized-guide-section': noOversizedGuideSectionRule,
 		'no-raw-button-style': noRawButtonStyleRule,
+		'no-bare-effect': noBareEffectRule,
 		'no-raw-dialog': noRawDialogRule,
 		'no-raw-overlay': noRawOverlayRule,
 		'no-raw-table': noRawTableRule,
