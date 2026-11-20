@@ -4,7 +4,7 @@
  * Published-bundle retention must treat soft-deleted entity_sources as still
  * present so restore-window artifacts are not pruned before hard purge.
  */
-import { Effect, Option, Schema } from 'effect'
+import { Clock, Effect, Option, Schema } from 'effect'
 import {
 	D1,
 	type Bound,
@@ -236,7 +236,11 @@ function placeholders(values: ReadonlyArray<unknown>) {
 
 type D1Service = D1['Service']
 
-const today = (now: Date | undefined) => (now ? now : new Date())
+/** The pass time: the caller's `now`, else the Effect `Clock`. */
+const passDate = (now: Date | undefined) =>
+	now
+		? Effect.succeed(now)
+		: Effect.map(Clock.currentTimeMillis, (millis) => new Date(millis))
 
 /** Selects one batch of ids to prune, in the policy's age order. */
 const selectIds = Effect.fn('Retention.selectIds')(function* (
@@ -311,7 +315,7 @@ type BatchOptions = { readonly now?: Date; readonly batchSize?: number }
 export const pruneMemorySuppressionsForRetentionEffect = Effect.fn(
 	'Retention.pruneMemorySuppressions',
 )(function* (db: D1Service, options: BatchOptions) {
-	const now = today(options.now)
+	const now = yield* passDate(options.now)
 	return yield* selectAndDeleteByIds(db, {
 		column: 'rowid',
 		bindings: [
@@ -333,7 +337,10 @@ export const pruneMemorySuppressionsForRetentionEffect = Effect.fn(
 export const prunePlatformFeedbackForRetentionEffect = Effect.fn(
 	'Retention.prunePlatformFeedback',
 )(function* (db: D1Service, options: BatchOptions) {
-	const cutoff = cutoffIso(today(options.now), platformFeedbackRetentionDays)
+	const cutoff = cutoffIso(
+		yield* passDate(options.now),
+		platformFeedbackRetentionDays,
+	)
 	const ids = yield* selectIds(db, 'retention.select.platform_feedback', {
 		bindings: [cutoff, options.batchSize ?? retentionDefaultBatchSize],
 		sql: `SELECT id
@@ -431,7 +438,7 @@ export const prunePublishedBundleArtifactsForRetentionEffect = Effect.fn(
 	'Retention.prunePublishedBundleArtifacts',
 )(function* (env: ArtifactEnv, db: D1Service, options: BatchOptions) {
 	const cutoff = cutoffIso(
-		today(options.now),
+		yield* passDate(options.now),
 		publishedBundleArtifactRetentionDays,
 	)
 	const batchSize =
@@ -585,7 +592,7 @@ const rowidPolicy = (
 		return yield* selectAndDeleteByIds(db, {
 			column: 'rowid',
 			bindings: [
-				cutoff(today(options.now)),
+				cutoff(yield* passDate(options.now)),
 				options.batchSize ?? retentionDefaultBatchSize,
 			],
 			sql: `SELECT rowid
@@ -628,7 +635,7 @@ export const pruneAuditEventsForRetentionEffect = Effect.fn(
 )(function* (db: D1Service, options: BatchOptions) {
 	return yield* selectAndDeleteByIds(db, {
 		bindings: [
-			cutoffIso(today(options.now), auditEventRetentionDays),
+			cutoffIso(yield* passDate(options.now), auditEventRetentionDays),
 			options.batchSize ?? retentionDefaultBatchSize,
 		],
 		sql: `SELECT id
@@ -647,7 +654,7 @@ export const pruneStripeWebhookEventsForRetentionEffect = Effect.fn(
 	return yield* selectAndDeleteByIds(db, {
 		column: 'event_id',
 		bindings: [
-			cutoffIso(today(options.now), stripeWebhookEventRetentionDays),
+			cutoffIso(yield* passDate(options.now), stripeWebhookEventRetentionDays),
 			options.batchSize ?? retentionDefaultBatchSize,
 		],
 		sql: `SELECT event_id
@@ -700,7 +707,7 @@ export const pruneRetentionEffect = Effect.fn('Retention.prune')(
 		const env = yield* WorkerEnv
 		const db = yield* D1
 		const auditDb = makeD1(() => env.AUDIT_DB)
-		const now = today(input.now)
+		const now = yield* passDate(input.now)
 		const budget = yield* startPassBudget(
 			input.timeBudgetMs ?? retentionRunTimeBudgetMs,
 		)
