@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { publicAsset } from '../../public-assets.ts'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { SiteLink } from '../../components/site-link.tsx'
 import { AppsSharing } from './apps-sharing.tsx'
 import { AppsIntake, type Brief } from './apps-intake.tsx'
@@ -29,9 +29,14 @@ export function AppsFeature() {
 	const [saveShot, setSaveShot] = useState(0)
 	const [flyingName, setFlyingName] = useState(initialBrief.name)
 	const savedBriefHeading = useRef<HTMLHeadingElement>(null)
-	useEffect(() => {
-		if (view === 'detail') savedBriefHeading.current?.focus()
-	}, [view, opened])
+	const savedBriefHeadingRef = useCallback(
+		(node: HTMLHeadingElement | null) => {
+			savedBriefHeading.current = node
+			if (node && view === 'detail') node.focus()
+		},
+		// oxlint-disable-next-line react/exhaustive-deps -- opening another brief refocuses its heading
+		[view, opened],
+	)
 	function save() {
 		if (!draft.name.trim()) return
 		const savedDraft = { ...draft, name: draft.name.trim() }
@@ -143,7 +148,7 @@ export function AppsFeature() {
 						) : (
 							<div className="pw-apx-detail">
 								<h3
-									ref={savedBriefHeading}
+									ref={savedBriefHeadingRef}
 									id="saved-brief-heading"
 									tabIndex={-1}
 								>
