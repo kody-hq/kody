@@ -50,8 +50,8 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 			'*',
 		)
 	}, [source])
-	useEffect(() => {
-		const target = frame.current
+	const frameRef = useCallback((target: HTMLIFrameElement | null) => {
+		frame.current = target
 		if (!target) return
 		function resize(event: MessageEvent) {
 			if (
@@ -71,7 +71,10 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 			location.origin,
 			new URL(peleScriptUrl, location.href).href,
 		)
-		return () => window.removeEventListener('message', resize)
+		return () => {
+			frame.current = null
+			window.removeEventListener('message', resize)
+		}
 	}, [])
 	useEffect(() => {
 		const timer = window.setTimeout(sendSource, 250)
@@ -79,7 +82,7 @@ export default function WorkspaceMermaid({ source }: { source: string }) {
 	}, [sendSource])
 	return (
 		<iframe
-			ref={frame}
+			ref={frameRef}
 			onLoad={sendSource}
 			title="Mermaid diagram"
 			loading="lazy"
