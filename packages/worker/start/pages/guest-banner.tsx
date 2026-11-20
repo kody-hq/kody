@@ -1,6 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import { Button } from '../components/button.tsx'
-import { useMemo, useSyncExternalStore } from 'react'
+import { useNow } from '../lib/use-now.ts'
 import { colors } from '#universal/styles/tokens.ts'
 import { noticeCardCss } from './account-management-components.tsx'
 
@@ -32,25 +32,6 @@ export function formatGuestDate(iso: string) {
 	}).format(new Date(iso))
 }
 
-function useNow(intervalMs = 30_000) {
-	const clock = useMemo(() => createClock(intervalMs), [intervalMs])
-	return useSyncExternalStore(clock.subscribe, clock.read, clock.read)
-}
-
-function createClock(intervalMs: number) {
-	let now = Date.now()
-	return {
-		read: () => now,
-		subscribe(notify: () => void) {
-			const id = setInterval(() => {
-				now = Date.now()
-				notify()
-			}, intervalMs)
-			return () => clearInterval(id)
-		},
-	}
-}
-
 function claimPath(claimUrl: string) {
 	try {
 		return new URL(claimUrl).pathname
@@ -62,7 +43,7 @@ function claimPath(claimUrl: string) {
 /** Countdown and Claim button shown across the dashboard for guests. */
 export function GuestBanner(props: { guest: GuestBannerInfo }) {
 	const { guest } = props
-	const now = useNow()
+	const now = useNow(30_000)
 	const active =
 		guest.phase === 'active' && Date.parse(guest.fullAccessUntil) > now
 	const title = active

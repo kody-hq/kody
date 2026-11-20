@@ -11,6 +11,8 @@ import {
 	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useLayoutMeasure } from '../lib/primitives.ts'
+import { useNow } from '../lib/use-now.ts'
 import { FileAnchorContext } from './file-anchor-context.ts'
 import * as Y from 'yjs'
 import { ContextMenuSurface } from '../components/context-menu-surface.tsx'
@@ -243,12 +245,8 @@ function CollaborationView({
 			client.doc.off('update', update)
 		}
 	}, [client, props.mediaType])
-	const [tick, setTick] = useState(0)
-	useEffect(() => {
-		const timer = setInterval(() => setTick((n) => n + 1), 5_000)
-		return () => clearInterval(timer)
-	}, [])
-	void tick
+	// Re-render so presence ages stay current.
+	useNow(5_000)
 	const access = state.snapshot?.access
 	const live = new Map(
 		[...participants]
@@ -518,9 +516,7 @@ function CollaborationView({
 			?.querySelector(`[data-file-anchor-thread~="${CSS.escape(active)}"]`)
 			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
 	})
-	useLayoutEffect(() => {
-		scrollToActiveAnchor()
-	}, [active, open])
+	useLayoutMeasure(scrollToActiveAnchor, [active, open])
 
 	const syncStatusLabel = {
 		saved: 'Saved',
