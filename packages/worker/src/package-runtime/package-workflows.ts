@@ -2250,15 +2250,16 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 	 * not followed by its own publish would wait for the daily backstop. Reopen
 	 * the horizon so the next reconcile tick publishes the newest HEAD.
 	 */
-	private async markPublishSourcePendingReconcile(
-		payload: DynamicCallableWorkflowPayload,
-	) {
-		const sourceId = payload.packageContext?.sourceId
+	private async markPublishSourcePendingReconcile(input: {
+		userId: OwnerId
+		sourceId: string | null | undefined
+	}) {
+		const { userId, sourceId } = input
 		if (!sourceId) return
 		try {
 			await markEntitySourcePendingExternalReconcile(this.env.APP_DB, {
 				id: sourceId,
-				userId: payload.userId,
+				userId,
 				tokenExpiresAt: new Date().toISOString(),
 			})
 		} catch (error) {
@@ -2602,7 +2603,10 @@ export class DynamicCallableWorkflowBase extends WorkflowEntrypoint<
 					// A newer push or publish won the race. Retrying the pinned
 					// commit cannot succeed, so fail now as a caller error (off
 					// Sentry, KODY-DZ) and let reconcile publish the newest HEAD.
-					await this.markPublishSourcePendingReconcile(payload)
+					await this.markPublishSourcePendingReconcile({
+						userId: payload.userId,
+						sourceId: payload.packageContext?.sourceId,
+					})
 					error = terminalWorkflowStepError(
 						message,
 						new McpCallerError(errorMessage, { cause: error }),
