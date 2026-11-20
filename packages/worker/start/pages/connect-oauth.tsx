@@ -17,14 +17,11 @@ import { useRouter } from '@tanstack/react-router'
 import { normalizeProviderKey } from '@kody-internal/shared/url-hosts.ts'
 import { createOAuthCallbackNavigationScope } from '../oauth-callback-navigation.ts'
 import { usePageInvalidation } from '../page-invalidation.ts'
+import { useState, useRef, useCallback, useMemo, type FormEvent } from 'react'
 import {
-	useState,
-	useRef,
-	useEffect,
-	useCallback,
-	useMemo,
-	type FormEvent,
-} from 'react'
+	useExternalInstanceSync,
+	useResourceLifetime,
+} from '../lib/primitives.ts'
 import type {
 	ConnectOauthExistingConnection,
 	ConnectOauthLoaderData,
@@ -476,7 +473,7 @@ export function ConnectOauthRoute({
 		update({ statusMessage, statusTone })
 	}
 	const stateRef = useRef(state)
-	useEffect(() => {
+	useExternalInstanceSync(() => {
 		stateRef.current = state
 	}, [state])
 	const [, setDeviceTick] = useState(0)
@@ -515,8 +512,8 @@ export function ConnectOauthRoute({
 		[invalidatePages, isSubmitting, setState],
 	)
 	useSelector(deviceStep.actor, (snapshot) => snapshot)
-	useEffect(() => () => deviceStep.dispose(), [deviceStep])
-	useEffect(() => {
+	useResourceLifetime(() => () => deviceStep.dispose(), [deviceStep])
+	useResourceLifetime(() => {
 		mounted.current = true
 		const unsubscribe = router.subscribe('onBeforeNavigate', ({ toLocation }) =>
 			navigationScope.navigate(toLocation),
@@ -689,8 +686,8 @@ export function ConnectOauthRoute({
 			if (isFlowActive()) update({ submitting: false })
 		}
 	}
-	useEffect(() => {
-		if (callbackStarted.current) return
+	useResourceLifetime(() => {
+		if (callbackStarted.current) return () => {}
 		const callback = readConnectOauthCallback(
 			new URL(currentHref, 'https://kody.local').search,
 		)
@@ -698,7 +695,7 @@ export function ConnectOauthRoute({
 			persistConnectOauthOrgSlug(
 				readOrgSlugFromUrl(new URL(currentHref, window.location.origin)),
 			)
-			return
+			return () => {}
 		}
 		callbackStarted.current = true
 		async function complete() {
@@ -843,6 +840,7 @@ export function ConnectOauthRoute({
 			}
 		}
 		void complete()
+		return () => {}
 	}, [
 		readIntegration,
 		update,
