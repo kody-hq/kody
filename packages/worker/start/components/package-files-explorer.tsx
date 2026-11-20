@@ -13,7 +13,7 @@ import type { CSSObject } from '@emotion/react'
 import {
 	type ReactNode,
 	useId,
-	useLayoutEffect,
+	useCallback,
 	useMemo,
 	useRef,
 	useState,
@@ -154,22 +154,26 @@ function PackageFilesExplorerContent({
 	const fullView = canOpen && fullPath === data.selectedPath
 	const wasFullView = useRef(false)
 
-	useLayoutEffect(() => {
-		if (wasFullView.current === fullView) return
-		wasFullView.current = fullView
-		if (fullView) {
-			fileView.current?.focus({ preventScroll: true })
-			return
-		}
-		const frame = requestAnimationFrame(() => {
-			const selected = columns.current?.querySelector<HTMLElement>(
-				`[data-browser-item="${CSS.escape(data.selectedPath)}"]`,
-			)
-			const target = selected ?? viewToggle.current
-			target?.focus({ preventScroll: true })
-		})
-		return () => cancelAnimationFrame(frame)
-	}, [data.selectedPath, fullView])
+	const fileViewRef = useCallback(
+		(node: HTMLElement | null) => {
+			fileView.current = node
+			if (!node || wasFullView.current === fullView) return
+			wasFullView.current = fullView
+			if (fullView) {
+				node.focus({ preventScroll: true })
+				return
+			}
+			const frame = requestAnimationFrame(() => {
+				const selected = columns.current?.querySelector<HTMLElement>(
+					`[data-browser-item="${CSS.escape(data.selectedPath)}"]`,
+				)
+				const target = selected ?? viewToggle.current
+				target?.focus({ preventScroll: true })
+			})
+			return () => cancelAnimationFrame(frame)
+		},
+		[data.selectedPath, fullView],
+	)
 
 	useHotkeys(
 		[
@@ -259,7 +263,7 @@ function PackageFilesExplorerContent({
 		<section
 			css={fullView || hideExplorer ? contentCss : { minWidth: 0 }}
 			aria-label="Selected file"
-			ref={fileView}
+			ref={fileViewRef}
 			tabIndex={fullView ? -1 : undefined}
 			data-file-column-browser={fullView ? true : undefined}
 		>
