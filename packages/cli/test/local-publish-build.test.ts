@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { test } from 'node:test'
 import {
 	isResourceLimitRefusal,
@@ -198,6 +198,8 @@ function repoWithKodyRemote(files: Record<string, string>) {
 
 function fakePublishCall(input: {
 	remote: string
+	/** What `packageGetGitRemote` returns; defaults to the bare repo path. */
+	mintedRemote?: string
 	confirm?: (expected: string) => string
 }) {
 	const calls: Array<{ operationId: string; params: Record<string, unknown> }> =
@@ -206,7 +208,7 @@ function fakePublishCall(input: {
 		calls.push({ operationId, params })
 		if (operationId === 'packageGetGitRemote') {
 			return {
-				remote: input.remote,
+				remote: input.mintedRemote ?? input.remote,
 				git_extra_header: 'Authorization: Bearer minted-for-this-publish',
 			}
 		}
@@ -330,7 +332,10 @@ test('--build local never builds or uploads a commit Kody does not confirm', asy
 		runPublishWithBuild({
 			build: 'local',
 			target: { kody_id: '@me/pkg' },
-			call: async () => {
+			call: async (operationId, params) => {
+				if (operationId !== 'packagePublishBuildCreate') {
+					return await kody.call(operationId, params)
+				}
 				throw new Error(
 					'Kody sees abc, not your commit def. Nothing was built.',
 				)
@@ -349,9 +354,61 @@ test('--build local never builds or uploads a commit Kody does not confirm', asy
 	assert.equal(server.sealed(), null)
 	assert.deepEqual(
 		kody.calls.map((entry) => entry.operationId),
-		['packageGetGitRemote', 'packagePublishBuildCreate'],
+		['packageGetGitRemote', 'packagePublishBuildCreate', 'packageGetGitRemote'],
 	)
 })
+
+/**
+ * Serves a bare repo over git smart HTTP (`git http-backend`) and answers 401
+ * unless the request carries `authorization`, like a Kody minted remote.
+ */
+async function authenticatedGitRemote(bareDir: string, authorization: string) {
+	const server = createServer((request, response) => {
+		if (request.headers.authorization !== authorization) {
+			response.writeHead(401, { 'www-authenticate': 'Basic realm="kody"' })
+			response.end()
+			return
+		}
+		const url = new URL(request.url ?? '/', 'http://127.0.0.1')
+		const backend = spawn('git', ['http-backend'], {
+			env: {
+				...process.env,
+				GIT_PROJECT_ROOT: dirname(bareDir),
+				GIT_HTTP_EXPORT_ALL: '1',
+				REMOTE_USER: 'x',
+				REQUEST_METHOD: request.method ?? 'GET',
+				PATH_INFO: url.pathname,
+				QUERY_STRING: url.search.slice(1),
+				CONTENT_TYPE: request.headers['content-type'] ?? '',
+				HTTP_CONTENT_ENCODING: request.headers['content-encoding'] ?? '',
+				HTTP_GIT_PROTOCOL: String(request.headers['git-protocol'] ?? ''),
+			},
+		})
+		request.pipe(backend.stdin)
+		const chunks: Array<Buffer> = []
+		backend.stdout.on('data', (chunk: Buffer) => chunks.push(chunk))
+		backend.on('close', () => {
+			const output = Buffer.concat(chunks)
+			const split = output.indexOf('\r\n\r\n')
+			const headers = output.subarray(0, split).toString('utf8').split('\r\n')
+			let status = 200
+			for (const line of headers) {
+				const [name, ...rest] = line.split(':')
+				const value = rest.join(':').trim()
+				if (name!.toLowerCase() === 'status') status = Number.parseInt(value)
+				else response.setHeader(name!, value)
+			}
+			response.writeHead(status)
+			response.end(output.subarray(split + 4))
+		})
+	})
+	await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+	const { port } = server.address() as AddressInfo
+	return {
+		url: `http://127.0.0.1:${port}/${basename(bareDir)}`,
+		close: () => new Promise((resolve) => server.close(resolve)),
+	}
+}
 
 test('--build local pushes with a remote Kody mints, not the expired credential the clone stored', async () => {
 	const { dir, remote } = repoWithKodyRemote({
@@ -364,6 +421,10 @@ test('--build local pushes with a remote Kody mints, not the expired credential 
 		response.writeHead(403).end('token expired')
 	})
 	await new Promise<void>((resolve) => expired.listen(0, '127.0.0.1', resolve))
+	const minted = await authenticatedGitRemote(
+		remote,
+		'Bearer minted-for-this-publish',
+	)
 	try {
 		const { port } = expired.address() as AddressInfo
 		git(
@@ -376,7 +437,7 @@ test('--build local pushes with a remote Kody mints, not the expired credential 
 		writeFileSync(join(dir, 'index.ts'), 'export default 2')
 		git(dir, 'commit', '--quiet', '-am', 'local change')
 		const head = git(dir, 'rev-parse', 'HEAD')
-		const kody = fakePublishCall({ remote })
+		const kody = fakePublishCall({ remote, mintedRemote: minted.url })
 		const result = await runPublishWithBuild({
 			build: 'local',
 			target: { kody_id: '@me/pkg' },
@@ -392,6 +453,7 @@ test('--build local pushes with a remote Kody mints, not the expired credential 
 		assert.equal(git(remote, 'rev-parse', 'refs/heads/main'), head)
 	} finally {
 		await new Promise((resolve) => expired.close(resolve))
+		await minted.close()
 	}
 })
 
