@@ -46,10 +46,11 @@ sequenceDiagram
   `CF-Connecting-IP` on those routes. `POST /v1/capability-proxy/gateway-fetch`
   also forwards the allowlisted gateway headers (`X-Kody-Gateway-Url`,
   `X-Kody-Gateway-Method`, `X-Kody-Gateway-Package-Id`,
-  `X-Kody-Gateway-Headers`, `x-kody-secret-resolution`) and does not apply the 5
-  MiB buffered-body cap; it still respects the Cloudflare Worker upload limit
-  (~100 MiB Free/Pro) and returns JSON `413 payload_too_large` when
-  `Content-Length` exceeds that limit (see the
+  `X-Kody-Gateway-Headers`, `X-Kody-Gateway-Credentials`, and
+  `x-kody-secret-resolution`) and does not apply the 5 MiB buffered-body cap; it
+  still respects the Cloudflare Worker upload limit (~100 MiB Free/Pro) and
+  returns JSON `413 payload_too_large` when `Content-Length` exceeds that limit
+  (see the
   [CLI streaming gateway-fetch contract](../contracts/cli-streaming-gateway-fetch.md)).
   `POST /v1/packages/check-uploads` carries a whole package tree (up to 24 MiB,
   `Content-Length` required) and never reaches origin: the edge asks origin for
