@@ -44,10 +44,11 @@ async function setup(role: OrgRole = 'owner') {
 		createdAt: now,
 	})
 	const org = ownerIdFromStored(ownerId)
-	for (const [id, userId, name] of [
+	const packages: Array<[id: string, userId: string, name: string]> = [
 		['pkg-rooms', String(org), '@owneruser/rooms'],
 		['pkg-elsewhere', 'other-org', '@other/rooms'],
-	]) {
+	]
+	for (const [id, userId, name] of packages) {
 		sqlite
 			.prepare(
 				`INSERT INTO saved_packages (
