@@ -113,7 +113,8 @@ export function scheduledOutcomeForRetentionFailure(input: {
 		case 'row_validation_failed':
 		case 'timed_out':
 		case 'aborted':
-		case 'unexpected': {
+		case 'unexpected':
+		case 'purge_webhook_failed': {
 			const cause = reportableCause(failure)
 			console.error(`scheduled_lane_failed lane=${lane}`, cause)
 			Sentry.withScope((scope) => {

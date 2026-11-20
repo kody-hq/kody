@@ -1708,6 +1708,11 @@ async function deleteUserAccountImpl(input: {
 	 * through the guest alias, so they must survive the deletion.
 	 */
 	keepOAuthGrants?: boolean
+	/**
+	 * Purge lane: runs after Stripe cleanup and before the D1 delete. A throw
+	 * stops the deletion with every D1 row still in place.
+	 */
+	beforeD1Delete?: () => Promise<void>
 }): Promise<AccountDeletionResult> {
 	const personUserId = input.personUserId ?? input.mcpUserId
 	const purgeSoftDeleted = input.purgeSoftDeleted === true
@@ -2110,6 +2115,8 @@ async function deleteUserAccountImpl(input: {
 			warnings,
 		})
 	}
+
+	await input.beforeD1Delete?.()
 
 	try {
 		const d1Cleanup = await deleteUserScopedRowsAndUser({

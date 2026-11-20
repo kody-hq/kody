@@ -14,6 +14,7 @@
  * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
+import * as Sentry from '@sentry/cloudflare'
 import { z } from 'zod'
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
 import { shouldRunRetentionCron } from '@kody-internal/shared/jobs/scheduled-lanes.ts'
@@ -39,7 +40,12 @@ import {
 	d1Run,
 	type RetentionContext,
 } from '#worker/scheduled/retention/d1.ts'
-import { assertNever } from '#worker/scheduled/retention/failures.ts'
+import {
+	assertNever,
+	type PurgeWebhookFailed,
+	reportableCause,
+	RetentionError,
+} from '#worker/scheduled/retention/failures.ts'
 import {
 	dbIdColumn,
 	ownerIdColumn,
@@ -327,11 +333,16 @@ async function hardPurgeCandidate(
 	candidate: SoftDeletePurgeCandidate,
 ) {
 	if (lane === 'org') {
-		await hardPurgeOrg({ env, orgId: candidate.id })
+		await hardPurgeOrg({ env, orgId: candidate.id, notifyPurgeWebhook: true })
 		return
 	}
 	if (candidate.dbUserId == null) throw new MissingDbUserIdError(candidate.id)
-	const user = { env, dbUserId: candidate.dbUserId, stableUserId: candidate.id }
+	const user = {
+		env,
+		dbUserId: candidate.dbUserId,
+		stableUserId: candidate.id,
+		notifyPurgeWebhook: true,
+	}
 	switch (lane) {
 		case 'user':
 			await hardPurgeSoftDeletedUser(user)
@@ -344,9 +355,30 @@ async function hardPurgeCandidate(
 	}
 }
 
+function purgeWebhookFailure(error: unknown): PurgeWebhookFailed | null {
+	return error instanceof RetentionError &&
+		error.failure.kind === 'purge_webhook_failed'
+		? error.failure
+		: null
+}
+
+function reportPurgeWebhookFailure(failure: PurgeWebhookFailed) {
+	Sentry.withScope((scope) => {
+		scope.setTag('scheduled.lane', 'soft_delete_purge')
+		scope.setTag('retention.failure_kind', failure.kind)
+		scope.setContext('purge_webhook', {
+			kind: failure.ownerKind,
+			id: failure.ownerId,
+			status: failure.status,
+		})
+		Sentry.captureException(reportableCause(failure))
+	})
+}
+
 /**
  * Records a failed purge. The failure audit is best-effort: an audit write
- * that fails is logged and the pass moves on to the next candidate.
+ * that fails is logged and the pass moves on to the next candidate. A purge
+ * webhook failure gets its own audit action and a Sentry report.
  */
 async function recordCandidateFailure(input: {
 	env: Env
@@ -360,6 +392,8 @@ async function recordCandidateFailure(input: {
 	)
 	const cleanupErrors = purgeFailureDetails(input.error)
 	const lane = candidate.legacy ? 'legacy_deletion_finish' : 'soft_delete'
+	const webhookFailure = purgeWebhookFailure(input.error)
+	if (webhookFailure) reportPurgeWebhookFailure(webhookFailure)
 	console.warn(
 		JSON.stringify({
 			message: 'soft_delete_purge_candidate_failed',
@@ -373,14 +407,25 @@ async function recordCandidateFailure(input: {
 		await logOrgAuditEvent({
 			env: input.env,
 			orgId: candidate.id,
-			action:
-				candidate.kind === 'org' ? 'org.purge_failed' : 'user.purge_failed',
+			action: webhookFailure
+				? 'purge.webhook_failed'
+				: candidate.kind === 'org'
+					? 'org.purge_failed'
+					: 'user.purge_failed',
 			result: 'failure',
-			detailsJson: JSON.stringify({
-				error: message,
-				...(candidate.legacy ? { lane } : {}),
-				...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
-			}),
+			detailsJson: JSON.stringify(
+				webhookFailure
+					? {
+							kind: webhookFailure.ownerKind,
+							id: webhookFailure.ownerId,
+							status: webhookFailure.status,
+						}
+					: {
+							error: message,
+							...(candidate.legacy ? { lane } : {}),
+							...(cleanupErrors.length > 0 ? { cleanupErrors } : {}),
+						},
+			),
 			createdAt: input.nowIso,
 		})
 	} catch (auditError) {
