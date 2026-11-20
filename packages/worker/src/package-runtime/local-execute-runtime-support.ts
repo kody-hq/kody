@@ -1220,14 +1220,14 @@ export function __kodyCreatePackageBoundStorage(packageId) {
 	};
 }
 
-// events.dispatch as this package: origin maps the binding back to the
-// package and emits through the same dispatch path as hosted runs.
-export function __kodyCreatePackageBoundEvents(packageId) {
-	const binding = __kodyPackageBinding(packageId) ?? "";
+// Local execute cannot prove which package produced an event (the caller
+// controls the code), so it cannot emit. Run the export on Kody instead.
+export function __kodyCreatePackageBoundEvents() {
 	return {
-		dispatch: async (input) => {
-			const args = input && typeof input === "object" ? input : {};
-			return await kody.packageEventDispatch({ ...args, packageId: binding });
+		dispatch: async () => {
+			throw new Error(
+				"events.dispatch is not available in local execute: Kody cannot verify that package code produced the event. Run the package's export on Kody (hosted execute, a job, or a webhook) to emit.",
+			);
 		},
 	};
 }
@@ -1245,7 +1245,6 @@ const __kodyBindingScopedKodyCalls = new Set([
 	"packageStorageClear",
 	"packageSecretGet",
 	"packageSecretHas",
-	"packageEventDispatch",
 ]);
 
 export function __kodyCreatePackageBoundFetch(packageId) {

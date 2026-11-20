@@ -50,31 +50,6 @@ vi.mock('#worker/credentials/resolve-credential.ts', () => ({
 	}),
 }))
 
-const eventDispatches = vi.hoisted(
-	() =>
-		[] as Array<{
-			loadedPackageIds: Array<string>
-			input: unknown
-			emittingPackageId: string | null
-		}>,
-)
-
-vi.mock('#worker/package-invocations/service.ts', () => ({
-	nonPackageEventEmitMessage: 'events.dispatch requires package code',
-	createRunPackageEventTools: (options: {
-		loadedPackageIds: ReadonlySet<string>
-	}) => ({
-		dispatch: async (input: unknown, emittingPackageId: string | null) => {
-			eventDispatches.push({
-				loadedPackageIds: [...options.loadedPackageIds],
-				input,
-				emittingPackageId,
-			})
-			return { status: 'enqueued' }
-		},
-	}),
-}))
-
 const mcpToolCalls = vi.hoisted(
 	() => [] as Array<{ localPackageStamp: unknown; args: unknown }>,
 )
@@ -236,24 +211,7 @@ async function packageSecretGet(db: D1Database, packageId: string) {
 	return tools.packageSecretGet?.({ alias: 'client-token', packageId })
 }
 
-async function packageEventDispatch(db: D1Database, packageId: string) {
-	const tools = await createCapabilityProxyPackageHostTools({
-		env: testEnv(db),
-		callerContext: createContext(db).callerContext,
-	})
-	return tools.packageEventDispatch?.({
-		topic: '@local/rooms.message.posted',
-		idempotencyKey: 'k-1',
-		packageId,
-	})
-}
-
 const packageOperations = [
-	{
-		name: 'packageEventDispatch',
-		run: packageEventDispatch,
-		expected: { status: 'enqueued' },
-	},
 	{
 		name: 'packageStorageGet',
 		run: packageStorageGet,
@@ -349,26 +307,6 @@ for (const operation of packageOperations) {
 		}
 	})
 }
-
-test('packageEventDispatch emits as the verified package, and refuses code outside a package', async () => {
-	const { db } = createDb()
-	eventDispatches.length = 0
-	const binding = await bindingFor(db, ownedPackageId)
-	await expect(packageEventDispatch(db, binding)).resolves.toEqual({
-		status: 'enqueued',
-	})
-	expect(eventDispatches).toEqual([
-		{
-			loadedPackageIds: [ownedPackageId],
-			input: { topic: '@local/rooms.message.posted', idempotencyKey: 'k-1' },
-			emittingPackageId: ownedPackageId,
-		},
-	])
-	await expect(packageEventDispatch(db, '')).rejects.toThrow(
-		'events.dispatch requires package code',
-	)
-	expect(eventDispatches).toHaveLength(1)
-})
 
 test('packageStorage acts as the verified package, not the wire value', async () => {
 	const { db } = createDb()
