@@ -2267,6 +2267,7 @@ export async function decideOAuthAuthorization({
  * Legacy OAuth-protected JSON helper for grant props. Remains outside the MCP
  * resource (`/mcp`); callers present a Bearer token minted for this origin's
  * MCP audience. Not the OIDC UserInfo endpoint.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export async function handleOAuthProtectedApiMe(request: Request, env: Env) {
 	const url = new URL(request.url)

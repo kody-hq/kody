@@ -27,6 +27,7 @@ import {
  * matching person (legacy personal-org soft-delete without account deletion)
  * must not lose owner inventory; block until the account is deleted or the
  * org is repaired.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 type PersonalOrgHardPurgeRelation =
 	| 'soft_deleted_person'

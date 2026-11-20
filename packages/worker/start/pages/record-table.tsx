@@ -78,8 +78,6 @@ export type RecordTableColumn = {
 	label: string
 	/** Numeric columns right-align and take tabular figures. */
 	align?: 'end'
-	/** Legacy layout hint. Columns now stay visible when the table narrows. */
-	drop?: 1 | 2 | 3
 	/**
 	 * The row's heading: carries the link, and is the card's title rather
 	 * than a labeled field below 620px. Exactly one column should set it.
@@ -627,7 +625,6 @@ export function RecordTable(props: RecordTableProps) {
 											? 'descending'
 											: undefined
 								}
-								data-drop={column.drop ? String(column.drop) : undefined}
 								css={[headCellCss, ...columnCss(column)]}
 							>
 								{model.getColumn(column.key)!.getCanSort() ? (
@@ -795,7 +792,6 @@ export function RecordTable(props: RecordTableProps) {
 										<td
 											key={column.key}
 											data-label={column.label}
-											data-drop={column.drop ? String(column.drop) : undefined}
 											data-primary={column.primary ? 'true' : undefined}
 											css={[
 												column.primary ? primaryCellCss : cellCss,

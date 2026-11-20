@@ -378,6 +378,7 @@ export type CredentialSaveBody =
  * What is wrong with the link itself, so the form cannot save it as asked.
  * Matches the legacy intake page: a bad expiry or a package Key for a
  * package this org does not have.
+ * Remove when: `/connect/secret-set` gets no traffic; then delete the redirect.
  */
 export function keyLinkProblem(input: {
 	query: ParsedCredentialCreateQuery

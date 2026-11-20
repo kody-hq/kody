@@ -32,6 +32,7 @@ export function isSecureCredentialUrl(raw: string): boolean {
  * and a loopback or public host, never a private, link-local, or reserved IP
  * literal. Checked on save and before each token request, not when reading
  * stored rows, so a legacy row still lists.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function isPublicCredentialEndpoint(raw: string): boolean {
 	if (!isSecureCredentialUrl(raw)) return false

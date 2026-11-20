@@ -86,6 +86,7 @@ function getSessionMaxAgeSeconds(session: Pick<AuthSession, 'rememberMe'>) {
  * timestamp to grant a bounded grace window, so a missing `issuedAt`
  * (legacy v2 cookies from before the field was stamped on every write)
  * is treated as already expired.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function getAuthSessionExpiresAtMs(input: {
 	rememberMe: boolean
@@ -133,6 +134,7 @@ function createStoredAuthSession(
  * True when the signed cookie predates (or cannot prove it postdates) a
  * password change. Missing issuedAt fails closed once password_changed_at is
  * set, so legacy cookies cannot survive a reset.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function isAuthSessionInvalidatedByPasswordChange(input: {
 	issuedAt: number | undefined

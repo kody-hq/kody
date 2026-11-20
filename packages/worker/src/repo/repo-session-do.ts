@@ -2022,6 +2022,7 @@ class RepoSessionBase extends DurableObject<Env> {
 		/**
 		 * Forwarded to `runRepoChecks`. Platform codemods pass false so
 		 * legacy credential patterns stay migratable (#3836 phase 1).
+		 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 		 */
 		enforceCredentialStamp?: boolean
 		/**

@@ -321,6 +321,7 @@ export type PlanLimits = {
 	 * Free/Standard/Pro set a weekly total so a 1–2 day burst cannot spend
 	 * a full week of daily headroom. `max` and legacy Standard/Pro leave
 	 * this unset so their daily-only behavior stays unchanged.
+	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
 	 */
 	maxExecuteUniqueWorkersPerWeek: number | null
 	/**
@@ -334,6 +335,7 @@ export type PlanLimits = {
 	 * Maximum sandbox outbound fetches per UTC week (Monday–Sunday).
 	 * `null` means no weekly window. Same public-vs-legacy/`max` rule as
 	 * {@link PlanLimits.maxExecuteUniqueWorkersPerWeek}.
+	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
 	 */
 	maxOutboundFetchesPerWeek: number | null
 	/**
@@ -351,6 +353,7 @@ export type PlanLimits = {
 	 * no weekly window. Public Free sits modestly above job runs. Public
 	 * Standard, Pro, and `max` are burst-friendly above job runs. Legacy
 	 * Standard/Pro stay at the earlier job-matched ceilings.
+	 * Remove when: no org has `entitlement_ladder = 'legacy'`.
 	 */
 	maxAutomationInvocationsPerDay: number
 	/**
@@ -675,6 +678,7 @@ export const planLimits: Record<PlanName, PlanLimits> = {
  * public table. Those allotments are not hard-cut and not charged for
  * legacy accounts (no credit wallet). Automation daily ceilings stay at
  * the earlier job-matched values (Standard 10_000, Pro 20_000).
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export const legacyPlanLimits: Record<'standard' | 'pro', PlanLimits> = {
 	standard: {
@@ -888,6 +892,7 @@ const proCreditsUnlockedPlanLimits = unlockCreditsLimits(
  * per-seat include), unlocked when funded. Legacy applies only to retired
  * Standard/Pro; free and `max` always use {@link planLimits} and ignore
  * seats (a Free org is one pool).
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export function resolvePlanLimits(
 	plan: PlanName,
@@ -1044,6 +1049,7 @@ export const weeklyComputeWindowNote =
  * Weekly hard cap for execute or outbound on the public ladder.
  * Returns `null` when the plan/ladder has no weekly window (`max`,
  * legacy Standard/Pro, or any other resource).
+ * Remove when: no org has `entitlement_ladder = 'legacy'`.
  */
 export function resolveWeeklyPlanLimit(
 	plan: PlanName,

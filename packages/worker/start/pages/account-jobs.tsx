@@ -331,9 +331,9 @@ export function AccountJobsPage({
 				columns={[
 					{ key: 'name', label: 'Job', primary: true },
 					{ key: 'status', label: 'Status' },
-					{ key: 'schedule', label: 'Schedule', drop: 1 },
-					{ key: 'package', label: 'Package', drop: 2 },
-					{ key: 'flags', label: 'Flags', drop: 3 },
+					{ key: 'schedule', label: 'Schedule' },
+					{ key: 'package', label: 'Package' },
+					{ key: 'flags', label: 'Flags' },
 					{ key: 'runs', label: 'Runs', align: 'end' },
 				]}
 				rows={filteredJobs.map((item) => ({

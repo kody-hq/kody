@@ -403,6 +403,7 @@ export async function connectAppMcpClient(
 	// Preview and production Workers are multi-isolate: the legacy
 	// sessionful SDK v1 client initializes, then hangs on the next request.
 	// Pin the stateless 2026-07-28 lane so each tool call is self-contained.
+	// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 	let client: ModernClient
 	let transport: ModernStreamableHTTPClientTransport
 	try {

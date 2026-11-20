@@ -1858,6 +1858,7 @@ export async function runRepoChecks(input: {
 	 * not fail `runRepoChecks` early. Community install and platform
 	 * codemods pass false so legacy packages remain forkable and migratable
 	 * until phase 2/3 of #3836. Omit (default true) for authoring publish.
+	 * Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 	 */
 	enforceCredentialStamp?: boolean
 	/**

@@ -255,6 +255,7 @@ export async function mintPackageOwnedWebhookHmacCiphertext(input: {
  * An existing ciphertext is never replaced: destination grants approved
  * `{{webhookSecret}}` for that value, and a rotated URL's grace window still
  * receives deliveries signed with it.
+ * Remove when: no webhook endpoint still signs with a named secret instead of package-owned HMAC.
  */
 export async function resolveHmacCiphertextForMint(input: {
 	env: Env

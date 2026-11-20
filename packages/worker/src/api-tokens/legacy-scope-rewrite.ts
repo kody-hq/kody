@@ -135,6 +135,7 @@ const tokensRead = [
 /**
  * Fixed §5.3 map. Values are the expanded org-permission set for one legacy
  * scope. Write scopes include the matching read set.
+ * Permanent: org-bound and legacy-scoped tokens stay valid until they expire or are revoked.
  */
 export const legacyApiTokenScopeMap = {
 	'account:read': [...accountRead],
@@ -214,6 +215,7 @@ export function isLegacyApiTokenScope(
 /**
  * Expand, de-duplicate, and sort. Throws when a value is neither a known
  * legacy scope nor an org permission.
+ * Permanent: org-bound and legacy-scoped tokens stay valid until they expire or are revoked.
  */
 export function rewriteLegacyApiTokenScopes(
 	scopes: ReadonlyArray<string>,

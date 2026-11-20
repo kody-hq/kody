@@ -144,7 +144,6 @@ export async function loadAccountPackageApprovePublishData(input: {
 			kodyId: savedPackage.kodyId,
 		}),
 		listing,
-		listingWillLagAfterPromote: false,
 		secretMountCompatNotice:
 			pendingCommit == null
 				? null

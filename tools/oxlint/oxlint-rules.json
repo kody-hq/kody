@@ -52,6 +52,7 @@
 		"kody-custom/no-raw-form-control": "error",
 		"kody-custom/no-tautological-absence": "error",
 		"kody-custom/no-test-hooks-in-production": "error",
+		"kody-custom/require-exit-condition-comment": "error",
 		"kody-custom/prefer-loader-data-types": "error",
 		"typescript/no-explicit-any": "error",
 		"react/exhaustive-deps": "error",

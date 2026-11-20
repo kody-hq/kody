@@ -963,6 +963,77 @@ const noTestHooksInProductionRule = {
 	},
 }
 
+const EXIT_CONDITION_TOPIC_PATTERN =
+	/\b(?:legacy|compat|compatibility|back(?:wards?)?[- ]compat\w*|for now|temporar(?:y|ily) (?:fix|workaround|shim|hack|path|alias|bridge|branch|copy|redirect|lane|support))\b/i
+const EXIT_CONDITION_MARKER_PATTERN = /\b(?:Remove when|Permanent):[ \t]*[^\s*]/
+
+function commentGroups(comments, sourceText) {
+	const groups = []
+	for (const comment of comments) {
+		const previous = groups.at(-1)?.at(-1)
+		const between = previous
+			? sourceText.slice(previous.range[1], comment.range[0])
+			: null
+		const adjacent =
+			previous &&
+			previous.type === 'Line' &&
+			comment.type === 'Line' &&
+			/^[ \t]*\r?\n[ \t]*$/.test(between)
+		if (adjacent) groups.at(-1).push(comment)
+		else groups.push([comment])
+	}
+	return groups
+}
+
+const requireExitConditionCommentRule = {
+	meta: {
+		type: 'problem',
+		docs: {
+			description:
+				'Comments about legacy, compatibility, or temporary paths state how the path ends.',
+		},
+		schema: [],
+		messages: {
+			missingExitCondition:
+				'Say how this path ends: add `Remove when: <issue or metric>` to this comment, or `Permanent: <why>` when the behavior stays. If the condition already holds, delete the path instead.',
+		},
+	},
+	createOnce(context) {
+		return {
+			Program() {
+				if (
+					NON_PRODUCTION_PATH_PATTERN.test(repoRelativePath(context.filename))
+				) {
+					return
+				}
+				const sourceText = context.sourceCode.getText()
+				const comments = context.sourceCode.getAllComments()
+				for (const group of commentGroups(comments, sourceText)) {
+					const text = group
+						.map((comment) => comment.value)
+						.join('\n')
+						.replaceAll(/`[^`\n]*`/g, '')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
+					if (/oxlint-disable|eslint-disable/.test(text)) continue
+					if (!EXIT_CONDITION_TOPIC_PATTERN.test(text)) continue
+					const raw = group
+						.map((comment) => comment.value)
+						.join('\n')
+						.replaceAll(/\s*\n[\s*]*/g, ' ')
+					if (EXIT_CONDITION_MARKER_PATTERN.test(raw)) continue
+					context.report({
+						loc: {
+							start: context.sourceCode.getLocFromIndex(group[0].range[0]),
+							end: context.sourceCode.getLocFromIndex(group.at(-1).range[1]),
+						},
+						messageId: 'missingExitCondition',
+					})
+				}
+			},
+		}
+	},
+}
+
 const plugin = {
 	meta: { name: 'kody-custom' },
 	rules: {
@@ -979,6 +1050,7 @@ const plugin = {
 		'no-raw-form-control': noRawFormControlRule,
 		'no-tautological-absence': noTautologicalAbsenceRule,
 		'no-test-hooks-in-production': noTestHooksInProductionRule,
+		'require-exit-condition-comment': requireExitConditionCommentRule,
 		'prefer-loader-data-types': preferLoaderDataTypesRule,
 		'user-meter-budget-check-via-helper': userMeterBudgetCheckViaHelperRule,
 	},

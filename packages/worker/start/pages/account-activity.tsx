@@ -392,10 +392,10 @@ export function AccountActivityPage({
 						}
 						columns={[
 							{ key: 'name', label: 'Run', primary: true },
-							{ key: 'surface', label: 'Surface', drop: 3 },
+							{ key: 'surface', label: 'Surface' },
 							{ key: 'status', label: 'Status' },
-							{ key: 'error', label: 'Error', drop: 1 },
-							{ key: 'started', label: 'Started', drop: 2 },
+							{ key: 'error', label: 'Error' },
+							{ key: 'started', label: 'Started' },
 							{ key: 'duration', label: 'Duration', align: 'end' },
 						]}
 						rows={runs.map((item) => {

@@ -182,6 +182,7 @@ export type RunRecordContext = {
 	 * Who started this run (person + client). Omitted on legacy rows and when
 	 * the caller had no request context. Prefer
 	 * {@link runStartedByFromRequest} at begin/claim sites.
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
 	 */
 	startedBy?: RunStartedBy | null
 	metadata?: Record<string, unknown> | null
@@ -250,6 +251,7 @@ export type RunRecord = {
 	/**
 	 * Who started this run. `null` for legacy rows recorded before started_by
 	 * existed, or when begin had no request context.
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
 	 */
 	startedBy: RunStartedBy | null
 	metadata: Record<string, unknown>
@@ -413,6 +415,7 @@ export function jobRunTriggerForContext(input: {
  * Resolve a job run's trigger for UI and APIs. Prefer the stored metadata
  * value (including any future/non-canonical string); fall back for legacy
  * rows that only have the scheduled-job idempotency key.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function jobRunTriggerFromRecord(
 	run: Pick<RunRecord, 'idempotencyKey' | 'metadata'>,
@@ -480,6 +483,7 @@ export const runRecordRetentionEmptyBackoffMaxMs = 15 * 60 * 1000
  * `package_invocations` sweep used — and are pruned by the DO's own retention
  * passes. `in_progress` rows are never pruned so duplicate requests cannot
  * bypass the in-flight guard.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export const packageInvocationLedgerRetentionDays = 90
 
@@ -489,5 +493,6 @@ export const packageInvocationLedgerRetentionDays = 90
  * from run-list caps). Active / running rows are never age-pruned. Stale
  * `creating` reservations use a short TTL
  * ({@link workflowProjectionCreatingTtlMs} in `workflow-projection.ts`).
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export const workflowProjectionRetentionDays = 90

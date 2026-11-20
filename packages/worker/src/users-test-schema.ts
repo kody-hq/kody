@@ -171,6 +171,7 @@ export async function ensureUsersTestSchema(input: {
 	} catch {
 		// Index already exists, or a partial legacy index remains from an
 		// earlier suite sharing this database.
+		// Permanent: stored data or clients from before this change still exist.
 	}
 	try {
 		// Ignore blank defaults from fixture inserts that omit the column.

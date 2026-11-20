@@ -87,6 +87,7 @@ async function loadInboundMailboxAccount(db: D1Database, ownerId: OwnerId) {
 	if (personal) {
 		// ownerId is the personal org id (mailbox owner). Match via
 		// personal_org_id or legacy equal-id stable_user_id.
+		// Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 		const row = await db
 			.prepare(
 				`SELECT u.stable_user_id AS actor_person_id, u.email AS email, o.plan AS plan, o.stripe_plan AS stripe_plan,
@@ -249,6 +250,7 @@ export async function handleInboundEmail(
 				localPart: route.localBase,
 				// Replies and threading always use the canonical system domain,
 				// even when the message arrived on a legacy one.
+				// Permanent: old public links and addresses keep resolving.
 				systemDomain: route.systemDomain,
 				ctx,
 			})
@@ -266,6 +268,7 @@ export async function handleInboundEmail(
 	const localPart = route.localPart
 	// Provisioning always records the canonical address (first accepted
 	// domain), even when the message arrived on a legacy domain.
+	// Permanent: old public links and addresses keep resolving.
 	const platformDomain = acceptedUserDomains[0]
 	if (!platformDomain) {
 		message.setReject('Email routing is not configured.')

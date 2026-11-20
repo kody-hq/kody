@@ -8,6 +8,7 @@ import {
  * How each rehearsal person account comes into existence. §12.2 needs both
  * id shapes: seed-path users get the legacy `sha256(email)` stable id, while
  * admin-created and self-signup users get random ids.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 type RehearsalUserOrigin = 'seed-sql' | 'admin-create' | 'signup'
 
@@ -30,6 +31,7 @@ export type RehearsalUser = {
  *   pending grant invite to alice; admin-created (random id); auto-refill
  *   configured.
  * - dave: real signup (random id); forked the org listing.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export const rehearsalUsers: ReadonlyArray<RehearsalUser> = [
 	{

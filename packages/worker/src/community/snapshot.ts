@@ -5,6 +5,7 @@ const communitySnapshotPrefix = 'community-snapshot:v1'
  * (listing pins read `source-snapshot:v1:{sourceId}:{pinnedCommit}`), but keys
  * written before that stay in KV, so unpublish, account export, and account
  * deletion still address them.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function buildCommunitySnapshotKvKey(listingId: string) {
 	return `${communitySnapshotPrefix}:${listingId}`

@@ -98,6 +98,7 @@ export function buildPackageAppUrl(input: {
  *   `{leaf}--{handle}` host on the package-app domain. The package is bound
  *   by hostname, so the path has no username or slug. The app is mounted at
  *   `/`.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export type PackageAppMount =
 	| 'user-subdomain'
@@ -138,6 +139,7 @@ export function isDnsSafeUsername(username: string) {
  * `/-/`, …) cannot use the short path: the serving parser treats them as host
  * roots or prefixes, not package leaves. Those fall back to the legacy
  * `/packages/{leaf}` mount, which still routes today.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function buildPackageAppSubdomainPath(input: {
 	kodyId: string
@@ -232,6 +234,7 @@ export function buildPackageAppRootOrigin(input: {
  * when the pair has no valid host label (for example a legacy leaf that is not
  * lower-kebab-case), so callers fall back to another address instead of
  * emitting a host that cannot route.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 export function buildPackageAppHostOrigin(input: {
 	packageAppOrigin: string

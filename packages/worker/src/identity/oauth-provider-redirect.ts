@@ -11,6 +11,7 @@ export function getCallbackRedirectUri(
 	// legacy host (APP_LEGACY_HOSTS, both registered with providers during a
 	// domain migration). Other hosts (the workers.dev backup trigger) keep
 	// using the configured canonical callback as before.
+	// Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
 	const base = (() => {
 		if (!env.APP_BASE_URL) return url
 		let canonical: URL

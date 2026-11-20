@@ -591,8 +591,8 @@ export function AdminUsersPage(props: {
 				}
 				columns={[
 					{ key: 'username', label: 'Username', primary: true },
-					{ key: 'email', label: 'Email', drop: 1 },
-					{ key: 'roles', label: 'Roles', drop: 2 },
+					{ key: 'email', label: 'Email' },
+					{ key: 'roles', label: 'Roles' },
 				]}
 				rows={users.map((user) => ({
 					id: user.stableUserId,

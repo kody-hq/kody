@@ -6,6 +6,7 @@
  * domains) at the host root under the `/-/` system prefix, never under a
  * package mount. The legacy `/_kody/auth/*` paths are still served so existing
  * kit clients keep working.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
 export const packageAppOauthPaths = {
@@ -28,7 +29,10 @@ export const packageAppOauthLegacyPaths = {
 const canonicalAuthPrefix = '/-/auth'
 const legacyAuthPrefix = '/_kody/auth'
 
-/** True for the canonical or legacy host auth root and anything below it. */
+/**
+ * True for the canonical or legacy host auth root and anything below it.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
+ */
 export function isPackageAppOauthHostAuthPathname(pathname: string) {
 	return (
 		pathname === canonicalAuthPrefix ||
@@ -38,7 +42,10 @@ export function isPackageAppOauthHostAuthPathname(pathname: string) {
 	)
 }
 
-/** Map a legacy `/_kody/auth/*` pathname to its canonical `/-/auth/*` form. */
+/**
+ * Map a legacy `/_kody/auth/*` pathname to its canonical `/-/auth/*` form.
+ * Permanent: stored data or clients from before this change still exist.
+ */
 export function normalizePackageAppOauthHostAuthPathname(pathname: string) {
 	if (pathname === legacyAuthPrefix) return canonicalAuthPrefix
 	if (pathname.startsWith(`${legacyAuthPrefix}/`)) {

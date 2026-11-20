@@ -6,6 +6,7 @@
  * soft-delete-read-filter: opt-out — grant sweep and vector retry read
  * soft-deleted mcp_memories rows to decide revoke vs keep and to repair
  * stranded Vectorize entries after a successful D1 soft-delete.
+ * Remove when: the ADR 0072 cleanup has deleted every team-org memory.
  */
 import {
 	chunkArray,

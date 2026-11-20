@@ -58,8 +58,8 @@ export function AccountWebhooksPage({
 						{ key: 'name', label: 'Webhook', primary: true },
 						{ key: 'package', label: 'Package' },
 						{ key: 'status', label: 'Status' },
-						{ key: 'mode', label: 'Mode', drop: 2 },
-						{ key: 'verification', label: 'Verification', drop: 1 },
+						{ key: 'mode', label: 'Mode' },
+						{ key: 'verification', label: 'Verification' },
 					]}
 					rows={webhooks.map((webhook) => ({
 						id: webhook.id,

@@ -14,6 +14,7 @@
  * - `/health`: the status page probes the legacy origin directly.
  * - `/__maintenance`: operator endpoints are invoked against a specific
  *   origin.
+ * Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
  */
 const stickyPathPrefixes = [
 	'/mcp',
@@ -54,6 +55,7 @@ export function parseLegacyHosts(configured: string | null | undefined) {
  * the first migration phase dual-serves both hosts with no redirects at all.
  *
  * Returns `null` when the request should be served normally.
+ * Permanent: saved MCP client configs keep pointing at legacy app hosts, so those hosts keep serving.
  */
 export function getLegacyHostRedirectResponse(input: {
 	request: Request
@@ -84,6 +86,7 @@ export function getLegacyHostRedirectResponse(input: {
 	// Only the configured canonical origin qualifies as a redirect target;
 	// the request-origin-first getAppBaseUrl would redirect a legacy host to
 	// itself.
+	// Remove when: issue #3836 phase 3 enforces credential stamps on every package.
 	const configuredBaseUrl = input.env.APP_BASE_URL?.trim()
 	if (!configuredBaseUrl) return null
 	let canonical: URL

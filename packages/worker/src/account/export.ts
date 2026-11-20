@@ -1789,11 +1789,13 @@ export async function createAccountExportManifest(input: {
 	/**
 	 * Person id for OAuth grants. Defaults to the same bytes as the owner id
 	 * (legacy equal-id personal orgs).
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	personUserId?: PersonId
 	/**
 	 * Backward-compatible single id: used as owner when `ownerUserId` is
 	 * omitted, and as person when `personUserId` is omitted.
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	mcpUserId?: OwnerId
 	generatedAt?: string

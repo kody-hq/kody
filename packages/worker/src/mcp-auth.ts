@@ -576,6 +576,7 @@ export async function handleMcpRequest({
 	// by the stateless SDK v2 lane. Every authenticated request records a
 	// lane data point so legacy-lane retirement is a metrics decision — see
 	// ./mcp/protocol-metrics.ts for the readout query.
+	// Remove when: MCP protocol metrics show no 2025-era lane traffic.
 	const classification = await classifyMcpProtocolRequest(request)
 	recordMcpProtocolEvent(env, {
 		lane: classification.lane,

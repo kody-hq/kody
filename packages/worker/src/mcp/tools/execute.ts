@@ -1707,7 +1707,10 @@ function isRunMetadata(value: unknown): value is ExecutionContextRunMetadata {
 	return Array.isArray((value as Partial<ExecutionContextRunMetadata>).attempts)
 }
 
-/** `ranOn` (and the legacy `executionContext`) plus its human line. */
+/**
+ * `ranOn` (and the legacy `executionContext`) plus its human line.
+ * Permanent: stored data or clients from before this change still exist.
+ */
 function ranOnParts(metadata: unknown, options: { running?: boolean } = {}) {
 	const ranOn = ranOnFromMetadata(metadata)
 	return {

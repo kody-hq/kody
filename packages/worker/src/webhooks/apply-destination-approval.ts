@@ -405,10 +405,12 @@ function legacyRowMatchesCredential(
 	const pinned = rowCredentialId(row)
 	if (resolvedCredentialId == null) {
 		// No auth credential on the destination: legacy rows without a pin match.
+		// Permanent: stored data or clients from before this change still exist.
 		return pinned == null
 	}
 	// A pin must equal today's resolved id. Unpinned legacy rows are upgraded
 	// only when migration has not yet attached an id (should be rare after 0123).
+	// Permanent: stored data or clients from before this change still exist.
 	if (pinned == null) return true
 	return pinned === resolvedCredentialId
 }

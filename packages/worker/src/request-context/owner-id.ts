@@ -14,6 +14,7 @@ import { personalOrgIdForPerson } from '#worker/orgs/personal-org-id.ts'
  * distinct signup org ids stay correct. Do not add another resolver:
  * background identity still goes through `resolveBackgroundMcpUser`. Does not
  * trim: a missing caller is still the empty string callers treat as absent.
+ * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
  */
 export function ownerIdFromCaller(caller: {
 	request?: { org: { id: OwnerId } } | null

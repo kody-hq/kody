@@ -199,6 +199,7 @@ export async function computePackageCapabilitySet(input: {
 		// Only recorded packageId participates in capability union. Legacy
 		// artifacts without packageId still appear in the snapshot pin, but
 		// runtime grants require bundler provenance packageId.
+		// Permanent: stored data or clients from before this change still exist.
 		const packageId = dependency.packageId?.trim()
 		if (!packageId) continue
 		// Artifact dependency lists are flat (no parent chain). Provenance is

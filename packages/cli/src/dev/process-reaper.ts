@@ -16,7 +16,10 @@ import psList from 'ps-list'
 
 export const devWorkDirPrefix = 'kody-dev-'
 const ownerFileName = 'owner.json'
-/** Legacy dirs without an owner file are only removed once this old. */
+/**
+ * Legacy dirs without an owner file are only removed once this old.
+ * Remove when: no supported CLI version writes dev dirs without an owner file.
+ */
 const legacyDirMinAgeMs = 10 * 60_000
 
 const reaperScript = `
@@ -136,6 +139,7 @@ export async function sweepStaleDevDirs(
 				const info = await stat(dir)
 				if (now - info.mtimeMs < legacyDirMinAgeMs) continue
 				// Legacy CLI without an owner file: only reap workerds whose parent died.
+				// Remove when: no supported CLI version writes dev dirs without an owner file.
 				if (workerds.some((item) => !isOrphaned(item, byPid, isAlive))) continue
 			}
 			for (const item of workerds) {

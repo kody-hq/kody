@@ -13,7 +13,10 @@
 export const artifactsHeadMovedWhilePublishingPhrase =
 	'Artifacts HEAD moved from "'
 
-/** Legacy wording still matched for in-flight DO builds / stored errors. */
+/**
+ * Legacy wording still matched for in-flight DO builds / stored errors.
+ * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
+ */
 export const artifactsHeadChangedBeforePublishLegacyPhrase =
 	'Artifacts HEAD changed from "'
 
@@ -41,6 +44,7 @@ export function buildPublishedCommitMovedDuringPublishMessage() {
 /**
  * Match current and legacy Artifacts HEAD race phrases. Both forms keep the
  * expected and actual SHAs between double quotes.
+ * Remove when: no stored message from before the wording change is inside the 90-day run retention window.
  */
 export function isArtifactsHeadChangedBeforePublishMessage(message: string) {
 	return (

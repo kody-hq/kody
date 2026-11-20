@@ -805,6 +805,7 @@ export async function unpublishCommunityListing(input: {
 
 	// Delete the legacy snapshot while the row still exists: it is the only
 	// handle a retry or account export has on this key.
+	// Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	await deleteCommunitySnapshot(input.env.BUNDLE_ARTIFACTS_KV, input.listingId)
 	const deleted = await deleteCommunityListing(input.env.APP_DB, {
 		listingId: input.listingId,
@@ -1266,6 +1267,7 @@ export type PrepareCommunityForkInput = {
 	 * Org that owns the follow. Web install passes the personal org. An
 	 * org-scoped `communityFork` passes the active org. Omit to use `userId`
 	 * (person-keyed fixtures and legacy equal-id rows).
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	followerOrgId?: OwnerId
 	/** Acting person. Omit to use `userId` when that value is already the person. */
@@ -2620,6 +2622,7 @@ export async function rateCommunityListing(input: {
 	 * connection is bound to. communityFork keys fork rows by that org, which
 	 * differs from the person id for new signups (#3053). Omit for legacy
 	 * callers where the two are equal.
+	 * Remove when: no org still has the legacy equal-id shape (`orgs.id` equals the person's stable user id, #3053).
 	 */
 	forkOwnerId?: OwnerId
 	listingId: string

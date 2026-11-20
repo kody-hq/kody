@@ -430,6 +430,7 @@ function resolveConnectOauthExtraAuthorizeParams(input: {
  * shapes: the snapshot lives for a single authorize round trip, so a stale
  * shape can only exist for a flow in-flight across a deploy, and the recovery
  * is simply restarting the connect flow from its URL.
+ * Permanent: stored data or clients from before this change still exist.
  */
 export function parseSessionConnectOauthConfig(
 	raw: string,

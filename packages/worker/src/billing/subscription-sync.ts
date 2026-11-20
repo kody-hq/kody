@@ -765,6 +765,7 @@ export async function linkStripeCustomerFromCheckoutSessionAttribution(input: {
 	/**
 	 * Legacy personal success path: treated as org id = stable user id.
 	 * Prefer `orgId`.
+	 * Permanent: a platform compatibility setting, not a legacy path.
 	 */
 	user?: BillingUser
 	now?: Date

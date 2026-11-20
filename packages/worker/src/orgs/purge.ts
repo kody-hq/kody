@@ -11,6 +11,7 @@
  * soft-deleted accounts). They keep the same claim, retry backoff, and failure
  * audit as soft-delete candidates. Only an explicit `dryRun: true` previews
  * them.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 
 import type { OwnerId } from '@kody-internal/shared/owner-person-ids.ts'
@@ -49,6 +50,7 @@ export type SoftDeletePurgeCandidate = {
 	 * `deleted_at` for soft-deleted rows. For legacy deletions (`legacy: true`)
 	 * this is the `deleting_at` fence, the closest record of when the deletion
 	 * was requested or last retried.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
 	 */
 	deletedAt: string
 	ageDays: number
@@ -75,7 +77,10 @@ export type SoftDeletePurgeOutcome = {
 export type SoftDeletePurgeResult = {
 	/** Soft-deleted (restorable) candidates were only listed. */
 	dryRun: boolean
-	/** Legacy deletion candidates were only listed. */
+	/**
+	 * Legacy deletion candidates were only listed.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
+	 */
 	legacyDryRun: boolean
 	scanned: number
 	purged: number
@@ -292,6 +297,7 @@ async function claimUserForPurge(input: {
  * still fenced, still without `deleted_at`, and past the retry backoff are
  * claimed, so concurrent passes and in-flight deletions are left alone. The
  * restamp starts the next backoff window if this attempt fails.
+ * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
  */
 async function claimLegacyUserForPurge(input: {
 	db: D1Database
@@ -323,6 +329,7 @@ export async function pruneSoftDeleted(input: {
 	/**
 	 * When true, list only. When false, hard-delete soft-deleted rows if
 	 * writes are enabled. Legacy deletions run unless this is true.
+	 * Remove when: no account still has a legacy `deleting_at` fence without `deleted_at`.
 	 */
 	dryRun?: boolean
 	enableWrites?: boolean

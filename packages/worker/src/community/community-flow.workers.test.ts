@@ -35,10 +35,7 @@ import type { EntitySourceRow } from '#worker/repo/types.ts'
 import { createArtifactsMswHandlers } from '#worker/test-support/artifacts-msw-handlers.ts'
 import { silenceIncidentalRuntimeWarnings } from '#worker/test-support/incidental-runtime-warnings.ts'
 import type { CommunityActivityDispatchQueueMessage } from './activity-dispatch-queue-producer.ts'
-import type {
-	CommunityForkUpstreamUpdatedDispatchQueueMessage,
-	CommunityListingPublishedDispatchQueueMessage,
-} from './listing-published-dispatch-queue-producer.ts'
+import type { CommunityListingPublishedDispatchQueueMessage } from './listing-published-dispatch-queue-producer.ts'
 import { createMswWorkerServer } from '#worker/test-support/msw-worker-server.ts'
 import { provisionPersonalOrg } from '#worker/orgs/provision.ts'
 import { ensureCommunityFlowSchema } from './community-flow-test-schema.ts'
@@ -123,10 +120,8 @@ function createFlowHarness() {
 		}),
 	)
 	const queuedActivity: Array<CommunityActivityDispatchQueueMessage> = []
-	const queuedListingPublished: Array<
-		| CommunityListingPublishedDispatchQueueMessage
-		| CommunityForkUpstreamUpdatedDispatchQueueMessage
-	> = []
+	const queuedListingPublished: Array<CommunityListingPublishedDispatchQueueMessage> =
+		[]
 	const testEnv: Env = {
 		...env,
 		CLOUDFLARE_ACCOUNT_ID: mockAccountId,
@@ -138,11 +133,7 @@ function createFlowHarness() {
 			},
 		} as unknown as Env['COMMUNITY_ACTIVITY_DISPATCH_QUEUE'],
 		COMMUNITY_LISTING_PUBLISHED_DISPATCH_QUEUE: {
-			async send(
-				message:
-					| CommunityListingPublishedDispatchQueueMessage
-					| CommunityForkUpstreamUpdatedDispatchQueueMessage,
-			) {
+			async send(message: CommunityListingPublishedDispatchQueueMessage) {
 				queuedListingPublished.push(message)
 			},
 		} as unknown as Env['COMMUNITY_LISTING_PUBLISHED_DISPATCH_QUEUE'],

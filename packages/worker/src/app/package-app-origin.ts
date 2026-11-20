@@ -191,6 +191,7 @@ import { resolvePublicPackageAppLocation } from '#worker/package-app-public-url.
  * package browser code, and moving it would widen the package-app domain's
  * surface for no benefit. It 404s here. Retired
  * `/@{username}/connectors/*` paths also 404 here.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 
 function withoutHandoffToken(url: URL) {
@@ -1122,6 +1123,7 @@ function createPackageAppOriginLinkResponse(input: {
  * The bare package-app origin serves no package code: it sends the bare origin
  * home and redirects legacy path-based package URLs to the owning user's
  * subdomain. Everything else fails closed.
+ * Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
  */
 async function handleApexRequest(input: {
 	request: Request
@@ -1651,6 +1653,7 @@ async function handleUserSubdomainRequest(input: {
 	// Resolve retired slugs before the legacy `/packages` HTML 308 so a
 	// renamed leaf becomes one hop to `/{current}` instead of `/packages/old`
 	// → `/{old}` → `/{current}`.
+	// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 	const retiredRedirect = await pushServerTiming(
 		packageAppServerTiming(),
 		'retiredSlug',
@@ -1670,6 +1673,7 @@ async function handleUserSubdomainRequest(input: {
 	if (retiredRedirect) {
 		// Still count legacy `/packages/{old}` hits when the retired slug
 		// redirects in one hop to `/{current}` before the legacy handler runs.
+		// Remove when: production `PACKAGE_APP_LEGACY_HOSTS` is empty and legacy `/packages` mount and `/_kody/auth` hits stay at zero.
 		if (isPackageAppLegacySubdomainMountPath(url.pathname)) {
 			recordPackageAppLegacyMountHit({
 				env,

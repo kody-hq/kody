@@ -52,6 +52,7 @@ export type CredentialPlacementApprovalPlan = {
  * approval is recorded even when an observed opt-in already fills the part.
  * Parts the stored placement lists but the owner never opted in stay
  * un-opted.
+ * Remove when: every secret credential row has a stored placement (null placements backfilled).
  */
 export function planCredentialPlacementApproval(input: {
 	stored: CredentialFillPlacement | null

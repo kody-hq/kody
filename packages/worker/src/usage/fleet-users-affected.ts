@@ -509,6 +509,7 @@ export function buildFleetUsersAffectedActorQuery(input: {
 	// defaults). Empty blob10 means Automation — count as one synthetic actor
 	// key so automation storms still register without inventing person ids.
 	// Analytics Engine SQL has no concat(); format() is its string builder.
+	// Permanent: stored data or clients from before this change still exist.
 	return `
 SELECT
 	if(blob10 = '', format('automation:{}', blob1), blob10) AS actor_id,

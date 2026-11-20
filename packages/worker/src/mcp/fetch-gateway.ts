@@ -113,7 +113,10 @@ type FetchGatewayProps = {
 	 * must be bound to. Without it, a client fetch is refused.
 	 */
 	credentialClientBinding?: string | null
-	/** Host-validated picks, used only for the legacy compatibility period. */
+	/**
+	 * Host-validated picks, used only for the legacy compatibility period.
+	 * Permanent: rows written before this field existed keep null; there is no backfill.
+	 */
 	legacyCredentialPicks?: CredentialCallMapJson | null
 	/**
 	 * Package-app runs only (ADR 0068 amendment 2026-10-24): placeholders
