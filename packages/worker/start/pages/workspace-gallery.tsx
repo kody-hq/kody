@@ -62,14 +62,11 @@ export function WorkspaceGallery({
 				]),
 			].sort((a, b) => a - b),
 	})
-	useLayoutEffect(() => {
-		if (selectedIndex >= 0)
-			virtual.scrollToIndex(selectedIndex, { align: 'auto' })
-	}, [selectedIndex, virtual])
 	const stripRef = useCallback(
 		(node: HTMLDivElement | null) => {
 			strip.current = node
 			if (!node || selectedIndex < 0) return
+			virtual.scrollToIndex(selectedIndex, { align: 'auto' })
 			const observer = new ResizeObserver(() =>
 				virtual.scrollToIndex(selectedIndex, { align: 'auto' }),
 			)
