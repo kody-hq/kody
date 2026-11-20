@@ -210,7 +210,7 @@ function readSavedVisibility(storageKey: string): ColumnVisibilityState | null {
 			Object.entries(saved).filter(([, value]) => typeof value === 'boolean'),
 		)
 	} catch {
-		/* Storage can be unavailable. The table remains usable. */
+		/* Storage can be unavailable. The table shows its default columns. */
 		return null
 	}
 }
