@@ -13,7 +13,7 @@ import type { CSSObject } from '@emotion/react'
 import {
 	type ReactNode,
 	useId,
-	useLayoutEffect,
+	useCallback,
 	useMemo,
 	useRef,
 	useState,
@@ -154,22 +154,28 @@ function PackageFilesExplorerContent({
 	const fullView = canOpen && fullPath === data.selectedPath
 	const wasFullView = useRef(false)
 
-	useLayoutEffect(() => {
-		if (wasFullView.current === fullView) return
-		wasFullView.current = fullView
-		if (fullView) {
-			fileView.current?.focus({ preventScroll: true })
-			return
-		}
-		const frame = requestAnimationFrame(() => {
-			const selected = columns.current?.querySelector<HTMLElement>(
-				`[data-browser-item="${CSS.escape(data.selectedPath)}"]`,
-			)
-			const target = selected ?? viewToggle.current
-			target?.focus({ preventScroll: true })
-		})
-		return () => cancelAnimationFrame(frame)
-	}, [data.selectedPath, fullView])
+	// The explorer stays mounted while the preview comes and goes, so it owns
+	// focus handoff between the file view and the columns.
+	const explorerRef = useCallback(
+		(node: HTMLDivElement | null) => {
+			explorer.current = node
+			if (!node || wasFullView.current === fullView) return
+			wasFullView.current = fullView
+			if (fullView) {
+				fileView.current?.focus({ preventScroll: true })
+				return
+			}
+			const frame = requestAnimationFrame(() => {
+				const selected = columns.current?.querySelector<HTMLElement>(
+					`[data-browser-item="${CSS.escape(data.selectedPath)}"]`,
+				)
+				const target = selected ?? viewToggle.current
+				target?.focus({ preventScroll: true })
+			})
+			return () => cancelAnimationFrame(frame)
+		},
+		[data.selectedPath, fullView],
+	)
 
 	useHotkeys(
 		[
@@ -353,7 +359,7 @@ function PackageFilesExplorerContent({
 			<Panel>
 				{installStrip}
 				<div
-					ref={explorer}
+					ref={explorerRef}
 					css={[
 						layoutCss,
 						embedded && { marginTop: 0 },

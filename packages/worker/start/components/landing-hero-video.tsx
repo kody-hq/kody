@@ -105,11 +105,12 @@ export function LandingHeroVideo({
 	)
 	const playerRef = useCallback(
 		(node: HTMLDivElement | null) => {
-			if (node && chosen && selectedIndex >= 0)
+			if (node && chosen)
 				node
 					.querySelector<HTMLIFrameElement>('iframe')
 					?.focus({ preventScroll: true })
 		},
+		// oxlint-disable-next-line react/exhaustive-deps -- refocus the player when the selection changes
 		[selectedIndex, chosen],
 	)
 	function choose(index: number) {

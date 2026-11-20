@@ -18,7 +18,7 @@ import {
 	revealDeepLinkedRecord,
 } from './record-deep-link.ts'
 import {
-	useEffect,
+	useCallback,
 	useId,
 	useRef,
 	useLayoutEffect,
@@ -567,25 +567,27 @@ export function RecordTable(props: RecordTableProps) {
 			(props.recordLoading || props.busy),
 		)
 
-		const sectionRef = useRef<HTMLElement>(null)
-		useEffect(() => {
-			const target = sectionRef.current?.querySelector<HTMLElement>(
-				'[data-record-focus]',
-			)
-			if (
-				documentDeepLinkFocus({
-					// A fragment (such as #fill-placement) owns the landing spot.
-					spaNavigated:
-						document.documentElement.hasAttribute('data-spa-nav') ||
-						window.location.hash !== '',
-					// A create form (`/new`) is not a record a link points at.
-					hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
-				}) &&
-				target
-			) {
-				revealDeepLinkedRecord(target)
-			}
-		}, [selectedId, expandedInTable, orphanedRecord])
+		const sectionRef = useCallback(
+			(section: HTMLElement | null) => {
+				if (!section) return
+				const target = section.querySelector<HTMLElement>('[data-record-focus]')
+				if (
+					documentDeepLinkFocus({
+						// A fragment (such as #fill-placement) owns the landing spot.
+						spaNavigated:
+							document.documentElement.hasAttribute('data-spa-nav') ||
+							window.location.hash !== '',
+						// A create form (`/new`) is not a record a link points at.
+						hasTarget: Boolean(target) && selectedId !== recordTableCreateId,
+					}) &&
+					target
+				) {
+					revealDeepLinkedRecord(target)
+				}
+			},
+			// oxlint-disable-next-line react/exhaustive-deps -- re-check the deep link when the record moves in or out of the table
+			[selectedId, expandedInTable, orphanedRecord],
+		)
 
 		const table = (
 			// oxlint-disable-next-line kody-custom/no-raw-table -- RecordTable owns its responsive card layout, sorting, and row selection.
