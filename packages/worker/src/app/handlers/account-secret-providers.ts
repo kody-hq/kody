@@ -15,7 +15,6 @@ type AuthenticatedUser = NonNullable<
 	Awaited<ReturnType<typeof readAuthenticatedAppUser>>
 >
 
-/** Saves a Key that points to an item field in an existing provider binding. */
 export async function createAccountVaultItemCredential(input: {
 	env: Env
 	user: AuthenticatedUser
