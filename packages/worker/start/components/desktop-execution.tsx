@@ -6,10 +6,11 @@ import {
 	useCallback,
 	createContext,
 	useContext,
-	useEffect,
 	useState,
+	useSyncExternalStore,
 	type ReactNode,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useActor } from '@xstate/react'
 import { desktopSetupStepState } from '#universal/desktop-setup-step-state.ts'
 import {
@@ -124,7 +125,11 @@ export function DesktopExecutionProvider({
 	orgSlug: string | null
 	pathname: string
 }) {
-	const [bridge, setBridge] = useState<DesktopExecutionBridge | null>(null)
+	const bridge = useSyncExternalStore(
+		subscribeToBridge,
+		readDesktopBridge,
+		readNoBridge,
+	)
 	const [opened, setOpened] = useState(false)
 	const [wizardSnapshot, , wizardActor] = useActor(desktopSetupStepState)
 	const wizard = uiState<{
@@ -166,18 +171,15 @@ export function DesktopExecutionProvider({
 	const putFirst = useServerFn(putDesktopExecutionFirst)
 	const [menuCommand, setMenuCommand] =
 		useState<DesktopMachineMenuCommand | null>(null)
-	useEffect(() => {
-		setBridge(window.kodyDesktop?.execution ?? null)
-	}, [])
-	useEffect(() => {
-		if (!bridge?.takeMenuCommand) return
+	useResourceLifetime(() => {
+		if (!bridge?.takeMenuCommand) return () => {}
 		const take = () =>
 			void bridge
 				.takeMenuCommand?.()
 				.then((command) => command && setMenuCommand(command))
 				.catch(() => {})
 		take()
-		return bridge.onMenuCommand?.(take)
+		return bridge.onMenuCommand?.(take) ?? (() => {})
 	}, [bridge])
 	const machine = useQuery({
 		queryKey: ['desktop-machine', actorKey],
@@ -201,7 +203,10 @@ export function DesktopExecutionProvider({
 			? existingContext.name
 			: null
 	const name = editedName || existingName || machine.data?.name || ''
-	useEffect(() => {
+	const autoOpen = [bridge, username, pathname, onboarding.data, machine.data]
+	const [autoOpenSeen, setAutoOpenSeen] = useState<unknown[]>([])
+	if (autoOpen.some((value, index) => value !== autoOpenSeen[index])) {
+		setAutoOpenSeen(autoOpen)
 		if (
 			bridge &&
 			username &&
@@ -214,7 +219,7 @@ export function DesktopExecutionProvider({
 			!machine.data.onboardingSeen
 		)
 			setOpened(true)
-	}, [bridge, username, pathname, onboarding.data, machine.data])
+	}
 	async function refresh() {
 		await client.invalidateQueries({ queryKey: ['desktop-machine', actorKey] })
 	}
@@ -761,3 +766,8 @@ export function DesktopExecutionProvider({
 export function useDesktopMachine() {
 	return useContext(DesktopMachineContext)
 }
+
+const subscribeToBridge = () => () => {}
+const readDesktopBridge = (): DesktopExecutionBridge | null =>
+	window.kodyDesktop?.execution ?? null
+const readNoBridge = () => null

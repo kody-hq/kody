@@ -2,7 +2,8 @@
 import { Button } from '../components/button.tsx'
 import { css } from '@emotion/react'
 import { useRefreshExecutionContextsPage } from '../execution-contexts-query.ts'
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { useLayoutMeasure, useResourceLifetime } from '../lib/primitives.ts'
 import { setExecutionChain } from '#start/server/execution-contexts'
 import {
 	type ExecutionChain,
@@ -107,7 +108,7 @@ export function ExecutionChainPanel(props: {
 	const listRef = useRef<HTMLOListElement | null>(null)
 	const focusAfterMove = useRef<string | null>(null)
 
-	useEffect(() => {
+	useLayoutMeasure(() => {
 		const target = focusAfterMove.current
 		if (!target || !listRef.current) return
 		focusAfterMove.current = null
@@ -118,14 +119,17 @@ export function ExecutionChainPanel(props: {
 			)
 		const other = control === 'up' ? 'down' : 'up'
 		;(find(control ?? 'handle') ?? find(other) ?? find('handle'))?.focus()
-	})
+	}, [chain])
 
-	useEffect(() => {
-		if (timer.current) return
-		committed.current = props.chain
-		setChain(props.chain)
-	}, [props.chain])
-	useEffect(
+	const [syncedChain, setSyncedChain] = useState(props.chain)
+	if (props.chain !== syncedChain) {
+		setSyncedChain(props.chain)
+		if (!timer.current) {
+			committed.current = props.chain
+			setChain(props.chain)
+		}
+	}
+	useResourceLifetime(
 		() => () => {
 			if (timer.current) clearTimeout(timer.current)
 		},
