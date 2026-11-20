@@ -18,7 +18,7 @@ import { isExecutedDirectly } from '../node-runtime.ts'
 
 export const globalpingApi = 'https://api.globalping.io/v1/measurements'
 
-export const regionalProbeLocations = [
+const regionalProbeLocations = [
 	{ city: 'Paris', country: 'FR' },
 	{ city: 'London', country: 'GB' },
 	{ city: 'Amsterdam', country: 'NL' },
@@ -29,7 +29,7 @@ export const regionalProbeLocations = [
 ] as const
 
 /** Two or more Cloudflare error responses fail the deploy. */
-export const outageProbeThreshold = 2
+const outageProbeThreshold = 2
 
 type GlobalpingResult = {
 	probe?: { city?: string; country?: string; network?: string }
@@ -156,7 +156,7 @@ export function evaluateMeasurement(
 		: { kind: 'pass', probes }
 }
 
-export function formatProbe(probe: ProbeVerdict): string {
+function formatProbe(probe: ProbeVerdict): string {
 	return [
 		`${probe.location}`,
 		`colo=${probe.colo ?? 'unknown'}`,
@@ -174,7 +174,7 @@ type MeasureOutcome =
 	| { ok: true; results: Array<GlobalpingResult> }
 	| { ok: false; reason: string }
 
-export async function runGlobalpingMeasurement(input: {
+async function runGlobalpingMeasurement(input: {
 	target: URL
 	fetchImpl: typeof fetch
 	sleep: (ms: number) => Promise<void>
