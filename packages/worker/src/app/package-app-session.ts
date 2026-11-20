@@ -32,12 +32,10 @@ import { parsePersonId } from '@kody-internal/shared/owner-person-ids.ts'
  * has `Path=/`. Plain-HTTP local development falls back to an unprefixed name
  * because browsers refuse `__Host-` cookies on insecure origins.
  *
- * Lifetime matches the remaining `kody_session` that minted the handoff or
- * OAuth exchange, not a fixed cap.
+ * The handoff or OAuth exchange supplies the expiration. This module requires
+ * it when issuing a cookie and checks it when reading one.
  *
- * Pre-#3890 host-wide `__Host-kody_pkg_session` / `kody_pkg_session` names
- * and `v: 2` payloads are no longer read or cleared (#3906). Minting stopped
- * in #3908 (2026-10-16); the longest remember-me lifetime is 30 days.
+ * Reads require a per-app cookie name and a `v: 3` payload for the same leaf.
  */
 
 const securePackageAppSessionCookiePrefix = '__Host-kody_pkg_session_'

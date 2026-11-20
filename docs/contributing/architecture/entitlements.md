@@ -995,10 +995,8 @@ refused before the invite is claimed. The error (`CompedSeatLimitError`) tells
 org admins to free a seat or ask support for more; invite link redemption
 returns block reason `seat_limit`. Members already in the org keep their seats
 when a cap lands below the live count, and re-adding a live member or moving a
-seat to Billing is never blocked. The write is compare-and-set, so repeating the
-same value is a no-op, and it changes only `comped_seats` (plan, credits, and
-Stripe are untouched). It writes `admin_comped_seats_set` org and platform audit
-events.
+seat to Billing is never blocked. For write and audit behavior, see the
+[comped-seat mutation tests](../../../packages/worker/src/admin/org-billing-mutations.node.test.ts).
 
 Leftover `POST /admin/users.json` `update_plan` and `adminUserUpdate` still
 forward to the personal org (`updateAdminUserPlan` in

@@ -163,6 +163,20 @@ Full placeholder rules (encodings, multipart, the inert `{{secret:<name>}}`
 mention form):
 [Secrets and host approval](../use/secrets-and-values.md#placeholders-in-fetch).
 
+### Approve an exact request
+
+For new Key integrations that need a JSON body field, a URL path segment, or
+several credentials in one request, use an approved request profile and
+`credential(key).fetch()`. A profile describes the package, destination, method,
+and credential locations. It is separate from the Key's allowed hosts and **Fill
+placement** settings.
+
+An org Owner with credential Write access saves or removes the JSON profile
+under **Approve an exact request** on the Key's page
+([approval handler](../../packages/worker/src/app/credential-placement-mutation.ts)).
+See [approved request profiles](../contributing/credential-request-profiles.md)
+for the three profile types.
+
 ## Scoped clients: `credential(key)`
 
 The **credential** decides where its value goes. Code gets an opaque client
@@ -571,14 +585,17 @@ singleRequest: {
 },
 ```
 
-Set the session header with the credential's existing `inject` option. Each
-optional extra header names a field already used in the login body. Kody logs
-in, sends exactly one request, then attempts a POST to the logout URL when the
-response ends, the caller cancels, or the request fails. Both requests use the
-approved session and extra headers on the login's HTTPS origin. Kody keeps no
-cached session and does not retry or follow redirects. Use this profile directly
-with `credential().fetch()`. The package never sees any login fields or session
-tokens.
+Set the session header with the credential's `inject` option (use a header, not
+a query parameter). Each optional extra header names a field already used in the
+login body. Omit `refreshToken`; the
+[single-request schema](../../packages/worker/src/credentials/login-resolver.ts)
+rejects that combination. Kody logs in, sends exactly one request, then attempts
+a POST to the logout URL when the response ends, the caller cancels, or the
+request fails. Both requests use the approved session and extra headers on the
+login's HTTPS origin. The
+[single-request fetch test](../../packages/worker/src/credentials/login-rotation.node.test.ts)
+covers cleanup, manual redirects, and the one protected request. Use this
+profile directly with `credential().fetch()`.
 
 `refreshToken` is for providers that rotate refresh tokens: `path` is where the
 response carries the new one, and `field` is the login field it replaces (a
@@ -587,15 +604,15 @@ of the old one together with the new session, only if the credential did not
 change meanwhile, and records a value replacement in the audit log without the
 value.
 
-What Kody keeps: the session, encrypted, for this credential and its current
-value, exchange, hosts, and inject, until it expires (the 30 second early margin
-included). Every isolate reuses it, and only one exchange runs at a time per
-credential, so a rotating provider never sees the same refresh token twice.
-Editing the value, exchange, hosts, or inject, or deleting the credential, drops
-it. When one of the credential's hosts answers 401 to a request without a body,
-Kody drops the session, runs the exchange once more, and retries the request
-once (with the same host and placement checks). A request with a body is
-returned as is.
+For a reusable login session, Kody keeps the session, encrypted, for this
+credential and its current value, exchange, hosts, and inject, until it expires
+(including a 30-second early margin). Isolates share the durable session and
+[coordinate exchanges by credential and revision](../../packages/worker/src/credentials/login-session-store.ts).
+Editing the value, exchange, hosts, or inject, or deleting the credential,
+invalidates that session. When one of the credential's hosts answers 401 to a
+request without a body, Kody drops the session, runs the exchange once more, and
+retries the request once (with the same host and placement checks). A request
+with a body is returned as is.
 
 When the exchange fails, Kody records the failure for the credential's current
 revision and does not run the exchange again until a cooldown passes, so apps

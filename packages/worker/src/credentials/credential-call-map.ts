@@ -6,6 +6,7 @@
  * credentials: { github: { id: 'credential-id' }, google: [] }
  * ```
  *
+ * Prefer IDs; name picks also accept an optional org or personal scope.
  * An array picks several for a `credentials(key)` call, and `[]` picks none
  * on purpose. A pick only chooses among credentials the actor can Use.
  */

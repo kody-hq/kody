@@ -1,7 +1,5 @@
 /**
- * The website side of local reads (ADR 0097): the switch on a secret's page,
- * the one-step page a refused CLI read links to, and the Local reads list.
- * Only a person signed in on the website can turn local reads on or off.
+ * Website views and settings for local credential reads (ADR 0097).
  */
 import type { RequestContext } from '@kody-internal/shared/request-context.ts'
 import type { AuthenticatedAppUser } from '#app/authenticated-user.ts'
