@@ -5,11 +5,13 @@
  * authority — a misleading hint to remint scopes.
  *
  * Keep this fail-closed: do not invent a local write path that trusts a
- * client-supplied package id as proof of a hosted package run.
+ * client-supplied package id as proof of a hosted package run. `secretSet`
+ * with `package_id` is not that: Kody checks the package belongs to the
+ * caller's org and that the caller may create secrets there.
  */
 
 export const localPackageScopedSecretWriteUnavailableMessage =
-	'Package-scoped secret writes are not available in local execution: the local CapabilityProxy bridge does not attach package secret authority (a client-supplied package id is not trusted). Run this via hosted package execute, or set the secret with the account UI (/connect/secret-set) or Open API secretSet with a user scope / outside local execute.'
+	'Package-scoped secret writes in local execution need an explicit package: pass `package_id` (a saved package in this org) to `secretSet`. The local CapabilityProxy bridge does not attach package secret authority, so a write without `package_id` has no package to land in.'
 
 const packageSecretMutations = new Set([
 	'secretSet',
@@ -26,6 +28,10 @@ function firstArgRecord(
 		return null
 	}
 	return first as Record<string, unknown>
+}
+
+function hasPackageTarget(value: unknown): boolean {
+	return typeof value === 'string' && value.trim() !== ''
 }
 
 function isPackageScope(value: unknown): boolean {
@@ -60,6 +66,9 @@ export function localPackageScopedSecretWriteBlockReason(
 			? localPackageScopedSecretWriteUnavailableMessage
 			: null
 	}
+
+	// Kody resolves and authorizes `package_id` against the caller's org.
+	if (name === 'secretSet' && hasPackageTarget(record.package_id)) return null
 
 	return isPackageScope(record.scope)
 		? localPackageScopedSecretWriteUnavailableMessage

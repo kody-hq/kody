@@ -63,6 +63,23 @@ test('blocks secretDisconnect with scope package', () => {
 	)
 })
 
+test('forwards secretSet with a package_id target to Kody', () => {
+	assert.equal(
+		localPackageScopedSecretWriteBlockReason(
+			['kody', 'secretSet'],
+			[{ name: 'token', scope: 'package', value: 'x', package_id: 'pkg-1' }],
+		),
+		null,
+	)
+	assert.equal(
+		localPackageScopedSecretWriteBlockReason(
+			['kody', 'secretDelete'],
+			[{ name: 'token', scope: 'package', package_id: 'pkg-1' }],
+		),
+		localPackageScopedSecretWriteUnavailableMessage,
+	)
+})
+
 test('allows user-scoped secretSet and unrelated paths', () => {
 	assert.equal(
 		localPackageScopedSecretWriteBlockReason(
