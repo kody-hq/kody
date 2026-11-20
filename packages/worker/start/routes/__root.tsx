@@ -31,7 +31,8 @@ import {
 	useRouter,
 	useRouterState,
 } from '@tanstack/react-router'
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 import { useSuspenseQuery, type QueryClient } from '@tanstack/react-query'
 import { readDocumentActor } from '../document-actor.ts'
 import {
@@ -257,7 +258,7 @@ function LoadedAppLayout() {
 	const router = useRouter()
 	const { queryClient, actorKey, pageNavigation, pageLocation } =
 		Route.useRouteContext()
-	useEffect(
+	useResourceLifetime(
 		() =>
 			refreshOnActivation({
 				window,
@@ -414,11 +415,8 @@ function DocumentShell({ children }: { children: ReactNode }) {
 								: 'Something went wrong | Kody',
 				}
 			: undefined
-	useEffect(() => {
-		document.documentElement.dataset.hydrated = 'true'
-	}, [])
 	return (
-		<html lang="en" suppressHydrationWarning>
+		<html lang="en" ref={markHydrated} suppressHydrationWarning>
 			<head>
 				<meta charSet={documentCharset} />
 				{homeDocument ? (
@@ -535,4 +533,8 @@ function UnauthorizedAgentPrompt() {
 			prompt={buildUnauthorizedErrorAgentPrompt({ path: pathname })}
 		/>
 	)
+}
+
+function markHydrated(node: HTMLHtmlElement | null) {
+	if (node) node.dataset.hydrated = 'true'
 }

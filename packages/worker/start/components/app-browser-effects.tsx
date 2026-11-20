@@ -1,7 +1,8 @@
 /** @jsxImportSource @emotion/react */
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useRouterState } from '@tanstack/react-router'
 import { colors, transitions } from '#universal/styles/tokens.ts'
+import { useResourceLifetime } from '../lib/primitives.ts'
 
 export function AppBrowserEffects() {
 	return <NavigationProgress />
@@ -12,7 +13,7 @@ function NavigationProgress() {
 	const [bar, setBar] = useState({ visible: false, progress: 0, opacity: 0 })
 	const visible = useRef(false)
 	const shownAt = useRef(0)
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const timeouts: Array<ReturnType<typeof setTimeout>> = []
 		let interval: ReturnType<typeof setInterval> | undefined
 		function after(delay: number, callback: () => void) {

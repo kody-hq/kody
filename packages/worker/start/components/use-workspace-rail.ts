@@ -5,7 +5,6 @@ import {
 	saveSidebarPreferences,
 } from './sidebar-preferences.tsx'
 import {
-	useEffect,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -13,6 +12,7 @@ import {
 	type PointerEvent,
 	type KeyboardEvent,
 } from 'react'
+import { useResourceLifetime } from '../lib/primitives.ts'
 type SidebarMode = 'compact' | 'auto' | 'show'
 const key = 'kody.workspace.rail.mode'
 const listeners = new Set<() => void>()
@@ -89,7 +89,7 @@ export function useWorkspaceRail() {
 			setPreview(false)
 		}, 300)
 	}
-	useEffect(() => {
+	useResourceLifetime(() => {
 		const keyboard = () => {
 			pointerFocus.current = false
 		}
@@ -104,8 +104,8 @@ export function useWorkspaceRail() {
 			document.removeEventListener('pointerdown', pointer, true)
 		}
 	}, [])
-	useEffect(() => {
-		if (!compact) return
+	useResourceLifetime(() => {
+		if (!compact) return () => {}
 		const outside = () => {
 			if (!pointerInside.current) closeLater()
 		}
