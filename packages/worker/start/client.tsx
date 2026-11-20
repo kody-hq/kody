@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { StrictMode, startTransition, useEffect } from 'react'
+import { StrictMode, startTransition } from 'react'
 import { hydrateRoot } from 'react-dom/client'
 import { hydrateStart } from '@tanstack/react-start/client'
 import { RouterProvider, type AnyRouter } from '@tanstack/react-router'
@@ -16,6 +16,10 @@ import {
 	initSentryClient,
 	type ClientErrorContext,
 } from '#client/sentry-client.ts'
+import { captureFirstTouchAttributionFromLocation } from '#client/first-touch-attribution.ts'
+import { persistReferralCookieFromLocation } from '#client/referral-cookie.ts'
+import { scheduleConsumeAccountCreatedFathomSignal } from '#client/fathom-events.ts'
+import { locationWithoutHomeOgParam } from '#universal/home-og-variants.ts'
 import { isPermissionDeniedError } from '#universal/permission-denied.ts'
 
 initSentryClient(document)
@@ -27,22 +31,42 @@ function reportReactError(error: unknown, context?: ClientErrorContext) {
 	captureClientException(error, context)
 }
 
-function HydratedApp({ router }: { router: AnyRouter }) {
-	useEffect(() => {
-		// A failed recovery must retain the one-shot flag across another reload.
-		if (
-			router.state.matches.length > 0 &&
-			router.state.matches.every((match) => match.status === 'success')
-		) {
-			clearDeploySkewReloadFlag()
-			clearStaleRouteChunkReloadFlag()
-		}
-	}, [router])
-	return <RouterProvider router={router} />
+function clearReloadFlagsAfterSuccessfulHydration(router: AnyRouter) {
+	// A failed recovery must retain the one-shot flag across another reload.
+	if (
+		router.state.matches.length > 0 &&
+		router.state.matches.every((match) => match.status === 'success')
+	) {
+		clearDeploySkewReloadFlag()
+		clearStaleRouteChunkReloadFlag()
+	}
+}
+
+function startBrowserLocationEffects(router: AnyRouter) {
+	scheduleConsumeAccountCreatedFathomSignal({
+		replaceHref: (next) =>
+			router.history.replace(next, router.history.location.state),
+	})
+	// Signup clears the first-touch cookie; a signed-in page must not recreate it.
+	let signedOut = false
+	const sync = () => {
+		const nextSignedOut =
+			(router.state.matches[0]?.context as { actorKey?: unknown } | undefined)
+				?.actorKey === null
+		if (nextSignedOut && !signedOut) captureFirstTouchAttributionFromLocation()
+		signedOut = nextSignedOut
+		persistReferralCookieFromLocation()
+		const next = locationWithoutHomeOgParam(window.location.href)
+		if (next) router.history.replace(next, router.history.location.state)
+	}
+	sync()
+	router.subscribe('onResolved', sync)
 }
 
 hydrateStart()
 	.then((router) => {
+		clearReloadFlagsAfterSuccessfulHydration(router)
+		startBrowserLocationEffects(router)
 		// Arm only while a route load is in flight. Chunk import rejection and
 		// the route error boundary both run before `onResolved`.
 		router.subscribe('onBeforeLoad', () => {
@@ -86,7 +110,7 @@ hydrateStart()
 			hydrateRoot(
 				document,
 				<StrictMode>
-					<HydratedApp router={router} />
+					<RouterProvider router={router} />
 				</StrictMode>,
 				{
 					onCaughtError: reportDocumentError,
